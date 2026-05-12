@@ -268,4 +268,67 @@ DeckSubmission DeckValidator::loadFromJson(const std::string& path,
     return deck;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Ban list
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void DeckValidator::loadBanList(const std::string& csv_path) {
+    std::ifstream file(csv_path);
+    if (!file.is_open()) return; // ban list is optional
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+
+        // Format: SET,ID,'DISPLAY NAME'
+        // Note: display names are single-quoted because some contain commas
+        auto first_comma = line.find(',');
+        if (first_comma == std::string::npos) continue;
+
+        std::string set_code = line.substr(0, first_comma);
+
+        // Find the ID (between first and second comma)
+        auto rest = line.substr(first_comma + 1);
+        auto second_comma = rest.find(',');
+        if (second_comma == std::string::npos) continue;
+
+        std::string id_str = rest.substr(0, second_comma);
+
+        // Display name is after second comma, wrapped in single quotes
+        std::string display_name = rest.substr(second_comma + 1);
+        // Strip single quotes
+        if (!display_name.empty() && display_name.front() == '\'')
+            display_name = display_name.substr(1);
+        if (!display_name.empty() && display_name.back() == '\'')
+            display_name.pop_back();
+
+        // Build the def_id string: "set-id-total" pattern (e.g., "ogn-168-298")
+        // Look up by name in CardDB instead (more robust)
+        auto* card = db_.findByName(display_name);
+        if (card) {
+            banned_ids_.insert(card->id);
+            banned_names_.push_back(card->name);
+        }
+    }
+}
+
+void DeckValidator::checkBanList(const DeckSubmission& deck,
+                                  ValidationResult& result) const {
+    if (banned_ids_.empty()) return;
+
+    auto checkCard = [&](CardDefId id, const std::string& zone) {
+        if (banned_ids_.count(id)) {
+            auto& def = db_.get(id);
+            result.addError("Banned card in " + zone + ": " + def.name);
+        }
+    };
+
+    checkCard(deck.legend, "legend");
+    checkCard(deck.chosen_champion, "champion");
+    for (auto id : deck.main_deck) checkCard(id, "main deck");
+    for (auto id : deck.rune_deck) checkCard(id, "rune deck");
+    for (auto id : deck.battlefields) checkCard(id, "battlefields");
+    for (auto id : deck.sideboard) checkCard(id, "sideboard");
+}
+
 } // namespace riftbound

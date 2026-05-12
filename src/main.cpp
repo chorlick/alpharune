@@ -111,6 +111,17 @@ int main(int argc, char* argv[]) {
     // Load and validate decks
     riftbound::DeckValidator validator(card_db);
 
+    // Load ban list if available
+    {
+        std::string ban_path = registry_path;
+        auto slash = ban_path.rfind('/');
+        if (slash != std::string::npos)
+            ban_path = ban_path.substr(0, slash + 1) + "ban-list.csv";
+        else
+            ban_path = "cards/ban-list.csv";
+        validator.loadBanList(ban_path);
+    }
+
     riftbound::DeckSubmission deck1, deck2;
     try {
         deck1 = riftbound::DeckValidator::loadFromJson(deck1_path, card_db);

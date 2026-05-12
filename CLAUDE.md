@@ -337,10 +337,13 @@ These cards are in the 5 test decks but currently have no implemented effect. Pr
 - **Performance optimization**: Release build, object pooling, incremental aura recomputation, state hashing for MCTS.
 
 ## Key Design Docs
-- `docs/engine-design.md` — comprehensive architecture (read this first)
+- `docs/engine-design.md` — comprehensive engine architecture (read this first)
+- `docs/ml-training-design.md` — ML agent training pipeline: phases, Elo, evolutionary framework, compute estimates
+- `docs/deck-agent-design.md` — deck construction agent: evolutionary optimization, ban list, card frequency
 - `docs/playmat-layout.md` — physical board layout → ASCII renderer reference
 - `rules/core-rules.md` — full game rules (sections 000-826)
 - `rules/tournament-rules.md` — deck construction + tournament policies
+- `cards/ban-list.csv` — banned cards (SET,ID,'DISPLAY NAME' — single-quoted names due to commas)
 
 ## Data Pipeline
 ```

@@ -1,0 +1,25 @@
+{
+  "id": "sfd-112-221",
+  "name": "Kato the Arm",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 112,
+  "public_code": "SFD-112/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)\nWhen I move to a battlefield, give another friendly unit my keywords and +[M] equal to my Might this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f4ea4f2f5169a3813d9eb7f0d3d2f41bdddebfc7-744x1039.png",
+  "artist": "Six More Vodka"
+}

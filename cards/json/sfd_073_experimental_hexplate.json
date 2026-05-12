@@ -1,0 +1,25 @@
+{
+  "id": "sfd-073-221",
+  "name": "Experimental Hexplate",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 73,
+  "public_code": "SFD-073/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 1,
+  "rarity": "uncommon",
+  "ability_text": "[Equip] [B] ([B]: Attach this to a unit you control.)",
+  "effect_text": "I am a Mech.",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/940a5e9796d4ac10a238d9b2612545c04bd9a570-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

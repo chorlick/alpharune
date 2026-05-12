@@ -1,0 +1,21 @@
+{
+  "id": "ogn-277-298",
+  "name": "Back-Alley Bar",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 277,
+  "public_code": "OGN-277/298",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When a unit moves from here, give it +1 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3e9f659a32e390b45bc87a01bdd6af4a8a3565f7-1038x744.png",
+  "artist": "Kudos Productions"
+}

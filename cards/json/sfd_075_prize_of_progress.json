@@ -1,0 +1,26 @@
+{
+  "id": "sfd-075-221",
+  "name": "Prize of Progress",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 75,
+  "public_code": "SFD-075/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mech",
+    "Piltover"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you use an activated ability of a gear, give me +1 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c08f0b6ed24415e6a440a17931c7e2a2db3ab2cc-744x1039.png",
+  "artist": "Six More Vodka"
+}

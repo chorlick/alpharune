@@ -1,0 +1,23 @@
+{
+  "id": "unl-138-219",
+  "name": "The List",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 138,
+  "public_code": "UNL-138/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "As you play this, name a tag. (For example, Miss Fortune, Demacia, and Poro are tags.)\n[E]: Give a unit with the named tag -2 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f35b49faeb444071445662c9af13710c00a4569c-744x1039.png",
+  "artist": "Kudos Productions"
+}

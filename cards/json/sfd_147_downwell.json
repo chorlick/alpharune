@@ -1,0 +1,23 @@
+{
+  "id": "sfd-147-221",
+  "name": "Downwell",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 147,
+  "public_code": "SFD-147/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 8,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Return all units and gear to their owners' hands.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/950eff0d07ef1e25be46fdb340fe8510c551c159-744x1039.png",
+  "artist": "Kudos Productions"
+}

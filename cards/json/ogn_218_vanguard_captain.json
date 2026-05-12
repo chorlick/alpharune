@@ -1,0 +1,26 @@
+{
+  "id": "ogn-218-298",
+  "name": "Vanguard Captain",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 218,
+  "public_code": "OGN-218/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Elite",
+    "Demacia"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Legion] \u2014 When you play me, play two 1 [M] Recruit unit tokens here. (Get the effect if you've played another card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f0c9ddb2af7a0d4991938cf1e3058eb0f5d2e357-744x1039.png",
+  "artist": "Six More Vodka"
+}

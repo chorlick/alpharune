@@ -1,0 +1,23 @@
+{
+  "id": "ogn-272-298",
+  "name": "Recruit (NX)",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 272,
+  "public_code": "OGN-272/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [],
+  "tags": [
+    "Recruit"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c168ca334739090a060710dfc440982c3462ac8c-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "sfd-086-221",
+  "name": "World Atlas",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 86,
+  "public_code": "SFD-086/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 2,
+  "rarity": "rare",
+  "ability_text": "[Equip] [B] ([B]: Attach this to a unit you control.)",
+  "effect_text": "When I hold, play two Gold gear tokens exhausted.",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/7b8d96e128c19c5ff368119a60759cffa644e942-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

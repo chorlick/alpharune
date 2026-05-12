@@ -1,0 +1,26 @@
+{
+  "id": "unl-028-219",
+  "name": "Pyke, Dockside Butcher",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 28,
+  "public_code": "UNL-028/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Pyke",
+    "Bilgewater"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Ganking] (I can move from battlefield to battlefield.)\nYou may pay [R] as an additional cost to play me.\nWhen you play me, if you paid the additional cost, ready me and give me +2 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e0ce05148d7368070bcc8c0a43f66ece0834653a-744x1039.png",
+  "artist": "Six More Vodka"
+}

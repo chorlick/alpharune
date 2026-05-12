@@ -1,0 +1,26 @@
+{
+  "id": "unl-195-219",
+  "name": "Green Father",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 195,
+  "public_code": "UNL-195/219",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "calm",
+    "order"
+  ],
+  "tags": [
+    "Ivern"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you conquer or hold, you may exhaust me to replace that battlefield with a Brush battlefield token. (Bird, Cat, Dog, Poro, and Ivern units have +1 [M] in Brush. It can be swapped back when scored.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a2ca02d26c1e95db03690729bd31113bda7e4140-744x1039.png",
+  "artist": "Envar Studio"
+}

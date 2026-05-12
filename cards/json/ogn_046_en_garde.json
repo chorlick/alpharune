@@ -1,0 +1,23 @@
+{
+  "id": "ogn-046-298",
+  "name": "En Garde",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 46,
+  "public_code": "OGN-046/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nGive a friendly unit +1 [M] this turn, then an additional +1 [M] this turn if it is the only unit you control there.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/03c0ec7eaa5957a62869dad2a0ce40913fc874a9-744x1039.png",
+  "artist": "Kudos Productions"
+}

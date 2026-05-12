@@ -1,0 +1,25 @@
+{
+  "id": "sfd-039-221",
+  "name": "Royal Entourage",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 39,
+  "public_code": "SFD-039/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Shurima"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, ready or exhaust a legend.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a6f3ce580860fe80fdf1b41533ba89b5060e946a-744x1039.png",
+  "artist": "Kudos Productions"
+}

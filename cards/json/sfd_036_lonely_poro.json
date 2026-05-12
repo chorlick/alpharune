@@ -1,0 +1,26 @@
+{
+  "id": "sfd-036-221",
+  "name": "Lonely Poro",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 36,
+  "public_code": "SFD-036/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Poro",
+    "Freljord"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deathknell] \u2014 If I died alone, draw 1. (When I die, get the effect. I'm alone if there are no other friendly units here.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f5ab933035b7a6d6bb1d35c10c13f58c7fbf3398-744x1039.png",
+  "artist": "Six More Vodka"
+}

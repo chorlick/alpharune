@@ -1,0 +1,23 @@
+{
+  "id": "sfd-229-221",
+  "name": "Seal of Insight",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 229,
+  "public_code": "SFD-229/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [B]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/eb4559c507f09cabc3735973a1b20d83688d2f9d-744x1039.png",
+  "artist": "Envar Studio"
+}

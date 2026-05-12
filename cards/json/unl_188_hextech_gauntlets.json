@@ -1,0 +1,27 @@
+{
+  "id": "unl-188-219",
+  "name": "Hextech Gauntlets",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 188,
+  "public_code": "UNL-188/219",
+  "card_type": "gear",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "order"
+  ],
+  "tags": [
+    "Vi",
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 3,
+  "rarity": "epic",
+  "ability_text": "[Equip] [3][A]. This ability's Energy cost is reduced by the Might of the unit you choose. (Pay the cost: Attach this to a unit you control.)",
+  "effect_text": "When I conquer, if you assigned 3 or more excess damage, draw 1.",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/22755fc744a79fbdcce0ceadfe20d6d0a2b8624a-744x1039.png",
+  "artist": "Grafit Studio"
+}

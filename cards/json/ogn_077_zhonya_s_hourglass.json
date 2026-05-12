@@ -1,0 +1,23 @@
+{
+  "id": "ogn-077-298",
+  "name": "Zhonya's Hourglass",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 77,
+  "public_code": "OGN-077/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for [0].)\nIf a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it. (Send it to base. This isn't a move.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dc38172c56f838b407fc9f170ba973da32d7cd4d-744x1039.png",
+  "artist": "Kudos Productions"
+}

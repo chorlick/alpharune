@@ -1,0 +1,23 @@
+{
+  "id": "ogn-104-298",
+  "name": "Retreat",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 104,
+  "public_code": "OGN-104/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nReturn a friendly unit to its owner's hand. Its owner channels 1 rune exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/71ecf6c06d3110a81ac0f01c726c06921f479a13-744x1039.png",
+  "artist": "Kudos Productions"
+}

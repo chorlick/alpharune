@@ -1,0 +1,23 @@
+{
+  "id": "ogn-105-298",
+  "name": "Singularity",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 105,
+  "public_code": "OGN-105/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 6,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Deal 6 to each of up to two units.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/792edce1a64d4a92740aa3fa240e21e161513944-744x1039.png",
+  "artist": "Kudos Productions"
+}

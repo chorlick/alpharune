@@ -1,0 +1,25 @@
+{
+  "id": "sfd-128-221",
+  "name": "Overzealous Fan",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 128,
+  "public_code": "SFD-128/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When I defend, you may kill me to move an attacking unit to its base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/922d7f337fbf14f0d62d43f69ca2a1e7480dd022-744x1039.png",
+  "artist": "Six More Vodka"
+}

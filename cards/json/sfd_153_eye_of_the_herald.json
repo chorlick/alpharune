@@ -1,0 +1,25 @@
+{
+  "id": "sfd-153-221",
+  "name": "Eye of the Herald",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 153,
+  "public_code": "SFD-153/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 0,
+  "rarity": "common",
+  "ability_text": "[Equip] [Y] ([Y]: Attach this to a unit you control.)",
+  "effect_text": "When I move, play a 1 [M] Recruit unit token here.",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fc3e26e0e4ff94de360f1163c41641daf81c1900-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

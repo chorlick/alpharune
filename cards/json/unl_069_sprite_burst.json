@@ -1,0 +1,23 @@
+{
+  "id": "unl-069-219",
+  "name": "Sprite Burst",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 69,
+  "public_code": "UNL-069/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "Play two ready 3 [M] Sprite unit tokens with [Temporary]. (Kill each at the start of its controller's Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4427ceffae1c3e7b012167461ce7c080bb2c1fe4-744x1039.png",
+  "artist": "Envar Studio"
+}

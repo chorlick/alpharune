@@ -1,0 +1,25 @@
+{
+  "id": "ogn-177-298",
+  "name": "Stealthy Pursuer",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 177,
+  "public_code": "OGN-177/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Shurima"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When a friendly unit moves from my location, I may be moved with it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ab23fd84badd67e9981512acbe6c3e9a8f97f42d-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ogn-142-298",
+  "name": "Mountain Drake",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 142,
+  "public_code": "OGN-142/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Dragon"
+  ],
+  "energy_cost": 9,
+  "power_cost": null,
+  "might": 10,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8a9c1d334b217e9bd0b23dfca2054de4d0b90ff1-744x1039.png",
+  "artist": "Kudos Productions"
+}

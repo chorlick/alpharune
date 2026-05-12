@@ -1,0 +1,26 @@
+{
+  "id": "ogn-131-298",
+  "name": "Dune Drake",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 131,
+  "public_code": "OGN-131/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Dragon",
+    "Shurima"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When I attack, give me +2 [M] this turn if there is a ready enemy unit here.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ba18bf4a5fa9777a0cb5ae69cc7e6f049bbceaa0-744x1039.png",
+  "artist": "Bubble Cat Studio"
+}

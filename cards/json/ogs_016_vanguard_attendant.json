@@ -1,0 +1,26 @@
+{
+  "id": "ogs-016-024",
+  "name": "Vanguard Attendant",
+  "set": "OGS",
+  "set_name": "Proving Grounds",
+  "collector_number": 16,
+  "public_code": "OGS-016/024",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Elite",
+    "Demacia"
+  ],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "I enter ready.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4ce467c1d51a65ab4fbae918dca38ae90b510844-744x1039.png",
+  "artist": "Six More Vodka"
+}

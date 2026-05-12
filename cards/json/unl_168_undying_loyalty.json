@@ -1,0 +1,23 @@
+{
+  "id": "unl-168-219",
+  "name": "Undying Loyalty",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 168,
+  "public_code": "UNL-168/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "This costs [2] less if you choose a Bird, Cat, Dog, or Poro.\nPlay a unit with cost no more than [2] and no more than [A] from your trash, ignoring its cost.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/703b85f8284ed13865012289d03602e2cd24f4b2-744x1039.png",
+  "artist": "Max Grecke"
+}

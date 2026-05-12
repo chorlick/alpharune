@@ -1,0 +1,25 @@
+{
+  "id": "sfd-174-221",
+  "name": "Trove Golem",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 174,
+  "public_code": "SFD-174/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Freljord"
+  ],
+  "energy_cost": 8,
+  "power_cost": 2,
+  "might": 9,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you play me, play four Gold gear tokens exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e5b0966cc00203db1036b6fa95360541f72ae131-744x1039.png",
+  "artist": "Envar Studio"
+}

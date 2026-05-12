@@ -1,0 +1,23 @@
+{
+  "id": "unl-148-219",
+  "name": "Cursed Sarcophagus",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 148,
+  "public_code": "UNL-148/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "When you play this, banish all units from your trash.\n[E]: Play a unit banished with this. (You must pay its costs.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ae3823d4109d9bbae8c7983ec1c1082ba5b4f190-744x1039.png",
+  "artist": "Polar Engine Studio/\u534e\u9510"
+}

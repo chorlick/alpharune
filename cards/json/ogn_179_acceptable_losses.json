@@ -1,0 +1,23 @@
+{
+  "id": "ogn-179-298",
+  "name": "Acceptable Losses",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 179,
+  "public_code": "OGN-179/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nEach player kills one of their gear.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b2b470bab1ae511ab9de0b1ce576e2050532a081-744x1039.png",
+  "artist": "Kudos Productions"
+}

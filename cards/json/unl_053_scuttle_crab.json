@@ -1,0 +1,25 @@
+{
+  "id": "unl-053-219",
+  "name": "Scuttle Crab",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 53,
+  "public_code": "UNL-053/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 0,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "(Units with 0 [M] can conquer and hold.)\nWhen you play me, draw 1.\n[Deathknell][>] Choose an opponent. They reveal their hand. You can look at their facedown cards this turn. Gain 1 XP. (When I die, get the effects.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8c9a251b2deb21716fba0ac83c6aac96563fa19d-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

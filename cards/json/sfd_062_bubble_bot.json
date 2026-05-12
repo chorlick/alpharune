@@ -1,0 +1,27 @@
+{
+  "id": "sfd-062-221",
+  "name": "Bubble Bot",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 62,
+  "public_code": "SFD-062/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mech",
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, ready another friendly Mech.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c0fe9df24ae4b8a5b4fb8276b1bd6c5a5f5f7b2b-744x1039.png",
+  "artist": "Envar Studio"
+}

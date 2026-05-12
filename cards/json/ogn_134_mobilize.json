@@ -1,0 +1,23 @@
+{
+  "id": "ogn-134-298",
+  "name": "Mobilize",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 134,
+  "public_code": "OGN-134/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "Channel 1 rune exhausted. If you can't, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cb22153e84ce250192b8e6e75e7f4dc0b66a728c-744x1039.png",
+  "artist": "Kudos Productions"
+}

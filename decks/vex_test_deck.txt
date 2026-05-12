@@ -1,0 +1,40 @@
+Legend:
+1 Vex, Gloomist
+
+Champion:
+1 Vex, Apathetic
+
+MainDeck:
+3 Defy
+3 Discipline
+3 Overzealous Fan
+3 Mutated Mouser
+3 Back Off
+2 Charm
+2 Gust
+2 Rebuke
+2 Sneaky Deckhand
+2 Not So Fast
+2 Star-Crossed
+2 Existential Dread
+2 Shadow
+1 Ride the Wind
+3 Sona, Harmonious
+2 Ahri, Alluring
+2 Vex, Cheerless
+
+Battlefields:
+1 Grove of the God-Willow
+1 Startipped Peak
+1 Ravenbloom Conservatory
+
+Runes:
+7 Calm Rune
+5 Chaos Rune
+
+Sideboard:
+2 Disarming Rake
+2 Emperor's Divide
+2 Hard Bargain
+1 Gust
+1 Rebuke

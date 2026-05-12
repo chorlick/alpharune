@@ -1,0 +1,23 @@
+{
+  "id": "ogn-099-298",
+  "name": "Garbage Grabber",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 99,
+  "public_code": "OGN-099/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Recycle 3 from your trash, [1], [E]: Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/199f21237aeee2582904463a15ec62ce29452c10-744x1039.png",
+  "artist": "Caravan Studio"
+}

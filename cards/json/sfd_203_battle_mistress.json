@@ -1,0 +1,26 @@
+{
+  "id": "sfd-203-221",
+  "name": "Battle Mistress",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 203,
+  "public_code": "SFD-203/221",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "body",
+    "chaos"
+  ],
+  "tags": [
+    "Sivir"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you recycle a rune, you may exhaust me to play a Gold gear token exhausted.\nWhen one or more enemy units die, ready me.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fd060882c32a8deac04aea4241c6ab7b97236a05-744x1039.png",
+  "artist": "Zhongqi Li"
+}

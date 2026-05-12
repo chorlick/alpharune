@@ -1,0 +1,26 @@
+{
+  "id": "ogs-014-024",
+  "name": "Lux, Crownguard",
+  "set": "OGS",
+  "set_name": "Proving Grounds",
+  "collector_number": 14,
+  "public_code": "OGS-014/024",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Lux",
+    "Demacia"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [2]. Use only to play spells. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/17d0793ad495727e67bb1c94ae0e11cd4705870f-744x1039.png",
+  "artist": "Envar Studio"
+}

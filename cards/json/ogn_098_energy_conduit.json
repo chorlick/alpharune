@@ -1,0 +1,23 @@
+{
+  "id": "ogn-098-298",
+  "name": "Energy Conduit",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 98,
+  "public_code": "OGN-098/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [1]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f0e0a67e9e9b1d45d12d248df78b4e643b70bdc1-744x1039.png",
+  "artist": "Kudos Productions"
+}

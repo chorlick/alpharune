@@ -1,0 +1,26 @@
+{
+  "id": "sfd-125-221",
+  "name": "Fae Porter",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 125,
+  "public_code": "SFD-125/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Fae",
+    "Ionia"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When I move to a battlefield, you may pay [P] to move a unit you control to the same battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4d233b11d4efb2652d7ede556dd9f730903cdba9-744x1039.png",
+  "artist": "Kudos Productions"
+}

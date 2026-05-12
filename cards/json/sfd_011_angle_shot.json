@@ -1,0 +1,23 @@
+{
+  "id": "sfd-011-221",
+  "name": "Angle Shot",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 11,
+  "public_code": "SFD-011/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nChoose a unit and an Equipment with the same controller. Attach that Equipment to that unit or detach that Equipment from that unit. Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/757d507b684e55e333bac0ecdf2ec9ff3ad6045c-744x1039.png",
+  "artist": "Kudos Productions"
+}

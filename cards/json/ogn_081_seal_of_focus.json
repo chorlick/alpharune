@@ -1,0 +1,23 @@
+{
+  "id": "ogn-081-298",
+  "name": "Seal of Focus",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 81,
+  "public_code": "OGN-081/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [G]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/288c300c4e4cb10ecfe6c3cbb543d0636b306852-744x1039.png",
+  "artist": "Kudos Productions"
+}

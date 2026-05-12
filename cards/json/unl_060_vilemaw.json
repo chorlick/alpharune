@@ -1,0 +1,26 @@
+{
+  "id": "unl-060-219",
+  "name": "Vilemaw",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 60,
+  "public_code": "UNL-060/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Shadow Isles",
+    "Spider"
+  ],
+  "energy_cost": 8,
+  "power_cost": 2,
+  "might": 8,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nEnemy units here with less Might than me don't deal combat damage.\nWhen I hold, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cb6dde0284f9ef84cbc9c0f07d2e7aac2fe6f919-744x1039.png",
+  "artist": "Envar Studio"
+}

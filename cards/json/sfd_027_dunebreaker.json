@@ -1,0 +1,25 @@
+{
+  "id": "sfd-027-221",
+  "name": "Dunebreaker",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 27,
+  "public_code": "SFD-027/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "The Void"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "If you have two or fewer cards in your hand, I enter ready.\nWhen I hold, draw 2.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fa17369233dfc68e011d16b7b98971a6f8743c3e-744x1039.png",
+  "artist": "Wild Blue Studios"
+}

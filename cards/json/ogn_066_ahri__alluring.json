@@ -1,0 +1,26 @@
+{
+  "id": "ogn-066-298",
+  "name": "Ahri, Alluring",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 66,
+  "public_code": "OGN-066/298",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Ahri",
+    "Ionia"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When I hold, you score 1 point.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fabbcc2f83f397cf07299236a702db05a151053b-744x1039.png",
+  "artist": "League Splash Team"
+}

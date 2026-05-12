@@ -1,0 +1,26 @@
+{
+  "id": "unl-172-219",
+  "name": "LeBlanc, Fragmented",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 172,
+  "public_code": "UNL-172/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Noxus",
+    "LeBlanc"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Assault] (+1 [M] while I'm an attacker.)\n[Deathknell][>] Draw 1. If it's your Beginning Phase, draw 2 instead. (When I die, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ee9f8d7a65e57c1d907edd4e5df2a3ea6966bff9-744x1039.png",
+  "artist": "League Splash Team"
+}

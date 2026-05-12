@@ -1,0 +1,27 @@
+{
+  "id": "sfd-021-221",
+  "name": "Ferrous Forerunner",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 21,
+  "public_code": "SFD-021/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Mech",
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Deathknell] \u2014 Play two 3 [M] Mech unit tokens to your base. (When I die, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b2873a352c0158a677255894cec458d1c17709f7-744x1039.png",
+  "artist": "Envar Studio"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "sfd-200-221",
+  "name": "Arcane Shift",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 200,
+  "public_code": "SFD-200/221",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "mind",
+    "chaos"
+  ],
+  "tags": [
+    "Ezreal"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nBanish a friendly unit, then its owner plays it, ignoring its cost. Deal 3 to an enemy unit at a battlefield. Banish this.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a5d1d26dee01db24f32a1432639478753d22aa92-744x1039.png",
+  "artist": "Original Force"
+}

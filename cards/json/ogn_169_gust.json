@@ -1,0 +1,23 @@
+{
+  "id": "ogn-169-298",
+  "name": "Gust",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 169,
+  "public_code": "OGN-169/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nReturn a unit at a battlefield with 3 [M] or less to its owner's hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dfd3b161ab76ba0c5d503384f1289b3395434b10-744x1039.png",
+  "artist": "Kudos Productions"
+}

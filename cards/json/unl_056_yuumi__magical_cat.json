@@ -1,0 +1,28 @@
+{
+  "id": "unl-056-219",
+  "name": "Yuumi, Magical Cat",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 56,
+  "public_code": "UNL-056/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Fae",
+    "Cat",
+    "Bandle City",
+    "Yuumi"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When I attack or defend, give one of your other units here +3 [M] and [Tank] this turn. (It must be assigned combat damage first.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/588ddfeb01ab7b37110d8a7e656cf9f35530ce4e-744x1039.png",
+  "artist": "Six More Vodka"
+}

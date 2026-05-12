@@ -1,0 +1,23 @@
+{
+  "id": "sfd-168-221",
+  "name": "Vanguard Armory",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 168,
+  "public_code": "SFD-168/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[E]: Play three 1 [M] Recruit unit tokens. (You may play them to different locations.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4f4d735ff77ea599307e142196338d438fcedc05-744x1039.png",
+  "artist": "Kudos Productions"
+}

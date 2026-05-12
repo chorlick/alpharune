@@ -1,0 +1,23 @@
+{
+  "id": "ogn-156-298",
+  "name": "Sabotage",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 156,
+  "public_code": "OGN-156/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Choose an opponent. They reveal their hand. Choose a non-unit card from it, and recycle that card.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/70f186b85fd224ee23dcf64957f0fab835d28040-744x1039.png",
+  "artist": "Kudos Productions"
+}

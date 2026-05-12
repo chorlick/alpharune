@@ -1,0 +1,23 @@
+{
+  "id": "unl-083-219",
+  "name": "Smoke and Mirrors",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 83,
+  "public_code": "UNL-083/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Action] (Play on your turn or in showdowns.)\nChoose a unit you control and another unit you control at a different location. If at least one of them has [Temporary], move each to the other's location. Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/38886634ee8646707d9c26020f977f14c934a4c0-744x1039.png",
+  "artist": "Wild Blue Studios"
+}

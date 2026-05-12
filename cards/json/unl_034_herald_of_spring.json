@@ -1,0 +1,25 @@
+{
+  "id": "unl-034-219",
+  "name": "Herald of Spring",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 34,
+  "public_code": "UNL-034/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hunt] (When I conquer or hold, gain 1 XP.)\nWhen you play me, gain 2 XP.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5bf7ba27b809d22296deb755b6f5324ac46a5a20-744x1039.png",
+  "artist": "Six More Vodka"
+}

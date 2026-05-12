@@ -1,0 +1,23 @@
+{
+  "id": "ogn-042-298",
+  "name": "Calm Rune",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 42,
+  "public_code": "OGN-042/298",
+  "card_type": "rune",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0a0e8c3d16c2595e2f8efcc2b1466226539b506c-744x1039.png",
+  "artist": "Greg Ghielmetti & Leah Chen"
+}

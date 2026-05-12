@@ -1,0 +1,26 @@
+{
+  "id": "ogn-238-298",
+  "name": "Leona, Determined",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 238,
+  "public_code": "OGN-238/298",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Leona",
+    "Mount Targon"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Shield] (+1 [M] while I'm a defender.)\nWhen I attack, stun an enemy unit here. (It doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/39a1e121031cfb4bdb009b071ed5d70411966cd9-744x1039.png",
+  "artist": "Six More Vodka"
+}

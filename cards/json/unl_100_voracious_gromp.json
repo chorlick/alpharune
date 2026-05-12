@@ -1,0 +1,25 @@
+{
+  "id": "unl-100-219",
+  "name": "Voracious Gromp",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 100,
+  "public_code": "UNL-100/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Freljord"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hunt 3] (When I conquer or hold, gain 3 XP.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3c006b8c9aa4581ad90c258cc6cfac9098d3c296-744x1039.png",
+  "artist": "Polar Engine Studio"
+}

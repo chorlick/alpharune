@@ -1,0 +1,26 @@
+{
+  "id": "unl-048-219",
+  "name": "Trevor Snoozebottom",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 48,
+  "public_code": "UNL-048/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Yordle",
+    "Ionia"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Shield] (+1 [M] while I'm a defender.)\nWhen I hold, play a ready 3 [M] Sprite unit token with [Temporary] here. (Kill it at the start of its controller's next Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fa843ee80d1a35416d61482bc1602279955a2c7f-744x1039.png",
+  "artist": "Six More Vodka"
+}

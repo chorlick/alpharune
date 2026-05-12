@@ -1,0 +1,23 @@
+{
+  "id": "ogs-003-024",
+  "name": "Incinerate",
+  "set": "OGS",
+  "set_name": "Proving Grounds",
+  "collector_number": 3,
+  "public_code": "OGS-003/024",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nDeal 2 to a unit at a battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/46e4eaada1412f9b6c24751bdb3932c6a51e905f-744x1039.png",
+  "artist": "Kudos Productions"
+}

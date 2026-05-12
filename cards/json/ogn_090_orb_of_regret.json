@@ -1,0 +1,23 @@
+{
+  "id": "ogn-090-298",
+  "name": "Orb of Regret",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 90,
+  "public_code": "OGN-090/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[E]: Give a unit -1 [M] this turn, to a minimum of 1 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fd883b646d1a3cdb1a03b0c19dc62c92ca552f4f-744x1039.png",
+  "artist": "Kudos Productions"
+}

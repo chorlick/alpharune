@@ -1,0 +1,25 @@
+{
+  "id": "unl-012-219",
+  "name": "Lord Broadmane",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 12,
+  "public_code": "UNL-012/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nWhen you play me, give your other units here [Assault] this turn. (+1 [M] while they're attackers.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f564001228383a27372c0ddc4d8c0ed4e4843dc7-744x1039.png",
+  "artist": "Kudos Productions"
+}

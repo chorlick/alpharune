@@ -1,0 +1,26 @@
+{
+  "id": "ogn-254-298",
+  "name": "Noxian Guillotine",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 254,
+  "public_code": "OGN-254/298",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "order"
+  ],
+  "tags": [
+    "Darius"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nChoose a unit. Kill it the next time it takes damage this turn.\n[Legion] \u2014 Kill it now instead. (Get the effect if you've played another card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/57f646b0393b58b657cfabf66357d9fc4a34e046-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "sfd-238-221",
+  "name": "Seal of Unity",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 238,
+  "public_code": "SFD-238/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [Y]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/228dbde67ec37f9a0b28f81e40fce5a8fa7af56b-744x1039.png",
+  "artist": "Envar Studio"
+}

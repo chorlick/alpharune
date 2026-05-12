@@ -1,0 +1,25 @@
+{
+  "id": "ogn-006-298",
+  "name": "Flame Chompers",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 6,
+  "public_code": "OGN-006/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Zaun"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you discard me, you may pay [R] to play me.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1f6f5ebd18e5daac30d62626fddd785c4b457c2b-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "sfd-137-221",
+  "name": "Harpoon Squad",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 137,
+  "public_code": "SFD-137/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Pirate",
+    "Bilgewater"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When I move from a battlefield, give me +2 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f50d32a202375bf09781ae578db107abe84937e0-744x1039.png",
+  "artist": "Six More Vodka"
+}

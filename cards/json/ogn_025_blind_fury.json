@@ -1,0 +1,23 @@
+{
+  "id": "ogn-025-298",
+  "name": "Blind Fury",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 25,
+  "public_code": "OGN-025/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nEach opponent reveals the top card of their Main Deck. Choose one and banish it, then play it, ignoring its cost. Then recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d74ba4998df9348408f1400090a0b0737c675fbd-744x1039.png",
+  "artist": "Six More Vodka"
+}

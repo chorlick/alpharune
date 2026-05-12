@@ -1,0 +1,25 @@
+{
+  "id": "unl-040-219",
+  "name": "Wuju Apprentice",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 40,
+  "public_code": "UNL-040/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hunt] (When I conquer or hold, gain 1 XP.)\n[Level 6][>] When you play me, draw 1. (While you have 6+ XP, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/543789dd1b4b2654392a151d4bb1b0c6263c47dc-744x1039.png",
+  "artist": "Polar Engine Studio"
+}

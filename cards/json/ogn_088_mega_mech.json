@@ -1,0 +1,26 @@
+{
+  "id": "ogn-088-298",
+  "name": "Mega-Mech",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 88,
+  "public_code": "OGN-088/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mech",
+    "Bandle City"
+  ],
+  "energy_cost": 7,
+  "power_cost": null,
+  "might": 8,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f71db7b62798a2a10a1ab0d293c26ac9dd163c6a-744x1039.png",
+  "artist": "Valentin Gloaguen"
+}

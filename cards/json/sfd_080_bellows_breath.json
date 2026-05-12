@@ -1,0 +1,23 @@
+{
+  "id": "sfd-080-221",
+  "name": "Bellows Breath",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 80,
+  "public_code": "SFD-080/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\n[Repeat] [1][B] (You may pay the additional cost to repeat this spell's effect.)\nDeal 1 to up to three units at the same location.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f0ae1c4bb788f6fadc251c9d9b36f3f92eef4c56-744x1039.png",
+  "artist": "Kudos Productions"
+}

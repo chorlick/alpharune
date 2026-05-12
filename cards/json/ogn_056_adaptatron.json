@@ -1,0 +1,26 @@
+{
+  "id": "ogn-056-298",
+  "name": "Adaptatron",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 56,
+  "public_code": "OGN-056/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Mech",
+    "Piltover"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When I conquer, you may kill a gear. If you do, buff me. (If I don't have a buff, I get a +1 [M] buff.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a3ddb00a2a872eaceb96469739531414aa27455d-744x1039.png",
+  "artist": "Kudos Productions"
+}

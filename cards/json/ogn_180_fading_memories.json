@@ -1,0 +1,23 @@
+{
+  "id": "ogn-180-298",
+  "name": "Fading Memories",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 180,
+  "public_code": "OGN-180/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Give a unit at a battlefield or a gear [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a2b366942f1a7ec1f4bd3c1b17e10356214705d7-744x1039.png",
+  "artist": "Kudos Productions"
+}

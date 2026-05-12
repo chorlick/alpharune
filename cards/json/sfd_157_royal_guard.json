@@ -1,0 +1,25 @@
+{
+  "id": "sfd-157-221",
+  "name": "Royal Guard",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 157,
+  "public_code": "SFD-157/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Shurima"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, play a 2 [M] Sand Soldier unit token here.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/919d79a3f5a38c78476e6414a898a0dc7b385629-744x1039.png",
+  "artist": "Kudos Productions"
+}

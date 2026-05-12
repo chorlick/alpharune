@@ -1,0 +1,25 @@
+{
+  "id": "ogn-208-298",
+  "name": "Cruel Patron",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 208,
+  "public_code": "OGN-208/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "As an additional cost to play me, kill a friendly unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c1c2c08fa0032a245c1ffee6ba29fff2826bd468-744x1039.png",
+  "artist": "Kudos Productions"
+}

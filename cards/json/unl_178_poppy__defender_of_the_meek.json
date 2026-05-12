@@ -1,0 +1,27 @@
+{
+  "id": "unl-178-219",
+  "name": "Poppy, Defender of the Meek",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 178,
+  "public_code": "UNL-178/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Yordle",
+    "Demacia",
+    "Poppy"
+  ],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "You may spend 3 XP as an additional cost to play me. If you do, I cost [3] less.\n[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\n[Tank] (I must be assigned combat damage first.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1a75c5322b2179e772af83b1fd16fed864c5bf24-744x1039.png",
+  "artist": "Dao Trong Le"
+}

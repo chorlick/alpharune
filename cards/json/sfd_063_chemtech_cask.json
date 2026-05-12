@@ -1,0 +1,23 @@
+{
+  "id": "sfd-063-221",
+  "name": "Chemtech Cask",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 63,
+  "public_code": "SFD-063/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play a spell on an opponent's turn, you may exhaust me to play a Gold gear token exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/39071feea6d3739a834a83b1841f496bdfc3a59a-744x1039.png",
+  "artist": "Six More Vodka & \u9eef\u8367\u5c9bDark Glow"
+}

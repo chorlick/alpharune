@@ -1,0 +1,26 @@
+{
+  "id": "sfd-053-221",
+  "name": "Janna, Savior",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 53,
+  "public_code": "SFD-053/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Janna",
+    "Zaun"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve, including to a battlefield you control.)\nWhen you play me, heal your units here, then move up to one enemy unit from here to its base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/191f04059bbfd69dfe63d36010586597bb3549b2-744x1039.png",
+  "artist": "Envar Studio"
+}

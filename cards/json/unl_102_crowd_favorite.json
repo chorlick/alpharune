@@ -1,0 +1,25 @@
+{
+  "id": "unl-102-219",
+  "name": "Crowd Favorite",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 102,
+  "public_code": "UNL-102/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hunt] (When I conquer or hold, gain 1 XP.)\nSpend 2 XP: [Buff] me. (Give me a +1 [M] buff if I don't have one.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0031569ff123a8317e1be753f0bd895501bf838b-744x1039.png",
+  "artist": "Six More Vodka"
+}

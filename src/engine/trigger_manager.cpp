@@ -297,6 +297,23 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
     if (std::holds_alternative<BattlefieldLocation>(e.to)) {
         fireEquippedTriggers(e.object, e.controller, TriggerType::WhenIMoveToFB);
     }
+
+    // Fan-out: other friendly objects with WhenAFriendlyUnitMovesToFB.
+    // Used by cards like Miss Fortune, Captain that watch all friendly moves.
+    if (std::holds_alternative<BattlefieldLocation>(e.to)) {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, other] : state_.objects) {
+            if (id == e.object) continue;  // skip the moving unit itself
+            if (other.controller != e.controller) continue;
+            if (!other.location.has_value()) continue;
+            if (other.card_def_id == kInvalidId) continue;  // skip tokens
+            if (getTrigger(card_registry_, other.card_def_id)
+                    == TriggerType::WhenAFriendlyUnitMovesToFB) {
+                watchers.push_back(id);
+            }
+        }
+        for (auto wid : watchers) fireTrigger(wid, e.controller);
+    }
 }
 
 void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {

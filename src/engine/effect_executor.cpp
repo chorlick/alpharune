@@ -120,14 +120,26 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
         was_at.value_or(BaseLocation{controller}), ZoneType::Hand, false});
 }
 
-void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount) {
+void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int minimum) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
-    events_.logTrace("EFFECT: give " + obj.name + " +" + std::to_string(amount) +
-                     " [M] this turn (was " + std::to_string(obj.current_might) + "M)");
+
+    // Apply the buff
     obj.buff_count += amount;
     obj.temp_might_bonus += amount;
     obj.recomputeMight();
+
+    // Enforce minimum (e.g., "to a minimum of 1 [M]")
+    if (minimum > 0 && obj.current_might < minimum) {
+        int correction = minimum - obj.current_might;
+        obj.buff_count += correction;
+        obj.temp_might_bonus += correction;
+        obj.recomputeMight();
+    }
+
+    events_.logTrace("EFFECT: give " + obj.name + " " + std::to_string(amount) +
+                     " [M] this turn -> " + std::to_string(obj.current_might) + "M" +
+                     (minimum > 0 ? " (min " + std::to_string(minimum) + ")" : ""));
     events_.emit(ObjectStateChangedEvent{target, "buffed"});
 }
 

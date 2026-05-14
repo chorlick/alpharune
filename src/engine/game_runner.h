@@ -11,6 +11,7 @@
 #include "rules/deck_validator.h"
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 
@@ -26,6 +27,10 @@ struct GameConfig {
     bool trace_mode = false;
     std::string output_path;      // empty = no JSONL output
     int total_games = 1;          // for progress display
+    std::string agent1_spec = "random"; // "random" or "model:path.onnx"
+    std::string agent2_spec = "random";
+    double agent1_temperature = 0.0;    // model sampling temperature; 0 = argmax (eval)
+    double agent2_temperature = 0.0;    // >0 = softmax sample (self-play data gen)
 };
 
 struct AggregateResults {
@@ -36,7 +41,10 @@ struct AggregateResults {
     std::atomic<int> total_decisions{0};
     std::atomic<int> games_completed{0};
     int total_games = 0;
+    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
     std::mutex console_mutex;
+    // Last wall-clock time we printed a progress line (under console_mutex).
+    std::chrono::steady_clock::time_point last_progress_time = start_time;
 };
 
 class GameRunner {

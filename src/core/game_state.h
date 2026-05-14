@@ -68,11 +68,13 @@ struct PlayerState {
     std::set<BattlefieldId> battlefields_scored_this_turn;
     bool burned_out = false;
     bool is_first_turn = true;  // for first-turn adjustments
+    bool cant_play_cards_this_turn = false;  // Brynhir Thundersong lockout, resets at turn end
 
     // Cost modifiers (Phase 5)
     struct CostModifier {
         GameObjectId source = kInvalidId;  // card granting the reduction
         int energy_reduction = 0;          // reduce energy cost by this
+        int min_cost = 0;                  // minimum cost after reduction (0 = no min)
         bool this_turn_only = true;        // expires at end of turn
         bool next_spell_only = false;      // expires after next spell played
         bool next_unit_only = false;       // expires after next unit played
@@ -86,6 +88,7 @@ struct PlayerState {
         cards_played_this_turn = 0;
         has_discarded_this_turn = false;
         battlefields_scored_this_turn.clear();
+        cant_play_cards_this_turn = false;
         // Expire this-turn cost modifiers
         cost_modifiers.erase(
             std::remove_if(cost_modifiers.begin(), cost_modifiers.end(),
@@ -140,6 +143,7 @@ struct BattlefieldState {
 
 struct TurnState {
     PlayerId turn_player = PlayerId::Player1;
+    PlayerId starting_player = PlayerId::Player1;  // who won the coin toss
     TurnPhase phase = TurnPhase::Setup;
     NeutralShowdownState ns_state = NeutralShowdownState::Neutral;
     OpenClosedState oc_state = OpenClosedState::Open;

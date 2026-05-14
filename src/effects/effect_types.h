@@ -94,6 +94,7 @@ enum class TriggerType : uint8_t {
     WhenYouPlayASpell,  // "When you play a spell,"
     WhenYouPlayAUnit,   // "When you play a unit,"
     WhenAFriendlyUnitDies, // "When a friendly unit dies,"
+    WhenAFriendlyUnitMovesToFB, // "When a friendly unit moves to a battlefield,"
     WhenYouDiscard,     // "When you discard,"
 };
 

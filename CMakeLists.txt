@@ -20,6 +20,16 @@ FetchContent_Declare(googletest
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# ONNX Runtime (for ML agent inference)
+# Download pre-built binary for Linux x64
+FetchContent_Declare(onnxruntime
+    URL https://github.com/microsoft/onnxruntime/releases/download/v1.21.0/onnxruntime-linux-x64-1.21.0.tgz
+)
+FetchContent_MakeAvailable(onnxruntime)
+set(ONNXRUNTIME_DIR ${onnxruntime_SOURCE_DIR})
+set(ONNXRUNTIME_INCLUDE ${ONNXRUNTIME_DIR}/include)
+set(ONNXRUNTIME_LIB ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so)
+
 # ─── Core library ─────────────────────────────────────────────────────────────
 
 add_library(riftbound_core
@@ -34,6 +44,7 @@ add_library(riftbound_core
     src/engine/trigger_manager.cpp
     src/io/state_renderer.cpp
     src/io/data_serializer.cpp
+    src/io/binary_data_serializer.cpp
     src/io/replay_writer.cpp
     src/cards/card.cpp
     src/cards/card_registry.cpp
@@ -47,16 +58,19 @@ add_library(riftbound_core
     src/cards/manual/equip_cards.cpp
     src/cards/manual/weaponmaster_cards.cpp
     src/cards/manual/deck_cards.cpp
+    src/agents/model_agent.cpp
     src/engine/game_runner.cpp
     src/engine/batch_runner.cpp
+    src/ml/feature_extractor.cpp
 )
 
-target_include_directories(riftbound_core PUBLIC src)
+target_include_directories(riftbound_core PUBLIC src ${ONNXRUNTIME_INCLUDE})
 target_link_libraries(riftbound_core PUBLIC
     Boost::boost
     Boost::system
     Threads::Threads
     nlohmann_json::nlohmann_json
+    ${ONNXRUNTIME_LIB}
 )
 
 # ─── Engine library ──────────────────────────────────────────────────────────

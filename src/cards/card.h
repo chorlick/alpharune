@@ -133,6 +133,20 @@ public:
     /// XP threshold for Level requirement.
     virtual int levelThreshold() const { return 0; }
 
+    // ── Self-cost reduction (e.g., Noxus Hopeful "Legion: I cost 2 less") ──
+    /// Returns the amount by which this card's own energy cost should be
+    /// reduced, given the current game state. Engine consults this in
+    /// canAfford() and payCardCost() when the card is being played.
+    /// Default 0 = no reduction.
+    virtual int selfCostReduction(const GameState& /*state*/,
+                                  PlayerId /*player*/) const { return 0; }
+
+    // ── Reaction-to-attack play (e.g., Rengar, Pouncing) ──
+    /// Whether this card can be played as a [Reaction] to a battlefield
+    /// where the controller is currently attacking. Action generator
+    /// emits play-to-attacking-BF intents during showdown/closed state.
+    virtual bool playableAsReactionToAttack() const { return false; }
+
 protected:
     CardDefId card_def_id_;
 

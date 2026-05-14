@@ -158,6 +158,7 @@ void GameEngine::determineTurnOrder() {
     // Random coin flip for first player (CR 116)
     std::uniform_int_distribution<int> coin(0, 1);
     state_.turn.turn_player = coin(rng_) == 0 ? PlayerId::Player1 : PlayerId::Player2;
+    state_.turn.starting_player = state_.turn.turn_player;
     state_.turn.turn_number = 0;
 
     // Mark both players as being on their first turn
@@ -587,7 +588,10 @@ void GameEngine::executeIntent(const Intent& intent) {
         case IntentType::ActivateAbility:
         case IntentType::ActivateActionAbility: {
             auto& source = state_.getObject(intent.ability_source);
-            const auto& def = card_db_.get(source.card_def_id);
+            // Skip card-def lookup for tokens (no CardDef). The rest of this
+            // handler reads from `source` directly; the previous `def` binding
+            // was dead and threw std::out_of_range when source was a token.
+            if (source.card_def_id == kInvalidId) break;
 
             // Equip: card handles its own cost payment and attachment
             if (source.isGear() && !intent.targets.empty() && !source.attached_to.has_value()) {
@@ -677,9 +681,11 @@ void GameEngine::executeIntent(const Intent& intent) {
 void GameEngine::executePlayCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
+    int trace_cost = (card.card_def_id != kInvalidId)
+        ? card_db_.get(card.card_def_id).energy_cost : 0;
     events_.logTrace("PLAY: " + card.name + " (id=" + std::to_string(intent.card) +
                      ", " + toString(card.card_type) + ", cost=" +
-                     std::to_string(card_db_.get(card.card_def_id).energy_cost) + "E)");
+                     std::to_string(trace_cost) + "E)");
 
     // Remove from current zone (hand or champion zone) (CR 354: step 1)
     if (card.zone == ZoneType::Hand) {
@@ -1126,11 +1132,14 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         }
     }
 
-    // Play units from hand — must be able to afford the cost
+    // Play units from hand — must be able to afford the cost.
     auto& ps = state_.player(player);
+    const bool locked_out = ps.cant_play_cards_this_turn;  // Brynhir Thundersong
     for (auto card_id : ps.hand) {
+        if (locked_out) break;  // skip all play-from-hand actions
         auto& card = state_.getObject(card_id);
         if (!card.isUnit()) continue;
+        if (card.card_def_id == kInvalidId) continue;  // tokens have no CardDef
         if (!canAfford(player, card_id)) continue;
 
         // Check play-to-location abilities from ability_text
@@ -1184,6 +1193,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
 
     // Play gear from hand (to base only, CR 149.2)
     for (auto card_id : ps.hand) {
+        if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isGear()) continue;
         if (!canAfford(player, card_id)) continue;
@@ -1196,9 +1206,12 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         actions.push_back(play_intent);
     }
 
-    // Play spells from hand — Neutral Open allows any spell (Action or not)
-    generateSpellActions(player, /*action_ok=*/true, /*reaction_ok=*/true,
-                          actions);
+    // Play spells from hand — Neutral Open allows any spell (Action or not).
+    // Brynhir lockout suppresses card plays but not activated abilities.
+    if (!locked_out) {
+        generateSpellActions(player, /*action_ok=*/true, /*reaction_ok=*/true,
+                              actions);
+    }
 
     // Activate abilities on gear/legends/units ([E]: abilities)
     generateActivateAbilityActions(player, actions);
@@ -1289,12 +1302,18 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
     // Can always pass focus
     actions.push_back(Intent::passFocus(player));
 
-    // Can play Action or Reaction spells during showdowns (CR 806, 813)
-    generateSpellActions(player, /*action_ok=*/true, /*reaction_ok=*/true,
-                          actions);
+    const bool locked_out = state_.player(player).cant_play_cards_this_turn;
+
+    // Can play Action or Reaction spells during showdowns (CR 806, 813).
+    // Lockout (Brynhir Thundersong) suppresses card plays but not abilities.
+    if (!locked_out) {
+        generateSpellActions(player, /*action_ok=*/true, /*reaction_ok=*/true,
+                              actions);
+    }
 
     // Ambush: play units with [Ambush] during showdowns
     for (auto card_id : state_.player(player).hand) {
+        if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
         if (!canAfford(player, card_id)) continue;
@@ -1307,6 +1326,29 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
             ambush.card = card_id;
             ambush.play_location = BattlefieldLocation{bf.id};
             actions.push_back(ambush);
+        }
+    }
+
+    // Reaction-to-attack plays (e.g., Rengar, Pouncing — play to a BF where
+    // you are currently attacking).
+    for (auto card_id : state_.player(player).hand) {
+        if (locked_out) break;
+        auto& card = state_.getObject(card_id);
+        if (!card.isUnit()) continue;
+        if (card.card_def_id == kInvalidId) continue;
+        Card* card_obj = card_registry_.get(card.card_def_id);
+        if (!card_obj || !card_obj->playableAsReactionToAttack()) continue;
+        if (!canAfford(player, card_id)) continue;
+
+        for (auto& bf : state_.battlefields) {
+            if (!bf.combat_in_progress) continue;
+            if (!bf.attacker.has_value() || *bf.attacker != player) continue;
+            Intent pounce;
+            pounce.type = IntentType::PlayReaction;
+            pounce.player = player;
+            pounce.card = card_id;
+            pounce.play_location = BattlefieldLocation{bf.id};
+            actions.push_back(pounce);
         }
     }
 
@@ -1354,12 +1396,18 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
     // Can always pass priority
     actions.push_back(Intent::passPriority(player));
 
-    // Can only play Reaction spells in Closed State (CR 309.1.a)
-    generateSpellActions(player, /*action_ok=*/false, /*reaction_ok=*/true,
-                          actions);
+    const bool locked_out = state_.player(player).cant_play_cards_this_turn;
+
+    // Can only play Reaction spells in Closed State (CR 309.1.a).
+    // Brynhir lockout suppresses these.
+    if (!locked_out) {
+        generateSpellActions(player, /*action_ok=*/false, /*reaction_ok=*/true,
+                              actions);
+    }
 
     // Quick-Draw: play gear with [Quick-Draw] as Reactions targeting a friendly unit
     for (auto card_id : state_.player(player).hand) {
+        if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isGear() || !card.hasKeyword(Keyword::QuickDraw)) continue;
         if (!canAfford(player, card_id)) continue;
@@ -1378,6 +1426,7 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
 
     // Ambush: play units with [Ambush] as Reactions to BFs where you have units
     for (auto card_id : state_.player(player).hand) {
+        if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
         if (!canAfford(player, card_id)) continue;
@@ -1390,6 +1439,28 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
             ambush.card = card_id;
             ambush.play_location = BattlefieldLocation{bf.id};
             actions.push_back(ambush);
+        }
+    }
+
+    // Reaction-to-attack plays during Closed State (Rengar, Pouncing).
+    for (auto card_id : state_.player(player).hand) {
+        if (locked_out) break;
+        auto& card = state_.getObject(card_id);
+        if (!card.isUnit()) continue;
+        if (card.card_def_id == kInvalidId) continue;
+        Card* card_obj = card_registry_.get(card.card_def_id);
+        if (!card_obj || !card_obj->playableAsReactionToAttack()) continue;
+        if (!canAfford(player, card_id)) continue;
+
+        for (auto& bf : state_.battlefields) {
+            if (!bf.combat_in_progress) continue;
+            if (!bf.attacker.has_value() || *bf.attacker != player) continue;
+            Intent pounce;
+            pounce.type = IntentType::PlayReaction;
+            pounce.player = player;
+            pounce.card = card_id;
+            pounce.play_location = BattlefieldLocation{bf.id};
+            actions.push_back(pounce);
         }
     }
 
@@ -2654,6 +2725,7 @@ int GameEngine::availableAnyPower(PlayerId player) const {
 
 bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj) const {
     auto& card = state_.getObject(card_obj);
+    if (card.card_def_id == kInvalidId) return false;  // tokens have no cost
     const auto& def = card_db_.get(card.card_def_id);
 
     int energy_needed = def.energy_cost;
@@ -2661,11 +2733,18 @@ bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj) const {
 
     // Apply cost reductions (Phase 5)
     auto& ps_const = state_.player(player);
+    int min_cost = 0;
     for (auto& mod : ps_const.cost_modifiers) {
         if (mod.next_spell_only && !card.isSpell()) continue;
         if (mod.next_unit_only && !card.isUnit()) continue;
         energy_needed -= mod.energy_reduction;
+        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
     }
+    // Self-cost reduction hook (e.g., Noxus Hopeful "[Legion] I cost [2] less").
+    if (auto* self_card = card_registry_.get(card.card_def_id)) {
+        energy_needed -= self_card->selfCostReduction(state_, player);
+    }
+    energy_needed = std::max(min_cost, energy_needed);
     energy_needed = std::max(0, energy_needed);
 
     // Count available runes in base
@@ -2731,6 +2810,7 @@ bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj) const {
 
 bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj) {
     auto& card = state_.getObject(card_obj);
+    if (card.card_def_id == kInvalidId) return true;  // tokens cost nothing
     const auto& def = card_db_.get(card.card_def_id);
 
     int energy_needed = def.energy_cost;
@@ -2738,11 +2818,18 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj) {
 
     // Apply cost reductions (Phase 5)
     auto& ps = state_.player(player);
+    int min_cost = 0;
     for (auto& mod : ps.cost_modifiers) {
         if (mod.next_spell_only && !card.isSpell()) continue;
         if (mod.next_unit_only && !card.isUnit()) continue;
         energy_needed -= mod.energy_reduction;
+        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
     }
+    // Self-cost reduction hook (e.g., Noxus Hopeful Legion discount).
+    if (auto* self_card = card_registry_.get(card.card_def_id)) {
+        energy_needed -= self_card->selfCostReduction(state_, player);
+    }
+    energy_needed = std::max(min_cost, energy_needed);
     energy_needed = std::max(0, energy_needed);
 
     // Consume one-shot modifiers that applied

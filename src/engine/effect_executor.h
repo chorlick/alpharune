@@ -33,7 +33,7 @@ public:
     void killObject(GameObjectId target);
     void drawCards(PlayerId player, int count);
     void bounceToHand(GameObjectId target);
-    void giveTemporaryMight(GameObjectId target, int amount);
+    void giveTemporaryMight(GameObjectId target, int amount, int minimum = 0);
     void giveTemporaryKeyword(GameObjectId target, Keyword kw, int value);
     void buffUnit(GameObjectId target);
     void readyObject(GameObjectId target);

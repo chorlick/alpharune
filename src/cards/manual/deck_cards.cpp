@@ -393,6 +393,225 @@ public:
     }
 };
 
+// [160] Dazzling Aurora — At end of your turn, reveal from top of deck until
+// you find a unit. Banish it, play it ignoring its cost. Recycle the rest.
+//
+// This is the Miss Fortune deck's core win condition. The generated stub in
+// gear_cards.cpp is a no-op; this manual implementation supersedes it.
+class MDazzlingAurora : public GearCard {
+public:
+    MDazzlingAurora() : GearCard(160) {}
+    TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // 1. Reveal from top of deck until a unit is found.
+        //    revealUntil pops the cards from main_deck and returns (matched, rest).
+        auto [unit_id, rest] = ctx.executor.revealUntil(ctx.controller, CardType::Unit);
+
+        // 2. Recycle the non-units back to the bottom of the deck.
+        if (!rest.empty()) {
+            ctx.executor.recycleCards(ctx.controller, rest);
+        }
+
+        // 3. If a unit was revealed, banish it then play it ignoring cost.
+        //    Note: banishObject pushes to the banishment list; playIgnoringCost
+        //    then moves it to Base. We remove from banishment to avoid the
+        //    card appearing in both zone lists.
+        if (unit_id != kInvalidId && ctx.state.objectExists(unit_id)) {
+            ctx.executor.banishObject(unit_id);
+
+            auto& owner_state = ctx.state.player(ctx.state.getObject(unit_id).owner);
+            auto& bz = owner_state.banishment;
+            bz.erase(std::remove(bz.begin(), bz.end(), unit_id), bz.end());
+
+            ctx.executor.playIgnoringCost(ctx.controller, unit_id);
+        }
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Critical no-op fixes (cards previously stubbed by codegen but vital for the
+// Miss Fortune and Rengar decks). Each implementation overrides the generated
+// stub via the registration order in card_registry.cpp.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// [162] Miss Fortune, Captain — When a friendly unit moves to a battlefield,
+// ready another friendly unit at that battlefield.
+// Uses WhenAFriendlyUnitMovesToFB: trigger_manager fires this on all friendly
+// cards with this trigger type whenever any friendly unit moves to a BF.
+class MMissFortuneCaptain : public UnitCard {
+public:
+    MMissFortuneCaptain() : UnitCard(162) {}
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAFriendlyUnitMovesToFB;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // Find the most recent friendly unit at a battlefield (the one that
+        // just moved is the trigger source from the engine's perspective —
+        // we ready a different friendly unit at that same BF).
+        if (!ctx.state.objectExists(ctx.source)) return;
+
+        // Pick any exhausted friendly unit at a battlefield to ready.
+        // Preference: same BF as Captain if she's there.
+        auto& captain = ctx.state.getObject(ctx.source);
+        std::optional<LocationId> preferred_loc = captain.location;
+
+        // First pass: try preferred location
+        if (preferred_loc.has_value()) {
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (id == ctx.source) continue;
+                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
+                if (!obj.is_exhausted) continue;
+                if (obj.location != preferred_loc) continue;
+                ctx.executor.readyObject(id);
+                return;
+            }
+        }
+        // Fallback: any exhausted friendly unit at any battlefield
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (id == ctx.source) continue;
+            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
+            if (!obj.is_exhausted) continue;
+            if (!obj.isAtBattlefield()) continue;
+            ctx.executor.readyObject(id);
+            return;
+        }
+    }
+};
+
+// [263] Bullet Time — [Action] Pay any amount of [A] to deal that much damage
+// to a unit. The "variable cost" intent enumeration is not yet engine-supported,
+// so this best-effort implementation spends all currently-available energy and
+// deals that much damage to the chosen target. Not full mechanic, but no longer
+// a no-op.
+class MBulletTime : public SpellCard {
+public:
+    MBulletTime() : SpellCard(263) {}
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        if (targets.empty()) return;
+        auto target = targets[0];
+        if (!ctx.state.objectExists(target)) return;
+
+        auto& ps = ctx.state.player(ctx.controller);
+        int amount = ps.rune_pool.energy;
+        if (amount <= 0) return;
+        ps.rune_pool.energy = 0;  // spend all energy
+        ctx.executor.dealDamage(target, amount, ctx.source);
+
+        if (ctx.state.objectExists(target) &&
+            ctx.state.getObject(target).hasLethalDamage()) {
+            ctx.executor.killObject(target);
+        }
+    }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 1, .must_be_unit = true};
+    }
+};
+
+// [680] Elder Dragon — When you play me, deal 1 damage to one enemy unit at
+// each battlefield. Plus passive: any of your damage is enough to kill enemy
+// units. The passive "kill on any damage" is handled engine-side via the
+// existing Elder Dragon rule check; here we implement the on-play AoE damage.
+class MElderDragon : public UnitCard {
+public:
+    MElderDragon() : UnitCard(680) {}
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // For each battlefield, deal 1 damage to one enemy unit at that BF.
+        for (auto& bf : ctx.state.battlefields) {
+            auto bf_loc = BattlefieldLocation{bf.id};
+            auto enemies = ctx.state.unitsAt(bf_loc, opponent(ctx.controller));
+            if (enemies.empty()) continue;
+            auto victim = enemies.front();
+            ctx.executor.dealDamage(victim, 1, ctx.source);
+            if (ctx.state.objectExists(victim) &&
+                ctx.state.getObject(victim).hasLethalDamage()) {
+                ctx.executor.killObject(victim);
+            }
+        }
+    }
+};
+
+// [709] Baron Nashor — When played, deal 3 damage to each enemy unit. (We
+// skip the "Baron Pit battlefield token" mechanic for now — adding a BF token
+// is a larger structural change. The 3-damage AoE is the primary effect.)
+class MBaronNashor : public UnitCard {
+public:
+    MBaronNashor() : UnitCard(709) {}
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // Collect enemy unit IDs first to avoid iterator invalidation on kill.
+        std::vector<GameObjectId> victims;
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+            if (!obj.location.has_value()) continue;
+            victims.push_back(id);
+        }
+        for (auto vid : victims) {
+            if (!ctx.state.objectExists(vid)) continue;
+            ctx.executor.dealDamage(vid, 3, ctx.source);
+        }
+        for (auto vid : victims) {
+            if (!ctx.state.objectExists(vid)) continue;
+            if (ctx.state.getObject(vid).hasLethalDamage()) {
+                ctx.executor.killObject(vid);
+            }
+        }
+    }
+};
+
+// [12] Noxus Hopeful — [Legion] I cost [2] less. Uses the selfCostReduction
+// hook on Card; engine consults this in canAfford/payCardCost. Legion is
+// satisfied when the controller has already played a card this turn
+// (cards_played_this_turn >= 1).
+class MNoxusHopeful : public UnitCard {
+public:
+    MNoxusHopeful() : UnitCard(12) {}
+    int selfCostReduction(const GameState& state, PlayerId player) const override {
+        return state.player(player).cards_played_this_turn >= 1 ? 2 : 0;
+    }
+};
+
+// [26] Brynhir Thundersong — When you play me, opponents can't play cards
+// this turn. Sets the cant_play_cards_this_turn flag on the opponent's
+// PlayerState; the action generators (main/showdown/closed-state) consult
+// this flag and emit no play-from-hand actions while it's set. The flag
+// resets in PlayerState::resetTurnTracking() at end of turn.
+class MBrynhirThundersong : public UnitCard {
+public:
+    MBrynhirThundersong() : UnitCard(26) {}
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        PlayerId opp = opponent(ctx.controller);
+        ctx.state.player(opp).cant_play_cards_this_turn = true;
+        ctx.events.logTrace("BRYNHIR: " + std::string(toString(opp)) +
+                            " can't play cards this turn");
+    }
+};
+
+// [344] Ferrous Forerunner — [Deathknell] Play two 3M Mech unit tokens to base.
+class MFerrousForerunner : public UnitCard {
+public:
+    MFerrousForerunner() : UnitCard(344) {}
+    TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        KeywordSet kw;  // Mech tokens — no special keywords
+        auto loc = BaseLocation{ctx.controller};
+        ctx.executor.createToken(ctx.controller, CardType::Unit, "Mech", 3,
+                                  {"Mech"}, kw, loc, false);
+        ctx.executor.createToken(ctx.controller, CardType::Unit, "Mech", 3,
+                                  {"Mech"}, kw, loc, false);
+    }
+};
+
+// [348] Rengar, Pouncing — [Reaction] play to a battlefield you're attacking.
+// The action generator (generateShowdownActions / generateClosedStateActions)
+// consults playableAsReactionToAttack() and emits play-to-attacking-BF intents.
+class MRengarPouncing : public UnitCard {
+public:
+    MRengarPouncing() : UnitCard(348) {}
+    bool playableAsReactionToAttack() const override { return true; }
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Registration
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -431,6 +650,17 @@ void registerManualDeckCards(CardRegistry& registry) {
     registry.registerCard(573, std::make_unique<MFreshBeans>());
     registry.registerCard(640, std::make_unique<MSpriteFountain>());
     registry.registerCard(745, std::make_unique<MThrillOfTheHunt>());
+    registry.registerCard(160, std::make_unique<MDazzlingAurora>());
+
+    // Critical no-op fixes for Miss Fortune and Rengar test decks
+    registry.registerCard(162, std::make_unique<MMissFortuneCaptain>());
+    registry.registerCard(263, std::make_unique<MBulletTime>());
+    registry.registerCard(680, std::make_unique<MElderDragon>());
+    registry.registerCard(709, std::make_unique<MBaronNashor>());
+    registry.registerCard(12,  std::make_unique<MNoxusHopeful>());
+    registry.registerCard(26,  std::make_unique<MBrynhirThundersong>());
+    registry.registerCard(344, std::make_unique<MFerrousForerunner>());
+    registry.registerCard(348, std::make_unique<MRengarPouncing>());
 }
 
 } // namespace riftbound

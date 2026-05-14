@@ -18,26 +18,40 @@
 
 namespace riftbound {
 
-class DataSerializer {
+/// Common interface for training-data serializers (JSONL or binary).
+/// GameRunner holds one of these and dispatches by output-path extension.
+class IDataSerializer {
+public:
+    virtual ~IDataSerializer() = default;
+    virtual void recordDecision(const GameState& state,
+                                const std::vector<Intent>& legal_actions,
+                                const Intent& chosen_action) = 0;
+    virtual void recordGameSummary(const GameState& state,
+                                   const std::string& game_id) = 0;
+    virtual void flush() = 0;
+};
+
+class DataSerializer : public IDataSerializer {
 public:
     DataSerializer(const CardDB& db, const std::string& output_path);
-    ~DataSerializer();
+    ~DataSerializer() override;
 
     /// Record a decision point: state + legal actions + chosen action.
     void recordDecision(const GameState& state,
                         const std::vector<Intent>& legal_actions,
-                        const Intent& chosen_action);
+                        const Intent& chosen_action) override;
 
     /// Record game summary at end of game.
     void recordGameSummary(const GameState& state,
-                           const std::string& game_id);
+                           const std::string& game_id) override;
 
     /// Flush output.
-    void flush();
+    void flush() override;
 
 private:
     const CardDB& db_;
     std::ofstream file_;
+    const GameState* state_ptr_ = nullptr;  // set during recordDecision for intent serialization
 
     nlohmann::json serializeState(const GameState& state) const;
     nlohmann::json serializePlayer(const GameState& state, PlayerId player) const;

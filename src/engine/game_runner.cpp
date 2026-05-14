@@ -1,5 +1,7 @@
 #include "game_runner.h"
+#include "agents/model_agent.h"
 #include "agents/random_agent.h"
+#include "io/binary_data_serializer.h"
 #include "io/data_serializer.h"
 #include "io/replay_writer.h"
 #include "io/state_renderer.h"
@@ -80,14 +82,26 @@ GameResult GameRunner::run() {
         });
     }
 
-    // Set up data serializer
-    std::unique_ptr<DataSerializer> serializer;
+    // Set up data serializer. Output format is determined by the extension
+    // on config_.output_path: ".bin" → BinaryDataSerializer (pre-extracted
+    // features), anything else → DataSerializer (JSONL). The ".gameN" suffix
+    // for multi-game batches is appended after the extension check.
+    std::unique_ptr<IDataSerializer> serializer;
     if (!config_.output_path.empty()) {
+        bool is_binary =
+            config_.output_path.size() >= 4 &&
+            config_.output_path.compare(config_.output_path.size() - 4, 4, ".bin") == 0;
+
         std::string game_path = config_.output_path;
         if (config_.total_games > 1) {
             game_path = config_.output_path + ".game" + std::to_string(config_.game_index + 1);
         }
-        serializer = std::make_unique<DataSerializer>(card_db_, game_path);
+
+        if (is_binary) {
+            serializer = std::make_unique<BinaryDataSerializer>(card_db_, game_path);
+        } else {
+            serializer = std::make_unique<DataSerializer>(card_db_, game_path);
+        }
     }
 
     // Decision callback
@@ -102,10 +116,21 @@ GameResult GameRunner::run() {
         }
     };
 
-    // Run the game
-    RandomAgent agent1(game_seed * 2);
-    RandomAgent agent2(game_seed * 2 + 1);
-    auto result = engine.runGame(deck1_, deck2_, agent1, agent2, game_seed);
+    // Create agents based on spec
+    auto makeAgent = [&](const std::string& spec, uint64_t seed, double temperature)
+        -> std::unique_ptr<AgentInterface> {
+        if (spec.substr(0, 6) == "model:") {
+            auto path = spec.substr(6);
+            return std::make_unique<ModelAgent>(path, card_db_, temperature, seed);
+        }
+        return std::make_unique<RandomAgent>(seed);
+    };
+
+    auto agent1 = makeAgent(config_.agent1_spec, game_seed * 2,
+                            config_.agent1_temperature);
+    auto agent2 = makeAgent(config_.agent2_spec, game_seed * 2 + 1,
+                            config_.agent2_temperature);
+    auto result = engine.runGame(deck1_, deck2_, *agent1, *agent2, game_seed);
 
     // Finalize outputs
     if (serializer) {
@@ -143,11 +168,34 @@ GameResult GameRunner::run() {
                       << " — " << result.termination_reason << "\n";
         }
 
-        // Progress for large batches
-        if (config_.total_games > 20 &&
-            (completed % 100 == 0 || completed == results_.total_games)) {
-            std::cout << "\r  Progress: " << completed << "/"
-                      << results_.total_games << " games" << std::flush;
+        // Progress for batches > 20 games. Tick on whichever fires first:
+        //   - every 100 games (good signal at very high gps)
+        //   - at least once per second of wall time (good signal for slow
+        //     model-vs-random runs where 100 games can take 5+ seconds)
+        //   - at completion
+        if (config_.total_games > 20) {
+            auto now = std::chrono::steady_clock::now();
+            double since_last = std::chrono::duration<double>(
+                now - results_.last_progress_time).count();
+            bool fire = (completed % 100 == 0)
+                     || (completed == results_.total_games)
+                     || (since_last >= 1.0);
+            if (fire) {
+                results_.last_progress_time = now;
+                double elapsed = std::chrono::duration<double>(
+                    now - results_.start_time).count();
+                double gps = elapsed > 0 ? completed / elapsed : 0;
+                int eta_sec = gps > 0
+                    ? static_cast<int>((results_.total_games - completed) / gps)
+                    : 0;
+                std::cout << "\r  Progress: " << completed << "/"
+                          << results_.total_games << " games"
+                          << "  (" << std::fixed << std::setprecision(1)
+                          << gps << " games/sec"
+                          << ", ETA " << eta_sec / 60 << "m"
+                          << eta_sec % 60 << "s)"
+                          << "    " << std::flush;
+            }
         }
     }
 

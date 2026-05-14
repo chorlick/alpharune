@@ -260,6 +260,10 @@ enum class IntentType : uint8_t {
 struct DamageAssignment {
     GameObjectId target_unit;
     int damage;
+
+    bool operator==(const DamageAssignment& o) const {
+        return target_unit == o.target_unit && damage == o.damage;
+    }
 };
 
 // ─── Mode of Play ────────────────────────────────────────────────────────────

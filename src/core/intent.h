@@ -131,6 +131,30 @@ struct Intent {
 
     /// Debug description
     std::string describe() const;
+
+    /// Full structural equality. Used by serializers to locate the chosen
+    /// action's index within the legal-action list — a 4-field comparison
+    /// would conflate "twin" intents (same type/card/targets/ability_source
+    /// but different destinations, chosen objects, damage assignments, etc.)
+    /// and bias the recorded chosen_idx toward earlier indices.
+    bool operator==(const Intent& o) const {
+        return type == o.type
+            && player == o.player
+            && card == o.card
+            && play_location == o.play_location
+            && units_to_move == o.units_to_move
+            && move_destination == o.move_destination
+            && ability == o.ability
+            && ability_source == o.ability_source
+            && targets == o.targets
+            && damage_assignments == o.damage_assignments
+            && cards_to_mulligan == o.cards_to_mulligan
+            && chosen_battlefield == o.chosen_battlefield
+            && choose_first == o.choose_first
+            && sideboard_swaps == o.sideboard_swaps
+            && chosen_objects == o.chosen_objects
+            && chosen_value == o.chosen_value;
+    }
 };
 
 } // namespace riftbound

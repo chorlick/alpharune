@@ -55,6 +55,14 @@ int main(int argc, char* argv[]) {
          "Show trace log (every game action — phases, intents, targets, costs, combat, scoring)")
         ("threads,t", po::value<int>()->default_value(1),
          "Number of threads for parallel game execution (0 = hardware concurrency)")
+        ("agent1", po::value<std::string>()->default_value("random"),
+         "Player 1 agent: 'random' or 'model:path/to/model.onnx'")
+        ("agent2", po::value<std::string>()->default_value("random"),
+         "Player 2 agent: 'random' or 'model:path/to/model.onnx'")
+        ("temp1", po::value<double>()->default_value(0.0),
+         "Player 1 model sampling temperature (0 = argmax/eval, 1.0 = softmax sample for self-play)")
+        ("temp2", po::value<double>()->default_value(0.0),
+         "Player 2 model sampling temperature (0 = argmax/eval, 1.0 = softmax sample for self-play)")
     ;
 
     po::positional_options_description pos;
@@ -161,6 +169,19 @@ int main(int argc, char* argv[]) {
     config.debug_mode = debug_mode;
     config.trace_mode = trace_mode;
     config.output_path = output_path;
+    config.agent1_spec = vm["agent1"].as<std::string>();
+    config.agent2_spec = vm["agent2"].as<std::string>();
+    config.agent1_temperature = vm["temp1"].as<double>();
+    config.agent2_temperature = vm["temp2"].as<double>();
+
+    std::cout << "P1 agent: " << config.agent1_spec;
+    if (config.agent1_temperature > 0.0)
+        std::cout << " (T=" << config.agent1_temperature << ")";
+    std::cout << "\n";
+    std::cout << "P2 agent: " << config.agent2_spec;
+    if (config.agent2_temperature > 0.0)
+        std::cout << " (T=" << config.agent2_temperature << ")";
+    std::cout << "\n";
 
     // Run games via BatchRunner
     riftbound::AggregateResults results;

@@ -39,3 +39,8 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+*.egg-info/
+
+
+# Logs
+*.log

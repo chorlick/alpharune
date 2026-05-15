@@ -83,6 +83,10 @@ json DataSerializer::serializeState(const GameState& state) const {
     s["is_additional_turn"] = state.turn.is_additional_turn;
     s["delayed_ability_count"] = static_cast<int>(state.delayed_abilities.size());
 
+    // Focus holder during showdowns — Tier 2 feature. "none" if unassigned.
+    s["focus_holder"] = state.turn.focus_holder.has_value()
+        ? toString(*state.turn.focus_holder) : "none";
+
     s["player1"] = serializePlayer(state, PlayerId::Player1);
     s["player2"] = serializePlayer(state, PlayerId::Player2);
 
@@ -149,6 +153,22 @@ json DataSerializer::serializePlayer(const GameState& state,
     p["bfs_scored_this_turn"] = static_cast<int>(ps.battlefields_scored_this_turn.size());
     p["cost_modifier_count"] = static_cast<int>(ps.cost_modifiers.size());
     p["cant_play_cards_this_turn"] = ps.cant_play_cards_this_turn;
+    p["additional_turns_queued"] = static_cast<int>(ps.additional_turns.size());
+
+    // Cost modifier total energy reduction (Tier 2 magnitude feature).
+    int cm_magnitude = 0;
+    for (auto& m : ps.cost_modifiers) cm_magnitude += m.energy_reduction;
+    p["cost_modifier_magnitude"] = cm_magnitude;
+
+    // Ready base unit count split (Tier 2). The "base_units" array already
+    // captures per-unit exhausted; this is the rolled-up count for the
+    // Python feature extractor's convenience.
+    int ready_base_count = 0;
+    for (auto& [id, obj] : state.objects) {
+        if (obj.isUnit() && obj.controller == player && obj.isAtBase()
+            && !obj.is_exhausted) ready_base_count++;
+    }
+    p["ready_base_units"] = ready_base_count;
 
     // Per-BF scored flags (Tier 1) — list of battlefield IDs scored this turn.
     json bfs_scored = json::array();
@@ -276,10 +296,27 @@ json DataSerializer::serializeBattlefield(const GameState& state,
     b["controller"] = bf.controller.has_value()
         ? toString(*bf.controller) : "none";
     b["contested"] = bf.is_contested;
+    b["contested_by"] = bf.contested_by == PlayerId::None
+        ? "none" : toString(bf.contested_by);
     b["combat"] = bf.combat_in_progress;
     b["showdown"] = bf.showdown_in_progress;
+    b["combat_staged"] = bf.combat_staged;
+    b["showdown_staged"] = bf.showdown_staged;
     b["facedown_count"] = bf.facedown.size();
     b["is_token"] = bf.is_token;
+
+    // Oldest facedown card's age (turns since hidden). 0 if no facedown or
+    // all were hidden this turn. Tier 3 facedown-age feature.
+    int oldest_facedown_age = 0;
+    for (auto fid : bf.facedown) {
+        if (!state.objectExists(fid)) continue;
+        int hidden_on = state.getObject(fid).hidden_on_turn;
+        if (hidden_on >= 0) {
+            int age = state.turn.turn_number - hidden_on;
+            if (age > oldest_facedown_age) oldest_facedown_age = age;
+        }
+    }
+    b["oldest_facedown_age"] = oldest_facedown_age;
 
     // Combat context
     if (bf.combat_in_progress) {
@@ -327,6 +364,10 @@ json DataSerializer::serializeObject(const GameState& state,
     o["stunned"] = obj.is_stunned;
     o["keywords"] = obj.keywords.bits;
     o["buff_count"] = obj.buff_count;
+    o["temp_buff_count"] = obj.temp_buff_count;
+    o["assault_value"] = obj.assault_value;
+    o["shield_value"] = obj.shield_value;
+    o["deflect_value"] = obj.deflect_value;
     o["has_attachment"] = !obj.attachments.empty();
     // First attached gear's def_id (0 if none). Tier 1 feature.
     CardDefId att_def = 0;

@@ -120,14 +120,29 @@ void BinaryDataSerializer::recordGameSummary(const GameState& state,
     else if (state.winner == PlayerId::Player2) winner_byte_ = 1;
     else                                         winner_byte_ = 2;
 
+    // Final scores for score-differential REINFORCE reward. Stored in the
+    // header's previously-pad region (no version bump needed; pre-change
+    // binaries have these as 0 and the Python reader falls back to win/loss).
+    // Both scores are clamped to int8 [0, 127] — game scores are 0..8 in
+    // practice so we never overflow.
+    int8_t final_score_p1 = static_cast<int8_t>(
+        std::clamp(state.players[0].score, 0, 127));
+    int8_t final_score_p2 = static_cast<int8_t>(
+        std::clamp(state.players[1].score, 0, 127));
+
     // Patch header in place: seek to num_decisions field at offset 12.
     // Layout: magic(4) + version(2) + state_dim(2) + action_dim(2) + max_actions(2) = 12
+    //         num_decisions(4) + winner(1) + score_p1(1) + score_p2(1) + pad(1) = 20
     flush();
     file_.seekp(12);
     file_.write(reinterpret_cast<const char*>(&num_decisions_),
                 sizeof(num_decisions_));
     file_.write(reinterpret_cast<const char*>(&winner_byte_),
                 sizeof(winner_byte_));
+    file_.write(reinterpret_cast<const char*>(&final_score_p1),
+                sizeof(final_score_p1));
+    file_.write(reinterpret_cast<const char*>(&final_score_p2),
+                sizeof(final_score_p2));
     flush();
 }
 

@@ -20,11 +20,13 @@
 #include "engine/chain_manager.h"
 #include "engine/effect_executor.h"
 #include "engine/trigger_manager.h"
+#include "engine/step_driver.h"
 #include "rules/deck_validator.h"
 
 #include <functional>
 #include <memory>
 #include <random>
+#include <thread>
 #include <vector>
 
 namespace riftbound {
@@ -38,10 +40,37 @@ struct GameResult {
     std::string termination_reason;
 };
 
+// ─── Step machine (Phase 11 C-1) ──────────────────────────────────────────────
+// Pull-driven engine API. Replaces the push-driven `runGame` recursion with
+// `beginGame()` + a `currentStep()`/`applyChoice()` loop owned by the caller.
+// Lets `Clone()` collapse to memcpy(GameState) — no worker thread, no halting
+// agent. See Phase 11 Phase C-1 in CLAUDE.md.
+//
+// Methods are stubbed in step (2) of the rollout; subsequent commits fill in
+// the subroutine conversions (main phase, chain, combat, cleanup). External
+// callers can start adopting the surface now; the existing `runGame` path
+// remains the implementation behind the BatchRunner / Agent flow until the
+// step machine is fully wired.
+
+enum class StepKind : uint8_t {
+    Done,            // Game terminated. state.game_over is true.
+    NeedDecision,    // Engine is paused waiting on a player decision.
+    // ChanceNode,   // Phase B-2 — random outcome required.
+};
+
+struct StepResult {
+    StepKind kind = StepKind::Done;
+    PlayerId perspective = PlayerId::None;  // who must decide
+    std::vector<Intent> legal;              // populated when kind==NeedDecision
+};
+
 class GameEngine {
 public:
     GameEngine(const CardDB& card_db, EventBus& event_bus,
                const CardRegistry& card_registry);
+    ~GameEngine();
+    GameEngine(const GameEngine&) = delete;
+    GameEngine& operator=(const GameEngine&) = delete;
 
     /// Run a complete game. Returns the result.
     GameResult runGame(
@@ -52,8 +81,58 @@ public:
         uint64_t seed = 0
     );
 
+    // ── Step machine API (Phase 11 C-1, in progress) ────────────────────────
+    //
+    // Pull-driven alternative to runGame(). Caller drives a loop:
+    //
+    //   StepResult sr = engine.beginGame(deck1, deck2, seed);
+    //   while (sr.kind == StepKind::NeedDecision) {
+    //       int idx = pick_one(sr.legal);
+    //       sr = engine.applyChoice(idx);
+    //   }
+    //   const GameResult& r = engine.stepResult();
+    //
+    // Once implemented, this entire loop runs without any worker threads or
+    // condition variables — Clone() = memcpy(GameState). Phase C-1's remaining
+    // commits replace each subroutine that currently calls
+    // `agent.selectAction(...)` with a resumable step that returns control
+    // here instead.
+    //
+    // Currently stubbed (throws std::logic_error). Old runGame remains the
+    // production path until step (7) of the rollout flips OpenSpiel + Batch
+    // Runner over.
+
+    /// Begin a game in step-machine mode. Loads decks, initialises state,
+    /// runs until the first NeedDecision or terminal.
+    StepResult beginGame(
+        const DeckSubmission& deck1,
+        const DeckSubmission& deck2,
+        uint64_t seed = 0);
+
+    /// Inspect what the engine is currently waiting on without advancing.
+    StepResult currentStep() const;
+
+    /// Apply the chosen decision (index into the prior step's `legal`),
+    /// then advance until the next NeedDecision or terminal. Returns the
+    /// new step.
+    StepResult applyChoice(int legal_index);
+
+    /// True iff `currentStep().kind == StepKind::Done`.
+    bool isStepDone() const;
+
+    /// After the game has terminated under the step-machine flow,
+    /// the GameResult. Undefined before isStepDone() returns true.
+    const GameResult& stepResult() const { return step_result_; }
+
     /// Access the current game state (for external inspection).
     const GameState& state() const { return state_; }
+
+    /// Mutable access. Phase C-1: needed by the OpenSpiel wrapper to
+    /// record applied action IDs on `GameState::action_history`. Will be
+    /// the single state-mutation entry point once the engine is driven
+    /// as a step machine (see Phase 11 Phase C-1 in CLAUDE.md). Do not
+    /// use from BatchRunner / agent code — they should see state as read-only.
+    GameState& mutableState() { return state_; }
 
     /// Generate all legal actions for the player who must currently act.
     std::vector<Intent> generateLegalActions() const;
@@ -82,6 +161,17 @@ private:
     const CardRegistry& card_registry_;
 
     AgentInterface* agents_[2] = {nullptr, nullptr};
+
+    // Step machine state (Phase 11 C-1).
+    StepResult current_step_{};
+    GameResult step_result_{};
+    std::unique_ptr<StepDriver> step_driver_;
+    std::thread step_thread_;
+
+    /// Internal helper: rebuild current_step_ from the StepDriver's
+    /// snapshot. Called after beginGame and after each applyChoice once
+    /// the driver has either suspended at a decision or terminated.
+    void refreshStepFromDriver();
 
     // ── Setup ──
     void setupGame(const DeckSubmission& deck1, const DeckSubmission& deck2);

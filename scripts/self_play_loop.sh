@@ -27,6 +27,12 @@
 
 set -e
 
+# Resolve python: prefer the riftbound conda env's interpreter directly so the
+# loop works even when launched outside an activated shell (e.g. via nohup).
+# Falls back to PATH's python only if the conda env binary isn't found.
+PYTHON_BIN="${HOME}/miniconda3/envs/riftbound/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then PYTHON_BIN=python; fi
+
 # Kill any background children if the script exits, is Ctrl-C'd, or is
 # kill'd externally. Without this, the parallel python training jobs we
 # launch with `&` get reparented to init when bash dies and keep running,
@@ -283,14 +289,14 @@ while true; do
     rg_ent=$(adaptive_entropy "$rg_rejects")
     log "  [step 2] training MF (GPU 0, entropy=$mf_ent, rejects=$mf_rejects) and Rengar (GPU 1, entropy=$rg_ent, rejects=$rg_rejects)..."
     step_start=$(date +%s)
-    python scripts/train_agent.py train-rl "$data/" \
+    "$PYTHON_BIN" scripts/train_agent.py train-rl "$data/" \
         --resume "models/miss_fortune/${prev_mf}.pt" \
         --output "$cand_mf_pt" \
         --epochs "$EPOCHS" --lr "$LR" --entropy-coef "$mf_ent" \
         --batch-size "$BATCH" --gpu 0 --dataloader-workers 3 &
     mf_pid=$!
 
-    python scripts/train_agent.py train-rl "$data/" \
+    "$PYTHON_BIN" scripts/train_agent.py train-rl "$data/" \
         --resume "models/rengar/${prev_rg}.pt" \
         --output "$cand_rg_pt" \
         --epochs "$EPOCHS" --lr "$LR" --entropy-coef "$rg_ent" \

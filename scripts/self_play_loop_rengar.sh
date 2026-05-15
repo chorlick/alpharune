@@ -30,6 +30,11 @@
 
 set -e
 
+# Resolve python: prefer the riftbound conda env's interpreter directly so the
+# loop works even when launched outside an activated shell (e.g. via nohup).
+PYTHON_BIN="${HOME}/miniconda3/envs/riftbound/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then PYTHON_BIN=python; fi
+
 # Kill any background children if the script exits, is Ctrl-C'd, or is
 # kill'd externally. Without this, the python training job we launch with
 # `&` gets reparented to init when bash dies and keeps running, competing
@@ -261,7 +266,7 @@ while true; do
     log "  [step 2] training Rengar (GPU $GPU, entropy=$rg_ent, rejects=$rg_rejects)..."
     step_start=$(date +%s)
     set +e
-    python scripts/train_agent.py train-rl "$data/" \
+    "$PYTHON_BIN" scripts/train_agent.py train-rl "$data/" \
         --resume "models/rengar/${prev_rg}.pt" \
         --output "$cand_rg_pt" \
         --epochs "$EPOCHS" --lr "$LR" --entropy-coef "$rg_ent" \

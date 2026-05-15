@@ -15,6 +15,21 @@ GameEngine::GameEngine(const CardDB& card_db, EventBus& event_bus,
     // Chain subsystems are initialized per-game in runGame
 }
 
+GameEngine::~GameEngine() {
+    // Drain any step-machine session that's still in flight. If the
+    // caller dropped the engine mid-game, feed concede-equivalent
+    // choices until the worker thread exits cleanly.
+    if (step_thread_.joinable()) {
+        if (step_driver_) {
+            while (!step_driver_->isDone()) {
+                step_driver_->provideChoice(0);
+                step_driver_->waitForDecision();
+            }
+        }
+        step_thread_.join();
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Game lifecycle
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -67,6 +82,91 @@ GameResult GameEngine::runGame(
     result.total_decisions = state_.decision_index;
     result.termination_reason = state_.game_over_reason;
     return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Step machine API (Phase 11 C-1)
+//
+// Implementation strategy: this version of the step machine still runs the
+// engine on an internal worker thread via StepDriver (Phase C-1 commits
+// 1–2 + this wrapper relocation). The threading is now an engine-internal
+// implementation detail, not the caller's concern — which lets the
+// OpenSpiel wrapper drop its own thread and halting agent.
+//
+// Subsequent C-1 commits (3–6) replace the threading with a native
+// resumable step machine, at which point Clone() can collapse to
+// memcpy(GameState). The beginGame/applyChoice/currentStep surface stays
+// stable across that transition — callers don't change.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void GameEngine::refreshStepFromDriver() {
+    if (!step_driver_) {
+        current_step_.kind = StepKind::Done;
+        current_step_.legal.clear();
+        current_step_.perspective = PlayerId::None;
+        return;
+    }
+    if (step_driver_->isDone()) {
+        current_step_.kind = StepKind::Done;
+        current_step_.legal.clear();
+        current_step_.perspective = PlayerId::None;
+        return;
+    }
+    current_step_.kind = StepKind::NeedDecision;
+    current_step_.legal = step_driver_->legalActionsSnapshot();
+    current_step_.perspective = step_driver_->currentPlayerSnapshot();
+}
+
+StepResult GameEngine::beginGame(
+    const DeckSubmission& deck1,
+    const DeckSubmission& deck2,
+    uint64_t seed) {
+    // Disallow restart on the same engine — too easy to get wrong with
+    // a previous session's thread still alive. Make a fresh GameEngine
+    // instead.
+    if (step_driver_ || step_thread_.joinable()) {
+        throw std::logic_error(
+            "GameEngine::beginGame called on an engine that already has a "
+            "step-machine session. Construct a fresh GameEngine.");
+    }
+    step_driver_ = std::make_unique<StepDriver>();
+    step_result_ = GameResult{};
+
+    // Snapshot decks so the lambda can capture them by value safely.
+    auto d1 = deck1;
+    auto d2 = deck2;
+    StepDriver* driver = step_driver_.get();
+    step_thread_ = std::thread([this, d1, d2, seed, driver]() {
+        step_result_ = runGame(d1, d2, *driver, *driver, seed);
+        driver->markDone();
+    });
+
+    step_driver_->waitForDecision();
+    refreshStepFromDriver();
+    return current_step_;
+}
+
+StepResult GameEngine::currentStep() const {
+    return current_step_;
+}
+
+StepResult GameEngine::applyChoice(int legal_index) {
+    if (!step_driver_) {
+        throw std::logic_error(
+            "GameEngine::applyChoice called before beginGame.");
+    }
+    if (current_step_.kind == StepKind::Done) {
+        return current_step_;
+    }
+    step_driver_->provideChoice(legal_index);
+    step_driver_->waitForDecision();
+    refreshStepFromDriver();
+    return current_step_;
+}
+
+bool GameEngine::isStepDone() const {
+    if (!step_driver_) return false;
+    return step_driver_->isDone();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

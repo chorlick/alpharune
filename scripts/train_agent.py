@@ -510,6 +510,88 @@ def extract_state_features(record, perspective='P1'):
     features.append(1 if self_data.get('cant_play_cards_this_turn', False) else 0)
     features.append(1 if opp_data.get('cant_play_cards_this_turn', False) else 0)
 
+    # ── Tier 2/3 expansion (positions 4407..4622) ────────────────────────────
+    # Per-unit Tier 2/3 features: 8 per unit × 3 units × 2 sides × 4 BFs = 192.
+    # Order must match feature_extractor.cpp emit_unit_t2: assault, shield,
+    # deflect, buff_count, temp_buff_count, tank, backline, ganking.
+    def _extract_side_t2(units):
+        sorted_units = sorted(units, key=lambda u: u.get('might', 0), reverse=True)
+        out = []
+        for i in range(MAX_BF_UNITS_PER_SIDE):
+            if i < len(sorted_units):
+                u = sorted_units[i]
+                kw_bits = u.get('keywords', 0)
+                out.append(u.get('assault_value', 0))
+                out.append(u.get('shield_value', 0))
+                out.append(u.get('deflect_value', 0))
+                out.append(u.get('buff_count', 0))
+                out.append(u.get('temp_buff_count', 0))
+                out.append(1 if _has_keyword(kw_bits, KW_TANK) else 0)
+                out.append(1 if _has_keyword(kw_bits, KW_BACKLINE) else 0)
+                out.append(1 if _has_keyword(kw_bits, KW_GANKING) else 0)
+            else:
+                out.extend([0] * 8)
+        return out
+
+    # Map "P1"/"P2" to self/opp ordering for the C++ side
+    perspective_id_str = perspective
+    opp_id_str = 'P2' if perspective == 'P1' else 'P1'
+
+    for i in range(4):
+        if i < len(battlefields):
+            units = battlefields[i].get('units', [])
+            self_units = [u for u in units if u.get('controller') == perspective_id_str]
+            opp_units  = [u for u in units if u.get('controller') == opp_id_str]
+            features.extend(_extract_side_t2(self_units))
+            features.extend(_extract_side_t2(opp_units))
+        else:
+            features.extend([0] * (2 * MAX_BF_UNITS_PER_SIDE * 8))
+
+    # Extended globals (positions 4599..4622) — 24 floats. Must match
+    # feature_extractor.cpp layout exactly.
+    # 4599..4600: ready base units (self, opp)
+    features.append(self_data.get('ready_base_units', 0))
+    features.append(opp_data.get('ready_base_units', 0))
+    # 4601..4602: cost modifier magnitude sum (self, opp)
+    features.append(self_data.get('cost_modifier_magnitude', 0))
+    features.append(opp_data.get('cost_modifier_magnitude', 0))
+    # 4603..4604: additional turn queue depth (self, opp)
+    features.append(self_data.get('additional_turns_queued', 0))
+    features.append(opp_data.get('additional_turns_queued', 0))
+    # 4605..4608: contested-by-self per BF (×4)
+    for i in range(4):
+        if i < len(battlefields):
+            bf = battlefields[i]
+            features.append(1 if (bf.get('contested', False)
+                                   and bf.get('contested_by', 'none') == perspective_id_str)
+                            else 0)
+        else:
+            features.append(0)
+    # 4609..4612: combat_staged per BF (×4)
+    for i in range(4):
+        features.append(1 if (i < len(battlefields)
+                               and battlefields[i].get('combat_staged', False))
+                        else 0)
+    # 4613..4616: showdown_staged per BF (×4)
+    for i in range(4):
+        features.append(1 if (i < len(battlefields)
+                               and battlefields[i].get('showdown_staged', False))
+                        else 0)
+    # 4617..4620: facedown age per BF (×4)
+    for i in range(4):
+        features.append(battlefields[i].get('oldest_facedown_age', 0)
+                        if i < len(battlefields) else 0)
+    # 4621: focus_holder (1=self, 0=opp, -1=no showdown / unassigned)
+    fh = state.get('focus_holder', 'none')
+    if fh == perspective_id_str:
+        features.append(1)
+    elif fh == 'none':
+        features.append(-1)
+    else:
+        features.append(0)
+    # 4622: total battlefield count
+    features.append(len(battlefields))
+
     # Pad to reserved width for forward-compatible --resume
     if len(features) < RESERVED_STATE_DIM:
         features.extend([0.0] * (RESERVED_STATE_DIM - len(features)))
@@ -594,8 +676,10 @@ def featurize_single_action(action):
 
 ACTION_FEATURE_DIM = 25
 MAX_LEGAL_ACTIONS = 64  # pad/truncate to this
-RESERVED_STATE_DIM = 4608  # pad state features to this width for forward-compatible --resume
+RESERVED_STATE_DIM = 4864  # pad state features for forward-compatible --resume
 CARD_VOCAB_SIZE = 787       # card_def_id 1..787 → multi-hot position id-1
+CARD_EMBEDDING_DIM = 32     # learned card identity vector dimension
+CARD_PAD_INDEX = 0          # reserved index for "no card" / pad / invalid token
 
 
 # ─── Dataset ─────────────────────────────────────────────────────────────────
@@ -607,7 +691,7 @@ import struct
 # Binary record format (must match src/io/binary_data_serializer.cpp)
 BIN_MAGIC = b'RFBA'
 BIN_HEADER_SIZE = 20
-BIN_STATE_DIM_NATIVE = 4407
+BIN_STATE_DIM_NATIVE = 4623
 BIN_RECORD_DTYPE = np.dtype([
     ('perspective', 'u1'),
     ('num_legal',   'u1'),
@@ -640,7 +724,13 @@ def _find_binary_files(data_dir, max_games=None):
 
 
 def _read_binary_header(path):
-    """Read and validate the 20-byte header of a .bin file."""
+    """Read and validate the 20-byte header of a .bin file.
+
+    Header layout: magic(4) + version(2) + state_dim(2) + action_dim(2)
+    + max_actions(2) + num_decisions(4) + winner(1) + score_p1(1) + score_p2(1)
+    + pad(1) = 20 bytes. Score fields are int8 0..8; pre-change binaries have
+    them as 0 and reward computation falls back to ±1 win/loss.
+    """
     with open(path, 'rb') as f:
         h = f.read(BIN_HEADER_SIZE)
     if len(h) < BIN_HEADER_SIZE or h[0:4] != BIN_MAGIC:
@@ -648,6 +738,7 @@ def _read_binary_header(path):
     version, state_dim, action_dim, max_actions = struct.unpack('<HHHH', h[4:12])
     num_decisions, = struct.unpack('<I', h[12:16])
     winner = h[16]
+    score_p1, score_p2 = struct.unpack('<bb', h[17:19])
     if (state_dim != BIN_STATE_DIM_NATIVE or action_dim != ACTION_FEATURE_DIM
             or max_actions != MAX_LEGAL_ACTIONS):
         log.warning("binary file %s has unexpected dims (state=%d action=%d max=%d)",
@@ -658,6 +749,8 @@ def _read_binary_header(path):
         'version': version,
         'num_decisions': num_decisions,
         'winner': winner,
+        'score_p1': int(score_p1),
+        'score_p2': int(score_p2),
     }
 
 
@@ -911,7 +1004,18 @@ class RiftboundBinaryDataset(Dataset):
 
         winner = self._files[file_idx]['winner']
         perspective = int(rec['perspective'])
-        if winner == 2:
+        score_p1 = self._files[file_idx].get('score_p1', 0)
+        score_p2 = self._files[file_idx].get('score_p2', 0)
+
+        # Reward: score-differential when scores are available (newer .bin
+        # files), else fall back to ±1 win/loss / 0 draw. Score-diff densifies
+        # the gradient signal: a candidate that wins 8-7 gets +0.125, a
+        # blowout 8-0 gets +1.0. Same for losses. Reduces variance.
+        if score_p1 > 0 or score_p2 > 0:
+            self_score = score_p1 if perspective == 0 else score_p2
+            opp_score  = score_p2 if perspective == 0 else score_p1
+            outcome = float(self_score - opp_score) / 8.0
+        elif winner == 2:
             outcome = 0.0
         elif winner == perspective:
             outcome = 1.0
@@ -1119,49 +1223,254 @@ class RiftboundDataset(Dataset):
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 
-class RiftboundAgent(nn.Module):
-    """Per-action scoring model with value head.
+def _state_card_id_positions():
+    """Return a sorted list of state-feature positions that hold card_def_id
+    values. These positions get embedded via the shared card embedding table;
+    they're zeroed out of the normalized state vector to avoid double-counting.
 
-    Scores each specific legal action (card + target + action type).
-    Input: state features concatenated with each action's features.
-    Output: one score per action + win probability.
+    Layout must match feature_extractor.cpp exactly. Constants are duplicated
+    here from the C++ side rather than imported because the model definition
+    needs them at construction time before the dataset loads.
+    """
+    positions = []
+    # 0..9: global features (no card IDs).
+    # 10..17: 4 chain items × (source_def_id, is_self). Card ID at +0 of each.
+    for slot in range(MAX_CHAIN_ITEMS):
+        positions.append(10 + slot * 2)
+
+    # Self player block starts at offset 18, 70 features long.
+    # Within player block: champion at +8, legend at +10,
+    #                      hand_ids at +19..28, base_unit_ids at +57..59,
+    #                      base_gear_ids at +61..62.
+    self_off = 18
+    positions.append(self_off + 8)        # champion
+    positions.append(self_off + 10)       # legend
+    for k in range(10):                   # hand
+        positions.append(self_off + 19 + k)
+    for k in range(3):                    # base units
+        positions.append(self_off + 57 + k)
+    for k in range(2):                    # base gear
+        positions.append(self_off + 61 + k)
+
+    # Opp player block starts at offset 88 (same internal layout).
+    opp_off = 88
+    positions.append(opp_off + 8)
+    positions.append(opp_off + 10)
+    for k in range(10):                   # always 0 (opp hand hidden) but kept
+        positions.append(opp_off + 19 + k)
+    for k in range(3):
+        positions.append(opp_off + 57 + k)
+    for k in range(2):
+        positions.append(opp_off + 61 + k)
+
+    # BF block starts at offset 158, 49 features per BF, 4 BFs.
+    # Per BF: bf_card_id at +0, then 8 status fields, then side1 (20),
+    # then side2 (20). Within each side: 11 counts/keywords, then 3 unit IDs,
+    # then 3 might, then 3 damage.
+    for i in range(4):
+        bf_base = 158 + i * 49
+        positions.append(bf_base)             # bf card_def_id
+        side1_base = bf_base + 9              # 1 (card_def_id) + 8 status fields
+        for k in range(3):                    # side1 top-3 unit IDs at +11..13
+            positions.append(side1_base + 11 + k)
+        side2_base = bf_base + 29             # 9 + 20
+        for k in range(3):                    # side2 top-3 unit IDs
+            positions.append(side2_base + 11 + k)
+
+    # Tier 1 chain item targets: 4 slots × 2 def_ids at positions 354..361.
+    for k in range(8):
+        positions.append(354 + k)
+
+    # Tier 1 ext per-unit attachments at offset 374.
+    # Layout: 8 side slots × 3 units × 4 fields. Attachment_def_id is field 1.
+    for s in range(8):
+        for u in range(3):
+            positions.append(374 + s * 12 + u * 4 + 1)
+
+    return sorted(set(positions))
+
+
+def _action_card_id_positions():
+    """Return positions in the 25-dim action feature vector that hold
+    card_def_id values.
+
+    Layout (must match featurize_single_action above):
+      0..13  action type one-hot (no IDs)
+      14     card_def_id        ← embedded
+      15..16 target_def_ids x2  ← embedded
+      17     ability_source_id  ← embedded
+      18..19 dest_bf, play_bf   (BF IDs, not card IDs — skipped)
+      20     mulligan_count      (count, not ID — skipped)
+      21..22 unit_def_ids x2     ← embedded
+      23     chosen_object_def   ← embedded
+      24     chosen_bf            (BF ID — skipped)
+    """
+    return [14, 15, 16, 17, 21, 22, 23]
+
+
+# Cached at module load so the model class can reference them as defaults.
+_STATE_CARD_POSITIONS = _state_card_id_positions()
+_ACTION_CARD_POSITIONS = _action_card_id_positions()
+
+
+class RiftboundAgent(nn.Module):
+    """Per-action scoring model with card embeddings, dropout, and attention.
+
+    Architectural improvements over the previous 2-layer MLP:
+      1. Card embedding table (788 × 32) shared between state and action
+         features. Replaces raw card_def_id floats — gives the model a
+         learnable identity vector per card so similar cards (equipment,
+         tempo units, control spells, archetype synergies) cluster.
+      2. Dropout in encoder + action scorer for regularization across
+         REINFORCE iters where the data is on-policy-stale.
+      3. Self-attention over the action set so each action's score is
+         informed by all other available actions. The previous independent
+         scoring couldn't reason "play X *instead of* Y".
+
+    ONNX-exportable: uses standard ops (Embedding, MultiheadAttention,
+    Linear, LayerNorm, Dropout, scatter via masked operations).
     """
 
-    def __init__(self, state_dim, action_dim=ACTION_FEATURE_DIM, hidden_dim=256):
+    def __init__(self, state_dim, action_dim=ACTION_FEATURE_DIM, hidden_dim=512,
+                 card_vocab=CARD_VOCAB_SIZE, card_embed_dim=CARD_EMBEDDING_DIM,
+                 dropout=0.15, attn_heads=4):
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.hidden_dim = hidden_dim
+        self.card_embed_dim = card_embed_dim
 
-        # Input normalization — raw features include card_def_ids up to 787,
-        # BattlefieldIds 0..15, etc., which are orders of magnitude larger
-        # than most other features. Without normalization the first Linear
-        # layer produces huge activations → wild logits → exploding loss.
-        # LayerNorm rescales per-sample so the encoder sees ~unit-variance inputs.
+        # ── Card embedding (shared between state and action features) ──────
+        # Index 0 = "no card" / pad: padding_idx makes its embedding fixed at
+        # zeros (no gradient updates) so empty slots don't waste capacity.
+        # card_def_ids in [1, 787] → indices [1, 787]. Total table size: 788.
+        self.card_embedding = nn.Embedding(card_vocab + 1, card_embed_dim,
+                                           padding_idx=CARD_PAD_INDEX)
+
+        # Position lists are registered as non-trainable buffers so they
+        # travel with the model (state_dict, .to(device), ONNX export).
+        self.register_buffer(
+            "state_card_positions",
+            torch.tensor(_STATE_CARD_POSITIONS, dtype=torch.long),
+            persistent=False,
+        )
+        self.register_buffer(
+            "action_card_positions",
+            torch.tensor(_ACTION_CARD_POSITIONS, dtype=torch.long),
+            persistent=False,
+        )
+        # Mask vector: 1 for non-card positions, 0 for card-ID positions.
+        # Multiplied into state_features before LayerNorm to zero out the
+        # raw card IDs (their content is now carried by the embedding).
+        state_mask = torch.ones(state_dim, dtype=torch.float32)
+        for p in _STATE_CARD_POSITIONS:
+            if p < state_dim:
+                state_mask[p] = 0.0
+        self.register_buffer("state_card_zero_mask", state_mask, persistent=False)
+        action_mask = torch.ones(action_dim, dtype=torch.float32)
+        for p in _ACTION_CARD_POSITIONS:
+            if p < action_dim:
+                action_mask[p] = 0.0
+        self.register_buffer("action_card_zero_mask", action_mask, persistent=False)
+
+        # Number of card embeddings concatenated per sample.
+        num_state_cards = len(_STATE_CARD_POSITIONS)
+        num_action_cards = len(_ACTION_CARD_POSITIONS)
+        self._num_state_cards = num_state_cards
+        self._num_action_cards = num_action_cards
+
+        enriched_state_dim = state_dim + num_state_cards * card_embed_dim
+        enriched_action_dim = action_dim + num_action_cards * card_embed_dim
+
+        # ── Input normalization ─────────────────────────────────────────────
+        # LayerNorm on the state input AFTER zeroing card-ID slots. Card
+        # embeddings are concatenated post-norm (they're already on a sane
+        # scale by definition).
         self.state_norm = nn.LayerNorm(state_dim)
         self.action_norm = nn.LayerNorm(action_dim)
 
-        # State encoder
+        # ── State encoder ───────────────────────────────────────────────────
+        # Deeper than the old model (3 hidden layers vs 2) with dropout
+        # between them. Card embeddings concatenated as input.
         self.state_encoder = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
+            nn.Linear(enriched_state_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
         )
 
-        # Action scorer: takes encoded state + action features → score
-        self.action_scorer = nn.Sequential(
-            nn.Linear(hidden_dim // 2 + action_dim, hidden_dim // 2),
+        # ── Per-action projection ───────────────────────────────────────────
+        # Brings each action into a common embedding space sized to the
+        # attention input. Uses dropout on the projection output.
+        action_hidden = hidden_dim // 2
+        self.action_proj = nn.Sequential(
+            nn.Linear(enriched_action_dim + hidden_dim // 2, action_hidden),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1),
+            nn.Dropout(dropout),
         )
 
-        # Value head: from state alone
-        self.value_head = nn.Sequential(
-            nn.Linear(hidden_dim // 2, 64),
+        # ── Self-attention over the action set ──────────────────────────────
+        # 4-head attention over the (up-to) 64 actions. Each action's
+        # representation is informed by all others so the scorer can pick
+        # the *best* action given the alternatives, not score each in
+        # isolation.
+        self.action_attn = nn.MultiheadAttention(
+            embed_dim=action_hidden,
+            num_heads=attn_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.attn_norm = nn.LayerNorm(action_hidden)
+
+        # ── Action scorer ───────────────────────────────────────────────────
+        self.action_scorer = nn.Sequential(
+            nn.Linear(action_hidden, action_hidden),
             nn.ReLU(),
-            nn.Linear(64, 1),
+            nn.Dropout(dropout),
+            nn.Linear(action_hidden, 1),
+        )
+
+        # ── Value head (from state alone) ───────────────────────────────────
+        self.value_head = nn.Sequential(
+            nn.Linear(hidden_dim // 2, 128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, 1),
             nn.Tanh(),
         )
+
+    # ── Helpers ─────────────────────────────────────────────────────────────
+
+    def _embed_state_cards(self, state_features):
+        """Look up the card embedding at each state card_def_id position.
+
+        Returns:
+            embeddings: (batch, num_state_cards * card_embed_dim)
+        """
+        # Gather card_def_ids at the known positions, clamp to vocab range.
+        # state_features is float; cast to long for embedding lookup. Clamp
+        # negative values (from BF ID guards etc.) to padding index 0.
+        ids = state_features.index_select(1, self.state_card_positions)
+        ids = ids.long().clamp(min=0, max=CARD_VOCAB_SIZE)
+        embs = self.card_embedding(ids)              # (B, N_cards, embed_dim)
+        return embs.flatten(start_dim=1)             # (B, N_cards * embed_dim)
+
+    def _embed_action_cards(self, action_features):
+        """Look up the card embedding at each action card_def_id position.
+
+        Returns:
+            embeddings: (batch, max_actions, num_action_cards * card_embed_dim)
+        """
+        ids = action_features.index_select(2, self.action_card_positions)
+        ids = ids.long().clamp(min=0, max=CARD_VOCAB_SIZE)
+        embs = self.card_embedding(ids)              # (B, A, N_cards, embed_dim)
+        return embs.flatten(start_dim=2)             # (B, A, N_cards * embed_dim)
+
+    # ── Forward ─────────────────────────────────────────────────────────────
 
     def forward(self, state_features, action_features, action_mask=None):
         """
@@ -1173,34 +1482,54 @@ class RiftboundAgent(nn.Module):
             action_scores: (batch, max_actions)
             value: (batch,)
         """
-        # Normalize raw features (in-place; doesn't affect numerical training)
-        state_features = self.state_norm(state_features)
-        action_features = self.action_norm(action_features)
+        # ── Embed card IDs ──────────────────────────────────────────────────
+        state_card_embs = self._embed_state_cards(state_features)
+        action_card_embs = self._embed_action_cards(action_features)
 
-        # Encode state
-        state_enc = self.state_encoder(state_features)  # (batch, hidden//2)
+        # ── Zero out card_ID positions then normalize continuous features ───
+        # Multiplying by the mask is ONNX-friendly (avoids in-place scatter).
+        state_clean = state_features * self.state_card_zero_mask
+        action_clean = action_features * self.action_card_zero_mask
+        state_normed = self.state_norm(state_clean)
+        action_normed = self.action_norm(action_clean)
 
-        # Score each action
-        batch_size = state_features.shape[0]
-        max_actions = action_features.shape[1]
+        # ── Concatenate card embeddings to enrich the inputs ────────────────
+        state_input = torch.cat([state_normed, state_card_embs], dim=1)
+        action_input = torch.cat([action_normed, action_card_embs], dim=2)
 
-        # Expand state encoding to match actions
-        state_expanded = state_enc.unsqueeze(1).expand(-1, max_actions, -1)
-        # (batch, max_actions, hidden//2)
+        # ── Encode state ────────────────────────────────────────────────────
+        state_enc = self.state_encoder(state_input)  # (B, hidden//2)
 
-        # Concatenate state + action features
-        combined = torch.cat([state_expanded, action_features], dim=-1)
-        # (batch, max_actions, hidden//2 + action_dim)
+        # ── Per-action: combine with state encoding, project to attn space ──
+        max_actions = action_input.shape[1]
+        state_for_actions = state_enc.unsqueeze(1).expand(-1, max_actions, -1)
+        combined = torch.cat([state_for_actions, action_input], dim=2)
+        # (B, A, hidden//2 + enriched_action_dim)
+        action_rep = self.action_proj(combined)      # (B, A, action_hidden)
 
-        # Score
-        scores = self.action_scorer(combined).squeeze(-1)  # (batch, max_actions)
+        # ── Self-attention over the action set ──────────────────────────────
+        # key_padding_mask: True at positions to IGNORE (padded actions).
+        attn_padding = None
+        if action_mask is not None:
+            attn_padding = (action_mask == 0)        # (B, A)
+            # If ALL actions are masked for some batch row (shouldn't happen
+            # but defensive), drop the mask for that row to avoid NaN softmax.
+            # MultiheadAttention NaN-guards internally if any row is all-True.
+        attn_out, _ = self.action_attn(
+            action_rep, action_rep, action_rep,
+            key_padding_mask=attn_padding,
+            need_weights=False,
+        )
+        # Residual connection + layer norm — standard transformer pattern.
+        action_rep = self.attn_norm(action_rep + attn_out)
 
-        # Mask invalid actions with -inf
+        # ── Score each action ───────────────────────────────────────────────
+        scores = self.action_scorer(action_rep).squeeze(-1)  # (B, A)
         if action_mask is not None:
             scores = scores.masked_fill(action_mask == 0, float('-inf'))
 
-        # Value from state alone
-        value = self.value_head(state_enc).squeeze(-1)  # (batch,)
+        # ── Value head ──────────────────────────────────────────────────────
+        value = self.value_head(state_enc).squeeze(-1)        # (B,)
 
         return scores, value
 

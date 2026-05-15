@@ -267,6 +267,14 @@ struct GameState {
     // Decision counter (for training data indexing)
     int decision_index = 0;
 
+    // Sequence of opaque action IDs applied to this game, in order.
+    // Engine-agnostic: the producer (e.g., OpenSpiel wrapper) defines the
+    // encoding. Lives here so that a future memcpy-based Clone() carries the
+    // full apply-history with the rest of the state — no out-of-band copy.
+    // Read-only from the engine's perspective today; written by the harness
+    // that applies actions (currently RiftboundState::DoApplyAction).
+    std::vector<int64_t> action_history;
+
     // ── Object management ──
 
     GameObjectId createObject() {

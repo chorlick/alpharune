@@ -225,6 +225,33 @@ struct SpellResolvedEvent {
     PlayerId controller;
 };
 
+/// A card's identity was revealed to one or more observers. Fired by
+/// Aurora's top-of-deck reveal, Mindsplitter / Sabotage hand reveals,
+/// Vision / Predict peek-ahead, Stacked Deck searches, etc.
+///
+/// Observers (PlayerStates that have `revealed_to_player` in their bit)
+/// can incorporate the revealed identity into their state representation
+/// via the (currently unfeaturized) PlayerState::observed_cards vector.
+///
+/// Phase B-2 follow-up: wire this from Aurora / Mindsplitter / Sabotage /
+/// Vision / Predict card implementations and expose observed_cards as
+/// new feature dims in the trainer (see Phase 10 — Memory-Augmented
+/// Agents in CLAUDE.md).
+struct CardRevealedEvent {
+    GameObjectId card;            // the card that was revealed
+    CardDefId    card_def_id;     // its identity (registry index)
+    PlayerId     owner;           // who owns/owned the card
+    /// Who is allowed to know the identity now. If `all`, every player
+    /// learns the identity (full publicity, e.g., facedown flip on combat).
+    /// Otherwise this is the single player observing the reveal.
+    bool         revealed_to_all = false;
+    PlayerId     revealed_to     = PlayerId::None;
+    /// Zone the card was in when revealed (top of deck, hand, facedown).
+    /// Useful when masking — the model may handle "saw it in opponent's
+    /// hand" differently from "saw it briefly on top of deck."
+    ZoneType     source_zone     = ZoneType::MainDeck;
+};
+
 // ─── Event Bus ───────────────────────────────────────────────────────────────
 /// Central event dispatcher using Boost.Signals2.
 ///
@@ -271,6 +298,7 @@ public:
     boost::signals2::signal<void(const ChainItemResolvedEvent&)>   on_chain_item_resolved;
     boost::signals2::signal<void(const ChainEmptiedEvent&)>        on_chain_emptied;
     boost::signals2::signal<void(const SpellResolvedEvent&)>       on_spell_resolved;
+    boost::signals2::signal<void(const CardRevealedEvent&)>        on_card_revealed;
 
     // Convenience emit methods
     void emit(const UnitMovedEvent& e)          { on_unit_moved(e); }
@@ -302,6 +330,7 @@ public:
     void emit(const ChainItemResolvedEvent& e)   { on_chain_item_resolved(e); }
     void emit(const ChainEmptiedEvent& e)        { on_chain_emptied(e); }
     void emit(const SpellResolvedEvent& e)       { on_spell_resolved(e); }
+    void emit(const CardRevealedEvent& e)        { on_card_revealed(e); }
 
     // Convenience logging
     void logTrace(const std::string& msg) { emit(LogEvent{LogLevel::Trace, msg}); }
@@ -339,6 +368,7 @@ public:
         on_chain_item_resolved.disconnect_all_slots();
         on_chain_emptied.disconnect_all_slots();
         on_spell_resolved.disconnect_all_slots();
+        on_card_revealed.disconnect_all_slots();
         on_log.disconnect_all_slots();
     }
 };

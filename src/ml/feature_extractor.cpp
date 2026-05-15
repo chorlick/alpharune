@@ -481,6 +481,156 @@ std::vector<float> extractStateFeatures(const GameState& state,
     features.push_back(self_ps.cant_play_cards_this_turn ? 1.0f : 0.0f);
     features.push_back(opp_ps.cant_play_cards_this_turn  ? 1.0f : 0.0f);
 
+    // ── Tier 2/3 expansion (positions 4407..4622) ───────────────────────────
+    //
+    // For each BF (4) × side (self, opp) × top-3 unit (by current_might desc)
+    // emit 8 fields:
+    //   0: assault_value (base, not temp)
+    //   1: shield_value
+    //   2: deflect_value
+    //   3: buff_count (permanent)
+    //   4: temp_buff_count (expires at expiration step)
+    //   5: has Tank keyword (0/1)
+    //   6: has Backline keyword (0/1)
+    //   7: has Ganking keyword (0/1)
+    // Missing units zero-padded. Sort order must match the existing extended
+    // block so positions align with the same unit identity.
+    auto emit_unit_t2 = [&](const std::vector<GameObjectId>& units) {
+        struct U {
+            int assault, shield, deflect;
+            int buff_count, temp_buff_count;
+            int tank, backline, ganking;
+            int might;  // sort key
+        };
+        std::vector<U> infos;
+        infos.reserve(units.size());
+        for (auto uid : units) {
+            auto& u = state.getObject(uid);
+            infos.push_back({
+                u.assault_value, u.shield_value, u.deflect_value,
+                u.buff_count, u.temp_buff_count,
+                u.hasKeyword(Keyword::Tank) ? 1 : 0,
+                u.hasKeyword(Keyword::Backline) ? 1 : 0,
+                u.hasKeyword(Keyword::Ganking) ? 1 : 0,
+                u.current_might
+            });
+        }
+        std::sort(infos.begin(), infos.end(),
+                  [](const U& a, const U& b) { return a.might > b.might; });
+        for (int i = 0; i < kMaxBfUnitsPerSide; ++i) {
+            if (i < static_cast<int>(infos.size())) {
+                const U& u = infos[i];
+                features.push_back(static_cast<float>(u.assault));
+                features.push_back(static_cast<float>(u.shield));
+                features.push_back(static_cast<float>(u.deflect));
+                features.push_back(static_cast<float>(u.buff_count));
+                features.push_back(static_cast<float>(u.temp_buff_count));
+                features.push_back(static_cast<float>(u.tank));
+                features.push_back(static_cast<float>(u.backline));
+                features.push_back(static_cast<float>(u.ganking));
+            } else {
+                for (int f = 0; f < kPerUnitExtFieldsT2; ++f)
+                    features.push_back(0.0f);
+            }
+        }
+    };
+    for (int i = 0; i < 4; ++i) {
+        if (i < static_cast<int>(state.battlefields.size())) {
+            auto bf_loc = BattlefieldLocation{state.battlefields[i].id};
+            // perspective ordering: self side first, then opp side
+            emit_unit_t2(state.unitsAt(bf_loc, perspective));
+            emit_unit_t2(state.unitsAt(bf_loc, opp));
+        } else {
+            for (int slot = 0; slot < 2 * kMaxBfUnitsPerSide * kPerUnitExtFieldsT2; ++slot)
+                features.push_back(0.0f);
+        }
+    }
+
+    // Extended globals (positions 4599..4622, 24 floats).
+    // 4599..4600: ready base unit count (self, opp).
+    auto count_ready_base = [&](PlayerId p) {
+        int n = 0;
+        for (auto& [id, obj] : state.objects) {
+            if (obj.isUnit() && obj.controller == p && obj.isAtBase()
+                && !obj.is_exhausted) n++;
+        }
+        return n;
+    };
+    features.push_back(static_cast<float>(count_ready_base(perspective)));
+    features.push_back(static_cast<float>(count_ready_base(opp)));
+
+    // 4601..4602: cost modifier magnitude sum (self, opp).
+    auto cost_mod_sum = [](const auto& mods) {
+        int s = 0;
+        for (auto& m : mods) s += m.energy_reduction;
+        return s;
+    };
+    features.push_back(static_cast<float>(cost_mod_sum(self_ps.cost_modifiers)));
+    features.push_back(static_cast<float>(cost_mod_sum(opp_ps.cost_modifiers)));
+
+    // 4603..4604: additional turn queue depth (self, opp).
+    features.push_back(static_cast<float>(self_ps.additional_turns.size()));
+    features.push_back(static_cast<float>(opp_ps.additional_turns.size()));
+
+    // 4605..4608: contested-by-self per BF (×4).
+    for (int i = 0; i < 4; ++i) {
+        if (i < static_cast<int>(state.battlefields.size())) {
+            const auto& bf = state.battlefields[i];
+            features.push_back(bf.is_contested && bf.contested_by == perspective ? 1.0f : 0.0f);
+        } else {
+            features.push_back(0.0f);
+        }
+    }
+
+    // 4609..4612: combat_staged per BF (×4).
+    for (int i = 0; i < 4; ++i) {
+        if (i < static_cast<int>(state.battlefields.size())) {
+            features.push_back(state.battlefields[i].combat_staged ? 1.0f : 0.0f);
+        } else {
+            features.push_back(0.0f);
+        }
+    }
+
+    // 4613..4616: showdown_staged per BF (×4).
+    for (int i = 0; i < 4; ++i) {
+        if (i < static_cast<int>(state.battlefields.size())) {
+            features.push_back(state.battlefields[i].showdown_staged ? 1.0f : 0.0f);
+        } else {
+            features.push_back(0.0f);
+        }
+    }
+
+    // 4617..4620: facedown age (max turns_since_hidden across facedown cards) per BF (×4).
+    // 0 = no facedown or only hidden this turn (no Reaction yet);
+    // 1+ = at least one facedown card is reaction-ready.
+    for (int i = 0; i < 4; ++i) {
+        if (i < static_cast<int>(state.battlefields.size())) {
+            const auto& bf = state.battlefields[i];
+            int max_age = 0;
+            for (auto fid : bf.facedown) {
+                if (!state.objectExists(fid)) continue;
+                int hidden_on = state.getObject(fid).hidden_on_turn;
+                if (hidden_on >= 0) {
+                    int age = state.turn.turn_number - hidden_on;
+                    if (age > max_age) max_age = age;
+                }
+            }
+            features.push_back(static_cast<float>(max_age));
+        } else {
+            features.push_back(0.0f);
+        }
+    }
+
+    // 4621: focus_holder (1=self, 0=opp, -1=no showdown / no focus assigned).
+    if (state.turn.focus_holder.has_value()) {
+        features.push_back(*state.turn.focus_holder == perspective ? 1.0f : 0.0f);
+    } else {
+        features.push_back(-1.0f);
+    }
+
+    // 4622: total battlefield count.
+    features.push_back(static_cast<float>(state.battlefields.size()));
+
     return features;
 }
 

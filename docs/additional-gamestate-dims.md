@@ -2,7 +2,15 @@
 
 Candidate features not yet in the feature vector. All are serialized in JSONL or trivially derivable from existing game state. Grouped by priority.
 
-**Status**: Tier 1 (items 1–7, +116 features), the Zone Multi-hot Encoding (+3935 features for perfect-information game state), and the per-player turn-flag block (+2 features for Brynhir lockout observability) are **complete** as of the 4407-dim feature vector (`RESERVED_STATE_DIM=4608`). Implementations live in `src/ml/feature_extractor.{h,cpp}` (C++, the canonical source used by both online inference and binary training-data writer) and `scripts/train_agent.py extract_state_features` (Python, used to validate parity from JSONL). `scripts/parity_check.py` enforces byte-for-byte equality between the two.
+**Status**: **Tier 1 + Zone Multi-hot + turn flags + most of Tier 2 + selected Tier 3 are complete** as of the 4623-dim feature vector (`RESERVED_STATE_DIM=4864`). Implementations live in `src/ml/feature_extractor.{h,cpp}` (C++, the canonical source used by both online inference and binary training-data writer) and `scripts/train_agent.py extract_state_features` (Python, used to validate parity from JSONL). `scripts/parity_check.py` enforces byte-for-byte equality between the two — last verified across 10 cross-archetype games (6,605 decisions) on 2026-05-14.
+
+**What's in the 4623-dim vector**:
+- Base 354 (10 global + 8 chain + 70 self + 70 opp + 196 BF) — unchanged
+- Tier 1 expansion (+116, positions 354..469) — chain item targets, cost modifier types, per-BF scored flags, per-unit ext (combat designation, attachment, might delta, temp might)
+- Zone multi-hot (+3935, positions 470..4404) — 5 zones × 787 card_def_ids
+- Per-player turn flags (+2, positions 4405..4406) — Brynhir lockout observability
+- **Tier 2/3 per-unit ext (+192, positions 4407..4598)** — assault, shield, deflect values, buff_count, temp_buff_count, Tank/Backline/Ganking keyword bits for top-3 units × 2 sides × 4 BFs
+- **Tier 2/3 globals (+24, positions 4599..4622)** — ready base units, cost mod magnitude, additional turn depth, contested-by-self per BF, combat/showdown staged per BF, facedown age per BF, focus holder, total BF count
 
 The Zone Multi-hot Encoding occupies positions 470..4404: five 787-dim count vectors for self deck, self trash, self banishment, opp trash, opp banishment. Each card_def_id `c` in zone `Z` contributes `count` to position `(zone_offset + c - 1)`. Opponent's deck and hand remain hidden per CR.
 
@@ -83,9 +91,11 @@ The model sees `current_might` (which includes temporary buffs) but can't distin
 
 **Tier 1 subtotal: +116 features → 470 total** ✅ implemented; positions 354–469. See `kStateFeatureDim` in `src/ml/feature_extractor.h` for the exact layout.
 
-## Tier 2 — Medium Impact
+## Tier 2 — Medium Impact (✅ MOSTLY COMPLETE)
 
-### 8. Top-3 Trash card_def_ids per Player (+6 features)
+Status: items 9, 10, 11, 12, 13, 14, 15, 16 implemented in the new 4623-dim feature vector. Item 8 (top-3 trash card_def_ids) is **deferred as redundant** because the zone multi-hot block (positions 1257..2043 for self trash, 2831..3617 for opp trash) already encodes the full count vector of each card in trash — strictly more information than the top-3 IDs.
+
+### 8. Top-3 Trash card_def_ids per Player (+6 features) — DEFERRED (redundant with multi-hot)
 
 Both players' trash zones are fully public. Knowing what's been removed tells the model what threats are gone, what Deathknell/recycle targets exist, and what the opponent has already used.
 
@@ -95,7 +105,7 @@ Both players' trash zones are fully public. Knowing what's been removed tells th
 - **Why it matters**: Cards like Glasc Mixologist play from trash, Black Rose Spy channels from trash, and strategic awareness of "opponent already used their removal" is high-signal.
 - **Source**: `PlayerState::trash` (C++), `trash_card_ids` in JSONL (already serialized as full list)
 
-### 9. Ready vs Exhausted Base Unit Split (+2 features)
+### 9. Ready vs Exhausted Base Unit Split (+2 features) ✅
 
 The model knows total base unit count but can't distinguish "3 ready units that can move this turn" from "3 exhausted units stuck at base." This directly affects movement decisions and board development tempo.
 
@@ -105,7 +115,7 @@ The model knows total base unit count but can't distinguish "3 ready units that 
 - **Why it matters**: Ready base units represent immediate movement options. The current feature only shows total base units, so the model can't tell if it has units available to deploy to battlefields.
 - **Source**: Already computed during base unit iteration in `extractPlayerFeatures()` — just need to split the count
 
-### 10. Buff Count per Top-3 BF Unit (+24 features)
+### 10. Buff Count per Top-3 BF Unit (+24 features) ✅
 
 Number of active buffs on a unit. Drives conditional auras and indicates how much a unit's stats rely on temporary effects.
 
@@ -115,7 +125,7 @@ Number of active buffs on a unit. Drives conditional auras and indicates how muc
 - **Why it matters**: Conditional self-effects ("While I'm buffed, I have [Ganking]") and tactical awareness of which units are propped up by temporary buffs vs naturally strong.
 - **Source**: `GameObject::buff_count` (C++), `obj["buff_count"]` in JSONL
 
-### 11. Assault/Shield/Deflect Value Magnitudes (+72 features)
+### 11. Assault/Shield/Deflect Value Magnitudes (+72 features) ✅
 
 The model knows a unit has [Assault] but not whether it's [Assault 1] or [Assault 3]. Assault 3 on a 3M unit means it's effectively 6M when attacking — a massive difference.
 
@@ -125,7 +135,7 @@ The model knows a unit has [Assault] but not whether it's [Assault 1] or [Assaul
 - **Why it matters**: Combat math depends heavily on these magnitudes. [Shield 4] absorbs huge hits; [Shield 1] barely matters. The keyword count alone says "1 unit has Shield" but not how strong it is.
 - **Source**: `GameObject::assault_value`, `shield_value`, `deflect_value` (C++). Already on every object but not serialized for units.
 
-### 12. Cost Modifier Magnitude (+2 features)
+### 12. Cost Modifier Magnitude (+2 features) ✅
 
 The total energy reduction available from all active cost modifiers, not just count.
 
@@ -135,7 +145,7 @@ The total energy reduction available from all active cost modifiers, not just co
 - **Why it matters**: A -2 energy reduction opens plays that -1 doesn't. Currently only count is captured.
 - **Source**: `PlayerState::cost_modifiers` (C++), iterate and sum
 
-### 13. Contested By Self (+4 features)
+### 13. Contested By Self (+4 features) ✅
 
 The `is_contested` flag is already captured, but not WHO is contesting — are you the contester (pushing to take control) or the defender (holding control while opponent pushes)?
 
@@ -145,7 +155,7 @@ The `is_contested` flag is already captured, but not WHO is contesting — are y
 - **Why it matters**: Contesting vs defending at a BF drives completely different play patterns (deploy more units to contest vs protect your existing lead).
 - **Source**: `BattlefieldState::contested_by` (C++). Need to add to serializer.
 
-### 14. Focus Holder (+1 feature)
+### 14. Focus Holder (+1 feature) ✅
 
 During showdowns, who holds focus determines who plays the next spell. The model doesn't currently know whether it has focus or the opponent does.
 
@@ -155,7 +165,7 @@ During showdowns, who holds focus determines who plays the next spell. The model
 - **Why it matters**: Having focus means you act first in the showdown — affects whether to pass (cede the showdown) or play another spell.
 - **Source**: `TurnState::focus_holder` (C++). Need to serialize.
 
-### 15. Additional Turn Queue Depth (+2 features)
+### 15. Additional Turn Queue Depth (+2 features) ✅
 
 The global `is_additional_turn` flag tells the model about the current turn, but not how many extra turns are queued per player.
 
@@ -165,7 +175,7 @@ The global `is_additional_turn` flag tells the model about the current turn, but
 - **Why it matters**: Your opponent having 2 queued extra turns vs 0 changes threat assessment and urgency significantly.
 - **Source**: `PlayerState::additional_turns` (C++). Need to serialize.
 
-### 16. Temp Buff Count per Unit (+24 features)
+### 16. Temp Buff Count per Unit (+24 features) ✅
 
 Separate from permanent `buff_count` — tracks how many buffs expire at ExpirationStep. A unit with 2 temp buffs is less reliable than one with 2 permanent buffs.
 
@@ -205,9 +215,13 @@ Currently the model only sees zone *end-states* (trash, banishment, on-board). I
 
 **Why defer**: tier 1 + zone multi-hot already brought ~3935 features online; the marginal value of observation tracking is real but smaller than what we've already added. Adding it after the v002 supervised baseline lets us A/B test whether it earns the +4× disk cost.
 
-## Tier 3 — Lower Priority or Higher Dimensional Cost
+## Tier 3 — Lower Priority or Higher Dimensional Cost (✅ HIGH-VALUE ITEMS COMPLETE)
 
-### 17. Per-Unit Keyword Bits for Top-3 BF Units (+144 features)
+Status: items 17 (subset: Tank/Backline/Ganking only, +72 instead of +144), 22 (facedown age), 24 (total battlefield count), 25 (combat/showdown staged) implemented. Items 18, 19, 20, 21, 23 deferred — see notes below each.
+
+### 17. Per-Unit Keyword Bits for Top-3 BF Units (+72 features) ✅ partial
+
+Tank/Backline/Ganking implemented (the three most targeting-critical). Assault/Shield/Deflect are already represented by their magnitude values (item 11) which encode both presence and strength, so dedicated bits would be redundant. Dim cost: 3 × 3 × 2 × 4 = 72 (half of the originally-proposed 144).
 
 Currently we aggregate keyword counts per side (num_tank, num_backline, etc.) but don't associate keywords with specific units. Knowing WHICH unit has Tank matters for targeting decisions — you want to kill the Tank to expose Backline units.
 
@@ -257,7 +271,7 @@ Currently only `delayed_ability_count` is captured. The identity of what's waiti
 - **Why it matters**: "Iascylla will move an enemy unit at your next Main Phase" is very different from a harmless delayed buff.
 - **Source**: `GameState::delayed_abilities` (C++)
 
-### 22. Facedown Card Age (+4 features)
+### 22. Facedown Card Age (+4 features) ✅
 
 Each facedown card at a BF was hidden on a specific turn. If `current_turn > hidden_on_turn`, the card has gained [Reaction] and can be played as an ambush.
 
@@ -277,7 +291,7 @@ The model sees hand card energy costs but not power costs. A card costing 2 ener
 - **Why it matters**: Power costs determine which rune domains need to be recycled. A hand full of Fury power cards with only Calm runes channeled means nothing is playable despite having energy.
 - **Source**: `CardDef::power_cost` via `CardDB::get()`
 
-### 24. Total Battlefield Count (+1 feature)
+### 24. Total Battlefield Count (+1 feature) ✅
 
 Number of battlefields currently in play (normally 2, can grow with tokens).
 
@@ -287,7 +301,7 @@ Number of battlefields currently in play (normally 2, can grow with tokens).
 - **Why it matters**: With 3 BFs from a token, Conquer win condition requires scoring all 3 — changes strategy. The model can infer this from BF features being non-zero, but an explicit count is cleaner.
 - **Source**: Already available as `state.battlefields.size()`
 
-### 25. Combat/Showdown Staged Flags (+8 features)
+### 25. Combat/Showdown Staged Flags (+8 features) ✅
 
 Whether combat or showdown has been declared but not yet started at each BF.
 

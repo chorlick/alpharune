@@ -17,7 +17,11 @@
 ///     uint16   max_actions (64)
 ///     uint32   num_decisions  (patched on close)
 ///     uint8    winner      (0=P1, 1=P2, 2=draw; patched on close)
-///     uint8    _pad[3]
+///     int8     final_score_p1  (0..8; patched on close, 0 = unknown for old files)
+///     int8     final_score_p2  (0..8; patched on close, 0 = unknown for old files)
+///     uint8    _pad[1]
+///   Score fields enable score-differential REINFORCE rewards; pre-change
+///   binaries leave them as 0 and the Python reader falls back to ±1 win/loss.
 ///
 ///   Decision record × num_decisions
 ///   (size = 4 + state_dim*4 + max_actions*action_dim*4 + max_actions bytes):

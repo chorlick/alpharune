@@ -1,11 +1,13 @@
 # Build
 build/
+build-*/
 cmake-build-*/
 compile_commands.json
 
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~

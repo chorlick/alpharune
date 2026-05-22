@@ -1,0 +1,25 @@
+{
+  "id": "ogn-141-298",
+  "name": "Kinkou Monk",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 141,
+  "public_code": "OGN-141/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, buff up to two other friendly units. (Each one that doesn't have a buff gets a +1 [M] buff.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/648b22c6f419ee55723247bbf4c3ac10f0be9ab5-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "unl-032-219",
+  "name": "Double Trouble",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 32,
+  "public_code": "UNL-032/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Repeat] [2] (You may pay the additional cost to repeat this spell's effect.)\nLook at the top 3 cards of your Main Deck. You may reveal a unit from among them and draw it. Recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/64e977213f50471ad7b6e8664488fb9017693f71-744x1039.png",
+  "artist": "Kudos Productions"
+}

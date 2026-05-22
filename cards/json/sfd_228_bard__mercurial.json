@@ -1,0 +1,25 @@
+{
+  "id": "sfd-228-221",
+  "name": "Bard, Mercurial",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 228,
+  "public_code": "SFD-228/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Bard"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "You may exhaust your legend as an additional cost to play me.\nWhen you play me, if you paid the additional cost, move any number of your units to an open battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9c33fbc2dc78bb6af3d31fab0c0ca58e1141141d-744x1039.png",
+  "artist": "Felicia Chen"
+}

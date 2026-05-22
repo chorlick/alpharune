@@ -1,0 +1,23 @@
+{
+  "id": "unl-142-219",
+  "name": "Heedless Resurrection",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 142,
+  "public_code": "UNL-142/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nAs an additional cost to play this, kill a friendly unit.\nPlay a unit from your trash that costs no more Energy and no more Power than the killed unit, ignoring its cost.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/92419d138824a7d46155b59f0e5903196d68d9f7-744x1039.png",
+  "artist": "Kudos Productions"
+}

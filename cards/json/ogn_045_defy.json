@@ -1,0 +1,23 @@
+{
+  "id": "ogn-045-298",
+  "name": "Defy",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 45,
+  "public_code": "OGN-045/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nCounter a spell that costs no more than [4] and no more than [A].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4989bfcc4bd7be77051f0c2c349a981ba9c273e0-744x1039.png",
+  "artist": "Kudos Productions"
+}

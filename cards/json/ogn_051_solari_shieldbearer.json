@@ -1,0 +1,25 @@
+{
+  "id": "ogn-051-298",
+  "name": "Solari Shieldbearer",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 51,
+  "public_code": "OGN-051/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Mount Targon"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, stun a unit. (It doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9387ea6480c9fd6991760b07a178c07a5fcf1c57-744x1039.png",
+  "artist": "Kudos Productions"
+}

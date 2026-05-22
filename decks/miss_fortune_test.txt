@@ -1,0 +1,40 @@
+Legend:
+1 Miss Fortune, Bounty Hunter
+
+Champion:
+1 Miss Fortune, Captain
+
+MainDeck:
+3 Challenge
+3 Flurry of Blades
+3 Mobilize
+3 Catalyst of Aeons
+3 Dazzling Aurora
+3 Gust
+3 Stacked Deck
+3 Mindsplitter
+3 Lunar Boon
+3  Elder Dragon
+2 Hard Bargain
+2 Repulse
+1 Sabotage
+1 Bullet Time
+1 Last Rites
+1 Abandon
+1 Baron Nashor
+
+Battlefields:
+1 Aspirant's Climb
+1 Vilemaw's Lair
+1 Rockfall Path
+
+Runes:
+6 Body Rune
+6 Chaos Rune
+
+Sideboard:
+2 Unyielding Spirit
+2 Sabotage
+1 Rebuke
+1 Akshan, Mischievous
+1 Rengar, Trophy Hunter

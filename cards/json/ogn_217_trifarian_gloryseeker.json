@@ -1,0 +1,26 @@
+{
+  "id": "ogn-217-298",
+  "name": "Trifarian Gloryseeker",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 217,
+  "public_code": "OGN-217/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Trifarian",
+    "Noxus"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Legion] \u2014 When you play me, buff me. (If I don't have a buff, I get a +1 [M] buff. Get the effect if you've played another card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/19ad6a0e743b56021b9651a2105034a488e172e8-744x1039.png",
+  "artist": "Six More Vodka"
+}

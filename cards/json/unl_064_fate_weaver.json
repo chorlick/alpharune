@@ -1,0 +1,25 @@
+{
+  "id": "unl-064-219",
+  "name": "Fate Weaver",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 64,
+  "public_code": "UNL-064/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, look at the top 4 cards of your Main Deck. You may reveal a spell with Energy cost [4] or more from among them and draw it. Recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ab713d332b48a7526585b0be3718fea9e9f93622-744x1039.png",
+  "artist": "Valentin Gloaguen"
+}

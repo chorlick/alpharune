@@ -1,0 +1,25 @@
+{
+  "id": "ogn-136-298",
+  "name": "Pit Rookie",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 136,
+  "public_code": "OGN-136/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, buff another friendly unit. (If it doesn't have a buff, it gets a +1 [M] buff.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ec19eeaee85c7e5669387a3f6ccb7718f5a0f570-744x1039.png",
+  "artist": "Kudos Productions"
+}

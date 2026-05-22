@@ -1,0 +1,25 @@
+{
+  "id": "sfd-090-221",
+  "name": "The Zero Drive",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 90,
+  "public_code": "SFD-090/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 2,
+  "rarity": "epic",
+  "ability_text": "[Equip] [1][B] ([1][B]: Attach this to a unit you control.)\n[3][B], Banish this: Play all units banished with this, ignoring their costs. (Use only if unattached.)",
+  "effect_text": "[Deathknell] \u2014 Banish me. (When I die, get the effect.)",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cc80cbfa1a64ad22dc5f7df870e9206f6938f7f5-744x1039.png",
+  "artist": "Envar Studio"
+}

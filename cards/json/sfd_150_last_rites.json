@@ -1,0 +1,25 @@
+{
+  "id": "sfd-150-221",
+  "name": "Last Rites",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 150,
+  "public_code": "SFD-150/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 2,
+  "rarity": "epic",
+  "ability_text": "[Equip] \u2014 [P], Recycle 2 cards from your trash (Pay the cost: Attach this to a unit you control.)",
+  "effect_text": "When I conquer or hold, you may play a unit from your trash. (You still pay its costs.)",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6cfab85030bff454262794e4fa12f11b5dc45a74-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

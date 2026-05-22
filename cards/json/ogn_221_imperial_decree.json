@@ -1,0 +1,23 @@
+{
+  "id": "ogn-221-298",
+  "name": "Imperial Decree",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 221,
+  "public_code": "OGN-221/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nWhen any unit takes damage this turn, kill it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fc6ab617f1ce20c82ed76dc6446d42d416c08b34-744x1039.png",
+  "artist": "Kudos Productions"
+}

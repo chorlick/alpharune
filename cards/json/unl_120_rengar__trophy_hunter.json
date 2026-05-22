@@ -1,0 +1,27 @@
+{
+  "id": "unl-120-219",
+  "name": "Rengar, Trophy Hunter",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 120,
+  "public_code": "UNL-120/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Cat",
+    "Rengar",
+    "Ixtal"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nI can [Ambush] to a battlefield where there are enemy units, even if you don't have units there.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8e159fd8aa9bb349e32bda6a10b0178cc28ca8dd-744x1039.png",
+  "artist": "TSWCK\u900d"
+}

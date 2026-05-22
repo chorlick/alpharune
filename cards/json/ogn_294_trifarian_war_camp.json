@@ -1,0 +1,21 @@
+{
+  "id": "ogn-294-298",
+  "name": "Trifarian War Camp",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 294,
+  "public_code": "OGN-294/298",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Units here have +1 [M]. (This includes attackers.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3788cf718e716e35a7fa20ec1dc56991644e6484-1038x744.png",
+  "artist": "Kudos Productions"
+}

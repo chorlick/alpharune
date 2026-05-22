@@ -1,0 +1,21 @@
+{
+  "id": "sfd-215-221",
+  "name": "Ravenbloom Conservatory",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 215,
+  "public_code": "SFD-215/221",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you defend here, reveal the top card of your Main Deck. If it's a spell, put it in your hand. Otherwise, recycle it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d4ded211cb972b7f64bad2b99ee53abe8d13e4e2-1039x744.png",
+  "artist": "Will Gist"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "unl-175-219",
+  "name": "Tactical Retreat",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 175,
+  "public_code": "UNL-175/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nChoose a friendly unit. The next time it would die this turn, heal it, exhaust it, and recall it instead. (Send it to base. This isn't a move.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cd5abf6c27f5faac247f6044306db3d710fb9d61-744x1039.png",
+  "artist": "Kudos Productions"
+}

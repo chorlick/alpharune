@@ -1,0 +1,25 @@
+{
+  "id": "sfd-139-221",
+  "name": "Edge of Night",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 139,
+  "public_code": "SFD-139/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 2,
+  "rarity": "rare",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for [0].)\nWhen you play this from face down, attach it to a unit you control (here).\n[Equip] [C] ([C]: Attach this to a unit you control.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b3e385162bf3566618bb58b7a866eef846beefba-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

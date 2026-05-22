@@ -1,0 +1,26 @@
+{
+  "id": "unl-112-219",
+  "name": "Irresistible Faefolk",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 112,
+  "public_code": "UNL-112/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Fae",
+    "Ionia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When I move to a battlefield, you may move an enemy unit to that battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6834e4b00a22dd6d7476d36884b43cf59b60c611-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "sfd-095-221",
+  "name": "Doran's Blade",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 95,
+  "public_code": "SFD-095/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 2,
+  "rarity": "common",
+  "ability_text": "[Equip] [O] ([O]: Attach this to a unit you control.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/53fc0c307c83871c9755a496764ef7d6aa11f510-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

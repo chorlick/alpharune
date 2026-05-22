@@ -1,0 +1,23 @@
+{
+  "id": "unl-173-219",
+  "name": "Sacrifice",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 173,
+  "public_code": "UNL-173/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nAs an additional cost to play this, kill a friendly [Mighty] unit. (A unit is Mighty while it has 5+ [M].)\nDraw 2 and channel 1 rune exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/139153ae4b4f786442018c09765c67e35515df24-744x1039.png",
+  "artist": "Kudos Productions"
+}

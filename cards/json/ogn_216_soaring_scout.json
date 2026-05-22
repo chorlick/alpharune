@@ -1,0 +1,26 @@
+{
+  "id": "ogn-216-298",
+  "name": "Soaring Scout",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 216,
+  "public_code": "OGN-216/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Bird",
+    "Freljord"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deathknell] \u2014 Channel 1 rune exhausted. (When I die, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/75b6ce420888035b566c3795cabe0999a9a918b0-744x1039.png",
+  "artist": "Six More Vodka"
+}

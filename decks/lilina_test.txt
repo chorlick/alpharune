@@ -1,0 +1,40 @@
+Legend:
+1 Lillia, Bashful Bloom
+
+Champion:
+1 Lillia, Fae Fawn
+
+MainDeck:
+3 Defy
+3 Discipline
+3 Stupefy
+3 Ravenbloom Student
+3 Heart of Dark Ice
+3 Plundering Poro
+3 Sprite Burst
+3 Sprite Fountain
+3 Smoke and Mirrors
+2 Charm
+2 En Garde
+2 Thousand-Tailed Watcher
+1 Singularity
+1 Unchecked Power
+1 Scuttle Crab
+1 Lilting Lullaby
+2 Lillia, Fae Fawn
+
+Battlefields:
+1 Seat of Power
+1 Black Flame Altar
+1 Dusk Rose Lab
+
+Runes:
+7 Mind Rune
+5 Calm Rune
+
+Sideboard:
+2 Disarming Rake
+2 Bellows Breath
+2 Keeper of Masks
+1 Singularity
+1 Lilting Lullaby

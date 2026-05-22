@@ -1,0 +1,25 @@
+{
+  "id": "sfd-161-221",
+  "name": "B.F. Sword",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 161,
+  "public_code": "SFD-161/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 3,
+  "rarity": "uncommon",
+  "ability_text": "[Equip] [Y] ([Y]: Attach this to a unit you control.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/97cd20e414c7282abb18cf7691eb1a5a2435af90-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

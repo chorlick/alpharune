@@ -1,0 +1,25 @@
+{
+  "id": "unl-147-219",
+  "name": "Baron Nashor",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 147,
+  "public_code": "UNL-147/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "The Void"
+  ],
+  "energy_cost": 10,
+  "power_cost": 3,
+  "might": 12,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "As you play me, add the Baron Pit battlefield token to the board if it's not there already. If you do, I enter there. (It has \"Units can move here from anywhere.\")\nI can't be chosen by enemy spells and abilities.\nOther friendly units have +2 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/59946969e8d21869c3ffe801a3ffbdd8165a873f-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

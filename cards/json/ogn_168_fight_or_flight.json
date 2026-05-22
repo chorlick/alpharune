@@ -1,0 +1,23 @@
+{
+  "id": "ogn-168-298",
+  "name": "Fight or Flight",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 168,
+  "public_code": "OGN-168/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Action] (Play on your turn or in showdowns.)\nMove a unit from a battlefield to its base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2e7c7ad72889878e2dd5932d203814b185e74a87-744x1039.png",
+  "artist": "Kudos Productions"
+}

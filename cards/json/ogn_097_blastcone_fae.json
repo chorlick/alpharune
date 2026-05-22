@@ -1,0 +1,26 @@
+{
+  "id": "ogn-097-298",
+  "name": "Blastcone Fae",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 97,
+  "public_code": "OGN-097/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Fae",
+    "Bandle City"
+  ],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\nWhen you play me, give a unit -2 [M] this turn, to a minimum of 1 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fac53b2216490c99ad7ce11dc5e663a692d6c104-744x1039.png",
+  "artist": "Caravan Studio"
+}

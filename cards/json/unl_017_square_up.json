@@ -1,0 +1,23 @@
+{
+  "id": "unl-017-219",
+  "name": "Square Up",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 17,
+  "public_code": "UNL-017/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Repeat] \u2014 Discard 1 (You may pay the additional cost to repeat this spell's effect.)\nGive a unit [Assault 4] this turn. (+4 [M] while it's an attacker.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5e14c09db2f064e5f6986f500a04335d73d459dd-744x1039.png",
+  "artist": "Kudos Productions"
+}

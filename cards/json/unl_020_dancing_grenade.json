@@ -1,0 +1,23 @@
+{
+  "id": "unl-020-219",
+  "name": "Dancing Grenade",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 20,
+  "public_code": "UNL-020/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Deal 2 to a unit. Its controller may play this spell again for [A]. If they do, this deals 1 additional Bonus Damage for each time this spell has dealt damage this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8afc30b1bc7cc1841dfe11cfa29adbcc02257845-744x1039.png",
+  "artist": "Kudos Productions"
+}

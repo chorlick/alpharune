@@ -1,0 +1,25 @@
+{
+  "id": "unl-021-219",
+  "name": "Grim Apothecary",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 21,
+  "public_code": "UNL-021/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nWhen you play me, you may return a friendly unit at a battlefield to its owner's hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/af548bbfc856e306c5feefb34eb6bd9a4e442904-744x1039.png",
+  "artist": "Wild Blue Studios"
+}

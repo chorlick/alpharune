@@ -1,0 +1,26 @@
+{
+  "id": "unl-033-219",
+  "name": "Frisky Hunter",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 33,
+  "public_code": "UNL-033/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Cat",
+    "Zaun"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, play a 1 [M] Bird unit token with [Deflect] here. (Opponents must pay [A] to choose it with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6bf8978ca42fa50a60067e74364b3caf78b3e928-744x1039.png",
+  "artist": "Kudos Productions"
+}

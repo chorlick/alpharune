@@ -1,0 +1,26 @@
+{
+  "id": "sfd-067-221",
+  "name": "Frostcoat Cub",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 67,
+  "public_code": "SFD-067/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Dog",
+    "Freljord"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "You may pay [B] as an additional cost to play me.\nWhen you play me, if you paid the additional cost, give a unit -2 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0b5f1f6ed65e070d2878b8aa21fd95e43688fc1d-744x1039.png",
+  "artist": "Caravan Studio"
+}

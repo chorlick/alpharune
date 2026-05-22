@@ -1,0 +1,26 @@
+{
+  "id": "unl-084-219",
+  "name": "Sprite Queen",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 84,
+  "public_code": "UNL-084/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Fae",
+    "Ionia"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you play me or at the start of your Beginning Phase, play a ready 3 [M] Sprite unit token with [Temporary] to your base. (Kill them at the start of their controller's next Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/64b7debe0dd3d7b644f627eba562187bc45dd313-744x1039.png",
+  "artist": "Envar Studio"
+}

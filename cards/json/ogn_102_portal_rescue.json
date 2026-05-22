@@ -1,0 +1,23 @@
+{
+  "id": "ogn-102-298",
+  "name": "Portal Rescue",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 102,
+  "public_code": "OGN-102/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nBanish a friendly unit, then its owner plays it to their base, ignoring its cost.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bafb4c68fa9a3eb71fecd0cdffb9e20b9f68d532-744x1039.png",
+  "artist": "Kudos Productions"
+}

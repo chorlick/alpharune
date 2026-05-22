@@ -1,0 +1,23 @@
+{
+  "id": "ogn-203-298",
+  "name": "Possession",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 203,
+  "public_code": "OGN-203/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 8,
+  "power_cost": 3,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nChoose an enemy unit at a battlefield. Take control of it and recall it. (Send it to your base. This isn't a move.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f26462174fd01407f25f7d49a70862d2b9af35cc-744x1039.png",
+  "artist": "League of Legends"
+}

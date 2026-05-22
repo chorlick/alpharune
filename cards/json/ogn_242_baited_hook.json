@@ -1,0 +1,23 @@
+{
+  "id": "ogn-242-298",
+  "name": "Baited Hook",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 242,
+  "public_code": "OGN-242/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[1][C], [E]: Kill a friendly unit. Look at the top 5 cards of your Main Deck. You may banish a unit from among them that has Might up to 1 more than the killed unit and play it, ignoring its cost. Then recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/7b4e6a1e32878a7d5fe4e40869c83e47ea08de7c-744x1039.png",
+  "artist": "Kudos Productions"
+}

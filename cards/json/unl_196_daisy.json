@@ -1,0 +1,27 @@
+{
+  "id": "unl-196-219",
+  "name": "Daisy!",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 196,
+  "public_code": "UNL-196/219",
+  "card_type": "unit",
+  "super_type": "signature",
+  "domains": [
+    "calm",
+    "order"
+  ],
+  "tags": [
+    "Ivern",
+    "Ionia"
+  ],
+  "energy_cost": 9,
+  "power_cost": 2,
+  "might": 8,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "I enter ready.\nReduce my cost by [1] for each of the following tags among your units \u2014 Bird, Cat, Dog, and Poro.\nWhen I attack while your units have all 4 tags, [Stun] an enemy unit here. (It doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ada85b2a6076b60933831454d02a21da3654362c-744x1039.png",
+  "artist": "Polar Engine Studio"
+}

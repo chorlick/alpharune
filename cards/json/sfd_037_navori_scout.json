@@ -1,0 +1,26 @@
+{
+  "id": "sfd-037-221",
+  "name": "Navori Scout",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 37,
+  "public_code": "SFD-037/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Yordle",
+    "Ionia"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/038625518f5b46f5217d300d9dc9fbf507c4ae09-744x1039.png",
+  "artist": "Six More Vodka"
+}

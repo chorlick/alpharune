@@ -1,0 +1,23 @@
+{
+  "id": "unl-136-219",
+  "name": "Scryer's Bloom",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 136,
+  "public_code": "UNL-136/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "This enters exhausted.\nKill this, [1], [E]: [Predict 2], then draw 1. Gain 1 XP. (To Predict 2, look at the top two cards of your Main Deck. Recycle any of them and put the rest back in any order.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b10a544d24d3ae3e177d4791743bb2cfb742abcc-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "unl-105-219",
+  "name": "Imposing Challenger",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 105,
+  "public_code": "UNL-105/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When I move, you may move an enemy unit here with less Might than me to a different battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/01596f6039ef5618fae686e1c7df291e1c570fc3-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ogn-225-298",
+  "name": "Solari Chief",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 225,
+  "public_code": "OGN-225/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Mount Targon"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, choose an enemy unit. If it is stunned, kill it. Otherwise, stun it. (It doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/02fd791fdaa7d1c63221655e889fb412de103ca2-744x1039.png",
+  "artist": "JiHun Lee"
+}

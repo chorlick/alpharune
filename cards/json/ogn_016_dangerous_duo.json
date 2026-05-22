@@ -1,0 +1,26 @@
+{
+  "id": "ogn-016-298",
+  "name": "Dangerous Duo",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 16,
+  "public_code": "OGN-016/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Mech",
+    "Bandle City"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Legion] \u2014 When you play me, give a unit +2 [M] this turn. (Get the effect if you've played another card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3c02ea9e438d407c739276b788e015ac93843651-744x1039.png",
+  "artist": "Envar Studio"
+}

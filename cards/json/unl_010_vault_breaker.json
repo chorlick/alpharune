@@ -1,0 +1,23 @@
+{
+  "id": "unl-010-219",
+  "name": "Vault Breaker",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 10,
+  "public_code": "UNL-010/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nGive a unit [Assault 2] and [Ganking] this turn. (+2 [M] while it's an attacker. It can move from battlefield to battlefield.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8046c9f133be83268d7dc9788abea58f461914d8-744x1039.png",
+  "artist": "Kudos Productions"
+}

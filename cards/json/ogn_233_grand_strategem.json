@@ -1,0 +1,23 @@
+{
+  "id": "ogn-233-298",
+  "name": "Grand Strategem",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 233,
+  "public_code": "OGN-233/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 6,
+  "power_cost": 3,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nGive friendly units +5 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bda7514aefa94ac3f368690cdd2d0f955d44c089-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "unl-072-219",
+  "name": "Crescent Strike",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 72,
+  "public_code": "UNL-072/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nChoose a battlefield and an enemy unit there. Deal 4 to that unit and 1 to each other enemy unit there.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/34ab7eff1eb8833ab8b9978eac18c4fb18b1ac81-744x1039.png",
+  "artist": "Kudos Productions"
+}

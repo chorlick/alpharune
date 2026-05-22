@@ -1,0 +1,26 @@
+{
+  "id": "unl-236-219",
+  "name": "Voidreaver",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 236,
+  "public_code": "UNL-236/219",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "body",
+    "chaos"
+  ],
+  "tags": [
+    "Kha'Zix"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "When you win a combat, gain 1 XP.\nSpend 1 XP, [E]: [Buff] a unit.\nSpend 2 XP, [E]: Move an exhausted friendly unit from a battlefield to its base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ffed0102adcae6fe01d173042487ea85ebe899bc-744x1039.png",
+  "artist": "Jeffrey Chen"
+}

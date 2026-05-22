@@ -1,0 +1,26 @@
+{
+  "id": "ogn-059-298",
+  "name": "Eclipse Herald",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 59,
+  "public_code": "OGN-059/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Bird",
+    "Mount Targon"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you stun an enemy unit, ready me and give me +1 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bbe4fec278b8960681f97da658dc2f06ee46c4bd-744x1039.png",
+  "artist": "Kudos Productions"
+}

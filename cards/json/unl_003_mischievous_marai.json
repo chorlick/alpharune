@@ -1,0 +1,25 @@
+{
+  "id": "unl-003-219",
+  "name": "Mischievous Marai",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 3,
+  "public_code": "UNL-003/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\nWhen you play me to a battlefield, deal 2 to an enemy unit here.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fb2e82cca7aa93c857ed1fe54de7344016779520-744x1039.png",
+  "artist": "Envar Studio"
+}

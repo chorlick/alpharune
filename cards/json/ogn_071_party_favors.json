@@ -1,0 +1,23 @@
+{
+  "id": "ogn-071-298",
+  "name": "Party Favors",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 71,
+  "public_code": "OGN-071/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Each other player chooses Cards or Runes. For each player that chooses Cards, you and that player each draw 1. For each player that chooses Runes, you and that player each channel 1 rune exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fddcef3c55663c5d6856f6d039d19cacfd64abb5-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "sfd-204-221",
+  "name": "On the Hunt",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 204,
+  "public_code": "SFD-204/221",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "body",
+    "chaos"
+  ],
+  "tags": [
+    "Sivir"
+  ],
+  "energy_cost": 1,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Ready your units.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3205df9cf3d12551c445a740889392264ec95b09-744x1039.png",
+  "artist": "Grafit Studio"
+}

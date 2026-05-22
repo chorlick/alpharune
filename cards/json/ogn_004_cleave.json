@@ -1,0 +1,23 @@
+{
+  "id": "ogn-004-298",
+  "name": "Cleave",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 4,
+  "public_code": "OGN-004/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nGive a unit [Assault 3] this turn. (+3 [M] while it's an attacker.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/95d476a1e88ff547fb846149619177bc7e3cea9f-744x1039.png",
+  "artist": "Kudos Productions"
+}

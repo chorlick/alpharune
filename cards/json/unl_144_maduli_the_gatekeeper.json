@@ -1,0 +1,25 @@
+{
+  "id": "unl-144-219",
+  "name": "Maduli the Gatekeeper",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 144,
+  "public_code": "UNL-144/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Bandle City"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "I can't be readied.\n[P]: Move me to an occupied enemy battlefield if my Might is greater than the total Might of enemy units there.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/20f1b46435845de99987e37125e0ef7bd61c00bb-744x1039.png",
+  "artist": "Caravan Studio"
+}

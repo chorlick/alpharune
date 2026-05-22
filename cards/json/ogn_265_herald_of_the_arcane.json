@@ -1,0 +1,26 @@
+{
+  "id": "ogn-265-298",
+  "name": "Herald of the Arcane",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 265,
+  "public_code": "OGN-265/298",
+  "card_type": "legend",
+  "super_type": "champion",
+  "domains": [
+    "mind",
+    "order"
+  ],
+  "tags": [
+    "Viktor"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[1], [E]: Play a 1 [M] Recruit unit token.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/913236dabf1e4f71650bbba46870fff8163e2eff-744x1039.png",
+  "artist": "Fortiche Production"
+}

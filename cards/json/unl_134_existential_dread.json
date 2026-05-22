@@ -1,0 +1,23 @@
+{
+  "id": "unl-134-219",
+  "name": "Existential Dread",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 134,
+  "public_code": "UNL-134/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\n[Repeat] [2] (You may pay the additional cost to repeat this spell's effect.)\n[Stun] an attacking enemy unit. If it's already stunned, return it to its owner's hand instead. (A stunned unit doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0a197ec3bf96e10307859e2a152c1742288b2b09-744x1039.png",
+  "artist": "Caravan Studio"
+}

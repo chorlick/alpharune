@@ -1,0 +1,25 @@
+{
+  "id": "sfd-016-221",
+  "name": "Recurve Bow",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 16,
+  "public_code": "SFD-016/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 0,
+  "rarity": "uncommon",
+  "ability_text": "[Equip] [R] ([R]: Attach this to a unit you control.)",
+  "effect_text": "When I attack or defend, deal 2 to an enemy unit here.",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/763604237b4b59df5df98f61528be2233b850dd5-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

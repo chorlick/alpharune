@@ -1,0 +1,23 @@
+{
+  "id": "ogn-227-298",
+  "name": "Symbol of the Solari",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 227,
+  "public_code": "OGN-227/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "If a combat where you are the attacker ends in a tie, recall ALL units instead. (Send them to base. This isn't a move. Ties are calculated after combat damage is dealt.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d4f746c396df48623ef8a4df763b5deb47f59339-744x1039.png",
+  "artist": "Kudos Productions"
+}

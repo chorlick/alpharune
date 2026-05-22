@@ -1,0 +1,26 @@
+{
+  "id": "ogn-082-298",
+  "name": "Whiteflame Protector",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 82,
+  "public_code": "OGN-082/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Dragon",
+    "Mount Targon"
+  ],
+  "energy_cost": 8,
+  "power_cost": 2,
+  "might": 8,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "When you play me, give a unit +8 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a5cdd793736f915fa1b4ea388af66de7b2bc00cb-744x1039.png",
+  "artist": "Aron Elekes"
+}

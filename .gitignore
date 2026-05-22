@@ -1,0 +1,48 @@
+# Build
+build/
+build-*/
+cmake-build-*/
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+.cache/
+
+# Generated
+src/cards/generated/
+
+# Game output
+*.jsonl
+*.jsonl.game*
+replay_game*.html
+game.txt
+data/
+
+# Models and training
+models/
+checkpoints/
+training_data/
+*.pt
+*.onnx
+*.tflite
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+
+# Logs
+*.log

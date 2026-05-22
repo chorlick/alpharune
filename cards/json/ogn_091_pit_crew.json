@@ -1,0 +1,25 @@
+{
+  "id": "ogn-091-298",
+  "name": "Pit Crew",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 91,
+  "public_code": "OGN-091/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Bandle City"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play a gear, ready me.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8023223b55adc44bafe1f8c5f305d3dde6f6d114-744x1039.png",
+  "artist": "Chris Kintner"
+}

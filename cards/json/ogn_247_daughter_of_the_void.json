@@ -1,0 +1,26 @@
+{
+  "id": "ogn-247-298",
+  "name": "Daughter of the Void",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 247,
+  "public_code": "OGN-247/298",
+  "card_type": "legend",
+  "super_type": "champion",
+  "domains": [
+    "fury",
+    "mind"
+  ],
+  "tags": [
+    "Kai'Sa"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [A]. Use only to play spells. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a576472c7bb00f475882ac814e1d8f9be233b402-744x1040.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "ogn-245-298",
+  "name": "Seal of Unity",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 245,
+  "public_code": "OGN-245/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [Y]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e6fbd41d69bc0d235ea7993d2e9fa74e75e17dff-744x1039.png",
+  "artist": "Kudos Productions"
+}

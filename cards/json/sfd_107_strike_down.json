@@ -1,0 +1,23 @@
+{
+  "id": "sfd-107-221",
+  "name": "Strike Down",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 107,
+  "public_code": "SFD-107/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Choose an equipped friendly unit. It deals damage equal to its Might to an enemy unit. Then detach an Equipment from it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3570810e867d132fd5a60cc3462f53f42b245ad9-744x1039.png",
+  "artist": "Kudos Productions"
+}

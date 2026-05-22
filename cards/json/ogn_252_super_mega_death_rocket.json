@@ -1,0 +1,26 @@
+{
+  "id": "ogn-252-298",
+  "name": "Super Mega Death Rocket!",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 252,
+  "public_code": "OGN-252/298",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "chaos"
+  ],
+  "tags": [
+    "Jinx"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Deal 5 to a unit.\nWhen you conquer, you may discard 1 to return this from your trash to your hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/95d6fd4d7944e759cfe7ee5e208fa329b719333b-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "unl-122-219",
+  "name": "Crescent Guardian",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 122,
+  "public_code": "UNL-122/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Mount Targon"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "If you've played a spell this turn, you may pay [P] as an additional cost to play me. If you do, I enter ready.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0ff22e9a517d029fd17cfbbbc93ca2f90c2c676c-744x1039.png",
+  "artist": "Aron Elekes"
+}

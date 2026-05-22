@@ -1,0 +1,23 @@
+{
+  "id": "ogn-094-298",
+  "name": "Sprite Call",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 94,
+  "public_code": "OGN-094/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Action] (Play on your turn or in showdowns.)\nPlay a ready 3 [M] Sprite unit token with [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ab3db48dcbb12b01151d3a08c2412020380b7ca5-744x1039.png",
+  "artist": "Envar Studio"
+}

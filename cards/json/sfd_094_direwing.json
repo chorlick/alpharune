@@ -1,0 +1,26 @@
+{
+  "id": "sfd-094-221",
+  "name": "Direwing",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 94,
+  "public_code": "SFD-094/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Dragon",
+    "Demacia"
+  ],
+  "energy_cost": 7,
+  "power_cost": null,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "I enter ready if you control another Dragon.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/52edf5b0f045d7c65360a8eb3c21f0954750cd1a-744x1039.png",
+  "artist": "Six More Vodka"
+}

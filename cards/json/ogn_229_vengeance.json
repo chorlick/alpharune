@@ -1,0 +1,23 @@
+{
+  "id": "ogn-229-298",
+  "name": "Vengeance",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 229,
+  "public_code": "OGN-229/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Kill a unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a21e2ffee47ecdd1575bf48edb8c2a84722cc6b9-744x1039.png",
+  "artist": "Max Grecke"
+}

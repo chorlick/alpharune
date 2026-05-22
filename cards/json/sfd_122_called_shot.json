@@ -1,0 +1,23 @@
+{
+  "id": "sfd-122-221",
+  "name": "Called Shot",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 122,
+  "public_code": "SFD-122/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\n[Repeat] [P] (You may pay the additional cost to repeat this spell's effect.)\nLook at the top 2 cards of your Main Deck. Draw one and recycle the other.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8fb07f0b3c0c697e324fb016f4cf7e4288aa4594-744x1039.png",
+  "artist": "Kudos Productions"
+}

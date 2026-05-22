@@ -1,0 +1,26 @@
+{
+  "id": "unl-193-219",
+  "name": "Gloomist",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 193,
+  "public_code": "UNL-193/219",
+  "card_type": "legend",
+  "super_type": "champion",
+  "domains": [
+    "calm",
+    "chaos"
+  ],
+  "tags": [
+    "Vex"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you or an ally hold, you may exhaust me to draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/653e9b8fc4989bba59aa7ade4e0c33ffd5596e5a-744x1039.png",
+  "artist": "Pandart Studio"
+}

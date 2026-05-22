@@ -1,0 +1,23 @@
+{
+  "id": "ogn-138-298",
+  "name": "Catalyst of Aeons",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 138,
+  "public_code": "OGN-138/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Channel 2 runes exhausted. If you couldn't channel 2 runes this way, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4753707323ab6f9ac572c097f29f2f76ac62f54f-744x1039.png",
+  "artist": "Kudos Productions"
+}

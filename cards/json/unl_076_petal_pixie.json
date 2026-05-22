@@ -1,0 +1,26 @@
+{
+  "id": "unl-076-219",
+  "name": "Petal Pixie",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 76,
+  "public_code": "UNL-076/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Fae",
+    "Ionia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "I have +1 [M] for each of your units with [Temporary] at my battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/68189fb5a6b3193e8925969ac0c545bc78b210c9-744x1039.png",
+  "artist": "Envar Studio"
+}

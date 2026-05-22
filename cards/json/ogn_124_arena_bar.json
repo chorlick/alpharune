@@ -1,0 +1,23 @@
+{
+  "id": "ogn-124-298",
+  "name": "Arena Bar",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 124,
+  "public_code": "OGN-124/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[E]: Buff an exhausted friendly unit. (If it doesn't have a buff, it gets a +1 [M] buff.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/519306d1d4a36f2d54fe0982268a197a257f5e5d-744x1039.png",
+  "artist": "Kudos Productions"
+}

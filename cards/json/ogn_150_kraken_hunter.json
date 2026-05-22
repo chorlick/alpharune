@@ -1,0 +1,26 @@
+{
+  "id": "ogn-150-298",
+  "name": "Kraken Hunter",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 150,
+  "public_code": "OGN-150/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Pirate",
+    "Bilgewater"
+  ],
+  "energy_cost": 3,
+  "power_cost": 2,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Accelerate] (You may pay [1][O] as an additional cost to have me enter ready.)\n[Assault] (+1 [M] while I'm an attacker.)\nAs you play me, you may spend any number of buffs as an additional cost. Reduce my cost by [O] for each buff you spend.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/51aab4710d000a9c1e665a37ef8c919ff11b0282-744x1039.png",
+  "artist": "JiHun Lee"
+}

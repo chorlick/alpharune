@@ -1,0 +1,26 @@
+{
+  "id": "sfd-173-221",
+  "name": "Soraka, Wanderer",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 173,
+  "public_code": "SFD-173/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Soraka",
+    "Mount Targon"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "I must be assigned combat damage last.\nIf another unit you control here would die, if it has less Might than me, instead heal it, exhaust it, and recall it. (Send it to base. This isn't a move.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/91fd5050b8caded842ce22c1e473f237cd991efd-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "ogn-114-298",
+  "name": "Progress Day",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 114,
+  "public_code": "OGN-114/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Draw 4.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b15f479a8f29e31b6e4c06cf2d7c8cb8630073ef-744x1039.png",
+  "artist": "Kudos Productions"
+}

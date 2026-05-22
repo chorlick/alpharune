@@ -1,0 +1,26 @@
+{
+  "id": "sfd-024-221",
+  "name": "Rell, Magnetic",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 24,
+  "public_code": "SFD-024/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Rell",
+    "Noxus"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Tank] (I must be assigned combat damage first.)\nWhen I attack, you may play an Equipment with Energy cost no more than [2], ignoring its cost. If you do, then do this: Attach it to me.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8aa1a9cf0a91a9ab601d5e5d42a438d4217eddd7-744x1039.png",
+  "artist": "League Splash Team"
+}

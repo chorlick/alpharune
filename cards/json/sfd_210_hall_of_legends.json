@@ -1,0 +1,21 @@
+{
+  "id": "sfd-210-221",
+  "name": "Hall of Legends",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 210,
+  "public_code": "SFD-210/221",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you conquer here, you may pay [1] to ready your legend.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3b6438877bd2bd95e7a3a8921ddf6bca26d3fd95-1039x744.png",
+  "artist": "Kudos Productions"
+}

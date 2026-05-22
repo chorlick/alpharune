@@ -1,0 +1,21 @@
+{
+  "id": "sfd-219-221",
+  "name": "The Papertree",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 219,
+  "public_code": "SFD-219/221",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you hold here, each player channels 1 rune exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c395b94a4f78b4e8b0590b56787c33600b18e358-1039x744.png",
+  "artist": "Kudos Productions"
+}

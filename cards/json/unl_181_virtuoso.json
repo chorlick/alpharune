@@ -1,0 +1,26 @@
+{
+  "id": "unl-181-219",
+  "name": "Virtuoso",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 181,
+  "public_code": "UNL-181/219",
+  "card_type": "legend",
+  "super_type": "champion",
+  "domains": [
+    "fury",
+    "mind"
+  ],
+  "tags": [
+    "Jhin"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you play a spell, if you spent [4] or more, you may banish it. Then, if there are four spells banished with me, put each in its trash, channel 4 runes, and draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d1e6947cf43a19488a2c31f71a4887aa0423a966-744x1039.png",
+  "artist": "Pandart Studio"
+}

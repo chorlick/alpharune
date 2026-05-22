@@ -1,0 +1,25 @@
+{
+  "id": "unl-163-219",
+  "name": "Mageseeker Investigator",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 163,
+  "public_code": "UNL-163/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Demacia"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Opponents must pay [A] for each unit beyond the first to move multiple units to my battlefield at the same time.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/004c77c98bc5a6f679191a0d289b26ac13e84728-744x1039.png",
+  "artist": "Six More Vodka"
+}

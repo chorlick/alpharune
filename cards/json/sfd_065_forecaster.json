@@ -1,0 +1,27 @@
+{
+  "id": "sfd-065-221",
+  "name": "Forecaster",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 65,
+  "public_code": "SFD-065/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mech",
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "Your Mechs have [Vision]. (When you play us, look at the top card of your Main Deck. You may recycle it.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3f58f0c58503e4f8caecb7ea7f77b478a1e92961-744x1039.png",
+  "artist": "Envar Studio"
+}

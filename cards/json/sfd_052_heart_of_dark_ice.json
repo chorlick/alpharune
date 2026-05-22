@@ -1,0 +1,23 @@
+{
+  "id": "sfd-052-221",
+  "name": "Heart of Dark Ice",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 52,
+  "public_code": "SFD-052/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[E]: Give a unit +3 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/73d8251c3bd8f7cd77010e9628515cd7fa462386-744x1039.png",
+  "artist": "Kudos Productions"
+}

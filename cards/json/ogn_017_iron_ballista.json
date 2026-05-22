@@ -1,0 +1,23 @@
+{
+  "id": "ogn-017-298",
+  "name": "Iron Ballista",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 17,
+  "public_code": "OGN-017/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "This enters exhausted.\n[E]: Deal 2 to a unit at a battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9b5cfe757b6067994e17e284eba46433880a1461-744x1039.png",
+  "artist": "Kudos Productions"
+}

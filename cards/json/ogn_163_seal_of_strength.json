@@ -1,0 +1,23 @@
+{
+  "id": "ogn-163-298",
+  "name": "Seal of Strength",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 163,
+  "public_code": "OGN-163/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [O]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/415644b2798348e3d7198ec900cc40aaa4eb8bdf-744x1039.png",
+  "artist": "Kudos Productions"
+}

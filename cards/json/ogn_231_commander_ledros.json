@@ -1,0 +1,26 @@
+{
+  "id": "ogn-231-298",
+  "name": "Commander Ledros",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 231,
+  "public_code": "OGN-231/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Spirit",
+    "Shadow Isles"
+  ],
+  "energy_cost": 6,
+  "power_cost": 4,
+  "might": 8,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "As you play me, you may kill any number of friendly units as an additional cost. Reduce my cost by [Y] for each killed this way.\n[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)\n[Ganking] (I can move from battlefield to battlefield.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1183be5effc6275f17da09b983feb36632752af4-744x1039.png",
+  "artist": "Six More Vodka"
+}

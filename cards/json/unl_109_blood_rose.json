@@ -1,0 +1,23 @@
+{
+  "id": "unl-109-219",
+  "name": "Blood Rose",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 109,
+  "public_code": "UNL-109/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you play a unit, you may pay [1] to gain 1 XP.\nSpend 3 XP, [E]: Ready a unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/64067ebdbe3140e9a458da7ecf7253a5fae9a31b-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

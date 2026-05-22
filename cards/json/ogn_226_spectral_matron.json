@@ -1,0 +1,26 @@
+{
+  "id": "ogn-226-298",
+  "name": "Spectral Matron",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 226,
+  "public_code": "OGN-226/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Spirit",
+    "Shadow Isles"
+  ],
+  "energy_cost": 4,
+  "power_cost": 2,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, you may play a unit costing no more than [3] and no more than [A] from your trash, ignoring its cost.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c8aebd03c8722d485ebfc38774488778c756ff5c-744x1039.png",
+  "artist": "Six More Vodka"
+}

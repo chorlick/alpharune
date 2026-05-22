@@ -1,0 +1,26 @@
+{
+  "id": "unl-094-219",
+  "name": "Gemhand Hunter",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 94,
+  "public_code": "UNL-094/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Yordle",
+    "Mount Targon"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hunt] (When I conquer or hold, gain 1 XP.)\n[Level 6][>] I have +1 [M]. (While you have 6+ XP, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d824d666dc5f50c3c513c3f9722f6eafe21c6289-744x1039.png",
+  "artist": "Kudos Productions"
+}

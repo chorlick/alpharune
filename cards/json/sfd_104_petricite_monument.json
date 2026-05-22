@@ -1,0 +1,23 @@
+{
+  "id": "sfd-104-221",
+  "name": "Petricite Monument",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 104,
+  "public_code": "SFD-104/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Temporary] (Kill this at the start of its controller's Beginning Phase, before scoring.)\nFriendly units have [Deflect]. (Opponents must pay [A] to choose them with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c994dcefe24e00f8033bc31327bf7dbe4a8703d1-744x1039.png",
+  "artist": "Kudos Productions"
+}

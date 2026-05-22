@@ -1,0 +1,23 @@
+{
+  "id": "ogn-152-298",
+  "name": "Mistfall",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 152,
+  "public_code": "OGN-152/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you buff a friendly unit, you may pay [O] and exhaust this to ready it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1cedf0dcd6c4a44ae867e9f04f9f179d9b91c357-744x1039.png",
+  "artist": "Polar Engine Studio"
+}

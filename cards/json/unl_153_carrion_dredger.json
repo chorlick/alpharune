@@ -1,0 +1,26 @@
+{
+  "id": "unl-153-219",
+  "name": "Carrion Dredger",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 153,
+  "public_code": "UNL-153/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Mech",
+    "Zaun"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deathknell][>] Play a 1 [M] Bird unit token with [Deflect] to your base. (When I die, get the effect. Opponents must pay [A] to choose a [Deflect] unit with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/84d8b6d7a9cab2b78a465a8e0caf597f3ef5a175-744x1039.png",
+  "artist": "Six More Vodka"
+}

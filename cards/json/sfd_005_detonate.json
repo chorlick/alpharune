@@ -1,0 +1,23 @@
+{
+  "id": "sfd-005-221",
+  "name": "Detonate",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 5,
+  "public_code": "SFD-005/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "Kill a gear. Its controller draws 2.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e837fbd6aeeb1293386dcfa284aae5a4baca10ef-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "sfd-177-221",
+  "name": "Azir, Sovereign",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 177,
+  "public_code": "SFD-177/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Bird",
+    "Azir",
+    "Shurima"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Accelerate] (You may pay [1][Y] as an additional cost to have me enter ready.)\nWhen I attack, you may move any number of your token units to this battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/088970936fc800bd2c4b36636734e16c83e1c8f9-744x1039.png",
+  "artist": "Six More Vodka"
+}

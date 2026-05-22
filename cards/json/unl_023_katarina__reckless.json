@@ -1,0 +1,26 @@
+{
+  "id": "unl-023-219",
+  "name": "Katarina, Reckless",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 23,
+  "public_code": "UNL-023/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Katarina",
+    "Noxus"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you hide a card, ready me.\nWhen you play a card from face down, deal 2 to an enemy unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/12da73cb78a9cfa052749f317ed56a27106908c6-744x1039.png",
+  "artist": "Six More Vodka"
+}

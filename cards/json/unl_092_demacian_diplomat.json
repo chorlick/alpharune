@@ -1,0 +1,25 @@
+{
+  "id": "unl-092-219",
+  "name": "Demacian Diplomat",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 92,
+  "public_code": "UNL-092/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Demacia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, gain 1 XP.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dabc873f161248d3c959932ee54b5cf550c471b9-744x1039.png",
+  "artist": "Kudos Productions"
+}

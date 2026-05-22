@@ -1,0 +1,26 @@
+{
+  "id": "sfd-182-221",
+  "name": "Danger Zone",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 182,
+  "public_code": "SFD-182/221",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "mind"
+  ],
+  "tags": [
+    "Rumble"
+  ],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\n[Repeat] [1][A] (You may pay the additional cost to repeat this spell's effect.)\nGive your Mechs +1 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c4652150ba885dd346b8f3622fd0e4ada7cf767f-744x1039.png",
+  "artist": "Kudos Productions"
+}

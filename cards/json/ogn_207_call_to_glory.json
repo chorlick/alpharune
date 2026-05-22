@@ -1,0 +1,23 @@
+{
+  "id": "ogn-207-298",
+  "name": "Call to Glory",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 207,
+  "public_code": "OGN-207/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nAs you play this, you may spend a buff as an additional cost. If you do, ignore this spell's cost.\nGive a unit +3 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ced53bc3fb15f263471067fc3868295b09e62a07-744x1039.png",
+  "artist": "Kudos Productions"
+}

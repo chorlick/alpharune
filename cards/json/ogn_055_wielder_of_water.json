@@ -1,0 +1,25 @@
+{
+  "id": "ogn-055-298",
+  "name": "Wielder of Water",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 55,
+  "public_code": "OGN-055/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "While I'm attacking or defending alone, I have +2 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5b38a7758705bd739caf07b5c0c49482a4a23015-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "ogn-248-298",
+  "name": "Icathian Rain",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 248,
+  "public_code": "OGN-248/298",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "mind"
+  ],
+  "tags": [
+    "Kai'Sa"
+  ],
+  "energy_cost": 7,
+  "power_cost": 3,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Deal 2 to a unit.\nDeal 2 to a unit.\nDeal 2 to a unit.\nDeal 2 to a unit.\nDeal 2 to a unit.\nDeal 2 to a unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8df37f633d3da734f3f2d85808a7cb9eadec1b04-744x1039.png",
+  "artist": "Kudos Productions"
+}

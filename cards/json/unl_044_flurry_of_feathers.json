@@ -1,0 +1,23 @@
+{
+  "id": "unl-044-219",
+  "name": "Flurry of Feathers",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 44,
+  "public_code": "UNL-044/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction]\nChoose one \u2014\nCounter a spell.Play four 1 [M] Bird unit tokens with [Deflect]. (Opponents must pay [A] to choose them with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/77bd864b29f4975868e557e31a39b94d06a4ecb2-744x1039.png",
+  "artist": "Polar Engine Studio"
+}

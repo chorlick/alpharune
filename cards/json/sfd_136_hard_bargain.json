@@ -1,0 +1,23 @@
+{
+  "id": "sfd-136-221",
+  "name": "Hard Bargain",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 136,
+  "public_code": "SFD-136/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\n[Repeat] [2] (You may pay the additional cost to repeat this spell's effect.)\nCounter a spell unless its controller pays [2].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2b09887a6e0d2f109aefea62ca6744488794c233-744x1039.png",
+  "artist": "Wild Blue Studios"
+}

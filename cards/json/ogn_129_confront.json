@@ -1,0 +1,23 @@
+{
+  "id": "ogn-129-298",
+  "name": "Confront",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 129,
+  "public_code": "OGN-129/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nUnits you play this turn enter ready. Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/691a38a7c344fdb5ee86e34d41321d99754286a7-744x1039.png",
+  "artist": "Kudos Productions"
+}

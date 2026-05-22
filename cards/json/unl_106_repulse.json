@@ -1,0 +1,23 @@
+{
+  "id": "unl-106-219",
+  "name": "Repulse",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 106,
+  "public_code": "UNL-106/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nChoose a friendly unit at a battlefield. Counter an enemy spell or ability that chooses it and no other friendly unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ca56ad44ec24db67e10a4ee18f5c7f3756c83d94-744x1039.png",
+  "artist": "Kudos Productions"
+}

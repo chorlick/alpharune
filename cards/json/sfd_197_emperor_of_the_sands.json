@@ -1,0 +1,26 @@
+{
+  "id": "sfd-197-221",
+  "name": "Emperor of the Sands",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 197,
+  "public_code": "SFD-197/221",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "calm",
+    "order"
+  ],
+  "tags": [
+    "Azir"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Your Sand Soldiers have [Weaponmaster].\n[1], [E]: Play a 2 [M] Sand Soldier unit token to your base. Use only if you've played an Equipment this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0472274c49f6540858758ebf9bd2f107a601541a-744x1039.png",
+  "artist": "\u86cb\u8d39\u9e21\u4e01"
+}

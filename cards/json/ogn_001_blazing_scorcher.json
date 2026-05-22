@@ -1,0 +1,26 @@
+{
+  "id": "ogn-001-298",
+  "name": "Blazing Scorcher",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 1,
+  "public_code": "OGN-001/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Dragon",
+    "Noxus"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Accelerate] (You may pay [1][R] as an additional cost to have me enter ready.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/15ed971e4029a92b362a81ccadf309fb81e40b81-744x1039.png",
+  "artist": "Envar Studio"
+}

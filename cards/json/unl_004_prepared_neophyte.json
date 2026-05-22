@@ -1,0 +1,25 @@
+{
+  "id": "unl-004-219",
+  "name": "Prepared Neophyte",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 4,
+  "public_code": "UNL-004/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Shadow Isles"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "If you've spent [4] or more to play a spell this turn, I have +4 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ad993e451437950e56935a7ecff44fea09e522b2-744x1039.png",
+  "artist": "Kudos Productions"
+}

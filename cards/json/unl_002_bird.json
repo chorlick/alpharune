@@ -1,0 +1,23 @@
+{
+  "id": "unl-t02",
+  "name": "Bird",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 2,
+  "public_code": "UNL-T02",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [],
+  "tags": [
+    "Bird"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/949a2e43263a9fe0d957595325c7e2ebe06bf85f-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "unl-031-219",
+  "name": "Combat Experience",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 31,
+  "public_code": "UNL-031/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nGive a unit +1 [M] this turn.\n[Level 6][>] Give it +3 [M] this turn instead. (While you have 6+ XP, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/537b66b5f0259f80bf25b1aafb78558f4db6886a-744x1039.png",
+  "artist": "Kudos Productions"
+}

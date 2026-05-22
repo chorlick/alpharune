@@ -1,0 +1,25 @@
+{
+  "id": "unl-062-219",
+  "name": "Dramatic Visionary",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 62,
+  "public_code": "UNL-062/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deathknell][>] [Predict 2]. (When I die, look at the top two cards of your Main Deck. Recycle any of them and put the rest back in any order.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3153c05a8c3fb4d8f945a95fad54ea25e087ad47-744x1039.png",
+  "artist": "Envar Studio"
+}

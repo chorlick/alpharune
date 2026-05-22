@@ -1,0 +1,23 @@
+{
+  "id": "ogn-062-298",
+  "name": "Reinforce",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 62,
+  "public_code": "OGN-062/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Look at the top 5 cards of your Main Deck. You may banish a unit from among them, then play it, reducing its cost by [5]. Recycle the remaining cards.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5bb4ce960c7636dac103c560a2e2f4e32f9d5390-744x1039.png",
+  "artist": "Kudos Productions"
+}

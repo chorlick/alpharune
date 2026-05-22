@@ -1,0 +1,23 @@
+{
+  "id": "ogn-072-298",
+  "name": "Solari Shrine",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 72,
+  "public_code": "OGN-072/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you kill a stunned enemy unit, you may exhaust this to draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/139a6d1c62a717bab4cdd75926e7f4aba6efb15d-744x1039.png",
+  "artist": "Kudos Productions"
+}

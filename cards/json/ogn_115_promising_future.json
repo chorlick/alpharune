@@ -1,0 +1,23 @@
+{
+  "id": "ogn-115-298",
+  "name": "Promising Future",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 115,
+  "public_code": "OGN-115/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Each player looks at the top 5 cards of their Main Deck, banishes one of them, then recycles the rest. Starting with the next player, each player plays those cards, ignoring Energy costs. (They must still pay Power costs.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1ea5e7e50aaecee0b2ee2657d3c829dff0718fba-744x1039.png",
+  "artist": "Kudos Productions"
+}

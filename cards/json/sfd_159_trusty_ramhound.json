@@ -1,0 +1,27 @@
+{
+  "id": "sfd-159-221",
+  "name": "Trusty Ramhound",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 159,
+  "public_code": "SFD-159/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Dog",
+    "Elite",
+    "Demacia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "While you have another unit here, I have +1 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0bd3f82ebe45a4dc09204582d06900916e6c0480-744x1039.png",
+  "artist": "Kudos Productions"
+}

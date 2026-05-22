@@ -1,0 +1,23 @@
+{
+  "id": "unl-133-219",
+  "name": "Blast Cone",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 133,
+  "public_code": "UNL-133/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play this, you may move an enemy unit.\nWhen you move an enemy unit, you may exhaust this to [Stun] it. (It doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/093799f1ad34084f05011f3b326d4d32d96849e5-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

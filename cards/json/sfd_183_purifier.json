@@ -1,0 +1,26 @@
+{
+  "id": "sfd-183-221",
+  "name": "Purifier",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 183,
+  "public_code": "SFD-183/221",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "fury",
+    "body"
+  ],
+  "tags": [
+    "Lucian"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Your Equipment each give [Assault]. (+1 [M] while equipped unit is an attacker.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/450cfb71b8890904d48b37a24bbdc78f8d849614-744x1039.png",
+  "artist": "Pandart Studio"
+}

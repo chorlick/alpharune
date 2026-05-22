@@ -1,0 +1,21 @@
+{
+  "id": "unl-218-219",
+  "name": "Valley of Idols",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 218,
+  "public_code": "UNL-218/219",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When a player plays a unit here, they may pay [1] to [Buff] it. (Give it a +1 [M] buff if it doesn't have one.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4191aa2fda9e754a7f5421edc94bd829f5795650-1039x744.png",
+  "artist": "Caravan Studio"
+}

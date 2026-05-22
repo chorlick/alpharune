@@ -1,0 +1,39 @@
+Legend:
+1 Rengar, Pridestalker
+
+Champion:
+1 Rengar, Trophy Hunter
+
+MainDeck:
+3 Noxus Hopeful
+3 Inferna
+3 Grim Apothecary
+3 Irresistible Faefolk
+3 Thrill of the Hunt
+2 Challenge
+2 Pit Rookie
+2 Seal of Strength
+2 Ferrous Forerunner
+2 Fresh Beans
+2 Repulse
+1 Brynhir Thundersong
+1 Punch First
+2 Rengar, Trophy Hunter
+3 Kai'Sa, Survivor
+3 Nidalee, Cat Form
+2 Rengar, Pouncing
+
+Battlefields:
+1 Emperor's Dais
+1 Treasure Hoard
+1 Star Spring
+
+Runes:
+6 Fury Rune
+6 Body Rune
+
+Sideboard:
+3 Unyielding Spirit
+3 Akshan, Mischievous
+1 Brynhir Thundersong
+1 Punch First

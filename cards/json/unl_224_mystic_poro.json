@@ -1,0 +1,25 @@
+{
+  "id": "unl-224-219",
+  "name": "Mystic Poro",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 224,
+  "public_code": "UNL-224/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Poro"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[Vision]",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2fdb5e1ff9aae4137910fa59065b69ef17144752-744x1039.png",
+  "artist": "FOREDAWN"
+}

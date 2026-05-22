@@ -1,0 +1,23 @@
+{
+  "id": "ogn-143-298",
+  "name": "Pirate's Haven",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 143,
+  "public_code": "OGN-143/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you ready a friendly unit, give it +1 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1991b64d58cbd3698574f44b404f7a88d6403134-744x1039.png",
+  "artist": "Envar Studio"
+}

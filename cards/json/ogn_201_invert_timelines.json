@@ -1,0 +1,23 @@
+{
+  "id": "ogn-201-298",
+  "name": "Invert Timelines",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 201,
+  "public_code": "OGN-201/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Each player discards their hand, then draws 4.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b916326fdcf61af4630d953c7540a4aa97e6db01-744x1039.png",
+  "artist": "Kudos Productions"
+}

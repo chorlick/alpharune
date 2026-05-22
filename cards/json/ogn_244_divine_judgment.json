@@ -1,0 +1,23 @@
+{
+  "id": "ogn-244-298",
+  "name": "Divine Judgment",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 244,
+  "public_code": "OGN-244/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 7,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Each player chooses 2 units, 2 gear, 2 runes, and 2 cards in their hands. Recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/995778eea2e24fdc62ade38c2baa25b9f1e6ab79-744x1039.png",
+  "artist": "Kudos Productions"
+}

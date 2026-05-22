@@ -1,0 +1,26 @@
+{
+  "id": "ogs-022-024",
+  "name": "Final Spark",
+  "set": "OGS",
+  "set_name": "Proving Grounds",
+  "collector_number": 22,
+  "public_code": "OGS-022/024",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "mind",
+    "order"
+  ],
+  "tags": [
+    "Lux"
+  ],
+  "energy_cost": 8,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nDeal 8 to a unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4558a2dc1bb1f1b8a73ec0d82244654e84b12687-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "ogn-087-298",
+  "name": "Lecturing Yordle",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 87,
+  "public_code": "OGN-087/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Tank] (I must be assigned combat damage first.)\nWhen you play me, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/62e22370dac35c18de21efbfce9c86ca821e9105-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "sfd-071-221",
+  "name": "Breakneck Mech",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 71,
+  "public_code": "SFD-071/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mech",
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 8,
+  "power_cost": 2,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Your Mechs have [Deflect] and [Ganking]. (Opponents must pay [A] to choose us with a spell or ability. We can move from battlefield to battlefield.)\nI enter ready if you control another Mech.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8564fc233cfcb4fc774ac4bc4ee72085d7586163-744x1039.png",
+  "artist": "Caravan Studio"
+}

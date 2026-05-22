@@ -1,0 +1,25 @@
+{
+  "id": "sfd-179-221",
+  "name": "Corina Veraza",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 179,
+  "public_code": "SFD-179/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Zaun"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Accelerate] (You may pay [1][Y] as an additional cost to have me enter ready.)\nWhen I move to a battlefield, play three 1 [M] Recruit unit tokens here.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6b0f55aee4b4f9d0074c808e0fff00dcb7e35377-744x1039.png",
+  "artist": "Six More Vodka"
+}

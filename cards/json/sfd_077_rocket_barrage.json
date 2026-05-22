@@ -1,0 +1,23 @@
+{
+  "id": "sfd-077-221",
+  "name": "Rocket Barrage",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 77,
+  "public_code": "SFD-077/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Repeat] [4][B] (You may pay the additional cost to repeat this spell's effect, and may make different choices.)\nChoose one \u2014\nDeal 4 to a unit in a base.Kill a gear.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0378f9adf9df08fed264fdd217ce0e94c3f611cb-744x1039.png",
+  "artist": "Kudos Productions"
+}

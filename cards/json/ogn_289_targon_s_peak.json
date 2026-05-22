@@ -1,0 +1,21 @@
+{
+  "id": "ogn-289-298",
+  "name": "Targon's Peak",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 289,
+  "public_code": "OGN-289/298",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you conquer here, ready up to 2 runes at the end of this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6ff1b34ad231645910f670496e1662de0b545a44-1038x744.png",
+  "artist": "Six More Vodka"
+}

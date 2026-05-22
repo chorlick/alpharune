@@ -1,0 +1,25 @@
+{
+  "id": "sfd-014-221",
+  "name": "Minotaur Reckoner",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 14,
+  "public_code": "SFD-014/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Units can't move to base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/77bb46cd667e59f26310797ac99686f3a4d19af5-744x1039.png",
+  "artist": "Six More Vodka"
+}

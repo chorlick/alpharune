@@ -1,0 +1,25 @@
+{
+  "id": "sfd-056-221",
+  "name": "Sterak's Gage",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 56,
+  "public_code": "SFD-056/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": 3,
+  "rarity": "rare",
+  "ability_text": "[Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)\n[Equip] [G] ([G]: Attach this to a unit you control.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/df16e6b668fc6771ff657512deba1bf48363e23a-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

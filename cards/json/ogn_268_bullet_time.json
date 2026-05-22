@@ -1,0 +1,26 @@
+{
+  "id": "ogn-268-298",
+  "name": "Bullet Time",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 268,
+  "public_code": "OGN-268/298",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "body",
+    "chaos"
+  ],
+  "tags": [
+    "Miss Fortune"
+  ],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nPay any amount of [A] to deal that much damage to all enemy units at a battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/96ed7f6b121a7f46003534393350838efe2776f0-744x1039.png",
+  "artist": "Kudos Productions"
+}

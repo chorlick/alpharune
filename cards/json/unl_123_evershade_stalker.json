@@ -1,0 +1,25 @@
+{
+  "id": "unl-123-219",
+  "name": "Evershade Stalker",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 123,
+  "public_code": "UNL-123/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Shadow Isles"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, discard 1, then draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d8fb687ecdb22d7497ac55a1be0db0ba33596b43-744x1039.png",
+  "artist": "Six More Vodka"
+}

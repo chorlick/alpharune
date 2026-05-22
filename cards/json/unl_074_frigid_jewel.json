@@ -1,0 +1,23 @@
+{
+  "id": "unl-074-219",
+  "name": "Frigid Jewel",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 74,
+  "public_code": "UNL-074/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you draw your second card each turn, give a friendly unit +2 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f1a6c28649bf4478b4728379b6d548058739f0e9-744x1039.png",
+  "artist": "Kudos Productions"
+}

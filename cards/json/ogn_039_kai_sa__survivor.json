@@ -1,0 +1,26 @@
+{
+  "id": "ogn-039-298",
+  "name": "Kai'Sa, Survivor",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 39,
+  "public_code": "OGN-039/298",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Kai'Sa",
+    "The Void"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Accelerate] (You may pay [1][R] as an additional cost to have me enter ready.)\nWhen I conquer, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3d942c02ad4e96a36dba14d663c5105bb6614500-744x1039.png",
+  "artist": "League Splash Team"
+}

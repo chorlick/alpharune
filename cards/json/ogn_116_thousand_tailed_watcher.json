@@ -1,0 +1,25 @@
+{
+  "id": "ogn-116-298",
+  "name": "Thousand-Tailed Watcher",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 116,
+  "public_code": "OGN-116/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Accelerate] (You may pay [1][B] as an additional cost to have me enter ready.)\nWhen you play me, give enemy units -3 [M] this turn, to a minimum of 1 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b20e5644c33924a58e0497dd9f7db19723147003-744x1039.png",
+  "artist": "Six More Vodka"
+}

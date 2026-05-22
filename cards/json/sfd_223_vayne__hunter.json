@@ -1,0 +1,27 @@
+{
+  "id": "sfd-223-221",
+  "name": "Vayne, Hunter",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 223,
+  "public_code": "SFD-223/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Vayne",
+    "Demacia",
+    "Sentinel"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[Assault 3] (+3 [M] while I'm an attacker.)\nIf an opponent controls a battlefield, I enter ready.\nWhen I conquer, you may pay [1] to return me to my owner's hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6f8caecc98cb5dae1b818677ef5baaaa4a5f7cb2-744x1039.png",
+  "artist": "John Kafka"
+}

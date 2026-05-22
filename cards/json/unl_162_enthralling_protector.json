@@ -1,0 +1,26 @@
+{
+  "id": "unl-162-219",
+  "name": "Enthralling Protector",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 162,
+  "public_code": "UNL-162/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Fae",
+    "Ionia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hunt] (When I conquer or hold, gain 1 XP.)\nSpend 2 XP: [Buff] me. (Give me a +1 [M] buff if I don't have one.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3fdfe3bc7c7f81b99aa715bf54b52930ad41dcfa-744x1039.png",
+  "artist": "Dao Trong Le"
+}

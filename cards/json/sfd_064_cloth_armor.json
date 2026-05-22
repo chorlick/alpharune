@@ -1,0 +1,25 @@
+{
+  "id": "sfd-064-221",
+  "name": "Cloth Armor",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 64,
+  "public_code": "SFD-064/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 0,
+  "rarity": "common",
+  "ability_text": "[Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)\n[Equip] [B] ([B]: Attach this to a unit you control.)",
+  "effect_text": "[Shield 2] (+2 [M] while I'm a defender.)",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fe02bf01609ff2e6cc6fa8fbd578fd596ab5cb84-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

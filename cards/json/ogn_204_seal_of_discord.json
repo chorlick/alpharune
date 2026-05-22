@@ -1,0 +1,23 @@
+{
+  "id": "ogn-204-298",
+  "name": "Seal of Discord",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 204,
+  "public_code": "OGN-204/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [P]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dd8433e77e46ca77aaf0be35d1774218d9a2f037-744x1039.png",
+  "artist": "Kudos Productions"
+}

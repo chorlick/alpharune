@@ -1,0 +1,25 @@
+{
+  "id": "sfd-156-221",
+  "name": "Laurent Duelist",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 156,
+  "public_code": "SFD-156/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Demacia"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Assault 2] (+2 [M] while I'm an attacker.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/7b3410a1d9ee175c4853453798bcd5f09d2e217c-744x1039.png",
+  "artist": "JiHun Lee"
+}

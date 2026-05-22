@@ -1,0 +1,25 @@
+{
+  "id": "sfd-160-221",
+  "name": "Zaun Punk",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 160,
+  "public_code": "SFD-160/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Zaun"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "You may kill a friendly gear as an additional cost to play me.\nWhen you play me, if you paid the additional cost, kill a gear.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/af4eec8bb065708bf790b940fa065ea3e735afa0-744x1039.png",
+  "artist": "Six More Vodka"
+}

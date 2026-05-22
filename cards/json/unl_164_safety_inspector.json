@@ -1,0 +1,26 @@
+{
+  "id": "unl-164-219",
+  "name": "Safety Inspector",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 164,
+  "public_code": "UNL-164/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "You may spend 3 XP as an additional cost to play me.\nWhen you play me, each player must kill one of their units. If you paid my additional cost, you don't kill a unit this way.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/499e65eb2d35e2bd774ea7fe2a70672234f71e90-744x1039.png",
+  "artist": "Kudos Productions"
+}

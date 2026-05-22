@@ -1,0 +1,27 @@
+{
+  "id": "ogn-193-298",
+  "name": "Miss Fortune, Buccaneer",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 193,
+  "public_code": "OGN-193/298",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Pirate",
+    "Miss Fortune",
+    "Bilgewater"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "You may play me to an open battlefield.\nFriendly units may be played to open battlefields.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e6ff9ad3d6e2b96ff76cda4c7bc75415c1cdcced-744x1039.png",
+  "artist": "Six More Vodka"
+}

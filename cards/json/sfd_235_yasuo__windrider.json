@@ -1,0 +1,25 @@
+{
+  "id": "sfd-235-221",
+  "name": "Yasuo, Windrider",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 235,
+  "public_code": "SFD-235/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Yasuo"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[Ganking] (I can move from battlefield to battlefield.)\nThe third time I move in a turn, you score 1 point.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/74021c17acc45cf743609a825490a0e6dd7466b5-744x1039.png",
+  "artist": "Jennifer Wuestling"
+}

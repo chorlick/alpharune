@@ -1,0 +1,23 @@
+{
+  "id": "ogn-053-298",
+  "name": "Stand United",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 53,
+  "public_code": "OGN-053/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Action] (Play on your turn or in showdowns.)\nBuff a friendly unit. Buffs give an additional +1 [M] to friendly units this turn. (To buff a unit, give it a +1 [M] buff if it doesn't already have one.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4d10570e70a998de520d4baba254c3b726caa4f0-744x1039.png",
+  "artist": "Six More Vodka"
+}

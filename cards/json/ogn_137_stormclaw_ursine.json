@@ -1,0 +1,25 @@
+{
+  "id": "ogn-137-298",
+  "name": "Stormclaw Ursine",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 137,
+  "public_code": "OGN-137/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Freljord"
+  ],
+  "energy_cost": 7,
+  "power_cost": null,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Tank] (I must be assigned combat damage first.)\nWhen you play me, channel 1 rune exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/137e5a1faec1c8b26a5a0abc7802f6461cc725c8-744x1039.png",
+  "artist": "Kudos Productions"
+}

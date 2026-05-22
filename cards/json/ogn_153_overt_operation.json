@@ -1,0 +1,23 @@
+{
+  "id": "ogn-153-298",
+  "name": "Overt Operation",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 153,
+  "public_code": "OGN-153/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nFor each friendly unit, you may spend its buff to ready it. Then buff all friendly units. (Each one that doesn't have a buff gets a +1 [M] buff.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/69dba13c930ba3962851346d2bc6cbeb4ca48455-744x1039.png",
+  "artist": "Kudos Productions"
+}

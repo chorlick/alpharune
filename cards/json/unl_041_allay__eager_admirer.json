@@ -1,0 +1,26 @@
+{
+  "id": "unl-041-219",
+  "name": "Allay, Eager Admirer",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 41,
+  "public_code": "UNL-041/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Yordle",
+    "Bandle City"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)\nWhile I'm at a battlefield, your other units here have [Deflect].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bf1045b559b20d3e86383a07de54cd1893e5a94b-744x1039.png",
+  "artist": "Envar Studio"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "unl-029-219",
+  "name": "Red Brambleback",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 29,
+  "public_code": "UNL-029/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Ionia"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Accelerate] (You may pay [1][R] as an additional cost to have me enter ready.)\nYour conquer effects for conquering here trigger an additional time.\nWhen I conquer, [Buff] a friendly unit. (Give it a +1 [M] buff if it doesn't have one.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/14e9d009985f6a0d8ab63416aee7570ede42c657-744x1039.png",
+  "artist": "JunHuan"
+}

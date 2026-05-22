@@ -1,0 +1,23 @@
+{
+  "id": "unl-007-219",
+  "name": "Smite",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 7,
+  "public_code": "UNL-007/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nDeal 3 to a unit at a battlefield. If it would die this turn, banish it instead.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f46252e8c65a2eb3f476ea51f214af7651d0622d-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

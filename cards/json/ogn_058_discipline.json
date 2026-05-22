@@ -1,0 +1,23 @@
+{
+  "id": "ogn-058-298",
+  "name": "Discipline",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 58,
+  "public_code": "OGN-058/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nGive a unit +2 [M] this turn. Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8b9613970b505e3ad6abe2d51d091778314a7d48-744x1039.png",
+  "artist": "Kudos Productions"
+}

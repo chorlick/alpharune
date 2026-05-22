@@ -1,0 +1,23 @@
+{
+  "id": "sfd-154-221",
+  "name": "Guards!",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 154,
+  "public_code": "SFD-154/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for [0].)\nPlay a 2 [M] Sand Soldier unit token. Then do this: You may pay [C] to ready it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1dc4fef81d018c6cf14f0344b51ebcdec968aab9-744x1039.png",
+  "artist": "Kudos Productions"
+}

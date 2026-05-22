@@ -1,0 +1,26 @@
+{
+  "id": "ogn-302-298",
+  "name": "Hand of Noxus",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 302,
+  "public_code": "OGN-302/298",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "fury",
+    "order"
+  ],
+  "tags": [
+    "Darius"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[E]: [Reaction], [Legion] \u2014 [Add] [1]. (Abilities that add resources can't be reacted to. Get the effect if you've played a card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/37d43efe09ccfe5d72ce37fdc27599bd5ef736af-1488x2078.png",
+  "artist": "Peter Kim"
+}

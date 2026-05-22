@@ -1,0 +1,26 @@
+{
+  "id": "sfd-170-221",
+  "name": "Rek'Sai, Swarm Queen",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 170,
+  "public_code": "SFD-170/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Rek'Sai",
+    "The Void"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When I attack, you may reveal the top 2 cards of your Main Deck. You may banish one, then play it. If it is a unit, you may play it here. Recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5470aaad3bdb7ff5d2e605b07d93cedb7254c54d-744x1039.png",
+  "artist": "Six More Vodka"
+}

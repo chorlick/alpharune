@@ -1,0 +1,23 @@
+{
+  "id": "unl-045-219",
+  "name": "Forgotten Signpost",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 45,
+  "public_code": "UNL-045/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action][>] Exhaust a unit you control, [E]: Move a different unit you control to the location of the unit you exhausted to pay for this ability.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/edf248974d1d97ff5ff1c6745f663fa059dbc82d-744x1039.png",
+  "artist": "Kudos Productions"
+}

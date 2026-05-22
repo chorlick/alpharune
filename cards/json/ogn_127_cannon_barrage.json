@@ -1,0 +1,23 @@
+{
+  "id": "ogn-127-298",
+  "name": "Cannon Barrage",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 127,
+  "public_code": "OGN-127/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nDeal 2 to all enemy units in combat.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/07ef531829e5c6084a8d31044ebd783a9266f59e-744x1039.png",
+  "artist": "Kudos Productions"
+}

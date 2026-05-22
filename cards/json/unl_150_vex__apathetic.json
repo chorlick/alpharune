@@ -1,0 +1,27 @@
+{
+  "id": "unl-150-219",
+  "name": "Vex, Apathetic",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 150,
+  "public_code": "UNL-150/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Yordle",
+    "Vex",
+    "Shadow Isles"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)\nWhen an opponent plays a unit while I'm at a battlefield, [Stun] it. They can't move it this turn. (It doesn't deal combat damage this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/7f13b0216c5d805400bb64cf26cd119acfc6c5ca-744x1039.png",
+  "artist": "League Splash Team"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "sfd-103-221",
+  "name": "Jaull-Fish",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 103,
+  "public_code": "SFD-103/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 7,
+  "power_cost": 2,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Accelerate] (You may pay [1][O] as an additional cost to have me enter ready.)\nI cost [2] less for each of your [Mighty] units. (A unit is Mighty while it has 5+ [M].)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/56a31630910179a1fb2f2ddf3e6e5c9627bddf5e-744x1039.png",
+  "artist": "MAR Studio"
+}

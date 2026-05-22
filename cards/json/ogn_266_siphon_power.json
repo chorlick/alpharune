@@ -1,0 +1,26 @@
+{
+  "id": "ogn-266-298",
+  "name": "Siphon Power",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 266,
+  "public_code": "OGN-266/298",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "mind",
+    "order"
+  ],
+  "tags": [
+    "Viktor"
+  ],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nChoose a battlefield. Give friendly units there +1 [M] this turn and enemy units there -1 [M] this turn, to a minimum of 1 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b449170ba312711c82708d1fea2b044822ce5eaa-744x1039.png",
+  "artist": "Kudos Productions"
+}

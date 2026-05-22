@@ -1,0 +1,23 @@
+{
+  "id": "sfd-144-221",
+  "name": "Spirit Wheel",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 144,
+  "public_code": "SFD-144/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you choose a friendly unit, you may pay [1] and exhaust this to draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d83d994e6dc7949eb783da16f4bbdb64342a8dfb-744x1039.png",
+  "artist": "Six More Vodka"
+}

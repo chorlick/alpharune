@@ -1,0 +1,26 @@
+{
+  "id": "ogn-260-298",
+  "name": "Last Breath",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 260,
+  "public_code": "OGN-260/298",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "calm",
+    "chaos"
+  ],
+  "tags": [
+    "Yasuo"
+  ],
+  "energy_cost": 3,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nReady a friendly unit. It deals damage equal to its Might to an enemy unit at a battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e7e6dc840210124825f787095541a66ae5cea178-744x1039.png",
+  "artist": "Kudos Productions"
+}

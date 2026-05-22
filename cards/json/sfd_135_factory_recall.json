@@ -1,0 +1,23 @@
+{
+  "id": "sfd-135-221",
+  "name": "Factory Recall",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 135,
+  "public_code": "SFD-135/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nReturn a gear to its owner's hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/86bd2be6d0750e3444355bce229f83930825e968-744x1039.png",
+  "artist": "Kudos Productions"
+}

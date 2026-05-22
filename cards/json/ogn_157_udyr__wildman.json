@@ -1,0 +1,26 @@
+{
+  "id": "ogn-157-298",
+  "name": "Udyr, Wildman",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 157,
+  "public_code": "OGN-157/298",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Udyr",
+    "Freljord"
+  ],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "Spend my buff: Choose one you've not chosen this turn \u2014\nDeal 2 to a unit at a battlefield.Stun a unit at a battlefield.Ready me.Give me [Ganking] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2e461e5d05b5ee86e47a425c42c6f3b3c12bc4cf-744x1039.png",
+  "artist": "Six More Vodka"
+}

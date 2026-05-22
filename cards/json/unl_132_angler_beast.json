@@ -1,0 +1,25 @@
+{
+  "id": "unl-132-219",
+  "name": "Angler Beast",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 132,
+  "public_code": "UNL-132/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, return all units with 2 [M] or less to their owners' hands.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/68872e2119146768f8fa113376876fa64699297d-744x1039.png",
+  "artist": "Kudos Productions"
+}

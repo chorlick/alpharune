@@ -1,0 +1,23 @@
+{
+  "id": "ogn-023-298",
+  "name": "Unlicensed Armory",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 23,
+  "public_code": "OGN-023/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Discard 1, [E]: Choose a friendly unit. The next time it would die this turn, you may pay [C] to heal it, exhaust it, and recall it instead. (Send it to base. This isn't a move.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/1a80bedd893d9024fc90f108da36b4fd1d496ad6-744x1039.png",
+  "artist": "Kudos Productions"
+}

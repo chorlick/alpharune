@@ -1,0 +1,25 @@
+{
+  "id": "sfd-081-221",
+  "name": "Card Sharp",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 81,
+  "public_code": "SFD-081/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you play me, you and each opponent may play a Gold gear token exhausted. For each opponent who did, you play a Gold gear token exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8bfd5dc22473d439cd78d5a3cb23ed03de66953d-744x1039.png",
+  "artist": "Grafit Studio"
+}

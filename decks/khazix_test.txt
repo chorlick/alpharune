@@ -1,0 +1,39 @@
+Legend:
+1 Kha'Zix, Voidreaver
+
+Champion:
+1 Kha'Zix, Mutating Horror
+
+MainDeck:
+3 Challenge
+3 Gemhand Hunter
+3 Grim Resolve
+3 Hunter's Machete
+3 Irresistible Faefolk
+3 Void Assault
+2 Tideturner
+2 Punch First
+2 Overzealous Fan
+2 Spirit Wheel
+2 Blood Rose
+1 Hard Bargain
+1 Kha'Zix, Mutating Horror
+3 Sett, Brawler
+3 Master Yi, Tempered
+3 Nidalee, Cat Form
+
+Battlefields:
+1 Monastery of Hirana
+1 Amateur Recital
+1 Forbidding Waste
+
+Runes:
+7 Body Rune
+5 Chaos Rune
+
+Sideboard:
+2 Sabotage
+2 Star-Crossed
+2 Conscription
+1 Ruin Runner
+1 Hard Bargain

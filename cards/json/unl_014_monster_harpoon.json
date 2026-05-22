@@ -1,0 +1,23 @@
+{
+  "id": "unl-014-219",
+  "name": "Monster Harpoon",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 14,
+  "public_code": "UNL-014/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nDeal 2 to a unit at a battlefield. If you control a facedown card, deal 4 to it instead.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ed51ed36ad0938048ee50894d75d299c29d17759-744x1039.png",
+  "artist": "Kudos Productions"
+}

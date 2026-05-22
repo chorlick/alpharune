@@ -1,0 +1,26 @@
+{
+  "id": "ogn-020-298",
+  "name": "Scrapyard Champion",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 20,
+  "public_code": "OGN-020/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Mech",
+    "Bandle City"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Legion] \u2014 When you play me, discard 2, then draw 2. (Get the effect if you've played another card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/10f096d2b469fd73329386e5efe88c9bec667d7c-744x1039.png",
+  "artist": "Envar Studio"
+}

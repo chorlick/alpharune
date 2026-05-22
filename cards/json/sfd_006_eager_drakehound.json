@@ -1,0 +1,27 @@
+{
+  "id": "sfd-006-221",
+  "name": "Eager Drakehound",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 6,
+  "public_code": "SFD-006/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Dog",
+    "Dragon",
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "I enter ready.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ac0fac5af309842ba91b4b8d80e1abd47622e14a-744x1039.png",
+  "artist": "Michal Ivan"
+}

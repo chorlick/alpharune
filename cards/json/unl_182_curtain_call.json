@@ -1,0 +1,26 @@
+{
+  "id": "unl-182-219",
+  "name": "Curtain Call",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 182,
+  "public_code": "UNL-182/219",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "mind"
+  ],
+  "tags": [
+    "Jhin"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Repeat] \u2014 [1] / [A] / [1][A] (You may pay each additional cost to repeat this spell's effect.)\nChoose one you haven't already chosen \u2014\nDraw 1.Deal 2 to a unit at a battlefield.Deal 3 to a unit at a base.Give a unit at a battlefield -4 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/01496068d9a8d5567672d802bd008297bd1fe8cc-744x1039.png",
+  "artist": "\u534e\u9510"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "unl-124-219",
+  "name": "Isolate",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 124,
+  "public_code": "UNL-124/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "Move an enemy unit from a battlefield to its base. Then, if there's an enemy unit alone at that battlefield, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bde23f07e4869fa96b14fcab329e782894b1e1e3-744x1039.png",
+  "artist": "Kudos Productions"
+}

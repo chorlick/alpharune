@@ -1,0 +1,25 @@
+{
+  "id": "ogn-011-298",
+  "name": "Magma Wurm",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 11,
+  "public_code": "OGN-011/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Freljord"
+  ],
+  "energy_cost": 8,
+  "power_cost": 1,
+  "might": 8,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "Other friendly units enter ready.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f6565b15f65f538804e6a56623c8aa2eedeffc22-744x1039.png",
+  "artist": "Envar Studio"
+}

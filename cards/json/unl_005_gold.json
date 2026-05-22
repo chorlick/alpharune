@@ -1,0 +1,21 @@
+{
+  "id": "unl-t05",
+  "name": "Gold",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 5,
+  "public_code": "UNL-T05",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction][>] Kill this, [E]: [Add] [A]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e566605fa989e12e91cd3d3e0b7985f7a8be8e74-744x1039.png",
+  "artist": "Kudos Productions"
+}

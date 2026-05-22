@@ -1,0 +1,23 @@
+{
+  "id": "sfd-045-221",
+  "name": "Not So Fast",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 45,
+  "public_code": "SFD-045/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nCounter an enemy spell or ability that chooses a friendly unit or gear.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e576fefdce72ad862a7e374bf8c0fd509f359da9-744x1039.png",
+  "artist": "Kudos Productions"
+}

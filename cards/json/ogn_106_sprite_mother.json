@@ -1,0 +1,25 @@
+{
+  "id": "ogn-106-298",
+  "name": "Sprite Mother",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 106,
+  "public_code": "OGN-106/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Fae"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, play a ready 3 [M] Sprite unit token with [Temporary] here. (Kill it at the start of its controller's Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/65c06528f88de1ac207b382d4830ccfdd08a2d12-744x1039.png",
+  "artist": "Envar Studio"
+}

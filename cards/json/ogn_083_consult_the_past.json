@@ -1,0 +1,23 @@
+{
+  "id": "ogn-083-298",
+  "name": "Consult the Past",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 83,
+  "public_code": "OGN-083/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Reaction] (Play any time, even before spells and abilities resolve.)\nDraw 2.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/198d950d3933972273ec714e9264cbd563ea6920-744x1039.png",
+  "artist": "Kudos Productions"
+}

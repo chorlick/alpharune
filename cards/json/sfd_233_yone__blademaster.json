@@ -1,0 +1,27 @@
+{
+  "id": "sfd-233-221",
+  "name": "Yone, Blademaster",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 233,
+  "public_code": "SFD-233/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Yone",
+    "Ionia",
+    "Demon"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "showcase",
+  "ability_text": "[Weaponmaster] (When you play me, you may [Equip] one of your Equipment to me for [A] less, even if it's already attached.)\nWhen I conquer a battlefield that was uncontrolled, deal damage equal to my Might to an enemy unit in a base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0bb6fd6e7d1e6fefeeccc82059bdae2eaa000730-744x1039.png",
+  "artist": "Anson Tan"
+}

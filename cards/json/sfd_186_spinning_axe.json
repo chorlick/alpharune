@@ -1,0 +1,27 @@
+{
+  "id": "sfd-186-221",
+  "name": "Spinning Axe",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 186,
+  "public_code": "SFD-186/221",
+  "card_type": "gear",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "chaos"
+  ],
+  "tags": [
+    "Draven",
+    "Equipment"
+  ],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": 3,
+  "rarity": "epic",
+  "ability_text": "[Quick-Draw] (This has [Reaction]. When you play it, attach it to a unit you control.)\n[Equip] [A] ([A]: Attach this to a unit you control.)\n[Temporary] (If this is unattached, kill it at the start of its controller's Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e4e0328034e605d000e23ac5e820d233f0e3b520-744x1039.png",
+  "artist": "Six More Vodka"
+}

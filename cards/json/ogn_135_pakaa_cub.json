@@ -1,0 +1,26 @@
+{
+  "id": "ogn-135-298",
+  "name": "Pakaa Cub",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 135,
+  "public_code": "OGN-135/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Cat",
+    "Ixtal"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/156a66d7d44165367cc5a470fb35c86f337f9429-744x1039.png",
+  "artist": "Bubble Cat Studio"
+}

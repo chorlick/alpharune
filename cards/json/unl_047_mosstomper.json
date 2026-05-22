@@ -1,0 +1,26 @@
+{
+  "id": "unl-047-219",
+  "name": "Mosstomper",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 47,
+  "public_code": "UNL-047/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Dog",
+    "Ixtal"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hunt 2] (When I conquer or hold, gain 2 XP.)\n[Level 3][>] I have +1 [M] and [Deflect]. (While you have 3+ XP, get the effect. Opponents must pay [A] to choose a [Deflect] unit with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0ea32d0f6f49c0b48b1ea2cc98fe0a3c540bc9db-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

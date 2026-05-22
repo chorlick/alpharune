@@ -1,0 +1,26 @@
+{
+  "id": "sfd-188-221",
+  "name": "Void Rush",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 188,
+  "public_code": "SFD-188/221",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "order"
+  ],
+  "tags": [
+    "Rek'Sai"
+  ],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Reveal the top 2 cards of your Main Deck. You may banish one, then play it, reducing its cost by [2]. Draw any you didn't banish.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ce606f096ae76485cd8dd3cc337629b510f0d1e7-744x1039.png",
+  "artist": "Kudos Productions"
+}

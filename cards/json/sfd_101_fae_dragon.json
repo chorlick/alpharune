@@ -1,0 +1,27 @@
+{
+  "id": "sfd-101-221",
+  "name": "Fae Dragon",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 101,
+  "public_code": "SFD-101/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Fae",
+    "Dragon",
+    "Bandle City"
+  ],
+  "energy_cost": 7,
+  "power_cost": 1,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, buff up to four friendly units. (Give each a +1 [M] buff if it doesn't have one.)\nWhen you spend a buff, play a Gold gear token exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/76aeda6bf59acee92b512f4a0272892673cfce90-744x1039.png",
+  "artist": "Bubble Cat Studio"
+}

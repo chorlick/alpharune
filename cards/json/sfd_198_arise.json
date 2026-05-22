@@ -1,0 +1,26 @@
+{
+  "id": "sfd-198-221",
+  "name": "Arise!",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 198,
+  "public_code": "SFD-198/221",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "calm",
+    "order"
+  ],
+  "tags": [
+    "Azir"
+  ],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Play a 2 [M] Sand Soldier unit token for each Equipment you control. Then do this: Ready up to two of them.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/346f4698fea2878dde88470c1793047140c981e3-744x1039.png",
+  "artist": "Kudos Productions"
+}

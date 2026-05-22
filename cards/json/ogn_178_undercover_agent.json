@@ -1,0 +1,23 @@
+{
+  "id": "ogn-178-298",
+  "name": "Undercover Agent",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 178,
+  "public_code": "OGN-178/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deathknell] \u2014 Discard 2, then draw 2. (When I die, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3e4e318c0cc97b13646ee454da71046a09236e47-744x1039.png",
+  "artist": "Six More Vodka"
+}

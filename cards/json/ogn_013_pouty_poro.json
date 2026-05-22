@@ -1,0 +1,25 @@
+{
+  "id": "ogn-013-298",
+  "name": "Pouty Poro",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 13,
+  "public_code": "OGN-013/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Poro"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deflect] (Opponents must pay [A] to choose me with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d541bf3bcb5aa3ad0d48d87f5753569b72ac426f-744x1039.png",
+  "artist": "Caravan Studio"
+}

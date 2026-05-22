@@ -1,0 +1,28 @@
+{
+  "id": "sfd-089-221",
+  "name": "Rumble, Scrapper",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 89,
+  "public_code": "SFD-089/221",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mech",
+    "Yordle",
+    "Rumble",
+    "Bandle City"
+  ],
+  "energy_cost": 5,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "Your Mechs have +1 [M] (including me).\nWhen I hold, play a 3 [M] Mech unit token to your base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6528aa0656cac59ff7299bc8bdac371238038080-744x1039.png",
+  "artist": "Six More Vodka"
+}

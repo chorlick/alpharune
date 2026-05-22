@@ -1,0 +1,26 @@
+{
+  "id": "sfd-035-221",
+  "name": "Guardian of the Passage",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 35,
+  "public_code": "SFD-035/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Spirit",
+    "Shadow Isles"
+  ],
+  "energy_cost": 6,
+  "power_cost": null,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When I hold, you may return a unit or gear from your trash to your hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f6b932aa510c92d014422d31e27b1505e54abe20-744x1039.png",
+  "artist": "JiHun Lee"
+}

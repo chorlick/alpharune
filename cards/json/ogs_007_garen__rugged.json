@@ -1,0 +1,27 @@
+{
+  "id": "ogs-007-024",
+  "name": "Garen, Rugged",
+  "set": "OGS",
+  "set_name": "Proving Grounds",
+  "collector_number": 7,
+  "public_code": "OGS-007/024",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "body"
+  ],
+  "tags": [
+    "Elite",
+    "Garen",
+    "Demacia"
+  ],
+  "energy_cost": 6,
+  "power_cost": 1,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Assault 2], [Shield 2] (+2 [M] while I'm an attacker or defender.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/67c22dc29a7a28dabe0f169a7848c25bef1fbda4-744x1039.png",
+  "artist": "Six More Vodka"
+}

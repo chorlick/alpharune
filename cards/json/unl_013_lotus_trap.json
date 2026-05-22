@@ -1,0 +1,23 @@
+{
+  "id": "unl-013-219",
+  "name": "Lotus Trap",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 13,
+  "public_code": "UNL-013/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for .)\n[Reaction] (Play any time, even before spells and abilities resolve.)\nChoose a unit. Double all damage that would be dealt to it this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9490f8c80da1bf4467e14c39b66ae4262e5f7f7b-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ogn-052-298",
+  "name": "Stalwart Poro",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 52,
+  "public_code": "OGN-052/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Poro"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Shield] (+1 [M] while I'm a defender.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c4a5d7178e783c3975749271b6df333a82a2328a-744x1039.png",
+  "artist": "Six More Vodka"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "unl-156-219",
+  "name": "Loyal Poro",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 156,
+  "public_code": "UNL-156/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Poro",
+    "Freljord"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Deathknell][>] If I didn't die alone, draw 1. (When I die, get the effect. I wasn't alone if there were other friendly units here.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/860e1afc7364a002c6305ece7b6941e2e328d0a4-744x1039.png",
+  "artist": "Six More Vodka"
+}

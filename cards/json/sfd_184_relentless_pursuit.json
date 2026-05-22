@@ -1,0 +1,26 @@
+{
+  "id": "sfd-184-221",
+  "name": "Relentless Pursuit",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 184,
+  "public_code": "SFD-184/221",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "fury",
+    "body"
+  ],
+  "tags": [
+    "Lucian"
+  ],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nMove a friendly unit. You may attach up to one Equipment with the same controller to it. This turn, that unit has \"When I conquer, you may move me to my base.\"",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/48754730486abefdb56221d0760b9c963aae7c09-744x1039.png",
+  "artist": "Max Grecke"
+}

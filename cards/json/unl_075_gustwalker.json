@@ -1,0 +1,26 @@
+{
+  "id": "unl-075-219",
+  "name": "Gustwalker",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 75,
+  "public_code": "UNL-075/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Dog",
+    "Ionia"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hunt 2] (When I conquer or hold, gain 2 XP.)\n[Level 3][>] I have +1 [M] and [Ganking]. (While you have 3+ XP, get the effect. A [Ganking] unit can move from battlefield to battlefield.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3f314cea0c05d2ea274a81d723299e4e20b2ebde-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

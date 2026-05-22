@@ -1,0 +1,25 @@
+{
+  "id": "unl-077-219",
+  "name": "Soul Shepherd",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 77,
+  "public_code": "UNL-077/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Shadow Isles"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Your token units have +1 [M].",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cb2a157e715ef103e688e094c21f772003775e45-744x1039.png",
+  "artist": "Six More Vodka"
+}

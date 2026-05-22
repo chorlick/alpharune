@@ -1,0 +1,41 @@
+Legend:
+1 Deceiver
+
+Champion:
+1 LeBlanc, Fragmented
+
+MainDeck:
+3 Watchful Sentry
+3 Cull the Weak
+3 Soaring Scout
+3 Honest Broker
+3 Deathgrip
+3 Glasc Mixologist
+3 Ruined Rex
+3 Sacrifice
+3 Mirror Image
+2 Hidden Blade
+2 Shadow's Call
+1 Thousand-Tailed Watcher
+1 Facebreaker
+1 Black Rose Dignitary
+1 Tactical Retreat
+1 LeBlanc, Fragmented
+3 Karthus, Eternal
+
+Battlefields:
+1 Windswept Hillock
+1 Dusk Rose Lab
+1 Forbidding Waste
+
+Runes:
+8 Order Rune
+4 Mind Rune
+
+Sideboard:
+2 Unchecked Power
+2 Salvage
+1 Facebreaker
+1 LeBlanc, Everywhere at Once
+1 LeBlanc, Fragmented
+1 Tactical Retreat

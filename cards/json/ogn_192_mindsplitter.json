@@ -1,0 +1,26 @@
+{
+  "id": "ogn-192-298",
+  "name": "Mindsplitter",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 192,
+  "public_code": "OGN-192/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Dragon",
+    "Mount Targon"
+  ],
+  "energy_cost": 7,
+  "power_cost": 2,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When you play me, choose an opponent. They reveal their hand. Choose a card from it, and they discard that card.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8753058698cff6455da6cccd13a7fe901a164051-744x1039.png",
+  "artist": "Six More Vodka"
+}

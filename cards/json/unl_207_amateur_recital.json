@@ -1,0 +1,21 @@
+{
+  "id": "unl-207-219",
+  "name": "Amateur Recital",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 207,
+  "public_code": "UNL-207/219",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you hold here, you may move a unit at a battlefield to its base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9372a1574aa077e8b02cc6f00a1add060ae3b520-1039x744.png",
+  "artist": "Envar Studio"
+}

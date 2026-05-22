@@ -1,0 +1,23 @@
+{
+  "id": "unl-061-219",
+  "name": "Downstage Dramatics",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 61,
+  "public_code": "UNL-061/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\n[Repeat] [2] (You may pay the additional cost to repeat this spell's effect.)\nDraw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d76418eabcddbea148f3331913223b79a39aabda-744x1039.png",
+  "artist": "\u83ba\u4e4b\u6b4c"
+}

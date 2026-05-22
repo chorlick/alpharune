@@ -1,0 +1,21 @@
+{
+  "id": "sfd-221-221",
+  "name": "Veiled Temple",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 221,
+  "public_code": "SFD-221/221",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you conquer here, you may ready a friendly gear. If it's an Equipment, you may detach it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6f2b38874a09b3e3df3fe584ea77e84aa5423e37-1039x744.png",
+  "artist": "Kudos Productions"
+}

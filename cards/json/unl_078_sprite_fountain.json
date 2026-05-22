@@ -1,0 +1,23 @@
+{
+  "id": "unl-078-219",
+  "name": "Sprite Fountain",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 78,
+  "public_code": "UNL-078/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Temporary] (Kill this at the start of its controller's Beginning Phase, before scoring.)\nWhen you play this, play a ready 3 [M] Sprite unit token with [Temporary] to your base.\n[Deathknell][>] Repeat this gear's play effect. (When this dies, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fcb3ea3e8f829b8dc845fbf49080552d635bb47b-744x1039.png",
+  "artist": "Envar Studio"
+}

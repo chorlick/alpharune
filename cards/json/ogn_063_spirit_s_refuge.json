@@ -1,0 +1,23 @@
+{
+  "id": "ogn-063-298",
+  "name": "Spirit's Refuge",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 63,
+  "public_code": "OGN-063/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play this, buff a friendly unit. (If it doesn't have a buff, it gets a +1 [M] buff.)\nFriendly buffed units have [Deflect] if they didn't already. (Opponents must pay [A] to choose those units with a spell or ability.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/26d5e54580d1f17ed6c35a66ac6a90ce56c99ec8-744x1039.png",
+  "artist": "Kudos Productions"
+}

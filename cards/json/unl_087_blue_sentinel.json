@@ -1,0 +1,25 @@
+{
+  "id": "unl-087-219",
+  "name": "Blue Sentinel",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 87,
+  "public_code": "UNL-087/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mount Targon"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Shield 2] (+2 [M] while I'm a defender.)\nYour hold effects for holding here trigger an additional time.\nWhen I hold, [Add] [A] at the start of your next Main Phase. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bec7e8f108fac2d9c94db01c85cf143133d13325-744x1039.png",
+  "artist": "Grafit Studio"
+}

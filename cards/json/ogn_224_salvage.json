@@ -1,0 +1,23 @@
+{
+  "id": "ogn-224-298",
+  "name": "Salvage",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 224,
+  "public_code": "OGN-224/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nYou may kill up to one gear. Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9bdbac358e7c9415c1354b6d1f6888dcf9c5519b-744x1039.png",
+  "artist": "Kudos Productions"
+}

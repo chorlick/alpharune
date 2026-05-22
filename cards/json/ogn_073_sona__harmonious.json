@@ -1,0 +1,26 @@
+{
+  "id": "ogn-073-298",
+  "name": "Sona, Harmonious",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 73,
+  "public_code": "OGN-073/298",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Sona",
+    "Demacia"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "At the end of your turn, if I'm at a battlefield, ready up to 4 friendly runes.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8582f6430821fb912fcb3619c5ce9405f254cb2f-744x1039.png",
+  "artist": "League Splash Team"
+}

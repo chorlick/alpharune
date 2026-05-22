@@ -1,0 +1,26 @@
+{
+  "id": "sfd-199-221",
+  "name": "Prodigal Explorer",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 199,
+  "public_code": "SFD-199/221",
+  "card_type": "legend",
+  "super_type": null,
+  "domains": [
+    "mind",
+    "chaos"
+  ],
+  "tags": [
+    "Ezreal"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[E]: [Reaction] \u2014 Draw 1. Use only if you've chosen enemy units and/or gear twice this turn with spells or unit abilities.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d0e143d9edbc14971b2a7b463b3c25b2b6a0c098-744x1039.png",
+  "artist": "Pandart Studio"
+}

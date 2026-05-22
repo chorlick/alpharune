@@ -1,0 +1,821 @@
+## Core System Constraints & Axioms
+
+* The Engine Blueprint: Every tensor shape, token boundary, and prediction head must match the engine’s native Intent struct and binary serialization specifications.
+* Zero-Loss Entity Pointers: Source, target, and destination action logits must attend directly over the exact hidden states produced by the entity encoders. Action feature paths must never be split from entity embeddings.
+* Enforced Perspective Consistency: The model must explicitly identify the acting seat natively to prevent upstream engine/agent alignment drift.
+* Information Asymmetry Modeling: The network must differentiate between public game state, private state, and historical reveals.
+
+------------------------------
+## Phase 1: Input Serialization & Feature Encoding
+
+[Categorical Tokens] ---> [Static Lookup Tables (Card, Zone, Domain, Stance)] ---\
+                                                                                 +---> [LayerNorm] ---> [Dense Projection] ---> [Entity Tokens]
+[Continuous Stats]   ---> [Learned Bucket Embeddings / Per-Token MLPs] --------/
+
+## 1. Categorical Embeddings
+Discrete features are passed through isolated embedding tables to map inputs into a uniform model dimension ($d_{model} = 512$):
+
+* Cards: $E_{card} \in \mathbb{R}^{V_{card} \times 256}$
+* Zones: $E_{zone} \in \mathbb{R}^{V_{zone} \times 64}$ (Hand, Deck, Trash, Base, Champion, Battlefield 1-4)
+* Domains: $E_{domain} \in \mathbb{R}^{V_{domain} \times 64}$ (Resource alignment colors)
+* Stance: $E_{stance} \in \mathbb{R}^{V_{stance} \times 64}$ (Ready, Exhausted, Facedown)
+
+## 2. Non-Degenerate Continuous Feature Handling
+To prevent the mathematical erasure caused by executing LayerNorm on lone scalar entities, continuous metrics (Might, Damage, Score, Ready/Exhausted Rune counts) must be treated using one of two strategies:
+
+* Option A (Learned Bucket Embeddings): Quantize values into tight integer buckets (e.g., Might 0 to 20+) and pass them through a discrete embedding table $E_{stat} \in \mathbb{R}^{21 \times 64}$. This leverages the tiny vocabulary of game values.
+* Option B (Per-Token Feature Projection MLPs): Group continuous scalar attributes into a structured vector per entity (e.g., $\mathbf{x}_{stats} = [\text{might}, \text{damage}, \text{runes}]$), pass them through a dense layer to project them to $d_{stats} = 64$, and concatenate them directly to the categorical embeddings before performing a final block LayerNorm.
+
+## 3. Perspective Embedding
+To resolve the structural inconsistency between BinaryDataSerializer (turn_player) and ModelAgent (legal[0].player), a 1-bit active player perspective feature is explicitly introduced:
+
+* An identity flag (is_acting_player: 0 or 1) is concatenated to every card, unit, and zone token.
+* This anchors the model to evaluate the board state relative to its own seat, making perspective inversion failure mathematically impossible.
+
+------------------------------
+## Phase 2: Sequence & Observation Tracking (The Encoder Backbone)
+
+[Reaction Chain Tokens] + [Sinusoidal Positional Encoding] ---\
+                                                             +---> [Transformer Encoder Blocks (6x layers, 8x heads)]
+[Hand / Asset Tokens]    (No Positional Encoding) -----------/
+
+## 1. Unified Transformer Encoder
+The model utilizes a pure Transformer Encoder architecture (not a decoder). Causal masking and KV-caching are omitted because game inference is non-autoregressive token generation.
+
+* The Chain Sequence: Reaction spells on the stack are treated as a chronological sequence. Sinusoidal positional encodings are injected only into these tokens to maintain the functional sequence of resolution (FEPR dependency).
+* The Hand/Asset Set: Cards in hand and general zone pools are appended into the same encoder context without positional encodings, treating them as a permutation-invariant set.
+
+## 2. Hidden State Memory & Observation Blocks
+To handle imperfect information states (unseen cards in deck, opponent hands, or facedown card types), the encoder allocates fixed slots for Revealed-Observation Memory Tokens:
+
+* Whenever a card state is modified by a peek, reveal, or draw effect (e.g., Aurora top-deck view, Mindsplitter hand reveals), the specific identity is logged into a dedicated state persistence token.
+* If a card's identity is hidden to the acting player, it is assigned a specialized UNKNOWN token ID. The network uses the cross-attention mechanism across historical turn-tokens to deduce opponent holdings based on observable plays.
+
+------------------------------
+## Phase 3: Spatial Board Fusion (The GNN Infrastructure)
+Despite the micro-scale of Riftbound’s physical layout (2 bases + 2-4 Battlefields + token zones), a Graph Neural Network (GNN) is explicitly integrated here to establish an ironclad topological bias.
+
+       [Transformer Output Entities]
+
+                    |
+                    v (Grouped & Mean-Pooled by Location)
+         [Node Local Feature Vectors]
+                    |
+                    v
+    [GNN Layer: Gated Graph Conv / GAT]  <---> (Adjacency Matrix + Edge Typing)
+                    |
+                    v
+     [Spatially Contextualized Nodes]
+
+## 1. Graph Construction
+
+* Nodes ($V$): Exactly $N$ nodes representing the physical grid positions (e.g., Left Base, Right Base, Battlefield 1, Battlefield 2, Battlefield 3, Battlefield 4).
+* Node Initialization: The initial feature vector $\mathbf{h}_v^0$ for node $v$ is constructed by taking the output entity tokens from the Transformer Encoder that occupy that specific zone, passing them through a localized pooling step (e.g., Mean/Max pooling), and appending the node's static identity token.
+* Edges ($E$): Directional links connecting adjacent nodes (e.g., $BF_1 \leftrightarrow BF_2$).
+* Edge Types: Categorized explicitly to represent operational boundaries (e.g., Adjacent-Move, Opposing-Combat-Range, Base-Link).
+
+## 2. Message Passing Layer
+The architecture applies 2 to 3 layers of Gated Graph Sequence Neural Networks (GG-NN) or Graph Attention Networks (GAT):
+$$\mathbf{h}_v^{(k)} = \text{GRU}\left(\mathbf{h}_v^{(k-1)}, \sum_{j \in \mathcal{N}(v)} W_{\text{type}(j,v)} \mathbf{h}_j^{(k-1)}\right)$$ 
+This passes card state parameters across adjacent lanes and bases, ensuring a threat token in an adjacent combat zone alters the hidden representations of the units stationed nearby.
+------------------------------
+## Phase 4: Pointer-Network Output Factorization
+To prevent representation decoupling, the decision heads execute a multi-pointer architecture that directly references the final hidden tensors generated in Phases 2 and 3.
+
+                  [Combined State Latent Vector]
+
+                                 |
+        +------------------------+------------------------+
+        |                        |                        |
+        v                        v                        v
+  [Action Type Head]    [Source Pointer Head]    [Target/Dest Pointer Heads]
+  (Discrete Logits)    (Dot-Product vs Tokens)   (Dot-Product vs Tokens)
+
+## 1. Factored Decision Paths
+The action space maps directly to the engine's native Intent struct using four factorized heads:
+
+   1. Action Type Logits: A categorical output vector determining the root action (e.g., Play Card, Activate Ability, Pass Turn).
+   2. Source Token Pointer: A pointer score matrix calculated by performing a dot-product between a query projection of the state and the entity tokens emitted from the encoder (e.g., selecting the card in hand).
+   3. Target Token Pointer: A pointer score matrix selecting target units on the board.
+   4. Destination Node Pointer: A pointer score matrix computed against the spatial node embeddings produced by the GNN layers (e.g., designating which battlefield or lane to deploy onto).
+
+## 2. Rules-Engine Masking
+The raw logits for all four pointers are passed through a element-wise masking layer using the boolean configurations passed out by the binary rules engine:
+$$\text{Masked Logits} = \mathbf{z} + (\mathbf{m} - 1) \times \infty$$ 
+Where $\mathbf{m}$ is the binary legality mask vector (1 for legal, 0 for illegal). This completely eliminates invalid outputs before computing the final action selection.
+------------------------------
+## Phase 5: Auxiliaries & The Training Loop Paradigm
+Training strictly via Policy Gradient (REINFORCE) on sparse win/loss parameters creates an early performance ceiling. This architecture introduces dense self-supervised signals alongside regularized policy distillation.
+
+                            [Loss Optimization Network]
+
+                                         |
+      +------------------+---------------+------------------+
+      |                  |                                  |
+      v                  v                                  v
+[Primary RL Loss]  [Opponent Action Prediction]  [Hidden Hand Estimation]
+(AlphaZero MCTS)       (Cross-Entropy Aux)         (Cross-Entropy Aux)
+
+## 1. Dense Auxiliary Prediction Heads
+To force the transformer backbone to maintain clean, predictive features without relying solely on terminal rewards, the framework appends three auxiliary output heads during training:
+
+* Opponent Next-Action Predictor: A classification head trained via Cross-Entropy to predict the opponent's immediate responsive play during reaction chains.
+* Hidden Hand State Estimator: A secondary head that outputs a multi-hot density distribution predicting which unrevealed cards reside in the opponent's hand based on their active deck composition and play style.
+* Future Draw Predictor: Predicts the probability distribution of the next 2 cards to be pulled from the player's own deck asset layer.
+
+## 2. Algorithmic Pivot: AlphaZero Policy Distillation
+The model replaces basic $\epsilon$-greedy REINFORCE with AlphaZero-style Policy Distillation paired with an Information-Set Monte Carlo Tree Search (ISMCTS) or Counterfactual Regret Minimization (CFR) variants in OpenSpiel.
+
+* During MCTS iterations, the network’s Policy Head guides tree search selections, and the Critic Head estimates board values.
+* The network is trained to minimize the combined error across the policy targets, terminal match results, and auxiliary heads:
+$$\mathcal{L} = (z - v)^2 - \boldsymbol{\pi}^T \log \mathbf{p} + \alpha \mathcal{L}_{\text{aux}} + c\Vert{}\theta\Vert{}^2$$ 
+
+------------------------------
+## Implementation Prompt for Your AI Engineering Agent
+
+Please write a complete, modular PyTorch implementation of the game model architecture detailed below. The model must process card sequences, stack chains, and a spatial board layout, outputting factored action pointers aligned with an engine rules mask.
+
+Requirements:
+1. Input Tensors:
+   - card_ids: IntTensor (batch_size, num_entities) representing card lookups.
+   - zone_ids, domain_ids, stance_ids: IntTensor (batch_size, num_entities) categorical features.
+   - static_stats: FloatTensor (batch_size, num_entities, num_continuous_features) containing Might, Damage, Score, Runes.
+   - perspective_flags: IntTensor (batch_size, num_entities, 1) indicating if the entity belongs to the acting seat.
+   - chain_indices: IntTensor (batch_size, num_entities) sequence tracking for stack elements (-1 for non-chain cards).
+   - spatial_node_mapping: IntTensor (batch_size, num_entities) maps which of the N board nodes an entity occupies.
+   - legal_action_mask: Dict or Tensor corresponding to the factored action space logit dimensions.
+
+2. Architecture Components:
+   - Continuous Feature Projection: Do NOT use LayerNorm directly on individual scalars. Instead, pass static_stats through a small per-token MLP or Linear layer to map them to dimension 64, or construct a bucketized embedding configuration.
+   - Embeddings: Combine Card (256-dim), Zone (64-dim), Domain (64-dim), Stance (64-dim), Perspective (8-dim), and Continuous Stat projections (64-dim) into a single 512-dimension representation per token. Apply LayerNorm once to the combined token vectors.
+   - Transformer Encoder: A 6-layer, 8-head standard Transformer Encoder (d_model=512). Inject Sinusoidal Positional Encodings ONLY into tokens where chain_indices >= 0.
+   - GNN Spatial Fusion Layer: Group the Transformer output tokens by their spatial_node_mapping value. Apply a Mean/Max pooling pass over tokens in each zone to create fixed representations for N nodes (e.g., 6 positions: 2 bases, 4 battlefields). Run 2 layers of a Gated Graph Conv (or GAT) across these nodes using a predefined adjacency configuration matrix.
+   - Factored Pointer Heads: Construct output heads for Action Type, Source Token Pointer, Target Token Pointer, and Destination Node Pointer. Ensure the Source/Target pointers are calculated via cross-attention/dot-product over the exact output embeddings produced by the encoder stage to preserve target alignment.
+   - Masking Layer: Apply a strict rule-engine masking mechanism to all four logit outputs using the incoming legal_action_mask before executing softmax.
+   - Auxiliary Outputs: Include standalone output heads to predict Opponent Next-Actions, Opponent Hand Contents, and Next Draw probabilities.
+
+Provide clean, documented, and structurally sound PyTorch code utilizing standard layers (nn.TransformerEncoder, nn.Linear) and a simple custom GNN graph convolution layer or PyTorch Geometric modules if applicable.
+
+------------------------------
+## Follow-Up & Next Steps
+To align this blueprint with your working setup, let me know:
+
+* What is the exact dictionary layout of your engine's Intent struct (e.g., what are the maximum limits for source_token, target_token, and dest_token indices)?
+* Are you currently building the training environment around OpenSpiel, Ray/RLlib, or a custom reinforcement learning loop?
+* Do you want to see the specific layout for the binary structural mapping that links the serialized C# state properties into these tensor shapes?
+
+
+==============================================================================
+## Engineering Review Notes (from Riftbound engine maintainer)
+==============================================================================
+
+Context: the engine is C++20, ~787 cards implemented, simulation runs at ~50K
+decisions/sec random play, ~88 games/sec end-to-end. We just landed Phase 11
+Phase B of the OpenSpiel port (action encoding, replay Clone, information-set
+ObservationTensor, CardRevealedEvent infrastructure). The next big block is
+either (a) Phase C-1 engine step-machine refactor (fast O(1) Clone — unblocks
+AlphaZero throughput) or (b) the V2 architecture proposed above. They are
+mostly independent; both can be in flight at once.
+
+------------------------------------------------------------------------------
+### What's right in this proposal (ship these)
+------------------------------------------------------------------------------
+
+1. **Pointer-network heads over encoder tokens.** Biggest single win. V1
+   computes per-action features as a separate flat 25-dim vector and scores
+   via MLP — entity identity is decoupled from the encoder. Pointer heads
+   (Source/Target/Destination as dot-product over entity embeddings) keep the
+   action tied directly to the entity that produced it. This alone should
+   fix a lot of the V1 plateau-at-mediocre-policy problem (V1 supervised acc
+   maxed at ~43% on random labels; v002 REINFORCE plateaued at v002 for MF).
+
+2. **Factored action space** (Action Type / Source / Target / Destination)
+   is exactly the bijection we already built into the bit-packed action
+   encoder (see `src/openspiel/action_encoding.h` — 52-bit encoding at
+   [type:5][card_def_id:11][target1:11][target2:11][dest_bf:3][ability_source:11]).
+   The factored heads map 1:1 onto these fields. Targets are already in
+   this shape; encoder/decoder is tested.
+
+3. **Per-token `is_acting_player` flag.** Solves a real upstream bug.
+   `BinaryDataSerializer::recordDecision` uses `state.turn.turn_player`
+   while `ModelAgent::selectAction` uses `legal_actions[0].player`. These
+   diverge on prompted-choice decisions where the engine has handed
+   priority/focus to the non-turn player. A per-token perspective flag
+   makes the asymmetry mathematically impossible.
+
+4. **Sinusoidal pos enc only on chain tokens; rest as permutation-invariant
+   set.** Right call. FEPR (Finalize-Execute-Pass-Resolve) resolution
+   order matters; hand-card index doesn't. The engine's `ChainState` is
+   already a LIFO stack with `ChainItemStatus { Pending, Finalized }` — the
+   chain-position attribute exists natively.
+
+5. **Auxiliary heads** (opponent next-action, hidden hand estimator,
+   future-draw predictor). These are the dense gradients we need.
+   REINFORCE on win/loss alone is the documented plateau cause. The
+   hidden-hand estimator dovetails with the `CardRevealedEvent` and
+   PlayerState `observed_cards` infrastructure we just added in Phase B
+   (event bus + signal exists; wiring from card impls is Phase B-2 work).
+
+6. **AlphaZero policy distillation + ISMCTS.** Right algorithmic pivot.
+   Custom self-play REINFORCE plateaued at v002 (MF) and v006 (Rengar)
+   despite adaptive entropy schedules and reject-streak handling. ISMCTS
+   is the imperfect-info-correct MCTS variant — necessary for Riftbound.
+   Distillation lets the policy head learn from search results instead of
+   sparse terminal rewards.
+
+7. **Rules-engine masking pre-softmax.** Already do this in V1 (mask of
+   shape [max_actions] passed alongside scores). Explicit in V2 is good
+   hygiene; just confirm the mask shape matches the factored output dims
+   (one mask per head: action type, source ptr, target ptr, dest ptr).
+
+------------------------------------------------------------------------------
+### Concerns to resolve before coding
+------------------------------------------------------------------------------
+
+1. **GNN over only 6 nodes may be over-engineering.** With 2 bases + 4
+   battlefields, a 6×6 cross-attention block with learned edge-type biases
+   (additive bias on attention scores) gives the same expressiveness as
+   GAT-on-6-nodes. The "Adjacent-Move / Opposing-Combat-Range / Base-Link"
+   edge typing is the real signal — implement that as additive attention
+   bias instead of formal message passing. Less code, same gradient flow,
+   one fewer library to depend on. Reserve true GNN if we ever scale to
+   multi-board variants (we won't).
+
+2. **Continuous stats: prefer Option A (bucket embeddings) strongly over
+   Option B (MLP).** Riftbound stats are *integer* values with tiny
+   vocabularies — might 0..20, runes 0..12, damage 0..~15, score 0..8.
+   Bucket embeddings let each value have its own learned identity
+   (might=0 means something categorically different from might=1: dead
+   vs. alive). MLP just flattens that distinction. Recommend
+   $E_{stat} \in \mathbb{R}^{32 \times d_{stat}}$ — enough buckets for
+   headroom, small param count.
+
+3. **Card embedding sizing.** V1 uses 32-dim cards; proposal jumps to
+   256. With 787 cards that's 200K params just for the lookup. We're
+   not sure we have enough training data to fill 256-dim representations
+   per card meaningfully (most cards appear ≤ 100 times in a 10K-game
+   dataset). Recommend starting at 96-128, scale up if the model is
+   under-using the dimension.
+
+4. **Per-token padding masks are non-negotiable.** `num_entities` varies
+   per state (hand size 0-7, BF units 0-3 per side per BF, chain depth
+   0-4). V1 fixes the count and zero-pads — broken for pointer heads
+   because zero-padded tokens still get attention probability mass.
+   V2 *must* emit an explicit attention mask alongside entity tokens,
+   and pointer-head softmaxes *must* mask invalid slots.
+
+5. **"Future Draw Predictor" risks trivial-answer regime.** Conditioned
+   only on own deck composition, the optimal predictor is just
+   `count(card_in_deck) / |deck|` — no encoder needed. Useful aux signal
+   only if conditioned on full board + observation history (e.g., "given
+   that opp played 3 Bullet Times already, what am I likely to draw
+   next?"). Otherwise it adds parameter count without gradient.
+
+6. **6 layers × 8 heads × d=512 ≈ 19M params encoder.** Inference latency
+   on CPU is going to be 5-10× current. Self-play data-generation
+   throughput drops accordingly. Either commit to GPU inference (the
+   batched-inference worker sketched in CLAUDE.md "Future Work") or
+   downscale to 3 layers × d=384 to start, scale up after MCTS
+   distillation is producing decisive policy improvements.
+
+7. **Spatial node mapping for non-board entities.** Hand cards, chain
+   items, banishment, trash — they have no physical node. The proposal
+   doesn't say how those map. Recommend a sentinel "no-spatial-context"
+   pseudo-node (or just omit them from GNN pooling entirely — they
+   participate in transformer attention but not spatial fusion).
+
+8. **Replay-based Clone in OpenSpiel is the throughput bottleneck.**
+   We just landed a working Clone() for Phase B, but it's O(K) per clone
+   (spawns fresh state, replays K actions). MCTS at decision K with sims=5
+   does 5×K replays per move; long mixed games hit minutes per game.
+   Phase C-1 engine refactor to a pull-driven step machine (Clone →
+   memcpy) is the prerequisite for any AlphaZero training at scale.
+   This is independent of the V2 model architecture but must land first
+   for self-play data generation to be viable.
+
+------------------------------------------------------------------------------
+### Recommended sequencing
+------------------------------------------------------------------------------
+
+1. **Land Phase C-1 step-machine refactor in C++ engine first.** This
+   makes `RiftboundState::Clone()` O(1) memcpy and removes the per-state
+   worker thread. Without it, AlphaZero data-gen is unaffordable. Two
+   viable shapes:
+   - Manual state machine: convert `runMainPhase` / `resolveChain` /
+     `processCombat` / `cleanup` into functions returning
+     `StepResult { Done | NeedDecision | ChanceNode }`. Touches every
+     recursive call site; well-known engineering shape (Stockfish,
+     Magic Online's engine).
+   - C++20 coroutines: `co_yield decision_point;` from inside recursive
+     control flow. Smaller diff, more elegant; tooling rougher.
+
+2. **Refactor `feature_extractor.cpp` to emit *(batch, n_entities,
+   per_entity_features)* tensors** instead of one flat 4623-dim vector.
+   The new architecture is entity-structured; current is bag-of-floats.
+   This is non-trivial — V1 trainer parity must be maintained until V2
+   is decisively better.
+
+3. **Build `RiftboundAgentV2` in `scripts/train_agent.py` parallel to V1.**
+   Pointer heads first, aux heads second, ISMCTS last. Validate V2 beats
+   V1 on supervised parity (random labels) before doing self-play —
+   confirms the new tokenization isn't worse.
+
+4. **Wire `CardRevealedEvent` from Aurora / Mindsplitter / Vision /
+   Predict / Sabotage / Stacked Deck.** Currently emitted by nothing.
+   Feeds the Hidden Hand State Estimator aux head and the masked
+   ObservationTensor.
+
+5. **ISMCTS-AlphaZero training harness.** Use OpenSpiel's algorithms.
+   We have a working MCTSBot harness already (`riftbound_openspiel --agent2 mcts:sims=N`);
+   AlphaZero is similar plumbing.
+
+------------------------------------------------------------------------------
+### Open questions for you (the architect)
+------------------------------------------------------------------------------
+
+A. **Pointer head softmax granularity.** Each pointer head must softmax
+   over a *legal* subset of tokens (e.g., Source pointer only over cards
+   in hand + activated abilities of permanents I control). Do you intend
+   one softmax over ALL tokens with rules-mask zeroing-out illegal
+   slots, or separate softmaxes per pointer head over its eligible
+   subset? The former is simpler and aligns with how we encode
+   `legal_action_mask`; the latter has lower entropy at the cost of
+   per-head masking complexity.
+
+B. **Action factorization and dependency.** Action selection is
+   conditional: you don't pick a target before you pick the source. Do
+   you decode sequentially (action_type → source | action_type → target
+   | source, action_type → dest | source, target, action_type), or
+   independently with joint masking, or via a fully-joint head?
+   Sequential is theoretically right for AlphaZero (the policy
+   factorizes that way); joint with masking is simpler to train.
+   Standard pointer-net AZ uses sequential; we'd want to confirm.
+
+C. **Entity vocabulary granularity.** Should each card *instance* get
+   its own token (so two copies of "Bullet Time" in hand are two
+   tokens), or one token per *card_def_id* with a count? Pointer heads
+   want per-instance (you target a specific physical card), but the
+   embedding table indexes by card_def_id. Probably: one token per
+   instance, where each token is `embed(card_def_id) + embed(zone) +
+   embed(stance) + ...`. Confirm.
+
+D. **Observation history depth.** The proposal mentions "Revealed-
+   Observation Memory Tokens" and historical turn-tokens for opponent
+   hand deduction. How many turns of history are kept? Last 3? All?
+   Last-K decisions vs. last-K turns? In Riftbound, a "turn" can have
+   hundreds of decisions (chain priority, combat damage assignments,
+   rune-payment selections); turn-granularity vs. decision-granularity
+   is a real choice. Recommend decision-granularity with a window.
+
+E. **Chance node handling.** AlphaZero needs explicit chance nodes for
+   theoretical correctness on stochastic games. We currently report
+   `ChanceMode::kSampledStochastic` (engine samples internally; no
+   explicit chance node in OpenSpiel). Phase B-2 lifts the engine RNG
+   out into `ChanceOutcomes()`-driven draws/mulligans/shuffles. Does
+   your training harness assume explicit chance nodes (NFSP, CFR), or
+   is sampled-stochastic acceptable for ISMCTS-AlphaZero?
+
+F. **Auxiliary head loss weighting.** $\alpha \mathcal{L}_{\text{aux}}$
+   in your composite loss — what $\alpha$ schedule? Constant, annealed
+   down as the policy converges, or curriculum (warm-start with high
+   $\alpha$ on aux, fade as policy starts beating random)? V1's
+   constant-weight value+policy combo plateaued; we suspect lack of
+   curriculum was part of the issue.
+
+G. **GNN as cross-attention with edge biases — would you accept this
+   simplification?** Saves a library dependency (PyTorch Geometric)
+   and reduces architectural surface area. The information content is
+   the same when there are only 6 nodes.
+
+H. **Card embedding dim sweep.** Is 256 picked empirically for similar
+   games, or just a round number? With 787 cards × ~100 appearances
+   per card in 10K-game datasets, we may not have enough data to fit
+   256-dim embeddings without overfit. Have you done dimension-sweep
+   experiments?
+
+I. **Inference deployment story.** ONNX export for C++ inference is
+   our current setup (CPU only, ONNX Runtime 1.21). The proposed
+   architecture (transformer + GNN + pointer heads + 6L × 8H × d512)
+   will be slow on CPU. Is the plan to keep CPU inference for
+   self-play, or move to a GPU inference server? If the latter, what
+   batching strategy?
+
+
+==============================================================================
+## Riftbound Engine — State and Data Inventory
+==============================================================================
+
+Everything below is *currently implemented* and queryable. We can extend
+where needed; this is the snapshot the V2 model needs to consume.
+
+------------------------------------------------------------------------------
+### Game state structure (C++ `riftbound::GameState`, see `src/core/game_state.h`)
+------------------------------------------------------------------------------
+
+```
+GameState {
+  ModeOfPlay mode;                          // victory score, BF count, etc.
+  PlayerState players[2];                   // per-player state — full detail below
+  std::vector<BattlefieldState> battlefields;
+  std::unordered_map<GameObjectId, GameObject> objects;  // the runtime object pool
+  TurnState turn;                           // phase, priority, focus, state machine
+  ChainState chain;                         // LIFO of spells/abilities mid-resolution
+  std::vector<DelayedAbility> delayed_abilities;  // pending one-shot triggers
+  bool game_over;
+  PlayerId winner;
+  std::string game_over_reason;
+  int decision_index;                       // for training data indexing
+}
+```
+
+------------------------------------------------------------------------------
+### PlayerState (per-player, fully observable to that player)
+------------------------------------------------------------------------------
+
+```
+PlayerState {
+  PlayerId id;
+  int score, xp;                            // VP and XP (for Level keyword)
+  RunePool rune_pool {
+    int energy;                             // [A] generic resource
+    int power[Domain::Count = 6];           // per-domain power (R/G/B/O/P/Y)
+    int universal_power;                    // [A] colorless power
+  };
+  std::vector<GameObjectId> main_deck;      // ordered, top = back
+  std::vector<GameObjectId> rune_deck;      // ordered
+  std::vector<GameObjectId> hand;
+  std::vector<GameObjectId> trash;
+  std::vector<GameObjectId> banishment;
+  GameObjectId champion_zone;               // single card or kInvalidId
+  GameObjectId legend_zone;                 // single card
+
+  // Per-turn tracking (reset each turn)
+  int cards_played_this_turn;
+  bool has_discarded_this_turn;
+  std::set<BattlefieldId> battlefields_scored_this_turn;
+  bool burned_out;
+  bool is_first_turn;
+  bool cant_play_cards_this_turn;           // Brynhir Thundersong lockout
+
+  // Cost modifiers (e.g., "next spell costs [1] less")
+  std::vector<CostModifier> cost_modifiers;
+
+  // Additional turns queue (CR 734-738)
+  std::vector<PlayerId> additional_turns;
+}
+```
+
+------------------------------------------------------------------------------
+### GameObject (one per card/token instance, see `src/core/game_object.h`)
+------------------------------------------------------------------------------
+
+```
+GameObject {
+  GameObjectId id;                          // unique runtime ID
+  CardDefId card_def_id;                    // index into registry.json (1..787)
+  PlayerId owner, controller;
+  std::string name;
+  CardType card_type;                       // Unit/Spell/Gear/Rune/Battlefield/Legend
+  SuperType super_type;                     // None/Champion/Signature/Token
+  std::vector<std::string> tags;            // e.g., "Bandle City", "Yordle"
+  std::vector<Domain> domains;              // resource alignment colors
+
+  // Unit stats
+  int base_might, current_might, damage_marked;
+
+  // State flags
+  bool is_exhausted, is_stunned, is_hidden;
+  BattlefieldId hidden_at;
+  int hidden_on_turn;
+
+  // Position
+  ZoneType zone;                            // MainDeck/RuneDeck/Hand/Base/Trash/...
+  std::optional<LocationId> location;       // BaseLocation{player} or BattlefieldLocation{id}
+
+  // Combat
+  CombatDesignation combat_designation;     // None/Attacker/Defender
+
+  // Buffs (some permanent, some this-turn-only)
+  int buff_count, temp_buff_count;
+  int temp_assault_value, temp_shield_value, temp_might_bonus;
+
+  // Keywords (base + aura-granted, both queryable via hasKeyword())
+  KeywordSet keywords, aura_keywords;       // 23 keywords (Tank, Backline, Ganking, etc.)
+  int assault_value, shield_value, deflect_value;
+
+  // Attachments (gear ↔ unit)
+  std::optional<GameObjectId> attached_to;
+  std::vector<GameObjectId> attachments;
+  int might_bonus, attachment_might_bonus;
+  bool is_rules_text_inactive;              // gear-attached state
+
+  // Aura system (continuously recomputed from board)
+  std::vector<AuraEffect> aura_effects;
+  int aura_might_bonus;
+}
+```
+
+------------------------------------------------------------------------------
+### BattlefieldState (per physical lane)
+------------------------------------------------------------------------------
+
+```
+BattlefieldState {
+  BattlefieldId id;                         // 0..3 typically
+  GameObjectId card_object_id;              // the BF card itself
+  std::optional<PlayerId> controller;
+  bool is_contested;
+  PlayerId contested_by, contributed_by;
+  std::vector<GameObjectId> facedown;       // hidden cards stashed here
+  int facedown_max_occupancy;
+  bool showdown_staged, combat_staged;
+  bool showdown_in_progress, combat_in_progress;
+  std::optional<PlayerId> attacker, defender;
+  CombatPhase combat_phase;                 // None/ShowdownStep/DamageStep/ResolutionStep
+  bool is_token;                            // token battlefield (CR 438)
+  std::optional<GameObjectId> replaced_card;
+  bool was_replaced;
+}
+```
+
+------------------------------------------------------------------------------
+### TurnState
+------------------------------------------------------------------------------
+
+```
+TurnState {
+  PlayerId turn_player, starting_player;    // starting_player set at coin flip
+  TurnPhase phase;                          // 11 phases (Setup, Mulligan,
+                                            // AwakenPhase, BeginningStep,
+                                            // ScoringStep, ChannelPhase,
+                                            // DrawPhase, MainPhase, EndingStep,
+                                            // ExpirationStep, GameOver)
+  NeutralShowdownState ns_state;            // Neutral | Showdown
+  OpenClosedState oc_state;                 // Open | Closed
+  std::optional<PlayerId> priority_holder, focus_holder;
+  int turn_number;
+  bool is_additional_turn;
+  std::set<PlayerId> players_passed_priority, players_passed_focus;
+}
+```
+
+------------------------------------------------------------------------------
+### ChainState (LIFO; resolves back-to-front per FEPR)
+------------------------------------------------------------------------------
+
+```
+ChainState {
+  std::vector<ChainItem> items;             // ChainItem has source, def_id,
+                                            // controller, targets[], is_spell,
+                                            // is_permanent, is_ability, status
+                                            // (Pending|Finalized)
+}
+```
+
+------------------------------------------------------------------------------
+### Action surface (Intent, see `src/core/intent.h`)
+------------------------------------------------------------------------------
+
+```
+Intent {
+  IntentType type;                          // 22 types, see below
+  PlayerId player;
+
+  // Play actions
+  GameObjectId card;                        // card being played
+  std::optional<LocationId> play_location;  // base or specific BF
+
+  // Movement
+  std::vector<GameObjectId> units_to_move;
+  std::optional<LocationId> move_destination;
+
+  // Ability activation
+  AbilityId ability;
+  GameObjectId ability_source;
+
+  // Targeting (spells, abilities, choose effects)
+  std::vector<GameObjectId> targets;
+
+  // Combat damage assignment (ordered)
+  std::vector<DamageAssignment> damage_assignments;
+
+  // Mulligan / setup
+  std::vector<GameObjectId> cards_to_mulligan;
+  BattlefieldId chosen_battlefield;
+  bool choose_first;
+
+  // Sideboard (Bo3 — not yet exercised)
+  std::vector<std::pair<GameObjectId, GameObjectId>> sideboard_swaps;
+
+  // Generic prompted choice payload
+  std::vector<GameObjectId> chosen_objects;
+  std::optional<int> chosen_value;
+}
+```
+
+IntentTypes (22 total, 14 used in current decks):
+
+```
+Main Phase (Neutral Open):
+  PlayCard, StandardMove, ActivateAbility, HideCard, EndTurn
+
+Chain (Closed State):
+  PlayReaction, ActivateReactionAbility, PassPriority
+
+Showdown (Open):
+  PlayActionCard, ActivateActionAbility, PassFocus
+
+Prompted:
+  AssignCombatDamage, MulliganDecision, ChooseBattlefield,
+  MakeChoice, SideboardSwap, PlayFirstDecision
+
+Triggered ability responses:
+  PlaceOptionalTrigger, DeclineOptionalTrigger,
+  PayTriggeredCost, DeclineTriggeredCost
+
+Special: Concede
+```
+
+------------------------------------------------------------------------------
+### Bit-packed action encoding (see `src/openspiel/action_encoding.h`)
+------------------------------------------------------------------------------
+
+Phase B landed an Intent ↔ int64 ActionID bijection at 52 bits:
+
+```
+[bits 47..51]   type           (5 bits, IntentType)
+[bits 36..46]   card_def_id    (11 bits — encodes card identity, not GameObjectId,
+                                 so stable across Clone)
+[bits 25..35]   target1        (11 bits — first target's card_def_id)
+[bits 14..24]   target2        (11 bits — second target's card_def_id)
+[bits 11..13]   dest_bf        (3 bits — destination BF id + 1, or 0 = base/none)
+[bits  0..10]   ability_source (11 bits — repurposed per intent type:
+                                 ability_id for ActivateAbility,
+                                 mulligan count, damage values, etc.)
+```
+
+Round-trip tested for all 14 used IntentTypes. CardDefIds are stable across
+clones (they index a static registry); the encoding does not depend on
+volatile GameObjectIds.
+
+------------------------------------------------------------------------------
+### Current state feature vector (V1, what gets fed to the model)
+------------------------------------------------------------------------------
+
+`extractStateFeatures(state, perspective, card_db)` → 4623-dim float vector,
+padded to `RESERVED_STATE_DIM=4864` for forward-compat.
+
+Layout (see `src/ml/feature_extractor.h`):
+- **0..353** (354 dims): base features — 10 globals (turn#, phase one-hot,
+  is_turn_player, went_first, score_diff, chain length, ns_state, oc_state,
+  is_additional_turn, delayed_ability_count) + 8 chain item slots (source
+  def_id + is_self) + 70 per-player × 2 (resources, champion, legend, power
+  by domain, hand IDs + costs, rune counts, base unit stats, trash sizes,
+  ...) + 49 per BF × 4 (controller, contested, combat, showdown, facedown,
+  attacker_is_self, combat_phase, is_token, per-side counts/keywords + top-3
+  unit def_ids/might/damage).
+- **354..469** (116 dims): Tier 1 — chain target def_ids, cost-mod flags,
+  per-BF scored flags, per-unit extended (combat designation, attachment
+  def_id, might delta, temp might bonus).
+- **470..4404** (3935 dims): zone multi-hot — 5 vectors × 787 card vocab:
+  self deck/trash/banishment + opp trash/banishment. Opp deck and hand are
+  NEVER serialized (information set masking).
+- **4405..4406** (2 dims): turn flags — self/opp `cant_play_cards_this_turn`.
+- **4407..4598** (192 dims): Tier 2 — per-unit assault/shield/deflect/
+  buff_count/temp_buff_count/tank_kw/backline_kw/ganking_kw for top-3 units
+  per side per BF.
+- **4599..4622** (24 dims): extended globals — ready base units, cost-mod
+  magnitude, additional turns queued, contested-by-self per BF,
+  combat/showdown staged per BF, oldest facedown age per BF, focus holder,
+  total BF count.
+
+Padded with zeros to 4864.
+
+Action features (V1): 25-dim per legal action — 14 one-hot type + card_def_id
++ target def_ids ×2 + ability_source def_id + dest_bf + play_bf + mulligan
+count + units_to_move def_ids ×2 + chosen object def_id + chosen
+battlefield. Up to 64 legal actions per decision.
+
+This flat representation is what V2 should replace with entity-token tensors.
+
+------------------------------------------------------------------------------
+### Training data binary format (`src/io/binary_data_serializer.{h,cpp}`)
+------------------------------------------------------------------------------
+
+Magic `RFBA`, one file per game. Header (20 bytes) + per-decision records:
+
+```
+Header:
+  char[4] magic = "RFBA"
+  uint16 version, state_dim, action_dim, max_actions
+  uint32 num_decisions
+  uint8 winner (0=P1, 1=P2, 2=draw)
+  int8 final_score_p1, final_score_p2
+
+Per-decision record:
+  uint8 perspective (0=P1, 1=P2)
+  uint8 num_legal
+  uint16 chosen_idx
+  float32[state_dim] state_features  // perspective-aware
+  float32[max_actions][action_dim] action_features
+  uint8[max_actions] action_mask
+```
+
+mmap-able from Python via `RiftboundBinaryDataset` in `scripts/train_agent.py`.
+A 10K-game dataset is ~57 GB on disk (mostly the 5×787 zone multi-hots).
+
+------------------------------------------------------------------------------
+### Available aux data (sources of dense gradient)
+------------------------------------------------------------------------------
+
+For each decision, the engine emits all of:
+
+* Full game state (everything in `GameState`)
+* The chosen Intent
+* All legal Intents at this point (for masking + policy distillation)
+* Acting player + winner (after game ends)
+* Per-turn decision counts
+* Final score (for score-differential rewards)
+* UUID + seed (for replay/reproduction)
+
+Not yet emitted but easy to add:
+* Predicted opponent next action (label: opponent's actual next decision)
+* Predicted opponent hand contents (label: actual hand at this state)
+* Predicted next-N draws (label: actual draws taken later in this game)
+* Predicted value (label: final result)
+
+------------------------------------------------------------------------------
+### Reveal events (Phase B addition — wire targets for hidden hand estimator)
+------------------------------------------------------------------------------
+
+`CardRevealedEvent` is now on the event bus (`src/core/events.h`):
+
+```
+CardRevealedEvent {
+  GameObjectId card;
+  CardDefId card_def_id;
+  PlayerId owner;
+  bool revealed_to_all;
+  PlayerId revealed_to;
+  ZoneType source_zone;
+}
+```
+
+Emitting cards (Phase B-2 follow-up — not yet wired):
+- Aurora: peeks top of deck, plays if matches predicate, recycles otherwise
+- Mindsplitter: opponent reveals hand; discard a card (agent choice)
+- Sabotage: reveals opponent hand; recycle a non-unit
+- Vision (keyword): on play, look at top card of deck
+- Predict (keyword): peek top N cards, choose which to recycle
+- Stacked Deck: search-and-shuffle effect
+
+------------------------------------------------------------------------------
+### What V2 needs that the engine doesn't yet emit
+------------------------------------------------------------------------------
+
+These are gaps the architecture proposal implicitly assumes — flagging so
+they're not surprises:
+
+1. **Per-entity token list.** Currently the feature extractor emits a flat
+   4623-dim vector. V2 needs a structured (n_entities, per_entity_features)
+   tensor with explicit zone/card_def_id/stance/perspective per entity,
+   plus a padding mask. Need an `extractEntityTokens()` parallel API.
+
+2. **Spatial node mapping per entity.** For each entity, which of the 6
+   (or N) board nodes it occupies, or "no node" sentinel for hand/chain/
+   off-board. Currently implicit in `location` (a `LocationId` variant);
+   needs to be lifted to an explicit int per entity for V2 tensor.
+
+3. **Chain index per token.** For tokens that are chain items, their
+   position in the chain (0 = oldest, len-1 = newest = next to resolve).
+   Used for sinusoidal pos enc. Currently `ChainState.items` is ordered
+   but the index isn't surfaced as a feature.
+
+4. **PlayerState `observed_cards` vector.** The hidden hand estimator
+   needs this as a target. Phase B added the event infrastructure
+   (`CardRevealedEvent`) but no consumer maintains the vector yet.
+   Easy: subscribe to the event in a new `ObservationTracker`, maintain
+   a 787-dim count per player.
+
+5. **Action factorization aligned with Intent struct.** The bit-packed
+   encoding factorizes nicely: type → card → target1 → target2 → dest_bf
+   → ability_source. V2 pointer heads need to predict these in the same
+   order. Confirm with the architect.
+
+------------------------------------------------------------------------------
+### Versions and tooling
+------------------------------------------------------------------------------
+
+* C++20 engine, ~76K lines including 787 card implementations
+* CMake + Ninja, Debug and Release builds
+* ONNX Runtime 1.21 for C++ inference (CPU)
+* PyTorch (current model trainer), pybind11 for OpenSpiel
+* OpenSpiel v1.6.14 vendored
+* 93 unit tests, 100% passing
+* Training dataset: ~10K games typical (~57 GB binary)
+
+For questions about engine internals or to request new data emit hooks,
+see CLAUDE.md ("ML feature pipeline" and "ML feature expansion directive"
+sections) and `docs/additional-gamestate-dims.md` for the existing
+unfeaturized-state backlog with priority tiers.
+

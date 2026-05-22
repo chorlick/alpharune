@@ -1,0 +1,23 @@
+{
+  "id": "ogn-128-298",
+  "name": "Challenge",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 128,
+  "public_code": "OGN-128/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nChoose a friendly unit and an enemy unit. They deal damage equal to their Mights to each other.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f5c1aeaee373c481b7ea2a638cd6f9e815ac105d-744x1039.png",
+  "artist": "Kudos Productions"
+}

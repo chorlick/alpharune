@@ -1,0 +1,23 @@
+{
+  "id": "ogn-274-298",
+  "name": "Sprite",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 274,
+  "public_code": "OGN-274/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [],
+  "tags": [
+    "Fae"
+  ],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Temporary] (Kill me at the start of your Beginning Phase, before scoring.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/055892752559d2d3d32e76f491a7a0b540e1a669-744x1039.png",
+  "artist": "Envar Studio"
+}

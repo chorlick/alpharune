@@ -1,0 +1,39 @@
+Legend:
+1 Vex, Gloomist
+
+Champion:
+1 Vex, Apathetic
+
+MainDeck:
+3 Wuju Apprentice
+3 Back Off
+2 Combat Experience
+2 Herald of Spring
+2 Mutated Mouser
+2 Skyward Strike
+2 Soul Sword
+2 Allay, Eager Admirer
+2 Mosstomper
+2 Trevor Snoozebottom
+2 Mister Root
+2 Blast Cone
+2 Existential Dread
+1 Monch
+1 Enthusiastic Promoter
+1 Iascylla
+1 Megatusk
+1 Scryer's Bloom
+1 Shadow
+2 Vex, Mocking
+1 Vex, Cheerless
+1 Nami, Headstrong
+1 Evelynn, Entrancing
+
+Battlefields:
+1 Amateur Recital
+1 Gardens of Becoming
+1 Ripper's Bay
+
+Runes:
+6 Calm Rune
+6 Chaos Rune

@@ -1,0 +1,26 @@
+{
+  "id": "unl-121-219",
+  "name": "Bewitching Spirit",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 121,
+  "public_code": "UNL-121/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Spirit",
+    "Shadow Isles"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, choose a player. They discard 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a771917dea98b137c3f4a13e4967dccf9ee445e5-744x1039.png",
+  "artist": "Wild Blue Studios"
+}

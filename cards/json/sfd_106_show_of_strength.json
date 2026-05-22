@@ -1,0 +1,23 @@
+{
+  "id": "sfd-106-221",
+  "name": "Show of Strength",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 106,
+  "public_code": "SFD-106/221",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nDraw 1 for each of your [Mighty] units. (A unit is Mighty while it has 5+ [M].)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d04ac6687931018fd68368c65cc024155867cab4-744x1039.png",
+  "artist": "Kudos Productions"
+}

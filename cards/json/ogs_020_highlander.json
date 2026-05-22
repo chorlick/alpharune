@@ -1,0 +1,26 @@
+{
+  "id": "ogs-020-024",
+  "name": "Highlander",
+  "set": "OGS",
+  "set_name": "Proving Grounds",
+  "collector_number": 20,
+  "public_code": "OGS-020/024",
+  "card_type": "spell",
+  "super_type": "signature",
+  "domains": [
+    "calm",
+    "body"
+  ],
+  "tags": [
+    "Master Yi"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nChoose a friendly unit. The next time it would die this turn, heal it, exhaust it, and recall it instead. (Send it to base. This isn't a move.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/18c0818cbbfdf26a1237b4f7703b1f035f47b014-744x1039.png",
+  "artist": "Kudos Productions"
+}

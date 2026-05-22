@@ -1,0 +1,25 @@
+{
+  "id": "ogn-199-298",
+  "name": "Tideturner",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 199,
+  "public_code": "OGN-199/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Hidden] (Hide now for [A] to react with later for [0].)\nWhen you play me, you may choose a unit you control at another location. Move me to its location and it to my original location.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bad355dba8b32d1fba33dc3924cad6a34b61b5af-744x1039.png",
+  "artist": "Kudos Productions"
+}

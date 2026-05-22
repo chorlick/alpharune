@@ -1,0 +1,23 @@
+{
+  "id": "sfd-117-221",
+  "name": "Ancient Henge",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 117,
+  "public_code": "SFD-117/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 Pay any amount of Energy to [Add] that much [A]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c7c260b77b4174a61aed6243ed90f76594102193-744x1039.png",
+  "artist": "Six More Vodka"
+}

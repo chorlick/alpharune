@@ -1,0 +1,26 @@
+{
+  "id": "sfd-167-221",
+  "name": "Unsung Hero",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 167,
+  "public_code": "SFD-167/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Elite",
+    "Demacia"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Deathknell] \u2014 If I was [Mighty], draw 2. (When I die, get the effect. I'm Mighty while I have 5+ [M].)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2a227ef7494af6409000c13c4f3d1094cec3a3a8-744x1039.png",
+  "artist": "Six More Vodka"
+}

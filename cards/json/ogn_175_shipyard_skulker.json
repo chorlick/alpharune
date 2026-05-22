@@ -1,0 +1,26 @@
+{
+  "id": "ogn-175-298",
+  "name": "Shipyard Skulker",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 175,
+  "public_code": "OGN-175/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Pirate",
+    "Bilgewater"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/000634f32b897638760b82e5365961f6d85bc0cb-744x1039.png",
+  "artist": "Six More Vodka"
+}

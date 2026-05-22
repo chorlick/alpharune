@@ -1,0 +1,25 @@
+{
+  "id": "unl-071-219",
+  "name": "Chakram Dancer",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 71,
+  "public_code": "UNL-071/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Bilgewater"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nWhen you play me, give your other units here [Shield] this turn. (+1 [M] while they're defenders.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/29abe06f1c16a9eed622a5060330116268b73b8c-744x1039.png",
+  "artist": "Wild Blue Studios"
+}

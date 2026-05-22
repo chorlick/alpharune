@@ -1,0 +1,23 @@
+{
+  "id": "unl-073-219",
+  "name": "Deadly Flourish",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 73,
+  "public_code": "UNL-073/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Deal 3 to an enemy unit. When it dies this turn, play a Gold gear token exhausted. (It has \"[Reaction][>] Kill this, [E]: [Add] [A].\")",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/81195df7122beaba38ebc8b8212ceb0e7593afe9-744x1039.png",
+  "artist": "Kudos Productions"
+}

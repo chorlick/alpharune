@@ -1,0 +1,26 @@
+{
+  "id": "sfd-015-221",
+  "name": "Perched Grimwyrm",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 15,
+  "public_code": "SFD-015/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Dragon",
+    "Shadow Isles"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Play me only to a battlefield you conquered this turn. (You can't play me anywhere else.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/71af1587378c1c3feabd1b148fb776e42c7d27e8-744x1039.png",
+  "artist": "Kudos Productions & \u9eef\u8367\u5c9bDark Glow"
+}

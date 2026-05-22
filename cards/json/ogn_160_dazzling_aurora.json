@@ -1,0 +1,23 @@
+{
+  "id": "ogn-160-298",
+  "name": "Dazzling Aurora",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 160,
+  "public_code": "OGN-160/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 9,
+  "power_cost": 2,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "At the end of your turn, reveal cards from the top of your Main Deck until you reveal a unit and banish it. Play it, ignoring its cost, and recycle the rest.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c023856a50c75058465f283d181277ce265ba108-744x1039.png",
+  "artist": "Six More Vodka"
+}

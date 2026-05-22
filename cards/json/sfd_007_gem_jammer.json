@@ -1,0 +1,26 @@
+{
+  "id": "sfd-007-221",
+  "name": "Gem Jammer",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 7,
+  "public_code": "SFD-007/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Mech",
+    "Bandle City"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, give a unit [Ganking] this turn. (It can move from battlefield to battlefield.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9f487e8a76e6e6b9f2e32de0c9c147be42f49e59-744x1039.png",
+  "artist": "Caravan Studio"
+}

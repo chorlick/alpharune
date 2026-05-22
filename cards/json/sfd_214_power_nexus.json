@@ -1,0 +1,21 @@
+{
+  "id": "sfd-214-221",
+  "name": "Power Nexus",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 214,
+  "public_code": "SFD-214/221",
+  "card_type": "battlefield",
+  "super_type": null,
+  "domains": [],
+  "tags": [],
+  "energy_cost": null,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you hold here, you may pay [A][A][A][A] to score 1 point.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/653db9a5f2aead0191c8d61da3d1876fb894b545-1039x744.png",
+  "artist": "Kudos Productions"
+}

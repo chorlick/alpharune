@@ -1,0 +1,26 @@
+{
+  "id": "unl-025-219",
+  "name": "Undying Legion",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 25,
+  "public_code": "UNL-025/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Spirit",
+    "Shadow Isles"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Legion][>] You may play me from your trash for [3][R]. (Get the effect if you've played another card this turn.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3a6955daff2982e0ba4417533052d5ea334232fb-744x1039.png",
+  "artist": "Six More Vodka"
+}

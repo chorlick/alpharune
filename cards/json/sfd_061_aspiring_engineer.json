@@ -1,0 +1,25 @@
+{
+  "id": "sfd-061-221",
+  "name": "Aspiring Engineer",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 61,
+  "public_code": "SFD-061/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Piltover"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, return a gear from your trash to your hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5d61995ae384bcee56838beb0eb6d83bf5faefad-744x1039.png",
+  "artist": "Six More Vodka"
+}

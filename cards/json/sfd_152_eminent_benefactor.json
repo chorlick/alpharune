@@ -1,0 +1,25 @@
+{
+  "id": "sfd-152-221",
+  "name": "Eminent Benefactor",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 152,
+  "public_code": "SFD-152/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Piltover"
+  ],
+  "energy_cost": 6,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When I hold, play two Gold gear tokens exhausted.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8b1a3e89fc40bb81c44f0ee232a701d85a1f209f-744x1039.png",
+  "artist": "Six More Vodka"
+}

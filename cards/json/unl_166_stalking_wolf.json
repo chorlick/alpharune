@@ -1,0 +1,26 @@
+{
+  "id": "unl-166-219",
+  "name": "Stalking Wolf",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 166,
+  "public_code": "UNL-166/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Dog",
+    "Freljord"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nAs an additional cost to play me, kill a Bird, Cat, Dog, or Poro you control. You may play me to its battlefield (even if you don't have other units there).",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5f5f66caad21d59bf966ddc501bb4f9c84a595c6-744x1039.png",
+  "artist": "Six More Vodka"
+}

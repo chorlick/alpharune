@@ -1,0 +1,25 @@
+{
+  "id": "unl-158-219",
+  "name": "Shepherd's Heirloom",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 158,
+  "public_code": "UNL-158/219",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 2,
+  "rarity": "common",
+  "ability_text": "When you play this, gain 1 XP.\n[Equip] \u2014 Spend 1 XP (Pay the cost: Attach this to a unit you control.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fadd95487f164f60c9ad08a457f11170c6afa420-744x1039.png",
+  "artist": "Kudos Productions"
+}

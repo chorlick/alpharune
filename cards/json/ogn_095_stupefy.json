@@ -1,0 +1,23 @@
+{
+  "id": "ogn-095-298",
+  "name": "Stupefy",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 95,
+  "public_code": "OGN-095/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Reaction] (Play any time, even before spells and abilities resolve.)\nGive a unit -1 [M] this turn, to a minimum of 1 [M]. Draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/837a5976192bbf8bdb4086429802167548ecc119-744x1039.png",
+  "artist": "Kudos Productions"
+}

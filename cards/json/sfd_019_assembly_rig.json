@@ -1,0 +1,23 @@
+{
+  "id": "sfd-019-221",
+  "name": "Assembly Rig",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 19,
+  "public_code": "SFD-019/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[1][R], Recycle a unit from your trash, [E]: Play a 3 [M] Mech unit token to your base.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/40ae6f61f1a0b5d65d91e3bb3fd2a0dad9148208-744x1039.png",
+  "artist": "Six More Vodka"
+}

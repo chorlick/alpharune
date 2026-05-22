@@ -1,0 +1,25 @@
+{
+  "id": "ogn-171-298",
+  "name": "Mystic Poro",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 171,
+  "public_code": "OGN-171/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Poro"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/11af57d045768e886d05e1c0933b0d57cb1e459d-744x1039.png",
+  "artist": "Kudos Productions"
+}

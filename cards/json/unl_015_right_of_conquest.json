@@ -1,0 +1,23 @@
+{
+  "id": "unl-015-219",
+  "name": "Right of Conquest",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 15,
+  "public_code": "UNL-015/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Draw 1, then draw 1 for each battlefield you or allies control.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2467e43f316e8700ad43b66e3b5d490f3f9d3cea-744x1039.png",
+  "artist": "Kudos Productions"
+}

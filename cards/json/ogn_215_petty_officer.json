@@ -1,0 +1,26 @@
+{
+  "id": "ogn-215-298",
+  "name": "Petty Officer",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 215,
+  "public_code": "OGN-215/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Pirate",
+    "Bilgewater"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Assault] (+1 [M] while I'm an attacker.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/29e062c4a38c0be12056568a2f8563557e2611c6-744x1039.png",
+  "artist": "Six More Vodka"
+}

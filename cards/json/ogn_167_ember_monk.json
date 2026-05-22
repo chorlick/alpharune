@@ -1,0 +1,25 @@
+{
+  "id": "ogn-167-298",
+  "name": "Ember Monk",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 167,
+  "public_code": "OGN-167/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Bandle City"
+  ],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play a card from [Hidden], give me +2 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0441f70a7acc377d8cbe08559b7a2fc3139c903b-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "unl-016-219",
+  "name": "Scorchclaw",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 16,
+  "public_code": "UNL-016/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Dog",
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Hunt 2] (When I conquer or hold, gain 2 XP.)\n[Level 3][>] I have +1 [M] and enter ready. (While you have 3+ XP, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f69940824f8ce62a479df28988dcbdf6ea6d3960-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "unl-135-219",
+  "name": "Insightful Investigator",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 135,
+  "public_code": "UNL-135/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Piltover"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When you play me, choose an opponent. They reveal their hand. You may pay 2 XP to choose a card from their hand. If you do, they discard that card and draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3540a748211afd35b9ef4873dae0850c238fa964-744x1039.png",
+  "artist": "Six More Vodka"
+}

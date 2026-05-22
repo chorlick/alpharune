@@ -1,0 +1,26 @@
+{
+  "id": "ogn-195-298",
+  "name": "Rhasa the Sunderer",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 195,
+  "public_code": "OGN-195/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Spirit",
+    "Shadow Isles"
+  ],
+  "energy_cost": 10,
+  "power_cost": 1,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "I cost [1] less for each card in your trash.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e34fe8a9ee533dee99f96b4e6677d1edbd6a262d-744x1039.png",
+  "artist": "Six More Vodka"
+}

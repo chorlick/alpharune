@@ -1,0 +1,23 @@
+{
+  "id": "ogn-085-298",
+  "name": "Falling Comet",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 85,
+  "public_code": "OGN-085/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nDeal 6 to a unit at a battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/eaaf300a07d5b2927fe9a601d70f2a01b512cc7e-744x1039.png",
+  "artist": "Kudos Productions"
+}

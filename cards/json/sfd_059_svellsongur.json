@@ -1,0 +1,25 @@
+{
+  "id": "sfd-059-221",
+  "name": "Svellsongur",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 59,
+  "public_code": "SFD-059/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": 0,
+  "rarity": "epic",
+  "ability_text": "[Equip] [1][G] ([1][G]: Attach this to a unit you control.)\nAs this is attached to a unit, copy that unit's text to this Equipment's effect text for as long as this is attached to it.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/bc254398dfb5db217327b56862011a2fd6020789-744x1039.png",
+  "artist": "Envar Studio"
+}

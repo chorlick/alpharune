@@ -1,0 +1,25 @@
+{
+  "id": "ogn-037-298",
+  "name": "Immortal Phoenix",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 37,
+  "public_code": "OGN-037/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Spirit"
+  ],
+  "energy_cost": 3,
+  "power_cost": 1,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[Assault 2] (+2 [M] while I'm an attacker.)\nWhen you kill a unit with a spell, you may pay [1][R] to play me from your trash.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/7b623ae985bf5f362b6d8d4a17e9b8146aeae3c3-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "unl-152-219",
+  "name": "Black Rose Dignitary",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 152,
+  "public_code": "UNL-152/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 2,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Assault] (+1 [M] while I'm an attacker.)\n[Deathknell][>] Channel 1 rune exhausted. (When I die, get the effect.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b63912e07914c3ef7e2bcdb95d5521fc26c880f2-744x1039.png",
+  "artist": "Grafit Studio"
+}

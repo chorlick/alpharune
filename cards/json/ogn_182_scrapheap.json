@@ -1,0 +1,23 @@
+{
+  "id": "ogn-182-298",
+  "name": "Scrapheap",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 182,
+  "public_code": "OGN-182/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "When this is played, discarded, or killed, draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0c059786e89a2443221b7c0b8ca39779dcc9c755-744x1038.png",
+  "artist": "Kudos Productions"
+}

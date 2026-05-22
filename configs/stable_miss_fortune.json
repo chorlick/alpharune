@@ -1,0 +1,61 @@
+{
+  "mode": "train",
+  "seed": 46,
+  "root_dir": "/home/pirateporkchop/code/automated-riftbound",
+  "registry": "cards/registry.json",
+  "training": {
+    "legend": "Bounty Hunter",
+    "iterations": 30,
+    "games_per_iter": 16,
+    "train_steps_per_iter": 200,
+    "batch_size": 64,
+    "replay_capacity": 32768,
+    "mirror_ratio": 1.0,
+    "checkpoint_dir": "checkpoints/stable_miss_fortune",
+    "checkpoint_every_iter": 3,
+    "keep_last_n": 8,
+    "num_self_play_workers": 16,
+    "max_decisions_per_game": 1200,
+    "self_play_agent": {
+      "kind": "mcts",
+      "sims": 40
+    },
+    "deck_pools": {
+      "self": [
+        "decks/miss_fortune_test.json"
+      ],
+      "opponent": [
+        "decks/khazix_test.json"
+      ]
+    },
+    "devices": [
+      "cpu"
+    ],
+    "train_device": "cpu",
+    "optimizer": {
+      "lr": 0.0003,
+      "weight_decay": 0.0001,
+      "grad_clip": 1.0
+    },
+    "mcts": {
+      "uct_c": 1.4,
+      "dirichlet_alpha": 0.3,
+      "dirichlet_fraction": 0.25,
+      "temperature": 1.0,
+      "temperature_drop_at_decision": 15
+    },
+    "eval": {
+      "every_iter": 5,
+      "games": 3,
+      "baseline": "random"
+    },
+    "model": {
+      "d_model": 128,
+      "encoder_layers": 2,
+      "encoder_heads": 4,
+      "encoder_ffn_dim": 256,
+      "card_embed_dim": 64,
+      "gnn_layers": 1
+    }
+  }
+}

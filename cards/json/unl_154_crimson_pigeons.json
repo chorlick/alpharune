@@ -1,0 +1,26 @@
+{
+  "id": "unl-154-219",
+  "name": "Crimson Pigeons",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 154,
+  "public_code": "UNL-154/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Bird",
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 3,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "I have +2 [M] while I'm attacking with another unit.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/68786cd39a886a586b401d6bf818a80bf9f9e2cd-744x1039.png",
+  "artist": "Kudos Productions"
+}

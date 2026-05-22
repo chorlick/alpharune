@@ -1,0 +1,23 @@
+{
+  "id": "sfd-169-221",
+  "name": "Altar of Memories",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 169,
+  "public_code": "SFD-169/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "When a friendly unit dies, you may exhaust me to draw 1, then put a card from your hand on the top or bottom of your Main Deck.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3ddc94a035d793d48987c6fe5d65fa11ea25c808-744x1039.png",
+  "artist": "Kudos Productions"
+}

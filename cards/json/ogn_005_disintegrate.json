@@ -1,0 +1,23 @@
+{
+  "id": "ogn-005-298",
+  "name": "Disintegrate",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 5,
+  "public_code": "OGN-005/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nDeal 3 to a unit at a battlefield. If this kills it, do this: draw 1.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a27374ac3a81f3dfefb43c3c3237c23b4883cb5a-744x1039.png",
+  "artist": "Kudos Productions"
+}

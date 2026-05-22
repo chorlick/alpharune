@@ -1,0 +1,25 @@
+{
+  "id": "sfd-009-221",
+  "name": "Serrated Dirk",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 9,
+  "public_code": "SFD-009/221",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [
+    "Equipment"
+  ],
+  "energy_cost": 1,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": 0,
+  "rarity": "common",
+  "ability_text": "[Equip] [R] ([R]: Attach this to a unit you control.)",
+  "effect_text": "[Assault 2] (+2 [M] while I'm an attacker.)",
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9498c8146745124fc45a7b55184854a9c9da21f5-744x1039.png",
+  "artist": "\u9eef\u8367\u5c9bDark Glow"
+}

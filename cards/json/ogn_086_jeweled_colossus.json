@@ -1,0 +1,25 @@
+{
+  "id": "ogn-086-298",
+  "name": "Jeweled Colossus",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 86,
+  "public_code": "OGN-086/298",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "mind"
+  ],
+  "tags": [
+    "Mount Targon"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 5,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.)\n[Shield] (+1 [M] while I'm a defender.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/775bea14038165fd9feb15c796ed84aa00a032e1-744x1039.png",
+  "artist": "Kudos Productions"
+}

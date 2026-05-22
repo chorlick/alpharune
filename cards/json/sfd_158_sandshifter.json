@@ -1,0 +1,25 @@
+{
+  "id": "sfd-158-221",
+  "name": "Sandshifter",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 158,
+  "public_code": "SFD-158/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Shurima"
+  ],
+  "energy_cost": 5,
+  "power_cost": 2,
+  "might": 6,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "When you play me, kill an enemy unit with 3 [M] or less.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/57f72b30862074bb5d1f302e86ee3cec024cd980-744x1039.png",
+  "artist": "Kudos Productions"
+}

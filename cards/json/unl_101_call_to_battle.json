@@ -1,0 +1,23 @@
+{
+  "id": "unl-101-219",
+  "name": "Call to Battle",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 101,
+  "public_code": "UNL-101/219",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "Move a unit you control to a battlefield you control. Then, choose an opponent. They move a unit they control to the same battlefield.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3c7e0f93c72654f786f5df37895c6e95fa9d4d60-744x1039.png",
+  "artist": "Kudos Productions"
+}

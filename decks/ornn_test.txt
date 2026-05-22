@@ -1,0 +1,40 @@
+Legend:
+1 Ornn, Fire Below the Mountain
+
+Champion:
+1 Ornn, Blacksmith
+
+MainDeck:
+3 Seal of Focus
+3 Consult the Past
+3 Pit Crew
+3 Sprite Mother
+3 Brutalizer
+3 Poro Snax
+3 Dropboarder
+3 Scuttle Crab
+3 Sprite Burst
+3 Sprite Fountain
+2 Charm
+2 Defy
+2 Heart of Dark Ice
+1 Thousand-Tailed Watcher
+1 Not So Fast
+1 Shurelya's Requiem
+
+Battlefields:
+1 The Arena's Greatest
+1 Ornn's Forge
+1 Dusk Rose Lab
+
+Runes:
+7 Calm Rune
+5 Mind Rune
+
+Sideboard:
+2 Unchecked Power
+2 Disarming Rake
+1 Charm
+1 Defy
+1 Thousand-Tailed Watcher
+1 Forgefire Cape

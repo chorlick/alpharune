@@ -1,0 +1,65 @@
+{
+  "mode": "train",
+  "seed": 43,
+  "root_dir": "/workspace/riftbound",
+  "registry": "cards/registry.json",
+  "training": {
+    "legend": "Gloomist",
+    "iterations": 50,
+    "games_per_iter": 32,
+    "train_steps_per_iter": 200,
+    "batch_size": 256,
+    "replay_capacity": 131072,
+    "mirror_ratio": 0.5,
+    "checkpoint_dir": "checkpoints/gpu_gloomist",
+    "checkpoint_every_iter": 2,
+    "keep_last_n": 25,
+    "bootstrap_iters": 20,
+    "bootstrap_mcts_sims": 400,
+    "self_play_agent": {
+      "kind": "mcts",
+      "sims": 200
+    },
+    "deck_pools": {
+      "self": [
+        "decks/vex_pre_con.json",
+        "decks/vex_test_deck.json"
+      ],
+      "opponent": [
+        "decks/jhin_test.json",
+        "decks/miss_fortune_test.json"
+      ]
+    },
+    "devices": [
+      "cuda:0"
+    ],
+    "train_device": "cuda:0",
+    "optimizer": {
+      "lr": 0.0003,
+      "weight_decay": 0.0001,
+      "grad_clip": 1.0
+    },
+    "mcts": {
+      "uct_c": 4.0,
+      "dirichlet_fraction": 0.5,
+      "temperature": 1.0,
+      "temperature_drop_at_decision": 100
+    },
+    "model": {
+      "d_model": 512,
+      "encoder_layers": 6,
+      "encoder_heads": 8,
+      "encoder_ffn_dim": 2048,
+      "card_embed_dim": 256,
+      "gnn_layers": 2,
+      "encoder_dropout": 0.0
+    },
+    "eval": {
+      "every_iter": 5,
+      "games": 40,
+      "baseline": "mcts",
+      "baseline_sims": 10,
+      "promote_threshold": 0.55
+    }
+  }
+}

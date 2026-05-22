@@ -1,0 +1,26 @@
+{
+  "id": "unl-036-219",
+  "name": "Mutated Mouser",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 36,
+  "public_code": "UNL-036/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Cat",
+    "Bilgewater"
+  ],
+  "energy_cost": 2,
+  "power_cost": null,
+  "might": 1,
+  "might_bonus": null,
+  "rarity": "common",
+  "ability_text": "[Shield 2] (+2 [M] while I'm a defender.)\n[Tank] (I must be assigned combat damage first.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/20276519677a4d1ebe230aaad7692588e1e8d046-744x1039.png",
+  "artist": "Caravan Studio"
+}

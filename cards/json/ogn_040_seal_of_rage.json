@@ -1,0 +1,23 @@
+{
+  "id": "ogn-040-298",
+  "name": "Seal of Rage",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 40,
+  "public_code": "OGN-040/298",
+  "card_type": "gear",
+  "super_type": null,
+  "domains": [
+    "fury"
+  ],
+  "tags": [],
+  "energy_cost": 0,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "epic",
+  "ability_text": "[E]: [Reaction] \u2014 [Add] [R]. (Abilities that add resources can't be reacted to.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fbdd14adb40b0ca46b89f476a356fa21413d812e-744x1039.png",
+  "artist": "Kudos Productions"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "sfd-131-221",
+  "name": "Ancient Warmonger",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 131,
+  "public_code": "SFD-131/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Spirit",
+    "Noxus"
+  ],
+  "energy_cost": 5,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "[Accelerate] (You may pay [1][P] as an additional cost to have me enter ready.)\nI have [Assault] equal to the number of enemy units here. (+1 [M] while I'm an attacker for each instance of Assault.)",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8ba05afcfbe6901fb4bdb736d5e61656a551f668-744x1039.png",
+  "artist": "Kudos Productions"
+}

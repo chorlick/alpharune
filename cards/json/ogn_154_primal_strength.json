@@ -1,0 +1,23 @@
+{
+  "id": "ogn-154-298",
+  "name": "Primal Strength",
+  "set": "OGN",
+  "set_name": "Origins",
+  "collector_number": 154,
+  "public_code": "OGN-154/298",
+  "card_type": "spell",
+  "super_type": null,
+  "domains": [
+    "body"
+  ],
+  "tags": [],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": null,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Action] (Play on your turn or in showdowns.)\nGive a unit +7 [M] this turn.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dfd910a9836cd36340d0ffdb5fe8cb92a1069963-744x1039.png",
+  "artist": "Kudos Productions"
+}

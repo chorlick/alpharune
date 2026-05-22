@@ -1,0 +1,26 @@
+{
+  "id": "unl-143-219",
+  "name": "Kha'Zix, Mutating Horror",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 143,
+  "public_code": "UNL-143/219",
+  "card_type": "unit",
+  "super_type": "champion",
+  "domains": [
+    "chaos"
+  ],
+  "tags": [
+    "Kha'Zix",
+    "The Void"
+  ],
+  "energy_cost": 4,
+  "power_cost": 1,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)\nWhen I attack or defend, if an enemy unit is alone here, give me +2 [M] this turn and gain 2 XP.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8306abc5ffce45add8c75c2e215162b2d1aed320-744x1039.png",
+  "artist": "\u86cb\u8d39\u9e21\u4e01"
+}

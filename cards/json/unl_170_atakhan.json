@@ -1,0 +1,26 @@
+{
+  "id": "unl-170-219",
+  "name": "Atakhan",
+  "set": "UNL",
+  "set_name": "Unleashed",
+  "collector_number": 170,
+  "public_code": "UNL-170/219",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "order"
+  ],
+  "tags": [
+    "Noxus",
+    "Demon"
+  ],
+  "energy_cost": 10,
+  "power_cost": 3,
+  "might": 7,
+  "might_bonus": null,
+  "rarity": "rare",
+  "ability_text": "You may kill a friendly unit as an additional cost to play me. If you do, I cost [1] less for each Energy it costs and [Y] less for each Power it costs.\n[Ganking] (I can move from battlefield to battlefield.)\nWhen I attack, the defender must kill one of their units here.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a0b3994aad6b6c64ace14193c1363713e6b6ede2-744x1039.png",
+  "artist": "Grafit Studio"
+}

@@ -1,0 +1,48 @@
+{
+  "mode": "train",
+  "seed": 43,
+  "root_dir": "/home/pirateporkchop/code/automated-riftbound",
+  "registry": "cards/registry.json",
+  "training": {
+    "legend": "Virtuoso",
+    "iterations": 15,
+    "games_per_iter": 6,
+    "train_steps_per_iter": 30,
+    "batch_size": 32,
+    "replay_capacity": 8192,
+    "mirror_ratio": 1.0,
+    "checkpoint_dir": "checkpoints/baseline_virtuoso",
+    "checkpoint_every_iter": 5,
+    "keep_last_n": 4,
+    "self_play_agent": {
+      "kind": "mcts",
+      "sims": 5
+    },
+    "deck_pools": {
+      "self": [
+        "decks/jhin_test.json"
+      ],
+      "opponent": [
+        "decks/miss_fortune_test.json"
+      ]
+    },
+    "devices": ["cpu"],
+    "train_device": "cpu",
+    "optimizer": {
+      "lr": 1e-3,
+      "weight_decay": 1e-4,
+      "grad_clip": 1.0
+    },
+    "mcts": {
+      "uct_c": 1.4
+    },
+    "model": {
+      "d_model": 128,
+      "encoder_layers": 2,
+      "encoder_heads": 4,
+      "encoder_ffn_dim": 256,
+      "card_embed_dim": 64,
+      "gnn_layers": 1
+    }
+  }
+}

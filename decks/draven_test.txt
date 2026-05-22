@@ -1,0 +1,40 @@
+Legend:
+1 Draven, Glorious Executioner
+
+Champion:
+1 Draven, Showboat
+
+MainDeck:
+3 Stacked Deck
+3 Tideturner
+3 Overzealous Fan
+3 Treasure Hunter
+3 Spinning Axe
+2 Noxus Hopeful
+2 Falling Star
+2 Rebuke
+2 Ride the Wind
+2 Star-Crossed
+1 Mindsplitter
+1 Ferrous Forerunner
+3 Darius, Trifarian
+3 Kai'Sa, Survivor
+3 Rengar, Unseen
+2 Rek'Sai, Breacher
+1 Fizz, Trickster
+
+Battlefields:
+1 Startipped Peak
+1 Targon's Peak
+1 Star Spring
+
+Runes:
+6 Fury Rune
+6 Chaos Rune
+
+Sideboard:
+2 Brynhir Thundersong
+2 Gust
+2 Abandon
+1 Ferrous Forerunner
+1 Switcheroo

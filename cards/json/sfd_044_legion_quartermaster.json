@@ -1,0 +1,26 @@
+{
+  "id": "sfd-044-221",
+  "name": "Legion Quartermaster",
+  "set": "SFD",
+  "set_name": "Spiritforged",
+  "collector_number": 44,
+  "public_code": "SFD-044/221",
+  "card_type": "unit",
+  "super_type": null,
+  "domains": [
+    "calm"
+  ],
+  "tags": [
+    "Trifarian",
+    "Noxus"
+  ],
+  "energy_cost": 3,
+  "power_cost": null,
+  "might": 4,
+  "might_bonus": null,
+  "rarity": "uncommon",
+  "ability_text": "As an additional cost to play me, return a friendly gear to its owner's hand.",
+  "effect_text": null,
+  "image_url": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c09cc35ffc98b46f919c09e09a93b603d63eb73e-744x1039.png",
+  "artist": "Kudos Productions"
+}

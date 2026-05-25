@@ -357,5 +357,67 @@ TEST_F(ElderDragonShieldTest,
                  s.getObject(mouser).zone == ZoneType::BattlefieldZone);
 }
 
+// Regression: Elder Dragon's on-play trigger says "choose up to one
+// enemy unit at each LOCATION". Location includes bases AND
+// battlefields — not just battlefields. A prior implementation only
+// iterated state.battlefields, so an enemy sitting at base (very
+// common for newly-played units that hadn't moved yet) escaped the
+// damage entirely, and the "any-damage-lethal" aura never engaged
+// against them.
+TEST_F(ElderDragonShieldTest, OnPlayTriggerHitsEnemyAtBaseAndBattlefield) {
+    makeEngine(/*n_bfs=*/2);
+    auto& s = *eng_state();
+
+    // P2 has units at base AND at each battlefield. All three should
+    // take 1 damage from Elder Dragon's on-play trigger.
+    auto base_mouser = s.createObject();
+    {
+        auto& m = s.getObject(base_mouser);
+        constexpr CardDefId kMouser = 598;
+        const auto& def = card_db.get(kMouser);
+        m.card_def_id = kMouser;
+        m.owner = P2; m.controller = P2;
+        m.card_type = CardType::Unit;
+        m.name = def.name;
+        m.keywords = def.keywords;
+        m.base_might = def.might; m.current_might = def.might;
+        m.zone = ZoneType::Base;
+        m.location = BaseLocation{P2};
+    }
+    auto bf0_mouser = placeMouser(P2, s.battlefields[0].id);
+    auto bf1_mouser = placeMouser(P2, s.battlefields[1].id);
+
+    constexpr CardDefId kElderDragon = 680;
+    auto dragon = s.createObject();
+    auto& dobj = s.getObject(dragon);
+    const auto& def = card_db.get(kElderDragon);
+    dobj.card_def_id = kElderDragon;
+    dobj.owner = P1; dobj.controller = P1;
+    dobj.card_type = CardType::Unit;
+    dobj.name = def.name;
+    dobj.base_might = def.might; dobj.current_might = def.might;
+    dobj.zone = ZoneType::Base;
+    dobj.location = BaseLocation{P1};
+
+    EffectExecutor exec(s, events, card_db);
+    Card* card = card_registry.get(kElderDragon);
+    ASSERT_NE(card, nullptr);
+    CardContext ctx{s, events, exec, P1, dragon};
+    card->onTrigger(ctx, {});
+
+    // All three Mousers (base, BF0, BF1) hit lethally for Mouser at
+    // 1 might → all three should be dead. Pre-fix the base_mouser
+    // survived because the trigger never iterated bases.
+    EXPECT_FALSE(s.objectExists(base_mouser) &&
+                 (s.getObject(base_mouser).zone == ZoneType::Base ||
+                  s.getObject(base_mouser).zone == ZoneType::BattlefieldZone))
+        << "Elder Dragon's 'at each location' MUST include the enemy's "
+           "base — pre-fix this iterated battlefields only.";
+    EXPECT_FALSE(s.objectExists(bf0_mouser) &&
+                 s.getObject(bf0_mouser).zone == ZoneType::BattlefieldZone);
+    EXPECT_FALSE(s.objectExists(bf1_mouser) &&
+                 s.getObject(bf1_mouser).zone == ZoneType::BattlefieldZone);
+}
+
 }  // namespace
 }  // namespace riftbound::test

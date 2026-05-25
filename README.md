@@ -48,70 +48,66 @@ cmake --build build
 # Run unit tests
 RIFTBOUND_ROOT=. ./build/riftbound_tests
 
-# Play random vs MCTS
-./build/src/openspiel/riftbound_openspiel \
+# Play random vs MCTS (single game, stdout + HTML replay)
+./build/riftbound \
     --agent1 random --agent2 mcts:sims=50 \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json \
+    --render-html on
+
+# Batch 100 games on 8 threads (random vs random, no UI)
+./build/riftbound \
+    --agent1 random --agent2 random \
     --deck1 decks/miss_fortune_test.json \
     --deck2 decks/miss_fortune_test.json \
     --games 100 --threads 8
 
-# Same matchup with HTML replays into ./replays/
-./build/src/openspiel/riftbound_openspiel \
-    --agent1 random --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json \
-    --games 5 --render-html
-
-# [PLANNED] Play AS A HUMAN against an AI, in your browser.
-# `riftbound_play` auto-starts a local Boost.Beast webserver on
-# http://127.0.0.1:8080. Open that URL in any browser to play.
-# --agent1 defaults to `human`; --agent2 picks the AI.
-./build/riftbound_play \
-    --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json
-# Open http://127.0.0.1:8080 — you control P1, MCTS-50 controls P2.
-
-# Equivalent, with the human seat explicit:
-./build/riftbound_play \
+# Play AS A HUMAN against MCTS-50 in your browser. The binary
+# auto-starts a Boost.Beast webserver on http://127.0.0.1:8080
+# whenever any seat is human; trace logging + HTML replay are also
+# auto-enabled. Open the URL in any browser to play.
+./build/riftbound \
     --agent1 human --agent2 mcts:sims=50 \
     --deck1 decks/miss_fortune_test.json \
     --deck2 decks/miss_fortune_test.json
 
 # Want to play as P2 instead? Swap the seats:
-./build/riftbound_play \
+./build/riftbound \
     --agent1 mcts:sims=50 --agent2 human \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
+
+# Hot-seat (two humans in one browser tab, take turns):
+./build/riftbound --agent1 human --agent2 human \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
+
+# Spectator (force the web UI ON for an AI-vs-AI game):
+./build/riftbound --agent1 random --agent2 mcts:sims=20 --web on \
     --deck1 decks/miss_fortune_test.json \
     --deck2 decks/miss_fortune_test.json
 ```
 
-`riftbound_play` is the upcoming web-UI binary. The `HumanAgent`
-plug-in (`src/agents/human_agent.h`) and its unit tests already
-ship; the Beast HTTP+WebSocket server + browser frontend that
-route human input through it are the next deliverable. Both seats
-can also be human (hot-seat play — two browser tabs, take turns)
-or both AI (spectator mode — watch the game render live).
-
-Pass `--help` to any binary for the full flag list.
+Pass `--help` for the full flag list. The web UI's WebSocket protocol
+is documented in [`docs/play-api.md`](docs/play-api.md).
 
 ## Binaries
 
 | Binary | Purpose |
 |---|---|
-| `build/riftbound` | Legacy CLI — random-vs-random games + HTML replay. Simplest entry point. |
-| `build/riftbound_openspiel` | OpenSpiel-integrated match runner. Supports `random` / `mcts:sims=N` / `ismcts:sims=N` agents, deterministic seeding, batch threading, per-game HTML replay output. |
-| `build/riftbound_play` | **[PLANNED]** Web UI binary. Auto-starts a Boost.Beast HTTP+WebSocket server on `127.0.0.1:8080`. Play in your browser against any built-in agent. Routes user input through `HumanAgent` (already shipping in `src/agents/`). |
-| `build/riftbound_tests` | Google Test suite (531 tests). |
+| `build/riftbound` | Unified game runner. All modes (single / batch / web UI / spectator), all agents (`random` / `human` / `mcts:sims=N` / `ismcts:sims=N`), HTML replay, trace/debug logging — all driven by CLI flags. |
+| `build/riftbound_tests` | Google Test suite. |
 | `build/src/openspiel/riftbound_clone_equiv_test` | Validates Clone() correctness — clones mid-game, runs the same actions on original + clone, asserts identical terminal state. |
 | `build/src/openspiel/riftbound_clone_microbench` | Microbenchmark — times Clone() throughput. |
-| `build/src/openspiel/riftbound_parity_baseline` | Diagnostic — confirms OpenSpiel wrapper produces statistically identical results to the raw BatchRunner. |
+| `build/src/openspiel/riftbound_parity_baseline` | Diagnostic — confirms OpenSpiel wrapper produces statistically identical results to the raw engine. |
 
 ## Plug in your own agent
 
 Subclass `riftbound::AgentInterface` (see `src/agents/agent_interface.h`)
-or any OpenSpiel `Bot` / `Evaluator`. The `riftbound_openspiel` binary's
-agent registration in `src/openspiel/openspiel_match.cpp` shows the
-pattern — adding a new `--agent foo:...` spec is ~30 lines.
+and add a branch to `buildAgent()` in `src/main.cpp` — adding a new
+`--agent foo:...` spec is ~30 lines. The `MctsAgent` / `IsMctsAgent`
+adapters in `src/agents/mcts_agent.{h,cpp}` show how to wrap an
+OpenSpiel `Bot` behind the same interface.
 
 For learned agents: a sibling repo holds the training pipeline + model
 architectures (Deep CFR, OSFP, online CFR / ReBeL inference, etc.).

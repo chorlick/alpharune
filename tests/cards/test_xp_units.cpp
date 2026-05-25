@@ -110,6 +110,8 @@ TEST_F(XpWujuApprenticeTest, BelowLevelSixDoesNothing) {
 }
 
 TEST_F(XpWujuApprenticeTest, AtLevelSixDrawsOne) {
+    // Wuju is now multi-trigger: the Level-6 draw is on the WhenYouPlayMe
+    // branch, so we must fire that specific trigger.
     auto unit = addUnit(P1, kWujuApprentice, /*might=*/3, /*at_bf=*/0);
     auto deck_card = addToDeck(P1, kInvalidId);
     setXp(P1, 6);
@@ -117,9 +119,7 @@ TEST_F(XpWujuApprenticeTest, AtLevelSixDrawsOne) {
     int initial_hand = handSize(P1);
 
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, unit};
-    Card* c = card_registry.get(kWujuApprentice);
-    c->onTrigger(ctx, {});
+    fireTriggerAs(kWujuApprentice, P1, unit, TriggerType::WhenYouPlayMe, exec);
 
     EXPECT_EQ(handSize(P1), initial_hand + 1);
     EXPECT_TRUE(inHand(P1, deck_card));
@@ -132,8 +132,7 @@ TEST_F(XpWujuApprenticeTest, AboveLevelSixStillDraws) {
 
     int initial_hand = handSize(P1);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, unit};
-    card_registry.get(kWujuApprentice)->onTrigger(ctx, {});
+    fireTriggerAs(kWujuApprentice, P1, unit, TriggerType::WhenYouPlayMe, exec);
     EXPECT_EQ(handSize(P1), initial_hand + 1);
 }
 
@@ -166,19 +165,32 @@ TEST_F(XpMosstomperTest, BelowLevelThreeNoBuff) {
 }
 
 TEST_F(XpMosstomperTest, AtLevelThreeBuffsAndGrantsDeflect) {
+    // Mosstomper's [Level 3] +1M / [Deflect] is now a CONTINUOUS passive aura
+    // (applyPassiveAura), not a one-shot on-trigger. Apply the aura at 3+ XP
+    // and inspect the resulting aura_effects.
     auto unit = addUnit(P1, kMosstomper, /*might=*/4, /*at_bf=*/0);
     setXp(P1, 3);
 
-    int base_might = state.getObject(unit).current_might;
+    card_registry.get(kMosstomper)->applyPassiveAura(state, P1);
 
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, unit};
-    card_registry.get(kMosstomper)->onTrigger(ctx, {});
+    int aura_might = 0;
+    bool has_deflect = false;
+    for (const auto& ae : state.getObject(unit).aura_effects) {
+        aura_might += ae.might_bonus;
+        if (ae.keyword == Keyword::Deflect) has_deflect = true;
+    }
+    EXPECT_EQ(aura_might, 1) << "Level 3: +1M via passive aura";
+    EXPECT_TRUE(has_deflect) << "Level 3: Deflect granted via passive aura";
+}
 
-    EXPECT_EQ(state.getObject(unit).current_might, base_might + 1)
-        << "Level 3: +1M";
-    EXPECT_TRUE(state.getObject(unit).keywords.has(Keyword::Deflect))
-        << "Level 3: Deflect granted";
+TEST_F(XpMosstomperTest, BelowLevelThreeNoPassiveAura) {
+    auto unit = addUnit(P1, kMosstomper, /*might=*/4, /*at_bf=*/0);
+    setXp(P1, 2);
+
+    card_registry.get(kMosstomper)->applyPassiveAura(state, P1);
+
+    EXPECT_TRUE(state.getObject(unit).aura_effects.empty())
+        << "no Level 3 aura below 3 XP";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,16 +213,15 @@ TEST_F(XpGemhandHunterTest, BelowLevelSixNoBuff) {
 }
 
 TEST_F(XpGemhandHunterTest, AtLevelSixGetsBuff) {
+    // Gemhand Hunter's [Level 6] +1M is now a CONTINUOUS passive aura.
     auto unit = addUnit(P1, kGemhandHunter, /*might=*/3, /*at_bf=*/0);
     setXp(P1, 6);
 
-    int base_might = state.getObject(unit).current_might;
+    card_registry.get(kGemhandHunter)->applyPassiveAura(state, P1);
 
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, unit};
-    card_registry.get(kGemhandHunter)->onTrigger(ctx, {});
-
-    EXPECT_EQ(state.getObject(unit).current_might, base_might + 1);
+    int aura_might = 0;
+    for (const auto& ae : state.getObject(unit).aura_effects) aura_might += ae.might_bonus;
+    EXPECT_EQ(aura_might, 1) << "Level 6: +1M via passive aura";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -229,29 +240,35 @@ class XpMasterYiTest : public CardTestFixture {};
 // the `if (xp < 6) return;` guard from inspection.
 
 TEST_F(XpMasterYiTest, AtLevelSixHasBothKeywords) {
+    // Master Yi's [Level 6] Deflect + Ganking is now a CONTINUOUS passive
+    // aura (applyPassiveAura), not a one-shot on-trigger keyword set.
     auto unit = addUnit(P1, kMasterYi, /*might=*/4, /*at_bf=*/0);
     setXp(P1, 6);
 
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, unit};
-    card_registry.get(kMasterYi)->onTrigger(ctx, {});
+    card_registry.get(kMasterYi)->applyPassiveAura(state, P1);
 
-    EXPECT_TRUE(state.getObject(unit).keywords.has(Keyword::Deflect));
-    EXPECT_TRUE(state.getObject(unit).keywords.has(Keyword::Ganking));
+    bool has_deflect = false, has_ganking = false;
+    for (const auto& ae : state.getObject(unit).aura_effects) {
+        if (ae.keyword == Keyword::Deflect) has_deflect = true;
+        if (ae.keyword == Keyword::Ganking) has_ganking = true;
+    }
+    EXPECT_TRUE(has_deflect) << "Level 6: Deflect granted via passive aura";
+    EXPECT_TRUE(has_ganking) << "Level 6: Ganking granted via passive aura";
 }
 
 TEST_F(XpMasterYiTest, BelowLevelSixDoesNotMutateXp) {
-    // Sanity: triggering at xp<6 must not modify the player's XP (the
-    // ability has no XP side-effect, but the test guards against a future
-    // regression where someone adds one).
+    // Master Yi now has [Hunt 2] (WhenIConquerOrHold -> +2 XP) AND a Level-6
+    // passive aura. The passive aura must not mutate XP, and must grant
+    // nothing below 6 XP. (Hunt only fires on conquer/hold, which is NOT
+    // exercised here.)
     auto unit = addUnit(P1, kMasterYi, /*might=*/4, /*at_bf=*/0);
     setXp(P1, 5);
 
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, unit};
-    card_registry.get(kMasterYi)->onTrigger(ctx, {});
+    card_registry.get(kMasterYi)->applyPassiveAura(state, P1);
 
-    EXPECT_EQ(state.player(P1).xp, 5);
+    EXPECT_EQ(state.player(P1).xp, 5) << "passive aura must not change XP";
+    EXPECT_TRUE(state.getObject(unit).aura_effects.empty())
+        << "no Level 6 grant below 6 XP";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -310,7 +327,10 @@ TEST_F(XpEnthusiasticPromoterTest, BuffsFriendlyUnitsAtSameBattlefield) {
         << "promoter itself is friendly + at the BF, also buffed";
 }
 
-TEST_F(XpEnthusiasticPromoterTest, DoesNotBuffEnemies) {
+TEST_F(XpEnthusiasticPromoterTest, BuffsAllUnitsHereIncludingEnemies) {
+    // Card text: "[Buff] all units here." — that means ALL units at the
+    // battlefield, including enemy units (no controller filter). The earlier
+    // "friendly-only" behavior was a bug; the audited card buffs everyone.
     auto promoter = addUnit(P1, kEnthusiasticPromoter, /*might=*/2, /*at_bf=*/0);
     auto enemy    = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/0);
     int enemy_base = state.getObject(enemy).current_might;
@@ -319,8 +339,8 @@ TEST_F(XpEnthusiasticPromoterTest, DoesNotBuffEnemies) {
     CardContext ctx{state, events, exec, P1, promoter};
     card_registry.get(kEnthusiasticPromoter)->onTrigger(ctx, {});
 
-    EXPECT_EQ(state.getObject(enemy).current_might, enemy_base)
-        << "enemy at same BF is not buffed (impl is friendly-only)";
+    EXPECT_EQ(state.getObject(enemy).current_might, enemy_base + 1)
+        << "enemy unit at the same BF is also buffed (card says 'all units here')";
 }
 
 TEST_F(XpEnthusiasticPromoterTest, DoesNotBuffOtherBattlefield) {

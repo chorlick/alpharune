@@ -46,3 +46,4 @@ venv/
 
 # Logs
 *.log
+replays/

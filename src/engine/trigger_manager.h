@@ -13,6 +13,9 @@
 #include "core/game_state.h"
 #include "engine/chain_manager.h"
 
+#include <boost/signals2/connection.hpp>
+#include <vector>
+
 namespace riftbound {
 
 class EffectExecutor; // forward declaration
@@ -22,6 +25,13 @@ public:
     TriggerManager(GameState& state, EventBus& events,
                    const CardDB& card_db, ChainManager& chain,
                    const CardRegistry& card_registry);
+
+    /// Disconnects all event subscriptions installed by subscribe().
+    /// Required for sessions that replace the live engine on the same
+    /// EventBus (play-server restart loop) — otherwise dangling
+    /// subscribers from the prior TriggerManager fire on the new
+    /// engine's events and dereference freed memory.
+    ~TriggerManager();
 
     /// Set the effect executor (needed for equipped trigger CardContext).
     void setEffectExecutor(EffectExecutor* exec) { effect_executor_ = exec; }
@@ -36,6 +46,7 @@ private:
     ChainManager& chain_;
     const CardRegistry& card_registry_;
     EffectExecutor* effect_executor_ = nullptr;
+    std::vector<boost::signals2::connection> connections_;
 
     // ── Delayed abilities ──
 
@@ -92,7 +103,18 @@ private:
     /// WhenYouPlaySpell triggers like Virtuoso / Forgotten Library).
     /// 0 = not a play-triggered ability (default).
     void fireTrigger(GameObjectId source, PlayerId controller,
-                     int triggering_spell_energy_spent = 0);
+                     int triggering_spell_energy_spent = 0,
+                     TriggerType which = TriggerType::None);
+
+    /// Fire `t` on any battlefield CARD (state_.battlefields[].card_object_id)
+    /// that declares it, attributed to `player`. BF card objects have no
+    /// location/controller so the normal on-board scans skip them; this covers
+    /// their phase triggers (AtStartOfBeginning/AtEndOfTurn/AtStartOfMain) and
+    /// "When you play a unit here" style triggers. `at_battlefield` (when not
+    /// kInvalidId) restricts firing to the BF whose id matches — used so a
+    /// "play a unit here" trigger only fires for the BF the unit landed at.
+    void fireBattlefieldTriggers(TriggerType t, PlayerId player,
+                                  BattlefieldId at_battlefield = kInvalidId);
 
     /// Fire `t` on any legend in the champion zone that declares it. Pass
     /// `relevant_player = PlayerId::None` to sweep both players (the

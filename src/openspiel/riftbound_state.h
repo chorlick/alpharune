@@ -54,6 +54,34 @@ public:
     RiftboundState& operator=(const RiftboundState&) = delete;
     ~RiftboundState() override = default;
 
+    /// Build a RiftboundState from an externally-supplied GameState
+    /// snapshot. Bypasses the lossy action_history replay path: the
+    /// cloned engine is memcpy-restored from `snap_state` rather than
+    /// reconstructed by replaying encoded slots (which collapse many
+    /// distinct Intents — set-aside-card-X vs Y at mulligan, target-A
+    /// vs target-B for a MakeChoice — into the same slot, so replay
+    /// can land on the wrong specific Intent and diverge from the live
+    /// engine).
+    ///
+    /// `snap_step.kind` should be NeedDecision (if the game isn't over),
+    /// `snap_step.perspective` the acting player, `snap_step.legal` the
+    /// engine's full Intent list at that decision. `snap_result` is a
+    /// default-constructed GameResult unless `snap_state.game_over`.
+    ///
+    /// Intended caller: MctsAgent / IsMctsAgent, which use this to take
+    /// a per-decision clone of the live engine and run MCTSBot on it.
+    /// One deep copy of `snap_state` is performed internally to hand
+    /// ownership to the lazy-cloned engine; we can't elide it because
+    /// resumeFromSnapshot consumes the GameState by value. The
+    /// `const&` signature is documentation: this factory will not
+    /// outlive `snap_state` and will not mutate it before copying.
+    static std::unique_ptr<RiftboundState> makeFromSnapshot(
+        std::shared_ptr<const ::open_spiel::Game> game,
+        uint64_t engine_seed,
+        const ::riftbound::GameState& snap_state,
+        ::riftbound::StepResult        snap_step,
+        ::riftbound::GameResult        snap_result);
+
     /// Inspect the underlying engine's GameResult after the game is terminal.
     /// Defined only when IsTerminal() — values are zero/None before then.
     const ::riftbound::GameResult& engineResult() const {

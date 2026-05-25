@@ -1797,10 +1797,16 @@ TEST_F(JhinDeckTest, PickMode_AgentSelectsModeIdx_FromMultipleLegalModes) {
     Card* card = card_registry.get(400);
     CardContext ctx{state, events, exec, P1, src};
     card->onResolve(ctx, {unit_at_base});
-    // pickMode should publish the legal mode (only mode 0 legal since
-    // target is a base unit, not a gear) → forced selection, no prompt.
-    EXPECT_FALSE(exec.hasPendingChoice())
-        << "Single-legal-mode case should auto-fire (MODE_FORCED)";
+    // pickMode now ALWAYS publishes a prompt — even with a single
+    // legal mode — so the agent records the decision. Drive the
+    // single-option prompt and verify the chosen mode resolves.
+    ASSERT_TRUE(exec.hasPendingChoice())
+        << "pickMode must publish a prompt even with one legal mode";
+    auto pending = exec.consumePendingChoice();
+    ASSERT_EQ(pending.legal.size(), 1u)
+        << "exactly one legal mode (Deal 4 to base unit)";
+    exec.recordChoice(pending.legal[0]);
+    card->onResolve(ctx, {unit_at_base});
     EXPECT_EQ(state.getObject(unit_at_base).damage_marked, 4)
         << "Mode 0 (Deal 4 to base unit) should fire";
     state.chain.resuming.reset();

@@ -102,12 +102,15 @@ private:
     static std::string escapeHtml(const std::string& s);
     static std::string escapeJs(const std::string& s);
 
+public:
     /// Load card-name → image-URL map from `cards/raw/gallery_raw.json`.
     /// Probes ./cards/raw/gallery_raw.json first, then
-    /// $RIFTBOUND_ROOT/cards/raw/gallery_raw.json. Returns an empty
-    /// map if neither path is present — the HTML will still render,
-    /// the click-to-image side pane just won't have any images to
-    /// display. Called once at writeHtml() time.
+    /// $RIFTBOUND_ROOT/cards/raw/gallery_raw.json, then walks upward
+    /// from the current directory. Returns an empty map if no gallery
+    /// file is found — callers should still render their HTML, the
+    /// click-to-image affordance just won't have anything to display.
+    /// Reused by `riftbound_play` to populate its in-browser card
+    /// details panel.
     static std::map<std::string, std::string> loadCardImageMap();
 };
 

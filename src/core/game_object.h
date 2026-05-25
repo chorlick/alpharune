@@ -124,6 +124,17 @@ struct GameObject {
     int aura_might_bonus = 0;              // cached sum of aura might bonuses
     KeywordSet aura_keywords;              // cached union of aura-granted keywords
 
+    // Keywords granted by "this turn" effects (Bounty Hunter's
+    // `[E]: Give a unit [Ganking] this turn.`, Catalyst of Aeons-style
+    // temp grants, etc.). Mirror-set into `keywords` when granted so
+    // hasKeyword() short-circuits cheaply; the expiration step (CR
+    // 317.2.c) walks this set and clears each bit from `keywords` if
+    // the CardDef doesn't print it AND no active aura grants it,
+    // then clears this field. Without this tracking, a "this turn"
+    // grant becomes a permanent keyword — Bounty Hunter's Ganking
+    // would stick forever, contradicting the card text.
+    KeywordSet temp_keywords;
+
     // ── Convenience ──
     bool isReady() const { return !is_exhausted; }
     bool isUnit() const { return card_type == CardType::Unit; }
@@ -161,7 +172,12 @@ struct GameObject {
     /// Compute current might from base + buffs + assault/shield (Phase 1 simple version).
     /// Full layer system will replace this later.
     void recomputeMight() {
-        current_might = base_might + buff_count + attachment_might_bonus + aura_might_bonus;
+        // buff_count = permanent +1 buff counters (CR); temp_might_bonus =
+        // this-turn temporary might (expires at the expiration step). Tracked
+        // separately so "spend a buff" / "if it has a buff" gates read only the
+        // permanent counters, not transient temp might.
+        current_might = base_might + buff_count + temp_might_bonus +
+                        attachment_might_bonus + aura_might_bonus;
         // Assault applies only while attacking (base + aura-granted)
         if (combat_designation == CombatDesignation::Attacker) {
             current_might += assault_value;

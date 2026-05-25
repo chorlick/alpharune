@@ -1,13 +1,18 @@
 #include "effect_executor.h"
 
+#include "cards/card.h"
+#include "cards/card_registry.h"
+
 #include <algorithm>
 #include <cassert>
 
 namespace riftbound {
 
 EffectExecutor::EffectExecutor(GameState& state, EventBus& events,
-                               const CardDB& card_db)
-    : state_(state), events_(events), card_db_(card_db) {}
+                               const CardDB& card_db,
+                               const CardRegistry* card_registry)
+    : state_(state), events_(events), card_db_(card_db),
+      card_registry_(card_registry) {}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Atomic game operations
@@ -239,17 +244,22 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
 
-    // Apply the buff
-    obj.buff_count += amount;
+    // This-turn temporary might only — does NOT touch buff_count (permanent
+    // buff counters). Expires at the expiration step (temp_might_bonus zeroed).
     obj.temp_might_bonus += amount;
     obj.recomputeMight();
 
-    // Enforce minimum (e.g., "to a minimum of 1 [M]")
-    if (minimum > 0 && obj.current_might < minimum) {
-        int correction = minimum - obj.current_might;
-        obj.buff_count += correction;
-        obj.temp_might_bonus += correction;
-        obj.recomputeMight();
+    // Enforce minimum (e.g., "to a minimum of 1 [M]"). recomputeMight clamps
+    // current_might at 0, so a debuff that drives the raw total below 0 would
+    // make a correction computed from the clamped value too small. Compute the
+    // correction from the UNCLAMPED raw might instead.
+    if (minimum > 0) {
+        int raw = obj.base_might + obj.buff_count + obj.temp_might_bonus +
+                  obj.attachment_might_bonus + obj.aura_might_bonus;
+        if (raw < minimum) {
+            obj.temp_might_bonus += (minimum - raw);
+            obj.recomputeMight();
+        }
     }
 
     events_.logTrace("EFFECT: give " + obj.name + " " + std::to_string(amount) +
@@ -266,6 +276,15 @@ void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
                      (value > 0 ? " (value=" + std::to_string(value) + ")" : "") +
                      " this turn");
     obj.keywords.set(kw);
+    // Track the "this turn" provenance so expirationStep can revoke
+    // pure-flag keywords (Ganking, Tank, Backline, etc.). Parameterised
+    // keywords (Assault/Shield) already get their values reset in the
+    // expiration body via temp_assault_value / temp_shield_value, and
+    // that code path independently clears the keyword bit if the value
+    // returns to 0 AND the CardDef doesn't print it. Tagging temp_keywords
+    // here doesn't conflict with that flow — both paths converge on
+    // "clear the bit if neither base nor aura still grants it".
+    obj.temp_keywords.set(kw);
     if (kw == Keyword::Assault) { obj.assault_value += value; obj.temp_assault_value += value; }
     else if (kw == Keyword::Shield) { obj.shield_value += value; obj.temp_shield_value += value; }
     else if (kw == Keyword::Deflect) obj.deflect_value += value;
@@ -274,7 +293,16 @@ void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
 }
 
 void EffectExecutor::buffUnit(GameObjectId target) {
-    giveTemporaryMight(target, 1);
+    // [Buff] = a PERMANENT +1 [M] counter (CR), not this-turn temp might. It
+    // persists past the expiration step and is what "spend a buff" / "if it
+    // has a buff" gates count.
+    if (!state_.objectExists(target)) return;
+    auto& obj = state_.getObject(target);
+    obj.buff_count += 1;
+    obj.recomputeMight();
+    events_.logTrace("EFFECT: [Buff] " + obj.name + " (+1 permanent) -> " +
+                     std::to_string(obj.current_might) + "M");
+    events_.emit(ObjectStateChangedEvent{target, "buffed"});
 }
 
 void EffectExecutor::readyObject(GameObjectId target) {
@@ -282,6 +310,25 @@ void EffectExecutor::readyObject(GameObjectId target) {
     auto& obj = state_.getObject(target);
     obj.is_exhausted = false;
     events_.emit(ObjectStateChangedEvent{target, "readied"});
+}
+
+void EffectExecutor::unattachGear(GameObjectId gear) {
+    if (!state_.objectExists(gear)) return;
+    auto& g = state_.getObject(gear);
+    if (!g.attached_to.has_value()) return;
+    GameObjectId unit_id = *g.attached_to;
+    if (state_.objectExists(unit_id)) {
+        auto& unit = state_.getObject(unit_id);
+        unit.attachment_might_bonus -= g.might_bonus;
+        auto& att = unit.attachments;
+        att.erase(std::remove(att.begin(), att.end(), gear), att.end());
+        unit.recomputeMight();
+    }
+    g.attached_to = std::nullopt;
+    g.is_rules_text_inactive = false;
+    // CR 719.5 — detached gear stays at its current location, unattached.
+    events_.logTrace("EFFECT: unattach " + g.name + " (id=" + std::to_string(gear) + ")");
+    events_.emit(ObjectStateChangedEvent{gear, "detached"});
 }
 
 void EffectExecutor::moveToBase(GameObjectId target) {
@@ -931,26 +978,65 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     return chosen_cards;
 }
 
-void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card) {
+void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
+                                       std::optional<LocationId> location) {
     if (!state_.objectExists(card)) return;
     auto& obj = state_.getObject(card);
 
-    obj.zone = ZoneType::Base;
-    obj.location = BaseLocation{player};
+    // Landing zone: caller-supplied (CR 355.2.a — controller picks base
+    // or a battlefield they control) or, by default, the controller's
+    // base for back-compat. The card's onPlay hook below may override
+    // this (Baron Nashor relocates himself to the Pit token he just
+    // created). Per CR 355.1, "As you play me" effects run DURING
+    // the play, not after — that gives onPlay the opportunity to
+    // redirect before any EnteredBoardEvent fires.
+    LocationId chosen_loc = location.value_or(LocationId{BaseLocation{player}});
+    if (std::holds_alternative<BattlefieldLocation>(chosen_loc)) {
+        obj.zone = ZoneType::BattlefieldZone;
+    } else {
+        obj.zone = ZoneType::Base;
+    }
+    obj.location = chosen_loc;
     obj.controller = player;
 
     if (obj.isUnit()) {
         obj.is_exhausted = true;
+        // A unit (re-)entering play is a fresh presence — clear any marked
+        // damage carried from a prior life (e.g. banished-then-replayed by
+        // Thrill of the Hunt). New plays from hand are already at 0, so this
+        // is a no-op for the common case.
+        obj.damage_marked = 0;
     }
     obj.recomputeMight();
 
     auto& ps = state_.player(player);
     ps.cards_played_this_turn++;
 
+    // Fire the card's onPlay hook (CR 355.1 "As you play me"). Without
+    // this, cards played by Dazzling Aurora / Mirror Image / etc. via
+    // playIgnoringCost skip their inline play-time effects entirely —
+    // Baron Nashor wouldn't spawn the Baron Pit, etc. The normal
+    // GameEngine::executePlayCard path calls this between cost payment
+    // and chain insertion; we mirror that ordering here even though
+    // there's no chain step in the ignore-cost path.
+    if (card_registry_ && obj.card_def_id != kInvalidId) {
+        if (Card* card_obj = card_registry_->get(obj.card_def_id)) {
+            CardContext ctx{state_, events_, *this, player, card};
+            card_obj->onPlay(ctx);
+        }
+    }
+
+    // Re-read the (possibly-relocated) location for the EnteredBoardEvent
+    // so subscribers see where the unit actually landed, not the default
+    // base location set above. WhenIEnterTheBoard / WhenYouPlayMe
+    // triggers fired through CardPlayedEvent + EnteredBoardEvent below
+    // will then observe the final post-onPlay state.
+    LocationId final_loc = obj.location.value_or(BaseLocation{player});
+
     events_.emit(CardPlayedEvent{card, player, obj.card_type,
         ps.cards_played_this_turn});
     events_.emit(EnteredBoardEvent{card, player, obj.card_type,
-        BaseLocation{player}, true});
+        final_loc, true});
 }
 
 } // namespace riftbound

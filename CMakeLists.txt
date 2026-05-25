@@ -248,6 +248,7 @@ add_library(riftbound_core
     src/engine/trigger_manager.cpp
     src/io/state_renderer.cpp
     src/io/replay_writer.cpp
+    src/io/state_editor.cpp
     src/cards/card.cpp
     src/cards/card_registry.cpp
     src/cards/generated/unit_cards.cpp
@@ -260,6 +261,14 @@ add_library(riftbound_core
     src/cards/manual/equip_cards.cpp
     src/cards/manual/weaponmaster_cards.cpp
     src/cards/manual/deck_cards.cpp
+    src/cards/manual/audit_fixes_0.cpp
+    src/cards/manual/audit_fixes_1.cpp
+    src/cards/manual/audit_fixes_2.cpp
+    src/cards/manual/audit_fixes_3.cpp
+    src/cards/manual/audit_fixes_4.cpp
+    src/cards/manual/audit_fixes_5.cpp
+    src/cards/manual/audit_fixes_6.cpp
+    src/cards/manual/audit_fixes_7.cpp
     src/engine/game_runner.cpp
     src/engine/batch_runner.cpp
     src/engine/step_driver.cpp
@@ -286,12 +295,43 @@ target_link_libraries(riftbound_core PUBLIC
 # )
 # target_link_libraries(riftbound_engine PUBLIC riftbound_core)
 
-# ─── Main executable (legacy CLI — flag-driven) ───────────────────────────────
-# Stays in tree during Phase 6. New work goes through the unified
-# riftbound_runner binary below.
+# ─── Unified riftbound binary ────────────────────────────────────────────────
+# One entry point for all modes: random / mcts / ismcts / human (1 or 2 seats),
+# single-game or batch via --games, optional Beast HTTP+WebSocket web UI via
+# --web. Pulls in OpenSpiel + the riftbound_game/state TUs so MctsAgent /
+# IsMctsAgent can construct cloneable OpenSpiel states internally.
+#
+# The riftbound_game.cpp + riftbound_state.cpp sources MUST be compiled into
+# this executable directly (not into a static lib) — OpenSpiel's
+# OPEN_SPIEL_REGISTER_GAME static initializer would otherwise be stripped by
+# the linker and LoadGame("riftbound") would return null at runtime.
 
-add_executable(riftbound src/main.cpp)
-target_link_libraries(riftbound PRIVATE riftbound_core Boost::program_options)
+add_executable(riftbound
+    src/main.cpp
+    src/agents/mcts_agent.cpp
+    src/io/play_server.cpp
+    src/io/play_index_html.cpp
+    src/openspiel/riftbound_game.cpp
+    src/openspiel/riftbound_state.cpp
+    $<TARGET_OBJECTS:algorithms>
+    $<TARGET_OBJECTS:game_transforms>
+    $<TARGET_OBJECTS:utils>
+)
+target_link_libraries(riftbound PRIVATE
+    riftbound_core
+    open_spiel_core
+    Boost::program_options
+    Boost::system
+    Boost::filesystem
+    # abseil — OpenSpiel uses a directory-level link_libraries() that doesn't
+    # propagate to consumers, so we replicate the list here. Mirrors the set
+    # in src/openspiel/CMakeLists.txt.
+    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
+    absl::optional absl::random_random absl::str_format absl::strings absl::time
+)
+# OpenSpiel sources include "open_spiel/spiel.h" — needs the parent of the
+# open_spiel/ subdir on the include path.
+target_include_directories(riftbound PRIVATE ${open_spiel_SOURCE_DIR})
 
 # Config parsing (src/config/) moved to riftbound-trainer along with the
 # training driver — engine has no current consumers. A future engine
@@ -332,6 +372,16 @@ set(RIFTBOUND_TEST_SOURCES
     tests/cards/test_combat_damage_allocation.cpp
     tests/cards/test_combat_showdown_dispatch.cpp
     tests/cards/test_jhin_deck.cpp
+    tests/cards/test_dazzling_aurora.cpp
+    tests/cards/test_missing_card_fixes.cpp
+    tests/cards/test_audit_fixes_0.cpp
+    tests/cards/test_audit_fixes_1.cpp
+    tests/cards/test_audit_fixes_2.cpp
+    tests/cards/test_audit_fixes_3.cpp
+    tests/cards/test_audit_fixes_4.cpp
+    tests/cards/test_audit_fixes_5.cpp
+    tests/cards/test_audit_fixes_6.cpp
+    tests/cards/test_audit_fixes_7.cpp
 )
 # Model-forward + CFR util tests live in riftbound-trainer.
 

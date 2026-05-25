@@ -23,7 +23,8 @@ constexpr CardDefId kHardBargainId = 457;
 constexpr CardDefId kWindWallId    = 64;
 constexpr CardDefId kRepulseId     = 668;
 constexpr CardDefId kNotSoFastId   = 368;
-constexpr CardDefId kDefyId        = 45;   // counter + draw 1 (always playable)
+constexpr CardDefId kDefyId        = 45;   // counter a spell costing no more than [4]
+constexpr CardDefId kLunarBoonId   = 687;  // cost 3 spell (legal Defy target)
 constexpr CardDefId kAbandonId     = 693;  // counter + predict (always playable)
 constexpr CardDefId kLullabyId     = 750;  // counter + lockout (lockout is scoped
                                            // to countered spell's controller, so
@@ -49,19 +50,22 @@ protected:
     /// Push a fake spell ChainItem onto the chain, optionally targeting a
     /// friendly id. Returns the spell's GameObjectId.
     GameObjectId pushSpellOnChain(PlayerId controller,
-                                   const std::vector<GameObjectId>& targets = {}) {
+                                   const std::vector<GameObjectId>& targets = {},
+                                   CardDefId def_id = kInvalidId) {
         auto src = state.createObject();
         auto& obj = state.getObject(src);
         obj.owner = controller;
         obj.controller = controller;
         obj.card_type = CardType::Spell;
         obj.zone = ZoneType::Chain;
+        obj.card_def_id = def_id;
 
         ChainItem item;
         item.id = state.chain.allocateId();
         item.source = src;
         item.controller = controller;
         item.is_spell = true;
+        item.card_def_id = def_id;
         item.targets = targets;
         state.chain.items.push_back(item);
         return src;
@@ -168,7 +172,9 @@ TEST_F(LegalTargetsFixture, DefyBlockedWhenChainEmpty) {
 }
 
 TEST_F(LegalTargetsFixture, DefyAllowedWhenSpellOnChain) {
-    pushSpellOnChain(PlayerId::Player2);
+    // Defy is legal only vs a spell costing no more than [4]. Lunar Boon
+    // (cost 3) is a valid counter target.
+    pushSpellOnChain(PlayerId::Player2, /*targets=*/{}, kLunarBoonId);
     Card* card = card_registry.get(kDefyId);
     EXPECT_TRUE(card->hasLegalTargets(state, PlayerId::Player1));
 }

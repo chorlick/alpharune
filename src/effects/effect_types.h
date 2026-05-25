@@ -97,6 +97,10 @@ enum class TriggerType : uint8_t {
     // Other event triggers
     WhenYouPlayASpell,  // "When you play a spell,"
     WhenYouPlayAUnit,   // "When you play a unit,"
+    WhenYouPlayAGear,   // "When you play a gear," — fires on OTHER friendly
+                        // on-board cards with this trigger when the controller
+                        // plays a gear (e.g. Pit Crew readies itself).
+                        // Emitted from TriggerManager::onCardPlayed.
     WhenAFriendlyUnitDies, // "When a friendly unit dies,"
     WhenAFriendlyUnitMovesToFB, // "When a friendly unit moves to a battlefield,"
     WhenYouDiscard,     // "When you discard,"

@@ -4,6 +4,7 @@
 /// and runs one complete game with its own EventBus, GameEngine, agents, and I/O.
 /// Shared singletons (CardDB, CardRegistry) are passed by const reference.
 
+#include "agents/agent_interface.h"
 #include "core/card_db.h"
 #include "cards/card_registry.h"
 #include "core/events.h"
@@ -12,6 +13,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -26,8 +29,23 @@ struct GameConfig {
     bool debug_mode = false;
     bool trace_mode = false;
     int total_games = 1;          // for progress display
-    std::string agent1_spec = "random"; // currently only "random" — see game_runner.cpp
+    std::string agent1_spec = "random";
     std::string agent2_spec = "random";
+
+    /// Optional agent factory — when set, replaces GameRunner's built-in
+    /// "random-only" factory. The seat index is 0 for P1 and 1 for P2.
+    /// `game_seed` is the engine RNG seed for THIS game; the factory
+    /// must pass it verbatim into any MCTS-style agent that constructs
+    /// an internal OpenSpiel state, otherwise replaying action_history
+    /// in the cloned state will diverge from the real engine's state
+    /// (different initial shuffle, different draws) and MCTS will plan
+    /// against a phantom position. The factory derives whatever per-seat
+    /// RNG it wants for the agent's internal use (e.g., RandomAgent's
+    /// action picks, MCTS's exploration tiebreaks) from game_seed + seat
+    /// inside the closure. Thread-safe because each call constructs a
+    /// fresh agent instance.
+    std::function<std::unique_ptr<AgentInterface>(int seat_idx, uint64_t game_seed)>
+        agent_factory;
 };
 
 struct AggregateResults {

@@ -54,9 +54,19 @@ public:
         const GameState& state,
         const std::vector<Intent>& legal_actions
     ) override {
-        if (legal_actions.empty()) {
+        if (legal_actions.empty() || aborted_.load(std::memory_order_acquire)) {
             return Intent::concede(state.turn.turn_player);
         }
+        // Every decision — including 1-option "forced" steps like the
+        // final rune-exhaust in an exactly-affordable cost payment —
+        // surfaces to the UI. Earlier we short-circuited
+        // legal_actions.size() == 1 here to spare the player a click,
+        // but that left forced cost-payment steps invisible: the user
+        // couldn't see which rune the engine "auto-picked" on their
+        // behalf. Per the user's spec, treat single-option decisions
+        // identically to multi-option ones — the WS frame is still
+        // pushed, the UI still renders a button, the player still
+        // clicks (or watches the agent click in spectator mode).
         int chosen;
         {
             std::unique_lock<std::mutex> lock(mu_);
@@ -66,7 +76,13 @@ public:
             at_decision_   = true;
             cv_ui_.notify_all();
 
-            cv_engine_.wait(lock, [&] { return pending_choice_.has_value(); });
+            cv_engine_.wait(lock, [&] {
+                return pending_choice_.has_value() || aborted_.load(std::memory_order_acquire);
+            });
+            if (aborted_.load(std::memory_order_acquire)) {
+                at_decision_ = false;
+                return Intent::concede(state.turn.turn_player);
+            }
             chosen = *pending_choice_;
             pending_choice_.reset();
             at_decision_ = false;
@@ -75,6 +91,16 @@ public:
             chosen = 0;   // out-of-range → safe fallback
         }
         return legal_actions[chosen];
+    }
+
+    /// Wake the engine thread with a forced concede. Used by the UI
+    /// binary when the user signals shutdown — the engine would
+    /// otherwise sit in `cv_engine_.wait()` indefinitely. Idempotent.
+    /// After `abort()`, every subsequent `selectAction` call also
+    /// concedes, so the engine drains out cleanly.
+    void abort() {
+        aborted_.store(true, std::memory_order_release);
+        cv_engine_.notify_all();
     }
 
     /// UI-side: wake the engine with the chosen legal-action index.
@@ -133,6 +159,7 @@ private:
     std::optional<int>      pending_choice_;
     bool                    at_decision_   = false;
     std::atomic<uint64_t>   decision_id_{0};
+    std::atomic<bool>       aborted_{false};
 };
 
 } // namespace riftbound

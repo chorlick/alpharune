@@ -6,40 +6,9 @@
 # strips the TU and the OPEN_SPIEL_REGISTER_GAME static initializer never
 # runs, leaving the game unfindable via LoadGame("riftbound").
 
-# Unified match runner. Supersedes the legacy `openspiel_rollout` (random
-# vs random) and `openspiel_mcts` (MCTS vs random) executables — a single
-# binary with --agent1/--agent2 flags covers both. Future neural agents
-# (LibTorch when C++ AlphaZero training lands) will be added here.
-# Pulls in OpenSpiel's `algorithms` + `game_transforms` + `utils` OBJECT
-# libraries via $<TARGET_OBJECTS:..> so MCTSBot links (those targets
-# aren't directly linkable; their object files must be pulled in by name).
-add_executable(riftbound_openspiel
-    openspiel_match.cpp
-    riftbound_game.cpp
-    riftbound_state.cpp
-    $<TARGET_OBJECTS:algorithms>
-    $<TARGET_OBJECTS:game_transforms>
-    $<TARGET_OBJECTS:utils>
-)
-target_link_libraries(riftbound_openspiel PRIVATE
-    riftbound_core open_spiel_core
-    # OpenSpiel sets up abseil deps via a directory-level `link_libraries()`
-    # in its CMakeLists, which doesn't propagate to consumers via
-    # target_link_libraries. We replicate the list explicitly here.
-    Boost::program_options
-    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
-    absl::optional absl::random_random absl::str_format absl::strings absl::time
-)
-# Model-based agents (model:/rebel:) live in the riftbound-trainer repo.
-# This binary supports only random/mcts/ismcts.
-target_include_directories(riftbound_openspiel PRIVATE
-    # open_spiel_core only exports its own subdir as a PUBLIC include, but
-    # OpenSpiel source uses `#include "open_spiel/spiel.h"` — that
-    # resolution needs the parent of the open_spiel subdir on the include
-    # path. OpenSpiel does this with a directory-level include_directories
-    # which doesn't propagate to downstream consumers, so we add it here.
-    ${open_spiel_SOURCE_DIR}
-)
+# The legacy `riftbound_openspiel` match runner was absorbed into the
+# top-level `riftbound` binary's unified entry point. Diagnostic /
+# validation utilities below remain.
 
 # Clone-equivalence test (Phase 11 C-1 DoD #5). Standalone executable —
 # clones a RiftboundState mid-game, drives original + clone forward with

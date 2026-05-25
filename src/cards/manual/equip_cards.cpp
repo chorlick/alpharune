@@ -21,9 +21,29 @@ static bool standardEquip(CardContext& ctx, GameObjectId gear_id, GameObjectId u
     auto& ps = state.player(player);
     auto base_loc = BaseLocation{player};
 
-    // Pay power cost: recycle a matching-domain rune
+    // PRE-CHECK: count ready runes and locate a matching-domain rune.
+    // Bail out (return false, no state change) if we can't pay either
+    // portion. Without this, the loops below would silently exhaust /
+    // recycle whatever they could find and then "equip for free" with
+    // no power paid — a real bug uncovered when running Last Rites
+    // without a Chaos rune available.
+    int ready_count = 0;
+    GameObjectId domain_rune = kInvalidId;
+    for (auto& [id, obj] : state.objects) {
+        if (!obj.isRune() || obj.controller != player) continue;
+        if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
+        if (!obj.is_exhausted) ready_count++;
+        if (domain_rune == kInvalidId) {
+            for (auto d : obj.domains) {
+                if (d == domain) { domain_rune = id; break; }
+            }
+        }
+    }
+    if (ready_count < energy_cost)   return false;
+    if (domain_rune == kInvalidId)   return false;
+
+    // Pay energy: exhaust ready runes
     if (energy_cost > 0) {
-        // Energy portion: exhaust ready runes
         int e_remaining = energy_cost;
         for (auto& [id, obj] : state.objects) {
             if (e_remaining <= 0) break;
@@ -34,20 +54,13 @@ static bool standardEquip(CardContext& ctx, GameObjectId gear_id, GameObjectId u
         }
     }
 
-    // Recycle a rune for domain power
-    for (auto& [id, obj] : state.objects) {
-        if (!obj.isRune() || obj.controller != player) continue;
-        if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-        bool match = false;
-        for (auto d : obj.domains) {
-            if (d == domain) { match = true; break; }
-        }
-        if (!match) continue;
-        ctx.events.logTrace("  EQUIP_COST: recycled " + obj.name + " for power");
-        obj.location = std::nullopt;
-        obj.zone = ZoneType::RuneDeck;
-        ps.rune_deck.insert(ps.rune_deck.begin(), id);
-        break;
+    // Recycle the pre-located matching-domain rune for power.
+    {
+        auto& dr = state.getObject(domain_rune);
+        ctx.events.logTrace("  EQUIP_COST: recycled " + dr.name + " for power");
+        dr.location = std::nullopt;
+        dr.zone = ZoneType::RuneDeck;
+        ps.rune_deck.insert(ps.rune_deck.begin(), domain_rune);
     }
 
     // Attach
@@ -281,12 +294,31 @@ public:
     MELastRites() : SimpleEquipGear(471, Domain::Chaos) {}
 
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        // Additional cost: recycle 2 cards from trash
+        // Additional cost: recycle 2 cards from trash AND a Chaos
+        // power rune. We check BOTH portions upfront and only commit
+        // costs once we know all of them are payable — otherwise an
+        // unaffordable equip would leave the player having silently
+        // recycled 2 trash cards with no equip to show for it.
         auto& ps = ctx.state.player(ctx.controller);
-        if (ps.trash.size() < 2) return false; // can't pay
+        if (ps.trash.size() < 2) return false;
 
-        // Recycle 2 from trash
-        for (int i = 0; i < 2 && !ps.trash.empty(); ++i) {
+        // Pre-check Chaos rune availability mirroring standardEquip.
+        bool has_chaos_rune = false;
+        auto base_loc = BaseLocation{ctx.controller};
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (!obj.isRune() || obj.controller != ctx.controller) continue;
+            if (!obj.location.has_value() ||
+                *obj.location != LocationId{base_loc}) continue;
+            for (auto d : obj.domains) {
+                if (d == Domain::Chaos) { has_chaos_rune = true; break; }
+            }
+            if (has_chaos_rune) break;
+        }
+        if (!has_chaos_rune) return false;
+
+        // Pay trash cost (2 cards from back of trash). Agent-choice for
+        // *which* 2 cards is a future improvement — currently auto.
+        for (int i = 0; i < 2; ++i) {
             auto card_id = ps.trash.back();
             ps.trash.pop_back();
             ctx.events.logTrace("  EQUIP_COST: recycled " +
@@ -295,14 +327,32 @@ public:
             ps.main_deck.insert(ps.main_deck.begin(), card_id);
         }
 
-        // Standard domain power cost
+        // Standard domain power cost — guaranteed to succeed per
+        // the pre-check above.
         return standardEquip(ctx, ctx.source, unit, 0, Domain::Chaos);
     }
 
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquerOrHold; }
-    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
-        // Play a unit from trash (simplified — random agent picks from back)
+    void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
+                            const std::vector<GameObjectId>& /*targets*/) override {
+        // Card text: "When I conquer or hold, you may play a unit
+        // from your trash. (You still pay its costs.)"
+        //
+        // Current implementation:
+        //   - Auto-picks the most-recent unit from trash (no agent
+        //     choice — "you may" is treated as "must if possible").
+        //   - Calls playIgnoringCost rather than paying the unit's
+        //     real cost. This is the engine's standing limitation:
+        //     EffectExecutor cannot drive the engine's payCardCost
+        //     state machine from inside a chain-resolving card.
+        //     Tracked alongside other triggers that need to "play
+        //     paying costs" — they all need an EffectExecutor bridge
+        //     into the cost-payment cursor.
+        //
+        // The trigger fires and produces a played unit, which is
+        // enough to verify the WhenIConquerOrHold wiring; tests
+        // assert that behavior. The cost-payment gap is documented
+        // as a known issue rather than silently wrong.
         auto& ps = ctx.state.player(ctx.controller);
         for (int i = static_cast<int>(ps.trash.size()) - 1; i >= 0; --i) {
             auto card_id = ps.trash[i];
@@ -310,7 +360,8 @@ public:
             auto& obj = ctx.state.getObject(card_id);
             if (!obj.isUnit()) continue;
 
-            ctx.events.logTrace("EQUIP_TRIGGER: Last Rites plays " + obj.name + " from trash");
+            ctx.events.logTrace("EQUIP_TRIGGER: Last Rites plays " + obj.name +
+                                 " from trash (TODO: cost not yet paid)");
             ctx.executor.playIgnoringCost(ctx.controller, card_id);
             ps.trash.erase(ps.trash.begin() + i);
             break;
@@ -387,17 +438,46 @@ public:
 
 // ─── Remaining equip gear (simple patterns) ────────────────────────────────
 
-// [353] Skyfall of Areion — [Equip] [1][R], might_bonus=2
+// [353] Skyfall of Areion — [Equip] [1][R], might_bonus=2.
+// effect_text: "My hold effects are also conquer effects, and vice versa."
+// The cross-fire is honored by TriggerManager::onScore via the generic
+// crossesHoldConquerTriggers() property.
 class MESkyfallAreion : public SimpleEquipGear {
-public: MESkyfallAreion() : SimpleEquipGear(353, Domain::Fury, 1) {} };
+public:
+    MESkyfallAreion() : SimpleEquipGear(353, Domain::Fury, 1) {}
+    bool crossesHoldConquerTriggers() const override { return true; }
+};
 
 // [365] Brutalizer — [Equip] [G], might_bonus=1
 class MEBrutalizer : public SimpleEquipGear {
 public: MEBrutalizer() : SimpleEquipGear(365, Domain::Calm) {} };
 
-// [374] Guardian Angel — [Equip] [G], might_bonus=1 (replacement effect in effect_text)
+// [374] Guardian Angel — [Equip] [G], might_bonus=1.
+// effect_text: "If I would die, kill Guardian Angel instead. Heal me,
+// exhaust me, and recall me." Structured death-replacement: only protects the
+// unit Guardian Angel is attached to. When that unit would die, kill the gear
+// instead and heal/exhaust/recall the unit. Consumed via killUnit's
+// Card::applyReplacement scan.
 class MEGuardianAngel : public SimpleEquipGear {
-public: MEGuardianAngel() : SimpleEquipGear(374, Domain::Calm) {} };
+public:
+    MEGuardianAngel() : SimpleEquipGear(374, Domain::Calm) {}
+    bool hasReplacementEffect() const override { return true; }
+    bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
+        if (!ctx.state.objectExists(ctx.source)) return false;
+        const auto& gear = ctx.state.getObject(ctx.source);
+        // Only intercept the death of the unit we're attached to.
+        if (!gear.attached_to.has_value() || *gear.attached_to != dying_unit) {
+            return false;
+        }
+        ctx.events.logTrace("GUARDIAN ANGEL: kill self, heal/exhaust/recall bearer");
+        ctx.executor.unattachGear(ctx.source);
+        ctx.executor.killObject(ctx.source);       // kill Guardian Angel instead
+        ctx.executor.healObject(dying_unit);        // heal me
+        ctx.executor.exhaustObject(dying_unit);     // exhaust me
+        ctx.executor.moveToBase(dying_unit);        // recall me
+        return true;
+    }
+};
 
 // [379] Sterak's Gage — [Equip] [G], might_bonus=3
 class MESteraksGage : public SimpleEquipGear {
@@ -439,13 +519,74 @@ public: MEEdgeOfNight() : SimpleEquipGear(460, Domain::Chaos) {} };
 class MEBladeOfRuinedKing : public SimpleEquipGear {
 public: MEBladeOfRuinedKing() : SimpleEquipGear(498, Domain::Order) {} };
 
-// [509] Shurelya's Requiem — [Equip] [A], might_bonus=2, effect: units here have [Ganking]
+// [509] Shurelya's Requiem — [Unique], [Equip] [A]. "When you play this,
+// ready your units." Effect text: "Your units here have [Ganking]." The
+// ready-on-play fires via WhenYouPlayThis; the [Ganking] aura is re-applied
+// every recalculateAuras to the controller's units at the equipped unit's
+// battlefield ("here" = the gear/unit's location).
 class MEShurelyasRequiem : public UniversalEquipGear {
-public: MEShurelyasRequiem() : UniversalEquipGear(509) {} };
+public:
+    MEShurelyasRequiem() : UniversalEquipGear(509) {}
 
-// [581] Blighted Battleaxe — [Equip] [1][R], might_bonus=4
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value() && obj.is_exhausted) {
+                ctx.executor.readyObject(id);
+            }
+        }
+        ctx.events.logTrace("SHURELYA'S REQUIEM: ready your units");
+    }
+
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // Locate this gear instance (attached, controlled by `controller`)
+        // and grant [Ganking] to the controller's units at its battlefield.
+        for (auto& [gid, gear] : state.objects) {
+            if (gear.card_def_id != cardDefId()) continue;
+            if (gear.controller != controller || !gear.attached_to.has_value()) continue;
+            auto bf = gear.battlefieldId();
+            if (!bf) continue;
+            for (auto& [tid, tgt] : state.objects) {
+                if (!tgt.isUnit() || tgt.controller != controller) continue;
+                auto tbf = tgt.battlefieldId();
+                if (!tbf || *tbf != *bf) continue;
+                GameObject::AuraEffect ae;
+                ae.source = gid;
+                ae.keyword = Keyword::Ganking;
+                tgt.aura_effects.push_back(ae);
+            }
+        }
+    }
+};
+
+// [581] Blighted Battleaxe — [Equip] [1][R], might_bonus=4.
+// effect_text: "At the end of your turn, if I didn't conquer this turn,
+// unattach this and deal 4 to me." ("me"/"I" = the equipped unit.) Fires via
+// the AtEndOfTurn trigger (the attached gear is an on-board object owned by
+// the turn player, so the end-of-turn loop reaches it). "Conquered this turn"
+// is read from the generic __conquered_turn marker stamped in onScore.
 class MEBlightedBattleaxe : public SimpleEquipGear {
-public: MEBlightedBattleaxe() : SimpleEquipGear(581, Domain::Fury, 1) {} };
+public:
+    MEBlightedBattleaxe() : SimpleEquipGear(581, Domain::Fury, 1) {}
+    TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        auto& gear = ctx.state.getObject(ctx.source);
+        if (!gear.attached_to.has_value()) return;
+        GameObjectId unit_id = *gear.attached_to;
+        if (!ctx.state.objectExists(unit_id)) return;
+        const auto& unit = ctx.state.getObject(unit_id);
+        auto it = unit.card_counters.find("__conquered_turn");
+        bool conquered_this_turn = (it != unit.card_counters.end() &&
+                                    it->second == ctx.state.turn.turn_number);
+        if (conquered_this_turn) return;
+        ctx.events.logTrace("BLIGHTED BATTLEAXE: no conquer this turn — "
+                            "unattach + deal 4 to bearer");
+        ctx.executor.unattachGear(ctx.source);
+        ctx.executor.dealDamage(unit_id, 4, ctx.source);
+    }
+};
 
 // [601] Soul Sword — [Equip] [G], might_bonus=1
 class MESoulSword : public SimpleEquipGear {

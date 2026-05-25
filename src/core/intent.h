@@ -79,6 +79,18 @@ struct Intent {
     std::vector<GameObjectId> chosen_objects;
     std::optional<int> chosen_value;
 
+    // Display-only human-readable label for an int-coded MakeChoice
+    // option (yes/no, mode index, X amount). The Intent itself only
+    // carries the answer (chosen_value), which renders as a bare number
+    // ("=0", "=1") with no indication of meaning. The CARD — which knows
+    // the semantics — stamps the label here (e.g. "Yes", "Deal 2 damage",
+    // "X = 3") so the UI / trace can show what each option means. The
+    // engine never inspects this; it only forwards and renders it, so no
+    // card-specific knowledge leaks into the engine. Excluded from
+    // operator== (purely cosmetic — must not affect chosen-index lookup
+    // or action-vocab encoding).
+    std::string choice_label;
+
     // ── Factory methods for readability ──
 
     static Intent endTurn(PlayerId p) {

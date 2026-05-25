@@ -59,6 +59,16 @@ struct PlayerState {
     std::vector<GameObjectId> trash;
     std::vector<GameObjectId> banishment;
 
+    // This player's battlefield-deck candidates (CardDefIds, NOT
+    // GameObjectIds — these aren't instantiated as runtime objects
+    // until selection). Used during setup to offer a `ChooseBattlefield`
+    // decision per CR 480.5 / 481.5, and consumed afterwards. The
+    // renderer reads this to label the candidates by their printed
+    // card name in the legal-action UI; the action-vocab encoder
+    // uses the Intent's `chosen_battlefield` field (carrying the
+    // index into this vector) for slot encoding.
+    std::vector<CardDefId> battlefield_pool;
+
     // Special zones (single card or empty)
     GameObjectId champion_zone = kInvalidId;
     GameObjectId legend_zone = kInvalidId;
@@ -290,6 +300,11 @@ struct ChainItem {
     /// Card::onTrigger. Cards must override the matching method; the
     /// other defaults to a no-op.
     bool is_activated_ability = false;
+
+    // Which trigger event produced this (triggered) ability, so multi-trigger
+    // cards can branch in onTrigger via CardContext::firing_trigger. None for
+    // spells / activated abilities / single-trigger cards.
+    TriggerType fired_trigger = TriggerType::None;
 
     // Phase 6r — multi-ability per Card. Identifies which of the source's
     // activated abilities this chain item resolves. 0 = first/only ability

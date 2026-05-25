@@ -14,6 +14,7 @@
 #include "types.h"
 
 #include <boost/signals2.hpp>
+#include <cstdio>
 #include <functional>
 #include <optional>
 #include <string>
@@ -350,11 +351,15 @@ public:
     void emit(const SpellResolvedEvent& e)       { on_spell_resolved(e); }
     void emit(const CardRevealedEvent& e)        { on_card_revealed(e); }
 
-    // Convenience logging
-    void logTrace(const std::string& msg) { emit(LogEvent{LogLevel::Trace, msg}); }
-    void logDebug(const std::string& msg) { emit(LogEvent{LogLevel::Debug, msg}); }
-    void logInfo(const std::string& msg)  { emit(LogEvent{LogLevel::Info, msg}); }
-    void logWarn(const std::string& msg)  { emit(LogEvent{LogLevel::Warning, msg}); }
+    // Convenience logging. Every line is prefixed with [D:NNN.NN]
+    // where NNN is a per-EventBus decision counter (bumped + reset
+    // sub-counter whenever a "DECISION #" line is emitted) and NN is
+    // the sub-counter within the current decision. Lines emitted
+    // before the first DECISION show as [D:000.NN].
+    void logTrace(const std::string& msg) { emit(LogEvent{LogLevel::Trace,   tagWithDecision(msg)}); }
+    void logDebug(const std::string& msg) { emit(LogEvent{LogLevel::Debug,   tagWithDecision(msg)}); }
+    void logInfo(const std::string& msg)  { emit(LogEvent{LogLevel::Info,    tagWithDecision(msg)}); }
+    void logWarn(const std::string& msg)  { emit(LogEvent{LogLevel::Warning, tagWithDecision(msg)}); }
 
     /// Disconnect all subscribers (useful between games).
     void disconnectAll() {
@@ -389,6 +394,27 @@ public:
         on_spell_resolved.disconnect_all_slots();
         on_card_revealed.disconnect_all_slots();
         on_log.disconnect_all_slots();
+    }
+
+private:
+    int log_decision_counter_ = 0;
+    int log_sub_counter_      = 0;
+
+    /// Prefix the message with `[D:NNN.NN] `. Bumps the decision
+    /// counter (and resets the sub-counter to 0) when `msg` begins
+    /// with `"DECISION #"`; otherwise bumps the sub-counter.
+    std::string tagWithDecision(const std::string& msg) {
+        static constexpr const char* kDecisionPrefix = "DECISION #";
+        if (msg.compare(0, 10, kDecisionPrefix) == 0) {
+            ++log_decision_counter_;
+            log_sub_counter_ = 0;
+        } else {
+            ++log_sub_counter_;
+        }
+        char buf[24];
+        std::snprintf(buf, sizeof(buf), "[D:%03d.%02d] ",
+                      log_decision_counter_, log_sub_counter_);
+        return std::string(buf) + msg;
     }
 };
 

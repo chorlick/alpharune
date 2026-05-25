@@ -23,6 +23,7 @@
 #include "engine/step_driver.h"
 #include "rules/deck_validator.h"
 
+#include <boost/signals2/connection.hpp>
 #include <functional>
 #include <memory>
 #include <random>
@@ -180,6 +181,7 @@ public:
     void testHook_cleanup() { cleanup(); }
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
+    void testHook_endingStep() { endingStep(); }
     // Phase 6q+ engine-audit CRITICAL #2 + #3 — exposed so tests can
     // exercise the showdown / combat trigger drain + action-type
     // dispatch in isolation without driving a full turn.
@@ -229,6 +231,13 @@ private:
     EventBus& events_;
     GameState state_;
     std::mt19937_64 rng_;
+
+    // Connection for the CardRevealedEvent subscriber installed in
+    // the constructor. Stored so the destructor can disconnect — if
+    // a session swaps engines on the same EventBus (the play-server
+    // restart loop), leftover subscribers from the prior engine would
+    // dereference a dead `this` when the new engine emits a reveal.
+    boost::signals2::connection card_revealed_conn_;
 
     // Phase 2-3 subsystems
     std::unique_ptr<ChainManager> chain_manager_;
@@ -285,7 +294,18 @@ private:
     /// running them again would clobber it.
     void mainPhaseLoop();
     void endingStep();
+
     void expirationStep();
+
+public:
+    /// Pure helper: clear keywords that a GameObject obtained via a
+    /// "this turn" grant (giveTemporaryKeyword), unless the keyword is
+    /// also printed on the CardDef or currently granted by an active
+    /// aura. Called per-object during the expiration step but exposed
+    /// publicly so per-card tests can verify the revoke without
+    /// spinning up the full engine subsystem stack.
+    static void expireTemporaryKeywords(GameObject& obj, const CardDB& db);
+private:
     /// Body of the expiration step (heal, expire turn-buffs, empty rune
     /// pools, expire delayed abilities). Pulled out so expirationStep
     /// can loop the body per CR 317.2.f.1.
@@ -477,6 +497,17 @@ private:
 
     // ── Queries ──
     Intent queryAgent(PlayerId player);
+
+    /// Encode the chosen Intent via action_vocab and append the slot ID
+    /// to GameState::action_history. Called from every selectAction
+    /// dispatch site so that MCTS-style agents (which reconstruct an
+    /// OpenSpiel state by replaying action_history) see the same
+    /// sequence of decisions the live engine just applied. Without this,
+    /// engine-driven games (`GameEngine::runGame` with AgentInterface
+    /// agents) leave action_history empty and MCTS plans against the
+    /// initial game state for every decision — silently degrading the
+    /// agent to legal_actions[0].
+    void recordAppliedIntent(const Intent& chosen);
     AgentInterface& getAgent(PlayerId player);
 
     // ── Board operations ──

@@ -33,6 +33,11 @@ struct CardContext {
     EffectExecutor& executor;
     PlayerId controller;
     GameObjectId source;  // the runtime GameObject producing this effect
+    // Which trigger fired this onTrigger invocation. Lets a card that
+    // registers MULTIPLE trigger types (see Card::triggerTypes) branch on
+    // the event that fired. None for spells / activated abilities / cards
+    // with a single trigger that don't care.
+    TriggerType firing_trigger = TriggerType::None;
 };
 
 // ─── Card base class ────────────────────────────────────────────────────────
@@ -106,7 +111,25 @@ public:
     /// What event type triggers this card's ability.
     virtual TriggerType triggerType() const { return TriggerType::None; }
 
-    /// Called when the matching trigger fires.
+    /// Cards with MORE THAN ONE trigger (e.g. "When you play me ... When I
+    /// hold ...") override this to return all of them; the trigger manager
+    /// fires the ability for each matching event and sets
+    /// CardContext::firing_trigger so onTrigger can branch. The default
+    /// wraps the single triggerType() for back-compat.
+    virtual std::vector<TriggerType> triggerTypes() const {
+        auto t = triggerType();
+        if (t == TriggerType::None) return {};
+        return {t};
+    }
+
+    /// Whether this card fires on the given trigger event.
+    bool firesOn(TriggerType t) const {
+        for (auto x : triggerTypes()) if (x == t) return true;
+        return false;
+    }
+
+    /// Called when a matching trigger fires. For multi-trigger cards,
+    /// inspect ctx.firing_trigger to tell which event fired.
     virtual void onTrigger(CardContext& ctx,
                            const std::vector<GameObjectId>& targets) {}
 
@@ -396,6 +419,13 @@ public:
 
     /// Keywords granted to the equipped unit (from effect_text).
     virtual KeywordSet equippedKeywords() const { return {}; }
+
+    /// Skyfall of Areion: "My hold effects are also conquer effects, and vice
+    /// versa." When an attached gear returns true, the engine cross-fires the
+    /// equipped unit's (and its other gear's) WhenIHold triggers on a Conquer
+    /// score and WhenIConquer triggers on a Hold score. Generic property the
+    /// trigger dispatcher honors; no card-specific logic in the engine.
+    virtual bool crossesHoldConquerTriggers() const { return false; }
 
     /// Assault/Shield/Deflect values granted to equipped unit.
     virtual int equippedAssault() const { return 0; }

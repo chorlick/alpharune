@@ -1,5 +1,6 @@
 #include "game_engine.h"
 #include "cards/card.h"
+#include "openspiel/action_vocab.h"
 
 #include <algorithm>
 #include <cassert>
@@ -22,11 +23,15 @@ GameEngine::GameEngine(const CardDB& card_db, EventBus& event_bus,
     // the emit contract; the bump logic lives on GameState::recordReveal
     // so unit tests (which don't construct a GameEngine) can subscribe
     // their own bus to the same helper.
-    events_.on_card_revealed.connect(
+    card_revealed_conn_ = events_.on_card_revealed.connect(
         [this](const CardRevealedEvent& e) { state_.recordReveal(e); });
 }
 
 GameEngine::~GameEngine() {
+    // Disconnect the on_card_revealed subscriber before this is freed.
+    // Without this, a successor engine on the same EventBus would
+    // emit reveals into a dangling `this`.
+    if (card_revealed_conn_.connected()) card_revealed_conn_.disconnect();
     // Fiber refactor: StepDriver's destructor drains the fiber by
     // feeding choice=0 until done. No separate thread to join — the
     // fiber lives in the same call stack as this destructor.
@@ -57,7 +62,7 @@ GameResult GameEngine::runGame(
         [this](PlayerId p, GameObjectId card) { return canAfford(p, card); });
     chain_manager_->setPayCost(
         [this](PlayerId p, GameObjectId card) { return payCardCost(p, card); });
-    effect_executor_ = std::make_unique<EffectExecutor>(state_, events_, card_db_);
+    effect_executor_ = std::make_unique<EffectExecutor>(state_, events_, card_db_, &card_registry_);
     effect_executor_->setRng(&rng_);
     effect_executor_->setAgentQuery(
         [this](PlayerId p, const std::vector<Intent>& actions) -> Intent {
@@ -173,7 +178,7 @@ StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
         [this](PlayerId p, GameObjectId card) { return canAfford(p, card); });
     chain_manager_->setPayCost(
         [this](PlayerId p, GameObjectId card) { return payCardCost(p, card); });
-    effect_executor_ = std::make_unique<EffectExecutor>(state_, events_, card_db_);
+    effect_executor_ = std::make_unique<EffectExecutor>(state_, events_, card_db_, &card_registry_);
     effect_executor_->setRng(&rng_);
     effect_executor_->setAgentQuery(
         [this](PlayerId p, const std::vector<Intent>& actions) -> Intent {
@@ -327,15 +332,65 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
 
 void GameEngine::setupBattlefields(const DeckSubmission& deck1,
                                      const DeckSubmission& deck2) {
-    // 1v1: Each player randomly selects 1 of their 3 battlefields (CR 480.5)
-    // Phase 1: random selection
-    auto pickRandom = [&](const std::vector<CardDefId>& bfs) -> CardDefId {
-        std::uniform_int_distribution<size_t> dist(0, bfs.size() - 1);
-        return bfs[dist(rng_)];
+    // Each player picks one of their three battlefields (CR 480.5 says
+    // random for single-game, CR 481.5 says agent choice for match
+    // play). We unconditionally route through the agent — RandomAgent
+    // picks uniformly which satisfies CR 480.5; HumanAgent / MCTS get
+    // to actually choose, which CR 481.5 requires for match play.
+    //
+    // The Intent::chosen_battlefield field carries the INDEX into the
+    // deck's battlefield list (0..N-1) here, NOT a runtime BattlefieldId
+    // — no live BFs exist on the board yet at this point. Action-vocab
+    // encoding via bfSlot handles 0..2 (well within its 0..7 range).
+    auto pickFromDeck = [&](PlayerId player,
+                             const std::vector<CardDefId>& bfs) -> CardDefId {
+        if (bfs.empty()) return kInvalidId;
+        // Publish the candidate pool to PlayerState so the legal-action
+        // renderer can label each ChooseBattlefield by its printed name
+        // ("Vilemaw's Lair", "Rockfall Path", …) instead of just "BF #N".
+        state_.player(player).battlefield_pool = bfs;
+        // Do NOT short-circuit on bfs.size() == 1. Per the project
+        // contract, every engine-asked decision MUST be surfaced to
+        // the agent — including forced single-option ones — so that
+        // training data, action_history replay, and the policy head's
+        // exposure to "constrained" positions stay consistent.
+        // The decision still costs nothing for a 1-option pool
+        // (HumanAgent / RandomAgent / MCTSAgent each immediately
+        // return the only entry), but the position is recorded.
+
+        std::vector<Intent> choices;
+        choices.reserve(bfs.size());
+        for (size_t i = 0; i < bfs.size(); ++i) {
+            Intent c;
+            c.type = IntentType::ChooseBattlefield;
+            c.player = player;
+            c.chosen_battlefield = static_cast<BattlefieldId>(i);  // deck index
+            choices.push_back(c);
+        }
+
+        // Briefly mark this player as the decision-maker so HumanAgent's
+        // UI snapshot (which reads state.turn.turn_player) shows the
+        // correct seat. Restore turn_player after the query — the real
+        // turn order isn't owned by this setup step.
+        PlayerId saved_turn = state_.turn.turn_player;
+        state_.turn.turn_player = player;
+        state_.decision_index++;
+        events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+                          " (" + toString(player) + " — battlefield setup): " +
+                          std::to_string(choices.size()) + " options");
+        auto chosen = getAgent(player).selectAction(state_, choices);
+        recordAppliedIntent(chosen);
+        state_.turn.turn_player = saved_turn;
+
+        size_t idx = static_cast<size_t>(chosen.chosen_battlefield);
+        if (idx >= bfs.size()) idx = 0;  // defensive — fall back to first
+        events_.logTrace("  CHOSE BF #" + std::to_string(idx) + " (" +
+                          card_db_.get(bfs[idx]).name + ")");
+        return bfs[idx];
     };
 
-    auto bf1_def = pickRandom(deck1.battlefields);
-    auto bf2_def = pickRandom(deck2.battlefields);
+    auto bf1_def = pickFromDeck(PlayerId::Player1, deck1.battlefields);
+    auto bf2_def = pickFromDeck(PlayerId::Player2, deck2.battlefields);
 
     // Create battlefield game objects and state
     BattlefieldId next_bf_id = 0;
@@ -405,16 +460,20 @@ GameEngine::MulliganAdvance GameEngine::advanceMulligan(PlayerId player) {
 }
 
 void GameEngine::resolveMulliganDecision(const Intent& chosen) {
-    // Log what was chosen (mirrors prior behavior)
+    // Log what was chosen. Including the player tag inline so each
+    // CHOSE: line is self-contained — important for the web UI's log
+    // panel, which prepends events (latest first), so a CHOSE line
+    // can be visually separated from its DECISION # context.
+    std::string who = std::string("[") + toString(chosen.player) + "] ";
     if (chosen.cards_to_mulligan.empty()) {
-        events_.logTrace(std::string("  CHOSE: Keep hand"));
+        events_.logTrace("CHOSE: " + who + "Keep hand");
     } else {
         std::string mull_str;
         for (auto cid : chosen.cards_to_mulligan) {
             if (!mull_str.empty()) mull_str += ", ";
             if (state_.objectExists(cid)) mull_str += state_.getObject(cid).name;
         }
-        events_.logTrace("  CHOSE: Mulligan " +
+        events_.logTrace("CHOSE: " + who + "Mulligan " +
                          std::to_string(chosen.cards_to_mulligan.size()) +
                          " [" + mull_str + "]");
     }
@@ -446,6 +505,7 @@ void GameEngine::runMulligans() {
                          std::to_string(adv.legal.size()) + " options");
 
         auto chosen = getAgent(player).selectAction(state_, adv.legal);
+        recordAppliedIntent(chosen);
 
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
@@ -870,6 +930,34 @@ void GameEngine::endingStep() {
 
     // Process "At the end of your turn" triggers (e.g., Dazzling Aurora)
     if (chain_manager_->chainExists()) runChain();
+
+    // Cleanup AFTER the chain finishes — same pattern as the main-phase
+    // action loop. The end-of-turn chain can damage units (Aurora plays
+    // Elder Dragon which damages enemies, Aurora plays a unit whose
+    // WhenYouPlayMe damages, etc.). Without this pass, damage sits on
+    // damage_marked forever — processLethalDamage doesn't run, so
+    // Elder Dragon's "any-damage-lethal" aura never kills the damaged
+    // unit, and natural-lethal units (might-1 Mousers etc.) survive
+    // into the next turn at 1/1 dmg.
+    cleanup();
+}
+
+void GameEngine::expireTemporaryKeywords(GameObject& obj, const CardDB& db) {
+    if (obj.temp_keywords.bits == 0) return;
+    KeywordSet base_keywords;
+    if (obj.card_def_id != kInvalidId) {
+        base_keywords = db.get(obj.card_def_id).keywords;
+    }
+    for (int k = 0; k < static_cast<int>(Keyword::Count); ++k) {
+        Keyword kw = static_cast<Keyword>(k);
+        if (!obj.temp_keywords.has(kw)) continue;
+        bool from_base = base_keywords.has(kw);
+        bool from_aura = obj.aura_keywords.has(kw);
+        if (!from_base && !from_aura) {
+            obj.keywords.clear(kw);
+        }
+    }
+    obj.temp_keywords.reset();
 }
 
 void GameEngine::expirationStep() {
@@ -908,10 +996,10 @@ void GameEngine::doExpirationBody() {
         // Lotus Trap-style damage doubling expires here.
         obj.damage_doubled_this_turn = false;
 
-        if (obj.temp_might_bonus != 0) {
-            obj.buff_count -= obj.temp_might_bonus;
-            obj.temp_might_bonus = 0;
-        }
+        // Temp might is a separate field from buff_count (permanent buffs);
+        // just clear it. recomputeMight (below / in cleanup) drops the bonus.
+        bool had_temp_might = (obj.temp_might_bonus != 0);
+        obj.temp_might_bonus = 0;
         if (obj.temp_assault_value != 0) {
             obj.assault_value -= obj.temp_assault_value;
             obj.temp_assault_value = 0;
@@ -943,10 +1031,14 @@ void GameEngine::doExpirationBody() {
                 }
             }
         }
-        if (obj.temp_might_bonus != 0 || obj.temp_assault_value != 0 ||
-            obj.temp_shield_value != 0) {
-            obj.recomputeMight();
-        }
+        (void)had_temp_might;  // temp fields cleared above; recompute regardless
+        obj.recomputeMight();
+
+        // Pure-flag keywords granted "this turn" (Bounty Hunter's
+        // Ganking, etc.). Delegated to a static helper so tests can
+        // exercise the revoke logic without setting up the engine's
+        // full subsystem stack.
+        expireTemporaryKeywords(obj, card_db_);
     }
     // Recompute might for all units after expiration
     for (auto& [id, obj] : state_.objects) {
@@ -1212,26 +1304,53 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     payCardCost(intent.player, intent.card);
     ps.current_play_source = Intent::PlaySource::Hand;
 
-    // Repeat (CR 820): intent.chosen_value (if set) carries the number of
-    // extra Repeat tranches the agent paid for. Pay each additional
-    // tranche atomically; if any fails (shouldn't — action gen gated
-    // affordability), we fall through with whatever was actually paid.
-    int repeats = intent.chosen_value.value_or(0);
+    // Repeat (CR 820) — agent-driven, modeled on Accelerate. After
+    // paying the base cost we poll the agent yes/no for each
+    // additional tranche they can still afford. Each "yes" pays an
+    // extra [N][D] and bumps repeats_paid. Stops when the agent
+    // declines or affordability runs out. Replaces the prior model
+    // where the action generator pre-encoded one Play intent per
+    // repeat count — that produced visually-identical legal-action
+    // entries and forced the agent to commit to N before seeing how
+    // the spell would resolve.
+    int repeats = 0;
     RepeatCost repeat_cost{};
-    if (repeats > 0 && card.card_def_id != kInvalidId) {
+    if (card.card_def_id != kInvalidId) {
         repeat_cost = parseRepeatCost(card_db_.get(card.card_def_id).ability_text);
-        if (repeat_cost.valid) {
-            for (int r = 0; r < repeats; ++r) {
-                if (!payRepeatCost(intent.player, repeat_cost)) {
-                    // Couldn't pay this tranche; clamp repeats and stop.
-                    repeats = r;
-                    break;
-                }
-            }
+    }
+    if (repeat_cost.valid) {
+        constexpr int kRepeatSafetyCap = 32;
+        while (repeats < kRepeatSafetyCap &&
+               canPayAdditionalCost(intent.player,
+                                     repeat_cost.energy,
+                                     repeat_cost.power,
+                                     repeat_cost.power_domain)) {
+            Intent decline;
+            decline.type = IntentType::MakeChoice;
+            decline.player = intent.player;
+            decline.chosen_value = 0;
+            Intent accept;
+            accept.type = IntentType::MakeChoice;
+            accept.player = intent.player;
+            accept.chosen_value = 1;
+            std::vector<Intent> opts = {decline, accept};
+
+            state_.decision_index++;
+            events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+                             " (" + toString(intent.player) + "): "
+                             "pay Repeat tranche " + std::to_string(repeats + 1) +
+                             " for " + card.name + "? [decline|pay] [2 options]");
+            auto chosen = getAgent(intent.player).selectAction(state_, opts);
+            recordAppliedIntent(chosen);
+            if (on_decision) on_decision(state_, opts, chosen);
+            bool wants_pay = chosen.chosen_value.value_or(0) == 1;
+            if (!wants_pay) break;
+            if (!payRepeatCost(intent.player, repeat_cost)) break;
+            ++repeats;
+        }
+        if (repeats > 0) {
             events_.logTrace("REPEAT: paid " + std::to_string(repeats) +
                               " extra tranche(s) for " + card.name);
-        } else {
-            repeats = 0;  // text didn't actually parse as Repeat
         }
     }
 
@@ -1347,6 +1466,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     // Dispatch through Card object
     CardContext ctx{state_, events_, *effect_executor_,
                     item.controller, item.source};
+    ctx.firing_trigger = item.fired_trigger;
 
     if (card) {
         if (item.is_ability) {
@@ -1390,40 +1510,58 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
         //     unit's domain.
         //   • CR 805.1.a.2 — multi-domain or no-domain unit: Power may be
         //     any domain (i.e., [A]).
-        // Phase 6q+ fix: previously paid the BASE cost a second time.
-        // Now pays exactly the additional [1] + [1D]/[1A]. Auto-paid when
-        // affordable — agent-choice wiring is a follow-up (CR 805.2 says
-        // this is optional, but auto-pay matches the existing engine
-        // behavior and avoids regressing decks that depend on Accelerate
-        // firing whenever affordable).
+        // The "you may" makes this OPTIONAL — surfaced as a yes/no
+        // decision to the agent. (Previously auto-applied whenever
+        // affordable, which silently spent the player's energy + rune
+        // every time the Accelerate cost happened to be payable.)
         if (card.keywords.has(Keyword::Accelerate)) {
             bool single_domain = (card.domains.size() == 1);
-            // Pick the domain to test/pay. For single-domain units, use
-            // the unit's domain. For multi/no-domain, ANY domain works
-            // ([A] semantics) — try each available domain in turn and
-            // pay against the first one we can afford. We use a private
-            // overload via Domain::Count to mean "universal" — handled
-            // inline below.
-            bool paid = false;
-            auto try_pay = [&](Domain d) -> bool {
-                if (canPayAdditionalCost(item.controller, 1, 1, d)) {
-                    events_.logTrace("ACCELERATE: " + card.name + " pays [1][" +
-                                     toString(d) + "] to enter ready");
-                    payAdditionalCost(item.controller, 1, 1, d);
-                    return true;
-                }
-                return false;
-            };
+            std::optional<Domain> domain_to_pay;
             if (single_domain) {
-                paid = try_pay(card.domains[0]);
+                if (canPayAdditionalCost(item.controller, 1, 1, card.domains[0])) {
+                    domain_to_pay = card.domains[0];
+                }
             } else {
-                // Multi/no-domain: try every domain that has runes available.
                 for (int di = 0; di < static_cast<int>(Domain::Count); ++di) {
                     Domain d = static_cast<Domain>(di);
-                    if (try_pay(d)) { paid = true; break; }
+                    if (canPayAdditionalCost(item.controller, 1, 1, d)) {
+                        domain_to_pay = d;
+                        break;
+                    }
                 }
             }
-            if (paid) enters_ready = true;
+            if (domain_to_pay.has_value()) {
+                Intent decline;
+                decline.type = IntentType::MakeChoice;
+                decline.player = item.controller;
+                decline.chosen_value = 0;  // 0 = decline
+                Intent accept;
+                accept.type = IntentType::MakeChoice;
+                accept.player = item.controller;
+                accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+                std::vector<Intent> opts = {decline, accept};
+
+                state_.decision_index++;
+                events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+                                 " (" + toString(item.controller) + "): "
+                                 "pay [1][" + toString(*domain_to_pay) +
+                                 "] for Accelerate on " + card.name +
+                                 "? [decline|pay] [2 options]");
+
+                auto chosen = getAgent(item.controller).selectAction(state_, opts);
+                recordAppliedIntent(chosen);
+                if (on_decision) on_decision(state_, opts, chosen);
+
+                bool wants_pay = chosen.chosen_value.value_or(0) == 1;
+                if (wants_pay) {
+                    events_.logTrace("ACCELERATE: " + card.name + " pays [1][" +
+                                     toString(*domain_to_pay) + "] to enter ready");
+                    payAdditionalCost(item.controller, 1, 1, *domain_to_pay);
+                    enters_ready = true;
+                } else {
+                    events_.logTrace("ACCELERATE: " + card.name + " declined");
+                }
+            }
         }
         // Ambush units entering a battlefield enter ready
         if (card.hasKeyword(Keyword::Ambush) && card.isAtBattlefield()) {
@@ -1492,6 +1630,7 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
                                        const std::vector<Intent>& actions) {
     state_.decision_index++;
     auto chosen = getAgent(player).selectAction(state_, actions);
+    recordAppliedIntent(chosen);
     // Surface the chain-priority decision in the trace so V&V can
     // confirm priority is being passed correctly between players in
     // Closed State (CR 337). Without this, trivial-pass decisions are
@@ -1501,7 +1640,8 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
                      " (" + std::string(toString(player)) + " — chain priority): " +
                      std::to_string(actions.size()) + " legal actions");
-    events_.logTrace("  CHOSE: " + std::string(toString(chosen.type)));
+    events_.logTrace("CHOSE: [" + std::string(toString(player)) + "] " +
+                     std::string(toString(chosen.type)));
     if (on_decision) {
         on_decision(state_, actions, chosen);
     }
@@ -2370,43 +2510,20 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             intent_type = IntentType::PlayReaction;
         }
 
-        // Repeat (CR 820) — collect base + each affordable extra repeat
-        // count. R=0 (no repeat) always works since canAfford passed; for
-        // R=1..max we check that the player can afford one more tranche
-        // of repeat cost on top of the base. The max is bounded by ready
-        // runes (energy tranches) and exhausted matching-domain runes
-        // (power tranches); a heuristic upper bound covers both.
-        RepeatCost rc{};
-        if (card.card_def_id != kInvalidId) {
-            rc = parseRepeatCost(card_db_.get(card.card_def_id).ability_text);
-        }
-        std::vector<int> repeat_counts{0};  // baseline always emitted
-        if (rc.valid) {
-            // Total runes in base (any state) is the hard ceiling — every
-            // additional tranche consumes at least one rune.
-            int rune_count = 0;
-            auto base_loc = BaseLocation{player};
-            for (auto& [id, obj] : state_.objects) {
-                if (!obj.isRune() || obj.controller != player) continue;
-                if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-                ++rune_count;
-            }
-            // Already paid base; what's left for repeats:
-            int base_energy = card_db_.get(card.card_def_id).energy_cost;
-            int per_repeat_runes = rc.energy + rc.power;
-            int remaining_runes = std::max(0, rune_count - base_energy);
-            int max_R = (per_repeat_runes > 0)
-                ? remaining_runes / per_repeat_runes
-                : 0;
-            // Cap to keep action space sane.
-            max_R = std::min(max_R, 6);
-            for (int R = 1; R <= max_R; ++R) repeat_counts.push_back(R);
-        }
-
-        auto emit = [&](Intent play, int R) {
-            if (R > 0) play.chosen_value = R;
+        // Repeat (CR 820) is now an in-play decision (see
+        // executePlaySpell). The action generator emits one Play intent
+        // per spell; after base cost is paid the engine polls the agent
+        // yes/no for each affordable tranche. Pre-fix this loop emitted
+        // one Play per repeat-count up to 6 — which produced 4+
+        // visually-identical "Play Hard Bargain" entries in the legal
+        // list and forced the agent to commit to N before knowing what
+        // the counterspell would resolve against. CR 820 is the same
+        // shape as Accelerate's "you may pay additional" — a yes/no at
+        // cost time, not a pre-encoded vocab slot.
+        auto emit = [&](Intent play, int /*R*/) {
             actions.push_back(play);
         };
+        constexpr int kSingleEmit = 0;  // sentinel arg for emit() readability
 
         // Phase 6q — target decoupling. When the card opts in via
         // needsPlayTimeTarget() or needsPlayTimeTargetPair(), emit
@@ -2430,7 +2547,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             play.card = card_id;
             // targets intentionally empty — agent picks via
             // pickTarget / pickTargetPair at resolve time.
-            for (int R : repeat_counts) emit(play, R);
+            emit(play, kSingleEmit);
             continue;
         }
 
@@ -2440,14 +2557,14 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             play.type = intent_type;
             play.player = player;
             play.card = card_id;
-            for (int R : repeat_counts) emit(play, R);
+            emit(play, kSingleEmit);
         } else if (req.optional && legal_targets.empty()) {
             // Optional targeting with no targets — play without targets
             Intent play;
             play.type = intent_type;
             play.player = player;
             play.card = card_id;
-            for (int R : repeat_counts) emit(play, R);
+            emit(play, kSingleEmit);
         } else if (req.count == 2) {
             // Dual targeting (e.g., Challenge: friendly + enemy)
             // Separate targets into friendly and enemy
@@ -2465,7 +2582,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
                     play.player = player;
                     play.card = card_id;
                     play.targets = {ft, et};
-                    for (int R : repeat_counts) emit(play, R);
+                    emit(play, kSingleEmit);
                 }
             }
         } else {
@@ -2476,7 +2593,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
                 play.player = player;
                 play.card = card_id;
                 play.targets = {target};
-                for (int R : repeat_counts) emit(play, R);
+                emit(play, kSingleEmit);
             }
         }
     }
@@ -2768,6 +2885,7 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
 
         state_.decision_index++;
         auto chosen = getAgent(current_focus).selectAction(state_, adv.legal);
+        recordAppliedIntent(chosen);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
         }
@@ -2936,6 +3054,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
         if (adv.kind == CombatDamageAdvance::Kind::Skip) return;
         state_.decision_index++;
         auto chosen = getAgent(assigner).selectAction(state_, adv.legal);
+        recordAppliedIntent(chosen);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
         }
@@ -3259,6 +3378,21 @@ void GameEngine::recalculateAuras() {
         }
     }
 
+    // Step 1c: Battlefield-card passive auras. BF card objects have no
+    // `location` (so the loop above skips them) but can carry static auras
+    // (Forbidding Waste, Black Flame Altar, Ornn's Forge). Apply each,
+    // attributed to the BF's controller (None if uncontrolled — the card's
+    // own logic scopes by control where it matters).
+    for (const auto& bf : state_.battlefields) {
+        if (!state_.objectExists(bf.card_object_id)) continue;
+        const auto& bobj = state_.getObject(bf.card_object_id);
+        if (bobj.card_def_id == kInvalidId) continue;
+        const Card* card = card_registry_.get(bobj.card_def_id);
+        if (card) {
+            card->applyPassiveAura(state_, bf.controller.value_or(PlayerId::None));
+        }
+    }
+
     // Step 2: Scan all objects on board for aura abilities
     for (auto& [src_id, src] : state_.objects) {
         if (!src.location.has_value() && src.zone != ZoneType::LegendZone) continue;
@@ -3555,8 +3689,9 @@ void GameEngine::recalculateAuras() {
         // "While I'm [Mighty], I have [Deflect], [Ganking], and [Shield]"
         if (clean.find("while i'm [mighty]") != std::string::npos ||
             clean.find("while i\xe2\x80\x99m [mighty]") != std::string::npos) {
-            // Mighty = 5+ might (check base + buffs, before this aura)
-            int pre_aura_might = obj.base_might + obj.buff_count + obj.attachment_might_bonus;
+            // Mighty = 5+ might (check base + buffs + temp, before this aura)
+            int pre_aura_might = obj.base_might + obj.buff_count +
+                                 obj.temp_might_bonus + obj.attachment_might_bonus;
             if (pre_aura_might >= 5) {
                 if (clean.find("[deflect]") != std::string::npos) {
                     GameObject::AuraEffect ae; ae.source = id;
@@ -4241,65 +4376,62 @@ bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj) const {
     energy_needed = std::max(min_cost, energy_needed);
     energy_needed = std::max(0, energy_needed);
 
-    // Count available runes in base
+    // Count available runes in base, partitioned by ready/exhausted
+    // and matching/non-matching-domain. The CR cost-payment ordering
+    // (exhaust ready runes for energy, THEN recycle exhausted runes
+    // for power) lets a single ready rune provide BOTH 1 energy and
+    // 1 power: exhaust it in step 1, recycle it in step 2.
     auto base_loc = BaseLocation{player};
-    std::vector<GameObjectId> ready_runes;
-    std::vector<GameObjectId> matching_domain_runes;
-
+    int ready_total = 0;
+    int matching_ready = 0;
+    int matching_exhausted = 0;
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-
-        if (!obj.is_exhausted) {
-            ready_runes.push_back(id);
-        }
-
-        // Check domain match for power cost
+        bool matches_domain = false;
         if (power_needed > 0) {
             for (auto d : def.domains) {
                 for (auto rd : obj.domains) {
-                    if (d == rd) {
-                        matching_domain_runes.push_back(id);
-                        goto next_rune;
-                    }
+                    if (d == rd) { matches_domain = true; break; }
                 }
+                if (matches_domain) break;
             }
         }
-        next_rune:;
+        if (!obj.is_exhausted) {
+            ++ready_total;
+            if (matches_domain) ++matching_ready;
+        } else if (matches_domain) {
+            ++matching_exhausted;
+        }
     }
 
-    // Energy: need to exhaust ready runes. Each gives 1 Energy.
-    // But we also need to reserve runes for Power (recycling removes them).
-    // Worst case: we recycle power_needed runes for Power, and those might
-    // have been ready (reducing available Energy).
+    const auto& pool = state_.player(player).rune_pool;
 
-    // Simple check: total runes in base >= energy_needed + power_needed
-    // AND matching domain runes >= power_needed
-    // AND ready runes >= energy_needed (after accounting for recycled ones)
+    // Energy can come from the pool's existing energy AND from
+    // exhausting ready runes (each gives 1 energy).
+    int energy_available = ready_total + pool.energy;
+    if (energy_available < energy_needed) return false;
 
-    int total_runes = ready_runes.size();
-    // Some ready runes might be the same ones we need for Power recycling.
-    // Count how many matching-domain runes are also ready.
-    int matching_ready = 0;
-    for (auto mr : matching_domain_runes) {
-        auto& rune = state_.getObject(mr);
-        if (!rune.is_exhausted) matching_ready++;
+    // Power can come from:
+    //   • Pool's already-spent power for any of the card's domains
+    //     (per-domain bucket).
+    //   • Pool's universal power.
+    //   • Newly-recycled runes whose domains match the card. Recycle
+    //     candidates = exhausted matching runes + matching runes we
+    //     just exhausted in the energy step (the energy step exhausts
+    //     `energy_needed` ready runes, and we're free to pick the
+    //     matching-domain ones first when doing so).
+    int power_from_pool = pool.universal_power;
+    for (auto d : def.domains) {
+        int di = static_cast<int>(d);
+        if (di >= 0 && di < static_cast<int>(Domain::Count)) {
+            power_from_pool += pool.power[di];
+        }
     }
-
-    if (static_cast<int>(matching_domain_runes.size()) < power_needed) {
-        return false; // Not enough matching-domain runes to recycle
-    }
-
-    // Energy available after recycling power_needed runes:
-    // We prefer to recycle exhausted runes for power (preserving ready runes for energy).
-    int exhausted_matching = static_cast<int>(matching_domain_runes.size()) - matching_ready;
-    int recycle_from_ready = std::max(0, power_needed - exhausted_matching);
-    int energy_available = total_runes - recycle_from_ready;
-
-    // Also add any energy already in the pool
-    energy_available += state_.player(player).rune_pool.energy;
-
-    return energy_available >= energy_needed;
+    int power_remaining = std::max(0, power_needed - power_from_pool);
+    int matching_exhausted_after_step1 =
+        matching_exhausted + std::min(matching_ready, energy_needed);
+    return matching_exhausted_after_step1 >= power_remaining;
 }
 
 // C-1 commit 8 — payCardCost split into a cursor-based state machine.
@@ -4682,14 +4814,17 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj) {
                           " [" + std::to_string(adv.legal.size()) +
                           " options]");
 
-        Intent chosen;
-        if (adv.legal.size() > 1) {
-            chosen = getAgent(player).selectAction(state_, adv.legal);
-            if (on_decision) on_decision(state_, adv.legal, chosen);
-        } else {
-            chosen = adv.legal[0];
-            if (on_decision) on_decision(state_, adv.legal, chosen);
-        }
+        // Always query the agent — even when only one legal option
+        // exists. Previously this short-circuited and auto-picked
+        // adv.legal[0], which caused the agent's policy/training
+        // signal to MISS the "forced last-rune" cost-payment step
+        // (the last rune in a 3E/3-runes payment). The agent still
+        // returns the only option for trivial cases; HumanAgent
+        // auto-passes without surfacing UI, so the player UX is
+        // unchanged. The win is training fidelity.
+        auto chosen = getAgent(player).selectAction(state_, adv.legal);
+        recordAppliedIntent(chosen);
+        if (on_decision) on_decision(state_, adv.legal, chosen);
         adv = resolveCostPaymentDecision(chosen);
     }
     return true;
@@ -4729,7 +4864,27 @@ void GameEngine::killUnit(GameObjectId unit_id) {
                      ", " + std::to_string(unit.current_might) + "M, dmg=" +
                      std::to_string(unit.damage_marked) + ")");
 
-    // Check for replacement effects: "would die → instead heal/exhaust/recall"
+    // Structured replacement effects (Card::hasReplacementEffect /
+    // applyReplacement). Preferred over the legacy ability_text scan below:
+    // a card decides whether it replaces THIS unit's death (e.g. Guardian
+    // Angel only protects the unit it's attached to). If applyReplacement
+    // returns true the unit does not die.
+    for (auto& [id, obj] : state_.objects) {
+        if (obj.controller != controller) continue;
+        if (id == unit_id) continue;
+        if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+        if (obj.card_def_id == kInvalidId) continue;
+        Card* card = card_registry_.get(obj.card_def_id);
+        if (!card || !card->hasReplacementEffect()) continue;
+        CardContext ctx{state_, events_, *effect_executor_, controller, id};
+        if (card->applyReplacement(ctx, unit_id)) {
+            events_.logDebug(std::string("REPLACEMENT: ") + obj.name +
+                             " prevents " + unit.name + " from dying");
+            return; // replacement consumed — unit does NOT die
+        }
+    }
+
+    // Legacy replacement effects: "would die → instead heal/exhaust/recall"
     // Scan all objects controlled by the same player for replacement abilities
     for (auto& [id, obj] : state_.objects) {
         if (obj.controller != controller) continue;
@@ -4821,6 +4976,17 @@ void GameEngine::emptyRunePools() {
     state_.players[1].rune_pool.clear();
 }
 
+void GameEngine::recordAppliedIntent(const Intent& chosen) {
+    int slot = ::riftbound::openspiel::encodeAction(chosen, state_);
+    if (slot >= 0) {
+        state_.action_history.push_back(static_cast<int64_t>(slot));
+    }
+    // Negative slot means the Intent couldn't be encoded — should be rare
+    // (action_vocab covers the full live legal set). Leaving the history
+    // entry off is the safest fallback; the OpenSpiel state replay would
+    // diverge anyway if there were a real encoding hole.
+}
+
 Intent GameEngine::queryAgent(PlayerId player) {
     auto actions = generateLegalActions();
     state_.decision_index++;
@@ -4832,6 +4998,7 @@ Intent GameEngine::queryAgent(PlayerId player) {
                      std::to_string(actions.size()) + " legal actions");
 
     auto chosen = getAgent(player).selectAction(state_, actions);
+    recordAppliedIntent(chosen);
 
     {
         std::string choice_str = toString(chosen.type);
@@ -4881,7 +5048,10 @@ Intent GameEngine::queryAgent(PlayerId player) {
         if (chosen.chosen_battlefield != kInvalidId) {
             choice_str += " bf=" + std::to_string(chosen.chosen_battlefield);
         }
-        events_.logTrace("  CHOSE: " + choice_str);
+        // Player tag at the front so the line scans independently of
+        // the surrounding DECISION # context.
+        events_.logTrace("CHOSE: [" + std::string(toString(player)) +
+                         "] " + choice_str);
     }
 
     if (on_decision) {

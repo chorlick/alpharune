@@ -374,4 +374,20 @@ void RiftboundState::DoApplyAction(::open_spiel::Action action) {
     engine_->applyChoice(legal_index);
 }
 
+std::unique_ptr<RiftboundState> RiftboundState::makeFromSnapshot(
+    std::shared_ptr<const ::open_spiel::Game> game,
+    uint64_t engine_seed,
+    const ::riftbound::GameState& snap_state,
+    ::riftbound::StepResult        snap_step,
+    ::riftbound::GameResult        snap_result) {
+    // The single deep copy lives here — snap_state crosses ownership
+    // boundaries into the lazy state. Downstream this is a move-only
+    // chain into the engine's resumeFromSnapshot.
+    return std::unique_ptr<RiftboundState>(new RiftboundState(
+        std::move(game), engine_seed,
+        ::riftbound::GameState(snap_state),
+        std::move(snap_step), std::move(snap_result),
+        SnapshotTag{}));
+}
+
 } // namespace riftbound::openspiel

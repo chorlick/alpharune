@@ -7,7 +7,7 @@ so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
 > **Disclaimer.** This codebase was largely *vibe-coded* — built rapidly with
 > heavy AI-assisted iteration, prioritising "works on the test decks today" over
 > "production-grade everywhere." Released **as-is** for research and hobby use.
-> Expect rough edges in: card coverage (~80 of 787 cards manually implemented;
+> Expect rough edges in: card coverage (~240 of 787 cards manually implemented;
 > rest are auto-generated stubs of varying fidelity), edge-case rules
 > interactions, performance on stress workloads, and corners of the OpenSpiel
 > wrapper. PRs welcome; production deployment at your own risk.
@@ -21,16 +21,17 @@ so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
 - **Full rules engine.** Awaken → channel → draw → main → end turn loop,
   FEPR chain resolution, combat with damage assignment, scoring, mulligans,
   battlefields, gear/equip, 23 keyword mechanics, replacement effects.
-- **787 cards** loaded from `cards/registry.json`. ~80 manually implemented
+- **787 cards** loaded from `cards/registry.json`. ~240 manually implemented
   with full behavior (champions, legends, key spells in test decks); the
-  rest have auto-generated stubs that cover simple effects.
+  rest have auto-generated stubs that cover simple effects. Implementation
+  fidelity per card is tracked in [`docs/card-implementation-audit.md`](docs/card-implementation-audit.md).
 - **Deterministic.** Given a seed, the same game replays identically.
 - **OpenSpiel integration.** `RiftboundGame` / `RiftboundState` implement
   the OpenSpiel `Game` / `State` interfaces. MCTS, ISMCTS, and random
   agents work out of the box.
 - **HTML replays.** Per-game rendered HTML with board snapshots,
   decision points, trace log, arrow-key navigation.
-- **536 unit tests** covering engine behavior + card mechanics.
+- **855 unit tests** covering engine behavior + card mechanics.
 - **Engine-fiber step machine.** `boost::context::fiber`-based cooperative
   yields at decision points. No OS thread per game state, supports
   thousands of `Clone()` calls per decision for branching search.
@@ -90,6 +91,74 @@ RIFTBOUND_ROOT=. ./build/riftbound_tests
 
 Pass `--help` for the full flag list. The web UI's WebSocket protocol
 is documented in [`docs/play-api.md`](docs/play-api.md).
+
+## Play against the AI (web UI)
+
+The fastest way to play a game yourself, as Player 1, against a
+50-simulation MCTS bot:
+
+```bash
+./build/riftbound \
+    --agent1 human --agent2 mcts:sims=50 \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
+```
+
+Because a seat is `human`, the binary auto-starts a small Boost.Beast
+web server and prints a URL:
+
+```
+  → Open http://127.0.0.1:8080 in your browser to play.
+```
+
+Open that in a browser and play. The game blocks at each of your
+decision points until you click an action; the MCTS opponent moves on
+its own. (MCTS cost scales with `sims` — `sims=50` is snappy; `sims=500`
+can take minutes *per decision*, so start low.)
+
+Useful flags:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--agent1` / `--agent2` | `random` | Per-seat agent: `human`, `random`, `mcts:sims=N`, `ismcts:sims=N`. |
+| `--web` | `auto` | `auto` starts the UI whenever a seat is human; `on` forces it (spectate AI-vs-AI); `off` disables it. |
+| `--port` / `--bind` | `8080` / `127.0.0.1` | Where the UI listens. Use `--bind 0.0.0.0` to reach it from another machine. |
+| `--god-mode` | `auto` | `auto`/`on` enables the in-browser state editor when a human is seated; `off` hides it. |
+| `--seed` | `0` | Fix the RNG for a reproducible game (`0` = random per game). |
+
+### What the UI looks like
+
+The page is a single resizable dashboard (drag the dividers between
+panels to resize):
+
+- **Header** — engine version + build, the game seed, and a live
+  connection indicator.
+- **Board** (left) — the live ASCII board state, with a status line at
+  the top showing turn number, phase, both scores (P1 green / P2 red),
+  and whose decision it is.
+- **Legal Actions** (top-right) — your legal moves as clickable buttons.
+  **Click one to take it.** When the engine is resolving or the MCTS
+  opponent is thinking, the buttons grey out and show *"engine is
+  processing…"* so you can't double-act. Mid-resolution choices (e.g.
+  "Discard a card", "Choose one —") show a prompt header plus
+  human-readable option labels (`Yes`, `No`, a mode name, an `X` value)
+  rather than bare indices.
+- **Recent Actions** — a calm, high-signal feed of what each side just
+  did (plays, kills, scores) so you can follow the opponent without
+  reading the firehose.
+- **Trace** — the full event log (every phase, decision, effect, damage,
+  draw, etc.). Verbose; the Recent Actions feed is the readable summary.
+- **Card Details** (right) — **hover any card name** anywhere in the UI
+  to load that card's art (fetched on demand from Riot's CDN).
+- **God Mode** (only when `--god-mode` is on) — a state editor to move
+  cards between zones, set might/damage/exhaustion, edit scores/energy,
+  reorder decks, and change phase. Handy for setting up specific
+  scenarios or debugging.
+
+Other modes: `--agent1 mcts:sims=50 --agent2 human` to play as P2,
+`--agent1 human --agent2 human` for hot-seat (two players, one tab,
+taking turns), and `--web on` with two AI seats to spectate. The
+underlying WebSocket protocol is in [`docs/play-api.md`](docs/play-api.md).
 
 ## Binaries
 

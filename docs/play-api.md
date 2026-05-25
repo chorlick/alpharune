@@ -110,6 +110,12 @@ Player2) is parked in `selectAction` waiting for input.
   the god-mode side panel.
 * `render_text` is the ASCII board rendering identical to the HTML
   replay's main panel.
+* `prompt` (optional) — present for mid-resolution choices (discard,
+  modal "choose one", variable-X, target picks). It's the human-readable
+  question captured from the card's `*_PROMPT` trace line; the UI shows
+  it as a header above the option buttons. For these `MakeChoice`
+  decisions, `legal[].label` carries a meaningful option name (`Yes`,
+  `No`, a mode label, an `X` value) rather than a bare index.
 
 ### `state`
 
@@ -119,6 +125,10 @@ empty. Sent when:
 * A client connects (so the UI immediately shows current state without
   waiting for the next decision).
 * A god-mode edit completes (re-render so the UI reflects the change).
+* A human decision is consumed and the engine is now busy resolving /
+  the AI opponent is thinking. This lets the UI clear the just-clicked
+  action buttons and show an "engine is processing…" state instead of
+  leaving stale, re-clickable buttons.
 * The game terminates (the final frame has `game_over: true`).
 
 ### `edit_ok` / `edit_err`

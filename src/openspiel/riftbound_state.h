@@ -54,6 +54,34 @@ public:
     RiftboundState& operator=(const RiftboundState&) = delete;
     ~RiftboundState() override = default;
 
+    /// Build a RiftboundState from an externally-supplied GameState
+    /// snapshot. Bypasses the lossy action_history replay path: the
+    /// cloned engine is memcpy-restored from `snap_state` rather than
+    /// reconstructed by replaying encoded slots (which collapse many
+    /// distinct Intents — set-aside-card-X vs Y at mulligan, target-A
+    /// vs target-B for a MakeChoice — into the same slot, so replay
+    /// can land on the wrong specific Intent and diverge from the live
+    /// engine).
+    ///
+    /// `snap_step.kind` should be NeedDecision (if the game isn't over),
+    /// `snap_step.perspective` the acting player, `snap_step.legal` the
+    /// engine's full Intent list at that decision. `snap_result` is a
+    /// default-constructed GameResult unless `snap_state.game_over`.
+    ///
+    /// Intended caller: MctsAgent / IsMctsAgent, which use this to take
+    /// a per-decision clone of the live engine and run MCTSBot on it.
+    /// One deep copy of `snap_state` is performed internally to hand
+    /// ownership to the lazy-cloned engine; we can't elide it because
+    /// resumeFromSnapshot consumes the GameState by value. The
+    /// `const&` signature is documentation: this factory will not
+    /// outlive `snap_state` and will not mutate it before copying.
+    static std::unique_ptr<RiftboundState> makeFromSnapshot(
+        std::shared_ptr<const ::open_spiel::Game> game,
+        uint64_t engine_seed,
+        const ::riftbound::GameState& snap_state,
+        ::riftbound::StepResult        snap_step,
+        ::riftbound::GameResult        snap_result);
+
     /// Inspect the underlying engine's GameResult after the game is terminal.
     /// Defined only when IsTerminal() — values are zero/None before then.
     const ::riftbound::GameResult& engineResult() const {
@@ -84,6 +112,23 @@ public:
     /// bytes. Not human-readable; that's not the contract OpenSpiel
     /// needs (it just keys node lookups).
     std::string ObservationString(::open_spiel::Player player) const override;
+
+    /// Phase 6w — raw 64-bit info-set ID for CFR. Same masked FNV-1a
+    /// hash as ObservationString but skips the hex encoding so CFR's
+    /// unordered_map<uint64_t, ...> can key directly.
+    ///
+    /// The hash incorporates `player` (perspective) so the SAME
+    /// engine state queried from P1's view vs P2's view produces
+    /// DIFFERENT IDs — required for CFR which models per-player
+    /// info sets.
+    ///
+    /// Collision properties: identical to ObservationString since
+    /// they share the underlying byte stream. 64 bits over a 4623-
+    /// float input is overkill for ISMCTS-scale trees; CFR's regret
+    /// tables may grow larger but the birthday-paradox floor at
+    /// 2^32 entries still gives <1% collision probability with 64-bit
+    /// FNV-1a on uniform-ish inputs.
+    uint64_t InfoSetId(::open_spiel::Player player) const;
 
     /// Sequence of action_ids applied so far, in order. Lives on the
     /// engine's GameState — Clone() preserves it via deep copy.

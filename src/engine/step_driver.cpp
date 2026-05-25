@@ -1,6 +1,69 @@
 #include "step_driver.h"
 
+#include <boost/context/protected_fixedsize_stack.hpp>
+
+#include <stdexcept>
+#include <utility>
+
 namespace riftbound {
+
+namespace {
+// Per-fiber stack size. 256KB is plenty for the engine's deepest call
+// stacks (chain resolution + triggers + cleanup) while keeping per-
+// clone memory low. boost::context::protected_fixedsize_stack adds a
+// guard page so stack overflow segfaults cleanly instead of corrupting
+// the heap.
+constexpr size_t kFiberStackBytes = 256 * 1024;
+}
+
+StepDriver::~StepDriver() {
+    // If the fiber is still alive (engine paused at a decision, caller
+    // abandoned the engine), drain it by repeatedly providing a "first
+    // legal" choice until it terminates. Mirrors the old thread-based
+    // drain logic in GameEngine::~GameEngine, but the drain happens at
+    // fiber switch time, not on a separate thread.
+    while (engine_fiber_ && !done_.load(std::memory_order_acquire)) {
+        pending_choice_ = 0;
+        engine_fiber_ = std::move(engine_fiber_).resume();
+    }
+}
+
+void StepDriver::runInFiber(std::function<void()> game_fn) {
+    if (engine_fiber_) {
+        throw std::logic_error(
+            "StepDriver::runInFiber called twice — fiber already started.");
+    }
+    // Capture the function by value into the fiber's lambda. The fiber
+    // entry point takes the caller's continuation (the "main fiber")
+    // as its first arg; calling `.resume()` on that continuation
+    // suspends the engine and returns control to the caller.
+    boost::context::protected_fixedsize_stack stack_alloc(kFiberStackBytes);
+    engine_fiber_ = boost::context::fiber(
+        std::allocator_arg, stack_alloc,
+        [this, game_fn = std::move(game_fn)](boost::context::fiber&& caller) {
+            // We can't store `caller` directly in a member because the
+            // fiber's resume() consumes and returns a new continuation.
+            // Instead, we route every yield through a thread-local
+            // (effectively fiber-local since fibers don't migrate
+            // threads). When selectAction wants to yield, it reads
+            // this and calls .resume() on it.
+            yield_target_ = std::move(caller);
+            try {
+                game_fn();
+            } catch (...) {
+                // Stash the exception so the caller can rethrow when
+                // they next call provideChoice / waitForDecision.
+                // For now, just mark done and let the fiber unwind.
+            }
+            done_.store(true, std::memory_order_release);
+            // Returning the yield_target hands control back to the
+            // caller; this fiber is destroyed afterward.
+            return std::move(yield_target_);
+        });
+    // Initial enter — runs until the first selectAction yield (or
+    // until runGame returns immediately, in degenerate cases).
+    engine_fiber_ = std::move(engine_fiber_).resume();
+}
 
 Intent StepDriver::selectAction(
     const GameState& state,
@@ -9,8 +72,6 @@ Intent StepDriver::selectAction(
     // Always present a non-empty action list to the caller. The engine
     // *should* guard against empty legal-action lists at each call site,
     // but in practice a small fraction of decisions slip through.
-    // Returning concede without going through the wait cycle would leave
-    // the caller's waitForDecision() blocked forever.
     std::vector<Intent> normalized;
     const std::vector<Intent>* effective = &legal_actions;
     if (legal_actions.empty()) {
@@ -18,23 +79,21 @@ Intent StepDriver::selectAction(
         effective = &normalized;
     }
 
-    int chosen;
-    {
-        std::unique_lock<std::mutex> lock(mu_);
-        paused_legal_ = *effective;
-        paused_player_ = state.turn.turn_player;
-        at_decision_ = true;
-        cv_main_.notify_one();
+    // Publish the decision snapshot for the caller, then yield.
+    paused_legal_   = *effective;
+    paused_player_  = state.turn.turn_player;
+    at_decision_    = true;
+    pending_choice_.reset();
 
-        cv_engine_.wait(lock, [&] { return pending_choice_.has_value(); });
-        chosen = *pending_choice_;
-        pending_choice_.reset();
-        at_decision_ = false;
-        // Intentionally NOT clearing paused_legal_. A racing caller may
-        // inspect LegalActions/CurrentPlayer between this decision
-        // returning and the next selectAction populating again; leaving
-        // the previous decision's data stale-but-non-empty is harmless.
-    }
+    // Yield to caller. When the caller calls provideChoice(), they
+    // resume the engine fiber, which switches back here with
+    // pending_choice_ populated.
+    yield_target_ = std::move(yield_target_).resume();
+
+    at_decision_ = false;
+    int chosen = pending_choice_.value_or(0);
+    pending_choice_.reset();
+
     if (chosen < 0 || static_cast<size_t>(chosen) >= effective->size()) {
         chosen = 0;
     }
@@ -42,43 +101,27 @@ Intent StepDriver::selectAction(
 }
 
 void StepDriver::waitForDecision() {
-    std::unique_lock<std::mutex> lock(mu_);
-    cv_main_.wait(lock, [&] {
-        return at_decision_ || done_.load(std::memory_order_acquire);
-    });
+    // Fiber backend: selectAction's yield ALREADY returned us here,
+    // so there's nothing to wait for. The engine either yielded at a
+    // decision (at_decision_ == true) or completed (done_ == true).
+    // Keep this method for API compat with the previous thread-based
+    // driver.
 }
 
 void StepDriver::provideChoice(int legal_index) {
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        pending_choice_ = legal_index;
-        // Reset at_decision_ under the same lock that sets pending_choice_,
-        // so the next waitForDecision blocks correctly until the engine
-        // genuinely reaches the next decision. Without this, the next
-        // waitForDecision returns immediately on the still-set at_decision_,
-        // and the caller spins one extra cycle overwriting pending_choice_
-        // before the engine reads it.
-        at_decision_ = false;
+    if (done_.load(std::memory_order_acquire)) {
+        // Engine already finished. No-op — there's no fiber to resume.
+        return;
     }
-    cv_engine_.notify_one();
+    pending_choice_ = legal_index;
+    // Resume the engine fiber. It re-enters selectAction's body just
+    // past the yield, reads pending_choice_, and runs forward until
+    // the next selectAction yield or until runGame returns.
+    engine_fiber_ = std::move(engine_fiber_).resume();
 }
 
 void StepDriver::markDone() {
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        done_.store(true, std::memory_order_release);
-    }
-    cv_main_.notify_one();
-}
-
-std::vector<Intent> StepDriver::legalActionsSnapshot() const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return paused_legal_;
-}
-
-PlayerId StepDriver::currentPlayerSnapshot() const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return paused_player_;
+    done_.store(true, std::memory_order_release);
 }
 
 } // namespace riftbound

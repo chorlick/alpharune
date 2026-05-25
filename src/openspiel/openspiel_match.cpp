@@ -6,10 +6,12 @@
 ///   random              uniform random over LegalActions
 ///   mcts:sims=N         OpenSpiel MCTSBot with RandomRolloutEvaluator
 ///                       (N is the simulation count per move)
+///   ismcts:sims=N       OpenSpiel ISMCTSBot for imperfect-info search
+///                       (currently behaves like MCTS — determinizing
+///                       resampler is a follow-up).
 ///
-/// Future: a `libtorch:path.pt` agent will land alongside these once C++
-/// AlphaZero training is wired (the previous `model:path.onnx` path was
-/// removed when the Python training pipeline was retired).
+/// Model-based agents (model:/rebel:) live in the riftbound-trainer
+/// sibling repo's binary. This binary stays libtorch-free.
 ///
 /// Build:  cmake --build build --target riftbound_openspiel
 /// Run:    ./build/src/openspiel/riftbound_openspiel \
@@ -38,9 +40,9 @@
 #include <iomanip>
 #include <map>
 
-#ifdef RIFTBOUND_HAVE_LIBTORCH
-#include "ml/libtorch_evaluator.h"
-#endif
+// libtorch-dependent model: / rebel: agents live in the riftbound-trainer
+// sibling repo's binary, not here. This binary supports only random /
+// mcts / ismcts.
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -56,22 +58,17 @@ namespace po = boost::program_options;
 namespace {
 
 struct AgentSpec {
-    // Random        — uniform legal-action pick.
-    // Mcts          — OpenSpiel MCTSBot + RandomRolloutEvaluator (perfect-info MCTS).
-    // Ismcts        — OpenSpiel ISMCTSBot + RandomRolloutEvaluator (information-set
-    //                 MCTS — theoretically correct for imperfect-info games like
-    //                 Riftbound). Requires a resampler; we install one that
-    //                 currently Clone()s the state (no determinization yet —
-    //                 equivalent to MCTS in behavior, real hidden-info
-    //                 determinization is queued in CLAUDE.md as a follow-up).
-    // ModelMcts     — OpenSpiel MCTSBot + LibTorch policy/value model.
-    //                 model_path empty → random-initialized weights
-    //                 (smoke-test mode); otherwise loaded via torch::load.
-    enum class Kind { Random, Mcts, Ismcts, ModelMcts };
+    // Random  — uniform legal-action pick.
+    // Mcts    — OpenSpiel MCTSBot + RandomRolloutEvaluator (perfect-info MCTS).
+    // Ismcts  — OpenSpiel ISMCTSBot + RandomRolloutEvaluator (information-set
+    //           MCTS — theoretically correct for imperfect-info games).
+    //           Requires a resampler; we install one that currently Clone()s
+    //           the state (no determinization yet — behaves like MCTS
+    //           for now; real hidden-info determinization is a follow-up).
+    enum class Kind { Random, Mcts, Ismcts };
     Kind kind = Kind::Random;
     int mcts_sims = 5;
     bool mcts_verbose = false;  // pass-through to MCTSBot's verbose flag
-    std::string model_path;     // only used for ModelMcts
 };
 
 // Parses key=val,key=val... into a flat map. Trims whitespace.
@@ -117,34 +114,19 @@ AgentSpec parseAgentSpec(const std::string& s) {
         a.mcts_sims = std::max(1, std::stoi(it->second));
         return a;
     }
-    if (s.rfind("model:", 0) == 0) {
-        a.kind = AgentSpec::Kind::ModelMcts;
-        auto kv = kvSplit(s.substr(6));
-        auto sit = kv.find("sims");
-        if (sit == kv.end()) {
-            throw std::runtime_error(
-                "model: spec needs 'sims=N' (got: '" + s + "')");
-        }
-        a.mcts_sims = std::max(1, std::stoi(sit->second));
-        // path is optional — when empty, the evaluator builds a
-        // random-init model so users can validate the wiring before
-        // training has produced any checkpoint.
-        auto pit = kv.find("path");
-        if (pit != kv.end()) a.model_path = pit->second;
-        return a;
-    }
     throw std::runtime_error("Unknown agent spec: '" + s +
-                             "'. Use 'random', 'mcts:sims=N', "
-                             "'ismcts:sims=N', or 'model:sims=N[,path=foo.pt]'.");
+                             "'. Use 'random', 'mcts:sims=N', or "
+                             "'ismcts:sims=N'. Model-based agents "
+                             "(model:/rebel:) live in the riftbound-"
+                             "trainer sibling repo.");
 }
 
-// True for any spec that drives a tree-search bot (MCTS rollout, ISMCTS, or
-// model-based MCTS). Used to gate the "thinking" indicator, sim-count
-// suffix, and switch from the random-pick fast path to the search slow path.
+// True for any spec that drives a tree-search bot. Used to gate the
+// "thinking" indicator and switch from random-pick fast path to the
+// search slow path.
 bool isMctsLike(const AgentSpec& a) {
     return a.kind == AgentSpec::Kind::Mcts ||
-           a.kind == AgentSpec::Kind::Ismcts ||
-           a.kind == AgentSpec::Kind::ModelMcts;
+           a.kind == AgentSpec::Kind::Ismcts;
 }
 
 std::string agentSpecName(const AgentSpec& a) {
@@ -154,11 +136,6 @@ std::string agentSpecName(const AgentSpec& a) {
             return "mcts:sims=" + std::to_string(a.mcts_sims);
         case AgentSpec::Kind::Ismcts:
             return "ismcts:sims=" + std::to_string(a.mcts_sims);
-        case AgentSpec::Kind::ModelMcts:
-            return "model:sims=" + std::to_string(a.mcts_sims) +
-                   (a.model_path.empty()
-                      ? ",path=<random-init>"
-                      : ",path=" + a.model_path);
     }
     return "?";
 }
@@ -211,19 +188,6 @@ struct Decider {
             base_eval =
                 std::make_shared<::open_spiel::algorithms::RandomRolloutEvaluator>(
                     /*n_rollouts=*/1, /*seed=*/static_cast<int>(game_index * 17 + 1));
-        } else if (spec.kind == AgentSpec::Kind::ModelMcts) {
-#ifdef RIFTBOUND_HAVE_LIBTORCH
-            // model_path empty → random-initialized in-memory V2 model
-            // (smoke test). Non-empty → load via torch::load. Defaults
-            // for V2ModelConfig live in v2_model.h.
-            base_eval = ::riftbound::ml::makeLibTorchEvaluator(
-                spec.model_path, /*cfg=*/nullptr);
-#else
-            throw std::runtime_error(
-                "model: agent requires the binary to be built with "
-                "-DRIFTBOUND_BUILD_LIBTORCH=ON. This build was compiled "
-                "without LibTorch.");
-#endif
         }
         if (base_eval) {
             counter = std::make_shared<CountingEvaluator>(std::move(base_eval));
@@ -298,8 +262,7 @@ struct Decider {
             ::open_spiel::Action act = ismcts_bot->Step(state);
             return Choice{act, std::nullopt, std::nullopt};
         }
-        // Both Mcts and ModelMcts go through MCTSearch — they differ
-        // only in their evaluator (set in prepareForGame).
+        // Mcts goes through MCTSearch.
         auto root = mcts_bot->MCTSearch(state);
         ::open_spiel::Action act = root->BestChild().action;
         std::optional<double> v;
@@ -325,11 +288,9 @@ int main(int argc, char* argv[]) {
         ("registry,r", po::value<std::string>()->default_value("cards/registry.json"),
          "Path to card registry JSON")
         ("agent1", po::value<std::string>()->default_value("random"),
-         "Player 1 agent spec: random | mcts:sims=N | ismcts:sims=N | "
-         "model:sims=N[,path=foo.pt]")
+         "Player 1 agent spec: random | mcts:sims=N | ismcts:sims=N")
         ("agent2", po::value<std::string>()->default_value("random"),
-         "Player 2 agent spec: random | mcts:sims=N | ismcts:sims=N | "
-         "model:sims=N[,path=foo.pt]")
+         "Player 2 agent spec: random | mcts:sims=N | ismcts:sims=N")
         ("games,n", po::value<int>()->default_value(10),
          "Number of games to run")
         ("seed,s", po::value<int>()->default_value(0),
@@ -620,8 +581,8 @@ int main(int argc, char* argv[]) {
                 int max_sims = spec_now.mcts_sims;
                 int player_num = cp + 1;
                 const char* kind_tag =
-                    (spec_now.kind == AgentSpec::Kind::ModelMcts)
-                        ? "model" : "mcts";
+                    (spec_now.kind == AgentSpec::Kind::Ismcts) ? "ismcts"
+                                                                : "mcts";
                 auto* counter_ptr = d_now->counter.get();
                 auto* dec_ptr = &decisions;
                 progress.markDecisionStart(

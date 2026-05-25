@@ -438,9 +438,27 @@ public:
 class MSneakyDeckhand : public UnitCard {
 public: MSneakyDeckhand() : UnitCard(176) {} };
 
-// [395] Dropboarder — keywords only
+// [395] Dropboarder — "When you play me, if you control two or more gear,
+// ready me." Units enter exhausted (CR 143.4); this readies Dropboarder on
+// entry when the controller already commands 2+ gear.
 class MDropboarder : public UnitCard {
-public: MDropboarder() : UnitCard(395) {} };
+public:
+    MDropboarder() : UnitCard(395) {}
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        int gear = 0;
+        for (const auto& [id, obj] : ctx.state.objects) {
+            if (obj.isGear() && obj.controller == ctx.controller &&
+                obj.location.has_value()) {
+                ++gear;
+            }
+        }
+        if (gear >= 2) {
+            ctx.executor.readyObject(ctx.source);
+            ctx.events.logTrace("DROPBOARDER: 2+ gear controlled, ready me");
+        }
+    }
+};
 
 // [106] Sprite Mother — When you play me, play a 3M Sprite token here
 class MSpriteMotherUnit : public UnitCard {
@@ -455,9 +473,19 @@ public:
     }
 };
 
-// [91] Pit Crew — When you play a gear, ready me (non-standard trigger — skip for now)
+// [91] Pit Crew — "When you play a gear, ready me." Fires via the
+// WhenYouPlayAGear trigger (emitted by TriggerManager when the controller
+// plays a gear). Readies self — note triggered abilities arrive with empty
+// targets, so we act on ctx.source rather than targets[0].
 class MPitCrew : public UnitCard {
-public: MPitCrew() : UnitCard(91) {} };
+public:
+    MPitCrew() : UnitCard(91) {}
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayAGear; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        ctx.executor.readyObject(ctx.source);
+        ctx.events.logTrace("PIT CREW: gear played, ready me");
+    }
+};
 
 // [136] Pit Rookie — When you play me, buff another friendly unit
 class MPitRookie : public UnitCard {
@@ -480,18 +508,24 @@ public:
 // Gear (non-equip)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// [538] Seal of Focus — When you play this, ready a friendly unit
+// [538] Seal of Focus — actual text: "[E]: [Reaction] — [Add] [G]."
+// Activated ability, exhaust + Reaction timing, adds 1 Calm ([G]) power to
+// the controller's rune pool. Mirrors Seal of Strength (542). Previously
+// misimplemented as a WhenYouPlayThis "ready a friendly unit" trigger.
 class MSealOfFocus : public GearCard {
 public:
     MSealOfFocus() : GearCard(538) {}
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || !obj.is_exhausted) continue;
-            ctx.executor.readyObject(id);
-            break;
-        }
+    bool hasActivatedAbility() const override { return true; }
+    bool isReactionAbility() const override { return true; }
+    ActivationCost getActivationCost() const override {
+        return ActivationCost{.exhaust = true};
+    }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 0};
+    }
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.executor.addFloatingPower(ctx.controller, Domain::Calm, 1);
+        ctx.events.logTrace("SEAL OF FOCUS: Add [G]");
     }
 };
 
@@ -517,10 +551,32 @@ public:
     }
 };
 
-// [573] Fresh Beans — When you play a unit during showdown, exhaust to draw 1
-// Non-standard trigger — skip for now
+// [573] Fresh Beans — "When you play a unit during a showdown, you may
+// exhaust this to draw 1." Fires on every friendly unit play; gated on an
+// in-progress showdown at some battlefield. The "exhaust this" is the
+// optional cost — confirmOptional asks yes/no, the still-legal predicate
+// requires Fresh Beans to be ready (otherwise the cost can't be paid).
 class MFreshBeans : public GearCard {
-public: MFreshBeans() : GearCard(573) {} };
+public:
+    MFreshBeans() : GearCard(573) {}
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        bool in_showdown = false;
+        for (const auto& bf : ctx.state.battlefields) {
+            if (bf.showdown_in_progress) { in_showdown = true; break; }
+        }
+        if (!in_showdown) return;
+        int conf = confirmOptional(ctx, "Fresh Beans: exhaust to draw 1",
+            [&] {
+                return ctx.state.objectExists(ctx.source) &&
+                       !ctx.state.getObject(ctx.source).is_exhausted;
+            });
+        if (conf != 1) return;
+        ctx.executor.exhaustObject(ctx.source);
+        ctx.executor.drawCards(ctx.controller, 1);
+        ctx.events.logTrace("FRESH BEANS: exhaust to draw 1");
+    }
+};
 
 // [640] Sprite Fountain — When you play this, play a 3M Sprite token
 class MSpriteFountain : public GearCard {
@@ -545,28 +601,60 @@ public:
     MDazzlingAurora() : GearCard(160) {}
     TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // 1. Reveal from top of deck until a unit is found.
-        //    revealUntil pops the cards from main_deck and returns (matched, rest).
-        auto [unit_id, rest] = ctx.executor.revealUntil(ctx.controller, CardType::Unit);
+        auto& ri = ctx.state.chain.resuming.value();
 
-        // 2. Recycle the non-units back to the bottom of the deck.
-        if (!rest.empty()) {
-            ctx.executor.recycleCards(ctx.controller, rest);
+        // First-entry-only steps: reveal from deck until a unit, recycle
+        // the rest, banish the unit. Stash the unit id in ri.targets so
+        // subsequent re-entries from pickMode don't re-reveal. Empty
+        // ri.targets ≡ "haven't entered yet"; a single kInvalidId entry
+        // ≡ "entered, but no unit was found — nothing left to do".
+        if (ri.targets.empty()) {
+            auto [u, rest] = ctx.executor.revealUntil(ctx.controller, CardType::Unit);
+            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
+            if (u == kInvalidId || !ctx.state.objectExists(u)) {
+                ri.targets.push_back(kInvalidId);
+                return;
+            }
+            ctx.executor.banishObject(u);
+            // banishObject pushed it to banishment; playIgnoringCost will
+            // re-zone it, so remove the duplicate banishment entry now.
+            auto& bz = ctx.state.player(ctx.state.getObject(u).owner).banishment;
+            bz.erase(std::remove(bz.begin(), bz.end(), u), bz.end());
+            ri.targets.push_back(u);
         }
+        GameObjectId unit_id = ri.targets.front();
+        if (unit_id == kInvalidId) return;
 
-        // 3. If a unit was revealed, banish it then play it ignoring cost.
-        //    Note: banishObject pushes to the banishment list; playIgnoringCost
-        //    then moves it to Base. We remove from banishment to avoid the
-        //    card appearing in both zone lists.
-        if (unit_id != kInvalidId && ctx.state.objectExists(unit_id)) {
-            ctx.executor.banishObject(unit_id);
-
-            auto& owner_state = ctx.state.player(ctx.state.getObject(unit_id).owner);
-            auto& bz = owner_state.banishment;
-            bz.erase(std::remove(bz.begin(), bz.end(), unit_id), bz.end());
-
-            ctx.executor.playIgnoringCost(ctx.controller, unit_id);
+        // Per CR 355.2.a, the controller picks the landing location: base
+        // or any battlefield they control. pickMode publishes one option
+        // per legal location so the agent records the decision (mandatory
+        // even when only base is legal — engine-wide rule).
+        std::vector<LocationId> locations;
+        std::vector<std::string> labels;
+        locations.push_back(LocationId{BaseLocation{ctx.controller}});
+        labels.push_back("base");
+        for (const auto& bf : ctx.state.battlefields) {
+            if (bf.controller.has_value() && *bf.controller == ctx.controller) {
+                locations.push_back(LocationId{BattlefieldLocation{bf.id}});
+                std::string bf_name = "BF#" + std::to_string(bf.id);
+                if (ctx.state.objectExists(bf.card_object_id)) {
+                    bf_name = ctx.state.getObject(bf.card_object_id).name;
+                }
+                labels.push_back(bf_name);
+            }
         }
+        uint32_t legal_mask = (locations.size() >= 32)
+            ? 0xFFFFFFFFu
+            : ((1u << locations.size()) - 1);
+        int chosen = pickMode(ctx, "Aurora: where to play unit",
+                               static_cast<int>(locations.size()),
+                               labels, legal_mask);
+        if (chosen == -1) return;  // yielded for agent input
+        if (chosen < 0 || static_cast<size_t>(chosen) >= locations.size()) {
+            chosen = 0;
+        }
+        ctx.executor.playIgnoringCost(ctx.controller, unit_id,
+                                       locations[chosen]);
     }
 };
 
@@ -576,47 +664,64 @@ public:
 // stub via the registration order in card_registry.cpp.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// [162] Miss Fortune, Captain — When a friendly unit moves to a battlefield,
-// ready another friendly unit at that battlefield.
-// Uses WhenAFriendlyUnitMovesToFB: trigger_manager fires this on all friendly
-// cards with this trigger type whenever any friendly unit moves to a BF.
+// [162] Miss Fortune, Captain — "The first time I move each turn, you may
+// ready something else that's exhausted."
+//
+// Prior implementation used WhenAFriendlyUnitMovesToFB which (a) excludes
+// the moving unit itself (trigger_manager.cpp:524 skips e.object), so the
+// trigger never fired when Captain herself moved, and (b) auto-readied a
+// unit at the destination BF — neither of which match the card text.
+// Now: WhenIMove on Captain herself, gated by a per-turn sentinel, with
+// confirmOptional + pickTarget for the agent decisions.
 class MMissFortuneCaptain : public UnitCard {
 public:
     MMissFortuneCaptain() : UnitCard(162) {}
-    TriggerType triggerType() const override {
-        return TriggerType::WhenAFriendlyUnitMovesToFB;
-    }
+    TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Find the most recent friendly unit at a battlefield (the one that
-        // just moved is the trigger source from the engine's perspective —
-        // we ready a different friendly unit at that same BF).
         if (!ctx.state.objectExists(ctx.source)) return;
-
-        // Pick any exhausted friendly unit at a battlefield to ready.
-        // Preference: same BF as Captain if she's there.
         auto& captain = ctx.state.getObject(ctx.source);
-        std::optional<LocationId> preferred_loc = captain.location;
 
-        // First pass: try preferred location
-        if (preferred_loc.has_value()) {
+        // "First time I move each turn" — store turn_id (+1 so 0 = never).
+        // We only set the sentinel on FIRST entry; subsequent re-entries
+        // during the same chain resolution carry the resume_point state
+        // forward, so the "already fired this turn" guard mustn't reject
+        // them.
+        int turn_id = ctx.state.turn.turn_number + 1;
+        bool first_entry = !ctx.state.chain.resuming.has_value()
+                        || ctx.state.chain.resuming->resume_point == 0;
+        int& last_fired = captain.card_counters["mf_captain_move_turn"];
+        if (first_entry && last_fired == turn_id) return;  // not the first move
+        if (first_entry) last_fired = turn_id;
+
+        // Targets: friendly things other than Captain that are exhausted and
+        // on board (skip in-deck/banished/etc.).
+        auto find_targets = [&]() {
+            std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
                 if (id == ctx.source) continue;
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
+                if (obj.controller != ctx.controller) continue;
                 if (!obj.is_exhausted) continue;
-                if (obj.location != preferred_loc) continue;
-                ctx.executor.readyObject(id);
-                return;
+                if (!obj.location.has_value()) continue;
+                out.push_back(id);
             }
-        }
-        // Fallback: any exhausted friendly unit at any battlefield
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.is_exhausted) continue;
-            if (!obj.isAtBattlefield()) continue;
-            ctx.executor.readyObject(id);
+            return out;
+        };
+
+        int answer = confirmOptional(ctx, "Miss Fortune ready another",
+                                     [&]() { return !find_targets().empty(); });
+        if (answer == -1) return;     // yielded for agent input
+        if (answer == 0) {
+            ctx.events.logTrace("MISS FORTUNE: declined to ready another");
             return;
         }
+
+        auto target = pickTarget(ctx, "Miss Fortune ready an exhausted friendly",
+                                  find_targets());
+        if (target == kInvalidId) return;  // yielded for agent input
+
+        ctx.executor.readyObject(target);
+        ctx.events.logTrace("MISS FORTUNE: readied " +
+                             ctx.state.getObject(target).name);
     }
 };
 
@@ -723,22 +828,53 @@ public:
     }
 };
 
-// [680] Elder Dragon — When you play me, deal 1 damage to one enemy unit at
-// each battlefield. Plus passive: any of your damage is enough to kill enemy
-// units. The passive "kill on any damage" is handled engine-side via the
-// existing Elder Dragon rule check; here we implement the on-play AoE damage.
+// [680] Elder Dragon — Two clauses on the printed card:
+//   1. Passive aura: "Any amount of your damage is enough to kill enemy
+//      units." Handled engine-side in GameEngine::processLethalDamage
+//      by scanning ability_text — no per-card work needed here.
+//   2. Play trigger (CR 383.4.a): "When you play me, choose up to one
+//      enemy unit at EACH LOCATION. Deal 1 to them."
+//      LOCATION includes the opponent's BASE and every BATTLEFIELD —
+//      not just battlefields. The earlier implementation iterated
+//      state.battlefields only, so enemies sitting at base never took
+//      damage and the aura's instant-kill effect never engaged
+//      against them.
 class MElderDragon : public UnitCard {
 public:
     MElderDragon() : UnitCard(680) {}
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // For each battlefield, deal 1 damage to one enemy unit at that BF.
+        auto opp = opponent(ctx.controller);
+
+        // Build the list of LOCATIONS to hit: opponent's base + every
+        // battlefield. Card text "at each location" is the canonical
+        // Riftbound term — see CR 151 / 144.4 for the location-vs-zone
+        // distinction.
+        std::vector<LocationId> locations;
+        locations.reserve(ctx.state.battlefields.size() + 1);
+        locations.push_back(BaseLocation{opp});
         for (auto& bf : ctx.state.battlefields) {
-            auto bf_loc = BattlefieldLocation{bf.id};
-            auto enemies = ctx.state.unitsAt(bf_loc, opponent(ctx.controller));
+            locations.push_back(BattlefieldLocation{bf.id});
+        }
+
+        for (const auto& loc : locations) {
+            auto enemies = ctx.state.unitsAt(loc, opp);
             if (enemies.empty()) continue;
+            // Pick the first enemy at this location. CR-faithful "up to
+            // one" with agent choice would route through pickTarget;
+            // first-enemy is a placeholder that matches the prior
+            // battlefield-only behaviour.
             auto victim = enemies.front();
             ctx.executor.dealDamage(victim, 1, ctx.source);
+            // Two complementary kill paths: (1) inline natural-lethal
+            // check for units already at 0–1 might (caught here in the
+            // trigger), (2) GameEngine::processLethalDamage during the
+            // post-trigger cleanup applies the Elder Dragon
+            // "any-damage-lethal" aura to higher-might enemies. Both
+            // are needed: this trigger is sometimes invoked outside
+            // the full engine flow (per-card tests), so inline kill
+            // catches the easy case; cleanup catches the aura case
+            // when the engine drives it for real.
             if (ctx.state.objectExists(victim) &&
                 ctx.state.getObject(victim).hasLethalDamage()) {
                 ctx.executor.killObject(victim);
@@ -898,6 +1034,25 @@ public:
             .is_reaction = false,
             .needs_activation_time_target = true,
         }};
+    }
+    /// The engine's action-gen path calls this to gate the ability:
+    /// if it returns empty, the ability isn't offered. The base impl
+    /// reads `getTargetRequirements()` (legacy single-ability surface)
+    /// which MBountyHunter doesn't supply — so without this override
+    /// the engine sees count=0, returns {}, and silently drops the
+    /// ability. The same call drives `pickTarget` inside `onActivate`
+    /// when production code routes through needs_activation_time_target.
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller,
+        int /*ability_idx*/) const override {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects) {
+            if (!obj.isUnit()) continue;
+            if (!obj.location.has_value()) continue;
+            if (obj.controller != controller && obj.untargetable_by_enemy) continue;
+            out.push_back(id);
+        }
+        return out;
     }
     void onActivate(CardContext& ctx, int /*ability_idx*/,
                     const std::vector<GameObjectId>& targets) override {
@@ -1338,6 +1493,26 @@ public:
         switch (ri.resume_point) {
         case 0: {
             if (opps.hand.empty()) return;
+            // CR: "They reveal their hand." Emit a private
+            // CardRevealedEvent (revealed_to = controller) per card so
+            // PlayerState::observed_cards updates for the controller —
+            // that's the imperfect-info-observable side effect that
+            // makes Mindsplitter actually informative for ML training.
+            for (auto card_id : opps.hand) {
+                if (!ctx.state.objectExists(card_id)) continue;
+                const auto& obj = ctx.state.getObject(card_id);
+                ctx.events.emit(CardRevealedEvent{
+                    /*card=*/card_id,
+                    /*card_def_id=*/obj.card_def_id,
+                    /*owner=*/obj.owner,
+                    /*revealed_to_all=*/false,
+                    /*revealed_to=*/ctx.controller,
+                    /*source_zone=*/ZoneType::Hand,
+                });
+                ctx.events.logTrace("MINDSPLITTER: revealed " + obj.name +
+                                     " (id=" + std::to_string(card_id) +
+                                     ") to " + std::string(toString(ctx.controller)));
+            }
             std::vector<Intent> choices;
             for (auto card_id : opps.hand) {
                 Intent c;
@@ -2799,14 +2974,50 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
 };
 
-// [650] Gutter Palace — AtStartOfBeginning: discard 1
+// [650] Gutter Palace — two abilities:
+//  (1) "At the start of your Beginning Phase, if you have exactly 4 cards in
+//      hand and exactly 4 units at battlefields, you win the game."
+//  (2) "Discard 1, [E]: Play a 1 [M] Bird unit token with [Deflect]."
 class MGutterPalace : public GearCard {
 public:
     MGutterPalace() : GearCard(650) {}
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        discardThenAct(ctx, 1, "Gutter Palace: discard 1", [](CardContext&){});
-    }
+
+    // ── (1) Beginning-phase win check ──
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const auto& ps = ctx.state.player(ctx.controller);
+        int hand = static_cast<int>(ps.hand.size());
+        int units_at_bf = 0;
+        for (const auto& [id, obj] : ctx.state.objects) {
+            if (obj.isUnit() && obj.controller == ctx.controller &&
+                obj.battlefieldId().has_value()) {
+                ++units_at_bf;
+            }
+        }
+        if (hand == 4 && units_at_bf == 4) {
+            ctx.state.game_over = true;
+            ctx.state.winner = ctx.controller;
+            ctx.state.game_over_reason = "Gutter Palace win condition";
+            ctx.events.logTrace("GUTTER PALACE: win condition met (4 hand / 4 units)");
+        }
+    }
+
+    // ── (2) Activated: discard 1, [E] -> make a 1[M] Bird token w/ [Deflect] ──
+    bool hasActivatedAbility() const override { return true; }
+    ActivationCost getActivationCost() const override {
+        return ActivationCost{.exhaust = true, .discard = true, .discard_count = 1};
+    }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 0};
+    }
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        KeywordSet kw; kw.set(Keyword::Deflect);
+        auto loc = ctx.state.getObject(ctx.source).location
+                       .value_or(LocationId{BaseLocation{ctx.controller}});
+        ctx.executor.createToken(ctx.controller, CardType::Unit, "Bird", 1,
+                                  {"Bird"}, kw, loc, /*enter_ready=*/false);
+        ctx.events.logTrace("GUTTER PALACE: play 1M Bird token with [Deflect]");
+    }
 };
 
 // [8] Get Excited! — onResolve: discard 1, deal 1 damage to target

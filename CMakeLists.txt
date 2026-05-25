@@ -59,12 +59,16 @@ configure_file(
 )
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-option(RIFTBOUND_BUILD_OPENSPIEL "Build the OpenSpiel out-of-tree game wrapper (~adds OpenSpiel + abseil to _deps)" OFF)
-option(RIFTBOUND_BUILD_LIBTORCH  "Build LibTorch-dependent targets (riftbound_train, LibTorchAgent). Adds ~200MB FetchContent unless LIBTORCH_DIR is set." OFF)
+# OpenSpiel is mandatory — the riftbound_openspiel binary's MCTS / ISMCTS /
+# random agents are the engine's first-class AI baselines and the integration
+# surface that lets external tools plug their own agents into Riftbound games.
+# First-time configure clones OpenSpiel + abseil + DDS into build/_deps
+# (~30 sec); subsequent reconfigures are fast.
+set(RIFTBOUND_BUILD_OPENSPIEL ON CACHE INTERNAL "" FORCE)
 
 # ─── Dependencies ─────────────────────────────────────────────────────────────
 
-find_package(Boost REQUIRED COMPONENTS program_options filesystem system)
+find_package(Boost REQUIRED COMPONENTS program_options filesystem system context)
 find_package(Threads REQUIRED)
 
 # nlohmann_json: prefer system. If RIFTBOUND_BUILD_OPENSPIEL=ON, OpenSpiel's
@@ -206,6 +210,14 @@ if(RIFTBOUND_BUILD_LIBTORCH)
         set(LIBTORCH_DIR ${libtorch_SOURCE_DIR})
     endif()
     set(Torch_DIR ${LIBTORCH_DIR}/share/cmake/Torch)
+    # libtorch 2.5.1's CUDA cmake refers to CUDA::nvToolsExt — a target
+    # that newer CUDA toolkits (12.4+) dropped. Stub it before
+    # find_package(Torch) so the include doesn't fail with "ALIAS target
+    # missing". This is a no-op on older toolkits where the real target
+    # is provided. Found on Threadripper PRO + CUDA 12.6 vast.ai box.
+    if(NOT TARGET CUDA::nvToolsExt)
+        add_library(CUDA::nvToolsExt INTERFACE IMPORTED)
+    endif()
     find_package(Torch REQUIRED)
     message(STATUS "LibTorch found at ${LIBTORCH_DIR}")
     message(STATUS "  Torch CXX flags: ${TORCH_CXX_FLAGS}")
@@ -219,19 +231,8 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
     find_package(nlohmann_json REQUIRED)
 endif()
 
-# ─── JSON Schema validator ────────────────────────────────────────────────────
-# Header-mostly library for JSON Schema draft 7 validation. Used by the config
-# infra (Phase 6a). Vendored via FetchContent rather than system-installed
-# because the package isn't reliably available across distros; v2.3.0 is small
-# (~2k LOC) and stable.
-FetchContent_Declare(json_schema_validator
-    GIT_REPOSITORY https://github.com/pboettch/json-schema-validator.git
-    GIT_TAG 2.3.0
-)
-set(JSON_VALIDATOR_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-set(JSON_VALIDATOR_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(JSON_VALIDATOR_INSTALL        OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(json_schema_validator)
+# JSON Schema validator dep moved to riftbound-trainer along with the
+# config parsing it backed. Engine builds without it.
 
 # ─── Core library ─────────────────────────────────────────────────────────────
 
@@ -247,6 +248,7 @@ add_library(riftbound_core
     src/engine/trigger_manager.cpp
     src/io/state_renderer.cpp
     src/io/replay_writer.cpp
+    src/io/state_editor.cpp
     src/cards/card.cpp
     src/cards/card_registry.cpp
     src/cards/generated/unit_cards.cpp
@@ -259,11 +261,19 @@ add_library(riftbound_core
     src/cards/manual/equip_cards.cpp
     src/cards/manual/weaponmaster_cards.cpp
     src/cards/manual/deck_cards.cpp
+    src/cards/manual/audit_fixes_0.cpp
+    src/cards/manual/audit_fixes_1.cpp
+    src/cards/manual/audit_fixes_2.cpp
+    src/cards/manual/audit_fixes_3.cpp
+    src/cards/manual/audit_fixes_4.cpp
+    src/cards/manual/audit_fixes_5.cpp
+    src/cards/manual/audit_fixes_6.cpp
+    src/cards/manual/audit_fixes_7.cpp
     src/engine/game_runner.cpp
     src/engine/batch_runner.cpp
     src/engine/step_driver.cpp
     src/ml/feature_extractor.cpp
-    src/ml/entity_tokens.cpp
+    src/ml/cfr_util.cpp
     src/openspiel/action_vocab.cpp
 )
 
@@ -271,6 +281,7 @@ target_include_directories(riftbound_core PUBLIC src)
 target_link_libraries(riftbound_core PUBLIC
     Boost::boost
     Boost::system
+    Boost::context   # userspace fibers for the engine's step machine
     Threads::Threads
     nlohmann_json::nlohmann_json
 )
@@ -284,170 +295,51 @@ target_link_libraries(riftbound_core PUBLIC
 # )
 # target_link_libraries(riftbound_engine PUBLIC riftbound_core)
 
-# ─── Main executable (legacy CLI — flag-driven) ───────────────────────────────
-# Stays in tree during Phase 6. New work goes through the unified
-# riftbound_runner binary below.
+# ─── Unified riftbound binary ────────────────────────────────────────────────
+# One entry point for all modes: random / mcts / ismcts / human (1 or 2 seats),
+# single-game or batch via --games, optional Beast HTTP+WebSocket web UI via
+# --web. Pulls in OpenSpiel + the riftbound_game/state TUs so MctsAgent /
+# IsMctsAgent can construct cloneable OpenSpiel states internally.
+#
+# The riftbound_game.cpp + riftbound_state.cpp sources MUST be compiled into
+# this executable directly (not into a static lib) — OpenSpiel's
+# OPEN_SPIEL_REGISTER_GAME static initializer would otherwise be stripped by
+# the linker and LoadGame("riftbound") would return null at runtime.
 
-add_executable(riftbound src/main.cpp)
-target_link_libraries(riftbound PRIVATE riftbound_core Boost::program_options)
-
-# ─── Config infra (Phase 6a) ──────────────────────────────────────────────────
-# Static library so config parsing is shareable between riftbound_runner,
-# tests, and future training/play binaries without duplicating the
-# json-schema-validator link.
-
-add_library(riftbound_config STATIC
-    src/config/schema.cpp
-    src/config/config.cpp
+add_executable(riftbound
+    src/main.cpp
+    src/agents/mcts_agent.cpp
+    src/io/play_server.cpp
+    src/io/play_index_html.cpp
+    src/openspiel/riftbound_game.cpp
+    src/openspiel/riftbound_state.cpp
+    $<TARGET_OBJECTS:algorithms>
+    $<TARGET_OBJECTS:game_transforms>
+    $<TARGET_OBJECTS:utils>
 )
-target_include_directories(riftbound_config PUBLIC src)
-target_link_libraries(riftbound_config PUBLIC
+target_link_libraries(riftbound PRIVATE
     riftbound_core
-    nlohmann_json_schema_validator
-)
-
-# ─── Unified runner (Phase 6a) ────────────────────────────────────────────────
-# The new entry binary. CLI is just --config + --dry-run; everything else
-# goes through the config file. Play and training dispatch are stubbed in
-# Phase 6a — Phases 6b–6i wire them up.
-
-add_executable(riftbound_runner src/runner/riftbound_runner.cpp)
-target_link_libraries(riftbound_runner PRIVATE
-    riftbound_config
+    open_spiel_core
     Boost::program_options
+    Boost::system
+    Boost::filesystem
+    # abseil — OpenSpiel uses a directory-level link_libraries() that doesn't
+    # propagate to consumers, so we replicate the list here. Mirrors the set
+    # in src/openspiel/CMakeLists.txt.
+    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
+    absl::optional absl::random_random absl::str_format absl::strings absl::time
 )
-# Wire the V2 training pipeline into the runner when LibTorch is built.
-# Without these, `mode=train` configs print a "not wired" stderr and
-# exit non-zero. The training-mode dispatch is gated behind the
-# compile definition so CPU-only minimal builds still link cleanly.
-if(RIFTBOUND_HAVE_LIBTORCH AND RIFTBOUND_BUILD_OPENSPIEL)
-    target_sources(riftbound_runner PRIVATE
-        src/openspiel/riftbound_game.cpp
-        src/openspiel/riftbound_state.cpp
-    )
-    target_link_libraries(riftbound_runner PRIVATE
-        riftbound_training
-        open_spiel_core
-        $<TARGET_OBJECTS:game_transforms>
-    )
-    target_include_directories(riftbound_runner PRIVATE
-        ${open_spiel_SOURCE_DIR}
-        src/openspiel
-    )
-    target_compile_definitions(riftbound_runner PRIVATE RIFTBOUND_HAVE_LIBTORCH)
-endif()
+# OpenSpiel sources include "open_spiel/spiel.h" — needs the parent of the
+# open_spiel/ subdir on the include path.
+target_include_directories(riftbound PRIVATE ${open_spiel_SOURCE_DIR})
 
-# ─── ML library (LibTorch-dependent) ─────────────────────────────────────────
-# Separate static library so the LibTorch include path / link list don't
-# leak into riftbound_core's compile units. Only built when
-# RIFTBOUND_BUILD_LIBTORCH=ON.
-if(RIFTBOUND_HAVE_LIBTORCH)
-    # The V2 evaluator (libtorch_evaluator.cpp) reaches into RiftboundState
-    # via engineState() / RiftboundGame::cardDb() to pull entity tokens —
-    # it needs the openspiel headers on the include path but does NOT
-    # link those .cpp into riftbound_ml (riftbound_game.cpp's
-    # REGISTER_SPIEL_GAME initializer would be stripped from a static
-    # lib). The final executable (riftbound_train etc.) links the
-    # openspiel .cpp files directly.
-    set(RIFTBOUND_ML_SOURCES
-        src/ml/v2_model.cpp
-        src/ml/v3_model.cpp
-    )
-    if(RIFTBOUND_BUILD_OPENSPIEL)
-        list(APPEND RIFTBOUND_ML_SOURCES
-            src/ml/libtorch_evaluator.cpp
-        )
-    endif()
-    add_library(riftbound_ml STATIC ${RIFTBOUND_ML_SOURCES})
-    target_include_directories(riftbound_ml PUBLIC src)
-    target_link_libraries(riftbound_ml PUBLIC
-        riftbound_core
-        "${TORCH_LIBRARIES}"
-    )
-    # libtorch_evaluator.cpp uses the OpenSpiel Evaluator interface
-    # (mcts.h). Pull in the OpenSpiel include path AND the bundled
-    # abseil-cpp headers when building the ML library — mcts.h
-    # transitively pulls in absl::random which lives one directory
-    # deeper than the open_spiel include root.
-    if(RIFTBOUND_BUILD_OPENSPIEL)
-        target_include_directories(riftbound_ml PUBLIC
-            ${open_spiel_SOURCE_DIR}
-            ${open_spiel_SOURCE_DIR}/open_spiel/abseil-cpp
-        )
-        target_link_libraries(riftbound_ml PUBLIC
-            open_spiel_core
-            absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
-            absl::optional absl::random_random absl::str_format absl::strings absl::time
-        )
-    endif()
-    target_compile_options(riftbound_ml PUBLIC "${TORCH_CXX_FLAGS}")
-
-    # ─── Training library + driver ──────────────────────────────────
-    # Self-play + replay + trainer. Only built when both LibTorch AND
-    # OpenSpiel are on (self-play uses MCTSBot, trainer uses LibTorch).
-    if(RIFTBOUND_BUILD_OPENSPIEL)
-        add_library(riftbound_training STATIC
-            src/training/replay_buffer.cpp
-            src/training/self_play.cpp
-            src/training/trainer.cpp
-            src/training/trainer_v3.cpp
-            src/training/config_driver.cpp
-            src/training/ring_logger.cpp
-            src/training/watchdog.cpp
-            src/training/heuristic_evaluator.cpp
-        )
-        target_link_libraries(riftbound_training PUBLIC
-            riftbound_ml
-            riftbound_config
-            # OpenSpiel MCTSBot lives in the `algorithms` OBJECT lib
-            # — pulled in by name since it isn't directly linkable.
-            $<TARGET_OBJECTS:algorithms>
-            $<TARGET_OBJECTS:utils>
-        )
-
-        # The training driver needs RiftboundGame's REGISTER_SPIEL_GAME
-        # to fire (so LoadGame("riftbound(...)") finds the game). Pull
-        # in those two source files directly — they aren't built into a
-        # standalone library because they depend on open_spiel headers
-        # that aren't on riftbound_core's include path.
-        add_executable(riftbound_train
-            src/training/riftbound_train.cpp
-            src/openspiel/riftbound_game.cpp
-            src/openspiel/riftbound_state.cpp
-        )
-        target_link_libraries(riftbound_train PRIVATE
-            riftbound_training
-            open_spiel_core
-            Boost::program_options
-            $<TARGET_OBJECTS:game_transforms>
-        )
-        target_include_directories(riftbound_train PRIVATE
-            ${open_spiel_SOURCE_DIR}
-            src/openspiel
-        )
-    endif()
-
-    # ─── Value-head probe (Phase 6k-4 fallback diagnostic) ───────────
-    # Standalone binary that loads a V2 checkpoint and prints value +
-    # top-5 policy logits on hand-crafted GameStates with known
-    # correct-value answers. Doesn't pull in OpenSpiel — uses raw
-    # GameState construction.
-    add_executable(probe_v2_model src/runner/probe_v2_model.cpp)
-    target_link_libraries(probe_v2_model PRIVATE
-        riftbound_ml
-        nlohmann_json::nlohmann_json
-    )
-    target_compile_options(probe_v2_model PRIVATE "${TORCH_CXX_FLAGS}")
-
-    # Phase 6v — V3 probe binary. Mirror of probe_v2_model for the V3
-    # flat-feature MLP architecture.
-    add_executable(probe_v3_model src/runner/probe_v3_model.cpp)
-    target_link_libraries(probe_v3_model PRIVATE
-        riftbound_ml
-        nlohmann_json::nlohmann_json
-    )
-    target_compile_options(probe_v3_model PRIVATE "${TORCH_CXX_FLAGS}")
-endif()
+# Config parsing (src/config/) moved to riftbound-trainer along with the
+# training driver — engine has no current consumers. A future engine
+# binary (riftbound_play web UI) that wants config-file input will
+# define its own focused schema.
+#
+# LibTorch-dependent model code (V2/V3/V4/V5, ReBeL inference, training
+# driver, probe binaries) lives in the riftbound-trainer sibling repo.
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -462,8 +354,7 @@ set(RIFTBOUND_TEST_SOURCES
     tests/test_observation_tensor.cpp
     tests/test_resume_resolution.cpp
     tests/test_legal_targets_gate.cpp
-    tests/test_config.cpp
-    tests/test_entity_tokens.cpp
+    tests/test_human_agent.cpp
     tests/cards/test_counter_spells.cpp
     tests/cards/test_stacked_deck.cpp
     tests/cards/test_champions_legends.cpp
@@ -481,13 +372,18 @@ set(RIFTBOUND_TEST_SOURCES
     tests/cards/test_combat_damage_allocation.cpp
     tests/cards/test_combat_showdown_dispatch.cpp
     tests/cards/test_jhin_deck.cpp
+    tests/cards/test_dazzling_aurora.cpp
+    tests/cards/test_missing_card_fixes.cpp
+    tests/cards/test_audit_fixes_0.cpp
+    tests/cards/test_audit_fixes_1.cpp
+    tests/cards/test_audit_fixes_2.cpp
+    tests/cards/test_audit_fixes_3.cpp
+    tests/cards/test_audit_fixes_4.cpp
+    tests/cards/test_audit_fixes_5.cpp
+    tests/cards/test_audit_fixes_6.cpp
+    tests/cards/test_audit_fixes_7.cpp
 )
-if(RIFTBOUND_HAVE_LIBTORCH)
-    list(APPEND RIFTBOUND_TEST_SOURCES
-        tests/test_v2_model_forward.cpp
-        tests/test_v3_model_forward.cpp
-    )
-endif()
+# Model-forward + CFR util tests live in riftbound-trainer.
 
 add_executable(riftbound_tests ${RIFTBOUND_TEST_SOURCES})
 # Per-card test fixture lives in tests/cards/. Bring tests/ onto the include
@@ -496,12 +392,8 @@ target_include_directories(riftbound_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(riftbound_tests PRIVATE
     riftbound_core
-    riftbound_config
     GTest::gtest_main
 )
-if(RIFTBOUND_HAVE_LIBTORCH)
-    target_link_libraries(riftbound_tests PRIVATE riftbound_ml)
-endif()
 
 include(GoogleTest)
 gtest_discover_tests(riftbound_tests)

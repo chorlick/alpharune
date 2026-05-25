@@ -174,6 +174,7 @@ protected:
             obj.super_type = def.super_type;
             obj.keywords = def.keywords;
             obj.domains = def.domains;
+            obj.tags = def.tags;
         }
         obj.zone = ZoneType::Hand;
         state.player(owner).hand.push_back(id);
@@ -194,6 +195,7 @@ protected:
             obj.super_type = def.super_type;
             obj.keywords = def.keywords;
             obj.domains = def.domains;
+            obj.tags = def.tags;
         }
         obj.zone = ZoneType::MainDeck;
         state.player(owner).main_deck.push_back(id);
@@ -222,6 +224,7 @@ protected:
             obj.super_type = def.super_type;
             obj.keywords = def.keywords;
             obj.domains = def.domains;
+            obj.tags = def.tags;
             obj.base_might = (might > 0) ? might : def.might;
         } else {
             obj.name = "TestUnit";
@@ -408,7 +411,8 @@ protected:
     void driveResumableTrigger(CardDefId def_id, PlayerId controller,
                                 GameObjectId source,
                                 std::function<Intent(const std::vector<Intent>&)> picker,
-                                EffectExecutor& exec) {
+                                EffectExecutor& exec,
+                                TriggerType firing = TriggerType::None) {
         ChainItem ri;
         ri.id = state.chain.allocateId();
         ri.controller = controller;
@@ -417,11 +421,13 @@ protected:
         ri.resume_point = 0;
         ri.source = source;
         ri.card_def_id = def_id;
+        ri.fired_trigger = firing;
         state.chain.resuming = ri;
 
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
         CardContext ctx{state, events, exec, controller, source};
+        ctx.firing_trigger = firing;
 
         card->onTrigger(ctx, {});
         while (exec.hasPendingChoice()) {
@@ -433,6 +439,18 @@ protected:
             card->onTrigger(ctx, {});
         }
         state.chain.resuming.reset();
+    }
+
+    /// Fire a card's onTrigger directly with a specific firing trigger (for
+    /// multi-trigger cards). No resume loop — use for non-resumable triggers.
+    void fireTriggerAs(CardDefId def_id, PlayerId controller, GameObjectId source,
+                       TriggerType firing, EffectExecutor& exec,
+                       const std::vector<GameObjectId>& targets = {}) {
+        Card* card = card_registry.get(def_id);
+        ASSERT_NE(card, nullptr);
+        CardContext ctx{state, events, exec, controller, source};
+        ctx.firing_trigger = firing;
+        card->onTrigger(ctx, targets);
     }
 
     /// Drive a resumable Card through case 0 → case 1 manually using

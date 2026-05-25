@@ -214,9 +214,10 @@ std::string StateRenderer::renderBattlefield(const GameState& state,
                                               const BattlefieldState& bf) const {
     std::ostringstream ss;
 
-    // Header
-    std::string bf_name = state.objectExists(bf.card_object_id)
-        ? state.getObject(bf.card_object_id).name : "???";
+    // Header. Use the disambiguating label so mirror-match BFs with
+    // identical card names ("Vilemaw's Lair" × 2) render as
+    // "Vilemaw's Lair (P1's)" / "Vilemaw's Lair (P2's)".
+    std::string bf_name = battlefieldLabel(state, bf.id);
     std::string ctrl = bf.controller.has_value()
         ? toString(*bf.controller) : "--";
 
@@ -584,9 +585,8 @@ std::string StateRenderer::render(const GameState& state) const {
     for (size_t bi = 0; bi < state.battlefields.size(); ++bi) {
         auto& bf = state.battlefields[bi];
 
-        // BF header
-        std::string bf_name = state.objectExists(bf.card_object_id)
-            ? state.getObject(bf.card_object_id).name : "???";
+        // BF header — disambiguate mirror-match names.
+        std::string bf_name = battlefieldLabel(state, bf.id);
         std::string ctrl = bf.controller.has_value()
             ? toString(*bf.controller) : "--";
 
@@ -718,12 +718,7 @@ static std::string formatActionShort(const GameState& state,
     auto locationName = [&](const LocationId& loc) -> std::string {
         if (std::holds_alternative<BaseLocation>(loc)) return "Base";
         auto bf_id = std::get<BattlefieldLocation>(loc).id;
-        for (auto& bf : state.battlefields) {
-            if (bf.id == bf_id && state.objectExists(bf.card_object_id)) {
-                return state.getObject(bf.card_object_id).name;
-            }
-        }
-        return "BF#" + std::to_string(bf_id);
+        return StateRenderer::battlefieldLabel(state, bf_id);
     };
 
     // Append "#<def_id>" so duplicate-named cards (Sett, Brawler OGN vs SFD;
@@ -760,6 +755,13 @@ static std::string formatActionShort(const GameState& state,
             }
             if (!a.targets.empty() && state.objectExists(a.targets[0])) {
                 ss << " @ " << nameWithDefId(state.getObject(a.targets[0]));
+            }
+            // CR 820 Repeat: chosen_value carries the number of extra
+            // tranches the agent is paying for. Surface it in the label
+            // so otherwise-identical "Play Hard Bargain" variants are
+            // distinguishable.
+            if (a.chosen_value.has_value() && *a.chosen_value > 0) {
+                ss << " [Repeat ×" << *a.chosen_value << "]";
             }
             break;
         }
@@ -837,11 +839,7 @@ static std::string formatActionShort(const GameState& state,
             ss << "Hide ";
             ss << cardLabel(a.card);
             if (a.chosen_battlefield != kInvalidId) {
-                for (auto& bf : state.battlefields) {
-                    if (bf.id == a.chosen_battlefield && state.objectExists(bf.card_object_id)) {
-                        ss << " @ " << state.getObject(bf.card_object_id).name;
-                    }
-                }
+                ss << " @ " << StateRenderer::battlefieldLabel(state, a.chosen_battlefield);
             }
             break;
         }
@@ -865,7 +863,16 @@ static std::string formatActionShort(const GameState& state,
             // X_PROMPT / MAY_PROMPT carry the human-readable mode labels
             // and prompt text.
             if (a.chosen_value.has_value()) {
-                ss << "Choose: =" << *a.chosen_value;
+                // Prefer the card-supplied human-readable label ("Yes",
+                // "Deal 2 damage", "X = 3") when present; the card stamps
+                // it onto the option Intent so the engine can render the
+                // meaning without knowing the card. Fall back to the bare
+                // "=<n>" for legacy/test intents that don't carry one.
+                if (!a.choice_label.empty()) {
+                    ss << a.choice_label;
+                } else {
+                    ss << "Choose: =" << *a.chosen_value;
+                }
                 break;
             }
             if (a.chosen_objects.empty()) {
@@ -1017,6 +1024,42 @@ std::string StateRenderer::renderDecision(
        << renderChosenAction(state, chosen) << "\n";
 
     return ss.str();
+}
+
+std::string StateRenderer::battlefieldLabel(const GameState& state,
+                                              BattlefieldId bf_id) {
+    // Look up the target BF's name.
+    const BattlefieldState* target = nullptr;
+    std::string name;
+    for (const auto& bf : state.battlefields) {
+        if (bf.id == bf_id) {
+            target = &bf;
+            if (state.objectExists(bf.card_object_id)) {
+                name = state.getObject(bf.card_object_id).name;
+            }
+            break;
+        }
+    }
+    if (!target) return "BF#" + std::to_string(bf_id);
+    if (name.empty()) return "BF#" + std::to_string(bf_id);
+
+    // Disambiguate when another BF on the board shares this name
+    // (mirror match where both players brought the same BF). Use
+    // `contributed_by` since that's fixed for the life of the game;
+    // the live `controller` flips on Score and would mislead.
+    int collisions = 0;
+    for (const auto& other : state.battlefields) {
+        if (other.id == bf_id) continue;
+        if (!state.objectExists(other.card_object_id)) continue;
+        if (state.getObject(other.card_object_id).name == name) ++collisions;
+    }
+    if (collisions == 0) return name;
+
+    std::string suffix;
+    if (target->contributed_by == PlayerId::Player1) suffix = "P1's";
+    else if (target->contributed_by == PlayerId::Player2) suffix = "P2's";
+    else suffix = "#" + std::to_string(bf_id);
+    return name + " (" + suffix + ")";
 }
 
 } // namespace riftbound

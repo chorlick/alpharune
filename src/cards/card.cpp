@@ -45,10 +45,12 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         no_choice.type = IntentType::MakeChoice;
         no_choice.player = ctx.controller;
         no_choice.chosen_value = 0;
+        no_choice.choice_label = "No — " + label;
         Intent yes_choice;
         yes_choice.type = IntentType::MakeChoice;
         yes_choice.player = ctx.controller;
         yes_choice.chosen_value = 1;
+        yes_choice.choice_label = "Yes — " + label;
 
         ctx.events.logTrace("MAY_PROMPT: " + label +
                              " (P=" + std::string(toString(ctx.controller)) +
@@ -127,6 +129,7 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
             intent.type = IntentType::MakeChoice;
             intent.player = ctx.controller;
             intent.chosen_value = x;
+            intent.choice_label = label + ": " + std::to_string(x);
             options.push_back(intent);
         }
         ctx.events.logTrace("X_PROMPT: " + label + " (range " +
@@ -195,17 +198,10 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
             ri.resume_data[1] = -2;
             return -2;
         }
-        if (legal.size() == 1) {
-            int m = legal.front();
-            ctx.events.logTrace("MODE_FORCED: " + label + " = mode#" +
-                                 std::to_string(m) +
-                                 (m < static_cast<int>(mode_labels.size())
-                                    ? " (" + mode_labels[m] + ")" : ""));
-            while (ri.resume_data.size() < 2) ri.resume_data.push_back(0);
-            ri.resume_data[1] = m;
-            ri.resume_point = 5;
-            return m;
-        }
+        // Always publish a choice, even if only one mode is legal. The
+        // agent still records the decision (matches the engine-wide
+        // rule that every decision point should surface to the agent
+        // for training fidelity — see cost-payment loop, pickTarget).
         std::vector<Intent> options;
         std::string label_summary;
         for (int m : legal) {
@@ -219,11 +215,13 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
             // (e.g. obj=1 = Bounty Hunter), polluting the policy head's
             // view of what each slot represents.
             i.chosen_value = m;
-            options.push_back(i);
-            if (!label_summary.empty()) label_summary += "/";
-            label_summary += (m < static_cast<int>(mode_labels.size()))
+            std::string mode_name = (m < static_cast<int>(mode_labels.size()))
                 ? mode_labels[m]
                 : ("mode#" + std::to_string(m));
+            i.choice_label = mode_name;
+            options.push_back(i);
+            if (!label_summary.empty()) label_summary += "/";
+            label_summary += mode_name;
         }
         ctx.events.logTrace("MODE_PROMPT: " + label + " [" + label_summary +
                              "] (agent decides among " +
@@ -286,18 +284,11 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             ri.resume_data[2] = static_cast<int32_t>(kInvalidId);
             return kInvalidId;
         }
-        if (legal_targets.size() == 1) {
-            GameObjectId t = legal_targets.front();
-            std::string name = ctx.state.objectExists(t)
-                ? ctx.state.getObject(t).name
-                : std::string("?");
-            ctx.events.logTrace("TGT_FORCED: " + label + " = " + name +
-                                 " (id=" + std::to_string(t) + ")");
-            while (ri.resume_data.size() < 3) ri.resume_data.push_back(0);
-            ri.resume_data[2] = static_cast<int32_t>(t);
-            ri.resume_point = 8;
-            return t;
-        }
+        // Always publish a choice, even if only one target is legal —
+        // the agent still records the decision. (See pickMode + the
+        // cost-payment loop for the same rule. Auto-picking single
+        // targets was hiding meaningful decision points like Bounty
+        // Hunter's Ganking grant when only one unit was on board.)
         // Publish one MakeChoice per legal target. action_vocab keys
         // MakeChoice slots by chosen_objects[0]'s card_def_id (Phase
         // 5g), so the policy head sees one slot per distinct
@@ -392,16 +383,9 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             ri.resume_point = 13;
             return {kInvalidId, kInvalidId};
         }
-        if (legal_a.size() == 1) {
-            GameObjectId a = legal_a.front();
-            std::string name = ctx.state.objectExists(a)
-                ? ctx.state.getObject(a).name : std::string("?");
-            ctx.events.logTrace("TGT_PAIR_FORCED_A: " + label + " = " +
-                                 name + " (id=" + std::to_string(a) + ")");
-            ri.resume_data[3] = static_cast<int32_t>(a);
-            ri.resume_point = 11;  // jump to second-target publish
-            // Fall through to second-target handling below.
-        } else {
+        // Always publish a choice, even with a single legal first
+        // target — the agent records the decision (engine-wide rule).
+        {
             std::vector<Intent> options;
             options.reserve(legal_a.size());
             std::string summary;
@@ -450,16 +434,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             ri.resume_point = 13;
             return {a, kInvalidId};
         }
-        if (legal_b.size() == 1) {
-            GameObjectId b = legal_b.front();
-            std::string name = ctx.state.objectExists(b)
-                ? ctx.state.getObject(b).name : std::string("?");
-            ctx.events.logTrace("TGT_PAIR_FORCED_B: " + label + " = " +
-                                 name + " (id=" + std::to_string(b) + ")");
-            ri.resume_data[4] = static_cast<int32_t>(b);
-            ri.resume_point = 13;
-            return {a, b};
-        }
+        // Always publish a choice, even with a single legal second
+        // target — the agent records the decision (engine-wide rule).
         std::vector<Intent> options;
         options.reserve(legal_b.size());
         std::string summary;

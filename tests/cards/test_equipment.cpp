@@ -219,10 +219,76 @@ TEST_F(SimpleEquipTest, ExperimentalHexplate){ runSimpleEquip({kExperimentalHexp
 TEST_F(SimpleEquipTest, WorldAtlas)          { runSimpleEquip({kWorldAtlas,     Domain::Mind, 0}); }
 TEST_F(SimpleEquipTest, ZeroDrive)           { runSimpleEquip({kZeroDrive,      Domain::Mind, 1}); }
 TEST_F(SimpleEquipTest, EdgeOfNight)         { runSimpleEquip({kEdgeOfNight,    Domain::Chaos, 0}); }
-TEST_F(SimpleEquipTest, BladeOfRuinedKing)   { runSimpleEquip({kBladeOfRuinedKing, Domain::Order, 0}); }
 TEST_F(SimpleEquipTest, BlightedBattleaxe)   { runSimpleEquip({kBlightedBattleaxe, Domain::Fury, 1}); }
 TEST_F(SimpleEquipTest, SoulSword)           { runSimpleEquip({kSoulSword,      Domain::Calm, 0}); }
-TEST_F(SimpleEquipTest, ShepherdsHeirloom)   { runSimpleEquip({kShepherdsHeirloom, Domain::Order, 0}); }
+// NOTE: Blade of the Ruined King (498) and Shepherd's Heirloom (720) are no
+// longer SIMPLE equips after the audit. Blade now also costs "kill a friendly
+// unit" + [Y], and Shepherd costs "Spend 1 XP". The generic SimpleEquipTest
+// (which only provides runes) can't satisfy those costs — see the focused
+// tests below for their real equip paths.
+
+// ── Focused equip tests for the non-simple audit-corrected gear ──
+
+// Blade of the Ruined King (498): [Equip] — [Y] (recycle an Order rune) AND
+// kill a friendly unit other than the equip target.
+TEST_F(EquipmentTest, BladeOfRuinedKingEquipsAfterKillingFriendlyAndPayingY) {
+    auto unit   = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto victim = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);  // sacrifice
+    auto gear   = addGearOnBoard(P1, kBladeOfRuinedKing, /*at_bf=*/0);
+    addRune(P1, Domain::Order);  // [Y] power rune to recycle
+
+    int gear_bonus = state.getObject(gear).might_bonus;
+    int initial_bonus = state.getObject(unit).attachment_might_bonus;
+
+    EffectExecutor exec(state, events, card_db);
+    EXPECT_TRUE(runEquip(gear, unit, exec))
+        << "Blade should equip once the friendly-kill + [Y] cost is payable";
+
+    EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>(unit));
+    EXPECT_EQ(state.getObject(unit).attachment_might_bonus, initial_bonus + gear_bonus);
+    // The sacrificed friendly unit was killed as part of the cost.
+    EXPECT_FALSE(state.getObject(victim).location.has_value())
+        << "the friendly unit was killed to pay Blade's cost";
+}
+
+TEST_F(EquipmentTest, BladeOfRuinedKingFailsWithoutFriendlyToKill) {
+    auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);  // only unit
+    auto gear = addGearOnBoard(P1, kBladeOfRuinedKing, /*at_bf=*/0);
+    addRune(P1, Domain::Order);
+
+    EffectExecutor exec(state, events, card_db);
+    EXPECT_FALSE(runEquip(gear, unit, exec))
+        << "no other friendly unit to kill -> cost unpayable";
+    EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
+}
+
+// Shepherd's Heirloom (720): [Equip] — Spend 1 XP.
+TEST_F(EquipmentTest, ShepherdsHeirloomEquipsBySpendingXp) {
+    auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto gear = addGearOnBoard(P1, kShepherdsHeirloom, /*at_bf=*/0);
+    setXp(P1, 1);
+
+    int gear_bonus = state.getObject(gear).might_bonus;
+    int initial_bonus = state.getObject(unit).attachment_might_bonus;
+
+    EffectExecutor exec(state, events, card_db);
+    EXPECT_TRUE(runEquip(gear, unit, exec))
+        << "Shepherd's Heirloom should equip by spending 1 XP";
+
+    EXPECT_EQ(state.player(P1).xp, 0) << "1 XP spent as the equip cost";
+    EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>(unit));
+    EXPECT_EQ(state.getObject(unit).attachment_might_bonus, initial_bonus + gear_bonus);
+}
+
+TEST_F(EquipmentTest, ShepherdsHeirloomFailsWithoutXp) {
+    auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto gear = addGearOnBoard(P1, kShepherdsHeirloom, /*at_bf=*/0);
+    setXp(P1, 0);
+
+    EffectExecutor exec(state, events, card_db);
+    EXPECT_FALSE(runEquip(gear, unit, exec)) << "no XP -> cost unpayable";
+    EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UniversalEquipGear ([Equip] [A] — recycle ANY rune, not domain-specific)
@@ -580,6 +646,116 @@ TEST_F(LastRitesTest, SucceedsAndRecyclesTwoFromTrash) {
     EXPECT_EQ(state.getObject(unit).attachment_might_bonus, gear_bonus);
 }
 
+// Atomicity: equip must fail (and consume nothing) when the Chaos rune
+// portion of the cost can't be paid, even if trash has enough cards.
+TEST_F(LastRitesTest, FailsAtomicallyWhenNoChaosRune) {
+    auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto gear = addGearOnBoard(P1, kLastRites, /*at_bf=*/0);
+    // Intentionally do NOT call giveRunesForEquip — no Chaos rune.
+
+    // 3 trash cards available.
+    auto t1 = state.createObject();
+    state.getObject(t1).owner = P1; state.getObject(t1).controller = P1;
+    state.getObject(t1).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t1);
+    auto t2 = state.createObject();
+    state.getObject(t2).owner = P1; state.getObject(t2).controller = P1;
+    state.getObject(t2).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t2);
+    auto t3 = state.createObject();
+    state.getObject(t3).owner = P1; state.getObject(t3).controller = P1;
+    state.getObject(t3).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t3);
+    int trash_before = trashSize(P1);
+
+    EffectExecutor exec(state, events, card_db);
+    EXPECT_FALSE(runEquip(gear, unit, exec))
+        << "Equip must fail when no Chaos rune is available";
+    EXPECT_EQ(state.getObject(unit).attachment_might_bonus, 0)
+        << "Unit must not gain any might bonus";
+    EXPECT_EQ(trashSize(P1), trash_before)
+        << "Trash must not be touched when the rune portion can't be paid";
+}
+
+// On-conquer/hold trigger: declared trigger type + the trigger plays a
+// unit from trash when one is available. Documents the current
+// implementation (auto-picks the most-recent unit) and the known
+// limitation (the played unit's cost is NOT yet paid — card text says
+// "(You still pay its costs.)" but the engine has no EffectExecutor
+// path into payCardCost from a chain-resolving card).
+TEST_F(LastRitesTest, EquippedTriggerType) {
+    Card* c = card_registry.get(kLastRites);
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->equippedTriggerType(), TriggerType::WhenIConquerOrHold)
+        << "Last Rites fires on conquer or hold";
+}
+
+TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
+    // Set up: Last Rites equipped to a unit on a battlefield.
+    auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto gear = addGearOnBoard(P1, kLastRites, /*at_bf=*/0);
+    giveRunesForEquip(P1, Domain::Chaos);
+    // Trash with one unit (the candidate for the on-conquer play) +
+    // two filler cards to satisfy the equip cost.
+    auto trash_unit = state.createObject();
+    state.getObject(trash_unit).owner = P1; state.getObject(trash_unit).controller = P1;
+    state.getObject(trash_unit).card_type = CardType::Unit;
+    state.getObject(trash_unit).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(trash_unit);
+    auto t_filler1 = state.createObject();
+    state.getObject(t_filler1).owner = P1; state.getObject(t_filler1).controller = P1;
+    state.getObject(t_filler1).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t_filler1);
+    auto t_filler2 = state.createObject();
+    state.getObject(t_filler2).owner = P1; state.getObject(t_filler2).controller = P1;
+    state.getObject(t_filler2).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t_filler2);
+
+    EffectExecutor exec(state, events, card_db);
+    ASSERT_TRUE(runEquip(gear, unit, exec));
+    // After equip, only `trash_unit` should remain in trash (the two
+    // fillers were just recycled to pay the equip cost).
+    ASSERT_EQ(trashSize(P1), 1);
+    ASSERT_EQ(state.player(P1).trash.front(), trash_unit);
+
+    // Fire the trigger.
+    Card* c = card_registry.get(kLastRites);
+    CardContext ctx{state, events, exec, P1, gear};
+    c->onEquippedTrigger(ctx, unit, {});
+
+    // Trash should now be empty — the unit was removed and placed on
+    // the board via the trigger's (cost-ignored) play.
+    EXPECT_EQ(trashSize(P1), 0)
+        << "Trigger should consume the unit from trash";
+    EXPECT_NE(state.getObject(trash_unit).zone, ZoneType::Trash)
+        << "Trash unit should have left the trash zone";
+}
+
+TEST_F(LastRitesTest, ConquerOrHoldTriggerNoopWhenTrashHasNoUnit) {
+    auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto gear = addGearOnBoard(P1, kLastRites, /*at_bf=*/0);
+    giveRunesForEquip(P1, Domain::Chaos);
+    // Trash with only non-unit cards (treat them as gear/spell filler).
+    auto t1 = state.createObject();
+    state.getObject(t1).owner = P1; state.getObject(t1).controller = P1;
+    state.getObject(t1).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t1);
+    auto t2 = state.createObject();
+    state.getObject(t2).owner = P1; state.getObject(t2).controller = P1;
+    state.getObject(t2).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(t2);
+
+    EffectExecutor exec(state, events, card_db);
+    ASSERT_TRUE(runEquip(gear, unit, exec));
+    ASSERT_EQ(trashSize(P1), 0);  // both fillers recycled by the equip cost
+
+    // Trigger has nothing to play — should be a no-op, not a crash.
+    Card* c = card_registry.get(kLastRites);
+    CardContext ctx{state, events, exec, P1, gear};
+    c->onEquippedTrigger(ctx, unit, {});
+    EXPECT_EQ(trashSize(P1), 0);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Weaponmaster — on-play attaches an Equipment from the board to self.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -630,7 +806,10 @@ TEST_F(WeaponmasterTest, AllWeaponmasterUnitsRegistered) {
         }) {
         Card* c = card_registry.get(def_id);
         ASSERT_NE(c, nullptr) << "weaponmaster " << def_id << " not registered";
-        EXPECT_EQ(c->triggerType(), TriggerType::WhenYouPlayMe)
+        // Jax (440) is now a multi-trigger card, so triggerType() returns
+        // None; assert via firesOn instead. Every weaponmaster still fires
+        // its equip ability on play.
+        EXPECT_TRUE(c->firesOn(TriggerType::WhenYouPlayMe))
             << "weaponmaster " << def_id << " should trigger on play";
     }
 }

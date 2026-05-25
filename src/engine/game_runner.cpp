@@ -27,10 +27,15 @@ GameResult GameRunner::run() {
     StateRenderer renderer(card_db_);
     renderer.show_hand = config_.show_hand;
 
-    // Compute seed
-    uint64_t game_seed = config_.base_seed == 0
+    // Compute seed. Truncated to 31 bits so any MCTS-style agent that
+    // builds an OpenSpiel state internally (whose `seed` GameParameter
+    // is int-typed) sees the same value the engine uses here. Without
+    // the mask, a 64-bit nondeterministic seed would be silently
+    // truncated only on the agent side and the cloned state's engine
+    // would diverge from the real one. See src/main.cpp for full notes.
+    uint64_t game_seed = (config_.base_seed == 0
         ? std::random_device{}()
-        : config_.base_seed + config_.game_index;
+        : config_.base_seed + config_.game_index) & 0x7FFFFFFFu;
 
     // Generate UUID
     std::string game_uuid;
@@ -88,25 +93,33 @@ GameResult GameRunner::run() {
             });
     }
 
-    // Agent factory. Only "random" is supported here — the legacy ML
-    // (ONNX) inference path was removed when the Python training pipeline
-    // was retired. Future LibTorch-based agents (when C++ AlphaZero training
-    // lands) will be wired in alongside RandomAgent. Until then, anyone
-    // wanting MCTS / neural agents should use the riftbound_openspiel
-    // binary which offers MCTSBot via OpenSpiel.
-    auto makeAgent = [&](const std::string& spec, uint64_t seed)
+    // Agent factory. If config_.agent_factory is supplied, defer to it —
+    // that's how the riftbound binary plugs in MCTS / IsMCTS (their
+    // constructors live in the executable's TU because they pull in
+    // OpenSpiel, which riftbound_core itself does not link). Otherwise
+    // fall back to the built-in random-only factory so older callers
+    // (tests, batch_runner with default config) keep working.
+    auto makeAgent = [&](int seat_idx, const std::string& spec)
         -> std::unique_ptr<AgentInterface> {
+        if (config_.agent_factory) {
+            // Factory receives game_seed verbatim — it picks how to derive
+            // any per-seat sub-seeds for the constructed agent.
+            return config_.agent_factory(seat_idx, game_seed);
+        }
+        // Fallback: per-seat derived seed so the two RandomAgents don't
+        // draw identical action sequences.
+        uint64_t derived = game_seed * 2 + static_cast<uint64_t>(seat_idx);
         if (spec == "random") {
-            return std::make_unique<RandomAgent>(seed);
+            return std::make_unique<RandomAgent>(derived);
         }
         throw std::runtime_error(
-            "GameRunner: unsupported agent spec '" + spec +
-            "'. Only 'random' is available in this build. For MCTS, use "
-            "riftbound_openspiel.");
+            "GameRunner: agent spec '" + spec +
+            "' requires an agent_factory in GameConfig (riftbound_core only "
+            "ships RandomAgent; mcts/ismcts/human live in the binary's TU).");
     };
 
-    auto agent1 = makeAgent(config_.agent1_spec, game_seed * 2);
-    auto agent2 = makeAgent(config_.agent2_spec, game_seed * 2 + 1);
+    auto agent1 = makeAgent(0, config_.agent1_spec);
+    auto agent2 = makeAgent(1, config_.agent2_spec);
 
     // Decision callback feeds the HTML replay writer when --render is on.
     engine.on_decision = [&](const GameState& state,
@@ -142,7 +155,8 @@ GameResult GameRunner::run() {
 
         // Per-game result (only for small batches)
         if (config_.total_games <= 20) {
-            std::cout << "Game " << (config_.game_index + 1) << ": "
+            std::cout << "Game " << (config_.game_index + 1)
+                      << " [seed=" << game_seed << "]: "
                       << toString(result.winner) << " wins"
                       << " (" << result.final_scores[0] << "-"
                       << result.final_scores[1] << ")"

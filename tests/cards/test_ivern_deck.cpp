@@ -63,18 +63,28 @@ constexpr CardDefId kBackOff         = 604;
 // [739] Ivern, Friend to All
 // ═══════════════════════════════════════════════════════════════════════════
 
-TEST_F(CardTestFixture, IvernFriend_OnPlayGainsBirdTag) {
+TEST_F(CardTestFixture, IvernFriend_GainsChosenTagOnAsYouPlayMe) {
+    // The tag choice moved from a hardcoded "Bird" in onPlay to an AGENT
+    // pickMode on the AsYouPlayMe trigger. Drive that trigger with a picker
+    // that selects the Bird mode (the kTags[0] mode), and assert Ivern gains
+    // the chosen tag.
     auto ivern_id = addUnit(P1, kIvernFriend, /*might=*/0, /*at_bf=*/-1);
     auto* card = card_registry.get(kIvernFriend);
     ASSERT_NE(card, nullptr);
 
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, ivern_id};
-    card->onPlay(ctx);
+    // pickMode publishes one MakeChoice per mode (Bird/Cat/Dog/Poro). Bird is
+    // the first mode — pick legal[0].
+    driveResumableTrigger(
+        kIvernFriend, P1, ivern_id,
+        [](const std::vector<Intent>& legal) {
+            return legal.empty() ? Intent{} : legal.front();  // Bird
+        },
+        exec, TriggerType::AsYouPlayMe);
 
     const auto& tags = state.getObject(ivern_id).tags;
     EXPECT_TRUE(std::find(tags.begin(), tags.end(), std::string("Bird")) != tags.end())
-        << "Ivern's onPlay must append 'Bird' to its tags (default pick).";
+        << "Ivern's AsYouPlayMe choice must append the chosen tag ('Bird').";
 }
 
 TEST_F(CardTestFixture, IvernFriend_ScoresOnConquerOrHoldWhenAllFourTags) {
@@ -88,10 +98,10 @@ TEST_F(CardTestFixture, IvernFriend_ScoresOnConquerOrHoldWhenAllFourTags) {
     state.getObject(addUnit(P1, kInvalidId, 1, 0)).tags = {"Poro"};
 
     int score_before = state.player(P1).score;
-    auto* card = card_registry.get(kIvernFriend);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, ivern_id};
-    card->onTrigger(ctx, {});
+    // Scoring is on the WhenIConquerOrHold trigger; fire it explicitly.
+    fireTriggerAs(kIvernFriend, P1, ivern_id,
+                  TriggerType::WhenIConquerOrHold, exec);
 
     EXPECT_EQ(state.player(P1).score, score_before + 1)
         << "All-4-tag union satisfied — must score 1.";
@@ -105,10 +115,9 @@ TEST_F(CardTestFixture, IvernFriend_DoesNotScoreWhenMissingATag) {
     // Missing Poro intentionally.
 
     int score_before = state.player(P1).score;
-    auto* card = card_registry.get(kIvernFriend);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, ivern_id};
-    card->onTrigger(ctx, {});
+    fireTriggerAs(kIvernFriend, P1, ivern_id,
+                  TriggerType::WhenIConquerOrHold, exec);
 
     EXPECT_EQ(state.player(P1).score, score_before)
         << "Union not satisfied (Poro missing) — must not score.";

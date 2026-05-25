@@ -806,8 +806,8 @@ TEST_F(ChainTestFixture, TemporaryBuffsExpire) {
     EXPECT_EQ(state.getObject(unit).current_might, 6); // 4 + 2
     EXPECT_EQ(state.getObject(unit).temp_might_bonus, 2);
 
-    // Simulate expiration
-    state.getObject(unit).buff_count -= state.getObject(unit).temp_might_bonus;
+    // Simulate expiration (new model: temp_might_bonus is a separate term in
+    // recomputeMight, so clearing it drops the bonus — buff_count is untouched).
     state.getObject(unit).temp_might_bonus = 0;
     state.getObject(unit).recomputeMight();
 

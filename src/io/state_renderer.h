@@ -30,6 +30,16 @@ public:
     std::string renderChosenAction(const GameState& state,
                                     const Intent& intent) const;
 
+    /// Print-friendly label for a battlefield. Returns the card name,
+    /// with a `(from Px)` suffix when another battlefield on the
+    /// board has the same name (so a mirror-match where both players
+    /// brought the same BF doesn't show two indistinguishable
+    /// "Vilemaw's Lair" entries). `contributed_by` is the disambiguator
+    /// — that's the player who supplied the BF in deckbuild, fixed
+    /// for the life of the game, NOT the runtime controller (which
+    /// changes when a player Scores it).
+    static std::string battlefieldLabel(const GameState& state, BattlefieldId bf_id);
+
     /// Render a full decision block (header + actions + chosen).
     /// Returns empty string if the decision is trivial (1 legal action).
     std::string renderDecision(const GameState& state,

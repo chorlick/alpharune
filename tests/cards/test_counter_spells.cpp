@@ -320,8 +320,10 @@ TEST_F(DefyTest, PlayableWhenSpellOnChain) {
     EXPECT_TRUE(c->hasLegalTargets(state, P1));
 }
 
-TEST_F(DefyTest, CountersAndDraws) {
-    auto target = pushSpellOnChain(P2, kLunarBoon);
+TEST_F(DefyTest, Counters) {
+    // Defy's text is only "Counter a spell that costs no more than [4]".
+    // The previously-asserted "+1 draw" was an un-printed bug, now removed.
+    auto target = pushSpellOnChain(P2, kLunarBoon);  // cost 3 <= 4: counterable
     auto deck_card = addToDeck(P1, kInvalidId);
     auto src = state.createObject();
     state.getObject(src).owner = P1;
@@ -333,11 +335,13 @@ TEST_F(DefyTest, CountersAndDraws) {
 
     EXPECT_TRUE(state.chain.items.empty());
     EXPECT_EQ(state.getObject(target).zone, ZoneType::Trash);
-    EXPECT_EQ(handSize(P1), initial_hand + 1) << "Defy draws 1";
-    EXPECT_TRUE(inHand(P1, deck_card));
+    EXPECT_EQ(handSize(P1), initial_hand) << "Defy no longer draws";
+    EXPECT_FALSE(inHand(P1, deck_card)) << "no card drawn";
 }
 
-TEST_F(DefyTest, DrawsEvenWithEmptyChain) {
+TEST_F(DefyTest, DoesNothingHarmfulWithEmptyChain) {
+    // With no spell on the chain there is nothing to counter, and Defy no
+    // longer has a draw side effect — resolving it should be a harmless no-op.
     auto deck_card = addToDeck(P1, kInvalidId);
     auto src = state.createObject();
     state.getObject(src).owner = P1;
@@ -347,8 +351,9 @@ TEST_F(DefyTest, DrawsEvenWithEmptyChain) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(src, kDefy, P1, {}, exec);
 
-    EXPECT_EQ(handSize(P1), initial_hand + 1) << "draw still happens";
-    EXPECT_TRUE(inHand(P1, deck_card));
+    EXPECT_EQ(handSize(P1), initial_hand) << "no draw on empty chain";
+    EXPECT_FALSE(inHand(P1, deck_card));
+    EXPECT_TRUE(state.chain.items.empty());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

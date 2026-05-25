@@ -20,9 +20,20 @@
 
 namespace riftbound {
 
+class CardRegistry;
+
 class EffectExecutor {
 public:
-    EffectExecutor(GameState& state, EventBus& events, const CardDB& card_db);
+    EffectExecutor(GameState& state, EventBus& events, const CardDB& card_db,
+                   const CardRegistry* card_registry = nullptr);
+
+    /// Register the CardRegistry after construction. Lets effects that
+    /// re-play a card (Dazzling Aurora, Mirror Image, etc.) reach the
+    /// played card's onPlay hook — without the registry, playIgnoringCost
+    /// silently skips "As you play me" effects (Baron Nashor's Pit
+    /// spawn, etc.). Tests that don't exercise the play path may leave
+    /// this null.
+    void setCardRegistry(const CardRegistry* registry) { card_registry_ = registry; }
 
     /// Access the CardDB for card-side code that needs to look up static
     /// card data (e.g. Virtuoso needs to read a chain item's energy_cost
@@ -46,6 +57,11 @@ public:
     void buffUnit(GameObjectId target);
     void readyObject(GameObjectId target);
     void moveToBase(GameObjectId target);
+    /// Unattach a single gear from the unit it's equipped to. Removes it from
+    /// the unit's attachment list, refunds the unit's might bonus, and clears
+    /// the gear's attachment state. Per CR 719.5 the detached gear stays at
+    /// its current location (on board, unattached). No-op if not attached.
+    void unattachGear(GameObjectId gear);
     /// Move a unit to the given battlefield. Updates `location` + `zone`,
     /// emits UnitMovedEvent. Caller is responsible for any contested-status
     /// re-evaluation downstream (cleanup recomputes BF contested flags).
@@ -132,7 +148,15 @@ public:
     // ── Composite operations ──
     std::pair<GameObjectId, std::vector<GameObjectId>>
         revealUntil(PlayerId player, CardType condition);
-    void playIgnoringCost(PlayerId player, GameObjectId card);
+    /// Play `card` from its current zone onto the board without paying
+    /// its costs. `location` is where the unit lands: if std::nullopt
+    /// (default), the controller's base — back-compat for callers that
+    /// don't need to surface a location choice. Per CR 355.2.a, when
+    /// effects play a unit for free the controller still chooses base
+    /// or any battlefield they control; callers should prompt the
+    /// agent and pass the result here (see Dazzling Aurora).
+    void playIgnoringCost(PlayerId player, GameObjectId card,
+                           std::optional<LocationId> location = std::nullopt);
 
     /// Predict N: look at top N cards, agent chooses which to recycle (put back on bottom).
     void predict(PlayerId player, int count);
@@ -198,6 +222,7 @@ private:
     GameState& state_;
     EventBus& events_;
     const CardDB& card_db_;
+    const CardRegistry* card_registry_ = nullptr;  // optional; needed for playIgnoringCost onPlay dispatch
     std::mt19937_64* rng_ = nullptr;
     AgentChoiceQuery agent_query_;
     PendingChoice pending_;

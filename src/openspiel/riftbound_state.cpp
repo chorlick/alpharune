@@ -3,6 +3,7 @@
 
 #include "action_vocab.h"
 
+#include "ml/cfr_util.h"
 #include "ml/feature_extractor.h"
 
 #include "open_spiel/spiel_utils.h"
@@ -264,13 +265,10 @@ std::vector<double> RiftboundState::Returns() const {
     return {0.0, 0.0};
 }
 
-std::string RiftboundState::ObservationString(::open_spiel::Player player) const {
-    // FNV-1a rolling hash over the masked observation tensor bytes.
-    // ISMCTSBot only uses this as a map key to group identical info
-    // sets — collision risk is bounded by tensor uniqueness, which is
-    // very high for game states (4623+ floats encoding the full visible
-    // board). 64 bits of hash output is enough to avoid spurious
-    // node-key collisions across a search-tree's lifetime.
+uint64_t RiftboundState::InfoSetId(::open_spiel::Player player) const {
+    // Thin wrapper: extract masked features + delegate hashing to the
+    // pure ml::computeInfoSetId so the hash function itself is unit-
+    // testable without a full game.
     ::riftbound::PlayerId rb_player = (player == 0)
         ? ::riftbound::PlayerId::Player1
         : ::riftbound::PlayerId::Player2;
@@ -278,21 +276,13 @@ std::string RiftboundState::ObservationString(::open_spiel::Player player) const
         is_lazy_ ? lazy_state_ : engine_->state();
     auto feats = ::riftbound::ml::extractStateFeatures(
         gs, rb_player, rb_game_.cardDb());
+    return ::riftbound::ml::computeInfoSetId(feats, player);
+}
 
-    uint64_t h = 14695981039346656037ULL;  // FNV-1a 64-bit basis
-    for (float v : feats) {
-        // Bit-cast float→uint32 so identical floats hash identically.
-        // (Memcpy is the standards-compliant way to type-pun in C++.)
-        uint32_t bits;
-        std::memcpy(&bits, &v, sizeof(bits));
-        for (int b = 0; b < 4; ++b) {
-            h ^= static_cast<uint64_t>((bits >> (b * 8)) & 0xFF);
-            h *= 1099511628211ULL;
-        }
-    }
-
-    // Encode as a fixed-width hex string. ISMCTSBot uses this as a
-    // map key — short fixed-width keys keep the hash table tight.
+std::string RiftboundState::ObservationString(::open_spiel::Player player) const {
+    // Compact hex of the InfoSetId — ISMCTSBot keys node lookups on
+    // this string. 16 hex chars = 64-bit hash, tight map keys.
+    uint64_t h = InfoSetId(player);
     char buf[17];
     std::snprintf(buf, sizeof(buf), "%016lx", static_cast<unsigned long>(h));
     return std::string(buf);
@@ -382,6 +372,22 @@ void RiftboundState::DoApplyAction(::open_spiel::Action action) {
 
     engine_->mutableState().action_history.push_back(static_cast<int64_t>(action));
     engine_->applyChoice(legal_index);
+}
+
+std::unique_ptr<RiftboundState> RiftboundState::makeFromSnapshot(
+    std::shared_ptr<const ::open_spiel::Game> game,
+    uint64_t engine_seed,
+    const ::riftbound::GameState& snap_state,
+    ::riftbound::StepResult        snap_step,
+    ::riftbound::GameResult        snap_result) {
+    // The single deep copy lives here — snap_state crosses ownership
+    // boundaries into the lazy state. Downstream this is a move-only
+    // chain into the engine's resumeFromSnapshot.
+    return std::unique_ptr<RiftboundState>(new RiftboundState(
+        std::move(game), engine_seed,
+        ::riftbound::GameState(snap_state),
+        std::move(snap_step), std::move(snap_result),
+        SnapshotTag{}));
 }
 
 } // namespace riftbound::openspiel

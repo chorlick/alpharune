@@ -1,175 +1,191 @@
 # Riftbound Simulation Engine
 
-A C++20 game engine that simulates 1v1 Riftbound TCG matches end-to-end, with
-the OpenSpiel framework wired up for tree-search agents and a Python training
-loop for ONNX-deployed neural agents. This is a research codebase — not a
-product — but the engine, the OpenSpiel wrapper, and the training pipeline
-all work as standalone tools.
+A high-performance C++20 game engine that simulates 1v1 Riftbound TCG matches
+end-to-end. Drop-in compatible with [OpenSpiel](https://github.com/google-deepmind/open_spiel)
+so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
+
+> **Disclaimer.** This codebase was largely *vibe-coded* — built rapidly with
+> heavy AI-assisted iteration, prioritising "works on the test decks today" over
+> "production-grade everywhere." Released **as-is** for research and hobby use.
+> Expect rough edges in: card coverage (~80 of 787 cards manually implemented;
+> rest are auto-generated stubs of varying fidelity), edge-case rules
+> interactions, performance on stress workloads, and corners of the OpenSpiel
+> wrapper. PRs welcome; production deployment at your own risk.
+
+> The training / ML side — neural agents, self-play loops, model checkpoints —
+> lives in a separate sibling repo. This repo is just the simulator + AI
+> baselines via OpenSpiel.
 
 ## What works today
 
-- **Engine.** Full turn loop (awaken → channel → draw → main → end), FEPR
-  chain resolution, combat with damage assignment, scoring, mulligans,
+- **Full rules engine.** Awaken → channel → draw → main → end turn loop,
+  FEPR chain resolution, combat with damage assignment, scoring, mulligans,
   battlefields, gear/equip, 23 keyword mechanics, replacement effects.
-- **Cards.** 787 cards loaded from `cards/registry.json`. 76 manually
-  implemented with full behavior (champions, legends, key spells in test
-  decks). The other 711 have auto-generated stubs — many work for simple
-  effects; complex effects are partial or no-op. A backlog of ~42
-  do-nothing cards in test decks is tracked in `CLAUDE.md` and is the
-  next polish target.
-- **Agents.** `RandomAgent` (uniform random), `ModelAgent` (ONNX
-  inference). A V1 model architecture with card embeddings + attention
-  over actions, trained via supervised + REINFORCE self-play, ships in
-  `scripts/train_agent.py`. Documented as plateaued — V2 is the next
-  architecture direction.
-- **OpenSpiel wrapper.** Information-set-correct `ObservationTensor`,
-  bit-packed `Intent ↔ ActionID` encoding, replay-based `Clone()`,
-  MCTSBot integration. `riftbound_openspiel` is the unified
-  match-runner CLI. The replay Clone is the main throughput bottleneck;
-  Phase C-1 of the OpenSpiel port is rewriting the engine as a native
-  step machine to make Clone an O(1) memcpy.
-- **Tests.** 98 unit tests via Google Test + 10-game clone equivalence
-  test via OpenSpiel + 1000-game statistical parity vs the non-OpenSpiel
-  batch runner.
+- **787 cards** loaded from `cards/registry.json`. ~80 manually implemented
+  with full behavior (champions, legends, key spells in test decks); the
+  rest have auto-generated stubs that cover simple effects.
+- **Deterministic.** Given a seed, the same game replays identically.
+- **OpenSpiel integration.** `RiftboundGame` / `RiftboundState` implement
+  the OpenSpiel `Game` / `State` interfaces. MCTS, ISMCTS, and random
+  agents work out of the box.
+- **HTML replays.** Per-game rendered HTML with board snapshots,
+  decision points, trace log, arrow-key navigation.
+- **536 unit tests** covering engine behavior + card mechanics.
+- **Engine-fiber step machine.** `boost::context::fiber`-based cooperative
+  yields at decision points. No OS thread per game state, supports
+  thousands of `Clone()` calls per decision for branching search.
 
-## Build
+## Quick start
 
 ```bash
-# Engine only (fast)
+# Install deps (Ubuntu/Debian)
+sudo apt-get install cmake ninja-build g++ libboost-all-dev nlohmann-json3-dev
+
+# Configure + build (first time clones OpenSpiel + abseil into build/_deps, ~30s)
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-# With OpenSpiel wrapper (clones OpenSpiel + abseil into build/_deps,
-# adds ~30s to first configure)
-cmake -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DRIFTBOUND_BUILD_OPENSPIEL=ON
-cmake --build build-release
+# Run unit tests
+RIFTBOUND_ROOT=. ./build/riftbound_tests
+
+# Play random vs MCTS (single game, stdout + HTML replay)
+./build/riftbound \
+    --agent1 random --agent2 mcts:sims=50 \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json \
+    --render-html on
+
+# Batch 100 games on 8 threads (random vs random, no UI)
+./build/riftbound \
+    --agent1 random --agent2 random \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json \
+    --games 100 --threads 8
+
+# Play AS A HUMAN against MCTS-50 in your browser. The binary
+# auto-starts a Boost.Beast webserver on http://127.0.0.1:8080
+# whenever any seat is human; trace logging + HTML replay are also
+# auto-enabled. Open the URL in any browser to play.
+./build/riftbound \
+    --agent1 human --agent2 mcts:sims=50 \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
+
+# Want to play as P2 instead? Swap the seats:
+./build/riftbound \
+    --agent1 mcts:sims=50 --agent2 human \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
+
+# Hot-seat (two humans in one browser tab, take turns):
+./build/riftbound --agent1 human --agent2 human \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
+
+# Spectator (force the web UI ON for an AI-vs-AI game):
+./build/riftbound --agent1 random --agent2 mcts:sims=20 --web on \
+    --deck1 decks/miss_fortune_test.json \
+    --deck2 decks/miss_fortune_test.json
 ```
 
-**Dependencies:** cmake, g++ (C++20), libboost-all-dev,
-nlohmann-json3-dev, ninja-build, ONNX Runtime (fetched by CMake).
+Pass `--help` for the full flag list. The web UI's WebSocket protocol
+is documented in [`docs/play-api.md`](docs/play-api.md).
 
-**Python (for training):**
+## Binaries
+
+| Binary | Purpose |
+|---|---|
+| `build/riftbound` | Unified game runner. All modes (single / batch / web UI / spectator), all agents (`random` / `human` / `mcts:sims=N` / `ismcts:sims=N`), HTML replay, trace/debug logging — all driven by CLI flags. |
+| `build/riftbound_tests` | Google Test suite. |
+| `build/src/openspiel/riftbound_clone_equiv_test` | Validates Clone() correctness — clones mid-game, runs the same actions on original + clone, asserts identical terminal state. |
+| `build/src/openspiel/riftbound_clone_microbench` | Microbenchmark — times Clone() throughput. |
+| `build/src/openspiel/riftbound_parity_baseline` | Diagnostic — confirms OpenSpiel wrapper produces statistically identical results to the raw engine. |
+
+## Plug in your own agent
+
+Subclass `riftbound::AgentInterface` (see `src/agents/agent_interface.h`)
+and add a branch to `buildAgent()` in `src/main.cpp` — adding a new
+`--agent foo:...` spec is ~30 lines. The `MctsAgent` / `IsMctsAgent`
+adapters in `src/agents/mcts_agent.{h,cpp}` show how to wrap an
+OpenSpiel `Bot` behind the same interface.
+
+For learned agents: a sibling repo holds the training pipeline + model
+architectures (Deep CFR, OSFP, online CFR / ReBeL inference, etc.).
+That repo links against this one as a static library — engine repo
+stays slim and dependency-light.
+
+## Card data pipeline
+
+`cards/registry.json` is the single source of truth for card definitions.
+To rebuild it from scratch:
+
 ```bash
-conda activate riftbound && pip install -r scripts/requirements.txt
+# 1. Scrape the official Riftbound gallery (writes cards/json/*.json)
+python3 scripts/fetch_cards.py
+
+# 2. Apply errata (patches ability_text from errata/ documents)
+python3 scripts/apply_errata.py
+
+# 3. Build the registry (assigns stable integer IDs, joins errata)
+python3 scripts/card_registry.py
+
+# 4. Code-gen C++ stubs for newly-added cards
+python3 scripts/generate_cards.py
+
+# 5. Import a text deck list
+python3 scripts/deck_import.py decks/my_deck.txt
 ```
-(torch, numpy, onnx, onnxruntime, tensorboard)
-
-## Run
-
-```bash
-# Play a single game between two random agents
-./build-release/riftbound decks/leblanc_test.json decks/leblanc_test.json \
-    -r cards/registry.json
-
-# Batch 100 games on all cores, write training data
-./build-release/riftbound deck1.json deck2.json \
-    -r cards/registry.json --games 100 --threads 0 -o /tmp/data.jsonl
-
-# Play an ONNX model against random
-./build-release/riftbound deck1.json deck2.json \
-    -r cards/registry.json \
-    --agent1 model:models/miss_fortune/v002.onnx --agent2 random
-
-# OpenSpiel: random vs random
-./build-release/src/openspiel/riftbound_openspiel \
-    --agent1 random --agent2 random --games 100 --threads 4
-
-# OpenSpiel: MCTS vs random (deterministic seed for reproducible A/Bs)
-./build-release/src/openspiel/riftbound_openspiel \
-    --agent1 random --agent2 mcts:sims=5 \
-    --games 100 --seed 42
-
-# Full unit test suite
-RIFTBOUND_ROOT=. ./build-release/riftbound_tests
-
-# OpenSpiel clone-equivalence (correctness, not throughput)
-RIFTBOUND_ROOT=. ./build-release/src/openspiel/riftbound_clone_equiv_test
-```
-
-`riftbound_openspiel --help` lists every flag.
-
-## Scripts
-
-Tooling under `scripts/`. The card-data pipeline (`fetch → errata →
-registry → import`) builds `cards/registry.json` from scratch; the
-others are dev conveniences.
 
 | Script | Purpose |
 |---|---|
-| `scripts/fetch_cards.py` | Scrape the official Riftbound gallery into per-card JSONs under `cards/json/`. Run once per set release. |
-| `scripts/apply_errata.py` | Patch card `ability_text` with corrections from `errata/` documents. Run after `fetch_cards.py`. |
-| `scripts/card_registry.py` | Assemble `cards/registry.json` — stable integer IDs + feature vectors used by the engine, importer, and ML. Single source of truth for card-to-int mapping. |
-| `scripts/deck_import.py` | Convert a text deck list (Piltover Archive format) into the JSON the engine consumes. Validates against tournament rules. `python3 scripts/deck_import.py decks/myDeck.txt`. |
-| `scripts/generate_cards.py` | Code-gen C++ Card subclass stubs from `registry.json`. Re-run after registry changes; hand-edits go in `src/cards/manual/`. |
-| `scripts/generate_replays.py` | Bulk replay generation for V&V. Runs N games of every deck pair under `decks/` and stashes per-pair HTML replays under `replays/<deck1>_v_<deck2>/`. Threaded — runs pairs in parallel. Agents are per-seat. Defaults to **combinations** (unordered, incl. mirrors); pass `--pair-mode permutations` for the full N×N when asymmetric agents make seat order meaningful. |
-
-**Bulk replay generation examples:**
-```bash
-# 5 games per matchup, random vs random, default (combinations, 1 thread).
-# 11 decks → 66 unordered pairs → 330 games:
-scripts/generate_replays.py random random 5
-
-# Same but use all cores in parallel (one binary invocation per pair):
-scripts/generate_replays.py random random 5 --threads 0
-
-# Asymmetric agents — switch to permutations so seat order is preserved.
-# 11 decks → 121 ordered pairs → 363 games:
-scripts/generate_replays.py mcts:sims=10 random 3 \
-    --pair-mode permutations --threads 8
-
-# Override deck source / output directory:
-scripts/generate_replays.py random random 5 \
-    --decks-dir decks/featured --out-dir /tmp/replays
-```
-
-Agents map directly to the binary's `--agent1` / `--agent2` flags, so
-the seat assignment is stable across all deck pairings. For asymmetric
-matchups (mcts vs random), combinations mode only tests one seat
-orientation — use `--pair-mode permutations` to cover both.
-Requires `tqdm` (already in `scripts/requirements.txt`).
-
-## What's planned
-
-The headline architectural items left, in dependency order:
-
-1. **Phase C-1 commits 6–9** — Convert the engine's chain / combat /
-   cleanup subsystems to be resumable without the StepDriver worker
-   thread, then collapse `Clone()` to `memcpy(GameState)`. Unblocks
-   real MCTS at scale and any AlphaZero-style training.
-2. **Fill in the ~42 do-nothing cards** in test decks. Each is a small
-   card-class override; the backlog is in `CLAUDE.md`.
-3. **Phase C-2A continued** — Remaining V2 data-emission PRs (spatial
-   mapping, factored legal masks, binary serializer V2, etc.) once the
-   model that consumes them is being built.
-4. **Phase C-2B** — V2 transformer + pointer-head architecture in C++
-   via LibTorch, replacing the Python training scripts entirely.
-5. **Phase B-2** — Explicit OpenSpiel chance nodes (currently
-   `kSampledStochastic`), prerequisite for CFR / NFSP.
+| `scripts/fetch_cards.py` | Scrape Riftbound's official gallery into per-card JSONs. Run once per set release. |
+| `scripts/apply_errata.py` | Patch card text with corrections from `errata/`. |
+| `scripts/card_registry.py` | Assemble `cards/registry.json`. Source of truth for card-to-integer mapping. |
+| `scripts/deck_import.py` | Convert text deck lists (Piltover Archive format) into engine JSON. Validates against tournament rules. |
+| `scripts/generate_cards.py` | Code-gen C++ Card subclass stubs from registry. Hand-edits go in `src/cards/manual/`. |
+| `scripts/generate_replays.py` | Bulk-generate HTML replays of every deck pair under `decks/`. Useful for visual V&V after card changes. |
+| `scripts/audit_deck_cards.py` | Per-deck audit of card-implementation status (FULL / PARTIAL / STUB / MISSING). |
 
 ## Repository layout
 
-See `CLAUDE.md` for the architectural deep-dive and the per-phase work
-log. The short version:
+```
+src/core/        ID types, events, intents, game state, card database
+src/engine/      Turn loop, chain manager, effect executor, trigger manager,
+                 batch runner, step driver (fiber-based)
+src/cards/       Card subclasses — generated/ + manual/ overrides
+src/agents/      AgentInterface + RandomAgent + HumanAgent
+src/io/          HTML replay writer, ASCII state renderer
+src/openspiel/   OpenSpiel Game / State subclasses, action vocabulary,
+                 match runner, clone-correctness tests
+src/ml/          Engine-side shared infra: feature extractor +
+                 CFR utilities. No torch — these emit data for
+                 downstream ML consumers.
+src/rules/       Deck validator (tournament rules)
+src/effects/     Effect type definitions
 
+tests/           Google Test — engine behavior + card mechanics
+cards/           registry.json, errata-applied card data, ban list
+decks/           Sample decks (per-archetype .json + .txt formats)
+rules/           core-rules.md, tournament-rules.md, core-rules.pdf
+errata/          Official errata documents
+scripts/         Card-data pipeline + replay generation
 ```
-src/core/        types, ids, events, game state, card database
-src/engine/      turn loop, chain manager, effect executor, trigger manager,
-                 batch runner, step driver
-src/cards/       card subclasses (generated/, manual/)
-src/agents/      random + ONNX model agents
-src/ml/          shared feature extractor + V2 tensor types
-src/openspiel/   game/state subclasses, action encoding, match runner
-tests/           Google Test suites
-cards/           registry.json + per-card JSON + ban list
-decks/           sample decks
-docs/            engine-design.md, ml-training-design.md,
-                 potential-model-architecture.txt (Phase C-2 plan)
-scripts/         card-data pipeline + deck importer + replay batch runner
-```
+
+## Reference
+
+- `rules/core-rules.md` — full game rules (sections 000–826)
+- `rules/tournament-rules.md` — deck construction + tournament policies
+- `CLAUDE.md` — coding standards + architecture conventions for contributors
 
 ## Status
 
-Tagged `v0.1.0` — the engine and tooling listed under "What works
-today" are stable; everything under "What's planned" is in flight.
-This is a working development snapshot, not a finished product.
+This is a working development snapshot. The engine, OpenSpiel wrapper, and
+test suite are stable. Card coverage is improving steadily — see
+`scripts/audit_deck_cards.py` output for per-deck implementation status.
+
+## License
+
+TBD. Card data fetched from public Riot sources; card art is *not* bundled
+(images are loaded on-demand from Riot's CDN by replay viewers / web UIs).
+Riftbound is the property of Riot Games — this engine reproduces published
+public rules for research and educational use.

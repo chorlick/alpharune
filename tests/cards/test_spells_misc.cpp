@@ -154,9 +154,9 @@ TEST_F(SpriteBurstSpellTest, TokensHaveTemporaryAndAreReady) {
 
 class ThrillOfHuntTest : public CardTestFixture {};
 
-TEST_F(ThrillOfHuntTest, BanishedUnitEndsUpReadyAtBattlefield) {
+TEST_F(ThrillOfHuntTest, BanishedUnitReentersExhaustedAtBattlefield) {
     auto unit = addUnit(P1, kInvalidId, /*might=*/4, /*at_bf=*/0);
-    state.getObject(unit).is_exhausted = true;
+    state.getObject(unit).is_exhausted = false;  // ready before banish
     state.getObject(unit).damage_marked = 2;
     auto src = state.createObject();
     state.getObject(src).owner = P1;
@@ -166,8 +166,10 @@ TEST_F(ThrillOfHuntTest, BanishedUnitEndsUpReadyAtBattlefield) {
     invokeOnResolve(src, kThrillOfHunt, P1, {unit}, exec);
 
     EXPECT_EQ(state.getObject(unit).zone, ZoneType::BattlefieldZone);
-    EXPECT_FALSE(state.getObject(unit).is_exhausted)
-        << "Thrill of the Hunt re-plays the unit ready";
+    // Per CR 143.4, a unit (re-)played via Thrill enters EXHAUSTED — it has
+    // no Accelerate. The earlier "re-plays ready" assertion was a bug.
+    EXPECT_TRUE(state.getObject(unit).is_exhausted)
+        << "re-played unit enters exhausted (CR 143.4)";
     EXPECT_EQ(state.getObject(unit).damage_marked, 0)
         << "damage cleared on re-entry (banish wipes state)";
     // Banishment list should not still contain the card.

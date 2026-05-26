@@ -11,6 +11,19 @@
 namespace riftbound {
 namespace {
 
+// "Your opponents' [Hidden] cards can't be revealed here."
+// [Hidden] (the printed keyword) is engine-handled (units hide facedown at
+// controlled battlefields). But the printed ability — preventing an opponent
+// from REVEALING their Hidden cards at this unit's battlefield — has no engine
+// primitive. The engine models hiding (executeHideCard) and playing a card
+// from facedown (executePlayFromHidden), but there is no "reveal an opponent's
+// Hidden card" action/event for any restriction to hook. No IntentType, event,
+// or per-BF flag covers it.
+// ESCALATE(reveal_hidden_restriction): the engine needs a reveal-facedown
+// mechanic (action + event) AND a per-location restriction the reveal path
+// consults to forbid revealing an opponent's Hidden card at a battlefield
+// where this unit is present.
+
 class NoxusSaboteur : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }

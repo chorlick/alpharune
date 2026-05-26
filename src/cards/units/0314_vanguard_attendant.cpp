@@ -14,6 +14,9 @@ namespace {
 class VanguardAttendant : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "I enter ready." Unconditional — override entersReadyOnPlay so the
+    // engine skips the default "units enter exhausted" (CR 143.4) rule.
+    bool entersReadyOnPlay() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

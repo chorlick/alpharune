@@ -12,6 +12,14 @@
 namespace riftbound {
 namespace {
 
+// "Units can't be played here."
+// ENGINE-HANDLED: GameEngine::setupBattlefields lowercases ability_text and
+// matches the substring "can't be played here" to set
+// BattlefieldState::blocks_unit_play, which the play-from-hand action
+// generator (generateMainPhaseActions) consults to skip this BF. BF->BF moves
+// are NOT restricted (per the comment in the move generator). No per-card
+// override is needed.
+
 class RockfallPath : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }

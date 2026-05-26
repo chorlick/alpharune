@@ -14,6 +14,34 @@ namespace {
 class WielderOfWater : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+
+    // "While I'm attacking or defending alone, I have +2 [M]." I'm "alone"
+    // when I'm the only friendly unit sharing my combat designation
+    // (Attacker / Defender) at my battlefield.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId() || self.controller != controller)
+                continue;
+            auto my_bf = self.battlefieldId();
+            if (!my_bf) continue;
+            CombatDesignation mine = self.combat_designation;
+            if (mine != CombatDesignation::Attacker &&
+                mine != CombatDesignation::Defender)
+                continue;  // not currently attacking or defending
+            bool alone = true;
+            for (auto& [oid, o] : state.objects) {
+                if (oid == sid) continue;
+                if (!o.isUnit() || o.controller != controller) continue;
+                if (o.battlefieldId() != my_bf) continue;
+                if (o.combat_designation == mine) { alone = false; break; }
+            }
+            if (!alone) continue;
+            GameObject::AuraEffect ae;
+            ae.source = sid;
+            ae.might_bonus = 2;
+            self.aura_effects.push_back(ae);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

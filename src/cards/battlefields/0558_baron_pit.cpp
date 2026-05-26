@@ -11,6 +11,17 @@
 namespace riftbound {
 namespace {
 
+// Baron Pit is a battlefield TOKEN spawned by Baron Nashor (id 709). Both
+// printed clauses are realized outside this Card subclass:
+//   - "Units can move here from anywhere." — Baron Nashor calls
+//     addBattlefieldToken("Baron Pit", accepts_any_inbound=true); the engine's
+//     move-legality check (game_engine.cpp ~2007) honors
+//     BattlefieldState::accepts_any_inbound. Nothing for the Card to do.
+//   - "(You can't start the game with a token battlefield.)" — a deck/setup
+//     constraint: token BFs are never in a starting configuration. No runtime
+//     Card hook applies.
+// This class therefore only supplies def(); there is no per-card behavior to
+// override.
 class BaronPit : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }

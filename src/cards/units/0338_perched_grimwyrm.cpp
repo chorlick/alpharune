@@ -11,6 +11,22 @@
 namespace riftbound {
 namespace {
 
+// "Play me only to a battlefield you conquered this turn. (You can't play me
+// anywhere else.)"
+// This is a RESTRICTING play-location rule: the unit may be played ONLY to a
+// battlefield the controller conquered this turn, and NOT to base or other
+// battlefields. The action generator (generateMainPhaseActions) only EXPANDS
+// play locations via positive substring matches ("play me to a battlefield",
+// "play me to an open battlefield", etc.) and always emits a base-play intent
+// (CR 355.2.a). Card::getPlayLocations() is defined but NEVER consulted by the
+// engine. There is no hook to (a) forbid the default base play or (b) restrict
+// plays to "battlefields you conquered this turn" (the engine does track
+// __conquered_turn per unit, but not a per-battlefield/per-player conquered set
+// the play generator consults).
+// ESCALATE(restricted_play_location): the play-action generator must consult a
+// per-card "legal play locations" hook that can NARROW (not just widen) the
+// candidate set and suppress the default base play.
+
 class PerchedGrimwyrm : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }

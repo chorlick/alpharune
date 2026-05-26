@@ -14,6 +14,21 @@ namespace {
 class CithriaOfCloudfield : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you play another unit, buff me. (If I don't have a buff, I get a
+    //  +1 [M] buff.)" WhenYouPlayAUnit fires on OTHER on-board friendly units
+    //  (the played unit is excluded by the trigger manager), so ctx.source is
+    //  me. Buff only when I currently have no buff counter.
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        auto& self = ctx.state.getObject(ctx.source);
+        if (self.buff_count > 0) {
+            ctx.events.logTrace("CITHRIA OF CLOUDFIELD: already buffed -> no-op");
+            return;  // "If I don't have a buff" — already buffed, do nothing.
+        }
+        ctx.executor.buffUnit(ctx.source);
+        ctx.events.logTrace("CITHRIA OF CLOUDFIELD: another unit played -> +1 buff");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

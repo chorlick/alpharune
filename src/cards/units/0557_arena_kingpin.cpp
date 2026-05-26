@@ -14,6 +14,23 @@ namespace {
 class ArenaKingpin : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+
+    // Clause 1: "I enter ready."
+    bool entersReadyOnPlay() const override { return true; }
+
+    // Clause 2: "[E]: Give a unit +3 [M] this turn."
+    bool hasActivatedAbility() const override { return true; }
+    ActivationCost getActivationCost() const override { return {.exhaust = true}; }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 1, .must_be_unit = true};
+    }
+    void onActivate(CardContext& ctx,
+                    const std::vector<GameObjectId>& targets) override {
+        if (targets.empty()) return;
+        if (!ctx.state.objectExists(targets[0])) return;
+        ctx.executor.giveTemporaryMight(targets[0], 3);
+        ctx.events.logTrace("ARENA KINGPIN: [E] -> +3 [M] this turn to target unit");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

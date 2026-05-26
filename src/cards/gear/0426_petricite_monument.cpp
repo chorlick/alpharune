@@ -14,6 +14,29 @@ namespace {
 class PetriciteMonument : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // [Temporary] is engine-handled (killed at start of controller's
+    // Beginning Phase). "Friendly units have [Deflect]." — granted to every
+    // friendly on-board unit as an aura, recomputed each cleanup, while an
+    // on-board instance of this gear controlled by `controller` exists.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        GameObjectId self_id = kInvalidId;
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId()) continue;
+            if (obj.controller != controller || !obj.location.has_value()) continue;
+            self_id = id;
+            break;
+        }
+        if (self_id == kInvalidId) return;
+        for (auto& [uid, u] : state.objects) {
+            if (!u.isUnit() || u.controller != controller || !u.location.has_value())
+                continue;
+            GameObject::AuraEffect ae;
+            ae.source = self_id;
+            ae.keyword = Keyword::Deflect;
+            ae.keyword_value = 1;
+            u.aura_effects.push_back(ae);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

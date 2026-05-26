@@ -15,6 +15,19 @@ namespace {
 class LeBlancEverywhereAtOnce : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+
+    // Clause 1: "[Backline]" — engine keyword, set in def. Fully handled by
+    //   the combat-damage assignment ordering.
+    // Clause 2: "Your [Temporary] effects at my battlefield don't trigger."
+    //   There is no engine hook to suppress a Temporary unit's triggered
+    //   abilities scoped to a battlefield: TriggerManager fires triggers
+    //   unconditionally, with no per-location / per-keyword suppression
+    //   filter, and there is no "triggers suppressed here" flag on
+    //   BattlefieldState or GameObject.
+    // ESCALATE(trigger-suppression): need a battlefield-scoped suppression of
+    //   triggered abilities from friendly [Temporary] units (consulted by
+    //   TriggerManager before firing a trigger whose source is a Temporary
+    //   unit at a battlefield where a controller's LeBlanc resides).
 private:
     const CardDef def_ = [] {
         CardDef d;

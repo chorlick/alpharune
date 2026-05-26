@@ -14,6 +14,34 @@ namespace {
 class GemcraftSeer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+
+    // Clause 1: "[Vision]" on me — engine-handled (TriggerManager::onCardPlayed
+    // peeks the top card on play for any unit with the Vision keyword).
+    // Clause 2: "Other friendly units have [Vision]." Grant the Vision keyword
+    // via aura to every other friendly unit. Mirrors Forecaster's grant.
+    // NOTE: the engine's play-time Vision peek reads obj.keywords.has(Vision),
+    // not the aura-granted set, so an aura-only Vision unit won't peek on play
+    // (documented engine gap shared with Forecaster); the keyword presence is
+    // still correctly reflected via hasKeyword() for any reader that uses it.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        GameObjectId self_id = kInvalidId;
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId()) continue;
+            if (obj.controller != controller || !obj.location.has_value()) continue;
+            self_id = id;
+            break;
+        }
+        if (self_id == kInvalidId) return;
+        for (auto& [uid, u] : state.objects) {
+            if (uid == self_id) continue;  // "other"
+            if (!u.isUnit() || u.controller != controller || !u.location.has_value())
+                continue;
+            GameObject::AuraEffect ae;
+            ae.source = self_id;
+            ae.keyword = Keyword::Vision;
+            u.aura_effects.push_back(ae);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

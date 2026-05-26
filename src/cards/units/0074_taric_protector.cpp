@@ -14,6 +14,25 @@ namespace {
 class TaricProtector : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Other friendly units here have [Shield]." Static aura: for each on-board
+    //  instance of me, grant Shield to every OTHER friendly unit sharing my
+    //  location (base or battlefield). Mirrors Forecaster's keyword-grant aura.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId() || self.controller != controller) continue;
+            if (!self.location.has_value()) continue;
+            for (auto& [uid, u] : state.objects) {
+                if (uid == sid) continue;             // "Other"
+                if (!u.isUnit() || u.controller != controller) continue;
+                if (!u.location.has_value() || *u.location != *self.location) continue;  // "here"
+                GameObject::AuraEffect ae;
+                ae.source = sid;
+                ae.keyword = Keyword::Shield;
+                ae.keyword_value = 1;
+                u.aura_effects.push_back(ae);
+            }
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

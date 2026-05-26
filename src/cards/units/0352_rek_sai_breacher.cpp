@@ -15,6 +15,12 @@ namespace {
 class RekSaiBreacher : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // All three clauses are engine-handled — no card code required:
+    //   - "[Accelerate]" + "[Assault]": engine keywords (set in def below).
+    //   - "Friendly units played from anywhere other than a player's hand have
+    //     [Accelerate].": engine-handled in GameEngine cost path, which checks
+    //     for a friendly on-board Rek'Sai (card_def_id 352) and auto-applies
+    //     Accelerate when current_play_source != Hand.
 private:
     const CardDef def_ = [] {
         CardDef d;

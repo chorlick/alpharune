@@ -1,0 +1,646 @@
+[
+ {
+  "file": "src/cards/battlefields/0272_back_alley_bar.cpp",
+  "name": "0272_back_alley_bar.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When a unit moves from here, give it +1  this turn."
+ },
+ {
+  "file": "src/cards/battlefields/0281_reckoner_s_arena.cpp",
+  "name": "0281_reckoner_s_arena.cpp",
+  "bucket": "metadata-only",
+  "flag": "engine-gap",
+  "ability": "When you hold here, activate the conquer effects of units here."
+ },
+ {
+  "file": "src/cards/battlefields/0287_the_dreaming_tree.cpp",
+  "name": "0287_the_dreaming_tree.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
+ },
+ {
+  "file": "src/cards/battlefields/0291_void_gate.cpp",
+  "name": "0291_void_gate.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Spells and abilities deal 1 Bonus Damage to units here."
+ },
+ {
+  "file": "src/cards/battlefields/0522_forge_of_the_fluft.cpp",
+  "name": "0522_forge_of_the_fluft.cpp",
+  "bucket": "metadata-only",
+  "flag": "engine-gap",
+  "ability": "While you control this battlefield, friendly legends have \": Attach an Equipment you contr"
+ },
+ {
+  "file": "src/cards/battlefields/0525_marai_spire.cpp",
+  "name": "0525_marai_spire.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "While you control this battlefield, friendly  costs cost  less."
+ },
+ {
+  "file": "src/cards/battlefields/0762_altar_of_blood.cpp",
+  "name": "0762_altar_of_blood.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
+ },
+ {
+  "file": "src/cards/battlefields/0769_gardens_of_becoming.cpp",
+  "name": "0769_gardens_of_becoming.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Units here have \": Gain 1 XP.\""
+ },
+ {
+  "file": "src/cards/battlefields/0772_the_academy.cpp",
+  "name": "0772_the_academy.cpp",
+  "bucket": "metadata-only",
+  "flag": "engine-gap",
+  "ability": "When you hold here, give your next spell this turn  equal to its base cost."
+ },
+ {
+  "file": "src/cards/gear/0032_ravenborn_tome.cpp",
+  "name": "0032_ravenborn_tome.cpp",
+  "bucket": "metadata-only",
+  "flag": "engine-gap",
+  "ability": ": The next spell you play this turn deals 1 Bonus Damage."
+ },
+ {
+  "file": "src/cards/gear/0060_mask_of_foresight.cpp",
+  "name": "0060_mask_of_foresight.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When a friendly unit attacks or defends alone, give it +1  this turn."
+ },
+ {
+  "file": "src/cards/gear/0099_garbage_grabber.cpp",
+  "name": "0099_garbage_grabber.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Recycle 3 from your trash, , : Draw 1."
+ },
+ {
+  "file": "src/cards/gear/0143_pirate_s_haven.cpp",
+  "name": "0143_pirate_s_haven.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you ready a friendly unit, give it +1  this turn."
+ },
+ {
+  "file": "src/cards/gear/0152_mistfall.cpp",
+  "name": "0152_mistfall.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you buff a friendly unit, you may pay  and exhaust this to ready it."
+ },
+ {
+  "file": "src/cards/gear/0182_scrapheap.cpp",
+  "name": "0182_scrapheap.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When this is played, discarded, or killed, draw 1."
+ },
+ {
+  "file": "src/cards/gear/0227_symbol_of_the_solari.cpp",
+  "name": "0227_symbol_of_the_solari.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If a combat where you are the attacker ends in a tie, recall ALL units instead."
+ },
+ {
+  "file": "src/cards/gear/0401_temporal_portal.cpp",
+  "name": "0401_temporal_portal.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": ", : Give the next spell you play this turn  equal to its cost."
+ },
+ {
+  "file": "src/cards/gear/0412_the_zero_drive.cpp",
+  "name": "0412_the_zero_drive.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": ", Banish this: Play all units banished with this, ignoring their costs."
+ },
+ {
+  "file": "src/cards/gear/0471_last_rites.cpp",
+  "name": "0471_last_rites.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "\u2014 , Recycle 2 cards from your trash"
+ },
+ {
+  "file": "src/cards/gear/0636_frigid_jewel.cpp",
+  "name": "0636_frigid_jewel.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you draw your second card each turn, give a friendly unit +2  this turn."
+ },
+ {
+  "file": "src/cards/gear/0647_sumpworks_map.cpp",
+  "name": "0647_sumpworks_map.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When an opponent scores, draw 1."
+ },
+ {
+  "file": "src/cards/legends/0252_nine_tailed_fox.cpp",
+  "name": "0252_nine_tailed_fox.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When an enemy unit attacks a battlefield you control, give it -1  this turn, to a minimum "
+ },
+ {
+  "file": "src/cards/legends/0259_swift_scout.cpp",
+  "name": "0259_swift_scout.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "You may pay  to hide a card with  instead of .\n, : Put a Teemo unit you own into your hand"
+ },
+ {
+  "file": "src/cards/legends/0517_battle_mistress.cpp",
+  "name": "0517_battle_mistress.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When you recycle a rune, you may exhaust me to play a Gold gear token exhausted.\nWhen one "
+ },
+ {
+  "file": "src/cards/legends/0519_grand_duelist.cpp",
+  "name": "0519_grand_duelist.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When one of your units becomes , you may exhaust me to channel 1 rune exhausted."
+ },
+ {
+  "file": "src/cards/legends/0784_wuju_master.cpp",
+  "name": "0784_wuju_master.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Your units have +1 .\n Your units enter ready."
+ },
+ {
+  "file": "src/cards/spells/0045_defy.cpp",
+  "name": "0045_defy.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Counter a spell that costs no more than  and no more than ."
+ },
+ {
+  "file": "src/cards/spells/0053_stand_united.cpp",
+  "name": "0053_stand_united.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Buff a friendly unit. Buffs give an additional +1  to friendly units this turn."
+ },
+ {
+  "file": "src/cards/spells/0080_mystic_reversal.cpp",
+  "name": "0080_mystic_reversal.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Gain control of a spell. You may make new choices for it."
+ },
+ {
+  "file": "src/cards/spells/0129_confront.cpp",
+  "name": "0129_confront.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Units you play this turn enter ready. Draw 1."
+ },
+ {
+  "file": "src/cards/spells/0146_wallop.cpp",
+  "name": "0146_wallop.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "As you play this, you may spend a buff as an additional cost. If you do, ignore this spell"
+ },
+ {
+  "file": "src/cards/spells/0221_imperial_decree.cpp",
+  "name": "0221_imperial_decree.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When any unit takes damage this turn, kill it."
+ },
+ {
+  "file": "src/cards/spells/0248_stormbringer.cpp",
+  "name": "0248_stormbringer.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Choose a friendly unit in your base. Deal damage equal to its Might to all enemy units at "
+ },
+ {
+  "file": "src/cards/spells/0250_super_mega_death_rocket.cpp",
+  "name": "0250_super_mega_death_rocket.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Deal 5 to a unit.\nWhen you conquer, you may discard 1 to return this from your trash to yo"
+ },
+ {
+  "file": "src/cards/spells/0251_noxian_guillotine.cpp",
+  "name": "0251_noxian_guillotine.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Choose a unit. Kill it the next time it takes damage this turn.\n \u2014 Kill it now instead."
+ },
+ {
+  "file": "src/cards/spells/0260_guerilla_warfare.cpp",
+  "name": "0260_guerilla_warfare.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Return up to two cards with  from your trash to your hand. You can hide cards ignoring cos"
+ },
+ {
+  "file": "src/cards/spells/0309_flash.cpp",
+  "name": "0309_flash.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Move up to 2 friendly units to base."
+ },
+ {
+  "file": "src/cards/spells/0327_bushwhack.cpp",
+  "name": "0327_bushwhack.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Friendly units enter ready this turn. Play a Gold gear token exhausted."
+ },
+ {
+  "file": "src/cards/spells/0487_rally_the_troops.cpp",
+  "name": "0487_rally_the_troops.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When a friendly unit is played this turn, buff it. \nDraw 1."
+ },
+ {
+  "file": "src/cards/spells/0568_smite.cpp",
+  "name": "0568_smite.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Deal 3 to a unit at a battlefield. If it would die this turn, banish it instead."
+ },
+ {
+  "file": "src/cards/spells/0582_dancing_grenade.cpp",
+  "name": "0582_dancing_grenade.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Deal 2 to a unit. Its controller may play this spell again for . If they do, this deals 1 "
+ },
+ {
+  "file": "src/cards/spells/0758_void_assault.cpp",
+  "name": "0758_void_assault.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Move a friendly unit, then move an enemy unit."
+ },
+ {
+  "file": "src/cards/units/0002_brazen_buccaneer.cpp",
+  "name": "0002_brazen_buccaneer.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "As you play me, you may discard 1 as an additional cost. If you do, reduce my cost by ."
+ },
+ {
+  "file": "src/cards/units/0006_flame_chompers.cpp",
+  "name": "0006_flame_chompers.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When you discard me, you may pay  to play me."
+ },
+ {
+  "file": "src/cards/units/0011_magma_wurm.cpp",
+  "name": "0011_magma_wurm.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Other friendly units enter ready."
+ },
+ {
+  "file": "src/cards/units/0018_noxus_saboteur.cpp",
+  "name": "0018_noxus_saboteur.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Your opponents'  cards can't be revealed here."
+ },
+ {
+  "file": "src/cards/units/0034_tryndamere_barbarian.cpp",
+  "name": "0034_tryndamere_barbarian.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When I conquer after an attack, if you assigned 5 or more excess damage to enemy units, yo"
+ },
+ {
+  "file": "src/cards/units/0037_immortal_phoenix.cpp",
+  "name": "0037_immortal_phoenix.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you kill a unit with a spell, you may pay  to play me from your trash."
+ },
+ {
+  "file": "src/cards/units/0070_mageseeker_warden.cpp",
+  "name": "0070_mageseeker_warden.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "While I'm at a battlefield, opponents can only play units to their base.\nWhile I'm at a ba"
+ },
+ {
+  "file": "src/cards/units/0100_gemcraft_seer.cpp",
+  "name": "0100_gemcraft_seer.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Other friendly units have ."
+ },
+ {
+  "file": "src/cards/units/0111_heimerdinger_inventor.cpp",
+  "name": "0111_heimerdinger_inventor.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "I have all  abilities of all friendly legends, units, and gear."
+ },
+ {
+  "file": "src/cards/units/0150_kraken_hunter.cpp",
+  "name": "0150_kraken_hunter.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "As you play me, you may spend any number of buffs as an additional cost. Reduce my cost by"
+ },
+ {
+  "file": "src/cards/units/0158_volibear_imposing.cpp",
+  "name": "0158_volibear_imposing.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When an opponent moves to a battlefield other than mine, draw 1."
+ },
+ {
+  "file": "src/cards/units/0177_stealthy_pursuer.cpp",
+  "name": "0177_stealthy_pursuer.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When a friendly unit moves from my location, I may be moved with it."
+ },
+ {
+  "file": "src/cards/units/0189_kayn_unleashed.cpp",
+  "name": "0189_kayn_unleashed.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If I have moved twice this turn, I don't take damage."
+ },
+ {
+  "file": "src/cards/units/0193_miss_fortune_buccaneer.cpp",
+  "name": "0193_miss_fortune_buccaneer.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "You may play me to an open battlefield.\nFriendly units may be played to open battlefields."
+ },
+ {
+  "file": "src/cards/units/0208_cruel_patron.cpp",
+  "name": "0208_cruel_patron.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "As an additional cost to play me, kill a friendly unit."
+ },
+ {
+  "file": "src/cards/units/0231_commander_ledros.cpp",
+  "name": "0231_commander_ledros.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "As you play me, you may kill any number of friendly units as an additional cost. Reduce my"
+ },
+ {
+  "file": "src/cards/units/0235_karma_channeler.cpp",
+  "name": "0235_karma_channeler.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you recycle one or more cards to your Main Deck, buff a friendly unit."
+ },
+ {
+  "file": "src/cards/units/0299_annie_fiery.cpp",
+  "name": "0299_annie_fiery.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Your spells and abilities deal 1 Bonus Damage."
+ },
+ {
+  "file": "src/cards/units/0312_lux_crownguard.cpp",
+  "name": "0312_lux_crownguard.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": ":  \u2014  . Use only to play spells."
+ },
+ {
+  "file": "src/cards/units/0372_aphelios_exalted.cpp",
+  "name": "0372_aphelios_exalted.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you attach an Equipment to me, choose one that hasn't been chosen this turn \u2014\nReady 2"
+ },
+ {
+  "file": "src/cards/units/0378_needlessly_large_yordle.cpp",
+  "name": "0378_needlessly_large_yordle.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "I cost  less for each point you scored from holding this turn."
+ },
+ {
+  "file": "src/cards/units/0383_tianna_crownguard.cpp",
+  "name": "0383_tianna_crownguard.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "While I'm at a battlefield, opponents can't gain points."
+ },
+ {
+  "file": "src/cards/units/0423_fae_dragon.cpp",
+  "name": "0423_fae_dragon.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When you play me, buff up to four friendly units. \nWhen you spend a buff, play a Gold gear"
+ },
+ {
+  "file": "src/cards/units/0441_sivir_ambitious.cpp",
+  "name": "0441_sivir_ambitious.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When I conquer after an attack, if you assigned 5 or more excess damage to enemy units, yo"
+ },
+ {
+  "file": "src/cards/units/0447_loyal_pup.cpp",
+  "name": "0447_loyal_pup.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When you defend at a battlefield, you may move me there."
+ },
+ {
+  "file": "src/cards/units/0462_irelia_graceful.cpp",
+  "name": "0462_irelia_graceful.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Your spells that choose me cost  or  less."
+ },
+ {
+  "file": "src/cards/units/0464_sivir_mercenary.cpp",
+  "name": "0464_sivir_mercenary.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If you've spent at least  this turn, I have +2  and ."
+ },
+ {
+  "file": "src/cards/units/0492_renata_glasc_industrialist.cpp",
+  "name": "0492_renata_glasc_industrialist.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Your tokens enter ready."
+ },
+ {
+  "file": "src/cards/units/0500_fiora_worthy.cpp",
+  "name": "0500_fiora_worthy.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "When a unit you control becomes , you may pay  to ready it."
+ },
+ {
+  "file": "src/cards/units/0544_yone_blademaster.cpp",
+  "name": "0544_yone_blademaster.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When I conquer a battlefield that was uncontrolled, deal damage equal to my Might to an en"
+ },
+ {
+  "file": "src/cards/units/0548_karma_channeler.cpp",
+  "name": "0548_karma_channeler.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When you recycle one or more cards to your Main Deck, buff a friendly unit."
+ },
+ {
+  "file": "src/cards/units/0570_towering_pairofant.cpp",
+  "name": "0570_towering_pairofant.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If a unit died this turn, I enter ready."
+ },
+ {
+  "file": "src/cards/units/0580_yeti_brawler.cpp",
+  "name": "0580_yeti_brawler.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When I conquer, if you assigned 3 or more excess damage, play two Gold gear tokens exhaust"
+ },
+ {
+  "file": "src/cards/units/0591_red_brambleback.cpp",
+  "name": "0591_red_brambleback.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Your conquer effects for conquering here trigger an additional time.\nWhen I conquer,  a fr"
+ },
+ {
+  "file": "src/cards/units/0599_shadow_watcher.cpp",
+  "name": "0599_shadow_watcher.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If a friendly unit died during your Beginning Phase this turn, I enter ready."
+ },
+ {
+  "file": "src/cards/units/0619_alpha_wildclaw.cpp",
+  "name": "0619_alpha_wildclaw.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "Your units here with less Might than me can't be chosen by enemy spells and abilities."
+ },
+ {
+  "file": "src/cards/units/0620_lillia_protector_of_dreams.cpp",
+  "name": "0620_lillia_protector_of_dreams.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When you play a token unit, give me +1  this turn.\nYour token units have ."
+ },
+ {
+  "file": "src/cards/units/0621_master_yi_unstoppable.cpp",
+  "name": "0621_master_yi_unstoppable.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "I cost  less. \n I cost  less instead.\n I cost  less instead.\n I can't be chosen by enemy s"
+ },
+ {
+  "file": "src/cards/units/0648_zilean_time_mage.cpp",
+  "name": "0648_zilean_time_mage.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Once each turn, if you would play a token unit while I'm at a battlefield, you may play th"
+ },
+ {
+  "file": "src/cards/units/0651_jhin_meticulous_killer.cpp",
+  "name": "0651_jhin_meticulous_killer.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If you've spent  or more to play a spell this turn, you may play me for ."
+ },
+ {
+  "file": "src/cards/units/0652_leblanc_everywhere_at_once.cpp",
+  "name": "0652_leblanc_everywhere_at_once.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Your  effects at my battlefield don't trigger."
+ },
+ {
+  "file": "src/cards/units/0670_wily_newtfish.cpp",
+  "name": "0670_wily_newtfish.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "If you've gained XP this turn, I have +1  and ."
+ },
+ {
+  "file": "src/cards/units/0682_rengar_trophy_hunter.cpp",
+  "name": "0682_rengar_trophy_hunter.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "I can  to a battlefield where there are enemy units, even if you don't have units there."
+ },
+ {
+  "file": "src/cards/units/0684_crescent_guardian.cpp",
+  "name": "0684_crescent_guardian.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "If you've played a spell this turn, you may pay  as an additional cost to play me. If you "
+ },
+ {
+  "file": "src/cards/units/0706_maduli_the_gatekeeper.cpp",
+  "name": "0706_maduli_the_gatekeeper.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "I can't be readied.\n: Move me to an occupied enemy battlefield if my Might is greater than"
+ },
+ {
+  "file": "src/cards/units/0708_syndra_transcendent.cpp",
+  "name": "0708_syndra_transcendent.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "While I'm in a showdown, your spells have  ."
+ },
+ {
+  "file": "src/cards/units/0725_mageseeker_investigator.cpp",
+  "name": "0725_mageseeker_investigator.cpp",
+  "bucket": "stub",
+  "flag": "engine-gap",
+  "ability": "Opponents must pay  for each unit beyond the first to move multiple units to my battlefiel"
+ },
+ {
+  "file": "src/cards/units/0728_stalking_wolf.cpp",
+  "name": "0728_stalking_wolf.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "As an additional cost to play me, kill a Bird, Cat, Dog, or Poro you control. You may play"
+ },
+ {
+  "file": "src/cards/units/0731_ashe_focused.cpp",
+  "name": "0731_ashe_focused.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When you play me, choose an opponent. They reveal their hand. Choose a card revealed this "
+ },
+ {
+  "file": "src/cards/units/0732_atakhan.cpp",
+  "name": "0732_atakhan.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "You may kill a friendly unit as an additional cost to play me. If you do, I cost  less for"
+ }
+]

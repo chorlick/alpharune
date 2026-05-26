@@ -14,6 +14,14 @@ namespace {
 class VoidDrone : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "I cost [2] less to play from anywhere other than your hand."
+    // PlayerState::current_play_source is set by the engine to the play's
+    // source zone before payCardCost consults this hook (see Rek'Sai,
+    // Breacher's identical use of current_play_source).
+    int selfCostReduction(const GameState& state, PlayerId player) const override {
+        return state.player(player).current_play_source != Intent::PlaySource::Hand
+                   ? 2 : 0;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

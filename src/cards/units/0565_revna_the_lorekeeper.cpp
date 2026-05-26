@@ -14,7 +14,24 @@ namespace {
 class RevnaTheLorekeeper : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // [Ganking] is engine-handled via the printed keyword.
+    // "When you play a spell, if you spent [4] or more, ready me."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        // Read the per-trigger snapshot of the triggering spell's spend
+        // (Phase 6q+); fall back to PlayerState for legacy paths.
+        int spent = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_spell_energy_spent
+            : 0;
+        if (spent == 0) spent = ctx.state.player(ctx.controller).last_spell_energy_spent;
+        if (spent < 4) {
+            ctx.events.logTrace("REVNA: skip (spent=" + std::to_string(spent) + " < 4)");
+            return;
+        }
+        ctx.executor.readyObject(ctx.source);
+        ctx.events.logTrace("REVNA: spent 4+ on a spell -> ready me");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

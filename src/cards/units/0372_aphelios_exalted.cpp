@@ -11,12 +11,20 @@
 namespace riftbound {
 namespace {
 
+// "When you attach an Equipment to me, choose one that hasn't been chosen this
+//  turn — Ready 2 runes. / Channel 1 rune exhausted. / Buff a friendly unit."
+// ESCALATE(attach-Equipment TriggerType + event): no event is emitted when a
+//  gear/Equipment is attached to a unit (standardEquip / attachFree emit only
+//  ObjectStateChangedEvent{"equipped"}, which TriggerManager does not dispatch
+//  as a trigger), and there is no "When you attach an Equipment to me"
+//  TriggerType. So this triggered modal ability cannot be wired from the card
+//  layer. The modal body itself (ready 2 runes / channel 1 exhausted / buff,
+//  with once-per-turn-per-mode tracking) is implementable once the trigger
+//  exists, but without the firing event there is nothing to drive it — so the
+//  whole ability is escalated rather than partially stubbed.
 class ApheliosExalted : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
-    }
 private:
     const CardDef def_ = [] {
         CardDef d;

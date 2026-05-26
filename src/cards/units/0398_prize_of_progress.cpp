@@ -11,6 +11,16 @@
 namespace riftbound {
 namespace {
 
+// "When you use an activated ability of a gear, give me +1 [M] this turn."
+// ESCALATE(gear_ability_use_trigger): There is no event/TriggerType fired when
+// a player uses an activated ability (let alone one filtered to gear sources).
+// Activated abilities resolve via the chain (onActivate) but emit no
+// "AbilityActivatedEvent", and TriggerManager has no WhenYouUseAGearAbility /
+// WhenYouUseAnActivatedAbility dispatch. Implementing this needs the engine to
+// emit an ability-activation event (carrying the source's card_type) and a
+// TriggerType the TriggerManager dispatches so this unit can self-buff +1 [M]
+// this turn (ctx.executor.giveTemporaryMight).
+
 class PrizeOfProgress : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }

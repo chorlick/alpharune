@@ -16,6 +16,11 @@ public:
     const CardDef& def() const override { return def_; }
     bool requiresLevel() const override { return true; }
     int levelThreshold() const override { return 3; }
+    // "[Level 3] I enter ready." — only enter ready while you have 3+ XP.
+    bool entersReadyOnPlay(const GameState& state,
+                           PlayerId controller) const override {
+        return state.player(controller).xp >= levelThreshold();
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -14,6 +14,22 @@ namespace {
 class Gold : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Reaction] [>] Kill this, [E]: [Add] [A]." Mirrors the SFD Gold token
+    //  (id 326): the engine exhausts us as the [E] cost; we add 1 universal
+    //  power and then kill ourselves (token ceases to exist, CR 183.1).
+    bool hasActivatedAbility() const override { return true; }
+    bool isReactionAbility() const override { return true; }
+    ActivationCost getActivationCost() const override {
+        return ActivationCost{.exhaust = true};
+    }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 0};
+    }
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
+        ctx.events.logTrace("GOLD: kill+[E] -> +1 [A]");
+        ctx.executor.killObject(ctx.source);
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

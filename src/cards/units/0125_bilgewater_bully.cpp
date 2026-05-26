@@ -14,6 +14,20 @@ namespace {
 class BilgewaterBully : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "While I'm buffed, I have [Ganking]." Granted as a self-aura keyword
+    // recomputed each cleanup. NOTE: the printed def keyword set must NOT
+    // include Ganking unconditionally — it is granted only while buffed.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId()) continue;
+            if (self.controller != controller || !self.location.has_value()) continue;
+            if (self.buff_count <= 0) continue;
+            GameObject::AuraEffect ae;
+            ae.source = sid;
+            ae.keyword = Keyword::Ganking;
+            self.aura_effects.push_back(ae);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;
@@ -30,7 +44,9 @@ private:
         d.tags = {R"RB(Bilgewater)RB"};
         d.energy_cost = 6;
         d.might = 6;
-        d.keywords.set(Keyword::Ganking);
+        // Ganking is CONDITIONAL ("while I'm buffed") — granted via the
+        // self-aura in applyPassiveAura, NOT printed as an unconditional
+        // keyword (obj.keywords is copied verbatim from def at instantiation).
         d.ability_text = R"RB(While I'm buffed, I have [Ganking]. (I can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/474f66ffa1ecebd9e0341d644cb82a3b8135eece-744x1039.png?accountingTag=RB)RB";
         return d;

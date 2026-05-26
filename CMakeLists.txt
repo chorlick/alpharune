@@ -341,52 +341,10 @@ target_include_directories(riftbound PRIVATE ${open_spiel_SOURCE_DIR})
 
 enable_testing()
 
-set(RIFTBOUND_TEST_SOURCES
-    tests/test_types.cpp
-    tests/test_card_db.cpp
-    tests/test_deck_validator.cpp
-    tests/test_chain.cpp
-    tests/test_action_vocab.cpp
-    tests/test_observation_tensor.cpp
-    tests/test_resume_resolution.cpp
-    tests/test_legal_targets_gate.cpp
-    tests/test_human_agent.cpp
-    tests/cards/test_counter_spells.cpp
-    tests/cards/test_stacked_deck.cpp
-    tests/cards/test_champions_legends.cpp
-    tests/cards/test_spells_misc.cpp
-    tests/cards/test_equipment.cpp
-    tests/cards/test_xp_units.cpp
-    tests/cards/test_cost_payment.cpp
-    tests/cards/test_baron_nashor.cpp
-    tests/cards/test_sabotage.cpp
-    tests/cards/test_ivern_deck.cpp
-    tests/cards/test_karthus_deathknell.cpp
-    tests/cards/test_tokens_cease_to_exist.cpp
-    tests/cards/test_burn_out_and_scoring.cpp
-    tests/cards/test_targeting_and_combat_invariants.cpp
-    tests/cards/test_combat_damage_allocation.cpp
-    tests/cards/test_combat_showdown_dispatch.cpp
-    tests/cards/test_jhin_deck.cpp
-    tests/cards/test_dazzling_aurora.cpp
-    tests/cards/test_missing_card_fixes.cpp
-    tests/cards/test_audit_fixes_0.cpp
-    tests/cards/test_audit_fixes_1.cpp
-    tests/cards/test_audit_fixes_2.cpp
-    tests/cards/test_audit_fixes_3.cpp
-    tests/cards/test_audit_fixes_4.cpp
-    tests/cards/test_audit_fixes_5.cpp
-    tests/cards/test_audit_fixes_6.cpp
-    tests/cards/test_audit_fixes_7.cpp
-    tests/cards/test_trigger_events.cpp
-    tests/cards/test_death_from_below.cpp
-    tests/cards/test_forgotten_monument.cpp
-    tests/cards/test_control_reversion.cpp
-    tests/cards/test_the_list.cpp
-    tests/cards/test_card_data_ownership.cpp
-    tests/cards/test_seal_cards.cpp
-    tests/test_card_data.cpp
-)
+# Test sources are globbed (CONFIGURE_DEPENDS) so new per-card test files under
+# tests/ and tests/cards/ are picked up automatically — no manual list to edit.
+file(GLOB_RECURSE RIFTBOUND_TEST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
 # Model-forward + CFR util tests live in riftbound-trainer.
 
 add_executable(riftbound_tests ${RIFTBOUND_TEST_SOURCES})

@@ -11,6 +11,15 @@
 namespace riftbound {
 namespace {
 
+// "When a unit moves FROM here, give it +1 [M] this turn."
+// ESCALATE(TriggerType + dispatch): there is no "when a unit moves from here"
+// battlefield trigger. The available move triggers (WhenIMove on the mover,
+// WhenAFriendlyUnitMovesToFB on watchers) key off the DESTINATION battlefield,
+// not the ORIGIN. TriggerManager::onUnitMoved fires nothing for the
+// battlefield a unit departs from, so a battlefield card cannot observe a
+// unit leaving it. Wiring this needs a new TriggerType (e.g.
+// WhenAUnitMovesFromHere) emitted against UnitMovedEvent.from in
+// TriggerManager, which is an engine change outside the card layer.
 class BackAlleyBar : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }

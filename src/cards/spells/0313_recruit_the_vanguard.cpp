@@ -14,6 +14,18 @@ namespace {
 class RecruitTheVanguard : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Play four 1 [M] Recruit unit tokens. (They can be played to your base
+    //  or to battlefields you control.)" Free token plays default to the
+    //  controller's base (CR 355.2.a — base is always a legal landing spot).
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        LocationId loc{BaseLocation{ctx.controller}};
+        for (int i = 0; i < 4; ++i) {
+            ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
+                                     1, {"Recruit"}, KeywordSet{}, loc,
+                                     /*enter_ready=*/false);
+        }
+        ctx.events.logTrace("RECRUIT THE VANGUARD: played four 1[M] Recruit tokens");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

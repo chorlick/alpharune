@@ -14,6 +14,19 @@ namespace {
 class NeedlesslyLargeYordle : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // [Shield 5] and [Tank] are engine-handled via the keyword set.
+    //
+    // "I cost [2][G] less for each point you scored from holding this turn."
+    // ESCALATE(hold_points_this_turn): PlayerState has no per-turn counter of
+    // points scored specifically via Hold. `battlefields_scored_this_turn` is
+    // a set populated by BOTH Hold and Conquer scoring, so it can't isolate
+    // hold-scored points; `score` is the cumulative game total, not this turn.
+    // Implementing this discount needs a new field (e.g.
+    // PlayerState::hold_points_this_turn) incremented in GameEngine::scoreHold
+    // and reset in resetTurnTracking — an engine change outside this task's
+    // scope. Cost-reduction hook + power-discount support would also be needed
+    // (selfCostReduction only reduces energy; "[2][G] less" reduces 1 Order
+    // power as well, which selfCostReduction cannot express).
 private:
     const CardDef def_ = [] {
         CardDef d;

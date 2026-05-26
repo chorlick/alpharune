@@ -14,6 +14,8 @@ namespace {
 class YiHoned : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "I enter ready." ([Ganking] is engine-handled via the keyword.)
+    bool entersReadyOnPlay() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

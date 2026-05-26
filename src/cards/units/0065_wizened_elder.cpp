@@ -14,6 +14,20 @@ namespace {
 class WizenedElder : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "While I'm buffed, I have an additional +1 [M]." "buffed" = a permanent
+    // +1 [M] buff counter (buff_count > 0). Granted as a self-aura recomputed
+    // each cleanup; it vanishes the moment the buff is removed.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId()) continue;
+            if (self.controller != controller || !self.location.has_value()) continue;
+            if (self.buff_count <= 0) continue;
+            GameObject::AuraEffect ae;
+            ae.source = sid;
+            ae.might_bonus = 1;
+            self.aura_effects.push_back(ae);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

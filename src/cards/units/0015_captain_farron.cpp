@@ -14,6 +14,33 @@ namespace {
 class CaptainFarron : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+
+    // "Other friendly units here have [Assault]." Grant the Assault keyword
+    // (and its +1 [M] while attacking) to every OTHER friendly unit at the
+    // same battlefield as me. Mirrors Rumble/Forecaster aura pattern, scoped
+    // to "here" (same battlefield).
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId() || self.controller != controller)
+                continue;
+            auto my_bf = self.battlefieldId();
+            if (!my_bf) continue;  // only active while I'm at a battlefield
+            for (auto& [uid, u] : state.objects) {
+                if (uid == sid) continue;  // "other" — exclude myself
+                if (!u.isUnit() || u.controller != controller) continue;
+                if (u.battlefieldId() != my_bf) continue;  // "here"
+                GameObject::AuraEffect ae;
+                ae.source = sid;
+                ae.keyword = Keyword::Assault;
+                // Aura Assault grants +1 [M] while attacking (recomputeMight
+                // only sums the dedicated assault_value, not keyword presence,
+                // so model the +1 directly while the unit is an attacker).
+                if (u.combat_designation == CombatDesignation::Attacker)
+                    ae.might_bonus = 1;
+                u.aura_effects.push_back(ae);
+            }
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

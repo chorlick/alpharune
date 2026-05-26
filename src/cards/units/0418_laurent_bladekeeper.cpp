@@ -30,6 +30,10 @@ private:
         d.tags = {R"RB(Demacia)RB"};
         d.energy_cost = 3;
         d.might = 3;
+        // "Ganking" is an engine keyword (CR 144.4.c): the move generator
+        // reads unit.hasKeyword(Keyword::Ganking) to allow BF→BF moves. The
+        // card's entire printed ability IS this keyword, so set the bit.
+        d.keywords.set(Keyword::Ganking);
         d.ability_text = R"RB(Ganking (I can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d9dac8bbc898bfead8338ef387f2d144302e278f-744x1039.png)RB";
         return d;

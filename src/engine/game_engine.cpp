@@ -4944,6 +4944,7 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
         events_.emit(LeftBoardEvent{rune_id, cur.player, CardType::Rune,
             base_loc, ZoneType::RuneDeck, false});
         cur.power_remaining--;
+        state_.player(cur.player).power_spent_this_turn++;  // Sivir, Mercenary
     }
 
     return advanceCostPayment();

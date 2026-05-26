@@ -65,5 +65,29 @@ TEST_F(PerTurnTest, FrigidJewel_NoBuffBeforeSecondDraw) {
     EXPECT_EQ(state.getObject(unit).current_might, before);
 }
 
+TEST_F(PerTurnTest, Sivir_GainsMightAndGankingWhenPowerSpent) {
+    auto sivir = addUnit(P1, 464, 5, 0);
+    Card* c = card_registry.get(464);
+    ASSERT_NE(c, nullptr);
+
+    // < 2 power spent -> no aura.
+    state.player(P1).power_spent_this_turn = 1;
+    state.getObject(sivir).aura_effects.clear();
+    c->applyPassiveAura(state, P1);
+    EXPECT_TRUE(state.getObject(sivir).aura_effects.empty());
+
+    // >= 2 power spent -> +2 [M] and [Ganking].
+    state.player(P1).power_spent_this_turn = 2;
+    state.getObject(sivir).aura_effects.clear();
+    c->applyPassiveAura(state, P1);
+    int mb = 0; bool gank = false;
+    for (auto& ae : state.getObject(sivir).aura_effects) {
+        mb += ae.might_bonus;
+        if (ae.keyword == Keyword::Ganking) gank = true;
+    }
+    EXPECT_EQ(mb, 2);
+    EXPECT_TRUE(gank);
+}
+
 }  // namespace
 }  // namespace riftbound::test

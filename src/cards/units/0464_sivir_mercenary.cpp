@@ -15,12 +15,21 @@ class SivirMercenary : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "If you've spent at least [A][A] this turn, I have +2 [M] and [Ganking]."
-    // ([Accelerate] engine-handled.)
-    // ENGINE GAP: there is no per-turn cumulative power-spent counter on
-    // PlayerState (only last_spell_energy_spent / total_energy_spent, which are
-    // per-play energy, not cumulative power). The "[A][A] spent this turn"
-    // condition cannot be evaluated, so this conditional static is left
-    // unimplemented pending a power-spent-this-turn tracker in the cost system.
+    // ([Accelerate] engine-handled.) Conditional static granted via a self-aura
+    // gated on PlayerState::power_spent_this_turn (bumped per recycled power rune
+    // in resolveCostPaymentDecision).
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        if (state.player(controller).power_spent_this_turn < 2) return;
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId() || self.controller != controller) continue;
+            if (!self.location.has_value()) continue;
+            GameObject::AuraEffect mighty; mighty.source = sid; mighty.might_bonus = 2;
+            self.aura_effects.push_back(mighty);
+            GameObject::AuraEffect gank; gank.source = sid;
+            gank.keyword = Keyword::Ganking;
+            self.aura_effects.push_back(gank);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

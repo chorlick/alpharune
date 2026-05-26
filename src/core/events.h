@@ -196,6 +196,37 @@ struct UnitStunnedEvent {
     PlayerId     victim_controller;
 };
 
+/// A unit/object was readied. Emitted by EffectExecutor::readyObject.
+/// Drives WhenIAmReadied (Irelia, Fervent).
+struct UnitReadiedEvent {
+    GameObjectId object;
+    PlayerId     controller;
+};
+
+/// A card was hidden face-down. Emitted by GameEngine::executeHideCard.
+/// Drives WhenYouHideACard (Katarina, Reckless).
+struct CardHiddenEvent {
+    GameObjectId card;
+    PlayerId     player;         // the player who hid the card
+};
+
+/// A face-down card was played (revealed and resolved). Emitted by the
+/// facedown reveal-play path. Drives WhenYouPlayFromFacedown (Katarina).
+struct PlayedFromFacedownEvent {
+    GameObjectId card;
+    PlayerId     player;
+};
+
+/// A unit at a battlefield was returned to its owner's hand. Emitted by
+/// EffectExecutor::bounceToHand when the unit left a battlefield. Drives
+/// WhenAUnitReturnsToHandHere (Ripper's Bay). `from_battlefield` is the BF
+/// the unit was at (kInvalidId if it wasn't at a battlefield).
+struct UnitReturnedToHandEvent {
+    GameObjectId object;
+    PlayerId     owner;
+    BattlefieldId from_battlefield;
+};
+
 /// The game ended.
 struct GameOverEvent {
     PlayerId winner; // PlayerId::None for draw
@@ -305,6 +336,10 @@ public:
     boost::signals2::signal<void(const CleanupNeededEvent&)>      on_cleanup_needed;
     boost::signals2::signal<void(const ObjectStateChangedEvent&)> on_object_state_changed;
     boost::signals2::signal<void(const UnitStunnedEvent&)>        on_unit_stunned;
+    boost::signals2::signal<void(const UnitReadiedEvent&)>        on_unit_readied;
+    boost::signals2::signal<void(const CardHiddenEvent&)>         on_card_hidden;
+    boost::signals2::signal<void(const PlayedFromFacedownEvent&)> on_played_from_facedown;
+    boost::signals2::signal<void(const UnitReturnedToHandEvent&)> on_unit_returned_to_hand;
     boost::signals2::signal<void(const GameOverEvent&)>           on_game_over;
 
     // Logging
@@ -342,6 +377,10 @@ public:
     void emit(const CleanupNeededEvent& e)      { on_cleanup_needed(e); }
     void emit(const ObjectStateChangedEvent& e) { on_object_state_changed(e); }
     void emit(const UnitStunnedEvent& e)        { on_unit_stunned(e); }
+    void emit(const UnitReadiedEvent& e)        { on_unit_readied(e); }
+    void emit(const CardHiddenEvent& e)         { on_card_hidden(e); }
+    void emit(const PlayedFromFacedownEvent& e) { on_played_from_facedown(e); }
+    void emit(const UnitReturnedToHandEvent& e) { on_unit_returned_to_hand(e); }
     void emit(const GameOverEvent& e)           { on_game_over(e); }
     void emit(const LogEvent& e)                  { on_log(e); }
     void emit(const ChainCreatedEvent& e)        { on_chain_created(e); }
@@ -386,6 +425,10 @@ public:
         on_cleanup_needed.disconnect_all_slots();
         on_object_state_changed.disconnect_all_slots();
         on_unit_stunned.disconnect_all_slots();
+        on_unit_readied.disconnect_all_slots();
+        on_card_hidden.disconnect_all_slots();
+        on_played_from_facedown.disconnect_all_slots();
+        on_unit_returned_to_hand.disconnect_all_slots();
         on_game_over.disconnect_all_slots();
         on_chain_created.disconnect_all_slots();
         on_chain_item_finalized.disconnect_all_slots();

@@ -95,6 +95,14 @@ private:
     /// card_counters["__stunned_unit_id"] for the trigger's onTrigger.
     void onUnitStunned(const UnitStunnedEvent& e);
 
+    /// Phase-2 trigger events.
+    void onUnitReadied(const UnitReadiedEvent& e);          // WhenIAmReadied
+    void onCardHidden(const CardHiddenEvent& e);            // WhenYouHideACard
+    void onPlayedFromFacedown(const PlayedFromFacedownEvent& e); // WhenYouPlayFromFacedown
+    void onUnitReturnedToHand(const UnitReturnedToHandEvent& e); // WhenAUnitReturnsToHandHere
+    void onShowdownStarted(const ShowdownStartedEvent& e);  // WhenAShowdownBeginsHere
+    void onCardRevealed(const CardRevealedEvent& e);        // WhenIRevealedFromTop
+
     // ── Helpers ──
 
     /// Add a triggered ability to the chain for a game object.

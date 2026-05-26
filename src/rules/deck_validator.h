@@ -51,13 +51,28 @@ public:
     /// Note: display names are single-quoted because some contain commas.
     void loadBanList(const std::string& csv_path);
 
-    /// Check if a card_def_id is banned.
-    bool isBanned(CardDefId id) const { return banned_ids_.count(id) > 0; }
+    /// Wild format (--wild): allow banned cards in decks. When set, the ban
+    /// check is skipped entirely regardless of the loaded list or CardDef::banned.
+    void setWild(bool wild) { wild_ = wild; }
+    bool isWild() const { return wild_; }
+
+    /// Check if a card_def_id is banned. Honors BOTH the CSV-loaded ban list
+    /// AND the card's own CardDef::banned flag (which, post-refactor, the card
+    /// class owns) — either source bans the card.
+    bool isBanned(CardDefId id) const {
+        if (wild_) return false;  // wild format: nothing is banned
+        return banned_ids_.count(id) > 0 || db_.get(id).banned;
+    }
 
     ValidationResult validate(const DeckSubmission& deck) const;
 
-    /// Load a deck submission from an engine JSON file (output of deck_import.py).
-    static DeckSubmission loadFromJson(const std::string& path, const CardDB& db);
+    /// Load a deck submission directly from a `.txt` deck list (the
+    /// human-authored format: `Legend:` / `Champion:` / `MainDeck:` /
+    /// `Battlefields:` / `Runes:` / `Sideboard:` sections of `N CardName`
+    /// lines). Resolves names via CardDB::findByName. THROWS
+    /// std::runtime_error on any parse failure — unreadable file, malformed
+    /// line, unknown card name, or unknown/missing section.
+    static DeckSubmission loadFromDeckList(const std::string& path, const CardDB& db);
 
 private:
     const CardDB& db_;
@@ -80,6 +95,7 @@ private:
 
     std::set<CardDefId> banned_ids_;
     std::vector<std::string> banned_names_;  // for error messages
+    bool wild_ = false;                      // --wild: allow banned cards
 };
 
 } // namespace riftbound

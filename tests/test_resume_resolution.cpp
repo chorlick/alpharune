@@ -34,11 +34,6 @@ namespace {
 constexpr CardDefId kLunarBoonId   = 687;  // Reaction: discard 1, draw 2
 constexpr CardDefId kAbandonId     = 693;  // Reaction: counter + predict 1
 
-std::string findRegistryPath() {
-    const char* root = std::getenv("RIFTBOUND_ROOT");
-    if (root) return std::string(root) + "/cards/registry.json";
-    return "../cards/registry.json";
-}
 
 class FirstChoiceAgent {
 public:
@@ -62,8 +57,8 @@ protected:
     GameState state;
 
     void SetUp() override {
-        card_db.loadFromRegistry(findRegistryPath());
         card_registry.loadAll();
+        card_db.buildFromClasses(card_registry);
 
         state.mode = ModeOfPlay{};
         state.players[0].id = PlayerId::Player1;

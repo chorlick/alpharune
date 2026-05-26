@@ -1,0 +1,37 @@
+Legend:
+1 Wuju Bladesman - Starter
+
+Champion:
+1 Master Yi, Tempered
+
+MainDeck:
+3 Charm
+3 Defy
+3 Discipline
+3 Zhonya's Hourglass
+3 First Mate
+3 Punch First
+3 Ruin Runner
+3 Scuttle Crab
+3 Lonely Poro
+2 En Garde
+2 Stalwart Poro
+2 Trinity Force
+2 Back Off
+1 Alpha Strike
+3 Rengar, Trophy Hunter
+
+Battlefields:
+1 Startipped Peak
+1 The Arena's Greatest
+1 Star Spring
+
+Runes:
+6 Calm Rune
+6 Body Rune
+
+Sideboard:
+3 Sabotage
+2 Disarming Rake
+2 Not So Fast
+1 Alpha Strike

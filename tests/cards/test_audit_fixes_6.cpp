@@ -409,16 +409,26 @@ TEST_F(AuditFix6Test, SoulSword_PassiveNotGrantedWhenUnattached) {
 
 // WhenYouPlayMe: paid additional cost [G] (Calm rune present) → stun an enemy.
 // Direct confirmOptional defaults to "yes" when legal.
-TEST_F(AuditFix6Test, Nami_PlayPaysAdditionalCostAndStuns) {
+TEST_F(AuditFix6Test, Nami_StunsWhenAdditionalCostWasPaid) {
     auto self = addUnit(P1, kNami, /*might=*/3, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
-    addRune(P1, Domain::Calm);  // the [G] additional cost
+    // The [G] additional cost is now paid at play time
+    // (maybePayOptionalAdditionalCost) — simulate it via the paid flag.
+    state.getObject(self).card_counters["__nami_paid"] = 1;
 
     EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kNami, P1, self, TriggerType::WhenYouPlayMe, exec, {enemy});
+    fireTriggerAs(kNami, P1, self, TriggerType::WhenYouPlayMe, exec);
 
     EXPECT_TRUE(state.getObject(enemy).is_stunned);
-    EXPECT_EQ(readyRuneCount(P1, Domain::Calm), 0);  // [G] paid
+}
+
+TEST_F(AuditFix6Test, Nami_NoStunWhenAdditionalCostNotPaid) {
+    auto self = addUnit(P1, kNami, 3, 0);
+    auto enemy = addUnit(P2, kInvalidId, 2, 0);
+    // No __nami_paid flag -> the additional cost wasn't paid -> no stun.
+    EffectExecutor exec(state, events, card_db);
+    fireTriggerAs(kNami, P1, self, TriggerType::WhenYouPlayMe, exec);
+    EXPECT_FALSE(state.getObject(enemy).is_stunned);
 }
 
 // WhenYouPlayMe: no Calm rune → can't pay additional cost → no stun.
@@ -647,11 +657,12 @@ TEST_F(AuditFix6Test, Thrill_NoFriendlyUnitNoOp) {
 // no-op battlefield card. We pin that it registers and fires no trigger.
 // TODO: "return-to-hand here → pay 1 to channel 1 rune exhausted" is NOT
 // implemented (no return-to-hand battlefield-scoped trigger event exists).
-TEST_F(AuditFix6Test, RippersBay_RegisteredNoOpStub) {
+TEST_F(AuditFix6Test, RippersBay_FiresOnUnitReturnedToHandHere) {
     Card* c = card_registry.get(kRippersBay);
     ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->triggerType(), TriggerType::None);
-    EXPECT_TRUE(c->triggerTypes().empty());
+    // "When a unit here is returned to hand, that player may pay [1] to channel
+    // 1 rune exhausted" now has an engine trigger (WhenAUnitReturnsToHandHere).
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenAUnitReturnsToHandHere));
 }
 
 } // namespace

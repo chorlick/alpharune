@@ -1,0 +1,37 @@
+Legend:
+1 Lucian, Purifier
+
+Champion:
+1 Lucian, Merciless
+
+MainDeck:
+3 First Mate
+3 Skyfall of Areion
+3 Doran's Blade
+3 Ruin Runner
+3 Trinity Force
+3 Relentless Pursuit
+3 Kinkou Initiate
+3 Irresistible Faefolk
+2 Challenge
+2 Confront
+2 Sabotage
+2 Gem Jammer
+2 Punch First
+2 Blighted Battleaxe
+3 Kai'Sa, Survivor
+
+Battlefields:
+1 The Candlelit Sanctum
+1 Forge of the Fluft
+1 Sunken Temple
+
+Runes:
+7 Body Rune
+5 Fury Rune
+
+Sideboard:
+2 Brynhir Thundersong
+2 Ferrous Forerunner
+2 Akshan, Mischievous
+2 Repulse

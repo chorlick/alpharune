@@ -1,0 +1,40 @@
+Legend:
+1 Lady of Luminosity - Starter
+
+Champion:
+1 Lux, Crownguard
+
+MainDeck:
+3 Falling Comet
+3 Cull the Weak
+3 Plundering Poro
+3 Vanguard Armory
+3 Seal of Unity
+3 Sprite Burst
+2 Singularity
+2 Imperial Decree
+2 Wages of Pain
+2 Card Sharp
+2 Honest Broker
+2 Drag Under
+2 The Ruination
+1 Progress Day
+1 Salvage
+3 Ashe, Focused
+2 Jayce, Man of Progress
+
+Battlefields:
+1 Aspirant's Climb
+1 Sigil of the Storm
+1 Vilemaw's Lair
+
+Runes:
+7 Order Rune
+5 Mind Rune
+
+Sideboard:
+2 Salvage
+2 King's Edict
+2 Bellows Breath
+1 Singularity
+1 Imperial Decree

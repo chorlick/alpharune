@@ -21,7 +21,7 @@ so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
 - **Full rules engine.** Awaken → channel → draw → main → end turn loop,
   FEPR chain resolution, combat with damage assignment, scoring, mulligans,
   battlefields, gear/equip, 23 keyword mechanics, replacement effects.
-- **787 cards** loaded from `cards/registry.json`. ~240 manually implemented
+- **787 cards**, each a hand-authored C++ class owning its own data + behavior. ~240 manually implemented
   with full behavior (champions, legends, key spells in test decks); the
   rest have auto-generated stubs that cover simple effects. Implementation
   fidelity per card is tracked in [`docs/card-implementation-audit.md`](docs/card-implementation-audit.md).
@@ -52,15 +52,15 @@ RIFTBOUND_ROOT=. ./build/riftbound_tests
 # Play random vs MCTS (single game, stdout + HTML replay)
 ./build/riftbound \
     --agent1 random --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json \
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt \
     --render-html on
 
 # Batch 100 games on 8 threads (random vs random, no UI)
 ./build/riftbound \
     --agent1 random --agent2 random \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json \
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt \
     --games 100 --threads 8
 
 # Play AS A HUMAN against MCTS-50 in your browser. The binary
@@ -69,24 +69,24 @@ RIFTBOUND_ROOT=. ./build/riftbound_tests
 # auto-enabled. Open the URL in any browser to play.
 ./build/riftbound \
     --agent1 human --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt
 
 # Want to play as P2 instead? Swap the seats:
 ./build/riftbound \
     --agent1 mcts:sims=50 --agent2 human \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt
 
 # Hot-seat (two humans in one browser tab, take turns):
 ./build/riftbound --agent1 human --agent2 human \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt
 
 # Spectator (force the web UI ON for an AI-vs-AI game):
 ./build/riftbound --agent1 random --agent2 mcts:sims=20 --web on \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt
 ```
 
 Pass `--help` for the full flag list. The web UI's WebSocket protocol
@@ -100,8 +100,8 @@ The fastest way to play a game yourself, as Player 1, against a
 ```bash
 ./build/riftbound \
     --agent1 human --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.json \
-    --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt \
+    --deck2 decks/miss_fortune_test.txt
 ```
 
 Because a seat is `human`, the binary auto-starts a small Boost.Beast
@@ -125,6 +125,7 @@ Useful flags:
 | `--port` / `--bind` | `8080` / `127.0.0.1` | Where the UI listens. Use `--bind 0.0.0.0` to reach it from another machine. |
 | `--god-mode` | `auto` | `auto`/`on` enables the in-browser state editor when a human is seated; `off` hides it. |
 | `--seed` | `0` | Fix the RNG for a reproducible game (`0` = random per game). |
+| `--wild` | off | Wild format: allow banned cards in decks (ignores each card's `banned` flag so banned cards can be played). |
 
 ### What the UI looks like
 
@@ -183,35 +184,27 @@ architectures (Deep CFR, OSFP, online CFR / ReBeL inference, etc.).
 That repo links against this one as a static library — engine repo
 stays slim and dependency-light.
 
-## Card data pipeline
+## Card data
 
-`cards/registry.json` is the single source of truth for card definitions.
-To rebuild it from scratch:
+Card data is **hand-authored C++** — the source files are the single source of
+truth. There is no `registry.json` and no code-generation pipeline. Each card
+class implements `Card::def()`, returning its `CardDef` (cost, domains, tags,
+keywords, art URL, `banned` flag, …); the engine builds its card table from those
+at startup (`CardDB::buildFromClasses`). To add or edit a card, edit its
+`src/cards/<type>/<id>_<slug>.cpp` directly.
 
 ```bash
-# 1. Scrape the official Riftbound gallery (writes cards/json/*.json)
+# Export the compiled card table to registry-style JSON (validation / external use)
+./build/riftbound --dump-registry /tmp/registry.json
+
+# (optional) Pull raw card metadata from the official gallery, for reference when
+# authoring new cards. Writes cards/raw/gallery_raw.json — it does NOT feed the engine.
 python3 scripts/fetch_cards.py
-
-# 2. Apply errata (patches ability_text from errata/ documents)
-python3 scripts/apply_errata.py
-
-# 3. Build the registry (assigns stable integer IDs, joins errata)
-python3 scripts/card_registry.py
-
-# 4. Code-gen C++ stubs for newly-added cards
-python3 scripts/generate_cards.py
-
-# 5. Import a text deck list
-python3 scripts/deck_import.py decks/my_deck.txt
 ```
 
 | Script | Purpose |
 |---|---|
-| `scripts/fetch_cards.py` | Scrape Riftbound's official gallery into per-card JSONs. Run once per set release. |
-| `scripts/apply_errata.py` | Patch card text with corrections from `errata/`. |
-| `scripts/card_registry.py` | Assemble `cards/registry.json`. Source of truth for card-to-integer mapping. |
-| `scripts/deck_import.py` | Convert text deck lists (Piltover Archive format) into engine JSON. Validates against tournament rules. |
-| `scripts/generate_cards.py` | Code-gen C++ Card subclass stubs from registry. Hand-edits go in `src/cards/manual/`. |
+| `scripts/fetch_cards.py` | Scrape Riftbound's official gallery into `cards/raw/gallery_raw.json`. Reference data for authoring new cards; not consumed by the engine. |
 | `scripts/generate_replays.py` | Bulk-generate HTML replays of every deck pair under `decks/`. Useful for visual V&V after card changes. |
 | `scripts/audit_deck_cards.py` | Per-deck audit of card-implementation status (FULL / PARTIAL / STUB / MISSING). |
 
@@ -221,7 +214,12 @@ python3 scripts/deck_import.py decks/my_deck.txt
 src/core/        ID types, events, intents, game state, card database
 src/engine/      Turn loop, chain manager, effect executor, trigger manager,
                  batch runner, step driver (fiber-based)
-src/cards/       Card subclasses — generated/ + manual/ overrides
+src/cards/       Card subclasses — one TU per card under units/ spells/ gear/
+                 legends/ battlefields/ runes/ (named <id>_<slug>.cpp), each
+                 owning its CardDef data + behavior. Per-type bases live in
+                 their type dir (gear/equip_base.h, units/weaponmaster_base.h);
+                 cross-cutting helpers in card_helpers.h; cards_init.cpp is the
+                 generated registration aggregator.
 src/agents/      AgentInterface + RandomAgent + HumanAgent
 src/io/          HTML replay writer, ASCII state renderer
 src/openspiel/   OpenSpiel Game / State subclasses, action vocabulary,
@@ -233,8 +231,8 @@ src/rules/       Deck validator (tournament rules)
 src/effects/     Effect type definitions
 
 tests/           Google Test — engine behavior + card mechanics
-cards/           registry.json, errata-applied card data, ban list
-decks/           Sample decks (per-archetype .json + .txt formats)
+cards/           raw/gallery_raw.json (reference art/metadata for authoring)
+decks/           Sample decks (per-archetype .txt deck lists, Piltover Archive format)
 rules/           core-rules.md, tournament-rules.md, core-rules.pdf
 errata/          Official errata documents
 scripts/         Card-data pipeline + replay generation

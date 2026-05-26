@@ -1,0 +1,40 @@
+Legend:
+1 Bloodharbor Ripper
+
+Champion:
+1 Pyke, Returned
+
+MainDeck:
+3 Noxus Hopeful
+3 Stacked Deck
+3 Overzealous Fan
+3 Treasure Hunter
+3 Bewitching Spirit
+3 Death from Below
+2 Falling Star
+2 Ride the Wind
+2 Sneaky Deckhand
+2 Tideturner
+2 Hard Bargain
+2 Switcheroo
+2 Bone Skewer
+2 Baron Nashor
+1 Rebuke
+1 Mindsplitter
+2 Darius, Trifarian
+1 Draven, Audacious
+
+Battlefields:
+1 Hall of Legends
+1 Treasure Hoard
+1 Ripper's Bay
+
+Runes:
+8 Chaos Rune
+4 Fury Rune
+
+Sideboard:
+2 Sudden Storm
+2 Windsinger
+2 Katarina, Reckless
+2 The List

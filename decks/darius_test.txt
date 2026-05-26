@@ -1,0 +1,41 @@
+Legend:
+1 Draven, Glorious Executioner
+
+Champion:
+1 Draven, Showboat
+
+MainDeck:
+3 Noxus Hopeful
+3 Stacked Deck
+3 Tideturner
+3 Overzealous Fan
+3 Spinning Axe
+2 Gust
+2 Ride the Wind
+2 Mindsplitter
+2 Existential Dread
+1 Cleave
+1 Rebuke
+1 Switcheroo
+3 Kai'Sa, Survivor
+3 Jhin, Murderous Artist
+2 Darius, Trifarian
+2 Evelynn, Entrancing
+2 Vex, Apathetic
+1 Pyke, Dockside Butcher
+
+Battlefields:
+1 Targon's Peak
+1 Amateur Recital
+1 Star Spring
+
+Runes:
+7 Chaos Rune
+5 Fury Rune
+
+Sideboard:
+2 Brynhir Thundersong
+2 Ferrous Forerunner
+2 Star-Crossed
+1 Falling Star
+1 Hard Bargain

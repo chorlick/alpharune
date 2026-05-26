@@ -281,12 +281,12 @@ int main(int argc, char* argv[]) {
         ("help,h", "Show help")
         ("version,v", "Print engine version + git commit (matches the tag "
                        "embedded in rendered HTML replays) and exit")
-        ("deck1", po::value<std::string>()->default_value("decks/leblanc_test.json"),
+        ("deck1", po::value<std::string>()->default_value("decks/leblanc_test.txt"),
          "Player 1 deck JSON")
-        ("deck2", po::value<std::string>()->default_value("decks/leblanc_test.json"),
+        ("deck2", po::value<std::string>()->default_value("decks/leblanc_test.txt"),
          "Player 2 deck JSON")
-        ("registry,r", po::value<std::string>()->default_value("cards/registry.json"),
-         "Path to card registry JSON")
+        ("registry,r", po::value<std::string>()->default_value("cards/ban-list.csv"),
+         "Path used only to locate ban-list.csv (card data is compiled in)")
         ("agent1", po::value<std::string>()->default_value("random"),
          "Player 1 agent spec: random | mcts:sims=N | ismcts:sims=N")
         ("agent2", po::value<std::string>()->default_value("random"),

@@ -1,0 +1,41 @@
+Legend:
+1 Swift Scout
+
+Champion:
+1 Teemo, Strategist
+
+MainDeck:
+3 Consult the Past
+3 Sprite Call
+3 Tideturner
+3 Windsinger
+3 Switcheroo
+3 Sprite Fountain
+2 Sneaky Deckhand
+2 Guerilla Warfare
+2 Existential Dread
+2 Bone Skewer
+1 Singularity
+1 Ride the Wind
+1 Abandon
+1 Baron Nashor
+2 Teemo, Strategist
+3 Nocturne, Horrifying
+3 Teemo, Scout
+1 Evelynn, Entrancing
+
+Battlefields:
+1 Grove of the God-Willow
+1 Startipped Peak
+1 The Arena's Greatest
+
+Runes:
+7 Mind Rune
+5 Chaos Rune
+
+Sideboard:
+2 Rebuke
+2 Edge of Night
+2 Turn to Dust
+1 Thousand-Tailed Watcher
+1 Unchecked Power

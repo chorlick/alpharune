@@ -1,0 +1,38 @@
+Legend:
+1 Vi, Piltover Enforcer
+
+Champion:
+1 Vi, Destructive
+
+MainDeck:
+3 Long Sword
+3 Honest Broker
+3 B.F. Sword
+3 Deathgrip
+3 Unsung Hero
+3 Hextech Gauntlets
+2 Noxus Hopeful
+2 Pouty Poro
+2 Falling Star
+1 Tactical Retreat
+3 Jhin, Murderous Artist
+3 Rengar, Unseen
+2 Kai'Sa, Survivor
+2 Fiora, Victorious
+2 Rek'Sai, Breacher
+2 Pyke, Dockside Butcher
+
+Battlefields:
+1 The Arena's Greatest
+1 Forge of the Fluft
+1 Rockfall Path
+
+Runes:
+8 Fury Rune
+4 Order Rune
+
+Sideboard:
+2 Brynhir Thundersong
+2 Cull the Weak
+2 Salvage
+2 Ashe, Focused

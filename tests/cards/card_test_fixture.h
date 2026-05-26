@@ -70,6 +70,9 @@
 
 namespace riftbound::test {
 
+// NOTE: registry.json + ban-list.csv were retired — all card data (including ban
+// status) is owned by the C++ classes and the CardDB is built from them
+// (buildFromClasses). This helper survives only to derive the decks/ dir.
 inline std::string findRegistryPath() {
     const char* root = std::getenv("RIFTBOUND_ROOT");
     if (root) return std::string(root) + "/cards/registry.json";
@@ -137,8 +140,8 @@ protected:
     static constexpr PlayerId P2 = PlayerId::Player2;
 
     void SetUp() override {
-        card_db.loadFromRegistry(findRegistryPath());
         card_registry.loadAll();
+        card_db.buildFromClasses(card_registry);
         state.mode = ModeOfPlay{};
         state.players[0].id = P1;
         state.players[1].id = P2;

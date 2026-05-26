@@ -37,10 +37,8 @@ protected:
     GameState state;
 
     void SetUp() override {
-        const char* root = std::getenv("RIFTBOUND_ROOT");
-        std::string path = (root ? std::string(root) : "..") + "/cards/registry.json";
-        card_db.loadFromRegistry(path);
         card_registry.loadAll();
+        card_db.buildFromClasses(card_registry);
 
         state.players[0].id = PlayerId::Player1;
         state.players[1].id = PlayerId::Player2;

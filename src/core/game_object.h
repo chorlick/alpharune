@@ -89,11 +89,38 @@ struct GameObject {
     // explicit Card subclass reset.
     std::unordered_map<std::string, int> card_counters;
 
+    // String-valued per-card state, keyed by purpose. For cards that "name"
+    // something at play time and act on the named value later (The List 700:
+    // "name a tag" → string_state["named_tag"]). Parallel to card_counters
+    // (which only holds ints). Survives across turns; reset by the owning
+    // Card subclass if needed.
+    std::unordered_map<std::string, std::string> string_state;
+
     // ── Damage-modifying turn-scoped flags ──
     // Lotus Trap and similar cards set `damage_doubled_this_turn` on a
     // target unit; EffectExecutor::dealDamage consults the flag and
     // doubles the assignment. Cleared at expiration (end of turn).
     bool damage_doubled_this_turn = false;
+
+    // ── Deferred one-shot death replacement (Tactical Retreat 737) ──
+    // "The next time it would die this turn, heal it, exhaust it, and recall
+    // it to base instead." killUnit consults this BEFORE the normal death
+    // path: when set it heals + exhausts + recalls the unit to base and clears
+    // the flag (one-shot). Expires at end of turn if unused.
+    bool death_replacement_recall_pending = false;
+
+    // ── One-shot damage prevention (Counter Strike 510) ──
+    // "The next time that unit would be dealt damage this turn, prevent it."
+    // EffectExecutor::dealDamage consults this BEFORE applying damage: when set
+    // it prevents the next instance of damage to this unit and clears the flag
+    // (one-shot). Expires unused at end of turn.
+    bool prevent_next_damage_this_turn = false;
+
+    // ── Per-unit movement restriction (Determined Sentry 673) ──
+    // "I can't move to base." Set by the card on play; consulted by the
+    // main-phase move generator (parallel to BattlefieldState::blocks_move_to_base,
+    // which is the per-battlefield variant).
+    bool cant_move_to_base = false;
 
     // ── Take-control reversion (CR 416, Phase 6q+) ──
     // EffectExecutor::takeControl with `until_end_of_turn=true` snapshots
@@ -103,6 +130,16 @@ struct GameObject {
     // set the flag.
     bool control_reverts_eot = false;
     PlayerId original_controller_eot = PlayerId::None;
+
+    // ── Take-control reversion "until I leave the board" (Akshan 431) ──
+    // When an effect takes control of this object only "until <source> leaves
+    // the board", these record the controlling source and where control
+    // returns. GameEngine::revertLapsedControl (run in cleanup) restores
+    // `controller` and clears these once the source object is no longer in
+    // play. Independent of the end-of-turn variant above.
+    bool control_reverts_on_source_leave = false;
+    GameObjectId control_source_obj = kInvalidId;
+    PlayerId control_revert_to = PlayerId::None;
 
     // ── Card-specific tracked objects ──
     // Virtuoso [782] uses this to remember WHICH banished spells were
@@ -119,10 +156,16 @@ struct GameObject {
         int might_minimum = 0;             // minimum M (0 = no min)
         Keyword keyword = Keyword::Count;  // granted keyword (Count = none)
         int keyword_value = 0;             // e.g. Assault 1, Shield 2
+        bool suppress_combat_damage = false; // Vilemaw: "doesn't deal combat damage"
     };
     std::vector<AuraEffect> aura_effects;  // active auras affecting this object
     int aura_might_bonus = 0;              // cached sum of aura might bonuses
     KeywordSet aura_keywords;              // cached union of aura-granted keywords
+    bool aura_no_combat_damage = false;    // cached: any aura suppresses combat dmg
+
+    /// This unit deals no combat damage (stunned, or an aura suppresses it —
+    /// Vilemaw). Consulted by the combat-damage step.
+    bool dealsNoCombatDamage() const { return is_stunned || aura_no_combat_damage; }
 
     // Keywords granted by "this turn" effects (Bounty Hunter's
     // `[E]: Give a unit [Ganking] this turn.`, Catalyst of Aeons-style

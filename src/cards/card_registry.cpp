@@ -1,22 +1,16 @@
 #include "cards/card_registry.h"
+#include "core/card_db.h"
 
+#include <algorithm>
 #include <cassert>
+#include <sstream>
 
 namespace riftbound {
 
-// Manual card registrations
-void registerManualEquipCards(CardRegistry& registry);
-void registerManualWeaponmasterCards(CardRegistry& registry);
-void registerManualDeckCards(CardRegistry& registry);
-// Pre-release audit fixes — registered LAST so they override prior impls.
-void registerAuditFixes0(CardRegistry& registry);
-void registerAuditFixes1(CardRegistry& registry);
-void registerAuditFixes2(CardRegistry& registry);
-void registerAuditFixes3(CardRegistry& registry);
-void registerAuditFixes4(CardRegistry& registry);
-void registerAuditFixes5(CardRegistry& registry);
-void registerAuditFixes6(CardRegistry& registry);
-void registerAuditFixes7(CardRegistry& registry);
+// Post-refactor: one registration function per card, aggregated by the
+// generated cards_init.cpp. Each card's authoritative class lives in its own
+// translation unit under src/cards/<type>/<id>_<slug>.cpp.
+void registerAllCards(CardRegistry& registry);
 
 void CardRegistry::registerCard(CardDefId id, std::unique_ptr<Card> card) {
     cards_[id] = std::move(card);
@@ -31,20 +25,25 @@ bool CardRegistry::has(CardDefId id) const {
     return cards_.find(id) != cards_.end();
 }
 
+const CardDef* CardRegistry::classDef(CardDefId id) const {
+    auto it = cards_.find(id);
+    if (it == cards_.end()) return nullptr;
+    return &it->second->def();  // every card defines itself
+}
+
+std::vector<CardDefId> CardRegistry::classDefIds() const {
+    std::vector<CardDefId> ids;
+    ids.reserve(cards_.size());
+    for (const auto& [id, card] : cards_) ids.push_back(id);
+    std::sort(ids.begin(), ids.end());
+    return ids;
+}
+
 void CardRegistry::loadAll() {
-    registerGeneratedCards(*this);
-    // Manual overrides (registered AFTER generated — overwrites generated stubs)
-    registerManualEquipCards(*this);
-    registerManualWeaponmasterCards(*this);
-    registerManualDeckCards(*this);
-    registerAuditFixes0(*this);
-    registerAuditFixes1(*this);
-    registerAuditFixes2(*this);
-    registerAuditFixes3(*this);
-    registerAuditFixes4(*this);
-    registerAuditFixes5(*this);
-    registerAuditFixes6(*this);
-    registerAuditFixes7(*this);
+    // One authoritative class per card, each in its own TU; the generated
+    // aggregator registers them all. Precedence (manual-over-generated) was
+    // resolved at split time, so there is no longer an override layer.
+    registerAllCards(*this);
 }
 
 } // namespace riftbound

@@ -657,7 +657,9 @@ TEST_F(MindsplitterTest, OpponentDiscardsAChosenCardFromHand) {
     card->onTrigger(ctx, {});
     while (exec.hasPendingChoice()) {
         auto pending = exec.consumePendingChoice();
-        EXPECT_EQ(pending.player, P2) << "Mindsplitter publishes choice to OPPONENT";
+        // Card text: "Choose a card from it, and they discard that card." YOU
+        // (the controller) choose which card the opponent discards.
+        EXPECT_EQ(pending.player, P1) << "Mindsplitter: the CONTROLLER chooses";
         Intent picked = pending.legal.empty() ? Intent{} : pending.legal.front();
         exec.recordChoice(picked);
         card->onTrigger(ctx, {});

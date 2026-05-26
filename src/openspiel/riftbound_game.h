@@ -7,9 +7,10 @@
 /// reuses these via const references.
 ///
 /// Game parameters (settable via LoadGame("riftbound(deck1=..., deck2=...)")):
-///   - deck1     : path to player-1 deck JSON (default: decks/leblanc_test.json)
-///   - deck2     : path to player-2 deck JSON (default: decks/leblanc_test.json)
-///   - registry  : path to cards/registry.json    (default: cards/registry.json)
+///   - deck1     : path to player-1 deck list .txt (default: decks/leblanc_test.txt)
+///   - deck2     : path to player-2 deck list .txt (default: decks/leblanc_test.txt)
+///   - registry  : path used only to locate ban-list.csv (default: cards/ban-list.csv);
+///                 card data is compiled into the engine, not read from JSON
 ///   - seed      : RNG seed for the engine; 0 = nondeterministic (default: 0)
 
 #include "open_spiel/spiel.h"

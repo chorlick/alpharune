@@ -72,6 +72,7 @@ static std::string findRegistryPath() {
     return "../cards/registry.json";
 }
 
+
 class ChainTestFixture : public ::testing::Test {
 protected:
     CardDB card_db;
@@ -79,8 +80,8 @@ protected:
     CardRegistry card_registry;
 
     void SetUp() override {
-        card_db.loadFromRegistry(findRegistryPath());
         card_registry.loadAll();
+        card_db.buildFromClasses(card_registry);
     }
 
     /// Resolve a card via its Card object.
@@ -714,8 +715,8 @@ TEST_F(ChainTestFixture, FullGameRunsWithSpellsInDecks) {
     DeckSubmission deck1, deck2;
     std::string root = findRegistryPath().substr(
         0, findRegistryPath().rfind('/')) + "/..";
-    deck1 = DeckValidator::loadFromJson(root + "/decks/leblanc_test.json", card_db);
-    deck2 = DeckValidator::loadFromJson(root + "/decks/vex_test_deck.json", card_db);
+    deck1 = DeckValidator::loadFromDeckList(root + "/decks/leblanc_test.txt", card_db);
+    deck2 = DeckValidator::loadFromDeckList(root + "/decks/vex_test_deck.txt", card_db);
 
     auto result = engine.runGame(deck1, deck2, agent1, agent2, 42);
 

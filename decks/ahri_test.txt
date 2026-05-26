@@ -1,0 +1,42 @@
+Legend:
+1 Ahri, Nine-Tailed Fox
+
+Champion:
+1 Ahri, Alluring
+
+MainDeck:
+3 Discipline
+3 Desert's Call
+3 Not So Fast
+3 Mutated Mouser
+3 Back Off
+3 Vilemaw
+3 Blue Sentinel
+2 Charm
+2 Defy
+2 Eager Apprentice
+2 Ravenbloom Student
+2 Turn to Dust
+1 Last Stand
+1 Time Warp
+1 Unchecked Power
+1 Crescent Strike
+2 Sona, Harmonious
+2 Nami, Headstrong
+
+Battlefields:
+1 Grove of the God-Willow
+1 Startipped Peak
+1 Abandoned Hall
+
+Runes:
+7 Calm Rune
+5 Mind Rune
+
+Sideboard:
+2 Allay, Eager Admirer
+2 Flurry of Feathers
+1 Defy
+1 Zhonya's Hourglass
+1 Singularity
+1 Turn to Dust

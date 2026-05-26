@@ -254,6 +254,9 @@ TEST_F(AuditFix1Test, Akshan_StealsEnemyGearToBase) {
     auto akshan = addUnit(P1, kAkshan, 4, 0);
     auto enemy_gear = addGearOnBoard(P2, kGearBallista, /*at_bf=*/0,
                                      /*equipment=*/false);
+    // Simulate paying the optional [O][O] additional cost (set at play time by
+    // maybePayOptionalAdditionalCost) — the steal is gated on it.
+    state.getObject(akshan).card_counters["__akshan_paid"] = 1;
     EffectExecutor exec(state, events, card_db);
 
     fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
@@ -272,6 +275,7 @@ TEST_F(AuditFix1Test, Akshan_AttachesStolenEquipment) {
     auto enemy_equip = addGearOnBoard(P2, kGearBallista, /*at_bf=*/0,
                                       /*equipment=*/true);
     state.getObject(enemy_equip).might_bonus = 2;
+    state.getObject(akshan).card_counters["__akshan_paid"] = 1;  // paid the additional cost
     EffectExecutor exec(state, events, card_db);
 
     fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
@@ -292,6 +296,7 @@ TEST_F(AuditFix1Test, Akshan_NoEnemyGearNoOp) {
     auto akshan = addUnit(P1, kAkshan, 4, 0);
     // Only a FRIENDLY gear exists -> not stolen.
     auto friendly = addGearOnBoard(P1, kGearBallista, 0);
+    state.getObject(akshan).card_counters["__akshan_paid"] = 1;  // even if paid
     EffectExecutor exec(state, events, card_db);
 
     fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
@@ -299,9 +304,17 @@ TEST_F(AuditFix1Test, Akshan_NoEnemyGearNoOp) {
     EXPECT_EQ(state.getObject(friendly).controller, P1);   // unchanged
     EXPECT_FALSE(state.getObject(friendly).attached_to.has_value());
     EXPECT_EQ(state.getObject(akshan).current_might, 4);
-    // TODO: "if you paid the additional cost" gate is not modeled — the steal
-    // always happens on play when an enemy gear exists.
     // TODO: "until I leave the board" control reversion is not modeled.
+}
+
+TEST_F(AuditFix1Test, Akshan_NoStealWhenAdditionalCostNotPaid) {
+    auto akshan = addUnit(P1, kAkshan, 4, 0);
+    auto enemy_gear = addGearOnBoard(P2, kGearBallista, /*at_bf=*/0,
+                                     /*equipment=*/false);
+    // No __akshan_paid flag -> additional cost not paid -> no steal.
+    EffectExecutor exec(state, events, card_db);
+    fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
+    EXPECT_EQ(state.getObject(enemy_gear).controller, P2);  // NOT stolen
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -531,14 +544,15 @@ TEST_F(AuditFix1Test, Gemhand_PassiveOnlyAffectsControllerCopies) {
 // (Deflect) is intact.
 // ════════════════════════════════════════════════════════════════════════════
 
-TEST_F(AuditFix1Test, Vex_RegisteredAsNoOpStub) {
+TEST_F(AuditFix1Test, Vex_FiresOnOpponentPlaysAUnit) {
     Card* c = card_registry.get(kVex);
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->cardDefId(), kVex);
-    // No trigger registered (clause unimplemented).
-    EXPECT_EQ(c->triggerType(), TriggerType::None);
-    // TODO: "opponent plays a unit while I'm at a BF -> [Stun] it, can't move
-    // it this turn" is a documented gap (needs a new engine trigger + flag).
+    // The "when an opponent plays a unit while I'm at a battlefield, stun it"
+    // clause now has an engine trigger (WhenOpponentPlaysAUnit). [Deflect]
+    // remains engine-handled. (The "can't move / no combat damage this turn"
+    // rider still needs per-unit flags — documented gap.)
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenOpponentPlaysAUnit));
 }
 
 TEST_F(AuditFix1Test, Vex_DeflectKeywordFromRegistry) {

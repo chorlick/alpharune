@@ -1,0 +1,37 @@
+Legend:
+1 Poppy, Keeper of the Hammer
+
+Champion:
+1 Poppy, Paragon
+
+MainDeck:
+3 Challenge
+3 Sabotage
+3 Hidden Blade
+3 Seal of Strength
+3 Gemhand Hunter
+3 Hunter's Machete
+3 Blood Rose
+3 Determined Sentry
+3 Keeper's Verdict
+2 Enthralling Protector
+1 Punch First
+3 Nidalee, Cat Form
+2 Qiyana, Victorious
+2 Nilah, Joyful Ascetic
+2 Kha'Zix, Evolving Hunter
+
+Battlefields:
+1 Grove of the God-Willow
+1 Targon's Peak
+1 Gardens of Becoming
+
+Runes:
+7 Body Rune
+5 Order Rune
+
+Sideboard:
+2 Unyielding Spirit
+2 Salvage
+2 Akshan, Mischievous
+2 Repulse

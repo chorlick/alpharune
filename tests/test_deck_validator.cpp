@@ -1,25 +1,14 @@
 #include <gtest/gtest.h>
 #include "core/card_db.h"
+#include "cards/card_registry.h"
 #include "rules/deck_validator.h"
 
 #include <filesystem>
+#include <fstream>
 
 using namespace riftbound;
 
 namespace {
-
-std::string registryPath() {
-    for (auto& p : {"../cards/registry.json", "../../cards/registry.json",
-                     "cards/registry.json"}) {
-        if (std::filesystem::exists(p)) return p;
-    }
-    const char* root = std::getenv("RIFTBOUND_ROOT");
-    if (root) {
-        auto path = std::filesystem::path(root) / "cards" / "registry.json";
-        if (std::filesystem::exists(path)) return path.string();
-    }
-    return "cards/registry.json";
-}
 
 std::string deckPath(const char* name) {
     for (auto& prefix : {"../decks/", "../../decks/", "decks/"}) {
@@ -39,12 +28,11 @@ std::string deckPath(const char* name) {
 class DeckValidatorTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        auto path = registryPath();
-        if (!std::filesystem::exists(path)) {
-            GTEST_SKIP() << "registry.json not found";
-        }
-        db.loadFromRegistry(path);
+        registry.loadAll();
+        db.buildFromClasses(registry);
     }
+
+    CardRegistry registry;
 
     /// Build a valid LeBlanc deck for testing modifications against.
     DeckSubmission makeValidDeck() {
@@ -133,13 +121,13 @@ TEST_F(DeckValidatorTest, ValidDeckPasses) {
     }
 }
 
-TEST_F(DeckValidatorTest, LoadFromJsonAndValidate) {
-    auto path = deckPath("leblanc_test.json");
+TEST_F(DeckValidatorTest, LoadFromDeckListAndValidate) {
+    auto path = deckPath("leblanc_test.txt");
     if (!std::filesystem::exists(path)) {
-        GTEST_SKIP() << "leblanc_test.json not found";
+        GTEST_SKIP() << "leblanc_test.txt not found";
     }
 
-    auto deck = DeckValidator::loadFromJson(path, db);
+    auto deck = DeckValidator::loadFromDeckList(path, db);
     DeckValidator validator(db);
     auto result = validator.validate(deck);
     EXPECT_TRUE(result.is_legal);
@@ -289,4 +277,40 @@ TEST_F(DeckValidatorTest, CopyLimitExceeded) {
         }
         EXPECT_TRUE(found_copies);
     }
+}
+
+// Ban-list enforcement (CSV source). A card present in the deck that appears on
+// the loaded ban list must make the deck illegal.
+TEST_F(DeckValidatorTest, BannedCardRejectedViaCsv) {
+    auto deck = makeValidDeck();
+    DeckValidator base(db);
+    ASSERT_TRUE(base.validate(deck).is_legal) << "deck is legal before banning";
+
+    // "Sacrifice" has 3 copies in the valid main deck — ban it via a temp CSV.
+    auto* sac = db.findByName("Sacrifice");
+    ASSERT_NE(sac, nullptr);
+    auto csv = std::filesystem::temp_directory_path() / "rb_test_banlist.csv";
+    { std::ofstream f(csv); f << "SFD,001,'Sacrifice'\n"; }
+
+    DeckValidator validator(db);
+    validator.loadBanList(csv.string());
+    EXPECT_TRUE(validator.isBanned(sac->id));
+
+    auto result = validator.validate(deck);
+    EXPECT_FALSE(result.is_legal);
+    bool found_ban = false;
+    for (auto& e : result.errors)
+        if (e.find("Banned") != std::string::npos &&
+            e.find("Sacrifice") != std::string::npos) found_ban = true;
+    EXPECT_TRUE(found_ban) << "expected a 'Banned card ... Sacrifice' error";
+
+    // Wild format (--wild): the same banned card is now allowed.
+    DeckValidator wild(db);
+    wild.loadBanList(csv.string());
+    wild.setWild(true);
+    EXPECT_FALSE(wild.isBanned(sac->id)) << "wild ignores the ban list";
+    EXPECT_TRUE(wild.validate(deck).is_legal)
+        << "--wild should let the banned-card deck pass";
+
+    std::filesystem::remove(csv);
 }

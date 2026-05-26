@@ -28,7 +28,7 @@ riftbound
     --games N            # > 1 runs via BatchRunner; no human seats allowed
     --threads N          # parallel workers for batch mode
     --seed N             # 0 = random, otherwise deterministic
-    --registry PATH      # default: cards/registry.json
+    --registry PATH      # deprecated/ignored (card data is compiled into the engine)
     --show-hand          # show hand contents in render (debug aid)
 ```
 
@@ -288,7 +288,7 @@ a property of the UI binary, not the engine.
 
 ```bash
 ./build/riftbound --agent1 random --agent2 random \
-    --deck1 decks/miss_fortune_test.json --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt --deck2 decks/miss_fortune_test.txt
 ```
 
 The UI shows the game running. `god_mode_enabled = false`; edit
@@ -298,7 +298,7 @@ messages are rejected. No auto-replay (no human seat).
 
 ```bash
 ./build/riftbound \
-    --deck1 decks/miss_fortune_test.json --deck2 decks/miss_fortune_test.json
+    --deck1 decks/miss_fortune_test.txt --deck2 decks/miss_fortune_test.txt
 ```
 
 Equivalent to `--agent1 human --agent2 random`. Open

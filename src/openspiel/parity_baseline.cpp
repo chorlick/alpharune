@@ -37,9 +37,9 @@ int getenvInt(const char* name, int fallback) {
 }
 
 int main() {
-    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/leblanc_test.json");
-    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/leblanc_test.json");
-    const std::string registry = getenvOr("RIFTBOUND_REGISTRY", "cards/registry.json");
+    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/leblanc_test.txt");
+    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/leblanc_test.txt");
+    const std::string registry = getenvOr("RIFTBOUND_REGISTRY", "cards/ban-list.csv");
     const int num_games        = std::max(1, getenvInt("RIFTBOUND_NUM_GAMES", 1));
     const int num_threads      = std::max(1, getenvInt("RIFTBOUND_THREADS",   1));
 

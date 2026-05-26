@@ -23,6 +23,17 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
 
+    // One-shot per-unit damage prevention (Counter Strike 510): "the next time
+    // it would be dealt damage this turn, prevent it." Consumes the flag and
+    // prevents this damage instance entirely. Checked before Unyielding Spirit
+    // and the actual damage application.
+    if (amount > 0 && obj.prevent_next_damage_this_turn) {
+        obj.prevent_next_damage_this_turn = false;
+        events_.logTrace("PREVENT: next damage to " + obj.name +
+                         " prevented (Counter Strike)");
+        return;
+    }
+
     // Unyielding Spirit [145] — "Prevent all spell and ability damage
     // this turn." Set by the spell's onResolve on the controller side
     // (typically the player who cast it, but the text is global —
@@ -98,6 +109,32 @@ void EffectExecutor::killObject(GameObjectId target) {
     auto controller = obj.controller;
 
     if (obj.isUnit()) {
+        // Deferred one-shot death replacement on the unit itself (Tactical
+        // Retreat 737) — applies to effect/ability kills too, not just combat
+        // lethal (GameEngine::killUnit has the parallel check).
+        if (obj.death_replacement_recall_pending) {
+            obj.death_replacement_recall_pending = false;
+            for (auto gear_id : obj.attachments) {
+                if (state_.objectExists(gear_id)) {
+                    state_.getObject(gear_id).attached_to = std::nullopt;
+                }
+            }
+            obj.attachments.clear();
+            obj.attachment_might_bonus = 0;
+            auto old_loc = obj.location;
+            obj.damage_marked = 0;
+            obj.is_exhausted = true;
+            obj.combat_designation = CombatDesignation::None;
+            obj.location = BaseLocation{controller};
+            obj.zone = ZoneType::Base;
+            events_.logTrace("  REPLACEMENT (self): " + obj.name +
+                             " heals/exhausts/recalls instead of dying");
+            events_.emit(ObjectStateChangedEvent{target, "healed"});
+            events_.emit(UnitMovedEvent{target, controller,
+                old_loc.value_or(BaseLocation{controller}),
+                BaseLocation{controller}, false});
+            return;
+        }
         // Detach gear (CR 719.5)
         for (auto gear_id : obj.attachments) {
             if (state_.objectExists(gear_id)) {
@@ -238,6 +275,16 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
 
     events_.emit(LeftBoardEvent{target, controller, obj.card_type,
         was_at.value_or(BaseLocation{controller}), ZoneType::Hand, false});
+
+    // "When a unit here is returned to hand" (Ripper's Bay). Only fires if
+    // the unit was at a battlefield when bounced.
+    BattlefieldId from_bf = kInvalidId;
+    if (was_at.has_value() && std::holds_alternative<BattlefieldLocation>(*was_at)) {
+        from_bf = std::get<BattlefieldLocation>(*was_at).id;
+    }
+    if (from_bf != kInvalidId) {
+        events_.emit(UnitReturnedToHandEvent{target, obj.owner, from_bf});
+    }
 }
 
 void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int minimum) {
@@ -308,8 +355,15 @@ void EffectExecutor::buffUnit(GameObjectId target) {
 void EffectExecutor::readyObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    bool was_exhausted = obj.is_exhausted;
     obj.is_exhausted = false;
     events_.emit(ObjectStateChangedEvent{target, "readied"});
+    // Fire the "when you ready me" trigger (Irelia, Fervent) only on an
+    // actual exhausted->ready transition, so re-readying a ready unit is a
+    // no-op for triggers.
+    if (was_exhausted) {
+        events_.emit(UnitReadiedEvent{target, obj.controller});
+    }
 }
 
 void EffectExecutor::unattachGear(GameObjectId gear) {
@@ -607,6 +661,28 @@ void EffectExecutor::takeControl(GameObjectId target, PlayerId new_controller,
                      ") control: " + toString(old_controller) + " -> " +
                      toString(new_controller) +
                      (until_end_of_turn ? " (this turn)" : " (permanent)"));
+    events_.emit(ObjectStateChangedEvent{target, "controller_changed"});
+}
+
+void EffectExecutor::takeControlUntilSourceLeaves(GameObjectId target,
+                                                  PlayerId new_controller,
+                                                  GameObjectId source) {
+    if (!state_.objectExists(target)) return;
+    auto& obj = state_.getObject(target);
+    // Snapshot the restore-controller once (so re-applications keep the
+    // earliest owner), then flip control.
+    if (!obj.control_reverts_on_source_leave) {
+        obj.control_revert_to = obj.controller;
+        obj.control_reverts_on_source_leave = true;
+        obj.control_source_obj = source;
+    }
+    if (obj.controller == new_controller) return;  // already controlled
+    auto old_controller = obj.controller;
+    obj.controller = new_controller;
+    events_.logTrace("EFFECT: " + obj.name + " (id=" + std::to_string(target) +
+                     ") control: " + toString(old_controller) + " -> " +
+                     toString(new_controller) + " (until source id=" +
+                     std::to_string(source) + " leaves board)");
     events_.emit(ObjectStateChangedEvent{target, "controller_changed"});
 }
 

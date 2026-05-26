@@ -1,0 +1,36 @@
+Legend:
+1 Fiora, Grand Duelist
+
+Champion:
+1 Fiora, Worthy
+
+MainDeck:
+3 Challenge
+3 First Mate
+3 Pit Rookie
+3 B.F. Sword
+3 Unsung Hero
+2 Sabotage
+2 Doran's Blade
+2 Punch First
+2 Riposte
+2 Grim Resolve
+1 Hidden Blade
+1 Spectral Matron
+1 Warmog's Armor
+1 Deathgrip
+1 Kinkou Initiate
+1 Sacrifice
+2 Sett, Brawler
+2 Fiora, Victorious
+2 Akshan, Mischievous
+2 Lucian, Merciless
+
+Battlefields:
+1 Monastery of Hirana
+1 Trifarian War Camp
+1 Sunken Temple
+
+Runes:
+7 Body Rune
+5 Order Rune

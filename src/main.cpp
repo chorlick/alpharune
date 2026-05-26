@@ -33,6 +33,8 @@
 #include "rules/deck_validator.h"
 
 #include <boost/program_options.hpp>
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <atomic>
 #include <chrono>
 #include <ctime>
@@ -50,6 +52,114 @@ namespace fs = std::filesystem;
 using namespace riftbound;
 
 namespace {
+
+// ── --dump-registry: serialize the compiled card DB to registry-style JSON ──
+// A validation/export tool. Card data is owned by the C++ classes; this dumps
+// it back out so it can be diffed one-to-one against a reference registry.json.
+void dumpRegistry(const CardDB& db, const std::string& path) {
+    using json = nlohmann::json;
+    auto cardTypeStr = [](CardType t) -> std::string {
+        switch (t) {
+            case CardType::Unit: return "unit";
+            case CardType::Spell: return "spell";
+            case CardType::Gear: return "gear";
+            case CardType::Rune: return "rune";
+            case CardType::Battlefield: return "battlefield";
+            case CardType::Legend: return "legend";
+        }
+        return "unit";
+    };
+    auto superTypeJson = [](SuperType s) -> json {
+        switch (s) {
+            case SuperType::Champion: return "champion";
+            case SuperType::Signature: return "signature";
+            case SuperType::Token: return "token";
+            case SuperType::None: break;
+        }
+        return nullptr;
+    };
+    auto domainStr = [](Domain d) -> std::string {
+        switch (d) {
+            case Domain::Fury: return "fury";
+            case Domain::Calm: return "calm";
+            case Domain::Mind: return "mind";
+            case Domain::Body: return "body";
+            case Domain::Chaos: return "chaos";
+            case Domain::Order: return "order";
+            default: return "fury";
+        }
+    };
+    auto rarityStr = [](Rarity r) -> std::string {
+        switch (r) {
+            case Rarity::Common: return "common";
+            case Rarity::Uncommon: return "uncommon";
+            case Rarity::Rare: return "rare";
+            case Rarity::Epic: return "epic";
+            case Rarity::Showcase: return "showcase";
+        }
+        return "common";
+    };
+    // Keyword bit order — must match the engine's canonical order.
+    static const Keyword kKwOrder[] = {
+        Keyword::Accelerate, Keyword::Action, Keyword::Ambush, Keyword::Assault,
+        Keyword::Backline, Keyword::Deathknell, Keyword::Deflect, Keyword::Equip,
+        Keyword::Ganking, Keyword::Hidden, Keyword::Hunt, Keyword::Legion,
+        Keyword::Level, Keyword::Predict, Keyword::QuickDraw, Keyword::Reaction,
+        Keyword::Repeat, Keyword::Shield, Keyword::Tank, Keyword::Temporary,
+        Keyword::Unique, Keyword::Vision, Keyword::Weaponmaster,
+    };
+
+    // Sort by card_id for stable, diff-friendly output.
+    std::vector<CardDefId> ids;
+    for (const auto& [id, def] : db.all()) ids.push_back(id);
+    std::sort(ids.begin(), ids.end());
+
+    json cards = json::array();
+    for (CardDefId id : ids) {
+        const CardDef& d = db.get(id);
+        json kw = json::array();
+        for (Keyword k : kKwOrder) kw.push_back(d.keywords.has(k) ? 1 : 0);
+        json doms = json::array();
+        for (Domain dm : d.domains) doms.push_back(domainStr(dm));
+        cards.push_back({
+            {"card_id", d.id},
+            {"card_def_id", d.def_id},
+            {"name", d.name},
+            {"set", d.set_code},
+            {"set_name", d.set_name},
+            {"public_code", d.public_code},
+            {"collector_number", d.collector_number},
+            {"artist", d.artist},
+            {"card_type", cardTypeStr(d.card_type)},
+            {"super_type", superTypeJson(d.super_type)},
+            {"domains", doms},
+            {"tags", d.tags},
+            {"energy_cost", d.energy_cost},
+            {"power_cost", d.power_cost},
+            {"might", d.might},
+            {"might_bonus", d.might_bonus},
+            {"rarity", rarityStr(d.rarity)},
+            {"ability_text", d.ability_text},
+            {"effect_text", d.effect_text},
+            {"image_url", d.image_url},
+            {"banned", d.banned},
+            {"features", {
+                {"assault_value", d.assault_value},
+                {"shield_value", d.shield_value},
+                {"deflect_value", d.deflect_value},
+                {"keywords", kw},
+            }},
+        });
+    }
+    json out = {
+        {"version", 1},
+        {"num_cards", cards.size()},
+        {"source", "compiled-from-cpp-classes"},
+        {"cards", cards},
+    };
+    std::ofstream f(path);
+    f << out.dump(2) << "\n";
+}
 
 struct AgentSpec {
     std::string raw;       // original spec string
@@ -165,7 +275,7 @@ int main(int argc, char* argv[]) {
         "                    implied by action_history alone.\n"
         "\n"
         "Common invocations:\n"
-        "  ./riftbound --deck1 D1.json --deck2 D2.json\n"
+        "  ./riftbound --deck1 D1.txt --deck2 D2.txt\n"
         "      (default: random vs random, one game, stdout only)\n"
         "  ./riftbound --deck1 ... --deck2 ... --agent1 human\n"
         "      (browser UI on http://127.0.0.1:8080; auto-replay)\n"
@@ -178,10 +288,13 @@ int main(int argc, char* argv[]) {
     desc.add_options()
         ("help,h", "Show help")
         ("version,v", "Print engine version + git commit")
-        ("deck1", po::value<std::string>()->required(), "Player 1 deck JSON")
-        ("deck2", po::value<std::string>()->required(), "Player 2 deck JSON")
+        ("deck1", po::value<std::string>()->required(), "Player 1 deck list (.txt)")
+        ("deck2", po::value<std::string>()->required(), "Player 2 deck list (.txt)")
         ("registry,r", po::value<std::string>()->default_value("cards/registry.json"),
-         "Path to card registry JSON")
+         "Deprecated/ignored — card data and ban status are compiled into the engine")
+        ("dump-registry", po::value<std::string>(),
+         "Dump the compiled card database to a registry-style JSON file and exit "
+         "(validation/export tool; does not require decks)")
         ("agent1", po::value<std::string>()->default_value("random"),
          "Player 1 agent spec (see top of --help for full descriptions). "
          "One of: random | human | mcts:sims=N | ismcts:sims=N")
@@ -219,6 +332,8 @@ int main(int argc, char* argv[]) {
          "Parallel workers for --games > 1 (0 = hardware concurrency).")
         ("show-hand", po::bool_switch()->default_value(false),
          "Show hand contents in stdout / replay renders (debug aid).")
+        ("wild", po::bool_switch()->default_value(false),
+         "Wild format: allow banned cards in decks (skips the ban-list check).")
     ;
 
     po::variables_map vm;
@@ -228,6 +343,16 @@ int main(int argc, char* argv[]) {
         if (vm.count("version")) {
             std::cout << "Riftbound " << kVersionTag
                       << " (built " << kBuildDate << ")\n";
+            return 0;
+        }
+        if (vm.count("dump-registry")) {
+            CardRegistry reg;
+            reg.loadAll();
+            CardDB db;
+            db.buildFromClasses(reg);  // authored data only; no ban-list applied
+            auto out_path = vm["dump-registry"].as<std::string>();
+            dumpRegistry(db, out_path);
+            std::cout << "Dumped " << db.size() << " cards to " << out_path << "\n";
             return 0;
         }
         po::notify(vm);
@@ -290,36 +415,70 @@ int main(int argc, char* argv[]) {
     std::cout << "Riftbound " << kVersionTag
               << " (built " << kBuildDate << ")\n";
 
-    // ── Load card database, registry, decks ───────────────────────────────
+    // ── Load card database (from the C++ classes), decks ──────────────────
+    // Card data — including tournament legality (CardDef::banned) — is owned by
+    // the Card classes. registry.json and ban-list.csv are retired.
     CardDB card_db;
     CardRegistry card_registry;
     try {
-        card_db.loadFromRegistry(registry_path);
         card_registry.loadAll();
-        std::cout << "Loaded " << card_db.size() << " cards from registry\n";
+        card_db.buildFromClasses(card_registry);
+        std::cout << "Loaded " << card_db.size() << " cards from classes\n";
     } catch (const std::exception& e) {
-        std::cerr << "Failed to load registry: " << e.what() << "\n";
+        std::cerr << "Failed to load cards: " << e.what() << "\n";
         return 1;
     }
 
     DeckValidator validator(card_db);
-    {
-        std::string ban_path = registry_path;
-        auto slash = ban_path.rfind('/');
-        if (slash != std::string::npos)
-            ban_path = ban_path.substr(0, slash + 1) + "ban-list.csv";
-        else
-            ban_path = "cards/ban-list.csv";
-        validator.loadBanList(ban_path);
+    const bool wild = vm["wild"].as<bool>();
+    if (wild) {
+        std::cout << "Wild format: banned cards are allowed (--wild).\n";
+        validator.setWild(true);
     }
+    // Otherwise: banned cards are rejected via CardDef::banned (DeckValidator::isBanned).
 
+    auto endsWith = [](const std::string& s, const std::string& suf) {
+        return s.size() >= suf.size() &&
+               s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
+    };
+    auto loadDeck = [&](const std::string& p) {
+        if (!endsWith(p, ".txt")) {
+            throw std::runtime_error(
+                "Deck '" + p + "' must be a .txt deck list (Piltover Archive "
+                "format). The legacy JSON deck loader has been retired.");
+        }
+        return DeckValidator::loadFromDeckList(p, card_db);
+    };
     DeckSubmission deck1, deck2;
     try {
-        deck1 = DeckValidator::loadFromJson(deck1_path, card_db);
-        deck2 = DeckValidator::loadFromJson(deck2_path, card_db);
+        deck1 = loadDeck(deck1_path);
+        deck2 = loadDeck(deck2_path);
     } catch (const std::exception& e) {
         std::cerr << "Failed to load deck: " << e.what() << "\n";
         return 1;
+    }
+
+    // Debug aid for beta testers: log exactly which cards (by gallery def_id)
+    // each deck resolved to, so they can confirm the parser loaded the intended
+    // cards from their Piltover Archive deck list.
+    if (debug_mode) {
+        auto logDeck = [&](const std::string& label, const std::string& path,
+                           const DeckSubmission& d) {
+            std::cout << "[DECK] " << label << " (" << path << "):\n";
+            auto line = [&](const char* zone, CardDefId id) {
+                const auto& c = card_db.get(id);
+                std::cout << "    " << zone << "  [" << c.def_id << "] " << c.name
+                          << (c.banned ? "  (BANNED)" : "") << "\n";
+            };
+            line("legend  ", d.legend);
+            line("champion", d.chosen_champion);
+            for (auto id : d.main_deck)    line("main    ", id);
+            for (auto id : d.battlefields) line("bf      ", id);
+            for (auto id : d.rune_deck)    line("rune    ", id);
+            for (auto id : d.sideboard)    line("side    ", id);
+        };
+        logDeck("P1", deck1_path, deck1);
+        logDeck("P2", deck2_path, deck2);
     }
 
     auto v1 = validator.validate(deck1);

@@ -1,0 +1,41 @@
+Legend:
+1 Blade Dancer
+
+Champion:
+1 Irelia, Fervent
+
+MainDeck:
+3 Defy
+3 Discipline
+3 Tideturner
+3 Stellacorn Herder
+3 Guardian Angel
+3 Boots of Swiftness
+3 Defiant Dance
+3 Scuttle Crab
+2 Charm
+2 En Garde
+2 Ride the Wind
+2 Stacked Deck
+2 Not So Fast
+2 Star-Crossed
+1 Adaptatron
+1 Gust
+1 Fizz, Trickster
+
+Battlefields:
+1 Targon's Peak
+1 Sunken Temple
+1 Abandoned Hall
+
+Runes:
+6 Calm Rune
+6 Chaos Rune
+
+Sideboard:
+2 Gust
+2 Vex, Apathetic
+1 Adaptatron
+1 Zhonya's Hourglass
+1 Disarming Rake
+1 Angler Beast

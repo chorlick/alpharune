@@ -49,6 +49,10 @@ struct PlayerState {
     PlayerId id = PlayerId::None;
     int score = 0;
     int xp = 0;
+    // Count of this player's own turns taken so far (incremented at the start
+    // of each of their Awaken Phases). 1 on their first turn. Drives
+    // turn-gated rules like Forgotten Monument ("until their third turn").
+    int turns_taken = 0;
 
     RunePool rune_pool;
 
@@ -75,6 +79,8 @@ struct PlayerState {
 
     // Per-turn tracking
     int cards_played_this_turn = 0;
+    int equipment_played_this_turn = 0;  // gears tagged "Equipment" played this turn
+    int gears_played_this_turn = 0;      // any gear played this turn (Ornn's Forge)
     bool has_discarded_this_turn = false;
     std::set<BattlefieldId> battlefields_scored_this_turn;
     bool burned_out = false;
@@ -124,8 +130,25 @@ struct PlayerState {
         bool combat_active_only = false;
         bool affects_friendly_only = false; // restricts to plays by the modifier's controller
         bool affects_enemy_only = false;    // restricts to plays by the opponent
+        bool gear_only = false;             // applies only to gear plays (Ornn's Forge)
+        bool first_gear_per_turn = false;   // applies only to the FIRST gear played this
+                                            // turn (consult gears_played_this_turn == 0)
     };
     std::vector<CostModifier> cost_modifiers;
+
+    // Trash-replay grants (CR: "You may play this from your trash for <cost>").
+    // Death from Below pushes one of these after it resolves; the action
+    // generator offers the specific trash card with the OVERRIDE cost (not its
+    // printed cost), and executePlaySpell pays the override and consumes the
+    // grant. Cleared each turn — the permission does not persist.
+    struct TrashReplayGrant {
+        GameObjectId card = kInvalidId;   // the specific card object (in trash)
+        int energy = 0;
+        int power = 0;
+        Domain power_domain = Domain::Fury;
+        bool any_domain = false;          // [A] — power may be any single domain
+    };
+    std::vector<TrashReplayGrant> trash_replay_grants;
 
     // Karthus, Eternal (and similar): "Your Deathknell effects trigger
     // an additional time." Counted from board via aura recalculation —
@@ -160,6 +183,8 @@ struct PlayerState {
 
     void resetTurnTracking() {
         cards_played_this_turn = 0;
+        equipment_played_this_turn = 0;
+        gears_played_this_turn = 0;
         has_discarded_this_turn = false;
         battlefields_scored_this_turn.clear();
         cant_play_cards_this_turn = false;
@@ -171,6 +196,8 @@ struct PlayerState {
             std::remove_if(cost_modifiers.begin(), cost_modifiers.end(),
                 [](const CostModifier& m) { return m.this_turn_only; }),
             cost_modifiers.end());
+        // Trash-replay permissions do not persist across turns.
+        trash_replay_grants.clear();
     }
 };
 
@@ -223,6 +250,12 @@ struct BattlefieldState {
     // location enumeration in the main-phase / showdown action
     // generators.
     bool blocks_unit_play = false;
+
+    // Turn-gated scoring (Forgotten Monument [523]: "Players can't score here
+    // until their third turn"). A player may only score this BF once their
+    // PlayerState::turns_taken >= min_turn_to_score. 0 = no restriction.
+    // Populated from BattlefieldCard::minTurnToScore() at setup.
+    int min_turn_to_score = 0;
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

@@ -161,6 +161,12 @@ public:
     /// Generate all legal actions for the player who must currently act.
     std::vector<Intent> generateLegalActions() const;
 
+    /// True if `player` may NOT yet score `bf` because of a turn gate
+    /// (Forgotten Monument): their turns_taken < bf.min_turn_to_score.
+    /// Public so the renderer/UI and tests can query the same rule the
+    /// scoring path uses.
+    bool isScoreGatedByTurn(PlayerId player, BattlefieldId bf) const;
+
     /// Decision callback — called at every decision point with
     /// (state, legal_actions, chosen_action). Set this before runGame().
     using DecisionCallback = std::function<void(
@@ -305,6 +311,12 @@ public:
     /// publicly so per-card tests can verify the revoke without
     /// spinning up the full engine subsystem stack.
     static void expireTemporaryKeywords(GameObject& obj, const CardDB& db);
+
+    /// Restore control of any object whose "until <source> leaves the board"
+    /// controlling source is no longer in play (Akshan, Mischievous). Run as
+    /// part of cleanup; exposed publicly so per-card tests can verify the
+    /// reversion without the full engine loop.
+    void revertLapsedControl();
 private:
     /// Body of the expiration step (heal, expire turn-buffs, empty rune
     /// pools, expire delayed abilities). Pulled out so expirationStep
@@ -492,6 +504,13 @@ private:
     std::vector<Intent> generateCombatDamageActions(PlayerId player) const;
     void generateSpellActions(PlayerId player, bool action_ok, bool reaction_ok,
                                std::vector<Intent>& actions) const;
+    /// Emits Play intents (play_source=Trash) for spells the player has a
+    /// PlayerState::TrashReplayGrant for (Death from Below). Mirrors
+    /// generateSpellActions' timing gate + target shapes, but checks the
+    /// grant's OVERRIDE cost for affordability rather than the printed cost.
+    void generateTrashReplayActions(PlayerId player, bool action_ok,
+                                     bool reaction_ok,
+                                     std::vector<Intent>& actions) const;
     void generateActivateAbilityActions(PlayerId player,
                                          std::vector<Intent>& actions) const;
 
@@ -562,6 +581,12 @@ private:
     bool payAdditionalCost(PlayerId player, int energy, int power,
                             Domain domain);
 
+    /// Pays the matching PlayerState::TrashReplayGrant's override cost for
+    /// `card_id` (auto-spends via payAdditionalCost; an [A] grant picks the
+    /// first payable domain) and consumes the grant. Returns true if a grant
+    /// was found and paid, false otherwise (caller falls back to printed cost).
+    bool payTrashReplayGrant(PlayerId player, GameObjectId card_id);
+
     // ── Repeat (CR 820) — optional additional cost ──
     //
     // Action gen consults `parseRepeatCost()` (public-section static helper
@@ -582,6 +607,13 @@ private:
     /// Returns false if the additional payment can't be satisfied (which
     /// indicates a bug in the affordability gate in action gen).
     bool payRepeatCost(PlayerId player, const RepeatCost& cost);
+
+    /// "You may pay X as an additional cost to play me." Offers the agent a
+    /// yes/no during the play action (called from executePlayCard /
+    /// executePlaySpell after the base cost is paid, before CardPlayedEvent).
+    /// On accept, pays the card's Card::optionalAdditionalCost and sets
+    /// card_counters[paid_flag] = 1. No-op if the card has none or can't pay.
+    void maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id);
 
     /// Count available Energy from ready runes (exhaust potential).
     int availableEnergy(PlayerId player) const;

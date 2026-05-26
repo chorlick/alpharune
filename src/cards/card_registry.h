@@ -9,7 +9,9 @@
 #include "core/types.h"
 
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace riftbound {
 
@@ -30,12 +32,20 @@ public:
     /// Register all card implementations (calls generated + manual init code).
     void loadAll();
 
+    /// The class-owned CardDef for `id`, or nullptr if that card was built with
+    /// the legacy id-only constructor (data still comes from registry.json).
+    const CardDef* classDef(CardDefId id) const;
+
+    /// Sorted ids of all registered cards (each owns its data via Card::def()).
+    std::vector<CardDefId> classDefIds() const;
+
 private:
     std::unordered_map<CardDefId, std::unique_ptr<Card>> cards_;
 };
 
-/// Register all generated card implementations.
-/// Defined in generated/registry_init.cpp.
-void registerGeneratedCards(CardRegistry& registry);
+/// Registers every card. One authoritative class per card lives in its own TU
+/// under src/cards/<type>/<id>_<slug>.cpp; the generated cards_init.cpp defines
+/// this by calling each card's register_card_<id>().
+void registerAllCards(CardRegistry& registry);
 
 } // namespace riftbound

@@ -1,0 +1,43 @@
+Legend:
+1 Sett, The Boss
+
+Champion:
+1 Sett, Brawler
+
+MainDeck:
+3 Pit Rookie
+3 Call to Glory
+3 Showstopper
+3 Warmog's Armor
+3 Irresistible Faefolk
+3 Sacrifice
+2 Challenge
+2 Sabotage
+2 Grim Resolve
+2 Kinkou Initiate
+2 Repulse
+1 First Mate
+1 Hidden Blade
+1 Punch First
+1 Ruin Runner
+2 Fiora, Victorious
+2 Rengar, Trophy Hunter
+2 Vi, Peacekeeper
+1 Akshan, Mischievous
+
+Battlefields:
+1 Monastery of Hirana
+1 Amateur Recital
+1 Valley of Idols
+
+Runes:
+7 Body Rune
+5 Order Rune
+
+Sideboard:
+2 Unyielding Spirit
+2 Disposal Order
+1 Salvage
+1 Ruin Runner
+1 Repulse
+1 Stare Down

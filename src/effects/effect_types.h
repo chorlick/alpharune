@@ -114,6 +114,36 @@ enum class TriggerType : uint8_t {
                         // controlled by the stunner when EffectExecutor::
                         // stunUnit successfully applies a stun to a unit
                         // owned by the opponent. Used by Vex Mocking.
+
+    // ── Phase-2 trigger events (wired to dedicated emit sites) ──
+    WhenIAmReadied,     // "When you ready me," — fires on the readied unit
+                        // (EffectExecutor::readyObject -> UnitReadiedEvent).
+                        // Irelia, Fervent.
+    WhenYouHideACard,   // "When you hide a card," — fires on the hiding
+                        // player's cards (executeHideCard -> CardHiddenEvent).
+                        // Katarina, Reckless.
+    WhenYouPlayFromFacedown, // "When you play a card from face down," — fires
+                        // on the controller's cards (facedown reveal-play ->
+                        // PlayedFromFacedownEvent). Katarina, Reckless.
+    WhenAnEnemyUnitDies,// "When an enemy unit dies," — fires on cards
+                        // controlled by the OPPONENT of the dying unit's
+                        // controller (TriggerManager::onUnitDied). Pyke,
+                        // Returned (gated "while I'm at a battlefield",
+                        // once/turn in the card).
+    WhenAUnitReturnsToHandHere, // "When a unit here is returned to hand," —
+                        // battlefield-card trigger fired when a unit at that
+                        // BF is bounced (bounceToHand -> UnitReturnedToHandEvent).
+                        // Ripper's Bay.
+    WhenAShowdownBeginsHere, // "When a showdown begins here," — fires on units
+                        // at the showdown's battlefield (on_showdown_started).
+                        // Diana, Lunari.
+    WhenOpponentPlaysAUnit,  // "When an opponent plays a unit," — fires on the
+                        // opponent's on-board cards (TriggerManager::onCardPlayed).
+                        // Vex, Apathetic (gated "while I'm at a battlefield").
+    WhenIRevealedFromTop,    // "As you look at or reveal me from the top of your
+                        // deck," — fires on the revealed card itself when a
+                        // CardRevealedEvent has source_zone == MainDeck.
+                        // Nocturne, Horrifying.
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

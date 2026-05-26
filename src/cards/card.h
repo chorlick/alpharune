@@ -11,6 +11,7 @@
 /// atomic helpers (dealDamage, drawCards, etc.) to modify game state.
 
 #include "core/types.h"
+#include "core/card_db.h"
 #include "effects/effect_types.h"
 
 #include <functional>
@@ -46,7 +47,19 @@ class Card {
 public:
     virtual ~Card() = default;
 
-    CardDefId cardDefId() const { return card_def_id_; }
+    // ── Interface contract: every card defines its own data ──
+    // The card answers with its CardDef; the engine requests it (it is NOT
+    // pushed into the base via a constructor). CardRegistry/CardDB materialize
+    // the card table by asking each registered card for def(). Implementations
+    // return a reference to a function-local static built once, e.g.:
+    //   const CardDef& def() const override {
+    //       static const CardDef d = makeDef();
+    //       return d;
+    //   }
+    virtual const CardDef& def() const = 0;
+
+    // Convenience: the card's registry id, derived from its own def().
+    CardDefId cardDefId() const { return def().id; }
 
     // ── Spell resolution (spells only) ──
     /// Called when this spell resolves from the chain.
@@ -82,6 +95,23 @@ public:
     /// remains for backwards-compat dispatch in the default
     /// `activatedAbilities()` impl.
     virtual bool hasActivatedAbility() const { return false; }
+
+    /// Per-card activation legality gate ("Use only if …"). Consulted by the
+    /// action generator before offering ANY of this card's activated
+    /// abilities. Default: always activatable. Used by Emperor of the Sands
+    /// ("if you've played an Equipment this turn"), and a natural home for
+    /// Zero Drive's "only if unattached" etc.
+    virtual bool canActivateAbility(const GameState& /*state*/,
+                                    PlayerId /*controller*/) const { return true; }
+
+    /// State-aware reduction to an activated ability's ENERGY cost (e.g.
+    /// Bashful Bloom: "costs [1] less for each friendly [Temporary] unit").
+    /// Consulted by the activation affordability check + payment, clamped so
+    /// the net energy cost can't go below 0. Mirrors selfCostReduction (which
+    /// applies to PLAYING cards). Default 0 = no reduction.
+    virtual int activationCostReduction(const GameState& /*state*/,
+                                        PlayerId /*controller*/,
+                                        int /*ability_index*/) const { return 0; }
 
     /// Cost to activate the (single, legacy) ability.
     virtual ActivationCost getActivationCost() const { return {}; }
@@ -432,6 +462,23 @@ public:
     virtual int equippedShield() const { return 0; }
     virtual int equippedDeflect() const { return 0; }
 
+    // ── Optional additional cost at play time ──
+    /// "You may pay X as an additional cost to play me." Returned by cards
+    /// (Akshan [O][O], Nami [G]) whose play-time triggers are gated on whether
+    /// the optional cost was paid. The engine offers the agent a yes/no during
+    /// the play action (after the base cost, before WhenYouPlayMe fires) and,
+    /// if accepted, pays it and sets card_counters[paid_flag] = 1 — which the
+    /// card's onPlay / WhenYouPlayMe reads. Modeled on the Accelerate flow.
+    struct OptionalAdditionalCost {
+        bool valid = false;
+        int energy = 0;
+        int power = 0;
+        Domain power_domain = Domain::Fury;
+        bool any_domain = false;        // power may be any domain ([A])
+        const char* paid_flag = "";     // card_counters key set when paid
+    };
+    virtual OptionalAdditionalCost optionalAdditionalCost() const { return {}; }
+
     // ── Condition gates ──
     /// Whether this card's effects require Legion (cards_played >= 2).
     virtual bool requiresLegion() const { return false; }
@@ -481,42 +528,30 @@ public:
         return entersReadyOnPlay();
     }
 
-protected:
-    CardDefId card_def_id_;
-
-    explicit Card(CardDefId id) : card_def_id_(id) {}
 };
 
 // ─── Subclasses ─────────────────────────────────────────────────────────────
+// Each type-base is abstract: concrete cards implement def(). They carry no
+// id/CardDef — a card defines itself via its def() override.
 
-class UnitCard : public Card {
-public:
-    explicit UnitCard(CardDefId id) : Card(id) {}
-};
+class UnitCard : public Card {};
 
-class SpellCard : public Card {
-public:
-    explicit SpellCard(CardDefId id) : Card(id) {}
-};
+class SpellCard : public Card {};
 
-class GearCard : public Card {
-public:
-    explicit GearCard(CardDefId id) : Card(id) {}
-};
+class GearCard : public Card {};
 
-class LegendCard : public Card {
-public:
-    explicit LegendCard(CardDefId id) : Card(id) {}
-};
+class LegendCard : public Card {};
 
 class BattlefieldCard : public Card {
 public:
-    explicit BattlefieldCard(CardDefId id) : Card(id) {}
+    /// Turn gate for scoring this battlefield (Forgotten Monument [523]:
+    /// "Players can't score here until their third turn" → 3). A player may
+    /// only score here once their PlayerState::turns_taken >= this value.
+    /// 0 (default) = no restriction. Read once by GameEngine::setupBattlefields
+    /// into BattlefieldState::min_turn_to_score.
+    virtual int minTurnToScore() const { return 0; }
 };
 
-class RuneCard : public Card {
-public:
-    explicit RuneCard(CardDefId id) : Card(id) {}
-};
+class RuneCard : public Card {};
 
 } // namespace riftbound

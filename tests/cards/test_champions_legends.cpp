@@ -100,11 +100,12 @@ TEST_F(LeBlancTest, DrawsTwoDuringBeginningStep) {
 
 class VexApatheticTest : public CardTestFixture {};
 
-TEST_F(VexApatheticTest, RegisteredAndHasNoTrigger) {
+TEST_F(VexApatheticTest, FiresOnOpponentPlaysAUnit) {
     Card* c = card_registry.get(kVexApathetic);
     ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->triggerType(), TriggerType::None)
-        << "Vex Apathetic is intentionally keyword-only — no trigger override";
+    // The "when an opponent plays a unit while I'm at a battlefield, stun it"
+    // clause now fires via the WhenOpponentPlaysAUnit engine trigger.
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenOpponentPlaysAUnit));
     EXPECT_FALSE(c->hasActivatedAbility());
 }
 

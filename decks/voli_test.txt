@@ -1,0 +1,37 @@
+Legend:
+1 Volibear, Relentless Storm
+
+Champion:
+1 Volibear, Furious
+
+MainDeck:
+3 Blazing Scorcher
+3 Dune Drake
+3 Mobilize
+3 Catalyst of Aeons
+3 Herald of Scales
+3 Eager Drakehound
+3 Direwing
+3 Dragonsoul Sage
+3 Gentle Gemdragon
+2 Kadregrin the Infernal
+2 Challenge
+2 Confront
+2 Stormbringer
+2 Show of Strength
+1 Falling Star
+1 Elder Dragon
+
+Battlefields:
+1 Aspirant's Climb
+1 Sigil of the Storm
+1 Sunken Temple
+
+Runes:
+6 Fury Rune
+6 Body Rune
+
+Sideboard:
+3 Unyielding Spirit
+3 Sabotage
+2 Void Seeker

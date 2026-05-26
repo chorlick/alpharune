@@ -1,0 +1,40 @@
+Legend:
+1 Rumble, Mechanized Menace
+
+Champion:
+1 Rumble, Hotheaded
+
+MainDeck:
+3 Gem Jammer
+3 Ferrous Forerunner
+3 Bubble Bot
+3 Forecaster
+3 Production Surge
+2 Cleave
+2 Falling Star
+2 Shakedown
+2 Smoke Screen
+2 Angle Shot
+2 Breakneck Mech
+2 Experimental Hexplate
+2 Danger Zone
+2 Blighted Battleaxe
+1 Sky Splitter
+1 Singularity
+1 Rumble, Hotheaded
+3 Jhin, Murderous Artist
+
+Battlefields:
+1 Zaun Warrens
+1 Forge of the Fluft
+1 Sunken Temple
+
+Runes:
+7 Fury Rune
+5 Mind Rune
+
+Sideboard:
+2 Brynhir Thundersong
+2 Against the Odds
+2 Minotaur Reckoner
+2 Turn to Dust

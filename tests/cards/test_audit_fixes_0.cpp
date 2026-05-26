@@ -498,6 +498,10 @@ TEST_F(AuditFix0Test, OrnnsForge_AppliesReductionToController) {
     EXPECT_EQ(mods[0].energy_reduction, 1);
     EXPECT_TRUE(mods[0].affects_non_token_only);
     EXPECT_TRUE(mods[0].affects_friendly_only);
+    EXPECT_TRUE(mods[0].gear_only)
+        << "printed text: reduces gear, not arbitrary non-token cards";
+    EXPECT_TRUE(mods[0].first_gear_per_turn)
+        << "printed text: only the FIRST gear played each turn";
     EXPECT_EQ(mods[0].source, bf_card);
 }
 

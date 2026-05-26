@@ -1,0 +1,41 @@
+Legend:
+1 Emperor of the Sands
+
+Champion:
+1 Azir, Ascendant
+
+MainDeck:
+3 Charm
+3 En Garde
+3 Discipline
+3 Not So Fast
+3 Stellacorn Herder
+3 Guardian Angel
+3 B.F. Sword
+3 Scuttle Crab
+3 Shepherd's Heirloom
+2 Defy
+2 Meditation
+2 Brutalizer
+2 Eye of the Herald
+1 Salvage
+1 Guards!
+1 Back Off
+1 Honeyfruit
+
+Battlefields:
+1 Aspirant's Climb
+1 Forgotten Monument
+1 Rockfall Path
+
+Runes:
+9 Calm Rune
+3 Order Rune
+
+Sideboard:
+2 Drag Under
+2 Flurry of Feathers
+1 Defy
+1 Salvage
+1 Guards!
+1 Tactical Retreat

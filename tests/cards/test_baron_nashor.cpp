@@ -49,7 +49,10 @@ constexpr CardDefId kBaronNashor = 709;
 // rules might change.
 class TestEnemyTargetCard : public SpellCard {
 public:
-    TestEnemyTargetCard() : SpellCard(kInvalidId) {}
+    const CardDef& def() const override {
+        static const CardDef d = [] { CardDef d; d.id = kInvalidId; return d; }();
+        return d;
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1,
                                    .must_be_unit = true,
@@ -60,7 +63,10 @@ public:
 
 class TestFriendlyTargetCard : public SpellCard {
 public:
-    TestFriendlyTargetCard() : SpellCard(kInvalidId) {}
+    const CardDef& def() const override {
+        static const CardDef d = [] { CardDef d; d.id = kInvalidId; return d; }();
+        return d;
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1,
                                    .must_be_unit = true,
@@ -316,10 +322,10 @@ TEST_F(CardTestFixture, BaronNashor_IntegrationFullPlayPathCreatesPit) {
 
     auto registry_root = findRegistryPath();
     std::string root = registry_root.substr(0, registry_root.rfind('/')) + "/..";
-    DeckSubmission deck1 = DeckValidator::loadFromJson(
-        root + "/decks/miss_fortune_test.json", card_db);
-    DeckSubmission deck2 = DeckValidator::loadFromJson(
-        root + "/decks/miss_fortune_test.json", card_db);
+    DeckSubmission deck1 = DeckValidator::loadFromDeckList(
+        root + "/decks/miss_fortune_test.txt", card_db);
+    DeckSubmission deck2 = DeckValidator::loadFromDeckList(
+        root + "/decks/miss_fortune_test.txt", card_db);
 
     // Fixed seed so any future engine-side regression that breaks Baron
     // Pit creation is deterministic to reproduce. 12345 plays Baron at

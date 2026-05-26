@@ -469,7 +469,9 @@ TEST_F(AuditFix4Test, NidaleeCat_WinCombatDrawsOne) {
 
 // ─── 737 Tactical Retreat ───────────────────────────────────────────────────
 
-TEST_F(AuditFix4Test, TacticalRetreat_HealsExhaustsAndRecalls) {
+TEST_F(AuditFix4Test, TacticalRetreat_InstallsDeferredDeathReplacement) {
+    // Resolving Tactical Retreat does NOT move the unit — it arms a one-shot
+    // "next time it would die this turn" replacement on the chosen unit.
     auto unit = addUnit(P1, kInvalidId, /*might=*/4, /*at_bf=*/0);
     state.getObject(unit).damage_marked = 3;
     state.getObject(unit).is_exhausted = false;
@@ -477,13 +479,22 @@ TEST_F(AuditFix4Test, TacticalRetreat_HealsExhaustsAndRecalls) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(/*source=*/unit, kTacticalRetreat, P1, {unit}, exec);
 
-    EXPECT_EQ(state.getObject(unit).damage_marked, 0) << "healed";
-    EXPECT_TRUE(state.getObject(unit).is_exhausted) << "exhausted";
-    EXPECT_EQ(state.getObject(unit).zone, ZoneType::Base) << "recalled to base";
-    EXPECT_TRUE(state.getObject(unit).isAtBase());
-    // TODO: the real card installs a "next time it would DIE this turn"
-    // deferred replacement. This implementation applies heal/exhaust/recall
-    // immediately as a documented engine-limitation approximation.
+    EXPECT_TRUE(state.getObject(unit).death_replacement_recall_pending)
+        << "arms the deferred replacement";
+    EXPECT_EQ(state.getObject(unit).damage_marked, 3)
+        << "no immediate effect — unit is untouched until it would die";
+    EXPECT_TRUE(state.getObject(unit).isAtBattlefield())
+        << "still at its battlefield; not recalled yet";
+
+    // Now kill it via an effect — the replacement fires instead of death.
+    exec.killObject(unit);
+
+    auto& u = state.getObject(unit);
+    EXPECT_FALSE(u.death_replacement_recall_pending) << "one-shot consumed";
+    EXPECT_EQ(u.damage_marked, 0) << "healed";
+    EXPECT_TRUE(u.is_exhausted) << "exhausted";
+    EXPECT_EQ(u.zone, ZoneType::Base) << "recalled to base, not trashed";
+    EXPECT_TRUE(u.isAtBase());
 }
 
 TEST_F(AuditFix4Test, TacticalRetreat_NoTargetIsNoOp) {

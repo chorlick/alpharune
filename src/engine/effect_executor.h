@@ -114,6 +114,15 @@ public:
     void takeControl(GameObjectId target, PlayerId new_controller,
                       bool until_end_of_turn = false);
 
+    // Take control of `target` only until `source` leaves the board (Akshan,
+    // Mischievous: "You control it until I leave the board"). Records the
+    // controlling source + the controller to restore; GameEngine's cleanup
+    // reverts control once `source` is no longer in play. Snapshots the
+    // restore-controller once (earliest owner wins if stacked).
+    void takeControlUntilSourceLeaves(GameObjectId target,
+                                      PlayerId new_controller,
+                                      GameObjectId source);
+
     // ── Token creation ──
     /// Create a token game object and place it on the board.
     GameObjectId createToken(PlayerId controller, CardType type,

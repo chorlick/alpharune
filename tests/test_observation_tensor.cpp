@@ -16,6 +16,7 @@
 
 #include "core/card_db.h"
 #include "core/game_state.h"
+#include "cards/card_registry.h"
 #include "ml/feature_extractor.h"
 
 #include <algorithm>
@@ -28,30 +29,17 @@ using namespace riftbound;
 
 namespace {
 
-std::string registryPath() {
-    for (auto& p : {"../cards/registry.json",
-                     "../../cards/registry.json",
-                     "cards/registry.json"}) {
-        if (std::filesystem::exists(p)) return p;
-    }
-    const char* root = std::getenv("RIFTBOUND_ROOT");
-    if (root) {
-        auto path = std::filesystem::path(root) / "cards" / "registry.json";
-        if (std::filesystem::exists(path)) return path.string();
-    }
-    return "cards/registry.json";
-}
-
 /// Build a state with two players, each holding cards in hand and main_deck.
 /// Cards get distinct CardDefIds so the multi-hot zone encoding produces
 /// non-trivial output.
 struct ObsState {
     GameState state;
+    CardRegistry registry;
     CardDB card_db;
 
     ObsState() {
-        auto path = registryPath();
-        card_db.loadFromRegistry(path);
+        registry.loadAll();
+        card_db.buildFromClasses(registry);
         state.player(PlayerId::Player1).id = PlayerId::Player1;
         state.player(PlayerId::Player2).id = PlayerId::Player2;
         // Add two BFs so battlefield features aren't all zero.
@@ -89,14 +77,7 @@ private:
 
 } // namespace
 
-class ObservationTensorMasking : public ::testing::Test {
-protected:
-    void SetUp() override {
-        if (!std::filesystem::exists(registryPath())) {
-            GTEST_SKIP() << "registry.json not found at " << registryPath();
-        }
-    }
-};
+class ObservationTensorMasking : public ::testing::Test {};
 
 // P1 observation is invariant under permutation of P2's main_deck.
 TEST_F(ObservationTensorMasking, P2DeckReorderInvisibleToP1) {

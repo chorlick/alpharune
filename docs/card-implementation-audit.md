@@ -464,17 +464,21 @@ These need engine-design changes beyond per-card code; several agents independen
 | `checkDelayedAbilities` only called for WhenYouStun/WhenIDie/AtStartOfMain | 657 Grim Resolve (WhenIWinCombat XP), 284 Targon's Peak (AtEndOfTurn) | add dispatch calls for those trigger types |
 | No "opponent plays a unit" trigger; no per-unit "can't move this turn" flag | 712 Vex, Apathetic | needs new trigger + flag |
 | No per-unit "deals no combat damage" flag | 622 Vilemaw | combat step only suppresses via stun |
-| No play-time optional-additional-cost model | 470 Ezreal, 431 Akshan, 48 Meditation, 735 Sacrifice, 614 Nami | approximated at resolve-time / via target-gate |
+| ~~No play-time optional-additional-cost model~~ **DONE** | 431 Akshan, 614 Nami | `Card::optionalAdditionalCost()` + `GameEngine::maybePayOptionalAdditionalCost` — agent yes/no at play time, sets a paid flag the `onResolve`/`onTrigger` gates on. (Ezreal/Meditation/Sacrifice still resolve-time approximated.) |
 | No alternative-play-cost hook | 651 Jhin, Meticulous | "play for [B] if spent 4+" |
 | No runtime rules-text copying | 382 Svellsongur | gear copying a unit's text |
 | No bonus-damage amplification field | 508 Rabadon's Deathcrown | "spells/abilities deal +3" |
-| No per-source rune spend-restriction | 506 Fire Below the Mountain | "[A] usable only for gear" |
-| No gear-only / first-per-turn CostModifier filter | 527 Ornn's Forge | reduction is broader than printed |
+| **DEFERRED** — no per-source rune spend-restriction | 506 Fire Below the Mountain ("[A] usable only for gear"), 786 Scorn of the Moon ("[1] usable only during showdowns") | Both cards DO add the resource (functional); only the spend *earmark* is unenforced, so the resource is slightly more permissive than printed. A faithful fix needs tagged restricted buckets on `RunePool` consulted across ~23 spend sites in 13 files — high regression risk to the cost system for 2 niche reaction cards. Sketch: add `RunePool::restricted_*` buckets; spend them first only when the context (gear play / showdown) matches, exclude from general affordability; bump `kStateFeatureDim`. Deferred pending an explicit go-ahead. |
+| ~~No gear-only / first-per-turn CostModifier filter~~ **DONE** | 527 Ornn's Forge | `CostModifier.gear_only` + `.first_gear_per_turn` (consults `PlayerState::gears_played_this_turn`); applied in both `canAfford` and `beginCostPayment`. |
+| ~~No self-replay-from-trash path~~ **DONE** | 747 Death from Below | `PlayerState::TrashReplayGrant` (this-turn) + `GameEngine::generateTrashReplayActions` emit a `play_source=Trash` Play with the grant's OVERRIDE cost; `executePlaySpell` removes from trash and pays via `payTrashReplayGrant`. |
 | No state-aware activated-ability cost reduction | 749 Bashful Bloom | flat cost used |
-| No "until I leave the board" control reversion | 431 Akshan | control is permanent |
+| ~~No "until I leave the board" control reversion~~ **DONE** | 431 Akshan | `GameObject::control_reverts_on_source_leave` + `EffectExecutor::takeControlUntilSourceLeaves`; `GameEngine::revertLapsedControl` (run in cleanup) restores control once the source leaves play. (Conscription 702 is correctly permanent — its text has no reversion clause.) |
 | No return-to-hand-here trigger event | 770 Ripper's Bay | left as no-op |
 | No aura-granted activated ability | 769 Gardens of Becoming | "units here have '[E]: gain XP'" |
-| `killUnit` replacement skips the dying unit; no per-unit deferred-replacement flag | 737 Tactical Retreat | does immediate heal/exhaust/recall instead of "next time it would die" |
+| ~~`killUnit` replacement skips the dying unit; no per-unit deferred-replacement flag~~ **DONE** | 737 Tactical Retreat | `GameObject::death_replacement_recall_pending`; both kill paths (`GameEngine::killUnit` combat, `EffectExecutor::killObject` effects) consult it and heal/exhaust/recall instead, one-shot, expiring end of turn. |
+| ~~[Temporary] sweep is unit-only~~ **DONE** | 180 Fading Memories | beginning-step Temporary sweep now kills gear too (via `EffectExecutor::killObject`), not just units. |
+| ~~No turn-gated scoring + per-player turn counter~~ **DONE** | 523 Forgotten Monument | `PlayerState::turns_taken` (bumped each Awaken) + `BattlefieldState::min_turn_to_score` (from `BattlefieldCard::minTurnToScore()`); `scoreConquer`/`scoreHold` gate via `isScoreGatedByTurn`. |
+| ~~No string-valued per-object storage ("name a tag")~~ **DONE** | 700 The List | `GameObject::string_state`; onPlay names a tag (heuristic: most-common enemy tag), `[E]` debuffs only units carrying it (deferred pickTarget reads the instance's named tag). Open-ended free-text naming is approximated by the heuristic — no policy-head vocab slot for arbitrary tag strings. |
 | Ambush-target BF gate hardcoded (no per-card relax) | 682 Rengar, Trophy Hunter | can't Ambush to enemy-only BFs |
 | No opponent-choice plumbing mid-resolution | 209 Cull the Weak | opponent's "kill one of their units" auto-picks |
 

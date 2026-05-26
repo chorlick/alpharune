@@ -1,0 +1,42 @@
+Legend:
+1 Ezreal, Prodigal Explorer
+
+Champion:
+1 Ezreal, Prodigy
+
+MainDeck:
+3 Stupefy
+3 Gust
+3 Stacked Deck
+3 Plundering Poro
+3 Bewitching Spirit
+3 The List
+2 Singularity
+2 Pack of Wonders
+2 Wages of Pain
+2 Bellows Breath
+2 Arcane Shift
+2 Deadly Flourish
+2 Star-Crossed
+1 Thousand-Tailed Watcher
+1 Mindsplitter
+1 Windsinger
+1 Turn to Dust
+3 Fizz, Trickster
+
+Battlefields:
+1 Aspirant's Climb
+1 Sigil of the Storm
+1 Void Gate
+
+Runes:
+6 Mind Rune
+6 Chaos Rune
+
+Sideboard:
+2 Sneaky Deckhand
+2 Turn to Dust
+1 Windsinger
+1 Downwell
+1 Deadly Flourish
+1 Vex, Apathetic

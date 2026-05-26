@@ -33,9 +33,9 @@ const ::open_spiel::GameType kRiftboundGameType{
     /*provides_observation_string=*/true,
     /*provides_observation_tensor=*/true,
     /*parameter_specification=*/
-    { {"deck1",    ::open_spiel::GameParameter(std::string("decks/leblanc_test.json"))},
-      {"deck2",    ::open_spiel::GameParameter(std::string("decks/leblanc_test.json"))},
-      {"registry", ::open_spiel::GameParameter(std::string("cards/registry.json"))},
+    { {"deck1",    ::open_spiel::GameParameter(std::string("decks/leblanc_test.txt"))},
+      {"deck2",    ::open_spiel::GameParameter(std::string("decks/leblanc_test.txt"))},
+      {"registry", ::open_spiel::GameParameter(std::string("cards/ban-list.csv"))},
       {"seed",     ::open_spiel::GameParameter(0)} }
 };
 
@@ -47,11 +47,13 @@ std::shared_ptr<const ::open_spiel::Game> MakeRiftboundGame(
 RiftboundGame::RiftboundGame(const ::open_spiel::GameParameters& params)
     : Game(kRiftboundGameType, params),
       seed_(static_cast<uint64_t>(ParameterValue<int>("seed"))) {
-    card_db_.loadFromRegistry(ParameterValue<std::string>("registry"));
+    // Card data — including ban status — is owned by the C++ classes. The
+    // "registry" GameParameter is retained for back-compat but ignored.
     registry_.loadAll();
-    deck1_ = ::riftbound::DeckValidator::loadFromJson(
+    card_db_.buildFromClasses(registry_);
+    deck1_ = ::riftbound::DeckValidator::loadFromDeckList(
         ParameterValue<std::string>("deck1"), card_db_);
-    deck2_ = ::riftbound::DeckValidator::loadFromJson(
+    deck2_ = ::riftbound::DeckValidator::loadFromDeckList(
         ParameterValue<std::string>("deck2"), card_db_);
 }
 

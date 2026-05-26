@@ -1,0 +1,42 @@
+Legend:
+1 Renata Glasc, Chem-Baroness
+
+Champion:
+1 Renata Glasc, Mastermind
+
+MainDeck:
+3 Time Warp
+3 Plundering Poro
+3 Honest Broker
+3 Hostile Takeover
+3 Shadow's Call
+2 Stupefy
+2 Ravenbloom Student
+2 Singularity
+2 Hidden Blade
+2 Wages of Pain
+2 Sprite Burst
+2 Deadly Flourish
+1 Salvage
+1 Card Sharp
+1 Tactical Retreat
+1 The Ruination
+3 Ornn, Forge God
+2 Shen, Kinkou
+1 Ekko, Recurrent
+
+Battlefields:
+1 The Arena's Greatest
+1 Vilemaw's Lair
+1 Treasure Hoard
+
+Runes:
+6 Mind Rune
+6 Order Rune
+
+Sideboard:
+2 Imperial Decree
+2 Bellows Breath
+2 The Ruination
+1 Cull the Weak
+1 Salvage

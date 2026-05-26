@@ -29,6 +29,18 @@ void TriggerManager::subscribe() {
         [this](const PhaseChangedEvent& e) { onPhaseChanged(e); }));
     connections_.push_back(events_.on_unit_stunned.connect(
         [this](const UnitStunnedEvent& e) { onUnitStunned(e); }));
+    connections_.push_back(events_.on_unit_readied.connect(
+        [this](const UnitReadiedEvent& e) { onUnitReadied(e); }));
+    connections_.push_back(events_.on_card_hidden.connect(
+        [this](const CardHiddenEvent& e) { onCardHidden(e); }));
+    connections_.push_back(events_.on_played_from_facedown.connect(
+        [this](const PlayedFromFacedownEvent& e) { onPlayedFromFacedown(e); }));
+    connections_.push_back(events_.on_unit_returned_to_hand.connect(
+        [this](const UnitReturnedToHandEvent& e) { onUnitReturnedToHand(e); }));
+    connections_.push_back(events_.on_showdown_started.connect(
+        [this](const ShowdownStartedEvent& e) { onShowdownStarted(e); }));
+    connections_.push_back(events_.on_card_revealed.connect(
+        [this](const CardRevealedEvent& e) { onCardRevealed(e); }));
 }
 
 TriggerManager::~TriggerManager() {
@@ -291,6 +303,22 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
         }
     }
 
+    // "When an opponent plays a unit" — fire on the OPPONENT's on-board cards
+    // (Vex, Apathetic: gated "while I'm at a battlefield"; stuns the played
+    // unit). The played unit's id is captured into the watcher's card_counters
+    // so its onTrigger can act on it (triggers receive empty targets).
+    if (e.card_type == CardType::Unit) {
+        PlayerId opp = opponent(e.player);
+        for (auto& [id, other] : state_.objects) {
+            if (other.controller != opp || !other.location.has_value()) continue;
+            if (cardFiresOn(card_registry_, other.card_def_id,
+                            TriggerType::WhenOpponentPlaysAUnit)) {
+                other.card_counters["__opp_played_unit_id"] = static_cast<int>(e.object);
+                fireTrigger(id, opp, 0, TriggerType::WhenOpponentPlaysAUnit);
+            }
+        }
+    }
+
     // Legend-zone sweep: legends say "When you play a spell/unit," — the
     // legend itself has no location, so the loop above skips it. Fire any
     // matching legend on the acting player's side.
@@ -460,15 +488,22 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
         }
     }
 
-    // "When a friendly unit dies" — fire on other objects the controller owns
+    // "When a friendly unit dies" — fire on other objects the controller owns.
+    // "When an enemy unit dies" — fire on the OPPONENT's objects (Pyke,
+    // Returned: gated "while I'm at a battlefield" + once/turn in the card).
+    PlayerId opp = opponent(e.controller);
     for (auto& [id, other] : state_.objects) {
         if (!other.location.has_value()) continue;
-        if (other.controller != e.controller) continue;
         if (id == e.object) continue;
-
-        if (cardFiresOn(card_registry_, other.card_def_id,
+        if (other.controller == e.controller &&
+            cardFiresOn(card_registry_, other.card_def_id,
                         TriggerType::WhenAFriendlyUnitDies)) {
             fireTrigger(id, e.controller, 0, TriggerType::WhenAFriendlyUnitDies);
+        }
+        if (other.controller == opp &&
+            cardFiresOn(card_registry_, other.card_def_id,
+                        TriggerType::WhenAnEnemyUnitDies)) {
+            fireTrigger(id, opp, 0, TriggerType::WhenAnEnemyUnitDies);
         }
     }
 
@@ -692,6 +727,81 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
         // Delayed abilities (Iascylla schedules one of these on hold)
         checkDelayedAbilities(TriggerType::AtStartOfMain, e.turn_player,
                               kInvalidId);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase-2 trigger events
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void TriggerManager::onUnitReadied(const UnitReadiedEvent& e) {
+    // "When you ready me" — fires on the readied object itself (Irelia, Fervent).
+    if (!state_.objectExists(e.object)) return;
+    if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
+                    TriggerType::WhenIAmReadied)) {
+        fireTrigger(e.object, e.controller, 0, TriggerType::WhenIAmReadied);
+    }
+}
+
+void TriggerManager::onCardHidden(const CardHiddenEvent& e) {
+    // "When you hide a card" — fires on the hiding player's on-board cards
+    // (Katarina, Reckless: "ready me").
+    for (auto& [id, obj] : state_.objects) {
+        if (obj.controller != e.player || !obj.location.has_value()) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouHideACard)) {
+            fireTrigger(id, e.player, 0, TriggerType::WhenYouHideACard);
+        }
+    }
+}
+
+void TriggerManager::onPlayedFromFacedown(const PlayedFromFacedownEvent& e) {
+    // "When you play a card from face down" — fires on the controller's
+    // on-board cards (Katarina, Reckless: "deal 2 to an enemy unit").
+    for (auto& [id, obj] : state_.objects) {
+        if (obj.controller != e.player || !obj.location.has_value()) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouPlayFromFacedown)) {
+            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayFromFacedown);
+        }
+    }
+}
+
+void TriggerManager::onUnitReturnedToHand(const UnitReturnedToHandEvent& e) {
+    // "When a unit here is returned to a player's hand" — battlefield-card
+    // trigger (Ripper's Bay). Attributed to the bounced unit's owner ("that
+    // player may pay [1] …").
+    for (auto& bf : state_.battlefields) {
+        if (bf.id != e.from_battlefield) continue;
+        if (!state_.objectExists(bf.card_object_id)) continue;
+        if (cardFiresOn(card_registry_, state_.getObject(bf.card_object_id).card_def_id,
+                        TriggerType::WhenAUnitReturnsToHandHere)) {
+            fireTrigger(bf.card_object_id, e.owner, 0, TriggerType::WhenAUnitReturnsToHandHere);
+        }
+    }
+}
+
+void TriggerManager::onShowdownStarted(const ShowdownStartedEvent& e) {
+    // "When a showdown begins here" — fires on units at the showdown's
+    // battlefield (Diana, Lunari) and on the battlefield card itself.
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit()) continue;
+        auto bf = obj.battlefieldId();
+        if (!bf || *bf != e.battlefield) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenAShowdownBeginsHere)) {
+            fireTrigger(id, obj.controller, 0, TriggerType::WhenAShowdownBeginsHere);
+        }
+    }
+    fireBattlefieldTriggers(TriggerType::WhenAShowdownBeginsHere, PlayerId::None,
+                            e.battlefield);
+}
+
+void TriggerManager::onCardRevealed(const CardRevealedEvent& e) {
+    // "As you look at or reveal me from the top of your deck" — fires on the
+    // revealed card itself when it was on top of the Main Deck (Nocturne).
+    if (e.source_zone != ZoneType::MainDeck) return;
+    if (!state_.objectExists(e.card)) return;
+    if (cardFiresOn(card_registry_, state_.getObject(e.card).card_def_id,
+                    TriggerType::WhenIRevealedFromTop)) {
+        fireTrigger(e.card, e.owner, 0, TriggerType::WhenIRevealedFromTop);
     }
 }
 

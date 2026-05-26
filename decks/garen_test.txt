@@ -1,0 +1,37 @@
+Legend:
+1 Garen, Might of Demacia
+
+Champion:
+1 Garen, Commander
+
+MainDeck:
+3 Faithful Manufactor
+3 Soaring Scout
+3 Vanguard Captain
+3 Spectral Matron
+3 Eye of the Herald
+3 Black Rose Dignitary
+3 Carrion Dredger
+2 Cull the Weak
+2 Hidden Blade
+2 Seal of Unity
+2 Corina Veraza
+2 Dragonsoul Sage
+3 Xin Zhao, Vigilant
+3 Nidalee, Cat Form
+2 Vi, Peacekeeper
+
+Battlefields:
+1 Trifarian War Camp
+1 Dusk Rose Lab
+1 Forbidding Waste
+
+Runes:
+8 Order Rune
+4 Body Rune
+
+Sideboard:
+3 Unyielding Spirit
+2 Imperial Decree
+2 Salvage
+1 Vi, Peacekeeper

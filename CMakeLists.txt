@@ -236,6 +236,18 @@ endif()
 
 # ─── Core library ─────────────────────────────────────────────────────────────
 
+# Per-card sources: one translation unit per card under src/cards/<type>/.
+# CONFIGURE_DEPENDS re-globs at build time so newly scaffolded cards are picked
+# up without a manual reconfigure.
+file(GLOB_RECURSE RIFTBOUND_CARD_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cards/units/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cards/spells/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cards/gear/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cards/legends/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cards/battlefields/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cards/runes/*.cpp
+)
+
 add_library(riftbound_core
     src/core/types.cpp
     src/core/intent.cpp
@@ -251,24 +263,8 @@ add_library(riftbound_core
     src/io/state_editor.cpp
     src/cards/card.cpp
     src/cards/card_registry.cpp
-    src/cards/generated/unit_cards.cpp
-    src/cards/generated/spell_cards.cpp
-    src/cards/generated/gear_cards.cpp
-    src/cards/generated/legend_cards.cpp
-    src/cards/generated/battlefield_cards.cpp
-    src/cards/generated/rune_cards.cpp
-    src/cards/generated/registry_init.cpp
-    src/cards/manual/equip_cards.cpp
-    src/cards/manual/weaponmaster_cards.cpp
-    src/cards/manual/deck_cards.cpp
-    src/cards/manual/audit_fixes_0.cpp
-    src/cards/manual/audit_fixes_1.cpp
-    src/cards/manual/audit_fixes_2.cpp
-    src/cards/manual/audit_fixes_3.cpp
-    src/cards/manual/audit_fixes_4.cpp
-    src/cards/manual/audit_fixes_5.cpp
-    src/cards/manual/audit_fixes_6.cpp
-    src/cards/manual/audit_fixes_7.cpp
+    src/cards/cards_init.cpp
+    ${RIFTBOUND_CARD_SOURCES}
     src/engine/game_runner.cpp
     src/engine/batch_runner.cpp
     src/engine/step_driver.cpp
@@ -382,6 +378,14 @@ set(RIFTBOUND_TEST_SOURCES
     tests/cards/test_audit_fixes_5.cpp
     tests/cards/test_audit_fixes_6.cpp
     tests/cards/test_audit_fixes_7.cpp
+    tests/cards/test_trigger_events.cpp
+    tests/cards/test_death_from_below.cpp
+    tests/cards/test_forgotten_monument.cpp
+    tests/cards/test_control_reversion.cpp
+    tests/cards/test_the_list.cpp
+    tests/cards/test_card_data_ownership.cpp
+    tests/cards/test_seal_cards.cpp
+    tests/test_card_data.cpp
 )
 # Model-forward + CFR util tests live in riftbound-trainer.
 

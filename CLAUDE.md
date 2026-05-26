@@ -39,7 +39,7 @@ Training pipelines (model architectures, self-play loops, checkpoints) live in t
 - Google Test framework, tests in `tests/`, files named `test_<module>.cpp`.
 - Tests cover behavioral boundaries, not 100% line coverage.
 - Per-card tests under `tests/cards/` use the shared `tests/cards/card_test_fixture.h`.
-- CardDB tests use `RIFTBOUND_ROOT` env var or relative path to find `cards/registry.json`.
+- CardDB is built from the card classes (`buildFromClasses`); tests use `RIFTBOUND_ROOT` only to locate sibling data dirs like `decks/`.
 
 ### Key Rule: Legends are NOT Champions
 Legends (`card_type=legend`) and champion units (`card_type=unit, super_type=champion`) are fundamentally different. Never conflate them. They share champion tags but occupy different zones and follow different rules.
@@ -51,8 +51,8 @@ The GameEngine handles game flow (phases, turns, chain FEPR loop, cleanup, scori
 ## Architecture Notes
 
 - **Card objects** (`src/cards/card.h`): Every card has a Card subclass registered in `CardRegistry`. Overrides `onResolve()`, `onTrigger()`, `onActivate()`, etc. All card-specific behavior — effects, targeting, countering, token creation, damage computation — belongs here, not in the engine.
-- **CardRegistry** (`src/cards/card_registry.{h,cpp}`): Maps `CardDefId → Card*`. Loaded ONCE at application startup, shared as `const CardRegistry&` across all game threads. Card objects are stateless — concurrent reads safe. Manual overrides (`src/cards/manual/*.cpp`) register AFTER generated cards and overwrite generated stubs.
-- **Code generation** (`scripts/generate_cards.py`): Reads `registry.json`, parses `ability_text`, generates C++ Card classes. Regenerate with `python3 scripts/generate_cards.py`. Manual overrides go in `src/cards/manual/`.
+- **CardRegistry** (`src/cards/card_registry.{h,cpp}`): Maps `CardDefId → Card*`. Loaded ONCE at application startup via `registerAllCards()` (aggregated in the generated `cards_init.cpp`), shared as `const CardRegistry&` across all game threads. Card objects are stateless — concurrent reads safe. One authoritative class per card lives in its own TU under `src/cards/<type>/<id>_<slug>.cpp`.
+- **Cards own their data** (single source of truth): each card class implements the pure-virtual `Card::def()` returning its `CardDef` (a `const CardDef def_` member). `CardDB::buildFromClasses()` materializes the card table by asking every registered card for `def()`. There is NO `registry.json` and NO code generation — cards are hand-authored C++. Tournament legality is class-owned too (`CardDef::banned`); there is no `ban-list.csv`. The CLI `--dump-registry <path>` exports the compiled card table to registry-style JSON for external/validation use.
 - **EffectExecutor**: Utility library of atomic game operations (`dealDamage`, `drawCards`, `killObject`, `bounceToHand`, `createToken`, `copyUnit`, `predict`, `moveToBattlefield`, …). Card objects call these via `ctx.executor.*`. The executor does not decide WHAT to do — that's the card's job.
 - **TriggerManager** subscribes to `EventBus` and dispatches via `card->triggerType()`. Also checks `DelayedAbility` list for one-shot delayed triggers.
 - **Chain is a LIFO stack** (`std::vector`, resolve from back). When a spell/ability resolves, FEPR pops it then calls `resolveSpell()` which dispatches to `card->onResolve()`. Counter spells use **peek-and-pop**: the counter resolves (popped by FEPR), then pops the next spell. Counter-of-counter works naturally via LIFO — no flags, no scanning, no chain mutation outside the card's own `onResolve`.
@@ -83,8 +83,7 @@ The GameEngine handles game flow (phases, turns, chain FEPR loop, cleanup, scori
 - **The mulligan is a single atomic decision** — agent picks which cards (0-2) to set aside in one intent. Cards are removed, replacements drawn, then set-aside recycled. The agent cannot see drawn replacements before deciding. Order: set aside → draw → recycle (CR 118).
 - **Replacement effects still use raw `ability_text` matching** in `killUnit()`. Intentional — replacements intercept game actions, not chain resolution. Future: structured ReplacementEffect type on Card.
 - **The render shows board state BEFORE resolution.** A chain item may be visible but its effect hasn't happened yet. The trace log in HTML replay shows what happens between renders.
-- **Never confuse `cardDefId()` with `ctx.source`.** `cardDefId()` is the static card template ID from `registry.json`. `ctx.source` is the runtime `GameObjectId`. Using `cardDefId()` where a `GameObjectId` is expected causes `getObject()` assertion failures.
-- **Generated card files are overwritten by `generate_cards.py`.** Manual fixes to generated cards must be re-applied or moved to `src/cards/manual/`.
+- **Never confuse `cardDefId()` with `ctx.source`.** `cardDefId()` is the static card template ID (the card's own `def().id`). `ctx.source` is the runtime `GameObjectId`. Using `cardDefId()` where a `GameObjectId` is expected causes `getObject()` assertion failures.
 - **MCTS rollouts have no internal length cap.** `RandomRolloutEvaluator` runs `while(!IsTerminal) ApplyAction(random)`. If the engine produces a state that never reaches a natural terminal under random play, the rollout spins forever inside `MCTSBot::MCTSearch`. Mitigation: `RiftboundState::IsTerminal()` has a hard cap at `MoveNumber() >= 600`.
 - **Token cease-to-exist (CR 183.1).** Tokens routed to any non-board zone cease to exist immediately. Both `EffectExecutor::killObject` and `GameEngine::killUnit` route tokens to Banishment WITHOUT adding to `player.banishment` vector. Tokens copied via Mirror Image inherit `card_def_id` so death triggers still fire.
 - **Trigger context capture for designations.** `combat_designation` is cleared between trigger-fire and chain resolution. Cards that need attacker/defender identity must capture it into `card_counters["__defend_attacker_id"]` at fire time, not at `onTrigger` time. See `MOverzealousFan`.
@@ -129,13 +128,18 @@ When you add a field to `GameState` / `PlayerState` that should be visible to a 
 
 - `rules/core-rules.md` — full game rules (sections 000–826)
 - `rules/tournament-rules.md` — deck construction + tournament policies
-- `cards/ban-list.csv` — banned cards
 - Sibling **riftbound-trainer** repo holds training-side docs (V*/model designs, ReBeL inference, engineering history, gamestate-dims backlog) and the trainer source.
 
-## Data pipeline
+## Card data
 
-```
-fetch_cards.py → apply_errata.py → card_registry.py → deck_import.py → engine
-```
+Card data is **hand-authored C++** — there is no `registry.json`, no `ban-list.csv`,
+and no code-generation pipeline. Each card's class implements `Card::def()` returning
+its `CardDef` (cost, domains, tags, keywords, art URL, `banned` flag, …); `CardDB` is
+materialized from those at startup (`buildFromClasses`). To add or change a card, edit
+its `src/cards/<type>/<id>_<slug>.cpp` directly.
 
-Run in order to rebuild card data from scratch. The engine reads `cards/registry.json`.
+- `scripts/fetch_cards.py` — pulls raw card metadata (art, artist, rarity) from the
+  official gallery into `cards/raw/gallery_raw.json`, for reference when authoring new
+  cards. It does NOT feed the engine.
+- `./build/riftbound --dump-registry <path>` — exports the compiled card table to
+  registry-style JSON (validation / external consumers).

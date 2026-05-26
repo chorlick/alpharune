@@ -1,47 +1,25 @@
 #include <gtest/gtest.h>
 #include "core/card_db.h"
+#include "cards/card_registry.h"
 
 #include <cstdlib>
 #include <filesystem>
 
 using namespace riftbound;
 
-namespace {
-
-std::string registryPath() {
-    // Try relative to build dir, then try project root
-    for (auto& p : {"../cards/registry.json",
-                     "../../cards/registry.json",
-                     "cards/registry.json"}) {
-        if (std::filesystem::exists(p)) return p;
-    }
-    // Try from project root via env
-    const char* root = std::getenv("RIFTBOUND_ROOT");
-    if (root) {
-        auto path = std::filesystem::path(root) / "cards" / "registry.json";
-        if (std::filesystem::exists(path)) return path.string();
-    }
-    return "cards/registry.json";
-}
-
-} // namespace
-
 class CardDBTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        auto path = registryPath();
-        if (!std::filesystem::exists(path)) {
-            GTEST_SKIP() << "registry.json not found at " << path;
-        }
-        db.loadFromRegistry(path);
+        registry.loadAll();
+        db.buildFromClasses(registry);
     }
 
+    CardRegistry registry;
     CardDB db;
 };
 
 TEST_F(CardDBTest, LoadsCards) {
     EXPECT_GT(db.size(), 700u);
-    EXPECT_GT(db.featureVectorSize(), 0);
 }
 
 TEST_F(CardDBTest, GetById) {
@@ -114,14 +92,6 @@ TEST_F(CardDBTest, KeywordsLoaded) {
     ASSERT_NE(volibear, nullptr);
     EXPECT_TRUE(volibear->keywords.has(Keyword::Deflect));
     EXPECT_EQ(volibear->deflect_value, 2);
-}
-
-TEST_F(CardDBTest, FeatureVector) {
-    auto* card = db.findByName("Blazing Scorcher");
-    ASSERT_NE(card, nullptr);
-    EXPECT_EQ(static_cast<int>(card->feature_vector.size()),
-              db.featureVectorSize());
-    EXPECT_GT(db.featureVectorSize(), 100);
 }
 
 TEST_F(CardDBTest, BattlefieldCard) {

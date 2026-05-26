@@ -1,0 +1,41 @@
+Legend:
+1 Leona, Radiant Dawn
+
+Champion:
+1 Leona, Zealot
+
+MainDeck:
+3 Defy
+3 Stalwart Poro
+3 Lonely Poro
+3 Back Off
+2 Discipline
+2 Zhonya's Hourglass
+2 Call to Glory
+2 Zenith Blade
+2 Stellacorn Herder
+2 Heart of Dark Ice
+2 Scuttle Crab
+1 Charm
+1 Cull the Weak
+1 Emperor's Divide
+3 Nami, Headstrong
+3 Vi, Peacekeeper
+2 Fiora, Victorious
+2 Irelia, Fervent
+
+Battlefields:
+1 Monastery of Hirana
+1 The Arena's Greatest
+1 Sunken Temple
+
+Runes:
+7 Calm Rune
+5 Order Rune
+
+Sideboard:
+3 Ashe, Focused
+2 Disarming Rake
+1 Charm
+1 Cull the Weak
+1 Not So Fast

@@ -17,9 +17,11 @@ struct AppContext {
     CardDB card_db;
     CardRegistry card_registry;
 
-    void initialize(const std::string& registry_path) {
-        card_db.loadFromRegistry(registry_path);
+    /// Card data — including ban status — is owned by the registered Card
+    /// classes. registry.json and ban-list.csv are retired.
+    void initialize() {
         card_registry.loadAll();
+        card_db.buildFromClasses(card_registry);
     }
 };
 

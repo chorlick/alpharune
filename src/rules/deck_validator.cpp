@@ -2,11 +2,9 @@
 
 #include <algorithm>
 #include <fstream>
-#include <nlohmann/json.hpp>
 #include <set>
+#include <sstream>
 #include <unordered_map>
-
-using json = nlohmann::json;
 
 namespace riftbound {
 
@@ -239,32 +237,79 @@ void DeckValidator::checkSignatureLimits(const DeckSubmission& deck,
     }
 }
 
-DeckSubmission DeckValidator::loadFromJson(const std::string& path,
-                                            const CardDB& db) {
+DeckSubmission DeckValidator::loadFromDeckList(const std::string& path,
+                                               const CardDB& db) {
     std::ifstream file(path);
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open deck file: " + path);
+        throw std::runtime_error("Failed to open deck list: " + path);
     }
 
-    json deck_json = json::parse(file);
+    auto trim = [](std::string s) {
+        size_t a = s.find_first_not_of(" \t\r\n");
+        size_t b = s.find_last_not_of(" \t\r\n");
+        return (a == std::string::npos) ? std::string{} : s.substr(a, b - a + 1);
+    };
+    auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        return s;
+    };
+
     DeckSubmission deck;
+    std::string raw, section;
+    int lineno = 0;
+    auto fail = [&](const std::string& msg) {
+        throw std::runtime_error("Deck list " + path + " line " +
+                                 std::to_string(lineno) + ": " + msg);
+    };
+    auto resolve = [&](const std::string& name) -> CardDefId {
+        const CardDef* c = db.findByName(name);
+        if (!c) fail("unknown card '" + name + "'");
+        return c->id;
+    };
 
-    deck.legend = deck_json["legend"]["card_id"].get<CardDefId>();
-    deck.chosen_champion = deck_json["chosen_champion"]["card_id"].get<CardDefId>();
+    while (std::getline(file, raw)) {
+        ++lineno;
+        std::string line = trim(raw);
+        if (line.empty() || line[0] == '#') continue;
 
-    for (auto& card : deck_json["main_deck"]) {
-        deck.main_deck.push_back(card["card_id"].get<CardDefId>());
-    }
-    for (auto& card : deck_json["rune_deck"]) {
-        deck.rune_deck.push_back(card["card_id"].get<CardDefId>());
-    }
-    for (auto& card : deck_json["battlefields"]) {
-        deck.battlefields.push_back(card["card_id"].get<CardDefId>());
-    }
-    for (auto& card : deck_json["sideboard"]) {
-        deck.sideboard.push_back(card["card_id"].get<CardDefId>());
+        // Section header: a line ending in ':'.
+        if (line.back() == ':') {
+            section = lower(trim(line.substr(0, line.size() - 1)));
+            continue;
+        }
+        if (section.empty()) fail("card line before any section header");
+
+        // "N CardName"
+        std::istringstream iss(line);
+        int count = 0;
+        if (!(iss >> count) || count <= 0) fail("expected '<count> <card name>'");
+        std::string name = trim(iss.str().substr(iss.tellg()));
+        if (name.empty()) fail("missing card name");
+        CardDefId id = resolve(name);
+
+        if (section == "legend") {
+            if (deck.legend != 0) fail("multiple legends");
+            deck.legend = id;
+        } else if (section == "champion") {
+            if (deck.chosen_champion != 0) fail("multiple champions");
+            deck.chosen_champion = id;
+        } else if (section == "maindeck") {
+            for (int i = 0; i < count; ++i) deck.main_deck.push_back(id);
+        } else if (section == "battlefields") {
+            for (int i = 0; i < count; ++i) deck.battlefields.push_back(id);
+        } else if (section == "runes") {
+            for (int i = 0; i < count; ++i) deck.rune_deck.push_back(id);
+        } else if (section == "sideboard") {
+            for (int i = 0; i < count; ++i) deck.sideboard.push_back(id);
+        } else {
+            fail("unknown section '" + section + "'");
+        }
     }
 
+    if (deck.legend == 0) throw std::runtime_error("Deck list " + path +
+                                                   ": no Legend section");
+    if (deck.chosen_champion == 0) throw std::runtime_error("Deck list " + path +
+                                                            ": no Champion section");
     return deck;
 }
 
@@ -314,10 +359,12 @@ void DeckValidator::loadBanList(const std::string& csv_path) {
 
 void DeckValidator::checkBanList(const DeckSubmission& deck,
                                   ValidationResult& result) const {
-    if (banned_ids_.empty()) return;
-
+    if (wild_) return;  // --wild: banned cards are allowed
+    // No early-out on an empty CSV ban list: a card may still be banned via its
+    // own CardDef::banned flag (class-owned, post-refactor). isBanned() honors
+    // both sources.
     auto checkCard = [&](CardDefId id, const std::string& zone) {
-        if (banned_ids_.count(id)) {
+        if (id != 0 && isBanned(id)) {
             auto& def = db_.get(id);
             result.addError("Banned card in " + zone + ": " + def.name);
         }

@@ -1,0 +1,42 @@
+#include "cards/card.h"
+#include "cards/card_registry.h"
+#include "core/game_state.h"
+#include "core/events.h"
+#include "engine/effect_executor.h"
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace riftbound {
+namespace {
+
+class BaronPit : public BattlefieldCard {
+public:
+    const CardDef& def() const override { return def_; }
+private:
+    const CardDef def_ = [] {
+        CardDef d;
+        d.id = 558;
+        d.def_id = R"RB(unl-t01)RB";
+        d.name = R"RB(Baron Pit)RB";
+        d.set_code = R"RB(UNL)RB";
+        d.set_name = R"RB(Unleashed)RB";
+        d.public_code = R"RB(UNL-T01)RB";
+        d.collector_number = 1;
+        d.artist = R"RB(Fish Art Studio)RB";
+        d.card_type = CardType::Battlefield;
+        d.ability_text = R"RB((You can't start the game with a token battlefield.)
+Units can move here from anywhere.)RB";
+        d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e44f173629322a4e0c32d3f8902c294d4482ef42-1039x744.png?accountingTag=RB)RB";
+        return d;
+    }();
+};
+
+}  // anonymous namespace
+
+void register_card_558(CardRegistry& r) {
+    r.registerCard(558, std::make_unique<BaronPit>());
+}
+
+} // namespace riftbound

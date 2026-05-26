@@ -1,0 +1,44 @@
+Legend:
+1 Scorn of the Moon
+
+Champion:
+1 Diana, Lunari
+
+MainDeck:
+3 Stupefy
+3 Ravenbloom Student
+3 Stacked Deck
+3 Moonfall
+2 Gust
+2 Ride the Wind
+2 Seal of Discord
+2 Flash
+2 Sprite Fountain
+2 Star-Crossed
+2 Abandon
+1 Thousand-Tailed Watcher
+1 Unchecked Power
+1 Fading Memories
+1 Wages of Pain
+1 Last Rites
+1 Eclipse
+3 Hwei, Brooding Painter
+2 Fizz, Trickster
+2 Vex, Apathetic
+
+Battlefields:
+1 Targon's Peak
+1 Abandoned Hall
+1 Star Spring
+
+Runes:
+6 Mind Rune
+6 Chaos Rune
+
+Sideboard:
+3 Turn to Dust
+1 Singularity
+1 Downwell
+1 Draven, Audacious
+1 Eclipse
+1 Baron Nashor

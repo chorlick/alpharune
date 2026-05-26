@@ -1,0 +1,41 @@
+Legend:
+1 Jax, Grandmaster at Arms
+
+Champion:
+1 Jax, Unmatched
+
+MainDeck:
+3 Defy
+3 Discipline
+3 First Mate
+3 Brutalizer
+3 Guardian Angel
+3 Counter Strike
+3 Scuttle Crab
+2 Challenge
+2 Lonely Poro
+2 Stellacorn Herder
+2 Punch First
+1 Charm
+1 Not So Fast
+1 Doran's Blade
+1 Ruin Runner
+1 Trinity Force
+3 Lucian, Merciless
+2 Irelia, Fervent
+
+Battlefields:
+1 Targon's Peak
+1 Ornn's Forge
+1 Sunken Temple
+
+Runes:
+6 Calm Rune
+6 Body Rune
+
+Sideboard:
+3 Akshan, Mischievous
+2 Sabotage
+1 Unyielding Spirit
+1 Not So Fast
+1 Ruin Runner

@@ -103,6 +103,7 @@ private:
     void onShowdownStarted(const ShowdownStartedEvent& e);  // WhenAShowdownBeginsHere
     void onCardRevealed(const CardRevealedEvent& e);        // WhenIRevealedFromTop
     void onObjectStateChanged(const ObjectStateChangedEvent& e); // WhenIAmBuffed / WhenYouBuffAFriendlyUnit
+    void onCardsDrawn(const CardsDrawnEvent& e);                  // WhenYouDrawACard
 
     // ── Helpers ──
 

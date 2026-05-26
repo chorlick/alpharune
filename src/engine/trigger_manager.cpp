@@ -43,6 +43,8 @@ void TriggerManager::subscribe() {
         [this](const CardRevealedEvent& e) { onCardRevealed(e); }));
     connections_.push_back(events_.on_object_state_changed.connect(
         [this](const ObjectStateChangedEvent& e) { onObjectStateChanged(e); }));
+    connections_.push_back(events_.on_cards_drawn.connect(
+        [this](const CardsDrawnEvent& e) { onCardsDrawn(e); }));
 }
 
 TriggerManager::~TriggerManager() {
@@ -811,6 +813,20 @@ void TriggerManager::onUnitReadied(const UnitReadiedEvent& e) {
         fireTrigger(id, controller, 0, TriggerType::WhenYouReadyAFriendlyUnit,
                     /*subject=*/e.object);
     }
+}
+
+void TriggerManager::onCardsDrawn(const CardsDrawnEvent& e) {
+    // Fire WhenYouDrawACard on the drawing player's on-board watchers. The card
+    // decides "is this my 2nd draw this turn" via PlayerState::draws_this_turn.
+    std::vector<GameObjectId> watchers;
+    for (auto& [id, obj] : state_.objects) {
+        if (obj.controller != e.player || !obj.location.has_value()) continue;
+        if (obj.card_def_id == kInvalidId) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouDrawACard))
+            watchers.push_back(id);
+    }
+    for (auto wid : watchers)
+        fireTrigger(wid, e.player, 0, TriggerType::WhenYouDrawACard);
 }
 
 void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {

@@ -40,5 +40,30 @@ TEST_F(PerTurnTest, ShadowWatcher_EntersReadyIfFriendlyDiedInBeginning) {
     EXPECT_FALSE(c->entersReadyOnPlay(state, P1));
 }
 
+TEST_F(PerTurnTest, FrigidJewel_BuffsAFriendlyUnitOnSecondDraw) {
+    auto jewel = addUnit(P1, 636, 0, 0);   // gear stand-in (skipped as target)
+    auto unit = addUnit(P1, 1, 4, 0);
+    state.player(P1).draws_this_turn = 2;
+    int before = state.getObject(unit).current_might;
+    EffectExecutor exec(state, events, card_db);
+    fireTriggerAs(636, P1, jewel, TriggerType::WhenYouDrawACard, exec);
+    EXPECT_EQ(state.getObject(unit).current_might, before + 2)
+        << "2nd draw -> a friendly unit +2 [M]";
+    // Once per turn: a 3rd draw fires the trigger again but does nothing more.
+    fireTriggerAs(636, P1, jewel, TriggerType::WhenYouDrawACard, exec);
+    EXPECT_EQ(state.getObject(unit).current_might, before + 2)
+        << "Frigid Jewel only fires on the 2nd draw each turn";
+}
+
+TEST_F(PerTurnTest, FrigidJewel_NoBuffBeforeSecondDraw) {
+    auto jewel = addUnit(P1, 636, 0, 0);
+    auto unit = addUnit(P1, 1, 4, 0);
+    state.player(P1).draws_this_turn = 1;   // only one draw so far
+    int before = state.getObject(unit).current_might;
+    EffectExecutor exec(state, events, card_db);
+    fireTriggerAs(636, P1, jewel, TriggerType::WhenYouDrawACard, exec);
+    EXPECT_EQ(state.getObject(unit).current_might, before);
+}
+
 }  // namespace
 }  // namespace riftbound::test

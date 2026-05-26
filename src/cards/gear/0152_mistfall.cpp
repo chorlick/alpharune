@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,11 +16,28 @@ class Mistfall : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you buff a friendly unit, you may pay [O] and exhaust this to ready it."
-    // TriggerType::WhenYouBuffAFriendlyUnit now exists (fires on this gear when
-    // the controller buffs any friendly unit). REMAINING: the trigger does not
-    // yet carry the *buffed unit's* id, so "ready IT" can't identify the subject.
-    // Pending a small extension to pass the buffed object through the trigger
-    // (then: confirmOptional pay [O] + exhaust this -> readyObject(subject)).
+    // Fires via WhenYouBuffAFriendlyUnit; the buffed unit is the trigger subject.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenYouBuffAFriendlyUnit;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId subject = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        GameObjectId self = ctx.source;
+        auto still_legal = [&]() {
+            return ctx.state.objectExists(self) &&
+                   !ctx.state.getObject(self).is_exhausted &&
+                   subject != kInvalidId && ctx.state.objectExists(subject);
+        };
+        if (!still_legal()) return;
+        int conf = confirmOptional(ctx,
+            "Mistfall: pay [O] + exhaust to ready the buffed unit?", still_legal);
+        if (conf < 1) return;
+        if (!payOnePower(ctx, ctx.controller, Domain::Body)) return;  // [O]
+        ctx.state.getObject(self).is_exhausted = true;                // exhaust this
+        ctx.executor.readyObject(subject);
+        ctx.events.logTrace("MISTFALL: paid [O]+exhaust -> ready buffed unit");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

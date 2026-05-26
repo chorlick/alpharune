@@ -113,7 +113,8 @@ private:
     /// 0 = not a play-triggered ability (default).
     void fireTrigger(GameObjectId source, PlayerId controller,
                      int triggering_spell_energy_spent = 0,
-                     TriggerType which = TriggerType::None);
+                     TriggerType which = TriggerType::None,
+                     GameObjectId subject = kInvalidId);
 
     /// Fire `t` on any battlefield CARD (state_.battlefields[].card_object_id)
     /// that declares it, attributed to `player`. BF card objects have no

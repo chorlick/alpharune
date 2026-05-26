@@ -197,7 +197,8 @@ void TriggerManager::fireLegendTrigger(TriggerType t, PlayerId relevant_player,
 
 void TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
                                   int triggering_spell_energy_spent,
-                                  TriggerType which) {
+                                  TriggerType which,
+                                  GameObjectId subject) {
     if (!state_.objectExists(source)) return;
     auto& obj = state_.getObject(source);
 
@@ -224,6 +225,9 @@ void TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
         if (triggering_spell_energy_spent > 0) {
             state_.chain.items.back().triggering_spell_energy_spent =
                 triggering_spell_energy_spent;
+        }
+        if (subject != kInvalidId) {
+            state_.chain.items.back().triggering_subject = subject;
         }
     }
 }
@@ -743,6 +747,22 @@ void TriggerManager::onUnitReadied(const UnitReadiedEvent& e) {
                     TriggerType::WhenIAmReadied)) {
         fireTrigger(e.object, e.controller, 0, TriggerType::WhenIAmReadied);
     }
+    // "When you ready a friendly unit" — fires on the controller's OTHER on-board
+    // cards (e.g. Pirate's Haven), with the readied unit as the subject.
+    const PlayerId controller = e.controller;
+    std::vector<GameObjectId> others;
+    for (auto& [id, obj] : state_.objects) {
+        if (id == e.object) continue;
+        if (obj.controller != controller || !obj.location.has_value()) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id,
+                        TriggerType::WhenYouReadyAFriendlyUnit)) {
+            others.push_back(id);
+        }
+    }
+    for (GameObjectId id : others) {
+        fireTrigger(id, controller, 0, TriggerType::WhenYouReadyAFriendlyUnit,
+                    /*subject=*/e.object);
+    }
 }
 
 void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
@@ -767,7 +787,8 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         }
     }
     for (GameObjectId id : others) {
-        fireTrigger(id, controller, 0, TriggerType::WhenYouBuffAFriendlyUnit);
+        fireTrigger(id, controller, 0, TriggerType::WhenYouBuffAFriendlyUnit,
+                    /*subject=*/e.object);
     }
 }
 

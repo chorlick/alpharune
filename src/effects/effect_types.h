@@ -148,7 +148,11 @@ enum class TriggerType : uint8_t {
                         // (TriggerManager::onObjectStateChanged, "buffed"). Simian Ancestor.
     WhenYouBuffAFriendlyUnit, // "When you buff a friendly unit," — fires on the
                         // controller's OTHER on-board cards when any friendly unit
-                        // is buffed. Mistfall.
+                        // is buffed (chain item's triggering_subject = buffed unit).
+                        // Mistfall.
+    WhenYouReadyAFriendlyUnit, // "When you ready a friendly unit," — fires on the
+                        // controller's OTHER on-board cards when a friendly unit is
+                        // readied (triggering_subject = readied unit). Pirate's Haven.
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

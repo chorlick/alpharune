@@ -376,6 +376,11 @@ struct ChainItem {
     // triggered it, not the most-recently-played-anywhere spell.
     // 0 means "not a play-triggered ability" (or pre-snapshot trigger).
     int triggering_spell_energy_spent = 0;
+
+    // Snapshot of the object that a "when you <verb> a friendly unit" trigger
+    // acted on (the buffed/readied/moved unit), so the firing card can do "... to
+    // it". kInvalidId when the trigger has no relevant subject.
+    GameObjectId triggering_subject = kInvalidId;
 };
 
 struct ChainState {

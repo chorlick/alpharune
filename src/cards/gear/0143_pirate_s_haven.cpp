@@ -15,11 +15,18 @@ class PirateSHaven : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you ready a friendly unit, give it +1 [M] this turn."
-    // ENGINE LIMITATION: UnitReadiedEvent only dispatches WhenIAmReadied to
-    // the readied object ITSELF (TriggerManager::onUnitReadied) — there is no
-    // "watcher" trigger that fires on OTHER friendly cards when a unit is
-    // readied. Wiring that would require an engine edit (out of scope). Left
-    // as a documented no-op.
+    // Fires via WhenYouReadyAFriendlyUnit; the readied unit is the trigger's
+    // subject (chain item's triggering_subject).
+    TriggerType triggerType() const override {
+        return TriggerType::WhenYouReadyAFriendlyUnit;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId subject = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
+        ctx.executor.giveTemporaryMight(subject, 1);
+        ctx.events.logTrace("PIRATE'S HAVEN: readied friendly -> +1 [M] this turn");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

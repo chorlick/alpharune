@@ -1537,6 +1537,12 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                 // Default Card impl falls through to onActivate(ctx, targets)
                 // so single-ability cards keep working unchanged.
                 card->onActivate(ctx, item.ability_index, effective_targets);
+                // Prize of Progress: a gear's activated ability was used.
+                if (state_.objectExists(item.source) &&
+                    state_.getObject(item.source).isGear()) {
+                    events_.emit(ObjectStateChangedEvent{item.source,
+                                                         "gear_ability_used"});
+                }
             } else {
                 card->onTrigger(ctx, effective_targets);
             }

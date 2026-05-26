@@ -14,13 +14,6 @@
   "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
  },
  {
-  "file": "src/cards/battlefields/0291_void_gate.cpp",
-  "name": "0291_void_gate.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "Spells and abilities deal 1 Bonus Damage to units here."
- },
- {
   "file": "src/cards/battlefields/0522_forge_of_the_fluft.cpp",
   "name": "0522_forge_of_the_fluft.cpp",
   "bucket": "metadata-only",
@@ -77,13 +70,6 @@
   "ability": "If a combat where you are the attacker ends in a tie, recall ALL units instead."
  },
  {
-  "file": "src/cards/gear/0636_frigid_jewel.cpp",
-  "name": "0636_frigid_jewel.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When you draw your second card each turn, give a friendly unit +2  this turn."
- },
- {
   "file": "src/cards/legends/0519_grand_duelist.cpp",
   "name": "0519_grand_duelist.cpp",
   "bucket": "stub",
@@ -103,13 +89,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "Your opponents'  cards can't be revealed here."
- },
- {
-  "file": "src/cards/units/0028_draven_showboat.cpp",
-  "name": "0028_draven_showboat.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "My Might is increased by your points."
  },
  {
   "file": "src/cards/units/0037_immortal_phoenix.cpp",
@@ -161,13 +140,6 @@
   "ability": "When you recycle one or more cards to your Main Deck, buff a friendly unit."
  },
  {
-  "file": "src/cards/units/0299_annie_fiery.cpp",
-  "name": "0299_annie_fiery.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "Your spells and abilities deal 1 Bonus Damage."
- },
- {
   "file": "src/cards/units/0338_perched_grimwyrm.cpp",
   "name": "0338_perched_grimwyrm.cpp",
   "bucket": "stub",
@@ -196,25 +168,11 @@
   "ability": "I cost  less for each point you scored from holding this turn."
  },
  {
-  "file": "src/cards/units/0383_tianna_crownguard.cpp",
-  "name": "0383_tianna_crownguard.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "While I'm at a battlefield, opponents can't gain points."
- },
- {
   "file": "src/cards/units/0398_prize_of_progress.cpp",
   "name": "0398_prize_of_progress.cpp",
   "bucket": "stub",
   "flag": "clean",
   "ability": "When you use an activated ability of a gear, give me +1  this turn."
- },
- {
-  "file": "src/cards/units/0418_laurent_bladekeeper.cpp",
-  "name": "0418_laurent_bladekeeper.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Ganking"
  },
  {
   "file": "src/cards/units/0447_loyal_pup.cpp",
@@ -231,13 +189,6 @@
   "ability": "Your spells that choose me cost  or  less."
  },
  {
-  "file": "src/cards/units/0464_sivir_mercenary.cpp",
-  "name": "0464_sivir_mercenary.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If you've spent at least  this turn, I have +2  and ."
- },
- {
   "file": "src/cards/units/0492_renata_glasc_industrialist.cpp",
   "name": "0492_renata_glasc_industrialist.cpp",
   "bucket": "stub",
@@ -250,20 +201,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "When a unit you control becomes , you may pay  to ready it."
- },
- {
-  "file": "src/cards/units/0570_towering_pairofant.cpp",
-  "name": "0570_towering_pairofant.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If a unit died this turn, I enter ready."
- },
- {
-  "file": "src/cards/units/0599_shadow_watcher.cpp",
-  "name": "0599_shadow_watcher.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If a friendly unit died during your Beginning Phase this turn, I enter ready."
  },
  {
   "file": "src/cards/units/0648_zilean_time_mage.cpp",

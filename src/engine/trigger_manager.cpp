@@ -830,10 +830,27 @@ void TriggerManager::onCardsDrawn(const CardsDrawnEvent& e) {
 }
 
 void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
-    // Only the "buffed" state change drives triggers today.
-    if (e.what_changed != "buffed") return;
     if (!state_.objectExists(e.object)) return;
     const PlayerId controller = state_.getObject(e.object).controller;
+
+    // "When you use an activated ability of a gear" — fire on the gear
+    // controller's on-board cards (Prize of Progress).
+    if (e.what_changed == "gear_ability_used") {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != controller || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenYouActivateAGearAbility))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, controller, 0, TriggerType::WhenYouActivateAGearAbility);
+        return;
+    }
+
+    // Only the "buffed" state change drives the remaining triggers today.
+    if (e.what_changed != "buffed") return;
     // "When you buff me" — fires on the buffed object itself (Simian Ancestor).
     if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
                     TriggerType::WhenIAmBuffed)) {

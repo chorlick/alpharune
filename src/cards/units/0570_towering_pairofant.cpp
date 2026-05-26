@@ -14,11 +14,12 @@ namespace {
 class ToweringPairofant : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "[Assault] If a unit died this turn, I enter ready."
-    // ([Assault] is engine-handled.) There is no per-turn "a unit died this
-    // turn" flag on GameState/PlayerState/TurnState, and entersReadyOnPlay is
-    // evaluated at play time when no death-this-turn signal exists. Needs an
-    // engine counter (reset each turn, bumped on UnitDiedEvent). Not wired.
+    // "[Assault] If a unit died this turn, I enter ready." [Assault] is an engine
+    // keyword; the enter-ready clause reads TurnState::any_unit_died_this_turn
+    // (reset each runTurn, set when any unit dies).
+    bool entersReadyOnPlay(const GameState& state, PlayerId) const override {
+        return state.turn.any_unit_died_this_turn;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -575,6 +575,7 @@ void GameEngine::runTurn(PlayerId player) {
     state_.player(player).resetTurnTracking();
     state_.turn.turn_decisions_p1 = 0;
     state_.turn.turn_decisions_p2 = 0;
+    state_.turn.any_unit_died_this_turn = false;
 
     awakenPhase();
     if (state_.game_over) return;
@@ -5292,6 +5293,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
                          " (id=" + std::to_string(unit_id) + ")");
     }
 
+    state_.turn.any_unit_died_this_turn = true;
     events_.emit(UnitDiedEvent{unit_id, controller,
         was_at.value_or(BaseLocation{controller}), might});
     events_.emit(LeftBoardEvent{unit_id, controller, CardType::Unit,

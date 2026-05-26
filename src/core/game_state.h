@@ -283,6 +283,10 @@ struct TurnState {
     int turn_number = 0;
     bool is_additional_turn = false;
 
+    // True once any unit has died during the current turn (reset each runTurn).
+    // Read by cards like Towering Pairofant ("if a unit died this turn, ...").
+    bool any_unit_died_this_turn = false;
+
     // Per-turn decision counters (reset each turn)
     int turn_decisions_p1 = 0;
     int turn_decisions_p2 = 0;

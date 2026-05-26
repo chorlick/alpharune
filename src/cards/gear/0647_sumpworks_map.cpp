@@ -14,11 +14,16 @@ namespace {
 class SumpworksMap : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "[Reaction]" + "[Temporary]" are engine-handled.
-    // "When an opponent scores, draw 1." is an ENGINE GAP: there is no
-    // "when an opponent scores" TriggerType, and TriggerManager::onScore only
-    // dispatches score triggers to the SCORING player's own units / legends /
-    // battlefields — never to the opponent's cards. Left unimplemented.
+    // "[Reaction]"/"[Temporary]" are engine-handled. "When an opponent scores,
+    // draw 1." fires via WhenOpponentScores (onScore fans out to the non-scoring
+    // player's cards). When it fires, ctx.controller is this gear's owner.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenOpponentScores;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.executor.drawCards(ctx.controller, 1);
+        ctx.events.logTrace("SUMPWORKS MAP: opponent scored -> draw 1");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -153,6 +153,16 @@ enum class TriggerType : uint8_t {
     WhenYouReadyAFriendlyUnit, // "When you ready a friendly unit," — fires on the
                         // controller's OTHER on-board cards when a friendly unit is
                         // readied (triggering_subject = readied unit). Pirate's Haven.
+    WhenOpponentScores, // "When an opponent scores," — fires on the non-scoring
+                        // player's on-board cards (TriggerManager::onScore).
+                        // Sumpworks Map.
+    WhenAUnitMovesFromHere, // "When a unit moves from here," — battlefield-card
+                        // trigger fired on the FROM battlefield's card; the moved
+                        // unit is the subject. Back-Alley Bar.
+    WhenAnOpponentMovesToBattlefield, // "When an opponent moves to a battlefield,"
+                        // — fires on the non-mover's on-board cards; the moved unit
+                        // is the subject (read its location for the destination BF).
+                        // Volibear, Imposing (gated "...other than mine").
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

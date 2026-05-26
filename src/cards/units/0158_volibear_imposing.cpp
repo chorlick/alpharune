@@ -16,12 +16,30 @@ public:
     const CardDef& def() const override { return def_; }
     // [Shield 3] / [Tank] are engine-handled keywords.
     // "When an opponent moves to a battlefield other than mine, draw 1."
-    // ENGINE LIMITATION: TriggerManager::onUnitMoved only fans
-    // WhenAFriendlyUnitMovesToFB out to watchers controlled by the SAME player
-    // as the mover. There is no trigger/dispatch that fires on the OPPONENT's
-    // watchers when an enemy unit moves. Wiring an "enemy moved" watcher
-    // trigger requires an engine edit (out of scope). The draw is left
-    // unimplemented.
+    // Fires via WhenAnOpponentMovesToBattlefield; the moved enemy unit is the
+    // subject. Gate: I must be at a battlefield and the destination must differ.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAnOpponentMovesToBattlefield;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId subj = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (subj == kInvalidId || !ctx.state.objectExists(subj)) return;
+        const auto& me = ctx.state.getObject(ctx.source);
+        const auto& mover = ctx.state.getObject(subj);
+        if (!me.location.has_value() ||
+            !std::holds_alternative<BattlefieldLocation>(*me.location)) {
+            return;  // I'm not at a battlefield -> "other than mine" doesn't apply
+        }
+        if (mover.location.has_value() &&
+            std::holds_alternative<BattlefieldLocation>(*mover.location) &&
+            std::get<BattlefieldLocation>(*mover.location).id ==
+                std::get<BattlefieldLocation>(*me.location).id) {
+            return;  // moved to MY battlefield -> no draw
+        }
+        ctx.executor.drawCards(ctx.controller, 1);
+        ctx.events.logTrace("VOLIBEAR IMPOSING: opponent moved elsewhere -> draw 1");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

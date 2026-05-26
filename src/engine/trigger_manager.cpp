@@ -617,6 +617,20 @@ void TriggerManager::onScore(const ScoreEvent& e) {
             fireTrigger(bf.card_object_id, e.player, 0, TriggerType::WhenYouScoreHere);
         }
     }
+
+    // "When an opponent scores" — fires on the non-scoring player's on-board cards.
+    PlayerId opp = opponent(e.player);
+    std::vector<GameObjectId> opp_watchers;
+    for (auto& [id, obj] : state_.objects) {
+        if (obj.controller != opp || !obj.location.has_value()) continue;
+        if (obj.card_def_id == kInvalidId) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id,
+                        TriggerType::WhenOpponentScores)) {
+            opp_watchers.push_back(id);
+        }
+    }
+    for (auto wid : opp_watchers)
+        fireTrigger(wid, opp, 0, TriggerType::WhenOpponentScores);
 }
 
 void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
@@ -653,6 +667,40 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
         }
         for (auto wid : watchers)
             fireTrigger(wid, e.controller, 0, TriggerType::WhenAFriendlyUnitMovesToFB);
+    }
+
+    // "When a unit moves from here" — battlefield-card trigger on the FROM bf;
+    // the moved unit is the subject (e.g. Back-Alley Bar gives it +1 [M]).
+    if (std::holds_alternative<BattlefieldLocation>(e.from)) {
+        BattlefieldId from_bf = std::get<BattlefieldLocation>(e.from).id;
+        for (auto& bf : state_.battlefields) {
+            if (bf.id != from_bf || !state_.objectExists(bf.card_object_id)) continue;
+            CardDefId bf_def = state_.getObject(bf.card_object_id).card_def_id;
+            if (cardFiresOn(card_registry_, bf_def,
+                            TriggerType::WhenAUnitMovesFromHere)) {
+                fireTrigger(bf.card_object_id, e.controller, 0,
+                            TriggerType::WhenAUnitMovesFromHere, /*subject=*/e.object);
+            }
+        }
+    }
+
+    // "When an opponent moves to a battlefield" — fires on the non-mover's
+    // on-board cards; the moved unit is the subject (read its location for the
+    // destination). The card gates (e.g. Volibear "...other than mine").
+    if (std::holds_alternative<BattlefieldLocation>(e.to)) {
+        PlayerId opp = opponent(e.controller);
+        std::vector<GameObjectId> opp_watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != opp || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenAnOpponentMovesToBattlefield)) {
+                opp_watchers.push_back(id);
+            }
+        }
+        for (auto wid : opp_watchers)
+            fireTrigger(wid, opp, 0, TriggerType::WhenAnOpponentMovesToBattlefield,
+                        /*subject=*/e.object);
     }
 }
 

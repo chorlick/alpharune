@@ -17,10 +17,11 @@ public:
     // "While I'm at a battlefield, opponents can only play units to their base."
     // "While I'm at a battlefield, spells and abilities can't ready enemy units
     //  and gear."
-    // ENGINE GAP: neither restriction has a hook — the first needs the play
-    // action generator to forbid enemy unit-plays to battlefields, the second
-    // needs readyObject() to refuse enemy targets while an effect is the source.
-    // Both require engine-side enforcement; cannot be done per-card.
+    // ESCALATE(play-location-narrowing + ready-suppression): the first clause
+    // needs the play action generator to forbid enemy unit-plays to
+    // battlefields (no opponent-scoped play-location restriction surface); the
+    // second needs readyObject() to refuse enemy targets while an effect is the
+    // source (no ready-suppression hook). Both engine-side. Whole card blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

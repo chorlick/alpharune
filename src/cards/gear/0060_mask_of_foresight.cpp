@@ -15,9 +15,10 @@ class MaskOfForesight : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When a friendly unit attacks or defends alone, give it +1 [M] this turn."
-    // ENGINE GAP: there is no "a friendly unit attacks/defends" trigger event
-    // (only the self-scoped WhenIAttack/WhenIDefend exist), nor an "alone"
+    // ESCALATE(WhenAUnitAttacksOrDefendsAlone): the enum value exists but has
+    // NO dispatch — TriggerManager never emits it, and there is no "alone"
     // predicate surfaced to triggers. Cannot be wired from the card layer.
+    // Whole card blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

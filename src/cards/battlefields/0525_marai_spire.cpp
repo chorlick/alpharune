@@ -14,11 +14,11 @@ namespace {
 class MaraiSpire : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "While you control this battlefield, friendly [Repeat] costs
-    // cost [1] less." The Repeat-cost loop is engine-internal and reads only
-    // the spell's own printed Repeat cost; there is no external reduction hook
-    // (no CostModifier path targets the Repeat additional cost specifically).
-    // Left unimplemented pending a Repeat-cost-reduction hook.
+    // "While you control this battlefield, friendly [Repeat] costs cost [1] less."
+    // ESCALATE(repeat-cost-modifier): the Repeat-cost loop is engine-internal and
+    // reads only the spell's own printed Repeat cost; PlayerState::CostModifier has
+    // no path that targets the Repeat additional cost specifically. Needs a
+    // Repeat-cost-reduction hook the play/repeat-payment path consults.
 private:
     const CardDef def_ = [] {
         CardDef d;

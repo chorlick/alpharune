@@ -16,11 +16,10 @@ public:
     const CardDef& def() const override { return def_; }
     // "As you play me, you may discard 1 as an additional cost. If you do,
     //  reduce my cost by [2]."
-    // ENGINE GAP: the optional-additional-cost play hook
-    // (Card::optionalAdditionalCost) only supports energy/power costs, not a
-    // discard, and cost reduction must be decided BEFORE payment. There is no
-    // discard-as-additional-cost-to-reduce path, so this cannot be modeled
-    // from the card layer.
+    // ESCALATE(discard-as-additional-cost): the optional-additional-cost play
+    // hook (Card::optionalAdditionalCost) only supports energy/power, not a
+    // discard, and the reduction must be decided BEFORE cost payment. There is
+    // no discard-as-additional-cost-to-reduce path. Whole card blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

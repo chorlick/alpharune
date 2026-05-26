@@ -112,13 +112,6 @@
   "ability": "I have all  abilities of all friendly legends, units, and gear."
  },
  {
-  "file": "src/cards/units/0177_stealthy_pursuer.cpp",
-  "name": "0177_stealthy_pursuer.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When a friendly unit moves from my location, I may be moved with it."
- },
- {
   "file": "src/cards/units/0189_kayn_unleashed.cpp",
   "name": "0189_kayn_unleashed.cpp",
   "bucket": "stub",
@@ -166,13 +159,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "I cost  less for each point you scored from holding this turn."
- },
- {
-  "file": "src/cards/units/0398_prize_of_progress.cpp",
-  "name": "0398_prize_of_progress.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "When you use an activated ability of a gear, give me +1  this turn."
  },
  {
   "file": "src/cards/units/0447_loyal_pup.cpp",

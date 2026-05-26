@@ -13,11 +13,10 @@ namespace {
 
 // "When a unit you control becomes [Mighty], you may pay [Y] to ready it.
 //  (A unit is Mighty while it has 5+ [M].)"
-// ENGINE GAP: there is no "becomes Mighty" trigger event — nothing is emitted
-// when a unit's Might crosses the 5+ threshold (Might is recomputed in cleanup
-// with no edge-detection / event). Without that event there is no hook to fire
-// this reactive ability, so it is left unimplemented pending a
-// BecameMighty-style event from the might-recompute / cleanup path.
+// ESCALATE(WhenAUnitBecomesMighty): the enum value exists but has NO dispatch.
+// Nothing is emitted when a unit's Might crosses the 5+ threshold (Might is
+// recomputed in cleanup with no edge-detection / event). Without that event
+// there is no hook to fire this reactive ability. Whole card blocked.
 
 class FioraWorthy : public UnitCard {
 public:

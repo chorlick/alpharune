@@ -16,13 +16,13 @@ public:
     const CardDef& def() const override { return def_; }
     // [Ganking] is engine-handled.
     // "If I have moved twice this turn, I don't take damage."
-    // ENGINE LIMITATION: this is a CONTINUOUS conditional damage-prevention.
-    // EffectExecutor::dealDamage only honors a one-shot per-unit flag
-    // (prevent_next_damage_this_turn) and global spell/ability prevention; there
-    // is no persistent "this unit takes no damage while <condition>" hook, nor a
-    // per-unit "moves this turn" counter. Implementing it faithfully requires an
-    // engine edit to dealDamage (out of scope — and putting Kayn-specific logic
-    // in the engine is explicitly forbidden). Left as a documented no-op.
+    // ESCALATE(per_unit_moves_counter + continuous_damage_prevention): this is a
+    // CONTINUOUS conditional damage-prevention. (1) GameObject::moves_this_turn
+    // exists but is NOT incremented by the move path, so "moved twice" cannot be
+    // tested; and (2) dealDamage honors only a one-shot per-unit flag
+    // (prevent_next_damage_this_turn) and global spell/ability prevention — there
+    // is no persistent "this unit takes no damage while <condition>" hook. Both
+    // require engine edits. Left as a documented no-op.
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -15,12 +15,11 @@ class HeimerdingerInventor : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "I have all [E] abilities of all friendly legends, units, and gear."
-    // ENGINE LIMITATION: the action generator and onActivate dispatch key
-    // activated abilities off each object's OWN Card (via ctx.source). There
-    // is no per-card mechanism to PROXY another object's activated ability
-    // onto Heimerdinger — that requires engine-level ability-granting that
-    // does not exist. Implementing it here would mean inventing engine APIs,
-    // which is out of scope for a per-card fix. Left as a documented no-op.
+    // ESCALATE(proxy-granted-activated-abilities): the action generator and
+    // onActivate dispatch key activated abilities off each object's OWN Card (via
+    // ctx.source). There is no mechanism to PROXY another object's activated
+    // ability onto Heimerdinger — that needs engine-level ability-granting
+    // (enumerate + dispatch another card's [E] ability as though it were mine).
 private:
     const CardDef def_ = [] {
         CardDef d;

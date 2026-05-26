@@ -14,11 +14,13 @@ namespace {
 class SymbolOfTheSolari : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "If a combat where you are the attacker ends in a tie, recall
-    // ALL units instead." There is no combat-tie trigger/event nor a
-    // combat-resolution replacement hook in the engine, so this cannot be
-    // implemented from the card file. Requires an engine-side combat-tie
-    // replacement.
+    // "If a combat where you are the attacker ends in a tie, recall ALL units
+    //  instead."
+    // ESCALATE(combat-tie-replacement): there is no combat-tie trigger/event nor a
+    // combat-resolution replacement hook in the engine, so this cannot be wired
+    // from the card layer. Needs an engine-side combat-tie replacement (recall all
+    // units to base instead of the normal tie outcome) gated on the gear's
+    // controller being the attacker.
 private:
     const CardDef def_ = [] {
         CardDef d;

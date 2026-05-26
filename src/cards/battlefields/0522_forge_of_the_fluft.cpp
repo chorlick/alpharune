@@ -14,12 +14,13 @@ namespace {
 class ForgeOfTheFluft : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "While you control this battlefield, friendly legends have
-    // '[E]: Attach an Equipment you control to a unit you control.'" The aura
-    // system grants only keywords/might, not GRANTED ACTIVATED ABILITIES.
-    // There is no hook for an aura source to inject an activated ability onto
-    // another card's surface (activatedAbilities() is per-class, not aura-
-    // driven). Left unimplemented pending an aura-granted-ability mechanism.
+    // "While you control this battlefield, friendly legends have
+    //  '[E]: Attach an Equipment you control to a unit you control.'"
+    // ESCALATE(aura-granted-activated-ability): the aura system (AuraEffect)
+    // grants only Might/keyword/combat-damage suppression. There is no surface
+    // for an aura source to inject an ACTIVATED ability onto another card
+    // (activatedAbilities() is per-class, not aura-driven), and the action
+    // generator does not enumerate aura-granted abilities. Whole card blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

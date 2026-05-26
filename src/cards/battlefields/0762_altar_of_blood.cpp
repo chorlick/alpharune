@@ -16,7 +16,8 @@ public:
     const CardDef& def() const override { return def_; }
     // "If a unit here would die during combat, its controller may pay [A][A][A]
     //  to heal it, exhaust it, and recall it instead."
-    // ENGINE GAP: the structured replacement-effect dispatch (GameEngine::
+    // ESCALATE(battlefield_replacement_effect): the structured replacement-effect
+    // dispatch (GameEngine::
     // killUnit) only consults Card::hasReplacementEffect on objects with
     // `controller == dying-unit's controller` AND a board `location`.
     // Battlefield cards have no `location` (and shared BFs have no single

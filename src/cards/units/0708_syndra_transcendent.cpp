@@ -15,13 +15,13 @@ class SyndraTranscendent : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "While I'm in a showdown, your spells have [Repeat] [2][P]."
-    // ENGINE GAP: [Repeat] (CR 820) is an optional additional cost paid at
-    // spell-play time (ChainItem::repeats_paid). There is no surface for a
-    // continuous effect to GRANT [Repeat] to a player's spells — the
-    // play-action generator does not consult any "spells have Repeat" state,
-    // and applyPassiveAura's AuraEffect only carries Might/keyword/combat-damage
-    // suppression. Implementing this requires engine/header changes out of
-    // scope here. Left unimplemented. (Same gap as The Academy #772.)
+    // ESCALATE(spells-have-repeat continuous field): [Repeat] (CR 820) is an
+    // optional additional cost paid at spell-play time (ChainItem::repeats_paid),
+    // parsed by the engine from the SPELL's OWN ability_text. There is no
+    // surface for a continuous effect to GRANT [Repeat] to a player's spells —
+    // the play-action generator consults no "spells have Repeat" player field,
+    // and applyPassiveAura's AuraEffect carries only Might/keyword/combat-damage
+    // suppression. Whole card blocked. (Same gap as The Academy #772.)
 private:
     const CardDef def_ = [] {
         CardDef d;

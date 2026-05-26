@@ -16,13 +16,14 @@ public:
     const CardDef& def() const override { return def_; }
     // "[Vision]" is engine-handled.
     // "If you've spent [4] or more to play a spell this turn, you may play me
-    // for [B]." is an ENGINE GAP. Two missing pieces: (1) there is no
-    // per-card alternative-cost ("play me for X instead") play path — only
-    // selfCostReduction (energy-only) and OptionalAdditionalCost exist, neither
-    // of which can swap the printed cost for a fixed [B] (Mind) power; and
-    // (2) there is no persistent "spent [4]+ on a spell this turn" flag
-    // (PlayerState::last_spell_energy_spent tracks only the MOST RECENT spell).
-    // Left unimplemented.
+    // for [B]."
+    // ESCALATE(alternative_play_cost + spent_4plus_on_spell_flag): two missing
+    // pieces: (1) there is no per-card alternative-cost ("play me for X instead")
+    // play path — only selfCostReduction (energy-only) and OptionalAdditionalCost
+    // exist, neither of which can swap the printed cost for a fixed [B] (Mind)
+    // power; and (2) there is no persistent "spent [4]+ on a spell this turn"
+    // flag (PlayerState::last_spell_energy_spent tracks only the MOST RECENT
+    // spell). Left unimplemented.
 private:
     const CardDef def_ = [] {
         CardDef d;

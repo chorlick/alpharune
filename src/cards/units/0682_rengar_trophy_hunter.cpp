@@ -17,11 +17,11 @@ public:
     const CardDef& def() const override { return def_; }
     // Base "[Ambush]" is engine-handled.
     // "I can [Ambush] to a battlefield where there are enemy units, even if you
-    // don't have units there." is an ENGINE GAP: GameEngine's Ambush action
-    // generator hard-codes the placement to battlefields where the controller
-    // already has units (bf.hasUnitsFrom(player)) with no per-card override
-    // hook for extended placement. Left unimplemented (would require an engine
-    // change, which is out of scope here).
+    // don't have units there."
+    // ESCALATE(ambush_extended_placement): GameEngine's Ambush action generator
+    // hard-codes the placement to battlefields where the controller already has
+    // units (bf.hasUnitsFrom(player)) with no per-card override hook for extended
+    // placement. Left unimplemented (would require an engine change).
 private:
     const CardDef def_ = [] {
         CardDef d;

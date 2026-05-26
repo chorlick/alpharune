@@ -14,14 +14,13 @@ namespace {
 class ZileanTimeMage : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Once each turn, if you would play a token unit while I'm at a
-    // battlefield, you may play that token and an additional copy of it
-    // instead." is an ENGINE GAP. It is a REPLACEMENT effect on TOKEN
-    // creation, but: (1) tokens enter via EffectExecutor::createToken, which is
-    // not a "play" routed through the chain/replacement machinery; and (2) the
-    // executor consults no per-player "double the next token" counter when
-    // creating tokens. There is no hook to intercept token creation and emit a
-    // second copy. Left unimplemented (would require an engine change).
+    // "Once each turn, if you would play a token unit while I'm at a battlefield,
+    //  you may play that token and an additional copy of it instead."
+    // ESCALATE(token-play-replacement): a REPLACEMENT effect on TOKEN creation, but
+    // (1) tokens enter via EffectExecutor::createToken, which is not a "play"
+    // routed through chain/replacement machinery; and (2) the executor consults no
+    // per-player "double the next token" counter on token creation. Needs an
+    // engine hook to intercept token-unit creation and emit a second copy.
 private:
     const CardDef def_ = [] {
         CardDef d;

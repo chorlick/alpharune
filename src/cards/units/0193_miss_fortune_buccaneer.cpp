@@ -18,13 +18,13 @@ public:
     // "play me to an open battlefield" ability_text substring match in
     // GameEngine::generateMainPhaseActions.
     //
-    // "Friendly units may be played to open battlefields." — ENGINE LIMITATION:
-    // this is a board-wide grant affecting OTHER friendly units' play
-    // locations. The action generator's open-BF allowance keys on each card's
-    // OWN ability_text ("play me to ..."), not on a static aura granted by
-    // another on-board unit. Honoring this for all friendly units while MF is
-    // in play requires an engine edit (out of scope). The self-clause works;
-    // the global grant is left unimplemented.
+    // "Friendly units may be played to open battlefields."
+    // ESCALATE(play-location-expansion): board-wide grant affecting OTHER
+    // friendly units' play locations. The action generator's open-BF allowance
+    // keys on each card's OWN ability_text ("play me to an open battlefield"),
+    // not on a static aura granted by another on-board unit, and
+    // getPlayLocations() is never consulted. Self-clause works; global grant
+    // blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

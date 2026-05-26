@@ -14,11 +14,14 @@ namespace {
 class KarmaChanneler : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "When you recycle one or more cards to your Main Deck, buff a
-    // friendly unit." There is no WhenYouRecycle TriggerType nor a recycle
-    // event in events.h, so this trigger cannot be wired from the card file.
-    // Requires an engine-side recycle-to-main-deck trigger. [Vision] is an
-    // engine keyword and works.
+    // Clause 1: "[Vision]" — engine-handled (TriggerManager peeks the top card on
+    //   play for any unit with the Vision keyword; set in def below). Works.
+    // Clause 2: "When you recycle one or more cards to your Main Deck, buff a
+    //   friendly unit."
+    // ESCALATE(WhenYouRecycle): the TriggerType enum value WhenYouRecycle exists
+    // but has NO emit site / dispatch (no recycle-to-main-deck event), so this
+    // trigger cannot be wired from the card layer. Needs the recycle path to emit
+    // a recycle event and TriggerManager to dispatch WhenYouRecycle.
 private:
     const CardDef def_ = [] {
         CardDef d;

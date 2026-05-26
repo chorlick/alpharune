@@ -15,9 +15,10 @@ class RavenbornTome : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "[E]: The next spell you play this turn deals 1 Bonus Damage."
-    // ENGINE GAP: there is no "next spell deals N bonus damage" hook on
-    // PlayerState (no per-player spell-damage rider), so the activated ability
-    // is declared but its effect cannot be applied from the card layer.
+    // ESCALATE(per_player_spell_bonus_damage): there is no "next spell deals N
+    // bonus damage" rider on PlayerState (no per-player spell-damage modifier the
+    // dealDamage path consults), so the activated ability is declared (cost +
+    // exhaust) but its effect cannot be applied from the card layer.
     TriggerType triggerType() const override { return TriggerType::Activated; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }

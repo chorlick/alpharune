@@ -15,12 +15,11 @@ class LoyalPup : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you defend at a battlefield, you may move me there."
-    // ENGINE GAP: combat triggers (WhenIDefend / WhenAShowdownBeginsHere) are
-    // only dispatched to units that are ALREADY at the showdown battlefield.
-    // Loyal Pup is by definition NOT at that battlefield (the effect MOVES it
-    // there), so no trigger event is delivered to it. There is no
-    // "your-side-defends-anywhere" fan-out to off-BF units. Left unimplemented
-    // pending such a trigger hook.
+    // ESCALATE(WhenYouDefendAtABattlefield): the enum value exists but has NO
+    // dispatch. Existing combat triggers (WhenIDefend / WhenAShowdownBeginsHere)
+    // only reach units ALREADY at the showdown battlefield; Loyal Pup is by
+    // definition NOT there (the effect MOVES it). There is no
+    // "your-side-defends-anywhere" fan-out to off-BF units. Whole card blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

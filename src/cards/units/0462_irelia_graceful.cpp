@@ -15,12 +15,12 @@ class IreliaGraceful : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Your spells that choose me cost [1] or [A] less."
-    // ENGINE GAP: PlayerState::CostModifier has no target-conditional
-    // predicate ("only spells that choose THIS object"). The available
-    // filters (friendly/enemy/gear/spell-scope) cannot express "spells
-    // targeting me", and applying a blanket [1]-off to all friendly spells
-    // would massively over-reach the printed scope. Left unimplemented
-    // pending a per-target cost-modifier hook in the cost system.
+    // ESCALATE(per-target-cost-modifier): PlayerState::CostModifier has no
+    // target-conditional predicate ("only spells that choose THIS object"). The
+    // available filters (friendly/enemy/gear/spell-scope) cannot express "spells
+    // targeting me"; a blanket [1]-off on all friendly spells would over-reach
+    // the printed scope. Needs a per-target cost-modifier hook consulted at the
+    // moment a spell's chosen targets are known.
 private:
     const CardDef def_ = [] {
         CardDef d;

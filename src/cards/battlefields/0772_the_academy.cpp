@@ -17,13 +17,12 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouHoldHere; }
     // "When you hold here, give your next spell this turn [Repeat] equal to its
     //  base cost."
-    // ENGINE GAP: [Repeat] (CR 820) is an OPTIONAL ADDITIONAL COST the player
-    // pays at spell-play time (tracked via ChainItem::repeats_paid). There is
-    // no surface for an external effect to GRANT free [Repeat] to a player's
-    // next spell — no per-player "next spell has Repeat N" field exists, and
-    // the play-action generator does not consult one. Implementing this needs
-    // engine/header changes (a granted-repeat field + payment-path honoring it),
-    // which are out of scope here. Left unimplemented. (Same gap as Syndra,
+    // ESCALATE(grant-repeat-to-next-spell): [Repeat] (CR 820) is an OPTIONAL
+    // ADDITIONAL COST the player pays at spell-play time (ChainItem::repeats_paid).
+    // There is no surface for an external effect to GRANT free/eligible [Repeat]
+    // to a player's next spell — no per-player "next spell has Repeat N" field
+    // exists and the play-action generator does not consult one. Needs a
+    // granted-repeat field + payment-path honoring it. (Same gap as Syndra,
     // Transcendent #708 "your spells have [Repeat]".)
 private:
     const CardDef def_ = [] {

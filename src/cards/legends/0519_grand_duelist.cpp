@@ -14,12 +14,12 @@ namespace {
 class GrandDuelist : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "When one of your units becomes [Mighty], you may exhaust me
-    // to channel 1 rune exhausted." There is no engine event for a unit
-    // crossing the 5+ Might "becomes Mighty" threshold (Might changes via
-    // buffs/auras during cleanup with no edge-detection emit). No TriggerType
-    // exists for it, so this is left unimplemented pending a "becomes Mighty"
-    // event.
+    // "When one of your units becomes [Mighty], you may exhaust me to channel 1
+    // rune exhausted. (A unit is Mighty while it has 5+ [M].)"
+    // ESCALATE(WhenAUnitBecomesMighty): the TriggerType enum value exists but has
+    // NO dispatch — there is no engine emit for a unit crossing the 5+ Might
+    // "becomes Mighty" threshold (Might changes via buffs/auras during cleanup
+    // with no edge-detection emit). Left unimplemented pending wired dispatch.
 private:
     const CardDef def_ = [] {
         CardDef d;

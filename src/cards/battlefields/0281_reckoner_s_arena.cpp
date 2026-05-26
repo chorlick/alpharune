@@ -14,12 +14,12 @@ namespace {
 class ReckonerSArena : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "When you hold here, activate the conquer effects of units
-    // here." This must re-fire the WhenIConquer triggers of every unit at this
-    // battlefield, but a Card's onTrigger has no access to the CardRegistry to
-    // dispatch other cards' triggers (CardContext/EffectExecutor expose neither
-    // the registry nor a "fire trigger" primitive). Requires an engine-side
-    // re-fire-conquer-effects helper.
+    // "When you hold here, activate the conquer effects of units here."
+    // ESCALATE(refire-conquer-effects): must re-fire the WhenIConquer triggers of
+    // every unit at this battlefield, but a Card's onTrigger has no access to the
+    // CardRegistry to dispatch other cards' triggers (CardContext/EffectExecutor
+    // expose neither the registry nor a "fire trigger" primitive). Needs an
+    // engine-side helper that re-activates the conquer effects of units at a BF.
     TriggerType triggerType() const override { return TriggerType::WhenYouHoldHere; }
 private:
     const CardDef def_ = [] {

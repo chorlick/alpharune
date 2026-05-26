@@ -12,7 +12,8 @@ namespace riftbound {
 namespace {
 
 // "Your tokens enter ready."
-// ENGINE GAP: this is a continuous replacement effect on token creation, but
+// ESCALATE(tokens_enter_ready_replacement): this is a continuous replacement
+// effect on token creation, but
 // EffectExecutor::createToken decides ready/exhausted from its own enter_ready
 // arg and does NOT consult a per-player "tokens enter ready" flag or any aura.
 // Modeling it via applyPassiveAura is impossible because the aura pass can't

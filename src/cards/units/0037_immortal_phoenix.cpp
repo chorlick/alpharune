@@ -16,10 +16,11 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you kill a unit with a spell, you may pay [1][R] to play me from
     //  your trash."
-    // ENGINE GAP: (1) there is no "when you kill a unit with a spell" trigger
-    // event, and (2) triggers are only dispatched to on-board cards — a card
-    // sitting in the trash receives none. Both require engine support, so this
-    // ability cannot be wired from the card layer. ([Assault 2] is in keywords.)
+    // ESCALATE(kill_with_spell_trigger + alt_play_from_trash): (1) there is no
+    // "when you kill a unit with a spell" trigger event, and (2) triggers are
+    // only dispatched to on-board cards — a card in the trash receives none, and
+    // there is no action-generator hook to play a card from the trash. Both
+    // require engine support. ([Assault 2] is engine-handled via keywords.)
 private:
     const CardDef def_ = [] {
         CardDef d;

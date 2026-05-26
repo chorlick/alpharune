@@ -322,13 +322,6 @@
   "ability": "As you play me, you may spend any number of buffs as an additional cost. Reduce my cost by"
  },
  {
-  "file": "src/cards/units/0177_stealthy_pursuer.cpp",
-  "name": "0177_stealthy_pursuer.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When a friendly unit moves from my location, I may be moved with it."
- },
- {
   "file": "src/cards/units/0189_kayn_unleashed.cpp",
   "name": "0189_kayn_unleashed.cpp",
   "bucket": "stub",

@@ -16,11 +16,11 @@ public:
     const CardDef& def() const override { return def_; }
     // "Opponents must pay [A] for each unit beyond the first to move multiple
     //  units to my battlefield at the same time."
-    // ENGINE GAP: there is no move-cost-modifier infrastructure. Unit movement
-    // is not gated by a per-target/per-destination cost, and there is no hook
-    // for a continuous effect to surcharge multi-unit moves to a specific
-    // battlefield. Modeling this requires engine support (a move-cost modifier
-    // consulted by the move-action generator/payment path). Left unimplemented.
+    // ESCALATE(move-cost-modifier): there is no move-cost-modifier infrastructure.
+    // Unit movement is not gated by a per-target/per-destination cost, and there is
+    // no hook for a continuous effect to surcharge multi-unit moves to a specific
+    // battlefield. Needs a move-cost modifier consulted by the move-action
+    // generator / payment path.
 private:
     const CardDef def_ = [] {
         CardDef d;

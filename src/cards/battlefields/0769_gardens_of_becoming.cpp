@@ -16,12 +16,10 @@ class GardensOfBecoming : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Units here have '[E]: Gain 1 XP.'"
-    // ENGINE GAP: the aura system grants only Might/keywords/combat-damage
-    // suppression (GameObject::AuraEffect). There is no surface for an aura to
-    // grant an *activated ability* to a unit, nor does the action generator
-    // enumerate battlefield-granted abilities. Implementing this would require
-    // engine/header changes (a granted-activated-ability list on GameObject +
-    // action-gen + dispatch), which are out of scope here. Left unimplemented.
+    // ESCALATE(aura-granted-activated-ability): the aura system (AuraEffect)
+    // grants only Might/keyword/combat-damage suppression. There is no surface
+    // for an aura to grant an ACTIVATED ability to a unit, nor does the action
+    // generator enumerate battlefield-granted abilities. Whole card blocked.
 private:
     const CardDef def_ = [] {
         CardDef d;

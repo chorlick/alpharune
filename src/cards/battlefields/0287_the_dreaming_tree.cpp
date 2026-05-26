@@ -14,12 +14,13 @@ namespace {
 class TheDreamingTree : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "When a player chooses a friendly unit here with a spell for
-    // the first time each turn, they draw 1." The WhenYouChooseAFriendlyUnit
+    // "When a player chooses a friendly unit here with a spell for the first
+    // time each turn, they draw 1."
+    // ESCALATE(battlefield_scoped_choose_trigger): the WhenYouChooseAFriendlyUnit
     // trigger is dispatched only to the choosing player's ON-BOARD cards (the
     // dispatcher requires obj.location and never iterates battlefield cards),
     // and it carries no "unit is HERE" location filter. Wiring this requires an
-    // engine-side battlefield-scoped choose trigger (+ once-per-turn gating).
+    // engine-side battlefield-scoped choose trigger + once-per-turn gating.
 private:
     const CardDef def_ = [] {
         CardDef d;

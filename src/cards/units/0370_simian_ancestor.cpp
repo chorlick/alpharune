@@ -11,17 +11,16 @@
 namespace riftbound {
 namespace {
 
-// "When you buff me, ready me."
-// ESCALATE(buff_trigger): There is no "When you buff" trigger event/type.
-// EffectExecutor::buffUnit emits only a generic ObjectStateChangedEvent{...,
-// "buffed"} which TriggerManager does NOT subscribe to, and there is no
-// TriggerType::WhenIAmBuffed / WhenYouBuffMe. To implement this the engine
-// needs a dedicated buff event (e.g. UnitBuffedEvent emitted from buffUnit)
-// and a TriggerType the TriggerManager dispatches on the buffed unit.
-
+// "When you buff me, ready me." Driven by TriggerType::WhenIAmBuffed
+// (TriggerManager::onObjectStateChanged dispatches it on the buffed unit).
 class SimianAncestor : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::WhenIAmBuffed; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.executor.readyObject(ctx.source);
+        ctx.events.logTrace("SIMIAN ANCESTOR: buffed -> ready self");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

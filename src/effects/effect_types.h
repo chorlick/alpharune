@@ -144,6 +144,11 @@ enum class TriggerType : uint8_t {
                         // deck," — fires on the revealed card itself when a
                         // CardRevealedEvent has source_zone == MainDeck.
                         // Nocturne, Horrifying.
+    WhenIAmBuffed,      // "When you buff me," — fires on the buffed object itself
+                        // (TriggerManager::onObjectStateChanged, "buffed"). Simian Ancestor.
+    WhenYouBuffAFriendlyUnit, // "When you buff a friendly unit," — fires on the
+                        // controller's OTHER on-board cards when any friendly unit
+                        // is buffed. Mistfall.
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

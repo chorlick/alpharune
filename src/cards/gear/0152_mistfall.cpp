@@ -14,12 +14,12 @@ namespace {
 class Mistfall : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "When you buff a friendly unit, you may pay [O] and exhaust this to ready
-    // it."
-    // ENGINE LIMITATION: there is no "when you buff" TriggerType nor a
-    // UnitBuffedEvent the TriggerManager can dispatch on. Wiring a buff event +
-    // trigger would require engine edits (out of scope). Left as a documented
-    // no-op (target requirement removed since it can never fire).
+    // "When you buff a friendly unit, you may pay [O] and exhaust this to ready it."
+    // TriggerType::WhenYouBuffAFriendlyUnit now exists (fires on this gear when
+    // the controller buffs any friendly unit). REMAINING: the trigger does not
+    // yet carry the *buffed unit's* id, so "ready IT" can't identify the subject.
+    // Pending a small extension to pass the buffed object through the trigger
+    // (then: confirmOptional pay [O] + exhaust this -> readyObject(subject)).
 private:
     const CardDef def_ = [] {
         CardDef d;

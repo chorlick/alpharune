@@ -41,6 +41,8 @@ void TriggerManager::subscribe() {
         [this](const ShowdownStartedEvent& e) { onShowdownStarted(e); }));
     connections_.push_back(events_.on_card_revealed.connect(
         [this](const CardRevealedEvent& e) { onCardRevealed(e); }));
+    connections_.push_back(events_.on_object_state_changed.connect(
+        [this](const ObjectStateChangedEvent& e) { onObjectStateChanged(e); }));
 }
 
 TriggerManager::~TriggerManager() {
@@ -740,6 +742,32 @@ void TriggerManager::onUnitReadied(const UnitReadiedEvent& e) {
     if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
                     TriggerType::WhenIAmReadied)) {
         fireTrigger(e.object, e.controller, 0, TriggerType::WhenIAmReadied);
+    }
+}
+
+void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
+    // Only the "buffed" state change drives triggers today.
+    if (e.what_changed != "buffed") return;
+    if (!state_.objectExists(e.object)) return;
+    const PlayerId controller = state_.getObject(e.object).controller;
+    // "When you buff me" — fires on the buffed object itself (Simian Ancestor).
+    if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
+                    TriggerType::WhenIAmBuffed)) {
+        fireTrigger(e.object, controller, 0, TriggerType::WhenIAmBuffed);
+    }
+    // "When you buff a friendly unit" — fires on the controller's OTHER on-board
+    // cards (e.g. Mistfall gear). Snapshot ids first; fireTrigger mutates the chain.
+    std::vector<GameObjectId> others;
+    for (auto& [id, obj] : state_.objects) {
+        if (id == e.object) continue;
+        if (obj.controller != controller || !obj.location.has_value()) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id,
+                        TriggerType::WhenYouBuffAFriendlyUnit)) {
+            others.push_back(id);
+        }
+    }
+    for (GameObjectId id : others) {
+        fireTrigger(id, controller, 0, TriggerType::WhenYouBuffAFriendlyUnit);
     }
 }
 

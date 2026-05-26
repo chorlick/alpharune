@@ -15,12 +15,29 @@ class StealthyPursuer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When a friendly unit moves from my location, I may be moved with it."
-    // ENGINE LIMITATION: WhenAFriendlyUnitMovesToFB fires the watcher's
-    // onTrigger with EMPTY context — it does not pass the moving unit's id, its
-    // FROM-location, or its destination. This card needs all three ("from my
-    // location" gate + "moved WITH it" destination). TriggerManager::onUnitMoved
-    // would need to capture move context for watchers (engine edit, out of
-    // scope). Left as a documented no-op.
+    // WhenAFriendlyUnitMovesFromMyLocation fires only on watchers that shared
+    // the FROM location; the moved unit is the subject — we follow it to its
+    // new location.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAFriendlyUnitMovesFromMyLocation;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId subject = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
+        const auto& mover = ctx.state.getObject(subject);
+        if (!mover.location.has_value()) return;
+        int answer = confirmOptional(ctx, "Stealthy Pursuer: move with it?",
+            [&]() { return ctx.state.objectExists(ctx.source) &&
+                           ctx.state.objectExists(subject); });
+        if (answer < 1) return;  // declined or pending
+        if (std::holds_alternative<BattlefieldLocation>(*mover.location))
+            ctx.executor.moveToBattlefield(
+                ctx.source, std::get<BattlefieldLocation>(*mover.location).id);
+        else
+            ctx.executor.moveToBase(ctx.source);
+        ctx.events.logTrace("STEALTHY PURSUER: follows the moved friendly unit");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

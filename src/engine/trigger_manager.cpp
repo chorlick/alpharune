@@ -704,6 +704,26 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
             fireTrigger(wid, opp, 0, TriggerType::WhenAnOpponentMovesToBattlefield,
                         /*subject=*/e.object);
     }
+
+    // "When a friendly unit moves from my location" — fires on the controller's
+    // OTHER on-board cards that shared the FROM location (Stealthy Pursuer);
+    // the moved unit is the subject (read its new location to follow it).
+    {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (id == e.object) continue;
+            if (obj.controller != e.controller || !obj.location.has_value()) continue;
+            if (!(*obj.location == e.from)) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenAFriendlyUnitMovesFromMyLocation))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, e.controller, 0,
+                        TriggerType::WhenAFriendlyUnitMovesFromMyLocation,
+                        /*subject=*/e.object);
+    }
 }
 
 void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {

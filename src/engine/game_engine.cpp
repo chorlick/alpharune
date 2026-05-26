@@ -3451,6 +3451,13 @@ bool GameEngine::isScoreGatedByTurn(PlayerId player, BattlefieldId bf) const {
 void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
     auto& ps = state_.player(player);
 
+    // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
+    if (ps.cannot_gain_points) {
+        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+                         " can't gain points (Tianna)");
+        return;
+    }
+
     // Turn-gated scoring (Forgotten Monument): can't score here until the
     // player has taken `min_turn_to_score` of their own turns.
     if (isScoreGatedByTurn(player, bf)) {
@@ -3493,6 +3500,13 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
 void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     auto& ps = state_.player(player);
 
+    // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
+    if (ps.cannot_gain_points) {
+        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+                         " can't gain points (Tianna)");
+        return;
+    }
+
     if (isScoreGatedByTurn(player, bf)) {
         events_.logTrace(std::string("SCORE_GATED: ") + toString(player) +
                          " can't score BF#" + std::to_string(bf) + " until turn " +
@@ -3534,12 +3548,17 @@ void GameEngine::recalculateAuras() {
         obj.aura_effects.clear();
         obj.aura_might_bonus = 0;
         obj.aura_keywords.reset();
+        obj.aura_bonus_damage_taken = 0;
     }
 
     // Step 1a: Reset per-player passive counters derived from on-board
     // presence. Bumped below by the corresponding aura scan.
-    state_.player(PlayerId::Player1).deathknell_double_count = 0;
-    state_.player(PlayerId::Player2).deathknell_double_count = 0;
+    for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
+        auto& ps = state_.player(pid);
+        ps.deathknell_double_count = 0;
+        ps.bonus_damage_dealt = 0;   // Annie, Fiery
+        ps.cannot_gain_points = false; // Tianna Crownguard
+    }
 
     // Step 1b: Refresh per-object targeting-protection flags from each
     // card's canBeChosenByEnemy() override. Cards on board need their
@@ -3947,12 +3966,14 @@ void GameEngine::recalculateAuras() {
         obj.aura_might_bonus = 0;
         obj.aura_keywords.reset();
         obj.aura_no_combat_damage = false;
+        obj.aura_bonus_damage_taken = 0;
         for (auto& ae : obj.aura_effects) {
             obj.aura_might_bonus += ae.might_bonus;
             if (ae.keyword != Keyword::Count) {
                 obj.aura_keywords.set(ae.keyword);
             }
             if (ae.suppress_combat_damage) obj.aura_no_combat_damage = true;
+            obj.aura_bonus_damage_taken += ae.bonus_damage_taken;
         }
         // Recompute might with new aura values
         if (obj.isUnit() && obj.location.has_value()) {

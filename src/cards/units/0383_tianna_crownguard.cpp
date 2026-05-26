@@ -15,17 +15,19 @@ class TiannaCrownguard : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // Clause 1: "[Deflect]" — engine keyword, set in def (Deflect value 1).
-    //   Fully handled by the engine's targeting/cost path.
-    // Clause 2: "While I'm at a battlefield, opponents can't gain points."
-    //   No engine primitive prevents scoring / point gain — neither
-    //   GameState nor GameEngine has a "can't gain points" flag or a scoring
-    //   prevention gate (the only score gate is per-battlefield
-    //   min_turn_to_score). Implementing this would require engine changes,
-    //   which are out of scope here.
-    // ESCALATE(scoring-prevention): need a per-player "opponents can't gain
-    //   points while a unit with this effect is at a battlefield" gate
-    //   consulted by GameEngine's score / PointsGained paths.
+    // Clause 1: "[Deflect]" — engine keyword, set in def.
+    // Clause 2: "While I'm at a battlefield, opponents can't gain points." While
+    //   a Tianna I control is at a battlefield, set my opponent's
+    //   cannot_gain_points (reset each recalc; consulted by scoreHold/scoreConquer).
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
+            if (!obj.location.has_value() ||
+                !std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;
+            state.player(opponent(controller)).cannot_gain_points = true;
+            return;
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

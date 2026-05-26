@@ -14,11 +14,13 @@ namespace {
 class AnnieFiery : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "Your spells and abilities deal 1 Bonus Damage." There is no
-    // bonus-damage modifier in the engine — EffectExecutor::dealDamage takes a
-    // fixed amount and consults no per-controller damage-bonus hook. Wiring this
-    // requires an engine-side damage modifier that adds 1 to each instance of
-    // spell/ability damage dealt by Annie's controller while she is on board.
+    // "Your spells and abilities deal 1 Bonus Damage." While Annie is on board,
+    // raise her controller's bonus_damage_dealt; dealDamage adds it to each
+    // instance of spell/ability damage from that controller. (Reset + summed in
+    // recalculateAuras, so multiple Annies stack.)
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        state.player(controller).bonus_damage_dealt += 1;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

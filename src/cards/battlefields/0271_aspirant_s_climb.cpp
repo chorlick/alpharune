@@ -10,6 +10,9 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled — checkWinCondition (game_engine.cpp ~4063) scans
+// in-play battlefields for "Increase the points needed to win" and bumps the
+// effective victory threshold.
 
 // "Increase the points needed to win the game by 1."
 // ESCALATE(victory_score_modifier): The points needed to win are a fixed

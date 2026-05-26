@@ -158,11 +158,13 @@ struct GameObject {
         Keyword keyword = Keyword::Count;  // granted keyword (Count = none)
         int keyword_value = 0;             // e.g. Assault 1, Shield 2
         bool suppress_combat_damage = false; // Vilemaw: "doesn't deal combat damage"
+        int bonus_damage_taken = 0;        // +N to spell/ability damage dealt to me (Void Gate)
     };
     std::vector<AuraEffect> aura_effects;  // active auras affecting this object
     int aura_might_bonus = 0;              // cached sum of aura might bonuses
     KeywordSet aura_keywords;              // cached union of aura-granted keywords
     bool aura_no_combat_damage = false;    // cached: any aura suppresses combat dmg
+    int aura_bonus_damage_taken = 0;       // cached: +N spell/ability damage taken (Void Gate)
 
     /// This unit deals no combat damage (stunned, or an aura suppresses it —
     /// Vilemaw). Consulted by the combat-damage step.

@@ -100,9 +100,10 @@ struct PlayerState {
     int draws_this_turn = 0;         // cards drawn this turn (Frigid Jewel "2nd card")
     // A friendly unit died during THIS player's Beginning Phase this turn (Shadow Watcher).
     bool unit_died_in_beginning_this_turn = false;
-    // Continuous-effect flags (set during aura recompute; default = no effect):
+    // Continuous-effect values (reset + recomputed during aura recompute; set by
+    // cards' applyPassiveAura — default = no effect):
     bool cannot_gain_points = false; // Tianna Crownguard ("opponents can't gain points")
-    int extra_points_to_win = 0;     // Aspirant's Climb ("+N points needed to win")
+    int bonus_damage_dealt = 0;      // Annie, Fiery ("your spells/abilities deal +N")
     // Phase 6q+ engine-audit follow-on: reset last_spell_energy_spent
     // at turn start. Pre-fix, a Virtuoso/Forgotten Library trigger that
     // fires off a turn-N spell could be delayed (via chain priority)

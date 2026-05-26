@@ -74,6 +74,18 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
                                  ") via Unyielding Spirit");
                 return;
             }
+            // Bonus Damage: +N to spell/ability damage from the source's
+            // controller (Annie, Fiery) and/or against the target's location
+            // (Void Gate). Applied before any doubling.
+            if (amount > 0) {
+                int bonus = state_.player(src_obj.controller).bonus_damage_dealt +
+                            obj.aura_bonus_damage_taken;
+                if (bonus > 0) {
+                    events_.logTrace("EFFECT: +" + std::to_string(bonus) +
+                                     " Bonus Damage to " + obj.name);
+                    amount += bonus;
+                }
+            }
         }
     }
 

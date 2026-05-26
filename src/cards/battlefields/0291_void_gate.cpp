@@ -14,11 +14,24 @@ namespace {
 class VoidGate : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "Spells and abilities deal 1 Bonus Damage to units here."
-    // EffectExecutor::dealDamage takes a fixed amount with no per-location
-    // damage-bonus modifier, and there is no bonus-damage hook the engine
-    // consults. Implementing this requires an engine-side damage modifier that
-    // adds 1 when the target is a unit at a Void Gate battlefield.
+    // "Spells and abilities deal 1 Bonus Damage to units here." Pushes a
+    // bonus_damage_taken aura onto units at this battlefield; dealDamage adds it
+    // to spell/ability damage.
+    void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
+        for (auto& bf : state.battlefields) {
+            if (!state.objectExists(bf.card_object_id)) continue;
+            if (state.getObject(bf.card_object_id).card_def_id != cardDefId()) continue;
+            for (auto& [id, obj] : state.objects) {
+                if (!obj.isUnit() || !obj.location.has_value()) continue;
+                if (!std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;
+                if (std::get<BattlefieldLocation>(*obj.location).id != bf.id) continue;
+                GameObject::AuraEffect ae;
+                ae.source = bf.card_object_id;
+                ae.bonus_damage_taken = 1;
+                obj.aura_effects.push_back(ae);
+            }
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

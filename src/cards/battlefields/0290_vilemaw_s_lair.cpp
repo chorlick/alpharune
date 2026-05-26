@@ -11,6 +11,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: "can't move from here to base" -> BattlefieldState::blocks_move_to_base (game_engine.cpp:416,1989)
 
 class VilemawSLair : public BattlefieldCard {
 public:

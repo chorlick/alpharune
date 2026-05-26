@@ -11,6 +11,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: "play me to an open battlefield" matched by generateMainPhaseActions
 
 // "You may play me to an open battlefield."
 // ENGINE-HANDLED: GameEngine::generateMainPhaseActions matches the substring

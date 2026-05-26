@@ -11,6 +11,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: "can't be played here" -> BattlefieldState::blocks_unit_play
 
 // "Units can't be played here."
 // ENGINE-HANDLED: GameEngine::setupBattlefields lowercases ability_text and

@@ -10,6 +10,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: "play me to an open battlefield" matched by generateMainPhaseActions
 
 class SaiScout : public UnitCard {
 public:

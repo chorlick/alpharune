@@ -26,10 +26,15 @@ CARDS = ROOT / "src/cards"
 
 # Overrides that, by themselves, implement a card's ability.
 EFFECT = ["onResolve(", "onTrigger(", "onActivate(", "onEquip(", "applyPassiveAura(",
-          "onDeath(", "onCounter(", "onPlay(",
+          "onDeath(", "onCounter(", "onPlay(", "applyReplacement(",
           "entersReadyOnPlay(", "selfCostReduction(", "activationCostReduction(",
           "minTurnToScore(", "canBeChosenByEnemy(", "playableAsReactionToAttack(",
           "requiresLegion("]
+# A card whose entire effect is realized by the engine (ability_text substring
+# matching / a keyword) carries no card code. Such files mark themselves with a
+# `// COVERAGE-OK:` comment (citing the engine path) so the structural classifier
+# counts them complete instead of flagging a false "stub".
+COVERAGE_OK = "// COVERAGE-OK"
 # Declaration-only overrides: they describe an ability but need a paired effect
 # body (onResolve/onActivate/onTrigger) to actually DO something.
 META = ["getTargetRequirements(", "needsPlayTimeTarget(", "triggerType(", "triggerTypes(",
@@ -63,8 +68,16 @@ def classify():
         m = ATEXT.search(t)
         resid = residual(m.group(2) if m else "")
         real = len(resid) >= 4
-        bucket = ("implemented" if eff else "metadata-only" if meta
-                  else "stub" if real else "vanilla")
+        if eff:
+            bucket = "implemented"
+        elif COVERAGE_OK in t:
+            bucket = "engine-handled"   # complete; effect realized by the engine
+        elif meta:
+            bucket = "metadata-only"
+        elif real:
+            bucket = "stub"
+        else:
+            bucket = "vanilla"
         flag = ("engine-gap" if STRONG.search(t) else "partial" if WEAK.search(t) else "clean")
         rows.append({"file": str(p.relative_to(ROOT)), "name": p.name,
                      "bucket": bucket, "flag": flag, "ability": resid[:90]})
@@ -79,7 +92,7 @@ def main():
     gap = [r for r in rows if r["flag"] == "engine-gap"]
 
     print(f"{'bucket':16}{'engine-gap':>11}{'partial':>9}{'clean':>7}{'total':>7}")
-    for b in ["implemented", "metadata-only", "stub", "vanilla"]:
+    for b in ["implemented", "engine-handled", "metadata-only", "stub", "vanilla"]:
         print(f"{b:16}{ct[(b,'engine-gap')]:>11}{ct[(b,'partial')]:>9}"
               f"{ct[(b,'clean')]:>7}{B[b]:>7}")
     print(f"{'TOTAL':16}{'':>11}{'':>9}{'':>7}{sum(B.values()):>7}")

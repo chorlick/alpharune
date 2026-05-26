@@ -10,6 +10,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: "play me to an occupied enemy battlefield" matched by generateMainPhaseActions
 
 class DeadbloomPredator : public UnitCard {
 public:

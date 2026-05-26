@@ -1,12 +1,5 @@
 [
  {
-  "file": "src/cards/battlefields/0272_back_alley_bar.cpp",
-  "name": "0272_back_alley_bar.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When a unit moves from here, give it +1  this turn."
- },
- {
   "file": "src/cards/battlefields/0281_reckoner_s_arena.cpp",
   "name": "0281_reckoner_s_arena.cpp",
   "bucket": "metadata-only",
@@ -19,13 +12,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
- },
- {
-  "file": "src/cards/battlefields/0290_vilemaw_s_lair.cpp",
-  "name": "0290_vilemaw_s_lair.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Units can't move from here to base."
  },
  {
   "file": "src/cards/battlefields/0291_void_gate.cpp",
@@ -47,20 +33,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "While you control this battlefield, friendly  costs cost  less."
- },
- {
-  "file": "src/cards/battlefields/0530_rockfall_path.cpp",
-  "name": "0530_rockfall_path.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Units can't be played here."
- },
- {
-  "file": "src/cards/battlefields/0558_baron_pit.cpp",
-  "name": "0558_baron_pit.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Units can move here from anywhere."
  },
  {
   "file": "src/cards/battlefields/0762_altar_of_blood.cpp",
@@ -98,27 +70,6 @@
   "ability": "When a friendly unit attacks or defends alone, give it +1  this turn."
  },
  {
-  "file": "src/cards/gear/0077_zhonya_s_hourglass.cpp",
-  "name": "0077_zhonya_s_hourglass.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it"
- },
- {
-  "file": "src/cards/gear/0143_pirate_s_haven.cpp",
-  "name": "0143_pirate_s_haven.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When you ready a friendly unit, give it +1  this turn."
- },
- {
-  "file": "src/cards/gear/0152_mistfall.cpp",
-  "name": "0152_mistfall.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When you buff a friendly unit, you may pay  and exhaust this to ready it."
- },
- {
   "file": "src/cards/gear/0227_symbol_of_the_solari.cpp",
   "name": "0227_symbol_of_the_solari.cpp",
   "bucket": "stub",
@@ -131,13 +82,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "When you draw your second card each turn, give a friendly unit +2  this turn."
- },
- {
-  "file": "src/cards/gear/0647_sumpworks_map.cpp",
-  "name": "0647_sumpworks_map.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When an opponent scores, draw 1."
  },
  {
   "file": "src/cards/legends/0519_grand_duelist.cpp",
@@ -189,34 +133,6 @@
   "ability": "I have all  abilities of all friendly legends, units, and gear."
  },
  {
-  "file": "src/cards/units/0158_volibear_imposing.cpp",
-  "name": "0158_volibear_imposing.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "When an opponent moves to a battlefield other than mine, draw 1."
- },
- {
-  "file": "src/cards/units/0161_deadbloom_predator.cpp",
-  "name": "0161_deadbloom_predator.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "You may play me to an occupied enemy battlefield."
- },
- {
-  "file": "src/cards/units/0174_sai_scout.cpp",
-  "name": "0174_sai_scout.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "You may play me to an open battlefield."
- },
- {
-  "file": "src/cards/units/0176_sneaky_deckhand.cpp",
-  "name": "0176_sneaky_deckhand.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "You may play me to an open battlefield."
- },
- {
   "file": "src/cards/units/0177_stealthy_pursuer.cpp",
   "name": "0177_stealthy_pursuer.cpp",
   "bucket": "stub",
@@ -266,20 +182,6 @@
   "ability": "If you would reveal cards from a deck, look at the top card first. You may recycle it. The"
  },
  {
-  "file": "src/cards/units/0352_rek_sai_breacher.cpp",
-  "name": "0352_rek_sai_breacher.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Friendly units played from anywhere other than a player's hand have ."
- },
- {
-  "file": "src/cards/units/0370_simian_ancestor.cpp",
-  "name": "0370_simian_ancestor.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "When you buff me, ready me."
- },
- {
   "file": "src/cards/units/0372_aphelios_exalted.cpp",
   "name": "0372_aphelios_exalted.cpp",
   "bucket": "stub",
@@ -306,13 +208,6 @@
   "bucket": "stub",
   "flag": "clean",
   "ability": "When you use an activated ability of a gear, give me +1  this turn."
- },
- {
-  "file": "src/cards/units/0415_dauntless_vanguard.cpp",
-  "name": "0415_dauntless_vanguard.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "You may play me to an occupied enemy battlefield."
  },
  {
   "file": "src/cards/units/0418_laurent_bladekeeper.cpp",

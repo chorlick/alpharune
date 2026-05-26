@@ -11,6 +11,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: Accelerate/Assault keywords + from-non-hand Accelerate aura (game_engine.cpp:4804)
 
 class RekSaiBreacher : public UnitCard {
 public:

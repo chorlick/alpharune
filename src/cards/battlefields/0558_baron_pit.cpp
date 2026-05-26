@@ -10,6 +10,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: token created with accepts_any_inbound; move-legality honors it (game_engine.cpp ~2007)
 
 // Baron Pit is a battlefield TOKEN spawned by Baron Nashor (id 709). Both
 // printed clauses are realized outside this Card subclass:

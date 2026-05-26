@@ -2036,14 +2036,34 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         bool can_play_enemy_bf = (text.find("play me to an occupied enemy battlefield") != std::string::npos);
         bool can_play_any_bf = (text.find("play me to a battlefield") != std::string::npos ||
                                 text.find("play me at a battlefield") != std::string::npos);
+        // Board-wide grant: a friendly unit (e.g. Miss Fortune, Buccaneer) lets
+        // ALL of this player's units be played to open battlefields.
+        if (ps.grant_friendly_units_open_bf) can_play_open_bf = true;
 
-        // Can always play to base (CR 355.2.a)
         Intent play_intent;
         play_intent.type = IntentType::PlayCard;
         play_intent.player = player;
         play_intent.card = card_id;
+
+        // NARROWING hook (Perched Grimwyrm): the card dictates its own legal
+        // play locations and suppresses the default base + BF plays entirely.
+        const Card* card_obj = card_registry_.get(card.card_def_id);
+        if (card_obj && card_obj->restrictsPlayLocations()) {
+            for (const auto& loc : card_obj->getPlayLocations(state_, player)) {
+                Intent restricted = play_intent;
+                restricted.play_location = loc;
+                actions.push_back(restricted);
+            }
+            continue;  // no default base/BF plays for this card
+        }
+
+        // Can always play to base (CR 355.2.a)
         play_intent.play_location = BaseLocation{player};
         actions.push_back(play_intent);
+
+        // Mageseeker Warden: while it restricts this player, units may be
+        // played ONLY to base — skip all battlefield plays.
+        if (ps.units_play_base_only) continue;
 
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
@@ -2228,9 +2248,17 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
         if (!canAfford(player, card_id)) continue;
 
+        const Card* amb = card.card_def_id != kInvalidId
+            ? card_registry_.get(card.card_def_id) : nullptr;
+        const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
-            if (!bf.hasUnitsFrom(player, state_.objects)) continue;
+            bool here = bf.hasUnitsFrom(player, state_.objects);
+            // Rengar, Trophy Hunter: may Ambush to a BF with enemy units even
+            // without units of your own there.
+            if (!here && enemy_bf_ok)
+                here = bf.hasUnitsFrom(opponent(player), state_.objects);
+            if (!here) continue;
             Intent ambush;
             ambush.type = IntentType::PlayActionCard;
             ambush.player = player;
@@ -2360,9 +2388,15 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
         if (!canAfford(player, card_id)) continue;
 
+        const Card* amb = card.card_def_id != kInvalidId
+            ? card_registry_.get(card.card_def_id) : nullptr;
+        const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
-            if (!bf.hasUnitsFrom(player, state_.objects)) continue;
+            bool here = bf.hasUnitsFrom(player, state_.objects);
+            if (!here && enemy_bf_ok)
+                here = bf.hasUnitsFrom(opponent(player), state_.objects);
+            if (!here) continue;
             Intent ambush;
             ambush.type = IntentType::PlayReaction;
             ambush.player = player;
@@ -3457,6 +3491,15 @@ bool GameEngine::isScoreGatedByTurn(PlayerId player, BattlefieldId bf) const {
 void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
     auto& ps = state_.player(player);
 
+    // Stamp the conquer for "battlefield you conquered this turn" consumers
+    // (Perched Grimwyrm). Reaching here means `player` conquered `bf`, even if
+    // the point-gain below is blocked/gated.
+    {
+        auto& bfs = getBattlefield(bf);
+        bfs.conquered_on_turn = state_.turn.turn_number;
+        bfs.conquered_by_player = player;
+    }
+
     // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
     if (ps.cannot_gain_points) {
         events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
@@ -3564,6 +3607,9 @@ void GameEngine::recalculateAuras() {
         ps.deathknell_double_count = 0;
         ps.bonus_damage_dealt = 0;   // Annie, Fiery
         ps.cannot_gain_points = false; // Tianna Crownguard
+        ps.grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer
+        ps.units_play_base_only = false;         // Mageseeker Warden
+        ps.tokens_enter_ready = false;           // Renata Glasc, Industrialist
     }
 
     // Step 1b: Refresh per-object targeting-protection flags from each
@@ -4074,6 +4120,26 @@ void GameEngine::cleanup() {
         recalculateAuras();
         uint64_t after = checksum();
         if (before == after) break;
+    }
+
+    // ── "Becomes Mighty" edge detection (CR: a unit is Mighty at 5+ [M]) ──
+    // Run once after the cleanup loop settles so the Might layers are final.
+    // We remember per-unit Mighty state in card_counters["__was_mighty"] and
+    // emit a generic ObjectStateChangedEvent only on a <5 -> >=5 transition;
+    // TriggerManager::onObjectStateChanged dispatches WhenAUnitBecomesMighty.
+    // Falling below 5 re-arms the edge so it can fire again later this/next
+    // turn. (Fiora, Worthy 500 / Grand Duelist 519.) No card-specific logic
+    // here — the engine only detects and announces the state change.
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit() || !obj.location.has_value()) continue;
+        bool mighty = obj.current_might >= 5;
+        bool was = obj.card_counters["__was_mighty"] != 0;
+        if (mighty && !was) {
+            obj.card_counters["__was_mighty"] = 1;
+            events_.emit(ObjectStateChangedEvent{id, "became_mighty"});
+        } else if (!mighty && was) {
+            obj.card_counters["__was_mighty"] = 0;
+        }
     }
 }
 

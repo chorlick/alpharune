@@ -16,10 +16,26 @@ public:
     const CardDef& def() const override { return def_; }
     // "When one of your units becomes [Mighty], you may exhaust me to channel 1
     // rune exhausted. (A unit is Mighty while it has 5+ [M].)"
-    // ESCALATE(WhenAUnitBecomesMighty): the TriggerType enum value exists but has
-    // NO dispatch — there is no engine emit for a unit crossing the 5+ Might
-    // "becomes Mighty" threshold (Might changes via buffs/auras during cleanup
-    // with no edge-detection emit). Left unimplemented pending wired dispatch.
+    // Wired via WhenAUnitBecomesMighty (cleanup edge-detect → "became_mighty" →
+    // TriggerManager fires the controller's legend zone). Cost is exhausting
+    // this legend; effect channels 1 rune entering exhausted (CR 316).
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAUnitBecomesMighty;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        auto still_legal = [&]() {
+            return ctx.state.objectExists(ctx.source) &&
+                   !ctx.state.getObject(ctx.source).is_exhausted;
+        };
+        int conf = confirmOptional(ctx, "Grand Duelist: exhaust me to channel 1 rune?",
+                                   still_legal);
+        if (conf == -1) return;   // waiting for agent
+        if (conf < 1) return;     // declined / already exhausted
+        ctx.executor.exhaustObject(ctx.source);
+        ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
+        ctx.events.logTrace("GRAND DUELIST: exhausted -> channeled 1 rune (exhausted)");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

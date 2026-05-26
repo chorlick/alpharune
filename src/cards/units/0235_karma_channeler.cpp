@@ -17,11 +17,27 @@ public:
     // Clause 1: "[Vision]" — engine-handled (TriggerManager peeks the top card on
     //   play for any unit with the Vision keyword; set in def below). Works.
     // Clause 2: "When you recycle one or more cards to your Main Deck, buff a
-    //   friendly unit."
-    // ESCALATE(WhenYouRecycle): the TriggerType enum value WhenYouRecycle exists
-    // but has NO emit site / dispatch (no recycle-to-main-deck event), so this
-    // trigger cannot be wired from the card layer. Needs the recycle path to emit
-    // a recycle event and TriggerManager to dispatch WhenYouRecycle.
+    //   friendly unit." Wired via WhenYouRecycle (EffectExecutor::recycleCards
+    //   emits "recycled_main" per owner; TriggerManager fires this on the
+    //   recycling player's on-board cards). Buff an agent-chosen friendly unit.
+    TriggerType triggerType() const override { return TriggerType::WhenYouRecycle; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        std::vector<GameObjectId> friendly;
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value())
+                friendly.push_back(id);
+        }
+        if (friendly.empty()) return;
+        GameObjectId pick = pickTarget(ctx, "Karma, Channeler: buff a friendly unit",
+                                       friendly);
+        if (pick == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;  // suspended
+        if (pick == kInvalidId || !ctx.state.objectExists(pick)) return;
+        ctx.executor.buffUnit(pick);
+        ctx.events.logTrace("KARMA CHANNELER: buffed a friendly unit on recycle");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

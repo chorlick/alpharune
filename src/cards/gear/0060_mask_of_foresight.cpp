@@ -15,10 +15,19 @@ class MaskOfForesight : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When a friendly unit attacks or defends alone, give it +1 [M] this turn."
-    // ESCALATE(WhenAUnitAttacksOrDefendsAlone): the enum value exists but has
-    // NO dispatch — TriggerManager never emits it, and there is no "alone"
-    // predicate surfaced to triggers. Cannot be wired from the card layer.
-    // Whole card blocked.
+    // Wired via WhenAUnitAttacksOrDefendsAlone (TriggerManager::onCombatStarted
+    // fires this on the side's controller's cards when exactly one friendly unit
+    // participates at the BF; the lone unit is the subject).
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAUnitAttacksOrDefendsAlone;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId subject = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
+        ctx.executor.giveTemporaryMight(subject, 1);
+        ctx.events.logTrace("MASK OF FORESIGHT: +1 [M] to the lone attacker/defender");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

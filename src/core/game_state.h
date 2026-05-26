@@ -104,6 +104,9 @@ struct PlayerState {
     // cards' applyPassiveAura — default = no effect):
     bool cannot_gain_points = false; // Tianna Crownguard ("opponents can't gain points")
     int bonus_damage_dealt = 0;      // Annie, Fiery ("your spells/abilities deal +N")
+    bool grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer ("friendly units may be played to open battlefields")
+    bool units_play_base_only = false;         // set on the RESTRICTED player — Mageseeker Warden ("opponents can only play units to their base")
+    bool tokens_enter_ready = false;           // Renata Glasc, Industrialist ("your tokens enter ready")
     // Phase 6q+ engine-audit follow-on: reset last_spell_energy_spent
     // at turn start. Pre-fix, a Virtuoso/Forgotten Library trigger that
     // fires off a turn-N spell could be delayed (via chain priority)
@@ -274,6 +277,13 @@ struct BattlefieldState {
     // PlayerState::turns_taken >= min_turn_to_score. 0 = no restriction.
     // Populated from BattlefieldCard::minTurnToScore() at setup.
     int min_turn_to_score = 0;
+
+    // Last-conquered tracking (Perched Grimwyrm 338: "play me only to a
+    // battlefield you conquered this turn"). Stamped in GameEngine::scoreConquer
+    // with the current turn number + conquering player; consumers compare
+    // against the live turn so the marker auto-expires next turn (no reset).
+    int conquered_on_turn = -1;
+    PlayerId conquered_by_player = PlayerId::None;
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

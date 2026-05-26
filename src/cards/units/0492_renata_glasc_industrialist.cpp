@@ -11,19 +11,19 @@
 namespace riftbound {
 namespace {
 
-// "Your tokens enter ready."
-// ESCALATE(tokens_enter_ready_replacement): this is a continuous replacement
-// effect on token creation, but
-// EffectExecutor::createToken decides ready/exhausted from its own enter_ready
-// arg and does NOT consult a per-player "tokens enter ready" flag or any aura.
-// Modeling it via applyPassiveAura is impossible because the aura pass can't
-// distinguish a token that just ENTERED exhausted from one exhausted by use
-// (readying the latter would be wrong). Left unimplemented pending a
-// createToken replacement hook / per-player flag the executor reads.
+// "Your tokens enter ready." Wired via a per-player flag
+// (PlayerState::tokens_enter_ready) set in applyPassiveAura and consulted by
+// EffectExecutor::createToken at creation time — so it forces the entering
+// (exhausted-by-default) token to ready WITHOUT touching tokens exhausted later
+// by use. The flag is reset+recomputed each cleanup, so it lapses when Renata
+// leaves the board.
 
 class RenataGlascIndustrialist : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        state.player(controller).tokens_enter_ready = true;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -15,13 +15,26 @@ class MageseekerWarden : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "While I'm at a battlefield, opponents can only play units to their base."
+    //   Wired via PlayerState::units_play_base_only set on the OPPONENT when an
+    //   instance of me is at a battlefield (the play-from-hand generator then
+    //   suppresses that player's BF unit-plays). Flag is reset+recomputed each
+    //   cleanup, so it lapses when I leave the board / go to base.
     // "While I'm at a battlefield, spells and abilities can't ready enemy units
-    //  and gear."
-    // ESCALATE(play-location-narrowing + ready-suppression): the first clause
-    // needs the play action generator to forbid enemy unit-plays to
-    // battlefields (no opponent-scoped play-location restriction surface); the
-    // second needs readyObject() to refuse enemy targets while an effect is the
-    // source (no ready-suppression hook). Both engine-side. Whole card blocked.
+    //  and gear." — DEFERRED (needs a ready-suppression hook in readyObject that
+    //  knows the ready came from a spell/ability source; tracked separately).
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // "While I'm at a battlefield" — only when an instance of me is actually
+        // at a BF (applyPassiveAura doesn't pass our object id, so scan).
+        bool at_bf = false;
+        for (const auto& [id, obj] : state.objects) {
+            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
+                obj.isAtBattlefield()) { at_bf = true; break; }
+        }
+        if (!at_bf) return;
+        PlayerId opp = (controller == PlayerId::Player1) ? PlayerId::Player2
+                                                         : PlayerId::Player1;
+        state.player(opp).units_play_base_only = true;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -569,6 +569,22 @@ void EffectExecutor::recycleCards(PlayerId /*effect_controller*/,
     };
     for (auto cid : shuffleable) recycle_one(cid);
     for (auto cid : rune_ordered) recycle_one(cid);
+
+    // "When you recycle one or more cards to your Main Deck" (Karma, Channeler
+    // 235). Fires once per OWNER who had >=1 non-rune card land in their Main
+    // Deck (runes recycle to the Rune Deck and don't count — CR text: "Runes
+    // aren't cards."). Announce via the generic ObjectStateChangedEvent so
+    // TriggerManager dispatches WhenYouRecycle on that owner's on-board cards.
+    std::vector<PlayerId> announced;
+    for (auto cid : shuffleable) {
+        if (!state_.objectExists(cid)) continue;
+        auto& obj = state_.getObject(cid);
+        if (obj.zone != ZoneType::MainDeck) continue;
+        if (std::find(announced.begin(), announced.end(), obj.owner) != announced.end())
+            continue;
+        announced.push_back(obj.owner);
+        events_.emit(ObjectStateChangedEvent{cid, "recycled_main"});
+    }
 }
 
 void EffectExecutor::banishObject(GameObjectId target) {
@@ -770,6 +786,10 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     obj.tags = tags;
     obj.keywords = keywords;
     obj.location = location;
+    // Renata Glasc, Industrialist: "Your tokens enter ready." Continuous
+    // replacement on token creation — a friendly token never enters exhausted
+    // while the flag is set (refreshed each cleanup via applyPassiveAura).
+    if (state_.player(controller).tokens_enter_ready) enter_ready = true;
     obj.is_exhausted = !enter_ready && type == CardType::Unit; // units enter exhausted unless ready
 
     if (std::holds_alternative<BaseLocation>(location)) {

@@ -433,6 +433,57 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
             fireEquippedTriggers(id, obj.controller, TriggerType::WhenIAttackOrDefend);
         }
     }
+
+    // "When a friendly unit attacks or defends alone" — fires on the side's
+    // controller's on-board cards (incl. free-standing gear) when EXACTLY ONE
+    // friendly unit participates on that side at this BF; the lone unit is the
+    // subject. (Mask of Foresight 060.)
+    std::vector<GameObjectId> side_attackers, side_defenders;
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
+        auto ubf = obj.battlefieldId();
+        if (!ubf || *ubf != e.battlefield) continue;
+        if (obj.combat_designation == CombatDesignation::Attacker)
+            side_attackers.push_back(id);
+        else if (obj.combat_designation == CombatDesignation::Defender)
+            side_defenders.push_back(id);
+    }
+    auto fireAlone = [&](GameObjectId lone, PlayerId side) {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != side || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenAUnitAttacksOrDefendsAlone))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, side, 0,
+                        TriggerType::WhenAUnitAttacksOrDefendsAlone, /*subject=*/lone);
+    };
+    if (side_attackers.size() == 1) fireAlone(side_attackers[0], e.attacker);
+    if (side_defenders.size() == 1) fireAlone(side_defenders[0], e.defender);
+
+    // "When you defend at a battlefield" — fires on the defending player's
+    // on-board cards anywhere (the unit it moves is, by definition, NOT yet at
+    // the BF). The defended battlefield id is stashed on each watcher's
+    // counters so the card can read it at resume time. Gated on an actual
+    // defense (>=1 defending unit). (Loyal Pup 447.)
+    if (!side_defenders.empty()) {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != e.defender || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenYouDefendAtABattlefield)) {
+                obj.card_counters["__defend_bf"] = static_cast<int>(e.battlefield);
+                watchers.push_back(id);
+            }
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, e.defender, 0,
+                        TriggerType::WhenYouDefendAtABattlefield);
+    }
 }
 
 void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
@@ -866,6 +917,59 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         }
         for (auto wid : watchers)
             fireTrigger(wid, controller, 0, TriggerType::WhenYouActivateAGearAbility);
+        return;
+    }
+
+    // "When a unit you control becomes [Mighty]" — fires on the controller's
+    // on-board cards AND the controller's legend; the unit that crossed the
+    // 5+ [M] threshold is the subject. (Fiora, Worthy 500 / Grand Duelist 519.)
+    if (e.what_changed == "became_mighty") {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != controller || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenAUnitBecomesMighty))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, controller, 0, TriggerType::WhenAUnitBecomesMighty,
+                        /*subject=*/e.object);
+        // Legend zone (Grand Duelist is a legend, off-board).
+        auto legend_id = state_.player(controller).legend_zone;
+        if (legend_id != kInvalidId && state_.objectExists(legend_id) &&
+            cardFiresOn(card_registry_, state_.getObject(legend_id).card_def_id,
+                        TriggerType::WhenAUnitBecomesMighty))
+            fireTrigger(legend_id, controller, 0,
+                        TriggerType::WhenAUnitBecomesMighty, /*subject=*/e.object);
+        return;
+    }
+
+    // "When you attach an Equipment to me" — fires on the equipped unit itself
+    // (attachGearToUnit / attachFree emit "equipped"). (Aphelios, Exalted 372.)
+    if (e.what_changed == "equipped") {
+        if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
+                        TriggerType::WhenEquipmentAttachedToMe))
+            fireTrigger(e.object, controller, 0,
+                        TriggerType::WhenEquipmentAttachedToMe);
+        return;
+    }
+
+    // "When you recycle one or more cards to your Main Deck" — the recycled
+    // card's OWNER is the recycling player (it landed in their deck); fire on
+    // their on-board cards. (Karma, Channeler 235.)
+    if (e.what_changed == "recycled_main") {
+        const PlayerId owner = state_.getObject(e.object).owner;
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != owner || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenYouRecycle))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, owner, 0, TriggerType::WhenYouRecycle);
         return;
     }
 

@@ -15,11 +15,31 @@ class LoyalPup : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you defend at a battlefield, you may move me there."
-    // ESCALATE(WhenYouDefendAtABattlefield): the enum value exists but has NO
-    // dispatch. Existing combat triggers (WhenIDefend / WhenAShowdownBeginsHere)
-    // only reach units ALREADY at the showdown battlefield; Loyal Pup is by
-    // definition NOT there (the effect MOVES it). There is no
-    // "your-side-defends-anywhere" fan-out to off-BF units. Whole card blocked.
+    // Wired via WhenYouDefendAtABattlefield (TriggerManager::onCombatStarted
+    // fires this on the defending player's on-board cards and stashes the
+    // defended BF id in card_counters["__defend_bf"]). We may move there.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenYouDefendAtABattlefield;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        auto& me = ctx.state.getObject(ctx.source);
+        auto it = me.card_counters.find("__defend_bf");
+        if (it == me.card_counters.end()) return;
+        BattlefieldId bf = static_cast<BattlefieldId>(it->second);
+        auto already_here = [&]() {
+            auto loc = ctx.state.getObject(ctx.source).battlefieldId();
+            return loc && *loc == bf;
+        };
+        auto still_legal = [&]() { return ctx.state.objectExists(ctx.source) &&
+                                          !already_here(); };
+        int conf = confirmOptional(ctx, "Loyal Pup: move me to the defended battlefield?",
+                                   still_legal);
+        if (conf == -1) return;   // waiting for agent
+        if (conf < 1) return;     // declined / already there
+        ctx.executor.moveToBattlefield(ctx.source, bf);
+        ctx.events.logTrace("LOYAL PUP: moved to the defended battlefield");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

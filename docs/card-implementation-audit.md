@@ -499,3 +499,53 @@ The test pass doubled as a correctness audit and caught real defects:
 - **Sett, Brawler (543) "spend my buff":** `giveTemporaryMight(+4)` re-increments `buff_count` (the engine conflates a permanent buff counter with this-turn temp might in `buff_count`), so the spent buff isn't truly consumed mid-turn and the ability re-reads as buffed. Net might delta per activation is correct and it settles at end of turn (expiration removes temp). Root cause is the `buff_count`/`temp_might_bonus` conflation — affects Sett, Overt Operation (153), Enthusiastic Promoter (605). Needs an engine-level separation of "buff counters" vs "temp might"; deferred (touches many cards).
 - **Equip cost double-spend (Hextech Gauntlets 748, The Zero Drive 412):** the `[power]` recycle can select the same rune just exhausted for the `[N]` energy portion, under-charging by one rune. Same class of approximation as the shared `standardEquip` helper. Card-local fix possible.
 - **Yone, Blademaster (544) conquer damage:** targets the first enemy-in-base in unordered-map order (no agent choice) and fires on any conquer (the "was uncontrolled" condition isn't surfaced by the trigger). Approximation.
+
+---
+
+# Wave B continuation — finishing the remaining ~32 cards (2026-05-26)
+
+Picking up the remaining `stub` / `metadata-only` cards (the coverage gate
+`scripts/card_coverage.py --write-lists`; work lists in `docs/card-coverage/`).
+Each remaining card carried an `ESCALATE(<feature>)` comment naming the exact
+engine gap blocking it. Progress: **32 → 21 incomplete**. All engine additions are
+generic (no card-specific logic in the engine — cards opt in via overrides /
+per-player flags set in `applyPassiveAura`). Suite **1022 tests, all passing**.
+
+## Group A — trigger dispatch (6 cards)
+The trigger-type enum values were already front-loaded into `effect_types.h`; this
+pass wired their **dispatch** (`.cpp`-only, cheap rebuilds) + the card bodies:
+
+| id | card | trigger | dispatch site |
+|----|------|---------|---------------|
+| 500 | Fiora, Worthy | `WhenAUnitBecomesMighty` | `GameEngine::cleanup` edge-detects the 5+ [M] crossing (per-unit `card_counters["__was_mighty"]`) → emits `ObjectStateChangedEvent{"became_mighty"}`; `TriggerManager::onObjectStateChanged` fans out to the controller's on-board cards + legend zone |
+| 519 | Grand Duelist | `WhenAUnitBecomesMighty` | same (legend-zone leg) |
+| 235 | Karma, Channeler | `WhenYouRecycle` | `EffectExecutor::recycleCards` emits `"recycled_main"` per owner with a Main-Deck recycle |
+| 372 | Aphelios, Exalted | `WhenEquipmentAttachedToMe` | `attachGearToUnit`/`attachFree` already emit `"equipped"`; now dispatched to the equipped unit (modal, once-per-mode-per-turn) |
+| 60 | Mask of Foresight | `WhenAUnitAttacksOrDefendsAlone` | `onCombatStarted` fires when exactly one friendly unit participates at the BF |
+| 447 | Loyal Pup | `WhenYouDefendAtABattlefield` | `onCombatStarted` fires on the defender's cards; defended BF stashed in `card_counters["__defend_bf"]` |
+
+## Group B — play locations / continuous flags (5 cards)
+One batched header change (`card.h` + `game_state.h`), then `.cpp` wiring:
+- **New `Card` virtuals:** `restrictsPlayLocations()` (narrowing counterpart to the
+  existing `getPlayLocations()` — suppresses the default base/BF plays) and
+  `ambushToEnemyBattlefields()`.
+- **New `PlayerState` aura flags** (reset + recomputed each `recalculateAuras`):
+  `grant_friendly_units_open_bf`, `units_play_base_only`, `tokens_enter_ready`.
+- **New `BattlefieldState` markers** `conquered_on_turn` / `conquered_by_player`
+  (stamped in `scoreConquer`; auto-expire via turn-number comparison).
+
+| id | card | mechanism |
+|----|------|-----------|
+| 338 | Perched Grimwyrm | `restrictsPlayLocations()` + `getPlayLocations()` = BFs conquered this turn |
+| 193 | Miss Fortune, Buccaneer | `applyPassiveAura` sets `grant_friendly_units_open_bf` (the play generator ORs it into every friendly unit's open-BF allowance) |
+| 70 | Mageseeker Warden | clause 1: sets opponent's `units_play_base_only` while at a BF. **Clause 2 (ready-suppression) deferred** — needs `readyObject` to know the ready came from a spell/ability source |
+| 682 | Rengar, Trophy Hunter | `ambushToEnemyBattlefields()` relaxes both Ambush generators to enemy-occupied BFs |
+| 492 | Renata Glasc, Industrialist | `tokens_enter_ready` consulted in `EffectExecutor::createToken` |
+
+## Remaining (21) — grouped by subsystem still needed
+- **Cost modifiers (4):** Irelia Graceful (per-target), Mageseeker Investigator (move-cost), Brazen Buccaneer (discard-as-additional-cost), Jhin (alt play cost + spent-4+ flag)
+- **Replacement effects (5):** Zilean (token-play), Void Hatchling (reveal), Noxus Saboteur (reveal-hidden — needs a reveal mechanic that doesn't exist yet), Symbol of the Solari (combat-tie), Altar of Blood (battlefield-card replacement — flagged out-of-scope above)
+- **`[Repeat]` keyword grant (3):** Syndra, The Academy, Marai Spire
+- **Aura-granted *activated* abilities (3):** Forge of the Fluft, Gardens of Becoming, Heimerdinger (proxy)
+- **Battlefield triggers/suppression (4):** Reckoner's Arena (refire conquer), Dreaming Tree (BF-scoped choose; banned card), LeBlanc (Temporary-trigger suppression), Mageseeker Warden clause 2
+- **Misc (3):** Ravenborn Tome (next-spell bonus damage), Kayn Unleashed (moves-twice damage immunity), Immortal Phoenix (kill-with-spell + play-from-trash)

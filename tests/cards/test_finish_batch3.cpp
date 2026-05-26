@@ -59,15 +59,15 @@ TEST_F(FinishBatch3, GardensOfBecomingRegisteredAsBattlefield) {
 }
 
 // ── Mask of Foresight (60) — ESCALATED (WhenAUnitAttacksOrDefendsAlone) ──
-TEST_F(FinishBatch3, MaskOfForesightDefAndNoWiredTrigger) {
+TEST_F(FinishBatch3, MaskOfForesightWiredTrigger) {
     Card* c = card_registry.get(kMaskOfForesight);
     ASSERT_NE(c, nullptr);
     const auto& d = c->def();
     EXPECT_EQ(d.card_type, CardType::Gear);
     EXPECT_EQ(d.energy_cost, 2);
-    // The only trigger it could use is unwired; the card declares none, so it
-    // never fires a phantom effect.
-    EXPECT_TRUE(c->triggerTypes().empty());
+    // Now wired: fires when a friendly unit attacks/defends alone (dispatched by
+    // TriggerManager::onCombatStarted). Behavior covered in test_wave_b_triggers.
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenAUnitAttacksOrDefendsAlone));
 }
 
 // ── Brazen Buccaneer (2) — ESCALATED (discard-as-additional-cost) ──
@@ -121,24 +121,24 @@ TEST_F(FinishBatch3, VoidHatchlingNoReplacementHook) {
     EXPECT_FALSE(c->hasReplacementEffect());
 }
 
-// ── Loyal Pup (447) — ESCALATED (WhenYouDefendAtABattlefield) ──
-TEST_F(FinishBatch3, LoyalPupNoWiredTrigger) {
+// ── Loyal Pup (447) — WIRED (WhenYouDefendAtABattlefield) ──
+TEST_F(FinishBatch3, LoyalPupWiredTrigger) {
     Card* c = card_registry.get(kLoyalPup);
     ASSERT_NE(c, nullptr);
     const auto& d = c->def();
     EXPECT_EQ(d.energy_cost, 3);
     EXPECT_EQ(d.might, 3);
-    EXPECT_TRUE(c->triggerTypes().empty());
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenYouDefendAtABattlefield));
 }
 
-// ── Fiora, Worthy (500) — ESCALATED (WhenAUnitBecomesMighty) ──
-TEST_F(FinishBatch3, FioraWorthyNoWiredTrigger) {
+// ── Fiora, Worthy (500) — WIRED (WhenAUnitBecomesMighty) ──
+TEST_F(FinishBatch3, FioraWorthyWiredTrigger) {
     Card* c = card_registry.get(kFioraWorthy);
     ASSERT_NE(c, nullptr);
     const auto& d = c->def();
     EXPECT_EQ(d.super_type, SuperType::Champion);
     EXPECT_EQ(d.might, 3);
-    EXPECT_TRUE(c->triggerTypes().empty());
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenAUnitBecomesMighty));
 }
 
 // ── LeBlanc, Everywhere at Once (652) — Backline ENGINE-HANDLED, supp ESC ──

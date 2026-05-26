@@ -18,13 +18,14 @@ public:
     // "play me to an open battlefield" ability_text substring match in
     // GameEngine::generateMainPhaseActions.
     //
-    // "Friendly units may be played to open battlefields."
-    // ESCALATE(play-location-expansion): board-wide grant affecting OTHER
-    // friendly units' play locations. The action generator's open-BF allowance
-    // keys on each card's OWN ability_text ("play me to an open battlefield"),
-    // not on a static aura granted by another on-board unit, and
-    // getPlayLocations() is never consulted. Self-clause works; global grant
-    // blocked.
+    // "Friendly units may be played to open battlefields." — board-wide grant.
+    // Wired via applyPassiveAura: while Miss Fortune is on board, set the
+    // controller's grant_friendly_units_open_bf flag (reset+recomputed each
+    // cleanup). The play-from-hand generator ORs this into every friendly
+    // unit's open-BF allowance.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        state.player(controller).grant_friendly_units_open_bf = true;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

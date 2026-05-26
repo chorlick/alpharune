@@ -13,23 +13,27 @@ namespace {
 
 // "Play me only to a battlefield you conquered this turn. (You can't play me
 // anywhere else.)"
-// This is a RESTRICTING play-location rule: the unit may be played ONLY to a
-// battlefield the controller conquered this turn, and NOT to base or other
-// battlefields. The action generator (generateMainPhaseActions) only EXPANDS
-// play locations via positive substring matches ("play me to a battlefield",
-// "play me to an open battlefield", etc.) and always emits a base-play intent
-// (CR 355.2.a). Card::getPlayLocations() is defined but NEVER consulted by the
-// engine. There is no hook to (a) forbid the default base play or (b) restrict
-// plays to "battlefields you conquered this turn" (the engine does track
-// __conquered_turn per unit, but not a per-battlefield/per-player conquered set
-// the play generator consults).
-// ESCALATE(restricted_play_location): the play-action generator must consult a
-// per-card "legal play locations" hook that can NARROW (not just widen) the
-// candidate set and suppress the default base play.
+// Wired via the NARROWING play-location hook: restrictsPlayLocations() makes
+// the action generator use ONLY getPlayLocations(), suppressing the default
+// base + controlled-BF plays. getPlayLocations() returns each battlefield the
+// player conquered this turn (BattlefieldState::conquered_on_turn /
+// conquered_by_player, stamped in GameEngine::scoreConquer). If none, the unit
+// is unplayable this turn.
 
 class PerchedGrimwyrm : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    bool restrictsPlayLocations() const override { return true; }
+    std::vector<LocationId> getPlayLocations(const GameState& state,
+                                             PlayerId player) const override {
+        std::vector<LocationId> out;
+        for (const auto& bf : state.battlefields) {
+            if (bf.conquered_by_player == player &&
+                bf.conquered_on_turn == state.turn.turn_number)
+                out.push_back(BattlefieldLocation{bf.id});
+        }
+        return out;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

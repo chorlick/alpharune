@@ -393,6 +393,23 @@ public:
     virtual std::vector<LocationId> getPlayLocations(
         const GameState& state, PlayerId player) const { return {}; }
 
+    /// When true, the play-from-hand action generator emits play intents ONLY
+    /// for the locations returned by getPlayLocations() — it suppresses the
+    /// default base play and the default controlled/keyword BF plays. This is
+    /// the NARROWING counterpart to getPlayLocations()'s widening use: a card
+    /// that "can be played only to <subset>" returns that subset (possibly
+    /// empty = unplayable). Default false preserves normal rules.
+    /// (Perched Grimwyrm 338: "play me only to a battlefield you conquered
+    /// this turn".)
+    virtual bool restrictsPlayLocations() const { return false; }
+
+    /// When true, this unit's [Ambush] may be played to a battlefield that has
+    /// ENEMY units even if the controller has no units there (the base Ambush
+    /// keyword restricts placement to BFs where you already have units). The
+    /// Ambush action generator consults this per-card relaxation.
+    /// (Rengar, Trophy Hunter 682.)
+    virtual bool ambushToEnemyBattlefields() const { return false; }
+
     /// Passive aura contribution. Called once per on-board instance of
     /// this card during `recalculateAuras`. The card can mutate
     /// game state to broadcast its passive effect to other cards or to

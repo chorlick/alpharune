@@ -1,5 +1,6 @@
 #include "cards/card.h"
 #include "cards/card_registry.h"
+#include "cards/card_helpers.h"
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
@@ -13,14 +14,32 @@ namespace {
 
 // "When a unit you control becomes [Mighty], you may pay [Y] to ready it.
 //  (A unit is Mighty while it has 5+ [M].)"
-// ESCALATE(WhenAUnitBecomesMighty): the enum value exists but has NO dispatch.
-// Nothing is emitted when a unit's Might crosses the 5+ threshold (Might is
-// recomputed in cleanup with no edge-detection / event). Without that event
-// there is no hook to fire this reactive ability. Whole card blocked.
+// Wired via WhenAUnitBecomesMighty: GameEngine::cleanup edge-detects the 5+ [M]
+// crossing and emits ObjectStateChangedEvent{"became_mighty"}; TriggerManager
+// fans it out to the controller's on-board cards with the now-Mighty unit as
+// the subject. We confirmOptional, pay one Order power ([Y]), then ready it.
 
 class FioraWorthy : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAUnitBecomesMighty;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId subject = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        auto still_legal = [&]() {
+            return subject != kInvalidId && ctx.state.objectExists(subject) &&
+                   ctx.state.getObject(subject).isUnit();
+        };
+        int conf = confirmOptional(ctx, "Fiora, Worthy: pay [Y] to ready it?",
+                                   still_legal);
+        if (conf == -1) return;   // waiting for agent
+        if (conf < 1) return;     // declined / invalid
+        if (!payOnePower(ctx, ctx.controller, Domain::Order)) return;
+        ctx.executor.readyObject(subject);
+        ctx.events.logTrace("FIORA WORTHY: paid [Y] -> readied the Mighty unit");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

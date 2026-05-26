@@ -14,11 +14,13 @@ namespace {
 class ShadowWatcher : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // ENGINE GAP: "If a friendly unit died during your Beginning Phase this
-    // turn, I enter ready." Requires tracking unit deaths scoped to the
-    // controller's Beginning Phase this turn; no such per-phase death counter
-    // exists on GameState/TurnState, and entersReadyOnPlay is play-time. Needs
-    // an engine signal (deaths-during-beginning-phase flag). Not wired.
+    // "If a friendly unit died during your Beginning Phase this turn, I enter
+    // ready." Reads PlayerState::unit_died_in_beginning_this_turn (set in
+    // GameEngine::killUnit when a unit dies during its controller's Beginning
+    // Phase steps; reset in resetTurnTracking).
+    bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
+        return state.player(controller).unit_died_in_beginning_this_turn;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -24,5 +24,21 @@ TEST_F(PerTurnTest, ToweringPairofant_EntersReadyOnlyIfUnitDied) {
         << "a unit died this turn -> Towering Pairofant enters ready";
 }
 
+TEST_F(PerTurnTest, ShadowWatcher_EntersReadyIfFriendlyDiedInBeginning) {
+    Card* c = card_registry.get(599);
+    ASSERT_NE(c, nullptr);
+
+    state.player(P1).unit_died_in_beginning_this_turn = false;
+    EXPECT_FALSE(c->entersReadyOnPlay(state, P1));
+
+    state.player(P1).unit_died_in_beginning_this_turn = true;
+    EXPECT_TRUE(c->entersReadyOnPlay(state, P1));
+
+    // It's controller-scoped: an enemy's flag doesn't ready P1's Shadow Watcher.
+    state.player(P1).unit_died_in_beginning_this_turn = false;
+    state.player(P2).unit_died_in_beginning_this_turn = true;
+    EXPECT_FALSE(c->entersReadyOnPlay(state, P1));
+}
+
 }  // namespace
 }  // namespace riftbound::test

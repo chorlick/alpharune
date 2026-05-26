@@ -11,6 +11,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: engine-handled: "My Might is increased by your points" applied in recalculateAuras (game_engine.cpp ~3869)
 
 class DravenShowboat : public UnitCard {
 public:

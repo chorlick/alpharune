@@ -93,6 +93,16 @@ struct PlayerState {
     // source object is a spell or activated ability AND the target
     // belongs to this player. Resets in resetTurnTracking. Phase 6q+.
     bool prevent_spell_ability_damage_this_turn = false;
+    // ── Wave B per-turn trackers (reset in resetTurnTracking) ──
+    int power_spent_this_turn = 0;   // power (recycled runes) spent this turn (Sivir)
+    int xp_gained_this_turn = 0;     // XP gained this turn (Wily Newtfish)
+    int hold_points_this_turn = 0;   // points scored via Hold this turn (Needlessly Large Yordle)
+    int draws_this_turn = 0;         // cards drawn this turn (Frigid Jewel "2nd card")
+    // A friendly unit died during THIS player's Beginning Phase this turn (Shadow Watcher).
+    bool unit_died_in_beginning_this_turn = false;
+    // Continuous-effect flags (set during aura recompute; default = no effect):
+    bool cannot_gain_points = false; // Tianna Crownguard ("opponents can't gain points")
+    int extra_points_to_win = 0;     // Aspirant's Climb ("+N points needed to win")
     // Phase 6q+ engine-audit follow-on: reset last_spell_energy_spent
     // at turn start. Pre-fix, a Virtuoso/Forgotten Library trigger that
     // fires off a turn-N spell could be delayed (via chain priority)
@@ -191,6 +201,13 @@ struct PlayerState {
         cant_play_spells_this_turn = false;
         prevent_spell_ability_damage_this_turn = false;
         last_spell_energy_spent = 0;
+        power_spent_this_turn = 0;
+        xp_gained_this_turn = 0;
+        hold_points_this_turn = 0;
+        draws_this_turn = 0;
+        unit_died_in_beginning_this_turn = false;
+        // (cannot_gain_points / extra_points_to_win are continuous-effect flags,
+        //  recomputed during aura cleanup — not per-turn counters.)
         // Expire this-turn cost modifiers
         cost_modifiers.erase(
             std::remove_if(cost_modifiers.begin(), cost_modifiers.end(),

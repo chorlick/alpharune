@@ -163,6 +163,16 @@ enum class TriggerType : uint8_t {
                         // — fires on the non-mover's on-board cards; the moved unit
                         // is the subject (read its location for the destination BF).
                         // Volibear, Imposing (gated "...other than mine").
+    // ── Wave B scaffolding: enum values front-loaded so the dispatch wiring
+    //    (in .cpp) and the cards land as cheap per-file rebuilds, not full ones.
+    WhenYouDrawACard,           // Frigid Jewel ("...your second card each turn")
+    WhenYouRecycle,             // Karma, Channeler
+    WhenEquipmentAttachedToMe,  // Aphelios, Exalted
+    WhenAUnitBecomesMighty,     // Fiora Worthy / Grand Duelist
+    WhenYouActivateAGearAbility, // Prize of Progress
+    WhenAUnitAttacksOrDefendsAlone, // Mask of Foresight
+    WhenYouDefendAtABattlefield, // Loyal Pup
+    WhenAFriendlyUnitMovesFromMyLocation, // Stealthy Pursuer
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

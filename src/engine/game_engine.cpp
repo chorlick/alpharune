@@ -3506,6 +3506,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
 
     // Hold always grants Winning Point (CR 466.1.b.1)
     ps.score++;
+    ps.hold_points_this_turn++;
     events_.logTrace(std::string("SCORE: ") + toString(player) + " +1 via Hold BF#" +
                      std::to_string(bf) + " -> " + std::to_string(ps.score));
     events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
@@ -4316,6 +4317,7 @@ void GameEngine::drawCards(PlayerId player, int count) {
         drawn++;
     }
     if (drawn > 0) {
+        state_.player(player).draws_this_turn += drawn;
         events_.emit(CardsDrawnEvent{player, drawn});
     }
 }
@@ -5294,6 +5296,16 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     }
 
     state_.turn.any_unit_died_this_turn = true;
+    // Shadow Watcher: a friendly unit dying during its controller's Beginning
+    // Phase (Awaken/Beginning/Scoring steps of that player's own turn).
+    {
+        TurnPhase ph = state_.turn.phase;
+        bool in_beginning = (ph == TurnPhase::AwakenPhase ||
+                             ph == TurnPhase::BeginningStep ||
+                             ph == TurnPhase::ScoringStep);
+        if (in_beginning && state_.turn.turn_player == controller)
+            state_.player(controller).unit_died_in_beginning_this_turn = true;
+    }
     events_.emit(UnitDiedEvent{unit_id, controller,
         was_at.value_or(BaseLocation{controller}), might});
     events_.emit(LeftBoardEvent{unit_id, controller, CardType::Unit,

@@ -10,6 +10,7 @@
 
 namespace riftbound {
 namespace {
+// COVERAGE-OK: keyword-only: entire ability is [Ganking] (keyword bit set in def)
 
 class LaurentBladekeeper : public UnitCard {
 public:

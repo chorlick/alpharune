@@ -234,6 +234,7 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
         drawn++;
     }
     if (drawn > 0) {
+        state_.player(player).draws_this_turn += drawn;
         events_.emit(CardsDrawnEvent{player, drawn});
     }
 }
@@ -1049,6 +1050,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     }
 
     if (!chosen_cards.empty()) {
+        state_.player(player).draws_this_turn += static_cast<int>(chosen_cards.size());
         events_.emit(CardsDrawnEvent{player, static_cast<int>(chosen_cards.size())});
     }
     return chosen_cards;

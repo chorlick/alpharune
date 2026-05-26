@@ -59,6 +59,7 @@ struct GameObject {
     int temp_assault_value = 0;  // temporary assault applied "this turn"
     int temp_shield_value = 0;   // temporary shield applied "this turn"
     int temp_might_bonus = 0;    // temporary +N might applied "this turn"
+    int moves_this_turn = 0;     // times this unit moved this turn (Kayn, Unleashed)
 
     // ── Keywords (computed via layers, cached) ──
     KeywordSet keywords;

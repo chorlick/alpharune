@@ -20,8 +20,9 @@ public:
     //   suppresses that player's BF unit-plays). Flag is reset+recomputed each
     //   cleanup, so it lapses when I leave the board / go to base.
     // "While I'm at a battlefield, spells and abilities can't ready enemy units
-    //  and gear." — DEFERRED (needs a ready-suppression hook in readyObject that
-    //  knows the ready came from a spell/ability source; tracked separately).
+    //  and gear." — sets the opponent's effects_cant_ready_my_units flag, which
+    //  EffectExecutor::readyObject honors (Awaken readies directly, so only
+    //  effect/spell readying is suppressed).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // "While I'm at a battlefield" — only when an instance of me is actually
         // at a BF (applyPassiveAura doesn't pass our object id, so scan).
@@ -33,7 +34,8 @@ public:
         if (!at_bf) return;
         PlayerId opp = (controller == PlayerId::Player1) ? PlayerId::Player2
                                                          : PlayerId::Player1;
-        state.player(opp).units_play_base_only = true;
+        state.player(opp).units_play_base_only = true;       // clause 1
+        state.player(opp).effects_cant_ready_my_units = true; // clause 2
     }
 private:
     const CardDef def_ = [] {

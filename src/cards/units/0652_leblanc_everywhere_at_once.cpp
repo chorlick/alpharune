@@ -19,15 +19,11 @@ public:
     // Clause 1: "[Backline]" — engine keyword, set in def. Fully handled by
     //   the combat-damage assignment ordering.
     // Clause 2: "Your [Temporary] effects at my battlefield don't trigger."
-    //   There is no engine hook to suppress a Temporary unit's triggered
-    //   abilities scoped to a battlefield: TriggerManager fires triggers
-    //   unconditionally, with no per-location / per-keyword suppression
-    //   filter, and there is no "triggers suppressed here" flag on
-    //   BattlefieldState or GameObject.
-    // ESCALATE(trigger-suppression): need a battlefield-scoped suppression of
-    //   triggered abilities from friendly [Temporary] units (consulted by
-    //   TriggerManager before firing a trigger whose source is a Temporary
-    //   unit at a battlefield where a controller's LeBlanc resides).
+    //   Wired via suppressesTemporaryTriggersHere(): TriggerManager::fireTrigger
+    //   skips a trigger whose source is a friendly [Temporary] unit sharing a
+    //   battlefield + controller with a card declaring this. (LeBlanc is herself
+    //   [Temporary] but has no triggers, so self-suppression is moot.)
+    bool suppressesTemporaryTriggersHere() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

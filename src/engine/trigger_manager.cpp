@@ -207,6 +207,27 @@ void TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     // Skip triggers on gear with inactive rules text (CR 718.2)
     if (obj.is_rules_text_inactive) return;
 
+    // LeBlanc, Everywhere at Once (652): "your [Temporary] effects at my
+    // battlefield don't trigger." If this firing source is a friendly
+    // [Temporary] unit at a battlefield, and a same-controller card there
+    // declares it suppresses Temporary triggers, skip firing.
+    if (obj.isUnit() && obj.hasKeyword(Keyword::Temporary) && obj.location.has_value()) {
+        if (auto bf = obj.battlefieldId()) {
+            for (auto& [oid, other] : state_.objects) {
+                if (oid == source) continue;
+                if (other.controller != obj.controller) continue;
+                auto obf = other.battlefieldId();
+                if (!obf || *obf != *bf) continue;
+                Card* oc = card_registry_.get(other.card_def_id);
+                if (oc && oc->suppressesTemporaryTriggersHere()) {
+                    events_.logTrace("TRIGGER_SUPPRESSED: " + obj.name +
+                                     " (Temporary) at LeBlanc's battlefield");
+                    return;
+                }
+            }
+        }
+    }
+
     // For single-trigger cards `which` may be None; resolve it from the
     // card so multi-trigger cards still record which event fired.
     TriggerType fired = which;

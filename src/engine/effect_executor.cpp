@@ -379,6 +379,16 @@ void EffectExecutor::buffUnit(GameObjectId target) {
 void EffectExecutor::readyObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // Mageseeker Warden cl2: "spells and abilities can't ready enemy units and
+    // gear." The flag is set on the restricted player; readyObject is the
+    // effect-readying path (Awaken readies directly, bypassing this), so this
+    // refuses only effect/spell-driven readying of units & gear.
+    if ((obj.isUnit() || obj.isGear()) &&
+        state_.player(obj.controller).effects_cant_ready_my_units) {
+        events_.logTrace("READY_SUPPRESSED: " + obj.name +
+                         " can't be readied by effects (Mageseeker Warden)");
+        return;
+    }
     bool was_exhausted = obj.is_exhausted;
     obj.is_exhausted = false;
     events_.emit(ObjectStateChangedEvent{target, "readied"});

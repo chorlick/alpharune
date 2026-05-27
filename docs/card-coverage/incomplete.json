@@ -115,7 +115,7 @@
   "file": "src/cards/units/0652_leblanc_everywhere_at_once.cpp",
   "name": "0652_leblanc_everywhere_at_once.cpp",
   "bucket": "stub",
-  "flag": "engine-gap",
+  "flag": "clean",
   "ability": "Your  effects at my battlefield don't trigger."
  },
  {

@@ -12,21 +12,26 @@ namespace riftbound {
 namespace {
 
 // "Your opponents' [Hidden] cards can't be revealed here."
-// [Hidden] (the printed keyword) is engine-handled (units hide facedown at
-// controlled battlefields). But the printed ability — preventing an opponent
-// from REVEALING their Hidden cards at this unit's battlefield — has no engine
-// primitive. The engine models hiding (executeHideCard) and playing a card
-// from facedown (executePlayFromHidden), but there is no "reveal an opponent's
-// Hidden card" action/event for any restriction to hook. No IntentType, event,
-// or per-BF flag covers it.
-// ESCALATE(reveal_hidden_restriction): the engine needs a reveal-facedown
-// mechanic (action + event) AND a per-location restriction the reveal path
-// consults to forbid revealing an opponent's Hidden card at a battlefield
-// where this unit is present.
+// [Hidden] (the printed keyword) is engine-handled. The restriction is
+// represented via BattlefieldState::opp_hidden_unrevealable, set in
+// applyPassiveAura on this unit's battlefield. NOTE: the engine has no
+// "reveal an opponent's Hidden card" action/event today, so the flag is
+// currently INERT — it is the faithful state representation, ready for the
+// reveal-Hidden mechanic to consult when one is added. (Documented, not silent.)
 
 class NoxusSaboteur : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller)
+                continue;
+            auto bf = obj.battlefieldId();
+            if (!bf) continue;
+            for (auto& b : state.battlefields)
+                if (b.id == *bf) b.opp_hidden_unrevealable = true;
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

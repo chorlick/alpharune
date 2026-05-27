@@ -196,13 +196,6 @@
   "ability": "Other friendly units enter ready."
  },
  {
-  "file": "src/cards/units/0018_noxus_saboteur.cpp",
-  "name": "0018_noxus_saboteur.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "Your opponents'  cards can't be revealed here."
- },
- {
   "file": "src/cards/units/0034_tryndamere_barbarian.cpp",
   "name": "0034_tryndamere_barbarian.cpp",
   "bucket": "implemented",

@@ -21,13 +21,6 @@
   "ability": "As you play me, you may discard 1 as an additional cost. If you do, reduce my cost by ."
  },
  {
-  "file": "src/cards/units/0018_noxus_saboteur.cpp",
-  "name": "0018_noxus_saboteur.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "Your opponents'  cards can't be revealed here."
- },
- {
   "file": "src/cards/units/0037_immortal_phoenix.cpp",
   "name": "0037_immortal_phoenix.cpp",
   "bucket": "stub",

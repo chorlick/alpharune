@@ -587,6 +587,28 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
         }
     }
 
+    // "When you kill a unit with a spell" (Immortal Phoenix 037). Attributed to
+    // the controller of the spell currently resolving on the chain. Fans to that
+    // player's on-board cards AND cards in their TRASH (Phoenix triggers from
+    // trash). APPROX: keyed on a spell being the resolving chain item — covers
+    // direct-kill spells cleanly; deferred damage-kills resolved after the chain
+    // item clears won't see it.
+    if (state_.chain.resuming.has_value() && state_.chain.resuming->is_spell) {
+        const PlayerId killer = state_.chain.resuming->controller;
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, other] : state_.objects) {
+            if (id == e.object || other.card_def_id == kInvalidId) continue;
+            bool on_board = other.location.has_value() && other.controller == killer;
+            bool in_trash = other.zone == ZoneType::Trash && other.owner == killer;
+            if (!on_board && !in_trash) continue;
+            if (cardFiresOn(card_registry_, other.card_def_id,
+                            TriggerType::WhenYouKillAUnitWithASpell))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, killer, 0, TriggerType::WhenYouKillAUnitWithASpell);
+    }
+
     // Delayed abilities scoped to this dying unit (Deadly Flourish:
     // "When IT dies this turn, ..."). The opposing player created the
     // delayed ability, so we check both controllers' scoped triggers.

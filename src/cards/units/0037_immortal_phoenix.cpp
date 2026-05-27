@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,12 +16,53 @@ class ImmortalPhoenix : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you kill a unit with a spell, you may pay [1][R] to play me from
-    //  your trash."
-    // ESCALATE(kill_with_spell_trigger + alt_play_from_trash): (1) there is no
-    // "when you kill a unit with a spell" trigger event, and (2) triggers are
-    // only dispatched to on-board cards — a card in the trash receives none, and
-    // there is no action-generator hook to play a card from the trash. Both
-    // require engine support. ([Assault 2] is engine-handled via keywords.)
+    //  your trash." Wired via WhenYouKillAUnitWithASpell (dispatched by
+    //  TriggerManager::onUnitDied to the resolving spell controller's cards incl.
+    //  trash). We pay [1][R] (1 energy + 1 Fury power) and play self from trash.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenYouKillAUnitWithASpell;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        if (ctx.state.getObject(ctx.source).zone != ZoneType::Trash) return;
+        LocationId base{BaseLocation{ctx.controller}};
+        auto readyRunes = [&](std::optional<Domain> dom) {
+            int n = 0;
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isRune() || obj.controller != ctx.controller) continue;
+                if (obj.is_exhausted || !obj.location.has_value()) continue;
+                if (*obj.location != base) continue;
+                if (dom) { bool m = false; for (auto d : obj.domains) if (d == *dom) m = true;
+                           if (!m) continue; }
+                ++n;
+            }
+            return n;
+        };
+        // Affordable: 1 ready Fury rune (recycled for [R]) + >=2 ready runes
+        // total (one of those exhausted for the [1] energy).
+        auto still_legal = [&]() {
+            return ctx.state.objectExists(ctx.source) &&
+                   ctx.state.getObject(ctx.source).zone == ZoneType::Trash &&
+                   readyRunes(Domain::Fury) >= 1 && readyRunes(std::nullopt) >= 2;
+        };
+        int conf = confirmOptional(ctx, "Immortal Phoenix: pay [1][R] to play from trash?",
+                                   still_legal);
+        if (conf == -1) return;   // waiting for agent
+        if (conf < 1) return;     // declined / unaffordable
+        // Pay [R] (recycle a Fury rune), then [1] (exhaust a remaining ready rune).
+        if (!payOnePower(ctx, ctx.controller, Domain::Fury)) return;
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (!obj.isRune() || obj.controller != ctx.controller) continue;
+            if (obj.is_exhausted || !obj.location.has_value() || *obj.location != base) continue;
+            obj.is_exhausted = true;  // [1] energy
+            break;
+        }
+        auto& ps = ctx.state.player(ctx.controller);
+        auto it = std::find(ps.trash.begin(), ps.trash.end(), ctx.source);
+        if (it != ps.trash.end()) ps.trash.erase(it);
+        ctx.executor.playIgnoringCost(ctx.controller, ctx.source, std::nullopt);
+        ctx.events.logTrace("IMMORTAL PHOENIX: paid [1][R] -> played from trash");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

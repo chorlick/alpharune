@@ -14,13 +14,6 @@
   "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
  },
  {
-  "file": "src/cards/units/0037_immortal_phoenix.cpp",
-  "name": "0037_immortal_phoenix.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "When you kill a unit with a spell, you may pay  to play me from your trash."
- },
- {
   "file": "src/cards/units/0111_heimerdinger_inventor.cpp",
   "name": "0111_heimerdinger_inventor.cpp",
   "bucket": "stub",

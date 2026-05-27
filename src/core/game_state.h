@@ -107,9 +107,18 @@ struct PlayerState {
     bool grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer ("friendly units may be played to open battlefields")
     bool units_play_base_only = false;         // set on the RESTRICTED player — Mageseeker Warden ("opponents can only play units to their base")
     bool tokens_enter_ready = false;           // Renata Glasc, Industrialist ("your tokens enter ready")
+    bool recall_all_on_attacker_tie = false;   // Symbol of the Solari (227): attacker-side combat tie recalls ALL units
+    bool effects_cant_ready_my_units = false;  // set on the RESTRICTED player — Mageseeker Warden cl2 ("spells/abilities can't ready enemy units/gear")
+    int  spells_have_repeat_energy = 0;        // Syndra, Transcendent (708): granted [Repeat] tranche cost (energy)
+    int  spells_have_repeat_power = 0;         // ... and power
+    Domain spells_have_repeat_domain = Domain::Chaos; // ... and its domain ([P] default)
+    int  repeat_cost_reduction = 0;            // Marai Spire (525): friendly [Repeat] costs cost N less
+    bool has_reveal_peek = false;              // Void Hatchling (341): peek/recycle top before revealing
     // Turn-scoped riders (NOT aura-derived — reset in resetTurnTracking):
     int max_spell_spent_this_turn = 0;         // most-expensive single spell paid for this turn (Jhin, Meticulous Killer: "spent [4]+ to play a spell")
     int next_spell_bonus_damage = 0;           // Ravenborn Tome: "the next spell you play this turn deals N Bonus Damage" (consumed when that spell deals damage)
+    bool grant_repeat_base_to_next_spell = false; // The Academy (772): next spell gets [Repeat] at tranche cost = its base energy
+    int zilean_double_token_turn = -1;         // Zilean, Time Mage (648): turn on which the once/turn token-doubling was used
     // Phase 6q+ engine-audit follow-on: reset last_spell_energy_spent
     // at turn start. Pre-fix, a Virtuoso/Forgotten Library trigger that
     // fires off a turn-N spell could be delayed (via chain priority)
@@ -210,6 +219,7 @@ struct PlayerState {
         last_spell_energy_spent = 0;
         max_spell_spent_this_turn = 0;
         next_spell_bonus_damage = 0;
+        grant_repeat_base_to_next_spell = false;
         power_spent_this_turn = 0;
         xp_gained_this_turn = 0;
         hold_points_this_turn = 0;
@@ -289,6 +299,12 @@ struct BattlefieldState {
     // against the live turn so the marker auto-expires next turn (no reset).
     int conquered_on_turn = -1;
     PlayerId conquered_by_player = PlayerId::None;
+
+    // Aura-derived per-BF flags (reset + recomputed each recalculateAuras by the
+    // BF/unit cards' applyPassiveAura):
+    bool surcharge_enemy_multi_move = false; // Mageseeker Investigator (725): enemy multi-unit moves here cost [A]/extra unit
+    bool opp_hidden_unrevealable = false;    // Noxus Saboteur (018): opponent [Hidden] cards can't be revealed here
+    bool death_recall_for_pay = false;       // Altar of Blood (762): a unit dying here in combat may pay [A][A][A] to heal+exhaust+recall instead
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

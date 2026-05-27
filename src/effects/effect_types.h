@@ -173,6 +173,7 @@ enum class TriggerType : uint8_t {
     WhenAUnitAttacksOrDefendsAlone, // Mask of Foresight
     WhenYouDefendAtABattlefield, // Loyal Pup
     WhenAFriendlyUnitMovesFromMyLocation, // Stealthy Pursuer
+    WhenAFriendlyUnitChosenHere, // The Dreaming Tree (BF-scoped, first/turn -> draw 1)
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

@@ -70,6 +70,22 @@ struct GameObject {
                                    // "the next spell you play deals N Bonus
                                    // Damage" — applies to every instance the spell
                                    // deals). Set from PlayerState::next_spell_bonus_damage.
+    int spells_targeting_me_cost_reduction = 0; // Irelia, Graceful (462): "your
+                                   // spells that choose me cost [1]/[A] less."
+                                   // Recomputed each recalculateAuras; the spell
+                                   // cost path reduces by this when I'm a target.
+
+    // Aura-granted activated abilities (Forge of the Fluft 522 / Gardens of
+    // Becoming 769 / Heimerdinger 111). A granting card's applyPassiveAura
+    // appends a ref naming WHICH card (def id) and WHICH of its
+    // activatedAbilities() this object may now use; the action generator emits
+    // an activation per ref and dispatch routes to that card's onActivate with
+    // THIS object as the source. Reset each recalculateAuras.
+    struct GrantedAbilityRef {
+        CardDefId source_def_id = 0;  // 0 = none; else the granting card
+        int ability_index = 0;
+    };
+    std::vector<GrantedAbilityRef> granted_abilities;
 
     // ── Keywords (computed via layers, cached) ──
     KeywordSet keywords;

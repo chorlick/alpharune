@@ -3614,6 +3614,8 @@ void GameEngine::recalculateAuras() {
         obj.aura_keywords.reset();
         obj.aura_bonus_damage_taken = 0;
         obj.immune_to_damage = false;  // re-asserted below by applyPassiveAura
+        obj.spells_targeting_me_cost_reduction = 0;  // Irelia, Graceful
+        obj.granted_abilities.clear();               // Forge / Gardens / Heimerdinger
     }
 
     // Step 1a: Reset per-player passive counters derived from on-board
@@ -3626,6 +3628,19 @@ void GameEngine::recalculateAuras() {
         ps.grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer
         ps.units_play_base_only = false;         // Mageseeker Warden
         ps.tokens_enter_ready = false;           // Renata Glasc, Industrialist
+        ps.recall_all_on_attacker_tie = false;   // Symbol of the Solari
+        ps.effects_cant_ready_my_units = false;  // Mageseeker Warden cl2
+        ps.spells_have_repeat_energy = 0;        // Syndra, Transcendent
+        ps.spells_have_repeat_power = 0;
+        ps.repeat_cost_reduction = 0;            // Marai Spire
+        ps.has_reveal_peek = false;              // Void Hatchling
+    }
+    // Per-BF aura-derived flags (Mageseeker Investigator / Noxus Saboteur /
+    // Altar of Blood). Reset here; re-asserted by unit/BF applyPassiveAura.
+    for (auto& bf : state_.battlefields) {
+        bf.surcharge_enemy_multi_move = false;
+        bf.opp_hidden_unrevealable = false;
+        bf.death_recall_for_pay = false;
     }
 
     // Step 1b: Refresh per-object targeting-protection flags from each

@@ -25,6 +25,7 @@ namespace riftbound {
 class GameState;
 class EventBus;
 class EffectExecutor;
+class CardRegistry;
 
 /// Context passed to all Card virtual methods.
 /// Provides access to game services and identifies the card instance.
@@ -39,6 +40,11 @@ struct CardContext {
     // the event that fired. None for spells / activated abilities / cards
     // with a single trigger that don't care.
     TriggerType firing_trigger = TriggerType::None;
+    // Optional registry handle so a card's effect can dispatch into OTHER
+    // cards' logic (Reckoner's Arena re-firing units' conquer effects;
+    // Heimerdinger proxying granted abilities). Null in contexts that don't
+    // set it; cards MUST null-check. Set by the resolution path.
+    const CardRegistry* registry = nullptr;
 };
 
 // ─── Card base class ────────────────────────────────────────────────────────
@@ -493,8 +499,31 @@ public:
         Domain power_domain = Domain::Fury;
         bool any_domain = false;        // power may be any domain ([A])
         const char* paid_flag = "";     // card_counters key set when paid
+        int discard_cards = 0;          // discard N from hand as the additional cost (Brazen Buccaneer)
+        int reduce_energy = 0;          // if paid, reduce this card's energy cost by N (applied before payment)
     };
     virtual OptionalAdditionalCost optionalAdditionalCost() const { return {}; }
+
+    // ── Alternative play cost ──
+    /// "You may play me for <alt cost> [instead of my printed cost]" when a
+    /// condition holds (Jhin, Meticulous Killer: "play me for [B]" if you've
+    /// spent [4]+ on a spell this turn). When .valid, the action generator emits
+    /// an extra play option (Intent::use_alt_play_cost) and the payment path
+    /// charges this cost in place of the printed one.
+    struct AltPlayCost {
+        bool valid = false;
+        int energy = 0;
+        int power = 0;
+        Domain power_domain = Domain::Fury;
+        bool any_domain = false;        // power may be any domain ([A])
+    };
+    virtual AltPlayCost alternativePlayCost(const GameState& /*state*/,
+                                            PlayerId /*player*/) const { return {}; }
+
+    /// LeBlanc, Everywhere at Once: "your [Temporary] effects at my battlefield
+    /// don't trigger." When true, TriggerManager suppresses triggers fired by a
+    /// friendly [Temporary] unit sharing this card's battlefield + controller.
+    virtual bool suppressesTemporaryTriggersHere() const { return false; }
 
     // ── Condition gates ──
     /// Whether this card's effects require Legion (cards_played >= 2).

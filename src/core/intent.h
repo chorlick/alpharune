@@ -79,6 +79,14 @@ struct Intent {
     std::vector<GameObjectId> chosen_objects;
     std::optional<int> chosen_value;
 
+    // Alternative play cost (Jhin, Meticulous Killer): when true, the payment
+    // path charges Card::alternativePlayCost(...) instead of the printed cost.
+    bool use_alt_play_cost = false;
+    // Aura-granted activated ability (Forge/Gardens/Heimerdinger): when nonzero,
+    // this ActivateAbility invokes ability_source's GRANTED ability whose logic
+    // lives on card def `granted_ability_def` (0 = the source's own ability).
+    CardDefId granted_ability_def = 0;
+
     // Display-only human-readable label for an int-coded MakeChoice
     // option (yes/no, mode index, X amount). The Intent itself only
     // carries the answer (chosen_value), which renders as a bare number

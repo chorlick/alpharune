@@ -15,13 +15,27 @@ class SyndraTranscendent : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "While I'm in a showdown, your spells have [Repeat] [2][P]."
-    // ESCALATE(spells-have-repeat continuous field): [Repeat] (CR 820) is an
-    // optional additional cost paid at spell-play time (ChainItem::repeats_paid),
-    // parsed by the engine from the SPELL's OWN ability_text. There is no
-    // surface for a continuous effect to GRANT [Repeat] to a player's spells —
-    // the play-action generator consults no "spells have Repeat" player field,
-    // and applyPassiveAura's AuraEffect carries only Might/keyword/combat-damage
-    // suppression. Whole card blocked. (Same gap as The Academy #772.)
+    // Wired via PlayerState::spells_have_repeat_* (set in applyPassiveAura while
+    // an instance of me is at a battlefield with a showdown in progress). The
+    // spell-play path builds a RepeatCost from these when the spell has no
+    // printed [Repeat]. [2][P] = 2 energy + 1 Chaos power.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (const auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller)
+                continue;
+            auto bf = obj.battlefieldId();
+            if (!bf) continue;
+            for (const auto& b : state.battlefields) {
+                if (b.id == *bf && b.showdown_in_progress) {
+                    auto& ps = state.player(controller);
+                    ps.spells_have_repeat_energy = 2;
+                    ps.spells_have_repeat_power = 1;
+                    ps.spells_have_repeat_domain = Domain::Chaos;  // [P]
+                    return;
+                }
+            }
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

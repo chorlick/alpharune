@@ -21,13 +21,6 @@
   "ability": "While you control this battlefield, friendly legends have \": Attach an Equipment you contr"
  },
  {
-  "file": "src/cards/battlefields/0525_marai_spire.cpp",
-  "name": "0525_marai_spire.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "While you control this battlefield, friendly  costs cost  less."
- },
- {
   "file": "src/cards/battlefields/0762_altar_of_blood.cpp",
   "name": "0762_altar_of_blood.cpp",
   "bucket": "stub",
@@ -40,13 +33,6 @@
   "bucket": "stub",
   "flag": "clean",
   "ability": "Units here have \": Gain 1 XP.\""
- },
- {
-  "file": "src/cards/battlefields/0772_the_academy.cpp",
-  "name": "0772_the_academy.cpp",
-  "bucket": "metadata-only",
-  "flag": "clean",
-  "ability": "When you hold here, give your next spell this turn  equal to its base cost."
  },
  {
   "file": "src/cards/gear/0227_symbol_of_the_solari.cpp",
@@ -110,13 +96,6 @@
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "If you've spent  or more to play a spell this turn, you may play me for ."
- },
- {
-  "file": "src/cards/units/0708_syndra_transcendent.cpp",
-  "name": "0708_syndra_transcendent.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "While I'm in a showdown, your spells have  ."
  },
  {
   "file": "src/cards/units/0725_mageseeker_investigator.cpp",

@@ -15,10 +15,14 @@ class MaraiSpire : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "While you control this battlefield, friendly [Repeat] costs cost [1] less."
-    // ESCALATE(repeat-cost-modifier): the Repeat-cost loop is engine-internal and
-    // reads only the spell's own printed Repeat cost; PlayerState::CostModifier has
-    // no path that targets the Repeat additional cost specifically. Needs a
-    // Repeat-cost-reduction hook the play/repeat-payment path consults.
+    // Wired via PlayerState::repeat_cost_reduction (set in applyPassiveAura for
+    // the BF controller; the spell-play path subtracts it from the Repeat tranche
+    // energy, min 0). BF-card applyPassiveAura is called with the controlling
+    // player, so "while you control this battlefield" is implicit.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        if (controller == PlayerId::None) return;  // uncontrolled
+        state.player(controller).repeat_cost_reduction += 1;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

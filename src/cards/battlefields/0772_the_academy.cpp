@@ -16,14 +16,13 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouHoldHere; }
     // "When you hold here, give your next spell this turn [Repeat] equal to its
-    //  base cost."
-    // ESCALATE(grant-repeat-to-next-spell): [Repeat] (CR 820) is an OPTIONAL
-    // ADDITIONAL COST the player pays at spell-play time (ChainItem::repeats_paid).
-    // There is no surface for an external effect to GRANT free/eligible [Repeat]
-    // to a player's next spell — no per-player "next spell has Repeat N" field
-    // exists and the play-action generator does not consult one. Needs a
-    // granted-repeat field + payment-path honoring it. (Same gap as Syndra,
-    // Transcendent #708 "your spells have [Repeat]".)
+    //  base cost." Wired via PlayerState::grant_repeat_base_to_next_spell: the
+    //  spell-play path builds a RepeatCost whose tranche cost = the spell's base
+    //  energy when this is set, then consumes it.
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.state.player(ctx.controller).grant_repeat_base_to_next_spell = true;
+        ctx.events.logTrace("THE ACADEMY: next spell gains [Repeat] = its base cost");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

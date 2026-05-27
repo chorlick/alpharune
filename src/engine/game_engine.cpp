@@ -1376,6 +1376,28 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     if (card.card_def_id != kInvalidId) {
         repeat_cost = parseRepeatCost(card_db_.get(card.card_def_id).ability_text);
     }
+    // GRANTED [Repeat] (when the spell has none of its own printed):
+    //   The Academy (772): "next spell gets [Repeat] = its base cost" (one-shot).
+    //   Syndra, Transcendent (708): "your spells have [Repeat] [2][P]" (continuous
+    //   while she's in a showdown). Academy's one-shot grant takes precedence.
+    if (card.isSpell() && !repeat_cost.valid) {
+        if (ps.grant_repeat_base_to_next_spell && card.card_def_id != kInvalidId) {
+            repeat_cost.energy = card_db_.get(card.card_def_id).energy_cost;
+            repeat_cost.power = 0;
+            repeat_cost.power_domain = Domain::Count;  // universal [A]
+            repeat_cost.valid = repeat_cost.energy > 0;
+            ps.grant_repeat_base_to_next_spell = false;  // consume
+        } else if (ps.spells_have_repeat_energy > 0 || ps.spells_have_repeat_power > 0) {
+            repeat_cost.energy = ps.spells_have_repeat_energy;
+            repeat_cost.power = ps.spells_have_repeat_power;
+            repeat_cost.power_domain = ps.spells_have_repeat_domain;
+            repeat_cost.valid = true;
+        }
+    }
+    // Marai Spire (525): "friendly [Repeat] costs cost [1] less."
+    if (repeat_cost.valid && ps.repeat_cost_reduction > 0) {
+        repeat_cost.energy = std::max(0, repeat_cost.energy - ps.repeat_cost_reduction);
+    }
     if (repeat_cost.valid) {
         constexpr int kRepeatSafetyCap = 32;
         while (repeats < kRepeatSafetyCap &&

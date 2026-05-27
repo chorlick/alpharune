@@ -163,10 +163,11 @@ TEST_F(FinishBatch3, SyndraTranscendentDefOnly) {
     EXPECT_EQ(d.super_type, SuperType::Champion);
     EXPECT_EQ(d.energy_cost, 6);
     EXPECT_EQ(d.might, 6);
-    // No continuous "spells have Repeat" field to set; applyPassiveAura is the
-    // default no-op (it cannot grant Repeat). Verify it does not throw / mutate
-    // a player into an inconsistent state when called.
+    // Now wired: applyPassiveAura grants spells_have_repeat_* only while Syndra
+    // is at a battlefield with a showdown in progress. With no showdown here it
+    // must be a clean no-op (full behavior covered in test_wave_b_repeat).
     EXPECT_NO_THROW({ c->applyPassiveAura(state, P1); });
+    EXPECT_EQ(state.player(P1).spells_have_repeat_energy, 0);
 }
 
 }  // namespace

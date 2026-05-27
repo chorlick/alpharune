@@ -1,23 +1,9 @@
 [
  {
-  "file": "src/cards/battlefields/0287_the_dreaming_tree.cpp",
-  "name": "0287_the_dreaming_tree.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
- },
- {
   "file": "src/cards/units/0111_heimerdinger_inventor.cpp",
   "name": "0111_heimerdinger_inventor.cpp",
   "bucket": "stub",
   "flag": "clean",
   "ability": "I have all  abilities of all friendly legends, units, and gear."
- },
- {
-  "file": "src/cards/units/0725_mageseeker_investigator.cpp",
-  "name": "0725_mageseeker_investigator.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Opponents must pay  for each unit beyond the first to move multiple units to my battlefiel"
  }
 ]

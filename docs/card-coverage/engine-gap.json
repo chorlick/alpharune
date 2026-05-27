@@ -1,5 +1,12 @@
 [
  {
+  "file": "src/cards/battlefields/0287_the_dreaming_tree.cpp",
+  "name": "0287_the_dreaming_tree.cpp",
+  "bucket": "implemented",
+  "flag": "engine-gap",
+  "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
+ },
+ {
   "file": "src/cards/gear/0099_garbage_grabber.cpp",
   "name": "0099_garbage_grabber.cpp",
   "bucket": "implemented",

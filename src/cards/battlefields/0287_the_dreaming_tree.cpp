@@ -15,12 +15,25 @@ class TheDreamingTree : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When a player chooses a friendly unit here with a spell for the first
-    // time each turn, they draw 1."
-    // ESCALATE(battlefield_scoped_choose_trigger): the WhenYouChooseAFriendlyUnit
-    // trigger is dispatched only to the choosing player's ON-BOARD cards (the
-    // dispatcher requires obj.location and never iterates battlefield cards),
-    // and it carries no "unit is HERE" location filter. Wiring this requires an
-    // engine-side battlefield-scoped choose trigger + once-per-turn gating.
+    // time each turn, they draw 1." Handler wired on WhenAFriendlyUnitChosenHere
+    // (once-per-turn-per-player via a turn-stamped card_counter -> draw 1).
+    // APPROX/INERT: no engine site currently emits "a spell chose a friendly unit
+    // here", so this handler does not yet fire in play. It is the faithful card
+    // implementation, ready for that emit; this card is also tournament-BANNED.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAFriendlyUnitChosenHere;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        auto& me = ctx.state.getObject(ctx.source);
+        const int stamp = ctx.state.turn.turn_number + 1;  // +1 so default 0 = never
+        const std::string key = "__dreaming_tree_drew_p" +
+            std::to_string(static_cast<int>(ctx.controller));
+        if (me.card_counters[key] == stamp) return;  // already drew this turn
+        me.card_counters[key] = stamp;
+        ctx.executor.drawCards(ctx.controller, 1);
+        ctx.events.logTrace("THE DREAMING TREE: first friendly-unit choice here -> draw 1");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

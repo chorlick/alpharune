@@ -15,12 +15,23 @@ class MageseekerInvestigator : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Opponents must pay [A] for each unit beyond the first to move multiple
-    //  units to my battlefield at the same time."
-    // ESCALATE(move-cost-modifier): there is no move-cost-modifier infrastructure.
-    // Unit movement is not gated by a per-target/per-destination cost, and there is
-    // no hook for a continuous effect to surcharge multi-unit moves to a specific
-    // battlefield. Needs a move-cost modifier consulted by the move-action
-    // generator / payment path.
+    //  units to my battlefield at the same time." Represented via
+    //  BattlefieldState::surcharge_enemy_multi_move (set in applyPassiveAura on
+    //  this unit's battlefield).
+    // APPROX: the engine moves a single unit per action and movement is uncosted,
+    //  so there is no "multiple units at the same time" action to surcharge — the
+    //  flag is the faithful state representation but is currently inert. (Wiring a
+    //  true surcharge needs move-cost infrastructure.)
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller)
+                continue;
+            auto bf = obj.battlefieldId();
+            if (!bf) continue;
+            for (auto& b : state.battlefields)
+                if (b.id == *bf) b.surcharge_enemy_multi_move = true;
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

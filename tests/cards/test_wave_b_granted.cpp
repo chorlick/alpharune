@@ -2,9 +2,10 @@
 /// Wave B aura-granted activated abilities:
 ///   Gardens of Becoming (769) — units here have "[E]: Gain 1 XP."
 ///   Forge of the Fluft (522)  — friendly legends have "[E]: Attach Equipment."
-/// (Heimerdinger 111 deferred — needs registry access inside applyPassiveAura.)
+///   Heimerdinger, Inventor (111) — has all [E] abilities of friendly cards.
 
 #include "tests/cards/card_test_fixture.h"
+#include <algorithm>
 #include <gtest/gtest.h>
 
 namespace riftbound::test {
@@ -14,6 +15,8 @@ using GrantedTest = CardTestFixture;
 
 constexpr CardDefId kGardens = 769;
 constexpr CardDefId kForge = 522;
+constexpr CardDefId kHeimer = 111;
+constexpr CardDefId kRavenbornTome = 32;  // a gear with an [E] activated ability
 
 TEST_F(GrantedTest, Gardens_GrantsAbilityToUnitsHere) {
     auto gardens = addUnit(P1, kGardens, 0, /*at_bf=*/-1);
@@ -66,6 +69,32 @@ TEST_F(GrantedTest, Forge_NoGrantWhenUncontrolled) {
     state.player(P1).legend_zone = legend;
     card_registry.get(kForge)->applyPassiveAura(state, PlayerId::None);
     EXPECT_TRUE(state.getObject(legend).granted_abilities.empty());
+}
+
+TEST_F(GrantedTest, Heimerdinger_ProxiesFriendlyActivatedAbilities) {
+    auto heimer = addUnit(P1, kHeimer, 3, /*at_bf=*/0);
+    // A friendly gear with an [E] activated ability (Ravenborn Tome).
+    auto tome = addUnit(P1, kRavenbornTome, 0, /*at_bf=*/-1);
+    state.getObject(tome).card_type = CardType::Gear;
+    // A vanilla friendly unit (no ability) — granting index 0 of it is harmless.
+    addUnit(P1, 1, 3, /*at_bf=*/0);
+
+    card_registry.get(kHeimer)->applyPassiveAura(state, P1);
+    auto& g = state.getObject(heimer).granted_abilities;
+    bool has_tome = std::any_of(g.begin(), g.end(),
+        [](const GameObject::GrantedAbilityRef& r) { return r.source_def_id == kRavenbornTome; });
+    EXPECT_TRUE(has_tome)
+        << "Heimerdinger is granted the friendly gear's [E] ability";
+    // Heimer does not grant itself its own (nonexistent) ability.
+    bool has_self = std::any_of(g.begin(), g.end(),
+        [](const GameObject::GrantedAbilityRef& r) { return r.source_def_id == kHeimer; });
+    EXPECT_FALSE(has_self);
+}
+
+TEST_F(GrantedTest, Heimerdinger_NoneWhenAlone) {
+    auto heimer = addUnit(P1, kHeimer, 3, /*at_bf=*/0);
+    card_registry.get(kHeimer)->applyPassiveAura(state, P1);
+    EXPECT_TRUE(state.getObject(heimer).granted_abilities.empty());
 }
 
 }  // namespace

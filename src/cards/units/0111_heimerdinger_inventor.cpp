@@ -15,11 +15,37 @@ class HeimerdingerInventor : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "I have all [E] abilities of all friendly legends, units, and gear."
-    // ESCALATE(proxy-granted-activated-abilities): the action generator and
-    // onActivate dispatch key activated abilities off each object's OWN Card (via
-    // ctx.source). There is no mechanism to PROXY another object's activated
-    // ability onto Heimerdinger — that needs engine-level ability-granting
-    // (enumerate + dispatch another card's [E] ability as though it were mine).
+    // Wired via the aura-granted-ability pipeline: applyPassiveAura appends a
+    // GrantedAbilityRef{friendly_def, 0} for every friendly legend/unit/gear onto
+    // each Heimerdinger. The action generator skips refs whose granter has no
+    // ability at that index, so granting index 0 of every friendly card is safe;
+    // activation routes to the granting card's onActivate with Heimer as the
+    // bearer (ctx.source).
+    // APPROX: proxies ability index 0 of each friendly card (multi-ability cards'
+    // additional abilities are not copied); abilities that deeply reference their
+    // own source object act as Heimer's.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        std::vector<GameObjectId> heimers;
+        for (auto& [id, obj] : state.objects)
+            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
+                obj.location.has_value())
+                heimers.push_back(id);
+        if (heimers.empty()) return;
+        std::vector<GameObject::GrantedAbilityRef> refs;
+        for (auto& [id, obj] : state.objects) {
+            if (obj.controller != controller || obj.card_def_id == kInvalidId) continue;
+            if (obj.card_def_id == cardDefId()) continue;  // not myself / other Heimers
+            const bool on_board = obj.location.has_value();
+            const bool legend = obj.zone == ZoneType::LegendZone;
+            if (!on_board && !legend) continue;
+            if (!(obj.isUnit() || obj.isGear() || obj.isLegend())) continue;
+            refs.push_back({obj.card_def_id, 0});
+        }
+        for (auto hid : heimers) {
+            auto& h = state.getObject(hid);
+            for (const auto& r : refs) h.granted_abilities.push_back(r);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

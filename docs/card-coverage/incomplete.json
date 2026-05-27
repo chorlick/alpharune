@@ -14,13 +14,6 @@
   "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
  },
  {
-  "file": "src/cards/units/0002_brazen_buccaneer.cpp",
-  "name": "0002_brazen_buccaneer.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "As you play me, you may discard 1 as an additional cost. If you do, reduce my cost by ."
- },
- {
   "file": "src/cards/units/0037_immortal_phoenix.cpp",
   "name": "0037_immortal_phoenix.cpp",
   "bucket": "stub",

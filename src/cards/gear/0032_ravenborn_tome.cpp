@@ -15,13 +15,17 @@ class RavenbornTome : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "[E]: The next spell you play this turn deals 1 Bonus Damage."
-    // ESCALATE(per_player_spell_bonus_damage): there is no "next spell deals N
-    // bonus damage" rider on PlayerState (no per-player spell-damage modifier the
-    // dealDamage path consults), so the activated ability is declared (cost +
-    // exhaust) but its effect cannot be applied from the card layer.
+    // Wired via PlayerState::next_spell_bonus_damage: this activation arms the
+    // rider; executePlaySpell binds it onto the next spell object
+    // (GameObject::spell_bonus_damage), and dealDamage adds it to every instance
+    // that spell deals.
     TriggerType triggerType() const override { return TriggerType::Activated; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.state.player(ctx.controller).next_spell_bonus_damage += 1;
+        ctx.events.logTrace("RAVENBORN TOME: next spell will deal +1 Bonus Damage");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

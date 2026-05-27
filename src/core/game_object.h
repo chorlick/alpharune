@@ -60,6 +60,16 @@ struct GameObject {
     int temp_shield_value = 0;   // temporary shield applied "this turn"
     int temp_might_bonus = 0;    // temporary +N might applied "this turn"
     int moves_this_turn = 0;     // times this unit moved this turn (Kayn, Unleashed)
+    bool immune_to_damage = false; // recomputed each recalculateAuras; set by a
+                                   // card's applyPassiveAura when its condition
+                                   // holds (Kayn, Unleashed: "if I have moved twice
+                                   // this turn, I don't take damage"). dealDamage
+                                   // no-ops against it.
+    int spell_bonus_damage = 0;    // per-spell Bonus Damage rider bound to THIS
+                                   // spell object at play time (Ravenborn Tome:
+                                   // "the next spell you play deals N Bonus
+                                   // Damage" — applies to every instance the spell
+                                   // deals). Set from PlayerState::next_spell_bonus_damage.
 
     // ── Keywords (computed via layers, cached) ──
     KeywordSet keywords;

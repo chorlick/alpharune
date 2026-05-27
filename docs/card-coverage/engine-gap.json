@@ -7,13 +7,6 @@
   "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
  },
  {
-  "file": "src/cards/gear/0032_ravenborn_tome.cpp",
-  "name": "0032_ravenborn_tome.cpp",
-  "bucket": "metadata-only",
-  "flag": "engine-gap",
-  "ability": ": The next spell you play this turn deals 1 Bonus Damage."
- },
- {
   "file": "src/cards/gear/0099_garbage_grabber.cpp",
   "name": "0099_garbage_grabber.cpp",
   "bucket": "implemented",
@@ -236,13 +229,6 @@
   "bucket": "implemented",
   "flag": "engine-gap",
   "ability": "As you play me, you may spend any number of buffs as an additional cost. Reduce my cost by"
- },
- {
-  "file": "src/cards/units/0189_kayn_unleashed.cpp",
-  "name": "0189_kayn_unleashed.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If I have moved twice this turn, I don't take damage."
  },
  {
   "file": "src/cards/units/0208_cruel_patron.cpp",

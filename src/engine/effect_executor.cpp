@@ -23,6 +23,14 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
 
+    // Continuous per-unit damage immunity (Kayn, Unleashed: "if I have moved
+    // twice this turn, I don't take damage"). Recomputed each recalculateAuras
+    // by the card's applyPassiveAura; blocks ALL damage (combat + spell/ability).
+    if (amount > 0 && obj.immune_to_damage) {
+        events_.logTrace("PREVENT: " + obj.name + " is immune to damage");
+        return;
+    }
+
     // One-shot per-unit damage prevention (Counter Strike 510): "the next time
     // it would be dealt damage this turn, prevent it." Consumes the flag and
     // prevents this damage instance entirely. Checked before Unyielding Spirit
@@ -79,7 +87,10 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
             // (Void Gate). Applied before any doubling.
             if (amount > 0) {
                 int bonus = state_.player(src_obj.controller).bonus_damage_dealt +
-                            obj.aura_bonus_damage_taken;
+                            obj.aura_bonus_damage_taken +
+                            // Ravenborn Tome rider, bound to this spell object at
+                            // play time — applies to every instance it deals.
+                            src_obj.spell_bonus_damage;
                 if (bonus > 0) {
                     events_.logTrace("EFFECT: +" + std::to_string(bonus) +
                                      " Bonus Damage to " + obj.name);

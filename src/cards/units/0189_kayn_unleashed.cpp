@@ -15,14 +15,18 @@ class KaynUnleashed : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // [Ganking] is engine-handled.
-    // "If I have moved twice this turn, I don't take damage."
-    // ESCALATE(per_unit_moves_counter + continuous_damage_prevention): this is a
-    // CONTINUOUS conditional damage-prevention. (1) GameObject::moves_this_turn
-    // exists but is NOT incremented by the move path, so "moved twice" cannot be
-    // tested; and (2) dealDamage honors only a one-shot per-unit flag
-    // (prevent_next_damage_this_turn) and global spell/ability prevention — there
-    // is no persistent "this unit takes no damage while <condition>" hook. Both
-    // require engine edits. Left as a documented no-op.
+    // "If I have moved twice this turn, I don't take damage." Wired via the
+    // generic GameObject::immune_to_damage flag (reset each recalculateAuras,
+    // checked at the top of EffectExecutor::dealDamage). moveUnit now increments
+    // moves_this_turn; here we re-assert immunity each cleanup while the count
+    // is >= 2.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller)
+                continue;
+            if (obj.moves_this_turn >= 2) obj.immune_to_damage = true;
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

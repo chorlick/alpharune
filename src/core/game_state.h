@@ -107,6 +107,9 @@ struct PlayerState {
     bool grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer ("friendly units may be played to open battlefields")
     bool units_play_base_only = false;         // set on the RESTRICTED player — Mageseeker Warden ("opponents can only play units to their base")
     bool tokens_enter_ready = false;           // Renata Glasc, Industrialist ("your tokens enter ready")
+    // Turn-scoped riders (NOT aura-derived — reset in resetTurnTracking):
+    int max_spell_spent_this_turn = 0;         // most-expensive single spell paid for this turn (Jhin, Meticulous Killer: "spent [4]+ to play a spell")
+    int next_spell_bonus_damage = 0;           // Ravenborn Tome: "the next spell you play this turn deals N Bonus Damage" (consumed when that spell deals damage)
     // Phase 6q+ engine-audit follow-on: reset last_spell_energy_spent
     // at turn start. Pre-fix, a Virtuoso/Forgotten Library trigger that
     // fires off a turn-N spell could be delayed (via chain priority)
@@ -205,6 +208,8 @@ struct PlayerState {
         cant_play_spells_this_turn = false;
         prevent_spell_ability_damage_this_turn = false;
         last_spell_energy_spent = 0;
+        max_spell_spent_this_turn = 0;
+        next_spell_bonus_damage = 0;
         power_spent_this_turn = 0;
         xp_gained_this_turn = 0;
         hold_points_this_turn = 0;

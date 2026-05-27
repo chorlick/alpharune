@@ -49,13 +49,6 @@
   "ability": "When you hold here, give your next spell this turn  equal to its base cost."
  },
  {
-  "file": "src/cards/gear/0032_ravenborn_tome.cpp",
-  "name": "0032_ravenborn_tome.cpp",
-  "bucket": "metadata-only",
-  "flag": "engine-gap",
-  "ability": ": The next spell you play this turn deals 1 Bonus Damage."
- },
- {
   "file": "src/cards/gear/0227_symbol_of_the_solari.cpp",
   "name": "0227_symbol_of_the_solari.cpp",
   "bucket": "stub",
@@ -89,13 +82,6 @@
   "bucket": "stub",
   "flag": "clean",
   "ability": "I have all  abilities of all friendly legends, units, and gear."
- },
- {
-  "file": "src/cards/units/0189_kayn_unleashed.cpp",
-  "name": "0189_kayn_unleashed.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If I have moved twice this turn, I don't take damage."
  },
  {
   "file": "src/cards/units/0341_void_hatchling.cpp",

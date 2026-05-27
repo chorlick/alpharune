@@ -1020,6 +1020,9 @@ void GameEngine::doExpirationBody() {
         // Counter Strike's one-shot damage prevention is "this turn".
         obj.prevent_next_damage_this_turn = false;
 
+        // Per-unit move counter is "this turn" (Kayn, Unleashed).
+        obj.moves_this_turn = 0;
+
         // Temp might is a separate field from buff_count (permanent buffs);
         // just clear it. recomputeMight (below / in cleanup) drops the bonus.
         bool had_temp_might = (obj.temp_might_bonus != 0);
@@ -1419,6 +1422,18 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     // Snapshot on PlayerState so legend triggers can read it. Forgotten
     // Library / Virtuoso gate on the TOTAL energy spent (base + repeats).
     ps.last_spell_energy_spent = total_energy_spent;
+    // Track the most-expensive single spell paid for this turn (Jhin,
+    // Meticulous Killer: "if you've spent [4]+ to play a spell this turn").
+    if (card.isSpell()) {
+        ps.max_spell_spent_this_turn =
+            std::max(ps.max_spell_spent_this_turn, total_energy_spent);
+        // Bind a pending "next spell deals N Bonus Damage" rider (Ravenborn Tome)
+        // onto this spell object so it applies to ALL instances it deals.
+        if (ps.next_spell_bonus_damage > 0) {
+            card.spell_bonus_damage = ps.next_spell_bonus_damage;
+            ps.next_spell_bonus_damage = 0;
+        }
+    }
     events_.emit(CardPlayedEvent{intent.card, intent.player,
         card.card_type, ps.cards_played_this_turn, total_energy_spent});
 
@@ -3598,6 +3613,7 @@ void GameEngine::recalculateAuras() {
         obj.aura_might_bonus = 0;
         obj.aura_keywords.reset();
         obj.aura_bonus_damage_taken = 0;
+        obj.immune_to_damage = false;  // re-asserted below by applyPassiveAura
     }
 
     // Step 1a: Reset per-player passive counters derived from on-board
@@ -5243,6 +5259,10 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj) {
 
 void GameEngine::moveUnit(GameObjectId unit_id, LocationId destination) {
     auto& unit = state_.getObject(unit_id);
+    // Count this move for "moved N times this turn" effects (Kayn, Unleashed).
+    // moveUnit is the single chokepoint for all unit movement (BF<->base and
+    // BF<->BF, whether agent- or effect-driven), so counting here is complete.
+    unit.moves_this_turn++;
     unit.location = destination;
     // Update zone type based on location
     if (std::holds_alternative<BaseLocation>(destination)) {

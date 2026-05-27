@@ -542,7 +542,18 @@ One batched header change (`card.h` + `game_state.h`), then `.cpp` wiring:
 | 682 | Rengar, Trophy Hunter | `ambushToEnemyBattlefields()` relaxes both Ambush generators to enemy-occupied BFs |
 | 492 | Renata Glasc, Industrialist | `tokens_enter_ready` consulted in `EffectExecutor::createToken` |
 
-## Remaining (21) — grouped by subsystem still needed
+## Group H (partial) — misc per-turn hooks (2 cards)
+One batched header change (`GameObject::immune_to_damage` + `spell_bonus_damage`;
+`PlayerState::max_spell_spent_this_turn` + `next_spell_bonus_damage`):
+- **Kayn, Unleashed (189):** `moveUnit` now increments `moves_this_turn` (was dead);
+  Kayn's `applyPassiveAura` sets `immune_to_damage` while it's `>= 2`; `dealDamage`
+  no-ops against the flag.
+- **Ravenborn Tome (32):** `[E]` arms `PlayerState::next_spell_bonus_damage`; the next
+  spell played binds it onto its `GameObject::spell_bonus_damage`, which `dealDamage`
+  adds to every instance the spell deals.
+(`max_spell_spent_this_turn` is also now tracked, pre-staging Jhin's condition.)
+
+## Remaining (19) — grouped by subsystem still needed
 - **Cost modifiers (4):** Irelia Graceful (per-target), Mageseeker Investigator (move-cost), Brazen Buccaneer (discard-as-additional-cost), Jhin (alt play cost + spent-4+ flag)
 - **Replacement effects (5):** Zilean (token-play), Void Hatchling (reveal), Noxus Saboteur (reveal-hidden — needs a reveal mechanic that doesn't exist yet), Symbol of the Solari (combat-tie), Altar of Blood (battlefield-card replacement — flagged out-of-scope above)
 - **`[Repeat]` keyword grant (3):** Syndra, The Academy, Marai Spire

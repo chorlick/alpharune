@@ -12,18 +12,23 @@ namespace riftbound {
 namespace {
 
 // "If you would reveal cards from a deck, look at the top card first. You may
-//  recycle it. Then reveal those cards."
-// ESCALATE(reveal replacement hook): this is a replacement effect that
-//  intercepts the REVEAL game action (peek the top card, optionally recycle,
-//  then proceed with the reveal). The Card replacement surface
-//  (hasReplacementEffect / applyReplacement) only intercepts killUnit; the
-//  reveal helpers (EffectExecutor::revealUntil / revealAndChoose / predict)
-//  consult no card-side hook and have no interception point. Implementing this
-//  needs an engine replacement hook on the reveal path, which is outside the
-//  card layer.
+//  recycle it. Then reveal those cards." Wired via PlayerState::has_reveal_peek
+//  (set in applyPassiveAura): EffectExecutor::revealUntil / revealAndChoose peek
+//  the top card and offer to recycle it (agent yes/no) before revealing.
+//  APPROX: applies to the reveal helpers (revealUntil/revealAndChoose), the
+//  engine's reveal-from-deck paths.
 class VoidHatchling : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (const auto& [id, obj] : state.objects) {
+            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
+                obj.location.has_value()) {
+                state.player(controller).has_reveal_peek = true;
+                return;
+            }
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

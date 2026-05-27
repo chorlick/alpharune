@@ -116,15 +116,16 @@ TEST_F(FinishBatch3, MissFortuneSelfClauseTextMatchesEngineHook) {
               std::string::npos);
 }
 
-// ── Void Hatchling (341) — ESCALATED (reveal replacement hook) ──
-TEST_F(FinishBatch3, VoidHatchlingNoReplacementHook) {
+// ── Void Hatchling (341) — WIRED (reveal peek via PlayerState::has_reveal_peek) ──
+TEST_F(FinishBatch3, VoidHatchlingRevealPeek) {
     Card* c = card_registry.get(kVoidHatchling);
     ASSERT_NE(c, nullptr);
     const auto& d = c->def();
     EXPECT_EQ(d.energy_cost, 2);
     EXPECT_EQ(d.might, 2);
-    // Replacement surface intercepts only killUnit; there is no reveal hook,
-    // so the card must NOT advertise a replacement effect.
+    // Implemented via applyPassiveAura -> has_reveal_peek + the reveal helpers
+    // (not the killUnit replacement surface), so no replacement effect.
+    // Behavior covered in test_wave_b_void_hatchling.
     EXPECT_FALSE(c->hasReplacementEffect());
 }
 

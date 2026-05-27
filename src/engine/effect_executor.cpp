@@ -932,6 +932,21 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
 std::pair<GameObjectId, std::vector<GameObjectId>>
 EffectExecutor::revealUntil(PlayerId player, CardType condition) {
     auto& ps = state_.player(player);
+    // Void Hatchling (341): "If you would reveal cards from a deck, look at the
+    // top card first. You may recycle it." Peek + optional recycle before reveal.
+    if (ps.has_reveal_peek && !ps.main_deck.empty() && agent_query_) {
+        GameObjectId top = ps.main_deck.back();
+        if (state_.objectExists(top)) {
+            Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
+            Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
+            auto chosen = agent_query_(player, {keep, recyc});
+            if (chosen.chosen_value.value_or(0) == 1) {
+                ps.main_deck.pop_back();
+                recycleCards(player, {top});
+                events_.logTrace("VOID HATCHLING: recycled the peeked top card before revealing");
+            }
+        }
+    }
     std::vector<GameObjectId> revealed;
     GameObjectId matched = kInvalidId;
 
@@ -1049,6 +1064,20 @@ void EffectExecutor::predict(PlayerId player, int count) {
 
 std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int count) {
     auto& ps = state_.player(player);
+    // Void Hatchling (341): peek top, may recycle before revealing (see revealUntil).
+    if (ps.has_reveal_peek && !ps.main_deck.empty() && agent_query_) {
+        GameObjectId top = ps.main_deck.back();
+        if (state_.objectExists(top)) {
+            Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
+            Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
+            auto chosen = agent_query_(player, {keep, recyc});
+            if (chosen.chosen_value.value_or(0) == 1) {
+                ps.main_deck.pop_back();
+                recycleCards(player, {top});
+                events_.logTrace("VOID HATCHLING: recycled the peeked top card before revealing");
+            }
+        }
+    }
     int actual = std::min(count, static_cast<int>(ps.main_deck.size()));
     std::vector<GameObjectId> chosen_cards;
     if (actual <= 0) return chosen_cards;

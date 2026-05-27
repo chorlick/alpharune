@@ -28,13 +28,6 @@
   "ability": "I have all  abilities of all friendly legends, units, and gear."
  },
  {
-  "file": "src/cards/units/0341_void_hatchling.cpp",
-  "name": "0341_void_hatchling.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "If you would reveal cards from a deck, look at the top card first. You may recycle it. The"
- },
- {
   "file": "src/cards/units/0725_mageseeker_investigator.cpp",
   "name": "0725_mageseeker_investigator.cpp",
   "bucket": "stub",

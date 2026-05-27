@@ -42,13 +42,6 @@
   "ability": "If you would reveal cards from a deck, look at the top card first. You may recycle it. The"
  },
  {
-  "file": "src/cards/units/0462_irelia_graceful.cpp",
-  "name": "0462_irelia_graceful.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "Your spells that choose me cost  or  less."
- },
- {
   "file": "src/cards/units/0651_jhin_meticulous_killer.cpp",
   "name": "0651_jhin_meticulous_killer.cpp",
   "bucket": "stub",

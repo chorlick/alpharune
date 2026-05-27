@@ -266,13 +266,6 @@
   "ability": "When I conquer after an attack, if you assigned 5 or more excess damage to enemy units, yo"
  },
  {
-  "file": "src/cards/units/0462_irelia_graceful.cpp",
-  "name": "0462_irelia_graceful.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "Your spells that choose me cost  or  less."
- },
- {
   "file": "src/cards/units/0544_yone_blademaster.cpp",
   "name": "0544_yone_blademaster.cpp",
   "bucket": "implemented",

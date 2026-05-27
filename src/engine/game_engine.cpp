@@ -1363,7 +1363,18 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     }
     if (!paid_via_grant) {
         ps.current_play_source = intent.play_source;
+        // Irelia, Graceful (462): "your spells that choose me cost [1]/[A] less."
+        // Stage the largest per-target reduction among this spell's chosen
+        // targets; canAfford/beginCostPayment subtract it. APPROX: only
+        // play-time targets count (deferred-target spells pick at chain time).
+        int tgt_disc = 0;
+        for (auto t : intent.targets)
+            if (state_.objectExists(t))
+                tgt_disc = std::max(tgt_disc,
+                    state_.getObject(t).spells_targeting_me_cost_reduction);
+        ps.transient_play_discount = tgt_disc;
         payCardCost(intent.player, intent.card);
+        ps.transient_play_discount = 0;
         ps.current_play_source = Intent::PlaySource::Hand;
 
         // "You may pay X as an additional cost to play me" (spell variant).
@@ -4839,6 +4850,9 @@ bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj) const {
     if (auto* self_card = card_registry_.get(card.card_def_id)) {
         energy_needed -= self_card->selfCostReduction(state_, player);
     }
+    // Irelia, Graceful (462): per-target discount staged in executePlaySpell when
+    // this spell chose her ("your spells that choose me cost [1]/[A] less").
+    energy_needed -= ps_const.transient_play_discount;
     energy_needed = std::max(min_cost, energy_needed);
     energy_needed = std::max(0, energy_needed);
 
@@ -5009,6 +5023,8 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
             break;
         }
     }
+    // Irelia, Graceful (462): per-target discount staged in executePlaySpell.
+    energy_needed -= ps.transient_play_discount;
     energy_needed = std::max(min_cost, energy_needed);
     energy_needed = std::max(0, energy_needed);
 

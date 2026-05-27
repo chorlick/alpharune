@@ -14,13 +14,19 @@ namespace {
 class IreliaGraceful : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Your spells that choose me cost [1] or [A] less."
-    // ESCALATE(per-target-cost-modifier): PlayerState::CostModifier has no
-    // target-conditional predicate ("only spells that choose THIS object"). The
-    // available filters (friendly/enemy/gear/spell-scope) cannot express "spells
-    // targeting me"; a blanket [1]-off on all friendly spells would over-reach
-    // the printed scope. Needs a per-target cost-modifier hook consulted at the
-    // moment a spell's chosen targets are known.
+    // "Your spells that choose me cost [1] or [A] less." Wired via
+    // GameObject::spells_targeting_me_cost_reduction (set here): executePlaySpell
+    // stages the largest such value among a spell's chosen targets into
+    // PlayerState::transient_play_discount, which canAfford / beginCostPayment
+    // subtract. APPROX: only play-time-targeted spells benefit (deferred-target
+    // spells choose at chain time, after cost is paid).
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
+                obj.location.has_value())
+                obj.spells_targeting_me_cost_reduction = 1;
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

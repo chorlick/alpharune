@@ -15,11 +15,17 @@ class BrazenBuccaneer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "As you play me, you may discard 1 as an additional cost. If you do,
-    //  reduce my cost by [2]."
-    // ESCALATE(discard-as-additional-cost): the optional-additional-cost play
-    // hook (Card::optionalAdditionalCost) only supports energy/power, not a
-    // discard, and the reduction must be decided BEFORE cost payment. There is
-    // no discard-as-additional-cost-to-reduce path. Whole card blocked.
+    //  reduce my cost by [2]." Wired via OptionalAdditionalCost.discard_cards +
+    //  reduce_energy: executePlayCard offers the discard BEFORE payment and, if
+    //  taken, discards 1 and stages a -2 energy discount (transient_play_discount)
+    //  that payCardCost subtracts.
+    OptionalAdditionalCost optionalAdditionalCost() const override {
+        OptionalAdditionalCost c;
+        c.valid = true;
+        c.discard_cards = 1;
+        c.reduce_energy = 2;
+        return c;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

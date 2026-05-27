@@ -74,16 +74,19 @@ TEST_F(FinishBatch3, MaskOfForesightWiredTrigger) {
     EXPECT_TRUE(c->firesOn(TriggerType::WhenAUnitAttacksOrDefendsAlone));
 }
 
-// ── Brazen Buccaneer (2) — ESCALATED (discard-as-additional-cost) ──
-TEST_F(FinishBatch3, BrazenBuccaneerHasNoDiscardCostHook) {
+// ── Brazen Buccaneer (2) — WIRED (discard-as-additional-cost) ──
+TEST_F(FinishBatch3, BrazenBuccaneerDiscardCostHook) {
     Card* c = card_registry.get(kBrazenBuccaneer);
     ASSERT_NE(c, nullptr);
     const auto& d = c->def();
     EXPECT_EQ(d.energy_cost, 6);
     EXPECT_EQ(d.might, 5);
-    // optionalAdditionalCost only models energy/power; the card declares none,
-    // so it never silently mis-applies a cost reduction.
-    EXPECT_FALSE(c->optionalAdditionalCost().valid);
+    // Now wired: optional discard-1 reduces the play cost by 2 (handled pre-payment
+    // in executePlayCard via transient_play_discount).
+    auto oac = c->optionalAdditionalCost();
+    EXPECT_TRUE(oac.valid);
+    EXPECT_EQ(oac.discard_cards, 1);
+    EXPECT_EQ(oac.reduce_energy, 2);
     EXPECT_EQ(c->selfCostReduction(state, P1), 0);
 }
 

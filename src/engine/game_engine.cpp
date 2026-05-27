@@ -1279,6 +1279,43 @@ void GameEngine::executePlayCard(const Intent& intent) {
     // transient field on PlayerState so the cost path can consult it
     // for Rek'Sai's auto-Accelerate (and any future from-non-hand
     // discounts). Always clear after the call.
+    // Brazen Buccaneer (002): "you may discard 1 as an additional cost; if you
+    // do, reduce my cost by [2]." Decided BEFORE payment so the discount applies;
+    // staged into transient_play_discount (consumed by payCardCost) and cleared
+    // after. Skipped on an alternative-cost play.
+    int prepay_discount = 0;
+    if (!intent.use_alt_play_cost) {
+        const Card* pc = card.card_def_id != kInvalidId
+            ? card_registry_.get(card.card_def_id) : nullptr;
+        Card::OptionalAdditionalCost oac = pc ? pc->optionalAdditionalCost()
+                                              : Card::OptionalAdditionalCost{};
+        if (oac.valid && oac.discard_cards > 0 && oac.reduce_energy > 0 &&
+            static_cast<int>(ps.hand.size()) >= oac.discard_cards) {
+            Intent decline; decline.type = IntentType::MakeChoice;
+            decline.player = intent.player; decline.chosen_value = 0;
+            Intent accept; accept.type = IntentType::MakeChoice;
+            accept.player = intent.player; accept.chosen_value = 1;
+            std::vector<Intent> opts = {decline, accept};
+            state_.decision_index++;
+            events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+                " (" + toString(intent.player) + "): discard " +
+                std::to_string(oac.discard_cards) + " to reduce " + card.name +
+                " by " + std::to_string(oac.reduce_energy) + "? [decline|discard]");
+            auto chosen = getAgent(intent.player).selectAction(state_, opts);
+            recordAppliedIntent(chosen);
+            if (on_decision) on_decision(state_, opts, chosen);
+            if (chosen.chosen_value.value_or(0) == 1) {
+                effect_executor_->discardCards(intent.player, oac.discard_cards);
+                prepay_discount = oac.reduce_energy;
+                if (oac.paid_flag && oac.paid_flag[0] != '\0')
+                    card.card_counters[oac.paid_flag] = 1;
+                events_.logTrace("ADDITIONAL_COST: " + card.name +
+                    " discarded to reduce cost by " + std::to_string(prepay_discount));
+            }
+        }
+    }
+    ps.transient_play_discount += prepay_discount;
+
     ps.current_play_source = intent.play_source;
     if (intent.use_alt_play_cost) {
         // Alternative play cost (Jhin, Meticulous Killer: "play me for [B]"):
@@ -1301,6 +1338,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
         payCardCost(intent.player, intent.card);
     }
     ps.current_play_source = Intent::PlaySource::Hand;
+    ps.transient_play_discount -= prepay_discount;  // un-stage Brazen's discount
 
     // "You may pay X as an additional cost to play me" (Akshan, Nami). Paid
     // here — after the base cost, before CardPlayedEvent fires WhenYouPlayMe —
@@ -4808,6 +4846,10 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     if (!cdef) return;
     auto cost = cdef->optionalAdditionalCost();
     if (!cost.valid) return;
+    // Discard-as-additional-cost-to-reduce (Brazen Buccaneer) is decided BEFORE
+    // payment in executePlayCard (the discount must precede the base cost), so
+    // it is NOT handled here.
+    if (cost.discard_cards > 0) return;
 
     // Pick a payable domain for the power portion (specific, any, or none).
     std::optional<Domain> dom;

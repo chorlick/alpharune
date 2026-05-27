@@ -35,13 +35,6 @@
   "ability": "Units here have \": Gain 1 XP.\""
  },
  {
-  "file": "src/cards/gear/0227_symbol_of_the_solari.cpp",
-  "name": "0227_symbol_of_the_solari.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If a combat where you are the attacker ends in a tie, recall ALL units instead."
- },
- {
   "file": "src/cards/units/0002_brazen_buccaneer.cpp",
   "name": "0002_brazen_buccaneer.cpp",
   "bucket": "stub",

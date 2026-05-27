@@ -21,13 +21,6 @@
   "ability": "When this is played, discarded, or killed, draw 1."
  },
  {
-  "file": "src/cards/gear/0227_symbol_of_the_solari.cpp",
-  "name": "0227_symbol_of_the_solari.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If a combat where you are the attacker ends in a tie, recall ALL units instead."
- },
- {
   "file": "src/cards/gear/0401_temporal_portal.cpp",
   "name": "0401_temporal_portal.cpp",
   "bucket": "implemented",

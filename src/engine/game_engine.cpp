@@ -3466,11 +3466,22 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     auto def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
 
     if (!att_remaining.empty() && !def_remaining.empty()) {
-        // Both still have units — recall attackers
+        // Both still have units = a tie. Normally only attackers recall
+        // (CR 461.1.a.2). Symbol of the Solari (227): if the attacker controls
+        // it, recall ALL units (attackers AND defenders) instead.
+        const bool recall_all = state_.player(*bf.attacker).recall_all_on_attacker_tie;
         for (auto uid : att_remaining) {
             moveUnit(uid, BaseLocation{*bf.attacker});
             events_.emit(UnitMovedEvent{uid, *bf.attacker,
                 BattlefieldLocation{bf_id}, BaseLocation{*bf.attacker}, false});
+        }
+        if (recall_all) {
+            for (auto uid : def_remaining) {
+                moveUnit(uid, BaseLocation{*bf.defender});
+                events_.emit(UnitMovedEvent{uid, *bf.defender,
+                    BattlefieldLocation{bf_id}, BaseLocation{*bf.defender}, false});
+            }
+            events_.logTrace("SYMBOL OF THE SOLARI: attacker tie -> recall ALL units");
         }
     }
 

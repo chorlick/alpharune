@@ -15,12 +15,12 @@ class SymbolOfTheSolari : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "If a combat where you are the attacker ends in a tie, recall ALL units
-    //  instead."
-    // ESCALATE(combat-tie-replacement): there is no combat-tie trigger/event nor a
-    // combat-resolution replacement hook in the engine, so this cannot be wired
-    // from the card layer. Needs an engine-side combat-tie replacement (recall all
-    // units to base instead of the normal tie outcome) gated on the gear's
-    // controller being the attacker.
+    //  instead." Wired via PlayerState::recall_all_on_attacker_tie set in
+    //  applyPassiveAura; GameEngine::combatResolutionStep, on a tie (both sides
+    //  still have units), recalls the defenders too when the attacker has it.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        state.player(controller).recall_all_on_attacker_tie = true;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -15,12 +15,45 @@ class ReckonerSArena : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you hold here, activate the conquer effects of units here."
-    // ESCALATE(refire-conquer-effects): must re-fire the WhenIConquer triggers of
-    // every unit at this battlefield, but a Card's onTrigger has no access to the
-    // CardRegistry to dispatch other cards' triggers (CardContext/EffectExecutor
-    // expose neither the registry nor a "fire trigger" primitive). Needs an
-    // engine-side helper that re-activates the conquer effects of units at a BF.
+    // Wired via CardContext::registry (set by the resolution path): on hold, find
+    // this BF, then re-dispatch each holder-controlled unit's WhenIConquer
+    // onTrigger here. NOTE: this is a direct single-pass dispatch (not a chained
+    // re-fire), so resumable conquer effects (confirmOptional/pickTarget) are
+    // approximated; simple conquer effects re-run faithfully.
     TriggerType triggerType() const override { return TriggerType::WhenYouHoldHere; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.registry) return;
+        // Which battlefield does this BF-card object represent?
+        std::optional<BattlefieldId> my_bf;
+        for (const auto& b : ctx.state.battlefields)
+            if (b.card_object_id == ctx.source) { my_bf = b.id; break; }
+        if (!my_bf) return;
+        // Snapshot holder-controlled units here that have a conquer effect.
+        std::vector<GameObjectId> units;
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
+            auto ubf = obj.battlefieldId();
+            if (!ubf || *ubf != *my_bf) continue;
+            Card* uc = ctx.registry->get(obj.card_def_id);
+            if (uc && (uc->firesOn(TriggerType::WhenIConquer) ||
+                       uc->firesOn(TriggerType::WhenIConquerOrHold)))
+                units.push_back(id);
+        }
+        for (auto uid : units) {
+            if (!ctx.state.objectExists(uid)) continue;
+            Card* uc = ctx.registry->get(ctx.state.getObject(uid).card_def_id);
+            if (!uc) continue;
+            // Dispatch with whichever conquer trigger the unit actually declares.
+            TriggerType ft = uc->firesOn(TriggerType::WhenIConquer)
+                ? TriggerType::WhenIConquer : TriggerType::WhenIConquerOrHold;
+            CardContext sub{ctx.state, ctx.events, ctx.executor,
+                            ctx.state.getObject(uid).controller, uid};
+            sub.firing_trigger = ft;
+            sub.registry = ctx.registry;
+            uc->onTrigger(sub, {});
+        }
+        ctx.events.logTrace("RECKONER'S ARENA: re-activated conquer effects of units here");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -1,12 +1,5 @@
 [
  {
-  "file": "src/cards/battlefields/0281_reckoner_s_arena.cpp",
-  "name": "0281_reckoner_s_arena.cpp",
-  "bucket": "metadata-only",
-  "flag": "clean",
-  "ability": "When you hold here, activate the conquer effects of units here."
- },
- {
   "file": "src/cards/battlefields/0287_the_dreaming_tree.cpp",
   "name": "0287_the_dreaming_tree.cpp",
   "bucket": "stub",

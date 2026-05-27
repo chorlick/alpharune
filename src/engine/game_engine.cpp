@@ -1559,6 +1559,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     CardContext ctx{state_, events_, *effect_executor_,
                     item.controller, item.source};
     ctx.firing_trigger = item.fired_trigger;
+    ctx.registry = &card_registry_;  // lets effects dispatch into other cards' logic
 
     if (card) {
         if (item.is_ability) {

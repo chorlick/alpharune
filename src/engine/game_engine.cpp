@@ -1162,14 +1162,18 @@ void GameEngine::executeIntent(const Intent& intent) {
             // (default) and the wrapping default impl returns their legacy
             // getActivationCost() as the only element.
             Card* ability_card = card_registry_.get(source.card_def_id);
+            // Aura-granted ability: the COST descriptor comes from the granting
+            // card, but the cost is paid by the BEARER (source) below.
+            Card* cost_card = (intent.granted_ability_def != 0)
+                ? card_registry_.get(intent.granted_ability_def) : ability_card;
             ActivationCost act_cost;
-            if (ability_card) {
-                auto abilities = ability_card->activatedAbilities();
+            if (cost_card) {
+                auto abilities = cost_card->activatedAbilities();
                 int idx = intent.ability_index;
                 if (idx < 0 || idx >= static_cast<int>(abilities.size())) idx = 0;
                 if (!abilities.empty()) act_cost = abilities[idx].cost;
                 // State-aware energy reduction (Bashful Bloom), clamped ≥ 0.
-                int red = ability_card->activationCostReduction(state_, intent.player, idx);
+                int red = cost_card->activationCostReduction(state_, intent.player, idx);
                 if (red > 0) act_cost.energy = std::max(0, act_cost.energy - red);
             }
             if (act_cost.exhaust) {
@@ -1217,6 +1221,10 @@ void GameEngine::executeIntent(const Intent& intent) {
                                         source.card_def_id, intent.targets,
                                         /*is_activated=*/true,
                                         intent.ability_index);
+            // Carry the granted-ability source onto the chain item so resolution
+            // dispatches to the granting card's onActivate (Forge/Gardens/Heimer).
+            if (intent.granted_ability_def != 0 && !state_.chain.items.empty())
+                state_.chain.items.back().granted_ability_def = intent.granted_ability_def;
             runChain();
             break;
         }
@@ -1574,7 +1582,12 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                 // Phase 6r — dispatch via the multi-ability overload.
                 // Default Card impl falls through to onActivate(ctx, targets)
                 // so single-ability cards keep working unchanged.
-                card->onActivate(ctx, item.ability_index, effective_targets);
+                // Aura-granted ability (Forge/Gardens/Heimer): run the GRANTING
+                // card's onActivate with the bearer (item.source) as ctx.source.
+                Card* act_card = (item.granted_ability_def != 0)
+                    ? card_registry_.get(item.granted_ability_def) : card;
+                if (act_card)
+                    act_card->onActivate(ctx, item.ability_index, effective_targets);
                 // Prize of Progress: a gear's activated ability was used.
                 if (state_.objectExists(item.source) &&
                     state_.getObject(item.source).isGear()) {
@@ -2852,7 +2865,9 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
         // Per-card "Use only if …" gate (Emperor of the Sands etc.).
         if (!card->canActivateAbility(state_, player)) continue;
         auto abilities = card->activatedAbilities();
-        if (abilities.empty()) continue;
+        // Don't skip when the object carries no OWN abilities but has been
+        // granted some by an aura (Forge/Gardens/Heimerdinger).
+        if (abilities.empty() && obj.granted_abilities.empty()) continue;
 
         for (size_t ai = 0; ai < abilities.size(); ++ai) {
             const auto& ab = abilities[ai];
@@ -2921,6 +2936,28 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
                     actions.push_back(activate);
                 }
             }
+        }
+
+        // Aura-granted activated abilities (Forge/Gardens/Heimerdinger): each ref
+        // names a granting card + ability index the bearer (this object) may now
+        // use. Cost is read from the granter's descriptor and paid by the bearer.
+        for (const auto& ref : obj.granted_abilities) {
+            Card* gcard = card_registry_.get(ref.source_def_id);
+            if (!gcard) continue;
+            auto gabs = gcard->activatedAbilities();
+            if (ref.ability_index < 0 ||
+                ref.ability_index >= static_cast<int>(gabs.size())) continue;
+            const auto& gcost = gabs[ref.ability_index].cost;
+            if (gcost.exhaust && obj.is_exhausted) continue;           // bearer must be ready
+            if (gcost.energy > 0 && availableEnergy(player) < gcost.energy) continue;
+            if (gcost.xp_cost > 0 && state_.player(player).xp < gcost.xp_cost) continue;
+            Intent activate;
+            activate.type = IntentType::ActivateAbility;
+            activate.player = player;
+            activate.ability_source = id;
+            activate.ability_index = ref.ability_index;
+            activate.granted_ability_def = ref.source_def_id;
+            actions.push_back(activate);
         }
     }
 }
@@ -3668,6 +3705,7 @@ void GameEngine::recalculateAuras() {
         ps.spells_have_repeat_power = 0;
         ps.repeat_cost_reduction = 0;            // Marai Spire
         ps.has_reveal_peek = false;              // Void Hatchling
+        ps.zilean_present = false;               // Zilean, Time Mage
     }
     // Per-BF aura-derived flags (Mageseeker Investigator / Noxus Saboteur /
     // Altar of Blood). Reset here; re-asserted by unit/BF applyPassiveAura.

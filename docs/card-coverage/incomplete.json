@@ -7,25 +7,11 @@
   "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
  },
  {
-  "file": "src/cards/battlefields/0522_forge_of_the_fluft.cpp",
-  "name": "0522_forge_of_the_fluft.cpp",
-  "bucket": "metadata-only",
-  "flag": "clean",
-  "ability": "While you control this battlefield, friendly legends have \": Attach an Equipment you contr"
- },
- {
   "file": "src/cards/battlefields/0762_altar_of_blood.cpp",
   "name": "0762_altar_of_blood.cpp",
   "bucket": "stub",
   "flag": "engine-gap",
   "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
- },
- {
-  "file": "src/cards/battlefields/0769_gardens_of_becoming.cpp",
-  "name": "0769_gardens_of_becoming.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Units here have \": Gain 1 XP.\""
  },
  {
   "file": "src/cards/units/0002_brazen_buccaneer.cpp",

@@ -44,8 +44,10 @@ TEST_F(FinishBatch3, ForgeOfFluftRegisteredAsBattlefield) {
     const auto& d = c->def();
     EXPECT_EQ(d.card_type, CardType::Battlefield);
     EXPECT_NE(d.ability_text.find("friendly legends have"), std::string::npos);
-    // No aura-granted-ability mechanism: card grants no activated ability.
-    EXPECT_TRUE(c->activatedAbilities().empty());
+    // Now wired: exposes the granted ability descriptor (exhaust) that bearers
+    // (the controller's legend) use via the aura-granted-ability pipeline.
+    ASSERT_EQ(c->activatedAbilities().size(), 1u);
+    EXPECT_TRUE(c->activatedAbilities()[0].cost.exhaust);
 }
 
 // ── Gardens of Becoming (769) — ESCALATED (aura-granted activated ability) ──
@@ -55,7 +57,9 @@ TEST_F(FinishBatch3, GardensOfBecomingRegisteredAsBattlefield) {
     const auto& d = c->def();
     EXPECT_EQ(d.card_type, CardType::Battlefield);
     EXPECT_NE(d.ability_text.find("Units here have"), std::string::npos);
-    EXPECT_TRUE(c->activatedAbilities().empty());
+    // Now wired: exposes the granted "[E]: gain 1 XP" descriptor for units here.
+    ASSERT_EQ(c->activatedAbilities().size(), 1u);
+    EXPECT_TRUE(c->activatedAbilities()[0].cost.exhaust);
 }
 
 // ── Mask of Foresight (60) — ESCALATED (WhenAUnitAttacksOrDefendsAlone) ──

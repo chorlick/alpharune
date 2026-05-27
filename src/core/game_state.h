@@ -114,11 +114,13 @@ struct PlayerState {
     Domain spells_have_repeat_domain = Domain::Chaos; // ... and its domain ([P] default)
     int  repeat_cost_reduction = 0;            // Marai Spire (525): friendly [Repeat] costs cost N less
     bool has_reveal_peek = false;              // Void Hatchling (341): peek/recycle top before revealing
+    bool zilean_present = false;               // Zilean, Time Mage (648): a Zilean is at one of my battlefields (aura)
     // Turn-scoped riders (NOT aura-derived — reset in resetTurnTracking):
     int max_spell_spent_this_turn = 0;         // most-expensive single spell paid for this turn (Jhin, Meticulous Killer: "spent [4]+ to play a spell")
     int next_spell_bonus_damage = 0;           // Ravenborn Tome: "the next spell you play this turn deals N Bonus Damage" (consumed when that spell deals damage)
     bool grant_repeat_base_to_next_spell = false; // The Academy (772): next spell gets [Repeat] at tranche cost = its base energy
     int zilean_double_token_turn = -1;         // Zilean, Time Mage (648): turn on which the once/turn token-doubling was used
+    int transient_play_discount = 0;           // Irelia, Graceful (462): energy discount staged just before paying a specific spell (set+consumed in executePlaySpell)
     // Phase 6q+ engine-audit follow-on: reset last_spell_energy_spent
     // at turn start. Pre-fix, a Virtuoso/Forgotten Library trigger that
     // fires off a turn-N spell could be delayed (via chain priority)
@@ -220,6 +222,7 @@ struct PlayerState {
         max_spell_spent_this_turn = 0;
         next_spell_bonus_damage = 0;
         grant_repeat_base_to_next_spell = false;
+        transient_play_discount = 0;
         power_spent_this_turn = 0;
         xp_gained_this_turn = 0;
         hold_points_this_turn = 0;
@@ -396,6 +399,13 @@ struct ChainItem {
     // activated abilities this chain item resolves. 0 = first/only ability
     // (back-compat). Only meaningful when is_activated_ability is true.
     int ability_index = 0;
+
+    // Aura-granted activated ability (Forge/Gardens/Heimerdinger): nonzero = this
+    // ActivateAbility runs the GRANTED ability whose logic lives on card def
+    // `granted_ability_def`, dispatched with `source` (the bearer) as the actor.
+    // 0 = the source's own ability. Copied from Intent::granted_ability_def when
+    // the activation is enqueued.
+    CardDefId granted_ability_def = 0;
 
     // Phase C-1 commit 6 — resumable resolution.
     // `resume_point == 0` means "fresh — Card::onResolve has not run on this

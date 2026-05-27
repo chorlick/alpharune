@@ -15,11 +15,39 @@ namespace {
 class GardensOfBecoming : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Units here have '[E]: Gain 1 XP.'"
-    // ESCALATE(aura-granted-activated-ability): the aura system (AuraEffect)
-    // grants only Might/keyword/combat-damage suppression. There is no surface
-    // for an aura to grant an ACTIVATED ability to a unit, nor does the action
-    // generator enumerate battlefield-granted abilities. Whole card blocked.
+    // "Units here have '[E]: Gain 1 XP.'" Wired via the aura-granted-ability
+    // pipeline: applyPassiveAura appends a GrantedAbilityRef{this, 0} to every
+    // unit at this battlefield; the action generator emits an activation per
+    // ref, and resolution routes back here to onActivate.
+    //
+    // The granted ability descriptor (cost only — bearer exhausts).
+    std::vector<ActivatedAbility> activatedAbilities() const override {
+        ActivatedAbility a;
+        a.cost.exhaust = true;
+        return {a};
+    }
+    void onActivate(CardContext& ctx, int /*ability_index*/,
+                    const std::vector<GameObjectId>&) override {
+        ctx.state.player(ctx.controller).xp += 1;
+        ctx.events.logTrace("GARDENS OF BECOMING: unit exhausted -> +1 XP");
+    }
+    void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
+        // Find this Gardens' battlefield, then grant the ability to units there.
+        std::optional<BattlefieldId> my_bf;
+        for (const auto& b : state.battlefields) {
+            if (!state.objectExists(b.card_object_id)) continue;
+            if (state.getObject(b.card_object_id).card_def_id == cardDefId()) {
+                my_bf = b.id; break;
+            }
+        }
+        if (!my_bf) return;
+        for (auto& [id, obj] : state.objects) {
+            if (!obj.isUnit()) continue;
+            auto ubf = obj.battlefieldId();
+            if (ubf && *ubf == *my_bf)
+                obj.granted_abilities.push_back({cardDefId(), 0});
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

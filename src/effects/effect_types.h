@@ -174,6 +174,7 @@ enum class TriggerType : uint8_t {
     WhenYouDefendAtABattlefield, // Loyal Pup
     WhenAFriendlyUnitMovesFromMyLocation, // Stealthy Pursuer
     WhenAFriendlyUnitChosenHere, // The Dreaming Tree (BF-scoped, first/turn -> draw 1)
+    WhenYouKillAUnitWithASpell,  // Immortal Phoenix (play from trash)
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

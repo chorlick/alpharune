@@ -553,10 +553,34 @@ One batched header change (`GameObject::immune_to_damage` + `spell_bonus_damage`
   adds to every instance the spell deals.
 (`max_spell_spent_this_turn` is also now tracked, pre-staging Jhin's condition.)
 
-## Remaining (19) — grouped by subsystem still needed
-- **Cost modifiers (4):** Irelia Graceful (per-target), Mageseeker Investigator (move-cost), Brazen Buccaneer (discard-as-additional-cost), Jhin (alt play cost + spent-4+ flag)
-- **Replacement effects (5):** Zilean (token-play), Void Hatchling (reveal), Noxus Saboteur (reveal-hidden — needs a reveal mechanic that doesn't exist yet), Symbol of the Solari (combat-tie), Altar of Blood (battlefield-card replacement — flagged out-of-scope above)
-- **`[Repeat]` keyword grant (3):** Syndra, The Academy, Marai Spire
-- **Aura-granted *activated* abilities (3):** Forge of the Fluft, Gardens of Becoming, Heimerdinger (proxy)
-- **Battlefield triggers/suppression (4):** Reckoner's Arena (refire conquer), Dreaming Tree (BF-scoped choose; banned card), LeBlanc (Temporary-trigger suppression), Mageseeker Warden clause 2
-- **Misc (3):** Ravenborn Tome (next-spell bonus damage), Kayn Unleashed (moves-twice damage immunity), Immortal Phoenix (kill-with-spell + play-from-trash)
+## WAVE B COMPLETE — all 32 cards landed (coverage gate: 0 incomplete; suite 1057 passing)
+
+Every previously-incomplete card is now implemented + unit-tested. The full
+remaining set was finished after the speculative header batch (one cascade),
+then all card + `.cpp` wiring as fast incremental builds:
+- **Cost modifiers:** Irelia Graceful (per-target discount via `transient_play_discount`),
+  Jhin (alt play cost via `alternativePlayCost`), Brazen Buccaneer (discard-to-reduce
+  pre-payment), Mageseeker Investigator (BF surcharge flag — see approximations).
+- **Replacements:** Symbol of the Solari (attacker-tie recall in `combatResolutionStep`),
+  Altar of Blood (pay-to-survive in `killUnit`), Void Hatchling (reveal peek/recycle),
+  Zilean (token doubling in `createToken`), Renata Glasc (tokens enter ready), Noxus
+  Saboteur (BF unrevealable flag — see approximations).
+- **`[Repeat]` grant:** Syndra, The Academy, Marai Spire (granted-RepeatCost in the play path).
+- **Aura-granted *activated* abilities:** Gardens, Forge, Heimerdinger — new generic pipeline
+  (`GameObject::granted_abilities` + `ChainItem::granted_ability_def`; generator emits per ref,
+  dispatch routes to the granter's `onActivate` with the bearer as `ctx.source`).
+- **Battlefield/triggers:** Reckoner's Arena (refire conquer via `CardContext::registry`),
+  LeBlanc (Temporary-trigger suppression), Mageseeker Warden cl2 (effect-ready suppression),
+  The Dreaming Tree (handler wired; banned), Immortal Phoenix (kill-with-spell + play-from-trash).
+- **Misc:** Kayn (moves-twice damage immunity), Ravenborn Tome (next-spell bonus damage),
+  Loyal Pup / Mask of Foresight / Fiora Worthy / Grand Duelist / Karma / Aphelios (trigger dispatch).
+
+### Documented approximations (faithful where the engine allows, simplified where it doesn't)
+- **Irelia (462):** discount applies only to play-time-targeted spells (deferred-target spells choose at chain time, after cost is paid).
+- **Mageseeker Investigator (725):** flag set, but moves are single-unit/uncosted → the multi-move surcharge is currently inert.
+- **Noxus Saboteur (018):** unrevealable flag set, but no "reveal an opponent's Hidden card" mechanic exists → currently inert.
+- **The Dreaming Tree (287, banned):** once/turn draw-1 handler wired, but no engine site emits "a spell chose a friendly unit here" → currently inert.
+- **Immortal Phoenix (037):** spell-kill keyed on the resolving chain item being a spell — direct-kill spells trigger it; deferred damage-kills resolved after the chain item clears do not.
+- **Altar of Blood (762):** auto-offered pay-to-survive prompt only when [A][A][A] is affordable.
+- **Heimerdinger (111):** proxies ability index 0 of each friendly card (multi-ability cards' extra abilities not copied).
+- **Zilean (648):** token doubling is automatic (token creation isn't an agent decision point) and keyed on token CREATION.

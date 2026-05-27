@@ -56,13 +56,6 @@
   "ability": "Your spells that choose me cost  or  less."
  },
  {
-  "file": "src/cards/units/0648_zilean_time_mage.cpp",
-  "name": "0648_zilean_time_mage.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Once each turn, if you would play a token unit while I'm at a battlefield, you may play th"
- },
- {
   "file": "src/cards/units/0651_jhin_meticulous_killer.cpp",
   "name": "0651_jhin_meticulous_killer.cpp",
   "bucket": "stub",

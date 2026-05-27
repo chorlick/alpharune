@@ -827,6 +827,21 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     events_.emit(TokenCreatedEvent{id, controller, type, name, location});
     events_.emit(EnteredBoardEvent{id, controller, type, location, false});
 
+    // Zilean, Time Mage (648): "Once each turn, if you would play a token unit
+    // while I'm at a battlefield, you may play that token and an additional copy
+    // instead." Approximated as automatic (token creation isn't an agent
+    // decision point). Stamp the turn BEFORE the recursive call to bound it to
+    // once per turn and to stop the recursion (the copy sees the stamp set).
+    if (type == CardType::Unit) {
+        auto& ps = state_.player(controller);
+        if (ps.zilean_present &&
+            ps.zilean_double_token_turn != state_.turn.turn_number) {
+            ps.zilean_double_token_turn = state_.turn.turn_number;
+            events_.logTrace("ZILEAN: play an additional copy of the token unit");
+            createToken(controller, type, name, might, tags, keywords, location, enter_ready);
+        }
+    }
+
     return id;
 }
 

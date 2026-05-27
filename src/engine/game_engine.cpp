@@ -5512,6 +5512,60 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         return;  // replacement consumed — unit does NOT die
     }
 
+    // Altar of Blood (762): "If a unit here would die during combat, its
+    // controller may pay [A][A][A] to heal it, exhaust it, and recall it
+    // instead." Gated on the dying unit's battlefield carrying the flag (set by
+    // Altar's applyPassiveAura) AND that BF being in combat. [A][A][A] = 3 power
+    // of any domain → recycle 3 ready runes. Agent decides (only offered when
+    // affordable).
+    if (unit.location.has_value() &&
+        std::holds_alternative<BattlefieldLocation>(*unit.location)) {
+        auto bfid = std::get<BattlefieldLocation>(*unit.location).id;
+        auto& abf = getBattlefield(bfid);
+        if (abf.death_recall_for_pay && abf.combat_in_progress) {
+            LocationId base{BaseLocation{controller}};
+            std::vector<GameObjectId> ready;
+            for (auto& [id, obj] : state_.objects)
+                if (obj.isRune() && obj.controller == controller && !obj.is_exhausted &&
+                    obj.location.has_value() && *obj.location == base)
+                    ready.push_back(id);
+            if (static_cast<int>(ready.size()) >= 3) {
+                Intent decline; decline.type = IntentType::MakeChoice;
+                decline.player = controller; decline.chosen_value = 0;
+                Intent accept; accept.type = IntentType::MakeChoice;
+                accept.player = controller; accept.chosen_value = 1;
+                std::vector<Intent> opts = {decline, accept};
+                state_.decision_index++;
+                auto chosen = getAgent(controller).selectAction(state_, opts);
+                recordAppliedIntent(chosen);
+                if (on_decision) on_decision(state_, opts, chosen);
+                if (chosen.chosen_value.value_or(0) == 1) {
+                    for (int i = 0; i < 3; ++i) {  // pay [A][A][A]: recycle 3 runes
+                        auto& r = state_.getObject(ready[i]);
+                        r.location = std::nullopt;
+                        r.zone = ZoneType::RuneDeck;
+                        state_.player(controller).rune_deck.insert(
+                            state_.player(controller).rune_deck.begin(), ready[i]);
+                    }
+                    events_.logDebug("REPLACEMENT (Altar of Blood): " + unit.name +
+                                     " pays [A][A][A] -> heal/exhaust/recall");
+                    detachAllGear(unit_id);
+                    auto old_loc = unit.location;
+                    unit.damage_marked = 0;
+                    unit.is_exhausted = true;
+                    unit.combat_designation = CombatDesignation::None;
+                    unit.location = BaseLocation{controller};
+                    unit.zone = ZoneType::Base;
+                    events_.emit(ObjectStateChangedEvent{unit_id, "healed"});
+                    events_.emit(UnitMovedEvent{unit_id, controller,
+                        old_loc.value_or(BaseLocation{controller}),
+                        BaseLocation{controller}, false});
+                    return;  // survived
+                }
+            }
+        }
+    }
+
     // Structured replacement effects (Card::hasReplacementEffect /
     // applyReplacement). Preferred over the legacy ability_text scan below:
     // a card decides whether it replaces THIS unit's death (e.g. Guardian

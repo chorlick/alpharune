@@ -7,13 +7,6 @@
   "ability": "When a player chooses a friendly unit here with a spell for the first time each turn, they"
  },
  {
-  "file": "src/cards/battlefields/0762_altar_of_blood.cpp",
-  "name": "0762_altar_of_blood.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
- },
- {
   "file": "src/cards/units/0111_heimerdinger_inventor.cpp",
   "name": "0111_heimerdinger_inventor.cpp",
   "bucket": "stub",

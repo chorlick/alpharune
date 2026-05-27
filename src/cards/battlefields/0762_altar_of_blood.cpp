@@ -15,17 +15,18 @@ class AltarOfBlood : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "If a unit here would die during combat, its controller may pay [A][A][A]
-    //  to heal it, exhaust it, and recall it instead."
-    // ESCALATE(battlefield_replacement_effect): the structured replacement-effect
-    // dispatch (GameEngine::
-    // killUnit) only consults Card::hasReplacementEffect on objects with
-    // `controller == dying-unit's controller` AND a board `location`.
-    // Battlefield cards have no `location` (and shared BFs have no single
-    // controller), so they are never offered to applyReplacement. There is
-    // also no "during combat" gate nor a [A][A][A]-payment prompt path at the
-    // replacement site. Wiring this requires engine changes (iterate BF cards
-    // in the replacement loop + combat-phase gate + cost prompt), out of scope
-    // for per-card edits. Left unimplemented.
+    //  to heal it, exhaust it, and recall it instead." Wired via
+    //  BattlefieldState::death_recall_for_pay (set here in applyPassiveAura):
+    //  GameEngine::killUnit, for a unit dying at a flagged BF during combat,
+    //  offers the controller to pay [A][A][A] (recycle 3 ready runes) and
+    //  heal/exhaust/recall instead.
+    void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
+        for (auto& b : state.battlefields) {
+            if (!state.objectExists(b.card_object_id)) continue;
+            if (state.getObject(b.card_object_id).card_def_id == cardDefId())
+                b.death_recall_for_pay = true;
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

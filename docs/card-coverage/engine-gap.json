@@ -1,12 +1,5 @@
 [
  {
-  "file": "src/cards/battlefields/0762_altar_of_blood.cpp",
-  "name": "0762_altar_of_blood.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If a unit here would die during combat, its controller may pay  to heal it, exhaust it, an"
- },
- {
   "file": "src/cards/gear/0099_garbage_grabber.cpp",
   "name": "0099_garbage_grabber.cpp",
   "bucket": "implemented",

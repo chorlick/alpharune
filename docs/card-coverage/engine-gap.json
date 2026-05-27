@@ -315,13 +315,6 @@
   "ability": "I cost  less. \n I cost  less instead.\n I cost  less instead.\n I can't be chosen by enemy s"
  },
  {
-  "file": "src/cards/units/0651_jhin_meticulous_killer.cpp",
-  "name": "0651_jhin_meticulous_killer.cpp",
-  "bucket": "stub",
-  "flag": "engine-gap",
-  "ability": "If you've spent  or more to play a spell this turn, you may play me for ."
- },
- {
   "file": "src/cards/units/0684_crescent_guardian.cpp",
   "name": "0684_crescent_guardian.cpp",
   "bucket": "implemented",

@@ -379,10 +379,9 @@ TEST_F(AuditFix7Test, ScuttleCrab_DeathknellWithEmptyOpponentHand) {
 }
 
 // ─── [651] Jhin, Meticulous Killer ─────────────────────────────────────────────
-// Vision is engine-handled; alt-cost [B] is a documented engine gap. The card
-// is a clean UnitCard with no card-side trigger/activated ability.
-// TODO: alt-cost "play for [B] if spent 4+ on a spell" is NOT implementable
-//       through the Card surface and is documented as an engine gap.
+// Vision is engine-handled. Alt-cost "play for [B] if spent 4+ on a spell" is now
+// wired via Card::alternativePlayCost (behavior covered in test_wave_b_cost). The
+// card still has no trigger / activated ability.
 
 TEST_F(AuditFix7Test, Jhin_RegisteredAndClean) {
     Card* card = card_registry.get(651);

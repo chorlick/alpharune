@@ -16,14 +16,21 @@ public:
     const CardDef& def() const override { return def_; }
     // "[Vision]" is engine-handled.
     // "If you've spent [4] or more to play a spell this turn, you may play me
-    // for [B]."
-    // ESCALATE(alternative_play_cost + spent_4plus_on_spell_flag): two missing
-    // pieces: (1) there is no per-card alternative-cost ("play me for X instead")
-    // play path — only selfCostReduction (energy-only) and OptionalAdditionalCost
-    // exist, neither of which can swap the printed cost for a fixed [B] (Mind)
-    // power; and (2) there is no persistent "spent [4]+ on a spell this turn"
-    // flag (PlayerState::last_spell_energy_spent tracks only the MOST RECENT
-    // spell). Left unimplemented.
+    // for [B]." Wired via Card::alternativePlayCost: when the controller has
+    // spent 4+ on a single spell this turn (PlayerState::max_spell_spent_this_turn,
+    // tracked at spell play), the champion-play generator offers an extra
+    // Intent::use_alt_play_cost option whose cost is [B] = 1 Mind power, and
+    // executePlayCard pays that instead of the printed [4].
+    AltPlayCost alternativePlayCost(const GameState& state,
+                                    PlayerId player) const override {
+        if (state.player(player).max_spell_spent_this_turn < 4) return {};
+        AltPlayCost c;
+        c.valid = true;
+        c.energy = 0;
+        c.power = 1;
+        c.power_domain = Domain::Mind;  // [B]
+        return c;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

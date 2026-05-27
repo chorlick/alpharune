@@ -1280,7 +1280,26 @@ void GameEngine::executePlayCard(const Intent& intent) {
     // for Rek'Sai's auto-Accelerate (and any future from-non-hand
     // discounts). Always clear after the call.
     ps.current_play_source = intent.play_source;
-    payCardCost(intent.player, intent.card);
+    if (intent.use_alt_play_cost) {
+        // Alternative play cost (Jhin, Meticulous Killer: "play me for [B]"):
+        // pay the card's alternativePlayCost instead of the printed cost.
+        const Card* c = (card.card_def_id != kInvalidId)
+            ? card_registry_.get(card.card_def_id) : nullptr;
+        Card::AltPlayCost alt = c ? c->alternativePlayCost(state_, intent.player)
+                                  : Card::AltPlayCost{};
+        Domain d = alt.power_domain;
+        if (alt.any_domain) {
+            for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
+                if (canPayAdditionalCost(intent.player, alt.energy, alt.power,
+                                          static_cast<Domain>(di))) {
+                    d = static_cast<Domain>(di); break;
+                }
+        }
+        payAdditionalCost(intent.player, alt.energy, alt.power, d);
+        events_.logTrace("ALT_COST: " + card.name + " played for its alternative cost");
+    } else {
+        payCardCost(intent.player, intent.card);
+    }
     ps.current_play_source = Intent::PlaySource::Hand;
 
     // "You may pay X as an additional cost to play me" (Akshan, Nami). Paid
@@ -2150,14 +2169,45 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
     // Play champion from champion zone (also must afford)
     if (ps.champion_zone != kInvalidId) {
         auto& champ = state_.getObject(ps.champion_zone);
-        if (champ.zone == ZoneType::ChampionZone &&
-            canAfford(player, ps.champion_zone)) {
-            Intent play_intent;
-            play_intent.type = IntentType::PlayCard;
-            play_intent.player = player;
-            play_intent.card = ps.champion_zone;
-            play_intent.play_location = BaseLocation{player};
-            actions.push_back(play_intent);
+        if (champ.zone == ZoneType::ChampionZone) {
+            if (canAfford(player, ps.champion_zone)) {
+                Intent play_intent;
+                play_intent.type = IntentType::PlayCard;
+                play_intent.player = player;
+                play_intent.card = ps.champion_zone;
+                play_intent.play_location = BaseLocation{player};
+                actions.push_back(play_intent);
+            }
+            // Alternative play cost (Jhin, Meticulous Killer): offer "play me for
+            // <alt>" when the condition holds and the alt cost is affordable —
+            // independent of whether the printed cost is affordable.
+            const Card* cc = champ.card_def_id != kInvalidId
+                ? card_registry_.get(champ.card_def_id) : nullptr;
+            if (cc) {
+                auto alt = cc->alternativePlayCost(state_, player);
+                bool afford = false;
+                if (alt.valid) {
+                    if (alt.any_domain) {
+                        for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
+                            if (canPayAdditionalCost(player, alt.energy, alt.power,
+                                                      static_cast<Domain>(di))) {
+                                afford = true; break;
+                            }
+                    } else {
+                        afford = canPayAdditionalCost(player, alt.energy, alt.power,
+                                                       alt.power_domain);
+                    }
+                }
+                if (afford) {
+                    Intent alt_play;
+                    alt_play.type = IntentType::PlayCard;
+                    alt_play.player = player;
+                    alt_play.card = ps.champion_zone;
+                    alt_play.play_location = BaseLocation{player};
+                    alt_play.use_alt_play_cost = true;
+                    actions.push_back(alt_play);
+                }
+            }
         }
     }
 

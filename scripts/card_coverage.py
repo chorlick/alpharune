@@ -30,7 +30,8 @@ EFFECT = ["onResolve(", "onTrigger(", "onActivate(", "onEquip(", "applyPassiveAu
           "entersReadyOnPlay(", "selfCostReduction(", "activationCostReduction(",
           "minTurnToScore(", "canBeChosenByEnemy(", "playableAsReactionToAttack(",
           "requiresLegion(", "restrictsPlayLocations(", "getPlayLocations(",
-          "ambushToEnemyBattlefields("]
+          "ambushToEnemyBattlefields(", "suppressesTemporaryTriggersHere(",
+          "alternativePlayCost("]
 # A card whose entire effect is realized by the engine (ability_text substring
 # matching / a keyword) carries no card code. Such files mark themselves with a
 # `// COVERAGE-OK:` comment (citing the engine path) so the structural classifier

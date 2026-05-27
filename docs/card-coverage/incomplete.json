@@ -112,13 +112,6 @@
   "ability": "If you've spent  or more to play a spell this turn, you may play me for ."
  },
  {
-  "file": "src/cards/units/0652_leblanc_everywhere_at_once.cpp",
-  "name": "0652_leblanc_everywhere_at_once.cpp",
-  "bucket": "stub",
-  "flag": "clean",
-  "ability": "Your  effects at my battlefield don't trigger."
- },
- {
   "file": "src/cards/units/0708_syndra_transcendent.cpp",
   "name": "0708_syndra_transcendent.cpp",
   "bucket": "stub",

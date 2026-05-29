@@ -17,7 +17,7 @@ so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
 > baselines via OpenSpiel.
 
 ## What works today
-
+- Uses Piltover archive formatted game decks
 - **Full rules engine.** Awaken → channel → draw → main → end turn loop,
   FEPR chain resolution, combat with damage assignment, scoring, mulligans,
   battlefields, gear/equip, 23 keyword mechanics, replacement effects.

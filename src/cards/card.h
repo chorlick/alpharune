@@ -146,6 +146,9 @@ public:
     int empowerAbilityIndex() const;
     /// How many Empowered statuses this object may hold (Kayle, Justified: 3).
     virtual int maxEmpower() const { return 1; }
+    /// "I can have any number of buffs" (CR 427.1.b.2): lifts the one-Buff
+    /// limit EffectExecutor::buffUnit otherwise enforces (CR 427.1.b / 702.3).
+    virtual bool canHaveAnyNumberOfBuffs() const { return false; }
 
     /// Per-ability, per-instance activation gate. Consulted by the action
     /// generator after canActivateAbility. The default implements the Empower

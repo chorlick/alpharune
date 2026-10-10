@@ -1,0 +1,40 @@
+Legend:
+1 Fiora, Grand Duelist
+
+Champion:
+1 Fiora, Worthy
+
+MainDeck:
+2 Challenge
+3 Dazzling Aurora
+2 Divining Shells
+3 Elder Dragon
+2 Flurry of Blades
+2 Harnessed Dragon
+3 Mobilize
+2 Poppy, Paragon
+3 Rampage
+3 Rengar, Trophy Hunter
+2 Repulse
+3 Rift Herald
+2 Riposte
+3 Sacrifice
+1 Sett, Brawler
+3 Shepherd's Heirloom
+
+Battlefields:
+1 Amateur Recital
+1 Risen Altar
+1 Sunken Temple
+
+Runes:
+8 Body Rune
+4 Order Rune
+
+Sideboard:
+1 Akshan, Mischievous
+1 Fiora, Victorious
+1 Forge of the Future
+3 Kayle, Justified
+2 Punch First
+2 Salvage

@@ -40,18 +40,18 @@ defects. Fixing the root cause fixes every card listed under it, so work this
 section before the per-card lists. Items already in an earlier plan file are
 cross-referenced.
 
-- [ ] **8.1 Engine text-parsed auras collide with card text** (extends 02 item 2.1)
+- [x] **8.1 Engine text-parsed auras collide with card text** (extends 02 item 2.1) — FIXED: parser deleted; hooks written for Darius 243 / 547, Leona 79, Baron Nashor 709 (not in the list above: "Other friendly units have +2 [M]" was parser-only too) and Draven, Showboat 28; every card whose text matched a parser pattern was checked against its hook; test: see 02 item 2.1
   - The parser at `game_engine.cpp:4500-4795` matches substrings of `ability_text` and applies an aura on top of, or instead of, the card's own.
   - Newly confirmed victims: Leona, Zealot 79 (every unit at her battlefield, herself included, gets -8 [M] min 1), Allay 603 (enemies there get [Deflect]; allies get it twice), Darius, Executioner 243 / 547 and Garen, Commander 311 ("here" trails the clause, so the aura is global), Wizened Elder 65 (+1 twice), Wuju Master 784 (no Level gate), Rage Amplifier 805 (+1 extra), Rumble, Hotheaded 349.
   - Fix: delete the parser; give Darius 243/547 and Leona 79 a card-side `applyPassiveAura` first, since they rely on it.
 
-- [ ] **8.2 Permanent `CostModifier` pushed on every aura pass, never removed**
+- [x] **8.2 Permanent `CostModifier` pushed on every aura pass, never removed** — FIXED: `recalculateAuras` tags modifiers pushed by a hook (`CostModifier::from_aura`) and drops them at the top of the next pass; Herald of Scales 140 is one Dragon-only modifier per Herald (`required_tag`), Eager Apprentice 84 and Vex, Cheerless 467 use the continuous spell discount / tax fields (Vex only while she is in combat), Vaults of Helia 775 is `units_only`; Ornn's Forge 527 needed no card change; Risen Altar 950's per-controller slot mix-up (batch-00) is not touched; test: AurasCostsTest.OrnnsForge_OneModifierHoweverManyCleanups, .EffectModifiersSurviveTheAuraPass, .HeraldOfScales_DragonsOnly_NoStacking, .EagerApprentice_SpellsOnly, .VexCheerless_OnlyWhileSheIsInCombat, .VaultsOfHelia_ModifierIsUnitsOnly
   - `recalculateAuras` (`game_engine.cpp:4389-4455`) does not clear `cost_modifiers`; the only erasers are the end-of-turn `this_turn_only` sweep (`game_state.h:295`) and the one-shot `next_*` sweep (`game_engine.cpp:5877`).
   - Ornn's Forge 527 (gear discount stacks without limit, outlives control), Eager Apprentice 84, Herald of Scales 140 (-2 per pass, no Dragon filter), Vex, Cheerless 467 (two modifiers per pass, all card types). After a few cleanups every card that player plays is near free for the rest of the game.
   - Related scope errors: Vaults of Helia 775 taxes spells and gear as well as units; Risen Altar 950.
   - Fix: tag aura-sourced modifiers and clear them at the top of `recalculateAuras`, the same way `aura_effects` are rebuilt.
 
-- [ ] **8.3 Aura-granted [Assault N] / [Shield N] add no Might**
+- [x] **8.3 Aura-granted [Assault N] / [Shield N] add no Might** — FIXED: engine fold — `recalculateAuras` adds max(1, `keyword_value`) per granted Assault / Shield while the bearer is an attacker / a defender; `auraKeyword()` no longer sets `might_bonus`; cards that hand-rolled the bonus or also printed the keyword on the def were converted (Captain Farron 15, Raging Soul 19, Ancient Warmonger 452, Rumble, Hotheaded 349, Fiora, Victorious 232); test: AurasCostsTest.EquippedAssaultAndShield_AddMightInCombat, .AuraShield_TaricAndMechanizedMenace, .AuraAssault_RumbleFarronWarmongerRagingSoul, .AuraAssaultShield_PurifierAndBlackFlameAltar, .AuraKeywordHelper_AssaultCountedOnce, .AuraKeywordHelper_ShieldCountedOnce
   - The aura fold (`game_engine.cpp:4843-4850`) sums only `might_bonus` and sets the keyword bit; `recomputeMight` (`game_object.h:325-331`) adds only the object's own `assault_value` / `shield_value`. `auraKeyword()` in `card_helpers.h` exists to add the conditional Might and is not used.
   - No effect at all: Serrated Dirk 332, Cloth Armor 387, Black Flame Altar 764, Purifier 502, Mechanized Menace 551, Rumble, Hotheaded 349 ("Your Mechs each have [Assault]").
   - Fix: fold `keyword_value` in the engine, or route every one through `auraKeyword()`.
@@ -59,6 +59,7 @@ cross-referenced.
 - [ ] **8.4 Aura-granted keywords the engine never honours**
   - Vision is read from base keywords only, at play time, before any aura exists (`trigger_manager.cpp:317`): Forecaster 388 does nothing.
   - `Keyword::Weaponmaster` is read nowhere: Emperor of the Sands 512.
+  - BLOCKED: both fixes are in `TriggerManager::onCardPlayed` (chain-triggers' file) and depend on 02 item 2.12. Vision: once the played unit has its location before `CardPlayedEvent` (2.12), refresh auras there and test `obj.hasKeyword(Keyword::Vision)` instead of `obj.keywords.has(...)` — today the unit is not on board when the event fires, so no aura can reach it. Weaponmaster: the keyword exists only as the `WeaponmasterUnit` card base; a Sand Soldier token (five cards create them) needs a keyword-level "when you play me" handler for units that have Weaponmaster from an aura. Nothing in `recalculateAuras` is missing: both keywords are granted and visible through `hasKeyword()`.
 
 - [ ] **8.5 Gear never gets `WhenIDie`**
   - `UnitDiedEvent` is emitted only for units (`effect_executor.cpp:261`, `game_engine.cpp:6419`); a dying gear emits only `LeftBoardEvent`, which `TriggerManager` does not subscribe to.

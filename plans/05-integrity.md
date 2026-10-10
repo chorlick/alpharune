@@ -1,0 +1,69 @@
+# 5. Integrity and consistency
+
+## Deck validation
+
+- [ ] **5.1 Any shared tag is accepted as the champion tag** [verified]
+  - Where: `src/rules/deck_validator.cpp:62-77` (`checkChampion`), `:220-226` (signature check). CR 103.3.a.2 / 103.3.d.2 require the legend's champion tag.
+  - Legend 942 Heart of the Tempest has `{Yordle, Kennen}`; a Kennen deck with Teemo, Strategist (121), Vex, Apathetic (712), Fizz or Poppy as Chosen Champion passes. Yordle-tagged Signature cards pass the same way.
+- [ ] **5.2 Card types in main deck and sideboard are never checked** [confirmed]
+  - Where: `deck_validator.cpp:80-89`, `:119-127`. The Gold token def (326), runes, battlefields or a second legend are accepted; only the copy limit applies.
+- [ ] **5.3 `loadFromDeckList` throws the wrong exception on a count-only line** [plausible]
+  - Where: `deck_validator.cpp:288-290`. `tellg()` returns -1, `substr(size_t(-1))` throws `std::out_of_range`; the header promises `std::runtime_error`.
+
+## Card-specific logic in the engine
+
+- [ ] **5.4 `ability_text` matching beyond the documented `killUnit` exception** [confirmed]
+  - `game_engine.cpp:4508-4624` and `:4691-4795` — aura parsing in `recalculateAuras` ("your mechs each have", "my might is increased by your points", "while you have another unit here", …). Root cause of 2.1.
+  - `:2439-2441` / `:5056` — `anyDamageIsLethalFor` matches Elder Dragon's sentence.
+  - `:6309` — Altar of Blood block.
+  - `:437-442` — battlefield "can't move from here to base" / "can't be played here".
+  - `:2681-2684` — "play me to an open battlefield" and variants.
+  - `:1837` — `parseRepeatCost`.
+  - `std::tolower(char)` at `:4515` / `:4703` is called on raw UTF-8 bytes (text contains `\xe2\x80\x99`); a negative argument is formally UB.
+
+## Types and invariants
+
+- [ ] **5.5 Id types are plain aliases; `CardDefId` has two "none" values** [confirmed]
+  - Where: `src/core/types.h:18-25`. All six ids are `using X = uint32_t`, so the documented `cardDefId()` / `ctx.source` mix-up compiles silently.
+  - `GameObject::card_def_id` and `ChainItem::card_def_id` use `kInvalidId`; `CardDef::id`, `DeckSubmission`, `granted_ability_def`, `GrantedAbilityRef` use 0. `recordReveal` (`game_state.h:710`) only filters `kInvalidId`.
+- [ ] **5.6 Invalid ids are UB in Release** [code confirmed, no concrete trigger]
+  - Where: `game_state.h:672-682`, `types.h:39-41`. `getObject` is assert-only; `playerIndex(PlayerId::None)` returns -1 and `player()` indexes `players[-1]`; `opponent(PlayerId::None)` returns `Player1`.
+- [ ] **5.7 `Intent::operator==` omits `use_alt_play_cost` and `granted_ability_def`** [confirmed in code, impact plausible]
+  - Where: `src/core/intent.h:190-211`. The engine emits twins differing only in those fields (`game_engine.cpp:2749-2783`, `:3607-3614`). No in-tree production consumer of `==` found.
+- [ ] **5.8 `BattlefieldState::unitsControlledBy` can never match** [confirmed, dead]
+  - Where: `src/core/game_state.cpp:12-13` requires `zone == Base && isAtBattlefield()`. No callers; `hasUnitsFrom` works.
+
+## Duplicated logic
+
+- [ ] **5.9 `canAfford` and `beginCostPayment` are copy-pasted with drifting filters** [confirmed]
+  - Where: `game_engine.cpp:5602-5752` vs `:5793-5932`. `powerCostDelta` (`:5585`) omits `first_gear_per_turn`, `affects_non_token_only`, `combat_active_only`.
+  - The one-shot consume at `:5877-5885` removes any `next_spell_only` modifier even when it was skipped, and never consumes from the opponent's list the cross-player loop reads.
+  - Aura-granted abilities (`:3597-3615`) skip `canActivateAbilityAt`, `activationEnergyReduction`, and the discard and target checks.
+- [ ] **5.10 Four separate power-payment paths** — shared `payAdditionalCost` (`:6089+`), `payRepeatCost` (2.3), `executeHideCard` (2.25), Altar of Blood (2.26), plus `payOnePower` in cards (3.23). Collapse onto the shared path.
+
+## Registration
+
+- [ ] **5.11 Registration is clean but unguarded** [confirmed by script]
+  - `CardRegistry::registerCard` overwrites silently (`card_registry.cpp:15-17`); `buildFromClasses` keys by `def.id` without checking it equals the registry key (`card_db.cpp:15-45`). Add asserts.
+
+## Build
+
+- [ ] **5.12 No warning flags; two unpinned dependencies** [confirmed]
+  - No target gets `-Wall -Wextra`, so the `class GameState;` forward declaration of a struct (`card.h:25`), unused results and narrowing go unreported.
+  - `pybind11_json` is cloned at `master`, DDS at `develop` (`CMakeLists.txt:152-163`); configure is not reproducible.
+  - Clean: PCH reuse flags are consistent across `riftbound_pch`, the card groups and `riftbound_core`; no ODR or unity hazards in `card_helpers.h`.
+
+## Dead code and stale docs
+
+- [ ] **5.13 Dead code** [confirmed]
+  - `executePlayFromHidden` (`game_engine.cpp:2533-2574`) is never called; facedown plays go through `ChainManager::stepExecuteAndPass`. So `__played_from_facedown` (`:2546`) and `PlayedFromFacedownEvent` (`:2549`) never fire in real play. Cards 0886 and 0703 and `test_vendetta_C.cpp:148` reference the marker — **follow up: those cards may be broken**.
+  - `swapBackBattlefield` (`:6582`) has no callers, so a replaced battlefield can never be restored (CR 438).
+  - `generateCombatDamageActions` (`:3619`), `advanceCleanup` (`:5031`), `activePlayer` (`:6528`) have no callers.
+  - `executeEndTurn` is empty; `channelPhase` `:819-823` is an always-false block; `had_temp_might` (`:1085`, `:1118`) is unused; the `emit` lambda at `:3324` has a vestigial argument.
+  - `combatResolutionStep` clears `is_contested` but leaves `contested_by` and `combat_staged` for the next cleanup.
+  - `CleanupNeededEvent` is never emitted; about 15 signals have no subscriber in `src/`.
+- [ ] **5.14 Stale comments and headers** [confirmed]
+  - `game_engine.h:48-58`, `:100-108` still say the step API is "stubbed (throws)" and uses a worker thread.
+  - `src/core/legal_action.h:14-21` and `knowledge_view.h:13-16` cite `tests/test_action_encoding.cpp`, a `describe(intent)` in `openspiel/action_vocab.*` and `engine/knowledge_tracker.*`; none exist. The "injective, enforced by a test" guarantee is unenforced and `KnowledgeView` has no implementation.
+  - `CostPaymentCursor` is labelled "Memcpy-clone safe (POD)" but holds a `std::vector<Domain>` (`game_state.h:649-657`).
+  - `current_play_source` says it is reset in `resetTurnTracking` and is not (`game_state.h:222-224`).

@@ -1,0 +1,99 @@
+# 3. Card bugs
+
+Paths are under `src/cards/` unless noted.
+
+Two engine facts drive several findings:
+
+- **One shared `resume_point`.** All choice helpers share a single integer. A helper called after a higher-slot helper has finished sees a value past its own range and returns a padded default without asking.
+- **Triggers get no targets** unless the card opts into `kFinalizeTrigger` (`engine/game_engine.cpp:1192-1198`; `trigger_manager.cpp:372` says "triggers receive empty targets").
+
+## A. Choice helpers only compose in ascending slot order
+
+- [ ] **3.1 Helper ordering bug in `Card`** [verified]
+  - Where: `card.cpp:124-136` (`confirmOptional`), `:200-202` (`pickXAmount`), `:292-294` (`pickMode`), `:447-462` (`pickTarget`). `card.h:338-340` and `:378-380` say the helpers coexist.
+  - Affected cards:
+    - `spells/0745_thrill_of_the_hunt.cpp:24,59` — `pickMode` after `pickTarget` returns `resume_data[1] == 0`; the unit always goes to `battlefields[0]`.
+    - `spells/0258_zenith_blade.cpp:37,60` — `confirmOptional` after `pickTarget` returns 1; "you may move" is forced and moves the first unit in map order.
+    - `gear/0490_altar_of_memories.cpp:45,48` — always top of deck, never bottom.
+    - `gear/0695_blast_cone.cpp:64` — second `confirmOptional` reuses slot 0-2 and returns 1; always exhausts to stun.
+  - Latent: `spells/0263_bullet_time.cpp`, `spells/0760_keeper_s_verdict.cpp`, `gear/0607_forgotten_signpost.cpp` have the same ordering but take the first target from `targets[0]`. Bullet Time's comment at lines 22-25 ("they don't collide") is wrong.
+  - Latent: `pickXAmount` stores X with `push_back` (`card.cpp:157,195`) but reads `resume_data[0]`; the engine pre-sizes `resume_data` to 6 for play-time targets (`game_engine.cpp:1256,1935`).
+  - Fix direction: per-helper completion flags instead of one ordered integer, so helpers compose in any order.
+
+## B. Triggers that act only on `targets`
+
+- [ ] **3.2 Triggered abilities whose printed effect never happens** — **superseded by [07 §A](07-cards-second-pass.md)**, which read every file: 26 BROKEN, 3 PARTIAL (Spirit's Refuge's aura works). Original entry kept for reference.
+  - Tests pass because the fixture calls `onTrigger(ctx, targets)` directly.
+  - `units/0092_riptide_rex.cpp:18` — "When you play me, deal 6" does nothing.
+  - `units/0016_dangerous_duo.cpp:19`, `units/0238_leona_determined.cpp:18`, `units/0539_ahri_inquisitive.cpp:18`, `units/0199_tideturner.cpp:35`.
+  - Full list: Navori Fighting Pit 278, Veiled Temple 535, Amateur Recital 763, Spirit's Refuge 63, Forge of the Future 212, and units 16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 199, 234, 238, 330, 361, 384, 453, 479, 539, 589, 618, 738.
+  - Fix direction: either convert each to `pickTarget` + `kFinalizeTrigger`, or have the engine choose targets at finalization for any trigger with `getTargetRequirements().count > 0`. Add an engine-level test that plays the card rather than calling `onTrigger`.
+
+## C. Non-idempotent work before a suspending helper
+
+The callback re-runs from the top after a choice, so anything before the helper happens twice.
+
+- [ ] **3.3** `units/0200_twisted_fate_gambler.cpp:45-46` — pops and recycles the top rune before `pickTarget` (`:64`, `:92`); a second rune is revealed on re-entry and the payoff re-derived. [confirmed]
+- [ ] **3.4** `spells/0515_arcane_shift.cpp:25-31` — banishes and replays `targets[0]` before `pickTarget` (`:44`); play triggers fire twice. [confirmed]
+- [ ] **3.5** `units/0406_jayce_man_of_progress.cpp:50-52` — `killObject(gear)` before `pickTarget` (`:59`); with two gears both die, with one the picked gear is never played. [confirmed]
+- [ ] **3.6** `gear/0242_baited_hook.cpp:33-36` — kills `targets[0]` then suspends (`:59`); on re-entry returns early, the chosen unit is never played. [confirmed]
+- [ ] **3.7** `gear/0490_altar_of_memories.cpp:35-38` — once-guard `__altar_drew` is never erased; from the second friendly death "yes" neither exhausts nor draws but still forces a hand card onto the deck. `spells/0475_guards.cpp:25-33` has the same permanent guard (`__guards_token`) [plausible]. [confirmed]
+
+## D. Choices at finalization
+
+- [ ] **3.8** `legends/0556_chem_baroness.cpp:23-27` — `still_legal` is `return true` and the exhaust cost has no ready check; two holds make two Gold. [confirmed]
+- [ ] **3.9** `units/0147_wildclaw_shaman.cpp:24-33` — "spend a buff" never spends one; free buff and ready. [confirmed]
+- [ ] **3.10** `units/0449_overzealous_fan.cpp:40,51-52` — "kill me" cost paid after the marker and never verified; if the Fan was killed in response, the effect still happens. The effect itself is also wrong: the code bounces the attacker to hand, the text says move it to its base (08 §D). [confirmed]
+- [ ] **3.11** `units/0230_albus_ferros.cpp:28-44` — X fixed at finalization, buffs spent at resolution, payout uses X. [confirmed]
+- [ ] **3.12 Costs paid after the marker without `costDueNow`: 14 cards** [confirmed pattern] — **complete named list in [07 §C](07-cards-second-pass.md)**.
+  - Payment happens at resolution, so a player can say yes then spend the resource on a Reaction (CR 383.3).
+  - Clearest: `units/0500_fiora_worthy.cpp:41`, `units/0446_fae_porter.cpp:49`, `units/0796_baccai_reaper.cpp:57`.
+  - Rest: in each opted-in file, grep after the `finalizingChoices(ctx)` line for `payOnePower|payEnergy|xp -= |buff_count -= 1|burn\(|killObject\(ctx.source\)`.
+- [ ] **3.13 Counter writes before the marker: 4 cards** [confirmed violation, plausible harm]
+  - `units/0162_miss_fortune_captain.cpp:34`, `units/0789_blade_twirler.cpp:31`, `units/0855_jayce_brilliant_inventor.cpp:42,47`, `units/0372_aphelios_exalted.cpp:33-44`. After `makeNewChoicesFor` resets `resume_point`, the "first time this turn" flag is already set.
+
+Clean: opt-in bits match overridden callbacks; every effect branch of the 10 multi-trigger cards has a marker; no pre-check is missing `costAlreadyPaid`.
+
+## E. Objects that left play
+
+- [ ] **3.14 Self-move on `ctx.source` guarded only by `objectExists`: 9 sites** [confirmed]
+  - `objectExists` is true for every id ever created, so a source killed in response is moved back from trash.
+  - `units/0404_ezreal_dashing.cpp:65-66`, `units/0067_blitzcrank_impassive.cpp:31` (card ends up in hand and trash), `units/0373_azir_ascendant.cpp:102-112`.
+  - Rest: `grep -nE "(moveToBattlefield|moveToBase|bounceToHand|moveToLocation)\((ctx\.executor, *)?(ctx\.source|source)\b" src/cards/*/*.cpp`
+- [ ] **3.15 Trigger subject used after only `objectExists`** [plausible, low impact]
+  - `units/0712_vex_apathetic.cpp:30`, `gear/0143_pirate_s_haven.cpp:26`, `battlefields/0272_back_alley_bar.cpp:26`, `gear/0060_mask_of_foresight.cpp:27`.
+- [ ] **3.16** `units/0416_direwing.cpp:21` — "Another Dragon" skips every Direwing by def id; a second Direwing does not enter ready. Use the three-argument `entersReadyOnPlay(..., self)`. [confirmed]
+
+## F. Data and reprint drift
+
+- [ ] **3.17** `gear/0542_seal_of_strength.cpp:25` — adds `Domain::Order`; reprint 163 adds `Domain::Body`. [verified]
+- [ ] **3.18** `units/0778_plundering_poro.cpp:18` — `createGoldToken` (ready); text says exhausted, reprint 392 uses `createGoldExhausted`. [confirmed]
+- [ ] **3.19** `units/0548_karma_channeler.cpp:15-30` — only a `WhenYouPlayMe` Vision (the engine already does Vision, `trigger_manager.cpp:317`, so it runs twice) and no recycle trigger. `units/0235_karma_channeler.cpp:57` has tags `{"Vi", "Ionia"}`. [confirmed]
+- [ ] **3.20** `units/0543_sett_brawler.cpp` lacks the `canActivateAbility` buff gate that `units/0164_sett_brawler.cpp:27` has. [confirmed]
+- [ ] **3.21** Region tags differ in 5 reprint pairs (Ahri 539/119, Darius 547/243, Sett 164/543, Yasuo 205/546, Vayne 35/537). `units/0421_veteran_poro.cpp` sets `Keyword::Equip`, 779 does not. [confirmed]
+- [ ] **3.22** `spells/0251_noxian_guillotine.cpp:35` — without Legion writes `__kill_on_next_damage_this_turn`, which nothing reads; the spell does nothing. [confirmed]
+
+## G. Shared helpers
+
+- [ ] **3.23 `payOnePower` bypasses the engine's power accounting** [confirmed]
+  - Where: `card_helpers.h:45-73`, `gear/equip_base.h:57-64`. No `power_spent_this_turn`, no `LeftBoardEvent`, no `is_exhausted` clear (engine path: `effect_executor.cpp:413-423`). Sivir, Mercenary (464) still reads 0 after two Equip costs.
+- [ ] **3.24 Copy-pasted helpers** [confirmed]
+  - `splitDamage` + four `kSplit*` constants duplicated in `spells/0751_alpha_strike.cpp:43-52` and `units/0041_volibear_furious.cpp:43-52` (compile only because the directories are separate unity targets).
+  - `units/0444_corrupt_enforcer.cpp:35` re-implements `discardThenAct`.
+  - 5 files hand-roll rune recycling instead of `payOnePower`.
+
+## See also
+
+[08-cards-full-review.md](08-cards-full-review.md) is the full review of all 955 card files; start there for card work.
+
+[07-cards-second-pass.md](07-cards-second-pass.md) holds the second-pass findings: hand-rolled resume cards, more text mismatches, off-board source handling, bookkeeping gaps.
+
+## Clean
+
+- Ids 1..955 with no gaps or duplicates; filename, `d.id`, `registerCard` and `register_card_N` agree in all 955 files; `card_type` matches the directory.
+- No unity-build name collisions; all 20 reprint pairs carry the id suffix.
+- No kill inside a damage loop, no loop mutating its own container.
+- No `cardDefId()` passed as a `GameObjectId`, no `ctx.source` used as a def id.
+- `kInvalidId` handling after `pickTarget` / `pickTargetPair`; every `targets[n]` index is guarded.
+- No `ability_text` matching in any card file.
+- `__died_empowered` is written at `engine/effect_executor.cpp:164` and never read (dead write).

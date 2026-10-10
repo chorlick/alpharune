@@ -1,0 +1,217 @@
+[Back to the full card review](../08-cards-full-review.md)
+
+# Batch 06 - units/0495_undertitan.cpp .. units/0709_baron_nashor.cpp
+
+Files read in full: 89 of 89.
+
+Reprint originals opened for comparison: 0164_sett_brawler, 0205_yasuo_windrider, 0235_karma_channeler, 0243_darius_executioner, 0269_sprite. (Bard Mercurial 540, Yone Blademaster 544, Soraka Wanderer 550, Arena Kingpin 557, Bird 559, Inferna 560 have no lower-id file with the same slug.)
+
+Engine facts traced for this batch (used by the findings below):
+- `GameEngine::beginningStep` (game_engine.cpp:760-771) kills every on-board unit of the turn player whose `obj.keywords` has `Keyword::Temporary` - i.e. a def that sets the keyword because the word appears in its text dies.
+- `Keyword::Hunt`, `Keyword::Level`, `requiresLevel()`, `levelThreshold()`, `requiresLegion()` are read nowhere in src/engine or src/core - a card must implement Hunt/Level itself.
+- `recalculateAuras` (game_engine.cpp:4499-4695) still text-matches `ability_text` for "other friendly units here have", "other friendly units have", "your units have", "units here have" and applies an aura in addition to the card's own `applyPassiveAura`.
+- `PlayerState::xp_gained_this_turn` is reset (game_state.h:288) but never incremented anywhere in src/.
+- `PlayerState::last_spell_energy_spent` is overwritten by every spell played (game_engine.cpp:1906); `max_spell_spent_this_turn` is the per-turn maximum; `played_spell_this_turn` exists.
+- Rune pools are emptied at the end of the Draw Phase (game_engine.cpp:869); holds score in the Beginning Phase.
+- `TriggerManager::onUnitMoved` stores the origin in `card_counters["__moved_from_bf"]` (bf id, or -1 for base); `EffectExecutor::moveToBase` emits `UnitMovedEvent`, so a recall fires WhenIMove.
+- The engine handles `Keyword::Vision` generically in `TriggerManager::onCardPlayed` (trigger_manager.cpp:317).
+- WhenYouPlayAUnit is fired on other on-board cards with no subject (trigger_manager.cpp:349), for every non-token unit played.
+- The trash-replay generator only offers spells (game_engine.cpp:3415); nothing in the engine references Undying Legion or Arachnoid Horror.
+
+## Findings
+- [ ] **610 Trevor Snoozebottom** - `units/0610_trevor_snoozebottom.cpp:47` [confirmed] high
+  - Text: "[Shield] ... When I hold, play a ready 3 [M] Sprite unit token with [Temporary] here." ([Temporary] belongs to the token.)
+  - Code: the def sets `Keyword::Temporary` on Trevor himself.
+  - Scenario: Trevor is played; at the start of his controller's next Beginning Phase `beginningStep` kills him before scoring, so he can never hold and his trigger never fires.
+- [ ] **638 Petal Pixie** - `units/0638_petal_pixie.cpp:54` [confirmed] high
+  - Text: "I have +1 [M] for each of your units with [Temporary] at my battlefield."
+  - Code: def sets `Keyword::Temporary` on the Pixie. She is killed at her controller's next Beginning Phase, and while alive counts herself (line 27) for a permanent +1.
+  - Scenario: Pixie alone at a battlefield is 3 Might instead of 2, then dies at the start of the next turn.
+- [ ] **644 Lillia, Fae Fawn** - `units/0644_lillia_fae_fawn.cpp:52` [confirmed] high
+  - Text: "[Accelerate] ... When I move from a location, play a 3 [M] Sprite unit token with [Temporary] there."
+  - Code: def sets `Keyword::Temporary` on Lillia.
+  - Scenario: the champion unit dies at the start of her controller's next Beginning Phase.
+- [ ] **646 Sprite Queen** - `units/0646_sprite_queen.cpp:48` [confirmed] high
+  - Text: "When you play me or at the start of your Beginning Phase, play a ready 3 [M] Sprite unit token with [Temporary] to your base."
+  - Code: def sets `Keyword::Temporary` on the Queen.
+  - Scenario: the 7-cost Queen is killed in `beginningStep` (the kill loop runs before the PhaseChangedEvent that fires AtStartOfBeginning), so she produces exactly one Sprite and is gone.
+- [ ] **652 LeBlanc, Everywhere at Once** - `units/0652_leblanc_everywhere_at_once.cpp:46` [confirmed] high
+  - Text: "[Backline] ... Your [Temporary] effects at my battlefield don't trigger."
+  - Code: def sets `Keyword::Temporary` on LeBlanc (the comment at line 24 wrongly says she is herself [Temporary]).
+  - Scenario: LeBlanc dies at the start of her controller's next Beginning Phase instead of staying to protect Temporary units.
+- [ ] **649 Blue Sentinel** - `units/0649_blue_sentinel.cpp:18` [confirmed] high
+  - Text: "Your hold effects for holding here trigger an additional time. When I hold, [Add] [A] at the start of your next Main Phase."
+  - Code: adds [A] to the rune pool immediately on hold; no implementation of the "additional time" sentence at all (no hook, no flag). The comment says there is no scheduling primitive, but `DelayedAbility{AtStartOfMain}` exists (used by Iascylla 612).
+  - Scenario: Sentinel holds in the Beginning Phase, [A] is added, the Draw Phase empties the rune pool, and the player reaches Main Phase with nothing. A second hold trigger at the same battlefield (e.g. Vilemaw's "draw 1") fires once instead of twice.
+- [ ] **578 Scorchclaw** - `units/0578_scorchclaw.cpp:17` [confirmed] high
+  - Text: "[Hunt 2] (When I conquer or hold, gain 2 XP.) [Level 3][>] I have +1 [M] and enter ready."
+  - Code: on conquer/hold, returns if XP < 3; otherwise gains 2 XP and readies itself. No +1 [M] aura, no `entersReadyOnPlay`. `requiresLevel()` is not read by the engine.
+  - Scenario: at 0 XP Scorchclaw conquers -> gains 0 XP (should be 2). At 3+ XP it is played exhausted with 3 Might (should enter ready with 4), and readies after every conquer/hold (not on the card).
+- [ ] **587 Undying Legion** - `units/0587_undying_legion.cpp:17` [confirmed] high
+  - Text: "[Legion][>] You may play me from your trash for [3][R]."
+  - Code: only `requiresLegion()` (unread by the engine). No trash-replay grant, no alternative play path; the engine's trash-replay generator is spell-only.
+  - Scenario: Undying Legion is in the trash and the player has played another card this turn -> no play-from-trash action is ever offered; the card is a vanilla 3/3.
+- [ ] **679 Arachnoid Horror** - `units/0679_arachnoid_horror.cpp:17` [confirmed] high
+  - Text: "I can be played to an occupied battlefield if an enemy unit is alone there. Friendly units can be played to an occupied battlefield if an enemy unit is alone there."
+  - Code: only the Hunt 2 trigger. No `getPlayLocations` override and no engine support for the friendly-unit permission.
+  - Scenario: an enemy unit stands alone at a battlefield -> neither the Horror nor other friendly units get the extra play location.
+- [ ] **670 Wily Newtfish** - `units/0670_wily_newtfish.cpp:25` [confirmed] high
+  - Text: "If you've gained XP this turn, I have +1 [M] and [Ganking]."
+  - Code: gates on `xp_gained_this_turn > 0`, which nothing ever increments (every XP source in this batch does `xp += n` directly).
+  - Scenario: the player gains XP from Demacian Diplomat -> Newtfish stays 4 Might with no Ganking, always.
+- [ ] **548 Karma, Channeler (reprint of 235)** - `units/0548_karma_channeler.cpp:26` [confirmed, part documented] high
+  - Text: "[Vision] ... When you recycle one or more cards to your Main Deck, buff a friendly unit."
+  - Code: (a) the recycle->buff ability is not wired (comment says no WhenYouRecycle trigger exists; it does - original 235 uses `TriggerType::WhenYouRecycle` with `pickTarget` + `choicesAtFinalization`). (b) It hand-implements Vision in a WhenYouPlayMe trigger while the def also sets `Keyword::Vision` (line 65), which the engine already resolves in `onCardPlayed`.
+  - Scenario: (a) player recycles a card with 548 on board -> no buff, while a 235 copy would buff. (b) 548 is played with two spells on top of the deck -> the engine Vision recycles the first, then the card's own trigger recycles the second.
+  - Reprint diff vs 235: 235 buffs on recycle and has no play trigger; tags differ (548 `{Karma}`, 235 `{Vi, Ionia}` - 235's "Vi" tag is itself wrong, 548 lacks "Ionia").
+- [ ] **603 Allay, Eager Admirer** - `units/0603_allay_eager_admirer.cpp:58` [confirmed] high
+  - Text: "While I'm at a battlefield, your other units here have [Deflect]."
+  - Code: the card's `applyPassiveAura` is correct in scope, but the text also contains "units here have", which the engine's text-matched aura (game_engine.cpp:4612, no friendly filter, no "other") turns into [Deflect 1] for EVERY unit at Allay's battlefield, enemies and Allay included. `deflectCostFor` sums Deflect aura effects.
+  - Scenario: Allay attacks a battlefield with an enemy unit -> the enemy unit has Deflect, so Allay's controller must pay [A] to target it; Allay's own allies cost [A][A] (card aura + engine aura) and Allay herself [A][A].
+- [ ] **547 Darius, Executioner (reprint of 243)** - `units/0547_darius_executioner.cpp:44` [confirmed] high
+  - Text: "Other friendly units have +1 [M] here."
+  - Code: no `applyPassiveAura`; the engine text matcher hits "other friendly units have" (all_friendly) because "here" trails the clause, so the "here" restriction is lost.
+  - Scenario: Darius sits at battlefield A -> friendly units at battlefield B and in base also get +1 [M]; and with Darius in base, every friendly unit everywhere gets +1.
+  - Reprint diff vs 243: code identical (243 has the same defect); 547 tags lack "Noxus".
+- [ ] **644 Lillia, Fae Fawn** - `units/0644_lillia_fae_fawn.cpp:21` [confirmed] high
+  - Text: "When I move from a location, play a 3 [M] Sprite unit token with [Temporary] there."
+  - Code: creates the token at Lillia's CURRENT location (the destination), ready (`enter_ready=true`; the text does not say ready), and at base if Lillia is no longer on board. The origin is available in `card_counters["__moved_from_bf"]`.
+  - Scenario: Lillia moves base -> battlefield 0: a ready Sprite appears at battlefield 0 next to her (joining the attack) instead of an exhausted Sprite in base.
+- [ ] **580 Yeti Brawler** - `units/0580_yeti_brawler.cpp:22` [documented] high
+  - Text: "When I conquer, if you assigned 3 or more excess damage, play two Gold gear tokens exhausted."
+  - Code: always creates two Gold tokens on conquer; the comment says excess damage is not surfaced, but `excessCombatDamageAt` (card_helpers.h:87) exists.
+  - Scenario: Yeti moves to an empty battlefield and conquers with no combat -> two Gold tokens.
+- [ ] **666 Gentle Gemdragon** - `units/0666_gentle_gemdragon.cpp:17` [documented] high
+  - Text: "When you play me or another Dragon, ready up to 2 runes."
+  - Code: fires on WhenYouPlayAUnit for any friendly unit (the Dragon tag is never checked; the trigger carries no subject).
+  - Scenario: with Gemdragon on board the player plays a 2-cost non-Dragon unit -> 2 runes are readied, making every cheap unit free.
+- [ ] **619 Alpha Wildclaw** - `units/0619_alpha_wildclaw.cpp:17` [documented] high
+  - Text: "Your units here with less Might than me can't be chosen by enemy spells and abilities."
+  - Code: not implemented (only [Tank]).
+  - Scenario: opponent targets a 2-Might unit standing with Wildclaw -> allowed.
+- [ ] **706 Maduli the Gatekeeper** - `units/0706_maduli_the_gatekeeper.cpp:19` [documented] high
+  - Text: "I can't be readied."
+  - Code: not implemented; Maduli readies in the normal Awaken step and by effects.
+  - Scenario: Maduli (7 cost, 6 Might) attacks, readies next turn and attacks again with a standard move; the [P] ability is meant to be his only way to move.
+  - Also `canActivateAbility` (line 32) evaluates only the first Maduli found in the object map, so a second copy's legality follows the first's Might/location.
+- [ ] **620 Lillia, Protector of Dreams** - `units/0620_lillia_protector_of_dreams.cpp:50` [confirmed + documented] high
+  - Text: "When you play a token unit, give me +1 [M] this turn. Your token units have [Tank]."
+  - Code: the +1 [M] trigger is not implemented (documented). The def sets `Keyword::Tank` on Lillia herself, which the text does not give her.
+  - Scenario: Lillia defends with a non-token ally -> combat damage must be assigned to Lillia first; playing a Sprite gives her nothing.
+- [ ] **596 Herald of Spring** - `units/0596_herald_of_spring.cpp:18` [confirmed] high
+  - Text: "[Hunt] (When I conquer or hold, gain 1 XP.) When you play me, gain 2 XP."
+  - Code: only the play trigger; Hunt is not engine-handled and the card has no WhenIConquerOrHold trigger (compare Wuju Apprentice 602).
+  - Scenario: Herald conquers -> 0 XP gained.
+- [ ] **621 Master Yi, Unstoppable** - `units/0621_master_yi_unstoppable.cpp:27` [documented] medium
+  - Text: "[Level 3][>] I cost [2][G] less. [Level 6] ... [4][G][G] less instead. [Level 11] ... [6][G][G][G] less instead. [Level 16][>] I can't be chosen by enemy spells and abilities."
+  - Code: only the Energy part is reduced; the comment says there is no power hook, but `Card::selfPowerCostReduction` exists and is applied in `powerCostDelta`. Level 16 untargetability is not implemented.
+  - Scenario: at 11 XP the player still pays [G][G][G] (should pay none); at 16 XP Yi can be targeted.
+- [ ] **609 Mosstomper** - `units/0609_mosstomper.cpp:61` [confirmed] medium
+  - Text: "[Level 3][>] I have +1 [M] and [Deflect]."
+  - Code: def sets `deflect_value = 1` and `Keyword::Deflect` unconditionally; the Level-3 aura then adds another Deflect effect. The aura loop (line 30) also has no on-board check.
+  - Scenario: at 0 XP opponents must pay [A] to target Mosstomper; at 3 XP they must pay [A][A].
+- [ ] **675 Master Yi, Tempered** - `units/0675_master_yi_tempered.cpp:61` [confirmed] medium
+  - Text: "[Level 6][>] I have [Deflect] and [Ganking]."
+  - Code: def sets Deflect (value 1) and Ganking as base keywords; the Level-6 aura adds a second Deflect.
+  - Scenario: at 0 XP Yi can move battlefield to battlefield and costs [A] to target; at 6 XP he costs [A][A].
+- [ ] **637 Gustwalker** - `units/0637_gustwalker.cpp:60` [confirmed] medium
+  - Text: "[Level 3][>] I have +1 [M] and [Ganking]."
+  - Code: def sets `Keyword::Ganking` as a base keyword.
+  - Scenario: at 0 XP Gustwalker moves battlefield to battlefield.
+- [ ] **688 Megatusk** - `units/0688_megatusk.cpp:50` [confirmed] medium
+  - Text: "Spend 3 XP: Give your units here [Ganking] this turn."
+  - Code: def sets `Keyword::Ganking` on Megatusk permanently. The ability has no activation gate (offered at 0 XP as a no-op), and at line 24-26 spends the 3 XP before checking that Megatusk is at a battlefield, then returns.
+  - Scenario: Megatusk always has Ganking for free; activated from base the player loses 3 XP and nothing happens (units "here" in base should get Ganking).
+- [ ] **574 Lord Broadmane** - `units/0574_lord_broadmane.cpp:51` [confirmed] medium
+  - Text: "When you play me, give your other units here [Assault] this turn."
+  - Code: def sets `assault_value = 1` and `Keyword::Assault` on Broadmane himself. The trigger also returns when Broadmane is in base (line 23), though "here" is then the base.
+  - Scenario: Broadmane attacks at 6 Might instead of 5 every turn; played to base, base units that then move to attack get no Assault.
+- [ ] **633 Chakram Dancer** - `units/0633_chakram_dancer.cpp:53` [confirmed] medium
+  - Text: "When you play me, give your other units here [Shield] this turn."
+  - Code: def sets `shield_value = 1` and `Keyword::Shield` on the Dancer herself.
+  - Scenario: the Dancer defends at 4 Might instead of 3, permanently.
+- [ ] **595 Frisky Hunter** - `units/0595_frisky_hunter.cpp:45` [confirmed] medium
+  - Text: "When you play me, play a 1 [M] Bird unit token with [Deflect] here."
+  - Code: def sets `deflect_value = 1` and `Keyword::Deflect` on Frisky Hunter itself.
+  - Scenario: opponent must pay [A] to target Frisky Hunter.
+- [ ] **629 Ruined Rex** - `units/0629_ruined_rex.cpp:21` [confirmed] medium
+  - Text: "[Deathknell][>] Deal 4 to an enemy unit."
+  - Code: only considers enemy units at a battlefield (line 23) and takes the first in map order.
+  - Scenario: the only enemy unit is in the opponent's base -> no damage; with several enemy units the controller cannot choose.
+- [ ] **612 Iascylla** - `units/0612_iascylla.cpp:60` [confirmed] medium
+  - Text: "you may move an enemy unit to this battlefield."
+  - Code: legal targets are restricted to enemy units already at a battlefield (including this one, a no-op) and ignore `untargetable_by_enemy`.
+  - Scenario: the opponent's only units are in base -> no prompt, though pulling one out of base is the card's main use. Baron Nashor can be picked.
+- [ ] **563 Prepared Neophyte** - `units/0563_prepared_neophyte.cpp:23` [documented] medium
+  - Text: "If you've spent [4] or more to play a spell this turn, I have +4 [M]."
+  - Code: reads `last_spell_energy_spent` (most recent spell) rather than `max_spell_spent_this_turn`.
+  - Scenario: player plays a 5-cost spell then a 1-cost spell -> the +4 disappears.
+- [ ] **540 Bard, Mercurial** - `units/0540_bard_mercurial.cpp:50` [documented] medium
+  - Text: "You may exhaust your legend as an additional cost to play me. When you play me, if you paid the additional cost, move any number of your units to an open battlefield."
+  - Code: asks at trigger resolution (not as a play cost), then moves ALL the player's units (including ones already there, firing their move triggers) to the first battlefield with no controller.
+  - Scenario: the player wants to send two units to battlefield 1 and keep a defender at battlefield 0 -> every unit, the defender included, is moved to the first uncontrolled battlefield in index order.
+- [ ] **544 Yone, Blademaster** - `units/0544_yone_blademaster.cpp:78` [documented] medium
+  - Text: "When I conquer a battlefield that was uncontrolled, deal damage equal to my Might to an enemy unit in a base."
+  - Code: fires on every conquer and hits the first enemy unit in base. The inlined Weaponmaster (line 36) attaches the first Equipment found for free with no "may".
+  - Scenario: Yone conquers an enemy-controlled battlefield -> still deals 5 to a base unit; an Equipment the player wanted to keep on another unit is pulled onto Yone.
+- [ ] **684 Crescent Guardian** - `units/0684_crescent_guardian.cpp:34` [confirmed] medium
+  - Text: "If you've played a spell this turn, you may pay [P] as an additional cost to play me. If you do, I enter ready."
+  - Code: the additional cost is offered whether or not a spell was played; the trigger then gates on `last_spell_energy_spent > 0`.
+  - Scenario: player plays a 0-cost spell, then Guardian, pays [P] -> not readied. With no spell played the agent can still pay [P] for nothing.
+- [ ] **496 Xin Zhao, Vigilant** - `units/0496_xin_zhao_vigilant.cpp:22` [confirmed] medium
+  - Text: "I enter ready if you have two or more other units in your base."
+  - Code: "other" is implemented by skipping every object with Xin Zhao's def id.
+  - Scenario: base holds one Xin Zhao and one other unit; a second Xin Zhao is played -> counted 1, enters exhausted (should be ready).
+- [ ] **588 Xerath, Freed** - `units/0588_xerath_freed.cpp:26` [confirmed] medium
+  - Text: "Use this ability only while I'm at a battlefield."
+  - Code: `canActivateAbility` returns true if ANY friendly Xerath is at a battlefield.
+  - Scenario: one Xerath at a battlefield, a second in base -> the base Xerath can activate.
+- [ ] **543 Sett, Brawler (reprint of 164)** - `units/0543_sett_brawler.cpp:36` [confirmed] low
+  - Text: "Spend my buff: Give me +4 [M] this turn."
+  - Code: no `canActivateAbility` gate (164 has one), so the zero-cost ability is offered with no buff and does nothing.
+  - Scenario: unbuffed Sett always shows a legal no-op activation (random rollouts can spam it).
+  - Reprint diff vs 164: missing gate; tags lack "Ionia". Trigger code identical.
+- [ ] **664 Crowd Favorite** - `units/0664_crowd_favorite.cpp:26` [confirmed] low
+  - Text: "Spend 2 XP: [Buff] me."
+  - Code: activation is offered whenever XP >= 2, even when already buffed, where it is a free no-op (line 34 returns before spending).
+  - Scenario: buffed Crowd Favorite keeps a legal action that does nothing.
+- [ ] **648 Zilean, Time Mage** - `units/0648_zilean_time_mage.cpp:23` [documented] low
+  - Text: "Once each turn ... you may play that token and an additional copy of it instead."
+  - Code: automatic (no "may"); the extra token is made inside `createToken`, so anything the creating card does to its token afterwards is not applied to the copy.
+  - Scenario [plausible]: Keeper of Masks (643) creates a Reflection -> Zilean's extra Reflection is never passed to `copyUnit` and stays a blank 0-Might unit.
+- [ ] **497 Azir, Sovereign** - `units/0497_azir_sovereign.cpp:28` [documented] low
+  - Text: "you may move any number of your token units to this battlefield."
+  - Code: always moves every token unit.
+  - Scenario: a token holding another battlefield is pulled off it, giving up that hold.
+- [ ] **550 Soraka, Wanderer** - `units/0550_soraka_wanderer.cpp:50` [confirmed] low
+  - Text: "recall it. (Send it to base. This isn't a move.)"
+  - Code: `moveToBase` emits `UnitMovedEvent`, so the recalled unit's WhenIMove fires.
+  - Scenario: Soraka saves Jhin, Murderous Artist -> Jhin adds [1][A]; a saved Yasuo counts a move.
+- [ ] **590 Pyke, Dockside Butcher / 684 Crescent Guardian** - `units/0590_pyke_dockside_butcher.cpp:25` [plausible] low
+  - Text: "When you play me, if you paid the additional cost ..."
+  - Code: reads `card_counters[paid_flag] == 1`; the engine sets the flag when paid but never clears it on decline, and `bounceToHand` does not reset counters.
+  - Scenario: Pyke is played with [R], bounced (Angler Beast), replayed without paying -> still readied with +2 [M].
+- [ ] **565 Revna the Lorekeeper** - `units/0565_revna_the_lorekeeper.cpp:27` [plausible] low
+  - Text: "When you play a spell, if you spent [4] or more, ready me."
+  - Code: when the trigger's own snapshot is 0 it falls back to `last_spell_energy_spent`.
+  - Scenario: player plays a 0-cost spell, then responds with a 5-cost spell; when the 0-cost spell resolves its trigger reads 5 and readies Revna a second time.
+- [ ] **615 Scuttle Crab** - `units/0615_scuttle_crab.cpp:29` [confirmed] low
+  - Text: "You can look at their facedown cards this turn."
+  - Code: only the hand reveal and the XP are implemented.
+  - Scenario: opponent has a Hidden card facedown -> it is not revealed to the Crab's controller.
+- [ ] **678 Poppy, Paragon** - `units/0678_poppy_paragon.cpp:20` [plausible] low
+  - Text: "within 3 points of the Victory Score"
+  - Code: uses `state.mode.victory_score`, not `executor.effectiveVictoryScore()` (victory-score modifiers ignored).
+  - Scenario: a battlefield raises the Victory Score to 9, opponent at 5 -> Poppy readies and gains 3 XP (6 is the threshold).
+- [ ] **Data: spurious keywords / tags** - `units/0580_yeti_brawler.cpp:48` [confirmed] low
+  - `Keyword::Reaction` is set on Yeti Brawler (580:48) and Pyke, Returned (707:62) from the Gold reminder text, and on Dragonsoul Sage (655:41) for its ability; on a unit the only reader is `extraAnyPowerCost` (Mystic Vortex taxes them as [Reaction] cards). `Keyword::Repeat` on Syndra, Transcendent (708:58) is not hers.
+  - Allay, Eager Admirer (603:49-51) is `SuperType::Champion` with tags `{Yordle, Bandle City}` - no champion tag.
+  - Reprint tags: Sett 543 and Yasuo 546 lack "Ionia" (164/205 have it); Darius 547 lacks "Noxus". Yasuo 546 and Sprite 569 are otherwise behaviourally identical to 205 and 269.
+
+## Systemic
+- S2: 543 Sett Brawler (buff on a bounced self), 547 Darius Executioner, 565 Revna the Lorekeeper, 578 Scorchclaw, 590 Pyke Dockside Butcher, 630 Spectral Centaur, 644 Lillia Fae Fawn (falls back to base when off board)
+- S3: 550 Soraka Wanderer, 563 Prepared Neophyte, 603 Allay Eager Admirer, 609 Mosstomper, 622 Vilemaw, 637 Gustwalker, 638 Petal Pixie, 656 Gemhand Hunter, 660 Targonian Visionary, 670 Wily Newtfish, 675 Master Yi Tempered
+- S5: 540 Bard Mercurial, 544 Yone Blademaster, 629 Ruined Rex, 680 Elder Dragon ("choose up to one enemy unit at each location" takes the first, never zero)
+
+## Not read
+None

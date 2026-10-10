@@ -71,11 +71,13 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 - [ ] **2.13 Battle Mistress's legend trigger is never dispatched** [confirmed]
   - Where: `trigger_manager.cpp:665-679`. The `WhenAnEnemyUnitDies` sweep requires `location.has_value()`; legends have none (`:326`).
 
-- [ ] **2.14 Buff handling violates CR 427.1.b / 702.3** [verified for A]
+- [x] **2.14 Buff handling violates CR 427.1.b / 702.3** [verified for A] — FIXED: `buffUnit` places a Buff only on a unit that has none (new `Card::canHaveAnyNumberOfBuffs()` exempts Lee Sin, Ascetic 78), returns whether one was placed and emits `"buffed"` only then; `giveTemporaryMight` / `giveTemporaryKeyword` now emit `"might_changed"` / `"keyword_granted"`; test: ExecutorReviewFixTest.Buff_BlindMonkDoesNotStackASecondBuff, ExecutorReviewFixTest.Buff_LeeSinAsceticCanHaveAnyNumber, ExecutorReviewFixTest.Buff_SimianAncestorTriggersOnlyWhenActuallyBuffed, ExecutorReviewFixTest.TemporaryMight_IsNotABuff_FrigidTouchOnSimianAncestor
+  - Card streams: every S4 card that goes through `ctx.executor.buffUnit` is capped with no card change. A card that prints "if it was buffed this way" should branch on the `bool` `buffUnit` now returns. Nothing listens for `"might_changed"` / `"keyword_granted"` yet.
   - A: `buffUnit` does `buff_count += 1` unconditionally (`effect_executor.cpp:672-683`). Only Showstopper guards it. Blind Monk's "[1],[E]: Buff a friendly unit" adds a permanent +1 every turn without limit.
   - B: `giveTemporaryMight` (including negative) and `giveTemporaryKeyword` emit the same `"buffed"` event (`effect_executor.cpp:645`, `:669`; dispatch `trigger_manager.cpp:1265-1285`). An opponent's Frigid Touch on Simian Ancestor fires "When you buff me, ready me".
 
-- [ ] **2.15 Predict / reveal-and-choose / Vision recycles never announce `"recycled_main"`** [confirmed]
+- [x] **2.15 Predict / reveal-and-choose / Vision recycles never announce `"recycled_main"`** [confirmed] — FIXED: `predict` and `revealAndChoose` emit it once when they put a card on the bottom; the Vision block in `TriggerManager::onCardPlayed` emits it too (`shared:` commit); test: ExecutorReviewFixTest.Predict_RecyclingFiresWhenYouRecycle, ExecutorReviewFixTest.RevealAndChoose_RecyclingFiresWhenYouRecycle, ExecutorReviewFixTest.Vision_RecyclingFiresWhenYouRecycle
+  - Card streams: cards that recycle with `deck::putOnBottom` directly still announce nothing — Abandon 693 and Scryer's Bloom 698 (hand-rolled Predict), Stacked Deck 183, Baited Hook 242 ("recycle the rest"), Last Rites 471 (Equip cost). Recipe: after the last `putOnBottom`, `ctx.events.emit(ObjectStateChangedEvent{<one recycled id>, "recycled_main"})` once, or hand the ids to `ctx.executor.recycleCards`.
   - Where: `effect_executor.cpp:1438-1441`, `:1530`; `trigger_manager.cpp:327-330`. Karma, Channeler does not trigger off Predict (CR 437.1).
 
 - [ ] **2.16 Showdown battlefield triggers use `PlayerId::None` as controller** [latent]
@@ -97,12 +99,12 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Where: `:4315-4320`. Battlefield is marked scored but `WhenIConquer` never fires (CR 473.2); the Otterpus branch (`:4305`) does emit.
   - The `cannot_gain_points` and turn-gated early returns (`:4273-4287`, `:4335-4347`) also skip the event and the scored mark [plausible].
 
-- [ ] **2.21 Burn-out point bypasses the "can't gain points" lock** [confirmed]
+- [x] **2.21 Burn-out point bypasses the "can't gain points" lock** [confirmed] — FIXED: `burnOut` checks `cannot_gain_points` and emits `PointsGainedEvent`; `burnOutUntilDeckHasCards` stops when a pass neither returns a card nor gives a point; test: ExecutorReviewFixTest.BurnOut_RespectsCantGainPoints, ExecutorReviewFixTest.BurnOut_GivesAPointAndAnnouncesIt, ExecutorReviewFixTest.BurnOut_WithNothingToRecycleAndNoPointStops
   - Where: `effect_executor.cpp:445` does `opp_ps.score++` directly; no `cannot_gain_points` check, no `PointsGainedEvent`.
 
 ## E. Movement, zones, costs
 
-- [ ] **2.22 Effect-driven moves bypass `GameEngine::moveUnit`** [confirmed]
+- [x] **2.22 Effect-driven moves bypass `GameEngine::moveUnit`** [confirmed] — FIXED: `moveToBase` / `moveToBattlefield` increment `moves_this_turn` and move attached gear with the unit; a "move" to the current location is no longer a move (CR 421.1); test: ExecutorReviewFixTest.EffectMove_CarriesAttachedGear, ExecutorReviewFixTest.EffectMove_CountsTowardKaynUnleashed, ExecutorReviewFixTest.EffectMove_ToWhereItAlreadyIsIsNotAMove
   - Where: `effect_executor.cpp:735-771` vs `:6246-6275`. No `moves_this_turn++`, attached gear does not move with the unit (CR 719.3.a).
   - Bard, Mercurial moving an equipped unit leaves the gear at base; Kayn, Unleashed moved twice by effects does not gain immunity.
 
@@ -121,7 +123,7 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 - [ ] **2.27 `recycle_self` activation cost bypasses leave-board handling** [plausible]
   - Where: `:1463-1469` (Baited Hook 242, Poro Snax 369). No `LeftBoardEvent`, no detach, no token check, inserts into the activator's deck rather than the owner's.
 
-- [ ] **2.28 `killObject` and `dealDamage` have no on-board guard** [plausible]
+- [x] **2.28 `killObject` and `dealDamage` have no on-board guard** [plausible] — FIXED: confirmed (a dead token died twice; a card in hand was "killed" into trash while still listed in hand). `dealDamage`, `killObject`, `bounceToHand`, `buffUnit`, `stunUnitBy`, `moveToBase`, `moveToBattlefield` now return unless the object has a location; `readyObject` also accepts a legend or a battlefield; test: ExecutorReviewFixTest.OffBoard_SecondKillOfADeadTokenAnnouncesNothing, ExecutorReviewFixTest.OffBoard_CardInHandIsNotKilledOrDamaged, ExecutorReviewFixTest.OffBoard_DeadUnitIsNotMovedBouncedBuffedOrStunned, ExecutorReviewFixTest.OffBoard_ReadyStillWorksForALegendButNotACardInTrash
   - The second pass found about 20 cards that hit this or the same gap in `moveToBase` / `moveToBattlefield` / `bounceToHand` (`effect_executor.cpp:559,735,754`): see 07 §E. Fixing it in the executor is the cheap route.
   - Where: `effect_executor.cpp:167-170`, `:21-24`. Only check is `zone == Trash`; dead tokens sit in Banishment. A second `killObject` on a dead token re-emits `UnitDiedEvent`; killing an object in hand moves it to trash without removing it from `hand`.
 
@@ -130,6 +132,6 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 - [ ] **2.30 `BattlefieldState&` held across chain and showdown execution** [plausible, narrow]
   - Where: `:3674`, `:3833`, `:3924`, `:4168` (also `:897`, `:795`). `addBattlefieldToken` (`effect_executor.cpp:1261`) does `push_back`. Only Baron Nashor's `onPlay` reaches it; no in-showdown path found. Re-fetch by id or reserve capacity.
 
-- [ ] **2.31 Temporary Deflect may never expire** [not confirmed] — `effect_executor.cpp:667`, `deflect_value += value` with no temp counter.
+- [x] **2.31 Temporary Deflect may never expire** [not confirmed] — `effect_executor.cpp:667`, `deflect_value += value` with no temp counter. — FIXED: confirmed (expiration cleared the keyword bit but `deflectCostFor` still charged the leftover `deflect_value`, which grew every turn). The grant is now kept in turn-stamped `card_counters` (`__temp_deflect`, `__temp_deflect_turn`) and read only by `deflectCostFor`; test: ExecutorReviewFixTest.TemporaryDeflect_ExpiresAndDoesNotAccumulateAcrossTurns
 
 - [ ] **2.32 Resolved spell is trashed to the controller, not the owner** [not confirmed reachable] — `chain_manager.cpp:479`.

@@ -93,10 +93,12 @@ cross-referenced.
 - [ ] **8.12 Quick-Draw gear does not attach when played in the main phase**
   - The attach needs a targeted play intent (`game_engine.cpp:2195`), which only `generateClosedStateActions` emits (`:3052-3068`). Long Sword 345, Sterak's Gage 379, Cloth Armor 387.
 
-- [ ] **8.13 `playIgnoringCost` leaves the card in its source zone** (extends 07 item 7.10)
+- [x] **8.13 `playIgnoringCost` leaves the card in its source zone** (extends 07 item 7.10) — FIXED: `playIgnoringCost` (and so a successful `playPayingCost`) removes the card from any hand, trash, banishment, Champion Zone or Main Deck before placing it; test: ExecutorReviewFixTest.PlayIgnoringCost_RiftHeraldDeathknellTakesTheUnitOutOfHand, ExecutorReviewFixTest.PlayIgnoringCost_LeavesTrashBanishmentAndDeck
+  - Card streams: the manual erase before `playIgnoringCost` is now redundant (harmless). Cards that erase before `playPayingCost` can drop the erase too: they all check `canPlayPayingCost` first, so the only exposure is a payment that fails after that check, which would leave the card in no zone [latent].
   - Rell, Magnetic 347 (Equipment on board and still in hand), Rift Herald 741. Fix in the executor rather than per card.
 
-- [ ] **8.14 Off-board source or target** (extends 02 item 2.28, 07 §E)
+- [x] **8.14 Off-board source or target** (extends 02 item 2.28, 07 §E) — FIXED: executor guard, see 02 item 2.28; test: ExecutorReviewFixTest.OffBoard_DeadUnitIsNotMovedBouncedBuffedOrStunned
+  - Not covered by the guard, still card work (S2): attaching gear to an off-board unit (`attachFree` / hand-rolled attach), and effects the cards apply themselves without the executor. `giveTemporaryMight`, `giveTemporaryKeyword`, `exhaustObject` and `healObject` are left unguarded.
   - `objectExists` is the only guard on about 80 more sites found in this pass (the S2 list below). One on-board guard in the executor's move / bounce / damage / kill / buff / ready functions closes most of them.
 
 - [ ] **8.15 Equipped triggers run outside the chain**

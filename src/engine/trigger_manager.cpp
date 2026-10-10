@@ -315,7 +315,13 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     // attach confirmOptional to) — queued as a follow-up. Today's
     // behavior is CR-correct in effect for spells (always recycled);
     // non-spell top cards are left in place (auto-no).
-    if (obj.keywords.has(Keyword::Vision) && obj.isPermanent()) {
+    // The permanent may have [Vision] from a continuous effect instead of
+    // its own text ("Your Mechs have [Vision]", "Other friendly units have
+    // [Vision]"). It has just entered play, after the last aura pass, so
+    // refresh the continuous effects before asking.
+    if (obj.isPermanent() && !obj.keywords.has(Keyword::Vision) && effect_executor_)
+        effect_executor_->recalculateContinuousEffects();
+    if (obj.hasKeyword(Keyword::Vision) && obj.isPermanent()) {
         auto& ps = state_.player(e.player);
         if (!ps.main_deck.empty()) {
             auto top_card = ps.main_deck.back();

@@ -3574,6 +3574,10 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
 
 // Defined with the cost code further down.
 static int extraAnyPowerCost(const GameState& state, PlayerId player, const GameObject& card);
+static bool costModifierApplies(const GameState& state, const PlayerState::CostModifier& mod,
+                                bool own, PlayerId payer, const GameObject& card,
+                                bool combat_active);
+static bool anyCombatInProgress(const GameState& state);
 
 namespace {
 // A trash-replay / Flow grant replaces the spell's base cost (CR 356.1.a);
@@ -3581,22 +3585,16 @@ namespace {
 // those increases: Helm of Suppression's tax and "cost [N] more" modifiers.
 // (The [A] part is extraAnyPowerCost.)
 int trashReplayEnergyTax(const GameState& state, PlayerId player, const GameObject& card) {
-    bool combat_active = false;
-    for (const auto& bf : state.battlefields)
-        if (bf.combat_in_progress) { combat_active = true; break; }
+    // The same modifier filter the base-cost path uses (costModifierApplies),
+    // so the two cannot disagree about which modifiers reach a card.
+    const bool combat_active = anyCombatInProgress(state);
     int tax = card.isSpell() ? state.player(player).spell_tax_energy : 0;
-    auto applies = [&](const auto& mod) {
-        if (mod.next_spell_only && !card.isSpell()) return false;
-        if (mod.next_unit_only && !card.isUnit()) return false;
-        if (mod.gear_only && !card.isGear()) return false;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) return false;
-        if (mod.combat_active_only && !combat_active) return false;
-        return true;
-    };
     for (const auto& mod : state.player(player).cost_modifiers)
-        if (!mod.affects_enemy_only && applies(mod)) tax += mod.energy_increase;
+        if (costModifierApplies(state, mod, /*own=*/true, player, card, combat_active))
+            tax += mod.energy_increase;
     for (const auto& mod : state.player(opponent(player)).cost_modifiers)
-        if (mod.affects_enemy_only && applies(mod)) tax += mod.energy_increase;
+        if (costModifierApplies(state, mod, /*own=*/false, player, card, combat_active))
+            tax += mod.energy_increase;
     return std::max(0, tax);
 }
 }  // namespace

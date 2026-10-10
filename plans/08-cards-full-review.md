@@ -64,13 +64,20 @@ cross-referenced.
   - `UnitDiedEvent` is emitted only for units (`effect_executor.cpp:261`, `game_engine.cpp:6419`); a dying gear emits only `LeftBoardEvent`, which `TriggerManager` does not subscribe to.
   - Treasure Trove 186 does nothing; Scrapheap 182's "killed" branch is dead; Sprite Fountain 640's Deathknell never fires.
 
-- [ ] **8.6 Multi-target spell generation is wrong**
+- [x] **8.6 Multi-target spell generation is wrong** — FIXED: the engine no longer assumes friendly-plus-enemy. Target sets come from the new `Card::enumerateLegalTargetSets` or, by default, from the requirement: "up to N" (`optional`) = every non-empty set of at most N distinct targets, fixed N = every ordered choice of N distinct targets. Used by hand, trash-replay and hidden plays. Void Assault 758 overrides it to keep its friendly-then-enemy pairs (`shared:` commit); tests: PlayCombatFixTest.MultiTarget_TwoFriendlyTargets_AreOfferedAsOrderedPairs, PlayCombatFixTest.MultiTarget_UpToThree_OffersEverySetOnce, PlayCombatFixTest.MultiTarget_VoidAssault_StillPairsAFriendlyWithAnEnemy
+  - Singularity 105: fixed by the default (1 or 2 distinct units of either side).
+  - Bellows Breath 402: now gets up to three targets. Needs card stream: override `enumerateLegalTargetSets` to keep only sets at one location ("at the same location").
+  - Deathgrip 484, Smoke and Mirrors 645: now offered with two friendly units. Needs card stream: Deathgrip should also be playable with a single friendly unit (kill, no buff, draw) — add the one-target sets in an override; Smoke and Mirrors should list only pairs at different locations.
+  - Piercing Light 346: now hits one or two distinct units. Needs card stream: its requirement forces BOTH at a battlefield; override `enumerateLegalTargetSets` with {unit at a battlefield} and {unit at a battlefield, any other unit}, and widen `enumerateLegalTargets` so the second survives the resolve-time filter.
   - The generator (`game_engine.cpp:3369`) turns any `count == 2` requirement into one-friendly-plus-one-enemy pairs, and emits a single target for any other count.
   - Singularity 105 and Piercing Light 346 always hit one of the caster's own units, and are not offered when either side has no target.
   - Deathgrip 484 and Smoke and Mirrors 645 (two friendly targets) are never offered from hand.
   - Bellows Breath 402 (`count = 3`) only ever gets one target.
 
 - [ ] **8.7 `requiresLegion()` and `requiresLevel()` are never read by the engine**
+  - Engine side — NOT A DEFECT: the two virtuals are card-wide flags, and no engine gate keyed on them would be right. Legion / Level are per-ability conditions (CR 812.1.b): Darius 243/547 gate only the play trigger, not the aura; Gustwalker 637 and Scorchclaw 578 put [Level] on the passive, not on [Hunt]; Concentrate 653 and Master Yi 621 use Level only for a cost reduction; Hand of Noxus 296 wants "a card", the units "another card". Cards that work gate themselves (16, 20, 217, 243, 547, 637, 660, 713). The engine was left alone.
+  - BLOCKED: needs card stream (card files are not this stream's). Hand of Noxus 296 `onActivate`: `if (cards_played_this_turn < 1) return;`. Vanguard Captain 218 `onTrigger` and Sun Disc 21 `onActivate`: `if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;`. Scorchclaw 578: remove the `xp < 3` gate from the [Hunt 2] trigger and add the [Level 3] passive (+1 [M] in `applyPassiveAura`, `entersReadyOnPlay` when xp >= 3), as Gustwalker 637 / Bandle Soldier 713 do. Undying Legion 587: needs a play-a-unit-from-trash path (today's `TrashReplayGrant` is spell-only) — larger, see §B.
+  - Suggest the helpers stream delete `requiresLegion` / `requiresLevel` / `levelThreshold` once those cards are done: nothing may read them.
   - Declared in `card.h:639`, called nowhere. Cards that rely on them have no gate: Hand of Noxus 296, Vanguard Captain 218, Sun Disc 21, Undying Legion 587, Scorchclaw 578. (Scrapyard Champion 20 and Trifarian Gloryseeker 217 check `cards_played_this_turn` themselves and work.)
 
 - [ ] **8.8 Keywords set on the def because the text mentions them**
@@ -84,13 +91,13 @@ cross-referenced.
   - `parseRepeatCost` rejects costs written as `[Repeat] — ...`: Square Up 579 and Curtain Call 743 never repeat.
   - A Repeat cost can be paid up to 32 times; CR 820.1.c.3 allows once.
 
-- [ ] **8.10 Unit [Reaction] is not implemented**
+- [x] **8.10 Unit [Reaction] is not implemented** — FIXED: new `Card::hasReactionTiming()` (the def keyword cannot be used: it is also set on ~25 permanents that only have a [Reaction] ability). `generateReactionPermanentActions` offers such units from hand or the Champion Zone in Closed States and showdowns, to the base or a controlled battlefield (CR 813.1.c.1, 813.3.a); `chain_manager.cpp` clears the Champion Zone on such a play. Shen 241, Janna 376, Rengar 348 and Sumpworks Map 647 opt in (`shared:` commit); tests: PlayCombatFixTest.ReactionUnit_IsOfferedInAClosedState_ToBaseAndControlledBattlefields, PlayCombatFixTest.ReactionUnit_IsOfferedAndPlayedInAShowdown, PlayCombatFixTest.ReactionUnit_PlayedFromTheChampionZoneInResponseToASpell
   - `Keyword::Reaction` is consulted only for spells (`game_engine.cpp:3260-3265`, `chain_manager.cpp:510-511`). Shen, Kinkou 241, Janna, Savior 376 and Rengar, Pouncing 348 cannot be played at Reaction timing (see also 02 item 2.7).
 
 - [ ] **8.11 `WhenYouChooseAFriendlyUnit` never fires on the chosen unit**
   - `trigger_manager.cpp:1105-1119` skips the chosen object. Jae Medarda 463 never draws; Irelia, Fervent 380 gets +1 only when a different unit is chosen.
 
-- [ ] **8.12 Quick-Draw gear does not attach when played in the main phase**
+- [x] **8.12 Quick-Draw gear does not attach when played in the main phase** — FIXED: `resolvePermanent` attaches [Quick-Draw] gear whenever it is played (CR 819.1.d), its controller choosing the unit as it lands; the Closed-State generator emits one play per gear (the per-unit targets it used to emit were dropped by `ChainManager` and never attached), and showdowns offer it too; tests: PlayCombatFixTest.QuickDraw_PlayedInTheMainPhase_AttachesToAUnitYouChoose, PlayCombatFixTest.QuickDraw_AtReactionTiming_IsOneActionAndAttaches
   - The attach needs a targeted play intent (`game_engine.cpp:2195`), which only `generateClosedStateActions` emits (`:3052-3068`). Long Sword 345, Sterak's Gage 379, Cloth Armor 387.
 
 - [ ] **8.13 `playIgnoringCost` leaves the card in its source zone** (extends 07 item 7.10)

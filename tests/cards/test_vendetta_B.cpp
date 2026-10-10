@@ -826,7 +826,10 @@ TEST_F(VendettaB, Vendetta_JayceHammer_ChoosesOneKeywordWhenReadied) {
     auto b = addUnit(P1, kJayceHammer, 0, 0);
     driveResumableTrigger(kJayceHammer, P1, b, pick_mode(1), exec, TriggerType::WhenIBecomeReady);
     EXPECT_TRUE(state.getObject(b).keywords.has(Keyword::Deflect));
-    EXPECT_EQ(state.getObject(b).deflect_value, 2);
+    // "this turn": the grant is not written into the printed deflect_value
+    // (it never expired from there); what an opponent must pay is [A][A].
+    EXPECT_EQ(exec.deflectCostFor(P2, b), 2);
+    EXPECT_EQ(state.getObject(b).deflect_value, 0);
     EXPECT_FALSE(state.getObject(b).keywords.has(Keyword::Assault));
 
     auto g = addUnit(P1, kJayceHammer, 0, 0);

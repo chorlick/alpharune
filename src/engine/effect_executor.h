@@ -76,6 +76,10 @@ public:
     void makeNewChoices(ChainItemId item) { if (rechoose_) rechoose_(item); }
 
     // ── Atomic game operations ──
+    // dealDamage, killObject, bounceToHand, buffUnit, stunUnit*, moveToBase and
+    // moveToBattlefield act only on an object that is on the board (it has a
+    // location); on anything else they do nothing. readyObject also accepts a
+    // legend or a battlefield. `objectExists` alone is not that check.
     void dealDamage(GameObjectId target, int amount, GameObjectId source);
     void killObject(GameObjectId target);
     /// Fill GameObject::last_known from the object's current state (called by
@@ -85,7 +89,11 @@ public:
     void bounceToHand(GameObjectId target);
     void giveTemporaryMight(GameObjectId target, int amount, int minimum = 0);
     void giveTemporaryKeyword(GameObjectId target, Keyword kw, int value);
-    void buffUnit(GameObjectId target);
+    /// Buff (CR 427): place a Buff counter on `target` if it has none. A unit
+    /// that already has one is not buffed (CR 427.1.b.1 / 702.3) unless its
+    /// Card::canHaveAnyNumberOfBuffs(). Returns true if a Buff was placed —
+    /// "if it was buffed this way" (CR 427.1.c).
+    bool buffUnit(GameObjectId target);
     void readyObject(GameObjectId target);
     void moveToBase(GameObjectId target);
     /// Unattach a single gear from the unit it's equipped to. Removes it from
@@ -94,7 +102,8 @@ public:
     /// its current location (on board, unattached). No-op if not attached.
     void unattachGear(GameObjectId gear);
     /// Move a unit to the given battlefield. Updates `location` + `zone`,
-    /// emits UnitMovedEvent. Caller is responsible for any contested-status
+    /// counts the move (`moves_this_turn`), brings attached gear along (CR
+    /// 719.3) and emits UnitMovedEvent. No-op if it is already there. Caller is responsible for any contested-status
     /// re-evaluation downstream (cleanup recomputes BF contested flags).
     /// `from_play` is false: this is a card-effect-driven move, not a play.
     void moveToBattlefield(GameObjectId target, BattlefieldId bf);
@@ -241,7 +250,8 @@ public:
     std::pair<GameObjectId, std::vector<GameObjectId>>
         revealUntil(PlayerId player, CardType condition);
     /// Play `card` from its current zone onto the board without paying
-    /// its costs. `location` is where the unit lands: if std::nullopt
+    /// its costs. The card is taken out of whichever hand, trash, banishment,
+    /// Champion Zone or Main Deck lists it. `location` is where the unit lands: if std::nullopt
     /// (default), the controller's base — back-compat for callers that
     /// don't need to surface a location choice. Per CR 355.2.a, when
     /// effects play a unit for free the controller still chooses base
@@ -258,8 +268,9 @@ public:
     /// (CR 356.1.b.2): the rest is paid through the normal cost path (cost
     /// modifiers, floating pool, rune choices). Payment is optional (CR 445.2):
     /// if it can't or won't be paid the card is not played and this returns
-    /// false — the caller leaves the card where it was. `card` must already be
-    /// out of the zone it is played from (as with playIgnoringCost).
+    /// false — the card is left where it was. On success it is taken out of
+    /// the zone it was played from (see playIgnoringCost), so callers should
+    /// not remove it themselves before they know the cost was paid.
     bool playPayingCost(PlayerId player, GameObjectId card,
                         std::optional<LocationId> location = std::nullopt,
                         EffectPlayCost cost = {});

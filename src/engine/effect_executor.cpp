@@ -1130,6 +1130,19 @@ void EffectExecutor::channelRunes(PlayerId player, int count, bool enter_exhaust
 // Add abilities (CR 429) — floating energy / power / universal power
 // ═══════════════════════════════════════════════════════════════════════════════
 
+bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
+    if (!agent_query_) return false;
+    Intent no;
+    no.type = IntentType::MakeChoice;
+    no.player = player;
+    no.chosen_value = 0;
+    no.choice_label = "No — " + label;
+    Intent yes = no;
+    yes.chosen_value = 1;
+    yes.choice_label = "Yes — " + label;
+    return agent_query_(player, {no, yes}).chosen_value.value_or(0) == 1;
+}
+
 GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
                                               const std::vector<GameObjectId>& objects) {
     if (objects.empty()) return kInvalidId;

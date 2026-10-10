@@ -529,15 +529,21 @@ public:
     /// (Rengar, Trophy Hunter 682.)
     virtual bool ambushToEnemyBattlefields() const { return false; }
 
-    /// Passive aura contribution. Called once per on-board instance of
-    /// this card during `recalculateAuras`. The card can mutate
-    /// game state to broadcast its passive effect to other cards or to
-    /// per-player counters (e.g., Karthus bumping
-    /// `PlayerState::deathknell_double_count`). This is the engine-
-    /// generic counterpart to the per-card aura text-matching in
-    /// `recalculateAuras` — overriding this is how a Card communicates
-    /// "I have an ongoing passive effect" without the engine needing
-    /// to know what the card does.
+    /// Passive aura contribution. Called during `recalculateAuras` ONCE
+    /// per (card, controller) that has at least one instance in play (on
+    /// board, or in the Legend Zone) — not once per instance, and without
+    /// saying which instance. The hook therefore applies the effect of EVERY
+    /// instance `controller` has in play: loop over the instances (or use
+    /// `forEachSelfOnce` in card_helpers.h), check each one's own condition
+    /// ("here", "while I'm at a battlefield", ...) and let copies stack.
+    /// A battlefield card is called once per battlefield slot holding it,
+    /// with that slot's controller (PlayerId::None if uncontrolled).
+    /// The card can mutate game state to broadcast its passive effect to
+    /// other cards or to per-player counters (e.g., Karthus bumping
+    /// `PlayerState::deathknell_double_count`); a `CostModifier` it pushes
+    /// is tagged `from_aura` by the engine and rebuilt every pass. This is
+    /// the ONLY way a card has a continuous effect: the engine does not
+    /// read aura wording out of `ability_text`.
     ///
     /// Counters mutated here MUST be reset to zero/default at the start
     /// of each `recalculateAuras` pass, since this hook re-applies
@@ -546,12 +552,22 @@ public:
     /// `applyPassiveAura` on each on-board card.
     virtual void applyPassiveAura(GameState& state, PlayerId controller) const {}
 
+    /// "Any amount of your damage is enough to kill enemy units." (CR
+    /// 142.4.c, Elder Dragon). While a unit that says so is on its
+    /// controller's board, any damage that player has marked on an enemy
+    /// unit is lethal (GameEngine::anyDamageIsLethalFor).
+    virtual bool anyDamageIsLethal() const { return false; }
+
     // ── Replacement effects ──
     /// Whether this card has a replacement effect (intercepts killUnit etc.).
     virtual bool hasReplacementEffect() const { return false; }
 
     /// Apply the replacement. Returns true if the replacement was applied
-    /// (the original action should be skipped).
+    /// (the original action should be skipped). Asked of the dying unit's
+    /// controller's cards in play (ctx.source = that card), and of the
+    /// battlefield card where the unit is dying (ctx.source = the
+    /// battlefield's card object, ctx.controller = the dying unit's
+    /// controller).
     virtual bool applyReplacement(CardContext& ctx,
                                   GameObjectId dying_unit) { return false; }
 

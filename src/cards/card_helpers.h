@@ -362,10 +362,11 @@ inline Card::FlowCost flow(int energy, int power = 0,
 }
 
 // ── Passive-aura plumbing ───────────────────────────────────────────────────
-// Card::applyPassiveAura is invoked once per on-board instance of the card but
-// is not told WHICH instance, so implementations loop over every instance. A
-// marker effect makes each instance get its effect once per aura pass no
-// matter how many copies are in play.
+// Card::applyPassiveAura is invoked once per (card, controller) with an
+// instance in play and is not told WHICH instance, so implementations loop
+// over every instance. A marker effect makes each instance get its effect once
+// per aura pass no matter how many copies are in play (or how often the hook
+// is called).
 constexpr int kAuraOnceMarker = -777;
 
 template <typename Fn>

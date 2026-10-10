@@ -173,6 +173,12 @@ struct PlayerState {
         bool affects_friendly_only = false; // restricts to plays by the modifier's controller
         bool affects_enemy_only = false;    // restricts to plays by the opponent
         bool gear_only = false;             // applies only to gear plays (Ornn's Forge)
+        bool units_only = false;            // applies only to unit plays (Vaults of Helia)
+        std::string required_tag;           // applies only to cards with this tag (Herald of Scales: "Dragon")
+        // Pushed by a Card::applyPassiveAura hook, i.e. a continuous effect.
+        // Set by GameEngine::recalculateAuras (cards do not set it), which
+        // drops and rebuilds these on every aura pass.
+        bool from_aura = false;
         bool first_gear_per_turn = false;   // applies only to the FIRST gear played this
                                             // turn (consult gears_played_this_turn == 0)
     };

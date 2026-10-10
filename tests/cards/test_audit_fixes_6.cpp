@@ -443,8 +443,8 @@ TEST_F(AuditFix6Test, Nami_PlayNoStunWithoutCalmRune) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
     // No Calm rune to pay [G].
 
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kNami, P1, self, TriggerType::WhenYouPlayMe, exec, {enemy});
+    // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
+    fireTriggerThroughEngine(self, TriggerType::WhenYouPlayMe);
 
     EXPECT_FALSE(state.getObject(enemy).is_stunned);
 }
@@ -568,26 +568,27 @@ TEST_F(AuditFix6Test, SmokeMirrors_FewerThanTwoTargetsNoOp) {
 
 // ─── [695] Blast Cone ───────────────────────────────────────────────────────
 
-// WhenYouPlayThis: moves an enemy unit to base. Direct confirmOptional = yes.
+// WhenYouPlayThis: moves an enemy unit to base when the controller says yes.
 TEST_F(AuditFix6Test, BlastCone_PlayMovesEnemyToBase) {
     auto gear = addGear(P1, kBlastCone, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kBlastCone, P1, gear, TriggerType::WhenYouPlayThis, exec, {enemy});
+    // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     // Enemy moved to its own base (moveToBase uses controller's base).
     EXPECT_TRUE(state.getObject(enemy).isAtBase());
 }
 
-// After moving, the second confirmOptional (also "yes" by default) exhausts
-// Blast Cone and stuns the moved enemy.
+// After moving, Blast Cone exhausts and stuns the moved enemy.
 TEST_F(AuditFix6Test, BlastCone_ExhaustsToStunMovedEnemy) {
     auto gear = addGear(P1, kBlastCone, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kBlastCone, P1, gear, TriggerType::WhenYouPlayThis, exec, {enemy});
+    // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     EXPECT_TRUE(state.getObject(gear).is_exhausted);
     EXPECT_TRUE(state.getObject(enemy).is_stunned);
@@ -597,8 +598,7 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustsToStunMovedEnemy) {
 TEST_F(AuditFix6Test, BlastCone_NoEnemyNoOp) {
     auto gear = addGear(P1, kBlastCone, /*at_bf=*/0);
 
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kBlastCone, P1, gear, TriggerType::WhenYouPlayThis, exec, {});
+    fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis);
 
     EXPECT_FALSE(state.getObject(gear).is_exhausted);
 }
@@ -609,8 +609,9 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustedCannotStun) {
     state.getObject(gear).is_exhausted = true;
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kBlastCone, P1, gear, TriggerType::WhenYouPlayThis, exec, {enemy});
+    // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     EXPECT_TRUE(state.getObject(enemy).isAtBase());     // still moved
     EXPECT_FALSE(state.getObject(enemy).is_stunned);    // can't stun (exhausted)

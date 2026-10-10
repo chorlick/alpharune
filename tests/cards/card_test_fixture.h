@@ -43,6 +43,24 @@
 ///   FirstChoiceAgent       — always picks legal[0]
 ///   ScriptedChoiceAgent    — pre-loaded queue of choice-pickers
 ///   PickByPredicateAgent   — picks the first Intent matching a predicate
+///   EnginePathAgent        — for the engine-driven helpers: passes priority,
+///                            answers MakeChoice prompts, records them
+///
+/// THE REAL ENGINE PATH (use this for anything a card does when it is played
+/// or when one of its triggers fires):
+///
+///   playThroughEngine(card, agent)              — play a card from hand
+///   fireTriggerThroughEngine(src, trigger, agent) — one trigger of an object
+///   resolveThroughEngine(cause, agent)          — whatever `cause` triggers
+///
+/// These run a real GameEngine on the fixture's `state`: the trigger is put
+/// on the chain by TriggerManager, finalized (choices at finalization, CR
+/// 383.3), offered for responses and resolved by the engine, which is the
+/// only thing that decides what `targets` a card's onTrigger receives (today:
+/// none). The direct-call helpers further down (invokeOnResolve,
+/// fireTriggerAs, driveResumable*) call the card's callback themselves; they
+/// are fine for poking at one branch of a card, but a test that passes with
+/// them and has no engine-path counterpart does not show the card works.
 ///
 /// Non-goals:
 ///   - Driving a full GameEngine turn loop. Use the existing batch runner
@@ -58,12 +76,14 @@
 #include "core/intent.h"
 #include "engine/chain_manager.h"
 #include "engine/effect_executor.h"
+#include "engine/game_engine.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -124,6 +144,71 @@ public:
                         const std::vector<Intent>& legal) override {
         if (cursor < queue.size()) return queue[cursor++](legal);
         return legal.empty() ? Intent{} : legal.front();
+    }
+};
+
+/// Agent for the engine-driven fixture helpers. Whenever the engine offers
+/// priority or focus it passes; a MakeChoice prompt (a "may", a mode, an X, a
+/// target) is recorded in `prompts` and answered by `pick` (first option when
+/// `pick` is null). Anything else gets the first legal action.
+class EnginePathAgent : public AgentInterface {
+public:
+    using Picker = std::function<Intent(const std::vector<Intent>&)>;
+    Picker pick;
+    std::vector<std::vector<Intent>> prompts;   // every MakeChoice prompt, in order
+
+    EnginePathAgent() = default;
+    explicit EnginePathAgent(Picker p) : pick(std::move(p)) {}
+
+    Intent selectAction(const GameState&,
+                        const std::vector<Intent>& legal) override {
+        if (legal.empty()) return Intent{};
+        const bool is_choice = std::all_of(legal.begin(), legal.end(),
+            [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+        if (is_choice) {
+            prompts.push_back(legal);
+            return pick ? pick(legal) : legal.front();
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+        return legal.front();
+    }
+
+    /// True if any prompt offered `id` as an object to choose.
+    bool wasOffered(GameObjectId id) const {
+        for (const auto& p : prompts)
+            for (const auto& i : p)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return true;
+        return false;
+    }
+
+    // ── Pickers ──
+    /// Choose object `id` when offered; say yes (1) to a yes/no; otherwise first.
+    static Picker choosing(GameObjectId id) {
+        return [id](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+            for (const auto& i : legal)
+                if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+            return legal.front();
+        };
+    }
+    /// Answer the n-th MakeChoice prompt with the option whose chosen_value is
+    /// values[n] (a yes/no: 1/0; a mode or an X: its number), or — for a
+    /// prompt of objects — whose object id is values[n]. First option once the
+    /// script runs out or nothing matches.
+    static Picker script(std::vector<int> values) {
+        auto n = std::make_shared<size_t>(0);
+        return [values = std::move(values), n](const std::vector<Intent>& legal) {
+            if (*n >= values.size()) return legal.front();
+            const int want = values[(*n)++];
+            for (const auto& i : legal)
+                if (i.chosen_value.has_value() && *i.chosen_value == want) return i;
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() &&
+                    i.chosen_objects.front() == static_cast<GameObjectId>(want)) return i;
+            return legal.front();
+        };
     }
 };
 
@@ -386,7 +471,96 @@ protected:
         return true;
     }
 
-    // ── Card invocation helpers ──
+    // ── The real engine path ──
+    //
+    // Each helper builds a GameEngine around a copy of `state`, runs, and
+    // copies the result back, so the scenario is built and asserted on with
+    // the same `state` / object ids / helpers as every other test. The engine
+    // (and its TriggerManager subscription on `events`) lives only for the
+    // call. `agent` decides for P1 and `p2_agent` for P2; a null agent passes
+    // priority and takes the first option of any prompt.
+
+    /// Run `body(engine)` on a real engine holding the fixture's state, in
+    /// `turn_player`'s main phase with nothing on the chain yet.
+    void withEngine(const std::function<void(GameEngine&)>& body,
+                    AgentInterface* p1_agent = nullptr,
+                    AgentInterface* p2_agent = nullptr,
+                    PlayerId turn_player = P1) {
+        EnginePathAgent default_p1, default_p2;
+        GameEngine engine(card_db, events, card_registry);
+        engine.mutableState() = state;
+        auto& st = engine.mutableState();
+        if (st.turn.phase == TurnPhase::Setup) {
+            st.turn.phase = TurnPhase::MainPhase;
+            st.turn.turn_player = turn_player;
+        }
+        engine.testHook_setAgents(p1_agent ? p1_agent : &default_p1,
+                                  p2_agent ? p2_agent : &default_p2);
+        body(engine);
+        state = engine.mutableState();
+    }
+
+    /// Play `card` from its owner's hand the way a game does: pay its cost,
+    /// put it on the chain, resolve it, and resolve every trigger that causes
+    /// (its own "When you play me/this" included). A unit or gear goes to
+    /// `where` (default: its controller's base). With `fund` the cost is
+    /// covered by floating Energy / [A] added here, so no rune has to be set
+    /// up or picked; pass false to pay from the runes the test laid out.
+    void playThroughEngine(GameObjectId card, AgentInterface* p1_agent = nullptr,
+                           std::optional<LocationId> where = std::nullopt,
+                           AgentInterface* p2_agent = nullptr, bool fund = true) {
+        ASSERT_TRUE(state.objectExists(card));
+        const PlayerId player = state.getObject(card).controller;
+        ASSERT_TRUE(inHand(player, card)) << "playThroughEngine: the card must be in hand";
+        if (fund && state.getObject(card).card_def_id != kInvalidId) {
+            const auto& def = card_db.get(state.getObject(card).card_def_id);
+            state.player(player).rune_pool.energy += def.energy_cost;
+            state.player(player).rune_pool.universal_power += def.power_cost;
+        }
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = player;
+        play.card = card;
+        if (where.has_value()) play.play_location = where;
+        else if (!state.getObject(card).isSpell())
+            play.play_location = LocationId{BaseLocation{player}};
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); },
+                   p1_agent, p2_agent, player);
+    }
+
+    /// Put `source`'s triggered ability for `trigger` on the chain as if its
+    /// event had just happened (TriggerManager::queueTrigger), then let the
+    /// engine finalize and resolve it. `subject` is the event's object (the
+    /// unit that died, the card that was played) where the trigger has one.
+    /// This is the engine-path replacement for fireTriggerAs: it takes no
+    /// targets, because the engine is what supplies them.
+    void fireTriggerThroughEngine(GameObjectId source, TriggerType trigger,
+                                  AgentInterface* p1_agent = nullptr,
+                                  GameObjectId subject = kInvalidId,
+                                  AgentInterface* p2_agent = nullptr) {
+        ASSERT_TRUE(state.objectExists(source));
+        const PlayerId controller = state.getObject(source).controller;
+        withEngine([&](GameEngine& e) {
+            ASSERT_TRUE(e.testHook_executor().canQueueTriggers());
+            e.testHook_executor().queueTriggeredAbility(source, controller, trigger, subject);
+            e.testHook_runChain();
+        }, p1_agent, p2_agent, controller);
+    }
+
+    /// Do `cause` with the engine's executor (kill a unit, move one, deal
+    /// damage...), then resolve every trigger the resulting events put on the
+    /// chain. For triggers whose event is easier to make happen than to name.
+    void resolveThroughEngine(const std::function<void(EffectExecutor&, GameState&)>& cause,
+                              AgentInterface* p1_agent = nullptr,
+                              AgentInterface* p2_agent = nullptr,
+                              PlayerId turn_player = P1) {
+        withEngine([&](GameEngine& e) {
+            cause(e.testHook_executor(), e.mutableState());
+            e.testHook_runChain();
+        }, p1_agent, p2_agent, turn_player);
+    }
+
+    // ── Card invocation helpers (direct calls — NOT the engine path) ──
 
     /// Drive a Card's onResolve directly, bypassing ChainManager. Use this
     /// for one-shot cards (no requestChoice). For resumable cards, use
@@ -448,14 +622,20 @@ protected:
 
     /// Fire a card's onTrigger directly with a specific firing trigger (for
     /// multi-trigger cards). No resume loop — use for non-resumable triggers.
+    ///
+    /// Takes no targets: no triggered ability is handed targets by
+    /// TriggerManager / the chain (a trigger's target is a choice made at
+    /// finalization, CR 383.3), so feeding some here tested a path that does
+    /// not exist — that is how the target-less-trigger cards (plans/07 item
+    /// 7.1) passed their tests. For a trigger that chooses something use
+    /// fireTriggerThroughEngine / playThroughEngine.
     void fireTriggerAs(CardDefId def_id, PlayerId controller, GameObjectId source,
-                       TriggerType firing, EffectExecutor& exec,
-                       const std::vector<GameObjectId>& targets = {}) {
+                       TriggerType firing, EffectExecutor& exec) {
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
         CardContext ctx{state, events, exec, controller, source};
         ctx.firing_trigger = firing;
-        card->onTrigger(ctx, targets);
+        card->onTrigger(ctx, {});
     }
 
     /// Drive a resumable Card through case 0 → case 1 manually using

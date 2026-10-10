@@ -15,6 +15,8 @@ namespace {
 class JannaSavior : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Reaction] (Play any time ...)" — the card itself has Reaction.
+    bool hasReactionTiming() const override { return true; }
 
     // "When you play me, heal your units here, then move up to one enemy unit
     // from here to its base." "here" = the battlefield I was played to.

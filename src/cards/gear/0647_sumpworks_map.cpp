@@ -14,6 +14,8 @@ namespace {
 class SumpworksMap : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Reaction] (Play any time ...)" — the card itself has Reaction.
+    bool hasReactionTiming() const override { return true; }
     // "[Reaction]"/"[Temporary]" are engine-handled. "When an opponent scores,
     // draw 1." fires via WhenOpponentScores (onScore fans out to the non-scoring
     // player's cards). When it fires, ctx.controller is this gear's owner.

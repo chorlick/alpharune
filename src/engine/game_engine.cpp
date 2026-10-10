@@ -2138,6 +2138,10 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                     events_.emit(ObjectStateChangedEvent{item.source,
                                                          "gear_ability_used"});
                 }
+            } else if (item.equipped_unit != kInvalidId) {
+                // An Equipment's "When I ..." ability (TriggerManager::
+                // queueEquippedTrigger): the gear's card, for the equipped unit.
+                card->onEquippedTrigger(ctx, item.equipped_unit, effective_targets);
             } else {
                 card->onTrigger(ctx, effective_targets);
             }

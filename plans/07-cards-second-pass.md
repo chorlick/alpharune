@@ -60,7 +60,7 @@ subject") describes something nothing implements.
   - `gear/0063_spirit_s_refuge.cpp:18` — the on-play buff never happens; the passive Deflect aura works.
   - `gear/0695_blast_cone.cpp:45-50` — moves `find_enemy()`, the first enemy in map order, with no choice; can be a unit already at base.
   - `legends/0744_pridestalker.cpp:23-32` — assumes the played unit arrives in `targets[0]`; the fallback buffs the first friendly unit at a battlefield in hash order, or nothing.
-- [ ] **7.3 Tests never exercise this path** [confirmed]
+- [x] **7.3 Tests never exercise this path** [confirmed] — FIXED: `card_test_fixture.h` has a real-engine entry point (`withEngine`, `playThroughEngine`, `fireTriggerThroughEngine`, `resolveThroughEngine`, `EnginePathAgent`) that runs a `GameEngine` on the fixture state (TriggerManager → chain → finalize → resolve); `fireTriggerAs` lost its `targets` parameter and its 6 hand-fed callers (Blast Cone ×3, Nami, Morgana ×2) were migrated and pass; test: `EnginePathTest.*` (9 tests), `Plan07Item71/DISABLED_TargetedTriggerTest` (one row per 7.1 card, red until the card is fixed: enable a row by fixing its card)
   - No test plays any BROKEN card through the real engine. `card_test_fixture.h:451-459` (`fireTriggerAs(..., {target})`) calls `onTrigger` with hand-fed targets, a path the engine never produces. Blast Cone's tests (`tests/cards/test_audit_fixes_6.cpp:577,590,613`) rely on it.
   - Fix direction: make the fixture queue the trigger through `TriggerManager` / the chain, or drop the `targets` argument from the helper.
 - Decision needed: fix per card (`pickTarget` + `kFinalizeTrigger`), or have the engine choose targets at finalization for any trigger whose `getTargetRequirements().count > 0`.
@@ -148,6 +148,7 @@ subject") describes something nothing implements.
 - [ ] **7.21** `spells/0248_stormbringer.cpp:55-61` — the battlefield is not chosen (code comment admits it). [confirmed]
 - [ ] **7.22** `spells/0511_defiant_dance.cpp:40` — second target skipped when the first mistargets (CR 359.3.e.5). [confirmed]
 - [ ] **7.23** `units/0828_riven_shattered.cpp:33-34` + `weaponmaster_base.h:26-74` — "you may [Equip]" is forced and takes the first Equipment found. [confirmed]
+  - Done by stream helpers in `weaponmaster_base.h` (its file): the base asks the "may" (`confirmOptional`) and the Equipment (`pickTarget`), and does nothing when the unit is no longer on the board (also the `weaponmaster_base.h` part of 7.26); tests: `EnginePathTest.WeaponmasterIsAMayWithAChoiceOfEquipment`, `.WeaponmasterDoesNotEquipAUnitThatLeftTheBoard`. Not ticked: owned by a card stream (check Riven and the 5 other `WeaponmasterUnit` cards; Yone 544 and Sentinel Adept 331 have their own copies). The cost (7.7) is still not charged: it needs an equip-cost descriptor on `Card`.
 - [ ] **7.24 No target choice; first match is taken** [confirmed]
   - `units/0674_irresistible_faefolk.cpp:28-38,48`, `units/0067_blitzcrank_impassive.cpp:41-51,60`, `units/0583_grim_apothecary.cpp:21-29,39`.
   - `units/0461_fizz_trickster.cpp:25-38`, `units/0112_kai_sa_evolutionary.cpp:26-38` — most recent eligible spell; fizzles if its Power is unaffordable even when an older one is.
@@ -179,13 +180,15 @@ in those executor functions would close most of this section.
 
 ## F. Shared-helper and bookkeeping gaps
 
-- [ ] **7.29 `commitChoice` flags off-board picks** [plausible]
+- [x] **7.29 `commitChoice` flags off-board picks** [plausible] — FIXED: confirmed (Insightful Investigator picks from the opponent's hand through `pickTarget`); `chose_enemy_unit_this_turn` is set only for a unit on the board (CR 141.1.a); test: `ChoiceHelperTest.PickingAnEnemyUnitCardOutOfAHandIsNotChoosingAnEnemyUnit`
   - `card.cpp:331-333` sets `chose_enemy_unit_this_turn` for any enemy `isUnit()` object with no location check. Insightful Investigator 697:50 (opponent's hand), Kharox 901:40 (their trash), Decree of Strength 872:39, Bone Skewer 701:58.
 - [ ] **7.30 Hand-rolled enemy picks bypass Deflect and chosen-object bookkeeping** [plausible]
   - `spells/0927_shuriken_flip.cpp:54,65`, `spells/0894_decree_of_discord.cpp:44`, `spells/0937_acceleration_gate.cpp:42`, plus the two in 7.11. `objChoice` / `takenObject` do not charge Deflect, push to `chosen_objects` or set `chose_enemy_unit_this_turn`.
+  - HELPER DONE (stream helpers): `Card::offerableChoices(ctx, candidates)` and `Card::commitChosenObject(ctx, id)` expose exactly what `pickTarget` does; test: `ChoiceHelperTest.HandBuiltChoicesCanChargeDeflectAndRecordTheChoice`. `takenObject` cannot do it by itself: it is also used for picks that are not the controller choosing an object (sorting cards, the opponent's own pick).
+  - STILL OPEN, card streams — recipe for the 5 cards (927, 894, 937, 892, 935): prefer `pickTarget`; if the hand-built prompt stays, build the options from `offerableChoices(ctx, list)` and call `commitChosenObject(ctx, picked)` once, in the branch that consumes the answer (`takenObject`).
 - [ ] **7.31 Banish by direct zone write** [confirmed]
   - `spells/0115_promising_future.cpp:75-80`, `units/0491_rek_sai_swarm_queen.cpp:63-65`, `legends/0553_void_burrower.cpp:118-121` — skip `cards_banished_this_turn` and the `"banished_owned"` event.
-- [ ] **7.32 `pickTargetPair` partial result treated as complete** [plausible, latent]
+- [x] **7.32 `pickTargetPair` partial result treated as complete** [plausible, latent] — FIXED: confirmed in the helper; while waiting for the second pick `pickTargetPair` now returns `{kInvalidId, kInvalidId}` (as its doc always said), so Azir and Flash are correct without edits; `{a, kInvalidId}` only comes back finished (`resume_point` 13); test: `ChoiceHelperTest.PickTargetPairReturnsNothingWhileWaitingForTheSecondPick`, `.PickTargetPairWithNoSecondTargetIsAFinishedPartialPair`
   - `units/0373_azir_ascendant.cpp:95-118` and `spells/0309_flash.cpp:46-50` only check for both ids invalid; at `resume_point` 12 the helper returns `{a, kInvalidId}`, so the first half is acted on, then again on re-entry. Masked by the finalize pass; reachable when it is skipped (spell played by an effect, or after `makeNewChoicesFor`, e.g. Rebuttal 939). Kinkou Monk, Zaun Punk and Profiteer check 10/12 explicitly.
 - [ ] **7.33 `spells/0071_party_favors.cpp:29-32,40` — options differ only in `ability_index`** [confirmed]
   - Both encode to MakeChoice slot 0 (`action_vocab.cpp:173-190`), so under OpenSpiel the opponent can never choose Runes. Belongs with 01 item 1.12.

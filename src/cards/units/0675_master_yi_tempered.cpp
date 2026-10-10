@@ -29,7 +29,7 @@ public:
         if (state.player(controller).xp < 6) return;
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId()) continue;
-            if (obj.controller != controller) continue;
+            if (obj.controller != controller || !obj.location.has_value()) continue;
             GameObject::AuraEffect deflect;
             deflect.source = id;
             deflect.keyword = Keyword::Deflect;

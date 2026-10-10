@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,16 +15,17 @@ namespace {
 class SoulShepherd : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Your token units have +1 [M]." Called once per on-board Soul Shepherd
-    // instance during aura recalc, so two copies correctly stack to +2.
+    // "Your token units have +1 [M]." Each Soul Shepherd on board gives its
+    // own +1, so two copies stack to +2.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller != controller) continue;
-            if (!obj.isToken() || !obj.location.has_value()) continue;
-            GameObject::AuraEffect ae;
-            ae.might_bonus = 1;
-            obj.aura_effects.push_back(ae);
-        }
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (!self.location.has_value()) return;
+            for (auto& [id, obj] : state.objects) {
+                if (!obj.isUnit() || obj.controller != controller) continue;
+                if (!obj.isToken() || !obj.location.has_value()) continue;
+                auraMight(obj, sid, 1);
+            }
+        });
     }
 private:
     const CardDef def_ = [] {

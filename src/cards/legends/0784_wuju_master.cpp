@@ -17,13 +17,8 @@ public:
     // "[Level 6] Your units have +1 [M]."   (inline xp>=6 gate)
     // "[Level 11] Your units enter ready."  (inline xp>=11 gate — see note)
     //
-    // NOTE: this matches the Purifier (#502) legend-aura pattern, BUT
-    // GameEngine::recalculateAuras only calls applyPassiveAura on objects with
-    // a board `location` (Step 1b skips LegendZone objects). Legends have no
-    // location, so this hook does not currently fire for legends — the Level-6
-    // buff will not take effect until the engine extends the aura pass to
-    // legend-zone cards. Code is left in place so it activates for free once
-    // that engine gap is closed.
+    // Legends broadcast from the Legend Zone: recalculateAuras calls this hook
+    // for LegendZone objects as well as on-board ones.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Confirm an on-board (LegendZone) instance of this legend.
         bool present = false;

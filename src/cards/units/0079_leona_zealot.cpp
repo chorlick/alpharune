@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -15,11 +16,27 @@ class LeonaZealot : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "If an opponent's score is within 3 points of the Victory Score, I
-    // enter ready." (Stun -8M aura handled by the generic aura parser.)
+    // enter ready."
     bool entersReadyOnPlay(const GameState& state,
                            PlayerId controller) const override {
         int vs = state.mode.victory_score;
         return state.player(opponent(controller)).score >= vs - 3;
+    }
+    // "Stunned enemy units here have -8 [M], to a minimum of 1 [M]."
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            auto my_bf = self.battlefieldId();
+            if (!my_bf) return;  // "here" — only while I'm at a battlefield
+            for (auto& [uid, u] : state.objects) {
+                if (!u.isUnit() || u.controller == controller) continue;  // enemy
+                if (!u.is_stunned || u.battlefieldId() != my_bf) continue;
+                GameObject::AuraEffect ae;
+                ae.source = sid;
+                ae.might_bonus = -8;
+                ae.might_minimum = 1;
+                u.aura_effects.push_back(ae);
+            }
+        });
     }
 private:
     const CardDef def_ = [] {

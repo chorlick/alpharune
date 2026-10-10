@@ -18,8 +18,10 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Each on-board Karthus adds one extra Deathknell fire. Two
         // Karthus on board → 1 base + 2 extras = 3 total fires per
-        // Deathknell death event.
-        state.player(controller).deathknell_double_count++;
+        // Deathknell death event. (The hook is called once for all of them.)
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject& self) {
+            if (self.location.has_value()) state.player(controller).deathknell_double_count++;
+        });
     }
 private:
     const CardDef def_ = [] {

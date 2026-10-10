@@ -4645,6 +4645,21 @@ bool GameEngine::canGainWinningPointViaConquer(PlayerId player) const {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void GameEngine::recalculateAuras() {
+    // Step 0: Drop the cost modifiers the previous aura pass produced. A
+    // CostModifier pushed from Card::applyPassiveAura is a continuous effect:
+    // like aura_effects it is rebuilt from scratch on every pass (Ornn's Forge,
+    // Eager Apprentice, Herald of Scales, Vex). Modifiers pushed by resolved
+    // effects ("this turn", "your next spell") are not tagged and stay.
+    for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
+        auto& mods = state_.player(pid).cost_modifiers;
+        mods.erase(std::remove_if(mods.begin(), mods.end(),
+                       [](const PlayerState::CostModifier& m) { return m.from_aura; }),
+                   mods.end());
+    }
+    const size_t standing_mods[2] = {
+        state_.player(PlayerId::Player1).cost_modifiers.size(),
+        state_.player(PlayerId::Player2).cost_modifiers.size()};
+
     // Step 1: Clear all aura effects from all objects
     for (auto& [id, obj] : state_.objects) {
         obj.aura_effects.clear();
@@ -4717,6 +4732,11 @@ void GameEngine::recalculateAuras() {
     // flag set; off-board cards stay default-false. Cheap O(n) pass over
     // GameState::objects; collocated with aura recalc so all "static
     // attributes of on-board cards" get refreshed in one place.
+    // applyPassiveAura is not told which instance it is called for, so a
+    // card's hook covers every instance `controller` has in play. It is
+    // therefore called ONCE per (card, controller) per pass — calling it per
+    // instance applied every copy's effect once per copy (two Garens: +4).
+    std::vector<std::pair<CardDefId, PlayerId>> aura_applied;
     for (auto& [id, obj] : state_.objects) {
         obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
         // On-board cards AND legends (LegendZone, no location) broadcast their
@@ -4731,10 +4751,15 @@ void GameEngine::recalculateAuras() {
             obj.untargetable_by_enemy = true;
         }
 
-        // Card-defined passive auras — each on-board card (or legend) gets a
-        // chance to broadcast its passive effect (Karthus bumps the
-        // controller's deathknell_double_count, future cards add their own).
+        // Card-defined passive auras — each card with an on-board instance
+        // (or legend) gets a chance to broadcast its passive effect (Karthus
+        // bumps the controller's deathknell_double_count, future cards add
+        // their own).
         if (card) {
+            const std::pair<CardDefId, PlayerId> key{obj.card_def_id, obj.controller};
+            if (std::find(aura_applied.begin(), aura_applied.end(), key) != aura_applied.end())
+                continue;
+            aura_applied.push_back(key);
             card->applyPassiveAura(state_, obj.controller);
         }
     }
@@ -4754,303 +4779,16 @@ void GameEngine::recalculateAuras() {
         }
     }
 
-    // Step 2: Scan all objects on board for aura abilities
-    for (auto& [src_id, src] : state_.objects) {
-        if (!src.location.has_value() && src.zone != ZoneType::LegendZone) continue;
-        if (src.card_def_id == kInvalidId) continue; // skip tokens without CardDef
-        // Battlefields give their auras through Card::applyPassiveAura (the
-        // loop above). A token battlefield's card object has a location, so
-        // without this its text would also be read as a unit's "here" aura.
-        if (src.card_type == CardType::Battlefield) continue;
-
-        const auto& def = card_db_.get(src.card_def_id);
-        auto& text = def.ability_text;
-        if (text.empty()) continue;
-
-        // Parse aura from ability_text (lowercase matching)
-        std::string lower;
-        lower.reserve(text.size());
-        for (char c : text) lower += std::tolower(c);
-
-        // Strip parenthetical for matching
-        std::string clean;
-        int depth = 0;
-        for (char c : lower) {
-            if (c == '(') depth++;
-            else if (c == ')') { if (depth > 0) depth--; }
-            else if (depth == 0) clean += c;
-        }
-
-        // Determine aura scope and effect
-        struct AuraDef {
-            bool is_keyword = false;
-            Keyword keyword = Keyword::Count;
-            int keyword_value = 0;
-            int might_mod = 0;
-            int might_min = 0;
-            bool friendly = false;
-            bool enemy = false;
-            bool here_only = false;    // "here" = same battlefield as source
-            bool other_only = false;   // "other" = excludes self
-            bool all_friendly = false; // all friendly units anywhere
-            bool tag_filter = false;
-            std::string required_tag;
-            bool stunned_only = false;
-        };
-
-        std::vector<AuraDef> auras;
-
-        // "Other friendly units here have [Assault]"
-        auto findAura = [&](const std::string& pattern, AuraDef base) -> bool {
-            auto pos = clean.find(pattern);
-            if (pos == std::string::npos) return false;
-            auto clause = clean.substr(pos, 80);
-
-            // Determine keyword or might
-            if (clause.find("[assault]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Assault; base.keyword_value = 1;
-            } else if (clause.find("[shield]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Shield; base.keyword_value = 1;
-            } else if (clause.find("[ganking]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Ganking;
-            } else if (clause.find("[vision]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Vision;
-            } else if (clause.find("[deflect]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Deflect; base.keyword_value = 1;
-            } else if (clause.find("+") != std::string::npos && clause.find("[m]") != std::string::npos) {
-                // Extract +N
-                auto plus = clause.find('+');
-                int val = 0;
-                for (size_t i = plus + 1; i < clause.size() && std::isdigit(clause[i]); ++i)
-                    val = val * 10 + (clause[i] - '0');
-                if (val == 0) val = 1;
-                base.might_mod = val;
-            } else if (clause.find("-") != std::string::npos && clause.find("[m]") != std::string::npos) {
-                auto minus = clause.find('-');
-                int val = 0;
-                for (size_t i = minus + 1; i < clause.size() && std::isdigit(clause[i]); ++i)
-                    val = val * 10 + (clause[i] - '0');
-                if (val == 0) val = 1;
-                base.might_mod = -val;
-                // Check for minimum
-                auto min_pos = clause.find("minimum of");
-                if (min_pos != std::string::npos) {
-                    int m = 0;
-                    for (size_t i = min_pos + 10; i < clause.size() && std::isdigit(clause[i]); ++i)
-                        m = m * 10 + (clause[i] - '0');
-                    if (m == 0) m = 1;
-                    base.might_min = m;
-                }
-            } else {
-                return false; // unrecognized aura effect
-            }
-
-            auras.push_back(base);
-            return true;
-        };
-
-        // Match patterns (most specific first)
-        AuraDef d;
-
-        // "Other friendly units here have ..."
-        d = {}; d.friendly = true; d.here_only = true; d.other_only = true;
-        findAura("other friendly units here have", d);
-
-        // "Other friendly units have ..."
-        d = {}; d.friendly = true; d.all_friendly = true; d.other_only = true;
-        findAura("other friendly units have", d);
-
-        // "Your units have ..."
-        d = {}; d.friendly = true; d.all_friendly = true;
-        findAura("your units have", d);
-
-        // "Units here have ..."
-        d = {}; d.here_only = true;
-        findAura("units here have", d);
-
-        // "Stunned enemy units here have ..."
-        d = {}; d.enemy = true; d.here_only = true; d.stunned_only = true;
-        if (clean.find("stunned enemy units here have") != std::string::npos) {
-            findAura("stunned enemy units here have", d);
-        }
-
-        // "Your Mechs each have [Assault]"
-        if (clean.find("your mechs each have") != std::string::npos) {
-            d = {}; d.friendly = true; d.all_friendly = true; d.tag_filter = true;
-            d.required_tag = "Mech";
-            findAura("your mechs each have", d);
-        }
-
-        // Step 3: Apply each aura to matching targets
-        for (auto& aura : auras) {
-            for (auto& [tgt_id, tgt] : state_.objects) {
-                if (!tgt.isUnit()) continue;
-                if (!tgt.location.has_value()) continue;
-
-                // Self-exclusion
-                if (aura.other_only && tgt_id == src_id) continue;
-
-                // Ownership filter
-                if (aura.friendly && tgt.controller != src.controller) continue;
-                if (aura.enemy && tgt.controller == src.controller) continue;
-
-                // Location filter
-                if (aura.here_only) {
-                    auto src_bf = src.battlefieldId();
-                    auto tgt_bf = tgt.battlefieldId();
-                    // Source must be at a battlefield, and target at the same one
-                    if (!src_bf || !tgt_bf || *src_bf != *tgt_bf) {
-                        // Also check if source IS the battlefield card
-                        bool src_is_bf = src.isBattlefield();
-                        if (src_is_bf) {
-                            // Find which BF this card belongs to
-                            bool match = false;
-                            for (auto& bf : state_.battlefields) {
-                                if (bf.card_object_id == src_id) {
-                                    auto tbf = tgt.battlefieldId();
-                                    if (tbf && *tbf == bf.id) match = true;
-                                    break;
-                                }
-                            }
-                            if (!match) continue;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-
-                // Tag filter
-                if (aura.tag_filter) {
-                    bool has_tag = false;
-                    for (auto& tag : tgt.tags) {
-                        if (tag == aura.required_tag) { has_tag = true; break; }
-                    }
-                    if (!has_tag) continue;
-                }
-
-                // Stunned filter
-                if (aura.stunned_only && !tgt.is_stunned) continue;
-
-                // Apply the aura effect
-                GameObject::AuraEffect ae;
-                ae.source = src_id;
-                ae.might_bonus = aura.might_mod;
-                ae.might_minimum = aura.might_min;
-                if (aura.is_keyword) {
-                    ae.keyword = aura.keyword;
-                    ae.keyword_value = aura.keyword_value;
-                }
-                tgt.aura_effects.push_back(ae);
-            }
-        }
+    // Cost modifiers appended by the hooks above are aura-sourced: tag them so
+    // the next pass (Step 0) rebuilds them instead of stacking another copy.
+    for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
+        auto& mods = state_.player(pid).cost_modifiers;
+        for (size_t i = standing_mods[playerIndex(pid)]; i < mods.size(); ++i)
+            mods[i].from_aura = true;
     }
 
-    // Step 3b: Conditional self-effects ("If X, I have [Keyword]")
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isUnit() || !obj.location.has_value()) continue;
-        if (obj.card_def_id == kInvalidId) continue; // skip tokens
-        const auto& def = card_db_.get(obj.card_def_id);
-        auto& text = def.ability_text;
-        if (text.empty()) continue;
-
-        std::string clean;
-        { int d = 0;
-          for (char c : text) {
-              if (c == '(') d++;
-              else if (c == ')') { if (d > 0) d--; }
-              else if (d == 0) clean += std::tolower(c);
-          }
-        }
-
-        // "If you've discarded a card this turn, I have [Assault] and [Ganking]"
-        if (clean.find("if you've discarded") != std::string::npos ||
-            clean.find("if you\xe2\x80\x99ve discarded") != std::string::npos) {
-            if (state_.player(obj.controller).has_discarded_this_turn) {
-                if (clean.find("[assault]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Assault; ae.keyword_value = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-                if (clean.find("[ganking]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Ganking;
-                    obj.aura_effects.push_back(ae);
-                }
-            }
-        }
-
-        // "While I'm buffed, I have [Ganking]"
-        if (clean.find("while i'm buffed") != std::string::npos ||
-            clean.find("while i\xe2\x80\x99m buffed") != std::string::npos) {
-            if (obj.buff_count > 0) {
-                if (clean.find("[ganking]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Ganking;
-                    obj.aura_effects.push_back(ae);
-                }
-                // "While I'm buffed, I have an additional +1 [M]"
-                if (clean.find("additional +1 [m]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id; ae.might_bonus = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-            }
-        }
-
-        // "While you have another unit here, I have +1 [M]" (Trusty Ramhound).
-        // Only fires when this unit is at a location AND there's another
-        // friendly unit at the same location (units at base count separately
-        // from units at battlefields, per the card's "here" wording).
-        if (clean.find("while you have another unit here") != std::string::npos &&
-            clean.find("+1 [m]") != std::string::npos &&
-            obj.location.has_value()) {
-            for (const auto& [other_id, other] : state_.objects) {
-                if (other_id == id) continue;
-                if (!other.isUnit()) continue;
-                if (other.controller != obj.controller) continue;
-                if (!other.location.has_value()) continue;
-                if (*other.location != *obj.location) continue;
-                GameObject::AuraEffect ae;
-                ae.source = id;
-                ae.might_bonus = 1;
-                obj.aura_effects.push_back(ae);
-                break;
-            }
-        }
-
-        // "My Might is increased by your points" (Draven, Showboat)
-        if (clean.find("my might is increased by your points") != std::string::npos) {
-            int pts = state_.player(obj.controller).score;
-            if (pts > 0) {
-                GameObject::AuraEffect ae; ae.source = id; ae.might_bonus = pts;
-                obj.aura_effects.push_back(ae);
-            }
-        }
-
-        // "While I'm [Mighty], I have [Deflect], [Ganking], and [Shield]"
-        if (clean.find("while i'm [mighty]") != std::string::npos ||
-            clean.find("while i\xe2\x80\x99m [mighty]") != std::string::npos) {
-            // Mighty = 5+ might (check base + buffs + temp, before this aura)
-            int pre_aura_might = obj.base_might + obj.buff_count +
-                                 obj.temp_might_bonus + obj.attachment_might_bonus;
-            if (pre_aura_might >= 5) {
-                if (clean.find("[deflect]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Deflect; ae.keyword_value = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-                if (clean.find("[ganking]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Ganking;
-                    obj.aura_effects.push_back(ae);
-                }
-                if (clean.find("[shield]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Shield; ae.keyword_value = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-            }
-        }
-    }
+    // (Steps 2, 3 and 3b parsed ability_text for aura wording. Every aura is
+    // now the card's own Card::applyPassiveAura, applied in Step 1b / 1c.)
 
     // Step 3c: Equipment-granted keywords and stats
     for (auto& [id, obj] : state_.objects) {

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,28 +15,14 @@ namespace {
 class EagerApprentice : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "While I'm at a battlefield, the Energy costs for spells you play is
+    // reduced by [1], to a minimum of [1]." A continuous spell discount
+    // (PlayerState::spell_discount_energy, reset every aura pass, floor of
+    // [1] applied by the cost path); each Apprentice at a battlefield adds [1].
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        // Active only while an on-board instance is at a battlefield.
-        bool at_bf = false;
-        GameObjectId self_id = kInvalidId;
-        for (auto& [sid, self] : state.objects) {
-            if (self.card_def_id != cardDefId()) continue;
-            if (self.controller != controller) continue;
-            if (!self.isAtBattlefield()) continue;
-            at_bf = true;
-            self_id = sid;
-            break;
-        }
-        if (!at_bf) return;
-        PlayerState::CostModifier m;
-        m.source = self_id;
-        m.energy_reduction = 1;
-        m.min_cost = 1;
-        m.this_turn_only = false;
-        m.affects_friendly_only = true;
-        // NOTE: no spell-only filter exists on CostModifier; this reduces all
-        // friendly plays by [1], a superset of the printed "spells" scope.
-        state.player(controller).cost_modifiers.push_back(m);
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject& self) {
+            if (self.isAtBattlefield()) state.player(controller).spell_discount_energy += 1;
+        });
     }
 private:
     const CardDef def_ = [] {

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,27 +15,21 @@ namespace {
 class HeraldOfScales : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Your Dragons' Energy costs are reduced by [2], to a minimum of [1]."
+    // One aura cost modifier per Herald on board, scoped to Dragon cards. The
+    // engine rebuilds aura-sourced modifiers on every aura pass.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        GameObjectId self_id = kInvalidId;
-        bool present = false;
-        for (auto& [sid, self] : state.objects) {
-            if (self.card_def_id != cardDefId()) continue;
-            if (self.controller != controller) continue;
-            if (!self.location.has_value()) continue;
-            present = true;
-            self_id = sid;
-            break;
-        }
-        if (!present) return;
-        PlayerState::CostModifier m;
-        m.source = self_id;
-        m.energy_reduction = 2;
-        m.min_cost = 1;
-        m.this_turn_only = false;
-        m.affects_friendly_only = true;
-        // NOTE: no tag filter on CostModifier — this reduces ALL friendly plays
-        // by [2], a superset of the printed "Dragons" scope.
-        state.player(controller).cost_modifiers.push_back(m);
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (!self.location.has_value()) return;
+            PlayerState::CostModifier m;
+            m.source = sid;
+            m.energy_reduction = 2;
+            m.min_cost = 1;
+            m.this_turn_only = false;
+            m.affects_friendly_only = true;
+            m.required_tag = "Dragon";
+            state.player(controller).cost_modifiers.push_back(m);
+        });
     }
 private:
     const CardDef def_ = [] {

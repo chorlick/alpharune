@@ -29,7 +29,7 @@ public:
         if (state.player(controller).xp < 3) return;
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId()) continue;
-            if (obj.controller != controller) continue;
+            if (obj.controller != controller || !obj.location.has_value()) continue;
             GameObject::AuraEffect might;
             might.source = id;
             might.might_bonus = 1;

@@ -450,27 +450,27 @@ TEST_F(AuditFix0Test, ZeroDrive_ReplayIllegalWithNoRecord) {
 // [467] Vex, Cheerless — combat cost modifiers.
 // ═══════════════════════════════════════════════════════════════════════════
 
-TEST_F(AuditFix0Test, VexCheerless_PushesTwoCombatModifiers) {
+TEST_F(AuditFix0Test, VexCheerless_DiscountAndTaxOnlyWhileSheIsInCombat) {
+    // "While I'm in combat, friendly spells cost [1][A] less to a minimum of
+    // [1], and enemy spells cost [1][A] more." A continuous effect while THIS
+    // Vex is an attacker or a defender — not two permanent CostModifiers per
+    // aura pass. (Engine path: AurasCostsTest.VexCheerless_OnlyWhileSheIsInCombat.)
     Card* c = card_registry.get(kVexCheerless);
     ASSERT_NE(c, nullptr);
+    auto vex = addUnit(P1, kVexCheerless, 0, /*at_bf=*/0);
 
     c->applyPassiveAura(state, P1);
-    auto& mods = state.player(P1).cost_modifiers;
-    ASSERT_EQ(mods.size(), 2u);
+    EXPECT_EQ(state.player(P1).spell_discount_energy, 0) << "not in combat";
+    EXPECT_EQ(state.player(P2).spell_tax_energy, 0);
 
-    // Friendly reduction: -1 energy, min 1, friendly-only, combat-active.
-    const auto& fr = mods[0];
-    EXPECT_EQ(fr.energy_reduction, 1);
-    EXPECT_EQ(fr.min_cost, 1) << "the gap fix: 'to a minimum of [1]' floor";
-    EXPECT_TRUE(fr.affects_friendly_only);
-    EXPECT_TRUE(fr.combat_active_only);
-    EXPECT_FALSE(fr.this_turn_only);
-
-    // Enemy increase: +1 energy, enemy-only, combat-active.
-    const auto& en = mods[1];
-    EXPECT_EQ(en.energy_increase, 1);
-    EXPECT_TRUE(en.affects_enemy_only);
-    EXPECT_TRUE(en.combat_active_only);
+    state.getObject(vex).aura_effects.clear();
+    state.getObject(vex).combat_designation = CombatDesignation::Defender;
+    c->applyPassiveAura(state, P1);
+    EXPECT_EQ(state.player(P1).spell_discount_energy, 1);
+    EXPECT_EQ(state.player(P1).spell_discount_power, 1);
+    EXPECT_EQ(state.player(P2).spell_tax_energy, 1);
+    EXPECT_EQ(state.player(P2).spell_tax_power, 1);
+    EXPECT_TRUE(state.player(P1).cost_modifiers.empty());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

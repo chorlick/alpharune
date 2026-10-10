@@ -647,6 +647,7 @@ int main(int argc, char* argv[]) {
         server_config.god_mode_enabled = god_mode_enabled;
         server_config.p1_human         = p1_human_ptr;
         server_config.p2_human         = p2_human_ptr;
+        server_config.spectator        = !any_human;
         server_config.version_tag      = kVersionTag;
         server_config.build_date       = kBuildDate;
         server_config.seed             = game_seed;
@@ -659,6 +660,20 @@ int main(int argc, char* argv[]) {
                                               std::move(server_config));
         std::string url = server->start();
         std::cout << "\n  → Open " << url << " in your browser to play.\n\n";
+
+        // Spectator: hold the engine after each AI decision until the
+        // viewer steps (or autoplay advances) in the browser.
+        if (!any_human) {
+            std::cout << "  Spectator mode: the game is paused at each decision — "
+                         "use Step / Play in the browser to advance.\n\n";
+            engine.on_decision = [s = server.get(), prev = std::move(engine.on_decision)](
+                                     const GameState& st,
+                                     const std::vector<Intent>& actions,
+                                     const Intent& chosen) {
+                if (prev) prev(st, actions, chosen);
+                s->awaitSpectatorStep(actions, chosen);
+            };
+        }
 
         // Stream engine log events into the UI log panel.
         if (debug_mode || trace_mode) {

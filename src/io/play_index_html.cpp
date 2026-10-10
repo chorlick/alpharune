@@ -204,6 +204,16 @@ constexpr const char* kHtmlTemplate = R"HTML(<!DOCTYPE html>
     max-width: 100%; object-fit: contain;
     border-radius: 6px; background: #16161a; display: none;
   }
+  .actions .spectator-bar { display: flex; gap: 6px; align-items: center;
+                            margin-bottom: 4px; font-size: 12px; color: #9da0aa; }
+  .actions .spectator-bar button { text-align: center; padding: 6px 12px; }
+  .actions .spectator-bar input  { width: 64px; background: #1c1c22; color: #e3e3e8;
+                                   border: 1px solid #2a2a32; border-radius: 4px;
+                                   padding: 4px; font: inherit; }
+  .actions button.spec-option:disabled { cursor: default; opacity: 0.75; }
+  .actions button.spec-option.chosen:disabled {
+    background: #24331f; color: #c9f0b8; border-color: #4f7a3d; opacity: 1;
+  }
   #image-placeholder { color: #6b6e7a; font-style: italic; font-size: 12px; }
   .game-over { background: #2a1a1a; border: 1px solid #4a2a2a; padding: 8px;
                border-radius: 4px; margin-bottom: 8px; color: #ffd35a; }
@@ -417,6 +427,17 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
 
   function send(obj) { ws.send(JSON.stringify(obj)); }
 
+  // Spectator stepping (set up per frame by render()).
+  let specWaiting = false;
+  let specToggle = null;
+  function specStep() { if (specWaiting) { specWaiting = false; send({type:'spectator_step'}); } }
+  document.addEventListener('keydown', (ev) => {
+    if (!specToggle || ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT'
+        || ev.target.tagName === 'TEXTAREA') return;
+    if (ev.key === ' ' || ev.key === 'ArrowRight') { ev.preventDefault(); specStep(); }
+    else if (ev.key === 'p' || ev.key === 'P')     { specToggle(); }
+  });
+
   function render(m) {
     updateLiveNames(m);
     const t = m.turn || {};
@@ -464,7 +485,46 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
       aDiv.appendChild(ph);
     }
     const legal = m.legal || [];
-    if (legal.length === 0) {
+    // Spectator mode (both seats AI): Step / Play controls, and the
+    // legal list is read-only with the agent's pick highlighted.
+    const spec = m.spectator || null;
+    specWaiting = !!(spec && spec.waiting && !m.game_over);
+    if (spec && !m.game_over) {
+      const bar = document.createElement('div');
+      bar.className = 'spectator-bar';
+      const step = document.createElement('button');
+      step.textContent = 'Step ▶';
+      step.title = 'Apply this decision and run to the next one (Space / →)';
+      step.disabled = !spec.waiting;
+      step.onclick = specStep;
+      const play = document.createElement('button');
+      play.textContent = spec.autoplay ? 'Pause ⏸' : 'Play ⏵⏵';
+      play.title = 'Toggle auto-advance (P)';
+      const delay = document.createElement('input');
+      delay.type = 'number'; delay.min = 0; delay.max = 10000; delay.step = 100;
+      delay.value = spec.delay_ms;
+      delay.title = 'Auto-advance delay per decision (ms)';
+      const sendAuto = (on) => send({type:'spectator_autoplay', on,
+                                     delay_ms: parseInt(delay.value, 10) || 0});
+      play.onclick = () => sendAuto(!spec.autoplay);
+      delay.onchange = () => sendAuto(spec.autoplay);
+      specToggle = () => sendAuto(!spec.autoplay);
+      bar.append(step, play, delay, document.createTextNode('ms'));
+      aDiv.appendChild(bar);
+    }
+    if (spec && spec.waiting && legal.length > 0) {
+      legal.forEach(act => {
+        const b = document.createElement('button');
+        b.disabled = true;
+        b.className = 'spec-option' + (act.index === spec.chosen ? ' chosen' : '');
+        const idx = document.createElement('span');
+        idx.className = 'idx'; idx.textContent = act.index + '.';
+        b.appendChild(idx);
+        b.appendChild(document.createTextNode(
+          ' ' + act.label + (act.index === spec.chosen ? '  ← chosen' : '')));
+        aDiv.appendChild(b);
+      });
+    } else if (legal.length === 0) {
       const e = document.createElement('div');
       if (m.game_over) {
         e.className = 'empty';

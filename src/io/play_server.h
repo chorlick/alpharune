@@ -32,6 +32,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace riftbound {
 
@@ -41,6 +42,7 @@ class StateRenderer;
 class CardDB;
 class StateEditor;
 struct GameState;
+struct Intent;
 
 struct PlayServerConfig {
     /// TCP port. Defaults to 8080.
@@ -64,6 +66,11 @@ struct PlayServerConfig {
     /// At least one MUST be non-null for the server to be useful.
     HumanAgent* p1_human = nullptr;
     HumanAgent* p2_human = nullptr;
+
+    /// Spectator mode (no human seat): the engine thread parks in
+    /// `PlayServer::awaitSpectatorStep` after every agent decision until
+    /// the browser steps (or autoplay's delay elapses).
+    bool spectator = false;
 
     /// Fired on the first SIGINT / SIGTERM received after `start()`.
     /// Runs on the server's IO thread (not in signal-handler context),
@@ -99,6 +106,13 @@ public:
     /// `level` is the engine LogLevel as a short tag — "TRC", "DBG",
     /// "INF", "WRN". The UI's log panel filters and styles by level.
     void broadcastLog(const std::string& level, const std::string& message);
+
+    /// Spectator gate. Called on the engine thread from the engine's
+    /// `on_decision` callback: publishes the decision the agent just made
+    /// (state is still pre-resolution) and blocks until a `spectator_step`
+    /// message arrives, autoplay's delay elapses, or the server shuts
+    /// down. No-op unless `PlayServerConfig::spectator` is set.
+    void awaitSpectatorStep(const std::vector<Intent>& legal, const Intent& chosen);
 
     /// Lock held while StateEditor mutates GameState. Exposed for
     /// callers that need to read state coherently with edits (e.g.,

@@ -291,8 +291,19 @@ a property of the UI binary, not the engine.
     --deck1 decks/miss_fortune_test.txt --deck2 decks/miss_fortune_test.txt
 ```
 
-The UI shows the game running. `god_mode_enabled = false`; edit
-messages are rejected. No auto-replay (no human seat).
+Pass `--web on` to get the UI (it defaults to off without a human seat).
+The engine parks after every AI decision: `decision` frames carry a
+`spectator` object (`waiting`, `autoplay`, `delay_ms`, and `chosen` — the
+index into `legal` the agent picked; the board is still pre-resolution).
+The browser advances with **Step** (Space / →) or toggles **Play** (P):
+
+```json
+{"type": "spectator_step"}
+{"type": "spectator_autoplay", "on": true, "delay_ms": 600}
+```
+
+`god_mode_enabled = false`; edit messages are rejected. No auto-replay
+(no human seat).
 
 ### Human vs random (default)
 

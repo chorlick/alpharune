@@ -21,7 +21,9 @@
 #include <boost/asio/post.hpp>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <deque>
 #include <iostream>
@@ -130,7 +132,26 @@ struct PlayServer::Impl {
     std::mutex prompt_mu;
     std::string last_prompt;
 
+    // Spectator gate (see PlayServer::awaitSpectatorStep). The engine
+    // thread parks on spec_cv with spec_waiting set; the IO thread wakes
+    // it via spectatorStep / setSpectatorAutoplay.
+    std::mutex spec_mu;
+    std::condition_variable spec_cv;
+    std::vector<Intent> spec_legal;
+    int spec_chosen = -1;
+    PlayerId spec_player = PlayerId::None;
+    uint64_t spec_decision_id = 0;
+    bool spec_waiting = false;
+    bool spec_step_requested = false;
+    bool spec_autoplay = false;
+    int spec_delay_ms = 600;
+    bool spec_released = false;   // shutdown: never block again
+
     explicit Impl(PlayServer& p) : parent(p) {}
+
+    void spectatorStep();
+    void setSpectatorAutoplay(bool on, int delay_ms);
+    void releaseSpectator();
 
     void broadcastDecisionFrame();
     void runWatcher();
@@ -205,6 +226,11 @@ private:
         else if (type == "edit_phase")         handleEditPhase(m);
         else if (type == "edit_reorder_deck")  handleEditReorderDeck(m);
         else if (type == "request_state")      impl_.broadcastDecisionFrame();
+        else if (type == "spectator_step")     impl_.spectatorStep();
+        else if (type == "spectator_autoplay") {
+            impl_.setSpectatorAutoplay(m.value("on", false), m.value("delay_ms", 600));
+            impl_.broadcastDecisionFrame();
+        }
         else {
             send(json{{"type", "err"}, {"msg", "unknown message type: " + type}}.dump());
         }
@@ -610,6 +636,25 @@ void PlayServer::Impl::broadcastDecisionFrame() {
         render_text = parent.renderer_.render(parent.engine_.state());
     }
 
+    // Spectator mode: the "decision" is the one an AI seat just made,
+    // held at the gate until the viewer steps.
+    json spectator;
+    if (parent.config_.spectator) {
+        std::lock_guard<std::mutex> lock(spec_mu);
+        spectator = {
+            {"waiting",  spec_waiting},
+            {"autoplay", spec_autoplay},
+            {"delay_ms", spec_delay_ms},
+        };
+        if (spec_waiting) {
+            at_decision = true;
+            active_player = spec_player;
+            legal = spec_legal;
+            decision_id = spec_decision_id;
+            spectator["chosen"] = spec_chosen;
+        }
+    }
+
     json frame = {
         {"type", at_decision ? "decision" : "state"},
         {"decision_id", decision_id},
@@ -617,6 +662,7 @@ void PlayServer::Impl::broadcastDecisionFrame() {
         {"render_text", render_text},
         {"god_mode", parent.config_.god_mode_enabled},
     };
+    if (!spectator.is_null()) frame["spectator"] = std::move(spectator);
     {
         std::lock_guard<std::mutex> lock(parent.state_mutex_);
         const auto& st = parent.engine_.state();
@@ -680,6 +726,64 @@ void PlayServer::Impl::broadcastDecisionFrame() {
     for (auto& w : snapshot) {
         if (auto s = w.lock()) s->send(text);
     }
+}
+
+void PlayServer::Impl::spectatorStep() {
+    std::lock_guard<std::mutex> lock(spec_mu);
+    // A click that lands while the engine is busy is dropped, so a
+    // double-click can't skip a decision the viewer never saw.
+    if (!spec_waiting) return;
+    spec_step_requested = true;
+    spec_cv.notify_all();
+}
+
+void PlayServer::Impl::setSpectatorAutoplay(bool on, int delay_ms) {
+    std::lock_guard<std::mutex> lock(spec_mu);
+    spec_autoplay = on;
+    spec_delay_ms = std::clamp(delay_ms, 0, 10000);
+    spec_cv.notify_all();
+}
+
+void PlayServer::Impl::releaseSpectator() {
+    std::lock_guard<std::mutex> lock(spec_mu);
+    spec_released = true;
+    spec_cv.notify_all();
+}
+
+void PlayServer::awaitSpectatorStep(const std::vector<Intent>& legal, const Intent& chosen) {
+    if (!config_.spectator || !running_.load()) return;
+    auto& im = *impl_;
+    {
+        std::lock_guard<std::mutex> lock(im.spec_mu);
+        if (im.spec_released) return;
+        im.spec_legal = legal;
+        auto it = std::find(legal.begin(), legal.end(), chosen);
+        im.spec_chosen = it == legal.end() ? -1 : static_cast<int>(it - legal.begin());
+        im.spec_player = chosen.player;
+        ++im.spec_decision_id;
+        im.spec_step_requested = false;
+        im.spec_waiting = true;
+    }
+    im.broadcastDecisionFrame();
+    {
+        std::unique_lock<std::mutex> lock(im.spec_mu);
+        auto stepped = [&] { return im.spec_step_requested || im.spec_released; };
+        while (!stepped()) {
+            if (im.spec_autoplay) {
+                auto delay = std::chrono::milliseconds(im.spec_delay_ms);
+                // Timed out with autoplay still on → advance. Paused
+                // mid-wait → fall back to waiting for a step.
+                if (!im.spec_cv.wait_for(lock, delay, [&] { return stepped() || !im.spec_autoplay; })) break;
+            } else {
+                im.spec_cv.wait(lock, [&] { return stepped() || im.spec_autoplay; });
+            }
+        }
+        im.spec_waiting = false;
+        im.spec_step_requested = false;
+    }
+    // Clear the held decision so the UI shows "engine busy" while the
+    // next agent thinks.
+    im.broadcastDecisionFrame();
 }
 
 void PlayServer::Impl::runWatcher() {
@@ -764,6 +868,7 @@ void PlayServer::Impl::armSignalSet() {
         if (parent.config_.on_shutdown_signal) {
             parent.config_.on_shutdown_signal();
         }
+        releaseSpectator();
         // Re-arm so a second signal does NOT get handled here — we want
         // the second signal to use the default handler (kernel kills us).
         // Boost.Asio resets pending registrations once a handler fires;
@@ -777,6 +882,12 @@ void PlayServer::Impl::armSignalSet() {
 void PlayServer::stop() {
     if (!running_.exchange(false)) return;
     impl_->stopping.store(true);
+    impl_->releaseSpectator();
+    // Push the terminal state and give the IO thread a moment to flush
+    // it — the watcher's 100ms poll usually loses the race with the
+    // caller stopping us right after the game thread exits.
+    impl_->broadcastDecisionFrame();
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
     beast::error_code ec;
     if (impl_->acceptor) impl_->acceptor->close(ec);
     impl_->ioc.stop();

@@ -2941,17 +2941,9 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         auto& card = state_.getObject(card_id);
         if (!card.keywords.has(Keyword::Hidden)) continue;
 
-        // Need at least one rune to pay [A] cost
-        bool has_rune = false;
-        auto base_loc = BaseLocation{player};
-        for (auto& [id, obj] : state_.objects) {
-            if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
-                obj.location.has_value() && *obj.location == LocationId{base_loc}) {
-                has_rune = true;
-                break;
-            }
-        }
-        if (!has_rune) continue;
+        // The Hide cost is [A] (CR 811.1.b): floating Power or any rune in
+        // base, ready or exhausted — the same test executeHideCard pays by.
+        if (!canPayAdditionalCost(player, 0, 1, Domain::Count)) continue;
 
         // Can hide at any controlled BF with available facedown slot
         for (auto& bf : state_.battlefields) {

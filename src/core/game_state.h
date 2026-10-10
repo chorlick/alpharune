@@ -9,6 +9,7 @@
 #include "effects/effect_types.h"
 #include "game_object.h"
 #include "intent.h"
+#include "knowledge_state.h"
 #include "types.h"
 
 #include <algorithm>
@@ -622,6 +623,10 @@ struct GameState {
 
     // Chain
     ChainState chain;
+
+    // What each player has learned about hidden cards. Written only through
+    // engine/knowledge_tracker.h, read only through KnowledgeView.
+    KnowledgeState knowledge;
 
     // Delayed abilities (Phase 5, CR 389-392)
     std::vector<DelayedAbility> delayed_abilities;

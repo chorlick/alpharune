@@ -331,6 +331,7 @@ add_library(riftbound_core
     src/engine/chain_manager.cpp
     src/engine/effect_executor.cpp
     src/engine/trigger_manager.cpp
+    src/engine/knowledge_tracker.cpp
     src/io/state_renderer.cpp
     src/io/replay_writer.cpp
     src/io/state_editor.cpp

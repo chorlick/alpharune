@@ -44,7 +44,11 @@ public:
         ctx.executor.healObject(dying_unit);
         ctx.executor.exhaustObject(dying_unit);
         unit.combat_designation = CombatDesignation::None;
-        ctx.executor.moveToBase(dying_unit);   // a recall, not a move (CR 457)
+        // A recall is not a move (CR 458): it must not count toward "moved N
+        // times this turn", which EffectExecutor::moveToBase bumps.
+        const int moves = unit.moves_this_turn;
+        ctx.executor.moveToBase(dying_unit);
+        unit.moves_this_turn = moves;
         return true;
     }
 private:

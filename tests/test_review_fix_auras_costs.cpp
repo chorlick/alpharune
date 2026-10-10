@@ -36,6 +36,7 @@ constexpr CardDefId kGarenCommander = 311;
 constexpr CardDefId kSerratedDirk = 332;
 constexpr CardDefId kRumbleHotheaded = 349;
 constexpr CardDefId kClothArmor = 387;
+constexpr CardDefId kForecaster = 388;
 constexpr CardDefId kRumbleScrapper = 411;
 constexpr CardDefId kAncientWarmonger = 452;
 constexpr CardDefId kVexCheerless = 467;
@@ -509,6 +510,46 @@ TEST_F(AurasCostsTest, AuraKeywordHelper_ShieldCountedOnce) {
     EXPECT_EQ(might(ascetic), card_db.get(kSereneAscetic).might);
 }
 
+// ─── 8.4: a keyword granted by an aura counts when the unit is played ───────
+
+class AuraVisionTest : public AurasCostsTest {
+protected:
+    GameObjectId top_spell_ = kInvalidId;
+    /// P1 plays a Mech with no printed Vision; a spell is on top of the deck.
+    void playAMech() {
+        auto bottom = fromDef(P1, kSoulShepherd);
+        o(bottom).zone = ZoneType::MainDeck;
+        s().player(P1).main_deck.push_back(bottom);
+        top_spell_ = fromDef(P1, kIncinerate);
+        o(top_spell_).zone = ZoneType::MainDeck;
+        s().player(P1).main_deck.push_back(top_spell_);
+        auto mech = inHand(P1, kRumbleScrapper);        // [5][B], Mech
+        s().player(P1).rune_pool.energy = 5;
+        s().player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = mech;
+        engine_->testHook_executeIntent(play);
+        ASSERT_TRUE(o(mech).location.has_value());
+    }
+};
+
+TEST_F(AuraVisionTest, Forecaster_MechPlayedLooksAtTheTopCard) {
+    // "Your Mechs have [Vision]." Vision was read from the played card's own
+    // keywords, before any aura could reach it: Forecaster did nothing.
+    onBoard(P1, kForecaster);
+    cleanup();
+    playAMech();
+    EXPECT_EQ(s().player(P1).main_deck.front(), top_spell_)
+        << "Vision: the spell on top was recycled to the bottom";
+}
+
+TEST_F(AuraVisionTest, NoVisionSource_TopCardStays) {
+    playAMech();
+    EXPECT_EQ(s().player(P1).main_deck.back(), top_spell_);
+}
+
 // ─── 8.2: aura cost modifiers are rebuilt, not accumulated ──────────────────
 
 TEST_F(AurasCostsTest, OrnnsForge_OneModifierHoweverManyCleanups) {
@@ -833,6 +874,7 @@ TEST_F(AltarOfBloodTest, PaysThreePowerFromExhaustedRunesAndRecalls) {
     EXPECT_EQ(o(dying_).damage_marked, 0) << "healed";
     for (auto r : runes) EXPECT_TRUE(inRuneDeck(P1, r));
     EXPECT_EQ(s().player(P1).power_spent_this_turn, 3);
+    EXPECT_EQ(o(dying_).moves_this_turn, 0) << "a recall is not a move (CR 458)";
 }
 
 TEST_F(AltarOfBloodTest, FloatingPowerCounts) {

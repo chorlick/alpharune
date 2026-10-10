@@ -385,7 +385,6 @@ struct BattlefieldState {
     // BF/unit cards' applyPassiveAura):
     bool surcharge_enemy_multi_move = false; // Mageseeker Investigator (725): enemy multi-unit moves here cost [A]/extra unit
     bool opp_hidden_unrevealable = false;    // Noxus Saboteur (018): opponent [Hidden] cards can't be revealed here
-    bool death_recall_for_pay = false;       // Altar of Blood (762): a unit dying here in combat may pay [A][A][A] to heal+exhaust+recall instead
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

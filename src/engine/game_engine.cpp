@@ -2522,14 +2522,13 @@ std::vector<DamageAssignment> lethalCascade(const GameState& state,
 }  // namespace
 
 bool GameEngine::anyDamageIsLethalFor(PlayerId damager) const {
-    // Elder Dragon: "Any amount of your damage is enough to kill." (CR 142.4.c)
+    // "Any amount of your damage is enough to kill." (CR 142.4.c) — a unit
+    // `damager` has in play says so through Card::anyDamageIsLethal().
     for (const auto& [id, obj] : state_.objects) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
-        const auto& text = card_db_.get(obj.card_def_id).ability_text;
-        if (text.find("Any amount of your damage is enough to kill") != std::string::npos ||
-            text.find("any amount of your damage is enough to kill") != std::string::npos)
-            return true;
+        const Card* card = card_registry_.get(obj.card_def_id);
+        if (card && card->anyDamageIsLethal()) return true;
     }
     return false;
 }
@@ -4725,7 +4724,6 @@ void GameEngine::recalculateAuras() {
     for (auto& bf : state_.battlefields) {
         bf.surcharge_enemy_multi_move = false;
         bf.opp_hidden_unrevealable = false;
-        bf.death_recall_for_pay = false;
         bf.ignore_tank[0] = bf.ignore_tank[1] = false;   // Dune Surfer
         bf.ignore_deflect_here = false;                  // Heisho
         bf.reaction_tax_power = 0;                       // Mystic Vortex
@@ -6302,55 +6300,23 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         return;  // replacement consumed — unit does NOT die
     }
 
-    // Altar of Blood (762): "If a unit here would die during combat, its
-    // controller may pay [A][A][A] to heal it, exhaust it, and recall it
-    // instead." Gated on the dying unit's battlefield carrying the flag (set by
-    // Altar's applyPassiveAura) AND that BF being in combat. [A][A][A] = 3 power
-    // of any domain → recycle 3 ready runes. Agent decides (only offered when
-    // affordable).
-    if (unit.location.has_value() &&
-        std::holds_alternative<BattlefieldLocation>(*unit.location)) {
-        auto bfid = std::get<BattlefieldLocation>(*unit.location).id;
-        auto& abf = getBattlefield(bfid);
-        if (abf.death_recall_for_pay && abf.combat_in_progress) {
-            LocationId base{BaseLocation{controller}};
-            std::vector<GameObjectId> ready;
-            for (auto& [id, obj] : state_.objects)
-                if (obj.isRune() && obj.controller == controller && !obj.is_exhausted &&
-                    obj.location.has_value() && *obj.location == base)
-                    ready.push_back(id);
-            if (static_cast<int>(ready.size()) >= 3) {
-                Intent decline; decline.type = IntentType::MakeChoice;
-                decline.player = controller; decline.chosen_value = 0;
-                Intent accept; accept.type = IntentType::MakeChoice;
-                accept.player = controller; accept.chosen_value = 1;
-                std::vector<Intent> opts = {decline, accept};
-                state_.decision_index++;
-                auto chosen = getAgent(controller).selectAction(state_, opts);
-                recordAppliedIntent(chosen);
-                if (on_decision) on_decision(state_, opts, chosen);
-                if (chosen.chosen_value.value_or(0) == 1) {
-                    for (int i = 0; i < 3; ++i) {  // pay [A][A][A]: recycle 3 runes
-                        auto& r = state_.getObject(ready[i]);
-                        r.location = std::nullopt;
-                        r.zone = ZoneType::RuneDeck;
-                        state_.player(controller).rune_deck.insert(
-                            state_.player(controller).rune_deck.begin(), ready[i]);
-                    }
-                    events_.logDebug("REPLACEMENT (Altar of Blood): " + unit.name +
-                                     " pays [A][A][A] -> heal/exhaust/recall");
-                    detachAllGear(unit_id);
-                    auto old_loc = unit.location;
-                    unit.damage_marked = 0;
-                    unit.is_exhausted = true;
-                    unit.combat_designation = CombatDesignation::None;
-                    unit.location = BaseLocation{controller};
-                    unit.zone = ZoneType::Base;
-                    events_.emit(ObjectStateChangedEvent{unit_id, "healed"});
-                    events_.emit(UnitMovedEvent{unit_id, controller,
-                        old_loc.value_or(BaseLocation{controller}),
-                        BaseLocation{controller}, false});
-                    return;  // survived
+    // "If a unit here would die ..." on the battlefield the unit is at (Altar
+    // of Blood). A battlefield's card is not on its controller's board, so the
+    // sweep below never reaches it; it gets the same Card::applyReplacement
+    // call, made for the dying unit's controller — the card decides whether
+    // it applies, asks its "may" and takes its payment.
+    if (auto dying_bf = unit.battlefieldId()) {
+        const GameObjectId bf_card_id = getBattlefield(*dying_bf).card_object_id;
+        if (state_.objectExists(bf_card_id)) {
+            const auto& bf_obj = state_.getObject(bf_card_id);
+            Card* bf_card = bf_obj.card_def_id != kInvalidId
+                ? card_registry_.get(bf_obj.card_def_id) : nullptr;
+            if (bf_card && bf_card->hasReplacementEffect()) {
+                CardContext ctx{state_, events_, *effect_executor_, controller, bf_card_id};
+                if (bf_card->applyReplacement(ctx, unit_id)) {
+                    events_.logDebug(std::string("REPLACEMENT: ") + bf_obj.name +
+                                     " prevents " + unit.name + " from dying");
+                    return;  // replacement consumed — unit does NOT die
                 }
             }
         }

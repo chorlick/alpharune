@@ -316,9 +316,11 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
                 card.is_hidden = false;
                 card.hidden_at = kInvalidId;
             } else {
-                // Normal reaction from hand
+                // Normal reaction from hand — or the Chosen Champion from its
+                // zone (CR 420.1.a), when it is a [Reaction] unit.
                 auto it = std::find(ps.hand.begin(), ps.hand.end(), chosen.card);
                 if (it != ps.hand.end()) ps.hand.erase(it);
+                else if (ps.champion_zone == chosen.card) ps.champion_zone = kInvalidId;
 
                 // Pay cost
                 if (pay_cost_) {
@@ -330,6 +332,9 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             ps.cards_played_this_turn++;
             int energy_spent = (card.card_def_id != kInvalidId)
                 ? card_db_.get(card.card_def_id).energy_cost : 0;
+            // A permanent's location is chosen before the play is announced,
+            // so "when you play a unit here" abilities see where it is going.
+            if (!card.isSpell()) card.location = permanent_dest;
             events_.emit(CardPlayedEvent{chosen.card, current,
                 card.card_type, ps.cards_played_this_turn, energy_spent});
 

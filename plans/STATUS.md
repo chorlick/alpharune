@@ -25,7 +25,7 @@ States: `pending` → `running` → `returned` → `merged` (or `blocked`).
 | 1 | search | running | | | |
 | 1 | helpers | running | | | |
 | 1 | executor | running | | | |
-| 1 | chain-triggers | returned | | | agent stopped by the user mid-work; uncommitted edits kept in `.worktrees/chain-triggers` (6 files, +307/-162, 1 new test file); not respawned pending the user |
+| 1 | chain-triggers | running | | | stopped by mistake and resumed by the user, same agent and worktree |
 | 1 | engine-auras-costs | running | | | |
 | 1 | engine-play-combat | running | | | |
 | 1 | io-cli | pending | | | gated: main checkout must have no uncommitted `src/io`, `src/main.cpp`, `docs/play-api.md` |
@@ -72,3 +72,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 stage 0: plans committed on master as `c7143f1`; `fix/integration` created; baseline build, tests and smoke recorded. Gate passed.
 - 2026-10-10 stage 1: spawned search, helpers, executor, chain-triggers, engine-auras-costs, engine-play-combat (6 running). integrity and io-cli wait for a slot (io-cli gate is open: main checkout clean).
 - 2026-10-10 chain-triggers agent stopped by the user before reporting; worktree left untouched, not respawned.
+- 2026-10-10 chain-triggers resumed by the user (the stop was a mistake); back to `running`.

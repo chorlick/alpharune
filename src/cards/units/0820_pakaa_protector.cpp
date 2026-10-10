@@ -28,13 +28,14 @@ public:
             top, obj.card_def_id, obj.owner,
             /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
             ZoneType::MainDeck});
+        knowledge::seenInDeck(ctx.state, top, knowledge::everyone(), DeckEnd::Top, 0);
         if (obj.isUnit()) {
             // "draw it": the revealed card is still the top card.
             ctx.executor.drawCards(ctx.controller, 1);
             ctx.events.logTrace("PAKAA PROTECTOR: revealed unit " + obj.name + " -> drew it");
             return;
         }
-        ps.main_deck.pop_back();
+        deck::takeTop(ctx.state, ctx.controller, deck::Place::Public, knowledge::everyone());
         obj.zone = ZoneType::Trash;
         obj.location = std::nullopt;
         ps.trash.push_back(top);

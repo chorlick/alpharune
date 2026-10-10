@@ -20,8 +20,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
         for (int i = 0; i < 2 && !ps.main_deck.empty(); ++i) {
-            auto cid = ps.main_deck.back();
-            ps.main_deck.pop_back();
+            auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Public);
             if (ctx.state.objectExists(cid)) {
                 auto& obj = ctx.state.getObject(cid);
                 obj.zone = ZoneType::Trash;

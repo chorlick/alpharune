@@ -136,6 +136,9 @@ private:
     const GameState& state_;
     PlayerId observer_;
     std::map<GameObjectId, Where> hidden_;
+    /// The observer's facts, with held cards that have since been placed
+    /// read as where they now are.
+    std::map<GameObjectId, HiddenCardFact> facts_;
 };
 
 } // namespace riftbound::knowledge

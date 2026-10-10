@@ -21,8 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         auto& ps = ctx.state.player(ctx.controller);
         if (ps.main_deck.empty()) return;
-        GameObjectId top = ps.main_deck.back();
-        ps.main_deck.pop_back();
+        GameObjectId top = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::everyone());
         if (!ctx.state.objectExists(top)) return;
         auto& obj = ctx.state.getObject(top);
         ctx.events.emit(CardRevealedEvent{

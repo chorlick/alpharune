@@ -2,6 +2,7 @@
 
 #include "cards/card.h"
 #include "cards/card_registry.h"
+#include "engine/deck_ops.h"
 
 #include <algorithm>
 #include <cassert>
@@ -303,8 +304,7 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
                 break;
             }
         }
-        auto card_id = ps.main_deck.back();
-        ps.main_deck.pop_back();
+        auto card_id = deck::takeTop(state_, player, deck::Place::Hand);
         ps.hand.push_back(card_id);
         state_.getObject(card_id).zone = ZoneType::Hand;
         events_.logTrace("  DREW: " + state_.getObject(card_id).name +
@@ -432,13 +432,15 @@ bool EffectExecutor::burnOut(PlayerId player) {
     // CR 432.3: the deck may stay empty), then an opponent gains 1 point.
     // 1v1 has exactly one opponent to choose.
     ps.burned_out = true;
-    for (auto cid : ps.trash) {
-        state_.getObject(cid).zone = ZoneType::MainDeck;
-        ps.main_deck.push_back(cid);
-    }
+    // The trash is public, so both players know every card that goes in;
+    // the shuffle leaves nobody knowing where.
+    const auto recycled = ps.trash;
     ps.trash.clear();
+    for (auto cid : recycled) deck::putToShuffle(state_, player, cid, deck::Place::Public);
     if (rng_) {
-        std::shuffle(ps.main_deck.begin(), ps.main_deck.end(), *rng_);
+        deck::shuffle(state_, player, *rng_);
+    } else {
+        knowledge::shuffled(state_, player);
     }
     PlayerId opp_id = opponent(player);
     auto& opp_ps = state_.player(opp_id);
@@ -530,8 +532,7 @@ std::vector<GameObjectId> EffectExecutor::burn(PlayerId player, int count) {
         // CR 441.4: burn as many as possible, burn out, then burn the rest.
         // The just-burned cards are in the trash, so a burn out reshuffles them.
         if (ps.main_deck.empty() && !burnOutUntilDeckHasCards(player)) break;
-        auto card_id = ps.main_deck.back();
-        ps.main_deck.pop_back();
+        auto card_id = deck::takeTop(state_, player, deck::Place::Public);
         auto& card = state_.getObject(card_id);
         card.zone = ZoneType::Trash;
         card.location = std::nullopt;
@@ -877,7 +878,7 @@ void EffectExecutor::applyDiscard(PlayerId player, GameObjectId card_id) {
     events_.emit(ObjectStateChangedEvent{card_id, "discarded"});
 }
 
-void EffectExecutor::recycleCards(PlayerId /*effect_controller*/,
+void EffectExecutor::recycleCards(PlayerId effect_controller,
                                    const std::vector<GameObjectId>& cards) {
     // CR 416.1.c: each card goes to the BOTTOM of its OWNER'S main deck,
     // not the effect-controller's. Phase 6q+ fix — pre-fix the
@@ -904,21 +905,28 @@ void EffectExecutor::recycleCards(PlayerId /*effect_controller*/,
     if (rng_) {
         std::shuffle(shuffleable.begin(), shuffleable.end(), *rng_);
     }
-    auto recycle_one = [&](GameObjectId cid) {
-        auto& obj = state_.getObject(cid);
-        obj.zone = ZoneType::MainDeck;
-        obj.location = std::nullopt;
-        if (obj.card_type == CardType::Rune) {
-            obj.zone = ZoneType::RuneDeck;
-            state_.player(obj.owner).rune_deck.insert(
-                state_.player(obj.owner).rune_deck.begin(), cid);
-        } else {
-            state_.player(obj.owner).main_deck.insert(
-                state_.player(obj.owner).main_deck.begin(), cid);
+    // Main Deck cards: each owner's cards go down together, in the shuffled
+    // order. Where each came from decides who can identify it (a card from
+    // the board or trash is known to both players, one from a hand is not).
+    for (PlayerId owner : {PlayerId::Player1, PlayerId::Player2}) {
+        std::vector<deck::Placed> group;
+        for (auto cid : shuffleable) {
+            // A card with no owner (only in hand-built test states) goes to
+            // the deck of the player whose effect it is.
+            PlayerId to = state_.getObject(cid).owner;
+            if (to == PlayerId::None) to = effect_controller;
+            if (to != owner) continue;
+            group.push_back({cid, deck::whereIs(state_, cid), knowledge::nobody()});
         }
-    };
-    for (auto cid : shuffleable) recycle_one(cid);
-    for (auto cid : rune_ordered) recycle_one(cid);
+        deck::putOnBottomTogether(state_, owner, group);
+    }
+    for (auto cid : rune_ordered) {
+        auto& obj = state_.getObject(cid);
+        obj.zone = ZoneType::RuneDeck;
+        obj.location = std::nullopt;
+        state_.player(obj.owner).rune_deck.insert(
+            state_.player(obj.owner).rune_deck.begin(), cid);
+    }
 
     // "When you recycle one or more cards to your Main Deck" (Karma, Channeler
     // 235). Fires once per OWNER who had >=1 non-rune card land in their Main
@@ -953,7 +961,7 @@ void EffectExecutor::banishObject(GameObjectId target) {
         };
         if (obj.zone == ZoneType::Trash) drop(ops.trash);
         else if (obj.zone == ZoneType::Hand) drop(ops.hand);
-        else if (obj.zone == ZoneType::MainDeck) drop(ops.main_deck);
+        else if (obj.zone == ZoneType::MainDeck) deck::take(state_, target, deck::Place::Public);
     }
     const bool is_token = obj.isToken();
     obj.zone = ZoneType::Banishment;
@@ -1327,11 +1335,13 @@ EffectExecutor::revealUntil(PlayerId player, CardType condition) {
     if (ps.has_reveal_peek && !ps.main_deck.empty() && agent_query_) {
         GameObjectId top = ps.main_deck.back();
         if (state_.objectExists(top)) {
+            // A private look at the top card.
+            knowledge::seenInDeck(state_, top, knowledge::only(player), DeckEnd::Top, 0);
             Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
             Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
             auto chosen = agent_query_(player, {keep, recyc});
             if (chosen.chosen_value.value_or(0) == 1) {
-                ps.main_deck.pop_back();
+                deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));
                 recycleCards(player, {top});
                 events_.logTrace("VOID HATCHLING: recycled the peeked top card before revealing");
             }
@@ -1341,8 +1351,8 @@ EffectExecutor::revealUntil(PlayerId player, CardType condition) {
     GameObjectId matched = kInvalidId;
 
     while (!ps.main_deck.empty()) {
-        auto card_id = ps.main_deck.back();
-        ps.main_deck.pop_back();
+        auto card_id = deck::takeTop(state_, player, deck::Place::Held,
+                                     knowledge::everyone());
         revealed.push_back(card_id);
 
         auto& obj = state_.getObject(card_id);
@@ -1386,10 +1396,10 @@ void EffectExecutor::predict(PlayerId player, int count) {
                      " looks at top " + std::to_string(actual) + " cards");
 
     // Peek at top N cards (remove from deck temporarily)
+    const auto looker = knowledge::only(player);
     std::vector<GameObjectId> peeked;
     for (int i = 0; i < actual; ++i) {
-        peeked.push_back(ps.main_deck.back());
-        ps.main_deck.pop_back();
+        peeked.push_back(deck::takeTop(state_, player, deck::Place::Held, looker));
     }
     // Per CR 436.1, Predict is a PRIVATE look — only the predicting
     // player sees the cards. Log each peeked card with a "PRIVATE" tag
@@ -1436,18 +1446,17 @@ void EffectExecutor::predict(PlayerId player, int count) {
             auto chosen = agent_query_(player, choices);
             if (!chosen.chosen_objects.empty()) {
                 // Recycle: put on bottom
-                state_.getObject(card_id).zone = ZoneType::MainDeck;
-                ps.main_deck.insert(ps.main_deck.begin(), card_id);
+                deck::putOnBottom(state_, player, card_id, deck::Place::Held, looker);
                 events_.logTrace("PREDICT: recycled " + state_.getObject(card_id).name);
             } else {
                 // Keep: put back on top
-                ps.main_deck.push_back(card_id);
+                deck::putOnTop(state_, player, card_id, deck::Place::Held, looker);
             }
         }
     } else {
         // No agent query — put all back on top (no recycling)
         for (int i = static_cast<int>(peeked.size()) - 1; i >= 0; --i) {
-            ps.main_deck.push_back(peeked[i]);
+            deck::putOnTop(state_, player, peeked[i], deck::Place::Held, looker);
         }
     }
 }
@@ -1458,11 +1467,13 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     if (ps.has_reveal_peek && !ps.main_deck.empty() && agent_query_) {
         GameObjectId top = ps.main_deck.back();
         if (state_.objectExists(top)) {
+            // A private look at the top card.
+            knowledge::seenInDeck(state_, top, knowledge::only(player), DeckEnd::Top, 0);
             Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
             Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
             auto chosen = agent_query_(player, {keep, recyc});
             if (chosen.chosen_value.value_or(0) == 1) {
-                ps.main_deck.pop_back();
+                deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));
                 recycleCards(player, {top});
                 events_.logTrace("VOID HATCHLING: recycled the peeked top card before revealing");
             }
@@ -1478,8 +1489,8 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     // Peek at top N
     std::vector<GameObjectId> revealed;
     for (int i = 0; i < actual; ++i) {
-        revealed.push_back(ps.main_deck.back());
-        ps.main_deck.pop_back();
+        revealed.push_back(deck::takeTop(state_, player, deck::Place::Held,
+                                         knowledge::everyone()));
     }
 
     // Per CR 424, Reveal is PUBLIC — every player sees each card.
@@ -1523,16 +1534,18 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
             if (!chosen.chosen_objects.empty()) {
                 ps.hand.push_back(card_id);
                 obj.zone = ZoneType::Hand;
+                knowledge::moved(state_, card_id, deck::Place::Held, deck::Place::Hand,
+                                 knowledge::everyone());
                 chosen_cards.push_back(card_id);
                 events_.logTrace("  CHOSE: draw " + obj.name);
             } else {
                 // Recycle to bottom
-                ps.main_deck.insert(ps.main_deck.begin(), card_id);
+                deck::putOnBottom(state_, player, card_id, deck::Place::Held, knowledge::everyone());
                 events_.logTrace("  CHOSE: recycle " + obj.name);
             }
         } else {
             // No agent: put back on top
-            ps.main_deck.push_back(card_id);
+            deck::putOnTop(state_, player, card_id, deck::Place::Held, knowledge::everyone());
         }
     }
 

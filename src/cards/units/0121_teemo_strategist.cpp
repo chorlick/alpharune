@@ -42,8 +42,8 @@ public:
         int n = std::min(5, static_cast<int>(ps.main_deck.size()));
         std::vector<GameObjectId> revealed;
         for (int i = 0; i < n; ++i) {
-            auto cid = ps.main_deck.back();
-            ps.main_deck.pop_back();
+            // "Reveal": both players see them.
+            auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::everyone());
             revealed.push_back(cid);
         }
         int hidden_count = 0;

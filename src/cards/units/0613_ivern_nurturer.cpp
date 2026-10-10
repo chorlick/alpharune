@@ -54,8 +54,7 @@ public:
         // Now actually remove the peeked cards from the top of the deck.
         std::vector<GameObjectId> top3;
         for (int i = 0; i < 3 && !ps.main_deck.empty(); ++i) {
-            top3.push_back(ps.main_deck.back());
-            ps.main_deck.pop_back();
+            top3.push_back(deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller)));
         }
 
         GameObjectId drafted = kInvalidId;
@@ -91,6 +90,8 @@ public:
             ctx.events.logTrace("IVERN NURTURER: drafted " + drafted_obj.name);
             // Move it to hand directly (already popped off the deck).
             auto& obj = ctx.state.getObject(drafted);
+            // Revealed before it is drawn: the opponent knows it too.
+            knowledge::seen(ctx.state, drafted, deck::Place::Held, knowledge::everyone());
             obj.zone = ZoneType::Hand;
             ps.hand.push_back(drafted);
 

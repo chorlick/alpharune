@@ -42,6 +42,12 @@ public:
              it != ps.main_deck.rend() && (int)top5.size() < 5; ++it) {
             top5.push_back(*it);
         }
+        // A private look: the controller now knows these five and their order.
+        const auto looker = knowledge::only(ctx.controller);
+        for (size_t i = 0; i < top5.size(); ++i) {
+            knowledge::seenInDeck(ctx.state, top5[i], looker, DeckEnd::Top,
+                                  static_cast<int>(i));
+        }
         // Eligible: units with Might up to killed_might + 1.
         std::vector<GameObjectId> eligible;
         for (auto cid : top5) {
@@ -64,9 +70,7 @@ public:
             }
             if (picked != kInvalidId && ctx.state.objectExists(picked)) {
                 // Remove from main deck and play ignoring cost.
-                ps.main_deck.erase(
-                    std::remove(ps.main_deck.begin(), ps.main_deck.end(), picked),
-                    ps.main_deck.end());
+                deck::take(ctx.state, picked, deck::Place::Public, knowledge::everyone(), /*slot_public=*/false);
                 ctx.executor.playIgnoringCost(ctx.controller, picked);
             }
         }
@@ -75,14 +79,14 @@ public:
         // (still in deck) to the bottom (front = bottom).
         std::vector<GameObjectId> to_recycle;
         for (auto cid : top5) {
-            auto pos = std::find(ps.main_deck.begin(), ps.main_deck.end(), cid);
-            if (pos != ps.main_deck.end()) {
+            if (deck::take(ctx.state, cid, deck::Place::Held, looker, /*slot_public=*/false)) {
                 to_recycle.push_back(cid);
-                ps.main_deck.erase(pos);
             }
         }
         // Insert recycled cards at the bottom (front).
-        ps.main_deck.insert(ps.main_deck.begin(), to_recycle.begin(), to_recycle.end());
+        for (auto it = to_recycle.rbegin(); it != to_recycle.rend(); ++it) {
+            deck::putOnBottom(ctx.state, ctx.controller, *it, deck::Place::Held, looker);
+        }
         ctx.events.logTrace("BAITED HOOK: kill friendly, dig top 5, recycle rest");
     }
 private:

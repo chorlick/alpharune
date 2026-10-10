@@ -2,6 +2,7 @@
 /// @file card_helpers.h
 /// Cross-cutting card helpers used across multiple card types. Type-specific
 /// bases live in their type dirs (gear/equip_base.h, units/weaponmaster_base.h).
+#include "engine/deck_ops.h"
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"

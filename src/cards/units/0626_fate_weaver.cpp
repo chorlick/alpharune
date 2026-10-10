@@ -63,8 +63,8 @@ public:
                     drawn, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
                     ZoneType::MainDeck});
-                auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), drawn);
-                if (it != ps.main_deck.end()) ps.main_deck.erase(it);
+                // Revealed, then drawn: the opponent knows it is in the hand.
+                deck::take(ctx.state, drawn, deck::Place::Held, knowledge::everyone(), /*slot_public=*/false);
                 obj.zone = ZoneType::Hand;
                 ps.hand.push_back(drawn);
                 ctx.events.logTrace("FATE WEAVER: revealed spell " + obj.name + " -> drew it");
@@ -79,8 +79,7 @@ public:
         auto& ps = ctx.state.player(ctx.controller);
         for (auto id : original_top) {
             if (id == drawn) continue;
-            auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), id);
-            if (it != ps.main_deck.end()) ps.main_deck.erase(it);
+            deck::take(ctx.state, id, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
             rest.push_back(id);
         }
         if (!rest.empty()) {

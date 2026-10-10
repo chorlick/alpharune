@@ -33,6 +33,8 @@ public:
                 const auto& obj = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{cid, obj.card_def_id, obj.owner,
                                                   false, ctx.controller, ZoneType::MainDeck});
+                // "Reveal": both players see the top two.
+                knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top, i);
                 Intent c; c.type = IntentType::MakeChoice; c.player = ctx.controller;
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }
@@ -54,8 +56,7 @@ public:
             for (int i = 0; i < n; ++i) top.push_back(ps.main_deck[ps.main_deck.size() - 1 - i]);
             // Remove the top cards from the deck.
             for (auto cid : top) {
-                auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), cid);
-                if (it != ps.main_deck.end()) ps.main_deck.erase(it);
+                deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone());
             }
             // Banish + play the picked card; if a unit, play it "here" (Rek'Sai's BF).
             if (picked != kInvalidId && ctx.state.objectExists(picked)) {

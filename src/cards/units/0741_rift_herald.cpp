@@ -34,8 +34,8 @@ private:
         auto& ps = ctx.state.player(ctx.controller);
         std::vector<GameObjectId> looked;
         for (int i = 0; i < 3 && !ps.main_deck.empty(); ++i) {
-            looked.push_back(ps.main_deck.back());
-            ps.main_deck.pop_back();
+            // "Look at": private to the controller.
+            looked.push_back(deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller)));
         }
         if (looked.empty()) return;
         GameObjectId drawn = kInvalidId;
@@ -47,6 +47,8 @@ private:
                 /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
                 ZoneType::MainDeck});
             if (drawn == kInvalidId && obj.isUnit()) {
+                // The unit is revealed before it is drawn.
+                knowledge::seen(ctx.state, cid, deck::Place::Held, knowledge::everyone());
                 obj.zone = ZoneType::Hand;
                 ps.hand.push_back(cid);
                 drawn = cid;

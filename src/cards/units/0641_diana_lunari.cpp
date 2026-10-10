@@ -50,8 +50,9 @@ public:
             /*revealed_to=*/PlayerId::None,
             /*source_zone=*/ZoneType::MainDeck,
         });
+        knowledge::seenInDeck(ctx.state, top, knowledge::everyone(), DeckEnd::Top, 0);
         if (card.isSpell()) {
-            ps.main_deck.pop_back();
+            deck::takeTop(ctx.state, ctx.controller, deck::Place::Hand, knowledge::everyone());
             card.zone = ZoneType::Hand;
             card.location = std::nullopt;
             ps.hand.push_back(top);

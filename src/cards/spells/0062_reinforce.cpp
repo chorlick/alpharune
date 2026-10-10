@@ -37,6 +37,7 @@ public:
                 ctx.events.emit(CardRevealedEvent{
                     cid, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/false, ctx.controller, ZoneType::MainDeck});
+                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller), DeckEnd::Top, i);
                 ri.targets.push_back(cid);
             }
         }
@@ -68,8 +69,7 @@ public:
         }
         for (GameObjectId cid : ri.targets) {
             if (cid == kInvalidId) continue;
-            ps.main_deck.erase(std::remove(ps.main_deck.begin(), ps.main_deck.end(), cid),
-                               ps.main_deck.end());
+            deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
         }
         if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
 

@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include "engine/deck_ops.h"
 #include "game_engine.h"
 #include "cards/card.h"
 #include "openspiel/action_vocab.h"
@@ -159,6 +160,9 @@ void GameEngine::refreshStepFromDriver() {
         current_step_.perspective = PlayerId::None;
         return;
     }
+    // The driver is parked at a decision: tidy what each player knows before
+    // an agent looks at the state.
+    knowledge::prune(state_);
     current_step_.kind = StepKind::NeedDecision;
     current_step_.legal = step_driver_->legalActionsSnapshot();
     current_step_.perspective = step_driver_->currentPlayerSnapshot();
@@ -1462,10 +1466,8 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // Pay recycle-self cost [C]
     if (act_cost.recycle_self) {
         events_.logTrace("ACTIVATE_COST: recycle self " + source.name);
-        source.zone = ZoneType::MainDeck;
-        source.location = std::nullopt;
-        state_.player(intent.player).main_deck.insert(
-            state_.player(intent.player).main_deck.begin(), intent.ability_source);
+        // From the board, so both players know which card went down.
+        deck::putOnBottom(state_, intent.player, intent.ability_source, deck::Place::Public);
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
@@ -2364,11 +2366,14 @@ void GameEngine::executeMulligan(const Intent& intent) {
     }
 
     // Recycle set-aside cards to bottom of deck in random order (CR 118.3)
+    // The owner knows which cards went down, not their order; the opponent
+    // knows only how many.
     std::shuffle(set_aside.begin(), set_aside.end(), rng_);
+    std::vector<deck::Placed> placed;
     for (auto card_id : set_aside) {
-        state_.getObject(card_id).zone = ZoneType::MainDeck;
-        ps.main_deck.insert(ps.main_deck.begin(), card_id); // bottom = front
+        placed.push_back({card_id, deck::Place::Hand, knowledge::nobody()});
     }
+    deck::putOnBottomTogether(state_, intent.player, placed);
 }
 
 // ── Combat damage and replacement effects (CR 467.2.c.5) ─────────────────────
@@ -5281,8 +5286,7 @@ void GameEngine::channelRunes(PlayerId player, int count) {
 }
 
 void GameEngine::shuffleDeck(PlayerId player) {
-    auto& deck = state_.player(player).main_deck;
-    std::shuffle(deck.begin(), deck.end(), rng_);
+    deck::shuffle(state_, player, rng_);
 }
 
 void GameEngine::shuffleRuneDeck(PlayerId player) {
@@ -5473,9 +5477,11 @@ bool GameEngine::payRepeatCost(PlayerId player, const RepeatCost& cost) {
                 for (auto d : obj.domains) if (d == cost.power_domain) { match = true; break; }
             }
             if (!match) continue;
-            obj.zone = ZoneType::MainDeck;
+            // A recycled rune goes to the bottom of the Rune Deck (CR 416.1).
+            obj.zone = ZoneType::RuneDeck;
             obj.location = std::nullopt;
-            ps.main_deck.insert(ps.main_deck.begin(), id);
+            obj.is_exhausted = false;
+            ps.rune_deck.insert(ps.rune_deck.begin(), id);
             --need_power;
         }
         if (need_power > 0) return false;

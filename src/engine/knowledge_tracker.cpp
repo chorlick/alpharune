@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <tuple>
 
 namespace riftbound::knowledge {
@@ -78,6 +79,26 @@ void clearDeckPositions(GameState& state, PlayerId owner) {
     dropEmptyOwnFacts(state, owner);
 }
 
+/// A "held" fact describes a card someone is looking at, outside any zone.
+/// Card code often puts such a card into a hand or back into the deck without
+/// a hook. This reads the fact as of where the card is now (`place`, if it is
+/// in a hidden zone list): whoever was looking at it saw where it went.
+/// Returns nothing when the fact no longer says anything.
+std::optional<HiddenCardFact> settled(const HiddenCardFact& f, const Place* place,
+                                      bool own, ZoneType object_zone) {
+    if (!f.held) return f;
+    if (!place) {
+        // Still in no zone list: held, unless it has gone somewhere public.
+        if (object_zone == ZoneType::MainDeck || object_zone == ZoneType::Hand) return f;
+        return std::nullopt;
+    }
+    HiddenCardFact out;
+    out.zone = zoneOf(*place);
+    if (own && isEmpty(out, true)) return std::nullopt;
+    if (own && *place != Place::Deck) return std::nullopt;
+    return out;
+}
+
 struct Leaving {
     GameObjectId object;
     PlayerId owner;
@@ -109,14 +130,6 @@ void obscure(GameState& state, PlayerId observer, const Leaving& m) {
                     if (left_zone) f.zone_confirmed = false;
                 }
                 break;
-            case Place::Held:
-                if (f.held) {
-                    f.held = false;
-                    f.zone = zoneOf(m.to);
-                    f.zone_confirmed = false;
-                    forgetPosition(f);
-                }
-                break;
             default:
                 break;
         }
@@ -136,17 +149,28 @@ std::array<bool, 2> leave(GameState& state, const Leaving& in, Seers seers) {
                              m.to == Place::Hand || m.to == Place::Facedown)) {
             s = true;
         }
-        const auto& facts = k.facts[playerIndex(o)];
-        if (auto it = facts.find(m.object);
-            !s && it != facts.end() && it->second.zone_confirmed && !it->second.held) {
-            const auto& f = it->second;
-            // A facedown card is one physical card on the table.
-            if (m.from == Place::Facedown && f.zone == ZoneType::FacedownZone) s = true;
-            // They knew which card was in the slot it was taken from.
-            if (m.from == Place::Deck && f.zone == ZoneType::MainDeck &&
-                f.end != DeckEnd::None && f.group == 0 && m.slot_public &&
-                m.from_end != DeckEnd::None) {
-                s = true;
+        auto& facts = k.facts[playerIndex(o)];
+        if (auto it = facts.find(m.object); !s && it != facts.end()) {
+            auto& f = it->second;
+            if (f.held) {
+                // They are one of the players looking at it.
+                s = m.from == Place::Held;
+            } else if (f.zone_confirmed) {
+                // A facedown card is one physical card on the table.
+                if (m.from == Place::Facedown && f.zone == ZoneType::FacedownZone) s = true;
+                // They knew which card was in the slot it was taken from.
+                if (m.from == Place::Deck && f.zone == ZoneType::MainDeck &&
+                    f.end != DeckEnd::None && f.group == 0 && m.slot_public &&
+                    m.from_end != DeckEnd::None) {
+                    if (m.to == Place::Held) {
+                        // Taken into another player's private look: they
+                        // cannot follow where it is put afterwards.
+                        forgetPosition(f);
+                        f.zone_confirmed = false;
+                    } else {
+                        s = true;
+                    }
+                }
             }
         }
         sees[playerIndex(o)] = s;
@@ -358,6 +382,12 @@ void prune(GameState& state) {
         for (auto it = facts.begin(); it != facts.end();) {
             const PlayerId owner = ownerOf(state, it->first);
             auto h = hidden.find(it->first);
+            if (it->second.held && owner != PlayerId::None) {
+                auto now = settled(it->second, h == hidden.end() ? nullptr : &h->second,
+                                   o == owner, state.getObject(it->first).zone);
+                if (!now) { it = facts.erase(it); continue; }
+                it->second = *now;
+            }
             bool drop;
             if (it->second.held) {
                 drop = inPublicPile(it->first, owner);
@@ -393,6 +423,9 @@ std::vector<std::string> check(const GameState& state) {
             if (owner == PlayerId::None) { say(o, id, "object does not exist"); continue; }
             if (!fact.zone_confirmed) continue;
             const auto& ps = state.player(owner);
+            // A card that has since become public is read from the state, and
+            // its fact is dropped by the next prune.
+            if (view.about(id).last_known_zone != fact.zone) continue;
             bool in_zone = false;
             if (fact.zone == ZoneType::Hand) {
                 in_zone = std::find(ps.hand.begin(), ps.hand.end(), id) != ps.hand.end();
@@ -440,12 +473,19 @@ GameKnowledgeView::GameKnowledgeView(const GameState& state, PlayerId observer)
     for (const auto& bf : state_.battlefields) {
         for (auto id : bf.facedown) hidden_[id] = {Place::Facedown, ownerOf(state_, id)};
     }
+    for (const auto& [id, fact] : state_.knowledge.facts[playerIndex(observer_)]) {
+        auto oit = state_.objects.find(id);
+        if (oit == state_.objects.end()) continue;
+        auto h = hidden_.find(id);
+        auto now = settled(fact, h == hidden_.end() ? nullptr : &h->second.place,
+                           oit->second.owner == observer_, oit->second.zone);
+        if (now) facts_[id] = *now;
+    }
 }
 
 const HiddenCardFact* GameKnowledgeView::factFor(GameObjectId object) const {
-    const auto& facts = state_.knowledge.facts[playerIndex(observer_)];
-    auto it = facts.find(object);
-    return it == facts.end() ? nullptr : &it->second;
+    auto it = facts_.find(object);
+    return it == facts_.end() ? nullptr : &it->second;
 }
 
 bool GameKnowledgeView::position(const HiddenCardFact& fact, PlayerId owner,
@@ -522,7 +562,7 @@ CardKnowledge GameKnowledgeView::about(GameObjectId object) const {
 
 std::vector<CardKnowledge> GameKnowledgeView::knownHiddenCards(PlayerId owner) const {
     std::vector<CardKnowledge> out;
-    for (const auto& [id, fact] : state_.knowledge.facts[playerIndex(observer_)]) {
+    for (const auto& [id, fact] : facts_) {
         if (ownerOf(state_, id) != owner) continue;
         if (!fact.held && hidden_.find(id) == hidden_.end()) continue;
         out.push_back(about(id));
@@ -547,7 +587,7 @@ int GameKnowledgeView::unknownCount(PlayerId owner, ZoneType zone) const {
     }
     if (owner == observer_ && place != Place::Deck) return 0;
     int known = 0;
-    for (const auto& [id, fact] : state_.knowledge.facts[playerIndex(observer_)]) {
+    for (const auto& [id, fact] : facts_) {
         if (ownerOf(state_, id) != owner || fact.held) continue;
         if (fact.zone != zone || !fact.zone_confirmed) continue;
         if (owner == observer_) {
@@ -578,7 +618,7 @@ std::vector<CardKnowledge> GameKnowledgeView::knownDeckEnd(PlayerId owner,
     const int size = static_cast<int>(state_.player(owner).main_deck.size());
     // First slot (counted from `end`) -> the cards known to start there.
     std::map<int, std::vector<CardKnowledge>> by_rank;
-    for (const auto& [id, fact] : state_.knowledge.facts[playerIndex(observer_)]) {
+    for (const auto& [id, fact] : facts_) {
         if (ownerOf(state_, id) != owner) continue;
         auto hit = hidden_.find(id);
         if (hit == hidden_.end() || hit->second.place != Place::Deck) continue;

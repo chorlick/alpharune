@@ -68,6 +68,9 @@ public:
                 const auto& o = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{cid, o.card_def_id, o.owner,
                                                   false, ctx.controller, ZoneType::MainDeck});
+                // "Reveal": both players see the top two.
+                knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top,
+                                      cid == a ? 0 : 1);
                 revealed.push_back(cid);
             }
             if (revealed.empty()) {
@@ -102,8 +105,7 @@ public:
         std::vector<GameObjectId> top;
         for (auto cid : {a, b}) {
             if (cid == kInvalidId || !ctx.state.objectExists(cid)) continue;
-            auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), cid);
-            if (it != ps.main_deck.end()) { ps.main_deck.erase(it); top.push_back(cid); }
+            if (deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone())) top.push_back(cid);
         }
 
         // Banish + play the chosen card; recycle the rest.

@@ -48,13 +48,12 @@ public:
             if (!ctx.state.objectExists(card_id)) return;
             if (choice && !choice->chosen_objects.empty()) {
                 // Recycle to bottom.
-                ctx.state.getObject(card_id).zone = ZoneType::MainDeck;
-                ps.main_deck.insert(ps.main_deck.begin(), card_id);
+                deck::putOnBottom(ctx.state, ctx.controller, card_id, deck::Place::Held, knowledge::only(ctx.controller));
                 ctx.events.logTrace("PREDICT: recycled " +
                                      ctx.state.getObject(card_id).name);
             } else {
                 // Keep on top.
-                ps.main_deck.push_back(card_id);
+                deck::putOnTop(ctx.state, ctx.controller, card_id, deck::Place::Held, knowledge::only(ctx.controller));
             }
         };
         // Helper: finish — draw, XP, kill self.
@@ -74,8 +73,7 @@ public:
             ri.resume_data.clear();
             ri.resume_data.push_back(static_cast<int32_t>(actual));
             for (int i = 0; i < actual; ++i) {
-                auto cid = ps.main_deck.back();
-                ps.main_deck.pop_back();
+                auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
                 ri.resume_data.push_back(static_cast<int32_t>(cid));
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);

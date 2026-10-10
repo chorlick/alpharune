@@ -34,9 +34,10 @@ public:
             top_card, top_obj.card_def_id, top_obj.owner,
             /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller,
             ZoneType::MainDeck});
+        knowledge::seenInDeck(ctx.state, top_card, knowledge::only(ctx.controller), DeckEnd::Top, 0);
         if (top_obj.isSpell()) {
-            ps.main_deck.pop_back();
-            ps.main_deck.insert(ps.main_deck.begin(), top_card);
+            deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
+            deck::putOnBottom(ctx.state, ctx.controller, top_card, deck::Place::Held, knowledge::only(ctx.controller));
             ctx.events.logTrace("KARMA, CHANNELER: [Vision] recycled top spell to bottom");
         }
         // ENGINE GAP: "When you recycle one or more cards to your Main Deck,

@@ -35,8 +35,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (conf != 1) return;
         auto& ps = ctx.state.player(owner);
-        auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), ctx.source);
-        if (it != ps.main_deck.end()) ps.main_deck.erase(it);
+        deck::take(ctx.state, ctx.source, deck::Place::Public, knowledge::everyone());
         ctx.executor.banishObject(ctx.source);
         auto& bz = ctx.state.player(owner).banishment;
         bz.erase(std::remove(bz.begin(), bz.end(), ctx.source), bz.end());

@@ -50,11 +50,9 @@ public:
         if (mode == -2) return;   // no legal mode
         auto it = std::find(ps.hand.begin(), ps.hand.end(), card);
         if (it != ps.hand.end()) ps.hand.erase(it);
-        auto& c = ctx.state.getObject(card);
-        c.zone = ZoneType::MainDeck;
-        c.location = std::nullopt;
-        if (mode == 0) ps.main_deck.push_back(card);                  // top (drawn end)
-        else           ps.main_deck.insert(ps.main_deck.begin(), card); // bottom
+        // The owner knows where it went; the opponent sees only that a hand card did.
+        if (mode == 0) deck::putOnTop(ctx.state, ctx.controller, card, deck::Place::Hand);
+        else           deck::putOnBottom(ctx.state, ctx.controller, card, deck::Place::Hand);
         ctx.events.logTrace(std::string("ALTAR OF MEMORIES: put a hand card on ") +
                             (mode == 0 ? "top" : "bottom") + " of deck");
     }

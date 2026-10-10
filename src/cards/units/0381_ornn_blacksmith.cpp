@@ -23,8 +23,7 @@ public:
         // Look at top 4 (top = back of vector).
         std::vector<GameObjectId> peeked;
         for (int i = 0; i < 4 && !ps.main_deck.empty(); ++i) {
-            peeked.push_back(ps.main_deck.back());
-            ps.main_deck.pop_back();
+            peeked.push_back(deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller)));
         }
         if (peeked.empty()) return;
 
@@ -52,6 +51,8 @@ public:
             });
             ctx.events.logTrace("ORNN, BLACKSMITH: drafted gear " +
                                  drafted_obj.name);
+            // The gear is revealed before it is drawn: the opponent knows it too.
+            knowledge::seen(ctx.state, drafted, deck::Place::Held, knowledge::everyone());
             drafted_obj.zone = ZoneType::Hand;
             ps.hand.push_back(drafted);
         }

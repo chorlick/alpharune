@@ -24,8 +24,7 @@ public:
             ri.resume_data.clear();
             ri.resume_data.push_back(static_cast<int32_t>(actual));
             for (int i = 0; i < actual; ++i) {
-                auto cid = ps.main_deck.back();
-                ps.main_deck.pop_back();
+                auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
                 ri.resume_data.push_back(static_cast<int32_t>(cid));
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);
@@ -82,9 +81,7 @@ public:
                     ps.hand.push_back(cid);
                     ctx.events.logTrace("STACKED DECK: drew " + obj.name);
                 } else {
-                    obj.zone = ZoneType::MainDeck;
-                    obj.location = std::nullopt;
-                    ps.main_deck.insert(ps.main_deck.begin(), cid);
+                    deck::putOnBottom(ctx.state, ctx.controller, cid, deck::Place::Held, knowledge::only(ctx.controller));
                     ctx.events.logTrace("STACKED DECK: recycled " + obj.name);
                 }
             }

@@ -50,8 +50,7 @@ public:
 
             // Predict 1: peek top, publish recycle/keep choice.
             if (ps.main_deck.empty()) return;
-            auto top_card = ps.main_deck.back();
-            ps.main_deck.pop_back();
+            auto top_card = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
             ri.resume_data = {static_cast<int32_t>(top_card)};
 
             std::vector<Intent> choices;
@@ -78,14 +77,13 @@ public:
 
             std::string n = ctx.state.getObject(top_card).name;
             if (choice && !choice->chosen_objects.empty()) {
-                ctx.state.getObject(top_card).zone = ZoneType::MainDeck;
-                ps.main_deck.insert(ps.main_deck.begin(), top_card);
+                deck::putOnBottom(ctx.state, ctx.controller, top_card, deck::Place::Held, knowledge::only(ctx.controller));
                 ctx.events.logTrace("PREDICT: " + n +
                                      " -> bottom of deck (recycled)");
             } else {
                 // Put back on top. Was previously silent — surfaced after
                 // user noticed the keep-case wasn't visible in the replay.
-                ps.main_deck.push_back(top_card);
+                deck::putOnTop(ctx.state, ctx.controller, top_card, deck::Place::Held, knowledge::only(ctx.controller));
                 ctx.events.logTrace("PREDICT: " + n + " -> top of deck (kept)");
             }
             return;

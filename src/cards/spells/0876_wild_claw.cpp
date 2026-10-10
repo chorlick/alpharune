@@ -77,7 +77,9 @@ public:
         if (ri.resume_point == 0) {
             auto top = topFive(ctx.state, ctx.controller);
             if (top.empty()) return;
+            int rank = 0;
             for (auto cid : top) {
+                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller), DeckEnd::Top, rank++);
                 if (!ctx.state.objectExists(cid)) continue;
                 const auto& o = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{
@@ -87,8 +89,7 @@ public:
             auto cands = playable(ctx, top);
             if (cands.empty()) {
                 for (auto cid : top)
-                    ps.main_deck.erase(std::remove(ps.main_deck.begin(), ps.main_deck.end(), cid),
-                                       ps.main_deck.end());
+                    deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
                 ctx.executor.recycleCards(ctx.controller, top);
                 ctx.events.logTrace("WILD CLAW: nothing playable in the top 5; recycled them");
                 return;
@@ -118,8 +119,7 @@ public:
 
             std::vector<GameObjectId> rest;
             for (auto cid : top) {
-                ps.main_deck.erase(std::remove(ps.main_deck.begin(), ps.main_deck.end(), cid),
-                                   ps.main_deck.end());
+                deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
                 if (cid != chosen) rest.push_back(cid);
             }
             ri.resume_data = {static_cast<int32_t>(chosen)};

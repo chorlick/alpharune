@@ -34,9 +34,11 @@ public:
             /*source_zone=*/ZoneType::MainDeck,
         });
 
+        knowledge::seenInDeck(ctx.state, top, knowledge::everyone(), DeckEnd::Top, 0);
+
         if (card.isSpell()) {
             // Put it in hand.
-            ps.main_deck.pop_back();
+            deck::takeTop(ctx.state, ctx.controller, deck::Place::Hand, knowledge::everyone());
             card.zone = ZoneType::Hand;
             card.location = std::nullopt;
             ps.hand.push_back(top);
@@ -45,7 +47,7 @@ public:
         } else {
             // Recycle it (bottom of owner's main deck). Pop first so
             // recycleCards re-inserts it at the bottom exactly once.
-            ps.main_deck.pop_back();
+            deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::everyone());
             ctx.executor.recycleCards(ctx.controller, {top});
             ctx.events.logTrace("RAVENBLOOM: revealed non-spell " + card.name +
                                  " -> recycled");

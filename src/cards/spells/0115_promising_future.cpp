@@ -39,6 +39,7 @@ public:
                 const auto& obj = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{cid, obj.card_def_id, obj.owner,
                                                   false, p, ZoneType::MainDeck});
+                knowledge::seenInDeck(ctx.state, cid, knowledge::only(p), DeckEnd::Top, i);
                 Intent c; c.type = IntentType::MakeChoice; c.player = p;
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }
@@ -63,8 +64,7 @@ public:
                 top.push_back(ps.main_deck[ps.main_deck.size() - 1 - i]);
             // Remove all top-5 from the deck.
             for (auto cid : top) {
-                auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), cid);
-                if (it != ps.main_deck.end()) ps.main_deck.erase(it);
+                deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(p), /*slot_public=*/false);
             }
             // Banish the chosen, recycle the rest.
             std::vector<GameObjectId> rest;

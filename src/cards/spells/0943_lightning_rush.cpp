@@ -31,6 +31,11 @@ public:
                  it != ps.main_deck.rend() && ri.resume_data.size() < 3; ++it)
                 ri.resume_data.push_back(static_cast<int32_t>(*it));
             if (ri.resume_data.empty()) { ri.resume_point = 2; return; }
+            // A private look at the top three.
+            for (size_t i = 0; i < ri.resume_data.size(); ++i) {
+                knowledge::seenInDeck(ctx.state, static_cast<GameObjectId>(ri.resume_data[i]),
+                                      knowledge::only(ctx.controller), DeckEnd::Top, static_cast<int>(i));
+            }
             std::vector<Intent> opts;
             for (auto v : ri.resume_data)
                 opts.push_back(objChoice(ctx.controller, static_cast<GameObjectId>(v)));
@@ -48,7 +53,8 @@ public:
             auto id = static_cast<GameObjectId>(v);
             auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), id);
             if (it == ps.main_deck.end()) continue;   // no longer in the deck
-            ps.main_deck.erase(it);
+            deck::take(ctx.state, id, id == picked ? deck::Place::Held : deck::Place::Public, knowledge::only(ctx.controller),
+                       /*slot_public=*/false);
             if (id == picked) { draw = true; continue; }
             // "Put the rest into your trash." (From the Main Deck, so not a Burn
             // and not redirected by "would go to your trash from anywhere other
@@ -62,7 +68,7 @@ public:
         if (draw) {
             // Back on top, then drawn through the normal draw path so draw
             // counters and "when you draw" triggers see it.
-            ps.main_deck.push_back(picked);
+            deck::putOnTop(ctx.state, ctx.controller, picked, deck::Place::Held, knowledge::only(ctx.controller));
             ctx.executor.drawCards(ctx.controller, 1);
         }
     }

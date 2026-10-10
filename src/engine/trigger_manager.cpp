@@ -1,6 +1,7 @@
 #include "trigger_manager.h"
 #include "cards/card.h"
 #include "engine/effect_executor.h"
+#include "engine/deck_ops.h"
 
 namespace riftbound {
 
@@ -324,9 +325,11 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
                 top_card, top_obj.card_def_id, top_obj.owner,
                 /*revealed_to_all=*/false, /*revealed_to=*/e.player,
                 ZoneType::MainDeck});
+            const auto looker = knowledge::only(e.player);
+            knowledge::seenInDeck(state_, top_card, looker, DeckEnd::Top, 0);
             if (top_obj.isSpell()) {
-                ps.main_deck.pop_back();
-                ps.main_deck.insert(ps.main_deck.begin(), top_card);
+                deck::takeTop(state_, e.player, deck::Place::Held, looker);
+                deck::putOnBottom(state_, e.player, top_card, deck::Place::Held, looker);
             }
         }
     }

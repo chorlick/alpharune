@@ -41,8 +41,7 @@ public:
             ps.trash.pop_back();
             ctx.events.logTrace("  EQUIP_COST: recycled " +
                                  ctx.state.getObject(card_id).name + " from trash");
-            ctx.state.getObject(card_id).zone = ZoneType::MainDeck;
-            ps.main_deck.insert(ps.main_deck.begin(), card_id);
+            deck::putOnBottom(ctx.state, ctx.controller, card_id, deck::Place::Public);
         }
         return standardEquip(ctx, ctx.source, unit, /*energy=*/0, Domain::Chaos);
     }

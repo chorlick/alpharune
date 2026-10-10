@@ -796,9 +796,13 @@ void GameEngine::scoringStep() {
 
     // Turn player Holds all battlefields they control (CR 315.2.b)
     auto player = state_.turn.turn_player;
-    for (auto& bf : state_.battlefields) {
-        if (bf.controller.has_value() && *bf.controller == player) {
-            scoreHold(player, bf.id);
+    // By index: resolving a hold trigger may add a battlefield, which
+    // reallocates the vector under a range-for.
+    for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
+        const BattlefieldId held_id = state_.battlefields[bi].id;
+        const auto held_by = state_.battlefields[bi].controller;
+        if (held_by.has_value() && *held_by == player) {
+            scoreHold(player, held_id);
             if (state_.game_over) return;
             // Process hold/score triggers
             if (chain_manager_->chainExists()) runChain();
@@ -898,23 +902,27 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
 
     // If in showdown, run it. Sub-calls still use the recursive path
     // until C-1 commit 6 converts the chain / combat subsystems.
-    for (auto& bf : state_.battlefields) {
-        if (bf.showdown_staged && !bf.showdown_in_progress &&
-            !bf.combat_staged) {
-            runShowdown(bf.id);
+    // By index, and re-fetched by id after each showdown / combat: what
+    // resolves in them may add a battlefield, which reallocates the vector.
+    for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
+        const BattlefieldId bf_id = state_.battlefields[bi].id;
+        if (const auto& bf = state_.battlefields[bi];
+            bf.showdown_staged && !bf.showdown_in_progress && !bf.combat_staged) {
+            runShowdown(bf_id);
             if (state_.game_over) {
                 adv.kind = MainPhaseAdvance::Kind::Done;
                 return adv;
             }
-            bf.showdown_staged = false;
+            getBattlefield(bf_id).showdown_staged = false;
         }
-        if (bf.combat_staged && !bf.combat_in_progress) {
-            runCombat(bf.id);
+        if (const auto& bf = state_.battlefields[bi];
+            bf.combat_staged && !bf.combat_in_progress) {
+            runCombat(bf_id);
             if (state_.game_over) {
                 adv.kind = MainPhaseAdvance::Kind::Done;
                 return adv;
             }
-            bf.combat_staged = false;
+            getBattlefield(bf_id).combat_staged = false;
         }
     }
 
@@ -1448,6 +1456,16 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         int red = activationEnergyReduction(*cost_card, intent.player, intent.ability_source, idx);
         if (red > 0) act_cost.energy = std::max(0, act_cost.energy - red);
     }
+    // Nothing is paid unless everything can be: an activation whose cost is
+    // out of reach is refused, never put on the chain for free. The generators
+    // gate on the same conditions, so this only stops a stale or hand-built
+    // intent.
+    if (act_cost.exhaust && source.is_exhausted) return false;
+    if ((act_cost.power > 0 || act_cost.energy > 0) &&
+        !canPayActivationResources(intent.player, act_cost.energy, act_cost, source.isUnit()))
+        return false;
+    if (act_cost.xp_cost > 0 && state_.player(intent.player).xp < act_cost.xp_cost)
+        return false;
     if (act_cost.exhaust) {
         source.is_exhausted = true;
         events_.emit(ObjectStateChangedEvent{intent.ability_source, "exhausted"});
@@ -1461,13 +1479,34 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         killUnit(intent.targets[0]);
     // Pay energy (+ power) cost. Abilities with a power component pay
     // both through the shared resource path (floating pool, then runes).
-    if (act_cost.power > 0 || act_cost.energy > 0)
-        payActivationResources(intent.player, act_cost.energy, act_cost, source.isUnit());
-    // Pay recycle-self cost [C]
-    if (act_cost.recycle_self) {
+    if (act_cost.power > 0 || act_cost.energy > 0) {
+        const bool paid = payActivationResources(intent.player, act_cost.energy, act_cost,
+                                                 source.isUnit());
+        assert(paid && "activation resources were checked above");
+        (void)paid;
+    }
+    // Pay recycle-self cost: the source leaves the board for its OWNER's Main
+    // Deck. Gear comes off (CR 719.5), a token ceases to exist instead
+    // (CR 183.1), and the departure is announced like any other.
+    if (act_cost.recycle_self && source.location.has_value()) {
         events_.logTrace("ACTIVATE_COST: recycle self " + source.name);
-        // From the board, so both players know which card went down.
-        deck::putOnBottom(state_, intent.player, intent.ability_source, deck::Place::Public);
+        const LocationId was_at = *source.location;
+        if (source.attached_to.has_value())
+            effect_executor_->unattachGear(intent.ability_source);
+        detachAllGear(intent.ability_source);
+        source.damage_marked = 0;
+        source.combat_designation = CombatDesignation::None;
+        source.is_exhausted = false;
+        const bool is_token = source.isToken();
+        if (is_token) {
+            source.zone = ZoneType::Banishment;
+            source.location = std::nullopt;
+        } else {
+            // From the board, so both players know which card went down.
+            deck::putOnBottom(state_, source.owner, intent.ability_source, deck::Place::Public);
+        }
+        events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
+            was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
@@ -1502,14 +1541,21 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         aps.abilities_activated_this_turn++;
         if (source.isGear()) aps.gear_abilities_activated_this_turn++;
     }
-    chain_manager_->addAbility(intent.ability_source, intent.player,
-                                source.card_def_id, intent.targets,
-                                /*is_activated=*/true,
-                                intent.ability_index);
+    const auto ability_item_id =
+        chain_manager_->addAbility(intent.ability_source, intent.player,
+                                    source.card_def_id, intent.targets,
+                                    /*is_activated=*/true,
+                                    intent.ability_index);
     // Carry the granted-ability source onto the chain item so resolution
     // dispatches to the granting card's onActivate (Forge/Gardens/Heimer).
-    if (intent.granted_ability_def != 0 && !state_.chain.items.empty())
-        state_.chain.items.back().granted_ability_def = intent.granted_ability_def;
+    // Found by id: a "when you choose a friendly unit" trigger may already
+    // sit above the ability on the chain.
+    if (intent.granted_ability_def != 0)
+        for (auto& ci : state_.chain.items)
+            if (ci.id == ability_item_id) {
+                ci.granted_ability_def = intent.granted_ability_def;
+                break;
+            }
     if (state_.objectExists(intent.ability_source)) {
         auto& src = state_.getObject(intent.ability_source);
         // "Only once each turn" abilities count the activation, not the
@@ -1536,9 +1582,12 @@ void GameEngine::executeIntent(const Intent& intent) {
 
     switch (intent.type) {
         case IntentType::PlayCard:
-        case IntentType::PlayActionCard: {
+        case IntentType::PlayActionCard:
+        case IntentType::PlayReaction: {   // a [Reaction] card played in an Open State
             auto& card = state_.getObject(intent.card);
-            if (card.isSpell()) {
+            if (card.is_hidden) {
+                executePlayFromHidden(intent);
+            } else if (card.isSpell()) {
                 executePlaySpell(intent);
             } else {
                 executePlayCard(intent);
@@ -1546,7 +1595,8 @@ void GameEngine::executeIntent(const Intent& intent) {
             break;
         }
         case IntentType::ActivateAbility:
-        case IntentType::ActivateActionAbility: {
+        case IntentType::ActivateActionAbility:
+        case IntentType::ActivateReactionAbility: {
             if (payAndQueueAbility(intent)) runChain();
             break;
         }
@@ -1695,14 +1745,16 @@ void GameEngine::executePlayCard(const Intent& intent) {
     if (card.card_def_id != kInvalidId) {
         energy_spent = card_db_.get(card.card_def_id).energy_cost;
     }
+    // Store the play location on the game object so resolvePermanent can use it.
+    // Permanents choose location during finalization (CR 355.2.a) — before
+    // the play is announced, so "when you play a unit here" abilities can
+    // tell where it is being played.
+    card.location = intent.play_location.value_or(BaseLocation{intent.player});
+
     events_.emit(CardPlayedEvent{intent.card, intent.player,
         card.card_type, ps.cards_played_this_turn, energy_spent});
     if (intent.play_source != Intent::PlaySource::Hand)
         events_.emit(ObjectStateChangedEvent{intent.card, "played_not_from_hand"});
-
-    // Store the play location on the game object so resolvePermanent can use it.
-    // Permanents choose location during finalization (CR 355.2.a).
-    card.location = intent.play_location.value_or(BaseLocation{intent.player});
 
     // CR 135.2.b.3 + CR 355.1 — "As you play me" / "As I am played"
     // instructions execute during the play action itself, not as a
@@ -1926,10 +1978,12 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     // Add spell to chain with targets. Carry energy_spent and repeats_paid
     // onto the chain item — ChainManager re-resolves the spell `repeats_paid`
     // extra times in its post-resume loop.
-    auto chain_id = chain_manager_->addSpell(intent.card, intent.player, play_targets);
-    (void)chain_id;
-    if (!state_.chain.items.empty()) {
-        auto& added = state_.chain.items.back();
+    // addSpell announces the spell's choices after pushing it, and an ability
+    // that triggers on them ("when you choose a friendly unit") goes on the
+    // chain above it — so the spell is found by its id, not as items.back().
+    const auto chain_id = chain_manager_->addSpell(intent.card, intent.player, play_targets);
+    for (auto& added : state_.chain.items) {
+        if (added.id != chain_id) continue;
         added.total_energy_spent = total_energy_spent;
         added.repeats_paid = repeats;
         if (target_chosen_at_play) {
@@ -1937,6 +1991,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             while (added.resume_data.size() < 6) added.resume_data.push_back(0);
             added.resume_data[5] = 1;
         }
+        break;
     }
 
     // Run the FEPR loop
@@ -2099,7 +2154,8 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
     auto& card = state_.getObject(item.source);
     auto loc = card.location.value_or(BaseLocation{item.controller});
 
-    card.zone = ZoneType::Base;
+    card.zone = std::holds_alternative<BattlefieldLocation>(loc)
+        ? ZoneType::BattlefieldZone : ZoneType::Base;
     card.location = loc;
 
     // Units enter exhausted (CR 143.4) unless Accelerate / an "enters ready" effect
@@ -2193,10 +2249,39 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
     events_.emit(EnteredBoardEvent{item.source, item.controller,
         card.card_type, loc, true});
 
-    // Quick-Draw: auto-attach to target unit if specified
-    if (card.isGear() && card.hasKeyword(Keyword::QuickDraw) && !item.targets.empty()) {
-        auto target_unit = item.targets[0];
-        if (state_.objectExists(target_unit)) {
+    // [Quick-Draw] (CR 819.1.d): "When you play this, attach it to a unit you
+    // control" — whenever it is played, in the main phase as much as at
+    // Reaction timing. Its controller chooses the unit as it lands.
+    if (card.isGear() && card.hasKeyword(Keyword::QuickDraw)) {
+        std::vector<GameObjectId> units;
+        for (auto& [uid, unit] : state_.objects) {
+            if (!unit.isUnit() || unit.controller != item.controller) continue;
+            if (!unit.location.has_value()) continue;
+            units.push_back(uid);
+        }
+        GameObjectId target_unit = kInvalidId;
+        if (!item.targets.empty() &&
+            std::find(units.begin(), units.end(), item.targets[0]) != units.end()) {
+            target_unit = item.targets[0];
+        } else if (!units.empty()) {
+            std::vector<Intent> options;
+            options.reserve(units.size());
+            for (auto uid : units) {
+                Intent i;
+                i.type = IntentType::MakeChoice;
+                i.player = item.controller;
+                i.chosen_objects = {uid};
+                options.push_back(std::move(i));
+            }
+            const Intent chosen = decideNow(item.controller, options,
+                                            "choose a unit to attach " + card.name + " to");
+            target_unit = units.front();
+            if (!chosen.chosen_objects.empty() &&
+                std::find(units.begin(), units.end(), chosen.chosen_objects.front()) !=
+                    units.end())
+                target_unit = chosen.chosen_objects.front();
+        }
+        if (target_unit != kInvalidId) {
             events_.logTrace("QUICK_DRAW: auto-attaching " + card.name + " to " +
                              state_.getObject(target_unit).name);
             attachGearToUnit(item.source, target_unit);
@@ -2673,7 +2758,14 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
     // Play units from hand — must be able to afford the cost.
     auto& ps = state_.player(player);
     const bool locked_out = ps.cant_play_cards_this_turn;  // Brynhir Thundersong
-    for (auto card_id : ps.hand) {
+    // The Chosen Champion is played from its zone exactly like a unit from
+    // hand (CR 420.1.a): the same lockout and the same valid locations
+    // (CR 355.2).
+    std::vector<GameObjectId> unit_sources = ps.hand;
+    if (ps.champion_zone != kInvalidId && state_.objectExists(ps.champion_zone) &&
+        state_.getObject(ps.champion_zone).zone == ZoneType::ChampionZone)
+        unit_sources.push_back(ps.champion_zone);
+    for (auto card_id : unit_sources) {
         if (locked_out) break;  // skip all play-from-hand actions
         auto& card = state_.getObject(card_id);
         if (!card.isUnit()) continue;
@@ -2746,18 +2838,11 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         }
     }
 
-    // Play champion from champion zone (also must afford)
-    if (ps.champion_zone != kInvalidId) {
+    // Champion in the champion zone: its normal play is generated with the
+    // units in hand above. Brynhir's lockout covers this play too.
+    if (ps.champion_zone != kInvalidId && !locked_out) {
         auto& champ = state_.getObject(ps.champion_zone);
         if (champ.zone == ZoneType::ChampionZone) {
-            if (canAfford(player, ps.champion_zone)) {
-                Intent play_intent;
-                play_intent.type = IntentType::PlayCard;
-                play_intent.player = player;
-                play_intent.card = ps.champion_zone;
-                play_intent.play_location = BaseLocation{player};
-                actions.push_back(play_intent);
-            }
             // Alternative play cost (Jhin, Meticulous Killer): offer "play me for
             // <alt>" when the condition holds and the alt cost is affordable —
             // independent of whether the printed cost is affordable.
@@ -2984,18 +3069,41 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
         }
     }
 
+    // [Reaction] permanents: Reaction includes Action's permissions (CR 813.1.b).
+    generateReactionPermanentActions(player, IntentType::PlayActionCard, actions);
+
     // Can activate [E]: abilities with [Action] timing during showdowns (CR 806)
     for (auto& [id, obj] : state_.objects) {
         if (obj.controller != player) continue;
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+        if (obj.card_def_id == kInvalidId) continue;
 
         Card* card = card_registry_.get(obj.card_def_id);
         if (!card) continue;
+        // Same gates as the main-phase generator (generateActivateAbilityActions).
+        if (!card->canActivateAbility(state_, player)) continue;
         auto abilities = card->activatedAbilities();
         for (size_t ai = 0; ai < abilities.size(); ++ai) {
             const auto& ab = abilities[ai];
             if (!ab.is_action) continue;
+            if (!card->canActivateAbilityAt(state_, player, id, (int)ai)) continue;
             if (ab.cost.exhaust && obj.is_exhausted) continue;
+            int net_energy = std::max(0, ab.cost.energy -
+                activationEnergyReduction(*card, player, id, (int)ai));
+            if (net_energy > 0 && availableEnergy(player, obj.isUnit()) < net_energy) continue;
+            if (ab.cost.power > 0 &&
+                !canPayActivationResources(player, net_energy, ab.cost, obj.isUnit())) continue;
+            if (ab.cost.discard && ab.cost.discard_count > 0) {
+                int matching = 0;
+                for (auto hid : state_.player(player).hand) {
+                    if (ab.cost.discard_type_filter == 0 ||
+                        static_cast<int>(state_.getObject(hid).card_type) + 1 ==
+                            ab.cost.discard_type_filter) ++matching;
+                }
+                if (matching < ab.cost.discard_count) continue;
+            }
+            if (ab.cost.xp_cost > 0 &&
+                state_.player(player).xp < ab.cost.xp_cost) continue;
 
             auto legal_targets = card->enumerateLegalTargets(
                 state_, player, static_cast<int>(ai), id);
@@ -3036,6 +3144,66 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
     return actions;
 }
 
+namespace {
+// Defined with generateSpellActions below.
+std::vector<std::vector<GameObjectId>> spellTargetSets(
+    const Card* card, const GameState& state, PlayerId player,
+    const TargetRequirements& req, const std::vector<GameObjectId>& legal);
+}  // namespace
+
+// Permanents that are themselves [Reaction] cards (CR 813.1.c.1), played at
+// Reaction / Action timing: `intent_type` is PlayReaction in a Closed State and
+// PlayActionCard in a showdown. A unit still goes only where a unit may be
+// played (CR 813.3.a); gear goes to the base, and [Quick-Draw] gear (which has
+// [Reaction], CR 819.1.b) is attached as it resolves.
+void GameEngine::generateReactionPermanentActions(PlayerId player, IntentType intent_type,
+                                                   std::vector<Intent>& actions) const {
+    const auto& ps = state_.player(player);
+    if (ps.cant_play_cards_this_turn) return;
+    std::vector<GameObjectId> sources = ps.hand;
+    if (ps.champion_zone != kInvalidId && state_.objectExists(ps.champion_zone) &&
+        state_.getObject(ps.champion_zone).zone == ZoneType::ChampionZone)
+        sources.push_back(ps.champion_zone);
+    for (auto card_id : sources) {
+        const auto& card = state_.getObject(card_id);
+        if (card.card_def_id == kInvalidId) continue;
+        const Card* card_obj = card_registry_.get(card.card_def_id);
+        if (!card_obj) continue;
+
+        Intent play;
+        play.type = intent_type;
+        play.player = player;
+        play.card = card_id;
+        if (card.isGear()) {
+            if (!card.hasKeyword(Keyword::QuickDraw) && !card_obj->hasReactionTiming()) continue;
+            if (!canAfford(player, card_id)) continue;
+            play.play_location = BaseLocation{player};
+            actions.push_back(play);
+        } else if (card.isUnit()) {
+            if (!card_obj->hasReactionTiming()) continue;
+            if (!canAfford(player, card_id)) continue;
+            if (card_obj->restrictsPlayLocations()) {
+                for (const auto& loc : card_obj->getPlayLocations(state_, player)) {
+                    Intent restricted = play;
+                    restricted.play_location = loc;
+                    actions.push_back(restricted);
+                }
+                continue;
+            }
+            play.play_location = BaseLocation{player};
+            actions.push_back(play);
+            if (ps.units_play_base_only) continue;  // Mageseeker Warden
+            for (const auto& bf : state_.battlefields) {
+                if (bf.blocks_unit_play) continue;  // Rockfall Path
+                if (!bf.controller.has_value() || *bf.controller != player) continue;
+                Intent bf_play = play;
+                bf_play.play_location = BattlefieldLocation{bf.id};
+                actions.push_back(bf_play);
+            }
+        }
+    }
+}
+
 std::vector<Intent> GameEngine::generateClosedStateActions(
     PlayerId player) const {
     std::vector<Intent> actions;
@@ -3054,24 +3222,9 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
                                     actions);
     }
 
-    // Quick-Draw: play gear with [Quick-Draw] as Reactions targeting a friendly unit
-    for (auto card_id : state_.player(player).hand) {
-        if (locked_out) break;
-        auto& card = state_.getObject(card_id);
-        if (!card.isGear() || !card.hasKeyword(Keyword::QuickDraw)) continue;
-        if (!canAfford(player, card_id)) continue;
-
-        for (auto& [uid, unit] : state_.objects) {
-            if (!unit.isUnit() || unit.controller != player) continue;
-            if (!unit.location.has_value()) continue;
-            Intent qd;
-            qd.type = IntentType::PlayReaction;
-            qd.player = player;
-            qd.card = card_id;
-            qd.targets = {uid}; // target unit to auto-attach
-            actions.push_back(qd);
-        }
-    }
+    // [Reaction] permanents: units that are themselves [Reaction] cards, and
+    // [Quick-Draw] / [Reaction] gear (attached as it lands, CR 819.1.d).
+    generateReactionPermanentActions(player, IntentType::PlayReaction, actions);
 
     // Ambush: play units with [Ambush] as Reactions to BFs where you have units
     for (auto card_id : state_.player(player).hand) {
@@ -3156,12 +3309,20 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
                         // spell with no valid targets under these
                         // restrictions." Skip this hidden play entirely.
                         if (bf_targets.empty()) continue;
-                        for (auto t : bf_targets) {
+                        // Every chosen target must be at that battlefield, for
+                        // a multi-target spell as well.
+                        for (auto& tset : spellTargetSets(card_obj, state_, player, req,
+                                                          bf_targets)) {
+                            bool all_here = true;
+                            for (auto t : tset)
+                                if (std::find(bf_targets.begin(), bf_targets.end(), t) ==
+                                        bf_targets.end()) { all_here = false; break; }
+                            if (!all_here) continue;
                             Intent play;
                             play.type = IntentType::PlayReaction;
                             play.player = player;
                             play.card = card_id;
-                            play.targets = {t};
+                            play.targets = std::move(tset);
                             actions.push_back(play);
                         }
                         continue;
@@ -3252,6 +3413,48 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
 
     return actions;
 }
+
+namespace {
+// Every way a spell's targets can be locked in as it is played. A card whose
+// target slots differ ("a friendly unit, then an enemy unit") lists its own
+// through Card::enumerateLegalTargetSets; otherwise they are built from the
+// requirement and the legal targets:
+//   - one target: each legal target;
+//   - "up to N" (optional): every non-empty set of at most N distinct targets
+//     — a set, so each is listed once;
+//   - exactly N: every ordered choice of N distinct targets, since the card
+//     reads targets[0], targets[1], ... as different roles.
+std::vector<std::vector<GameObjectId>> spellTargetSets(
+    const Card* card, const GameState& state, PlayerId player,
+    const TargetRequirements& req, const std::vector<GameObjectId>& legal) {
+    if (card) {
+        if (auto own = card->enumerateLegalTargetSets(state, player)) return *own;
+    }
+    std::vector<std::vector<GameObjectId>> sets;
+    if (req.count <= 1) {
+        for (auto t : legal) sets.push_back({t});
+        return sets;
+    }
+    std::vector<GameObjectId> current;
+    std::vector<bool> used(legal.size(), false);
+    std::function<void(size_t)> build = [&](size_t from) {
+        if (req.optional ? !current.empty()
+                         : static_cast<int>(current.size()) == req.count)
+            sets.push_back(current);
+        if (static_cast<int>(current.size()) == req.count) return;
+        for (size_t i = req.optional ? from : 0; i < legal.size(); ++i) {
+            if (used[i]) continue;
+            used[i] = true;
+            current.push_back(legal[i]);
+            build(i + 1);
+            current.pop_back();
+            used[i] = false;
+        }
+    };
+    build(0);
+    return sets;
+}
+}  // namespace
 
 void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
                                        bool reaction_ok,
@@ -3371,39 +3574,49 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             play.player = player;
             play.card = card_id;
             emit(play, kSingleEmit);
-        } else if (req.count == 2) {
-            // Dual targeting (e.g., Challenge: friendly + enemy)
-            // Separate targets into friendly and enemy
-            std::vector<GameObjectId> friendly_targets, enemy_targets;
-            for (auto tid : legal_targets) {
-                auto& t = state_.getObject(tid);
-                if (t.controller == player) friendly_targets.push_back(tid);
-                else enemy_targets.push_back(tid);
-            }
-            // Generate all valid pairs
-            for (auto ft : friendly_targets) {
-                for (auto et : enemy_targets) {
-                    Intent play;
-                    play.type = intent_type;
-                    play.player = player;
-                    play.card = card_id;
-                    play.targets = {ft, et};
-                    emit(play, kSingleEmit);
-                }
-            }
         } else {
-            // Generate one intent per legal target
-            for (auto target : legal_targets) {
+            // One intent per legal choice of targets (one target, or a set
+            // for a multi-target spell — see spellTargetSets).
+            for (auto& tset : spellTargetSets(spell_card, state_, player, req, legal_targets)) {
                 Intent play;
                 play.type = intent_type;
                 play.player = player;
                 play.card = card_id;
-                play.targets = {target};
+                play.targets = std::move(tset);
                 emit(play, kSingleEmit);
             }
         }
     }
 }
+
+// Defined with the cost code further down.
+static int extraAnyPowerCost(const GameState& state, PlayerId player, const GameObject& card);
+
+namespace {
+// A trash-replay / Flow grant replaces the spell's base cost (CR 356.1.a);
+// cost increases still apply on top of it (CR 356.3). The Energy part of
+// those increases: Helm of Suppression's tax and "cost [N] more" modifiers.
+// (The [A] part is extraAnyPowerCost.)
+int trashReplayEnergyTax(const GameState& state, PlayerId player, const GameObject& card) {
+    bool combat_active = false;
+    for (const auto& bf : state.battlefields)
+        if (bf.combat_in_progress) { combat_active = true; break; }
+    int tax = card.isSpell() ? state.player(player).spell_tax_energy : 0;
+    auto applies = [&](const auto& mod) {
+        if (mod.next_spell_only && !card.isSpell()) return false;
+        if (mod.next_unit_only && !card.isUnit()) return false;
+        if (mod.gear_only && !card.isGear()) return false;
+        if (mod.affects_non_token_only && card.super_type == SuperType::Token) return false;
+        if (mod.combat_active_only && !combat_active) return false;
+        return true;
+    };
+    for (const auto& mod : state.player(player).cost_modifiers)
+        if (!mod.affects_enemy_only && applies(mod)) tax += mod.energy_increase;
+    for (const auto& mod : state.player(opponent(player)).cost_modifiers)
+        if (mod.affects_enemy_only && applies(mod)) tax += mod.energy_increase;
+    return std::max(0, tax);
+}
+}  // namespace
 
 void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
                                              bool reaction_ok,
@@ -3418,6 +3631,15 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
         auto& card = state_.getObject(grant.card);
         if (card.zone != ZoneType::Trash) continue;   // grant valid only in trash
         if (!card.isSpell()) continue;
+
+        // The play-legality gates every other play passes through canAfford:
+        // the card's own "can't be played unless" and Fallen Feline's name lock.
+        if (card.card_def_id != kInvalidId) {
+            if (const Card* gate_card = card_registry_.get(card.card_def_id))
+                if (!gate_card->canBePlayed(state_, player)) continue;
+        }
+        if (std::find(ps.locked_spell_names.begin(), ps.locked_spell_names.end(),
+                      card.name) != ps.locked_spell_names.end()) continue;
 
         // Timing gate — identical to generateSpellActions (CR 309/806/813).
         bool has_action = card.keywords.has(Keyword::Action);
@@ -3438,19 +3660,25 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
 
         // Affordability against the OVERRIDE cost, not the printed cost. For
         // an [A] grant, any single domain that's payable suffices.
+        // Cost increases are owed on top of the grant (CR 356.3).
+        const int taxed_energy = grant.energy + trashReplayEnergyTax(state_, player, card);
+        const int extra_any = extraAnyPowerCost(state_, player, card);
         bool affordable = false;
         if (grant.any_domain) {
             for (int di = 0; di < static_cast<int>(Domain::Count); ++di) {
-                if (canPayAdditionalCost(player, grant.energy, grant.power,
+                if (canPayAdditionalCost(player, taxed_energy, grant.power,
                                           static_cast<Domain>(di))) {
                     affordable = true;
                     break;
                 }
             }
         } else {
-            affordable = canPayAdditionalCost(player, grant.energy, grant.power,
+            affordable = canPayAdditionalCost(player, taxed_energy, grant.power,
                                                grant.power_domain);
         }
+        if (affordable && extra_any > 0 &&
+            payableAnyPower(state_, player) - grant.power < extra_any)
+            affordable = false;
         if (!affordable) continue;
 
         Card* spell_card = card_registry_.get(card.card_def_id);
@@ -3481,16 +3709,9 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
             make({});                                  // agent picks at resolve
         } else if (req.count == 0 || (req.optional && legal_targets.empty())) {
             make({});
-        } else if (req.count == 2) {
-            std::vector<GameObjectId> friendly, enemy;
-            for (auto tid : legal_targets) {
-                if (state_.getObject(tid).controller == player) friendly.push_back(tid);
-                else enemy.push_back(tid);
-            }
-            for (auto ft : friendly)
-                for (auto et : enemy) make({ft, et});
         } else {
-            for (auto target : legal_targets) make({target});
+            for (auto& tset : spellTargetSets(spell_card, state_, player, req, legal_targets))
+                make(std::move(tset));
         }
     }
 }
@@ -3690,7 +3911,10 @@ void GameEngine::runShowdown(BattlefieldId bf_id) {
     // Showdown closes when all players pass focus consecutively (CR 348.1).
     runShowdownLoop(bf_id);
 
-    bf.showdown_in_progress = false;
+    // `bf` is not used past this point: what resolved during the showdown may
+    // have added a battlefield and reallocated the vector. Fetch it again.
+    auto& bf_after = getBattlefield(bf_id);
+    bf_after.showdown_in_progress = false;
     state_.turn.ns_state = NeutralShowdownState::Neutral;
     state_.turn.oc_state = OpenClosedState::Open;
     events_.emit(ShowdownEndedEvent{bf_id});
@@ -3705,9 +3929,9 @@ void GameEngine::runShowdown(BattlefieldId bf_id) {
     if (p1_units.empty() && !p2_units.empty()) sole_player = PlayerId::Player2;
 
     if (sole_player != PlayerId::None) {
-        auto old_controller = bf.controller;
-        bf.controller = sole_player;
-        bf.is_contested = false;
+        auto old_controller = bf_after.controller;
+        bf_after.controller = sole_player;
+        bf_after.is_contested = false;
 
         events_.emit(ControlChangedEvent{bf_id, old_controller, sole_player});
 
@@ -3884,6 +4108,11 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     // for them) resolve fully before we enter the showdown decision
     // loop. Players still get full priority windows because
     // processFEPR handles Closed State priority passing internally.
+    // `bf` is not used past this point: chain items resolve from here on, and
+    // one that adds a battlefield reallocates the vector. The sides are fixed
+    // for the combat; the battlefield is fetched again by id where needed.
+    const PlayerId attacker = *bf.attacker;
+    const PlayerId defender = *bf.defender;
     if (!state_.chain.items.empty()) {
         runChain();
     }
@@ -3891,45 +4120,48 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     // Re-check combat viability AFTER triggers resolve — kills or
     // bounces in trigger resolution may have emptied one side.
     {
-        auto att_after_trig = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
-        auto def_after_trig = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
+        auto att_after_trig = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+        auto def_after_trig = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
         if (att_after_trig.empty() || def_after_trig.empty()) {
-            bf.combat_phase = CombatPhase::ResolutionStep;
+            getBattlefield(bf_id).combat_phase = CombatPhase::ResolutionStep;
             combatResolutionStep(bf_id);
             return;
         }
     }
 
     // Step 1: Combat Showdown — players can play Action/Reaction spells
-    bf.combat_phase = CombatPhase::ShowdownStep;
+    getBattlefield(bf_id).combat_phase = CombatPhase::ShowdownStep;
     runShowdownLoop(bf_id);
 
     // After showdown: check if combat can continue (CR 460.1)
     // Damage step only occurs if both sides still have units
-    auto att_check = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
-    auto def_check = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
+    auto att_check = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+    auto def_check = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
 
     if (att_check.empty() || def_check.empty()) {
         // One side was eliminated during showdown — skip damage, go to resolution
-        bf.combat_phase = CombatPhase::ResolutionStep;
+        getBattlefield(bf_id).combat_phase = CombatPhase::ResolutionStep;
         combatResolutionStep(bf_id);
         return;
     }
 
     // Step 2: Combat Damage
-    bf.combat_phase = CombatPhase::DamageStep;
+    getBattlefield(bf_id).combat_phase = CombatPhase::DamageStep;
     combatDamageStep(bf_id);
 
     // Step 3: Resolution
-    bf.combat_phase = CombatPhase::ResolutionStep;
+    getBattlefield(bf_id).combat_phase = CombatPhase::ResolutionStep;
     combatResolutionStep(bf_id);
 }
 
 void GameEngine::combatDamageStep(BattlefieldId bf_id) {
-    auto& bf = getBattlefield(bf_id);
+    // The sides by value: no BattlefieldState reference is held across the
+    // damage assignment below.
+    const PlayerId attacker = *getBattlefield(bf_id).attacker;
+    const PlayerId defender = *getBattlefield(bf_id).defender;
 
-    auto att_units = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
-    auto def_units = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
+    auto att_units = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+    auto def_units = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
 
     if (att_units.empty() || def_units.empty()) return;
 
@@ -4006,8 +4238,8 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     };
 
     // Attacker assigns damage to defender's units, defender assigns to attacker's
-    runOneSide(*bf.attacker, att_might, def_units);
-    runOneSide(*bf.defender, def_might, att_units);
+    runOneSide(attacker, att_might, def_units);
+    runOneSide(defender, def_might, att_units);
 }
 
 GameEngine::CombatDamageAdvance GameEngine::testHook_advanceCombatDamage(
@@ -4189,7 +4421,9 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     auto att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
     auto def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
 
+    bool recalled = false;
     if (!att_remaining.empty() && !def_remaining.empty()) {
+        recalled = true;
         // Both still have units = a tie. Normally only attackers recall
         // (CR 461.1.a.2). Symbol of the Solari (227): if the attacker controls
         // it, recall ALL units (attackers AND defenders) instead.
@@ -4213,12 +4447,20 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
     def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
 
-    PlayerId combat_winner = PlayerId::None;
+    // The only player with units left here. They take or keep control below
+    // (CR 468.5) whether or not they won.
+    PlayerId sole_remaining = PlayerId::None;
     if (!att_remaining.empty() && def_remaining.empty()) {
-        combat_winner = *bf.attacker;
+        sole_remaining = *bf.attacker;
     } else if (att_remaining.empty() && !def_remaining.empty()) {
-        combat_winner = *bf.defender;
+        sole_remaining = *bf.defender;
     }
+    // CR 468.3.d: "No Result" if units were recalled in the Combat Cleanup (a
+    // tie), or if neither player has units left. Only otherwise has the one
+    // player still here won (468.3.a).
+    const std::optional<PlayerId> combat_winner =
+        (recalled || sole_remaining == PlayerId::None)
+            ? std::nullopt : std::optional<PlayerId>(sole_remaining);
 
     // Clear combat designations
     for (auto& [id, obj] : state_.objects) {
@@ -4238,13 +4480,13 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     events_.emit(CombatEndedEvent{bf_id, combat_winner});
 
     // Establish control (CR 461.5)
-    if (combat_winner != PlayerId::None) {
+    if (sole_remaining != PlayerId::None) {
         auto old_controller = bf.controller;
-        bf.controller = combat_winner;
-        events_.emit(ControlChangedEvent{bf_id, old_controller, combat_winner});
+        bf.controller = sole_remaining;
+        events_.emit(ControlChangedEvent{bf_id, old_controller, sole_remaining});
         // CR 468.5 / 471.1: a defender who wins already controlled it — no Conquer.
-        if (!old_controller.has_value() || *old_controller != combat_winner)
-            scoreConquer(combat_winner, bf_id);
+        if (!old_controller.has_value() || *old_controller != sole_remaining)
+            scoreConquer(sole_remaining, bf_id);
     } else if (att_remaining.empty() && def_remaining.empty()) {
         bf.controller = std::nullopt;
     }
@@ -4274,13 +4516,6 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
         bfs.conquered_by_player = player;
     }
 
-    // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
-    if (ps.cannot_gain_points) {
-        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
-                         " can't gain points (Tianna)");
-        return;
-    }
-
     // Turn-gated scoring (Forgotten Monument): can't score here until the
     // player has taken `min_turn_to_score` of their own turns.
     if (isScoreGatedByTurn(player, bf)) {
@@ -4297,6 +4532,17 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
     ps.battlefields_scored_this_turn.insert(bf);
     events_.logTrace(std::string("CONQUER: ") + toString(player) + " conquers BF#" +
                      std::to_string(bf) + " (score was " + std::to_string(ps.score) + ")");
+
+    // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
+    // Scoring is distinct from gaining points (CR 470.1): the battlefield is
+    // still scored and its Conquer abilities trigger (473.2); only the point
+    // is withheld.
+    if (ps.cannot_gain_points) {
+        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+                         " can't gain points (Tianna)");
+        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
+        return;
+    }
 
     // Otterpus: "If a player would score 1 point from conquering or holding
     // during their first or second turn, they draw 1 instead." The conquer /
@@ -4320,8 +4566,10 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
         } else {
             events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
                              " winning point blocked (not all BFs scored), draw 1 instead");
-            // Draw a card instead (CR 466.1.b.2)
+            // Draw a card instead (CR 473.1.b.1). The battlefield was still
+            // scored, so its Conquer abilities trigger (CR 473.2).
             drawCards(player, 1);
+            events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
         }
     } else {
         ps.score++;
@@ -4336,13 +4584,6 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
 void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     auto& ps = state_.player(player);
 
-    // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
-    if (ps.cannot_gain_points) {
-        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
-                         " can't gain points (Tianna)");
-        return;
-    }
-
     if (isScoreGatedByTurn(player, bf)) {
         events_.logTrace(std::string("SCORE_GATED: ") + toString(player) +
                          " can't score BF#" + std::to_string(bf) + " until turn " +
@@ -4353,6 +4594,16 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
 
     if (ps.battlefields_scored_this_turn.count(bf)) return;
     ps.battlefields_scored_this_turn.insert(bf);
+
+    // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
+    // The battlefield is still held and scored (CR 470.1, 473.2); only the
+    // point is withheld.
+    if (ps.cannot_gain_points) {
+        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+                         " can't gain points (Tianna)");
+        events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
+        return;
+    }
 
     // Otterpus: "If a player would score 1 point from conquering or holding
     // during their first or second turn, they draw 1 instead." The conquer /
@@ -4378,7 +4629,9 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
 }
 
 bool GameEngine::isWinningPointAttempt(PlayerId player) const {
-    return state_.player(player).score >= state_.mode.victory_score - 1;
+    // Against the points actually needed to win, which a battlefield may
+    // change (the same number checkWinCondition uses).
+    return state_.player(player).score >= effect_executor_->effectiveVictoryScore() - 1;
 }
 
 bool GameEngine::canGainWinningPointViaConquer(PlayerId player) const {
@@ -5015,7 +5268,14 @@ void GameEngine::cleanup() {
     // turn. (Fiora, Worthy 500 / Grand Duelist 519.) No card-specific logic
     // here — the engine only detects and announces the state change.
     for (auto& [id, obj] : state_.objects) {
-        if (!obj.isUnit() || !obj.location.has_value()) continue;
+        if (!obj.isUnit()) continue;
+        if (!obj.location.has_value()) {
+            // Off the board the edge is forgotten, so a unit that comes back
+            // at 5+ [M] becomes Mighty again.
+            auto was_it = obj.card_counters.find("__was_mighty");
+            if (was_it != obj.card_counters.end()) was_it->second = 0;
+            continue;
+        }
         bool mighty = obj.current_might >= 5;
         bool was = obj.card_counters["__was_mighty"] != 0;
         if (mighty && !was) {
@@ -6173,12 +6433,22 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id) {
     if (it == ps.trash_replay_grants.end()) return false;
     const auto grant = *it;   // copy before erase
 
+    // Cost increases are owed on top of the grant (CR 356.3) — the same
+    // amounts generateTrashReplayActions checked.
+    int taxed_energy = grant.energy;
+    int extra_any = 0;
+    if (state_.objectExists(card_id)) {
+        const auto& replayed = state_.getObject(card_id);
+        taxed_energy += trashReplayEnergyTax(state_, player, replayed);
+        extra_any = extraAnyPowerCost(state_, player, replayed);
+    }
+
     // Pick a payable domain for an [A] grant; otherwise use the fixed domain.
     Domain domain = grant.power_domain;
     if (grant.any_domain) {
         bool found = false;
         for (int di = 0; di < static_cast<int>(Domain::Count); ++di) {
-            if (canPayAdditionalCost(player, grant.energy, grant.power,
+            if (canPayAdditionalCost(player, taxed_energy, grant.power,
                                       static_cast<Domain>(di))) {
                 domain = static_cast<Domain>(di);
                 found = true;
@@ -6187,7 +6457,8 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id) {
         }
         if (!found) return false;  // action gen should have filtered this out
     }
-    bool ok = payAdditionalCost(player, grant.energy, grant.power, domain);
+    bool ok = payAdditionalCost(player, taxed_energy, grant.power, domain);
+    if (ok && extra_any > 0) ok = effect_executor_->payAnyPower(player, extra_any);
     if (ok && grant.banish_after && state_.objectExists(card_id))
         state_.getObject(card_id).banish_on_leave_chain = true;
 

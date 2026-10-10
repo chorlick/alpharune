@@ -39,21 +39,22 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Where: `chain_manager.cpp:461-468`. Pushes onto `trash`, then `recycleCards` (`effect_executor.cpp:907-921`) inserts into the deck without removing from the source zone.
   - Fizz, Trickster (461) / Kai'Sa, Evolutionary (112): the id is in `trash` and `main_deck`; a later burn-out or Garbage Grabber pushes it into the deck again and it can be drawn twice.
 
-- [ ] **2.6 `executePlaySpell` writes spell metadata to `chain.items.back()`, which may be a trigger** [verified]
+- [x] **2.6 `executePlaySpell` writes spell metadata to `chain.items.back()`, which may be a trigger** [verified] — FIXED: `executePlaySpell` finds the spell's chain item by the id `addSpell` returns (same for the granted-ability stamp in `payAndQueueAbility`); test: PlayCombatFixTest.SpellMetadata_LandsOnTheSpell_NotOnATriggerPushedAboveIt
   - Where: `:1927-1937`. `addSpell` emits `chosen_by_controller` after pushing (`chain_manager.cpp:46-51`); `fireTrigger` synchronously pushes an ability. The returned `chain_id` is discarded.
   - With a `WhenYouChooseAFriendlyUnit` watcher (Blade Dancer 555, Irelia Fervent 380, Spirit Wheel 465, Jae Medarda 463, Dreaming Tree 287) and a targeted spell on a friendly unit: `repeats_paid` / `total_energy_spent` land on the trigger, and `resume_data[5]=1` is not set on the spell so `pickTarget` asks again at resolution.
   - Same `back()` pattern at `:1509` is safe today only because granted-ability intents carry no targets.
 
-- [ ] **2.7 `executeIntent` has no case for `PlayReaction` / `ActivateReactionAbility`** [verified]
+- [x] **2.7 `executeIntent` has no case for `PlayReaction` / `ActivateReactionAbility`** [verified] — FIXED: `executeIntent` routes `PlayReaction` (spell / permanent / hidden card) and `ActivateReactionAbility`; test: PlayCombatFixTest.Showdown_PlayReactionIntent_PlaysThePermanent
   - Where: `:1535-1578`; generated at `:2974`, routed by `resolveShowdownDecision` (`:3783-3789`).
   - Rengar, Pouncing (348) "pounce" play in a showdown hits `default: break`; focus passes are cleared and the action stays legal.
 
-- [ ] **2.8 `generateShowdownActions` offers `[Action]` abilities without the usual gates** [confirmed]
+- [x] **2.8 `generateShowdownActions` offers `[Action]` abilities without the usual gates** [confirmed] — FIXED: the showdown ability loop applies the main-phase gates (`canActivateAbility`, `canActivateAbilityAt`, energy/power, typed discard count, XP); `payAndQueueAbility` refuses an activation whose exhaust / energy / power / XP cost cannot be paid before paying anything; tests: PlayCombatFixTest.Showdown_ActionAbility_NotOfferedWhenItsCostCannotBePaid, PlayCombatFixTest.ActivatedAbility_UnpayableCostIsRefused_NotQueuedForFree
   - Where: `:2983-3029`. Missing vs `:3186-3209` and `:3500-3538`: `canActivateAbility`, `canActivateAbilityAt` (Empower gate), energy/power affordability, discard count, XP.
   - `payAndQueueAbility` ignores the return of `payActivationResources` (`:1460-1461`) and does `xp -= xp_cost` unchecked (`:1489`).
   - Failure: ability goes on the chain for free; XP can go negative.
 
-- [ ] **2.9 Trash-replay / Flow plays bypass play-legality gates and cost tax** [confirmed]
+- [x] **2.9 Trash-replay / Flow plays bypass play-legality gates and cost tax** [confirmed] — FIXED: `generateTrashReplayActions` applies `Card::canBePlayed` and `locked_spell_names`; generator and `payTrashReplayGrant` both add cost increases to the grant (CR 356.1.a / 356.3: `spell_tax_energy`, `energy_increase` modifiers, and the [A] extras from `extraAnyPowerCost` = `spell_tax_power` + Mystic Vortex); tests: PlayCombatFixTest.TrashReplay_RespectsCanBePlayedAndTheNameLock, PlayCombatFixTest.TrashReplay_PaysTheSpellTaxOnTopOfTheGrant
+  - Note for engine-auras-costs: the two gates are duplicated from the top of `canAfford` (their function); discounts (CR 356.4) are still not applied to a grant cost.
   - Where: `:3403-3491`. `generateTrashReplayActions` never calls `canAfford` (where `Card::canBePlayed` and `locked_spell_names` live, `:5604-5615`); `payTrashReplayGrant` charges only the grant, so `spell_tax_energy/power` and the Mystic Vortex reaction tax are skipped.
 
 - [ ] **2.10 Safety caps fail silently** [plausible]
@@ -64,7 +65,7 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 
 ## C. Triggers
 
-- [ ] **2.12 "When you play a unit here" battlefield triggers never fire on normal plays** [verified]
+- [x] **2.12 "When you play a unit here" battlefield triggers never fire on normal plays** [verified] — FIXED: both play paths set `card.location` before emitting `CardPlayedEvent` (`executePlayCard`; `chain_manager.cpp` in a `shared:` commit); test: PlayCombatFixTest.PlayUnitToBattlefield_FiresPlayHereTrigger_AndSetsBattlefieldZone
   - Where: `trigger_manager.cpp:362-367` reads `battlefieldId()` during `CardPlayedEvent`, but both play paths emit before setting `card.location` (`:1696` vs `:1703`; `chain_manager.cpp:333` vs `:343`).
   - Star Spring (771), Valley of Idols (774). Only facedown plays and `playIgnoringCost` set location first. Tests call the trigger directly.
 
@@ -86,14 +87,15 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 
 ## D. Combat and scoring
 
-- [ ] **2.18 `CombatEndedEvent` carries the wrong winner** [confirmed]
+- [x] **2.18 `CombatEndedEvent` carries the wrong winner** [confirmed] — FIXED: `combatResolutionStep` emits `std::nullopt` when there is no winner, and a combat whose attackers were recalled is "No Result" (CR 468.3.d); the player left alone still takes / keeps control (CR 468.5); tests: CombatResultTest.AttackerWhoWipesTheDefendersWins, CombatResultTest.DoubleWipeHasNoWinner, CombatResultTest.TieWithRecalledAttackersHasNoWinner
   - Where: `:4207-4233`. `combat_winner` may be `None` but the event field is `std::optional<PlayerId>`, always engaged; `onCombatEnded` (`trigger_manager.cpp:571`) fires `WhenIWinCombat` for both legends on a double wipe.
   - On a tie, attackers are recalled (`:4192`) and survivors recomputed (`:4208`), so the defender is declared winner; CR 468.3.d says "No Result".
 
-- [ ] **2.19 Final-point check ignores the effective victory score** [verified]
+- [x] **2.19 Final-point check ignores the effective victory score** [verified] — FIXED: `isWinningPointAttempt` uses `effectiveVictoryScore()`; test: ScoringFixTest.FinalPointCheck_UsesTheEffectiveVictoryScore
   - Where: `:4375-4377` uses `state_.mode.victory_score - 1`; `checkWinCondition` (`:5037`) uses `effectiveVictoryScore()`. Aspirant's Climb (271): a conquer at 7 is treated as the final point though 9 is needed.
 
-- [ ] **2.20 A conquer whose final point is replaced by a draw emits no `ScoreEvent`** [confirmed]
+- [x] **2.20 A conquer whose final point is replaced by a draw emits no `ScoreEvent`** [confirmed] — FIXED: the draw-instead branch emits `ScoreEvent` (CR 473.2); the `cannot_gain_points` branch of `scoreConquer` / `scoreHold` now marks the battlefield scored and emits it too (CR 470.1: scoring is distinct from gaining points; Tianna says "can't gain points"); tests: ScoringFixTest.ConquerWhoseFinalPointBecomesADraw_StillTriggersConquerAbilities, ScoringFixTest.CantGainPoints_StillScoresTheBattlefield
+  - The turn-gated return is NOT A DEFECT: Forgotten Monument 523 reads "Players can't score here until their third turn", so there is no Score and nothing to trigger or mark.
   - Where: `:4315-4320`. Battlefield is marked scored but `WhenIConquer` never fires (CR 473.2); the Otterpus branch (`:4305`) does emit.
   - The `cannot_gain_points` and turn-gated early returns (`:4273-4287`, `:4335-4347`) also skip the event and the scored mark [plausible].
 
@@ -106,10 +108,10 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Where: `effect_executor.cpp:735-771` vs `:6246-6275`. No `moves_this_turn++`, attached gear does not move with the unit (CR 719.3.a).
   - Bard, Mercurial moving an equipped unit leaves the gear at base; Kayn, Unleashed moved twice by effects does not gain immunity.
 
-- [ ] **2.23 `resolvePermanent` sets `zone = Base` even when the unit lands on a battlefield** [confirmed]
+- [x] **2.23 `resolvePermanent` sets `zone = Base` even when the unit lands on a battlefield** [confirmed] — FIXED: `resolvePermanent` sets `BattlefieldZone` when the location is a battlefield; test: PlayCombatFixTest.PlayUnitToBattlefield_FiresPlayHereTrigger_AndSetsBattlefieldZone
   - Where: `:2100`; `moveUnit` (`:6253-6258`) sets `BattlefieldZone`. The unit is omitted from the play UI's battlefield bucket (`io/play_server.cpp:554`, `:528`) and from `scripted_agent.cpp:28`.
 
-- [ ] **2.24 Champion-zone play ignores the "can't play cards" lockout** [confirmed]
+- [x] **2.24 Champion-zone play ignores the "can't play cards" lockout** [confirmed] — FIXED: the champion in its zone is generated by the same loop as units in hand, so it gets the lockout and the same locations (CR 420.1.a, 355.2.a — the rules treat the two sources alike); the alternative-cost play is gated on the lockout too; test: PlayCombatFixTest.ChampionZonePlay_RespectsTheLockoutAndGetsControlledBattlefields
   - Where: `:2745-2787`; every other play loop checks `locked_out` (`:2672`, `:2791`, `:2806`). The champion also gets only `BaseLocation` while hand units get controlled battlefields (`:2714-2729`) [plausible; rules not checked].
 
 - [ ] **2.25 `executeHideCard` pays `[A]` through a private path** [confirmed]
@@ -118,16 +120,17 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 - [ ] **2.26 Altar of Blood payment in `killUnit` is hand-rolled and wrong** [confirmed]
   - Where: `:6309-6361`. Requires three ready runes (`:6323-6326`); no `LeftBoardEvent`, no `power_spent_this_turn`. Also an agent decision inside `cleanup()`, contradicting `game_engine.h:423-428`.
 
-- [ ] **2.27 `recycle_self` activation cost bypasses leave-board handling** [plausible]
+- [x] **2.27 `recycle_self` activation cost bypasses leave-board handling** [plausible] — FIXED: the `recycle_self` cost in `payAndQueueAbility` unattaches / sheds gear, clears statuses, banishes a token instead (CR 183.1), puts a card into its OWNER's deck and emits `LeftBoardEvent`; tests: PlayCombatFixTest.RecycleSelfCost_GoesToTheOwnersDeckAndAnnouncesLeavingTheBoard, PlayCombatFixTest.RecycleSelfCost_TokenCeasesToExistInstead
+  - Needs card stream: both users of `recycle_self` misuse it. Baited Hook 242 prints `[1][C], [E]` — `[C]` is a Chaos Power, so the cost is `{.exhaust, .energy = 1, .power = 1, .power_domain = Domain::Chaos}`. Poro Snax 369 prints `[1][G], [E], Kill this` — it needs the Calm Power and a kill-self cost, not a recycle.
   - Where: `:1463-1469` (Baited Hook 242, Poro Snax 369). No `LeftBoardEvent`, no detach, no token check, inserts into the activator's deck rather than the owner's.
 
 - [ ] **2.28 `killObject` and `dealDamage` have no on-board guard** [plausible]
   - The second pass found about 20 cards that hit this or the same gap in `moveToBase` / `moveToBattlefield` / `bounceToHand` (`effect_executor.cpp:559,735,754`): see 07 §E. Fixing it in the executor is the cheap route.
   - Where: `effect_executor.cpp:167-170`, `:21-24`. Only check is `zone == Trash`; dead tokens sit in Banishment. A second `killObject` on a dead token re-emits `UnitDiedEvent`; killing an object in hand moves it to trash without removing it from `hand`.
 
-- [ ] **2.29 `__was_mighty` only re-armed on board** [plausible] — `:5012-5022`. `killUnit` does not clear it; a returning unit at 5+ might would not emit "became_mighty" (Fiora 500/519).
+- [x] **2.29 `__was_mighty` only re-armed on board** [plausible] — `:5012-5022`. `killUnit` does not clear it; a returning unit at 5+ might would not emit "became_mighty" (Fiora 500/519). — FIXED: confirmed (nothing cleared `__was_mighty` off the board); the edge scan in `cleanup()` now resets it for units with no location; test: PlayCombatFixTest.BecameMighty_FiresAgainForAUnitThatReturnsToTheBoard
 
-- [ ] **2.30 `BattlefieldState&` held across chain and showdown execution** [plausible, narrow]
+- [x] **2.30 `BattlefieldState&` held across chain and showdown execution** [plausible, narrow] — FIXED: `scoringStep` and `advanceMainPhase` iterate by index and re-fetch by id after a chain / showdown / combat; `runShowdown`, `runCombat` and `combatDamageStep` no longer use a `BattlefieldState&` taken before one (`combatResolutionStep` resolves no chain item, so its reference is safe and unchanged); test: PlayCombatFixTest.MainPhase_CombatThatAddsABattlefield_ClearsTheRightStagedFlag
   - Where: `:3674`, `:3833`, `:3924`, `:4168` (also `:897`, `:795`). `addBattlefieldToken` (`effect_executor.cpp:1261`) does `push_back`. Only Baron Nashor's `onPlay` reaches it; no in-showdown path found. Re-fetch by id or reserve capacity.
 
 - [ ] **2.31 Temporary Deflect may never expire** [not confirmed] — `effect_executor.cpp:667`, `deflect_value += value` with no temp counter.

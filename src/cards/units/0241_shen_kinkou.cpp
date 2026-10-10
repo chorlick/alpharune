@@ -14,6 +14,8 @@ namespace {
 class ShenKinkou : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Reaction] (Play any time ...)" — the card itself has Reaction.
+    bool hasReactionTiming() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

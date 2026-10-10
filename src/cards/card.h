@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -679,6 +680,29 @@ public:
     /// where the controller is currently attacking. Action generator
     /// emits play-to-attacking-BF intents during showdown/closed state.
     virtual bool playableAsReactionToAttack() const { return false; }
+
+    /// Whether this PERMANENT card itself has [Reaction] (CR 813.1.c.1: "This
+    /// can be played during Closed States on any player's turn") — Shen,
+    /// Kinkou; Janna, Savior. Not the same as Keyword::Reaction on the def,
+    /// which is also set for permanents that merely have a [Reaction]
+    /// ABILITY (the Seals, Gold). When true the engine offers the card at
+    /// Reaction and Action timing, to wherever it may normally be played
+    /// (CR 813.3.a). Spells use Keyword::Reaction; [Quick-Draw] gear needs no
+    /// override (CR 819.1.b).
+    virtual bool hasReactionTiming() const { return false; }
+
+    /// For a spell whose several targets are locked in as it is played
+    /// (getTargetRequirements().count >= 2, no needsPlayTimeTargetPair): every
+    /// legal choice of targets, each in the order onResolve reads them.
+    /// Default (nullopt): the engine builds them from enumerateLegalTargets —
+    /// for "up to N" (optional) every non-empty set of at most N distinct
+    /// targets, otherwise every ordered choice of exactly N distinct targets.
+    /// Override when the slots have different requirements ("a friendly unit,
+    /// then an enemy unit"; "units at the same location").
+    virtual std::optional<std::vector<std::vector<GameObjectId>>>
+    enumerateLegalTargetSets(const GameState& /*state*/, PlayerId /*controller*/) const {
+        return std::nullopt;
+    }
 
     // ── Targeting protection ──
     /// Whether this card may be the target of enemy spells and abilities.

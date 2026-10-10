@@ -54,7 +54,7 @@ public:
     }
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
-        // All units on the board; engine generates friendly/enemy pairs.
+        // All units on the board; enumerateLegalTargetSets pairs them up.
         std::vector<GameObjectId> targets;
         for (auto& [id, obj] : state.objects) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
@@ -63,6 +63,19 @@ public:
             targets.push_back(id);
         }
         return targets;
+    }
+    // "A friendly unit, then an enemy unit": {friendly, enemy} pairs only.
+    std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
+        const GameState& state, PlayerId controller) const override {
+        std::vector<GameObjectId> friendly, enemy;
+        for (auto id : enumerateLegalTargets(state, controller)) {
+            if (state.getObject(id).controller == controller) friendly.push_back(id);
+            else enemy.push_back(id);
+        }
+        std::vector<std::vector<GameObjectId>> sets;
+        for (auto f : friendly)
+            for (auto e : enemy) sets.push_back({f, e});
+        return sets;
     }
 private:
     const CardDef def_ = [] {

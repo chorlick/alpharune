@@ -209,6 +209,9 @@ public:
         return resolveShowdownDecision(bf, chosen, current_focus, action_count);
     }
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
+    // One pass of the main-phase loop up to its next decision: runs any
+    // staged showdown / combat. The decision itself is discarded.
+    void testHook_advanceMainPhase() { int n = 0; advanceMainPhase(n); }
     // Install agents directly without going through run(). Required so
     // tests can exercise paths that invoke chain priority loops
     // (runChain → processFEPR → getAgent).
@@ -523,6 +526,10 @@ private:
     void generateTrashReplayActions(PlayerId player, bool action_ok,
                                      bool reaction_ok,
                                      std::vector<Intent>& actions) const;
+    /// Plays of permanents that are themselves [Reaction] cards ([Reaction]
+    /// units, [Quick-Draw] / [Reaction] gear) at Reaction or Action timing.
+    void generateReactionPermanentActions(PlayerId player, IntentType intent_type,
+                                          std::vector<Intent>& actions) const;
     void generateActivateAbilityActions(PlayerId player,
                                          std::vector<Intent>& actions) const;
 

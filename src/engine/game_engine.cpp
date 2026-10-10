@@ -1202,8 +1202,11 @@ int GameEngine::activationEnergyReduction(const Card& card, PlayerId player,
 void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     if (item.card_def_id == kInvalidId) return;
     if (item.is_ability && !item.is_activated_ability) {
-        // A triggered ability: its "you may", costs and targets (CR 383.3).
-        // (`targets` carries the triggering event's subject, not a choice.)
+        // A triggered ability: its "you may", costs and targets (CR 383.3)
+        // are chosen by the card's own callback, through the choice helpers
+        // (Card::confirmOptional / pickTarget / pickTargetPair), in the
+        // finalize pass. The engine never fills `targets` for a trigger: the
+        // event's subject travels in ChainItem::triggering_subject.
         const Card* tcard = card_registry_.get(item.card_def_id);
         if (tcard && (tcard->choicesAtFinalization() & Card::kFinalizeTrigger))
             runFinalizePass(item);

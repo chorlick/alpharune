@@ -212,6 +212,9 @@ public:
     // One pass of the main-phase loop up to its next decision: runs any
     // staged showdown / combat. The decision itself is discarded.
     void testHook_advanceMainPhase() { int n = 0; advanceMainPhase(n); }
+    // Resolve whatever is on the chain (triggers queued by an event a test
+    // raised outside a play), with priority passes and finalization as in a game.
+    void testHook_runChain() { if (!state_.chain.items.empty()) runChain(); }
     // Install agents directly without going through run(). Required so
     // tests can exercise paths that invoke chain priority loops
     // (runChain → processFEPR → getAgent).

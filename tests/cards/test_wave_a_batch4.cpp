@@ -69,7 +69,14 @@ TEST_F(CardTestFixture, CaptainFarron_AssaultMightOnlyWhileAttacking) {
     state.getObject(ally).combat_designation = CombatDesignation::Attacker;
 
     card_registry.get(kCaptainFarron)->applyPassiveAura(state, P1);
-    EXPECT_EQ(auraMight(state.getObject(ally)), 1) << "+1 [M] while attacking";
+    // The card grants Assault 1; the +1 [M] while attacking is the engine's
+    // aura fold of keyword_value (CR 807) —
+    // AurasCostsTest.CaptainFarron_AssaultForOtherFriendlyUnitsHereOnly.
+    int assault = 0;
+    for (const auto& ae : state.getObject(ally).aura_effects)
+        if (ae.keyword == Keyword::Assault) assault += ae.keyword_value;
+    EXPECT_EQ(assault, 1);
+    EXPECT_EQ(auraMight(state.getObject(ally)), 0);
 
     // Re-run with the ally not attacking → keyword present, no might bump.
     state.getObject(ally).aura_effects.clear();

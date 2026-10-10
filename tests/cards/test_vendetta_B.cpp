@@ -579,7 +579,10 @@ TEST_F(VendettaB, Vendetta_RepairSpecialist_AssaultEqualsGearCount) {
     clearAuras();
     state.getObject(unit).combat_designation = CombatDesignation::Attacker;
     c->applyPassiveAura(state, P1);
-    EXPECT_EQ(auraMightSum(state.getObject(unit)), 3);
+    // The +3 [M] while attacking is the engine's aura fold of keyword_value
+    // (CR 807) — AurasCostsTest.AuraKeywordHelper_*; the effect carries none.
+    EXPECT_EQ(auraKeywordValue(state.getObject(unit), Keyword::Assault), 3);
+    EXPECT_EQ(auraMightSum(state.getObject(unit)), 0);
 }
 
 // ── 865 Baccai Witherclaw ────────────────────────────────────────────────

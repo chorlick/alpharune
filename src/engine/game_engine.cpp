@@ -4798,10 +4798,16 @@ void GameEngine::recalculateAuras() {
             Card* gear_card = card_registry_.get(state_.getObject(gear_id).card_def_id);
             if (!gear_card) continue;
 
-            // Keywords from effect_text
+            // Keywords from effect_text. [Assault N] / [Shield N] are pushed
+            // once, with their value, below — not also as a bare keyword,
+            // which would count as a second instance of 1.
+            int ea = gear_card->equippedAssault();
+            int es = gear_card->equippedShield();
             auto ekw = gear_card->equippedKeywords();
             if (ekw.bits != 0) {
                 for (int k = 0; k < static_cast<int>(Keyword::Count); ++k) {
+                    if (ea > 0 && static_cast<Keyword>(k) == Keyword::Assault) continue;
+                    if (es > 0 && static_cast<Keyword>(k) == Keyword::Shield) continue;
                     if (ekw.has(static_cast<Keyword>(k))) {
                         GameObject::AuraEffect ae;
                         ae.source = gear_id;
@@ -4811,7 +4817,6 @@ void GameEngine::recalculateAuras() {
                 }
             }
             // Assault/Shield/Deflect from effect_text
-            int ea = gear_card->equippedAssault();
             if (ea > 0) {
                 GameObject::AuraEffect ae;
                 ae.source = gear_id;
@@ -4819,7 +4824,6 @@ void GameEngine::recalculateAuras() {
                 ae.keyword_value = ea;
                 obj.aura_effects.push_back(ae);
             }
-            int es = gear_card->equippedShield();
             if (es > 0) {
                 GameObject::AuraEffect ae;
                 ae.source = gear_id;
@@ -4840,6 +4844,17 @@ void GameEngine::recalculateAuras() {
             obj.aura_might_bonus += ae.might_bonus;
             if (ae.keyword != Keyword::Count) {
                 obj.aura_keywords.set(ae.keyword);
+            }
+            // An aura-granted [Assault N] / [Shield N] is +N [M] while its
+            // bearer is an attacker / a defender (CR 807 / 814); a bare
+            // [Assault] / [Shield] is N = 1. recomputeMight only knows the
+            // object's own assault_value / shield_value, so the granted
+            // instances are folded in here.
+            if ((ae.keyword == Keyword::Assault &&
+                 obj.combat_designation == CombatDesignation::Attacker) ||
+                (ae.keyword == Keyword::Shield &&
+                 obj.combat_designation == CombatDesignation::Defender)) {
+                obj.aura_might_bonus += std::max(1, ae.keyword_value);
             }
             if (ae.suppress_combat_damage) obj.aura_no_combat_damage = true;
             obj.aura_bonus_damage_taken += ae.bonus_damage_taken;

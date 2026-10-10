@@ -31,14 +31,13 @@ public:
                 ae.keyword = Keyword::Ganking;
                 self.aura_effects.push_back(ae);
             }
-            // Assault: presence + the +1 [M] bonus while I'm an attacker.
+            // Assault 1: the engine's aura fold adds the +1 [M] while I'm an
+            // attacker.
             {
                 GameObject::AuraEffect ae;
                 ae.source = sid;
                 ae.keyword = Keyword::Assault;
                 ae.keyword_value = 1;
-                if (self.combat_designation == CombatDesignation::Attacker)
-                    ae.might_bonus = 1;
                 self.aura_effects.push_back(ae);
             }
         }

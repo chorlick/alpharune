@@ -600,7 +600,9 @@ TEST_F(VendettaA, Vendetta_SereneAscetic_DeflectAndShieldWhileEmpowered) {
     aura(kSereneAscetic, P1);
     EXPECT_EQ(auraKeywordValue(state.getObject(unit), Keyword::Deflect), 1);
     EXPECT_EQ(auraKeywordValue(state.getObject(unit), Keyword::Shield), 3);
-    EXPECT_EQ(auraMightSum(state.getObject(unit)), 3) << "+3 [M] while defending";
+    // The +3 [M] while defending is the engine's aura fold of keyword_value
+    // (CR 814) — AurasCostsTest.AuraKeywordHelper_*; the effect carries none.
+    EXPECT_EQ(auraMightSum(state.getObject(unit)), 0);
 }
 
 // ── 819 Frostcoat Mother ─────────────────────────────────────────────────

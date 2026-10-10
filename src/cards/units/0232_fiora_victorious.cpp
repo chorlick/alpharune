@@ -46,11 +46,6 @@ private:
         d.energy_cost = 4;
         d.might = 4;
         d.rarity = Rarity::Rare;
-        d.shield_value = 1;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
-        d.keywords.set(Keyword::Ganking);
-        d.keywords.set(Keyword::Shield);
         d.ability_text = R"RB(While I'm [Mighty], I have [Deflect], [Ganking], and [Shield]. (I'm Mighty while I have 5+ [M].))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/24d4d1997e6a5b145412e402fc69399d590ecda0-744x1039.png)RB";
         return d;

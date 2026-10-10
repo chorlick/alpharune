@@ -5601,22 +5601,113 @@ static int extraAnyPowerCost(const GameState& state, PlayerId player, const Game
     return std::max(0, extra);
 }
 
+// Whether one CostModifier applies to `payer` playing `card`. `own` says the
+// modifier sits in the payer's own list (false: in the opponent's, where only
+// "enemy" modifiers reach across). The single filter used for the Energy part,
+// the Power part and the one-shot consume, so the three cannot drift.
+static bool costModifierApplies(const GameState& state, const PlayerState::CostModifier& mod,
+                                bool own, PlayerId payer, const GameObject& card,
+                                bool combat_active) {
+    if (mod.affects_enemy_only == own) return false;
+    if (mod.next_spell_only && !card.isSpell()) return false;
+    if (mod.next_unit_only && !card.isUnit()) return false;
+    if (mod.units_only && !card.isUnit()) return false;
+    if (mod.gear_only && !card.isGear()) return false;
+    if (mod.first_gear_per_turn && state.player(payer).gears_played_this_turn > 0) return false;
+    if (mod.affects_non_token_only && card.super_type == SuperType::Token) return false;
+    if (mod.combat_active_only && !combat_active) return false;
+    if (!mod.required_tag.empty() &&
+        std::find(card.tags.begin(), card.tags.end(), mod.required_tag) == card.tags.end())
+        return false;
+    return true;
+}
+
+static bool anyCombatInProgress(const GameState& state) {
+    for (const auto& bf : state.battlefields)
+        if (bf.combat_in_progress) return true;
+    return false;
+}
+
 static int powerCostDelta(const GameState& state, PlayerId player, const GameObject& card,
                           const Card* card_class) {
     const auto& ps = state.player(player);
     int delta = 0;
     if (card.isSpell()) delta -= ps.spell_discount_power;
     delta -= ps.transient_power_discount;
+    const bool combat_active = anyCombatInProgress(state);
     for (const auto& mod : ps.cost_modifiers) {
-        if (mod.power_reduction == 0 || mod.affects_enemy_only) continue;
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.gear_only && !card.isGear()) continue;
+        if (mod.power_reduction == 0) continue;
+        if (!costModifierApplies(state, mod, /*own=*/true, player, card, combat_active)) continue;
+        delta -= mod.power_reduction;
+    }
+    for (const auto& mod : state.player(opponent(player)).cost_modifiers) {
+        if (mod.power_reduction == 0) continue;
+        if (!costModifierApplies(state, mod, /*own=*/false, player, card, combat_active)) continue;
         delta -= mod.power_reduction;
     }
     if (card_class) delta -= card_class->selfPowerCostReduction(state, player);
     return delta;
 }
+
+// What `card` costs `player` to play right now: its printed cost after every
+// cost modifier and continuous effect. canAfford asks it to gate the play and
+// beginCostPayment to charge it, so the two always agree.
+namespace {
+struct EffectiveCardCost {
+    int energy = 0;
+    int power = 0;
+};
+EffectiveCardCost effectiveCardCost(const GameState& state, const CardDef& def,
+                                    const Card* card_class, PlayerId player,
+                                    const GameObject& card) {
+    const auto& ps = state.player(player);
+    int energy_needed = def.energy_cost;
+    int increases = 0;   // "costs [N] more" — raise the cost a minimum protects
+    int min_cost = 0;
+    // Combat-active scope: a CostModifier with combat_active_only=true is
+    // only consulted while combat is in progress on any battlefield.
+    const bool combat_active = anyCombatInProgress(state);
+    // The payer's own modifiers, then the OPPONENT's "enemy" modifiers, which
+    // reach across to this player's plays.
+    for (int side = 0; side < 2; ++side) {
+        const bool own = side == 0;
+        const auto& mods = own ? ps.cost_modifiers
+                               : state.player(opponent(player)).cost_modifiers;
+        for (const auto& mod : mods) {
+            if (!costModifierApplies(state, mod, own, player, card, combat_active)) continue;
+            energy_needed -= mod.energy_reduction;
+            increases += mod.energy_increase;
+            if (mod.min_cost > min_cost) min_cost = mod.min_cost;
+        }
+    }
+    // Self-cost reduction hook (e.g., Noxus Hopeful "[Legion] I cost [2] less").
+    if (card_class) energy_needed -= card_class->selfCostReduction(state, player);
+    // Vendetta continuous spell-cost effects (set by cards' applyPassiveAura):
+    // Helm of Suppression taxes the opponent's spells; Applied Researchers
+    // discounts your own "to a minimum of [1]". Energy component only.
+    if (card.isSpell()) {
+        increases += ps.spell_tax_energy;
+        if (ps.spell_discount_energy > 0) {
+            energy_needed -= ps.spell_discount_energy;
+            if (min_cost < 1) min_cost = 1;
+        }
+    }
+    // Irelia, Graceful (462): per-target discount staged in executePlaySpell when
+    // this spell chose her ("your spells that choose me cost [1]/[A] less").
+    energy_needed -= ps.transient_play_discount;
+    energy_needed += increases;
+    // "to a minimum of [N]" limits the reductions; it never raises a card that
+    // already cost less than N.
+    energy_needed = std::max(std::min(min_cost, def.energy_cost + increases), energy_needed);
+    energy_needed = std::max(0, energy_needed);
+    // Effect-driven play that ignores part of the cost (EffectExecutor::playPayingCost).
+    if (ps.transient_ignore_energy) energy_needed = 0;
+    int power_needed =
+        std::max(0, def.power_cost + powerCostDelta(state, player, card, card_class));
+    if (ps.transient_ignore_power) power_needed = 0;
+    return {energy_needed, power_needed};
+}
+}  // namespace
 
 bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj, int extra_any_power) const {
     // Play-legality gates that sit in front of every play generator.
@@ -5636,72 +5727,10 @@ bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj, int extra_any
     if (card.card_def_id == kInvalidId) return false;  // tokens have no cost
     const auto& def = card_db_.get(card.card_def_id);
 
-    int energy_needed = def.energy_cost;
-    int power_needed = def.power_cost;
-
-    // Apply cost reductions
-    auto& ps_const = state_.player(player);
-    int min_cost = 0;
-    // Combat-active scope: a CostModifier with combat_active_only=true is
-    // only consulted while combat is in progress on any battlefield.
-    // Used by Vex Cheerless ("While I'm in combat, friendly spells cost
-    // [1] less, enemy spells cost [1] more").
-    bool combat_active = false;
-    for (const auto& bf : state_.battlefields) {
-        if (bf.combat_in_progress) { combat_active = true; break; }
-    }
-    // Same controller of card_obj as the cost-payer in normal play
-    // (the player paying for their own play). Cross-player consult
-    // (enemy cost increase) requires the modifier's source player to
-    // be tracked separately — see opponent modifier sweep below.
-    for (auto& mod : ps_const.cost_modifiers) {
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.gear_only && !card.isGear()) continue;
-        if (mod.first_gear_per_turn && ps_const.gears_played_this_turn > 0) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        if (mod.affects_enemy_only) continue;  // friendly's own list, skip enemy-only
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Cross-player modifiers: the OPPONENT's cost_modifiers list may
-    // contain affects_enemy_only entries that target THIS player. Vex
-    // Cheerless (controlled by P2) wants to make P1's spells cost more.
-    for (auto& mod : state_.player(opponent(player)).cost_modifiers) {
-        if (!mod.affects_enemy_only) continue;
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Self-cost reduction hook (e.g., Noxus Hopeful "[Legion] I cost [2] less").
-    if (auto* self_card = card_registry_.get(card.card_def_id)) {
-        energy_needed -= self_card->selfCostReduction(state_, player);
-    }
-    // Vendetta continuous spell-cost effects (set by cards' applyPassiveAura):
-    // Helm of Suppression taxes the opponent's spells; Applied Researchers
-    // discounts your own "to a minimum of [1]". Energy component only.
-    if (card.isSpell()) {
-        energy_needed += ps_const.spell_tax_energy;
-        if (ps_const.spell_discount_energy > 0) {
-            energy_needed -= ps_const.spell_discount_energy;
-            if (min_cost < 1) min_cost = 1;
-        }
-    }
-    // Irelia, Graceful (462): per-target discount staged in executePlaySpell when
-    // this spell chose her ("your spells that choose me cost [1]/[A] less").
-    energy_needed -= ps_const.transient_play_discount;
-    energy_needed = std::max(min_cost, energy_needed);
-    energy_needed = std::max(0, energy_needed);
-    // Effect-driven play that ignores part of the cost (EffectExecutor::playPayingCost).
-    if (ps_const.transient_ignore_energy) energy_needed = 0;
-    power_needed = std::max(0, power_needed + powerCostDelta(state_, player, card, card_registry_.get(card.card_def_id)));
-    if (state_.player(player).transient_ignore_power) power_needed = 0;
+    const auto cost = effectiveCardCost(state_, def, card_registry_.get(card.card_def_id),
+                                        player, card);
+    const int energy_needed = cost.energy;
+    const int power_needed = cost.power;
 
     // Count available runes in base, partitioned by ready/exhausted
     // and matching/non-matching-domain. The CR cost-payment ordering
@@ -5823,43 +5852,12 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     }
     const auto& def = card_db_.get(card.card_def_id);
 
-    int energy_needed = def.energy_cost;
-    int power_needed = def.power_cost;
-
-    // Apply cost reductions
     auto& ps = state_.player(player);
-    int min_cost = 0;
-    bool combat_active = false;
-    for (const auto& bf : state_.battlefields) {
-        if (bf.combat_in_progress) { combat_active = true; break; }
-    }
-    for (auto& mod : ps.cost_modifiers) {
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.gear_only && !card.isGear()) continue;
-        if (mod.first_gear_per_turn && ps.gears_played_this_turn > 0) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        if (mod.affects_enemy_only) continue;
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Cross-player modifiers (Vex Cheerless makes opponent's spells cost more).
-    for (auto& mod : state_.player(opponent(player)).cost_modifiers) {
-        if (!mod.affects_enemy_only) continue;
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Self-cost reduction hook (e.g., Noxus Hopeful Legion discount).
-    if (auto* self_card = card_registry_.get(card.card_def_id)) {
-        energy_needed -= self_card->selfCostReduction(state_, player);
-    }
+    const auto cost = effectiveCardCost(state_, def, card_registry_.get(card.card_def_id),
+                                        player, card);
+    int energy_needed = cost.energy;
+    int power_needed = cost.power;
+
     // A card on the player's board may give the unit being played [Accelerate]
     // (Card::grantsAccelerateTo). Mark it so resolvePermanent offers the usual
     // optional [1][C] (CR 805.1.b — a "may pay", never a mandatory surcharge).
@@ -5876,32 +5874,26 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
             break;
         }
     }
-    // Vendetta continuous spell-cost effects (mirrors canAfford).
-    if (card.isSpell()) {
-        energy_needed += ps.spell_tax_energy;
-        if (ps.spell_discount_energy > 0) {
-            energy_needed -= ps.spell_discount_energy;
-            if (min_cost < 1) min_cost = 1;
+    // Consume the one-shot modifiers that applied to this card ("your next
+    // spell / unit / card costs ...") — from this player's list and, for the
+    // ones that reach across, the opponent's. A one-shot that did not apply
+    // (wrong card type, not in combat, ...) stays for the card it is meant for.
+    {
+        const bool combat_active = anyCombatInProgress(state_);
+        for (int side = 0; side < 2; ++side) {
+            const bool own = side == 0;
+            auto& mods = own ? ps.cost_modifiers
+                             : state_.player(opponent(player)).cost_modifiers;
+            mods.erase(
+                std::remove_if(mods.begin(), mods.end(),
+                    [&](const PlayerState::CostModifier& m) {
+                        if (!m.next_spell_only && !m.next_unit_only && !m.next_card_only)
+                            return false;
+                        return costModifierApplies(state_, m, own, player, card, combat_active);
+                    }),
+                mods.end());
         }
     }
-    // Irelia, Graceful (462): per-target discount staged in executePlaySpell.
-    energy_needed -= ps.transient_play_discount;
-    energy_needed = std::max(min_cost, energy_needed);
-    energy_needed = std::max(0, energy_needed);
-    if (ps.transient_ignore_energy) energy_needed = 0;
-    power_needed = std::max(0, power_needed + powerCostDelta(state_, player, card, card_registry_.get(card.card_def_id)));
-    if (state_.player(player).transient_ignore_power) power_needed = 0;
-
-    // Consume one-shot modifiers that applied
-    ps.cost_modifiers.erase(
-        std::remove_if(ps.cost_modifiers.begin(), ps.cost_modifiers.end(),
-            [&](const PlayerState::CostModifier& m) {
-                if (m.next_spell_only && card.isSpell()) return true;
-                if (m.next_unit_only && card.isUnit()) return true;
-                if (m.next_card_only) return true;
-                return false;
-            }),
-        ps.cost_modifiers.end());
 
     events_.logTrace("PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
                      " P=" + std::to_string(power_needed));

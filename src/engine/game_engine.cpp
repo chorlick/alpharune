@@ -3810,11 +3810,35 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
             auto gabs = gcard->activatedAbilities();
             if (ref.ability_index < 0 ||
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
-            const auto& gcost = gabs[ref.ability_index].cost;
+            const auto& gab = gabs[ref.ability_index];
+            const auto& gcost = gab.cost;
+            // The same gates as an own ability above, asked of the granting
+            // card for the bearer: "Use only if ...", the per-ability gate,
+            // the state-aware Energy reduction payAndQueueAbility applies, the
+            // discard cost and the ability's targets.
+            if (!gcard->canActivateAbility(state_, player)) continue;
+            if (!gcard->canActivateAbilityAt(state_, player, id, ref.ability_index)) continue;
             if (gcost.exhaust && obj.is_exhausted) continue;           // bearer must be ready
-            if (gcost.energy > 0 && availableEnergy(player, obj.isUnit()) < gcost.energy) continue;
-            if (gcost.power > 0 && !canPayActivationResources(player, gcost.energy, gcost, obj.isUnit())) continue;
+            const int gnet_energy = std::max(0, gcost.energy -
+                activationEnergyReduction(*gcard, player, id, ref.ability_index));
+            if (gnet_energy > 0 && availableEnergy(player, obj.isUnit()) < gnet_energy) continue;
+            if (gcost.power > 0 && !canPayActivationResources(player, gnet_energy, gcost, obj.isUnit())) continue;
+            if (gcost.discard && gcost.discard_count > 0) {
+                int matching = 0;
+                for (auto hid : state_.player(player).hand) {
+                    if (gcost.discard_type_filter == 0 ||
+                        static_cast<int>(state_.getObject(hid).card_type) + 1 ==
+                            gcost.discard_type_filter) ++matching;
+                }
+                if (matching < gcost.discard_count) continue;
+            }
             if (gcost.xp_cost > 0 && state_.player(player).xp < gcost.xp_cost) continue;
+            if (gab.targets.count > 0 && !gab.targets.optional) {
+                if (gcard->enumerateLegalTargets(state_, player, ref.ability_index, id).empty())
+                    continue;
+            } else if (gabs.size() == 1 && !gcard->hasLegalTargets(state_, player)) {
+                continue;
+            }
             Intent activate;
             activate.type = IntentType::ActivateAbility;
             activate.player = player;

@@ -2582,25 +2582,17 @@ void GameEngine::executeHideCard(const Intent& intent) {
                      std::to_string(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
+    // Pay the Hide cost, [A] (CR 811.1.b) — one Power of any domain, through
+    // the shared additional-cost path: floating Power first, else a recycled
+    // rune (exhausted before ready). Unpaid, the card is not hidden.
+    if (!payAdditionalCost(intent.player, 0, 1, Domain::Count)) {
+        events_.logTrace("HIDE: " + card.name + " not hidden — [A] could not be paid");
+        return;
+    }
+
     // Remove from hand
     auto it = std::find(ps.hand.begin(), ps.hand.end(), intent.card);
     if (it != ps.hand.end()) ps.hand.erase(it);
-
-    // Pay [A] cost — recycle a ready rune (universal power cost)
-    auto base_loc = BaseLocation{intent.player};
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isRune() || obj.controller != intent.player || obj.is_exhausted) continue;
-        if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-        // Recycle the rune for [A]
-        events_.logTrace("HIDE_COST: recycled " + obj.name + " (id=" +
-                         std::to_string(id) + ") to pay [A]");
-        obj.location = std::nullopt;
-        obj.zone = ZoneType::RuneDeck;
-        ps.rune_deck.insert(ps.rune_deck.begin(), id);
-        events_.emit(LeftBoardEvent{id, intent.player, CardType::Rune,
-            base_loc, ZoneType::RuneDeck, false});
-        break;
-    }
 
     // Place facedown at the chosen battlefield
     auto bf_id = intent.chosen_battlefield;
@@ -5454,52 +5446,18 @@ GameEngine::RepeatCost GameEngine::parseRepeatCost(const std::string& text) {
     return rc;
 }
 
-// Pay one additional Repeat tranche (R is the per-tranche cost). Iterates
-// the same primitives canAfford / payCardCost use, but for ONE extra
-// (energy, domain_power) charge — called by executePlaySpell after the
-// base cost has already been paid.
+// Pay one additional Repeat tranche (R is the per-tranche cost) — ONE extra
+// (energy, domain_power) charge, called by executePlaySpell after the base
+// cost has already been paid. RepeatCost::power_domain == Domain::Count is
+// [A], which is also what payAdditionalCost takes for "any domain".
 bool GameEngine::payRepeatCost(PlayerId player, const RepeatCost& cost) {
     if (!cost.valid) return true;
-    auto base_loc = BaseLocation{player};
-
-    // Energy: exhaust ready runes
-    int need_energy = cost.energy;
-    if (need_energy > 0) {
-        for (auto& [id, obj] : state_.objects) {
-            if (need_energy == 0) break;
-            if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
-            if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-            obj.is_exhausted = true;
-            --need_energy;
-        }
-        if (need_energy > 0) return false;
-    }
-
-    // Power: recycle exhausted matching-domain rune to deck
-    int need_power = cost.power;
-    if (need_power > 0) {
-        auto& ps = state_.player(player);
-        bool universal = (cost.power_domain == Domain::Count);
-        for (auto& [id, obj] : state_.objects) {
-            if (need_power == 0) break;
-            if (!obj.isRune() || obj.controller != player) continue;
-            if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-            if (!obj.is_exhausted) continue;
-            bool match = universal;
-            if (!match) {
-                for (auto d : obj.domains) if (d == cost.power_domain) { match = true; break; }
-            }
-            if (!match) continue;
-            // A recycled rune goes to the bottom of the Rune Deck (CR 416.1).
-            obj.zone = ZoneType::RuneDeck;
-            obj.location = std::nullopt;
-            obj.is_exhausted = false;
-            ps.rune_deck.insert(ps.rune_deck.begin(), id);
-            --need_power;
-        }
-        if (need_power > 0) return false;
-    }
-    return true;
+    // The shared additional-cost path: the same one the affordability gate
+    // (canPayAdditionalCost) describes, so the gate and the payment agree.
+    // It spends floating Energy / Power first, recycles a rune to the Rune
+    // Deck (CR 416.1) whether it is ready or exhausted (CR 164.2.b), and pays
+    // all of the tranche or none of it.
+    return payAdditionalCost(player, cost.energy, cost.power, cost.power_domain);
 }
 
 void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id) {

@@ -1913,8 +1913,11 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         repeat_cost.energy = std::max(0, repeat_cost.energy - ps.repeat_cost_reduction);
     }
     if (repeat_cost.valid) {
-        constexpr int kRepeatSafetyCap = 32;
-        while (repeats < kRepeatSafetyCap &&
+        // CR 820.1.c.3: each Repeat cost can be paid only a single time. One
+        // instance of Repeat is modeled here (the printed one, else a granted
+        // one), so the effect repeats at most once.
+        constexpr int kRepeatPaymentsPerCost = 1;
+        while (repeats < kRepeatPaymentsPerCost &&
                canPayAdditionalCost(intent.player,
                                      repeat_cost.energy,
                                      repeat_cost.power,

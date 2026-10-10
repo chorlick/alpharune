@@ -43,7 +43,7 @@ iteration must apply these.
 | 1 | chain-triggers | running | | | stopped by mistake and resumed by the user, same agent and worktree |
 | 1 | engine-auras-costs | running | | | |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
-| 1 | io-cli | pending | | | gated: main checkout must have no uncommitted `src/io`, `src/main.cpp`, `docs/play-api.md` |
+| 1 | io-cli | running | | | gate open at spawn (main checkout clean); based on `bbc995d` |
 | 1 | integrity | running | | | based on `ec13e47`; also carries two build tasks: ccache across worktrees, unity-built tests |
 | 2 | cards-c0 | pending | | | |
 | 2 | cards-c1 | pending | | | |
@@ -113,3 +113,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 spawned integrity from `ec13e47`.
 - 2026-10-10 user approved batched merges (see Run decisions).
 - 2026-10-10 merged executor, suite 1557/1560 with only the 2 baseline failures; 8 boxes ticked and verified; 9 rows to carry-over. Worktree and branch removed.
+- 2026-10-10 spawned io-cli from `bbc995d`.

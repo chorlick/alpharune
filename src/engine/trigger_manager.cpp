@@ -330,6 +330,10 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
             if (top_obj.isSpell()) {
                 deck::takeTop(state_, e.player, deck::Place::Held, looker);
                 deck::putOnBottom(state_, e.player, top_card, deck::Place::Held, looker);
+                // Vision is a Predict (CR 817.1.b), and what it puts on the bottom
+                // is Recycled (CR 437.1):
+                // announce it like EffectExecutor::recycleCards does.
+                events_.emit(ObjectStateChangedEvent{top_card, "recycled_main"});
             }
         }
     }

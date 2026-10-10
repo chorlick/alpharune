@@ -67,6 +67,16 @@ private:
     void fireEquippedTriggers(GameObjectId unit, PlayerId controller,
                                TriggerType trigger);
 
+    /// Put `gear`'s equipped ability for `trigger` on the chain, with `unit`
+    /// as the unit it speaks for (ChainItem::equipped_unit). No-op if the
+    /// gear's Card does not declare that equipped trigger.
+    void queueEquippedTrigger(GameObjectId gear, GameObjectId unit,
+                              PlayerId controller, TriggerType trigger);
+
+    /// Put `object`'s own "When I die" ability on the chain (once more per
+    /// Deathknell-doubling effect its controller has).
+    void queueOwnDeathTrigger(GameObjectId object, PlayerId controller);
+
     // ── Event handlers ──
 
     /// Fires WhenYouPlayMe triggers for the card that was just played.
@@ -112,6 +122,7 @@ private:
     void onCardRevealed(const CardRevealedEvent& e);        // WhenIRevealedFromTop
     void onObjectStateChanged(const ObjectStateChangedEvent& e); // WhenIAmBuffed / WhenYouBuffAFriendlyUnit
     void onCardsDrawn(const CardsDrawnEvent& e);                  // WhenYouDrawACard
+    void onLeftBoard(const LeftBoardEvent& e);                    // WhenIDie on a killed gear
 
     // ── Helpers ──
 

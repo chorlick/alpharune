@@ -150,7 +150,6 @@ private:
         d.domains = {Domain::Mind, Domain::Order};
         d.tags = {R"RB(LeBlanc)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(When you conquer or hold, you may discard 1 and exhaust me to play a ready Reflection unit token there. Then do this: It becomes a copy of another unit there. Give it [Temporary].)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c17d29602d61d6702372fec4db44c6fb2a29e8a2-744x1039.png?accountingTag=RB)RB";
         return d;

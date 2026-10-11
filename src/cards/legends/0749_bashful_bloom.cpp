@@ -50,7 +50,6 @@ private:
         d.domains = {Domain::Calm, Domain::Mind};
         d.tags = {R"RB(Lillia)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB([4], [E]: Play a ready 3 [M] Sprite unit token with [Temporary]. This ability costs [1] less for each friendly unit with [Temporary].)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/7e1554365120c5042947aef8bcac48a07445e9f3-744x1039.png?accountingTag=RB)RB";
         return d;

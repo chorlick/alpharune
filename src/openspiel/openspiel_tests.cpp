@@ -775,4 +775,169 @@ TEST(IsMctsAgentTest, PlaysAFullGameAsEitherSeat) {
     playAgentAgainstRandom<::riftbound::IsMctsAgent>(41338, 41338, /*p1=*/false);
 }
 
+// ─── plans/09 item 9.E2: a search agent's game is a function of its seeds ───
+//
+// Same decks, same engine seed, same search seed, same opponent: the same
+// game, decision for decision. ISMCTS did not have this property while it ran
+// OpenSpiel's ISMCTSBot, whose hash-map iteration order (and with it the
+// tie-breaks of its tree policy and the order of the policy it samples from)
+// depends on addresses, not on the seed.
+
+template <class Agent>
+std::vector<int64_t> historyOfAgentGame(uint64_t seed, uint64_t search_seed, int sims) {
+    auto game = loadGame(1);
+    const auto& rb_game = static_cast<const RiftboundGame&>(*game);
+    Agent agent(deckFile("yi_rebuild.txt"), deckFile("fiora.txt"), "ignored",
+                seed, search_seed, sims);
+    ::riftbound::RandomAgent random(seed + 1);
+    ::riftbound::EventBus bus;
+    GameEngine engine(rb_game.cardDb(), bus, rb_game.cardRegistry());
+    engine.runGame(rb_game.deck1(), rb_game.deck2(), agent, random, seed);
+    return engine.state().action_history;
+}
+
+TEST(IsMctsAgentTest, TheSameSeedsPlayTheSameGame) {
+    for (uint64_t seed : {51001u, 51002u}) {
+        // Allocate between the two games so the second search does not get
+        // the first one's memory back: equal results must not depend on it.
+        const auto first = historyOfAgentGame<::riftbound::IsMctsAgent>(seed, 7, 12);
+        std::vector<std::unique_ptr<std::vector<int>>> ballast;
+        for (int i = 0; i < 257; ++i) ballast.push_back(std::make_unique<std::vector<int>>(i + 1));
+        const auto second = historyOfAgentGame<::riftbound::IsMctsAgent>(seed, 7, 12);
+        ASSERT_GT(first.size(), 30u);
+        EXPECT_EQ(first, second) << "engine seed " << seed;
+    }
+    // ...and the search seed matters: it is not ignored.
+    const auto a = historyOfAgentGame<::riftbound::IsMctsAgent>(51001, 7, 12);
+    const auto b = historyOfAgentGame<::riftbound::IsMctsAgent>(51001, 8, 12);
+    const auto c = historyOfAgentGame<::riftbound::IsMctsAgent>(51001, 9, 12);
+    EXPECT_TRUE(a != b || a != c) << "three search seeds played one game";
+}
+
+TEST(MctsAgentTest, TheSameSeedsPlayTheSameGame) {
+    const auto first = historyOfAgentGame<::riftbound::MctsAgent>(52001, 7, 12);
+    const auto second = historyOfAgentGame<::riftbound::MctsAgent>(52001, 7, 12);
+    ASSERT_GT(first.size(), 30u);
+    EXPECT_EQ(first, second);
+}
+
+// ─── plans/09 item 9.E1: a resumable decision resumes to itself ─────────────
+//
+// perf-search saw `GameEngine::resumeFromSnapshot` throw "the resumed engine
+// did not reach the snapshotted decision" in two ISMCTS batches: a decision
+// `isResumableDecision` accepted was asked again by a fresh engine with a
+// different legal list. Every clone a search takes at a main-phase decision
+// goes through that resume, so the property is checked directly, at EVERY
+// resumable decision of whole games, with a seeded random policy (no search,
+// no hash maps: a failure names its seed and decision and is repeatable).
+//
+// The default is a bounded run; set RIFTBOUND_RESUME_STRESS_GAMES to play
+// that many games per seat order (the stress run for 9.E1 used 300).
+
+int envInt(const char* name, int fallback) {
+    const char* v = std::getenv(name);
+    return v && *v ? std::atoi(v) : fallback;
+}
+
+std::string describeDifference(const std::vector<Intent>& want,
+                               const std::vector<Intent>& got) {
+    std::string out;
+    for (const auto& i : want)
+        if (std::find(got.begin(), got.end(), i) == got.end())
+            out += "\n  only in the snapshot: " + i.describe();
+    for (const auto& i : got)
+        if (std::find(want.begin(), want.end(), i) == want.end())
+            out += "\n  only after the resume: " + i.describe();
+    if (out.empty()) out = "\n  same intents in a different order";
+    return out;
+}
+
+/// Plays one game by the step API and resumes a fresh engine at every
+/// resumable decision. Returns the number of resumes checked.
+int checkEveryResumableDecision(const RiftboundGame& rb_game, bool swap_decks,
+                                uint64_t seed, int* mismatches) {
+    ::riftbound::EventBus bus;
+    GameEngine engine(rb_game.cardDb(), bus, rb_game.cardRegistry());
+    const auto& d1 = swap_decks ? rb_game.deck2() : rb_game.deck1();
+    const auto& d2 = swap_decks ? rb_game.deck1() : rb_game.deck2();
+    engine.beginGame(d1, d2, seed);
+    std::mt19937_64 rng(seed * 2654435761u + (swap_decks ? 17 : 0));
+    int checked = 0;
+    for (int n = 0; n < 6000 && !engine.isStepDone(); ++n) {
+        const ::riftbound::StepResult step = engine.currentStep();   // a copy
+        if (GameEngine::isResumableDecision(engine.state(), step.legal)) {
+            ++checked;
+            ::riftbound::EventBus bus2;
+            GameEngine resumed(rb_game.cardDb(), bus2, rb_game.cardRegistry());
+            try {
+                resumed.resumeFromSnapshot(GameState(engine.state()), engine.rngState(), step);
+            } catch (const std::logic_error& e) {
+                ++*mismatches;
+                std::string got = "(no decision)";
+                try {
+                    if (!resumed.isStepDone())
+                        got = describeDifference(step.legal, resumed.currentStep().legal);
+                } catch (const std::exception&) {}
+                ADD_FAILURE() << "seed " << seed << (swap_decks ? " (decks swapped)" : "")
+                              << ", decision " << n << ", turn "
+                              << engine.state().turn.turn_number << ": " << e.what() << got;
+                if (*mismatches >= 5) return checked;
+            }
+        }
+        std::uniform_int_distribution<size_t> d(0, step.legal.size() - 1);
+        engine.applyChoice(static_cast<int>(d(rng)));
+    }
+    return checked;
+}
+
+TEST(ResumeStress, EveryResumableDecisionOfAGameResumesToItself) {
+    const int games = envInt("RIFTBOUND_RESUME_STRESS_GAMES", 6);
+    auto game = loadGame(1);
+    const auto& rb_game = static_cast<const RiftboundGame&>(*game);
+    int checked = 0, mismatches = 0;
+    for (int g = 1; g <= games && mismatches < 5; ++g) {
+        checked += checkEveryResumableDecision(rb_game, false, 9000 + g, &mismatches);
+        checked += checkEveryResumableDecision(rb_game, true, 9000 + g, &mismatches);
+    }
+    EXPECT_EQ(mismatches, 0);
+    EXPECT_GT(checked, games * 40) << "main-phase decisions were resumed";
+    RecordProperty("resumes_checked", checked);
+}
+
+// The same property the way perf-search met it: whole ISMCTS games, both
+// seats, across seeds. An engine or agent exception fails the test (runGame
+// lets it through). RIFTBOUND_ISMCTS_STRESS_GAMES scales the run (the 9.E1
+// stress used 150 per seat at 20 simulations).
+TEST(ResumeStress, IsMctsGamesAcrossSeedsNeverFailToResume) {
+    const int games = envInt("RIFTBOUND_ISMCTS_STRESS_GAMES", 2);
+    const int sims = envInt("RIFTBOUND_ISMCTS_STRESS_SIMS", 20);
+    auto game = loadGame(1);
+    const auto& rb_game = static_cast<const RiftboundGame&>(*game);
+    int finished = 0;
+    for (int g = 1; g <= games; ++g) {
+        for (bool agent_is_p1 : {true, false}) {
+            const uint64_t seed = 20261010u + static_cast<uint64_t>(g);
+            ::riftbound::IsMctsAgent agent(deckFile("yi_rebuild.txt"), deckFile("fiora.txt"),
+                                           "ignored", seed, /*mcts_seed=*/seed * 3 + 1, sims);
+            CheckedAgent checked(agent);
+            ::riftbound::RandomAgent random(seed ^ 0x5eedu);
+            ::riftbound::EventBus bus;
+            GameEngine engine(rb_game.cardDb(), bus, rb_game.cardRegistry());
+            try {
+                if (agent_is_p1)
+                    engine.runGame(rb_game.deck1(), rb_game.deck2(), checked, random, seed);
+                else
+                    engine.runGame(rb_game.deck1(), rb_game.deck2(), random, checked, seed);
+            } catch (const std::exception& e) {
+                FAIL() << "seed " << seed << (agent_is_p1 ? " (ISMCTS is P1)" : " (ISMCTS is P2)")
+                       << " after " << checked.decisions << " agent decisions: " << e.what();
+            }
+            EXPECT_TRUE(engine.state().game_over) << "seed " << seed;
+            EXPECT_EQ(checked.illegal, 0) << "seed " << seed;
+            ++finished;
+        }
+    }
+    EXPECT_EQ(finished, games * 2);
+}
+
 } // namespace

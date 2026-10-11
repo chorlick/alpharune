@@ -76,7 +76,6 @@ private:
         d.domains = {Domain::Order};
         d.energy_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(Choose a friendly unit without [Temporary]. Give it [Temporary]. Draw 2. (Kill it at the start of its controller's Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5a9a81d353131fc275313e737d55ca6e2661dce6-744x1039.png)RB";
         return d;

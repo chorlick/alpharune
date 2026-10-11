@@ -70,7 +70,6 @@ private:
         d.domains = {Domain::Calm, Domain::Order};
         d.tags = {R"RB(Azir)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Weaponmaster);
         d.ability_text = R"RB(Your Sand Soldiers have [Weaponmaster].
 [1], [E]: Play a 2 [M] Sand Soldier unit token to your base. Use only if you've played an Equipment this turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0472274c49f6540858758ebf9bd2f107a601541a-744x1039.png)RB";

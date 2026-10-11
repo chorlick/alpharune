@@ -44,7 +44,6 @@ private:
         d.domains = {Domain::Mind, Domain::Chaos};
         d.tags = {R"RB(Ezreal)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction] — Draw 1. Use only if you've chosen enemy units and/or gear twice this turn with spells or unit abilities.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/d0e143d9edbc14971b2a7b463b3c25b2b6a0c098-744x1039.png)RB";
         return d;

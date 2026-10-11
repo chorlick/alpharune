@@ -27,7 +27,7 @@ public:
         da.expires_on_turn = ctx.state.turn.turn_number;
         da.repeats = true;
         ctx.state.delayed_abilities.push_back(da);
-        ctx.events.logTrace("IMPERIAL DECREE: units that take damage this turn are killed");
+        RIFT_TRACE(ctx.events, "IMPERIAL DECREE: units that take damage this turn are killed");
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;

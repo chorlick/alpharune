@@ -46,7 +46,7 @@ public:
         ctx.executor.killObject(gear);
         // "If you do, play a Gold gear token exhausted."
         createGoldExhausted(ctx);
-        ctx.events.logTrace("PICKPOCKET: killed a <=[1] gear -> Gold gear token (exhausted)");
+        RIFT_TRACE(ctx.events, "PICKPOCKET: killed a <=[1] gear -> Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

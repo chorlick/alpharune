@@ -74,7 +74,7 @@ public:
         // The destination must still hold another unit of its controller.
         if (std::find(dests.begin(), dests.end(), dest) == dests.end()) return;
         moveTo(ctx, a, dest);
-        ctx.events.logTrace("TEMPTATION: moved enemy unit to a location with another of its units");
+        RIFT_TRACE(ctx.events, "TEMPTATION: moved enemy unit to a location with another of its units");
     }
 private:
     const CardDef def_ = [] {

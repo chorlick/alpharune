@@ -30,7 +30,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
         ctx.executor.dealDamage(targets[0], 5, ctx.source);
-        ctx.events.logTrace("SKY SPLITTER: deal 5 to a unit at a battlefield");
+        RIFT_TRACE(ctx.events, "SKY SPLITTER: deal 5 to a unit at a battlefield");
     }
 private:
     const CardDef def_ = [] {

@@ -85,7 +85,7 @@ public:
         const GameObjectId picked = ctx.executor.chooseObjectNow(ctx.controller, legal);
         if (picked == kInvalidId) return {};
         me.card_counters[kChosen] = static_cast<int>(picked) + 1;
-        ctx.events.logTrace("UNDYING LOYALTY: chose " + ctx.state.getObject(picked).name);
+        RIFT_TRACE(ctx.events, "UNDYING LOYALTY: chose " + ctx.state.getObject(picked).name);
         return discounts(ctx.state.getObject(picked)) ? discount : PlayCostAdjust{};
     }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
@@ -116,7 +116,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (!still_there) return;
         ctx.executor.playIgnoringCost(ctx.controller, picked, where.locations[mode]);
-        ctx.events.logTrace("UNDYING LOYALTY: played a unit from trash, ignoring cost");
+        RIFT_TRACE(ctx.events, "UNDYING LOYALTY: played a unit from trash, ignoring cost");
     }
 private:
     const CardDef def_ = [] {

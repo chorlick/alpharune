@@ -73,7 +73,7 @@ public:
         if (unit == kInvalidId) return {};
         const PlayCostAdjust adj = worth(ctx.state, ctx.executor.cardDB(), unit);
         ctx.executor.killObject(unit);
-        ctx.events.logTrace("ATAKHAN: killed a friendly unit -> costs [" +
+        RIFT_TRACE(ctx.events, "ATAKHAN: killed a friendly unit -> costs [" +
                             std::to_string(adj.energy_reduction) + "] and " +
                             std::to_string(adj.power_reduction) + " Power less");
         return adj;
@@ -100,7 +100,7 @@ public:
         const auto& v = ctx.state.getObject(*victim);
         if (!v.isUnit() || v.controller != defender || v.battlefieldId() != my_bf) return;
         ctx.executor.killObject(*victim);
-        ctx.events.logTrace("ATAKHAN: attack -> defender killed one of their units here");
+        RIFT_TRACE(ctx.events, "ATAKHAN: attack -> defender killed one of their units here");
     }
 private:
     const CardDef def_ = [] {

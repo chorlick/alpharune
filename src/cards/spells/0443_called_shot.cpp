@@ -69,7 +69,7 @@ public:
             std::vector<GameObjectId> rest;
             for (auto cid : top) if (cid != drawn) rest.push_back(cid);
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
-            ctx.events.logTrace("CALLED SHOT: drew one of top 2, recycled the other");
+            RIFT_TRACE(ctx.events, "CALLED SHOT: drew one of top 2, recycled the other");
             return;
         }
         }

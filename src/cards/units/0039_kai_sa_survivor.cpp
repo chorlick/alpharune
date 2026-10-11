@@ -17,7 +17,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("KAI'SA SURVIVOR: conquer -> draw 1");
+        RIFT_TRACE(ctx.events, "KAI'SA SURVIVOR: conquer -> draw 1");
     }
 private:
     const CardDef def_ = [] {

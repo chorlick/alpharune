@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("PIT CREW: gear played, ready me");
+        RIFT_TRACE(ctx.events, "PIT CREW: gear played, ready me");
     }
 private:
     const CardDef def_ = [] {

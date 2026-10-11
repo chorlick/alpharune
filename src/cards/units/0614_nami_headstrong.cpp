@@ -63,14 +63,14 @@ public:
             self.card_counters.erase("__nami_paid");
             if (enemy == kInvalidId) return;
             ctx.executor.stunUnitBy(enemy, ctx.source);
-            ctx.events.logTrace("NAMI: paid [G] -> stunned an enemy unit");
+            RIFT_TRACE(ctx.events, "NAMI: paid [G] -> stunned an enemy unit");
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
             if (finalizingChoices(ctx)) return;   // no choices
             // Arm the one-shot "next unit you play this turn" effect.
             self.card_counters["__nami_hold_arm_turn"] = ctx.state.turn.turn_number;
-            ctx.events.logTrace("NAMI: armed next-unit ready+buff for this turn");
+            RIFT_TRACE(ctx.events, "NAMI: armed next-unit ready+buff for this turn");
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenYouPlayAUnit) {
@@ -83,7 +83,7 @@ public:
             if (!ctx.state.getObject(played).location.has_value()) return;   // already gone
             ctx.executor.readyObject(played);
             ctx.executor.buffUnit(played);
-            ctx.events.logTrace("NAMI: readied + buffed the played unit");
+            RIFT_TRACE(ctx.events, "NAMI: readied + buffed the played unit");
             return;
         }
     }

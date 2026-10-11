@@ -66,13 +66,13 @@ public:
 
         if (dest >= 0) {
             moveTo(ctx, unit, dest);
-            ctx.events.logTrace("RELENTLESS PURSUIT: moved a friendly unit");
+            RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: moved a friendly unit");
         }
         if (!ctx.state.getObject(unit).location.has_value()) return;   // it left the board
         if (gear != kInvalidId && ctx.state.objectExists(gear) &&
             ctx.state.getObject(gear).location.has_value()) {
             attachFree(ctx, gear, unit);
-            ctx.events.logTrace("RELENTLESS PURSUIT: attached " + ctx.state.getObject(gear).name);
+            RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: attached " + ctx.state.getObject(gear).name);
         }
         // This turn, that unit has "When I conquer, you may move me to my
         // base.": a delayed ability scoped to the unit, gone at end of turn.
@@ -96,7 +96,7 @@ public:
         };
         if (confirmOptional(ctx, "Relentless Pursuit: move it to its base", can_move) <= 0) return;
         ctx.executor.moveToBase(unit);
-        ctx.events.logTrace("RELENTLESS PURSUIT: the unit moved to its base after conquering");
+        RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: the unit moved to its base after conquering");
     }
 private:
     const CardDef def_ = [] {

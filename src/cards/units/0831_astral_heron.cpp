@@ -53,7 +53,7 @@ public:
         m.this_turn_only = false;   // "your next card", whenever it is played
         m.affects_friendly_only = true;
         ps.cost_modifiers.push_back(m);
-        ctx.events.logTrace("ASTRAL HERON: first card this turn -> next card costs [2][A][A] less");
+        RIFT_TRACE(ctx.events, "ASTRAL HERON: first card this turn -> next card costs [2][A][A] less");
     }
 private:
     const CardDef def_ = [] {

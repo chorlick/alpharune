@@ -31,7 +31,7 @@ public:
         if (!ctx.state.objectExists(picked)) return;
         auto& target = ctx.state.getObject(picked);
         target.damage_doubled_this_turn = true;
-        ctx.events.logTrace("LOTUS TRAP: damage-doubling applied to " +
+        RIFT_TRACE(ctx.events, "LOTUS TRAP: damage-doubling applied to " +
                              target.name);
     }
 private:

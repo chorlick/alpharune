@@ -336,13 +336,13 @@ const StepResult& GameEngine::resumeFromSnapshot(GameState snapshot_state,
                     p1.additional_turns.erase(p1.additional_turns.begin());
                     state_.turn.turn_player = next;
                     state_.turn.is_additional_turn = true;
-                    events_.logTrace(std::string("ADDITIONAL_TURN: ") + toString(next));
+                    RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
                 } else if (!p2.additional_turns.empty()) {
                     auto next = p2.additional_turns.front();
                     p2.additional_turns.erase(p2.additional_turns.begin());
                     state_.turn.turn_player = next;
                     state_.turn.is_additional_turn = true;
-                    events_.logTrace(std::string("ADDITIONAL_TURN: ") + toString(next));
+                    RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
                 } else {
                     state_.turn.turn_player = opponent(state_.turn.turn_player);
                     state_.turn.is_additional_turn = false;
@@ -514,7 +514,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         PlayerId saved_turn = state_.turn.turn_player;
         state_.turn.turn_player = player;
         state_.decision_index++;
-        events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                           " (" + toString(player) + " — battlefield setup): " +
                           std::to_string(choices.size()) + " options");
         auto chosen = askAgent(player, choices);
@@ -522,7 +522,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
 
         size_t idx = static_cast<size_t>(chosen.chosen_battlefield);
         if (idx >= bfs.size()) idx = 0;  // defensive — fall back to first
-        events_.logTrace("  CHOSE BF #" + std::to_string(idx) + " (" +
+        RIFT_TRACE(events_, "  CHOSE BF #" + std::to_string(idx) + " (" +
                           card_db_.get(bfs[idx]).name + ")");
         return bfs[idx];
     };
@@ -574,10 +574,10 @@ void GameEngine::determineTurnOrder() {
 
 void GameEngine::drawOpeningHands() {
     // Each player draws 4 (CR 117)
-    events_.logTrace("── Opening Hands ──");
-    events_.logTrace(std::string("DRAW_HAND: ") + toString(PlayerId::Player1) + " draws 4");
+    RIFT_TRACE(events_, "── Opening Hands ──");
+    RIFT_TRACE(events_, std::string("DRAW_HAND: ") + toString(PlayerId::Player1) + " draws 4");
     drawCards(PlayerId::Player1, 4);
-    events_.logTrace(std::string("DRAW_HAND: ") + toString(PlayerId::Player2) + " draws 4");
+    RIFT_TRACE(events_, std::string("DRAW_HAND: ") + toString(PlayerId::Player2) + " draws 4");
     drawCards(PlayerId::Player2, 4);
 }
 
@@ -599,18 +599,22 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
     // CHOSE: line is self-contained — important for the web UI's log
     // panel, which prepends events (latest first), so a CHOSE line
     // can be visually separated from its DECISION # context.
-    std::string who = std::string("[") + toString(chosen.player) + "] ";
-    if (chosen.cards_to_mulligan.empty()) {
-        events_.logTrace("CHOSE: " + who + "Keep hand");
+    if (!events_.logging()) {
+        events_.noteUnheardLine();   // the CHOSE line below, unread
     } else {
-        std::string mull_str;
-        for (auto cid : chosen.cards_to_mulligan) {
-            if (!mull_str.empty()) mull_str += ", ";
-            if (state_.objectExists(cid)) mull_str += state_.getObject(cid).name;
+        std::string who = std::string("[") + toString(chosen.player) + "] ";
+        if (chosen.cards_to_mulligan.empty()) {
+            RIFT_TRACE(events_, "CHOSE: " + who + "Keep hand");
+        } else {
+            std::string mull_str;
+            for (auto cid : chosen.cards_to_mulligan) {
+                if (!mull_str.empty()) mull_str += ", ";
+                if (state_.objectExists(cid)) mull_str += state_.getObject(cid).name;
+            }
+            RIFT_TRACE(events_, "CHOSE: " + who + "Mulligan " +
+                             std::to_string(chosen.cards_to_mulligan.size()) +
+                             " [" + mull_str + "]");
         }
-        events_.logTrace("CHOSE: " + who + "Mulligan " +
-                         std::to_string(chosen.cards_to_mulligan.size()) +
-                         " [" + mull_str + "]");
     }
     if (chosen.type == IntentType::MulliganDecision) {
         executeMulligan(chosen);
@@ -623,7 +627,7 @@ void GameEngine::runMulligans() {
     // The step-machine path (C-1 commit 9) will surface advance's legal
     // options out to applyChoice() and feed the chosen Intent back into
     // resolve.
-    events_.logTrace("── Mulligan Phase ──");
+    RIFT_TRACE(events_, "── Mulligan Phase ──");
     state_.turn.phase = TurnPhase::Mulligan;
 
     for (auto player : {state_.turn.turn_player,
@@ -635,7 +639,7 @@ void GameEngine::runMulligans() {
         if (player == PlayerId::Player1) state_.turn.turn_decisions_p1++;
         else state_.turn.turn_decisions_p2++;
 
-        events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                          " (" + toString(player) + "): Mulligan, " +
                          std::to_string(adv.legal.size()) + " options");
 
@@ -671,13 +675,13 @@ void GameEngine::runTurnLoop() {
             p1.additional_turns.erase(p1.additional_turns.begin());
             state_.turn.turn_player = next;
             state_.turn.is_additional_turn = true;
-            events_.logTrace(std::string("ADDITIONAL_TURN: ") + toString(next));
+            RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
         } else if (!p2.additional_turns.empty()) {
             auto next = p2.additional_turns.front();
             p2.additional_turns.erase(p2.additional_turns.begin());
             state_.turn.turn_player = next;
             state_.turn.is_additional_turn = true;
-            events_.logTrace(std::string("ADDITIONAL_TURN: ") + toString(next));
+            RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
         } else {
             // Normal turn alternation
             state_.turn.turn_player = opponent(state_.turn.turn_player);
@@ -696,7 +700,7 @@ void GameEngine::runTurnLoop() {
 }
 
 void GameEngine::runTurn(PlayerId player) {
-    events_.logTrace("════ TURN " + std::to_string(state_.turn.turn_number) +
+    RIFT_TRACE(events_, "════ TURN " + std::to_string(state_.turn.turn_number) +
                      " (" + toString(player) + ") ════ Score: P1=" +
                      std::to_string(state_.players[0].score) + " P2=" +
                      std::to_string(state_.players[1].score));
@@ -744,7 +748,7 @@ void GameEngine::runTurn(PlayerId player) {
 // Fallthrough switch — each phase falls through to the next so we
 // finish the turn from wherever it was paused.
 void GameEngine::runTurnFromPhase(PlayerId player, TurnPhase resume_at) {
-    events_.logTrace("════ RESUME TURN " + std::to_string(state_.turn.turn_number) +
+    RIFT_TRACE(events_, "════ RESUME TURN " + std::to_string(state_.turn.turn_number) +
                      " (" + toString(player) + ") at phase " +
                      toString(resume_at) +
                      " ════ Score: P1=" +
@@ -832,7 +836,7 @@ void GameEngine::runTurnFromPhase(PlayerId player, TurnPhase resume_at) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void GameEngine::awakenPhase() {
-    events_.logTrace("── Awaken Phase ──");
+    RIFT_TRACE(events_, "── Awaken Phase ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::AwakenPhase;
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::AwakenPhase,
@@ -866,7 +870,7 @@ void GameEngine::awakenPhase() {
 }
 
 void GameEngine::beginningStep() {
-    events_.logTrace("── Beginning Step ──");
+    RIFT_TRACE(events_, "── Beginning Step ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::BeginningStep;
 
@@ -915,7 +919,7 @@ void GameEngine::beginningStep() {
 }
 
 void GameEngine::scoringStep() {
-    events_.logTrace("── Scoring Step ──");
+    RIFT_TRACE(events_, "── Scoring Step ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::ScoringStep;
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::ScoringStep,
@@ -941,7 +945,7 @@ void GameEngine::scoringStep() {
 }
 
 void GameEngine::channelPhase() {
-    events_.logTrace("── Channel Phase ──");
+    RIFT_TRACE(events_, "── Channel Phase ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::ChannelPhase;
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::ChannelPhase,
@@ -968,7 +972,7 @@ void GameEngine::channelPhase() {
 }
 
 void GameEngine::drawPhase() {
-    events_.logTrace("── Draw Phase ──");
+    RIFT_TRACE(events_, "── Draw Phase ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::DrawPhase;
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::DrawPhase,
@@ -979,7 +983,7 @@ void GameEngine::drawPhase() {
     // Skip (CR 444): "Skip your Draw Phase." replaces the phase with nothing —
     // no draw, and nothing that would happen as a result of it.
     if (state_.player(player).skip_draw_phase) {
-        events_.logTrace("DRAW PHASE: skipped (CR 444)");
+        RIFT_TRACE(events_, "DRAW PHASE: skipped (CR 444)");
         emptyRunePools();
         return;
     }
@@ -989,7 +993,7 @@ void GameEngine::drawPhase() {
     // second receives a compensating extra channel in channelPhase().)
     if (state_.player(player).is_first_turn &&
         player == state_.turn.starting_player) {
-        events_.logTrace("DRAW PHASE: " + std::string(player == PlayerId::Player1 ? "P1" : "P2") +
+        RIFT_TRACE(events_, "DRAW PHASE: " + std::string(player == PlayerId::Player1 ? "P1" : "P2") +
                           " skips draw (first turn, going first — CR 482.7)");
     } else {
         // Draw 1 card (CR 315.4.b)
@@ -1112,7 +1116,7 @@ bool GameEngine::resolveMainPhaseDecision(const Intent& intent,
 }
 
 void GameEngine::mainPhase() {
-    events_.logTrace("── Main Phase ──");
+    RIFT_TRACE(events_, "── Main Phase ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::MainPhase;
     state_.turn.ns_state = NeutralShowdownState::Neutral;
@@ -1140,7 +1144,7 @@ void GameEngine::mainPhaseLoop(int action_count) {
 }
 
 void GameEngine::endingStep() {
-    events_.logTrace("── Ending Step ──");
+    RIFT_TRACE(events_, "── Ending Step ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::EndingStep;
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::EndingStep,
@@ -1189,7 +1193,7 @@ void GameEngine::expireTemporaryKeywords(GameObject& obj, const CardDB& db) {
 }
 
 void GameEngine::expirationStep() {
-    events_.logTrace("── Expiration Step ──");
+    RIFT_TRACE(events_, "── Expiration Step ──");
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::ExpirationStep;
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::ExpirationStep,
@@ -1308,7 +1312,7 @@ void GameEngine::doExpirationBody() {
         if (obj.control_reverts_eot) {
             auto restored = obj.original_controller_eot;
             if (restored != PlayerId::None && restored != obj.controller) {
-                events_.logTrace(std::string("REVERT_CONTROL: ") + obj.name +
+                RIFT_TRACE(events_, std::string("REVERT_CONTROL: ") + obj.name +
                                  " (id=" + std::to_string(id) + ") " +
                                  toString(obj.controller) + " -> " +
                                  toString(restored));
@@ -1520,11 +1524,11 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         i.chosen_objects = {t};
         options.push_back(std::move(i));
     }
-    const std::string source_name = state_.objectExists(item.source)
-        ? state_.getObject(item.source).name : std::string("?");
     state_.decision_index++;
-    events_.logTrace("DECISION #" + std::to_string(state_.decision_index) + " (" +
-                     toString(item.controller) + "): choose a target for " + source_name +
+    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
+                     toString(item.controller) + "): choose a target for " +
+                     (state_.objectExists(item.source) ? state_.getObject(item.source).name
+                                                       : std::string("?")) +
                      " [" + std::to_string(options.size()) + " options]");
     const PlayerId chooser = item.controller;
     const ChainItemId item_id = item.id;
@@ -1543,7 +1547,10 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     it->chosen_objects.push_back(t);
     while (it->resume_data.size() < 6) it->resume_data.push_back(0);
     it->resume_data[5] = 1;   // "target was chosen at finalization" (read by Card::pickTarget)
-    events_.logTrace("TARGET (finalize): " + source_name + " -> " + state_.getObject(t).name);
+    RIFT_TRACE(events_, "TARGET (finalize): " +
+                     (state_.objectExists(it->source) ? state_.getObject(it->source).name
+                                                      : std::string("?")) +
+                     " -> " + state_.getObject(t).name);
 
     commitEngineChosenTarget(*card, chooser, t, item_id);
 }
@@ -1559,7 +1566,7 @@ void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, Ga
         const int deflect = deflectCostFor(state_, chooser, t);
         if (deflect > 0) {
             effect_executor_->payAnyPower(chooser, deflect);
-            events_.logTrace("DEFLECT: " + std::string(toString(chooser)) + " pays " +
+            RIFT_TRACE(events_, "DEFLECT: " + std::string(toString(chooser)) + " pays " +
                              std::to_string(deflect) + " [A] to choose " +
                              state_.getObject(t).name);
         }
@@ -1575,7 +1582,7 @@ void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, Ga
 Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options,
                              const std::string& what) {
     state_.decision_index++;
-    events_.logTrace("DECISION #" + std::to_string(state_.decision_index) + " (" +
+    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(player) + "): " + what + " [" +
                      std::to_string(options.size()) + " options]");
     auto chosen = askAgent(player, options);
@@ -1729,7 +1736,7 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
                 " choices at finalization");
         }
         auto pending = effect_executor_->consumePendingChoice();
-        events_.logTrace(std::string("CHOICE-REQUEST (finalize): ") +
+        RIFT_TRACE(events_, std::string("CHOICE-REQUEST (finalize): ") +
                          (pending.label.empty() ? "MakeChoice" : pending.label) + " [" +
                          std::to_string(pending.legal.size()) + " options] (" +
                          toString(pending.player) + ")");
@@ -1927,7 +1934,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // Deck. Gear comes off (CR 719.5), a token ceases to exist instead
     // (CR 183.1), and the departure is announced like any other.
     if (act_cost.recycle_self && source.location.has_value()) {
-        events_.logTrace("ACTIVATE_COST: recycle self " + source.name);
+        RIFT_TRACE(events_, "ACTIVATE_COST: recycle self " + source.name);
         const LocationId was_at = *source.location;
         if (source.attached_to.has_value())
             effect_executor_->unattachGear(intent.ability_source);
@@ -1951,13 +1958,13 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // (CR 383.3: costs are paid as the ability is put on the chain). On board
     // was checked at the top; the ability still resolves from the chain.
     if (act_cost.banish_self && state_.getObject(intent.ability_source).location.has_value()) {
-        events_.logTrace("ACTIVATE_COST: banish self " +
+        RIFT_TRACE(events_, "ACTIVATE_COST: banish self " +
                          state_.getObject(intent.ability_source).name);
         effect_executor_->banishObject(intent.ability_source);
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
-        events_.logTrace("ACTIVATE_COST: discard " + std::to_string(act_cost.discard_count));
+        RIFT_TRACE(events_, "ACTIVATE_COST: discard " + std::to_string(act_cost.discard_count));
         if (act_cost.discard_type_filter == 0) {
             effect_executor_->discardCards(intent.player, act_cost.discard_count);
         } else {
@@ -1989,7 +1996,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // Pay XP cost
     if (act_cost.xp_cost > 0) {
         state_.player(intent.player).xp -= act_cost.xp_cost;
-        events_.logTrace("ACTIVATE_COST: spend " +
+        RIFT_TRACE(events_, "ACTIVATE_COST: spend " +
                           std::to_string(act_cost.xp_cost) + " XP");
     }
 
@@ -2039,7 +2046,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
 }
 
 void GameEngine::executeIntent(const Intent& intent) {
-    events_.logTrace(std::string("INTENT: ") + toString(intent.type) + " by " + toString(intent.player));
+    RIFT_TRACE(events_, std::string("INTENT: ") + toString(intent.type) + " by " + toString(intent.player));
 
     switch (intent.type) {
         case IntentType::PlayCard:
@@ -2128,7 +2135,7 @@ Card::PlayCostAdjust GameEngine::payAdditionalPlayCosts(PlayerId player, GameObj
         return canAffordWith(player, card_id, extra_any_power, a);
     });
     if (adj.ignore_cost || adj.energy_reduction > 0 || adj.power_reduction > 0)
-        events_.logTrace("ADDITIONAL_COST: " + state_.getObject(card_id).name +
+        RIFT_TRACE(events_, "ADDITIONAL_COST: " + state_.getObject(card_id).name +
                          (adj.ignore_cost ? " ignores its cost"
                               : " costs [" + std::to_string(adj.energy_reduction) + "] and " +
                                 std::to_string(adj.power_reduction) + " Power less"));
@@ -2354,7 +2361,7 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
         std::vector<Intent> offered;
         offered.reserve(viable.size());
         for (int i : viable) offered.push_back(options[static_cast<size_t>(i)]);
-        events_.logTrace(std::string("CHOICE-REQUEST (before payment): [") +
+        RIFT_TRACE(events_, std::string("CHOICE-REQUEST (before payment): [") +
                          std::to_string(offered.size()) + " of " +
                          std::to_string(options.size()) + " options keep the spell payable] (" +
                          toString(asked_player) + ")");
@@ -2438,7 +2445,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
     int trace_cost = (card.card_def_id != kInvalidId)
         ? card_db_.get(card.card_def_id).energy_cost : 0;
-    events_.logTrace("PLAY: " + card.name + " (id=" + std::to_string(intent.card) +
+    RIFT_TRACE(events_, "PLAY: " + card.name + " (id=" + std::to_string(intent.card) +
                      ", " + toString(card.card_type) + ", cost=" +
                      std::to_string(trace_cost) + "E)");
 
@@ -2488,7 +2495,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
         // [A] is any Domain, and several [A] need not share one.
         const Domain d = alt.any_domain ? Domain::Count : alt.power_domain;
         payAdditionalCost(intent.player, alt.energy, alt.power, d, spendForObject(card));
-        events_.logTrace("ALT_COST: " + card.name + " played for its alternative cost");
+        RIFT_TRACE(events_, "ALT_COST: " + card.name + " played for its alternative cost");
     } else if (!paid_via_grant) {
         payCardCost(intent.player, intent.card, prepay);
     }
@@ -2501,7 +2508,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
         for (const auto& bf : state_.battlefields) {
             if (bf.id != bf_id || bf.paid_play_power <= 0) continue;
             effect_executor_->payAnyPower(intent.player, bf.paid_play_power);
-            events_.logTrace("ADDITIONAL_COST: " + card.name + " pays " +
+            RIFT_TRACE(events_, "ADDITIONAL_COST: " + card.name + " pays " +
                              std::to_string(bf.paid_play_power) + " [A] to be played to BF#" +
                              std::to_string(bf_id));
         }
@@ -2562,14 +2569,16 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
-    {
+    if (!events_.logging()) {
+        events_.noteUnheardLine();   // the SPELL line below, unread
+    } else {
         std::string tgt_str;
         for (auto t : intent.targets) {
             if (!tgt_str.empty()) tgt_str += ",";
             tgt_str += state_.objectExists(t) ? state_.getObject(t).name : "?";
             tgt_str += "(id=" + std::to_string(t) + ")";
         }
-        events_.logTrace("SPELL: " + card.name + " (id=" + std::to_string(intent.card) +
+        RIFT_TRACE(events_, "SPELL: " + card.name + " (id=" + std::to_string(intent.card) +
                          ") targets=[" + tgt_str + "]");
     }
 
@@ -2625,7 +2634,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                     t = chosen.chosen_objects.front();
                 play_targets = {t};
                 target_chosen_at_play = true;
-                events_.logTrace("TARGET (play): " + card.name + " -> " +
+                RIFT_TRACE(events_, "TARGET (play): " + card.name + " -> " +
                                  state_.getObject(t).name);
             }
         }
@@ -2860,7 +2869,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         std::vector<Intent> opts = {decline, accept};
 
         state_.decision_index++;
-        events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                          " (" + toString(intent.player) + "): "
                          "pay Repeat tranche " + std::to_string(repeats + 1) +
                          " for " + card.name + "? [decline|pay] [2 options]");
@@ -2875,7 +2884,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         repeat_energy_spent += rc.energy;
     }
     if (repeats > 0) {
-        events_.logTrace("REPEAT: paid " + std::to_string(repeats) +
+        RIFT_TRACE(events_, "REPEAT: paid " + std::to_string(repeats) +
                           " extra tranche(s) for " + card.name);
     }
 
@@ -2952,9 +2961,10 @@ void GameEngine::runChain() {
 
 void GameEngine::resolveSpell(const ChainItem& item) {
     {
-        std::string name = state_.objectExists(item.source) ? state_.getObject(item.source).name : "?";
-        events_.logTrace(std::string(item.finalizing ? "FINALIZE-CHOICES: " : "RESOLVE: ") +
-                         name + " (chain_item=" + std::to_string(item.id) +
+        RIFT_TRACE(events_, std::string(item.finalizing ? "FINALIZE-CHOICES: " : "RESOLVE: ") +
+                         (state_.objectExists(item.source) ? state_.getObject(item.source).name
+                                                           : std::string("?")) +
+                         " (chain_item=" + std::to_string(item.id) +
                          ", ability=" + std::to_string(item.is_ability) +
                          ", spell=" + std::to_string(item.is_spell) + ")");
     }
@@ -3021,9 +3031,10 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                 }
             }
             if (dropped > 0) {
-                std::string name = state_.objectExists(item.source)
-                    ? state_.getObject(item.source).name : "?";
-                events_.logTrace("RESOLVE: " + name + " — " +
+                RIFT_TRACE(events_, "RESOLVE: " +
+                                  (state_.objectExists(item.source)
+                                       ? state_.getObject(item.source).name : std::string("?")) +
+                                  " — " +
                                   std::to_string(dropped) +
                                   " target(s) no longer legal "
                                   "(per-CR 359.3.e.5: unaffected, "
@@ -3152,7 +3163,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                 std::vector<Intent> opts = {decline, accept};
 
                 state_.decision_index++;
-                events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+                RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                                  " (" + toString(item.controller) + "): "
                                  "pay [1][" + (*domain_to_pay == Domain::Count ? "A"
                                      : toString(*domain_to_pay)) +
@@ -3164,11 +3175,11 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
 
                 bool wants_pay = chosen.chosen_value.value_or(0) == 1;
                 if (wants_pay) {
-                    events_.logTrace("ACCELERATE: " + card.name + " pays [1] + power to enter ready");
+                    RIFT_TRACE(events_, "ACCELERATE: " + card.name + " pays [1] + power to enter ready");
                     payAdditionalCost(item.controller, 1, 1, *domain_to_pay, true);
                     enters_ready = true;
                 } else {
-                    events_.logTrace("ACCELERATE: " + card.name + " declined");
+                    RIFT_TRACE(events_, "ACCELERATE: " + card.name + " declined");
                 }
             }
         }
@@ -3237,7 +3248,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                 target_unit = chosen.chosen_objects.front();
         }
         if (target_unit != kInvalidId) {
-            events_.logTrace("QUICK_DRAW: auto-attaching " + card.name + " to " +
+            RIFT_TRACE(events_, "QUICK_DRAW: auto-attaching " + card.name + " to " +
                              state_.getObject(target_unit).name);
             effect_executor_->attachGear(item.source, target_unit);
         }
@@ -3286,10 +3297,10 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // invisible — the renderer suppresses the panel for single-option
     // decisions, leaving no marker at all that the engine offered
     // priority to player N. Format mirrors the main DECISION trace lines.
-    events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                      " (" + std::string(toString(player)) + " — chain priority): " +
                      std::to_string(actions.size()) + " legal actions");
-    events_.logTrace("CHOSE: [" + std::string(toString(player)) + "] " +
+    RIFT_TRACE(events_, "CHOSE: [" + std::string(toString(player)) + "] " +
                      std::string(toString(chosen.type)));
     if (on_decision) {
         on_decision(state_, actions, chosen);
@@ -3348,7 +3359,7 @@ void GameEngine::executeStandardMove(const Intent& intent) {
                     can_join.end()) break;
             if (tax > 0) {
                 effect_executor_->payAnyPower(intent.player, tax);
-                events_.logTrace("MOVE_TAX: " + std::string(toString(intent.player)) + " pays " +
+                RIFT_TRACE(events_, "MOVE_TAX: " + std::string(toString(intent.player)) + " pays " +
                                  std::to_string(tax) + " [A] to move another unit there");
             }
             moving.push_back(chosen.chosen_objects.front());
@@ -3357,11 +3368,11 @@ void GameEngine::executeStandardMove(const Intent& intent) {
 
     for (auto unit_id : moving) {
         auto& unit_obj = state_.getObject(unit_id);
-        std::string dest_str = std::holds_alternative<BattlefieldLocation>(dest)
-            ? "BF#" + std::to_string(std::get<BattlefieldLocation>(dest).id)
-            : "Base(" + std::string(toString(std::get<BaseLocation>(dest).player)) + ")";
-        events_.logTrace("MOVE: " + unit_obj.name + " (id=" + std::to_string(unit_id) +
-                         ") -> " + dest_str);
+        RIFT_TRACE(events_, "MOVE: " + unit_obj.name + " (id=" + std::to_string(unit_id) +
+                         ") -> " +
+                         (std::holds_alternative<BattlefieldLocation>(dest)
+                              ? "BF#" + std::to_string(std::get<BattlefieldLocation>(dest).id)
+                              : "Base(" + std::string(toString(std::get<BaseLocation>(dest).player)) + ")"));
     }
     // CR 144.3: the units move as ONE action — the exhaust costs are paid
     // simultaneously (144.3.c), then every unit is at the destination, and
@@ -3440,7 +3451,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
         if (it != ps.hand.end()) {
             set_aside.push_back(*it);
             ps.hand.erase(it);
-            events_.logTracePrivate(intent.player,
+            RIFT_TRACE_PRIVATE(events_, intent.player,
                              "  MULLIGAN: " + std::string(toString(intent.player)) +
                              " set aside " + state_.getObject(card_id).name +
                              " (id=" + std::to_string(card_id) + ")");
@@ -3455,7 +3466,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
     drawCards(intent.player, static_cast<int>(set_aside.size()));
     for (size_t i = before_draw; i < ps.hand.size(); ++i) {
         auto did = ps.hand[i];
-        events_.logTracePrivate(intent.player,
+        RIFT_TRACE_PRIVATE(events_, intent.player,
                          "  MULLIGAN: " + std::string(toString(intent.player)) +
                          " drew replacement " + state_.getObject(did).name +
                          " (id=" + std::to_string(did) +
@@ -3565,7 +3576,7 @@ void GameEngine::applyCombatDamage(GameObjectId target_id, int assigned) {
         t.prevent_damage_remaining -= std::min(assigned, t.prevent_damage_remaining);
     }
     if (dealt != assigned)
-        events_.logTrace("  COMBAT_DAMAGE: " + t.name + " assigned " + std::to_string(assigned) +
+        RIFT_TRACE(events_, "  COMBAT_DAMAGE: " + t.name + " assigned " + std::to_string(assigned) +
                          " -> dealt " + std::to_string(dealt));
     if (dealt <= 0) return;
     if (t.damage_marked == 0) EffectExecutor::forgetDamageSources(t);
@@ -3626,9 +3637,9 @@ void GameEngine::executeHideCard(const Intent& intent) {
 
     // Which card it is, is the hiding player's to know (LogAudience); that a
     // card was hidden, and where, both players see.
-    events_.logTrace(std::string("HIDE: ") + toString(intent.player) + " hides a card at BF#" +
+    RIFT_TRACE(events_, std::string("HIDE: ") + toString(intent.player) + " hides a card at BF#" +
                      std::to_string(intent.chosen_battlefield));
-    events_.logTracePrivate(intent.player, "HIDE: " + card.name + " at BF#" +
+    RIFT_TRACE_PRIVATE(events_, intent.player, "HIDE: " + card.name + " at BF#" +
                      std::to_string(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
@@ -3645,7 +3656,7 @@ void GameEngine::executeHideCard(const Intent& intent) {
             canPayAdditionalCost(intent.player, hide_cost.energy, 0, Domain::Count,
                                  SpendFor::Other);
         if (!power_ok && !energy_ok) {
-            events_.logTracePrivate(intent.player, "HIDE: " + card.name +
+            RIFT_TRACE_PRIVATE(events_, intent.player, "HIDE: " + card.name +
                                     " not hidden — the cost could not be paid");
             return;
         }
@@ -3680,7 +3691,7 @@ void GameEngine::executeHideCard(const Intent& intent) {
     card.hidden_at = bf_id;
     card.hidden_on_turn = state_.turn.turn_number;
 
-    events_.logFor(LogLevel::Debug, LogAudience::only(intent.player),
+    RIFT_LOG_FOR(events_, LogLevel::Debug, LogAudience::only(intent.player),
                    std::string("HIDDEN: ") + card.name + " hidden at BF#" +
                    std::to_string(bf_id) + " by " + toString(intent.player));
 
@@ -4984,7 +4995,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
 
 void GameEngine::runShowdown(BattlefieldId bf_id) {
     auto& bf = getBattlefield(bf_id);
-    events_.logTrace("SHOWDOWN: BF#" + std::to_string(bf_id) +
+    RIFT_TRACE(events_, "SHOWDOWN: BF#" + std::to_string(bf_id) +
                      (bf.combat_staged ? " (combat)" : " (non-combat)"));
 
     bf.showdown_in_progress = true;
@@ -5150,7 +5161,7 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     // Determine attacker/defender (CR 459.2.b)
     bf.attacker = bf.contested_by;
     bf.defender = opponent(bf.contested_by);
-    events_.logTrace("COMBAT: BF#" + std::to_string(bf_id) + " attacker=" +
+    RIFT_TRACE(events_, "COMBAT: BF#" + std::to_string(bf_id) + " attacker=" +
                      toString(*bf.attacker) + " defender=" + toString(*bf.defender));
 
     // Assign combat designations to units
@@ -5250,7 +5261,9 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
 
     if (att_units.empty() || def_units.empty()) return;
 
-    {
+    if (!events_.logging()) {
+        events_.noteUnheardLine();   // the DAMAGE_STEP line below, unread
+    } else {
         std::string att_str, def_str;
         for (auto uid : att_units) {
             auto& u = state_.getObject(uid);
@@ -5264,7 +5277,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
             def_str += u.name + "(" + std::to_string(u.current_might) + "M" +
                        (u.is_stunned ? ",STUNNED" : "") + ")";
         }
-        events_.logTrace("DAMAGE_STEP: BF#" + std::to_string(bf_id) +
+        RIFT_TRACE(events_, "DAMAGE_STEP: BF#" + std::to_string(bf_id) +
                          " ATK=[" + att_str + "] DEF=[" + def_str + "]");
     }
 
@@ -5462,12 +5475,12 @@ void GameEngine::resolveCombatDamageDecision(const Intent& chosen) {
     int total_damage = 0;
     for (auto& da : chosen.damage_assignments) total_damage += da.damage;
 
-    events_.logTrace(std::string("ASSIGN_DAMAGE: ") + toString(chosen.player) +
+    RIFT_TRACE(events_, std::string("ASSIGN_DAMAGE: ") + toString(chosen.player) +
                      " assigns " + std::to_string(total_damage) + " damage:");
     for (auto& da : chosen.damage_assignments) {
         if (da.damage > 0) {
             auto& t = state_.getObject(da.target_unit);
-            events_.logTrace("  -> " + t.name + " takes " +
+            RIFT_TRACE(events_, "  -> " + t.name + " takes " +
                              std::to_string(da.damage) + " (was " +
                              std::to_string(t.damage_marked) + "/" +
                              std::to_string(t.current_might) + "M)");
@@ -5511,7 +5524,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         for (auto uid : att_remaining) effect_executor_->recallToBase(uid);
         if (recall_all) {
             for (auto uid : def_remaining) effect_executor_->recallToBase(uid);
-            events_.logTrace("COMBAT TIE: the attacker recalls ALL units "
+            RIFT_TRACE(events_, "COMBAT TIE: the attacker recalls ALL units "
                              "(recall_all_on_attacker_tie)");
         }
     }
@@ -5583,7 +5596,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         bf.is_contested = true;
         bf.contested_by = attacker;
         bf.combat_staged = true;
-        events_.logTrace("COMBAT: no result at BF#" + std::to_string(bf_id) +
+        RIFT_TRACE(events_, "COMBAT: no result at BF#" + std::to_string(bf_id) +
                          " with both players present -> another combat is staged");
         return;
     }
@@ -5638,7 +5651,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // Turn-gated scoring (Forgotten Monument): can't score here until the
     // player has taken `min_turn_to_score` of their own turns.
     if (isScoreGatedByTurn(player, bf)) {
-        events_.logTrace(std::string("SCORE_GATED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_GATED: ") + toString(player) +
                          " can't score BF#" + std::to_string(bf) + " until turn " +
                          std::to_string(getBattlefield(bf).min_turn_to_score) +
                          " (turns_taken=" + std::to_string(ps.turns_taken) + ")");
@@ -5665,7 +5678,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     }
 
     ps.battlefields_scored_this_turn.insert(bf);
-    events_.logTrace(std::string("CONQUER: ") + toString(player) + " conquers BF#" +
+    RIFT_TRACE(events_, std::string("CONQUER: ") + toString(player) + " conquers BF#" +
                      std::to_string(bf) + " (score was " + std::to_string(ps.score) + ")");
 
     // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
@@ -5673,7 +5686,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // still scored and its Conquer abilities trigger (473.2); only the point
     // is withheld.
     if (ps.cannot_gain_points) {
-        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_BLOCKED: ") + toString(player) +
                          " can't gain points (cannot_gain_points)");
         events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         return;
@@ -5684,7 +5697,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // hold still happened (its triggers fire via ScoreEvent); only the point
     // is replaced.
     if (state_.turn.early_score_draws_instead && ps.turns_taken <= 2) {
-        events_.logTrace(std::string("SCORE_REPLACED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_REPLACED: ") + toString(player) +
                          " draws 1 instead of scoring (turn " +
                          std::to_string(ps.turns_taken) + ")");
         drawCards(player, 1);
@@ -5695,11 +5708,11 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     if (isWinningPointAttempt(player)) {
         if (canGainWinningPointViaConquer(player)) {
             ps.score++;
-            events_.logTrace(std::string("SCORE: ") + toString(player) + " +1 via Conquer -> " +
+            RIFT_TRACE(events_, std::string("SCORE: ") + toString(player) + " +1 via Conquer -> " +
                              std::to_string(ps.score));
             events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         } else {
-            events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+            RIFT_TRACE(events_, std::string("SCORE_BLOCKED: ") + toString(player) +
                              " winning point blocked (not all BFs scored), draw 1 instead");
             // Draw a card instead (CR 473.1.b.1). The battlefield was still
             // scored, so its Conquer abilities trigger (CR 473.2).
@@ -5708,7 +5721,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
         }
     } else {
         ps.score++;
-        events_.logTrace(std::string("SCORE: ") + toString(player) + " +1 via Conquer -> " +
+        RIFT_TRACE(events_, std::string("SCORE: ") + toString(player) + " +1 via Conquer -> " +
                          std::to_string(ps.score));
         events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
     }
@@ -5720,7 +5733,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     auto& ps = state_.player(player);
 
     if (isScoreGatedByTurn(player, bf)) {
-        events_.logTrace(std::string("SCORE_GATED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_GATED: ") + toString(player) +
                          " can't score BF#" + std::to_string(bf) + " until turn " +
                          std::to_string(getBattlefield(bf).min_turn_to_score) +
                          " (turns_taken=" + std::to_string(ps.turns_taken) + ")");
@@ -5734,7 +5747,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     // The battlefield is still held and scored (CR 470.1, 473.2); only the
     // point is withheld.
     if (ps.cannot_gain_points) {
-        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_BLOCKED: ") + toString(player) +
                          " can't gain points (cannot_gain_points)");
         events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
         return;
@@ -5745,7 +5758,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     // hold still happened (its triggers fire via ScoreEvent); only the point
     // is replaced.
     if (state_.turn.early_score_draws_instead && ps.turns_taken <= 2) {
-        events_.logTrace(std::string("SCORE_REPLACED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_REPLACED: ") + toString(player) +
                          " draws 1 instead of scoring (turn " +
                          std::to_string(ps.turns_taken) + ")");
         drawCards(player, 1);
@@ -5756,7 +5769,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     // Hold always grants Winning Point (CR 466.1.b.1)
     ps.score++;
     ps.hold_points_this_turn++;
-    events_.logTrace(std::string("SCORE: ") + toString(player) + " +1 via Hold BF#" +
+    RIFT_TRACE(events_, std::string("SCORE: ") + toString(player) + " +1 via Hold BF#" +
                      std::to_string(bf) + " -> " + std::to_string(ps.score));
     events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
 
@@ -6232,7 +6245,7 @@ void GameEngine::revertLapsedControl() {
              state_.getObject(src).zone == ZoneType::LegendZone);
         if (source_in_play) continue;
         if (obj.controller != obj.control_revert_to) {
-            events_.logTrace("CONTROL REVERTS: " + obj.name + " (id=" +
+            RIFT_TRACE(events_, "CONTROL REVERTS: " + obj.name + " (id=" +
                              std::to_string(id) + ") returns to " +
                              toString(obj.control_revert_to) +
                              " (source left the board)");
@@ -6377,7 +6390,7 @@ void GameEngine::processLethalDamage() {
                 ((damager == PlayerId::Player1 && elder_p1) ||
                  (damager == PlayerId::Player2 && elder_p2))) {
                 lethal = true;
-                events_.logTrace("ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
+                RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
             }
         }
 
@@ -6425,7 +6438,7 @@ void GameEngine::updateBattlefieldControl() {
             card.location = std::nullopt;
             state_.player(card.owner).trash.push_back(card_id);
             settleInTrash(state_, events_, card_id);
-            events_.logDebug(std::string("HIDDEN: ") + card.name +
+            RIFT_DEBUG(events_, std::string("HIDDEN: ") + card.name +
                              " removed from facedown (control lost)");
         }
     }
@@ -6455,7 +6468,7 @@ void GameEngine::recallMisplacedObjects() {
     }
     std::sort(misplaced.begin(), misplaced.end());
     for (auto id : misplaced) {
-        events_.logTrace("RECALL (CR 323.6): " + state_.getObject(id).name +
+        RIFT_TRACE(events_, "RECALL (CR 323.6): " + state_.getObject(id).name +
                          " (id=" + std::to_string(id) + ")");
         effect_executor_->recallToBase(id);
     }
@@ -6502,7 +6515,7 @@ void GameEngine::processContestedBattlefields() {
             const bool contester_present = bf.contested_by != PlayerId::None
                 ? present(bf.contested_by) : (has_p1 || has_p2);
             if (!contester_present) {
-                events_.logTrace("CONTESTED_REMOVED: BF#" + std::to_string(bf.id) +
+                RIFT_TRACE(events_, "CONTESTED_REMOVED: BF#" + std::to_string(bf.id) +
                                  " (contester has no units here)");
                 bf.is_contested = false;
                 bf.contested_by = PlayerId::None;
@@ -6587,7 +6600,7 @@ void GameEngine::channelRunes(PlayerId player, int count) {
         rune.zone = ZoneType::Base;
         rune.location = BaseLocation{player};
 
-        events_.logTrace("  CHANNELED: " + rune.name + " (id=" +
+        RIFT_TRACE(events_, "  CHANNELED: " + rune.name + " (id=" +
                          std::to_string(rune_id) + ", ready)");
         events_.emit(RuneChanneledEvent{rune_id, player});
         events_.emit(EnteredBoardEvent{
@@ -6726,7 +6739,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
         Intent yes; yes.type = IntentType::MakeChoice; yes.player = player; yes.chosen_value = 1;
         std::vector<Intent> dopts = {no, yes};
         state_.decision_index++;
-        events_.logTrace("DECISION #" + std::to_string(state_.decision_index) + " (" +
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
                          toString(player) + "): discard " +
                          std::to_string(cost.discard_cards) + " as additional cost for " +
                          card.name + "? [decline|pay] [2 options]");
@@ -6752,7 +6765,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     Intent accept;  accept.type  = IntentType::MakeChoice; accept.player  = player; accept.chosen_value  = 1;
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
-    events_.logTrace("DECISION #" + std::to_string(state_.decision_index) + " (" +
+    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(player) + "): pay additional cost for " + card.name +
                      "? [decline|pay] [2 options]");
     auto chosen = askAgent(player, opts);
@@ -6763,9 +6776,9 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
         if (cost.paid_flag && cost.paid_flag[0] != '\0') {
             card.card_counters[cost.paid_flag] = 1;
         }
-        events_.logTrace("ADDITIONAL_COST: " + card.name + " paid optional additional cost");
+        RIFT_TRACE(events_, "ADDITIONAL_COST: " + card.name + " paid optional additional cost");
     } else {
-        events_.logTrace("ADDITIONAL_COST: " + card.name + " declined additional cost");
+        RIFT_TRACE(events_, "ADDITIONAL_COST: " + card.name + " declined additional cost");
     }
 }
 
@@ -7169,7 +7182,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
         }
     }
 
-    events_.logTrace("PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
+    RIFT_TRACE(events_, "PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
                      " P=" + std::to_string(power_needed));
 
     // Spend pool energy first (no agent decision needed): Energy restricted to
@@ -7286,14 +7299,14 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
     auto& rune = state_.getObject(rune_id);
 
     if (cur.phase == Phase::PayingEnergy) {
-        events_.logTrace("  EXHAUST_RUNE: " + rune.name + " (id=" +
+        RIFT_TRACE(events_, "  EXHAUST_RUNE: " + rune.name + " (id=" +
                          std::to_string(rune_id) +
                          ") for energy [agent choice]");
         rune.is_exhausted = true;
         events_.emit(ObjectStateChangedEvent{rune_id, "exhausted"});
         cur.energy_remaining--;
     } else if (cur.phase == Phase::PayingPower) {
-        events_.logTrace("  RECYCLE_RUNE: " + rune.name + " (id=" +
+        RIFT_TRACE(events_, "  RECYCLE_RUNE: " + rune.name + " (id=" +
                          std::to_string(rune_id) + ", " +
                          (rune.is_exhausted ? "exhausted" : "ready") +
                          ") for power [agent choice]");
@@ -7412,7 +7425,7 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
         ps.trash_replay_grants.end());
 
     if (ok) {
-        events_.logTrace("TRASH_REPLAY: " + std::string(toString(player)) +
+        RIFT_TRACE(events_, "TRASH_REPLAY: " + std::string(toString(player)) +
                          " replayed card id=" + std::to_string(card_id) +
                          " for [" + std::to_string(grant.energy) + "]+power");
     }
@@ -7436,7 +7449,7 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
             ? "pick rune to exhaust for energy"
             : "pick rune to recycle for power";
         state_.decision_index++;
-        events_.logTrace("DECISION #" +
+        RIFT_TRACE_DECISION(events_, "DECISION #" +
                           std::to_string(state_.decision_index) +
                           " (" + toString(player) + "): " + label +
                           " [" + std::to_string(adv.legal.size()) +
@@ -7495,7 +7508,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     // Last-known information for "When I die" (CR 383.2.c.3.b): captured now,
     // before gear is shed and the designation and statuses are cleared.
     effect_executor_->snapshotLastKnown(unit_id);
-    events_.logTrace("KILL: " + unit.name + " (id=" + std::to_string(unit_id) +
+    RIFT_TRACE(events_, "KILL: " + unit.name + " (id=" + std::to_string(unit_id) +
                      ", " + std::to_string(unit.current_might) + "M, dmg=" +
                      std::to_string(unit.damage_marked) + ")");
 
@@ -7528,7 +7541,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         state_.player(unit.owner).trash.push_back(unit_id);
         settleInTrash(state_, events_, unit_id);
     } else {
-        events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + unit.name +
+        RIFT_TRACE(events_, "  TOKEN CEASES TO EXIST (CR 183.1): " + unit.name +
                          " (id=" + std::to_string(unit_id) + ")");
     }
 
@@ -7740,13 +7753,15 @@ Intent GameEngine::queryAgent(PlayerId player) {
     if (player == PlayerId::Player1) state_.turn.turn_decisions_p1++;
     else state_.turn.turn_decisions_p2++;
 
-    events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
+    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                      " (" + toString(player) + "): " +
                      std::to_string(actions.size()) + " legal actions");
 
     auto chosen = askAgent(player, actions, PendingQuery::MainPhase);
 
-    {
+    if (!events_.logging()) {
+        events_.noteUnheardLine();   // the CHOSE line below, unread
+    } else {
         std::string choice_str = toString(chosen.type);
         if (chosen.card != kInvalidId && state_.objectExists(chosen.card)) {
             choice_str += " " + state_.getObject(chosen.card).name;
@@ -7796,7 +7811,7 @@ Intent GameEngine::queryAgent(PlayerId player) {
         }
         // Player tag at the front so the line scans independently of
         // the surrounding DECISION # context.
-        events_.logTrace("CHOSE: [" + std::string(toString(player)) +
+        RIFT_TRACE(events_, "CHOSE: [" + std::string(toString(player)) +
                          "] " + choice_str);
     }
 

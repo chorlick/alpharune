@@ -35,14 +35,14 @@ public:
         if (obj.isUnit()) {
             // "draw it": the revealed card is still the top card.
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("PAKAA PROTECTOR: revealed unit " + obj.name + " -> drew it");
+            RIFT_TRACE(ctx.events, "PAKAA PROTECTOR: revealed unit " + obj.name + " -> drew it");
             return;
         }
         deck::takeTop(ctx.state, ctx.controller, deck::Place::Public, knowledge::everyone());
         obj.zone = ZoneType::Trash;
         obj.location = std::nullopt;
         ps.trash.push_back(top);
-        ctx.events.logTrace("PAKAA PROTECTOR: revealed non-unit " + obj.name +
+        RIFT_TRACE(ctx.events, "PAKAA PROTECTOR: revealed non-unit " + obj.name +
                             " -> trash, +2 [M] this turn");
         if (ctx.state.objectExists(ctx.source) &&
             ctx.state.getObject(ctx.source).location.has_value())

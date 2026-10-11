@@ -25,7 +25,7 @@ public:
                                   /*might=*/3, /*tags=*/{"Fae"}, kw,
                                   LocationId{BaseLocation{ctx.controller}},
                                   /*enter_ready=*/true);
-        ctx.events.logTrace("SPRITE QUEEN: play a ready 3 [M] Sprite token with [Temporary]");
+        RIFT_TRACE(ctx.events, "SPRITE QUEEN: play a ready 3 [M] Sprite token with [Temporary]");
     }
 private:
     const CardDef def_ = [] {

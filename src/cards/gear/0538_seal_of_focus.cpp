@@ -25,7 +25,7 @@ public:
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.addFloatingPower(ctx.controller, Domain::Calm, 1);
-        ctx.events.logTrace("SEAL OF FOCUS: Add [G]");
+        RIFT_TRACE(ctx.events, "SEAL OF FOCUS: Add [G]");
     }
 private:
     const CardDef def_ = [] {

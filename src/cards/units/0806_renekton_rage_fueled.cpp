@@ -31,7 +31,7 @@ public:
             if (bf && *bf == *my_bf) enemies.push_back(id);
         }
         for (auto id : enemies) ctx.executor.dealDamage(id, 2, ctx.source);
-        ctx.events.logTrace("RENEKTON: attack with 4 or fewer runes -> 2 to " +
+        RIFT_TRACE(ctx.events, "RENEKTON: attack with 4 or fewer runes -> 2 to " +
                             std::to_string(enemies.size()) + " enemy unit(s) here");
     }
 private:

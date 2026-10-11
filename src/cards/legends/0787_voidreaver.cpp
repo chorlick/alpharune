@@ -18,7 +18,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIWinCombat; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 1);
-        ctx.events.logTrace("VOIDREAVER: win combat -> +1 XP");
+        RIFT_TRACE(ctx.events, "VOIDREAVER: win combat -> +1 XP");
     }
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {
@@ -80,11 +80,11 @@ public:
 
         if (ability_index == 0) {
             ctx.executor.buffUnit(picked);
-            ctx.events.logTrace("VOIDREAVER: spent 1 XP to buff " +
+            RIFT_TRACE(ctx.events, "VOIDREAVER: spent 1 XP to buff " +
                                  ctx.state.getObject(picked).name);
         } else {
             ctx.executor.moveToBase(picked);
-            ctx.events.logTrace("VOIDREAVER: spent 2 XP to move " +
+            RIFT_TRACE(ctx.events, "VOIDREAVER: spent 2 XP to move " +
                                  ctx.state.getObject(picked).name + " to base");
         }
     }

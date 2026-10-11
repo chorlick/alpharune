@@ -46,7 +46,7 @@ public:
         if (conf == -1) return;   // waiting for agent
         if (conf < 1) return;     // declined / already there
         ctx.executor.moveToBattlefield(ctx.source, bf);
-        ctx.events.logTrace("LOYAL PUP: moved to the defended battlefield");
+        RIFT_TRACE(ctx.events, "LOYAL PUP: moved to the defended battlefield");
     }
 private:
     const CardDef def_ = [] {

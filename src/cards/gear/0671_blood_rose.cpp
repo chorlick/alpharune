@@ -38,7 +38,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         gainXp(ctx, ctx.controller, 1);
-        ctx.events.logTrace("BLOOD ROSE: paid [1] -> +1 XP (now " +
+        RIFT_TRACE(ctx.events, "BLOOD ROSE: paid [1] -> +1 XP (now " +
                              std::to_string(ps.xp) + ")");
     }
 
@@ -72,7 +72,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         if (!ctx.state.getObject(picked).location.has_value()) return;   // left the board
         ctx.executor.readyObject(picked);
-        ctx.events.logTrace("BLOOD ROSE: spent 3 XP -> ready " +
+        RIFT_TRACE(ctx.events, "BLOOD ROSE: spent 3 XP -> ready " +
                              ctx.state.getObject(picked).name);
     }
 private:

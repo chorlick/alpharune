@@ -24,7 +24,7 @@ public:
         if (conf == -1) return;  // waiting on agent
         if (conf == 0) return;   // declined
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("STARTIPPED PEAK: channel 1 rune exhausted");
+        RIFT_TRACE(ctx.events, "STARTIPPED PEAK: channel 1 rune exhausted");
     }
 private:
     const CardDef def_ = [] {

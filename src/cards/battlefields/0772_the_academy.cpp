@@ -22,7 +22,7 @@ public:
     //  next spell played uses the grant up.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.state.player(ctx.controller).grant_repeat_base_to_next_spell = true;
-        ctx.events.logTrace("THE ACADEMY: next spell gains [Repeat] = its base cost");
+        RIFT_TRACE(ctx.events, "THE ACADEMY: next spell gains [Repeat] = its base cost");
     }
 private:
     const CardDef def_ = [] {

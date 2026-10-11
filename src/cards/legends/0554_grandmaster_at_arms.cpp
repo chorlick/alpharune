@@ -55,7 +55,7 @@ public:
         // an Equipment that is still attached, CR 718.5.d).
         ctx.executor.unattachGear(gear);
         attachFree(ctx, gear, unit);
-        ctx.events.logTrace("GRANDMASTER AT ARMS: attached " + ctx.state.getObject(gear).name +
+        RIFT_TRACE(ctx.events, "GRANDMASTER AT ARMS: attached " + ctx.state.getObject(gear).name +
                             " to " + ctx.state.getObject(unit).name);
     }
 private:

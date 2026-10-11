@@ -25,7 +25,7 @@ public:
             // Only a Blitzcrank still on the board returns to hand.
             if (!ctx.state.getObject(ctx.source).location.has_value()) return;
             ctx.executor.bounceToHand(ctx.source);
-            ctx.events.logTrace("BLITZCRANK: returned to owner's hand on hold");
+            RIFT_TRACE(ctx.events, "BLITZCRANK: returned to owner's hand on hold");
             return;
         }
         // WhenYouPlayMe. "When you play me to a battlefield" is a condition on
@@ -58,7 +58,7 @@ public:
         if (!my_bf) return;
         std::string name = ctx.state.getObject(target).name;
         ctx.executor.moveToBattlefield(target, *my_bf);
-        ctx.events.logTrace("BLITZCRANK: pulled " + name + " to BF#" +
+        RIFT_TRACE(ctx.events, "BLITZCRANK: pulled " + name + " to BF#" +
                              std::to_string(static_cast<int>(*my_bf)));
     }
 private:

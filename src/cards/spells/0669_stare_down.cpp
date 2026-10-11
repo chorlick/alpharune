@@ -54,7 +54,7 @@ public:
                 if (obj.current_might < threshold) weaker.push_back(id);
             }
             for (auto id : weaker) ctx.executor.moveToBase(id);
-            ctx.events.logTrace("STARE DOWN: moved enemy units (< " +
+            RIFT_TRACE(ctx.events, "STARE DOWN: moved enemy units (< " +
                                  std::to_string(threshold) + "M) at a BF to base");
         }
         // "Gain 1 XP." does not depend on the chosen unit.

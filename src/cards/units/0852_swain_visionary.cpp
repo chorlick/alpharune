@@ -27,7 +27,7 @@ public:
         // CR 194.1.c: a point from an ability. scorePoints honours the Tianna
         // Crownguard lock and ends the game at once at the Victory Score.
         if (ctx.executor.scorePoints(ctx.controller, 1) == 0) return;
-        ctx.events.logTrace("SWAIN, VISIONARY: unit + gear + spell this turn -> score 1 -> " +
+        RIFT_TRACE(ctx.events, "SWAIN, VISIONARY: unit + gear + spell this turn -> score 1 -> " +
                             std::to_string(ps.score));
     }
 private:

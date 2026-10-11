@@ -51,7 +51,7 @@ public:
             // Become a copy of me (base traits — copyUnit inherits
             // card_def_id so death triggers still fire, per Mirror Image).
             ctx.executor.copyUnit(tok, ctx.source);
-            ctx.events.logTrace("KEEPER OF MASKS: Reflection token copies me");
+            RIFT_TRACE(ctx.events, "KEEPER OF MASKS: Reflection token copies me");
         }
     }
 private:

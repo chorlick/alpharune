@@ -51,7 +51,7 @@ public:
             return cost <= 4;
         };
         if (!top_ok()) {
-            ctx.events.logTrace("REBUTTAL: no spell costing [4] or less on top of the chain");
+            RIFT_TRACE(ctx.events, "REBUTTAL: no spell costing [4] or less on top of the chain");
             return;
         }
         const int pay = confirmOptional(ctx, "Rebuttal: pay [A] to gain control of the spell",
@@ -69,7 +69,7 @@ public:
                 obj.controller = ctx.controller;
                 name = obj.name;
             }
-            ctx.events.logTrace("REBUTTAL: paid [A] - gained control of " + name);
+            RIFT_TRACE(ctx.events, "REBUTTAL: paid [A] - gained control of " + name);
             // "You may make new choices for it" (CR 750-755): its new
             // controller re-chooses its targets. `top` may dangle afterwards.
             ctx.executor.makeNewChoices(top.id);
@@ -77,7 +77,7 @@ public:
         }
         // "Otherwise, counter it."
         if (ctx.state.player(top.controller).spells_cant_be_countered) {
-            ctx.events.logTrace("REBUTTAL: that spell can't be countered");
+            RIFT_TRACE(ctx.events, "REBUTTAL: that spell can't be countered");
             return;
         }
         counterChainTop(ctx);

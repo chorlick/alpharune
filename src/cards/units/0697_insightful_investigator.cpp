@@ -36,7 +36,7 @@ public:
                     /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller,
                     ZoneType::Hand});
             }
-            ctx.events.logTrace("INSIGHTFUL INVESTIGATOR: opponent reveals hand");
+            RIFT_TRACE(ctx.events, "INSIGHTFUL INVESTIGATOR: opponent reveals hand");
         }
 
         auto& ps = ctx.state.player(ctx.controller);
@@ -56,7 +56,7 @@ public:
         ps.xp -= 2;
         ctx.executor.applyDiscard(opp, chosen);   // "they discard that card"
         ctx.executor.drawCards(opp, 1);            // "and draw 1"
-        ctx.events.logTrace("INSIGHTFUL INVESTIGATOR: paid 2 XP -> opponent discards a card and draws 1");
+        RIFT_TRACE(ctx.events, "INSIGHTFUL INVESTIGATOR: paid 2 XP -> opponent discards a card and draws 1");
     }
 private:
     const CardDef def_ = [] {

@@ -62,7 +62,7 @@ public:
             });
             if (c.hasKeyword(Keyword::Hidden)) ++hidden_count;
         }
-        ctx.events.logTrace("TEEMO, STRATEGIST: revealed " + std::to_string(n) +
+        RIFT_TRACE(ctx.events, "TEEMO, STRATEGIST: revealed " + std::to_string(n) +
                              " — " + std::to_string(hidden_count) + " Hidden");
 
         // Deal 1 for each Hidden card revealed.

@@ -28,12 +28,12 @@ public:
         if (!spell.isSpell() || spell.card_def_id == kInvalidId) return;
         const int printed = ctx.executor.cardDB().get(spell.card_def_id).energy_cost;
         if (printed < 5) {
-            ctx.events.logTrace("LADY OF LUMINOSITY: spell cost " +
+            RIFT_TRACE(ctx.events, "LADY OF LUMINOSITY: spell cost " +
                                 std::to_string(printed) + " < 5 — no draw");
             return;
         }
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("LADY OF LUMINOSITY: played [5]+ spell -> draw 1");
+        RIFT_TRACE(ctx.events, "LADY OF LUMINOSITY: played [5]+ spell -> draw 1");
     }
 private:
     const CardDef def_ = [] {

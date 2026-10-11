@@ -50,7 +50,7 @@ public:
         if (ctx.state.getObject(eq).location.has_value())
             ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
                                                {static_cast<int32_t>(eq)});
-        ctx.events.logTrace("RELL MAGNETIC: played an Equipment (free)");
+        RIFT_TRACE(ctx.events, "RELL MAGNETIC: played an Equipment (free)");
     }
     bool hasReflexiveTrigger() const override { return true; }
     // `data[0]`: the Equipment that was played.
@@ -64,7 +64,7 @@ public:
         if (ctx.state.objectExists(eq) && ctx.state.getObject(eq).location.has_value() &&
             equipEndsOnBoard(ctx.state, eq, ctx.source)) {
             attachFree(ctx, eq, ctx.source);
-            ctx.events.logTrace("RELL MAGNETIC: attached the Equipment to me");
+            RIFT_TRACE(ctx.events, "RELL MAGNETIC: attached the Equipment to me");
         }
     }
 private:

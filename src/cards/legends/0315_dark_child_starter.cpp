@@ -55,7 +55,7 @@ public:
             ++readied;
         }
         if (readied > 0) {
-            ctx.events.logTrace("DARK CHILD: readied " + std::to_string(readied)
+            RIFT_TRACE(ctx.events, "DARK CHILD: readied " + std::to_string(readied)
                                 + " rune(s) at end of turn");
         }
     }

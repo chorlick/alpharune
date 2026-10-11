@@ -23,7 +23,7 @@ public:
         for (int i = 0; i < 3; ++i)
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                      1, {"Recruit"}, KeywordSet{}, *loc, false);
-        ctx.events.logTrace("CORINA VERAZA: move -> three 1[M] Recruit tokens here");
+        RIFT_TRACE(ctx.events, "CORINA VERAZA: move -> three 1[M] Recruit tokens here");
     }
 private:
     const CardDef def_ = [] {

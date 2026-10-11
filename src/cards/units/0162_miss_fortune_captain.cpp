@@ -51,7 +51,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (target == kInvalidId) return;     // none / mistarget / waiting
         ctx.executor.readyObject(target);
-        ctx.events.logTrace("MISS FORTUNE: readied " +
+        RIFT_TRACE(ctx.events, "MISS FORTUNE: readied " +
                              ctx.state.getObject(target).name);
     }
 private:

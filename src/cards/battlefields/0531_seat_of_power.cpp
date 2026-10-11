@@ -26,7 +26,7 @@ public:
         if (count > 0) {
             ctx.executor.drawCards(ctx.controller, count);
         }
-        ctx.events.logTrace("SEAT OF POWER: conquer -> draw " + std::to_string(count));
+        RIFT_TRACE(ctx.events, "SEAT OF POWER: conquer -> draw " + std::to_string(count));
     }
 private:
     const CardDef def_ = [] {

@@ -49,7 +49,7 @@ public:
         // Additional cost: "Kill this."
         if (ctx.state.objectExists(ctx.source)) ctx.executor.killObject(ctx.source);
         ctx.executor.giveTemporaryMight(picked, 2);
-        ctx.events.logTrace("DIVINING SHELLS: killed self -> +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "DIVINING SHELLS: killed self -> +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

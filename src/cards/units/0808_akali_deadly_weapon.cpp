@@ -55,7 +55,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         const int amount = ctx.state.getObject(ctx.source).isEmpowered() ? 2 : 1;
         ctx.executor.dealDamage(tgt, amount, ctx.source);
-        ctx.events.logTrace("AKALI, DEADLY WEAPON: moved -> dealt " + std::to_string(amount));
+        RIFT_TRACE(ctx.events, "AKALI, DEADLY WEAPON: moved -> dealt " + std::to_string(amount));
     }
 private:
     const CardDef def_ = [] {

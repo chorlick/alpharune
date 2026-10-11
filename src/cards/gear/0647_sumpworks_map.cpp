@@ -24,7 +24,7 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("SUMPWORKS MAP: opponent scored -> draw 1");
+        RIFT_TRACE(ctx.events, "SUMPWORKS MAP: opponent scored -> draw 1");
     }
 private:
     const CardDef def_ = [] {

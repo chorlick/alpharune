@@ -24,7 +24,7 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("SCRAPHEAP: played/discarded/killed -> draw 1");
+        RIFT_TRACE(ctx.events, "SCRAPHEAP: played/discarded/killed -> draw 1");
     }
 private:
     const CardDef def_ = [] {

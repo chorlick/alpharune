@@ -347,6 +347,33 @@ struct CardRevealedEvent {
 ///   bus.on_unit_moved.connect([](const UnitMovedEvent& e) { ... });
 ///   bus.emit(UnitMovedEvent{...});
 
+/// The log signal: a Boost.Signals2 signal that can also say, without going
+/// through Boost's slot list (a mutex and a shared_ptr copy per ask), whether
+/// anyone is connected. `bus.on_log.connect(fn)` is unchanged and returns the
+/// connection. A slot disconnected through its connection — or a
+/// scoped_connection going out of scope — is noticed the next time
+/// listening() is asked, so the answer is never stale.
+class LogSignal {
+public:
+    template <class Slot>
+    boost::signals2::connection connect(Slot&& slot) {
+        boost::signals2::connection c = signal_.connect(std::forward<Slot>(slot));
+        connections_.push_back(c);
+        return c;
+    }
+    void operator()(const LogEvent& e) const;
+    void disconnect_all_slots();
+    std::size_t num_slots() const;
+    bool empty() const { return !listening(); }
+    /// True while at least one slot is connected.
+    bool listening() const { return !connections_.empty() && anyConnected(); }
+
+private:
+    bool anyConnected() const;   // forgets the connections that have ended
+    boost::signals2::signal<void(const LogEvent&)> signal_;
+    mutable std::vector<boost::signals2::connection> connections_;
+};
+
 // Member functions are defined in events.cpp, not inline: an inline body that
 // calls a signal makes every translation unit that merely includes this header
 // instantiate Boost.Signals2's invocation machinery for that signal (GCC queues
@@ -390,8 +417,9 @@ public:
     boost::signals2::signal<void(const UnitReturnedToHandEvent&)> on_unit_returned_to_hand;
     boost::signals2::signal<void(const GameOverEvent&)>           on_game_over;
 
-    // Logging
-    boost::signals2::signal<void(const LogEvent&)>                 on_log;
+    // Logging. A LogSignal, so that "is anyone reading the log?" is a cheap
+    // question (logging(), below); subscribers connect to it as to any signal.
+    LogSignal                                                      on_log;
 
     // Chain signals
     boost::signals2::signal<void(const ChainCreatedEvent&)>        on_chain_created;
@@ -460,6 +488,22 @@ public:
     // sub-counter whenever a "DECISION #" line is emitted) and NN is
     // the sub-counter within the current decision. Lines emitted
     // before the first DECISION show as [D:000.NN].
+    //
+    // A line nobody will read is not built (plans/06 item 6.1): call sites
+    // use the RIFT_TRACE / RIFT_DEBUG / ... macros at the end of this file,
+    // which evaluate their message only while logging() is true. The
+    // functions below may still be called directly; with nobody listening
+    // they format nothing and emit nothing. Either way the two counters
+    // advance exactly as if the line had been delivered, so a listener that
+    // attaches in mid-game sees the prefixes it would have seen from the
+    // start.
+    /// Whether a log line emitted now would reach a subscriber: someone is
+    /// connected to on_log and the bus is not in a quiet stretch.
+    bool logging() const { return quiet_depth_ == 0 && on_log.listening(); }
+    /// The counter bookkeeping of a line that was not built: any line, and a
+    /// "DECISION #" line (which starts a new decision).
+    void noteUnheardLine() { ++log_sub_counter_; }
+    void noteUnheardDecision() { ++log_decision_counter_; log_sub_counter_ = 0; }
     void logTrace(const std::string& msg);
     void logDebug(const std::string& msg);
     void logInfo(const std::string& msg);
@@ -477,6 +521,7 @@ public:
 
 private:
     bool holding_ = false;
+    int quiet_depth_ = 0;   // > 0 inside beginQuiet / endQuiet: emissions are dropped
     std::vector<std::function<void()>> held_;
     int log_decision_counter_ = 0;
     int log_sub_counter_      = 0;
@@ -485,6 +530,35 @@ private:
     /// counter (and resets the sub-counter to 0) when `msg` begins
     /// with `"DECISION #"`; otherwise bumps the sub-counter.
     std::string tagWithDecision(const std::string& msg);
+    static bool isDecisionLine(const std::string& msg);
 };
 
 } // namespace riftbound
+
+// ─── Lazy log lines (plans/06 item 6.1) ──────────────────────────────────────
+// RIFT_TRACE(bus, "MOVE: " + unit.name + ...) is bus.logTrace(...) whose
+// message expression is evaluated only while bus.logging() is true. Most games
+// (training, search, batches) run with nobody reading the log; building a
+// string per line for them was a measurable share of every decision.
+//
+// Rules for a message expression: it must have no side effects (it does not
+// run when nobody listens), and a line that starts with "DECISION #" must use
+// RIFT_TRACE_DECISION — the bus numbers its lines per decision and has to be
+// told about a decision line it never sees the text of.
+#define RIFT_LOG_LAZY_(bus, call, unheard)                           \
+    do {                                                             \
+        ::riftbound::EventBus& rift_log_bus_ = (bus);                \
+        if (rift_log_bus_.logging()) rift_log_bus_.call;             \
+        else rift_log_bus_.unheard();                                \
+    } while (0)
+#define RIFT_TRACE(bus, ...)          RIFT_LOG_LAZY_(bus, logTrace(__VA_ARGS__), noteUnheardLine)
+#define RIFT_TRACE_DECISION(bus, ...) RIFT_LOG_LAZY_(bus, logTrace(__VA_ARGS__), noteUnheardDecision)
+#define RIFT_DEBUG(bus, ...)          RIFT_LOG_LAZY_(bus, logDebug(__VA_ARGS__), noteUnheardLine)
+#define RIFT_INFO(bus, ...)           RIFT_LOG_LAZY_(bus, logInfo(__VA_ARGS__), noteUnheardLine)
+#define RIFT_WARN(bus, ...)           RIFT_LOG_LAZY_(bus, logWarn(__VA_ARGS__), noteUnheardLine)
+/// (bus, visible_to, message) — see EventBus::logTracePrivate.
+#define RIFT_TRACE_PRIVATE(bus, ...)  RIFT_LOG_LAZY_(bus, logTracePrivate(__VA_ARGS__), noteUnheardLine)
+/// (bus, audience, message) — see EventBus::logTraceFor.
+#define RIFT_TRACE_FOR(bus, ...)      RIFT_LOG_LAZY_(bus, logTraceFor(__VA_ARGS__), noteUnheardLine)
+/// (bus, level, audience, message) — see EventBus::logFor.
+#define RIFT_LOG_FOR(bus, ...)        RIFT_LOG_LAZY_(bus, logFor(__VA_ARGS__), noteUnheardLine)

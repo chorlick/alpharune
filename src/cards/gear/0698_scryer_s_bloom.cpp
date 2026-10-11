@@ -76,7 +76,7 @@ public:
                 if (ri.resume_data[3 + i] == 1) {
                     deck::putOnBottom(ctx.state, ctx.controller, cid, deck::Place::Held,
                                       knowledge::only(ctx.controller));
-                    ctx.events.logTracePrivate(ctx.controller,
+                    RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
                         "PREDICT: recycled " + ctx.state.getObject(cid).name);
                     recycled = cid;
                 } else {
@@ -95,7 +95,7 @@ public:
             ri.resume_point = kDone;
             ctx.executor.drawCards(ctx.controller, 1);
             gainXp(ctx, ctx.controller, 1);
-            ctx.events.logTrace("SCRYER'S BLOOM: predict 2, draw 1, +1 XP");
+            RIFT_TRACE(ctx.events, "SCRYER'S BLOOM: predict 2, draw 1, +1 XP");
         };
         // After the keep/recycle answers: ask the order if both were kept.
         auto order_or_finish = [&]() {
@@ -123,7 +123,7 @@ public:
                 ri.resume_data[1 + i] = static_cast<int32_t>(cid);
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);
-                    ctx.events.logTracePrivate(ctx.controller,
+                    RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
                                          "  PEEKED: " + obj.name + " (id=" +
                                          std::to_string(cid) +
                                          ") — PRIVATE to " + toString(ctx.controller));

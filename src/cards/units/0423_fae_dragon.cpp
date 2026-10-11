@@ -29,7 +29,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenYouSpendABuff) {
             createGoldExhausted(ctx);
-            ctx.events.logTrace("FAE DRAGON: a buff was spent -> Gold token (exhausted)");
+            RIFT_TRACE(ctx.events, "FAE DRAGON: a buff was spent -> Gold token (exhausted)");
             return;
         }
         std::vector<GameObjectId> unbuffed;
@@ -44,7 +44,7 @@ public:
         int buffed = 0;
         for (auto id : *chosen)
             if (ctx.executor.buffUnit(id)) ++buffed;
-        ctx.events.logTrace("FAE DRAGON: buffed " + std::to_string(buffed) +
+        RIFT_TRACE(ctx.events, "FAE DRAGON: buffed " + std::to_string(buffed) +
                             " friendly units (up to 4)");
     }
 private:

@@ -33,7 +33,7 @@ public:
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit", 1,
                                      {"Recruit"}, KeywordSet{},
                                      BaseLocation{ctx.controller}, /*enter_ready=*/false);
-        ctx.events.logTrace("NOXIAN EMISSARY: died Empowered -> two 1[M] Recruits to base");
+        RIFT_TRACE(ctx.events, "NOXIAN EMISSARY: died Empowered -> two 1[M] Recruits to base");
     }
 private:
     const CardDef def_ = [] {

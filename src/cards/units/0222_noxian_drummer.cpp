@@ -22,7 +22,7 @@ public:
         if (!loc) return;
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  1, {"Recruit"}, KeywordSet{}, *loc, false);
-        ctx.events.logTrace("NOXIAN DRUMMER: move -> 1[M] Recruit here");
+        RIFT_TRACE(ctx.events, "NOXIAN DRUMMER: move -> 1[M] Recruit here");
     }
 private:
     const CardDef def_ = [] {

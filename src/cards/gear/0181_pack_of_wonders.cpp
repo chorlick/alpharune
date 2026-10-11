@@ -51,7 +51,7 @@ public:
         auto& obj = ctx.state.getObject(picked);
         if (!obj.is_hidden) {
             ctx.executor.bounceToHand(picked);
-            ctx.events.logTrace("PACK OF WONDERS: returned a friendly gear/unit to hand");
+            RIFT_TRACE(ctx.events, "PACK OF WONDERS: returned a friendly gear/unit to hand");
             return;
         }
         // A facedown card: out of the battlefield's facedown zone, into its
@@ -66,7 +66,7 @@ public:
         ctx.state.player(obj.owner).hand.push_back(picked);
         knowledge::moved(ctx.state, picked, deck::Place::Facedown, deck::Place::Hand,
                          knowledge::nobody());
-        ctx.events.logTrace("PACK OF WONDERS: returned a facedown card to hand");
+        RIFT_TRACE(ctx.events, "PACK OF WONDERS: returned a facedown card to hand");
     }
 private:
     const CardDef def_ = [] {

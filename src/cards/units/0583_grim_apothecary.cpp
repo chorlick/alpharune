@@ -34,7 +34,7 @@ public:
         if (conf != 1 || target == kInvalidId) return;
         const std::string name = ctx.state.getObject(target).name;
         ctx.executor.bounceToHand(target);
-        ctx.events.logTrace("GRIM APOTHECARY: bounced " + name);
+        RIFT_TRACE(ctx.events, "GRIM APOTHECARY: bounced " + name);
     }
 private:
     const CardDef def_ = [] {

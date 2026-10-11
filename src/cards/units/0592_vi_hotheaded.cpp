@@ -28,7 +28,7 @@ public:
         if (cur <= 0) return;
         // Double = add current Might as a "this turn" bonus.
         ctx.executor.giveTemporaryMight(ctx.source, cur);
-        ctx.events.logTrace("VI HOTHEADED: doubled Might this turn (+" +
+        RIFT_TRACE(ctx.events, "VI HOTHEADED: doubled Might this turn (+" +
                             std::to_string(cur) + ")");
     }
 private:

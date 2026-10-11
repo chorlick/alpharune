@@ -30,7 +30,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         int bonus = (ctx.state.player(ctx.controller).xp >= 6) ? 3 : 1;
         ctx.executor.giveTemporaryMight(picked, bonus);
-        ctx.events.logTrace("COMBAT EXPERIENCE: +" + std::to_string(bonus) +
+        RIFT_TRACE(ctx.events, "COMBAT EXPERIENCE: +" + std::to_string(bonus) +
                              "[M] this turn");
     }
 private:

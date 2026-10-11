@@ -23,7 +23,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (gearControlled(ctx.state, ctx.controller) < 3) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("PATCHED POROBOT: 3+ gear -> draw 1");
+        RIFT_TRACE(ctx.events, "PATCHED POROBOT: 3+ gear -> draw 1");
     }
 private:
     const CardDef def_ = [] {

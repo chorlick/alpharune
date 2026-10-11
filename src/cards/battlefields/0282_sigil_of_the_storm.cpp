@@ -28,7 +28,7 @@ public:
         if (!rune.has_value() || *rune == kInvalidId) return;   // waiting / no rune
         if (std::find(runes.begin(), runes.end(), *rune) == runes.end()) return;
         ctx.executor.recycleCards(ctx.controller, {*rune});
-        ctx.events.logTrace("SIGIL OF THE STORM: conquer -> recycle one rune");
+        RIFT_TRACE(ctx.events, "SIGIL OF THE STORM: conquer -> recycle one rune");
     }
 private:
     const CardDef def_ = [] {

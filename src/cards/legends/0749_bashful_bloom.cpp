@@ -33,7 +33,7 @@ public:
         auto loc = BaseLocation{ctx.controller};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
                                   {"Fae"}, kw, loc, /*enter_ready=*/true);
-        ctx.events.logTrace("BASHFUL BLOOM: plays ready 3M Sprite (Temporary)");
+        RIFT_TRACE(ctx.events, "BASHFUL BLOOM: plays ready 3M Sprite (Temporary)");
     }
 private:
     const CardDef def_ = [] {

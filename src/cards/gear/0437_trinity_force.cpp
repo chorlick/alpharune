@@ -20,7 +20,7 @@ public:
     void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                             const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-        ctx.events.logTrace("EQUIP_TRIGGER: Trinity Force scores 1 point -> " +
+        RIFT_TRACE(ctx.events, "EQUIP_TRIGGER: Trinity Force scores 1 point -> " +
                             std::to_string(ctx.state.player(ctx.controller).score));
     }
 private:

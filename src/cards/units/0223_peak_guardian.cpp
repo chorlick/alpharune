@@ -31,7 +31,7 @@ public:
             if (obj.battlefieldId() != my_bf) continue;
             buff_if_unbuffed(id);
         }
-        ctx.events.logTrace("PEAK GUARDIAN: buff self + other friendly units here");
+        RIFT_TRACE(ctx.events, "PEAK GUARDIAN: buff self + other friendly units here");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
 private:

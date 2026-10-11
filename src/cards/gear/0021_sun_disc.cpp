@@ -38,11 +38,11 @@ public:
             it != self.card_counters.end() && it->second == ctx.state.turn.turn_number + 1)
             --others;
         if (others < 1) {
-            ctx.events.logTrace("SUN DISC: [Legion] not met — no effect");
+            RIFT_TRACE(ctx.events, "SUN DISC: [Legion] not met — no effect");
             return;
         }
         self.card_counters["__sundisc_arm_turn"] = ctx.state.turn.turn_number;
-        ctx.events.logTrace("SUN DISC: armed next-unit-enters-ready for this turn");
+        RIFT_TRACE(ctx.events, "SUN DISC: armed next-unit-enters-ready for this turn");
     }
 
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
@@ -72,7 +72,7 @@ public:
         if (!unit.isUnit() || !unit.location.has_value() || unit.controller != ctx.controller)
             return;
         ctx.executor.readyObject(played);
-        ctx.events.logTrace("SUN DISC: next unit entered ready");
+        RIFT_TRACE(ctx.events, "SUN DISC: next unit entered ready");
     }
 private:
     const CardDef def_ = [] {

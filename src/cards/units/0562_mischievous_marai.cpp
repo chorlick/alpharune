@@ -61,7 +61,7 @@ public:
         if (ctx.state.objectExists(picked) &&
             ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
-        ctx.events.logTrace("MISCHIEVOUS MARAI: dealt 2 to an enemy unit here");
+        RIFT_TRACE(ctx.events, "MISCHIEVOUS MARAI: dealt 2 to an enemy unit here");
     }
 private:
     const CardDef def_ = [] {

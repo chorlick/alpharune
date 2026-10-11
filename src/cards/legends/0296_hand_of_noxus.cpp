@@ -24,11 +24,11 @@ public:
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.state.player(ctx.controller).cards_played_this_turn < 1) {
-            ctx.events.logTrace("HAND OF NOXUS: no Legion — no effect");
+            RIFT_TRACE(ctx.events, "HAND OF NOXUS: no Legion — no effect");
             return;
         }
         ctx.executor.addFloatingEnergy(ctx.controller, 1);
-        ctx.events.logTrace("HAND OF NOXUS: [E] -> [Add] [1]");
+        RIFT_TRACE(ctx.events, "HAND OF NOXUS: [E] -> [Add] [1]");
     }
 private:
     const CardDef def_ = [] {

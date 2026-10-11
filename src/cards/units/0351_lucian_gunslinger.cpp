@@ -54,7 +54,7 @@ public:
             ctx.state.getObject(tgt).hasLethalDamage()) {
             ctx.executor.killObject(tgt);
         }
-        ctx.events.logTrace("LUCIAN GUNSLINGER: dealt " + std::to_string(assault) +
+        RIFT_TRACE(ctx.events, "LUCIAN GUNSLINGER: dealt " + std::to_string(assault) +
                              " (= Assault) to an enemy unit here");
     }
 private:

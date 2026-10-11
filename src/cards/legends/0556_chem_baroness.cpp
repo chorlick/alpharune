@@ -33,7 +33,7 @@ public:
         // CR 187.5: a Gold gear token has "[Reaction][>] Kill this, [E]:
         // [Add] [A]" — carried by the registered Gold card.
         createGoldExhausted(ctx);
-        ctx.events.logTrace("CHEM-BARONESS: played a Gold token");
+        RIFT_TRACE(ctx.events, "CHEM-BARONESS: played a Gold token");
     }
 
     // "While your score is within 3 points of the Victory Score, your Gold

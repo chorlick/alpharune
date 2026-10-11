@@ -38,7 +38,7 @@ public:
                     ctx.state.chain.items.pop_back();
                     if (ctx.state.objectExists(countered_source)) {
                         auto& obj = ctx.state.getObject(countered_source);
-                        ctx.events.logTrace("COUNTER: " + obj.name +
+                        RIFT_TRACE(ctx.events, "COUNTER: " + obj.name +
                                             " countered by Abandon -> hand");
                         disposeCounteredCard(ctx, countered_source, ZoneType::Hand);
                     }
@@ -80,13 +80,13 @@ public:
                 // Recycled (CR 437): recycleCards puts it on the bottom and
                 // announces it ("recycled_main").
                 ctx.executor.recycleCards(ctx.controller, {top_card});
-                ctx.events.logTrace("PREDICT: " + n +
+                RIFT_TRACE(ctx.events, "PREDICT: " + n +
                                      " -> bottom of deck (recycled)");
             } else {
                 // Put back on top. Was previously silent — surfaced after
                 // user noticed the keep-case wasn't visible in the replay.
                 deck::putOnTop(ctx.state, ctx.controller, top_card, deck::Place::Held, knowledge::only(ctx.controller));
-                ctx.events.logTrace("PREDICT: " + n + " -> top of deck (kept)");
+                RIFT_TRACE(ctx.events, "PREDICT: " + n + " -> top of deck (kept)");
             }
             return;
         }

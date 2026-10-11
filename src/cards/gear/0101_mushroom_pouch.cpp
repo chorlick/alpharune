@@ -33,7 +33,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!controlsFacedownCard(ctx.state, ctx.controller)) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("MUSHROOM POUCH: facedown card present -> draw 1");
+        RIFT_TRACE(ctx.events, "MUSHROOM POUCH: facedown card present -> draw 1");
     }
 private:
     const CardDef def_ = [] {

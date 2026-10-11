@@ -25,7 +25,7 @@ public:
         if (!gear.isGear() || !gear.location.has_value()) return;
         gear.keywords.set(Keyword::Temporary);
         gear.granted_keywords.set(Keyword::Temporary);   // given, not printed (CR 718.2)
-        ctx.events.logTrace("TURN TO DUST: " + gear.name + " gains [Temporary]");
+        RIFT_TRACE(ctx.events, "TURN TO DUST: " + gear.name + " gains [Temporary]");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true};

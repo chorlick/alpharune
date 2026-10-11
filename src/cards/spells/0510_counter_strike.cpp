@@ -35,7 +35,7 @@ public:
                                  enumerateLegalTargets(ctx.state, ctx.controller));
         if (picked != kInvalidId && ctx.state.objectExists(picked)) {
             ctx.state.getObject(picked).prevent_next_damage_this_turn = true;
-            ctx.events.logTrace("COUNTER STRIKE: armed damage prevention on " +
+            RIFT_TRACE(ctx.events, "COUNTER STRIKE: armed damage prevention on " +
                                 ctx.state.getObject(picked).name);
         }
         ctx.executor.drawCards(ctx.controller, 1);  // "Draw 1" — unconditional

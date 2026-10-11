@@ -38,11 +38,11 @@ public:
             if (chose_runes) {
                 ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
                 ctx.executor.channelRunes(opp, 1, /*enter_exhausted=*/true);
-                ctx.events.logTrace("PARTY FAVORS: opponent chose Runes -> both channel 1 exhausted");
+                RIFT_TRACE(ctx.events, "PARTY FAVORS: opponent chose Runes -> both channel 1 exhausted");
             } else {
                 ctx.executor.drawCards(ctx.controller, 1);
                 ctx.executor.drawCards(opp, 1);
-                ctx.events.logTrace("PARTY FAVORS: opponent chose Cards -> both draw 1");
+                RIFT_TRACE(ctx.events, "PARTY FAVORS: opponent chose Cards -> both draw 1");
             }
             return;
         }

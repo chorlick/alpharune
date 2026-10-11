@@ -20,7 +20,7 @@ public:
         ctx.executor.takeControl(targets[0], ctx.controller, /*until_end_of_turn=*/false);
         // A recall, not a move (CR 458): to its new controller's base.
         ctx.executor.recallToBase(targets[0]);
-        ctx.events.logTrace("POSSESSION: take control + recall to base");
+        RIFT_TRACE(ctx.events, "POSSESSION: take control + recall to base");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .must_be_at_battlefield = true};

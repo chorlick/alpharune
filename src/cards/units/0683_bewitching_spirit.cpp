@@ -26,7 +26,7 @@ public:
         if (mode < 0) mode = 0;        // no-legal fallback -> self
         PlayerId target = (mode == 0) ? ctx.controller : opponent(ctx.controller);
         ctx.executor.discardCards(target, 1);
-        ctx.events.logTrace("BEWITCHING SPIRIT: " + std::string(toString(target))
+        RIFT_TRACE(ctx.events, "BEWITCHING SPIRIT: " + std::string(toString(target))
                             + " discards 1");
     }
 private:

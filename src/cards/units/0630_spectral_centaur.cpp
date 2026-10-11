@@ -20,7 +20,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;  // I left the board
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.events.logTrace("SPECTRAL CENTAUR: another friendly unit died -> +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "SPECTRAL CENTAUR: another friendly unit died -> +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

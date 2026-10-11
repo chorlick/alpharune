@@ -44,7 +44,7 @@ public:
                                                   /*revealed_to_all=*/true, PlayerId::None,
                                                   ZoneType::MainDeck});
             }
-            ctx.events.logTrace("VOID RUSH: revealed top " + std::to_string(top.size()) + " card(s)");
+            RIFT_TRACE(ctx.events, "VOID RUSH: revealed top " + std::to_string(top.size()) + " card(s)");
         }
         // "You may banish one, then play it": offered for the cards that can
         // be played at the reduced cost, so nothing is banished and then left
@@ -83,7 +83,7 @@ public:
             // banishObject takes the card out of the deck through deck_ops.
             ctx.executor.banishObject(chosen);
             if (ctx.executor.playPayingCost(ctx.controller, chosen, where_to, reduced))
-                ctx.events.logTrace("VOID RUSH: banished and played " +
+                RIFT_TRACE(ctx.events, "VOID RUSH: banished and played " +
                                     ctx.state.getObject(chosen).name + ", its cost reduced by [2]");
         }
         // "Draw any you didn't banish": they are still the top cards.

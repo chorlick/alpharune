@@ -31,7 +31,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (unit == kInvalidId) return;       // none / mistarget / waiting
         if (ctx.executor.buffUnit(unit))
-            ctx.events.logTrace("RADIANT DAWN: stunned enemy -> buff " +
+            RIFT_TRACE(ctx.events, "RADIANT DAWN: stunned enemy -> buff " +
                                 ctx.state.getObject(unit).name);
     }
 private:

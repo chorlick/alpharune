@@ -40,7 +40,7 @@ public:
         if (mode == -1) return;       // waiting on agent
         if (mode != 0) {              // "Draw 1"
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("DISPOSAL ORDER: draw 1");
+            RIFT_TRACE(ctx.events, "DISPOSAL ORDER: draw 1");
             return;
         }
 
@@ -82,7 +82,7 @@ public:
             if (to_recycle.empty()) return;
             // "Their owners recycle them."
             ctx.executor.recycleCards(opp, to_recycle);
-            ctx.events.logTrace("DISPOSAL ORDER: opponent recycles " +
+            RIFT_TRACE(ctx.events, "DISPOSAL ORDER: opponent recycles " +
                                 std::to_string(to_recycle.size()) + " card(s) from trash");
         };
         if (ri.resume_point == kAwaitCard) {

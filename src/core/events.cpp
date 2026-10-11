@@ -1,5 +1,6 @@
 #include "core/events.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace riftbound {
@@ -8,142 +9,177 @@ namespace riftbound {
 // One overload per event type; each invokes that event's signal. Kept out of
 // the header on purpose (see the note on EventBus).
 void EventBus::emit(const UnitMovedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_unit_moved(e); }); return; }
     on_unit_moved(e);
 }
 void EventBus::emit(const EnteredBoardEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_entered_board(e); }); return; }
     on_entered_board(e);
 }
 void EventBus::emit(const TokenCreatedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_token_created(e); }); return; }
     on_token_created(e);
 }
 void EventBus::emit(const LeftBoardEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_left_board(e); }); return; }
     on_left_board(e);
 }
 void EventBus::emit(const DamageDealtEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_damage_dealt(e); }); return; }
     on_damage_dealt(e);
 }
 void EventBus::emit(const UnitDiedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_unit_died(e); }); return; }
     on_unit_died(e);
 }
 void EventBus::emit(const CardsDrawnEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_cards_drawn(e); }); return; }
     on_cards_drawn(e);
 }
 void EventBus::emit(const CardsDiscardedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_cards_discarded(e); }); return; }
     on_cards_discarded(e);
 }
 void EventBus::emit(const CardPlayedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_card_played(e); }); return; }
     on_card_played(e);
 }
 void EventBus::emit(const RuneChanneledEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_rune_channeled(e); }); return; }
     on_rune_channeled(e);
 }
 void EventBus::emit(const ControlChangedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_control_changed(e); }); return; }
     on_control_changed(e);
 }
 void EventBus::emit(const ContestedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_contested(e); }); return; }
     on_contested(e);
 }
 void EventBus::emit(const ScoreEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_score(e); }); return; }
     on_score(e);
 }
 void EventBus::emit(const PointsGainedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_points_gained(e); }); return; }
     on_points_gained(e);
 }
 void EventBus::emit(const PhaseChangedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_phase_changed(e); }); return; }
     on_phase_changed(e);
 }
 void EventBus::emit(const PriorityGrantedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_priority_granted(e); }); return; }
     on_priority_granted(e);
 }
 void EventBus::emit(const CombatStartedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_combat_started(e); }); return; }
     on_combat_started(e);
 }
 void EventBus::emit(const CombatEndedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_combat_ended(e); }); return; }
     on_combat_ended(e);
 }
 void EventBus::emit(const ShowdownStartedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_showdown_started(e); }); return; }
     on_showdown_started(e);
 }
 void EventBus::emit(const ShowdownEndedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_showdown_ended(e); }); return; }
     on_showdown_ended(e);
 }
 void EventBus::emit(const StateSettledEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_state_settled(e); }); return; }
     on_state_settled(e);
 }
 void EventBus::emit(const ObjectStateChangedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_object_state_changed(e); }); return; }
     on_object_state_changed(e);
 }
 void EventBus::emit(const UnitStunnedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_unit_stunned(e); }); return; }
     on_unit_stunned(e);
 }
 void EventBus::emit(const UnitReadiedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_unit_readied(e); }); return; }
     on_unit_readied(e);
 }
 void EventBus::emit(const CardHiddenEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_card_hidden(e); }); return; }
     on_card_hidden(e);
 }
 void EventBus::emit(const PlayedFromFacedownEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_played_from_facedown(e); }); return; }
     on_played_from_facedown(e);
 }
 void EventBus::emit(const UnitReturnedToHandEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_unit_returned_to_hand(e); }); return; }
     on_unit_returned_to_hand(e);
 }
 void EventBus::emit(const GameOverEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_game_over(e); }); return; }
     on_game_over(e);
 }
 void EventBus::emit(const LogEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_log(e); }); return; }
     on_log(e);
 }
 void EventBus::emit(const ChainCreatedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_chain_created(e); }); return; }
     on_chain_created(e);
 }
 void EventBus::emit(const ChainItemFinalizedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_chain_item_finalized(e); }); return; }
     on_chain_item_finalized(e);
 }
 void EventBus::emit(const ChainItemResolvedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_chain_item_resolved(e); }); return; }
     on_chain_item_resolved(e);
 }
 void EventBus::emit(const ChainEmptiedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_chain_emptied(e); }); return; }
     on_chain_emptied(e);
 }
 void EventBus::emit(const SpellResolvedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_spell_resolved(e); }); return; }
     on_spell_resolved(e);
 }
 void EventBus::emit(const CardRevealedEvent& e) {
+    if (quiet_depth_ > 0) return;
     if (holding_) { held_.push_back([this, e] { on_card_revealed(e); }); return; }
     on_card_revealed(e);
 }
@@ -164,25 +200,51 @@ void EventBus::discardHeld() {
 EventBus::Quiet EventBus::beginQuiet() {
     Quiet q{holding_, held_.size()};
     holding_ = true;
+    // What is emitted in the stretch is dropped as it is emitted (emit checks
+    // quiet_depth_ first) rather than kept and thrown away at the end, and a
+    // log line is not even built (logging()).
+    ++quiet_depth_;
     return q;
 }
 void EventBus::endQuiet(const Quiet& q) {
+    if (quiet_depth_ > 0) --quiet_depth_;
     if (held_.size() > q.held_before) held_.resize(q.held_before);
     holding_ = q.was_holding;
 }
 
+// ── the log signal ───────────────────────────────────────────────────────────
+void LogSignal::operator()(const LogEvent& e) const { signal_(e); }
+void LogSignal::disconnect_all_slots() {
+    signal_.disconnect_all_slots();
+    connections_.clear();
+}
+std::size_t LogSignal::num_slots() const { return signal_.num_slots(); }
+bool LogSignal::anyConnected() const {
+    connections_.erase(std::remove_if(connections_.begin(), connections_.end(),
+                           [](const boost::signals2::connection& c) { return !c.connected(); }),
+                       connections_.end());
+    return !connections_.empty();
+}
+
 // ── logging ──────────────────────────────────────────────────────────────────
-void EventBus::logTrace(const std::string& msg) { emit(LogEvent{LogLevel::Trace, tagWithDecision(msg)}); }
-void EventBus::logDebug(const std::string& msg) { emit(LogEvent{LogLevel::Debug, tagWithDecision(msg)}); }
-void EventBus::logInfo(const std::string& msg) { emit(LogEvent{LogLevel::Info, tagWithDecision(msg)}); }
-void EventBus::logWarn(const std::string& msg) { emit(LogEvent{LogLevel::Warning, tagWithDecision(msg)}); }
+void EventBus::logTrace(const std::string& msg) { logFor(LogLevel::Trace, LogAudience::both(), msg); }
+void EventBus::logDebug(const std::string& msg) { logFor(LogLevel::Debug, LogAudience::both(), msg); }
+void EventBus::logInfo(const std::string& msg) { logFor(LogLevel::Info, LogAudience::both(), msg); }
+void EventBus::logWarn(const std::string& msg) { logFor(LogLevel::Warning, LogAudience::both(), msg); }
 void EventBus::logTracePrivate(PlayerId visible_to, const std::string& msg) {
-    emit(LogEvent{LogLevel::Trace, tagWithDecision(msg), LogAudience::only(visible_to)});
+    logFor(LogLevel::Trace, LogAudience::only(visible_to), msg);
 }
 void EventBus::logTraceFor(LogAudience audience, const std::string& msg) {
     logFor(LogLevel::Trace, audience, msg);
 }
 void EventBus::logFor(LogLevel level, LogAudience audience, const std::string& msg) {
+    if (!logging()) {
+        // Nobody will read it: no prefix is formatted and nothing is emitted,
+        // but the line is counted as tagWithDecision would have counted it.
+        if (isDecisionLine(msg)) noteUnheardDecision();
+        else noteUnheardLine();
+        return;
+    }
     emit(LogEvent{level, tagWithDecision(msg), audience});
 }
 
@@ -224,9 +286,13 @@ void EventBus::disconnectAll() {
     on_log.disconnect_all_slots();
 }
 
-std::string EventBus::tagWithDecision(const std::string& msg) {
+bool EventBus::isDecisionLine(const std::string& msg) {
     static constexpr const char* kDecisionPrefix = "DECISION #";
-    if (msg.compare(0, 10, kDecisionPrefix) == 0) {
+    return msg.compare(0, 10, kDecisionPrefix) == 0;
+}
+
+std::string EventBus::tagWithDecision(const std::string& msg) {
+    if (isDecisionLine(msg)) {
         ++log_decision_counter_;
         log_sub_counter_ = 0;
     } else {

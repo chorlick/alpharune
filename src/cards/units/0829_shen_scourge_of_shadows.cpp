@@ -23,7 +23,7 @@ public:
         if (!self.isAtBattlefield()) return;
         if (otherFriendlyUnitsHere(ctx.state, self) != 1) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("SHEN: held with exactly one other friendly unit -> draw 1");
+        RIFT_TRACE(ctx.events, "SHEN: held with exactly one other friendly unit -> draw 1");
     }
 private:
     const CardDef def_ = [] {

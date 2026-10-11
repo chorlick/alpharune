@@ -47,7 +47,7 @@ public:
             ctx.controller, friendlyUnits(ctx.state, ctx.controller));
         if (unit != kInvalidId) {
             ctx.executor.killObject(unit);
-            ctx.events.logTrace("CRUEL PATRON: killed a friendly unit (additional cost)");
+            RIFT_TRACE(ctx.events, "CRUEL PATRON: killed a friendly unit (additional cost)");
         }
         return {};
     }

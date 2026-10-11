@@ -55,7 +55,7 @@ public:
         if (!unit.isUnit() || !unit.location.has_value()) return;
         unit.pending_death_replacements.push_back(
             {cardDefId(), ctx.controller, ctx.source, ctx.state.turn.turn_number});
-        ctx.events.logTrace("UNLICENSED ARMORY: " + unit.name +
+        RIFT_TRACE(ctx.events, "UNLICENSED ARMORY: " + unit.name +
                             " — may pay [C] to heal/exhaust/recall it the next time it "
                             "would die this turn");
     }
@@ -73,7 +73,7 @@ public:
                                             "and recall " + unit.name + "?"))
             return false;
         if (!payOnePower(ctx, payer, Domain::Fury)) return false;
-        ctx.events.logTrace("UNLICENSED ARMORY: paid [C] -> " + unit.name +
+        RIFT_TRACE(ctx.events, "UNLICENSED ARMORY: paid [C] -> " + unit.name +
                             " heals/exhausts/recalls instead of dying");
         ctx.executor.healExhaustRecall(dying_unit);   // a recall is not a move (CR 458)
         return true;

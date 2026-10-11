@@ -24,7 +24,7 @@ public:
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
                                  loc, /*enter_ready=*/false);
-        ctx.events.logTrace("HERALD OF THE ARCANE: [1],[E] -> 1[M] Recruit token");
+        RIFT_TRACE(ctx.events, "HERALD OF THE ARCANE: [1],[E] -> 1[M] Recruit token");
     }
 private:
     const CardDef def_ = [] {

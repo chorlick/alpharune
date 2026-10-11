@@ -46,7 +46,7 @@ public:
         // "Play it to your base": playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked,
                                       LocationId{BaseLocation{ctx.controller}});
-        ctx.events.logTrace("TAIL-CLOAKED MATRIARCH: played " +
+        RIFT_TRACE(ctx.events, "TAIL-CLOAKED MATRIARCH: played " +
                             ctx.state.getObject(picked).name + " from trash to base");
     }
 private:

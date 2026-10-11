@@ -28,7 +28,7 @@ public:
             if (obj.location.has_value() && *obj.location == here)
                 ctx.executor.giveTemporaryKeyword(id, Keyword::Assault, 1);
         }
-        ctx.events.logTrace("LORD BROADMANE: gave other friendly units here [Assault]");
+        RIFT_TRACE(ctx.events, "LORD BROADMANE: gave other friendly units here [Assault]");
     }
 private:
     const CardDef def_ = [] {

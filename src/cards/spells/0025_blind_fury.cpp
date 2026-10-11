@@ -31,7 +31,7 @@ public:
         if (first_pass) ctx.executor.lookBeforeReveal(opp);
         const auto& opp_deck = ctx.state.player(opp).main_deck;
         if (opp_deck.empty()) {
-            ctx.events.logTrace("BLIND FURY: opponent deck empty — no-op");
+            RIFT_TRACE(ctx.events, "BLIND FURY: opponent deck empty — no-op");
             return;
         }
         GameObjectId top = opp_deck.back();
@@ -43,7 +43,7 @@ public:
             ctx.events.emit(CardRevealedEvent{
                 top, card.card_def_id, card.owner,
                 /*revealed_to_all=*/true, ctx.controller, ZoneType::MainDeck});
-            ctx.events.logTrace("BLIND FURY: opponent reveals " + name);
+            RIFT_TRACE(ctx.events, "BLIND FURY: opponent reveals " + name);
         }
         // CR 355.2.a: no location is printed, so a unit goes to my base or to
         // a battlefield I control (and may be played to), my choice. Asked
@@ -60,7 +60,7 @@ public:
         // it back out of banishment.
         ctx.executor.banishObject(top);
         ctx.executor.playIgnoringCost(ctx.controller, top, where_to);
-        ctx.events.logTrace("BLIND FURY: banished + played " + name + " ignoring cost");
+        RIFT_TRACE(ctx.events, "BLIND FURY: banished + played " + name + " ignoring cost");
     }
 private:
     const CardDef def_ = [] {

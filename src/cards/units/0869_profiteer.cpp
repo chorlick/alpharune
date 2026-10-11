@@ -68,7 +68,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (gain == kInvalidId || !ctx.state.objectExists(gain)) return;   // mistarget
         ctx.executor.empower(gain);
-        ctx.events.logTrace("PROFITEER: disempowered one thing to empower another");
+        RIFT_TRACE(ctx.events, "PROFITEER: disempowered one thing to empower another");
     }
 private:
     const CardDef def_ = [] {

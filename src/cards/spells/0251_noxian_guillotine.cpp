@@ -24,7 +24,7 @@ public:
         bool legion = ctx.state.player(ctx.controller).cards_played_this_turn >= 2;
         if (legion) {
             ctx.executor.killObject(tgt);          // "Kill it now instead."
-            ctx.events.logTrace("NOXIAN GUILLOTINE: [Legion] kill now");
+            RIFT_TRACE(ctx.events, "NOXIAN GUILLOTINE: [Legion] kill now");
             return;
         }
         // Without Legion: a one-shot delayed ability (CR 389) watching that
@@ -37,7 +37,7 @@ public:
         da.target_filter = tgt;
         da.expires_on_turn = ctx.state.turn.turn_number;
         ctx.state.delayed_abilities.push_back(da);
-        ctx.events.logTrace("NOXIAN GUILLOTINE: kills " + ctx.state.getObject(tgt).name +
+        RIFT_TRACE(ctx.events, "NOXIAN GUILLOTINE: kills " + ctx.state.getObject(tgt).name +
                             " the next time it takes damage this turn");
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

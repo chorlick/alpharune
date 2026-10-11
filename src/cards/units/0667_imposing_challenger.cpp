@@ -91,7 +91,7 @@ public:
         const BattlefieldId dest = dests[std::min(static_cast<size_t>(which), dests.size() - 1)];
         if (dest == *my_bf) return;           // I have moved there since: not "a different battlefield"
         ctx.executor.moveToBattlefield(tgt, dest);
-        ctx.events.logTrace("IMPOSING CHALLENGER: moved an enemy unit here to a different BF");
+        RIFT_TRACE(ctx.events, "IMPOSING CHALLENGER: moved an enemy unit here to a different BF");
     }
 private:
     const CardDef def_ = [] {

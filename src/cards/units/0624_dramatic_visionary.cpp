@@ -19,7 +19,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.predict(ctx.controller, 2);
-        ctx.events.logTrace("DRAMATIC VISIONARY: Deathknell -> Predict 2");
+        RIFT_TRACE(ctx.events, "DRAMATIC VISIONARY: Deathknell -> Predict 2");
     }
 private:
     const CardDef def_ = [] {

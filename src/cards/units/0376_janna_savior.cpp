@@ -52,7 +52,7 @@ public:
         for (auto id : mine) ctx.executor.healObject(id);
         // Then move up to one enemy unit from here to its base.
         if (conf == 1 && enemy != kInvalidId) ctx.executor.moveToBase(enemy);
-        ctx.events.logTrace("JANNA SAVIOR: healed friendly units here");
+        RIFT_TRACE(ctx.events, "JANNA SAVIOR: healed friendly units here");
     }
 private:
     const CardDef def_ = [] {

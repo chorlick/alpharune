@@ -66,7 +66,7 @@ public:
         // playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
-        ctx.events.logTrace("GLASC MIXOLOGIST: played a unit from trash for free");
+        RIFT_TRACE(ctx.events, "GLASC MIXOLOGIST: played a unit from trash for free");
     }
 private:
     const CardDef def_ = [] {

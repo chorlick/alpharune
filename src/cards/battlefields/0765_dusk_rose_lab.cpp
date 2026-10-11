@@ -73,7 +73,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (!paid || costUnpaid(ctx)) return; // the unit did not die: nothing was paid
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("DUSK ROSE LAB: killed a unit here -> draw 1");
+        RIFT_TRACE(ctx.events, "DUSK ROSE LAB: killed a unit here -> draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -28,7 +28,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         ctx.executor.giveTemporaryMight(tgt, 3);
-        ctx.events.logTrace("FIELD MUSICIANS: +3 [M] this turn to " +
+        RIFT_TRACE(ctx.events, "FIELD MUSICIANS: +3 [M] this turn to " +
                             ctx.state.getObject(tgt).name);
     }
 private:

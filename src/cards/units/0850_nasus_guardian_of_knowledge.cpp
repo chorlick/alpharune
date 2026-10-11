@@ -27,7 +27,7 @@ public:
         if (last == turn_id) return;                  // "once each turn"
         last = turn_id;
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("NASUS, GUARDIAN OF KNOWLEDGE: enemy unit died here -> channel 1 exhausted");
+        RIFT_TRACE(ctx.events, "NASUS, GUARDIAN OF KNOWLEDGE: enemy unit died here -> channel 1 exhausted");
     }
 private:
     const CardDef def_ = [] {

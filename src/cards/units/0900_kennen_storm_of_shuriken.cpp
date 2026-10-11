@@ -41,7 +41,7 @@ public:
         // own printed cost, then banished.
         ctx.state.getObject(picked).card_counters["__flow_granted_turn"] =
             ctx.state.turn.turn_number;
-        ctx.events.logTrace("KENNEN, STORM OF SHURIKEN: " + ctx.state.getObject(picked).name +
+        RIFT_TRACE(ctx.events, "KENNEN, STORM OF SHURIKEN: " + ctx.state.getObject(picked).name +
                             " has [Flow] equal to its cost this turn");
     }
 private:

@@ -56,7 +56,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
         ctx.executor.giveTemporaryMight(targets[0], 3);
-        ctx.events.logTrace("CALL TO GLORY: +3 [M] this turn");
+        RIFT_TRACE(ctx.events, "CALL TO GLORY: +3 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

@@ -52,7 +52,7 @@ public:
         if (ctx.state.objectExists(tgt) &&
             ctx.state.getObject(tgt).hasLethalDamage())
             ctx.executor.killObject(tgt);
-        ctx.events.logTrace("BLAST CORPS CADET: paid [1][R] -> dealt 2 to a BF unit");
+        RIFT_TRACE(ctx.events, "BLAST CORPS CADET: paid [1][R] -> dealt 2 to a BF unit");
     }
 private:
     const CardDef def_ = [] {

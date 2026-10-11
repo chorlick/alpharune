@@ -26,7 +26,7 @@ public:
         for (int i = 0; i < 2; ++i)
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                      1, {"Recruit"}, KeywordSet{}, *loc, false);
-        ctx.events.logTrace("VANGUARD CAPTAIN: Legion -> two 1[M] Recruits here");
+        RIFT_TRACE(ctx.events, "VANGUARD CAPTAIN: Legion -> two 1[M] Recruits here");
     }
 private:
     const CardDef def_ = [] {

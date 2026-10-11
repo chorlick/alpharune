@@ -20,7 +20,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.state.player(ctx.controller).turns_taken != 1) return;  // first only
         ctx.executor.channelRunes(ctx.controller, 1);
-        ctx.events.logTrace("OBELISK OF POWER: first Beginning Phase -> channel 1 rune");
+        RIFT_TRACE(ctx.events, "OBELISK OF POWER: first Beginning Phase -> channel 1 rune");
     }
 private:
     const CardDef def_ = [] {

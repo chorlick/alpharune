@@ -123,12 +123,12 @@ public:
                 ctx.executor.readyObject(id);
                 ++readied;
             }
-            ctx.events.logTrace("APHELIOS: readied " + std::to_string(readied) + " runes");
+            RIFT_TRACE(ctx.events, "APHELIOS: readied " + std::to_string(readied) + " runes");
             break;
         }
         case 1:
             ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-            ctx.events.logTrace("APHELIOS: channeled 1 rune (exhausted)");
+            RIFT_TRACE(ctx.events, "APHELIOS: channeled 1 rune (exhausted)");
             break;
         case 2:
             // buffUnit places a buff only on a unit without one (CR 427.1.b).

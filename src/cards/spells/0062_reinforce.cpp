@@ -129,10 +129,10 @@ public:
             ctx.executor.banishObject(chosen);
             const bool played =
                 ctx.executor.playPayingCost(ctx.controller, chosen, where_to, reduced);
-            ctx.events.logTrace("REINFORCE: banished " + ctx.state.getObject(chosen).name +
+            RIFT_TRACE(ctx.events, "REINFORCE: banished " + ctx.state.getObject(chosen).name +
                                 (played ? " and played it (cost reduced)" : "; not played"));
         } else {
-            ctx.events.logTrace("REINFORCE: no unit chosen; recycled top 5");
+            RIFT_TRACE(ctx.events, "REINFORCE: no unit chosen; recycled top 5");
         }
     }
 private:

@@ -47,7 +47,7 @@ public:
         if (me.card_counters[key] == stamp) return;  // already drew this turn
         me.card_counters[key] = stamp;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("THE DREAMING TREE: first friendly-unit choice here -> draw 1");
+        RIFT_TRACE(ctx.events, "THE DREAMING TREE: first friendly-unit choice here -> draw 1");
     }
 private:
     const CardDef def_ = [] {

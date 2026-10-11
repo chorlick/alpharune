@@ -42,10 +42,10 @@ public:
         }
         if (caster_draws) {
             ctx.executor.drawCards(ctx.controller, 2);
-            ctx.events.logTrace("SHAKEDOWN: the unit's controller has the caster draw 2");
+            RIFT_TRACE(ctx.events, "SHAKEDOWN: the unit's controller has the caster draw 2");
         } else {
             ctx.executor.dealDamage(targets[0], 6, ctx.source);
-            ctx.events.logTrace("SHAKEDOWN: deal 6 to chosen enemy unit");
+            RIFT_TRACE(ctx.events, "SHAKEDOWN: deal 6 to chosen enemy unit");
         }
     }
 private:

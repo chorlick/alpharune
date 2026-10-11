@@ -24,7 +24,7 @@ public:
         // [O] is the Body symbol, this card's own Domain (reprint 542 adds the
         // same; it once added Order, which is what 03 item 3.17 was about).
         ctx.executor.addFloatingPower(ctx.controller, Domain::Body, 1);
-        ctx.events.logTrace("ACTIVATE: Seal of Strength adds [O] (Body power)");
+        RIFT_TRACE(ctx.events, "ACTIVATE: Seal of Strength adds [O] (Body power)");
     }
 private:
     const CardDef def_ = [] {

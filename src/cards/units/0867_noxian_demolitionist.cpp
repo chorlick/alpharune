@@ -45,7 +45,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         ctx.executor.killObject(picked);
-        ctx.events.logTrace("NOXIAN DEMOLITIONIST: killed a gear");
+        RIFT_TRACE(ctx.events, "NOXIAN DEMOLITIONIST: killed a gear");
     }
 private:
     const CardDef def_ = [] {

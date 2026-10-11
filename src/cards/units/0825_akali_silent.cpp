@@ -36,7 +36,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.events.logTrace("AKALI, SILENT: moved to a battlefield -> +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "AKALI, SILENT: moved to a battlefield -> +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

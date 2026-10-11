@@ -95,7 +95,7 @@ public:
                 if (std::find(dests.begin(), dests.end(), d) == dests.end()) continue;
                 moveTo(ctx, id, d);
             }
-            ctx.events.logTrace("TRICKSY TENTACLES: moved the chosen enemy units to " + destLabel(d));
+            RIFT_TRACE(ctx.events, "TRICKSY TENTACLES: moved the chosen enemy units to " + destLabel(d));
         }
     }
 private:

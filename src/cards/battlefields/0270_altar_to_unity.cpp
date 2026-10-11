@@ -20,7 +20,7 @@ public:
         LocationId loc{BaseLocation{ctx.controller}};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  1, {"Recruit"}, KeywordSet{}, loc, false);
-        ctx.events.logTrace("ALTAR TO UNITY: hold -> 1[M] Recruit to base");
+        RIFT_TRACE(ctx.events, "ALTAR TO UNITY: hold -> 1[M] Recruit to base");
     }
 private:
     const CardDef def_ = [] {

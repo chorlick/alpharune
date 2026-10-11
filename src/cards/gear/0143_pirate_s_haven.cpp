@@ -35,7 +35,7 @@ public:
         const auto& readied = ctx.state.getObject(subject);
         if (!readied.isUnit() || !readied.location.has_value()) return;
         ctx.executor.giveTemporaryMight(subject, 1);
-        ctx.events.logTrace("PIRATE'S HAVEN: readied friendly -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "PIRATE'S HAVEN: readied friendly -> +1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

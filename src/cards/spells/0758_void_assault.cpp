@@ -54,7 +54,7 @@ public:
         const int their_dest = their_dests[picked % their_dests.size()];
         if (mine != kInvalidId && my_dest >= 0) moveTo(ctx, mine, my_dest);       // friendly
         if (theirs != kInvalidId && their_dest >= 0) moveTo(ctx, theirs, their_dest);   // then enemy
-        ctx.events.logTrace("VOID ASSAULT: moved the chosen units");
+        RIFT_TRACE(ctx.events, "VOID ASSAULT: moved the chosen units");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true};

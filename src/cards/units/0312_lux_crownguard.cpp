@@ -24,7 +24,7 @@ public:
     bool isReactionAbility() const override { return true; }  // [Reaction], not [Action]
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.state.player(ctx.controller).rune_pool.spell_energy += 2;
-        ctx.events.logTrace("LUX CROWNGUARD: [Add] [2] Energy, spells only");
+        RIFT_TRACE(ctx.events, "LUX CROWNGUARD: [Add] [2] Energy, spells only");
     }
 private:
     const CardDef def_ = [] {

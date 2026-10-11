@@ -30,7 +30,7 @@ public:
         }
         if (ready_enemy_here) {
             ctx.executor.giveTemporaryMight(ctx.source, 2);
-            ctx.events.logTrace("DUNE DRAKE: +2 [M] this turn (ready enemy here)");
+            RIFT_TRACE(ctx.events, "DUNE DRAKE: +2 [M] this turn (ready enemy here)");
         }
     }
 private:

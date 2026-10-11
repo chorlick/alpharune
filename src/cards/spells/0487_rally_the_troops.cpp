@@ -32,7 +32,7 @@ public:
         da.repeats = true;
         ctx.state.delayed_abilities.push_back(da);
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("RALLY THE TROOPS: friendly units played this turn are buffed; draw 1");
+        RIFT_TRACE(ctx.events, "RALLY THE TROOPS: friendly units played this turn are buffed; draw 1");
     }
     // "When a friendly unit is played this turn, buff it."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
@@ -42,7 +42,7 @@ public:
         const auto& u = ctx.state.getObject(unit);
         if (!u.isUnit() || !u.location.has_value() || u.controller != ctx.controller) return;
         if (ctx.executor.buffUnit(unit))
-            ctx.events.logTrace("RALLY THE TROOPS: buffed " + u.name);
+            RIFT_TRACE(ctx.events, "RALLY THE TROOPS: buffed " + u.name);
     }
 private:
     const CardDef def_ = [] {

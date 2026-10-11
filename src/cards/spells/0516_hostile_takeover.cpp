@@ -60,7 +60,7 @@ public:
             da.expires_on_turn = ctx.state.turn.turn_number;
             ctx.state.delayed_abilities.push_back(da);
         }
-        ctx.events.logTrace("HOSTILE TAKEOVER: seized enemy unit until end of turn");
+        RIFT_TRACE(ctx.events, "HOSTILE TAKEOVER: seized enemy unit until end of turn");
     }
 
     // The delayed "lose control of that unit and recall it at end of turn".
@@ -87,7 +87,7 @@ public:
         // so no UnitMovedEvent. Attached gear goes with it (CR 448.1). Damage
         // and statuses are unaffected (CR 460.1).
         ctx.executor.recallToBase(seized);
-        ctx.events.logTrace("HOSTILE TAKEOVER: end of turn -> " + unit.name +
+        RIFT_TRACE(ctx.events, "HOSTILE TAKEOVER: end of turn -> " + unit.name +
                             " returns to its controller and is recalled");
     }
 private:

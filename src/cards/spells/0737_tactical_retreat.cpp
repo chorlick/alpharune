@@ -22,7 +22,7 @@ public:
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
         auto& unit = ctx.state.getObject(targets[0]);
         unit.death_replacement_recall_pending = true;
-        ctx.events.logTrace("TACTICAL RETREAT: " + unit.name +
+        RIFT_TRACE(ctx.events, "TACTICAL RETREAT: " + unit.name +
                              " — next death this turn becomes heal/exhaust/recall");
     }
 private:

@@ -59,9 +59,9 @@ public:
             if (has_temp && la != lb) {
                 moveToLocation(ctx.executor, first, lb);
                 moveToLocation(ctx.executor, second, la);
-                ctx.events.logTrace("SMOKE AND MIRRORS: swapped two friendly units (Temporary gate met)");
+                RIFT_TRACE(ctx.events, "SMOKE AND MIRRORS: swapped two friendly units (Temporary gate met)");
             } else {
-                ctx.events.logTrace("SMOKE AND MIRRORS: no swap (Temporary gate not met / same loc)");
+                RIFT_TRACE(ctx.events, "SMOKE AND MIRRORS: no swap (Temporary gate not met / same loc)");
             }
         }
         ctx.executor.drawCards(ctx.controller, 1);

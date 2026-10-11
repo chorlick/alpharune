@@ -28,7 +28,7 @@ public:
                 ri.resume_data.push_back(static_cast<int32_t>(cid));
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);
-                    ctx.events.logTracePrivate(ctx.controller,
+                    RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
                                          "  PEEKED: " + obj.name + " (id=" +
                                          std::to_string(cid) +
                                          ") — PRIVATE to " + toString(ctx.controller));
@@ -84,10 +84,10 @@ public:
                     ps.hand.push_back(cid);
                     knowledge::moved(ctx.state, cid, deck::Place::Held, deck::Place::Hand,
                                      knowledge::only(ctx.controller));
-                    ctx.events.logTracePrivate(ctx.controller, "STACKED DECK: drew " + obj.name);
+                    RIFT_TRACE_PRIVATE(ctx.events, ctx.controller, "STACKED DECK: drew " + obj.name);
                 } else {
                     rest.push_back(cid);
-                    ctx.events.logTracePrivate(ctx.controller, "STACKED DECK: recycled " + obj.name);
+                    RIFT_TRACE_PRIVATE(ctx.events, ctx.controller, "STACKED DECK: recycled " + obj.name);
                 }
             }
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);

@@ -47,7 +47,7 @@ public:
             // -2 M may make the second unit lethal-might-zero; cleanup handles
             // 0-might deaths. No explicit kill needed (might debuff, not damage).
         }
-        ctx.events.logTrace("DEFIANT DANCE: +2M / -2M this turn");
+        RIFT_TRACE(ctx.events, "DEFIANT DANCE: +2M / -2M this turn");
     }
 private:
     const CardDef def_ = [] {

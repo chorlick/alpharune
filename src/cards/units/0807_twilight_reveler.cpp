@@ -29,7 +29,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         ctx.executor.readyObject(tgt);
-        ctx.events.logTrace("TWILIGHT REVELER: readied " + ctx.state.getObject(tgt).name);
+        RIFT_TRACE(ctx.events, "TWILIGHT REVELER: readied " + ctx.state.getObject(tgt).name);
     }
 private:
     const CardDef def_ = [] {

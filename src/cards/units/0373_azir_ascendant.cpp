@@ -121,7 +121,7 @@ public:
         auto other_loc = other.location;
         moveToLocation(ctx.executor, source, other_loc);
         moveToLocation(ctx.executor, picked, azir_loc);
-        ctx.events.logTrace("AZIR ASCENDANT: swapped locations with " + other.name);
+        RIFT_TRACE(ctx.events, "AZIR ASCENDANT: swapped locations with " + other.name);
 
         // Optional Equipment transfer (pair.second): attachFree detaches it
         // from the chosen unit and announces the attach, so "when attached"

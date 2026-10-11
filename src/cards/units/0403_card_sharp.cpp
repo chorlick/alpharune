@@ -54,7 +54,7 @@ public:
             // "For each opponent who did, you play a Gold gear token exhausted."
             createGoldExhausted(ctx);
         }
-        ctx.events.logTrace(std::string("CARD SHARP: Gold tokens (you ") +
+        RIFT_TRACE(ctx.events, std::string("CARD SHARP: Gold tokens (you ") +
                             (mine == 1 ? "yes" : "no") + ", opponent " +
                             (theirs ? "yes -> you play one more" : "no") + ")");
     }

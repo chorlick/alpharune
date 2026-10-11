@@ -71,7 +71,7 @@ public:
             deck::take(ctx.state, drafted, deck::Place::Held, knowledge::everyone(), /*slot_public=*/false);
             // "draw it": a draw (draws_this_turn, "When you draw").
             ctx.executor.drawHeldCard(ctx.controller, drafted, /*seen_by_all=*/true);
-            ctx.events.logTrace("ORNN, BLACKSMITH: drafted gear " + drafted_obj.name);
+            RIFT_TRACE(ctx.events, "ORNN, BLACKSMITH: drafted gear " + drafted_obj.name);
         }
         // Recycle the rest to the bottom of the deck.
         std::vector<GameObjectId> rest;

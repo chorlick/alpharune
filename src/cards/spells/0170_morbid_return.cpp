@@ -40,7 +40,7 @@ public:
         obj.zone = ZoneType::Hand;
         obj.location = std::nullopt;
         ps.hand.push_back(picked);
-        ctx.events.logTrace("MORBID RETURN: returned " + obj.name +
+        RIFT_TRACE(ctx.events, "MORBID RETURN: returned " + obj.name +
                              " from trash to hand");
     }
 private:

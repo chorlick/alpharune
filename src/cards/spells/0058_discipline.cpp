@@ -41,7 +41,7 @@ public:
         }
         // Draw rider always runs (even if target fizzled).
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("DISCIPLINE: +2M to target + draw 1");
+        RIFT_TRACE(ctx.events, "DISCIPLINE: +2M to target + draw 1");
     }
 private:
     const CardDef def_ = [] {

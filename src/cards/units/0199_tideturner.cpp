@@ -46,7 +46,7 @@ public:
         const auto its_loc = ctx.state.getObject(t).location;
         moveToLocation(ctx.executor, ctx.source, its_loc);
         moveToLocation(ctx.executor, t, my_loc);
-        ctx.events.logTrace("TIDETURNER: swapped locations");
+        RIFT_TRACE(ctx.events, "TIDETURNER: swapped locations");
     }
 private:
     const CardDef def_ = [] {

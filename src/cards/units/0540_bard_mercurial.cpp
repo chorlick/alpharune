@@ -68,7 +68,7 @@ public:
             return {};
         ctx.executor.exhaustObject(legend);
         me.card_counters[kPaid] = 1;
-        ctx.events.logTrace("BARD, MERCURIAL: exhausted the legend (additional cost)");
+        RIFT_TRACE(ctx.events, "BARD, MERCURIAL: exhausted the legend (additional cost)");
         return {};
     }
     // "When you play me, if you paid the additional cost, ..."
@@ -113,7 +113,7 @@ public:
             ctx.executor.moveToBattlefield(id, dest);
             ++moved;
         }
-        ctx.events.logTrace("BARD, MERCURIAL: exhausted legend -> moved " +
+        RIFT_TRACE(ctx.events, "BARD, MERCURIAL: exhausted legend -> moved " +
                             std::to_string(moved) + " unit(s) to an open battlefield");
     }
 private:

@@ -34,7 +34,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (pick == kInvalidId) return;       // none / mistarget / waiting
         ctx.executor.buffUnit(pick);
-        ctx.events.logTrace("KARMA CHANNELER: buffed a friendly unit on recycle");
+        RIFT_TRACE(ctx.events, "KARMA CHANNELER: buffed a friendly unit on recycle");
     }
 private:
     const CardDef def_ = [] {

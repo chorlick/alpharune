@@ -31,12 +31,12 @@ public:
                              0, max_x);
         if (x < 0) return;  // pending choice
         if (x == 0) {
-            ctx.events.logTrace("ANCIENT HENGE: X=0, no conversion");
+            RIFT_TRACE(ctx.events, "ANCIENT HENGE: X=0, no conversion");
             return;
         }
         if (!payEnergy(ctx, ctx.controller, x)) return;
         ctx.executor.addFloatingUniversalPower(ctx.controller, x);
-        ctx.events.logTrace("ANCIENT HENGE: paid " + std::to_string(x) +
+        RIFT_TRACE(ctx.events, "ANCIENT HENGE: paid " + std::to_string(x) +
                              " energy → +" + std::to_string(x) + " [A] power");
     }
 private:

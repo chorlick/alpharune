@@ -34,7 +34,7 @@ public:
         if (mode < 0) return;  // waiting for agent
         PlayerId who = (mode == 0) ? opponent(ctx.controller) : ctx.controller;
         ctx.executor.burn(who, 1);
-        ctx.events.logTrace(std::string("BLADE TWIRLER: first move -> ") +
+        RIFT_TRACE(ctx.events, std::string("BLADE TWIRLER: first move -> ") +
                             toString(who) + " burns 1");
     }
 private:

@@ -32,7 +32,7 @@ public:
         int cur = ctx.state.getObject(chosen).current_might;
         int delta = target_might - cur;
         if (delta > 0) ctx.executor.giveTemporaryMight(chosen, delta);
-        ctx.events.logTrace("CONVERGENT MUTATION: set Might to " +
+        RIFT_TRACE(ctx.events, "CONVERGENT MUTATION: set Might to " +
                              std::to_string(target_might));
     }
     TargetRequirements getTargetRequirements() const override {

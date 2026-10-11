@@ -59,11 +59,11 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (mover != kInvalidId && dest >= 0) {
             moveTo(ctx, mover, dest);
-            ctx.events.logTrace("SKYWARD STRIKE: moved an enemy unit");
+            RIFT_TRACE(ctx.events, "SKYWARD STRIKE: moved an enemy unit");
         }
         if (level6 && stunned != kInvalidId && ctx.state.objectExists(stunned)) {
             ctx.executor.stunUnitBy(stunned, ctx.source);
-            ctx.events.logTrace("SKYWARD STRIKE: Level 6 -> stun");
+            RIFT_TRACE(ctx.events, "SKYWARD STRIKE: Level 6 -> stun");
         }
     }
 private:

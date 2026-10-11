@@ -53,7 +53,7 @@ public:
         if (ctx.state.objectExists(picked) &&
             ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
-        ctx.events.logTrace("IRON BALLISTA: deal 2 to a unit at a battlefield");
+        RIFT_TRACE(ctx.events, "IRON BALLISTA: deal 2 to a unit at a battlefield");
     }
 private:
     const CardDef def_ = [] {

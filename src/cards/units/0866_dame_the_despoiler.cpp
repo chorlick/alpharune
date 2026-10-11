@@ -53,7 +53,7 @@ public:
         const int mine = ctx.state.getObject(ctx.source).current_might;
         if (theirs > mine) ctx.executor.giveTemporaryMight(ctx.source, theirs - mine);
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("DAME THE DESPOILER: Might raised to " + std::to_string(std::max(theirs, mine)) +
+        RIFT_TRACE(ctx.events, "DAME THE DESPOILER: Might raised to " + std::to_string(std::max(theirs, mine)) +
                             " then +1 this turn");
     }
 private:

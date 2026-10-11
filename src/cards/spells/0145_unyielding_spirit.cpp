@@ -22,7 +22,7 @@ public:
         // the source's controller, so both players carry it.
         ctx.state.player(ctx.controller).prevent_spell_ability_damage_this_turn = true;
         ctx.state.player(opponent(ctx.controller)).prevent_spell_ability_damage_this_turn = true;
-        ctx.events.logTrace("UNYIELDING SPIRIT: all spell/ability damage is "
+        RIFT_TRACE(ctx.events, "UNYIELDING SPIRIT: all spell/ability damage is "
                             "prevented this turn");
     }
 private:

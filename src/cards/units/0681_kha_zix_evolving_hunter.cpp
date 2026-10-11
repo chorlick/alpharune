@@ -60,7 +60,7 @@ public:
         if (ctx.state.objectExists(tgt) && ctx.state.getObject(tgt).hasLethalDamage()) {
             ctx.executor.killObject(tgt);
         }
-        ctx.events.logTrace("KHA'ZIX: spent 3 XP, dealt " + std::to_string(might));
+        RIFT_TRACE(ctx.events, "KHA'ZIX: spent 3 XP, dealt " + std::to_string(might));
     }
 private:
     const CardDef def_ = [] {

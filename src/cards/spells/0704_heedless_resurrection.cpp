@@ -59,7 +59,7 @@ public:
                                              friendlyUnits(ctx.state, ctx.controller));
             if (victim == kInvalidId || !ctx.state.objectExists(victim)) return;  // waiting / none
             if (costDueNow(ctx)) {
-                ctx.events.logTrace("HEEDLESS RESURRECTION: killing " +
+                RIFT_TRACE(ctx.events, "HEEDLESS RESURRECTION: killing " +
                                      ctx.state.getObject(victim).name + " (additional cost)");
                 ctx.executor.killObject(victim);
                 while (ri.resume_data.size() <= kRevivedSlot) ri.resume_data.push_back(0);
@@ -118,7 +118,7 @@ public:
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         ri.resume_data[kRevivedSlot] = -1;               // played once
         ctx.executor.playIgnoringCost(ctx.controller, revived, where.locations[mode]);
-        ctx.events.logTrace("HEEDLESS RESURRECTION: played a unit from trash, ignoring cost");
+        RIFT_TRACE(ctx.events, "HEEDLESS RESURRECTION: played a unit from trash, ignoring cost");
     }
 private:
     const CardDef def_ = [] {

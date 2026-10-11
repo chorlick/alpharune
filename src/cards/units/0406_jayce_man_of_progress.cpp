@@ -41,7 +41,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (conf < 1 || gear == kInvalidId) return;   // waiting / declined / mistarget
         ctx.executor.killObject(gear);
-        ctx.events.logTrace("JAYCE: killed a friendly gear");
+        RIFT_TRACE(ctx.events, "JAYCE: killed a friendly gear");
 
         PlayerState::CostModifier mod;
         mod.source = ctx.source;
@@ -52,7 +52,7 @@ public:
         mod.from_hand_only = true;         // "from hand": not a gear played from the trash
         mod.next_card_only = true;   // one gear: used up by the next gear played
         ctx.state.player(ctx.controller).cost_modifiers.push_back(mod);
-        ctx.events.logTrace("JAYCE: the next gear played this turn ignores up to [7] of its Energy cost");
+        RIFT_TRACE(ctx.events, "JAYCE: the next gear played this turn ignores up to [7] of its Energy cost");
     }
 private:
     const CardDef def_ = [] {

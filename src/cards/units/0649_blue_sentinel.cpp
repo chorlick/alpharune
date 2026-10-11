@@ -37,12 +37,12 @@ public:
             da.trigger = TriggerType::AtStartOfMain;
             da.expires_on_turn = DelayedAbility::kUntilFired;
             ctx.state.delayed_abilities.push_back(da);
-            ctx.events.logTrace("BLUE SENTINEL: hold -> [Add] [A] at the start of the next Main Phase");
+            RIFT_TRACE(ctx.events, "BLUE SENTINEL: hold -> [Add] [A] at the start of the next Main Phase");
             return;
         }
         // The delayed ability (AtStartOfMain).
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
-        ctx.events.logTrace("BLUE SENTINEL: start of Main Phase -> [Add] [A]");
+        RIFT_TRACE(ctx.events, "BLUE SENTINEL: start of Main Phase -> [Add] [A]");
     }
 private:
     const CardDef def_ = [] {

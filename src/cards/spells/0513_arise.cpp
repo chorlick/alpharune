@@ -52,7 +52,7 @@ public:
         if (!playTokensChoosingLocations(ctx, "Arise!: play a Sand Soldier", equip_count,
                                          make, made))
             return;   // waiting for a location
-        ctx.events.logTrace("ARISE!: played " + std::to_string(made.size()) +
+        RIFT_TRACE(ctx.events, "ARISE!: played " + std::to_string(made.size()) +
                             " Sand Soldier token(s)");
         if (ri_opt.has_value()) ri_opt->resume_point = kDone;
         std::vector<int32_t> tokens;

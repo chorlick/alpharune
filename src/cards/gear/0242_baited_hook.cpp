@@ -121,7 +121,7 @@ public:
         // EffectExecutor::recycleCards does ("When you recycle ...").
         if (!to_recycle.empty())
             ctx.events.emit(ObjectStateChangedEvent{to_recycle.front(), "recycled_main"});
-        ctx.events.logTrace("BAITED HOOK: kill friendly, dig top 5, recycle rest");
+        RIFT_TRACE(ctx.events, "BAITED HOOK: kill friendly, dig top 5, recycle rest");
     }
 private:
     const CardDef def_ = [] {

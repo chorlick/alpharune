@@ -41,7 +41,7 @@ public:
             if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
             if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
             ctx.executor.readyObject(ctx.source);
-            ctx.events.logTrace("BLADE DANCER: paid [1] -> ready me");
+            RIFT_TRACE(ctx.events, "BLADE DANCER: paid [1] -> ready me");
             return;
         }
 
@@ -81,7 +81,7 @@ public:
             if (!ctx.state.getObject(chosen).isUnit() ||
                 !ctx.state.getObject(chosen).location.has_value()) return;
             ctx.executor.readyObject(chosen);
-            ctx.events.logTrace("BLADE DANCER: exhaust me + [A] -> ready " +
+            RIFT_TRACE(ctx.events, "BLADE DANCER: exhaust me + [A] -> ready " +
                                  ctx.state.getObject(chosen).name);
             return;
         }

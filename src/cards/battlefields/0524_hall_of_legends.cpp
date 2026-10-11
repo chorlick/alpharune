@@ -41,7 +41,7 @@ public:
         GameObjectId lz = ps.legend_zone;
         if (lz != kInvalidId && ctx.state.objectExists(lz)) {
             ctx.executor.readyObject(lz);
-            ctx.events.logTrace("HALL OF LEGENDS: paid [1] -> readied legend");
+            RIFT_TRACE(ctx.events, "HALL OF LEGENDS: paid [1] -> readied legend");
         }
     }
 private:

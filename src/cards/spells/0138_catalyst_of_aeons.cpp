@@ -25,11 +25,11 @@ public:
         ctx.executor.channelRunes(ctx.controller, 2, /*enter_exhausted=*/true);
         int after = static_cast<int>(ps.rune_deck.size());
         int channeled = before - after;
-        ctx.events.logTrace("CATALYST OF AEONS: channeled " +
+        RIFT_TRACE(ctx.events, "CATALYST OF AEONS: channeled " +
                              std::to_string(channeled) + " of 2 (exhausted)");
         if (channeled < 2) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("CATALYST OF AEONS: rider — drew 1");
+            RIFT_TRACE(ctx.events, "CATALYST OF AEONS: rider — drew 1");
         }
     }
 private:

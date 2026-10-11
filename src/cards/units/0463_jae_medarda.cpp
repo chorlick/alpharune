@@ -38,7 +38,7 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("JAE MEDARDA: chosen by a spell -> draw 1");
+        RIFT_TRACE(ctx.events, "JAE MEDARDA: chosen by a spell -> draw 1");
     }
 private:
     const CardDef def_ = [] {

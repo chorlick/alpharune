@@ -36,7 +36,7 @@ public:
         const int dest = pickMoveDest(*this, ctx, "Charm: move it to", unit);
         if (dest < 0) return;               // waiting, or nowhere to move it
         moveTo(ctx, picked, dest);
-        ctx.events.logTrace("CHARM: moved enemy " + ctx.state.getObject(picked).name +
+        RIFT_TRACE(ctx.events, "CHARM: moved enemy " + ctx.state.getObject(picked).name +
                             " to " + destLabel(dest));
     }
 private:

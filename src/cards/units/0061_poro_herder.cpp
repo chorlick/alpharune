@@ -28,7 +28,7 @@ public:
         // (EffectExecutor::buffUnit); the draw does not depend on it.
         ctx.executor.buffUnit(ctx.source);  // +1 [M] buff if it has none
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("PORO HERDER: control a Poro -> buff me + draw 1");
+        RIFT_TRACE(ctx.events, "PORO HERDER: control a Poro -> buff me + draw 1");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
 private:

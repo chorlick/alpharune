@@ -24,7 +24,7 @@ public:
         // Nothing happens to a Sett that left the board or already has a buff
         // (EffectExecutor::buffUnit).
         if (ctx.executor.buffUnit(ctx.source))
-            ctx.events.logTrace("SETT, BRAWLER: buff me (+1M buff)");
+            RIFT_TRACE(ctx.events, "SETT, BRAWLER: buff me (+1M buff)");
     }
     // "Spend my buff: Give me +4 [M] this turn." Spending the buff is the
     // activation cost: paid as the ability is activated (CR 355), by the Sett
@@ -46,7 +46,7 @@ public:
         if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         if (!self.location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 4);
-        ctx.events.logTrace("SETT, BRAWLER: spent a buff for +4M this turn");
+        RIFT_TRACE(ctx.events, "SETT, BRAWLER: spent a buff for +4M this turn");
     }
 private:
     const CardDef def_ = [] {

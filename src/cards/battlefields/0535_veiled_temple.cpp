@@ -54,7 +54,7 @@ public:
         ctx.executor.readyObject(gear_id);
         if (detach == 1 && ctx.state.getObject(gear_id).attached_to.has_value()) {
             ctx.executor.unattachGear(gear_id);
-            ctx.events.logTrace("VEILED TEMPLE: detached Equipment");
+            RIFT_TRACE(ctx.events, "VEILED TEMPLE: detached Equipment");
         }
     }
 private:

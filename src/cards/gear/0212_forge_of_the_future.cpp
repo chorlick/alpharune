@@ -21,7 +21,7 @@ public:
         LocationId loc{BaseLocation{ctx.controller}};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  1, {"Recruit"}, KeywordSet{}, loc, false);
-        ctx.events.logTrace("FORGE OF THE FUTURE: played -> 1[M] Recruit to base");
+        RIFT_TRACE(ctx.events, "FORGE OF THE FUTURE: played -> 1[M] Recruit to base");
     }
 
     // "Kill this: Recycle up to 4 cards from trashes."
@@ -70,7 +70,7 @@ public:
             trash.erase(std::remove(trash.begin(), trash.end(), cid), trash.end());
         }
         if (!picks.empty()) ctx.executor.recycleCards(ctx.controller, picks);
-        ctx.events.logTrace("FORGE OF THE FUTURE: killed -> recycled " +
+        RIFT_TRACE(ctx.events, "FORGE OF THE FUTURE: killed -> recycled " +
                             std::to_string(picks.size()) + " card(s) from trashes");
     }
 private:

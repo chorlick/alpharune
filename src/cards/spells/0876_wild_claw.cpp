@@ -97,7 +97,7 @@ public:
                 for (auto cid : top)
                     deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
                 ctx.executor.recycleCards(ctx.controller, top);
-                ctx.events.logTrace("WILD CLAW: nothing playable in the top 5; recycled them");
+                RIFT_TRACE(ctx.events, "WILD CLAW: nothing playable in the top 5; recycled them");
                 return;
             }
             std::vector<Intent> choices;
@@ -137,7 +137,7 @@ public:
             }
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
             if (chosen == kInvalidId) {
-                ctx.events.logTrace("WILD CLAW: played nothing; recycled the top cards");
+                RIFT_TRACE(ctx.events, "WILD CLAW: played nothing; recycled the top cards");
                 ri.resume_point = 5;
                 return;
             }

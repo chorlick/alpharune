@@ -26,7 +26,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (ctx.state.getObject(ctx.source).card_counters["__clockwork_paid"] != 1) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("CLOCKWORK KEEPER: paid [C] -> draw 1");
+        RIFT_TRACE(ctx.events, "CLOCKWORK KEEPER: paid [C] -> draw 1");
     }
 private:
     const CardDef def_ = [] {

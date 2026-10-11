@@ -91,7 +91,7 @@ public:
                     if (deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone()))
                         rest.push_back(cid);
                 if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
-                ctx.events.logTrace("REK'SAI: revealed top 2, banished none, recycled them");
+                RIFT_TRACE(ctx.events, "REK'SAI: revealed top 2, banished none, recycled them");
                 return;
             }
             GameObjectId other = kInvalidId;
@@ -149,7 +149,7 @@ public:
         ri.resume_data[kStepSlot] = 2;
         // Recycle the rest.
         recycle(other);
-        ctx.events.logTrace("REK'SAI: revealed top 2, banished+played one, recycled rest");
+        RIFT_TRACE(ctx.events, "REK'SAI: revealed top 2, banished+played one, recycled rest");
     }
 private:
     const CardDef def_ = [] {

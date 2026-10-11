@@ -25,7 +25,7 @@ public:
             ++friendly_units;
         }
         gainXp(ctx, ctx.controller, friendly_units);
-        ctx.events.logTrace("SCRUTINIZING SERGEANT: gained " +
+        RIFT_TRACE(ctx.events, "SCRUTINIZING SERGEANT: gained " +
                              std::to_string(friendly_units) + " XP");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }

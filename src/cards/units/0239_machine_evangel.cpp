@@ -21,7 +21,7 @@ public:
         for (int i = 0; i < 3; ++i)
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                      1, {"Recruit"}, KeywordSet{}, loc, false);
-        ctx.events.logTrace("MACHINE EVANGEL: Deathknell -> three 1[M] Recruits to base");
+        RIFT_TRACE(ctx.events, "MACHINE EVANGEL: Deathknell -> three 1[M] Recruits to base");
     }
 private:
     const CardDef def_ = [] {

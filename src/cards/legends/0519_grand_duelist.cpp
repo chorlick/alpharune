@@ -36,7 +36,7 @@ public:
         if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("GRAND DUELIST: exhausted -> channeled 1 rune (exhausted)");
+        RIFT_TRACE(ctx.events, "GRAND DUELIST: exhausted -> channeled 1 rune (exhausted)");
     }
 private:
     const CardDef def_ = [] {

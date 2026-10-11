@@ -28,7 +28,7 @@ public:
                 ps.trash.push_back(cid);
             }
         }
-        ctx.events.logTrace("MINEFIELD: conquer -> top 2 of Main Deck to trash");
+        RIFT_TRACE(ctx.events, "MINEFIELD: conquer -> top 2 of Main Deck to trash");
     }
 private:
     const CardDef def_ = [] {

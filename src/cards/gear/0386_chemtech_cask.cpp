@@ -37,7 +37,7 @@ public:
         if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);  // pay the cost
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         createGoldExhausted(ctx);
-        ctx.events.logTrace("CHEMTECH CASK: exhausted -> Gold gear token (exhausted)");
+        RIFT_TRACE(ctx.events, "CHEMTECH CASK: exhausted -> Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

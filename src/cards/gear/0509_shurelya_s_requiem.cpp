@@ -24,7 +24,7 @@ public:
                 ctx.executor.readyObject(id);
             }
         }
-        ctx.events.logTrace("SHURELYA'S REQUIEM: ready your units");
+        RIFT_TRACE(ctx.events, "SHURELYA'S REQUIEM: ready your units");
     }
 
     // Equipped: "Your units here have [Ganking]." The sentence is printed in

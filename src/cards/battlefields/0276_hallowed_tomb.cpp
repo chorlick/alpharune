@@ -39,7 +39,7 @@ public:
         obj.zone = ZoneType::ChampionZone;
         obj.location = std::nullopt;
         ps.champion_zone = champ;
-        ctx.events.logTrace("HALLOWED TOMB: return Chosen Champion from trash to "
+        RIFT_TRACE(ctx.events, "HALLOWED TOMB: return Chosen Champion from trash to "
                             "empty Champion Zone");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouHoldHere; }

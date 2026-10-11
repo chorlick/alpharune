@@ -51,7 +51,7 @@ public:
         if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.readyObject(target);
-        ctx.events.logTrace("PILTOVER ENFORCER: exhaust me -> ready " +
+        RIFT_TRACE(ctx.events, "PILTOVER ENFORCER: exhaust me -> ready " +
                             ctx.state.getObject(target).name +
                             "");
     }

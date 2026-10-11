@@ -26,11 +26,11 @@ public:
             ? ctx.state.chain.resuming->triggering_spell_energy_spent
             : 0;
         if (spent < 4) {
-            ctx.events.logTrace("REVNA: skip (spent=" + std::to_string(spent) + " < 4)");
+            RIFT_TRACE(ctx.events, "REVNA: skip (spent=" + std::to_string(spent) + " < 4)");
             return;
         }
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("REVNA: spent 4+ on a spell -> ready me");
+        RIFT_TRACE(ctx.events, "REVNA: spent 4+ on a spell -> ready me");
     }
 private:
     const CardDef def_ = [] {

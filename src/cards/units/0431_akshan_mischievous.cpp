@@ -69,12 +69,12 @@ public:
             ctx.executor.unattachGear(target_gear);
         ctx.executor.takeControlUntilSourceLeaves(target_gear, me, ctx.source);
         ctx.executor.moveToBase(target_gear);
-        ctx.events.logTrace("AKSHAN: stole enemy gear until I leave the board");
+        RIFT_TRACE(ctx.events, "AKSHAN: stole enemy gear until I leave the board");
 
         // If it's an Equipment, attach it to me.
         if (is_equipment && equipEndsOnBoard(ctx.state, target_gear, ctx.source)) {
             attachFree(ctx, target_gear, ctx.source);
-            ctx.events.logTrace("AKSHAN: attached stolen Equipment to me");
+            RIFT_TRACE(ctx.events, "AKSHAN: attached stolen Equipment to me");
         }
     }
 private:

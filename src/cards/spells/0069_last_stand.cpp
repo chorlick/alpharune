@@ -26,7 +26,7 @@ public:
         // [Temporary]: set the keyword directly so it survives to the beginning
         // phase sweep (NOT giveTemporaryKeyword, which expires end of this turn).
         tgt.keywords.set(Keyword::Temporary);
-        ctx.events.logTrace("LAST STAND: doubled Might this turn (+" +
+        RIFT_TRACE(ctx.events, "LAST STAND: doubled Might this turn (+" +
                             std::to_string(bonus) + ") and gave [Temporary]");
     }
 private:

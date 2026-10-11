@@ -34,7 +34,7 @@ public:
         }
         if (enemy_here == 1) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("ISOLATE: an enemy unit is alone at that BF -> draw 1");
+            RIFT_TRACE(ctx.events, "ISOLATE: an enemy unit is alone at that BF -> draw 1");
         }
     }
     TargetRequirements getTargetRequirements() const override {

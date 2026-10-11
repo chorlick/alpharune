@@ -63,7 +63,7 @@ public:
         ctx.executor.dealDamage(t, my_might, ctx.source);
         if (ctx.state.objectExists(t) && ctx.state.getObject(t).hasLethalDamage())
             ctx.executor.killObject(t);
-        ctx.events.logTrace("YONE: conquered an uncontrolled battlefield -> deal " +
+        RIFT_TRACE(ctx.events, "YONE: conquered an uncontrolled battlefield -> deal " +
                             std::to_string(my_might) + " to an enemy unit in a base");
     }
 private:

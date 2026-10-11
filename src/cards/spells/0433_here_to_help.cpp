@@ -47,7 +47,7 @@ public:
         int mode = pickMode(ctx, "Here to Help: battlefield", where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;
         if (ctx.executor.playPayingCost(ctx.controller, unit, where.locations[mode], reduced))
-            ctx.events.logTrace("HERE TO HELP: played a unit from hand to a controlled "
+            RIFT_TRACE(ctx.events, "HERE TO HELP: played a unit from hand to a controlled "
                                 "battlefield, its cost reduced by [3]");
     }
 private:

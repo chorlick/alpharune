@@ -57,7 +57,7 @@ public:
         if (!anchor.location.has_value() || !moved.location.has_value()) return;
         if (moved.controller != ctx.controller) return;
         moveToLocation(ctx.executor, mover, anchor.location);
-        ctx.events.logTrace("FORGOTTEN SIGNPOST: moved a friendly unit to the exhausted unit's location");
+        RIFT_TRACE(ctx.events, "FORGOTTEN SIGNPOST: moved a friendly unit to the exhausted unit's location");
     }
 private:
     /// Units `controller` has on board, other than `anchor`, that are not

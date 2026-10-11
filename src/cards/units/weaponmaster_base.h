@@ -72,7 +72,7 @@ public:
         CardContext gear_ctx{ctx.state, ctx.events, ctx.executor, ctx.controller, gear};
         gear_ctx.registry = ctx.registry;
         if (!gc->payEquipAndAttach(gear_ctx, unit, weaponmasterTerms())) return false;
-        ctx.events.logTrace("WEAPONMASTER: " + ctx.state.getObject(unit).name + " equips " +
+        RIFT_TRACE(ctx.events, "WEAPONMASTER: " + ctx.state.getObject(unit).name + " equips " +
                             ctx.state.getObject(gear).name + " (Equip cost, [A] less)");
         return true;
     }

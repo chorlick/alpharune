@@ -39,7 +39,7 @@ public:
         if (last == turn_id) return;  // already fired this turn
         last = turn_id;
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("LUCIAN MERCILESS: first conquer this turn -> ready me");
+        RIFT_TRACE(ctx.events, "LUCIAN MERCILESS: first conquer this turn -> ready me");
     }
 private:
     const CardDef def_ = [] {

@@ -23,7 +23,7 @@ public:
         ctx.executor.killObject(targets[0]);
         createGoldExhausted(ctx);
         if (!was_enemy) createGoldExhausted(ctx);
-        ctx.events.logTrace(std::string("BLOOD MONEY: killed ") +
+        RIFT_TRACE(ctx.events, std::string("BLOOD MONEY: killed ") +
                             (was_enemy ? "enemy -> 1 Gold" : "friendly -> 2 Gold"));
     }
     TargetRequirements getTargetRequirements() const override {

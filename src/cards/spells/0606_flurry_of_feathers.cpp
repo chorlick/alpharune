@@ -38,7 +38,7 @@ public:
             if (!counter_legal) return;
             auto victim = chain.items.back();
             chain.items.pop_back();
-            ctx.events.logTrace("FLURRY OF FEATHERS: countered spell (id=" +
+            RIFT_TRACE(ctx.events, "FLURRY OF FEATHERS: countered spell (id=" +
                                  std::to_string(victim.source) + ")");
             disposeCounteredCard(ctx, victim.source);
             return;
@@ -55,7 +55,7 @@ public:
         };
         if (!playTokensChoosingLocations(ctx, "Flurry of Feathers: play a Bird", 4, make, made))
             return;   // waiting for a location
-        ctx.events.logTrace("FLURRY OF FEATHERS: spawned 4 Bird tokens");
+        RIFT_TRACE(ctx.events, "FLURRY OF FEATHERS: spawned 4 Bird tokens");
     }
 private:
     const CardDef def_ = [] {

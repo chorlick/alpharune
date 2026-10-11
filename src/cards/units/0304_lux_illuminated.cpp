@@ -31,7 +31,7 @@ public:
         // "give me": only while I'm still on the board.
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 3);
-        ctx.events.logTrace("LUX ILLUMINATED: 5+ cost spell -> +3 [M] this turn");
+        RIFT_TRACE(ctx.events, "LUX ILLUMINATED: 5+ cost spell -> +3 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

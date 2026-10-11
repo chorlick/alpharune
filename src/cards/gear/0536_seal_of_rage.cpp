@@ -22,7 +22,7 @@ public:
         // "[E]: [Reaction] — [Add] [R]." Resolves immediately (CR 429.2),
         // not via the chain — adds 1 Fury power to the controller's pool.
         ctx.executor.addFloatingPower(ctx.controller, Domain::Fury, 1);
-        ctx.events.logTrace("ACTIVATE: Seal of Rage adds [R] (Fury power)");
+        RIFT_TRACE(ctx.events, "ACTIVATE: Seal of Rage adds [R] (Fury power)");
     }
 private:
     const CardDef def_ = [] {

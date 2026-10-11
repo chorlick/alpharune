@@ -39,7 +39,7 @@ public:
                     /*revealed_to=*/ctx.controller,
                     /*source_zone=*/ZoneType::Hand,
                 });
-                ctx.events.logTrace("SABOTAGE: revealed " + obj.name +
+                RIFT_TRACE(ctx.events, "SABOTAGE: revealed " + obj.name +
                                      " (id=" + std::to_string(card_id) +
                                      ") to " + std::string(toString(ctx.controller)));
             }
@@ -56,7 +56,7 @@ public:
                 choices.push_back(c);
             }
             if (choices.empty()) {
-                ctx.events.logTrace("SABOTAGE: opponent has no non-unit cards in "
+                RIFT_TRACE(ctx.events, "SABOTAGE: opponent has no non-unit cards in "
                                      "hand; recycle skipped.");
                 return;
             }
@@ -78,7 +78,7 @@ public:
             auto it = std::find(hand.begin(), hand.end(), card_id);
             if (it == hand.end()) return;
             const auto& obj = ctx.state.getObject(card_id);
-            ctx.events.logTrace("SABOTAGE: recycling " + obj.name + " (id=" +
+            RIFT_TRACE(ctx.events, "SABOTAGE: recycling " + obj.name + " (id=" +
                                  std::to_string(card_id) + ") to bottom of " +
                                  std::string(toString(opp)) + "'s deck");
             hand.erase(it);

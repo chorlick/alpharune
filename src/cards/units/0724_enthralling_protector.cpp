@@ -18,7 +18,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 1);  // [Hunt]
-        ctx.events.logTrace("ENTHRALLING PROTECTOR: [Hunt] +1 XP");
+        RIFT_TRACE(ctx.events, "ENTHRALLING PROTECTOR: [Hunt] +1 XP");
     }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
@@ -27,7 +27,7 @@ public:
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         ctx.executor.buffUnit(ctx.source);  // +1 [M] buff if it doesn't have one
-        ctx.events.logTrace("ENTHRALLING PROTECTOR: spent 2 XP, buffed self");
+        RIFT_TRACE(ctx.events, "ENTHRALLING PROTECTOR: spent 2 XP, buffed self");
     }
 private:
     const CardDef def_ = [] {

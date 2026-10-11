@@ -40,7 +40,7 @@ public:
         // from its unit (CR 718.5.c), so it comes off first.
         ctx.executor.unattachGear(ctx.source);
         ctx.executor.recallToBase(ctx.source);
-        ctx.events.logTrace(std::string("GLOWSTONE: ") + toString(chosen) +
+        RIFT_TRACE(ctx.events, std::string("GLOWSTONE: ") + toString(chosen) +
                             " gains control of it and recalls it");
     }
     // "At the end of your turn, kill this and deal 5 to all units you control."

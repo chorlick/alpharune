@@ -34,7 +34,7 @@ public:
         self.card_counters.erase("__crescent_paid");
         if (!paid) return;
         ctx.executor.readyObject(ctx.source);   // no-op if I left the board
-        ctx.events.logTrace("CRESCENT GUARDIAN: paid [P] after a spell -> I enter ready");
+        RIFT_TRACE(ctx.events, "CRESCENT GUARDIAN: paid [P] after a spell -> I enter ready");
     }
 private:
     const CardDef def_ = [] {

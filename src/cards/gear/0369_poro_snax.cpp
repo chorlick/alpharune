@@ -18,7 +18,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("PORO SNAX: enter -> draw 1");
+        RIFT_TRACE(ctx.events, "PORO SNAX: enter -> draw 1");
     }
     // "[1][G], [E], Kill this: Draw 1." [1] + one Calm Power + exhaust are the
     // structured cost. "Kill this" is a cost too — to the trash, not a recycle
@@ -37,7 +37,7 @@ public:
         }
         if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("PORO SNAX: activated -> draw 1");
+        RIFT_TRACE(ctx.events, "PORO SNAX: activated -> draw 1");
     }
 private:
     const CardDef def_ = [] {

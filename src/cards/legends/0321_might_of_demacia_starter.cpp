@@ -32,7 +32,7 @@ public:
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         if (unitsAtConquered(ctx.state, ctx.controller, bf_card) < 4) return;
         ctx.executor.drawCards(ctx.controller, 2);
-        ctx.events.logTrace("MIGHT OF DEMACIA: conquer with 4+ units here -> draw 2");
+        RIFT_TRACE(ctx.events, "MIGHT OF DEMACIA: conquer with 4+ units here -> draw 2");
     }
 private:
     static int unitsAtConquered(const GameState& state, PlayerId controller,

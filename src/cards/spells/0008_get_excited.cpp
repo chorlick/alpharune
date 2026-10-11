@@ -30,7 +30,7 @@ public:
                 }
                 if (dmg <= 0) return;
                 c.executor.dealDamage(target, dmg, source);
-                c.events.logTrace("GET EXCITED!: dealt " + std::to_string(dmg) +
+                RIFT_TRACE(c.events, "GET EXCITED!: dealt " + std::to_string(dmg) +
                                   " (discarded card Energy cost)");
             });
     }

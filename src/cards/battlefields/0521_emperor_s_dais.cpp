@@ -55,7 +55,7 @@ public:
         // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sand Soldier", 2,
                                  {"Shurima"}, KeywordSet{}, loc);
-        ctx.events.logTrace("EMPEROR'S DAIS: paid [1], bounced unit, spawned 2M Sand Soldier");
+        RIFT_TRACE(ctx.events, "EMPEROR'S DAIS: paid [1], bounced unit, spawned 2M Sand Soldier");
     }
 private:
     const CardDef def_ = [] {

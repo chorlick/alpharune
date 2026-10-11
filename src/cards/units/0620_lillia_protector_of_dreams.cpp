@@ -22,7 +22,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("LILLIA, PROTECTOR OF DREAMS: token unit played -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "LILLIA, PROTECTOR OF DREAMS: token unit played -> +1 [M] this turn");
     }
     // "Your token units have [Tank]." (Granted via aura.)
     void applyPassiveAura(GameState& state, PlayerId controller) const override {

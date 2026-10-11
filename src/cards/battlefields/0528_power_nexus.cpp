@@ -28,7 +28,7 @@ public:
         if (costDueNow(ctx) && !ctx.executor.payAnyPower(ctx.controller, 4)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-        ctx.events.logTrace("POWER NEXUS: paid [A][A][A][A] -> score 1 point");
+        RIFT_TRACE(ctx.events, "POWER NEXUS: paid [A][A][A][A] -> score 1 point");
     }
 private:
     const CardDef def_ = [] {

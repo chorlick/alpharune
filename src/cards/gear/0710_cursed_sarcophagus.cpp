@@ -38,7 +38,7 @@ public:
                 ctx.state.getObject(ctx.source).tracked_objects.push_back(cid);
         }
         if (!trash_units.empty())
-            ctx.events.logTrace("CURSED SARCOPHAGUS: banished " +
+            RIFT_TRACE(ctx.events, "CURSED SARCOPHAGUS: banished " +
                                  std::to_string(trash_units.size()) +
                                  " unit(s) from trash");
     }
@@ -90,7 +90,7 @@ public:
             return;
         auto& tr = self.tracked_objects;
         tr.erase(std::remove(tr.begin(), tr.end(), picked), tr.end());
-        ctx.events.logTrace("CURSED SARCOPHAGUS: played a banished unit");
+        RIFT_TRACE(ctx.events, "CURSED SARCOPHAGUS: played a banished unit");
     }
 private:
     const CardDef def_ = [] {

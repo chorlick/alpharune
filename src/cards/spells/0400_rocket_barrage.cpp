@@ -59,10 +59,10 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         if (mode == 0) {
-            ctx.events.logTrace("ROCKET BARRAGE: deal 4 to " + ctx.state.getObject(picked).name);
+            RIFT_TRACE(ctx.events, "ROCKET BARRAGE: deal 4 to " + ctx.state.getObject(picked).name);
             ctx.executor.dealDamage(picked, 4, ctx.source);
         } else {
-            ctx.events.logTrace("ROCKET BARRAGE: kill gear " + ctx.state.getObject(picked).name);
+            RIFT_TRACE(ctx.events, "ROCKET BARRAGE: kill gear " + ctx.state.getObject(picked).name);
             ctx.executor.killObject(picked);
         }
     }

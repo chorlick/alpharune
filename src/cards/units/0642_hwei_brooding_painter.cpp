@@ -102,20 +102,20 @@ public:
                 ctx.executor.readyObject(id);
                 ++readied;
             }
-            ctx.events.logTrace("HWEI: discarded Gear -> readied " + std::to_string(readied) +
+            RIFT_TRACE(ctx.events, "HWEI: discarded Gear -> readied " + std::to_string(readied) +
                                 " rune(s)");
             return;
         }
         if (finalizingChoices(ctx)) return;        // nothing to choose
         if (dtype == CardType::Spell) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("HWEI: discarded Spell -> draw 1");
+            RIFT_TRACE(ctx.events, "HWEI: discarded Spell -> draw 1");
         } else if (dtype == CardType::Unit) {
             // "Give me": only while I'm still on the board.
             if (ctx.state.objectExists(ctx.source) &&
                 ctx.state.getObject(ctx.source).location.has_value()) {
                 ctx.executor.giveTemporaryMight(ctx.source, 3);
-                ctx.events.logTrace("HWEI: discarded Unit -> +3 [M] this turn");
+                RIFT_TRACE(ctx.events, "HWEI: discarded Unit -> +3 [M] this turn");
             }
         }
     }

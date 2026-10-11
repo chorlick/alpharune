@@ -31,7 +31,7 @@ public:
                 ctx.events.emit(CardRevealedEvent{
                     cid, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/false, ctx.controller, ZoneType::Hand});
-                ctx.events.logTrace("DECREE OF STRENGTH: revealed " + obj.name);
+                RIFT_TRACE(ctx.events, "DECREE OF STRENGTH: revealed " + obj.name);
             }
             if (std::find(obj.domains.begin(), obj.domains.end(), Domain::Mind) != obj.domains.end())
                 mind_cards.push_back(cid);

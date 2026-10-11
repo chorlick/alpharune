@@ -52,7 +52,7 @@ public:
                                      destLocation(ctx.controller, d),
                                      /*enter_ready=*/false);
         }
-        ctx.events.logTrace("RECRUIT THE VANGUARD: played four 1[M] Recruit tokens");
+        RIFT_TRACE(ctx.events, "RECRUIT THE VANGUARD: played four 1[M] Recruit tokens");
     }
 private:
     static constexpr size_t kTokens = 4;

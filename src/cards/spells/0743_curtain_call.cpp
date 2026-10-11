@@ -77,19 +77,19 @@ public:
         const bool has_target = target != kInvalidId && ctx.state.objectExists(target);
         switch (mode) {
             case 0:
-                ctx.events.logTrace("CURTAIN CALL: Draw 1");
+                RIFT_TRACE(ctx.events, "CURTAIN CALL: Draw 1");
                 ctx.executor.drawCards(ctx.controller, 1);
                 break;
             case 1:
-                ctx.events.logTrace("CURTAIN CALL: Deal 2 (BF)");
+                RIFT_TRACE(ctx.events, "CURTAIN CALL: Deal 2 (BF)");
                 if (has_target) ctx.executor.dealDamage(target, 2, ctx.source);
                 break;
             case 2:
-                ctx.events.logTrace("CURTAIN CALL: Deal 3 (base)");
+                RIFT_TRACE(ctx.events, "CURTAIN CALL: Deal 3 (base)");
                 if (has_target) ctx.executor.dealDamage(target, 3, ctx.source);
                 break;
             case 3:
-                ctx.events.logTrace("CURTAIN CALL: -4M (BF)");
+                RIFT_TRACE(ctx.events, "CURTAIN CALL: -4M (BF)");
                 if (has_target) ctx.executor.giveTemporaryMight(target, -4, /*minimum=*/0);
                 break;
         }

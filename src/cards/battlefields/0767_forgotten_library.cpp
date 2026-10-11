@@ -35,11 +35,11 @@ public:
             spent = ctx.state.player(ctx.controller).last_spell_energy_spent;
         }
         if (spent < 4) {
-            ctx.events.logTrace("FORGOTTEN LIBRARY: skip (spent=" +
+            RIFT_TRACE(ctx.events, "FORGOTTEN LIBRARY: skip (spent=" +
                                  std::to_string(spent) + " < 4)");
             return;
         }
-        ctx.events.logTrace("FORGOTTEN LIBRARY: predict 1");
+        RIFT_TRACE(ctx.events, "FORGOTTEN LIBRARY: predict 1");
         ctx.executor.predict(ctx.controller, 1);
     }
 private:

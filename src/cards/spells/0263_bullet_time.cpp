@@ -50,15 +50,15 @@ public:
         int x = pickXAmount(ctx, "Bullet Time: X power", 0, max_x);
         if (x < 0) return;  // pending choice
         if (x == 0) {
-            ctx.events.logTrace("BULLET TIME: X=0, no damage");
+            RIFT_TRACE(ctx.events, "BULLET TIME: X=0, no damage");
             return;
         }
 
         if (!ctx.executor.payAnyPower(ctx.controller, x)) {
-            ctx.events.logTrace("BULLET TIME: X can no longer be paid, no damage");
+            RIFT_TRACE(ctx.events, "BULLET TIME: X can no longer be paid, no damage");
             return;
         }
-        ctx.events.logTrace("BULLET TIME: paid " + std::to_string(x) +
+        RIFT_TRACE(ctx.events, "BULLET TIME: paid " + std::to_string(x) +
                              " power → dealing " + std::to_string(x) +
                              " damage to all enemies at BF#" +
                              std::to_string(bf_id));

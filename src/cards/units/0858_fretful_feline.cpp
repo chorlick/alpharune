@@ -23,7 +23,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.events.logTrace("FRETFUL FELINE: became ready -> +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "FRETFUL FELINE: became ready -> +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

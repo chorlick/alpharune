@@ -78,7 +78,7 @@ public:
 
         if (mover != kInvalidId && ctx.state.objectExists(mover)) {
             ctx.executor.moveToBattlefield(mover, bf);
-            ctx.events.logTrace("MOONFALL: moved an enemy unit to the battlefield");
+            RIFT_TRACE(ctx.events, "MOONFALL: moved an enemy unit to the battlefield");
         }
         // "Then give enemy units there -2 [M] this turn."
         std::vector<GameObjectId> there;
@@ -88,7 +88,7 @@ public:
             if (at.has_value() && *at == bf) there.push_back(id);
         }
         for (auto id : there) ctx.executor.giveTemporaryMight(id, -2);
-        ctx.events.logTrace("MOONFALL: -2 [M] to enemy units at the battlefield");
+        RIFT_TRACE(ctx.events, "MOONFALL: -2 [M] to enemy units at the battlefield");
     }
 private:
     const CardDef def_ = [] {

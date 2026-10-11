@@ -42,9 +42,9 @@ public:
         if (!still_there()) return;           // paid, but the unit left in response
         // buffUnit gives the +1 [M] buff only to a unit without one (CR 427.1.b).
         if (ctx.executor.buffUnit(played))
-            ctx.events.logTrace("VALLEY OF IDOLS: paid [1] -> [Buff] the played unit");
+            RIFT_TRACE(ctx.events, "VALLEY OF IDOLS: paid [1] -> [Buff] the played unit");
         else
-            ctx.events.logTrace("VALLEY OF IDOLS: paid [1] but unit already has a buff");
+            RIFT_TRACE(ctx.events, "VALLEY OF IDOLS: paid [1] but unit already has a buff");
     }
 private:
     const CardDef def_ = [] {

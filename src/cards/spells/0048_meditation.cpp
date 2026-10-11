@@ -69,7 +69,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
 
         ctx.executor.drawCards(ctx.controller, paid ? 2 : 1);
-        ctx.events.logTrace(paid ? "MEDITATION: exhausted friendly -> draw 2"
+        RIFT_TRACE(ctx.events, paid ? "MEDITATION: exhausted friendly -> draw 2"
                                  : "MEDITATION: draw 1");
     }
 private:

@@ -62,7 +62,7 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
     // twice this turn, I don't take damage"). Recomputed each recalculateAuras
     // by the card's applyPassiveAura; blocks ALL damage (combat + spell/ability).
     if (amount > 0 && obj.immune_to_damage) {
-        events_.logTrace("PREVENT: " + obj.name + " is immune to damage");
+        RIFT_TRACE(events_, "PREVENT: " + obj.name + " is immune to damage");
         return;
     }
 
@@ -75,12 +75,12 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
         int prevented = std::min(amount, obj.prevent_damage_remaining);
         obj.prevent_damage_remaining -= prevented;
         amount -= prevented;
-        events_.logTrace("PREVENT: " + std::to_string(prevented) + " damage to " + obj.name);
+        RIFT_TRACE(events_, "PREVENT: " + std::to_string(prevented) + " damage to " + obj.name);
         if (amount <= 0) return;
     }
     if (amount > 0 && obj.prevent_next_damage_this_turn) {
         obj.prevent_next_damage_this_turn = false;
-        events_.logTrace("PREVENT: next damage to " + obj.name +
+        RIFT_TRACE(events_, "PREVENT: next damage to " + obj.name +
                          " prevented (Counter Strike)");
         return;
     }
@@ -114,7 +114,7 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
         if (from_spell_or_ability && amount > 0 &&
             obj.prevent_enemy_spell_ability_damage &&
             src_obj.controller != obj.controller) {
-            events_.logTrace("PREVENT: enemy spell/ability damage to " + obj.name);
+            RIFT_TRACE(events_, "PREVENT: enemy spell/ability damage to " + obj.name);
             return;
         }
         if (from_spell_or_ability) {
@@ -127,7 +127,7 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
                 state_.player(obj.controller).prevent_spell_ability_damage_this_turn ||
                 state_.player(src_obj.controller).prevent_spell_ability_damage_this_turn;
             if (prevented && amount > 0) {
-                events_.logTrace("EFFECT: prevented " + std::to_string(amount) +
+                RIFT_TRACE(events_, "EFFECT: prevented " + std::to_string(amount) +
                                  " spell/ability damage to " + obj.name +
                                  " (id=" + std::to_string(target) +
                                  ") via Unyielding Spirit");
@@ -143,7 +143,7 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
                             // play time — applies to every instance it deals.
                             src_obj.spell_bonus_damage;
                 if (bonus > 0) {
-                    events_.logTrace("EFFECT: +" + std::to_string(bonus) +
+                    RIFT_TRACE(events_, "EFFECT: +" + std::to_string(bonus) +
                                      " Bonus Damage to " + obj.name);
                     amount += bonus;
                 }
@@ -160,12 +160,12 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
     int dealt = amount;
     if (obj.damage_doubled_this_turn && amount > 0) {
         dealt = amount * 2;
-        events_.logTrace("EFFECT: damage-doubling on " + obj.name +
+        RIFT_TRACE(events_, "EFFECT: damage-doubling on " + obj.name +
                          " (Lotus Trap-style): " + std::to_string(amount) +
                          " -> " + std::to_string(dealt));
     }
 
-    events_.logTrace("EFFECT: deal " + std::to_string(dealt) + " damage to " +
+    RIFT_TRACE(events_, "EFFECT: deal " + std::to_string(dealt) + " damage to " +
                      obj.name + " (id=" + std::to_string(target) + ", was " +
                      std::to_string(obj.damage_marked) + "/" +
                      std::to_string(obj.current_might) + "M)");
@@ -302,7 +302,7 @@ void EffectExecutor::killObject(GameObjectId target) {
     // Riches) in Banishment, a bounced unit in a hand — killing any of them
     // again would announce a second death. The test is the board, not a zone.
     if (!onBoard(obj)) return;
-    events_.logTrace("EFFECT: kill " + obj.name + " (id=" + std::to_string(target) + ")");
+    RIFT_TRACE(events_, "EFFECT: kill " + obj.name + " (id=" + std::to_string(target) + ")");
     // Last-known information for "When I die" (CR 383.2.c.3.b).
     snapshotLastKnown(target);
 
@@ -333,7 +333,7 @@ void EffectExecutor::killObject(GameObjectId target) {
             state_.player(obj.owner).trash.push_back(target);
             settleInTrash(state_, events_, target);
         } else {
-            events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
+            RIFT_TRACE(events_, "  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
                              " (id=" + std::to_string(target) + ")");
         }
 
@@ -372,7 +372,7 @@ void EffectExecutor::killObject(GameObjectId target) {
             state_.player(obj.owner).trash.push_back(target);
             settleInTrash(state_, events_, target);
         } else {
-            events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
+            RIFT_TRACE(events_, "  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
                              " (id=" + std::to_string(target) + ")");
         }
 
@@ -383,7 +383,7 @@ void EffectExecutor::killObject(GameObjectId target) {
 }
 
 void EffectExecutor::drawCards(PlayerId player, int count) {
-    events_.logTrace(std::string("EFFECT: ") + toString(player) + " draws " +
+    RIFT_TRACE(events_, std::string("EFFECT: ") + toString(player) + " draws " +
                      std::to_string(count) + " (deck=" +
                      std::to_string(state_.player(player).main_deck.size()) + ")");
     auto& ps = state_.player(player);
@@ -399,7 +399,7 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
         ps.hand.push_back(card_id);
         state_.getObject(card_id).zone = ZoneType::Hand;
         // Only the drawing player knows which card it is.
-        events_.logTracePrivate(player, "  DREW: " + state_.getObject(card_id).name +
+        RIFT_TRACE_PRIVATE(events_, player, "  DREW: " + state_.getObject(card_id).name +
                                         " (id=" + std::to_string(card_id) + ")");
         drawn++;
     }
@@ -427,12 +427,12 @@ int EffectExecutor::scorePoints(PlayerId player, int amount) {
     if (amount <= 0 || player == PlayerId::None) return 0;
     auto& ps = state_.player(player);
     if (ps.cannot_gain_points) {
-        events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("SCORE_BLOCKED: ") + toString(player) +
                          " can't gain points");
         return 0;
     }
     ps.score += amount;
-    events_.logTrace(std::string("SCORE: ") + toString(player) + " +" +
+    RIFT_TRACE(events_, std::string("SCORE: ") + toString(player) + " +" +
                      std::to_string(amount) + " via effect -> " + std::to_string(ps.score));
     events_.emit(PointsGainedEvent{player, amount, ps.score});
     // CR 466.1.a.1: points from effects have no Winning Point restriction.
@@ -517,14 +517,14 @@ bool EffectExecutor::burnOut(PlayerId player) {
     // The burn-out point is a point gained like any other: "can't gain
     // points" (Tianna Crownguard) stops it, and it is announced.
     if (opp_ps.cannot_gain_points) {
-        events_.logTrace(std::string("BURN_OUT: ") + toString(player) +
+        RIFT_TRACE(events_, std::string("BURN_OUT: ") + toString(player) +
                          (ps.main_deck.empty() ? " deck and trash empty; "
                                                : " deck empty, shuffled trash; ") +
                          toString(opp_id) + " can't gain points");
         return !ps.main_deck.empty();
     }
     opp_ps.score++;
-    events_.logTrace(std::string("BURN_OUT: ") + toString(player) +
+    RIFT_TRACE(events_, std::string("BURN_OUT: ") + toString(player) +
                      (ps.main_deck.empty() ? " deck and trash empty; "
                                            : " deck empty, shuffled trash; ") +
                      toString(opp_id) + " gains 1 point (CR 432.2.c) -> " +
@@ -594,7 +594,7 @@ bool EffectExecutor::empower(GameObjectId target) {
         if (const Card* c = card_registry_->get(obj.card_def_id)) cap = c->maxEmpower();
     if (obj.empowered >= cap) return false;   // CR 442.1.c: nothing additional happens
     obj.empowered++;
-    events_.logTrace("EFFECT: empower " + obj.name + " (id=" + std::to_string(target) +
+    RIFT_TRACE(events_, "EFFECT: empower " + obj.name + " (id=" + std::to_string(target) +
                      ") -> " + std::to_string(obj.empowered));
     events_.emit(ObjectStateChangedEvent{target, "empowered"});
     return true;
@@ -605,7 +605,7 @@ bool EffectExecutor::disempower(GameObjectId target) {
     auto& obj = state_.getObject(target);
     if (obj.empowered <= 0) return false;     // CR 443.1.a.1
     obj.empowered--;
-    events_.logTrace("EFFECT: disempower " + obj.name + " (id=" + std::to_string(target) +
+    RIFT_TRACE(events_, "EFFECT: disempower " + obj.name + " (id=" + std::to_string(target) +
                      ") -> " + std::to_string(obj.empowered));
     events_.emit(ObjectStateChangedEvent{target, "disempowered"});
     return true;
@@ -625,7 +625,7 @@ std::vector<GameObjectId> EffectExecutor::burn(PlayerId player, int count) {
         ps.trash.push_back(card_id);
         ps.cards_burned_this_turn++;
         burned.push_back(card_id);
-        events_.logTrace(std::string("  BURNED: ") + toString(player) + " " + card.name +
+        RIFT_TRACE(events_, std::string("  BURNED: ") + toString(player) + " " + card.name +
                          " (id=" + std::to_string(card_id) + ")");
     }
     // "When you burn" abilities execute after burning has occurred (CR 441.1.a).
@@ -663,7 +663,7 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
     // but route it to Banishment and skip the player's hand vector,
     // matching "ceases to exist" semantically.
     if (obj.isToken()) {
-        events_.logTrace("EFFECT: bounce " + obj.name + " (id=" +
+        RIFT_TRACE(events_, "EFFECT: bounce " + obj.name + " (id=" +
                          std::to_string(target) +
                          ") — token ceases to exist (CR 183.1)");
         obj.zone = ZoneType::Banishment;
@@ -676,7 +676,7 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
         return;
     }
 
-    events_.logTrace("EFFECT: bounce " + obj.name + " (id=" + std::to_string(target) + ") to hand");
+    RIFT_TRACE(events_, "EFFECT: bounce " + obj.name + " (id=" + std::to_string(target) + ") to hand");
     obj.zone = ZoneType::Hand;
     obj.location = std::nullopt;
     obj.damage_marked = 0;
@@ -729,7 +729,7 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
         }
     }
 
-    events_.logTrace("EFFECT: give " + obj.name + " " + std::to_string(amount) +
+    RIFT_TRACE(events_, "EFFECT: give " + obj.name + " " + std::to_string(amount) +
                      " [M] this turn -> " + std::to_string(obj.current_might) + "M" +
                      (minimum > 0 ? " (min " + std::to_string(minimum) + ")" : ""));
     // Not "buffed": +/-[M] this turn places no Buff counter (CR 427.1), so it
@@ -741,7 +741,7 @@ void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
                                             Keyword kw, int value) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
-    events_.logTrace("EFFECT: give " + obj.name + " [" + toString(kw) + "]" +
+    RIFT_TRACE(events_, "EFFECT: give " + obj.name + " [" + toString(kw) + "]" +
                      (value > 0 ? " (value=" + std::to_string(value) + ")" : "") +
                      " this turn");
     obj.keywords.set(kw);
@@ -781,14 +781,14 @@ bool EffectExecutor::buffUnit(GameObjectId target) {
             if (const Card* c = card_registry_->get(obj.card_def_id))
                 any_number = c->canHaveAnyNumberOfBuffs();
         if (!any_number) {
-            events_.logTrace("EFFECT: [Buff] " + obj.name +
+            RIFT_TRACE(events_, "EFFECT: [Buff] " + obj.name +
                              " already has a buff — not buffed (CR 427.1.b.1)");
             return false;
         }
     }
     obj.buff_count += 1;
     obj.recomputeMight();
-    events_.logTrace("EFFECT: [Buff] " + obj.name + " (+1 permanent) -> " +
+    RIFT_TRACE(events_, "EFFECT: [Buff] " + obj.name + " (+1 permanent) -> " +
                      std::to_string(obj.current_might) + "M");
     events_.emit(ObjectStateChangedEvent{target, "buffed"});
     return true;
@@ -806,7 +806,7 @@ void EffectExecutor::readyObject(GameObjectId target) {
     // refuses only effect/spell-driven readying of units & gear.
     if ((obj.isUnit() || obj.isGear()) &&
         state_.player(obj.controller).effects_cant_ready_my_units) {
-        events_.logTrace("READY_SUPPRESSED: " + obj.name +
+        RIFT_TRACE(events_, "READY_SUPPRESSED: " + obj.name +
                          " can't be readied by effects (Mageseeker Warden)");
         return;
     }
@@ -847,7 +847,7 @@ void EffectExecutor::unattachGear(GameObjectId gear) {
         }
     }
     // CR 719.5 — detached gear stays at its current location, unattached.
-    events_.logTrace("EFFECT: unattach " + g.name + " (id=" + std::to_string(gear) + ")");
+    RIFT_TRACE(events_, "EFFECT: unattach " + g.name + " (id=" + std::to_string(gear) + ")");
     events_.emit(ObjectStateChangedEvent{gear, "detached"});
 }
 
@@ -862,14 +862,14 @@ void EffectExecutor::moveToBase(GameObjectId target) {
     // Jagged Cutlass: "can't be moved by enemy spells and abilities."
     if (obj.cant_be_moved_by_enemy && state_.chain.resuming.has_value() &&
         state_.chain.resuming->controller != obj.controller) {
-        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
+        RIFT_TRACE(events_, "MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
         return;
     }
     // "They can't move it this turn" (GameObject::cant_move_this_turn): its
     // controller's spells and abilities don't move it either.
     if (obj.cant_move_this_turn && state_.chain.resuming.has_value() &&
         state_.chain.resuming->controller == obj.controller) {
-        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
+        RIFT_TRACE(events_, "MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
         return;
     }
     // "Units can't move from here to base." / "Units can't move to base."
@@ -877,7 +877,7 @@ void EffectExecutor::moveToBase(GameObjectId target) {
     // refuses too.) An effect's move is a move like any other; a recall is
     // not (recallToBase, CR 458.3).
     if (obj.isUnit() && moveToBaseBlocked(state_, obj)) {
-        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't move to base");
+        RIFT_TRACE(events_, "MOVE_BLOCKED: " + obj.name + " can't move to base");
         return;
     }
     auto old_loc = obj.location;
@@ -900,7 +900,7 @@ void EffectExecutor::recallToBase(GameObjectId target) {
     if (!onBoard(obj) || obj.controller == PlayerId::None) return;
     const LocationId home{BaseLocation{obj.controller}};
     if (*obj.location == home) return;
-    events_.logTrace("RECALL: " + obj.name + " (id=" + std::to_string(target) + ") to base");
+    RIFT_TRACE(events_, "RECALL: " + obj.name + " (id=" + std::to_string(target) + ") to base");
     obj.location = home;
     obj.zone = ZoneType::Base;
     // It has left the battlefield its combat was at (CR 323.2.c).
@@ -977,13 +977,13 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
         switch (c.kind) {
             case Kind::RecallPending:
                 unit.death_replacement_recall_pending = false;
-                events_.logDebug("REPLACEMENT (self): " + unit.name +
+                RIFT_DEBUG(events_, "REPLACEMENT (self): " + unit.name +
                                  " heals/exhausts/recalls instead of dying");
                 healExhaustRecall(unit_id);
                 return true;
             case Kind::BanishInstead:
                 unit.banish_if_would_die_this_turn = false;
-                events_.logDebug("REPLACEMENT (self): " + unit.name +
+                RIFT_DEBUG(events_, "REPLACEMENT (self): " + unit.name +
                                  " is banished instead of dying");
                 banishObject(unit_id);
                 return true;
@@ -991,7 +991,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 Card* card = cardFor(c.pending.card);
                 CardContext rctx{state_, events_, *this, c.pending.controller, c.pending.source};
                 if (!card || !card->applyReplacement(rctx, unit_id)) return false;
-                events_.logDebug("REPLACEMENT (self): " + state_.getObject(unit_id).name +
+                RIFT_DEBUG(events_, "REPLACEMENT (self): " + state_.getObject(unit_id).name +
                                  " does not die");
                 return true;
             }
@@ -1000,7 +1000,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 Card* card = cardFor(state_.getObject(c.card_object).card_def_id);
                 CardContext rctx{state_, events_, *this, controller, c.card_object};
                 if (!card || !card->applyReplacement(rctx, unit_id)) return false;
-                events_.logDebug("REPLACEMENT: " + state_.getObject(c.card_object).name +
+                RIFT_DEBUG(events_, "REPLACEMENT: " + state_.getObject(c.card_object).name +
                                  " prevents " + state_.getObject(unit_id).name + " from dying");
                 return true;
             }
@@ -1046,7 +1046,7 @@ bool EffectExecutor::attachGear(GameObjectId gear_id, GameObjectId unit_id) {
     if (state_.getObject(gear_id).attached_to.has_value()) unattachGear(gear_id);
     auto& gear = state_.getObject(gear_id);
     auto& unit = state_.getObject(unit_id);
-    events_.logTrace("ATTACH: " + gear.name + " (id=" + std::to_string(gear_id) + ") -> " +
+    RIFT_TRACE(events_, "ATTACH: " + gear.name + " (id=" + std::to_string(gear_id) + ") -> " +
                      unit.name + " (id=" + std::to_string(unit_id) + ", might_bonus=" +
                      std::to_string(gear.might_bonus) + ")");
     gear.attached_to = unit_id;
@@ -1084,7 +1084,7 @@ bool EffectExecutor::spendBuff(GameObjectId unit_id, PlayerId spender) {
     if (!onBoard(unit) || unit.buff_count <= 0) return false;
     unit.buff_count -= 1;
     unit.recomputeMight();
-    events_.logTrace(std::string("EFFECT: ") + toString(spender) + " spends a buff from " +
+    RIFT_TRACE(events_, std::string("EFFECT: ") + toString(spender) + " spends a buff from " +
                      unit.name + " -> " + std::to_string(unit.current_might) + "M");
     // The spender rides in a counter on the unit for the dispatch (the event
     // carries only the object); read at once by TriggerManager.
@@ -1109,9 +1109,9 @@ void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_
     knowledge::moved(state_, card, deck::Place::Held, deck::Place::Hand,
                      seen_by_all ? knowledge::everyone() : knowledge::only(player));
     if (seen_by_all)
-        events_.logTrace("  DREW: " + obj.name + " (id=" + std::to_string(card) + ")");
+        RIFT_TRACE(events_, "  DREW: " + obj.name + " (id=" + std::to_string(card) + ")");
     else
-        events_.logTracePrivate(player, "  DREW: " + obj.name + " (id=" +
+        RIFT_TRACE_PRIVATE(events_, player, "  DREW: " + obj.name + " (id=" +
                                         std::to_string(card) + ")");
     ps.draws_this_turn += 1;
     events_.emit(CardsDrawnEvent{player, 1});
@@ -1126,14 +1126,14 @@ void EffectExecutor::moveToBattlefield(GameObjectId target, BattlefieldId bf) {
     // Jagged Cutlass: "can't be moved by enemy spells and abilities."
     if (obj.cant_be_moved_by_enemy && state_.chain.resuming.has_value() &&
         state_.chain.resuming->controller != obj.controller) {
-        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
+        RIFT_TRACE(events_, "MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
         return;
     }
     // "They can't move it this turn" (GameObject::cant_move_this_turn): its
     // controller's spells and abilities don't move it either.
     if (obj.cant_move_this_turn && state_.chain.resuming.has_value() &&
         state_.chain.resuming->controller == obj.controller) {
-        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
+        RIFT_TRACE(events_, "MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
         return;
     }
     auto old_loc = obj.location;
@@ -1161,7 +1161,7 @@ void EffectExecutor::stunUnitBy(GameObjectId target, GameObjectId stunner_source
     if (obj.is_stunned) return;
     if (hostileEffectReplaced(state_, events_, *this, card_registry_, target,
                               Card::HostileEffect::Stun)) return;
-    events_.logTrace("EFFECT: stun " + obj.name + " (id=" + std::to_string(target) + ")");
+    RIFT_TRACE(events_, "EFFECT: stun " + obj.name + " (id=" + std::to_string(target) + ")");
 
     obj.is_stunned = true;
     events_.emit(ObjectStateChangedEvent{target, "stunned"});
@@ -1184,7 +1184,7 @@ void EffectExecutor::stunUnitBy(GameObjectId target, GameObjectId stunner_source
 }
 
 void EffectExecutor::discardCards(PlayerId player, int count) {
-    events_.logTrace(std::string("EFFECT: ") + toString(player) + " discards " +
+    RIFT_TRACE(events_, std::string("EFFECT: ") + toString(player) + " discards " +
                      std::to_string(count) + " (hand=" +
                      std::to_string(state_.player(player).hand.size()) + ")");
     auto& ps = state_.player(player);
@@ -1222,7 +1222,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
 
         auto it = std::find(ps.hand.begin(), ps.hand.end(), to_discard);
         if (it != ps.hand.end()) {
-            events_.logTrace("  DISCARDED: " + state_.getObject(to_discard).name +
+            RIFT_TRACE(events_, "  DISCARDED: " + state_.getObject(to_discard).name +
                              " (id=" + std::to_string(to_discard) + ")");
             ps.hand.erase(it);
             state_.getObject(to_discard).zone = ZoneType::Trash;
@@ -1240,7 +1240,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
 }
 
 void EffectExecutor::opponentDiscards(PlayerId opp, int count) {
-    events_.logTrace(std::string("EFFECT: ") + toString(opp) + " forced to discard " +
+    RIFT_TRACE(events_, std::string("EFFECT: ") + toString(opp) + " forced to discard " +
                      std::to_string(count));
     discardCards(opp, count);
 }
@@ -1251,7 +1251,7 @@ void EffectExecutor::applyDiscard(PlayerId player, GameObjectId card_id) {
     auto it = std::find(ps.hand.begin(), ps.hand.end(), card_id);
     if (it == ps.hand.end()) return;
     auto& obj = state_.getObject(card_id);
-    events_.logTrace("  DISCARDED: " + obj.name + " (id=" +
+    RIFT_TRACE(events_, "  DISCARDED: " + obj.name + " (id=" +
                      std::to_string(card_id) + ")");
     ps.hand.erase(it);
     obj.zone = ZoneType::Trash;
@@ -1290,7 +1290,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
             auto& obj = state_.getObject(cid);
             const LocationId was_at = *obj.location;
             if (obj.isToken()) {
-                events_.logTrace("EFFECT: recycle " + obj.name + " (id=" + std::to_string(cid) +
+                RIFT_TRACE(events_, "EFFECT: recycle " + obj.name + " (id=" + std::to_string(cid) +
                                  ") — token ceases to exist (CR 183.1)");
                 const PlayerId controller = obj.controller;
                 obj.zone = ZoneType::Banishment;
@@ -1384,7 +1384,7 @@ void EffectExecutor::banishObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     shedAttachments(state_, *this, target);
     auto& obj = state_.getObject(target);
-    events_.logTrace("EFFECT: banish " + obj.name + " (id=" + std::to_string(target) + ")");
+    RIFT_TRACE(events_, "EFFECT: banish " + obj.name + " (id=" + std::to_string(target) + ")");
     auto was_at = obj.location;
     auto controller = obj.controller;
 
@@ -1436,7 +1436,7 @@ void EffectExecutor::exhaustObject(GameObjectId target) {
 }
 
 void EffectExecutor::channelRunes(PlayerId player, int count, bool enter_exhausted) {
-    events_.logTrace(std::string("EFFECT: ") + toString(player) + " channels " +
+    RIFT_TRACE(events_, std::string("EFFECT: ") + toString(player) + " channels " +
                      std::to_string(count) + " runes" +
                      (enter_exhausted ? " exhausted" : ""));
     auto& ps = state_.player(player);
@@ -1450,7 +1450,7 @@ void EffectExecutor::channelRunes(PlayerId player, int count, bool enter_exhaust
         rune.location = BaseLocation{player};
         rune.is_exhausted = enter_exhausted;
 
-        events_.logTrace("  CHANNELED: " + rune.name + " (id=" +
+        RIFT_TRACE(events_, "  CHANNELED: " + rune.name + " (id=" +
                          std::to_string(rune_id) +
                          (enter_exhausted ? ", exhausted" : ", ready") + ")");
         events_.emit(RuneChanneledEvent{rune_id, player});
@@ -1521,13 +1521,13 @@ LocationId EffectExecutor::chooseLocationNow(PlayerId player,
 
 void EffectExecutor::addUnitOnlyEnergy(PlayerId player, int amount) {
     state_.player(player).rune_pool.unit_energy += amount;
-    events_.logTrace("EFFECT: " + std::string(toString(player)) + " adds " +
+    RIFT_TRACE(events_, "EFFECT: " + std::string(toString(player)) + " adds " +
                      std::to_string(amount) + " Energy for units / unit abilities only");
 }
 
 void EffectExecutor::addFloatingEnergy(PlayerId player, int amount) {
     state_.player(player).rune_pool.energy += amount;
-    events_.logTrace("EFFECT: " + std::string(toString(player)) + " adds " +
+    RIFT_TRACE(events_, "EFFECT: " + std::string(toString(player)) + " adds " +
                      std::to_string(amount) + " floating Energy (pool=" +
                      std::to_string(state_.player(player).rune_pool.energy) + ")");
 }
@@ -1535,7 +1535,7 @@ void EffectExecutor::addFloatingEnergy(PlayerId player, int amount) {
 void EffectExecutor::addFloatingPower(PlayerId player, Domain domain, int amount) {
     int idx = static_cast<int>(domain);
     state_.player(player).rune_pool.power[idx] += amount;
-    events_.logTrace("EFFECT: " + std::string(toString(player)) + " adds " +
+    RIFT_TRACE(events_, "EFFECT: " + std::string(toString(player)) + " adds " +
                      std::to_string(amount) + " floating " + toString(domain) +
                      " Power (pool=" +
                      std::to_string(state_.player(player).rune_pool.power[idx]) + ")");
@@ -1543,7 +1543,7 @@ void EffectExecutor::addFloatingPower(PlayerId player, Domain domain, int amount
 
 void EffectExecutor::addFloatingUniversalPower(PlayerId player, int amount) {
     state_.player(player).rune_pool.universal_power += amount;
-    events_.logTrace("EFFECT: " + std::string(toString(player)) + " adds " +
+    RIFT_TRACE(events_, "EFFECT: " + std::string(toString(player)) + " adds " +
                      std::to_string(amount) + " floating [A] (pool=" +
                      std::to_string(state_.player(player).rune_pool.universal_power) +
                      ")");
@@ -1567,7 +1567,7 @@ void EffectExecutor::takeControl(GameObjectId target, PlayerId new_controller,
     }
     auto old_controller = obj.controller;
     obj.controller = new_controller;
-    events_.logTrace("EFFECT: " + obj.name + " (id=" + std::to_string(target) +
+    RIFT_TRACE(events_, "EFFECT: " + obj.name + " (id=" + std::to_string(target) +
                      ") control: " + toString(old_controller) + " -> " +
                      toString(new_controller) +
                      (until_end_of_turn ? " (this turn)" : " (permanent)"));
@@ -1589,7 +1589,7 @@ void EffectExecutor::takeControlUntilSourceLeaves(GameObjectId target,
     if (obj.controller == new_controller) return;  // already controlled
     auto old_controller = obj.controller;
     obj.controller = new_controller;
-    events_.logTrace("EFFECT: " + obj.name + " (id=" + std::to_string(target) +
+    RIFT_TRACE(events_, "EFFECT: " + obj.name + " (id=" + std::to_string(target) +
                      ") control: " + toString(old_controller) + " -> " +
                      toString(new_controller) + " (until source id=" +
                      std::to_string(source) + " leaves board)");
@@ -1606,7 +1606,7 @@ void EffectExecutor::copyUnit(GameObjectId token_id, GameObjectId source_id) {
     auto& token = state_.getObject(token_id);
     auto& src = state_.getObject(source_id);
 
-    events_.logTrace("COPY: " + token.name + " (id=" + std::to_string(token_id) +
+    RIFT_TRACE(events_, "COPY: " + token.name + " (id=" + std::to_string(token_id) +
                      ") becomes copy of " + src.name + " (id=" + std::to_string(source_id) + ")");
 
     // Copy PRINTED traits (CR 472.1.b.3) — look up from CardDB when
@@ -1708,7 +1708,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
 
     obj.recomputeMight();
 
-    events_.logTrace("TOKEN: created " + name + " (" + std::to_string(might) +
+    RIFT_TRACE(events_, "TOKEN: created " + name + " (" + std::to_string(might) +
                      "M, id=" + std::to_string(id) + ") for " + toString(controller));
 
     events_.emit(TokenCreatedEvent{id, controller, type, name, location});
@@ -1750,7 +1750,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
             if (choices.size() > 1)
                 copy_at = chooseLocationNow(controller, choices,
                                             "play the additional " + name + " to");
-            events_.logTrace("TOKEN: an additional copy of " + name + " is played");
+            RIFT_TRACE(events_, "TOKEN: an additional copy of " + name + " is played");
             ++token_depth_;
             createToken(controller, type, name, might, tags, keywords, copy_at,
                         asked_enter_ready, location_choices, token_card, enters_exhausted);
@@ -1790,7 +1790,7 @@ BattlefieldId EffectExecutor::addBattlefieldToken(const std::string& name,
     bf.accepts_any_inbound = accepts_any_inbound;
     state_.battlefields.push_back(bf);
 
-    events_.logTrace("BF_TOKEN: added '" + name + "' (id=" +
+    RIFT_TRACE(events_, "BF_TOKEN: added '" + name + "' (id=" +
                      std::to_string(bf.id) + ", card=" +
                      std::to_string(bf_card_id) +
                      (accepts_any_inbound ? ", accepts_any_inbound" : "") +
@@ -1840,7 +1840,7 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     slot->card_object_id = token_id;
     slot->contributed_by = controller;
 
-    events_.logTrace("BF_REPLACE: BF#" + std::to_string(target_bf) +
+    RIFT_TRACE(events_, "BF_REPLACE: BF#" + std::to_string(target_bf) +
                      " replaced by '" + token_name + "' token (card=" +
                      std::to_string(token_id) + ")");
 }
@@ -1864,7 +1864,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player) {
     if (chosen.chosen_value.value_or(0) == 1) {
         deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));
         recycleCards(player, {top});
-        events_.logTrace("VOID HATCHLING: recycled the peeked top card before revealing");
+        RIFT_TRACE(events_, "VOID HATCHLING: recycled the peeked top card before revealing");
     }
 }
 
@@ -1885,7 +1885,7 @@ EffectExecutor::revealUntil(PlayerId player, CardType condition) {
         // Emit + trace so the replay shows the cascade (and the
         // observation tracker / opponent's observed_cards vector can
         // pick it up once Phase 10 wires those features through).
-        events_.logTrace("  REVEAL: " + obj.name + " (id=" +
+        RIFT_TRACE(events_, "  REVEAL: " + obj.name + " (id=" +
                          std::to_string(card_id) + ", " +
                          (obj.card_type == condition ? "MATCH" : "skip") +
                          ") from top of " + toString(player) + "'s deck");
@@ -1917,7 +1917,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
     int actual = std::min(count, static_cast<int>(ps.main_deck.size()));
     if (actual <= 0) return;
 
-    events_.logTrace(std::string("PREDICT: ") + toString(player) +
+    RIFT_TRACE(events_, std::string("PREDICT: ") + toString(player) +
                      " looks at top " + std::to_string(actual) + " cards");
 
     // Peek at top N cards (remove from deck temporarily)
@@ -1936,7 +1936,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
     for (auto card_id : peeked) {
         if (!state_.objectExists(card_id)) continue;
         auto& obj = state_.getObject(card_id);
-        events_.logTracePrivate(player, "  PEEKED: " + obj.name + " (id=" +
+        RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + obj.name + " (id=" +
                                         std::to_string(card_id) +
                                         ") — PRIVATE to " + toString(player));
         events_.emit(CardRevealedEvent{
@@ -1978,7 +1978,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
             if (!chosen.chosen_objects.empty()) {
                 // Recycle: put on bottom
                 deck::putOnBottom(state_, player, card_id, deck::Place::Held, looker);
-                events_.logTracePrivate(player, "PREDICT: recycled " +
+                RIFT_TRACE_PRIVATE(events_, player, "PREDICT: recycled " +
                                                 state_.getObject(card_id).name);
                 recycled = card_id;
             } else {
@@ -2030,7 +2030,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     std::vector<GameObjectId> chosen_cards;
     if (actual <= 0) return chosen_cards;
 
-    events_.logTrace(std::string("REVEAL: ") + toString(player) +
+    RIFT_TRACE(events_, std::string("REVEAL: ") + toString(player) +
                      " reveals top " + std::to_string(actual));
 
     // Peek at top N
@@ -2063,7 +2063,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     for (auto card_id : revealed) {
         if (!state_.objectExists(card_id)) continue;
         auto& obj = state_.getObject(card_id);
-        events_.logTrace("  REVEALED: " + obj.name + " (id=" +
+        RIFT_TRACE(events_, "  REVEALED: " + obj.name + " (id=" +
                          std::to_string(card_id) + ") — PUBLIC");
 
         if (agent_query_) {
@@ -2087,11 +2087,11 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
                 knowledge::moved(state_, card_id, deck::Place::Held, deck::Place::Hand,
                                  knowledge::everyone());
                 chosen_cards.push_back(card_id);
-                events_.logTrace("  CHOSE: draw " + obj.name);
+                RIFT_TRACE(events_, "  CHOSE: draw " + obj.name);
             } else {
                 // Recycle to bottom
                 deck::putOnBottom(state_, player, card_id, deck::Place::Held, knowledge::everyone());
-                events_.logTrace("  CHOSE: recycle " + obj.name);
+                RIFT_TRACE(events_, "  CHOSE: recycle " + obj.name);
                 recycled = card_id;
             }
         } else {

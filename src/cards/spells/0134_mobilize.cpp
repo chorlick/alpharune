@@ -20,10 +20,10 @@ public:
         // "If you can't" — true when the rune deck is empty (nothing to channel).
         if (ps.rune_deck.empty()) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("MOBILIZE: rune deck empty -> draw 1");
+            RIFT_TRACE(ctx.events, "MOBILIZE: rune deck empty -> draw 1");
         } else {
             ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-            ctx.events.logTrace("MOBILIZE: channeled 1 rune exhausted");
+            RIFT_TRACE(ctx.events, "MOBILIZE: channeled 1 rune exhausted");
         }
     }
 private:

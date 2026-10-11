@@ -25,7 +25,7 @@ public:
         if (played_def == kInvalidId) return;   // a token without a card has no cost
         if (ctx.executor.cardDB().get(played_def).power_cost < 2) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("YORDLE EXPLORER: played [A][A]+ card -> draw 1");
+        RIFT_TRACE(ctx.events, "YORDLE EXPLORER: played [A][A]+ card -> draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -21,7 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenYouPlayMe) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("SCUTTLE CRAB: play — draw 1");
+            RIFT_TRACE(ctx.events, "SCUTTLE CRAB: play — draw 1");
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenIDie) {
@@ -49,7 +49,7 @@ public:
                         ctx.state.getObject(card_id).controller == opp)
                         show(card_id, ZoneType::FacedownZone, deck::Place::Facedown);
             gainXp(ctx, ctx.controller, 1);
-            ctx.events.logTrace("SCUTTLE CRAB: [Deathknell] reveal opp hand + facedown cards, +1 XP");
+            RIFT_TRACE(ctx.events, "SCUTTLE CRAB: [Deathknell] reveal opp hand + facedown cards, +1 XP");
         }
     }
 private:

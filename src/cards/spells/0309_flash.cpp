@@ -85,7 +85,7 @@ public:
             const auto id = static_cast<GameObjectId>(v);
             if (!movable(id)) continue;   // no longer a legal target
             ctx.executor.moveToBase(id);
-            ctx.events.logTrace("FLASH: moved " + ctx.state.getObject(id).name + " to base");
+            RIFT_TRACE(ctx.events, "FLASH: moved " + ctx.state.getObject(id).name + " to base");
         }
     }
 private:

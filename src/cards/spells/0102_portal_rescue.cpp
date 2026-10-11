@@ -25,7 +25,7 @@ public:
         // playIgnoringCost takes it back out of the banishment zone.
         ctx.executor.playIgnoringCost(owner, unit,
                                       LocationId{BaseLocation{owner}});
-        ctx.events.logTrace("PORTAL RESCUE: banished then re-played to base");
+        RIFT_TRACE(ctx.events, "PORTAL RESCUE: banished then re-played to base");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};

@@ -71,7 +71,7 @@ public:
 
         int friendly_might = ctx.state.getObject(friendly).current_might;
         int enemy_might    = ctx.state.getObject(enemy).current_might;
-        ctx.events.logTrace("CHALLENGE: " + ctx.state.getObject(friendly).name +
+        RIFT_TRACE(ctx.events, "CHALLENGE: " + ctx.state.getObject(friendly).name +
                              " (" + std::to_string(friendly_might) + "M) <-> " +
                              ctx.state.getObject(enemy).name +
                              " (" + std::to_string(enemy_might) + "M)");

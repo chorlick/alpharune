@@ -23,7 +23,7 @@ public:
         // "[Add] [A]. Use only to play spells." — Power the engine spends
         // only on a spell (RunePool::spell_power).
         ctx.state.player(ctx.controller).rune_pool.spell_power += 1;
-        ctx.events.logTrace("DAUGHTER OF THE VOID: [E] -> [Add] [A]");
+        RIFT_TRACE(ctx.events, "DAUGHTER OF THE VOID: [E] -> [Add] [A]");
     }
 private:
     const CardDef def_ = [] {

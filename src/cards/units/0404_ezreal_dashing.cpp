@@ -45,7 +45,7 @@ public:
         ctx.executor.dealDamage(tgt, dmg, ctx.source);
         if (ctx.state.objectExists(tgt) && ctx.state.getObject(tgt).hasLethalDamage())
             ctx.executor.killObject(tgt);
-        ctx.events.logTrace("EZREAL DASHING: dealt " + std::to_string(dmg) +
+        RIFT_TRACE(ctx.events, "EZREAL DASHING: dealt " + std::to_string(dmg) +
                             " (=Might) to an enemy here");
     }
 
@@ -72,7 +72,7 @@ public:
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         ctx.executor.moveToBase(ctx.source);
-        ctx.events.logTrace("EZREAL DASHING: [B] -> move me to base");
+        RIFT_TRACE(ctx.events, "EZREAL DASHING: [B] -> move me to base");
     }
 private:
     const CardDef def_ = [] {

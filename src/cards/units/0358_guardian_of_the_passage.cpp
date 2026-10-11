@@ -47,7 +47,7 @@ public:
         obj.zone = ZoneType::Hand;
         obj.location = std::nullopt;
         ps.hand.push_back(pick);
-        ctx.events.logTrace("GUARDIAN OF THE PASSAGE: returned " + obj.name +
+        RIFT_TRACE(ctx.events, "GUARDIAN OF THE PASSAGE: returned " + obj.name +
                             " from trash to hand");
     }
 private:

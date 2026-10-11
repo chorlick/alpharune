@@ -59,7 +59,7 @@ public:
         }
         // Then move your unit there.
         ctx.executor.moveToBattlefield(mover, bf);
-        ctx.events.logTrace("STORMBRINGER: dealt " + std::to_string(dmg) +
+        RIFT_TRACE(ctx.events, "STORMBRINGER: dealt " + std::to_string(dmg) +
                             " to " + std::to_string(hit.size()) +
                             " enemy units, then moved my unit there");
     }

@@ -24,7 +24,7 @@ public:
         }
         for (auto p : {ctx.controller, opponent(ctx.controller)})
             ctx.executor.drawCards(p, 4);
-        ctx.events.logTrace("INVERT TIMELINES: each player discards hand, draws 4");
+        RIFT_TRACE(ctx.events, "INVERT TIMELINES: each player discards hand, draws 4");
     }
 private:
     const CardDef def_ = [] {

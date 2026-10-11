@@ -18,7 +18,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("STELLACORN HERDER: drew 1 on move");
+        RIFT_TRACE(ctx.events, "STELLACORN HERDER: drew 1 on move");
     }
 private:
     const CardDef def_ = [] {

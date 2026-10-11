@@ -67,17 +67,17 @@ public:
             if (gear.attached_to.has_value() && *gear.attached_to == unit) {
                 // Detach.
                 ctx.executor.unattachGear(equip);
-                ctx.events.logTrace("ANGLE SHOT: detached " + gear.name);
+                RIFT_TRACE(ctx.events, "ANGLE SHOT: detached " + gear.name);
             } else if (ctx.executor.attachGear(equip, unit)) {
                 // Attach (free): both still on the board (CR 716), off its
                 // prior bearer first, its text Inactive (CR 718.2).
-                ctx.events.logTrace("ANGLE SHOT: attached " +
+                RIFT_TRACE(ctx.events, "ANGLE SHOT: attached " +
                                     ctx.state.getObject(equip).name + " -> " +
                                     ctx.state.getObject(unit).name);
             }
         }
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("ANGLE SHOT: draw 1");
+        RIFT_TRACE(ctx.events, "ANGLE SHOT: draw 1");
     }
 private:
     const CardDef def_ = [] {

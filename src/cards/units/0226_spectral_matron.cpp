@@ -54,7 +54,7 @@ public:
         if (where == -1) return;   // waiting for the agent
         ctx.executor.playIgnoringCost(ctx.controller, picked,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
-        ctx.events.logTrace("SPECTRAL MATRON: played a unit from trash for free");
+        RIFT_TRACE(ctx.events, "SPECTRAL MATRON: played a unit from trash for free");
     }
 private:
     const CardDef def_ = [] {

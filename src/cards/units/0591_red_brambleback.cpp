@@ -42,7 +42,7 @@ public:
         if (picked == kInvalidId) return;
         if (!ctx.state.objectExists(picked)) return;
         ctx.executor.buffUnit(picked);
-        ctx.events.logTrace("RED BRAMBLEBACK: conquer -> buffed a friendly unit");
+        RIFT_TRACE(ctx.events, "RED BRAMBLEBACK: conquer -> buffed a friendly unit");
     }
 private:
     const CardDef def_ = [] {

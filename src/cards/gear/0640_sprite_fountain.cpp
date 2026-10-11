@@ -28,7 +28,7 @@ public:
                                   /*might=*/3, /*tags=*/{"Fae"}, kw,
                                   BaseLocation{ctx.controller},
                                   /*enter_ready=*/true);
-        ctx.events.logTrace("SPRITE FOUNTAIN: play 3M Sprite token (Temporary)");
+        RIFT_TRACE(ctx.events, "SPRITE FOUNTAIN: play 3M Sprite token (Temporary)");
     }
 private:
     const CardDef def_ = [] {

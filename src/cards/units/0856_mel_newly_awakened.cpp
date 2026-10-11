@@ -20,7 +20,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("MEL, NEWLY AWAKENED: played -> draw 1");
+        RIFT_TRACE(ctx.events, "MEL, NEWLY AWAKENED: played -> draw 1");
     }
     // "[Empower] [3]"
     EmpowerSpec empowerSpec() const override { return empowerCost(3); }

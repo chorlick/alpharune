@@ -28,7 +28,7 @@ public:
             // [Level 6] — only with 6+ XP.
             if (ctx.state.player(ctx.controller).xp < 6) return;
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("WUJU APPRENTICE: Level 6, draw 1");
+            RIFT_TRACE(ctx.events, "WUJU APPRENTICE: Level 6, draw 1");
         }
     }
 private:

@@ -24,11 +24,11 @@ public:
         const bool was_mighty = self.last_known.valid ? self.last_known.might >= 5
                                                       : isMighty(self);
         if (!was_mighty) {
-            ctx.events.logTrace("UNSUNG HERO: died not Mighty — no draw");
+            RIFT_TRACE(ctx.events, "UNSUNG HERO: died not Mighty — no draw");
             return;
         }
         ctx.executor.drawCards(ctx.controller, 2);
-        ctx.events.logTrace("UNSUNG HERO: [Deathknell] was Mighty — draw 2");
+        RIFT_TRACE(ctx.events, "UNSUNG HERO: [Deathknell] was Mighty — draw 2");
     }
 private:
     const CardDef def_ = [] {

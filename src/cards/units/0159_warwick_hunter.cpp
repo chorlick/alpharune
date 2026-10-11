@@ -36,7 +36,7 @@ public:
                 if (ctx.state.objectExists(id)) ctx.executor.killObject(id);
         }
         if (!victims.empty())
-            ctx.events.logTrace("WARWICK: killed " + std::to_string(victims.size()) +
+            RIFT_TRACE(ctx.events, "WARWICK: killed " + std::to_string(victims.size()) +
                                  " damaged enemy units here");
     }
 private:

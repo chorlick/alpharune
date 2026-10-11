@@ -46,7 +46,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (target == kInvalidId) return;
         ctx.executor.giveTemporaryMight(target, 1);
-        ctx.events.logTrace("ABANDONED HALL: +1 [M] this turn to " +
+        RIFT_TRACE(ctx.events, "ABANDONED HALL: +1 [M] this turn to " +
                              ctx.state.getObject(target).name);
     }
 private:

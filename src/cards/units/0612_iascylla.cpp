@@ -41,7 +41,7 @@ public:
             da.trigger = TriggerType::AtStartOfMain;
             da.expires_on_turn = DelayedAbility::kUntilFired;
             ctx.state.delayed_abilities.push_back(da);
-            ctx.events.logTrace("IASCYLLA: scheduled next-Main-Phase enemy pull");
+            RIFT_TRACE(ctx.events, "IASCYLLA: scheduled next-Main-Phase enemy pull");
             return;
         }
 
@@ -71,7 +71,7 @@ public:
         self.card_counters.erase("__iascylla_pull_bf");  // committing now
         if (!ctx.state.objectExists(picked)) return;
         ctx.executor.moveToBattlefield(picked, bf);
-        ctx.events.logTrace("IASCYLLA: pulled " +
+        RIFT_TRACE(ctx.events, "IASCYLLA: pulled " +
                              ctx.state.getObject(picked).name +
                              " to BF" + std::to_string(bf));
     }

@@ -62,10 +62,10 @@ public:
             card.zone = ZoneType::Hand;
             card.location = std::nullopt;
             ps.hand.push_back(top);
-            ctx.events.logTrace("DIANA LUNARI: revealed spell " + card.name +
+            RIFT_TRACE(ctx.events, "DIANA LUNARI: revealed spell " + card.name +
                                  " -> draw it");
         } else {
-            ctx.events.logTrace("DIANA LUNARI: revealed non-spell " + card.name);
+            RIFT_TRACE(ctx.events, "DIANA LUNARI: revealed non-spell " + card.name);
         }
     }
 private:

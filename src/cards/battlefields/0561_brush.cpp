@@ -78,7 +78,7 @@ public:
         slot->replaced_card.reset();
         slot->was_replaced = false;
         slot->is_token = false;
-        ctx.events.logTrace("BRUSH: scored -> reverse-replaced back to original BF");
+        RIFT_TRACE(ctx.events, "BRUSH: scored -> reverse-replaced back to original BF");
     }
 private:
     const CardDef def_ = [] {

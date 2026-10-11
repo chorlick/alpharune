@@ -29,7 +29,7 @@ public:
         if (targets.empty()) return;
         if (!ctx.state.objectExists(targets[0])) return;
         ctx.executor.giveTemporaryMight(targets[0], 3);
-        ctx.events.logTrace("ARENA KINGPIN: [E] -> +3 [M] this turn to target unit");
+        RIFT_TRACE(ctx.events, "ARENA KINGPIN: [E] -> +3 [M] this turn to target unit");
     }
 private:
     const CardDef def_ = [] {

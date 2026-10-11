@@ -34,7 +34,7 @@ public:
         auto& unit = ctx.state.getObject(picked);
         unit.temp_might_bonus += 5 - unit.base_might;
         unit.recomputeMight();
-        ctx.events.logTrace("DRAGON FORM: " + unit.name + " base Might is 5 this turn -> " +
+        RIFT_TRACE(ctx.events, "DRAGON FORM: " + unit.name + " base Might is 5 this turn -> " +
                             std::to_string(unit.current_might) + "M");
     }
     // "[Flow] [3]"

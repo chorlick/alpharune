@@ -25,7 +25,7 @@ public:
         if (ctx.state.player(opponent(ctx.controller)).score < victory - 3) return;
         ctx.executor.readyObject(ctx.source);   // no-op if I left the board
         gainXp(ctx, ctx.controller, 3);
-        ctx.events.logTrace("POPPY PARAGON: opponent near Victory Score -> ready + gain 3 XP");
+        RIFT_TRACE(ctx.events, "POPPY PARAGON: opponent near Victory Score -> ready + gain 3 XP");
     }
 private:
     const CardDef def_ = [] {

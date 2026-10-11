@@ -28,7 +28,7 @@ public:
             // -3 might this turn, minimum 1.
             ctx.executor.giveTemporaryMight(id, -3, /*minimum=*/1);
         }
-        ctx.events.logTrace("THOUSAND-TAILED WATCHER: enemy units -3M (min 1) this turn");
+        RIFT_TRACE(ctx.events, "THOUSAND-TAILED WATCHER: enemy units -3M (min 1) this turn");
     }
 private:
     const CardDef def_ = [] {

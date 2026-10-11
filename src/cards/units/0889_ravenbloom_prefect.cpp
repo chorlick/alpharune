@@ -51,7 +51,7 @@ public:
                         }),
                     items.end());
         ctx.executor.banishObject(gear);
-        ctx.events.logTrace("RAVENBLOOM PREFECT: banished self -> banished the played gear");
+        RIFT_TRACE(ctx.events, "RAVENBLOOM PREFECT: banished self -> banished the played gear");
     }
 private:
     const CardDef def_ = [] {

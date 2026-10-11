@@ -44,7 +44,7 @@ public:
             victim = units.empty() ? kInvalidId : units.front();
         if (victim == kInvalidId) return;
         ctx.executor.killObject(victim);
-        ctx.events.logTrace("KING'S EDICT: opponent's chosen unit killed");
+        RIFT_TRACE(ctx.events, "KING'S EDICT: opponent's chosen unit killed");
     }
     // No play-time target: the killed unit is the OPPONENT's choice, not the
     // caster's, so we don't expose a caster-chosen target.

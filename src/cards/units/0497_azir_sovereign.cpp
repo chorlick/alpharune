@@ -43,7 +43,7 @@ public:
             ++moved;
         }
         if (moved > 0)
-            ctx.events.logTrace("AZIR SOVEREIGN: attack -> moved " +
+            RIFT_TRACE(ctx.events, "AZIR SOVEREIGN: attack -> moved " +
                 std::to_string(moved) + " token unit(s) to this battlefield");
     }
 private:

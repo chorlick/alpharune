@@ -59,7 +59,7 @@ public:
         if (!paid) return;
         ctx.executor.drawCards(ctx.controller, 2);
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("SACRIFICE: killed a Mighty unit -> draw 2 + channel 1");
+        RIFT_TRACE(ctx.events, "SACRIFICE: killed a Mighty unit -> draw 2 + channel 1");
     }
 private:
     const CardDef def_ = [] {

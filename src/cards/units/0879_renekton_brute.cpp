@@ -27,7 +27,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("RENEKTON, BRUTE: [1] -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "RENEKTON, BRUTE: [1] -> +1 [M] this turn");
     }
     // "When my Might becomes 10 or more, empower me." The engine fires
     // WhenMyMightReachesThreshold each time his Might goes from below
@@ -42,7 +42,7 @@ public:
         // "(I become Empowered if I'm not already.)"
         if (!self.location.has_value() || self.isEmpowered()) return;
         if (ctx.executor.empower(ctx.source))
-            ctx.events.logTrace("RENEKTON, BRUTE: Might 10 or more -> Empowered");
+            RIFT_TRACE(ctx.events, "RENEKTON, BRUTE: Might 10 or more -> Empowered");
     }
     // "[Empowered][>] I have [Deflect] and [Ganking]." (No printed [Empower]:
     // he is Empowered by other effects.)

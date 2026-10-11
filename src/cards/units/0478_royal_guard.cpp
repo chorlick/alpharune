@@ -23,7 +23,7 @@ public:
         // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sand Soldier",
                                  2, {"Shurima"}, KeywordSet{}, *loc, false);
-        ctx.events.logTrace("ROYAL GUARD: play 2[M] Sand Soldier token here");
+        RIFT_TRACE(ctx.events, "ROYAL GUARD: play 2[M] Sand Soldier token here");
     }
 private:
     const CardDef def_ = [] {

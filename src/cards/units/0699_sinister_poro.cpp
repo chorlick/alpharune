@@ -55,7 +55,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.moveToBase(tgt);
-        ctx.events.logTrace("SINISTER PORO: paid [1] -> moved an enemy unit to its base");
+        RIFT_TRACE(ctx.events, "SINISTER PORO: paid [1] -> moved an enemy unit to its base");
     }
 private:
     const CardDef def_ = [] {

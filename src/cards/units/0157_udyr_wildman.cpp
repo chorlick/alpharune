@@ -88,7 +88,7 @@ public:
                 ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Ganking, 1);
             break;
         }
-        ctx.events.logTrace("UDYR: spent a buff, mode=" + std::to_string(mode));
+        RIFT_TRACE(ctx.events, "UDYR: spent a buff, mode=" + std::to_string(mode));
     }
 private:
     const CardDef def_ = [] {

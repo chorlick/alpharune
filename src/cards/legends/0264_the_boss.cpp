@@ -27,7 +27,7 @@ public:
         // sweep. Ready the legend.
         if (!ctx.state.objectExists(ctx.source)) return;
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("THE BOSS: conquer -> ready me");
+        RIFT_TRACE(ctx.events, "THE BOSS: conquer -> ready me");
     }
 
     // ── Part 1: buffed-unit death replacement ──
@@ -74,7 +74,7 @@ public:
         if (!payOnePower(ctx, me, *pay_with)) return false;
         ctx.executor.exhaustObject(ctx.source);
         ctx.executor.spendBuff(dying_unit, me);
-        ctx.events.logTrace("THE BOSS: save buffed unit " + victim.name +
+        RIFT_TRACE(ctx.events, "THE BOSS: save buffed unit " + victim.name +
                             " (pay [C], exhaust me, spend buff) -> heal/exhaust/recall");
         // Heal, exhaust, recall to base — out of the combat it was in.
         // "(Send it to base. This isn't a move.)" — CR 457-460.

@@ -57,7 +57,7 @@ public:
         if (picked == kInvalidId) return;
         if (!ctx.state.objectExists(picked)) return;
         ctx.executor.giveTemporaryKeyword(picked, Keyword::Ganking, 0);
-        ctx.events.logTrace("BOUNTY HUNTER: gives Ganking to " +
+        RIFT_TRACE(ctx.events, "BOUNTY HUNTER: gives Ganking to " +
                              ctx.state.getObject(picked).name);
     }
 private:

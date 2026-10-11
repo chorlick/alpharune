@@ -52,7 +52,7 @@ public:
         // "another unit you control here ... if it has less Might than me"
         // (replacementApplies).
         if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
-        ctx.events.logTrace("SORAKA, WANDERER: heal/exhaust/recall a dying ally here");
+        RIFT_TRACE(ctx.events, "SORAKA, WANDERER: heal/exhaust/recall a dying ally here");
         // "(Send it to base. This isn't a move.)" — CR 457-460.
         ctx.executor.healExhaustRecall(dying_unit);
         return true;

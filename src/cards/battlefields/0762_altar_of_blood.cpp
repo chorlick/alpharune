@@ -47,7 +47,7 @@ public:
                                             "and recall " + unit.name + "?"))
             return false;
         if (!ctx.executor.payAnyPower(payer, 3)) return false;
-        ctx.events.logTrace("ALTAR OF BLOOD: " + unit.name +
+        RIFT_TRACE(ctx.events, "ALTAR OF BLOOD: " + unit.name +
                             " pays [A][A][A] -> heal/exhaust/recall");
         ctx.executor.healExhaustRecall(dying_unit);   // a recall is not a move (CR 458)
         return true;

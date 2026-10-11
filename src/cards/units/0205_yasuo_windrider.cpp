@@ -28,7 +28,7 @@ public:
         int moves = ++self.card_counters["yasuo_moves"];
         if (moves == 3) {
             ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-            ctx.events.logTrace("YASUO WINDRIDER: 3rd move this turn -> score 1");
+            RIFT_TRACE(ctx.events, "YASUO WINDRIDER: 3rd move this turn -> score 1");
         }
     }
 private:

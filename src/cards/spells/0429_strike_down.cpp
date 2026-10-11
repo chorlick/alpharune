@@ -96,7 +96,7 @@ public:
         if (detach != kInvalidId && ctx.state.objectExists(detach) &&
             ctx.state.getObject(detach).attached_to == std::optional<GameObjectId>(unit))
             ctx.executor.unattachGear(detach);
-        ctx.events.logTrace("STRIKE DOWN: equipped unit dealt Might damage, detached an Equipment");
+        RIFT_TRACE(ctx.events, "STRIKE DOWN: equipped unit dealt Might damage, detached an Equipment");
     }
 private:
     const CardDef def_ = [] {

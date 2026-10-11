@@ -19,7 +19,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 1);
-        ctx.events.logTrace("SHEPHERD'S HEIRLOOM: play -> gain 1 XP");
+        RIFT_TRACE(ctx.events, "SHEPHERD'S HEIRLOOM: play -> gain 1 XP");
     }
 
     bool hasEquipAbility() const override { return true; }
@@ -36,7 +36,7 @@ public:
         auto& ps = ctx.state.player(ctx.controller);
         if (ps.xp < 1) return false;
         ps.xp -= 1;
-        ctx.events.logTrace("  EQUIP_COST: spent 1 XP");
+        RIFT_TRACE(ctx.events, "  EQUIP_COST: spent 1 XP");
         return true;
     }
 private:

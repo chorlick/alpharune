@@ -39,7 +39,7 @@ public:
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("DARIUS TRIFARIAN: second card played, +2M and ready");
+        RIFT_TRACE(ctx.events, "DARIUS TRIFARIAN: second card played, +2M and ready");
     }
 private:
     const CardDef def_ = [] {

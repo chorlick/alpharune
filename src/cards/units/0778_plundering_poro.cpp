@@ -20,7 +20,7 @@ public:
         // "play a Gold gear token exhausted" (createToken's enter_ready flag
         // only exhausts units).
         createGoldExhausted(ctx);
-        ctx.events.logTrace("PLUNDERING PORO: Gold gear token created exhausted");
+        RIFT_TRACE(ctx.events, "PLUNDERING PORO: Gold gear token created exhausted");
     }
 private:
     const CardDef def_ = [] {

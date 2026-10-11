@@ -47,7 +47,7 @@ public:
         if (isUncounterable(ctx, top)) return;
 
         if (!counterable(ctx.state, ctx.executor.cardDB())) {
-            ctx.events.logTrace("DEFY: cannot counter — the spell costs more than [4] "
+            RIFT_TRACE(ctx.events, "DEFY: cannot counter — the spell costs more than [4] "
                                 "or more than [A]");
             return;  // illegal target; spell resolves normally
         }
@@ -57,7 +57,7 @@ public:
         ctx.state.chain.items.pop_back();
         if (ctx.state.objectExists(countered)) {
             auto& obj = ctx.state.getObject(countered);
-            ctx.events.logTrace("COUNTER: " + obj.name + " countered by Defy -> trash");
+            RIFT_TRACE(ctx.events, "COUNTER: " + obj.name + " countered by Defy -> trash");
             disposeCounteredCard(ctx, countered);
         }
     }

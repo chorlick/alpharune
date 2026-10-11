@@ -44,11 +44,11 @@ public:
             if (!unit.has_value() || *unit == kInvalidId) return;   // waiting / none left
             auto& obj = ctx.state.getObject(*unit);
             ctx.executor.spendBuff(*unit, ctx.controller);   // CR 427.2; "When you spend a buff"
-            ctx.events.logTrace("MONASTERY OF HIRANA: spent a buff on " + obj.name);
+            RIFT_TRACE(ctx.events, "MONASTERY OF HIRANA: spent a buff on " + obj.name);
         }
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("MONASTERY OF HIRANA: buff spent -> draw 1");
+        RIFT_TRACE(ctx.events, "MONASTERY OF HIRANA: buff spent -> draw 1");
     }
 private:
     const CardDef def_ = [] {

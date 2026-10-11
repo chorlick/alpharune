@@ -22,7 +22,7 @@ public:
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.addFloatingPower(ctx.controller, Domain::Chaos, 1);
-        ctx.events.logTrace("SEAL OF DISCORD: [E] -> [Add] [P] (Chaos)");
+        RIFT_TRACE(ctx.events, "SEAL OF DISCORD: [E] -> [Add] [P] (Chaos)");
     }
 private:
     const CardDef def_ = [] {

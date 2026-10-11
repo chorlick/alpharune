@@ -24,7 +24,7 @@ public:
             return;  // already drew this turn
         self.card_counters["__wraith_draw_turn"] = ctx.state.turn.turn_number;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("WRAITH OF ECHOES: first friendly death this turn -> draw 1");
+        RIFT_TRACE(ctx.events, "WRAITH OF ECHOES: first friendly death this turn -> draw 1");
     }
 private:
     const CardDef def_ = [] {

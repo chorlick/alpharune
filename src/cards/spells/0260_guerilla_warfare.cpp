@@ -50,7 +50,7 @@ public:
                 obj.location = std::nullopt;
                 ps.hand.push_back(cid);
                 ++ri.resume_data[0];
-                ctx.events.logTrace("GUERILLA WARFARE: returned " + obj.name +
+                RIFT_TRACE(ctx.events, "GUERILLA WARFARE: returned " + obj.name +
                                      " from trash to hand");
             }
         } else {

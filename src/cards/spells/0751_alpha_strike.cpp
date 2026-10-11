@@ -67,7 +67,7 @@ public:
         for (int i = 0; i < kills; ++i)
             ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
         if (kills > 0)
-            ctx.events.logTrace("ALPHA STRIKE: " + std::to_string(kills) + " kill(s)");
+            RIFT_TRACE(ctx.events, "ALPHA STRIKE: " + std::to_string(kills) + " kill(s)");
     }
     bool hasReflexiveTrigger() const override { return true; }
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,

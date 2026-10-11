@@ -38,7 +38,7 @@ public:
         std::vector<GameObjectId> made;
         if (!playTokensChoosingLocations(ctx, "Ultrasoft Poro: play a Bird", 2, make, made))
             return;   // waiting for a location
-        ctx.events.logTrace("ULTRASOFT PORO: played 2 Bird tokens w/ [Deflect]");
+        RIFT_TRACE(ctx.events, "ULTRASOFT PORO: played 2 Bird tokens w/ [Deflect]");
     }
 private:
     const CardDef def_ = [] {

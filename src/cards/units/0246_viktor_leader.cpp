@@ -31,7 +31,7 @@ public:
         LocationId loc{BaseLocation{ctx.controller}};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  1, {"Recruit"}, KeywordSet{}, loc, false);
-        ctx.events.logTrace("VIKTOR LEADER: friendly unit died -> 1[M] Recruit to base");
+        RIFT_TRACE(ctx.events, "VIKTOR LEADER: friendly unit died -> 1[M] Recruit to base");
     }
 private:
     const CardDef def_ = [] {

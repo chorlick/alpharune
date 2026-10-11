@@ -38,10 +38,10 @@ public:
         const auto tags = nameableTags(ctx.state, ctx.controller);
         auto name_it = [&](const std::string& tag) {
             ctx.state.getObject(ctx.source).string_state["named_tag"] = tag;
-            ctx.events.logTrace("THE LIST: named tag \"" + tag + "\"");
+            RIFT_TRACE(ctx.events, "THE LIST: named tag \"" + tag + "\"");
         };
         if (tags.empty()) {
-            ctx.events.logTrace("THE LIST: no tag to name");
+            RIFT_TRACE(ctx.events, "THE LIST: no tag to name");
             return;
         }
         if (!ctx.state.chain.resuming.has_value()) {   // no chain item to suspend on
@@ -105,7 +105,7 @@ public:
                                                                ctx.source));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         ctx.executor.giveTemporaryMight(picked, -2);
-        ctx.events.logTrace("THE LIST: -2 [M] this turn to a \"" + tag + "\" unit");
+        RIFT_TRACE(ctx.events, "THE LIST: -2 [M] this turn to a \"" + tag + "\" unit");
     }
 private:
     static constexpr int kAsking = 20;

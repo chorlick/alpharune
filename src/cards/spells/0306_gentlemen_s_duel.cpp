@@ -72,7 +72,7 @@ public:
                     ctx.executor.killObject(id);
             }
         }
-        ctx.events.logTrace("GENTLEMEN'S DUEL: +3 [M] to friendly, then duel ("
+        RIFT_TRACE(ctx.events, "GENTLEMEN'S DUEL: +3 [M] to friendly, then duel ("
                             + std::to_string(fm) + " vs " + std::to_string(em) + ")");
     }
 private:

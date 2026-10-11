@@ -62,7 +62,7 @@ public:
             ctx.executor.giveTemporaryMight(a, 1);
         if (b != kInvalidId && ctx.state.objectExists(b))
             ctx.executor.giveTemporaryMight(b, 1);
-        ctx.events.logTrace("BONDS OF STRENGTH: two friendly units +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "BONDS OF STRENGTH: two friendly units +1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

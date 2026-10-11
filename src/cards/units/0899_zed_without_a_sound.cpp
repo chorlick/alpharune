@@ -28,7 +28,7 @@ public:
                                  // the Shadow Clone token card ("When I attack")
                                  /*token_card=*/955);
         }
-        ctx.events.logTrace("ZED, WITHOUT A SOUND: conquer -> Shadow Clone token to base");
+        RIFT_TRACE(ctx.events, "ZED, WITHOUT A SOUND: conquer -> Shadow Clone token to base");
     }
     // "[Action][>] [1][P]: Move me and a Shadow Clone you control to each
     //  other's locations."
@@ -64,7 +64,7 @@ public:
         if (!my_loc || !clone_loc || *my_loc == *clone_loc) return;   // nothing to swap
         moveToLocation(ctx.executor, ctx.source, clone_loc);
         moveToLocation(ctx.executor, clone, my_loc);
-        ctx.events.logTrace("ZED, WITHOUT A SOUND: swapped places with a Shadow Clone");
+        RIFT_TRACE(ctx.events, "ZED, WITHOUT A SOUND: swapped places with a Shadow Clone");
     }
 private:
     const CardDef def_ = [] {

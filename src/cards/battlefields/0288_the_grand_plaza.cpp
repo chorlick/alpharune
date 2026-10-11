@@ -32,7 +32,7 @@ public:
             ctx.state.game_over = true;
             ctx.state.winner = ctx.controller;
             ctx.state.game_over_reason = "The Grand Plaza win condition (7+ units here)";
-            ctx.events.logTrace("THE GRAND PLAZA: 7+ units here -> win the game");
+            RIFT_TRACE(ctx.events, "THE GRAND PLAZA: 7+ units here -> win the game");
         }
     }
 private:

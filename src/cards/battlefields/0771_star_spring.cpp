@@ -71,7 +71,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (go < 1 || t == kInvalidId) return;   // declined / none / mistarget / waiting
         ctx.executor.moveToBase(t);
-        ctx.events.logTrace("STAR SPRING: moved a unit here to its base");
+        RIFT_TRACE(ctx.events, "STAR SPRING: moved a unit here to its base");
     }
 private:
     const CardDef def_ = [] {

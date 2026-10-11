@@ -54,7 +54,7 @@ public:
         ctx.executor.killObject(picked);
         // [Add] [A][A] — two universal power.
         ctx.executor.addFloatingUniversalPower(ctx.controller, 2);
-        ctx.events.logTrace("MALZAHAR: killed a friendly unit/gear -> Add [A][A]");
+        RIFT_TRACE(ctx.events, "MALZAHAR: killed a friendly unit/gear -> Add [A][A]");
     }
 private:
     const CardDef def_ = [] {

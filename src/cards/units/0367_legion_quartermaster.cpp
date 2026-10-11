@@ -48,7 +48,7 @@ public:
             ctx.controller, friendlyGear(ctx.state, ctx.controller));
         if (gear != kInvalidId) {
             ctx.executor.bounceToHand(gear);
-            ctx.events.logTrace("LEGION QUARTERMASTER: returned a friendly gear to hand "
+            RIFT_TRACE(ctx.events, "LEGION QUARTERMASTER: returned a friendly gear to hand "
                                 "(additional cost)");
         }
         return {};

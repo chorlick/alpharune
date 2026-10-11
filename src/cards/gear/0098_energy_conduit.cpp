@@ -22,7 +22,7 @@ public:
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.addFloatingEnergy(ctx.controller, 1);
-        ctx.events.logTrace("ENERGY CONDUIT: [Add] [1] (1 energy)");
+        RIFT_TRACE(ctx.events, "ENERGY CONDUIT: [Add] [1] (1 energy)");
     }
 private:
     const CardDef def_ = [] {

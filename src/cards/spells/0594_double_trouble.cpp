@@ -80,11 +80,11 @@ public:
             deck::putOnTop(ctx.state, ctx.controller, drawn, deck::Place::Held,
                            knowledge::everyone());
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("DOUBLE TROUBLE: drew unit " + ctx.state.getObject(drawn).name);
+            RIFT_TRACE(ctx.events, "DOUBLE TROUBLE: drew unit " + ctx.state.getObject(drawn).name);
         }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);
-            ctx.events.logTrace("DOUBLE TROUBLE: recycled " +
+            RIFT_TRACE(ctx.events, "DOUBLE TROUBLE: recycled " +
                                 std::to_string(rest.size()) + " card(s)");
         }
     }

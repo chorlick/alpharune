@@ -40,7 +40,7 @@ public:
         // plays it exhausted, in the controller's base, as the Gold card
         // (CR 187.5).
         createGoldExhausted(ctx);
-        ctx.events.logTrace("TREASURE HOARD: paid [1] -> Gold gear token (exhausted)");
+        RIFT_TRACE(ctx.events, "TREASURE HOARD: paid [1] -> Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

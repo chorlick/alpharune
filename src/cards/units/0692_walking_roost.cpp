@@ -25,7 +25,7 @@ public:
                                   /*might=*/1, /*tags=*/{"Bird"}, kw,
                                   LocationId{BaseLocation{opp}},
                                   /*enter_ready=*/false);
-        ctx.events.logTrace("WALKING ROOST: opponent plays a 1 [M] Bird token with [Deflect]");
+        RIFT_TRACE(ctx.events, "WALKING ROOST: opponent plays a 1 [M] Bird token with [Deflect]");
     }
 private:
     const CardDef def_ = [] {

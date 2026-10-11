@@ -246,6 +246,11 @@ std::string RiftboundState::ActionToString(::open_spiel::Player,
     return "<unknown action_id>";
 }
 
+// Not on the search path: neither MctsAgent nor IsMctsSearch calls it (counted:
+// 0 calls in a five-game mcts:sims=50 batch and an eight-game ismcts:sims=20
+// batch). A gprof profile once showed 2.5 million calls under this name; that
+// was the per-object copy of a GameState copy, which gprof filed under the
+// nearest symbol (plans/09 item 9.JJ2).
 std::string RiftboundState::ToString() const {
     if (lazy_) {
         if (lazy_->step.kind == ::riftbound::StepKind::Done) {

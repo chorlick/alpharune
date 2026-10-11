@@ -15,6 +15,7 @@
 #include "core/card_db.h"
 #include "core/events.h"
 #include "engine/game_engine.h"
+#include "engine/knowledge_tracker.h"
 #include "rules/deck_validator.h"
 
 #include <algorithm>
@@ -846,6 +847,87 @@ TEST_F(PerfEngineGame, TheOptionsOfADecisionDoNotDependOnWhenTheIndexWasBuilt) {
         } while (g.advance(1));
     }
     EXPECT_GT(compared, 100);
+}
+
+// ─── 9.JJ1: knowledge::prune ────────────────────────────────────────────────
+
+// prune runs before every decision. It no longer builds a table of every
+// hidden card when nobody knows anything, and looks cards up in a sorted list
+// when somebody does. What it drops and keeps is as before.
+TEST(PerfEngineKnowledge, PruneDropsAndKeepsWhatItDid) {
+    GameState st;
+    st.players[0].id = PlayerId::Player1;
+    st.players[1].id = PlayerId::Player2;
+    auto card = [&](PlayerId owner, ZoneType zone) {
+        const GameObjectId id = st.createObject();
+        st.getObject(id).owner = st.getObject(id).controller = owner;
+        st.getObject(id).zone = zone;
+        return id;
+    };
+    const PlayerId p1 = PlayerId::Player1;
+    // Nothing known: nothing to do, whatever the zones hold.
+    const GameObjectId in_hand = card(p1, ZoneType::Hand);
+    const GameObjectId in_deck = card(p1, ZoneType::MainDeck);
+    const GameObjectId in_trash = card(p1, ZoneType::Trash);
+    const GameObjectId nowhere = card(p1, ZoneType::Banishment);
+    st.players[0].hand = {in_hand};
+    st.players[0].main_deck = {in_deck};
+    st.players[0].trash = {in_trash};
+    knowledge::prune(st);
+    EXPECT_TRUE(st.knowledge.facts[0].empty());
+    EXPECT_TRUE(st.knowledge.facts[1].empty());
+    EXPECT_TRUE(st.knowledge.groups.empty());
+
+    // The opponent's facts: a card still in the hand (kept), one in the deck
+    // (kept), one that went to the trash (dropped: it is public), one that is
+    // in no hidden zone any more (dropped).
+    auto& theirs = st.knowledge.facts[1];
+    HiddenCardFact hand_fact;
+    hand_fact.zone = ZoneType::Hand;
+    theirs[in_hand] = hand_fact;
+    theirs[in_deck] = HiddenCardFact{};
+    theirs[in_trash] = hand_fact;
+    theirs[nowhere] = hand_fact;
+    // A card being looked at ("held") that has since gone to the trash.
+    HiddenCardFact held;
+    held.held = true;
+    const GameObjectId looked_at = card(p1, ZoneType::Trash);
+    st.players[0].trash.push_back(looked_at);
+    theirs[looked_at] = held;
+    // The owner's own facts: about a card in the own hand (dropped: simply
+    // known) and in the own deck (kept: a known position).
+    auto& own = st.knowledge.facts[0];
+    own[in_hand] = hand_fact;
+    own[in_deck] = HiddenCardFact{};
+    // A group: only its members still in a deck stay.
+    DeckGroup group;
+    group.owner = p1;
+    group.members = {in_hand, in_deck, in_trash};
+    st.knowledge.groups[5] = group;
+    DeckGroup gone;
+    gone.owner = p1;
+    gone.members = {in_trash, nowhere};
+    st.knowledge.groups[6] = gone;
+
+    knowledge::prune(st);
+    EXPECT_EQ(theirs.count(in_hand), 1u);
+    EXPECT_EQ(theirs.count(in_deck), 1u);
+    EXPECT_EQ(theirs.count(in_trash), 0u);
+    EXPECT_EQ(theirs.count(nowhere), 0u);
+    EXPECT_EQ(theirs.count(looked_at), 0u);
+    EXPECT_EQ(own.count(in_hand), 0u);
+    EXPECT_EQ(own.count(in_deck), 1u);
+    ASSERT_EQ(st.knowledge.groups.count(5), 1u);
+    EXPECT_EQ(st.knowledge.groups[5].members, std::vector<GameObjectId>{in_deck});
+    EXPECT_EQ(st.knowledge.groups.count(6), 0u) << "a group with no member left in a deck is gone";
+
+    // Pruning what is already pruned changes nothing.
+    const auto theirs_before = theirs.size();
+    const auto own_before = own.size();
+    knowledge::prune(st);
+    EXPECT_EQ(theirs.size(), theirs_before);
+    EXPECT_EQ(own.size(), own_before);
+    EXPECT_EQ(st.knowledge.groups.size(), 1u);
 }
 
 }  // namespace test_review_fix_perf_engine

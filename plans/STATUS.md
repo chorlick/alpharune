@@ -15,7 +15,7 @@ States: `pending` → `running` → `returned` → `merged` (or `blocked`).
 | Baseline commit (master at stage 0) | `c7143f1` |
 | Baseline tests | 1511 run: 1508 passed, 2 failed, 1 skipped (1 disabled). Failing at baseline: `CardTestFixture.BaronNashor_IntegrationFullPlayPathCreatesPit`, `ChainTestFixture.FullGameRunsWithSpellsInDecks` (both: deleted deck file, item 7.40) |
 | Last master sync into integration | `c7143f1` (branch point) |
-| Last integration → master merge | `1640e81` (stage 1 gate, fast-forward) |
+| Last integration → master merge | `6a3e52b` (stage 2 gate, fast-forward) |
 | Open checkboxes at start | 514 |
 
 ## Run decisions
@@ -62,6 +62,13 @@ iteration must apply these.
   its final suite run. `CLAUDE.md` still documents the shared launcher — fix or
   caveat it in the sweep.
 
+- **Sweep split (orchestrator, 2026-10-11):** stage 2 left ~90 carry-over rows,
+  67 open boxes in 03/07/08 and 43 BLOCKED card items for the sweep — too much
+  for one stream. It runs as sweep-costs, sweep-flow and sweep-triggers in
+  parallel (split by file/function ownership), then sweep-verify alone. Each
+  engine stream also unblocks the BLOCKED card items that depend on its piece.
+  perf-engine still waits for all sweep parts and cleanup.
+
 ## Streams
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
@@ -82,10 +89,13 @@ iteration must apply these.
 | 2 | cards-c5 | merged | `870307e` (merge `b95b4e4`) | gate-c5: 2100/2100, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 33 of 39 batch-05 boxes + 6 batch-09 + 4 batch-10; 7 BLOCKED on engine work; 5 `shared:` commits |
 | 2 | cards-c6 | merged | `d06b58d` (merge `a07ce94`) | gate-c6: 2161/2161, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 39 of 46 batch-06 boxes + 1 batch-10; 7 BLOCKED on engine work; one `shared:` commit |
 | 2 | cards-c7 | merged | `8ff64db` (merge `76ab21f`) | stage 2 gate: 2203/2203 | 10 of 18 batch-07 boxes + 6 batch-10; 8 left BLOCKED on engine work; one `shared:` commit; `kKnownOffenders` now empty (all 26 target-less-trigger cards converted) |
-| 3 | sweep | pending | | | |
+| 3 | sweep-costs | running | | | sweep part 1 of 4: costs, payment and play paths in `game_engine` |
+| 3 | sweep-flow | running | | | sweep part 2 of 4: action generators, game flow, combat, finalization in `game_engine` |
+| 3 | sweep-triggers | running | | | sweep part 3 of 4: `trigger_manager`, `chain_manager`, `effect_executor` |
+| 3 | sweep-verify | pending | | | sweep part 4 of 4: starts after the three above merge; verifies and ticks every open box in 03, 07, 08, the batch files and the rest of carry-over |
 | 3 | perf-engine | pending | | | |
-| 3 | perf-search | pending | | | |
-| 3 | cleanup | pending | | | |
+| 3 | perf-search | running | | | |
+| 3 | cleanup | running | | | scope narrowed to files no sweep stream owns while they run |
 | 4 | strong-ids | pending | | | |
 | 5 | checkpoint | pending | | | |
 
@@ -309,3 +319,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c6 verified (gate-c6): 2161 run, 2161 passed; smoke 135 / 65 / 0. Worktree and branch removed. cards-c7 messaged with the c5/c6 hand-overs.
 - 2026-10-10 cards-c7 (`8ff64db`) merged cleanly; stage 2 gate started on a clean rebuild. 7 rows to carry-over.
 - 2026-10-11 STAGE 2 GATE PASSED at `76ab21f` (clean rebuild). cards-c7 worktree and branch removed.
+- 2026-10-11 master fast-forwarded to `6a3e52b`. Stage 3: spawned sweep-costs, sweep-flow, sweep-triggers, cleanup, perf-search (5 running).

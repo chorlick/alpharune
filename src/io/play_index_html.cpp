@@ -277,7 +277,8 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
 (() => {
   const $ = (id) => document.getElementById(id);
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(proto + '//' + location.host + '/ws');
+  // location.search carries the access token when the server requires one.
+  const ws = new WebSocket(proto + '//' + location.host + '/ws' + location.search);
 
   function log(msg, cls) {
     const div = document.createElement('div');
@@ -556,7 +557,8 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
           note.className = 'thinking';
           note.textContent = 'Sent — engine is processing…';
           aDiv.appendChild(note);
-          send({type:'choose', player: m.player, index: act.index});
+          send({type:'choose', player: m.player, index: act.index,
+                decision_id: m.decision_id});
         };
         aDiv.appendChild(b);
       });
@@ -594,7 +596,7 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
 
       // Off-board zones + own base.
       for (const z of ['hand','main_deck','trash','banishment','rune_deck','base']) {
-        det.appendChild(zoneBlock(pid, z, zones[z] || [], battlefields));
+        det.appendChild(zoneBlock(pid, z, zones[z] || [], battlefields, zones[z + '_count']));
       }
       root.appendChild(det);
     }
@@ -666,7 +668,7 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
     nameSpan.textContent = c.name;
     const metaSpan = document.createElement('span');
     metaSpan.className = 'meta';
-    metaSpan.textContent = `#${c.id}${c.exhausted ? ' • exh' : ''}${c.damage ? ' • dmg ' + c.damage : ''}`;
+    metaSpan.textContent = `#${c.id}${toPlayer ? '' : ' • ' + c.controller}${c.exhausted ? ' • exh' : ''}${c.damage ? ' • dmg ' + c.damage : ''}`;
     const sel = document.createElement('select');
     buildDestOptions(battlefields).forEach(opt => {
       const o = document.createElement('option');
@@ -676,7 +678,10 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
     const btn = document.createElement('button');
     btn.textContent = '→';
     btn.className = 'move-btn';
-    btn.onclick = () => sendMove(c.id, toPlayer, sel.value);
+    btn.onclick = () => {
+      const onBoard = sel.value === 'Base' || sel.value.startsWith('BF:');
+      sendMove(c.id, toPlayer || (onBoard ? c.controller : c.owner), sel.value);
+    };
     row.appendChild(nameSpan);
     row.appendChild(metaSpan);
     row.appendChild(sel);
@@ -684,10 +689,12 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
     return row;
   }
 
-  function zoneBlock(pid, zone, cards, battlefields) {
+  function zoneBlock(pid, zone, cards, battlefields, count) {
     const wrap = document.createElement('details');
     const sum = document.createElement('summary');
-    sum.textContent = `${zone} (${cards.length})`;
+    // A zone the server withholds (fair play: the opponent's hand, either
+    // deck's order) arrives empty with its size in `<zone>_count`.
+    sum.textContent = `${zone} (${count ?? cards.length})`;
     wrap.appendChild(sum);
     cards.forEach(c => wrap.appendChild(zoneRowEl(c, pid, battlefields)));
     return wrap;
@@ -702,11 +709,10 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
     sum.textContent = `${bfName} — controller: ${bf.controller} — ${bf.units.length} unit(s)`;
     wrap.appendChild(sum);
     bf.units.forEach(c => {
-      // Units at a BF: controller comes from the BF itself, which is the
-      // player the move will be attributed to in case the dest is off-board.
-      const toPlayer = (bf.controller === 'P1' || bf.controller === 'P2')
-          ? bf.controller : 'P1';
-      wrap.appendChild(zoneRowEl(c, toPlayer, battlefields));
+      // A unit here need not belong to whoever controls the battlefield
+      // (both players can have units at one). Off-board destinations are
+      // its owner's zones; "Base" is its controller's base.
+      wrap.appendChild(zoneRowEl(c, null, battlefields));
     });
     return wrap;
   }
@@ -977,8 +983,16 @@ std::string buildPlayIndexHtml(
 
     nlohmann::json m = nlohmann::json::object();
     for (const auto& [name, url] : card_images) m[name] = url;
+    // The JSON lands inside a <script> block, which the HTML parser ends at
+    // the first "</script" regardless of JS string quoting. "\u003c" is the
+    // same character to JSON and to JS.
+    std::string images_json;
+    for (char c : m.dump()) {
+        if (c == '<') images_json += "\\u003c";
+        else          images_json += c;
+    }
 
-    replaceOnce(html, kTokenCardImages, m.empty() ? std::string("{}") : m.dump());
+    replaceOnce(html, kTokenCardImages, images_json);
     replaceOnce(html, kTokenVersion,    std::string(version_tag));
     replaceOnce(html, kTokenBuildDate,  std::string(build_date));
     replaceOnce(html, kTokenSeed,       std::to_string(seed));

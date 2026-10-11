@@ -9,18 +9,25 @@
 ///      accept human input.
 ///
 /// One PlayServer instance per game. Constructed and started by
-/// `main_play.cpp` before the engine thread begins runGame(). The
-/// server owns its own asio io_context + worker thread; the engine
-/// runs in a separate thread and blocks at decision points via the
-/// HumanAgent it was constructed with.
+/// `main.cpp` before the engine thread begins runGame(). The server owns
+/// its own asio io_context + worker thread; the engine runs in a separate
+/// thread and blocks at decision points via the HumanAgent it was
+/// constructed with.
 ///
-/// Synchronisation: a single std::mutex (`state_mutex`) is held by
-/// the WS handler when mutating GameState via StateEditor. The engine
-/// does not hold this lock — it only mutates GameState from its own
-/// thread, and is parked in HumanAgent::selectAction whenever a WS
-/// edit might fire. The contract is structural: edits arrive ONLY
-/// while a human seat is waiting, which is exactly when the engine
-/// has stopped touching GameState.
+/// Synchronisation. The engine thread mutates GameState without taking
+/// any lock, so a server thread may touch GameState only while the engine
+/// is *parked* — and must keep it parked until it is done:
+///   - at a human decision: the engine waits in HumanAgent::selectAction
+///     and is woken only by a `choose`, which is applied under
+///     `state_mutex_`;
+///   - at the spectator gate: the engine leaves awaitSpectatorStep only
+///     after taking `state_mutex_`;
+///   - after the game: notifyGameFinished() says the engine thread is done.
+/// Every snapshot read and every god-mode edit holds `state_mutex_` and
+/// first checks one of these holds. While the engine is running, clients
+/// are sent the last snapshot taken (marked `engine_busy`) and edits are
+/// refused. The engine thread itself may publish a fresh snapshot at any
+/// time (publishEngineState), also under `state_mutex_`.
 ///
 /// Wire protocol — see docs/play-api.md.
 
@@ -53,8 +60,20 @@ struct PlayServerConfig {
 
     /// When true, accept `edit_*` messages and dispatch to StateEditor.
     /// When false, edit messages are rejected with an `edit_err` reply.
-    /// `main_play.cpp` enables this only when at least one seat is human.
+    /// `main.cpp` enables this by default when at least one seat is human.
     bool god_mode_enabled = false;
+
+    /// When true, frames carry every hand and both decks in order. When
+    /// false a frame shows only what a seated human may see: their own
+    /// hand (in hot-seat play, the hand of whoever is deciding), sizes for
+    /// everything else. `main.cpp` sets it when god mode is on (the editor
+    /// lists every zone) or no seat is human.
+    bool reveal_hidden = false;
+
+    /// When non-empty, `GET /` and the WebSocket upgrade must carry
+    /// `?token=<access_token>` or are refused. `main.cpp` generates one
+    /// when binding to a non-loopback address.
+    std::string access_token;
 
     /// Surfaced in the served HTML banner so the user can tie their
     /// session back to a specific build + RNG draw.
@@ -72,9 +91,10 @@ struct PlayServerConfig {
     /// the browser steps (or autoplay's delay elapses).
     bool spectator = false;
 
-    /// Fired on the first SIGINT / SIGTERM received after `start()`.
+    /// Fired by `requestShutdown()` — that is, on the first SIGINT /
+    /// SIGTERM received after `start()`.
     /// Runs on the server's IO thread (not in signal-handler context),
-    /// so it may take locks, allocate, etc. `main_play.cpp` uses this
+    /// so it may take locks, allocate, etc. `main.cpp` uses this
     /// to call `HumanAgent::abort()` on each human seat, which wakes
     /// the engine thread out of `selectAction` so the game terminates
     /// cleanly. A second signal arriving while the callback is still
@@ -95,11 +115,22 @@ public:
     PlayServer& operator=(const PlayServer&) = delete;
 
     /// Begin listening + spawn the IO worker thread. Non-blocking.
-    /// Returns the URL the user should open in their browser.
+    /// Returns the URL the user should open in their browser. Throws
+    /// (leaving the server stopped) if the address cannot be bound.
     std::string start();
+
+    /// The TCP port actually bound (differs from the configured one when
+    /// that was 0). Valid after start().
+    uint16_t port() const noexcept;
 
     /// Signal shutdown + join the IO worker thread. Idempotent.
     void stop();
+
+    /// Stop holding the game: fires `on_shutdown_signal` (which is expected
+    /// to abort the human seats) and opens the spectator gate for good, so
+    /// the engine runs to the end of the game on its own. What the first
+    /// SIGINT / SIGTERM does. The server keeps serving until stop().
+    void requestShutdown();
 
     /// Push a single log line to every connected WebSocket client.
     /// Safe to call from any thread (engine, game runner, etc.).
@@ -114,9 +145,24 @@ public:
     /// down. No-op unless `PlayServerConfig::spectator` is set.
     void awaitSpectatorStep(const std::vector<Intent>& legal, const Intent& chosen);
 
-    /// Lock held while StateEditor mutates GameState. Exposed for
-    /// callers that need to read state coherently with edits (e.g.,
-    /// the snapshot builder uses this too).
+    /// Call on the engine thread, whenever it is about to be busy for a
+    /// while without reaching a human decision (an AI seat starting to
+    /// think): snapshots the board as it is now and sends it to every
+    /// client, so the UI is not left showing the position from before the
+    /// last click.
+    void publishEngineState();
+
+    /// Call on the engine thread after every agent decision (from the
+    /// engine's `on_decision`). A `*_PROMPT` line belongs to the decision
+    /// it preceded; this retires it so it cannot head a later one.
+    void notifyDecisionMade();
+
+    /// Call once the engine thread has finished the game: from then on
+    /// GameState is stable. Sends the terminal frame.
+    void notifyGameFinished();
+
+    /// Lock held while a server thread reads or edits GameState (see the
+    /// file comment for when that is allowed).
     std::mutex& stateMutex() { return state_mutex_; }
 
     // ── Accessors used by the internal session classes. ──
@@ -125,6 +171,7 @@ public:
     HumanAgent* config_p2() const noexcept;
     bool        godModeEnabled() const noexcept;
     GameState&  engineMutableState() noexcept;
+    const PlayServerConfig& config() const noexcept { return config_; }
 
     // Forward-declared here so play_server.cpp can define the pimpl. The
     // body lives entirely inside the .cpp; external callers cannot

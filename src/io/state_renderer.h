@@ -12,12 +12,31 @@
 
 namespace riftbound {
 
+/// Whose private information a board render may show: the contents of a
+/// player's hand and the names of that player's facedown cards. Counts are
+/// always shown. The default shows both players (replays, spectating).
+struct RenderVisibility {
+    bool p1 = true;
+    bool p2 = true;
+
+    bool shows(PlayerId player) const {
+        return player == PlayerId::Player1 ? p1
+             : player == PlayerId::Player2 ? p2 : false;
+    }
+};
+
 class StateRenderer {
 public:
     explicit StateRenderer(const CardDB& db) : db_(db) {}
 
     /// Render the full board state for both players.
     std::string render(const GameState& state) const;
+
+    /// As above, but a player whose private information `visibility` does
+    /// not show has their hand replaced by a count and their facedown cards
+    /// left unnamed.
+    std::string render(const GameState& state,
+                       const RenderVisibility& visibility) const;
 
     /// Render a single game object inline: "Name(NM,exh,Asl2)"
     std::string renderObject(const GameState& state, GameObjectId id) const;
@@ -54,7 +73,8 @@ public:
 private:
     const CardDB& db_;
 
-    std::string renderPlayerSection(const GameState& state, PlayerId player) const;
+    std::string renderPlayerSection(const GameState& state, PlayerId player,
+                                    bool show_private) const;
     std::string renderPlayerSummary(const GameState& state, PlayerId player) const;
     std::string renderBase(const GameState& state, PlayerId player) const;
     std::string renderBattlefield(const GameState& state, const BattlefieldState& bf) const;
@@ -66,6 +86,9 @@ private:
 
     std::string keywordAbbrev(const GameObject& obj) const;
     std::string padRight(const std::string& s, int width) const;
+    /// Pad to `width` like padRight, but never cut: a row that lists game
+    /// objects overflows the box border rather than dropping one.
+    std::string padRightKeep(const std::string& s, int width) const;
     std::string centerPad(const std::string& s, int width) const;
     std::string horizontalLine(int width, char fill = '-') const;
     std::string boxLine(const std::string& content, int width) const;

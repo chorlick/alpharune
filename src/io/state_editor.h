@@ -48,10 +48,16 @@ public:
     /// player's zone vector membership. For deck moves, `to_top=true`
     /// inserts at the top (back of vector), `false` at the bottom.
     ///
-    /// Special zones (ChampionZone, LegendZone, BattlefieldZone) carry
-    /// extra semantics — this primitive simply updates the object's zone
-    /// field and removes it from the old zone vector; UI is expected to
-    /// validate destination semantics before issuing the edit.
+    /// The object leaves whatever held it: a player zone vector, a
+    /// battlefield's facedown list, or the unit it was attached to. Moving
+    /// to `Base` changes the controller only (attached gear travels along);
+    /// moving off the board makes `target_player` the owner as well, and
+    /// gear attached to the moved unit is left unattached at its
+    /// controller's base.
+    ///
+    /// Refused: `BattlefieldZone` (use moveObjectToBattlefield), `Chain` and
+    /// `FacedownZone` as destinations, and any object currently on the
+    /// chain.
     EditResult moveObject(GameState& state,
                           GameObjectId object_id,
                           PlayerId target_player,
@@ -107,8 +113,9 @@ public:
     /// Jump to an arbitrary TurnPhase. RISKY — phase transitions normally
     /// run a sequence of cleanup + scoring + trigger steps. Bypassing
     /// those can leave the engine in an inconsistent state. Intended for
-    /// debugging only.
-    EditResult setPhase(GameState& state, TurnPhase phase);
+    /// debugging only. `phase` is the TurnPhase integer; values outside the
+    /// enum are refused.
+    EditResult setPhase(GameState& state, int phase);
 
     /// Change which player has turn priority.
     EditResult setTurnPlayer(GameState& state, PlayerId player);
@@ -123,12 +130,22 @@ public:
                                const std::vector<GameObjectId>& new_order);
 
 private:
-    /// Remove object_id from whatever player zone vector currently
-    /// contains it. Returns true if removed from a zone (false = not
-    /// found in any zone vector, which is expected for on-board objects
-    /// since they live in battlefield.units_at[] / base location rather
-    /// than a player vector).
+    /// Remove object_id from whatever container currently lists it: a
+    /// player zone vector, the champion / legend slot, or a battlefield's
+    /// facedown list. Returns true if removed (false = not listed anywhere,
+    /// which is expected for on-board objects since they are found by
+    /// their location rather than through a container).
     bool removeFromZoneVector(GameState& state, GameObjectId object_id);
+
+    /// True while the object is a spell on the chain.
+    static bool isOnChain(const GameState& state, GameObjectId object_id);
+
+    /// If `gear_id` is attached to a unit, take it off that unit.
+    static void detachGear(GameState& state, GameObjectId gear_id);
+
+    /// Unattach everything attached to `host_id`, leaving each piece of
+    /// gear at its controller's base.
+    static void dropAttachments(GameState& state, GameObjectId host_id);
 
     /// Insert object_id into the appropriate player zone vector for
     /// (target_player, target_zone). No-op for zones that aren't backed

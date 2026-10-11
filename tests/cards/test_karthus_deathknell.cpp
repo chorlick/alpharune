@@ -80,7 +80,7 @@ TEST_F(KarthusDeathknellTest, BaselineNoKarthus_DeathknellFiresOnce) {
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
-    events.emit(UnitDiedEvent{rex, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex, PlayerId::Player1, LocationId{}, 0});
 
     EXPECT_EQ(chainSize(), 1)
         << "Deathknell fires once when no Karthus is on board";
@@ -102,7 +102,7 @@ TEST_F(KarthusDeathknellTest, OneKarthus_DeathknellFiresTwice) {
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
-    events.emit(UnitDiedEvent{rex, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex, PlayerId::Player1, LocationId{}, 0});
 
     EXPECT_EQ(chainSize(), 2)
         << "Deathknell fires twice (1 base + 1 extra from Karthus)";
@@ -125,7 +125,7 @@ TEST_F(KarthusDeathknellTest, TwoKarthus_DeathknellFiresThrice) {
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
-    events.emit(UnitDiedEvent{rex, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex, PlayerId::Player1, LocationId{}, 0});
 
     EXPECT_EQ(chainSize(), 3)
         << "Deathknell fires 3 times (1 base + 2 extras)";
@@ -150,7 +150,7 @@ TEST_F(KarthusDeathknellTest, OpponentsKarthus_DoesNotDoubleMyDeathknell) {
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
-    events.emit(UnitDiedEvent{rex, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex, PlayerId::Player1, LocationId{}, 0});
 
     EXPECT_EQ(chainSize(), 1)
         << "P1's Deathknell fires once — P2's Karthus does NOT double it";
@@ -176,7 +176,7 @@ TEST_F(KarthusDeathknellTest, KarthusInTrash_DoesNotContributeToCount) {
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
-    events.emit(UnitDiedEvent{rex, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex, PlayerId::Player1, LocationId{}, 0});
 
     EXPECT_EQ(chainSize(), 1) << "no living Karthus, fires once";
 }
@@ -205,7 +205,7 @@ TEST_F(KarthusDeathknellTest, KarthusDiesBetweenTwoDeaths_SecondFiresOnce) {
     // Step 2: rex_a dies. onUnitDied reads count=1 → 2 fires.
     state.getObject(rex_a).zone = ZoneType::Trash;
     state.getObject(rex_a).location = std::nullopt;
-    events.emit(UnitDiedEvent{rex_a, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex_a, PlayerId::Player1, LocationId{}, 0});
     EXPECT_EQ(chainSize(), 2)
         << "rex_a's Deathknell fires twice (Karthus alive)";
 
@@ -221,7 +221,7 @@ TEST_F(KarthusDeathknellTest, KarthusDiesBetweenTwoDeaths_SecondFiresOnce) {
     state.chain.items.clear();  // clear residue from step 2 to isolate
     state.getObject(rex_b).zone = ZoneType::Trash;
     state.getObject(rex_b).location = std::nullopt;
-    events.emit(UnitDiedEvent{rex_b, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex_b, PlayerId::Player1, LocationId{}, 0});
     EXPECT_EQ(chainSize(), 1)
         << "rex_b's Deathknell fires ONCE — Karthus is gone, aura dropped";
 }
@@ -268,7 +268,7 @@ TEST_F(KarthusDeathknellTest, SimultaneousDeath_CR_323_4_3a_AuraSnapshotAtQueueT
     // Kill Karthus first (no Deathknell on him, but onUnitDied still fires).
     state.getObject(karthus).zone = ZoneType::Trash;
     state.getObject(karthus).location = std::nullopt;
-    events.emit(UnitDiedEvent{karthus, PlayerId::Player1});
+    events.emit(UnitDiedEvent{karthus, PlayerId::Player1, LocationId{}, 0});
     int chain_after_karthus = chainSize();
 
     // Kill rex_a; count is still 1 (recalc hasn't run between these
@@ -276,7 +276,7 @@ TEST_F(KarthusDeathknellTest, SimultaneousDeath_CR_323_4_3a_AuraSnapshotAtQueueT
     // of A's death" — a common TCG resolution for simultaneous deaths.
     state.getObject(rex_a).zone = ZoneType::Trash;
     state.getObject(rex_a).location = std::nullopt;
-    events.emit(UnitDiedEvent{rex_a, PlayerId::Player1});
+    events.emit(UnitDiedEvent{rex_a, PlayerId::Player1, LocationId{}, 0});
     int chain_after_rex = chainSize();
     int rex_added = chain_after_rex - chain_after_karthus;
 

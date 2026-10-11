@@ -149,10 +149,10 @@ TEST_F(ChoiceHelperTest, EveryOrderOfTheHelpersAsksEachOnceAndKeepsEachAnswer) {
         const size_t expected_prompts = order.size() + (order.find('P') != std::string::npos ? 1 : 0);
         EXPECT_EQ(labels.size(), expected_prompts) << "every helper asks, exactly once";
         EXPECT_EQ(card.completions, 1) << "the effect runs once, after the last answer";
-        if (order.find('C') != std::string::npos) EXPECT_EQ(card.confirm, 1);
-        if (order.find('M') != std::string::npos) EXPECT_EQ(card.mode, 2);
-        if (order.find('X') != std::string::npos) EXPECT_EQ(card.x, 3);
-        if (order.find('T') != std::string::npos) EXPECT_EQ(card.target, u2);
+        if (order.find('C') != std::string::npos) { EXPECT_EQ(card.confirm, 1); }
+        if (order.find('M') != std::string::npos) { EXPECT_EQ(card.mode, 2); }
+        if (order.find('X') != std::string::npos) { EXPECT_EQ(card.x, 3); }
+        if (order.find('T') != std::string::npos) { EXPECT_EQ(card.target, u2); }
         if (order.find('P') != std::string::npos) {
             EXPECT_EQ(card.pair.first, u3);
             EXPECT_EQ(card.pair.second, u1);

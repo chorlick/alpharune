@@ -453,7 +453,11 @@ TEST_F(BulletTimeTest, OnlyEnemiesAtTargetedBF_AreHit) {
     EffectExecutor exec(state, events, card_db);
     driveSpellWithTargets(state, events, exec, card_registry, src,
         kBulletTime, P1, {e_bf0_a},
-        [](const std::vector<Intent>& legal) { return pickXSlot(legal, 1); });
+        // Bullet Time names a battlefield (pickMode), then asks X: battlefield
+        // #0 first, then X = 1 (the card text chooses no unit).
+        [n = 0](const std::vector<Intent>& legal) mutable {
+            return pickXSlot(legal, n++ == 0 ? 0 : 1);
+        });
 
     EXPECT_EQ(state.getObject(e_bf0_a).damage_marked, 1);
     EXPECT_EQ(state.getObject(e_bf0_b).damage_marked, 1);

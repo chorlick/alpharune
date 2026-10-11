@@ -40,6 +40,34 @@ constexpr CardDefId kScryersBloom = 698;
 constexpr CardDefId kAlphaStrike = 751;
 constexpr CardDefId kRavenbloomPrefect = 889;
 constexpr CardDefId kRecruit = 954;
+constexpr CardDefId kSunDisc = 21;
+constexpr CardDefId kWildclawShaman = 147;
+constexpr CardDefId kMaddenedMarauder = 191;
+constexpr CardDefId kIreliaFervent = 380;
+constexpr CardDefId kJayceManOfProgress = 406;
+constexpr CardDefId kBlastCone = 695;
+constexpr CardDefId kDuskRoseLab = 765;
+constexpr CardDefId kJayceBrilliantInventor = 855;
+constexpr CardDefId kJaggedCutlass = 860;
+constexpr CardDefId kMageseekerWarden = 70;
+constexpr CardDefId kPromisingFuture = 115;
+constexpr CardDefId kTeemoStrategist = 121;
+constexpr CardDefId kIcathianRain = 247;
+constexpr CardDefId kBulletTime = 263;
+constexpr CardDefId kRekSaiSwarmQueen = 491;
+constexpr CardDefId kArcaneShift = 515;
+constexpr CardDefId kHeedlessResurrection = 704;
+constexpr CardDefId kDeceiver = 756;
+constexpr CardDefId kKeepersVerdict = 760;
+constexpr CardDefId kForgottenRelic = 895;
+constexpr CardDefId kSpiritsRefuge = 63;
+constexpr CardDefId kConvergentMutation = 108;
+constexpr CardDefId kUdyrWildman = 157;
+constexpr CardDefId kBaitedHook = 242;
+constexpr CardDefId kAltarOfMemories = 490;
+constexpr CardDefId kSoulSword = 601;
+constexpr CardDefId kAllay = 603;
+constexpr CardDefId kToolsOfEmpire = 864;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kAssemblyRig = 342;
 constexpr CardDefId kStarSpring = 771;
@@ -1476,6 +1504,1159 @@ TEST_F(VerifyCardsTest, AssemblyRig_RecyclesTheSecondUnitWhenThatIsThePick) {
     EXPECT_TRUE(inDeck(P1, u2));
     EXPECT_TRUE(inTrash(P1, u1));
     EXPECT_EQ(countNamed(P1, "Mech"), 1);
+}
+
+
+// ═══ Tranche 2, group A ═══════════════════════════════════════════════════════
+// ═══ Fixer A: sweep items 191 / 695 / 147 / 765 / 449 / 21 / 680 / 446 / 373 / 855 / 406 ═══
+
+// 191 Maddened Marauder: a unit that can't be moved to base is not a choice.
+TEST_F(VerifyCardsTest, MaddenedMarauder_DoesNotOfferAUnitThatCannotBeMovedToBase) {
+    auto marauder = addUnit(P1, kMaddenedMarauder);
+    state.battlefields[0].blocks_move_to_base = true;    // as Vilemaw's Lair sets it
+    auto stuck = addUnit(P2, kShipyardSkulker, 0, 0);
+    auto guarded = addUnit(P2, kShipyardSkulker, 0, 1);
+    auto cutlass = addGear(P2, kJaggedCutlass);
+    attach(cutlass, guarded);
+    o(guarded).cant_be_moved_by_enemy = true;            // what the Cutlass's aura sets
+    auto free_unit = addUnit(P2, kShipyardSkulker, 0, 1);
+    EnginePathAgent agent;
+    fireTriggerThroughEngine(marauder, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_FALSE(agent.wasOffered(stuck)) << "units can't move from battlefield #0 to base";
+    EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
+    EXPECT_TRUE(agent.wasOffered(free_unit));
+    EXPECT_TRUE(o(free_unit).isAtBase());
+    EXPECT_EQ(bfOf(stuck), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
+}
+
+// 695 Blast Cone: an enemy unit enemy abilities can't move is not a choice.
+TEST_F(VerifyCardsTest, BlastCone_DoesNotOfferAnEnemyUnitItCannotMove) {
+    auto cone = addGear(P1, kBlastCone);
+    auto guarded = addUnit(P2, kShipyardSkulker, 0, 0);
+    auto cutlass = addGear(P2, kJaggedCutlass);
+    attach(cutlass, guarded);
+    o(guarded).cant_be_moved_by_enemy = true;            // what the Cutlass's aura sets
+    auto free_unit = addUnit(P2, kShipyardSkulker, 0, 0);
+    // Yes, the unit, to its base (mode 0); the stun "may" that follows is declined.
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(free_unit), 0}));
+    fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
+    ASSERT_GE(agent.prompts.size(), 2u);
+    EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
+    EXPECT_TRUE(agent.wasOffered(free_unit));
+    EXPECT_TRUE(o(free_unit).isAtBase());
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{0});
+}
+
+TEST_F(VerifyCardsTest, BlastCone_WithOnlyAnUnmovableEnemyAsksNothing) {
+    auto cone = addGear(P1, kBlastCone);
+    auto guarded = addUnit(P2, kShipyardSkulker, 0, 0);
+    auto cutlass = addGear(P2, kJaggedCutlass);
+    attach(cutlass, guarded);
+    o(guarded).cant_be_moved_by_enemy = true;
+    EnginePathAgent agent(EnginePathAgent::accepting());
+    fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
+    EXPECT_TRUE(agent.prompts.empty()) << "no enemy unit it could move: the \"may\" is not offered";
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{0});
+}
+
+// 147 Wildclaw Shaman: spending a unit's buff is paying a cost, not choosing
+// the unit — a "when you choose me" ability does not see it.
+TEST_F(VerifyCardsTest, WildclawShaman_SpendingABuffDoesNotChooseTheUnit) {
+    auto irelia = addUnit(P1, kIreliaFervent);
+    o(irelia).buff_count = 1;
+    o(irelia).recomputeMight();
+    auto plain = addUnit(P1, kShipyardSkulker);
+    o(plain).buff_count = 1;
+    o(plain).recomputeMight();
+    auto shaman = addToHand(P1, kWildclawShaman);
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(irelia)}));
+    playThroughEngine(shaman, &agent);
+    EXPECT_TRUE(agent.wasOffered(plain)) << "the controller picks whose buff is spent";
+    EXPECT_EQ(o(irelia).buff_count, 0) << "\"spend a buff\"";
+    EXPECT_EQ(o(plain).buff_count, 1);
+    EXPECT_EQ(o(irelia).temp_might_bonus, 0)
+        << "\"When you choose ... me\" did not trigger: a cost is not a choice";
+    EXPECT_EQ(o(shaman).buff_count, 1);
+    EXPECT_FALSE(o(shaman).is_exhausted);
+}
+
+// 765 Dusk Rose Lab: the kill was replaced as the cost was paid — no draw, and
+// the cost is not attempted again as the ability resolves.
+TEST_F(VerifyCardsTest, DuskRoseLab_AReplacedKillIsNotTriedAgainAtResolution) {
+    auto lab = battlefieldCard(0, kDuskRoseLab);
+    addToDeck(P1, kRecruit);
+    auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);   // P1 keeps units (and control) here
+    auto unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(unit).death_replacement_recall_pending = true;     // one-shot: recalled instead of dying
+    EnginePathAgent agent(EnginePathAgent::choosing(unit));   // yes, then which unit
+    fireAndProbe(lab, TriggerType::AtStartOfBeginning, &agent, [&](GameState& live) {
+        auto& u = live.getObject(unit);
+        EXPECT_TRUE(u.isAtBase()) << "the death was replaced as the cost was paid";
+        EXPECT_FALSE(u.death_replacement_recall_pending);
+        // In response it comes back to the Lab: nothing protects it now.
+        u.location = BattlefieldLocation{0};
+        u.zone = ZoneType::BattlefieldZone;
+    });
+    EXPECT_TRUE(onBoard(unit)) << "the cost is attempted once, not again at resolution";
+    EXPECT_TRUE(onBoard(keeper));
+    EXPECT_EQ(handSize(P1), 0) << "no kill, no draw";
+}
+
+// 449 Overzealous Fan: "kill me to ..." — the Fan's death was replaced, so the
+// cost was not paid and the attacker stays.
+TEST_F(VerifyCardsTest, OverzealousFan_SurvivingTheKillMovesNobody) {
+    auto fan = addUnit(P1, kOverzealousFan, 0, 0);
+    auto attacker = addUnit(P2, kShipyardSkulker, 0, 0);
+    auto& b = state.battlefields[0];
+    b.combat_in_progress = true;
+    b.attacker = P2;
+    b.defender = P1;
+    o(fan).combat_designation = CombatDesignation::Defender;
+    o(attacker).combat_designation = CombatDesignation::Attacker;
+    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
+    o(fan).death_replacement_recall_pending = true;      // recalled instead of dying
+    EnginePathAgent agent(EnginePathAgent::choosing(attacker));
+    fireTriggerThroughEngine(fan, TriggerType::WhenIDefend, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, the attacker";
+    EXPECT_TRUE(onBoard(fan)) << "the death was replaced";
+    EXPECT_EQ(bfOf(attacker), std::optional<BattlefieldId>{0}) << "no kill, no move";
+}
+
+// 21 Sun Disc: unarmed, playing a unit puts no Sun Disc ability on the chain.
+TEST_F(VerifyCardsTest, SunDisc_UnarmedDoesNotTriggerWhenAUnitIsPlayed) {
+    auto disc = addGear(P1, kSunDisc);
+    // Plays `card` from hand; true if the opponent ever had priority with a
+    // Sun Disc ability on the chain.
+    auto disc_ability_seen = [&](GameObjectId card) {
+        bool saw = false;
+        GameState* live = nullptr;
+        PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+            if (live)
+                for (const auto& ci : live->chain.items)
+                    if (ci.source == disc) saw = true;
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) return i;
+            return legal.front();
+        });
+        ps(P1).rune_pool.energy += card_db.get(o(card).card_def_id).energy_cost;
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = card;
+        play.play_location = LocationId{BaseLocation{P1}};
+        withEngine([&](GameEngine& e) {
+            live = &e.mutableState();
+            e.testHook_executeIntent(play);
+            e.testHook_runChain();
+            live = nullptr;
+        }, nullptr, &p2);
+        return saw;
+    };
+    auto first = addToHand(P1, kRecruit);
+    EXPECT_FALSE(disc_ability_seen(first)) << "not armed: the ability does not trigger";
+    ASSERT_TRUE(onBoard(first));
+    EXPECT_TRUE(o(first).is_exhausted);
+
+    // Armed ([Legion]: a card was played this turn): it triggers for the next unit.
+    ASSERT_GE(ps(P1).cards_played_this_turn, 1);
+    activate(disc);
+    auto second = addToHand(P1, kRecruit);
+    EXPECT_TRUE(disc_ability_seen(second)) << "armed: the ability is on the chain";
+    ASSERT_TRUE(onBoard(second));
+    EXPECT_FALSE(o(second).is_exhausted) << "\"enters ready\"";
+}
+
+// 680 Elder Dragon: [Deflect] is owed for every unit chosen — one payable [A]
+// buys one Deflect unit, not one per location.
+TEST_F(VerifyCardsTest, ElderDragon_DeflectIsCountedAcrossLocations) {
+    auto dragon = addUnit(P1, kElderDragon, 0, 1);
+    auto in_base = addUnit(P2, kIreliaFervent);           // [Deflect]: [A] to choose
+    auto at_bf = addUnit(P2, kIreliaFervent, 0, 0);
+    power(P1, Domain::Body) = 1;                          // all P1 can pay
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(in_base), static_cast<int>(at_bf)}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "after the first pick nothing is left to pay with";
+    EXPECT_TRUE(agent.wasOffered(in_base));
+    EXPECT_FALSE(agent.wasOffered(at_bf)) << "its [A] can't be paid on top of the first pick's";
+    EXPECT_EQ(power(P1, Domain::Body), 0) << "the first pick's Deflect was paid";
+    EXPECT_TRUE(!onBoard(in_base) || o(in_base).damage_marked >= 1) << "\"Deal 1 to them\"";
+    ASSERT_TRUE(onBoard(at_bf));
+    EXPECT_EQ(o(at_bf).damage_marked, 0) << "not chosen: its Deflect was never paid";
+}
+
+// 446 Fae Porter — NOT A DEFECT: "the same battlefield" is read off the Porter.
+// Once it has left the board that information is gone and the move is ignored
+// (CR 359.3.e.12); the [P] paid at finalization stays spent.
+TEST_F(VerifyCardsTest, Pin_FaePorter_GoneBeforeResolutionMovesNobodyAndThePowerStaysSpent) {
+    auto porter = addUnit(P1, kFaePorter, 0, 0);
+    auto ally = addUnit(P1, kShipyardSkulker, 0);
+    power(P1, Domain::Chaos) = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+        EXPECT_EQ(live.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
+        removeFromBoard(live, porter);                    // in response: the Porter dies
+    });
+    EXPECT_EQ(power(P1, Domain::Chaos), 0) << "a cost paid is not refunded";
+    EXPECT_TRUE(o(ally).isAtBase()) << "no Porter, no \"same battlefield\" to move to";
+}
+
+// 373 Azir, Ascendant: "Use only once per turn" — an activation is a use even
+// if the chosen unit is gone when it resolves.
+TEST_F(VerifyCardsTest, AzirAscendant_AnActivationThatDoesNothingIsStillTheUseForTheTurn) {
+    auto azir = addUnit(P1, kAzirAscendant, 0);
+    auto other = addUnit(P1, kShipyardSkulker, 0, 1);
+    auto spare = addUnit(P1, kShipyardSkulker, 0, 0);     // still there to swap with
+    power(P1, Domain::Calm) = 1;
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = azir;
+    EnginePathAgent agent(EnginePathAgent::choosing(other));
+    executeAndProbe(act, &agent, [&](GameState& live) {
+        auto it = live.getObject(azir).card_counters.find("azir_used_turn");
+        ASSERT_TRUE(it != live.getObject(azir).card_counters.end())
+            << "used as the ability goes on the chain";
+        EXPECT_EQ(it->second, live.turn.turn_number + 1);
+        removeFromBoard(live, other);                     // in response: the chosen unit leaves
+    });
+    EXPECT_TRUE(o(azir).isAtBase()) << "nothing to swap with";
+    EXPECT_EQ(bfOf(spare), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(azir).card_counters["azir_used_turn"], state.turn.turn_number + 1);
+    const Card* card = card_registry.get(kAzirAscendant);
+    ASSERT_NE(card, nullptr);
+    EXPECT_FALSE(card->canActivateAbilityAt(state, P1, azir, 0))
+        << "\"Use only once per turn\": not offered again this turn";
+}
+
+// 855 Jayce, Brilliant Inventor: "ready something besides me that's exhausted"
+// — not only his controller's things.
+TEST_F(VerifyCardsTest, JayceBrilliantInventor_MayReadyAnEnemyObject) {
+    auto jayce = addUnit(P1, kJayceBrilliantInventor);
+    auto theirs = addUnit(P2, kShipyardSkulker, 0, 0);
+    o(theirs).is_exhausted = true;
+    EnginePathAgent agent(EnginePathAgent::choosing(theirs));
+    fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then what to ready";
+    EXPECT_TRUE(agent.wasOffered(theirs)) << "\"something\": no \"friendly\" in the text";
+    EXPECT_FALSE(o(theirs).is_exhausted);
+}
+
+// 855: the gear trigger's choices are made again after "make new choices for
+// it" (GameEngine::makeNewChoicesFor, reached as Rebuttal reaches it:
+// EffectExecutor::makeNewChoices), and the ability is not lost because its
+// "first gear this turn" stamp was already written when it went on the chain.
+TEST_F(VerifyCardsTest, JayceBrilliantInventor_IsAskedAgainAfterNewChoicesAndStillResolves) {
+    auto jayce = addUnit(P1, kJayceBrilliantInventor);
+    auto first = addUnit(P1, kShipyardSkulker, 0);
+    o(first).is_exhausted = true;
+    auto second = addUnit(P1, kShipyardSkulker, 0);
+    o(second).is_exhausted = true;
+    auto gear = addGear(P1, kSerratedDirk);
+    // Finalization: yes, `first`. After the new choices: yes, `second`.
+    EnginePathAgent agent(EnginePathAgent::script(
+        {1, static_cast<int>(first), 1, static_cast<int>(second)}));
+    GameEngine* live = nullptr;
+    bool rechosen = false;
+    PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+        if (!rechosen && live && !live->mutableState().chain.items.empty()) {
+            rechosen = true;
+            auto& st = live->mutableState();
+            EXPECT_EQ(st.getObject(jayce).card_counters["__jayce_first_gear_turn"],
+                      st.turn.turn_number + 1) << "stamped as the ability went on the chain";
+            live->testHook_executor().makeNewChoices(st.chain.items.back().id);
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority) return i;
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_executor().queueTriggeredAbility(jayce, P1, TriggerType::WhenYouPlayACard, gear);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent, &p2);
+    ASSERT_TRUE(rechosen) << "the opponent never got priority";
+    EXPECT_EQ(agent.prompts.size(), 4u) << "may + what, asked at finalization and again";
+    EXPECT_TRUE(o(first).is_exhausted) << "the first answer was forgotten";
+    EXPECT_FALSE(o(second).is_exhausted) << "the re-chosen ability still resolved";
+
+    // A second non-token gear this turn: not "the first time", nothing triggers.
+    o(second).is_exhausted = true;
+    auto gear2 = addGear(P1, kSerratedDirk);
+    EnginePathAgent again(EnginePathAgent::accepting());
+    fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayACard, &again, gear2);
+    EXPECT_TRUE(again.prompts.empty()) << "the second gear this turn does not trigger";
+    EXPECT_TRUE(o(second).is_exhausted);
+}
+
+// 406 Jayce, Man of Progress: "ignoring its Energy cost. (You must still pay
+// its Power cost.)" — Sun Disc is [2][R].
+TEST_F(VerifyCardsTest, JayceManOfProgress_TheGrantedGearStillCostsItsPower) {
+    auto jayce = addToHand(P1, kJayceManOfProgress);
+    auto kill = addGear(P1, kSerratedDirk);
+    auto disc = addToHand(P1, kSunDisc);
+    EnginePathAgent agent(EnginePathAgent::choosing(kill));
+    playThroughEngine(jayce, &agent);
+    ASSERT_FALSE(onBoard(kill));
+    ASSERT_EQ(ps(P1).cost_modifiers.size(), 1u) << "the permission";
+
+    // No Power: the Energy is ignored, the [R] is not.
+    ps(P1).rune_pool.energy = 0;
+    ps(P1).rune_pool.universal_power = 0;
+    power(P1, Domain::Fury) = 0;
+    withEngine([&](GameEngine& e) {
+        EXPECT_FALSE(e.testHook_canAfford(P1, disc)) << "[R] must still be paid";
+    });
+    // With the Power: affordable, and playing it spends the Power and no Energy.
+    power(P1, Domain::Fury) = 1;
+    ps(P1).rune_pool.energy = 3;
+    withEngine([&](GameEngine& e) {
+        EXPECT_TRUE(e.testHook_canAfford(P1, disc));
+    });
+    playThroughEngine(disc, nullptr, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_TRUE(onBoard(disc));
+    EXPECT_EQ(power(P1, Domain::Fury), 0) << "its Power cost was paid";
+    EXPECT_EQ(ps(P1).rune_pool.energy, 3) << "its Energy cost was ignored";
+    EXPECT_TRUE(ps(P1).cost_modifiers.empty()) << "\"a gear\": the permission is used up";
+}
+
+
+// ═══ Tranche 2, group B ═══════════════════════════════════════════════════════
+// (already defined in the file and used below: kArise, kVoidBurrower, kGuards,
+//  kGlascMixologist, kWildClaw, kMegaMech, kShipyardSkulker, kMeditation,
+//  kSerratedDirk, kForgottenMonument)
+
+// ═══ Sweep B: items 1-7 ═════════════════════════════════════════════════════
+
+// ── 1. Icathian Rain 247: a play-time unit that is gone loses its "Deal 2" ──
+
+TEST_F(VerifyCardsTest, IcathianRain_AUnitGoneBeforeItResolvesLosesOneOfTheSix) {
+    // CR 359.3.e.5: the first "Deal 2 to a unit" was aimed as the spell was
+    // played. Its unit leaves in response: that instance is lost, the other
+    // five are still chosen — not six fresh ones.
+    auto spell = addToHand(P1, kIcathianRain);
+    auto first = addUnit(P2, kInvalidId, 3, 0);
+    auto tough = addUnit(P2, kInvalidId, 30, 1);
+    const auto& def = card_db.get(kIcathianRain);
+    ps(P1).rune_pool.energy += def.energy_cost;
+    ps(P1).rune_pool.universal_power += def.power_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = spell;
+    play.targets = {first};
+    EnginePathAgent agent(EnginePathAgent::choosing(tough));
+    executeAndProbe(play, &agent, [&](GameState& live) { removeFromBoard(live, first); });
+    EXPECT_EQ(agent.prompts.size(), 5u) << "five units left to choose, not six";
+    EXPECT_EQ(o(tough).damage_marked, 10) << "5 x 2";
+    EXPECT_FALSE(onBoard(first));
+}
+
+// ── 2. Bullet Time 263: a battlefield is chosen, not a unit; X is capped ──
+
+TEST_F(VerifyCardsTest, BulletTime_ChoosesABattlefieldNotAUnitThere) {
+    // "...to all enemy units at a battlefield": no unit is chosen, so nothing
+    // is "chosen" (no Deflect, no "chose an enemy unit this turn") and any
+    // battlefield may be named, the empty one included.
+    auto spell = addToHand(P1, kBulletTime);
+    auto e1 = addUnit(P2, kInvalidId, 9, 1);
+    auto e2 = addUnit(P2, kInvalidId, 9, 1);
+    ps(P1).rune_pool.universal_power = 2;
+    EnginePathAgent agent(EnginePathAgent::script({1, 2}));   // battlefield slot 1; X = 2
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the battlefield, then X";
+    for (const auto& i : agent.prompts[0])
+        EXPECT_TRUE(i.chosen_objects.empty()) << "a battlefield is offered, not a unit";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "a battlefield with no unit may be named";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 1));
+    EXPECT_FALSE(ps(P1).chose_enemy_unit_this_turn) << "no unit was chosen";
+    EXPECT_EQ(o(e1).damage_marked, 2);
+    EXPECT_EQ(o(e2).damage_marked, 2);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
+}
+
+TEST_F(VerifyCardsTest, BulletTime_TheBattlefieldIsNamedBeforeTheOpponentCanRespond) {
+    // CR 355: chosen as the spell is played; X is asked as it resolves.
+    auto spell = addToHand(P1, kBulletTime);
+    auto enemy = addUnit(P2, kInvalidId, 9, 1);
+    ps(P1).rune_pool.universal_power = 1;
+    ps(P1).rune_pool.energy += card_db.get(kBulletTime).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = spell;
+    EnginePathAgent agent(EnginePathAgent::script({1, 1}));
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 1u) << "the battlefield is already chosen, X is not";
+        EXPECT_EQ(live.player(P1).rune_pool.universal_power, 1) << "nothing paid yet";
+        EXPECT_EQ(live.getObject(enemy).damage_marked, 0);
+    });
+    EXPECT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(o(enemy).damage_marked, 1);
+}
+
+TEST_F(VerifyCardsTest, BulletTime_XIsCappedAtTheFifteenTheActionVocabularyEncodes) {
+    // pickXAmount publishes one int-coded choice per X; the action vocabulary
+    // has 16 int slots (openspiel::kNumIntChoices): 0..15.
+    auto spell = addToHand(P1, kBulletTime);
+    auto enemy = addUnit(P2, kInvalidId, 99, 0);
+    ps(P1).rune_pool.universal_power = 20;
+    EnginePathAgent agent(EnginePathAgent::script({0, 15}));
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(agent.prompts[1].size(), 16u) << "X = 0..15";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 15));
+    EXPECT_FALSE(promptOffersValue(agent, 1, 16));
+    EXPECT_EQ(o(enemy).damage_marked, 15);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 5);
+}
+
+// ── 3. Promising Future 115: only one of the top five can be banished ──
+
+TEST_F(VerifyCardsTest, PromisingFuture_AnAnswerThatIsNotOneOfTheTopFiveBanishesTheTopCard) {
+    auto bystander = addUnit(P1, kShipyardSkulker, 0);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kShipyardSkulker);
+    auto top = addToDeck(P1, kShipyardSkulker);
+    auto spell = addToHand(P1, kPromisingFuture);
+    // An answer naming an object that was never on offer.
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        Intent wrong = legal.front();
+        wrong.chosen_objects = {bystander};
+        return wrong;
+    });
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "P2 has no deck: only P1 is asked";
+    EXPECT_FALSE(agent.wasOffered(bystander));
+    EXPECT_TRUE(onBoard(bystander)) << "a unit on the board is not one of the top 5";
+    EXPECT_FALSE(inBanishment(P1, bystander));
+    EXPECT_TRUE(o(bystander).isAtBase()) << "it never moved";
+    EXPECT_FALSE(inDeck(P1, top)) << "\"banishes one of them\": the top card instead";
+    EXPECT_TRUE(onBoard(top) || inBanishment(P1, top)) << "banished, then played if paid for";
+    EXPECT_EQ(deckSize(P1), 4) << "the other four were recycled";
+    EXPECT_EQ(ps(P1).cards_banished_this_turn, 1);
+}
+
+// ── 4. Keeper's Verdict 760: a token's owner has nothing to decide ──
+
+TEST_F(VerifyCardsTest, KeepersVerdict_ATokensOwnerIsNotAskedTopOrBottom) {
+    // CR 183.1: a token that leaves the board ceases to exist.
+    auto spell = addToHand(P1, kKeepersVerdict);
+    auto token = addUnit(P2, kInvalidId, 3, 0);
+    o(token).is_token = true;
+    o(token).super_type = SuperType::Token;
+    addToDeck(P2, kMeditation);
+    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    EnginePathAgent owner;
+    playThroughEngine(spell, &agent, std::nullopt, &owner);
+    EXPECT_TRUE(owner.prompts.empty()) << "top or bottom of a deck it never reaches";
+    EXPECT_FALSE(onBoard(token));
+    EXPECT_FALSE(inDeck(P2, token));
+    EXPECT_EQ(deckSize(P2), 1);
+    EXPECT_FALSE(inBanishment(P2, token));
+}
+
+// ── 5 / 6. Void Burrower 553: "may" and "exhaust me" at finalization; a
+//           printed reveal is shown to both players ──
+
+TEST_F(VerifyCardsTest, VoidBurrower_IsExhaustedBeforeTheOpponentCanRespondAndRevealsToBoth) {
+    auto legend = addLegend(P1, kVoidBurrower);
+    auto below = addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kMeditation);
+    int shown = 0, to_all = 0;
+    auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
+        if (e.card != top && e.card != below) return;
+        ++shown;
+        if (e.revealed_to_all) ++to_all;
+    });
+    EnginePathAgent agent(EnginePathAgent::script({1}));   // yes; then banish none
+    fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 1u) << "the may was decided at finalization";
+        EXPECT_TRUE(live.getObject(legend).is_exhausted) << "\"exhaust me\" is the cost (CR 383.3.b)";
+        EXPECT_EQ(shown, 0) << "nothing is revealed until it resolves";
+        EXPECT_EQ(live.player(P1).main_deck.size(), 2u);
+    });
+    conn.disconnect();
+    EXPECT_EQ(agent.prompts.size(), 2u) << "\"You may banish one\" is asked on resolution";
+    EXPECT_EQ(shown, 2);
+    EXPECT_EQ(to_all, 2) << "\"reveal\": to every player";
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_EQ(deckSize(P1), 2) << "none banished: both recycled";
+}
+
+TEST_F(VerifyCardsTest, VoidBurrower_DecliningAtFinalizationCostsNothing) {
+    auto legend = addLegend(P1, kVoidBurrower);
+    addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kMeditation);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_FALSE(o(legend).is_exhausted);
+    EXPECT_EQ(ps(P1).main_deck.back(), top) << "the deck is untouched";
+}
+
+// ── 5. Deceiver 756: "may", discard and exhaust at finalization (and its
+//       first engine-path test) ──
+
+TEST_F(VerifyCardsTest, Deceiver_ThroughTheEngine_TheCostIsPaidBeforeTheOpponentCanRespond) {
+    auto legend = addLegend(P1, kDeceiver);
+    auto bf_card = battlefieldCard(0, kForgottenMonument);   // the battlefield held
+    auto model = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto elsewhere = addUnit(P1, kShipyardSkulker, 0, 1);
+    auto keep = addToHand(P1, kMeditation);
+    auto discard = addToHand(P1, kMeditation);
+    EnginePathAgent agent(EnginePathAgent::script(
+        {1, static_cast<int>(discard), static_cast<int>(model)}));
+    fireAndProbe(legend, TriggerType::WhenIConquerOrHold, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 2u) << "the may and the discard: at finalization";
+        EXPECT_TRUE(live.getObject(legend).is_exhausted) << "\"exhaust me\" (CR 383.3.b)";
+        const auto& trash = live.player(P1).trash;
+        EXPECT_NE(std::find(trash.begin(), trash.end(), discard), trash.end()) << "\"discard 1\"";
+        for (const auto& [id, obj] : live.objects)
+            EXPECT_FALSE(obj.isToken()) << "the Reflection is not played yet";
+    }, bf_card);
+    // "Then do this: It becomes a copy of another unit there." is a reflexive
+    // trigger (CR 388): its unit is chosen as the ability resolves.
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_TRUE(agent.wasOffered(model));
+    EXPECT_FALSE(agent.wasOffered(elsewhere)) << "another unit THERE";
+    EXPECT_TRUE(inTrash(P1, discard));
+    EXPECT_TRUE(inHand(P1, keep));
+    GameObjectId token = kInvalidId;
+    for (const auto& [id, obj] : state.objects)
+        if (obj.isToken() && obj.isUnit() && obj.location.has_value()) token = id;
+    ASSERT_NE(token, kInvalidId);
+    EXPECT_EQ(bfOf(token), std::optional<BattlefieldId>{0}) << "there";
+    EXPECT_EQ(o(token).card_def_id, kShipyardSkulker) << "a copy of the chosen unit";
+    EXPECT_TRUE(o(token).keywords.has(Keyword::Temporary));
+    EXPECT_FALSE(o(token).is_exhausted) << "a READY Reflection";
+}
+
+TEST_F(VerifyCardsTest, Deceiver_ThroughTheEngine_DecliningPaysNothingAndPlaysNothing) {
+    auto legend = addLegend(P1, kDeceiver);
+    auto bf_card = battlefieldCard(0, kForgottenMonument);
+    addUnit(P1, kShipyardSkulker, 0, 0);
+    auto card = addToHand(P1, kMeditation);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquerOrHold, &agent, bf_card);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_FALSE(o(legend).is_exhausted);
+    EXPECT_TRUE(inHand(P1, card));
+    for (const auto& [id, obj] : state.objects) EXPECT_FALSE(obj.isToken());
+}
+
+// ── 5 / 7. Rek'Sai, Swarm Queen 491: the first "may" at finalization; "you
+//           may play it here" is one more place the unit can go ──
+
+TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheRevealIsDecidedBeforeTheOpponentCanRespond) {
+    auto reksai = addUnit(P1, kRekSaiSwarmQueen, 0, 0);
+    addToDeck(P1, kMeditation);
+    addToDeck(P1, kMeditation);
+    int shown = 0;
+    auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent&) { ++shown; });
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    fireAndProbe(reksai, TriggerType::WhenIAttack, &agent, [&](GameState&) {
+        EXPECT_EQ(agent.prompts.size(), 1u)
+            << "CR 383.3.a: a \"you may\" that opens the effect is decided at finalization";
+        EXPECT_EQ(shown, 0) << "nothing is revealed until it resolves";
+    });
+    conn.disconnect();
+    EXPECT_EQ(shown, 2);
+    EXPECT_EQ(agent.prompts.size(), 2u) << "\"You may banish one\": on resolution";
+}
+
+TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheUnitMayGoToBaseAndNotWhereUnitsCannotBePlayed) {
+    // "If it is a unit, you may play it here": a permission (CR 355.2.b), on
+    // top of the base and the battlefields its controller controls.
+    auto reksai = addUnit(P1, kRekSaiSwarmQueen, 0, 0);       // "here" = battlefield #0
+    state.battlefields[1].controller = P1;
+    state.battlefields[1].blocks_unit_play = true;
+    addUnit(P1, kInvalidId, 1, 1);                            // holds battlefield #1
+    addToDeck(P1, kMeditation);
+    auto unit = addToDeck(P1, kShipyardSkulker);              // top
+    ps(P1).rune_pool.energy = card_db.get(kShipyardSkulker).energy_cost;
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit), 0}));
+    fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the card, where";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 1)) << "here";
+    EXPECT_FALSE(promptOffersValue(agent, 2, 2)) << "units can't be played to battlefield #1";
+    ASSERT_TRUE(onBoard(unit));
+    EXPECT_TRUE(o(unit).isAtBase()) << "\"you MAY play it here\"";
+    EXPECT_EQ(deckSize(P1), 1) << "the rest was recycled";
+}
+
+TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheUnitCanBePlayedHere) {
+    auto reksai = addUnit(P1, kRekSaiSwarmQueen, 0, 0);
+    addToDeck(P1, kMeditation);
+    auto unit = addToDeck(P1, kShipyardSkulker);
+    ps(P1).rune_pool.energy = card_db.get(kShipyardSkulker).energy_cost;
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
+    fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &agent);
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0});
+    EXPECT_FALSE(inBanishment(P1, unit));
+}
+
+// ── 6. Teemo, Strategist 121: "reveal the top 5" is shown to both players ──
+
+TEST_F(VerifyCardsTest, TeemoStrategist_TheRevealIsShownToBothPlayers) {
+    auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
+    addToDeck(P1, kMeditation);
+    addToDeck(P1, kMeditation);
+    int shown = 0, to_all = 0;
+    auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
+        ++shown;
+        if (e.revealed_to_all) ++to_all;
+    });
+    fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend);
+    conn.disconnect();
+    EXPECT_EQ(shown, 2);
+    EXPECT_EQ(to_all, 2) << "\"reveal\": to every player, as the deck bookkeeping records";
+}
+
+// ── 5. Forgotten Relic 895: its first engine-path tests ──
+
+TEST_F(VerifyCardsTest, ForgottenRelic_ThroughTheEngine_BurningAUnitGivesItsMightToTheChosenUnit) {
+    auto relic = addGear(P1, kForgottenRelic);
+    auto first = addUnit(P1, kShipyardSkulker, 0);
+    auto second = addUnit(P1, kShipyardSkulker, 0);
+    auto theirs = addUnit(P2, kShipyardSkulker, 0);
+    addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kMegaMech);
+    EnginePathAgent agent(EnginePathAgent::choosing(second));
+    fireTriggerThroughEngine(relic, TriggerType::AtStartOfBeginning, &agent);
+    EXPECT_TRUE(inTrash(P1, top)) << "[Burn 1]";
+    EXPECT_EQ(deckSize(P1), 1) << "burned once, however often the callback is re-entered";
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(agent.wasOffered(first));
+    EXPECT_FALSE(agent.wasOffered(theirs)) << "a FRIENDLY unit";
+    EXPECT_EQ(o(second).temp_might_bonus, card_db.get(kMegaMech).might)
+        << "+[M] equal to the burned card's Might";
+    EXPECT_EQ(o(first).temp_might_bonus, 0);
+}
+
+TEST_F(VerifyCardsTest, ForgottenRelic_ThroughTheEngine_PlayingItBurnsOneAndANonUnitGivesNothing) {
+    auto relic = addToHand(P1, kForgottenRelic);
+    auto unit = addUnit(P1, kShipyardSkulker, 0);
+    addToDeck(P1, kMegaMech);
+    auto top = addToDeck(P1, kMeditation);
+    EnginePathAgent agent;
+    playThroughEngine(relic, &agent);
+    ASSERT_TRUE(onBoard(relic));
+    EXPECT_TRUE(inTrash(P1, top)) << "When you play this, [Burn 1]";
+    EXPECT_EQ(deckSize(P1), 1);
+    EXPECT_TRUE(agent.prompts.empty()) << "not a unit: nobody gets Might";
+    EXPECT_EQ(o(unit).temp_might_bonus, 0);
+}
+
+// ── 7. Effect plays respect "units can't be played here" (CR 355.2.a) ──
+
+TEST_F(VerifyCardsTest, GlascMixologist_ChoosesWhereAndIsNotOfferedABattlefieldUnitsCannotBePlayedTo) {
+    auto glasc = addUnit(P1, kGlascMixologist, 0);
+    auto cheap = addToTrash(P1, kShipyardSkulker);
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap), 2}));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(glasc); },
+                         &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the unit, where";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 2, 1)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 2));
+    ASSERT_TRUE(onBoard(cheap));
+    EXPECT_EQ(bfOf(cheap), std::optional<BattlefieldId>{1});
+}
+
+TEST_F(VerifyCardsTest, HeedlessResurrection_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
+    auto spell = addToHand(P1, kHeedlessResurrection);
+    auto victim = addUnit(P1, kShipyardSkulker, 0);
+    auto corpse = addToTrash(P1, kShipyardSkulker);
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    // The unit to kill, the unit to play, where (mode 0 = base, 1 and 2 = the
+    // controlled battlefields in order).
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(victim), static_cast<int>(corpse), 2}));
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 2, 1)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 2));
+    ASSERT_TRUE(onBoard(corpse));
+    EXPECT_EQ(bfOf(corpse), std::optional<BattlefieldId>{1});
+    EXPECT_TRUE(inTrash(P1, victim));
+}
+
+TEST_F(VerifyCardsTest, ArcaneShift_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
+    auto spell = addToHand(P1, kArcaneShift);
+    auto unit = addUnit(P1, kShipyardSkulker, 0);
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({2}));     // no enemy unit: only "where"
+    playAt(spell, {unit}, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 0, 1)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 2));
+    ASSERT_TRUE(onBoard(unit));
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{1});
+}
+
+TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
+    auto spell = addToHand(P1, kArise);
+    addGear(P1, kSerratedDirk);                               // one Equipment: one token
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({2}));
+    playThroughEngine(spell, &agent);
+    ASSERT_FALSE(agent.prompts.empty());
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 0, 1)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 2));
+    ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
+    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
+}
+
+TEST_F(VerifyCardsTest, Guards_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
+    auto spell = addToHand(P1, kGuards);
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({2}));
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "where; no [Y] for the may";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 0, 1)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 2));
+    ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
+    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
+}
+
+TEST_F(VerifyCardsTest, Guards_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheBase) {
+    // Mageseeker Warden: "While I'm at a battlefield, opponents can only play
+    // units to their base." (The flag is rebuilt from the Warden by every
+    // cleanup; it is also set here so the test does not depend on one running.)
+    auto spell = addToHand(P1, kGuards);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
+    addUnit(P2, kMageseekerWarden, 0, 1);
+    ps(P1).units_play_base_only = true;
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(agent.prompts[0].size(), 1u) << "the base, nothing else";
+    ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
+    EXPECT_TRUE(o(firstNamed(P1, "Sand Soldier")).isAtBase());
+}
+
+TEST_F(VerifyCardsTest, WildClaw_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
+    addToDeck(P1, kMeditation);
+    auto mech = addToDeck(P1, kMegaMech);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kMeditation);
+    auto spell = addToHand(P1, kWildClaw);
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    ps(P1).rune_pool.energy = 2;
+    // The card, where (0 = base, 1 + i = battlefield i), then "yes" to Empower.
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mech), 2, 1}));
+    playThroughEngine(spell, &agent);
+    ASSERT_GE(agent.prompts.size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 1, 1)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 2));
+    ASSERT_TRUE(onBoard(mech));
+    EXPECT_EQ(bfOf(mech), std::optional<BattlefieldId>{1});
+}
+
+
+// ═══ Tranche 2, group C ═══════════════════════════════════════════════════════
+// (already defined in the file and used below: kSett164, kSett543, kRecruit,
+//  kShipyardSkulker.)
+
+// ═══ Sweep C, item 1: option lists are offered in object-id order ═══════════
+
+// Thirteen cards built the list they hand to pickTarget / pickTargetPair by
+// walking GameState::objects (an unordered_map) and offered it as it came:
+// the order of the options — what an agent sees at each index, and the
+// default first pick — was hash order. Each now sorts its list.
+//
+// NOTE: this pins the sort; it cannot force the old code to fail. Hash order
+// is not under a test's control, so the unsorted code passes whenever the map
+// happens to iterate in ascending id order. To make that unlikely each board
+// has nine or more candidates-and-bystanders created interleaved (enemy,
+// friend, gear, enemy, ...), every round adds to the same map (so it rehashes
+// along the way), and thirteen cards are checked. (libstdc++ walks freshly
+// inserted integer keys most-recent-first, so in practice the old code fails
+// every round — but that is an implementation detail, not a guarantee.)
+TEST_F(VerifyCardsTest, OptionLists_AreOfferedInAscendingObjectIdOrder) {
+    enum class Kind { Unit, Battlefield, Gear };
+    struct Case { CardDefId id; TriggerType trigger; Kind kind; };
+    const Case cases[] = {
+        {234, TriggerType::WhenYouPlayMe, Kind::Unit},           // Harnessed Dragon
+        {238, TriggerType::WhenIAttack, Kind::Unit},             // Leona, Determined
+        {330, TriggerType::WhenYouPlayMe, Kind::Unit},           // Gem Jammer
+        {361, TriggerType::WhenIMoveToFB, Kind::Unit},           // Ribbon Dancer
+        {453, TriggerType::WhenYouPlayMe, Kind::Unit},           // Beast Below (a pair)
+        {479, TriggerType::WhenYouPlayMe, Kind::Unit},           // Sandshifter
+        {539, TriggerType::WhenIAttackOrDefend, Kind::Unit},     // Ahri, Inquisitive
+        {589, TriggerType::WhenIConquer, Kind::Unit},            // Inviolus Vox
+        {618, TriggerType::WhenIAttackOrDefend, Kind::Unit},     // Yuumi, Magical Cat
+        {278, TriggerType::WhenYouHoldHere, Kind::Battlefield},  // Navori Fighting Pit
+        {535, TriggerType::WhenYouConquerHere, Kind::Battlefield},  // Veiled Temple (gear)
+        {763, TriggerType::WhenYouHoldHere, Kind::Battlefield},  // Amateur Recital
+        {63, TriggerType::WhenYouPlayThis, Kind::Gear},          // Spirit's Refuge
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE("card " + std::to_string(c.id) + " " + card_db.get(c.id).name);
+        // Everything at battlefield #0 (the gear in base), interleaved, with
+        // the source in the middle. Shipyard Skulker: 3 [M], no text.
+        std::vector<GameObjectId> made;
+        GameObjectId source = kInvalidId;
+        for (int i = 0; i < 4; ++i) {
+            made.push_back(addUnit(P2, kShipyardSkulker, 0, 0));
+            made.push_back(addUnit(P1, kShipyardSkulker, 0, 0));
+            if (i < 3) made.push_back(addGear(P1, kInvalidId));
+            if (i == 1) {
+                if (c.kind == Kind::Unit) source = addUnit(P1, c.id, 0, 0);
+                else if (c.kind == Kind::Gear) source = addGear(P1, c.id);
+                else source = battlefieldCard(0, c.id, P1);
+                made.push_back(source);
+            }
+        }
+
+        AcceptingEnginePathAgent agent;               // yes to a "may", then the first option
+        fireTriggerThroughEngine(source, c.trigger, &agent);
+
+        int object_prompts = 0;
+        for (const auto& prompt : agent.prompts) {
+            if (prompt.empty() || prompt.front().chosen_objects.empty()) continue;   // a "may"
+            ++object_prompts;
+            EXPECT_GE(prompt.size(), 3u) << "at least three candidates";
+            for (size_t i = 1; i < prompt.size(); ++i) {
+                ASSERT_FALSE(prompt[i].chosen_objects.empty());
+                EXPECT_LT(prompt[i - 1].chosen_objects.front(), prompt[i].chosen_objects.front())
+                    << "option " << i << " is out of object-id order";
+            }
+        }
+        EXPECT_GE(object_prompts, 1) << "the card never asked which object";
+
+        // Clear the board for the next card (the objects stay in the map).
+        for (auto id : made) {
+            o(id).location = std::nullopt;
+            o(id).zone = ZoneType::Banishment;
+        }
+        for (auto p : {P1, P2}) {
+            ps(p).hand.clear();
+            ps(p).trash.clear();
+        }
+        state.battlefields[0].card_object_id = kInvalidId;
+        state.battlefields[0].controller = std::nullopt;
+    }
+}
+
+// ═══ Sweep C, item 2: Soul Sword 601 — the Level 3 bonus needs both on board ═
+
+TEST_F(VerifyCardsTest, SoulSword_OffTheBoardGearOrBearerGivesNoLevelBonus) {
+    ps(P1).xp = 3;                                    // [Level 3][>] is on
+    // Control: attached and both on the board — +1 [M] printed, +1 [M] more.
+    auto bearer = addUnit(P1, kShipyardSkulker, 2);
+    auto sword = addGear(P1, kSoulSword);
+    attach(sword, bearer);
+    // A Soul Sword that left the board with `attached_to` still set.
+    auto kept = addUnit(P1, kShipyardSkulker, 2);
+    auto gone_sword = addGear(P1, kSoulSword);
+    o(gone_sword).attached_to = kept;
+    sendToTrash(gone_sword);
+    // A Soul Sword on the board whose bearer left it.
+    auto gone_bearer = addUnit(P1, kShipyardSkulker, 2);
+    auto orphan = addGear(P1, kSoulSword);
+    o(orphan).attached_to = gone_bearer;
+    sendToTrash(gone_bearer);
+
+    cleanup();
+
+    EXPECT_EQ(o(bearer).current_might, 4) << "2 + the Equipment's +1 + the Level 3 +1";
+    EXPECT_EQ(o(kept).aura_might_bonus, 0) << "a Soul Sword in the trash gives nothing";
+    EXPECT_EQ(o(kept).current_might, 2);
+    EXPECT_TRUE(o(gone_bearer).aura_effects.empty()) << "a card in the trash is not a bearer";
+    EXPECT_EQ(o(gone_bearer).aura_might_bonus, 0);
+}
+
+// ═══ Sweep C, item 3: Spirit's Refuge 63 next to Allay 603 ══════════════════
+
+// "Friendly buffed units have [Deflect] if they didn't already." The Refuge
+// can only see the [Deflect] that exists when ITS hook runs (printed, "this
+// turn", Equipment, hooks that ran earlier in the pass). The hooks run in
+// GameState::objects order, so next to Allay ("your other units here have
+// [Deflect]") the buffed unit ends with ONE Deflect effect if Allay's hook ran
+// first and TWO if the Refuge's did — and EffectExecutor::deflectCostFor sums
+// them. The right answer is 1 [A]; that needs an engine hook (see the comment
+// in gear/0063_spirit_s_refuge.cpp) and is NOT fixed. This test shows the
+// behaviour as it is: once the engine orders the two, replace the 1-or-2
+// expectations with EXPECT_EQ(..., 1).
+TEST_F(VerifyCardsTest, SpiritsRefuge_NextToAllayTheDeflectCostDependsOnHookOrder) {
+    state.battlefields[0].controller = P1;
+    auto refuge = addGear(P1, kSpiritsRefuge);
+    auto allay = addUnit(P1, kAllay, 0, 0);
+    auto both = addUnit(P1, kShipyardSkulker, 2, 0);  // buffed, next to Allay
+    o(both).buff_count = 1;
+    auto plain = addUnit(P1, kShipyardSkulker, 2, 0); // next to Allay, no buff
+    auto solo = addUnit(P1, kShipyardSkulker, 2);     // buffed, in base: the Refuge only
+    o(solo).buff_count = 1;
+
+    cleanup();
+
+    auto deflectEffects = [&](GameObjectId id, GameObjectId from) {
+        int n = 0;
+        for (const auto& ae : o(id).aura_effects)
+            if (ae.keyword == Keyword::Deflect && (from == kInvalidId || ae.source == from)) ++n;
+        return n;
+    };
+    // Order-independent parts.
+    EXPECT_EQ(deflectEffects(solo, kInvalidId), 1);
+    EXPECT_EQ(deflectEffects(solo, refuge), 1);
+    EXPECT_EQ(deflectCostFor(state, P2, solo), 1);
+    EXPECT_EQ(deflectEffects(plain, kInvalidId), 1);
+    EXPECT_EQ(deflectEffects(plain, allay), 1);
+    EXPECT_EQ(deflectCostFor(state, P2, plain), 1);
+    EXPECT_EQ(deflectCostFor(state, P2, allay), 1) << "printed; the Refuge adds nothing";
+    EXPECT_EQ(deflectEffects(allay, kInvalidId), 0);
+
+    // The unit both cards reach: Allay's [Deflect] always, the Refuge's only
+    // if its hook ran before Allay's — and the cost is their sum.
+    EXPECT_EQ(deflectEffects(both, allay), 1);
+    const int from_refuge = deflectEffects(both, refuge);
+    EXPECT_GE(from_refuge, 0);
+    EXPECT_LE(from_refuge, 1);
+    EXPECT_EQ(deflectEffects(both, kInvalidId), 1 + from_refuge);
+    EXPECT_EQ(deflectCostFor(state, P2, both), 1 + from_refuge)
+        << "CURRENT BEHAVIOUR: 1 or 2 by hook order; the card text says 1";
+}
+
+// ═══ Sweep C, item 4: what a card does once its object has left the board ═══
+
+// 242 Baited Hook: the unit to kill left the board in response — it is not
+// killed, so there is no Might to dig against: no look, no unit played.
+TEST_F(VerifyCardsTest, BaitedHook_TheVictimLeftInResponse_NoDigAndNoUnitPlayed) {
+    auto hook = addGear(P1, kBaitedHook);
+    ps(P1).rune_pool.energy = 1;
+    power(P1, Domain::Order) = 1;
+    auto victim = addUnit(P1, kInvalidId, 1);
+    addToDeck(P1, kInvalidId);
+    auto eligible = addToDeck(P1, kRecruit);
+    o(eligible).base_might = 1;
+    addToDeck(P1, kInvalidId);
+    const auto deck_before = ps(P1).main_deck;
+
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = hook;
+    act.targets = {victim};
+    EnginePathAgent agent(EnginePathAgent::choosing(eligible));
+    executeAndProbe(act, &agent, [&](GameState& live) {
+        EXPECT_TRUE(live.getObject(hook).is_exhausted) << "activated and paid for";
+        removeFromBoard(live, victim);
+    });
+
+    EXPECT_EQ(power(P1, Domain::Order), 0);
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing is looked at, nothing is offered";
+    EXPECT_FALSE(agent.wasOffered(eligible));
+    EXPECT_TRUE(inDeck(P1, eligible));
+    EXPECT_FALSE(onBoard(eligible));
+    EXPECT_EQ(ps(P1).main_deck, deck_before) << "nothing recycled either";
+    EXPECT_EQ(ps(P1).cards_banished_this_turn, 0);
+    EXPECT_EQ(std::count(ps(P1).trash.begin(), ps(P1).trash.end(), victim), 1)
+        << "not killed a second time";
+}
+
+// 490 Altar of Memories: the Altar is gone when its trigger is finalized —
+// "you may exhaust me" cannot be paid, so the may is not offered.
+TEST_F(VerifyCardsTest, AltarOfMemories_OffTheBoardIsNotOfferedAndDrawsNothing) {
+    auto altar = addGear(P1, kAltarOfMemories);
+    auto dead = addUnit(P1, kInvalidId, 1);
+    sendToTrash(dead);
+    auto in_hand = addToHand(P1, kInvalidId);
+    addToDeck(P1, kInvalidId);
+    addToDeck(P1, kInvalidId);
+    sendToTrash(altar);                               // left the board with the unit
+
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(altar, TriggerType::WhenAFriendlyUnitDies, &yes, dead);
+
+    EXPECT_TRUE(yes.prompts.empty()) << "an Altar in the trash cannot be exhausted";
+    EXPECT_FALSE(o(altar).is_exhausted);
+    EXPECT_EQ(handSize(P1), 1);
+    EXPECT_TRUE(inHand(P1, in_hand));
+    EXPECT_EQ(deckSize(P1), 2) << "nothing drawn, nothing put back";
+}
+
+// 864 Tools of Empire: the chosen unit left the board in response.
+TEST_F(VerifyCardsTest, ToolsOfEmpire_AUnitThatLeftInResponseGetsNoMight) {
+    auto tools = addGear(P1, kToolsOfEmpire);
+    auto unit = addUnit(P1, kShipyardSkulker, 2);
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = tools;
+    act.targets = {unit};
+    executeAndProbe(act, nullptr, [&](GameState& live) {
+        EXPECT_TRUE(live.getObject(tools).is_exhausted) << "activated";
+        EXPECT_EQ(live.getObject(unit).temp_might_bonus, 0) << "not resolved yet";
+        removeFromBoard(live, unit);
+    });
+    EXPECT_EQ(o(unit).temp_might_bonus, 0) << "a card in the trash gets no Might";
+    EXPECT_EQ(o(unit).current_might, 2);
+
+    // Control: the same activation with the unit still there gives +2 [M].
+    auto tools2 = addGear(P1, kToolsOfEmpire);
+    auto unit2 = addUnit(P1, kShipyardSkulker, 2);
+    act.ability_source = tools2;
+    act.targets = {unit2};
+    executeAndProbe(act, nullptr, [](GameState&) {});
+    EXPECT_EQ(o(unit2).temp_might_bonus, 2);
+}
+
+// 157 Udyr, Wildman: "Spend my buff" is the cost, and it is Udyr's own buff.
+// An Udyr that is not on the board (a stale or hand-built activation; the
+// generator never offers one) pays nothing, and then nothing happens — the
+// chosen mode does not resolve for free.
+TEST_F(VerifyCardsTest, Udyr_OffTheBoardSpendsNoBuffAndDoesNothing) {
+    auto udyr = addUnit(P1, kUdyrWildman, 0, 0);
+    o(udyr).buff_count = 1;
+    auto enemy = addUnit(P2, kShipyardSkulker, 0, 0);
+    sendToTrash(udyr);
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = udyr;
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(enemy)}));   // Deal 2
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, &agent);
+    EXPECT_EQ(o(udyr).buff_count, 1) << "the buff of a card in the trash is not spent";
+    EXPECT_EQ(o(udyr).card_counters.count("__udyr_modes_mask"), 0u) << "no mode used up";
+    EXPECT_EQ(o(enemy).damage_marked, 0) << "no cost paid: no damage";
+    EXPECT_TRUE(onBoard(enemy));
+    EXPECT_FALSE(onBoard(udyr));
+}
+
+// ...and an Udyr that leaves in response, after the buff was spent: "Ready
+// me" and "Give me [Ganking]" do nothing to the card in the trash.
+TEST_F(VerifyCardsTest, Udyr_LeftInResponse_IsNeitherReadiedNorGivenGanking) {
+    for (int mode : {2, 3}) {                         // Ready me / Give me [Ganking]
+        SCOPED_TRACE("mode " + std::to_string(mode));
+        auto udyr = addUnit(P1, kUdyrWildman);
+        o(udyr).buff_count = 1;
+        o(udyr).is_exhausted = true;
+        Intent act;
+        act.type = IntentType::ActivateAbility;
+        act.player = P1;
+        act.ability_source = udyr;
+        EnginePathAgent agent(EnginePathAgent::script({mode}));
+        executeAndProbe(act, &agent, [&](GameState& live) {
+            EXPECT_EQ(live.getObject(udyr).buff_count, 0) << "spent as the ability was activated";
+            removeFromBoard(live, udyr);
+        });
+        ASSERT_EQ(agent.prompts.size(), 1u) << "the mode";
+        EXPECT_TRUE(o(udyr).is_exhausted) << "a card in the trash is not readied";
+        EXPECT_FALSE(o(udyr).keywords.has(Keyword::Ganking));
+        EXPECT_FALSE(o(udyr).temp_keywords.has(Keyword::Ganking));
+        EXPECT_FALSE(onBoard(udyr));
+        EXPECT_EQ(o(udyr).zone, ZoneType::Trash);
+    }
+}
+
+// 164 / 543 Sett, Brawler: activated (the buff is spent), then he leaves the
+// board in response — the card in the trash gets no +4 [M].
+TEST_F(VerifyCardsTest, SettBrawler_LeftInResponse_GetsNoMightInTheTrash) {
+    for (CardDefId def_id : {kSett164, kSett543}) {
+        SCOPED_TRACE("card " + std::to_string(def_id));
+        auto sett = addUnit(P1, def_id);
+        o(sett).buff_count = 1;
+        Intent act;
+        act.type = IntentType::ActivateAbility;
+        act.player = P1;
+        act.ability_source = sett;
+        executeAndProbe(act, nullptr, [&](GameState& live) {
+            EXPECT_EQ(live.getObject(sett).buff_count, 0) << "spent as the ability was activated";
+            EXPECT_EQ(live.getObject(sett).temp_might_bonus, 0) << "not resolved yet";
+            removeFromBoard(live, sett);
+        });
+        EXPECT_EQ(o(sett).temp_might_bonus, 0) << "no +4 [M] on a card in the trash";
+        EXPECT_FALSE(onBoard(sett));
+        EXPECT_EQ(o(sett).zone, ZoneType::Trash);
+
+        // Control: he stays, he gets the +4 [M].
+        auto stays = addUnit(P1, def_id);
+        o(stays).buff_count = 1;
+        act.ability_source = stays;
+        executeAndProbe(act, nullptr, [](GameState&) {});
+        EXPECT_EQ(o(stays).temp_might_bonus, 4);
+        EXPECT_EQ(o(stays).buff_count, 0);
+        o(stays).location = std::nullopt;             // off the board for the next printing
+        o(stays).zone = ZoneType::Banishment;
+    }
+}
+
+// ═══ Sweep C, item 5: 108 Convergent Mutation — what keeps it off the trash ═
+
+// The chosen unit leaves the board in response. EffectExecutor::
+// giveTemporaryMight is NOT what protects the card in the trash (it only
+// checks objectExists and would add the Might): GameEngine::resolveSpell
+// re-validates the play-time target against Card::enumerateLegalTargets (a
+// friendly unit ON THE BOARD) and drops it, so onResolve gets no target and
+// returns before it asks which other unit to copy.
+TEST_F(VerifyCardsTest, Pin_Batch08_ConvergentMutation108_AUnitThatLeftInResponseGetsNoMight) {
+    auto chosen = addUnit(P1, kShipyardSkulker, 1);
+    auto big = addUnit(P1, kShipyardSkulker, 4);
+    auto spell = addToHand(P1, kConvergentMutation);
+    const auto& def = card_db.get(kConvergentMutation);
+    ps(P1).rune_pool.energy += def.energy_cost;
+    ps(P1).rune_pool.universal_power += def.power_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = spell;
+    play.targets = {chosen};
+    EnginePathAgent agent;
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        EXPECT_EQ(live.getObject(chosen).temp_might_bonus, 0) << "not resolved yet";
+        removeFromBoard(live, chosen);
+    });
+    EXPECT_FALSE(inHand(P1, spell)) << "the spell was played";
+    EXPECT_TRUE(agent.prompts.empty()) << "no target left: the other unit is never asked for";
+    EXPECT_EQ(o(chosen).temp_might_bonus, 0) << "a card in the trash gets no Might";
+    EXPECT_EQ(o(chosen).current_might, 1);
+    EXPECT_EQ(o(big).temp_might_bonus, 0);
+
+    // Control: the same play with the unit still there raises it to 4 [M].
+    auto chosen2 = addUnit(P1, kShipyardSkulker, 1);
+    auto spell2 = addToHand(P1, kConvergentMutation);
+    ps(P1).rune_pool.energy += def.energy_cost;
+    ps(P1).rune_pool.universal_power += def.power_cost;
+    play.card = spell2;
+    play.targets = {chosen2};
+    executeAndProbe(play, nullptr, [](GameState&) {});
+    EXPECT_EQ(o(chosen2).temp_might_bonus, 3);
+    EXPECT_EQ(o(chosen2).current_might, 4);
 }
 
 }  // namespace

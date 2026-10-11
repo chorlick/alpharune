@@ -235,6 +235,81 @@ constexpr CardDefId kWildClaw = 876;
 constexpr CardDefId kMatriarchOfWar = 940;
 constexpr CardDefId kShadowClone = 955;
 
+// ─── A test card for the shared selectSeveral helper (plans/09 item 9.HH5) ───
+// "When I conquer, choose up to three other friendly units." It names them at
+// finalization and, as it resolves, writes down exactly what selectSeveral
+// handed back (on its own object, in card_counters), so a test can read the
+// helper's result without going through any real card's guards or trace text.
+constexpr CardDefId kSelectSeveralProbe = 1060;   // reserved range, test-only
+
+class SelectSeveralProbeCard : public UnitCard {
+public:
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> others;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value()) others.push_back(id);
+        const auto chosen = selectSeveral(ctx, "Probe: choose a friendly unit", others,
+                                          /*max_picks=*/3);
+        if (!chosen.has_value()) return;        // waiting for the agent
+        if (finalizingChoices(ctx)) return;     // choices end here
+        auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        counters["__probe_count"] = static_cast<int>(chosen->size());
+        for (size_t k = 0; k < chosen->size(); ++k)
+            counters["__probe_" + std::to_string(k)] = static_cast<int>((*chosen)[k]);
+    }
+private:
+    const CardDef def_ = [] {
+        CardDef d;
+        d.id = kSelectSeveralProbe;
+        d.name = "SelectSeveral Probe";
+        d.card_type = CardType::Unit;
+        d.might = 1;
+        d.ability_text = "When I conquer, choose up to three other friendly units.";
+        return d;
+    }();
+};
+
+// The same probe for a list that names one object several times (plans/09
+// item 9.HH6): "choose up to three buffs on other friendly units" — a unit is
+// listed once per buff, as Albus Ferros 230 lists them.
+constexpr CardDefId kSelectSeveralDupProbe = 1061;   // reserved range, test-only
+
+class SelectSeveralDupProbeCard : public UnitCard {
+public:
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> buffs;   // one entry per buff
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (id == ctx.source || !obj.isUnit() || obj.controller != ctx.controller ||
+                !obj.location.has_value()) continue;
+            for (int k = 0; k < obj.buff_count; ++k) buffs.push_back(id);
+        }
+        const auto chosen = selectSeveral(ctx, "Probe: choose a buff", buffs, /*max_picks=*/3);
+        if (!chosen.has_value()) return;        // waiting for the agent
+        if (finalizingChoices(ctx)) return;     // choices end here
+        auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        counters["__probe_count"] = static_cast<int>(chosen->size());
+        for (size_t k = 0; k < chosen->size(); ++k)
+            counters["__probe_" + std::to_string(k)] = static_cast<int>((*chosen)[k]);
+    }
+private:
+    const CardDef def_ = [] {
+        CardDef d;
+        d.id = kSelectSeveralDupProbe;
+        d.name = "SelectSeveral Duplicate Probe";
+        d.card_type = CardType::Unit;
+        d.might = 1;
+        d.ability_text = "When I conquer, choose up to three buffs on other friendly units.";
+        return d;
+    }();
+};
+
 class VerifyCardsTest : public CardTestFixture {
 protected:
     GameObject& o(GameObjectId id) { return state.getObject(id); }
@@ -6565,6 +6640,15 @@ TEST_F(VerifyCardsTest, DarkChild315_RunesAreNamedBeforeTheOpponentCanRespond) {
 }
 
 TEST_F(VerifyCardsTest, DarkChild315_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto annie = addLegend(P1, kDarkChild);
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
@@ -6579,6 +6663,8 @@ TEST_F(VerifyCardsTest, DarkChild315_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_FALSE(logged("DARK CHILD: readied")) << "no trace line: zero runes were handed back by the helper";
 }
 
 // ─── Targon's Peak 284 ──────────────────────────────────────────────────────
@@ -6605,6 +6691,15 @@ TEST_F(VerifyCardsTest, TargonsPeak_RunesAreNamedBeforeTheOpponentCanRespond) {
 }
 
 TEST_F(VerifyCardsTest, TargonsPeak_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto peak = battlefieldCard(0, kTargonsPeak);
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
@@ -6619,6 +6714,8 @@ TEST_F(VerifyCardsTest, TargonsPeak_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_TRUE(logged("TARGON'S PEAK: readied 0 runes")) << "the helper handed back zero runes";
 }
 
 // The conquer ability itself has no choice (CR 355.5.b): its finalize pass
@@ -6661,6 +6758,15 @@ TEST_F(VerifyCardsTest, GentleGemdragon_RunesAreNamedBeforeTheOpponentCanRespond
 }
 
 TEST_F(VerifyCardsTest, GentleGemdragon_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
     auto r1 = addRune(P1, Domain::Body, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
@@ -6675,6 +6781,8 @@ TEST_F(VerifyCardsTest, GentleGemdragon_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_FALSE(logged("GENTLE GEMDRAGON: readied")) << "no trace line: zero runes were handed back by the helper";
 }
 
 // ─── Sona, Harmonious 73 ────────────────────────────────────────────────────
@@ -6699,6 +6807,15 @@ TEST_F(VerifyCardsTest, Sona_RunesAreNamedBeforeTheOpponentCanRespond) {
 }
 
 TEST_F(VerifyCardsTest, Sona_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
     auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
@@ -6713,6 +6830,8 @@ TEST_F(VerifyCardsTest, Sona_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_TRUE(logged("SONA, HARMONIOUS: readied 0 rune(s)")) << "the helper handed back zero runes";
 }
 
 // CR 383 (the Sona example): "if I'm at a battlefield" is asked when the
@@ -6779,6 +6898,15 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_MayCostAndRunesAreDecidedBeforeTheOppo
 // Fails on the old code: asked at resolution, the two named runes were no
 // longer on offer and the third rune was readied in their place.
 TEST_F(VerifyCardsTest, CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto legend = addLegend(P1, kCuratorOfTheSands);
     auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
@@ -6798,6 +6926,8 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped)
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_TRUE(logged("CURATOR OF THE SANDS: readied 0 rune(s)")) << "the helper handed back zero runes";
 }
 
 // Declined at finalization: no cost, no rune prompt, nothing at resolution.
@@ -8082,6 +8212,109 @@ TEST_F(VerifyCardsTest, Pin_MischievousMarai_MovedToBaseInResponse_HereIsGoneAnd
     });
     EXPECT_EQ(moved.prompts.size(), 1u) << "nothing is asked as it resolves";
     EXPECT_EQ(o(foe).damage_marked, 2) << "no further damage: a mistarget";
+}
+
+// ═══ Tranche 14: 9.HH5 — selectSeveral itself, through a test card ═══════════
+// Stored picks from the finalize pass; one of them is no longer in the list
+// when the ability resolves. The helper must hand back only the others and
+// ask nothing again. (The six card-level pins read this off trace lines.)
+TEST_F(VerifyCardsTest, SelectSeveral_AStoredPickNoLongerInTheListIsDroppedAndNothingIsAskedAgain) {
+    card_registry.registerCard(kSelectSeveralProbe, std::make_unique<SelectSeveralProbeCard>());
+    card_db.buildFromClasses(card_registry);
+    auto probe = addUnit(P1, kSelectSeveralProbe, 1, 0);
+    auto a = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto b = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto c = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto late = kInvalidId;
+    size_t prompts_at_priority = 0;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(a), static_cast<int>(b), static_cast<int>(c)}));
+    fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        prompts_at_priority = agent.prompts.size();
+        EXPECT_EQ(live.getObject(probe).card_counters.count("__probe_count"), 0u)
+            << "nothing has resolved yet";
+        removeFromBoard(live, b);               // a stored pick leaves the list
+        // ...and a new candidate appears: it must not be asked about either.
+        late = live.createObject();
+        auto& u = live.getObject(late);
+        u.owner = u.controller = P1;
+        u.card_type = CardType::Unit;
+        u.name = "Latecomer";
+        u.base_might = u.current_might = 1;
+        u.zone = ZoneType::BattlefieldZone;
+        u.location = BattlefieldLocation{0};
+    });
+    EXPECT_EQ(prompts_at_priority, 3u) << "all three picks were made at finalization";
+    EXPECT_EQ(agent.prompts.size(), 3u) << "nothing is asked again as it resolves";
+    const auto& counters = o(probe).card_counters;
+    ASSERT_EQ(counters.count("__probe_count"), 1u) << "the ability resolved";
+    EXPECT_EQ(counters.at("__probe_count"), 2) << "the stale pick is dropped, not kept";
+    ASSERT_EQ(counters.count("__probe_1"), 1u);
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(a));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(c)) << "pick order kept, no gap";
+    EXPECT_EQ(counters.count("__probe_2"), 0u);
+}
+
+// ═══ Tranche 15: 9.HH6 — selectSeveral with one object listed several times ══
+// X has two buffs and Y one, so the list is {X, X, Y}; all three are picked at
+// finalization. In response X loses one buff: the list at resolution is
+// {X, Y}. selectSeveral must return {X, Y}: each stored pick uses up ONE
+// instance of its object in the current list, so the first stored X counts,
+// the second finds no instance left and is dropped, and Y counts. Returning X
+// twice would let a caller spend a buff that is no longer there; returning
+// {Y} alone would throw away a pick that is still good.
+TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceWithOneInstanceGoneCountsOnce) {
+    card_registry.registerCard(kSelectSeveralDupProbe,
+                               std::make_unique<SelectSeveralDupProbeCard>());
+    card_db.buildFromClasses(card_registry);
+    auto probe = addUnit(P1, kSelectSeveralDupProbe, 1, 0);
+    auto x = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto y = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(x).buff_count = 2;
+    o(y).buff_count = 1;
+    size_t prompts_at_priority = 0;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(x), static_cast<int>(x), static_cast<int>(y)}));
+    fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        prompts_at_priority = agent.prompts.size();
+        live.getObject(x).buff_count = 1;       // one of X's two buffs is gone
+    });
+    EXPECT_EQ(prompts_at_priority, 3u) << "X, X and Y were picked at finalization";
+    // While choosing, an object with two instances left is offered once per
+    // prompt, and still offered after one of them is taken.
+    ASSERT_GE(agent.prompts.size(), 2u);
+    EXPECT_TRUE(agent.wasOffered(x));
+    EXPECT_EQ(agent.prompts.size(), 3u) << "nothing is asked again as it resolves";
+    const auto& counters = o(probe).card_counters;
+    ASSERT_EQ(counters.count("__probe_count"), 1u) << "the ability resolved";
+    EXPECT_EQ(counters.at("__probe_count"), 2) << "X once, Y once";
+    ASSERT_EQ(counters.count("__probe_1"), 1u);
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(y));
+    EXPECT_EQ(counters.count("__probe_2"), 0u);
+}
+
+// The control: with both of X's buffs still there, all three stored picks
+// come back, X twice.
+TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceIsReturnedTwiceWhenBothInstancesRemain) {
+    card_registry.registerCard(kSelectSeveralDupProbe,
+                               std::make_unique<SelectSeveralDupProbeCard>());
+    card_db.buildFromClasses(card_registry);
+    auto probe = addUnit(P1, kSelectSeveralDupProbe, 1, 0);
+    auto x = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto y = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(x).buff_count = 2;
+    o(y).buff_count = 1;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(x), static_cast<int>(x), static_cast<int>(y)}));
+    fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [](GameState&) {});
+    EXPECT_EQ(agent.prompts.size(), 3u);
+    const auto& counters = o(probe).card_counters;
+    ASSERT_EQ(counters.count("__probe_count"), 1u);
+    EXPECT_EQ(counters.at("__probe_count"), 3);
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(x));
+    EXPECT_EQ(counters.at("__probe_2"), static_cast<int>(y));
 }
 
 }  // namespace

@@ -56,6 +56,8 @@ public:
         // the list built above in this entry, and nothing changes a rune
         // between there and here (readying one rune does not touch another).
         for (auto id : picks) ctx.executor.readyObject(id);
+        ctx.events.logTrace("SONA, HARMONIOUS: readied " + std::to_string(picks.size()) +
+                            " rune(s)");
     }
 private:
     const CardDef def_ = [] {

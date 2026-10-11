@@ -239,16 +239,24 @@ public:
     ///   objects, `id` not among them  the first one (a test that checks `id`
     ///                               is NOT offered asserts on wasOffered)
     ///   objects plus one option that names none ("No more targets", "None"),
-    ///   `id` not among them         that option: nothing else is chosen
+    ///   `id` not among them         AFTER this picker has chosen `id` once:
+    ///                               that option (the one target is chosen,
+    ///                               no more). If `id` was never offered the
+    ///                               test FAILS: choosing nothing would hide
+    ///                               a target that is wrongly not offered.
     ///   anything else (a mode, an X, an unlabelled yes/no)
     ///                               FAILS the test: script() is the picker
     ///                               for those
     /// (This used to say yes to every yes/no and take value 1 of any other
     /// prompt, so an unrelated "may" on another card was silently accepted.)
     static Picker choosing(GameObjectId id, May may = May::Unexpected) {
-        return [id, may](const std::vector<Intent>& legal) {
+        auto picked = std::make_shared<bool>(false);   // `id` has been chosen once
+        return [id, may, picked](const std::vector<Intent>& legal) {
             for (const auto& i : legal)
-                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) {
+                    *picked = true;
+                    return i;
+                }
             const Intent* yes = nullptr;
             const Intent* no = nullptr;
             for (const auto& i : legal) {
@@ -263,12 +271,14 @@ public:
                 if (std::all_of(legal.begin(), legal.end(),
                                 [](const Intent& i) { return !i.chosen_objects.empty(); }))
                     return legal.front();
-                // Objects and exactly one "none of them": stop there.
+                // Objects and exactly one "none of them", once `id` has
+                // been chosen: stop there. Before that it is not an answer
+                // this picker may give (falls through to the failure).
                 const Intent* none = nullptr;
                 int without_object = 0;
                 for (const auto& i : legal)
                     if (i.chosen_objects.empty()) { none = &i; ++without_object; }
-                if (without_object == 1 && legal.size() >= 2) return *none;
+                if (*picked && without_object == 1 && legal.size() >= 2) return *none;
             }
             std::string options;
             for (const auto& i : legal) {

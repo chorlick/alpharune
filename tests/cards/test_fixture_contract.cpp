@@ -139,17 +139,32 @@ TEST(FixtureContractPickers, ChoosingFailsTheTestAtAModeOrUnlabelledYesNo) {
     EXPECT_NONFATAL_FAILURE(pick({zero, one}), "use script()");
 }
 
-TEST(FixtureContractPickers, ChoosingStopsAtObjectsPlusANoneOption) {
-    auto prompt = objectPrompt({3, 9});
+namespace {
+std::vector<Intent> noneOr(std::initializer_list<GameObjectId> ids) {
     Intent none;
     none.type = IntentType::MakeChoice;
     none.chosen_value = 0;
     none.choice_label = "No more targets";
-    prompt.insert(prompt.begin(), none);
+    std::vector<Intent> out{none};
+    for (const auto& i : objectPrompt(ids)) out.push_back(i);
+    return out;
+}
+} // namespace
+
+// "Choose a target ... choose another or stop": once the object has been
+// chosen, the picker stops.
+TEST(FixtureContractPickers, ChoosingStopsAtANoneOptionAfterItsObjectWasChosen) {
     auto pick = EnginePathAgent::choosing(7);
-    EXPECT_TRUE(pick(prompt).chosen_objects.empty()) << "7 is not offered: choose nothing else";
-    prompt.push_back(objectPrompt({7}).front());
-    EXPECT_EQ(pick(prompt).chosen_objects.front(), 7u) << "offered: chosen";
+    EXPECT_EQ(pick(noneOr({3, 7})).chosen_objects.front(), 7u) << "offered: chosen";
+    EXPECT_TRUE(pick(noneOr({3, 9})).chosen_objects.empty()) << "7 was chosen: no more";
+}
+
+// The negative case: the object was never offered and "none" is available.
+// Choosing nothing would let a test pass whose target is wrongly not offered,
+// so this fails the test.
+TEST(FixtureContractPickers, ChoosingFailsAtANoneOptionWhenItsObjectWasNeverOffered) {
+    auto pick = EnginePathAgent::choosing(7);
+    EXPECT_NONFATAL_FAILURE(pick(noneOr({3, 9})), "did not announce");
 }
 
 TEST(FixtureContractPickers, ChoosingTakesTheOnlyOptionAndTheFirstOfOtherObjects) {

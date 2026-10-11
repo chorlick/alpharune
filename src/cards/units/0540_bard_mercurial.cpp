@@ -15,10 +15,10 @@ namespace {
 // "You may exhaust your legend as an additional cost to play me. When you play
 //  me, if you paid the additional cost, move any number of your units to an
 //  open battlefield."
-// ENGINE-GAP: OptionalAdditionalCost can only charge Energy / Power / a
-// discard, so "exhaust your legend" cannot be paid during the play itself. It
-// is offered and paid when the play trigger is finalized instead — before
-// anyone can respond to the trigger, but after the unit has entered.
+// The additional cost is a play cost (CR 356.2.b): offered and paid in
+// payAdditionalPlayCost, as the card is played and before its own cost is
+// paid. The play trigger fires only if it was paid (triggerCondition reads the
+// kPaid counter); the battlefield and the units are chosen as it resolves.
 class BardMercurial : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }

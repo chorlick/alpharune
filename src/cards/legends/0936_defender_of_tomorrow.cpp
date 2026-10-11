@@ -17,9 +17,11 @@ public:
     const CardDef& def() const override { return def_; }
     // "[Empower] [2][A][A]" / "[1], [E]: Ready a gear." /
     // "[Empowered][>] [1], [E]: Ready 2 gear."
-    // One activation: readies 2 gear while Empowered, otherwise 1 (the
-    // Empowered ability strictly dominates the base one at the same cost).
-    // Which gear is the controller's choice, made as the ability is played.
+    // Both printed abilities cost [1], [E], so they are one activation; while
+    // Empowered the controller says which of the two is being used ("Ready 2
+    // gear" readies two if two can be chosen, so it is not always the better
+    // one: the second may have to be an enemy's). Which ability and which gear
+    // are chosen as the ability is played.
     EmpowerSpec empowerSpec() const override {
         return empowerCost(2, 2, Domain::Mind, /*any_domain=*/true);
     }
@@ -44,7 +46,13 @@ public:
             std::sort(out.begin(), out.end());
             return out;
         };
-        const bool two = ctx.state.getObject(ctx.source).isEmpowered();
+        bool two = false;
+        if (ctx.state.getObject(ctx.source).isEmpowered()) {
+            const int which = pickMode(ctx, "Defender of Tomorrow: which ability", 2,
+                                       {"Ready a gear", "Ready 2 gear"});
+            if (which == -1) return;          // waiting on the controller
+            two = which == 1;
+        }
         GameObjectId first = kInvalidId, second = kInvalidId;
         if (two) {
             const auto both = pickTargetPair(

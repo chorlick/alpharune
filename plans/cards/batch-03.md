@@ -23,7 +23,7 @@ Engine facts traced for this batch (referenced below):
   - Text: "Choose a unit you control and another unit you control at a different location. If at least one of them has [Temporary], move each to the other's location. Draw 1."
   - Code: same `count = 2, must_be_friendly` shape -> never offered from hand. From facedown the hidden-play generator (game_engine.cpp:3154) passes ONE target, and `onResolve` returns at `targets.size() < 2` before the draw.
   - Scenario: from hand the card is unplayable; hidden then played -> no swap and no "Draw 1".
-  - c3: FIXED from hand: `enumerateLegalTargetSets` lists ordered pairs at different locations, and Draw 1 no longer depends on the two units; test: C3Test.SmokeAndMirrors_IsOfferedForUnitsAtDifferentLocationsOnly, AuditFix6Test.SmokeMirrors_FewerThanTwoTargetsNoOp (corrected)
+  - c3: FIXED from hand: `enumerateLegalTargetSets` lists ordered pairs at different locations, and Draw 1 no longer depends on the two units; test: C3Test.SmokeAndMirrors_IsOfferedForUnitsAtDifferentLocationsOnly, AuditFix6Test.SmokeMirrors_FewerThanTwoTargetsNoSwapButStillDraws (corrected)
 - [x] **501 Danger Zone** - `spells/0501_danger_zone.cpp:17-23` [confirmed] high — FIXED: no target; every Mech unit you control gets +1 [M]; test: C3Test.DangerZone_GivesEveryMechAndOnlyMechsPlusOne, C3Test.DangerZone_IsPlayableWithNoUnits
   - Text: "Give your Mechs +1 [M] this turn."
   - Code: takes one friendly-unit target (any unit, no Mech check) and gives that one unit +1.
@@ -48,11 +48,11 @@ Engine facts traced for this batch (referenced below):
   - Text: "Move any number of enemy units with the same controller and a total Might of 8 or less to a single location."
   - Code: moves exactly one enemy unit with Might <= 8 to its own base.
   - Scenario: four enemy 2 [M] units -> only one moves, and it can only go to base, never to a battlefield.
-- [x] **579 Square Up** - `spells/0579_square_up.cpp:18-25` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the discard; test: C3Test.SquareUp_DoesNotForceADiscard, C3Test.SquareUp_RepeatIsPaidWithADiscard
+- [x] **579 Square Up** - `spells/0579_square_up.cpp:18-25` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the discard; test: C3Test.SquareUp_TheRepeatOfferCanBeDeclined, C3Test.SquareUp_RepeatIsPaidWithADiscard
   - Text: "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn."
   - Code: the Repeat cost is not parsed, so no repeat exists; instead `discardThenAct` makes the base resolution discard a card (mandatory whenever the hand is non-empty) and grants a single Assault 4.
   - Scenario: cast with two cards in hand -> forced to discard one for one Assault 4; the printed option (keep the cards for one effect, or discard for a second effect) is unavailable.
-  - c3: FIXED the forced discard: the base effect is only "Give a unit [Assault 4] this turn"; test: C3Test.SquareUp_DoesNotForceADiscard
+  - c3: FIXED the forced discard: the base effect is only "Give a unit [Assault 4] this turn"; test: C3Test.SquareUp_TheRepeatOfferCanBeDeclined
   - BLOCKED: the Repeat itself ("[Repeat] — Discard 1") needs a card-declared Repeat cost read by `executePlaySpell` (STATUS carry-over, chain-triggers 8.9 last bullet; assigned to sweep).
 - [x] **743 Curtain Call** - `spells/0743_curtain_call.cpp:21-60` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the three costs, each offered once; test: SweepCostsTest.CurtainCall_EachRepeatCostIsOfferedOnceAndRunsAnotherMode
   - Text: "[Repeat] — [1] / [A] / [1][A] (You may pay each additional cost to repeat this spell's effect.) Choose one you haven't already chosen —"
@@ -152,7 +152,7 @@ Engine facts traced for this batch (referenced below):
   - Text: "... an enemy spell or ability that chooses a friendly unit ..."
   - Code: reads `top.targets` as choices; for a triggered ability `targets` holds the triggering event's subject (game_engine.cpp:1194), not something it chose.
   - Scenario: an enemy "when an opponent plays a unit" trigger whose subject is my unit is treated as choosing that unit and can be countered.
-- [x] **747 Death from Below** - `spells/0747_death_from_below.cpp:27-38` [confirmed] low — FIXED: the replay is offered as the spell resolves (pay [A], it goes back on the chain and a new target is chosen), whatever the timing; no standing grant; test: C3Test.DeathFromBelow_TheReplayIsOfferedAsItResolvesAndLeavesNoStandingGrant, CardTestFixture.DeathFromBelow_GrantsTrashReplayWhenMightLow (corrected)
+- [x] **747 Death from Below** - `spells/0747_death_from_below.cpp:27-38` [confirmed] low — FIXED: the replay is offered as the spell resolves (pay [A], it goes back on the chain and a new target is chosen), whatever the timing; no standing grant; test: C3Test.DeathFromBelow_TheReplayIsOfferedAsItResolvesAndLeavesNoStandingGrant, CardTestFixture.DeathFromBelow_ReplaysAtResolutionAndLeavesNoGrantWhenMightLow (corrected)
   - Text: "Then, if it had 3 [M] or less, do this: You may play this from your trash for [A]."
   - Code: adds a trash-replay grant that lasts until end of turn and obeys normal spell timing (the card has no [Action]/[Reaction]).
   - Scenario: cast on the opponent's turn through a cost-free play effect -> the replay is never available; cast on your own turn -> it can be replayed much later in the turn.

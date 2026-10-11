@@ -16,11 +16,11 @@ namespace {
 //  Play a unit with cost no more than [2] and no more than [A] from your
 //  trash, ignoring its cost."
 //
-// The unit is chosen as the spell is played. The cost path cannot see that
-// choice, so the [2] discount is granted up front whenever a Bird, Cat, Dog or
-// Poro is among the units that can be chosen, and a player who then chooses a
-// different unit pays the [2] back as the choice is made (such a unit is only
-// offered if they can). Either way the spell costs what the text says.
+// The unit is chosen as the spell is played, before its cost is paid, through
+// the additional-play-cost hook (additionalPlayCost / payAdditionalPlayCost):
+// only units the spell can then be paid for are offered, and the [2] discount
+// is returned only when the unit actually chosen is a Bird, Cat, Dog or Poro.
+// The choice is carried to resolution in a card counter (kChosen).
 
 class UndyingLoyalty : public SpellCard {
 public:
@@ -103,21 +103,9 @@ public:
             eligible(ctx.state.getObject(picked), ctx.executor.cardDB());
         // Its controller's base or a battlefield they control (CR 355.2.a).
         const auto where = playLocations(ctx.state, ctx.controller);
-        // Not a battlefield units can't be played to (Rockfall Path), and no
-        // battlefield at all for a player who may only play units to base
-        // (Mageseeker Warden). The modes keep their numbers.
-        uint32_t playable = 0;
-        for (int i = 0; i < where.count() && i < 32; ++i) {
-            bool ok = true;
-            if (const auto* at = std::get_if<BattlefieldLocation>(&where.locations[i])) {
-                ok = !ctx.state.player(ctx.controller).units_play_base_only;
-                for (const auto& bf : ctx.state.battlefields)
-                    if (bf.id == at->id && bf.blocks_unit_play) ok = false;
-            }
-            if (ok) playable |= 1u << i;
-        }
+        // (playLocations leaves out a battlefield units can't be played to.)
         const int mode = pickMode(ctx, "Undying Loyalty: where to play it",
-                                  where.count(), where.labels, playable);
+                                  where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (!still_there) return;

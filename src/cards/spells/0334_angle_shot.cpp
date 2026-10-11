@@ -63,24 +63,12 @@ public:
                 // Detach.
                 ctx.executor.unattachGear(equip);
                 ctx.events.logTrace("ANGLE SHOT: detached " + gear.name);
-            } else {
-                // Attach (free). Detach from prior bearer first.
-                if (gear.attached_to.has_value() &&
-                    ctx.state.objectExists(*gear.attached_to)) {
-                    ctx.executor.unattachGear(equip);
-                }
-                auto& g = ctx.state.getObject(equip);
-                auto& u = ctx.state.getObject(unit);
-                g.attached_to = unit;
-                u.attachments.push_back(equip);
-                g.location = u.location;
-                g.zone = u.zone;
-                u.attachment_might_bonus += g.might_bonus;
-                u.recomputeMight();
-                ctx.events.emit(ObjectStateChangedEvent{equip, "attached"});
-                ctx.events.emit(ObjectStateChangedEvent{unit, "equipped"});
-                ctx.events.logTrace("ANGLE SHOT: attached " + g.name + " -> " +
-                                    u.name);
+            } else if (ctx.executor.attachGear(equip, unit)) {
+                // Attach (free): both still on the board (CR 716), off its
+                // prior bearer first, its text Inactive (CR 718.2).
+                ctx.events.logTrace("ANGLE SHOT: attached " +
+                                    ctx.state.getObject(equip).name + " -> " +
+                                    ctx.state.getObject(unit).name);
             }
         }
         ctx.executor.drawCards(ctx.controller, 1);

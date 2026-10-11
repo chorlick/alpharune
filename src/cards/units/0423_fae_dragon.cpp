@@ -22,7 +22,7 @@ public:
     // nothing (CR 427.1.b).
     //
     // ENGINE GAP: "When you spend a buff, play a Gold gear token exhausted."
-    // There is no "spend a buff" event: the eight cards that spend buffs each
+    // There is no "spend a buff" event: the nine cards that spend buffs each
     // decrement buff_count by hand. It needs a shared spend-a-buff primitive
     // that announces the spend, plus a trigger type for it.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }

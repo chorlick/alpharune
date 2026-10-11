@@ -515,25 +515,22 @@ TEST_F(EnginePathTest, WeaponmasterDoesNotEquipAUnitThatLeftTheBoard) {
 
 TEST_F(EnginePathTest, SpellTargetThenModeIsAskedThroughTheEngine) {
     // Keeper's Verdict: "Choose an enemy unit at a battlefield. Its owner
-    // places it on the top or bottom of their Main Deck." pickTarget (chosen
-    // at play) then pickMode: the mode used to come back 0 (top) unasked.
+    // places it on the top or bottom of their Main Deck." The target is chosen
+    // at play, then top / bottom: that used to come back 0 (top) unasked.
+    // Card text: "Its OWNER places it" — the owner answers, not the caster.
     auto spell = addToHand(P1, kKeepersVerdict);
     auto victim = addUnit(P2, kInvalidId, 3, 0);
     auto other = addUnit(P2, kInvalidId, 3, 0);
     addToDeck(P2, kInvalidId);
     addToDeck(P2, kInvalidId);
 
-    // Prompts: the target, then top (0) / bottom (1).
-    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
-        for (const auto& i : legal)
-            if (!i.chosen_objects.empty() && i.chosen_objects.front() == victim) return i;
-        for (const auto& i : legal)
-            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
-        return legal.front();
-    });
-    playThroughEngine(spell, &agent);
+    // Prompts: the caster picks the target; the owner picks top (0) / bottom (1).
+    EnginePathAgent agent(EnginePathAgent::choosing(victim));
+    EnginePathAgent owner(EnginePathAgent::script({1}));
+    playThroughEngine(spell, &agent, std::nullopt, &owner);
 
-    ASSERT_EQ(agent.prompts.size(), 2u);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    ASSERT_EQ(owner.prompts.size(), 1u);
     EXPECT_FALSE(state.getObject(victim).location.has_value());
     ASSERT_EQ(deckSize(P2), 3);
     EXPECT_EQ(state.player(P2).main_deck.front(), victim) << "bottom of the deck, as chosen";

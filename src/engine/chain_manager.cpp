@@ -326,6 +326,13 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
                         break;
                     }
                 }
+                // As GameEngine::executePlayFromHidden records it (read by
+                // the hidden spell's own card).
+                if (card.hidden_at != kInvalidId) {
+                    card.card_counters["__facedown_play_bf"] =
+                        static_cast<int>(card.hidden_at) + 1;
+                    card.card_counters["__facedown_play_turn"] = state_.turn.turn_number;
+                }
                 card.is_hidden = false;
                 card.hidden_at = kInvalidId;
             } else {

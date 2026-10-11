@@ -15,52 +15,72 @@ namespace {
 class Moonfall : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Choose a battlefield where you have units. You may move up to one enemy
+    //  unit to that battlefield. Then give enemy units there -2 [M] this turn."
+    // The battlefield, whether to move a unit, and which one are chosen as the
+    // spell is played (CR 355).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
 
-    // First battlefield where the controller has a unit.
-    std::optional<BattlefieldId> chooseBattlefield(CardContext& ctx) const {
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            auto bf = obj.battlefieldId();
-            if (bf) return bf;
-        }
-        return std::nullopt;
+    /// Battlefields where `p` has a unit, as a pickMode mask over the slots.
+    static uint32_t battlefieldMask(const GameState& state, PlayerId p) {
+        uint32_t mask = 0;
+        for (size_t i = 0; i < state.battlefields.size() && i < 32; ++i)
+            for (const auto& [id, obj] : state.objects) {
+                if (!obj.isUnit() || obj.controller != p) continue;
+                const auto at = obj.battlefieldId();
+                if (at.has_value() && *at == state.battlefields[i].id) { mask |= (1u << i); break; }
+            }
+        return mask;
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return battlefieldMask(state, controller) != 0;
     }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto bf = chooseBattlefield(ctx);
-        if (!bf) return;  // no battlefield where you have units → fizzle
-        PlayerId opp = opponent(ctx.controller);
+        const auto& bfs = ctx.state.battlefields;
+        const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        std::vector<std::string> labels;
+        for (int i = 0; i < n; ++i)
+            labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+                ? ctx.state.getObject(bfs[i].card_object_id).name
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+        const int mode = pickMode(ctx, "Moonfall: battlefield", n, labels,
+                                  battlefieldMask(ctx.state, ctx.controller));
+        if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield with your units
+        const BattlefieldId bf = bfs[mode].id;
 
         // "You may move up to one enemy unit to that battlefield."
-        auto find_movable_enemy = [&]() -> GameObjectId {
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller != opp) continue;
-                if (!obj.location.has_value()) continue;
-                auto ubf = obj.battlefieldId();
-                if (ubf && *ubf == *bf) continue;  // already there
-                return id;
-            }
-            return kInvalidId;
+        auto movable = [&]() {
+            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                if (o.controller == ctx.controller) return false;
+                const auto at = o.battlefieldId();
+                return !(at.has_value() && *at == bf);   // not already there
+            });
         };
-        auto still_legal = [&]() { return find_movable_enemy() != kInvalidId; };
-        int conf = confirmOptional(ctx,
-            "Moonfall: move an enemy unit to that battlefield?", still_legal);
+        const int conf = confirmOptional(ctx,
+            "Moonfall: move an enemy unit to that battlefield?",
+            [&]() { return !movable().empty(); });
         if (conf == -1) return;  // waiting for agent
+        GameObjectId mover = kInvalidId;
         if (conf == 1) {
-            GameObjectId mover = find_movable_enemy();
-            if (mover != kInvalidId && ctx.state.objectExists(mover)) {
-                ctx.executor.moveToBattlefield(mover, *bf);
-                ctx.events.logTrace("MOONFALL: moved an enemy unit to the battlefield");
-            }
+            mover = pickTarget(ctx, "Moonfall: enemy unit to move", movable());
+            if (mover == kInvalidId && ctx.state.chain.resuming.has_value() &&
+                ctx.state.chain.resuming->resume_point == 7) return;   // waiting
         }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
 
-        // "Then give enemy units there -2 [M] this turn."
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            auto ubf = obj.battlefieldId();
-            if (!ubf || *ubf != *bf) continue;
-            ctx.executor.giveTemporaryMight(id, -2);
+        if (mover != kInvalidId && ctx.state.objectExists(mover)) {
+            ctx.executor.moveToBattlefield(mover, bf);
+            ctx.events.logTrace("MOONFALL: moved an enemy unit to the battlefield");
         }
+        // "Then give enemy units there -2 [M] this turn."
+        std::vector<GameObjectId> there;
+        for (const auto& [id, obj] : ctx.state.objects) {
+            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+            const auto at = obj.battlefieldId();
+            if (at.has_value() && *at == bf) there.push_back(id);
+        }
+        for (auto id : there) ctx.executor.giveTemporaryMight(id, -2);
         ctx.events.logTrace("MOONFALL: -2 [M] to enemy units at the battlefield");
     }
 private:

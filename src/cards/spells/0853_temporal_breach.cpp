@@ -21,9 +21,12 @@ public:
         return TargetRequirements{.count = 1, .must_be_unit = true};
     }
     bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-        GameObjectId picked = pickTarget(ctx, "Temporal Breach", legal);
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // The unit locked in as the spell was played (from facedown: one at
+        // that battlefield, CR 811.1.d.2), else asked now.
+        const auto locked = lockedPlayTarget(ctx, targets);
+        GameObjectId picked = locked ? *locked
+            : pickTarget(ctx, "Temporal Breach", enumerateLegalTargets(ctx.state, ctx.controller));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         const PlayerId owner = ctx.state.getObject(picked).owner;
         const auto where = ctx.state.getObject(picked).location;
@@ -35,8 +38,6 @@ public:
         for (auto g : gear) ctx.executor.unattachGear(g);
 
         ctx.executor.banishObject(picked);
-        auto& bz = ctx.state.player(owner).banishment;
-        bz.erase(std::remove(bz.begin(), bz.end(), picked), bz.end());
         // CR 183.1: a banished token ceases to exist — nothing to play back.
         if (token) return;
 

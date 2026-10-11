@@ -5,12 +5,13 @@
 ///  You may play this from your trash for [A]."
 ///
 /// Two layers are covered:
-///   1. onResolve pushes a PlayerState::TrashReplayGrant only when the killed
-///      unit had ≤3 might, with the [A] override cost (0 energy, 1 any-domain
-///      power).
-///   2. The action generator (GameEngine::generateTrashReplayActions) offers
-///      the spell from trash with play_source=Trash when a grant exists and the
-///      override cost is affordable — and does NOT offer it otherwise.
+///   1. The card: the replay is offered as the spell resolves, only when the
+///      killed unit had ≤3 might, and costs [A]. It leaves no standing grant.
+///   2. The trash-replay grant machinery
+///      (GameEngine::generateTrashReplayActions): a spell with a
+///      PlayerState::TrashReplayGrant is offered from trash with
+///      play_source=Trash when the override cost is affordable — and is NOT
+///      offered otherwise.
 
 #include "tests/cards/card_test_fixture.h"
 
@@ -31,22 +32,32 @@ constexpr CardDefId kDeathFromBelow = 747;
 
 // ── Layer 1: onResolve grants ─────────────────────────────────────────────
 
+// Card text: "Then, if it had 3 [M] or less, do this: You may play this from
+// your trash for [A]." — an offer made as the spell resolves, not a standing
+// permission for the rest of the turn (this test used to expect the grant).
 TEST_F(CardTestFixture, DeathFromBelow_GrantsTrashReplayWhenMightLow) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
-
-    // Spell object (its own id is what the grant references).
     auto spell = addToHand(P1, kDeathFromBelow);
-    // A small enemy unit at a battlefield — the kill target.
     auto victim = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/0);
+    auto next = addUnit(P2, kInvalidId, /*might=*/5, /*at_bf=*/0);
+    state.player(P1).rune_pool.universal_power += 1;   // the [A]
 
-    invokeOnResolve(spell, kDeathFromBelow, P1, {victim}, exec);
+    // Prompts: the first target, "play it again for [A]?" (yes), its target.
+    int prompt = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        const int n = prompt++;
+        const GameObjectId want = n == 0 ? victim : next;
+        for (const auto& i : legal) {
+            if (n == 1 && i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+            if (n != 1 && !i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        }
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
 
-    auto& grants = state.player(P1).trash_replay_grants;
-    ASSERT_EQ(grants.size(), 1u) << "≤3 might victim must grant a trash-replay";
-    EXPECT_EQ(grants[0].card, spell);
-    EXPECT_EQ(grants[0].energy, 0);
-    EXPECT_EQ(grants[0].power, 1);
-    EXPECT_TRUE(grants[0].any_domain) << "[A] = one power of any domain";
+    EXPECT_FALSE(state.getObject(victim).location.has_value());
+    EXPECT_FALSE(state.getObject(next).location.has_value()) << "replayed for [A]";
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+    EXPECT_TRUE(state.player(P1).trash_replay_grants.empty());
 }
 
 TEST_F(CardTestFixture, DeathFromBelow_NoGrantWhenMightHigh) {

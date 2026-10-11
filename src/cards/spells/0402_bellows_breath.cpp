@@ -18,6 +18,32 @@ public:
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 3, .must_be_unit = true, .optional = true};
     }
+    // "up to three units at the same location": every set of one, two or three
+    // units that share a location.
+    std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
+        const GameState& state, PlayerId controller) const override {
+        std::vector<std::pair<LocationId, std::vector<GameObjectId>>> by_location;
+        for (auto id : enumerateLegalTargets(state, controller)) {
+            const LocationId loc = *state.getObject(id).location;
+            auto it = std::find_if(by_location.begin(), by_location.end(),
+                                   [&](const auto& e) { return e.first == loc; });
+            if (it == by_location.end()) by_location.push_back({loc, {id}});
+            else it->second.push_back(id);
+        }
+        std::vector<std::vector<GameObjectId>> sets;
+        for (const auto& group : by_location) {
+            const auto& u = group.second;
+            for (size_t a = 0; a < u.size(); ++a) {
+                sets.push_back({u[a]});
+                for (size_t b = a + 1; b < u.size(); ++b) {
+                    sets.push_back({u[a], u[b]});
+                    for (size_t c = b + 1; c < u.size(); ++c)
+                        sets.push_back({u[a], u[b], u[c]});
+                }
+            }
+        }
+        return sets;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty()) return;
         // "at the same location" — anchor on the first chosen target's

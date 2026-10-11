@@ -15,8 +15,10 @@ namespace {
 class DeadlyFlourish : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Deal 3 to an enemy unit. When it dies this turn, play a Gold gear token
+    //  exhausted."
     TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
+        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true};
     }
     // Phase 6q — defer target selection so the policy head gets
     // distinct vocab slots per target choice.
@@ -29,13 +31,14 @@ public:
 
         // Register the death-watch BEFORE dealing damage so that if the
         // damage kills the unit, the delayed ability is already in place
-        // to be fired by onUnitDied.
+        // to be fired by onUnitDied. "This turn": it expires with the turn.
         DelayedAbility da;
         da.source = ctx.source;
         da.card_def_id = cardDefId();
         da.controller = ctx.controller;
         da.trigger = TriggerType::WhenIDie;
         da.target_filter = victim;
+        da.expires_on_turn = ctx.state.turn.turn_number;
         ctx.state.delayed_abilities.push_back(da);
         ctx.events.logTrace("DEADLY FLOURISH: armed death-watch on victim "
                              "(id=" + std::to_string(victim) + ")");
@@ -45,22 +48,11 @@ public:
         // the unit if damage_marked >= might. We don't manually kill
         // here — the engine handles it via the SBA pass.
     }
-    // When the delayed ability fires, spawn the Gold gear token.
+    // When the delayed ability fires, play the Gold gear token exhausted
+    // (CR 187.5: it carries the registered Gold card's ability).
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        auto tok = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
-                                            /*might=*/0, /*tags=*/{},
-                                            /*kw=*/KeywordSet{},
-                                            BaseLocation{ctx.controller},
-                                            /*enter_ready=*/false);
-        if (ctx.state.objectExists(tok)) {
-            // "exhausted": createToken's last argument is enter_ready and it only
-            // exhausts units, so exhaust the gear token explicitly.
-            ctx.state.getObject(tok).is_exhausted = true;
-            // CR 187.5: a Gold gear token has "[Reaction][>] Kill this, [E]:
-            // [Add] [A]" — carried by the registered Gold card.
-            ctx.state.getObject(tok).card_def_id = kGoldGearCardDefId;
-        }
+        createGoldExhausted(ctx);
         ctx.events.logTrace("DEADLY FLOURISH: victim died — spawned Gold token");
     }
 private:
@@ -78,7 +70,6 @@ private:
         d.domains = {Domain::Mind};
         d.energy_cost = 4;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB(Deal 3 to an enemy unit. When it dies this turn, play a Gold gear token exhausted. (It has "[Reaction][>] Kill this, [E]: [Add] [A]."))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/81195df7122beaba38ebc8b8212ceb0e7593afe9-744x1039.png?accountingTag=RB)RB";
         return d;

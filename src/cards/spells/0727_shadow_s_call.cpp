@@ -15,9 +15,24 @@ namespace {
 class ShadowSCall : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Choose a friendly unit without [Temporary]. Give it [Temporary]. Draw 2."
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_friendly = true};
+    }
+    // "... without [Temporary]": a unit that already has it is not a legal choice.
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller) const override {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == controller && obj.location.has_value() &&
+                !obj.hasKeyword(Keyword::Temporary))
+                out.push_back(id);
+        return out;
+    }
+    // The draw happens with or without a unit to choose.
+    bool hasLegalTargets(const GameState& /*state*/, PlayerId /*controller*/) const override {
+        return true;
     }
     // Phase 6q proof-of-concept (single friendly-unit target).
     bool needsPlayTimeTarget() const override { return true; }
@@ -35,8 +50,14 @@ public:
             ctx.state.chain.resuming->resume_point == 7) {
             return;  // suspended for agent decision
         }
-        if (picked != kInvalidId && ctx.state.objectExists(picked)) {
-            ctx.executor.giveTemporaryKeyword(picked, Keyword::Temporary, 0);
+        if (picked != kInvalidId && ctx.state.objectExists(picked) &&
+            ctx.state.getObject(picked).location.has_value()) {
+            // Not a "this turn" grant: the unit keeps [Temporary] until its
+            // controller's Beginning Phase kills it (a giveTemporaryKeyword
+            // grant would be stripped at the end of this turn).
+            ctx.state.getObject(picked).keywords.set(Keyword::Temporary);
+            ctx.events.logTrace("SHADOW'S CALL: " + ctx.state.getObject(picked).name +
+                                " gains [Temporary]");
         }
         ctx.executor.drawCards(ctx.controller, 2);
     }

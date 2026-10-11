@@ -18,13 +18,15 @@ public:
     // [vendetta-E]
     // "Play two 1 [M] Tentacle unit tokens from Bilgewater." CR 187.10: a
     // Tentacle token is a domainless 1 [M] unit token with the Bilgewater tag.
-    // Tokens are played to the controller's base (the engine-wide convention
-    // for effect-played tokens; no location prompt is surfaced).
+    // Each is played to the controller's base or a battlefield they control.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        LocationId loc{BaseLocation{ctx.controller}};
-        for (int i = 0; i < 2; ++i)
-            ctx.executor.createToken(ctx.controller, CardType::Unit, "Tentacle", 1,
-                                     {"Bilgewater"}, KeywordSet{}, loc, /*enter_ready=*/false);
+        std::vector<GameObjectId> made;
+        auto make = [&](LocationId loc) {
+            return ctx.executor.createToken(ctx.controller, CardType::Unit, "Tentacle", 1,
+                                            {"Bilgewater"}, KeywordSet{}, loc,
+                                            /*enter_ready=*/false);
+        };
+        playTokensChoosingLocations(ctx, "Up from the Deep: play a Tentacle", 2, make, made);
     }
     // "[Flow] [3]"
     FlowCost flowCost() const override { return flow(3); }

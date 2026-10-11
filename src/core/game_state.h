@@ -634,6 +634,9 @@ struct DelayedAbility {
     TriggerType trigger = TriggerType::None; // what event fires it
     int expires_on_turn = -1;             // -1 = end of current turn
     bool fired = false;                   // one-shot: fire once, then remove
+    // "When a friendly unit is played this turn, ..." (Rally the Troops): fires
+    // for EVERY matching event until it expires, instead of once.
+    bool repeats = false;
 
     // Optional filter for events that carry an object id (e.g.
     // UnitDiedEvent::object). Set to a specific GameObjectId to narrow

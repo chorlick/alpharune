@@ -17,20 +17,35 @@ public:
     const CardDef& def() const override { return def_; }
     // [vendetta-E]
     // "[Burn 3]. Play a 0 [M] Shadow Clone unit token."
-    // (The token carries the registered Shadow Clone card, id 955.)
+    // (The token carries the registered Shadow Clone card, id 955.) It is
+    // played to the controller's base or a battlefield they control.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.executor.burn(ctx.controller, 3);
-        if (ctx.state.game_over) return;
-        LocationId loc{BaseLocation{ctx.controller}};
-        {
-            auto clone_id = ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone", 0,
-                                 {}, KeywordSet{}, loc, /*enter_ready=*/false);
+        // The Burn happens once: not again when this is re-entered with the
+        // token's location (the helper leaves resume_point non-zero while it
+        // waits, and its slot records a token already played).
+        auto& ri = ctx.state.chain.resuming;
+        const bool first_pass = !ri.has_value() ||
+            (ri->resume_point == 0 && ri->resume_data.size() <= kTokenPlaySlot);
+        if (first_pass) {
+            ctx.executor.burn(ctx.controller, 3);
+            if (ctx.state.game_over) return;
+        }
+        std::vector<GameObjectId> made;
+        auto make = [&](LocationId loc) {
+            auto clone_id = ctx.executor.createToken(ctx.controller, CardType::Unit,
+                                                     "Shadow Clone", 0, {}, KeywordSet{}, loc,
+                                                     /*enter_ready=*/false);
             // Carry the Shadow Clone token card so its "When I attack" ability fires.
             if (ctx.state.objectExists(clone_id))
                 ctx.state.getObject(clone_id).card_def_id = 955;
-        }
+            return clone_id;
+        };
+        playTokensChoosingLocations(ctx, "Death Mark: play the Shadow Clone", 1, make, made);
     }
     // "[Flow] [1][A][A]"
+    // ENGINE-GAP: the engine's any-domain grant path pays the whole [A][A]
+    // from ONE domain, so the Flow play is not offered to a player whose two
+    // Power can only come from different domains.
     FlowCost flowCost() const override { return flow(1, 2, Domain::Fury, /*any_domain=*/true); }
 private:
     const CardDef def_ = [] {

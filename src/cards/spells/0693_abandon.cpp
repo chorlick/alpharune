@@ -16,15 +16,12 @@ class Abandon : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // Per CR 355.9.a.2 + 355.10: "Counter a spell" is a target
-    // requirement on a Chain object. Abandon needs a spell on chain
-    // to be playable; the Predict 1 side-effect doesn't make it
-    // playable on its own. Earlier session left this as "always
-    // playable" which is wrong per CR — corrected after user CR review.
+    // requirement on a Chain object. Abandon needs a spell to counter to be
+    // playable; the Predict 1 side-effect doesn't make it playable on its
+    // own. Peek-and-pop: the spell countered is the top of the chain, so a
+    // spell under an ability cannot be reached and does not make this playable.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it) {
-            if (it->is_spell) return true;
-        }
-        return false;
+        return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
@@ -49,7 +46,7 @@ public:
             }
 
             // Predict 1: peek top, publish recycle/keep choice.
-            if (ps.main_deck.empty()) return;
+            if (ps.main_deck.empty()) { ri.resume_point = 2; return; }
             auto top_card = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
             ri.resume_data = {static_cast<int32_t>(top_card)};
 
@@ -71,13 +68,16 @@ public:
         }
         case 1: {
             auto choice = ctx.executor.takeChoice();
+            ri.resume_point = 2;
             if (ri.resume_data.empty()) return;
             auto top_card = static_cast<GameObjectId>(ri.resume_data[0]);
             if (!ctx.state.objectExists(top_card)) return;
 
             std::string n = ctx.state.getObject(top_card).name;
             if (choice && !choice->chosen_objects.empty()) {
-                deck::putOnBottom(ctx.state, ctx.controller, top_card, deck::Place::Held, knowledge::only(ctx.controller));
+                // Recycled (CR 437): recycleCards puts it on the bottom and
+                // announces it ("recycled_main").
+                ctx.executor.recycleCards(ctx.controller, {top_card});
                 ctx.events.logTrace("PREDICT: " + n +
                                      " -> bottom of deck (recycled)");
             } else {
@@ -88,6 +88,8 @@ public:
             }
             return;
         }
+        default:
+            return;
         }
     }
 private:

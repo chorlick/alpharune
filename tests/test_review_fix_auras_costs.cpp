@@ -751,6 +751,7 @@ TEST_F(AurasCostsTest, Repeat_PowerComesFromRecyclingTheRuneToTheRuneDeck) {
     // recycle, put the rune in the MAIN deck.
     a1_.say_yes = true;
     auto target = vanilla(P1, 2);
+    o(target).tags = {"Mech"};   // Danger Zone: "Give your Mechs +1 [M] this turn."
     auto spell = inHand(P1, kDangerZone);
     s().player(P1).rune_pool.energy = 1;                                   // base [1]
     s().player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;    // base [R]
@@ -775,6 +776,7 @@ TEST_F(AurasCostsTest, Repeat_PowerComesFromRecyclingTheRuneToTheRuneDeck) {
 TEST_F(AurasCostsTest, Repeat_FloatingResourcesPayTheTranche) {
     a1_.say_yes = true;
     auto target = vanilla(P1, 2);
+    o(target).tags = {"Mech"};   // Danger Zone: "Give your Mechs +1 [M] this turn."
     auto spell = inHand(P1, kDangerZone);
     s().player(P1).rune_pool.energy = 2;
     s().player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;

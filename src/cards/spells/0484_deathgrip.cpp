@@ -15,18 +15,43 @@ namespace {
 class Deathgrip : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Kill a friendly unit. If you do, give +[M] equal to its Might to another
+    //  friendly unit this turn. Draw 1."
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true,
                                    .must_be_friendly = true};
     }
+    // {unit to kill, unit to pump} for every ordered pair of friendly units.
+    // With a single friendly unit the spell is still playable on it alone
+    // (kill it, no pump, draw 1).
+    std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
+        const GameState& state, PlayerId controller) const override {
+        const auto units = enumerateLegalTargets(state, controller);
+        std::vector<std::vector<GameObjectId>> sets;
+        for (auto kill : units)
+            for (auto pump : units)
+                if (pump != kill) sets.push_back({kill, pump});
+        if (units.size() == 1) sets.push_back({units[0]});
+        return sets;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.size() >= 2 && ctx.state.objectExists(targets[0])
-                                && ctx.state.objectExists(targets[1])) {
-            auto sacrifice_id = targets[0];
-            auto recipient_id = targets[1];
-            int might = ctx.state.getObject(sacrifice_id).current_might;
-            ctx.executor.killObject(sacrifice_id);
-            ctx.executor.giveTemporaryMight(recipient_id, might);
+        // `targets` holds only the targets that are still legal, so which is
+        // which is read from the chain item: the unit to kill first, the unit
+        // to pump second.
+        const auto& chosen = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->targets : targets;
+        auto still_legal = [&](GameObjectId id) {
+            return id != kInvalidId &&
+                   std::find(targets.begin(), targets.end(), id) != targets.end();
+        };
+        const GameObjectId kill = chosen.empty() ? kInvalidId : chosen[0];
+        const GameObjectId pump = chosen.size() >= 2 ? chosen[1] : kInvalidId;
+        if (still_legal(kill)) {
+            const int might = ctx.state.getObject(kill).current_might;
+            ctx.executor.killObject(kill);
+            // "If you do": a replacement effect may have kept it on the board.
+            const bool died = !ctx.state.getObject(kill).location.has_value();
+            if (died && still_legal(pump)) ctx.executor.giveTemporaryMight(pump, might);
         }
         ctx.executor.drawCards(ctx.controller, 1);
     }

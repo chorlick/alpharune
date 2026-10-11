@@ -16,6 +16,7 @@ namespace {
 class StareDown : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+
     // "Choose a friendly unit and a battlefield. Move all enemy units at that
     //  battlefield with less Might than the chosen unit to their base. Gain 1 XP."
     TargetRequirements getTargetRequirements() const override {
@@ -23,51 +24,40 @@ public:
     }
     bool needsPlayTimeTarget() const override { return true; }
 
-    std::vector<GameObjectId> friendlyUnits(CardContext& ctx) const {
-        std::vector<GameObjectId> out;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            out.push_back(id);
-        }
-        return out;
-    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        const auto locked = lockedPlayTarget(ctx, targets);
+        const GameObjectId chosen = locked ? *locked
+            : pickTarget(ctx, "Stare Down: choose a friendly unit",
+                         enumerateLegalTargets(ctx.state, ctx.controller));
+        if (chosen == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent (the XP below is gained once)
+        // "and a battlefield": the controller's choice among all of them.
+        const auto& bfs = ctx.state.battlefields;
+        const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        std::vector<std::string> labels;
+        for (int i = 0; i < n; ++i)
+            labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+                ? ctx.state.getObject(bfs[i].card_object_id).name
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+        const int mode = pickMode(ctx, "Stare Down: battlefield", n, labels);
+        if (mode == -1) return;   // waiting for the agent
 
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        GameObjectId chosen = pickTarget(ctx, "Stare Down: choose a friendly unit",
-                                         friendlyUnits(ctx));
-        if (chosen == kInvalidId || !ctx.state.objectExists(chosen)) {
-            // Still gain XP per card text? Card requires a chosen unit, so if
-            // none exists the spell does nothing meaningful. Gain XP regardless
-            // (the "Gain 1 XP" clause is unconditional).
-            ctx.state.player(ctx.controller).xp += 1;
-            return;
-        }
-        int threshold = ctx.state.getObject(chosen).current_might;
-        PlayerId opp = opponent(ctx.controller);
-
-        // "a battlefield" — no BF-pick API; choose the battlefield holding the
-        // most eligible enemy units (enemies with less Might than the chosen).
-        std::map<BattlefieldId, std::vector<GameObjectId>> by_bf;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp || !obj.location.has_value()) continue;
-            auto bf = obj.battlefieldId();
-            if (!bf) continue;
-            if (obj.current_might >= threshold) continue;
-            by_bf[*bf].push_back(id);
-        }
-        BattlefieldId best_bf = kInvalidId;
-        size_t best = 0;
-        for (auto& [bf, units] : by_bf) {
-            if (units.size() > best) { best = units.size(); best_bf = bf; }
-        }
-        if (best_bf != kInvalidId) {
-            for (auto id : by_bf[best_bf]) {
-                if (ctx.state.objectExists(id)) ctx.executor.moveToBase(id);
+        if (chosen != kInvalidId && ctx.state.objectExists(chosen) && mode >= 0 && mode < n) {
+            const int threshold = ctx.state.getObject(chosen).current_might;
+            const BattlefieldId bf = bfs[mode].id;
+            std::vector<GameObjectId> weaker;
+            for (const auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+                const auto at = obj.battlefieldId();
+                if (!at.has_value() || *at != bf) continue;
+                if (obj.current_might < threshold) weaker.push_back(id);
             }
+            for (auto id : weaker) ctx.executor.moveToBase(id);
             ctx.events.logTrace("STARE DOWN: moved enemy units (< " +
                                  std::to_string(threshold) + "M) at a BF to base");
         }
+        // "Gain 1 XP." does not depend on the chosen unit.
         ctx.state.player(ctx.controller).xp += 1;
     }
 private:

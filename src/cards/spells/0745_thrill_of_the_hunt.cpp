@@ -25,6 +25,7 @@ public:
         if (unit_id == kInvalidId || !ctx.state.objectExists(unit_id)) return;
         auto owner = ctx.state.getObject(unit_id).owner;
         std::string uname = ctx.state.getObject(unit_id).name;
+        const bool token = ctx.state.getObject(unit_id).isToken();
 
         // The battlefield is asked BEFORE anything changes: pickMode suspends
         // and this callback is re-entered from the top with the answer, so
@@ -32,14 +33,25 @@ public:
         // once per pass. Use pickMode so the agent records the battlefield
         // choice (one option per battlefield on the board, not just
         // controlled ones).
-        // Step 1: banish the friendly unit.
+        // Step 1: banish the friendly unit (its gear is shed). It comes back
+        // as a new object: no damage, buffs, statuses or combat role.
         auto banish = [&]() {
             ctx.executor.banishObject(unit_id);
-            // banishObject pushes to banishment; playIgnoringCost re-zones it,
-            // so drop the duplicate banishment entry.
-            auto& bz = ctx.state.player(owner).banishment;
-            bz.erase(std::remove(bz.begin(), bz.end(), unit_id), bz.end());
+            auto& unit = ctx.state.getObject(unit_id);
+            unit.damage_marked = 0;
+            unit.buff_count = 0;
+            unit.temp_might_bonus = 0;
+            unit.is_stunned = false;
+            unit.empowered = 0;
+            unit.empower_flip_eot = 0;
+            unit.combat_designation = CombatDesignation::None;
         };
+        // CR 183.1: a banished token ceases to exist — nothing to play back.
+        if (token) {
+            banish();
+            ctx.events.logTrace("THRILL: " + uname + " (a token) is banished and gone");
+            return;
+        }
         std::vector<LocationId> locations;
         std::vector<std::string> labels;
         for (const auto& bf : ctx.state.battlefields) {

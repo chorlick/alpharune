@@ -1232,8 +1232,9 @@ TEST_F(JhinDeckTest, RocketBarrage_KillsGoldGearToken) {
 TEST_F(JhinDeckTest, RocketBarrage_WithRepeat_TwoEffectsResolve) {
     // Repeat lets the controller choose both modes (or two of the same).
     // Verify: mode 1 deals 4 to unit, mode 2 kills a gear, with one cast
-    // and one repeat-execution. (Simulating: two onResolve calls per the
-    // engine's Repeat loop.)
+    // and one repeat-execution. Played through the engine: each execution
+    // chooses its mode and then that mode's target (the card no longer takes
+    // a hand-fed play target that may fit neither mode).
     auto unit = addUnit(P2, kInvalidId, 10, /*at_bf=*/-1);
     auto gear = state.createObject();
     auto& g = state.getObject(gear);
@@ -1245,9 +1246,31 @@ TEST_F(JhinDeckTest, RocketBarrage_WithRepeat_TwoEffectsResolve) {
     g.location = BaseLocation{P2};
 
     auto src = addToHand(P1, 400);
-    EffectExecutor exec(state, events, card_db);
-    invokeOnResolve(src, 400, P1, {unit}, exec);   // base: damage
-    invokeOnResolve(src, 400, P1, {gear}, exec);   // Repeat: kill gear
+    state.player(P1).rune_pool.energy += 4;            // [Repeat] [4][B]
+    state.player(P1).rune_pool.universal_power += 1;
+    // Mode, target (at finalization); pay the Repeat is asked first of all.
+    int prompt = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        auto by_value = [&](int v) {
+            for (const auto& i : legal)
+                if (i.chosen_objects.empty() && i.chosen_value.has_value() && *i.chosen_value == v)
+                    return i;
+            return legal.front();
+        };
+        auto by_object = [&](GameObjectId id) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+            return legal.front();
+        };
+        switch (prompt++) {
+            case 0: return by_value(1);      // pay the Repeat
+            case 1: return by_value(0);      // base: "Deal 4 to a unit in a base"
+            case 2: return by_object(unit);
+            case 3: return by_value(1);      // Repeat: "Kill a gear"
+            default: return by_object(gear);
+        }
+    });
+    playThroughEngine(src, &agent);
     EXPECT_EQ(state.getObject(unit).damage_marked, 4);
     EXPECT_NE(state.getObject(gear).zone, ZoneType::Base);
 }
@@ -1818,6 +1841,13 @@ TEST_F(JhinDeckTest, PickMode_AgentSelectsModeIdx_FromMultipleLegalModes) {
     ASSERT_EQ(pending.legal.size(), 1u)
         << "exactly one legal mode (Deal 4 to base unit)";
     exec.recordChoice(pending.legal[0]);
+    card->onResolve(ctx, {unit_at_base});
+    // The mode's target is chosen after the mode ("Deal 4 to a unit in a
+    // base"), from the units that mode can affect.
+    ASSERT_TRUE(exec.hasPendingChoice()) << "then the target of that mode";
+    auto target_prompt = exec.consumePendingChoice();
+    ASSERT_EQ(target_prompt.legal.size(), 1u);
+    exec.recordChoice(target_prompt.legal[0]);
     card->onResolve(ctx, {unit_at_base});
     EXPECT_EQ(state.getObject(unit_at_base).damage_marked, 4)
         << "Mode 0 (Deal 4 to base unit) should fire";

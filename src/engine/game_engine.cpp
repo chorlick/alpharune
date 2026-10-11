@@ -1165,6 +1165,7 @@ void GameEngine::doExpirationBody() {
         // Tactical Retreat's "next time it would die THIS TURN" replacement
         // expires unused at end of turn.
         obj.death_replacement_recall_pending = false;
+        obj.banish_if_would_die_this_turn = false;   // Smite
 
         // Counter Strike's one-shot damage prevention is "this turn".
         obj.prevent_next_damage_this_turn = false;
@@ -2741,6 +2742,11 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
     // Lets the card's own "When you play me from face down" tell this play
     // apart from a play from hand. Cleared when it next enters a hand/trash.
     card.card_counters["__played_from_facedown"] = 1;
+    // Where and when, for a hidden SPELL's own text (CR 811.1.d: its choices
+    // are tied to that battlefield; "if you played this from your hand").
+    // Turn-stamped, so a stale value never reads as this play.
+    card.card_counters["__facedown_play_bf"] = static_cast<int>(bf_id) + 1;
+    card.card_counters["__facedown_play_turn"] = state_.turn.turn_number;
 
     // "When you play a card from face down" (Katarina, Reckless).
     events_.emit(PlayedFromFacedownEvent{intent.card, intent.player});
@@ -6433,6 +6439,15 @@ void GameEngine::killUnit(GameObjectId unit_id) {
             old_loc.value_or(BaseLocation{controller}),
             BaseLocation{controller}, false});
         return;  // replacement consumed — unit does NOT die
+    }
+
+    // "If it would die this turn, banish it instead." (Smite) The unit is
+    // banished and does not die.
+    if (unit.banish_if_would_die_this_turn) {
+        unit.banish_if_would_die_this_turn = false;
+        events_.logDebug("REPLACEMENT (self): " + unit.name + " is banished instead of dying");
+        effect_executor_->banishObject(unit_id);
+        return;
     }
 
     // "If a unit here would die ..." on the battlefield the unit is at (Altar

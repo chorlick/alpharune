@@ -16,54 +16,29 @@ class TwilightStep : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // [vendetta-E]
-    // "Move a unit with 3 [M] or less." The agent picks the unit, then where
-    // it moves (its controller's base or any other battlefield).
+    // "Move a unit with 3 [M] or less." The unit is the spell's target, chosen
+    // as it is played (the engine's play-time choice, which pays Deflect and
+    // records the choice); where it moves — its controller's base or any
+    // other battlefield — is chosen as it resolves.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .max_might = 3};
     }
     bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.chain.resuming.has_value()) return;
-        auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == 0) {
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            std::sort(legal.begin(), legal.end());
-            if (legal.empty()) { ri.resume_point = 3; return; }
-            std::vector<Intent> opts;
-            for (auto u : legal) opts.push_back(objChoice(ctx.controller, u));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Twilight Step: move a unit with 3 [M] or less");
-            ri.resume_point = 1;
-            return;
-        }
-        if (ri.resume_point == 1) {
-            GameObjectId u = takenObject(ctx);
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            if (std::find(legal.begin(), legal.end(), u) == legal.end()) {
-                ri.resume_point = 3;
-                return;
-            }
-            auto dests = moveDests(ctx.state, ctx.state.getObject(u));
-            if (dests.empty()) { ri.resume_point = 3; return; }
-            ri.resume_data = {static_cast<int32_t>(u)};
-            std::vector<Intent> opts;
-            for (int d : dests) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Twilight Step: move it where?");
-            ri.resume_point = 2;
-            return;
-        }
-        if (ri.resume_point == 2) {
-            ri.resume_point = 3;
-            if (ri.resume_data.empty()) return;
-            auto u = static_cast<GameObjectId>(ri.resume_data[0]);
-            if (!ctx.state.objectExists(u)) return;
-            auto dests = moveDests(ctx.state, ctx.state.getObject(u));
-            if (dests.empty()) return;
-            int d = takenValue(ctx, dests.front());
-            if (std::find(dests.begin(), dests.end(), d) == dests.end()) d = dests.front();
-            moveTo(ctx, u, d);
-        }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        const auto locked = lockedPlayTarget(ctx, targets);
+        const GameObjectId u = locked ? *locked
+            : pickTarget(ctx, "Twilight Step: move a unit with 3 [M] or less",
+                         enumerateLegalTargets(ctx.state, ctx.controller));
+        if (u == kInvalidId || !ctx.state.objectExists(u)) return;   // waiting, or no target
+        const auto dests = moveDests(ctx.state, ctx.state.getObject(u));
+        const int n = 1 + static_cast<int>(ctx.state.battlefields.size());
+        std::vector<std::string> labels;
+        uint32_t mask = 0;
+        for (int d = 0; d < n; ++d) labels.push_back(destLabel(d));
+        for (int d : dests) if (d >= 0 && d < 32) mask |= (1u << d);
+        const int dest = pickMode(ctx, "Twilight Step: move it where?", n, labels, mask);
+        if (dest < 0) return;   // -1 waiting, -2 nowhere to move
+        moveTo(ctx, u, dest);
     }
     // "[Flow] [4][P]"
     FlowCost flowCost() const override { return flow(4, 1, Domain::Chaos); }

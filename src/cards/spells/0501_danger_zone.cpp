@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,12 +15,15 @@ namespace {
 class DangerZone : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 1);
-    }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    // "Give your Mechs +1 [M] this turn." No target: every Mech unit you
+    // control when this resolves.
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> mechs;
+        for (const auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value() && hasTag(obj, "Mech"))
+                mechs.push_back(id);
+        for (auto id : mechs) ctx.executor.giveTemporaryMight(id, 1);
     }
 private:
     const CardDef def_ = [] {

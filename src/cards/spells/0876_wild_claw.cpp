@@ -71,7 +71,6 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;  // needs the chain's resume slot
         auto& ri = *ctx.state.chain.resuming;
-        auto& ps = ctx.state.player(ctx.controller);
         const auto& bfs = ctx.state.battlefields;
 
         if (ri.resume_point == 0) {
@@ -124,9 +123,10 @@ public:
             }
             ri.resume_data = {static_cast<int32_t>(chosen)};
             if (chosen != kInvalidId) {
+                // It stays listed in banishment until it is actually played:
+                // playPayingCost takes it out on success, and a payment that
+                // fails leaves it banished rather than in no zone at all.
                 ctx.executor.banishObject(chosen);
-                auto& bz = ps.banishment;
-                bz.erase(std::remove(bz.begin(), bz.end(), chosen), bz.end());
             }
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
             if (chosen == kInvalidId) {

@@ -32,7 +32,10 @@ public:
         if (mode == -1) return;   // yielded for agent input
         if (mode == -2) mode = 1; // no legal mode (shouldn't happen — birds always legal)
 
-        if (mode == 0 && counter_legal) {
+        if (mode == 0) {
+            // Still the chain top and still counterable (the callback is not
+            // re-entered after this, so the counter happens once).
+            if (!counter_legal) return;
             auto victim = chain.items.back();
             chain.items.pop_back();
             ctx.events.logTrace("FLURRY OF FEATHERS: countered spell (id=" +
@@ -41,14 +44,17 @@ public:
             return;
         }
 
-        // Mode 1: spawn four 1 [M] Bird tokens with [Deflect] at controller's base.
-        KeywordSet kw; kw.set(Keyword::Deflect);
-        for (int i = 0; i < 4; ++i) {
-            ctx.executor.createToken(ctx.controller, CardType::Unit, "Bird",
-                                      /*might=*/1, /*tags=*/{"Bird"}, kw,
-                                      BaseLocation{ctx.controller},
-                                      /*enter_ready=*/false);
-        }
+        // Mode 1: four 1 [M] Bird tokens with [Deflect], each played to the
+        // controller's base or a battlefield they control.
+        std::vector<GameObjectId> made;
+        auto make = [&](LocationId loc) {
+            KeywordSet kw; kw.set(Keyword::Deflect);
+            return ctx.executor.createToken(ctx.controller, CardType::Unit, "Bird",
+                                            /*might=*/1, /*tags=*/{"Bird"}, kw, loc,
+                                            /*enter_ready=*/false);
+        };
+        if (!playTokensChoosingLocations(ctx, "Flurry of Feathers: play a Bird", 4, make, made))
+            return;   // waiting for a location
         ctx.events.logTrace("FLURRY OF FEATHERS: spawned 4 Bird tokens");
     }
 private:

@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -18,18 +19,14 @@ class Arise : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // Each token is played to the controller's base or a battlefield they
+    // control, token by token (playTokensChoosingLocations).
+    //
     // "Then do this: Ready up to two of them." — which of the new tokens, and
     // how many (0, 1 or 2), is the controller's choice. Progress lives on the
     // resolving chain item: resume_point kAwaitReady / kDone (clear of the
     // ranges the Card::pick* / confirmOptional helpers use) and
     // resume_data = [readied so far, token, token, ...].
-    //
-    // ENGINE-GAP: the tokens always go to the controller's base. CR 185.2.a /
-    // 355.2.a let the controller choose, for each token played, their base or
-    // a battlefield they control. One location prompt per token (one token per
-    // Equipment) plus the ready picks can exceed the 16 re-entries
-    // ChainManager::stepResolve allows per resolution. Needed: a batched
-    // "choose locations" decision, or a higher re-entry cap.
     static constexpr int kAwaitReady = 20;
     static constexpr int kDone = 21;
 
@@ -91,24 +88,24 @@ public:
             return;
         }
 
+        // The number of tokens is fixed when the first one is played: the
+        // count is re-read on re-entry, and tokens are not Equipment.
         int equip_count = 0;
         for (auto& [id, obj] : ctx.state.objects) {
             if (obj.controller != ctx.controller) continue;
-            if (!obj.isGear() || !obj.location.has_value()) continue;
-            bool is_equip = false;
-            for (auto& tag : obj.tags) if (tag == "Equipment") { is_equip = true; break; }
-            if (is_equip) ++equip_count;
+            if (isEquipment(obj) && obj.location.has_value()) ++equip_count;
         }
         if (equip_count <= 0) return;
-        LocationId loc{BaseLocation{ctx.controller}};
         std::vector<GameObjectId> made;
-        for (int i = 0; i < equip_count; ++i) {
+        auto make = [&](LocationId loc) {
             // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
-            auto tok = ctx.executor.createToken(ctx.controller, CardType::Unit,
-                                                "Sand Soldier", 2, {"Shurima"},
-                                                KeywordSet{}, loc, /*enter_ready=*/false);
-            if (tok != kInvalidId) made.push_back(tok);
-        }
+            return ctx.executor.createToken(ctx.controller, CardType::Unit,
+                                            "Sand Soldier", 2, {"Shurima"},
+                                            KeywordSet{}, loc, /*enter_ready=*/false);
+        };
+        if (!playTokensChoosingLocations(ctx, "Arise!: play a Sand Soldier", equip_count,
+                                         make, made))
+            return;   // waiting for a location
         ctx.events.logTrace("ARISE!: played " + std::to_string(made.size()) +
                             " Sand Soldier token(s)");
         if (!ri_opt.has_value()) {

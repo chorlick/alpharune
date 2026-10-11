@@ -105,6 +105,7 @@ subject") describes something nothing implements.
 - [x] **7.4 Three more Repeat cards lose the repeat and leak a stale choice** [confirmed] — FIXED: in the chain manager's Repeat loop (02 item 2.4); test: ChainTriggerFixTest.Repeat_RepeatedEffectGetsItsOwnChoiceAndHappens (Frigid Touch, `pickTarget`), ChainTriggerFixTest.Repeat_HandRolledChoiceCardFinishesItsRepeat (Called Shot)
   - `spells/0436_marching_orders.cpp:50` (Repeat [3]), `spells/0450_temptation.cpp:62` (Repeat [2]), `spells/0472_bonds_of_strength.cpp:42` (Repeat [2]). All call `pickTargetPair`.
   - With Called Shot 443 and Hard Bargain 457 that is five cards; the fix is in the chain manager's Repeat loop (`chain_manager.cpp:433-447`), not the cards.
+  - c3: 436 Marching Orders, 450 Temptation, 472 Bonds of Strength, 443 Called Shot, 457 Hard Bargain — ALREADY FIXED in the chain manager; test: C3Test.Repeat_ATwoTargetSpellChoosesAgainForItsRepeat
 
 ## C. Costs paid at resolution instead of finalization (replaces 03 item 3.12)
 
@@ -147,9 +148,11 @@ subject") describes something nothing implements.
 ## D. Card does not match its text
 
 - [ ] **7.9** `spells/0727_shadow_s_call.cpp:39` — grants [Temporary] via `giveTemporaryKeyword`, which `expireTemporaryKeywords` (`game_engine.cpp:1006`, called `:1125`) strips the same turn, so the unit is never killed. Line 25 also offers units that already have [Temporary]. `spells/0632_turn_to_dust.cpp:20` uses the same call (not reviewed). [confirmed]
+  - c3: 727 Shadow's Call and 632 Turn to Dust — FIXED: the keyword is set on `GameObject::keywords` (a lasting grant, as Fading Memories does), not through `giveTemporaryKeyword`; Shadow's Call offers only units without [Temporary]; test: C3Test.ShadowsCall_OnlyUnitsWithoutTemporaryAndTheGrantLasts, C3Test.TurnToDust_TheGearKeepsTemporaryPastTheEndOfTheTurn
 - [ ] **7.10** `units/0741_rift_herald.cpp:80` — Deathknell plays a hand unit without erasing it from `ps.hand`; `playIgnoringCost` (`effect_executor.cpp:1686`) never touches the source zone. The unit is on board and in hand. Ava Achiever 107:61 and Jayce 406:67 erase first. [confirmed]
 - [ ] **7.11** `spells/0892_twilight_step.cpp:24,28-37`, `spells/0935_shadow_dash.cpp:55,63-71` — set `needsPlayTimeTarget()` so the engine picks a target at play, then hand-roll a second choice at resolution and ignore the first. [confirmed]
   - c4: 935 Shadow Dash — FIXED: `onResolve` takes the unit chosen at play through `pickTarget` (no second, hand-rolled unit prompt); the battlefield is a `pickMode` at resolution; test: C4Test.ShadowDash_AsksForTheEnemyUnitOnceAndPaysItsDeflect, C4Test.ShadowDash_ExactlyTwoUnitsThereEachGetPlusOne
+  - c3: 892 Twilight Step — FIXED: uses the target chosen at play (`lockedPlayTarget` / `pickTarget`), then `pickMode` for the destination; test: C3Test.TwilightStep_AsksForTheUnitOnceThenWhereItMoves (935 Shadow Dash is c4's)
 - [ ] **7.12** `gear/0021_sun_disc.cpp:42-50`, `units/0614_nami_headstrong.cpp:74-83` — "next unit you play" readies any exhausted friendly unit; the trigger carries no subject (`trigger_manager.cpp:352`). [confirmed]
   - c0: 21 Sun Disc — FIXED: `WhenYouPlayAUnit` now carries the played unit as its subject (`shared:` 776a84b; Nami 614 can use the same) and Sun Disc readies exactly that unit, with no choice; test: C0Test.SunDisc_NeedsAnotherCardPlayedThisTurn, .SunDisc_ReadiesThePlayedUnitAndIsUsedUpByIt
 - [ ] **7.13** `legends/0295_relentless_storm.cpp:26-32` — fires on any unit play while any Mighty friendly unit is on board. [confirmed]
@@ -160,13 +163,17 @@ subject") describes something nothing implements.
 - [ ] **7.16** `spells/0263_bullet_time.cpp:50-57` — X is capped at already-exhausted runes; `payableAnyPower` is the right count. [confirmed]
   - c2: 263 Bullet Time — FIXED: X ranges up to `payableAnyPower` and is paid with `EffectExecutor::payAnyPower` (also 03 item 3.24); test: ReviewFixC2Test.BulletTime_XCountsReadyRunesAndPaysThroughTheEngine
 - [ ] **7.17** `spells/0702_conscription.cpp:19-36,54-57` — play-time target comes from any enemy unit; the 3-Might cap is applied only at resolution, so the spell can mistarget. `:45` — `ps.xp -= 5` sits unguarded between `confirmOptional` and `pickTarget` [latent double charge]. [confirmed]
+  - c3: 702 Conscription — FIXED: `kFinalizeResolve`; the XP "may", the unit from the matching set, then the XP paid once under `costDueNow`; test: C3Test.Conscription_WithoutTheXpOnlySmallUnitsAndTheRecallIsNotAMove, C3Test.Conscription_SpendingFiveXpIsPaidOnceAndWidensTheChoice
 - [ ] **7.18** `spells/0209_cull_the_weak.cpp:40-47` — the opponent does not choose; first unit in map order dies. Acceptable Losses (179) shows the two-player pattern. [confirmed]
   - c2: 209 Cull the Weak — FIXED: each player chooses among their own units (caster first), both die together; the caster's pick no longer goes through `pickTarget` (nothing is targeted, CR 355.10.e); test: ReviewFixC2Test.CullTheWeak_EachPlayerChoosesTheirOwnUnit
 - [ ] **7.19** `spells/0433_here_to_help.cpp:39-41,52-58` — "you may play" has no decline; battlefield is the first controlled one; falls back to base, which the text does not allow. [confirmed]
+  - c3: 433 Here to Help — FIXED: `confirmOptional`, then the unit, then a battlefield you control (never base; the hidden battlefield when played from facedown); test: C3Test.HereToHelp_MayBeDeclinedAndNeverPlaysToBase
 - [ ] **7.20** `spells/0604_back_off.cpp:42` — "If you played this from your hand, draw 1" has no play-source check; the card has [Hidden]. [confirmed]
+  - c3: 604 Back Off — FIXED: draws only when not played from facedown (`facedownPlayBattlefield`, stamped by the engine in `shared:` 87ac839); test: C3Test.BackOff_StunsForItsControllerAndDrawsOnlyWhenPlayedFromHand
 - [ ] **7.21** `spells/0248_stormbringer.cpp:55-61` — the battlefield is not chosen (code comment admits it). [confirmed]
   - c2: 248 Stormbringer — FIXED: the battlefield is chosen through `pickMoveDest` (battlefields only); test: ReviewFixC2Test.Stormbringer_TheBattlefieldIsChosen_AndTheUnitMovesEvenWithNoEnemies
 - [ ] **7.22** `spells/0511_defiant_dance.cpp:40` — second target skipped when the first mistargets (CR 359.3.e.5). [confirmed]
+  - c3: 511 Defiant Dance — FIXED: each target handled by itself; only a pending prompt returns early; test: C3Test.DefiantDance_TheSecondUnitIsStillAffectedWhenTheFirstIsGone
 - [ ] **7.23** `units/0828_riven_shattered.cpp:33-34` + `weaponmaster_base.h:26-74` — "you may [Equip]" is forced and takes the first Equipment found. [confirmed]
   - Done by stream helpers in `weaponmaster_base.h` (its file): the base asks the "may" (`confirmOptional`) and the Equipment (`pickTarget`), and does nothing when the unit is no longer on the board (also the `weaponmaster_base.h` part of 7.26); tests: `EnginePathTest.WeaponmasterIsAMayWithAChoiceOfEquipment`, `.WeaponmasterDoesNotEquipAUnitThatLeftTheBoard`. Not ticked: owned by a card stream (check Riven and the 5 other `WeaponmasterUnit` cards; Yone 544 and Sentinel Adept 331 have their own copies). The cost (7.7) is still not charged: it needs an equip-cost descriptor on `Card`.
 - [ ] **7.24 No target choice; first match is taken** [confirmed]
@@ -175,6 +182,7 @@ subject") describes something nothing implements.
   - `units/0349_rumble_hotheaded.cpp:48-67`, `spells/0258_zenith_blade.cpp:45,68-75`, `spells/0429_strike_down.cpp:72-76`, `units/0680_elder_dragon.cpp` (`enemies.front()` instead of "choose up to one").
   - c2: 258 Zenith Blade — FIXED: with more than one friendly unit that could move, the controller chooses which (asked after the "may"; the stun still runs once, after every prompt); test: ReviewFixC2Test.ZenithBlade_TheFriendlyUnitToMoveIsChosen
   - c4: 67 Blitzcrank, Impassive — FIXED: `pickTarget` among enemy units elsewhere (`chooseableUnits`); 112 Kai'Sa, Evolutionary — FIXED: the controller picks among the spells whose Power can be paid (at resolution); test: C4Test.Blitzcrank_PullsTheEnemyUnitItsControllerChooses, C4Test.KaiSaEvolutionary_PlaysTheSpellItsControllerChooses
+  - c3: 429 Strike Down — FIXED: with more than one Equipment the controller picks which is detached (`pickTarget`, before the damage); test: C3Test.StrikeDown_TheControllerChoosesWhichEquipmentIsDetached
 - [ ] **7.25 Plausible mismatches**
   - `legends/0782_virtuoso.cpp:39,53` — rescans the trash at resolution instead of using `triggering_subject`; a Reaction played in response is banished instead.
   - `units/0613_ivern_nurturer.cpp:49-51` — the "may" is asked at finalization about cards only looked at during resolution; first unit auto-drafted (`:67-75`).
@@ -185,6 +193,7 @@ subject") describes something nothing implements.
   - `spells/0450_temptation.cpp:50-62` — second pick is only a destination anchor but is charged Deflect.
   - c0: 774 Valley of Idols — FIXED: "it" is `triggering_subject`; no token exclusion, no id guess; test: C0Test.ValleyOfIdols_BuffsTheUnitThatWasPlayed, .ValleyOfIdols_ARealPlayHandsTheTriggerItsUnit
   - c1: 782 Virtuoso — FIXED (confirmed): banishes the trigger's subject, not the newest spell in the trash; 698 Scryer's Bloom — FIXED (confirmed): "Kill this" is paid in the finalize pass (`kFinalizeActivate` + `costDueNow`); test: ReviewFixC1Test.Virtuoso_BanishesTheSpellThatWasPlayedAndCountsIt, ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
+  - c3: 457 Hard Bargain — FIXED: `payableEnergy` / `payEnergy` (floating Energy counts); test: C3Test.HardBargain_FloatingEnergyCanPayTheTwo. 450 Temptation — FIXED: the destination is a `pickMode` choice among locations, not a second target, so no Deflect; test: C3Test.Temptation_TheDestinationIsAChoiceNotASecondTarget
 
 ## E. Source or target no longer on board
 
@@ -209,11 +218,13 @@ in those executor functions would close most of this section.
 
 - [x] **7.29 `commitChoice` flags off-board picks** [plausible] — FIXED: confirmed (Insightful Investigator picks from the opponent's hand through `pickTarget`); `chose_enemy_unit_this_turn` is set only for a unit on the board (CR 141.1.a); test: `ChoiceHelperTest.PickingAnEnemyUnitCardOutOfAHandIsNotChoosingAnEnemyUnit`
   - `card.cpp:331-333` sets `chose_enemy_unit_this_turn` for any enemy `isUnit()` object with no location check. Insightful Investigator 697:50 (opponent's hand), Kharox 901:40 (their trash), Decree of Strength 872:39, Bone Skewer 701:58.
+  - c3: 701 Bone Skewer, 872 Decree of Strength — ALREADY FIXED in `commitChoice` (f892d67); no card change needed for this item
 - [ ] **7.30 Hand-rolled enemy picks bypass Deflect and chosen-object bookkeeping** [plausible]
   - `spells/0927_shuriken_flip.cpp:54,65`, `spells/0894_decree_of_discord.cpp:44`, `spells/0937_acceleration_gate.cpp:42`, plus the two in 7.11. `objChoice` / `takenObject` do not charge Deflect, push to `chosen_objects` or set `chose_enemy_unit_this_turn`.
   - HELPER DONE (stream helpers): `Card::offerableChoices(ctx, candidates)` and `Card::commitChosenObject(ctx, id)` expose exactly what `pickTarget` does; test: `ChoiceHelperTest.HandBuiltChoicesCanChargeDeflectAndRecordTheChoice`. `takenObject` cannot do it by itself: it is also used for picks that are not the controller choosing an object (sorting cards, the opponent's own pick).
   - STILL OPEN, card streams — recipe for the 5 cards (927, 894, 937, 892, 935): prefer `pickTarget`; if the hand-built prompt stays, build the options from `offerableChoices(ctx, list)` and call `commitChosenObject(ctx, picked)` once, in the branch that consumes the answer (`takenObject`).
   - c4: 937 Acceleration Gate — FIXED: options from `offerableChoices`, each pick through `commitChosenObject`; 935 Shadow Dash — FIXED: `pickTarget` (see 7.11); test: C4Test.AccelerationGate_ChargesDeflectForAnEnemyUnitItReadies, C4Test.ShadowDash_AsksForTheEnemyUnitOnceAndPaysItsDeflect
+  - c3: 927 Shuriken Flip, 894 Decree of Discord — FIXED: options from `offerableChoices`, `commitChosenObject` on each pick; 892 Twilight Step — FIXED via `pickTarget` (7.11); also the new hand-built picks in 616 Tricksy Tentacles; test: C3Test.DecreeOfDiscord_PaysDeflectForAChosenUnit, C3Test.DecreeOfDiscord_DoesNotOfferAUnitWhoseDeflectCannotBePaid, C3Test.ShurikenFlip_PaysDeflectForTheEnemyUnitItChooses
 - [ ] **7.31 Banish by direct zone write** [confirmed]
   - `spells/0115_promising_future.cpp:75-80`, `units/0491_rek_sai_swarm_queen.cpp:63-65`, `legends/0553_void_burrower.cpp:118-121` — skip `cards_banished_this_turn` and the `"banished_owned"` event.
   - c2: 115 Promising Future — FIXED: banishes through `EffectExecutor::banishObject`; the manual banishment erase before `playPayingCost` is gone (8.13); test: ReviewFixC2Test.PromisingFuture_BanishesThroughTheExecutor

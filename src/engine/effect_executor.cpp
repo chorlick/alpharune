@@ -247,6 +247,16 @@ void EffectExecutor::killObject(GameObjectId target) {
             return;
         }
 
+        // "If it would die this turn, banish it instead." (Smite) — as in
+        // GameEngine::killUnit.
+        if (obj.banish_if_would_die_this_turn) {
+            obj.banish_if_would_die_this_turn = false;
+            events_.logTrace("  REPLACEMENT (self): " + obj.name +
+                             " is banished instead of dying");
+            banishObject(target);
+            return;
+        }
+
         // "If a unit here would die ..." on the battlefield the unit is at
         // (Altar of Blood): the battlefield's card is asked first, for the
         // dying unit's controller, as GameEngine::killUnit asks it.
@@ -1751,18 +1761,27 @@ namespace {
 // query / payment, and always clear them.
 struct StagedEffectCost {
     PlayerState& ps;
-    StagedEffectCost(PlayerState& p, const EffectExecutor::EffectPlayCost& c) : ps(p) {
+    // `from` is the zone the card is being played from: a card played by an
+    // effect from anywhere but a hand is "played from somewhere other than
+    // your hand" for its own cost (Drag Under).
+    StagedEffectCost(PlayerState& p, const EffectExecutor::EffectPlayCost& c,
+                     ZoneType from = ZoneType::Hand)
+        : ps(p), source_(p.current_play_source) {
         ps.transient_ignore_energy = c.ignore_energy;
         ps.transient_ignore_power = c.ignore_power;
         ps.transient_play_discount += c.energy_reduction;
         reduction_ = c.energy_reduction;
+        if (from == ZoneType::Trash) ps.current_play_source = Intent::PlaySource::Trash;
+        else if (from != ZoneType::Hand) ps.current_play_source = Intent::PlaySource::Banishment;
     }
     ~StagedEffectCost() {
         ps.transient_ignore_energy = false;
         ps.transient_ignore_power = false;
         ps.transient_play_discount -= reduction_;
+        ps.current_play_source = source_;
     }
     int reduction_ = 0;
+    Intent::PlaySource source_;
 };
 }  // namespace
 
@@ -1860,11 +1879,11 @@ bool EffectExecutor::canPlayPayingCost(PlayerId player, GameObjectId card,
                                        EffectPlayCost cost) const {
     if (!state_.objectExists(card)) return false;
     if (!can_afford_) {
-        StagedEffectCost staged(state_.player(player), cost);
+        StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
         return plainPay(state_, events_, player,
                         plainCostOf(state_, card_db_, player, card), /*pay=*/false);
     }
-    StagedEffectCost staged(state_.player(player), cost);
+    StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
     return can_afford_(player, card);
 }
 
@@ -1873,12 +1892,12 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
                                     EffectPlayCost cost) {
     if (!state_.objectExists(card)) return false;
     if (!can_afford_ || !pay_cost_) {
-        StagedEffectCost staged(state_.player(player), cost);
+        StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
         if (!plainPay(state_, events_, player,
                       plainCostOf(state_, card_db_, player, card), /*pay=*/true))
             return false;
     } else {
-        StagedEffectCost staged(state_.player(player), cost);
+        StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
         if (!can_afford_(player, card)) return false;
         if (!pay_cost_(player, card)) return false;
     }

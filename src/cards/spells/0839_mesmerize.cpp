@@ -17,10 +17,13 @@ public:
     const CardDef& def() const override { return def_; }
     // "Choose one — Return a friendly unit to its owner's hand. /
     //  Give an enemy unit -2 [M] this turn."
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
+    // The mode, then a unit that mode can affect, are chosen as the spell is
+    // played (CR 355) — never a unit first and a mode that cannot use it.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !chooseableUnits(state, controller,
+                                [](const GameObject&) { return true; }).empty();
     }
-    bool needsPlayTimeTarget() const override { return true; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const PlayerId me = ctx.controller;
         auto friendly = chooseableUnits(ctx.state, me,
@@ -34,6 +37,7 @@ public:
                             mask);
         if (mode < 0) return;   // -1 waiting, -2 no legal mode
         GameObjectId picked = pickTarget(ctx, "Mesmerize", mode == 0 ? friendly : enemy);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         if (mode == 0) ctx.executor.bounceToHand(picked);
         else ctx.executor.giveTemporaryMight(picked, -2);

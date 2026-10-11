@@ -15,29 +15,49 @@ namespace {
 class SmokeAndMirrors : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Choose a unit you control and another unit you control at a different
+    //  location. If at least one of them has [Temporary], move each to the
+    //  other's location. Draw 1."
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true,
                                    .must_be_friendly = true};
     }
+    // {first unit, second unit} for every ordered pair of friendly units at
+    // different locations. (Ordered: played from facedown, the first must be
+    // at that battlefield and the second cannot be, CR 811.1.d.4.)
+    std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
+        const GameState& state, PlayerId controller) const override {
+        const auto units = enumerateLegalTargets(state, controller);
+        std::vector<std::vector<GameObjectId>> sets;
+        for (auto a : units)
+            for (auto b : units)
+                if (a != b && state.getObject(a).location != state.getObject(b).location)
+                    sets.push_back({a, b});
+        return sets;
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        auto sets = enumerateLegalTargetSets(state, controller);
+        return sets.has_value() && !sets->empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.size() < 2) return;
-        if (!ctx.state.objectExists(targets[0]) ||
-            !ctx.state.objectExists(targets[1])) return;
-        auto& a = ctx.state.getObject(targets[0]);
-        auto& b = ctx.state.getObject(targets[1]);
-        auto la = a.location;
-        auto lb = b.location;
-        // "at a different location" — if they share a location, the swap is
-        // a no-op; still draw 1 per the card's last clause.
-        // "If at least one of them has [Temporary]" — gate the move.
-        bool has_temp = a.hasKeyword(Keyword::Temporary) ||
-                        b.hasKeyword(Keyword::Temporary);
-        if (has_temp && la != lb) {
-            moveToLocation(ctx.executor, targets[0], lb);
-            moveToLocation(ctx.executor, targets[1], la);
-            ctx.events.logTrace("SMOKE AND MIRRORS: swapped two friendly units (Temporary gate met)");
-        } else {
-            ctx.events.logTrace("SMOKE AND MIRRORS: no swap (Temporary gate not met / same loc)");
+        // The swap needs both chosen units to still be legal targets; the
+        // draw does not depend on them.
+        if (targets.size() >= 2 && ctx.state.objectExists(targets[0]) &&
+            ctx.state.objectExists(targets[1])) {
+            auto& a = ctx.state.getObject(targets[0]);
+            auto& b = ctx.state.getObject(targets[1]);
+            auto la = a.location;
+            auto lb = b.location;
+            // "If at least one of them has [Temporary]" — gate the move.
+            bool has_temp = a.hasKeyword(Keyword::Temporary) ||
+                            b.hasKeyword(Keyword::Temporary);
+            if (has_temp && la != lb) {
+                moveToLocation(ctx.executor, targets[0], lb);
+                moveToLocation(ctx.executor, targets[1], la);
+                ctx.events.logTrace("SMOKE AND MIRRORS: swapped two friendly units (Temporary gate met)");
+            } else {
+                ctx.events.logTrace("SMOKE AND MIRRORS: no swap (Temporary gate not met / same loc)");
+            }
         }
         ctx.executor.drawCards(ctx.controller, 1);
     }

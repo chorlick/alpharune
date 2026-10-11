@@ -37,6 +37,7 @@ public:
         da.controller = ctx.controller;
         da.trigger = TriggerType::WhenIDie;
         da.target_filter = picked;
+        da.expires_on_turn = ctx.state.turn.turn_number;   // "this turn"
         ctx.state.delayed_abilities.push_back(da);
         const int dmg = runesControlled(ctx.state, ctx.controller) >= 7 ? 7 : 4;
         ctx.executor.dealDamage(picked, dmg, ctx.source);

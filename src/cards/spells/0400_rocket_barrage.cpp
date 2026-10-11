@@ -15,33 +15,43 @@ namespace {
 class RocketBarrage : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    TargetRequirements getTargetRequirements() const override {
-        // Permissive target — any object. The pickMode helper filters
-        // modes based on the target's type.
-        return TargetRequirements{.count = 1};
+    // "Choose one — Deal 4 to a unit in a base. / Kill a gear."
+    // The mode and then that mode's target are chosen as the spell is played
+    // (CR 355), and again when the Repeat executes ("may make different
+    // choices"). Each mode offers only the objects it can affect.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    static std::vector<GameObjectId> unitsInBases(const GameState& state, PlayerId me) {
+        return chooseableUnits(state, me, [](const GameObject& o) { return o.isAtBase(); });
     }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty()) return;
-        if (!ctx.state.objectExists(targets[0])) return;
-        auto& target = ctx.state.getObject(targets[0]);
-        // Mode 0 = Deal 4 to base unit; Mode 1 = Kill gear.
-        uint32_t legal = 0;
-        if (target.isUnit() && target.isAtBase()) legal |= (1u << 0);
-        if (target.isGear()) legal |= (1u << 1);
-
+    static std::vector<GameObjectId> gearOnBoard(const GameState& state, PlayerId me) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects) {
+            if (!obj.isGear() || !obj.location.has_value()) continue;
+            if (obj.controller != me && obj.untargetable_by_enemy) continue;
+            out.push_back(id);
+        }
+        return out;
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !unitsInBases(state, controller).empty() ||
+               !gearOnBoard(state, controller).empty();
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const auto units = unitsInBases(ctx.state, ctx.controller);
+        const auto gear = gearOnBoard(ctx.state, ctx.controller);
+        const uint32_t legal = (units.empty() ? 0u : 1u) | (gear.empty() ? 0u : 2u);
         int mode = pickMode(ctx, "Rocket Barrage", 2,
-                            {"Deal 4 to base unit", "Kill gear"}, legal);
-        if (mode < 0) return;  // -1 pending, -2 no legal mode
-
-        switch (mode) {
-            case 0:
-                ctx.events.logTrace("ROCKET BARRAGE: deal 4 to " + target.name);
-                ctx.executor.dealDamage(targets[0], 4, ctx.source);
-                break;
-            case 1:
-                ctx.events.logTrace("ROCKET BARRAGE: kill gear " + target.name);
-                ctx.executor.killObject(targets[0]);
-                break;
+                            {"Deal 4 to a unit in a base", "Kill a gear"}, legal);
+        if (mode < 0) return;  // -1 waiting, -2 no legal mode
+        GameObjectId picked = pickTarget(ctx, "Rocket Barrage", mode == 0 ? units : gear);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (mode == 0) {
+            ctx.events.logTrace("ROCKET BARRAGE: deal 4 to " + ctx.state.getObject(picked).name);
+            ctx.executor.dealDamage(picked, 4, ctx.source);
+        } else {
+            ctx.events.logTrace("ROCKET BARRAGE: kill gear " + ctx.state.getObject(picked).name);
+            ctx.executor.killObject(picked);
         }
     }
 private:

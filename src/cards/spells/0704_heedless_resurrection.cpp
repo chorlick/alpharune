@@ -16,74 +16,100 @@ namespace {
 // your trash that costs no more Energy and no more Power than the killed unit,
 // ignoring its cost."
 //
-// The additional "kill a friendly unit" is modeled at resolve time (the engine
-// has no structured non-resource additional-cost surface for spells). Pick the
-// friendly unit to kill (A), then the trash unit to revive (B) gated to the
-// killed unit's printed Energy/Power. The kill is applied after both picks.
+// The unit to kill is chosen and killed as the spell is played (CR 355: an
+// additional cost is paid then, so it stays paid if the spell is countered).
+// The unit to play is chosen as the spell resolves, from the trash as it is
+// then — the killed unit itself included.
 
 class HeedlessResurrection : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 2, .must_be_unit = true};
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId me) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == me && obj.location.has_value())
+                out.push_back(id);
+        return out;
     }
-    bool needsPlayTimeTargetPair() const override { return true; }
     // Playable only if there is a friendly unit to kill.
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.location.has_value() || !obj.isUnit()) continue;
-            if (obj.controller == controller) return true;
-        }
-        return false;
+        return !friendlyUnits(state, controller).empty();
     }
+    // resume_data, clear of the Card::pick* helpers' slots; resume_point
+    // kAwaitRevive while the unit to play is being asked.
+    static constexpr size_t kKilledSlot = 7;    // killed unit's id + 1 (cost paid)
+    static constexpr size_t kRevivedSlot = 8;   // unit to play: id + 1, or -1 for none
+    static constexpr int kAwaitRevive = 30;
+
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // First pick: a friendly unit on the board to kill.
-        std::vector<GameObjectId> legal_kill;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.location.has_value() || !obj.isUnit()) continue;
-            if (obj.controller != ctx.controller) continue;
-            legal_kill.push_back(id);
+        if (!ctx.state.chain.resuming.has_value()) return;   // needs the chain's resume slot
+        auto& ri = *ctx.state.chain.resuming;
+        while (ri.resume_data.size() <= kRevivedSlot) ri.resume_data.push_back(0);
+
+        // The additional cost: kill a friendly unit.
+        if (ri.resume_data[kKilledSlot] == 0) {
+            GameObjectId victim = pickTarget(ctx, "Heedless Resurrection: kill a friendly unit",
+                                             friendlyUnits(ctx.state, ctx.controller));
+            if (victim == kInvalidId || !ctx.state.objectExists(victim)) return;  // waiting / none
+            if (costDueNow(ctx)) {
+                ctx.events.logTrace("HEEDLESS RESURRECTION: killing " +
+                                     ctx.state.getObject(victim).name + " (additional cost)");
+                ctx.executor.killObject(victim);
+                while (ri.resume_data.size() <= kRevivedSlot) ri.resume_data.push_back(0);
+                ri.resume_data[kKilledSlot] = static_cast<int32_t>(victim) + 1;
+            }
         }
-        // Second pick: a unit in trash whose printed cost is <= the killed
-        // unit's printed cost (both Energy and Power).
-        auto revive_fn = [&](GameObjectId killed) -> std::vector<GameObjectId> {
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (ri.resume_data[kKilledSlot] == 0) return;   // the cost was not paid
+        const auto killed = static_cast<GameObjectId>(ri.resume_data[kKilledSlot] - 1);
+
+        // "Play a unit from your trash that costs no more Energy and no more
+        //  Power than the killed unit."
+        auto revivable = [&]() {
             std::vector<GameObjectId> out;
-            if (!ctx.state.objectExists(killed)) return out;
-            CardDefId killed_def = ctx.state.getObject(killed).card_def_id;
+            const CardDefId killed_def = ctx.state.getObject(killed).card_def_id;
             if (killed_def == kInvalidId) return out;
             const auto& kdef = ctx.executor.cardDB().get(killed_def);
-            int max_e = kdef.energy_cost;
-            int max_p = kdef.power_cost;
             for (auto cid : ctx.state.player(ctx.controller).trash) {
                 if (!ctx.state.objectExists(cid)) continue;
-                auto& obj = ctx.state.getObject(cid);
+                const auto& obj = ctx.state.getObject(cid);
                 if (!obj.isUnit() || obj.card_def_id == kInvalidId) continue;
                 const auto& cdef = ctx.executor.cardDB().get(obj.card_def_id);
-                if (cdef.energy_cost <= max_e && cdef.power_cost <= max_p) {
+                if (cdef.energy_cost <= kdef.energy_cost && cdef.power_cost <= kdef.power_cost)
                     out.push_back(cid);
-                }
             }
             return out;
         };
-        auto [killed, revived] = pickTargetPair(ctx, "Heedless Resurrection",
-                                                 legal_kill, revive_fn);
-        bool suspending = (killed == kInvalidId || revived == kInvalidId) &&
-                          ctx.state.chain.resuming.has_value() &&
-                          (ctx.state.chain.resuming->resume_point == 10 ||
-                           ctx.state.chain.resuming->resume_point == 12);
-        if (suspending) return;
-        // Pay the additional cost: kill the chosen friendly unit.
-        if (killed != kInvalidId && ctx.state.objectExists(killed)) {
-            ctx.events.logTrace("HEEDLESS RESURRECTION: killing " +
-                                 ctx.state.getObject(killed).name + " (additional cost)");
-            ctx.executor.killObject(killed);
+        if (ri.resume_data[kRevivedSlot] == 0) {
+            const auto cands = revivable();
+            if (ri.resume_point == kAwaitRevive) {
+                GameObjectId pick = takenObject(ctx);
+                if (std::find(cands.begin(), cands.end(), pick) == cands.end())
+                    pick = cands.empty() ? kInvalidId : cands.front();
+                ri.resume_data[kRevivedSlot] = pick == kInvalidId ? -1
+                    : static_cast<int32_t>(pick) + 1;
+                ri.resume_point = 0;
+            } else if (cands.empty()) {
+                ri.resume_data[kRevivedSlot] = -1;
+            } else {
+                std::vector<Intent> opts;
+                for (auto cid : cands) opts.push_back(objChoice(ctx.controller, cid));
+                ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                    "Heedless Resurrection: play a unit from your trash");
+                ri.resume_point = kAwaitRevive;
+                return;
+            }
         }
-        // Play the revived unit from trash, ignoring its cost.
-        if (revived == kInvalidId || !ctx.state.objectExists(revived)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), revived);
-        if (it != ps.trash.end()) ps.trash.erase(it);
-        ctx.executor.playIgnoringCost(ctx.controller, revived);
+        if (ri.resume_data[kRevivedSlot] <= 0) return;   // nothing to play
+        const auto revived = static_cast<GameObjectId>(ri.resume_data[kRevivedSlot] - 1);
+        // Its controller's base or a battlefield they control (CR 355.2.a).
+        const auto where = playLocations(ctx.state, ctx.controller);
+        const int mode = pickMode(ctx, "Heedless Resurrection: where to play it",
+                                  where.count(), where.labels);
+        if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
+        ri.resume_data[kRevivedSlot] = -1;               // played once
+        ctx.executor.playIgnoringCost(ctx.controller, revived, where.locations[mode]);
         ctx.events.logTrace("HEEDLESS RESURRECTION: played a unit from trash, ignoring cost");
     }
 private:

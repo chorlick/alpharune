@@ -19,7 +19,8 @@ public:
     // "Deal 2 to up to one enemy unit at a battlefield, then move a friendly
     //  unit."
     // Resumable: (1) optional enemy target ("No damage" declines), (2) the
-    // friendly unit to move, (3) its destination.
+    // friendly unit to move, (3) its destination. The picks are built by hand,
+    // so each goes through offerableChoices / commitChosenObject.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
@@ -28,7 +29,8 @@ public:
                 return o.controller != ctx.controller && o.isAtBattlefield();
             });
             std::sort(out.begin(), out.end());
-            return out;
+            // Deflect (CR 809): only units whose cost the controller can pay.
+            return offerableChoices(ctx, out);
         };
         auto movable = [&]() {
             auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
@@ -61,8 +63,12 @@ public:
         case 1: {
             GameObjectId t = takenObject(ctx);
             auto foes = enemies();
-            if (std::find(foes.begin(), foes.end(), t) != foes.end())
+            if (std::find(foes.begin(), foes.end(), t) != foes.end()) {
+                // The unit is chosen: Deflect is paid and the choice recorded,
+                // as Card::pickTarget would.
+                commitChosenObject(ctx, t);
                 ctx.executor.dealDamage(t, 2, ctx.source);
+            }
             promptMove();
             return;
         }
@@ -71,6 +77,7 @@ public:
             auto mine = movable();
             if (mine.empty()) { ri.resume_point = 4; return; }
             if (std::find(mine.begin(), mine.end(), u) == mine.end()) u = mine.front();
+            commitChosenObject(ctx, u);   // "when you choose a friendly unit"
             ri.resume_data = {static_cast<int32_t>(u)};
             std::vector<Intent> opts;
             for (int d : moveDests(ctx.state, ctx.state.getObject(u)))

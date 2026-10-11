@@ -15,13 +15,13 @@ namespace {
 class Sacrifice : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    bool needsPlayTimeTarget() const override { return true; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_friendly = true};
-    }
-    std::vector<GameObjectId> enumerateLegalTargets(
-            const GameState& state, PlayerId controller) const override {
+    // "As an additional cost to play this, kill a friendly [Mighty] unit.
+    //  Draw 2 and channel 1 rune exhausted."
+    // The unit is chosen and killed as the spell is played (CR 355: an
+    // additional cost is paid then, so it stays paid if the spell is
+    // countered, and the effect no longer depends on the unit).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    static std::vector<GameObjectId> mightyUnits(const GameState& state, PlayerId controller) {
         std::vector<GameObjectId> out;
         for (const auto& [id, obj] : state.objects) {
             if (obj.isUnit() && obj.controller == controller &&
@@ -31,15 +31,26 @@ public:
         }
         return out;
     }
+    std::vector<GameObjectId> enumerateLegalTargets(
+            const GameState& state, PlayerId controller) const override {
+        return mightyUnits(state, controller);
+    }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        return !enumerateLegalTargets(state, controller).empty();
+        return !mightyUnits(state, controller).empty();
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-        GameObjectId victim = pickTarget(ctx, "Sacrifice: kill a Mighty unit", legal);
-        if (victim == kInvalidId) return;  // no Mighty unit / suspended
-        if (!ctx.state.objectExists(victim)) return;
-        ctx.executor.killObject(victim);  // additional cost paid
+        bool paid = costAlreadyPaid(ctx);
+        if (!paid) {
+            GameObjectId victim = pickTarget(ctx, "Sacrifice: kill a Mighty unit",
+                                             mightyUnits(ctx.state, ctx.controller));
+            if (victim == kInvalidId || !ctx.state.objectExists(victim)) return;  // waiting / none
+            if (costDueNow(ctx)) {
+                ctx.executor.killObject(victim);  // additional cost paid
+                paid = true;
+            }
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (!paid) return;
         ctx.executor.drawCards(ctx.controller, 2);
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
         ctx.events.logTrace("SACRIFICE: killed a Mighty unit -> draw 2 + channel 1");

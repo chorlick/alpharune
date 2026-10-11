@@ -14,13 +14,21 @@ namespace {
 class RibbonDancer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 1);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIMoveToFB; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+
+    // "When I move to a battlefield, give another friendly unit +1 [M] this turn."
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> others;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value())
+                others.push_back(id);
+        const GameObjectId t = pickTarget(ctx, "Ribbon Dancer: give another friendly unit +1 [M]",
+                                          others);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.giveTemporaryMight(t, 1);
     }
 private:
     const CardDef def_ = [] {

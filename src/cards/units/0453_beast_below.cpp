@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,52 @@ namespace {
 class BeastBelow : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.bounceToHand(targets[0]);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .must_be_friendly = true};
+
+    // "When you play me, return another friendly unit and an enemy unit to
+    // their owners' hands." Two targets; each is returned if it can be chosen,
+    // whether or not the other exists.
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const PlayerId me = ctx.controller;
+        auto friends = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (id != ctx.source && obj.isUnit() && obj.controller == me &&
+                    obj.location.has_value())
+                    out.push_back(id);
+            return out;
+        };
+        auto enemies = [&]() {
+            return chooseableUnits(ctx.state, me,
+                                   [me](const GameObject& o) { return o.controller != me; });
+        };
+        // Which helper asks is fixed on the first entry, so later entries read
+        // their answers back from the same one: resume_data[kShapeSlot] is
+        // 1 = both (pair), 2 = only an enemy unit, 3 = only a friendly unit.
+        auto& ri = ctx.state.chain.resuming.value();
+        constexpr size_t kShapeSlot = Card::kChoiceStateSlot + 1;
+        if (ri.resume_data.size() <= kShapeSlot) ri.resume_data.resize(kShapeSlot + 1, 0);
+        if (ri.resume_data[kShapeSlot] == 0)
+            ri.resume_data[kShapeSlot] = friends().empty() ? 2 : (enemies().empty() ? 3 : 1);
+        const int shape = ri.resume_data[kShapeSlot];
+
+        GameObjectId friendly = kInvalidId, enemy = kInvalidId;
+        if (shape == 1) {
+            auto pair = pickTargetPair(ctx, "Beast Below: another friendly unit, then an enemy unit",
+                                       friends(), [&](GameObjectId) { return enemies(); });
+            friendly = pair.first;
+            enemy = pair.second;
+        } else if (shape == 2) {
+            enemy = pickTarget(ctx, "Beast Below: return an enemy unit to hand", enemies());
+        } else {
+            friendly = pickTarget(ctx, "Beast Below: return another friendly unit to hand", friends());
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // Waiting, or a target that is no longer legal: kInvalidId; the other
+        // one is still returned (CR 359.3.e.5).
+        if (friendly != kInvalidId) ctx.executor.bounceToHand(friendly);
+        if (enemy != kInvalidId) ctx.executor.bounceToHand(enemy);
     }
 private:
     const CardDef def_ = [] {

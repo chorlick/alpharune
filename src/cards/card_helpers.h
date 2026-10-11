@@ -1204,19 +1204,53 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
 /// Returns the picks in pick order (possibly none), or nullopt while a prompt
 /// is pending. It keeps its answers in two resume_data slots per pick from
 /// `first_slot` on and does not touch resume_point, so it composes with the
-/// Card::pick* helpers and confirmOptional in one callback; the caller checks
-/// at the end that each pick is still what the effect needs. There is no cap
+/// Card::pick* helpers and confirmOptional in one callback. There is no cap
 /// of its own: the re-entry bound per chain item is 1024.
+///
+/// Re-entry. The caller passes the list as it is NOW every time it is entered
+/// — after each answer, and at resolution after a finalize pass. A pick that
+/// is already stored is never asked again and is not re-derived from the
+/// list; the list only says whether it still counts:
+///   - a stored pick that is in the current list is returned (and uses up one
+///     instance of that object for the prompts that follow);
+///   - a stored pick that is NOT in the current list (it left the board, was
+///     readied, lost its buff, ... since it was named) is DROPPED from the
+///     result: the vector is shorter, no kInvalidId is put in its place and no
+///     other object is asked for instead. So every id returned is in the
+///     caller's current list, and "is it still legal" is the list's predicate.
+/// Once the picks have ended — the controller said "None", `max_picks` were
+/// made, or nothing was left to pick — that is stored too, so a later entry
+/// with a longer list (a finalized ability resolving after something new
+/// became eligible) asks nothing and names nothing new. A prompt whose pick
+/// has not been stored yet is offered what the current list still holds.
 inline std::optional<std::vector<GameObjectId>> selectSeveral(
         CardContext& ctx, const std::string& label, std::vector<GameObjectId> options,
         int max_picks = -1, size_t first_slot = 7) {
     std::sort(options.begin(), options.end());
     std::vector<GameObjectId> picked;
-    for (int k = 0; !options.empty() && (max_picks < 0 || k < max_picks); ++k) {
+    const auto& item = ctx.state.chain.resuming;
+    for (int k = 0; max_picks < 0 || k < max_picks; ++k) {
+        const size_t slot = first_slot + 2 * static_cast<size_t>(k);
+        if (item.has_value() && item->resume_data.size() > slot + 1 &&
+            item->resume_data[slot] == 2) {
+            // Answered on an earlier entry: take the stored pick as it is.
+            const auto stored = static_cast<GameObjectId>(item->resume_data[slot + 1]);
+            if (stored == kInvalidId) break;              // "None" / nothing was left
+            auto it = std::find(options.begin(), options.end(), stored);
+            if (it == options.end()) continue;            // no longer in the list: dropped
+            picked.push_back(stored);
+            options.erase(it);                            // one instance
+            continue;
+        }
+        if (options.empty()) {
+            // Nothing left to pick: store the end of the list (no prompt), so
+            // a later entry does not start asking again.
+            if (item.has_value()) (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true);
+            break;
+        }
         std::vector<GameObjectId> offer = options;
         offer.erase(std::unique(offer.begin(), offer.end()), offer.end());
-        auto one = selectObject(ctx, label, offer, first_slot + 2 * static_cast<size_t>(k),
-                                /*may_decline=*/true);
+        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true);
         if (!one.has_value()) return std::nullopt;
         if (*one == kInvalidId) break;
         picked.push_back(*one);

@@ -19,18 +19,15 @@ public:
     // finalized (CR 355.5, 383.3), so the opponent responds knowing them.
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
+    // "if I'm at a battlefield" is the trigger's condition: asked when the end
+    // of turn comes (no ability goes on the chain otherwise), not again as it
+    // resolves — "If she is removed in reaction to the triggered ability, it
+    // will still resolve" (CR 383, the Sona example).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isAtBattlefield();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const auto& item = ctx.state.chain.resuming;
-        const bool resolving_chosen =
-            item.has_value() && item->choices_finalized && !item->finalizing;
-        // "if I'm at a battlefield" is asked when the ability goes on the
-        // chain, not again as it resolves: "If she is removed in reaction to
-        // the triggered ability, it will still resolve" (CR 383, the Sona
-        // example).
-        if (!resolving_chosen) {
-            if (!ctx.state.objectExists(ctx.source)) return;
-            if (!ctx.state.getObject(ctx.source).isAtBattlefield()) return;
-        }
         // "friendly runes": printed, so only its controller's (CR 355.9.b,
         // 740.1.a) — unlike the bare "runes" of Dark Child 315, Targon's Peak
         // 284, Gentle Gemdragon 666, Curator of the Sands 932 and Hwei 642.
@@ -45,24 +42,15 @@ public:
         // when more than four are exhausted (a rune left exhausted is the one
         // to recycle for Power).
         const std::string label = "Sona, Harmonious: ready a friendly rune (up to four)";
-        std::vector<GameObjectId> picks;
-        if (resolving_chosen) {
-            // Resolving: the runes named at finalization, as selectSeveral
-            // kept them on the item (two slots per pick from slot 7). Nothing
-            // is offered, so nothing is asked and nothing new can be named.
-            for (size_t k = 0; k < 4; ++k) {
-                const auto one = selectObject(ctx, label, {}, 7 + 2 * k, /*may_decline=*/true);
-                if (!one.has_value() || *one == kInvalidId) break;
-                picks.push_back(*one);
-            }
-        } else {
-            std::vector<GameObjectId> exhausted;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (readiable(id)) exhausted.push_back(id);
-            const auto chosen = selectSeveral(ctx, label, exhausted, /*max_picks=*/4);
-            if (!chosen.has_value()) return;   // waiting for the agent
-            picks = *chosen;
-        }
+        // Asked as the ability is finalized. At resolution selectSeveral asks
+        // nothing: it returns the runes named then, without any that has been
+        // readied or has left the board since, and no other in its place.
+        std::vector<GameObjectId> exhausted;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (readiable(id)) exhausted.push_back(id);
+        const auto chosen = selectSeveral(ctx, label, exhausted, /*max_picks=*/4);
+        if (!chosen.has_value()) return;   // waiting for the agent
+        const std::vector<GameObjectId>& picks = *chosen;
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         // A rune readied or off the board since it was named is skipped.
         for (auto id : picks)

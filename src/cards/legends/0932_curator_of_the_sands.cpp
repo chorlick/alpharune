@@ -65,21 +65,12 @@ public:
         // re-entered from the top with each answer, and a cost is paid
         // immediately before the end-of-choices marker.
         const std::string label = "Curator of the Sands: ready a rune (up to 2)";
-        std::vector<GameObjectId> picks;
-        if (ri.choices_finalized && !ri.finalizing) {
-            // Resolving: the runes named at finalization, as selectSeveral
-            // kept them on the item (two slots per pick from slot 7). Nothing
-            // is offered, so nothing is asked and nothing new can be named.
-            for (size_t k = 0; k < 2; ++k) {
-                const auto one = selectObject(ctx, label, {}, 7 + 2 * k, /*may_decline=*/true);
-                if (!one.has_value() || *one == kInvalidId) break;
-                picks.push_back(*one);
-            }
-        } else {
-            const auto chosen = selectSeveral(ctx, label, exhausted_runes(), 2);
-            if (!chosen.has_value()) return;    // waiting for the choice
-            picks = *chosen;
-        }
+        // At resolution selectSeveral asks nothing: it returns the runes
+        // named at finalization, without any that has been readied or has
+        // left the board since, and no other in its place.
+        const auto chosen = selectSeveral(ctx, label, exhausted_runes(), 2);
+        if (!chosen.has_value()) return;    // waiting for the choice
+        const std::vector<GameObjectId>& picks = *chosen;
         if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         // A rune readied or off the board since it was named is skipped.

@@ -566,13 +566,9 @@ TEST_F(C5Test, WeaponmasterUnitsUseTheSharedMay) {
         ASSERT_FALSE(no.prompts.empty()) << def << ": the may is asked";
         EXPECT_FALSE(state.getObject(gear).attached_to.has_value()) << def;
     }
-    // A unit that left the board is not equipped.
-    auto gear = addGear(P1, kInvalidId, /*equipment=*/true);
-    auto dead = addUnit(P1, kOrnnForgeGod, 0);
-    sendToTrash(dead);
-    fireTriggerThroughEngine(dead, TriggerType::WhenYouPlayMe);
-    EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
-    EXPECT_TRUE(onBoard(gear));
+    // (A unit that left the board is not equipped: that tail passed no agent, so
+    // the may was declined either way. It is now
+    // VerifyCardsTest.Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEquipped.)
 }
 
 TEST_F(C5Test, JaxUnmatchedGivesEquipmentQuickDraw) {

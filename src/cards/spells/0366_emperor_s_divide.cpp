@@ -16,10 +16,17 @@ class EmperorSDivide : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // The play-time target names the battlefield; which of the units there
+    // move is then asked unit by unit, "done" on every prompt. "Any number"
+    // includes zero (CR 355.13), so the requirement is optional: from hand the
+    // spell is playable with no friendly unit at a battlefield (and then does
+    // nothing). From facedown it still needs one at its battlefield (CR
+    // 811.1.d: the hidden generator offers one play per target there).
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_friendly = true,
-                                   .must_be_at_battlefield = true};
+                                   .must_be_at_battlefield = true,
+                                   .optional = true};
     }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {

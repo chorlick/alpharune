@@ -42,6 +42,8 @@ public:
             if (c.empty()) return false;
             std::vector<Intent> opts;
             for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
+            // "up to 4" includes none (CR 355.13): "Done" is on every prompt,
+            // and with nothing exhausted the spell still resolves.
             opts.push_back(valChoice(ctx.controller, 0, "Done"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                                        "Acceleration Gate: ready a unit, gear or rune");

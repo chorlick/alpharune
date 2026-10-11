@@ -52,6 +52,8 @@ public:
         const int dest = pickMode(ctx, "Relentless Pursuit: move it where?", n, labels, mask);
         if (dest == -1) return;   // waiting for the agent (-2: nowhere to move)
 
+        // "up to one Equipment": "No" is none (CR 355.13); the move and the
+        // granted ability do not depend on it. The unit itself is mandatory.
         const int attach = confirmOptional(ctx, "Relentless Pursuit: attach an Equipment to it",
             [&]() { return !attachable(ctx.state, unit).empty(); });
         if (attach == -1) return;

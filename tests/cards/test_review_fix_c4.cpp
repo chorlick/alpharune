@@ -132,7 +132,7 @@ protected:
         a.ability_index = index;
         withEngine([&](GameEngine& e) {
             e.testHook_cleanup();
-            e.testHook_executeIntent(a);
+            e.testHook_executeIntent(a); settleLikeTheEngine(e);
             e.testHook_runChain();
         }, agent, nullptr, a.player);
     }
@@ -286,7 +286,7 @@ TEST_F(C4Test, Tideturner_SwapsWithTheChosenUnitOrNotAtAll) {
     auto away = addUnit(P1, kInvalidId, 2, 0);
     auto beside = addUnit(P1, kInvalidId, 2);          // in base, where Tideturner lands
     auto card = addToHand(P1, kTideturner);
-    EnginePathAgent agent(EnginePathAgent::choosing(away));   // yes, then `away`
+    EnginePathAgent agent(EnginePathAgent::choosing(away, EnginePathAgent::May::Yes));   // yes, then `away`
     playThroughEngine(card, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(beside)) << "\"at another location\"";
@@ -376,7 +376,7 @@ TEST_F(C4Test, MagmaWurm_OtherFriendlyUnitsEnterReady) {
         play.card = unit;
         play.play_location = LocationId{BaseLocation{P1}};
         e.mutableState().player(P1).rune_pool.energy += 3;
-        e.testHook_executeIntent(play);
+        e.testHook_executeIntent(play); settleLikeTheEngine(e);
         token = e.testHook_executor().createToken(P1, CardType::Unit, "Recruit", 1, {"Recruit"},
                                                   KeywordSet{}, LocationId{BaseLocation{P1}}, false);
     });
@@ -612,7 +612,7 @@ TEST_F(C4Test, AvaAchiever_PaysAsTheAbilityGoesOnTheChain) {
     auto ava = addUnit(P1, kAvaAchiever, 0, 0);
     auto hidden = addToHand(P1, kTeemoScout);
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(hidden));   // yes, then the card
+    EnginePathAgent agent(EnginePathAgent::choosing(hidden, EnginePathAgent::May::Yes));   // yes, then the card
     // The opponent gets priority after the ability is finalized and before it
     // resolves: by then the [C] is already gone (CR 383.3) and the card is not
     // yet played.
@@ -632,7 +632,7 @@ TEST_F(C4Test, WildclawShaman_SpendsABuffToBuffAndReadyItself) {
     o(buffed).buff_count = 1;
     o(buffed).recomputeMight();
     auto card = addToHand(P1, kWildclawShaman);
-    EnginePathAgent agent(EnginePathAgent::choosing(buffed));   // yes, then whose buff
+    EnginePathAgent agent(EnginePathAgent::choosing(buffed, EnginePathAgent::May::Yes));   // yes, then whose buff
     playThroughEngine(card, &agent);
     EXPECT_EQ(o(buffed).buff_count, 0) << "\"spend a buff\"";
     EXPECT_EQ(o(card).buff_count, 1);
@@ -655,7 +655,7 @@ TEST_F(C4Test, MissFortuneCaptain_FirstMoveOnly_AndLegendsCount) {
     o(mine).is_exhausted = true;
     state.battlefields[0].controller = P1;
 
-    EnginePathAgent agent(EnginePathAgent::choosing(mine));
+    EnginePathAgent agent(EnginePathAgent::choosing(mine, EnginePathAgent::May::Yes));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.moveToBattlefield(mf, 0); },
                          &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then what to ready";
@@ -719,7 +719,7 @@ TEST_F(C4Test, Blitzcrank_PullsTheEnemyUnitItsControllerChooses) {
     o(shrouded).untargetable_by_enemy_this_turn = true;
     o(shrouded).untargetable_by_enemy = true;
     auto card = addToHand(P1, kBlitzcrank);
-    EnginePathAgent agent(EnginePathAgent::choosing(chosen));
+    EnginePathAgent agent(EnginePathAgent::choosing(chosen, EnginePathAgent::May::Yes));
     playThroughEngine(card, &agent, LocationId{BattlefieldLocation{0}});
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_TRUE(agent.wasOffered(first));
@@ -946,8 +946,9 @@ TEST_F(C4Test, AccelerationGate_ChargesDeflectForAnEnemyUnitItReadies) {
 // ─── 08 item 8.4: aura-granted Vision ───────────────────────────────────────
 
 TEST_F(C4Test, GemcraftSeer_UnitsPlayedBesideItGetTheirVisionLook) {
-    // The engine's Vision look puts a spell it finds on top on the bottom.
-    // Teemo, Scout has no Vision of his own: played alone, the top card stays.
+    // Teemo, Scout has no Vision of his own: played alone, there is no look
+    // and the top card stays. Beside Gemcraft Seer he has one, and the
+    // controller (here: always "recycle") puts the card on the bottom.
     addToDeck(P1, kFirstMate);
     auto top = addToDeck(P1, kIncinerate);
     auto alone = addToHand(P1, kTeemoScout);
@@ -956,7 +957,9 @@ TEST_F(C4Test, GemcraftSeer_UnitsPlayedBesideItGetTheirVisionLook) {
 
     addUnit(P1, kGemcraftSeer);
     auto unit = addToHand(P1, kTeemoScout);
-    playThroughEngine(unit);
+    EnginePathAgent recycle(EnginePathAgent::first());
+    playThroughEngine(unit, &recycle);
+    EXPECT_EQ(recycle.prompts.size(), 1u) << "the Vision look asked once";
     EXPECT_EQ(state.player(P1).main_deck.front(), top)
         << "\"Other friendly units have [Vision]\": the played unit looked at the top card";
 }

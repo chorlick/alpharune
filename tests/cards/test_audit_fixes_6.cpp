@@ -594,7 +594,14 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustsToStunMovedEnemy) {
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
     // "When you move an enemy unit, you may exhaust this to stun it" is its own
     // triggered ability with its own "may" (card text): yes to both.
-    EnginePathAgent yes(EnginePathAgent::choosing(enemy));
+    // Yes to the "may"s, the enemy unit as the unit, and its base as the
+    // destination (the destination prompt is a mode: stated here).
+    EnginePathAgent yes([inner = EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes)](
+                              const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Base") return i;
+        return inner(legal);
+    });
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     EXPECT_TRUE(state.getObject(gear).is_exhausted);

@@ -859,7 +859,7 @@ TEST_F(CostPaymentRulesTest, Targeting_ChosenAtFinalizationBeforeAnyoneGetsPrior
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    engine_->testHook_executeIntent(play);
+    engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
 
     ASSERT_FALSE(p1.log.empty());
     EXPECT_EQ(p1.log.front(), "target") << "the target is chosen before priority passes";
@@ -906,7 +906,7 @@ TEST_F(CostPaymentRulesTest, Targeting_MistargetedSpellDoesNothing) {
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    engine_->testHook_executeIntent(play);
+    engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
 
     EXPECT_EQ(std::count(p1.log.begin(), p1.log.end(), "target"), 1) << "no re-targeting";
     EXPECT_EQ(s().getObject(other).temp_might_bonus, 0) << "the buff does not jump to another unit";
@@ -977,7 +977,7 @@ protected:
         play.player = P1;
         play.card = card;
         play.play_location = LocationId{BaseLocation{P1}};
-        engine_->testHook_executeIntent(play);
+        engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
     }
     int readyRunes(PlayerId p) {
         int n = 0;
@@ -1266,7 +1266,7 @@ TEST_F(CostPaymentRulesTest, UnitOnlyEnergy_PaysForAUnitsActivatedAbility) {
     act.type = IntentType::ActivateActionAbility;
     act.player = P1;
     act.ability_source = ren;
-    engine_->testHook_executeIntent(act);
+    engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
     EXPECT_EQ(s().player(P1).rune_pool.unit_energy, 0);
     EXPECT_EQ(s().getObject(ren).temp_might_bonus, 1);
 }
@@ -1286,7 +1286,7 @@ TEST_F(CostPaymentRulesTest, AbilityEnergyCostSpendsFloatingEnergy) {
     act.type = IntentType::ActivateActionAbility;
     act.player = P1;
     act.ability_source = ren;
-    engine_->testHook_executeIntent(act);
+    engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
     EXPECT_EQ(s().player(P1).rune_pool.energy, 0);
     EXPECT_FALSE(s().getObject(r).is_exhausted) << "the rune is not needed";
     EXPECT_EQ(s().getObject(ren).temp_might_bonus, 1);
@@ -1523,7 +1523,7 @@ TEST_F(VendettaLastCardsTest, DragonRoost_ADragonMayPayToBePlayedThere) {
     ASSERT_TRUE(offer->play_location.has_value());
     EXPECT_EQ(*offer->play_location, LocationId{BattlefieldLocation{0}});
 
-    engine_->testHook_executeIntent(*offer);
+    engine_->testHook_executeIntent(*offer); settleLikeTheEngine(*engine_);
     EXPECT_EQ(s().getObject(dragon).battlefieldId().value_or(kInvalidId), 0u);
     EXPECT_EQ(runesInBase(P1), 0) << "both runes recycled for the [A][A]";
     EXPECT_EQ(s().player(P1).rune_pool.energy, 0);
@@ -1545,7 +1545,7 @@ TEST_F(VendettaLastCardsTest, SandsweptTomb_DiscountsASpellThatChoosesAFriendlyU
         play.type = IntentType::PlayCard;
         play.player = P1;
         play.card = spell;
-        engine_->testHook_executeIntent(play);
+        engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
         const int left = s().player(P1).rune_pool.power[static_cast<int>(Domain::Body)];
         s().player(P1).rune_pool.clear();
         return left;
@@ -1609,7 +1609,7 @@ TEST_F(VendettaLastCardsTest, FallenFeline_NamesAnySpell) {
     play.player = P1;
     play.card = card;
     play.play_location = LocationId{BaseLocation{P1}};
-    engine_->testHook_executeIntent(play);
+    engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
 
     EXPECT_GT(namer.offered, 100u) << "every spell name is offered, not only ones seen";
     EXPECT_EQ(s().getObject(card).string_state["named_spell"], card_db.get(kPunchFirst).name)
@@ -1634,7 +1634,7 @@ TEST_F(VendettaLastCardsTest, LegionMarauder_EmpowerMayBePaidEitherWay) {
     act.player = P1;
     act.ability_source = marauder;
     act.ability_index = 1;
-    engine_->testHook_executeIntent(act);
+    engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
     EXPECT_TRUE(s().getObject(marauder).isEmpowered());
     EXPECT_FALSE(s().getObject(body).location.has_value()) << "the rune was recycled for [O]";
 }

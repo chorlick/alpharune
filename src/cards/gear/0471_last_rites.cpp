@@ -73,10 +73,17 @@ public:
             picked = pickTarget(ctx, "Last Rites: which unit from trash", playable_units());
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (answer != 1 || picked == kInvalidId) return;
+        // CR 355.2.a: no location is printed ("play a unit from your trash"),
+        // so it goes to its controller's base or to a battlefield they control
+        // (and may be played to) — chosen as it is played (as Spectral Matron
+        // 226), not necessarily where the bearer conquered or held.
+        const int where = pickEffectPlayLocation(*this, ctx, "Last Rites: play it to");
+        if (where == -1) return;   // waiting for the agent
         // CR 356.1.b.2: the cost is not waived. playPayingCost takes the card
         // out of the trash itself, and leaves it there if the cost isn't paid.
         const std::string name = ctx.state.getObject(picked).name;
-        if (ctx.executor.playPayingCost(ctx.controller, picked))
+        if (ctx.executor.playPayingCost(ctx.controller, picked,
+                                        effectPlayLocation(ctx.state, ctx.controller, where)))
             ctx.events.logTrace("LAST RITES: played " + name + " from trash");
     }
 private:

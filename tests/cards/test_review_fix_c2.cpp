@@ -1356,7 +1356,8 @@ TEST_F(ReviewFixC2Test, DefenderOfTomorrow_TheGearToReadyIsChosen) {
     state.getObject(legend).is_exhausted = false;
     state.getObject(legend).empowered = 1;
     state.player(P1).rune_pool.energy = 1;
-    EnginePathAgent two(script({O(g3), O(g1)}));
+    // While Empowered the printed first ability is still on offer: mode 1 = "Ready 2 gear".
+    EnginePathAgent two(script({V(1), O(g3), O(g1)}));
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, &two);
     EXPECT_FALSE(state.getObject(g3).is_exhausted);
     EXPECT_FALSE(state.getObject(g1).is_exhausted);

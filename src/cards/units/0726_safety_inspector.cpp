@@ -16,40 +16,65 @@ namespace {
 //  When you play me, each player must kill one of their units. If you paid my
 //  additional cost, you don't kill a unit this way."
 //
+// The 3 XP is an optional additional cost (CR 356.2.b): chosen and paid as I
+// am played, before my cost and before I enter the board. kPaid records it for
+// the play trigger ("If you paid my additional cost").
 // Each player chooses among their own units as the ability resolves (nothing
 // is targeted, CR 355.10.e) — the controller first, then the opponent — and
 // the chosen units die together.
-// ENGINE-GAP: the 3 XP is an additional cost of PLAYING the card, but
-// Card::OptionalAdditionalCost has no XP cost. It is asked and paid when the
-// play trigger is finalized (before anyone can respond), which is as close as
-// a card can get.
 
 class SafetyInspector : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    static constexpr const char* kPaid = "__safety_inspector_paid";
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.payable = state.player(player).xp >= 3;
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        (void)affordable;   // it takes nothing off my cost
+        auto& me = ctx.state.getObject(ctx.source);
+        me.card_counters[kPaid] = 0;
+        auto& ps = ctx.state.player(ctx.controller);
+        if (ps.xp < 3 ||
+            !ctx.executor.confirmNow(ctx.controller,
+                                     "Safety Inspector: spend 3 XP to skip your kill"))
+            return {};
+        ps.xp -= 3;
+        me.card_counters[kPaid] = 1;
+        ctx.events.logTrace("SAFETY INSPECTOR: paid 3 XP -> skip own kill");
+        return {};
+    }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ps = ctx.state.player(ctx.controller);
         auto& ri = ctx.state.chain.resuming;
-        // "Paid" is remembered on the chain item so the XP is spent once,
-        // however often the ability is re-entered.
-        bool paid_xp = ri.has_value() && ri->resume_data.size() > kPaidSlot &&
-                       ri->resume_data[kPaidSlot] == 1;
-
-        int pay = confirmOptional(ctx, "Safety Inspector: spend 3 XP to skip your kill?",
-            [&]() { return paid_xp || ps.xp >= 3; });
-        if (pay == -1) return;  // waiting on agent
-        if (pay == 1 && !paid_xp && costDueNow(ctx) && ps.xp >= 3) {
-            ps.xp -= 3;
-            paid_xp = true;
-            if (ri.has_value()) {
-                while (ri->resume_data.size() <= kPaidSlot) ri->resume_data.push_back(0);
-                ri->resume_data[kPaidSlot] = 1;
-            }
-            ctx.events.logTrace("SAFETY INSPECTOR: paid 3 XP -> skip own kill");
+        // Whether the additional cost was paid is read once, as the ability
+        // starts resolving, and kept on the chain item for the re-entries
+        // (1 = paid, 2 = not paid); the flag on me is cleared so that a later
+        // play of the same card starts clean.
+        auto take_paid_flag = [&]() {
+            if (!ctx.state.objectExists(ctx.source)) return false;
+            auto& counters = ctx.state.getObject(ctx.source).card_counters;
+            const auto it = counters.find(kPaid);
+            const bool paid = it != counters.end() && it->second == 1;
+            counters[kPaid] = 0;
+            return paid;
+        };
+        bool paid_xp = false;
+        if (ri.has_value()) {
+            while (ri->resume_data.size() <= kPaidSlot) ri->resume_data.push_back(0);
+            if (ri->resume_data[kPaidSlot] == 0)
+                ri->resume_data[kPaidSlot] = take_paid_flag() ? 1 : 2;
+            paid_xp = ri->resume_data[kPaidSlot] == 1;
+        } else {
+            paid_xp = take_paid_flag();   // direct invocation: no item to resume
         }
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
 
         auto units_of = [&](PlayerId p) {
             std::vector<GameObjectId> out;

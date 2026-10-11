@@ -93,10 +93,16 @@ public:
         if (!picked.has_value()) return;   // waiting on the agent
         if (*picked != kInvalidId &&
             std::find(eligible.begin(), eligible.end(), *picked) != eligible.end()) {
+            // CR 355.2.a: no location is printed, so the unit goes to its
+            // controller's base or to a battlefield they control (and may be
+            // played to). Asked before anything leaves the deck.
+            const int where = pickEffectPlayLocation(*this, ctx, "Baited Hook: play it to");
+            if (where == -1) return;   // waiting for the agent
             // Banish it (out of the deck, counted and announced as a banish),
             // then play it from there ignoring its cost.
             ctx.executor.banishObject(*picked);
-            ctx.executor.playIgnoringCost(ctx.controller, *picked);
+            ctx.executor.playIgnoringCost(ctx.controller, *picked,
+                                          effectPlayLocation(ctx.state, ctx.controller, where));
         }
         // "Then recycle the rest" — the other looked-at cards go to the bottom
         // of the Main Deck (recycle = put on bottom). Move remaining top5 cards

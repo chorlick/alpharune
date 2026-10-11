@@ -449,10 +449,11 @@ protected:
 };
 
 TEST_F(EnginePathTest, PlayedUnitsTriggerIsFinalizedAndResolvedByTheEngine) {
-    // Sentinel Adept: "When you play me, you may attach an Equipment you
-    // control to me." Played from hand, cost paid; the trigger goes through
-    // TriggerManager and the chain, and the agent — not the test — supplies
-    // the "may" and the Equipment.
+    // Sentinel Adept: "[Weaponmaster] (When you play me, you may [Equip] one
+    // of your Equipment to me for [A] less, even if it's already attached.)"
+    // Played from hand, cost paid; the trigger goes through TriggerManager and
+    // the chain, and the agent — not the test — supplies the "may" and the
+    // Equipment. (The test Equipment has no card behind it, so no Equip cost.)
     auto adept = addToHand(P1, kSentinelAdept);
     auto gear_a = addEquipment(P1);
     auto gear_b = addEquipment(P1);
@@ -500,17 +501,46 @@ TEST_F(EnginePathTest, WeaponmasterIsAMayWithAChoiceOfEquipment) {
 }
 
 TEST_F(EnginePathTest, WeaponmasterDoesNotEquipAUnitThatLeftTheBoard) {
-    // The trigger is queued for a unit that is no longer on the board (killed
-    // in response): no Equipment follows it to the trash.
+    // The play trigger is finalized for a unit on the board — the agent
+    // accepts the may and chooses the Equipment (CR 383.3) — and the unit is
+    // killed in response: no Equipment follows it to the trash.
+    // (Was a direct fireTriggerAs call with no agent, plans/09 item 9.N6.)
     auto gear = addEquipment(P1);
     auto wm = addUnit(P1, kArmedAssailant, 2);
-    state.getObject(wm).location = std::nullopt;
-    state.getObject(wm).zone = ZoneType::Trash;
-    state.player(P1).trash.push_back(wm);
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kArmedAssailant, P1, wm, TriggerType::WhenYouPlayMe, exec);
+
+    EnginePathAgent agent(EnginePathAgent::choosing(gear));
+    GameState* live = nullptr;
+    bool removed = false;
+    // The opponent's first decision is priority on the finalized ability.
+    PickByPredicateAgent opponent([&](int, const std::vector<Intent>& legal) {
+        if (!removed && live) {
+            removed = true;
+            EXPECT_FALSE(live->getObject(gear).attached_to.has_value())
+                << "attached as the ability resolves, not before";
+            auto& unit = live->getObject(wm);
+            unit.location = std::nullopt;
+            unit.zone = ZoneType::Trash;
+            live->player(P1).trash.push_back(wm);
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority) return i;
+        return legal.empty() ? Intent{} : legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e.mutableState();
+        e.testHook_executor().queueTriggeredAbility(wm, P1, TriggerType::WhenYouPlayMe);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent, &opponent);
+
+    ASSERT_TRUE(removed) << "the opponent never got priority on the ability";
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may was accepted and the Equipment chosen";
+    EXPECT_TRUE(agent.wasOffered(gear));
+    EXPECT_FALSE(state.getObject(wm).location.has_value());
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
     EXPECT_TRUE(state.getObject(gear).location.has_value());
+    EXPECT_TRUE(state.getObject(wm).attachments.empty());
+    EXPECT_FALSE(state.chain.exists());
 }
 
 TEST_F(EnginePathTest, SpellTargetThenModeIsAskedThroughTheEngine) {

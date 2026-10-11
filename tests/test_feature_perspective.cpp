@@ -21,6 +21,7 @@
 #include "core/events.h"
 #include "core/game_state.h"
 #include "engine/game_engine.h"
+#include "engine/knowledge_tracker.h"
 #include "ml/feature_extractor.h"
 #include "rules/deck_validator.h"
 
@@ -539,19 +540,17 @@ TEST_F(FeaturePerspectiveGames, HiddenInformationStaysMaskedAtEveryDecision) {
             std::mt19937_64 rng(state.decision_index * 31 + (me == P1 ? 1 : 2));
             // Deal the opponent's hand, deck and facedown cards afresh: the
             // same objects, their identities permuted among them.
-            // (Except a card that is the source or a target of an item on
-            // the chain: that was announced, wherever the card is now.)
-            std::set<GameObjectId> announced;
-            for (const auto& item : state.chain.items) {
-                announced.insert(item.source);
-                announced.insert(item.targets.begin(), item.targets.end());
-            }
+            // (Except a card the player has been shown, by the knowledge
+            // tracker's record: a unit returned to its owner's hand with
+            // its ability still on the chain is one.)
+            const knowledge::GameKnowledgeView knows(state, me);
+            auto unseen = [&](GameObjectId id) { return !knows.about(id).identity_known; };
             std::vector<GameObjectId> hidden;
-            for (auto id : ops.hand) if (!announced.count(id)) hidden.push_back(id);
-            for (auto id : ops.main_deck) if (!announced.count(id)) hidden.push_back(id);
+            for (auto id : ops.hand) if (unseen(id)) hidden.push_back(id);
+            for (auto id : ops.main_deck) if (unseen(id)) hidden.push_back(id);
             for (const auto& bf : redealt.battlefields) {
                 for (auto fid : bf.facedown) {
-                    if (redealt.getObject(fid).controller == opp && !announced.count(fid)) {
+                    if (redealt.getObject(fid).controller == opp && unseen(fid)) {
                         hidden.push_back(fid);
                         ++facedown_checked;
                     }

@@ -60,7 +60,6 @@ public:
                 ctx.events.emit(CardRevealedEvent{
                     cid, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/false, ctx.controller, ZoneType::MainDeck});
-                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller), DeckEnd::Top, i);
                 ri.resume_data.push_back(static_cast<int32_t>(cid.raw()));
             }
         }

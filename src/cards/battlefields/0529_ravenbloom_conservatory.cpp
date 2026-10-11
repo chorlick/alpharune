@@ -37,14 +37,10 @@ public:
             /*source_zone=*/ZoneType::MainDeck,
         });
 
-        knowledge::seenInDeck(ctx.state, top, knowledge::everyone(), DeckEnd::Top, 0);
 
         if (card.isSpell()) {
             // Put it in hand.
-            deck::takeTop(ctx.state, ctx.controller, deck::Place::Hand, knowledge::everyone());
-            card.zone = ZoneType::Hand;
-            card.location = std::nullopt;
-            ps.hand.push_back(top);
+            deck::drawTop(ctx.state, ctx.controller, knowledge::everyone());
             RIFT_TRACE(ctx.events, "RAVENBLOOM: revealed spell " + card.name +
                                  " -> hand");
         } else {

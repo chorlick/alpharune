@@ -13,6 +13,7 @@
 /// keeps known positions correct, so a Main Deck edit that bypasses them shows
 /// up as a rank that disagrees with the deck (`check` reports it).
 
+#include "core/events.h"
 #include "core/game_state.h"
 #include "core/knowledge_view.h"
 
@@ -57,6 +58,24 @@ struct DeckSlot {
 /// `seers` are shown `object` where it is, in `where` (Hand, Facedown, Held,
 /// or Deck when the slot is not learned, as in a search of the whole deck).
 void seen(GameState& state, GameObjectId object, Place where, Seers seers);
+
+/// `seers` are shown `object` WHERE IT IS NOW, whatever that is: a card in a
+/// hand or facedown, a card held by a "look at", or a card in a Main Deck, in
+/// which case they also learn its slot (counted from the top: what is looked
+/// at or revealed in a deck is its top cards). A card in a public zone needs
+/// nothing. This is the one function a look or a reveal reaches the tracker
+/// through: `recordReveal` calls it for every CardRevealedEvent, and the few
+/// looks that announce no event (Void Hatchling's look, "look at the top N")
+/// call it directly. Nothing else should call `seen` / `seenInDeck` for a
+/// card that is being shown.
+void shown(GameState& state, GameObjectId object, Seers seers);
+
+/// The handler of CardRevealedEvent (GameEngine subscribes it): the players
+/// the event names have seen the card — `shown` for exactly them — and their
+/// PlayerState::observed_cards count of that card goes up
+/// (GameState::recordReveal). The tracker says what a player knows NOW; the
+/// count says how often a card was shown and is never taken back.
+void recordReveal(GameState& state, const CardRevealedEvent& e);
 
 /// `seers` look at the card `rank` slots from `end` of its owner's Main Deck
 /// without moving it.

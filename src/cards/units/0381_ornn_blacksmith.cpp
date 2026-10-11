@@ -37,9 +37,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         // The look is private; it tells the controller what is there to take.
         const auto looked = topFour(ctx);
-        for (size_t i = 0; i < looked.size(); ++i)
-            knowledge::seenInDeck(ctx.state, looked[i], knowledge::only(ctx.controller),
-                                  DeckEnd::Top, static_cast<int>(i));
+        for (auto id : looked) knowledge::shown(ctx.state, id, knowledge::only(ctx.controller));
         int conf = confirmOptional(ctx, "Ornn, Blacksmith: reveal a gear from the top 4 and draw it?",
                                    [&]() { return !gearAmong(ctx).empty(); });
         if (conf == -1) return;  // waiting for agent

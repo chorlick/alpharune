@@ -44,9 +44,7 @@ public:
         if (it == ps.trash.end()) return;
         ps.trash.erase(it);
         auto& obj = ctx.state.getObject(pick);
-        obj.zone = ZoneType::Hand;
-        obj.location = std::nullopt;
-        ps.hand.push_back(pick);
+        deck::putInHand(ctx.state, pick);
         RIFT_TRACE(ctx.events, "GUARDIAN OF THE PASSAGE: returned " + obj.name +
                             " from trash to hand");
     }

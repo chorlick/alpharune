@@ -41,6 +41,9 @@ public:
     }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "Look at the top 4 cards": a private look, which is what the offer
+        // below is made from.
+        for (auto id : topFour(ctx)) knowledge::shown(ctx.state, id, knowledge::only(ctx.controller));
         int conf = confirmOptional(ctx, "Fate Weaver: reveal a spell ([4]+) from the top 4 and draw it?",
                                    [&]() { return !eligibleSpells(ctx).empty(); });
         if (conf == -1) return;  // waiting for agent

@@ -63,13 +63,10 @@ public:
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto& ps = ctx.state.player(ctx.controller);
-        auto& obj = ctx.state.getObject(picked);
         if (picked == ps.champion_zone) {
             // From Champion Zone: move directly to hand.
             ps.champion_zone = kInvalidId;
-            obj.zone = ZoneType::Hand;
-            obj.location = std::nullopt;
-            ps.hand.push_back(picked);
+            deck::putInHand(ctx.state, picked);
             RIFT_TRACE(ctx.events, "SWIFT SCOUT: return Teemo from Champion Zone to hand");
         } else {
             ctx.executor.bounceToHand(picked);

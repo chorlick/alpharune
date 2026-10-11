@@ -60,9 +60,7 @@ public:
         auto& owner = ctx.state.player(obj.owner);
         owner.trash.erase(std::remove(owner.trash.begin(), owner.trash.end(), picked),
                           owner.trash.end());
-        obj.zone = ZoneType::Hand;
-        obj.location = std::nullopt;
-        owner.hand.push_back(picked);
+        deck::putInHand(ctx.state, picked);
         RIFT_TRACE(ctx.events, "SHADOWS OF THE PAST: returned " + obj.name +
                             " from trash to its owner's hand");
         if (ri.resume_data.empty()) ri.resume_data = {0};

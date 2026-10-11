@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "engine/deck_ops.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -55,11 +56,8 @@ public:
         }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (go != 1 || !in_trash()) return;
-        auto& self = ctx.state.getObject(ctx.source);
         ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), ctx.source), ps.trash.end());
-        self.zone = ZoneType::Hand;
-        self.location = std::nullopt;
-        ps.hand.push_back(ctx.source);
+        deck::putInHand(ctx.state, ctx.source);
         RIFT_TRACE(ctx.events, "SUPER MEGA DEATH ROCKET!: returned from trash to hand");
     }
 private:

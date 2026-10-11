@@ -1760,7 +1760,6 @@ void TriggerManager::onCardHidden(const CardHiddenEvent& e) {
             events_.emit(CardRevealedEvent{e.card, hidden.card_def_id, hidden.owner,
                                            /*revealed_to_all=*/false, /*revealed_to=*/looker,
                                            ZoneType::FacedownZone});
-            knowledge::seen(state_, e.card, deck::Place::Facedown, knowledge::only(looker));
         }
     }
     checkDelayedAbilities(TriggerType::WhenAnOpponentHidesACard, opponent(e.player), e.card);

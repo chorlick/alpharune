@@ -1,5 +1,7 @@
 #include "engine/knowledge_tracker.h"
 
+#include "engine/deck_ops.h"
+
 #include <algorithm>
 #include <array>
 #include <optional>
@@ -173,6 +175,20 @@ std::array<bool, 2> leave(GameState& state, const Leaving& in, Seers seers) {
                 }
             }
         }
+        // They knew this card's slot and cannot tell that it is the one
+        // taken (it was picked out of cards another player was looking at —
+        // from the top, while they knew it counted from the bottom of a deck
+        // short enough for the look to reach it): the slot they knew may be
+        // empty of it now. `obscure` below only reaches facts counted from
+        // the end the card was taken from.
+        if (!s && m.from == Place::Deck) {
+            if (auto it = facts.find(m.object);
+                it != facts.end() && !it->second.held &&
+                it->second.zone == ZoneType::MainDeck && it->second.end != DeckEnd::None) {
+                forgetPosition(it->second);
+                if (m.to != m.from) it->second.zone_confirmed = false;
+            }
+        }
         sees[playerIndex(o)] = s;
     }
     for (PlayerId o : kPlayers) {
@@ -201,6 +217,32 @@ std::array<bool, 2> leave(GameState& state, const Leaving& in, Seers seers) {
                 if (id == m.group || seq - g.anchor < m.from_rank) --g.anchor;
             }
             --seqOf(k, m.owner, m.from_end);
+
+            // Slots counted from the OTHER end: a known card that is farther
+            // from that end than the one removed has one card fewer between
+            // it and that end. (A look at the top cards of a short deck
+            // reaches cards known by their place from the bottom; without
+            // this their rank stayed one too high and ended outside the
+            // deck.) The deck list no longer holds the removed card.
+            const DeckEnd other = m.from_end == DeckEnd::Top ? DeckEnd::Bottom : DeckEnd::Top;
+            const int size_before =
+                static_cast<int>(state.player(m.owner).main_deck.size()) + 1;
+            const int removed_from_other = size_before - 1 - m.from_rank;
+            const int other_seq = seqOf(k, m.owner, other);
+            for (PlayerId o : kPlayers) {
+                for (auto& [id, f] : k.facts[playerIndex(o)]) {
+                    if (id == m.object || ownerOf(state, id) != m.owner) continue;
+                    if (f.held || f.zone != ZoneType::MainDeck) continue;
+                    if (f.end == other && f.group == 0 &&
+                        other_seq - f.anchor > removed_from_other) {
+                        ++f.anchor;
+                    }
+                }
+            }
+            for (auto& [id, g] : k.groups) {
+                if (g.owner != m.owner || g.end != other || id == m.group) continue;
+                if (other_seq - g.anchor > removed_from_other) ++g.anchor;
+            }
 
             if (m.group != 0) {
                 auto git = k.groups.find(m.group);
@@ -309,6 +351,39 @@ void seenInDeck(GameState& state, GameObjectId object, Seers seers,
         f.anchor = seqOf(k, owner, end) - rank;
         k.facts[playerIndex(o)][object] = f;
     }
+}
+
+void shown(GameState& state, GameObjectId object, Seers seers) {
+    if (!seers.p1 && !seers.p2) return;
+    switch (deck::whereIs(state, object)) {
+        case Place::Public:
+            return;
+        case Place::Hand:
+            seen(state, object, Place::Hand, seers);
+            return;
+        case Place::Facedown:
+            seen(state, object, Place::Facedown, seers);
+            return;
+        case Place::Held:
+            seen(state, object, Place::Held, seers);
+            return;
+        case Place::Deck: {
+            const PlayerId owner = ownerOf(state, object);
+            if (owner == PlayerId::None) return;
+            const auto& d = state.player(owner).main_deck;   // top = back
+            const auto at = std::find(d.begin(), d.end(), object);
+            if (at == d.end()) return;
+            seenInDeck(state, object, seers, DeckEnd::Top,
+                       static_cast<int>(d.end() - at) - 1);
+            return;
+        }
+    }
+}
+
+void recordReveal(GameState& state, const CardRevealedEvent& e) {
+    state.recordReveal(e);
+    shown(state, e.card,
+          e.revealed_to_all ? everyone() : only(e.revealed_to));
 }
 
 void moved(GameState& state, GameObjectId object, Place from, Place to,

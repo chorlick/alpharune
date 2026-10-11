@@ -46,9 +46,7 @@ public:
             } else {
                 auto& obj = ctx.state.getObject(cid);
                 ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), cid), ps.trash.end());
-                obj.zone = ZoneType::Hand;
-                obj.location = std::nullopt;
-                ps.hand.push_back(cid);
+                deck::putInHand(ctx.state, cid);
                 ++ri.resume_data[0];
                 RIFT_TRACE(ctx.events, "GUERILLA WARFARE: returned " + obj.name +
                                      " from trash to hand");

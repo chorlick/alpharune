@@ -32,8 +32,7 @@ public:
             /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
             ZoneType::MainDeck});
         if (obj.isGear()) {
-            obj.zone = ZoneType::Hand;
-            ps.hand.push_back(top);
+            deck::putInHand(ctx.state, top, knowledge::everyone(), deck::Place::Held);
             RIFT_TRACE(ctx.events, "APPRENTICE SMITH: revealed gear " + obj.name +
                                  " -> drew it");
         } else {

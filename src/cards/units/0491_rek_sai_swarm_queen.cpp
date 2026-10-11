@@ -57,7 +57,6 @@ public:
                 // "Reveal": both players see the top two.
                 ctx.events.emit(CardRevealedEvent{cid, obj.card_def_id, obj.owner,
                                                   true, ctx.controller, ZoneType::MainDeck});
-                knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top, i);
                 Intent c; c.type = IntentType::MakeChoice; c.player = ctx.controller;
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }

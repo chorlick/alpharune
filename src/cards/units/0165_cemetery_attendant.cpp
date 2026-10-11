@@ -40,9 +40,7 @@ public:
         if (it == ps.trash.end()) return;
         ps.trash.erase(it);
         auto& obj = ctx.state.getObject(picked);
-        obj.zone = ZoneType::Hand;
-        obj.location = std::nullopt;
-        ps.hand.push_back(picked);
+        deck::putInHand(ctx.state, picked);
         RIFT_TRACE(ctx.events, "CEMETERY ATTENDANT: returned " + obj.name +
                              " from trash to hand");
     }

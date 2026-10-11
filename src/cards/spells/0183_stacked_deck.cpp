@@ -77,13 +77,10 @@ public:
                 if (!ctx.state.objectExists(cid)) continue;
                 auto& obj = ctx.state.getObject(cid);
                 if (cid == keeper) {
-                    obj.zone = ZoneType::Hand;
-                    obj.location = std::nullopt;
                     // "Put 1 into your hand" — not "draw": no draw event and
                     // no draws_this_turn (compare Called Shot 443, "Draw one").
-                    ps.hand.push_back(cid);
-                    knowledge::moved(ctx.state, cid, deck::Place::Held, deck::Place::Hand,
-                                     knowledge::only(ctx.controller));
+                    deck::putInHand(ctx.state, cid, knowledge::only(ctx.controller),
+                                    deck::Place::Held, ctx.controller);
                     RIFT_TRACE_PRIVATE(ctx.events, ctx.controller, "STACKED DECK: drew " + obj.name);
                 } else {
                     rest.push_back(cid);

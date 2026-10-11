@@ -62,7 +62,6 @@ public:
                 drafted, obj.card_def_id, obj.owner,
                 /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
                 ZoneType::MainDeck});
-            knowledge::seen(ctx.state, drafted, deck::Place::Held, knowledge::everyone());
             // "draw it": a draw (draws_this_turn, "When you draw").
             ctx.executor.drawHeldCard(ctx.controller, drafted, /*seen_by_all=*/true);
             RIFT_TRACE(ctx.events, "IVERN NURTURER: revealed and drew " + obj.name);

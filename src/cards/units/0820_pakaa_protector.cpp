@@ -31,7 +31,6 @@ public:
             top, obj.card_def_id, obj.owner,
             /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
             ZoneType::MainDeck});
-        knowledge::seenInDeck(ctx.state, top, knowledge::everyone(), DeckEnd::Top, 0);
         if (obj.isUnit()) {
             // "draw it": the revealed card is still the top card.
             ctx.executor.drawCards(ctx.controller, 1);

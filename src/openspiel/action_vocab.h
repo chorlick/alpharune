@@ -166,7 +166,7 @@ constexpr int kNumSlots = verbOffset(ActionVerb::Count);
 /// Legal intents of one decision that may share a slot. More than this many
 /// and the ones beyond have no id (see `actionIds`; RiftboundState then
 /// throws rather than leave options out). The most the walk of
-/// tests/test_action_ids.cpp meets is 64 (a spell offered once per pair of
+/// tests/test_action_ids.cpp has met is 64 (a spell offered once per pair of
 /// targets); the bound is a constant so that the id range is.
 constexpr int kTwinPlanes = 1024;
 

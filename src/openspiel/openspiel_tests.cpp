@@ -658,8 +658,8 @@ TEST(RiftboundStateTest, ObservationKeyHidesWhatTheNonDeciderCannotSee) {
 // (decider, ObservationString(decider)), so the key must be a function of what
 // that player knows: re-deal everything the player cannot know — the
 // identities of the opponent's hand, deck and facedown cards that the player
-// has not been shown (by the knowledge tracker, or as an option of the prompt
-// it is answering), and the order of both decks — and neither player's key
+// has not been shown (by the knowledge tracker's record), and the order of
+// both decks — and neither player's key
 // of the re-dealt position may differ from its key of the real one.
 TEST(RiftboundStateTest, InfoSetKeyIsAFunctionOfWhatThePlayerKnows) {
     using ::riftbound::CardDefId;
@@ -683,29 +683,13 @@ TEST(RiftboundStateTest, InfoSetKeyIsAFunctionOfWhatThePlayerKnows) {
                 const ::riftbound::knowledge::GameKnowledgeView knows(gs, me);
                 auto& ops = redealt.player(opp);
                 std::vector<GameObjectId> hidden;
-                // A card the player is being asked about has been shown to it:
-                // every option of a prompt is put in front of the player who
-                // answers (Sabotage 156, "They reveal their hand. Choose a
-                // non-unit card from it"). The knowledge tracker is not told of
-                // such a reveal, so those cards are named here.
-                std::set<GameObjectId> offered_cards;
-                if (p == state->CurrentPlayer()) {
-                    for (const auto& i : step.legal) {
-                        offered_cards.insert(i.chosen_objects.begin(), i.chosen_objects.end());
-                        offered_cards.insert(i.targets.begin(), i.targets.end());
-                    }
-                }
-                // The source and the targets of an item on the chain are
-                // public, wherever the card has gone since: a unit returned
-                // to its owner's hand with its ability still on the chain is
-                // a card both players have seen (the tracker does not record
-                // a return to hand either).
-                for (const auto& item : gs.chain.items) {
-                    offered_cards.insert(item.source);
-                    offered_cards.insert(item.targets.begin(), item.targets.end());
-                }
+                // What the player has been shown is the knowledge tracker's
+                // record alone (plans/09 item 9.SS1): a hand revealed to be
+                // chosen from (Sabotage 156) and a unit returned to its
+                // owner's hand with its ability still on the chain are both
+                // in it.
                 auto consider = [&](GameObjectId id) {
-                    if (knows.about(id).identity_known || offered_cards.count(id))
+                    if (knows.about(id).identity_known)
                         ++shown_cards_kept;
                     else
                         hidden.push_back(id);

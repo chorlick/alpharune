@@ -82,8 +82,6 @@ public:
                 // "Reveal": both players see the top two.
                 ctx.events.emit(CardRevealedEvent{cid, o.card_def_id, o.owner,
                                                   true, ctx.controller, ZoneType::MainDeck});
-                knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top,
-                                      cid == a ? 0 : 1);
                 revealed.push_back(cid);
             }
             if (revealed.empty()) {

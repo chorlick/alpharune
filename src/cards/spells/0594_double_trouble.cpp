@@ -36,17 +36,13 @@ public:
         const bool first_pass = !ctx.state.chain.resuming.has_value() ||
                                 ctx.state.chain.resuming->resume_point == 0;
         std::vector<GameObjectId> units;
-        int rank = 0;
         for (auto cid : top) {
             const auto& c = ctx.state.getObject(cid);
             if (first_pass) {
-                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller),
-                                      DeckEnd::Top, rank);
                 ctx.events.emit(CardRevealedEvent{cid, c.card_def_id, c.owner,
                                                   /*revealed_to_all=*/false, ctx.controller,
                                                   ZoneType::MainDeck});
             }
-            ++rank;
             if (c.isUnit()) units.push_back(cid);
         }
         // "You may reveal a unit from among them and draw it": whether, and

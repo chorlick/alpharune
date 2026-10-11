@@ -607,9 +607,7 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
                 break;
             }
         }
-        auto card_id = deck::takeTop(state_, player, deck::Place::Hand);
-        ps.hand.push_back(card_id);
-        state_.getObject(card_id).zone = ZoneType::Hand;
+        auto card_id = deck::drawTop(state_, player);
         // Only the drawing player knows which card it is.
         RIFT_TRACE_PRIVATE(events_, player, "  DREW: " + state_.getObject(card_id).name +
                                         " (id=" + toString(card_id) + ")");
@@ -936,9 +934,9 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
     }
 
     RIFT_TRACE(events_, "EFFECT: bounce " + obj.name + " (id=" + toString(target) + ") to hand");
-    obj.zone = ZoneType::Hand;
-    obj.location = std::nullopt;
-    state_.player(obj.owner).hand.push_back(target);
+    // Both players saw which card went to the hand: deck::putInHand tells the
+    // knowledge tracker.
+    deck::putInHand(state_, target);
 
     events_.emit(LeftBoardEvent{target, controller, obj.card_type,
         was_at.value_or(BaseLocation{controller}), ZoneType::Hand, false});
@@ -1382,18 +1380,15 @@ void EffectExecutor::announceRecycledToMainDeck(GameObjectId card) {
 void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_by_all) {
     if (!state_.objectExists(card)) return;
     auto& obj = state_.getObject(card);
-    auto& ps = state_.player(player);
-    obj.zone = ZoneType::Hand;
-    obj.location = std::nullopt;
-    ps.hand.push_back(card);
-    knowledge::moved(state_, card, deck::Place::Held, deck::Place::Hand,
-                     seen_by_all ? knowledge::everyone() : knowledge::only(player));
+    deck::putInHand(state_, card,
+                    seen_by_all ? knowledge::everyone() : knowledge::only(player),
+                    deck::Place::Held, player);
     if (seen_by_all)
         RIFT_TRACE(events_, "  DREW: " + obj.name + " (id=" + toString(card) + ")");
     else
         RIFT_TRACE_PRIVATE(events_, player, "  DREW: " + obj.name + " (id=" +
                                         toString(card) + ")");
-    ps.draws_this_turn += 1;
+    state_.player(player).draws_this_turn += 1;
     events_.emit(CardsDrawnEvent{player, 1});
 }
 
@@ -1543,7 +1538,8 @@ void EffectExecutor::applyDiscard(PlayerId player, GameObjectId card_id) {
 }
 
 void EffectExecutor::recycleCards(PlayerId effect_controller,
-                                   const std::vector<GameObjectId>& cards) {
+                                   const std::vector<GameObjectId>& cards,
+                                   knowledge::Seers shown) {
     // CR 416.1.c: each card goes to the BOTTOM of its OWNER'S main deck,
     // not the effect-controller's. Phase 6q+ fix — pre-fix the
     // effect_controller's deck was used, which meant Sabotage-style
@@ -1627,7 +1623,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
             PlayerId to = state_.getObject(cid).owner;
             if (to == PlayerId::None) to = effect_controller;
             if (to != owner) continue;
-            group.push_back({cid, placeOf(cid), knowledge::nobody()});
+            group.push_back({cid, placeOf(cid), shown});
         }
         deck::putOnBottomTogether(state_, owner, group);
     }
@@ -2189,7 +2185,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     // readable by the player who looked (LogEvent::visibleTo); the options
     // do not name it, because option labels are not audience-limited
     // (plans/09 9.OO2 — the same form as the Rune Deck look above).
-    knowledge::seenInDeck(state_, top, knowledge::only(player), DeckEnd::Top, 0);
+    knowledge::shown(state_, top, knowledge::only(player));
     RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
                      toString(top) + ") on top of the Main Deck [Void Hatchling]");
     Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
@@ -2418,10 +2414,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
 
             auto chosen = ask(player, choices, "reveal: take a card or leave it");
             if (!chosen.chosen_objects.empty()) {
-                ps.hand.push_back(card_id);
-                obj.zone = ZoneType::Hand;
-                knowledge::moved(state_, card_id, deck::Place::Held, deck::Place::Hand,
-                                 knowledge::everyone());
+                deck::putInHand(state_, card_id, knowledge::everyone(), deck::Place::Held, player);
                 chosen_cards.push_back(card_id);
                 RIFT_TRACE(events_, "  CHOSE: draw " + obj.name);
             } else {

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "engine/deck_ops.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -30,9 +31,7 @@ public:
         if (t == kInvalidId) return;          // none / it left the trash / waiting
         ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), t), ps.trash.end());
         auto& gear = ctx.state.getObject(t);
-        gear.zone = ZoneType::Hand;
-        gear.location = std::nullopt;
-        ps.hand.push_back(t);
+        deck::putInHand(ctx.state, t);
         RIFT_TRACE(ctx.events, "ASPIRING ENGINEER: returned " + gear.name + " from trash to hand");
     }
 private:

@@ -410,6 +410,59 @@ TEST(KnowledgeTracker, AFacedownCardIsFollowedOnceSeen) {
     t.expectConsistent();
 }
 
+// plans/09 item 9.SS1, found by checking the tracker at every decision of
+// random games (fiora mirror: Rift Herald's look at the top three of a deck of
+// eighteen whose top card both players knew by its place from the bottom). A
+// card whose slot a player knows is picked out by its owner from a private
+// look. The other player cannot tell it is the one taken, so the slot they
+// knew is no longer certain. The fact used to stay and end outside the deck.
+TEST(KnowledgeTracker, AKnownBottomCardTakenFromAPrivateLookIsNoLongerAKnownSlot) {
+    Table t;
+    t.deck(P1, 2);
+    const GameObjectId public_card = t.make(P1, 300, ZoneType::Trash);
+    t.trashToBottom(public_card);                // both players know the bottom card
+    ASSERT_EQ(GameKnowledgeView(t.s, P2).about(public_card).deck_position, DeckPosition::Bottom);
+    // P1 looks at the top three (the whole deck) and takes the bottom one.
+    auto& d = t.s.player(P1).main_deck;
+    d.erase(std::find(d.begin(), d.end(), public_card));
+    knowledge::moved(t.s, public_card, Place::Deck, Place::Held, only(P1),
+                     DeckSlot{DeckEnd::Top, 2}, DeckEnd::None, /*slot_public=*/false);
+    const auto k = GameKnowledgeView(t.s, P2).about(public_card);
+    EXPECT_EQ(k.deck_position, DeckPosition::Unknown);
+    // Put back on top by the looker: still not a slot the other player knows.
+    d.push_back(public_card);
+    knowledge::moved(t.s, public_card, Place::Held, Place::Deck, only(P1), {}, DeckEnd::Top);
+    EXPECT_EQ(GameKnowledgeView(t.s, P2).about(public_card).deck_position, DeckPosition::Unknown);
+    EXPECT_EQ(GameKnowledgeView(t.s, P1).about(public_card).deck_position, DeckPosition::Top);
+    t.expectConsistent();
+}
+
+// Same origin: a card known by its place from the bottom, and a card BELOW it
+// taken out through a look at the top of a short deck. The known card is one
+// slot nearer the bottom; its rank used to stay and end outside the deck.
+TEST(KnowledgeTracker, ACardTakenFromBelowAKnownBottomSlotMovesThatSlotDown) {
+    Table t;
+    t.deck(P1, 1);                                               // one unknown card
+    const GameObjectId first = t.make(P1, 300, ZoneType::Trash);
+    const GameObjectId second = t.make(P1, 301, ZoneType::Trash);
+    t.trashToBottom(first);
+    t.trashToBottom(second);       // bottom: second (rank 0), first (rank 1), unknown on top
+    ASSERT_EQ(GameKnowledgeView(t.s, P2).about(first).deck_rank, 1);
+    // The bottom card is taken, counted from the top (slot 2 of 3), in the open.
+    auto& d = t.s.player(P1).main_deck;
+    d.erase(std::find(d.begin(), d.end(), second));
+    knowledge::moved(t.s, second, Place::Deck, Place::Public, everyone(),
+                     DeckSlot{DeckEnd::Top, 2});
+    t.s.getObject(second).zone = ZoneType::Trash;
+    t.s.player(P1).trash.push_back(second);
+    for (PlayerId who : {P1, P2}) {
+        const auto k = GameKnowledgeView(t.s, who).about(first);
+        EXPECT_EQ(k.deck_position, DeckPosition::Bottom);
+        EXPECT_EQ(k.deck_rank, 0) << "it is the bottom card now";
+    }
+    t.expectConsistent();
+}
+
 TEST(KnowledgeTracker, OwnDeckCompositionCountsCopiesAndHidesOrder) {
     Table t;
     for (CardDefId card : std::initializer_list<CardDefId>{5, 3, 5, 9, 3, 5}) t.make(P1, card, ZoneType::MainDeck);

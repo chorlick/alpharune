@@ -82,7 +82,9 @@ public:
                                  toString(card_id) + ") to bottom of " +
                                  std::string(toString(opp)) + "'s deck");
             hand.erase(it);
-            ctx.executor.recycleCards(opp, {card_id});
+            // Chosen from the revealed hand: both players know which card
+            // went to the bottom.
+            ctx.executor.recycleCards(opp, {card_id}, knowledge::everyone());
             return;
         }
         }

@@ -24,15 +24,13 @@ GameEngine::GameEngine(const CardDB& card_db, EventBus& event_bus,
     : card_db_(card_db), events_(event_bus), card_registry_(card_registry) {
     // Chain subsystems are initialized per-game in runGame
 
-    // Observation tracking. Each CardRevealedEvent updates the
-    // observer's PlayerState::observed_cards bank by card_def_id. This
-    // lets cards / tests / future ML features verify which identities
-    // a player has seen. See CardRevealedEvent in core/events.h for
-    // the emit contract; the bump logic lives on GameState::recordReveal
-    // so unit tests (which don't construct a GameEngine) can subscribe
-    // their own bus to the same helper.
+    // What players are shown. Every CardRevealedEvent reaches the knowledge
+    // tracker here, for exactly the players the event names
+    // (knowledge::recordReveal -> knowledge::shown), and bumps their
+    // PlayerState::observed_cards count. Cards announce a reveal or a look
+    // with the event; they do not tell the tracker themselves.
     card_revealed_conn_ = events_.on_card_revealed.connect(
-        [this](const CardRevealedEvent& e) { state_.recordReveal(e); });
+        [this](const CardRevealedEvent& e) { knowledge::recordReveal(state_, e); });
 
     // RIFTBOUND_TRACE_STDERR=1 streams every engine log line to stderr as it
     // happens. Runners buffer the log and print it when a game finishes, so
@@ -3780,10 +3778,11 @@ void GameEngine::executeHideCard(const Intent& intent) {
     // Place facedown at the chosen battlefield
     auto bf_id = intent.chosen_battlefield;
     auto& bf = getBattlefield(bf_id);
-    bf.facedown.push_back(intent.card);
-
-    card.zone = ZoneType::FacedownZone;
-    card.location = std::nullopt; // facedown zones are not locations per rules
+    // (deck::putFacedown also tells the knowledge tracker: the other player
+    // cannot tell which card left the hand; a champion hidden from its zone
+    // they can.)
+    deck::putFacedown(state_, intent.card, bf_id);
+    (void)bf;
     card.is_hidden = true;
     card.hidden_at = bf_id;
     card.hidden_on_turn = state_.turn.turn_number;

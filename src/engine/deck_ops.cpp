@@ -60,6 +60,41 @@ bool take(GameState& state, GameObjectId object, Place to, Seers seers,
     return false;
 }
 
+GameObjectId drawTop(GameState& state, PlayerId owner, Seers seers) {
+    const GameObjectId id = takeTop(state, owner, Place::Hand, seers);
+    if (id == kInvalidId || !state.objectExists(id)) return id;
+    state.player(owner).hand.push_back(id);
+    auto& obj = state.getObject(id);
+    obj.zone = ZoneType::Hand;
+    obj.location = std::nullopt;
+    return id;
+}
+
+void putInHand(GameState& state, GameObjectId object, Seers seers,
+               std::optional<Place> from, PlayerId no_owner_hand) {
+    if (!state.objectExists(object)) return;
+    const Place was = from.value_or(whereIs(state, object));
+    auto& obj = state.getObject(object);
+    obj.zone = ZoneType::Hand;
+    obj.location = std::nullopt;
+    state.player(obj.owner != PlayerId::None ? obj.owner : no_owner_hand)
+        .hand.push_back(object);
+    // Taken off a deck by the caller without `take`: nothing to tell (the
+    // deck hooks own every move out of a deck).
+    if (was == Place::Deck || was == Place::Hand) return;
+    knowledge::moved(state, object, was, Place::Hand, seers);
+}
+
+void putFacedown(GameState& state, GameObjectId object, BattlefieldId at) {
+    if (!state.objectExists(object)) return;
+    const Place was = whereIs(state, object);
+    state.battlefields[at].facedown.push_back(object);
+    auto& obj = state.getObject(object);
+    obj.zone = ZoneType::FacedownZone;
+    obj.location = std::nullopt;
+    knowledge::moved(state, object, was, Place::Facedown, knowledge::nobody());
+}
+
 void putOnTop(GameState& state, PlayerId owner, GameObjectId object, Place from,
               Seers seers) {
     enterDeck(state, object);

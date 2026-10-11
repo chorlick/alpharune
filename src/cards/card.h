@@ -311,6 +311,25 @@ public:
     /// it across a finalize-pass run to catch a card that paid a cost and
     /// then asked for a choice before its marker.
     static uint64_t costStateFingerprint(const GameState& state);
+
+    /// For the play gate of a spell that chooses in its finalize pass
+    /// (kFinalizeResolve): whether it could choose `object`. Such a spell is
+    /// paid for after those choices (CR 355 -> 356), so one that is too dear
+    /// on its own is still offered when choosing `object` makes it payable
+    /// ("your spells that choose me cost [1] or [A] less"). Default: `object`
+    /// is one of enumerateLegalTargets(); a card that builds its own pick
+    /// list overrides this to match it.
+    virtual bool mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                         GameObjectId object) const;
+
+    /// Whether this spell, played from facedown at `battlefield`, has the
+    /// choices it needs there (CR 811.1.d: a hidden card's choices are made
+    /// from that battlefield, and with none it cannot be played). Asked for a
+    /// spell that declares no play-time targets and chooses in its finalize
+    /// pass. Default: hasLegalTargets(); a card whose pick list is tied to the
+    /// hidden battlefield (facedownPlayBattlefield) overrides this to match.
+    virtual bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller,
+                                         const CardDB& db, BattlefieldId battlefield) const;
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
     static bool costAlreadyPaid(const CardContext& ctx);
@@ -713,12 +732,19 @@ public:
     /// more than one replacement applies, that controller chooses the order
     /// (CR 372; EffectExecutor::applyDeathReplacements), so the engine needs
     /// to know which do before it applies any. Every card with
-    /// hasReplacementEffect() defines this (the default applies to nothing),
-    /// and its applyReplacement starts by asking it, so the two cannot drift.
-    virtual bool replacementApplies(const GameState& /*state*/, GameObjectId /*self*/,
-                                    PlayerId /*controller*/,
-                                    GameObjectId /*dying_unit*/) const {
-        return false;
+    /// hasReplacementEffect() overrides replacementAppliesTo and answers Yes
+    /// or No; the default, NotDefined, applies to nothing and is what a test
+    /// over the registry looks for. Its applyReplacement starts by asking
+    /// replacementApplies, so the two cannot drift.
+    enum class Applies : uint8_t { NotDefined, No, Yes };
+    virtual Applies replacementAppliesTo(const GameState& /*state*/, GameObjectId /*self*/,
+                                         PlayerId /*controller*/,
+                                         GameObjectId /*dying_unit*/) const {
+        return Applies::NotDefined;
+    }
+    bool replacementApplies(const GameState& state, GameObjectId self, PlayerId controller,
+                            GameObjectId dying_unit) const {
+        return replacementAppliesTo(state, self, controller, dying_unit) == Applies::Yes;
     }
 
     // ── Equipment / Equip (CR 716-725, 818) ──
@@ -874,6 +900,20 @@ public:
     /// .payable.
     virtual PlayCostAdjust payAdditionalPlayCost(
         CardContext& ctx, const std::function<bool(const PlayCostAdjust&)>& affordable);
+
+    /// The counter a card sets on itself (to 1) when its additional cost was
+    /// paid for THIS play, for its play trigger to read ("When you play me,
+    /// if you paid the additional cost, ..."). One key for every card, so
+    /// that one place can forget it: forgetPlayPayments.
+    static constexpr const char* kAdditionalCostPaid = "__additional_cost_paid";
+    /// Forget what was paid for an earlier play of `object`: kAdditionalCostPaid
+    /// and the paid_flag of its optionalAdditionalCost(). The engine calls
+    /// this as every play of a card begins — whatever the play path and
+    /// whether or not the cost can be paid this time — so a flag left behind
+    /// by a play whose trigger never resolved (countered) cannot make a
+    /// later, unpaid play look paid.
+    static void forgetPlayPayments(GameState& state, const Card* card, PlayerId player,
+                                   GameObjectId object);
 
     /// "Optional additional costs you pay cost [1] or [A] less." (Ezreal,
     /// Prodigy): how many such discounts `self`, on its controller's board,

@@ -1261,7 +1261,9 @@ TEST_F(JhinDeckTest, RocketBarrage_WithRepeat_TwoEffectsResolve) {
     auto src = addToHand(P1, 400);
     state.player(P1).rune_pool.energy += 4;            // [Repeat] [4][B]
     state.player(P1).rune_pool.universal_power += 1;
-    // Mode, target (at finalization); pay the Repeat is asked first of all.
+    // Corrected (sweep-costs, 9.N2 / 9.T1): the mode and its target are chosen
+    // first (CR 355), then the Repeat is offered (a cost, CR 356), then the
+    // repeated execution's own choices.
     int prompt = 0;
     EnginePathAgent agent([&](const std::vector<Intent>& legal) {
         auto by_value = [&](int v) {
@@ -1276,9 +1278,9 @@ TEST_F(JhinDeckTest, RocketBarrage_WithRepeat_TwoEffectsResolve) {
             return legal.front();
         };
         switch (prompt++) {
-            case 0: return by_value(1);      // pay the Repeat
-            case 1: return by_value(0);      // base: "Deal 4 to a unit in a base"
-            case 2: return by_object(unit);
+            case 0: return by_value(0);      // base: "Deal 4 to a unit in a base"
+            case 1: return by_object(unit);
+            case 2: return by_value(1);      // pay the Repeat
             case 3: return by_value(1);      // Repeat: "Kill a gear"
             default: return by_object(gear);
         }

@@ -26,7 +26,7 @@ public:
     // optional additional cost (CR 356.2.b): chosen and paid as I am played,
     // before my cost and before I enter the board. kPaid records it for the
     // play trigger ("if you paid the additional cost").
-    static constexpr const char* kPaid = "__zaun_punk_paid";
+    static constexpr const char* kPaid = kAdditionalCostPaid;   // forgotten by the engine as each play begins
     static std::vector<GameObjectId> gearOnBoard(const GameState& state, PlayerId controller,
                                                  bool friendly_only) {
         std::vector<GameObjectId> out;

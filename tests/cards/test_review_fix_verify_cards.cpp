@@ -3486,11 +3486,15 @@ TEST_F(VerifyCardsTest, RivenShattered_AttackDealsTwoPerAttachedEquipmentToTheCh
 // which passed no agent and so declined the may whatever the card did) and
 // 08 S2 / 07 item 7.26: a Weaponmaster unit that is no longer on the board
 // when its play trigger is finalized is not asked anything and gets nothing.
-// The agent accepts and would choose the Equipment; the Equipment has no card
-// behind it, so nothing but the base's own on-board check keeps it off the list.
+// The agent accepts and would choose the Equipment; its Equip costs nothing
+// under Weaponmaster (Long Sword, "[Equip] [R]"), so nothing but the base's own
+// on-board check keeps it off the list.
+// Corrected (sweep-costs, 9.N5): the Equipment has a card behind it — one with
+// none has no Equip cost and can't be equipped this way (CR 821.1.c.4).
 TEST_F(VerifyCardsTest, Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEquipped) {
     auto bare = addGear(P1, kInvalidId);
     o(bare).tags = {"Equipment"};
+    withEquipmentCard(bare);
 
     // Control: on the board, the same agent is asked and equips it.
     auto control = addUnit(P1, kVeteranPoro421, 0);
@@ -5927,12 +5931,11 @@ TEST_F(VerifyCardsTest, Pin_KinkouMonk_NoOtherFriendlyUnit_NothingAsked) {
     EXPECT_EQ(o(enemy).buff_count, 0);
 }
 
-// ─── Volibear, Furious 41 (NOT DONE: needs splitDamageAmong) ────────────────
+// ─── Volibear, Furious 41 ────────────────────────────────────────────────────
 // "When I attack, deal 5 damage split among any number of enemy units here."
-// Fails on the current code: splitDamageAmong offers "No more targets" only
-// from the second prompt on, so the first prompt forces a target. Enable once
-// the helper takes `may_choose_none` and Volibear passes it.
-TEST_F(VerifyCardsTest, DISABLED_VolibearFurious_FirstPromptOffersDamagingNoUnit) {
+// splitDamageAmong(..., may_choose_none) offers "No more targets" on the first
+// prompt too (plans/09 item 9.Z1).
+TEST_F(VerifyCardsTest, VolibearFurious_FirstPromptOffersDamagingNoUnit) {
     auto voli = addUnit(P1, kVolibearFurious, 0, 0);
     auto enemy = addUnit(P2, kInvalidId, 6, 0);
     EnginePathAgent agent(EnginePathAgent::script({0}));   // "No more targets"

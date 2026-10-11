@@ -304,6 +304,11 @@ public:
     /// this is canAfford.
     bool canAffordChoosing(PlayerId player, GameObjectId card_id,
                            const std::vector<GameObjectId>& targets) const;
+    /// The same, when some of the targets' Deflect is already paid: discounts
+    /// are taken from all of `targets`, Deflect is owed for `unpaid_deflect`.
+    bool canAffordChoosing(PlayerId player, GameObjectId card_id,
+                           const std::vector<GameObjectId>& targets,
+                           const std::vector<GameObjectId>& unpaid_deflect) const;
     /// Whether `player` can activate `gear`'s Equip on `unit` right now.
     bool canPayEquip(PlayerId player, GameObjectId gear, GameObjectId unit) const;
     /// Whether `player` can pay to hide a card right now.
@@ -684,6 +689,8 @@ private:
     bool payCardCost(PlayerId player, GameObjectId card_obj,
                      const Card::PlayCostAdjust& adj = {});
     /// Choose and pay the additional cost `card_id` prints, before its cost.
+    /// Card::forgetPlayPayments for `card_id`, as a play of it begins.
+    void forgetPlayPayments(PlayerId player, GameObjectId card_id);
     Card::PlayCostAdjust payAdditionalPlayCosts(PlayerId player, GameObjectId card_id,
                                                 int extra_any_power);
     /// What a spell's chosen targets take off its cost.
@@ -699,10 +706,23 @@ private:
         resource::DomainMask domains = resource::kAnyDomain;
         int extra_any = 0;
     };
+    /// What a grant play costs with `targets` chosen: the grant's cost after
+    /// increases and discounts (CR 356.3-4), those from the chosen targets
+    /// included ("your spells that choose me cost [1] or [A] less" — the
+    /// Power half when `prefer_power`).
     TrashGrantCost trashGrantCost(PlayerId player, GameObjectId card_id,
-                                  const PlayerState::TrashReplayGrant& grant) const;
+                                  const PlayerState::TrashReplayGrant& grant,
+                                  const std::vector<GameObjectId>& targets,
+                                  bool prefer_power) const;
+    /// Whether the grant's cost and the targets' Deflect can be paid together
+    /// (with either half of an "or" discount). The one gate for the
+    /// trash-replay generator and the play-time target choice.
     bool canPayTrashGrant(PlayerId player, GameObjectId card_id,
-                          const PlayerState::TrashReplayGrant& grant, int deflect) const;
+                          const PlayerState::TrashReplayGrant& grant,
+                          const std::vector<GameObjectId>& targets) const;
+    /// The standing or pushed grant for `card_id`, if `player` has one.
+    const PlayerState::TrashReplayGrant* trashGrantFor(PlayerId player,
+                                                       GameObjectId card_id) const;
     Card::HideCost hideCostFor(PlayerId player) const;
     int firstGearAbilityDiscount(PlayerId player) const;
     Card::EquipTerms equipTerms(PlayerId player) const;
@@ -738,12 +758,28 @@ private:
     /// additional execution (CR 820.2).
     void chooseTargetsAtFinalize(ChainItem& item);
     void chooseFirstExecution(ChainItem& item);
-    // Items whose choices were made as an effect put them on the chain; the
-    // chain's Finalize step does not ask again. And the guard against the
-    // repeat choices choosing repeats. Call-stack bookkeeping, not game state.
-    std::vector<ChainItemId> finalized_early_;
+    // (An item whose choices are made early — a spell an effect plays — is
+    // marked ChainItemStatus::Finalized on the spot, which is what keeps the
+    // chain's Finalize step from asking again.)
+    // The guard against the repeat choices choosing repeats. Call-stack
+    // bookkeeping, not game state.
     bool choosing_repeat_ = false;
+    /// Deflect, "chosen" events and the choice count for a target the engine
+    /// asked for (chooseFirstExecution, makeNewChoicesFor).
+    void commitEngineChosenTarget(const Card& card, PlayerId chooser, GameObjectId t,
+                                  ChainItemId item_id);
     void runFinalizePass(ChainItem& item);
+    /// The finalize pass itself: runs `item`'s callback with `finalizing` set
+    /// until it asks nothing more, and returns the item with its choices.
+    ChainItem collectFinalizeChoices(ChainItem item);
+    /// Whether a spell that chooses in its finalize pass could be paid for by
+    /// choosing something that takes enough off its cost (the generators'
+    /// half of executePlaySpell's choices-before-payment).
+    bool payableThroughAFinalizeChoice(PlayerId player, GameObjectId card_id,
+                                       const PlayerState::TrashReplayGrant* grant) const;
+    /// A spell's finalize-pass choices made before its cost was paid; adopted
+    /// by chooseTargetsAtFinalize when the spell goes on the chain.
+    std::optional<ChainItem> prefinalized_spell_;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
     /// One agent decision among `options` for `player`, logged like any other.
@@ -771,7 +807,8 @@ private:
     /// `card_id` (auto-spends via payAdditionalCost; an [A] grant picks the
     /// first payable domain) and consumes the grant. Returns true if a grant
     /// was found and paid, false otherwise (caller falls back to printed cost).
-    bool payTrashReplayGrant(PlayerId player, GameObjectId card_id);
+    bool payTrashReplayGrant(PlayerId player, GameObjectId card_id,
+                             const std::vector<GameObjectId>& targets = {});
 
     // ── Optional additional costs (CR 356.2.b): Accelerate, Repeat, "you may pay" ──
     /// "Optional additional costs you pay cost [1] or [A] less": the discount

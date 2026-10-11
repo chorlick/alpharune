@@ -158,6 +158,7 @@ protected:
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
         }
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
     void attach(GameObjectId gear, GameObjectId unit) {
@@ -693,8 +694,7 @@ TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_UnattachingEndsTheCopy
     auto gear = addGear(P1, kShadySpectacles);
     addRune(P1, Domain::Fury);
     addRune(P1, Domain::Order);
-    CardContext ctx{state, events, exec, P1, gear};
-    ASSERT_TRUE(card->onEquip(ctx, bearer));
+    ASSERT_TRUE(equipThroughEngine(gear, bearer));
     ASSERT_EQ(state.getObject(bearer).card_def_id, kPunchingPoro);
 
     exec.unattachGear(gear);          // runs Card::onUnattached
@@ -720,8 +720,7 @@ TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_UnattachingEndsTheCopy
     auto gear = addGear(P1, kShadySpectacles);
     addRune(P1, Domain::Fury);
     addRune(P1, Domain::Order);
-    CardContext ctx{state, events, exec, P1, gear};
-    ASSERT_TRUE(card->onEquip(ctx, bearer));
+    ASSERT_TRUE(equipThroughEngine(gear, bearer));
     ASSERT_EQ(state.getObject(bearer).card_def_id, kArachnoidHorror);
     ASSERT_EQ(state.getObject(bearer).base_might, card_db.get(kArachnoidHorror).might);
 
@@ -745,15 +744,14 @@ TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_StaleCopyEndsWhenReEqu
     auto second = addUnit(P1, kLegionRearguard, 0, /*at_bf=*/0);
     auto gear = addGear(P1, kShadySpectacles);
     for (int i = 0; i < 2; ++i) { addRune(P1, Domain::Fury); addRune(P1, Domain::Order); }
-    CardContext ctx{state, events, exec, P1, gear};
-    ASSERT_TRUE(card->onEquip(ctx, first));
+    ASSERT_TRUE(equipThroughEngine(gear, first));
     ASSERT_EQ(state.getObject(first).card_def_id, kLegionRearguard);
     // The gear comes off by a path that does not run onUnattached.
     state.getObject(gear).attached_to = std::nullopt;
     state.getObject(first).attachments.clear();
     state.getObject(first).attachment_might_bonus = 0;
 
-    ASSERT_TRUE(card->onEquip(ctx, second));
+    ASSERT_TRUE(equipThroughEngine(gear, second));
 
     EXPECT_EQ(state.getObject(first).card_def_id, kInvalidId)
         << "the copy lasts only \"for as long as this is attached to it\"";

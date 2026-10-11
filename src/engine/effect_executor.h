@@ -475,6 +475,13 @@ public:
         pending_ = PendingChoice{true, p, std::move(legal), std::move(label)};
     }
     bool hasPendingChoice() const { return pending_.active; }
+
+    /// While a spell's choices are made before its cost is paid (CR 355 ->
+    /// 356; GameEngine::executePlaySpell), only objects the spell can still be
+    /// paid for with may be chosen. Card::pickTarget and the other choice
+    /// helpers drop the rest (Card::offerableChoices).
+    void setChoiceFilter(std::function<bool(GameObjectId)> f) { choice_filter_ = std::move(f); }
+    bool choiceAllowed(GameObjectId id) const { return !choice_filter_ || choice_filter_(id); }
     PendingChoice consumePendingChoice() {
         PendingChoice tmp = std::move(pending_);
         pending_ = PendingChoice{};
@@ -500,6 +507,7 @@ private:
     EventBus& events_;
     const CardDB& card_db_;
     std::function<void()> aura_recalc_;
+    std::function<bool(GameObjectId)> choice_filter_;
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

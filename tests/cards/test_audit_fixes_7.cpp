@@ -193,6 +193,7 @@ TEST_F(AuditFix7Test, Ornn_WeaponmasterEquipsEquipmentGear) {
     // behind it, so there is no Equip cost to fund.
     auto gear = addGear(P1, kInvalidId, /*might_bonus=*/3, /*at_bf=*/0);
     state.getObject(gear).tags = {"Equipment"};
+    withEquipmentCard(gear);   // CR 821.1.c.4: see the fixture
 
     // [Weaponmaster] is a "may": the default agent would decline it.
     EnginePathAgent yes(EnginePathAgent::choosing(gear, EnginePathAgent::May::Yes));
@@ -487,8 +488,7 @@ TEST_F(AuditFix7Test, HextechGauntlets_EquipReducedByMight) {
     addRune(P1, Domain::Body, false);
 
     Card* card = card_registry.get(748);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_TRUE(state.getObject(gear).attached_to.has_value());
@@ -509,8 +509,7 @@ TEST_F(AuditFix7Test, HextechGauntlets_HighMightZerosEnergyCost) {
     addRune(P1, Domain::Body, false);  // only need 1 rune for [A]
 
     Card* card = card_registry.get(748);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(exhaustedRuneCount(P1), 0);  // energy cost floored to 0
@@ -524,8 +523,7 @@ TEST_F(AuditFix7Test, HextechGauntlets_FailsWhenCannotPay) {
     addRune(P1, Domain::Body, false);  // only 1 ready rune, need 3 energy + 1 [A]
 
     Card* card = card_registry.get(748);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());  // no mutation

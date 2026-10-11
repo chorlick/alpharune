@@ -1395,7 +1395,10 @@ TEST_F(C3Test, UndyingLoyalty_OnlyABirdCatDogOrPoroEarnsTheDiscount) {
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    StepAgent agent{O(sage), V(0)};
+    // Corrected (sweep-costs, 9.N2 / 9.T1): the spell's own finalize-pass
+    // choice (where the unit is played) now comes before its cost step, where
+    // the unit is chosen.
+    StepAgent agent{V(0), O(sage)};
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_TRUE(onBoard(sage));
@@ -1499,7 +1502,9 @@ TEST_F(C3Test, Repeat_ATwoTargetSpellChoosesAgainForItsRepeat) {
     auto b = addUnit(P1, kInvalidId, 1);
     auto c = addUnit(P1, kInvalidId, 1);
     state.player(P1).rune_pool.energy += 2;   // the Repeat cost
-    StepAgent agent{V(1), O(a), O(b), O(a), O(c)};   // pay the Repeat; a+b; then a+c
+    // Corrected (sweep-costs, 9.N2 / 9.T1): a spell's choices are made before
+    // its costs (CR 355 -> 356), so the Repeat is offered after the first a+b.
+    StepAgent agent{O(a), O(b), V(1), O(a), O(c)};   // a+b; pay the Repeat; then a+c
     playThroughEngine(spell, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_EQ(state.getObject(a).current_might, 3);

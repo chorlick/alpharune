@@ -31,8 +31,13 @@ public:
     }
 
     bool hasReplacementEffect() const override { return true; }
-    bool replacementApplies(const GameState& state, GameObjectId self_id, PlayerId controller,
-                            GameObjectId dying_unit) const override {
+    Applies replacementAppliesTo(const GameState& state, GameObjectId self_object,
+                                 PlayerId controller, GameObjectId dying_unit) const override {
+        return conditionsHold(state, self_object, controller, dying_unit) ? Applies::Yes
+                                                                          : Applies::No;
+    }
+    bool conditionsHold(const GameState& state, GameObjectId self_id, PlayerId controller,
+                        GameObjectId dying_unit) const {
         if (!state.objectExists(self_id) || !state.objectExists(dying_unit)) return false;
         if (dying_unit == self_id) return false;             // "another unit"
         const auto& self = state.getObject(self_id);

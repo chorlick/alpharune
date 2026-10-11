@@ -656,6 +656,9 @@ struct ChainItem {
     // The state digest taken when Card::costDueNow first said "due" in the
     // current finalize-pass run (Card::costStateFingerprint).
     uint64_t cost_due_fingerprint = 0;
+    // This spell's choices are being made before it is on the chain (and
+    // before its cost is paid): "chosen" events are held until it is.
+    bool pre_play_choices = false;
 
     // ── Repeat (CR 820) — optional additional cost ──
     // `repeats_paid` is the number of times the Repeat cost was paid as

@@ -55,6 +55,28 @@ bool Card::costDueNow(CardContext& ctx) {
     return true;
 }
 
+bool Card::hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller,
+                                   const CardDB& db, BattlefieldId /*battlefield*/) const {
+    return hasLegalTargets(state, controller, db);
+}
+
+void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId player,
+                              GameObjectId object) {
+    if (!state.objectExists(object)) return;
+    auto& counters = state.getObject(object).card_counters;
+    counters.erase(kAdditionalCostPaid);
+    if (!card) return;
+    for (const auto& oac : {card->optionalAdditionalCost(),
+                            card->optionalAdditionalCost(state, player)})
+        if (oac.paid_flag && oac.paid_flag[0] != '\0') counters.erase(oac.paid_flag);
+}
+
+bool Card::mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                   GameObjectId object) const {
+    const auto legal = enumerateLegalTargets(state, controller);
+    return std::find(legal.begin(), legal.end(), object) != legal.end();
+}
+
 uint64_t Card::costStateFingerprint(const GameState& state) {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
@@ -449,12 +471,16 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
 namespace {
 std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& card,
                                                 const std::vector<GameObjectId>& in) {
-    if (card.ignoresDeflect()) return in;
     const int payable = ctx.executor.payableAnyPower(ctx.controller);
+    const bool ignores = card.ignoresDeflect();
     std::vector<GameObjectId> out;
     out.reserve(in.size());
-    for (auto t : in)
-        if (ctx.executor.deflectCostFor(ctx.controller, t) <= payable) out.push_back(t);
+    for (auto t : in) {
+        // A spell choosing before it is paid for: only what leaves it payable.
+        if (!ctx.executor.choiceAllowed(t)) continue;
+        if (ignores || ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
+            out.push_back(t);
+    }
     return out;
 }
 
@@ -479,7 +505,12 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     const auto& tobj = ctx.state.getObject(t);
     ctx.state.noteChosen(ctx.controller, t,
         ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr);
-    if (tobj.isUnit() && tobj.location.has_value() && tobj.controller == ctx.controller)
+    // Announced once the item is on the chain when the choice is made before
+    // that (GameEngine::chooseTargetsAtFinalize), so abilities that trigger on
+    // it still go above the spell.
+    const bool held = ctx.state.chain.resuming.has_value() &&
+                      ctx.state.chain.resuming->pre_play_choices;
+    if (!held && tobj.isUnit() && tobj.location.has_value() && tobj.controller == ctx.controller)
         ctx.events.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
 }
 }  // namespace

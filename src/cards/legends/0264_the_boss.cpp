@@ -39,8 +39,13 @@ public:
     // cost can be paid. [C] is one Power of this card's Domains — Body or
     // Order (CR 135.2.e.6.c).
     // The conditions, before the "may" and the payment.
-    bool replacementApplies(const GameState& state, GameObjectId self_id, PlayerId /*controller*/,
-                            GameObjectId dying_unit) const override {
+    Applies replacementAppliesTo(const GameState& state, GameObjectId self_object,
+                                 PlayerId controller, GameObjectId dying_unit) const override {
+        return conditionsHold(state, self_object, controller, dying_unit) ? Applies::Yes
+                                                                          : Applies::No;
+    }
+    bool conditionsHold(const GameState& state, GameObjectId self_id, PlayerId /*controller*/,
+                        GameObjectId dying_unit) const {
         if (!state.objectExists(self_id) || !state.objectExists(dying_unit)) return false;
         const auto& self = state.getObject(self_id);
         const auto& victim = state.getObject(dying_unit);

@@ -415,6 +415,12 @@ public:
     int pickMode(CardContext& ctx, const std::string& label, int num_modes,
                  const std::vector<std::string>& mode_labels = {},
                  uint32_t legal_modes = 0xFFFFFFFFu);
+    /// Record `mode` as this callback's pickMode answer without asking: for a
+    /// helper that finds there is nothing to choose now but must not have the
+    /// question asked later, when there might be (pickEffectPlayLocation at
+    /// finalization with no battlefield controlled). Does nothing once a mode
+    /// has been asked for or answered.
+    void settleMode(CardContext& ctx, int mode);
 
     /// Resolve-time target picker — counterpart to pickMode for spells
     /// that defer target selection from play-time to resolve-time.

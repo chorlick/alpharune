@@ -73,6 +73,10 @@ constexpr CardDefId kTUnnamedOption = 1058;        // spell whose prompt has an 
 constexpr CardDefId kTNoMarker = 1059;             // finalize-pass spell that returns before its marker
 constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kSkyCrusier = 847;
+constexpr CardDefId kFlameChompers = 6;
+constexpr CardDefId kImmortalPhoenix = 37;
+constexpr CardDefId kSoulgorger = 196;
+constexpr CardDefId kFirstMate = 132;
 constexpr CardDefId kSafetyInspector = 726;
 constexpr CardDefId kChallenge = 128;          // [2] + 1 Power; a friendly and an enemy unit
 constexpr CardDefId kBondsOfStrength = 472;    // two friendly units
@@ -2151,19 +2155,12 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                 << card_db.get(id).name << " (" << id << "): mode \"" << label
                 << "\" was never offered on the test boards";
     }
-    // And no other of the spells has modes: a prompt of labelled, valued
-    // options that is not a yes/no would be one.
-    for (CardDefId id : spells) {
-        if (modes.count(id)) continue;
-        for (const auto& label : labels_seen[id])
-            EXPECT_TRUE(label.rfind("Yes", 0) == 0 || label.rfind("No", 0) == 0 ||
-                        label.rfind("Base", 0) == 0 || label.rfind("Battlefield", 0) == 0 ||
-                        label.rfind("BF#", 0) == 0 || label.find("Stop") != std::string::npos ||
-                        label.rfind("None", 0) == 0 || label.find("no more") != std::string::npos ||
-                        label.rfind("pay", 0) == 0 || label.rfind("cost", 0) == 0)
-                << card_db.get(id).name << " (" << id << ") offered a labelled option the test "
-                << "does not know: \"" << label << "\" — a mode to add to the table?";
-    }
+    // And those four are all the modal ones: the spells among the 34 whose
+    // text says "Choose one".
+    for (CardDefId id : spells)
+        EXPECT_EQ(card_db.get(id).ability_text.find("Choose one") != std::string::npos,
+                  modes.count(id) > 0)
+            << card_db.get(id).name << " (" << id << ")";
     state = blank;
 }
 
@@ -2222,36 +2219,100 @@ TEST_F(SweepCostsTest, CostFingerprint_DoesNotMoveWithACardsOwnCounters) {
     EXPECT_EQ(Card::costStateFingerprint(state), before);
 }
 
+// ─── 9.GG2: "where to play it" is settled at finalization even with no choice ─
+
+/// The opponent, the first time they get priority, hands battlefield 0 to P1:
+/// "a battlefield is controlled by then".
+class GivesABattlefieldAgent : public AgentInterface {
+public:
+    GameEngine* engine = nullptr;
+    int given = 0;
+    Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+        if (given == 0 && engine) {
+            engine->mutableState().battlefields[0].controller = PlayerId::Player1;
+            ++given;
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+        return legal.empty() ? Intent{} : legal.front();
+    }
+};
+
+TEST_F(SweepCostsTest, EffectPlayLocation_FlameChompersDoesNotAskAtResolution) {
+    auto chompers = addToTrash(P1, kFlameChompers);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    EnginePathAgent agent(EnginePathAgent::script({1}));   // pay [R] to play me: yes
+    GivesABattlefieldAgent them;
+    withEngine([&](GameEngine& e) {
+        them.engine = &e;
+        e.testHook_executor().queueTriggeredAbility(chompers, P1, TriggerType::WhenIAmDiscarded);
+        e.testHook_runChain();
+    }, &agent, &them, P1);
+    ASSERT_EQ(them.given, 1);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "no location prompt as the ability resolves";
+    EXPECT_TRUE(o(chompers).isAtBase()) << "the base, settled when it was finalized";
+}
+
+TEST_F(SweepCostsTest, EffectPlayLocation_ImmortalPhoenixDoesNotAskAtResolution) {
+    auto phoenix = addToTrash(P1, kImmortalPhoenix);
+    state.player(P1).rune_pool.energy = 1;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    GivesABattlefieldAgent them;
+    withEngine([&](GameEngine& e) {
+        them.engine = &e;
+        e.testHook_executor().queueTriggeredAbility(phoenix, P1,
+                                                    TriggerType::WhenYouKillAUnitWithASpell);
+        e.testHook_runChain();
+    }, &agent, &them, P1);
+    ASSERT_EQ(them.given, 1);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(o(phoenix).isAtBase());
+}
+
+TEST_F(SweepCostsTest, EffectPlayLocation_SoulgorgerDoesNotAskAtResolution) {
+    auto dead = addToTrash(P1, kFirstMate);
+    auto card = addToHand(P1, kSoulgorger);
+    const auto& def = card_db.get(kSoulgorger);
+    setPool(P1, def.energy_cost, def.power_cost);
+    // Yes; the unit; then the revived First Mate's own trigger (whatever it asks).
+    EnginePathAgent agent(EnginePathAgent::script(
+        {1, static_cast<int>(dead), EnginePathAgent::kRest}));
+    GivesABattlefieldAgent them;
+    Intent play_it;
+    play_it.type = IntentType::PlayCard;
+    play_it.player = P1;
+    play_it.card = card;
+    play_it.play_location = LocationId{BaseLocation{P1}};
+    withEngine([&](GameEngine& e) {
+        them.engine = &e;
+        e.testHook_executeIntent(play_it);
+    }, &agent, &them, P1);
+    ASSERT_EQ(them.given, 1);
+    EXPECT_TRUE(o(dead).isAtBase()) << "the base, settled when the ability was finalized";
+    for (const auto& prompt : agent.prompts)
+        for (const auto& option : prompt)
+            EXPECT_TRUE(option.choice_label.rfind("Battlefield #", 0) != 0)
+                << "a location was asked for as the ability resolved";
+}
+
 // ─── 9.EE1 / 9.EE2: the two card contracts the engine checks as it runs ─────
 
-TEST_F(SweepCostsTest, CardContract_AnOptionWithNeitherValueNorObjectIsReported) {
+TEST_F(SweepCostsTest, CardContract_AnOptionWithNeitherValueNorObjectIsAnError) {
+    // A prompt option an agent could tell from the others only by its
+    // position: the engine refuses to ask, naming the card.
     auto spell = addToHand(P1, kTUnnamedOption);
-    int warnings = 0;
-    auto conn = events.on_log.connect([&](const LogEvent& e) {
-        if (e.level == LogLevel::Warning &&
-            e.message.find("CARD-CONTRACT") != std::string::npos &&
-            e.message.find("neither a value nor an object") != std::string::npos) ++warnings;
-    });
-    // By default: a warning in the log, and the game goes on.
-    play(spell);
-    EXPECT_EQ(warnings, 1);
-    conn.disconnect();
-
-    // Strict: an error that names the card.
-    auto again = addToHand(P1, kTUnnamedOption);
     Intent i;
     i.type = IntentType::PlayCard;
     i.player = P1;
-    i.card = again;
+    i.card = spell;
     try {
-        withEngine([&](GameEngine& e) {
-            e.setStrictCardContracts(true);
-            e.testHook_executeIntent(i);
-        });
-        ADD_FAILURE() << "the strict engine accepted an unnameable option";
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(i); });
+        ADD_FAILURE() << "the engine put an unnameable option to the agent";
     } catch (const std::logic_error& ex) {
         EXPECT_NE(std::string(ex.what()).find("Test Unnamed Option"), std::string::npos)
             << ex.what();
+        EXPECT_NE(std::string(ex.what()).find("neither a value nor an object"), std::string::npos);
     }
 }
 

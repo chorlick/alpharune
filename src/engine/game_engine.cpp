@@ -2200,12 +2200,12 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
     return false;
 }
 
-// A card broke one of the two contracts the engine can see only as it runs
-// (an unnameable prompt option; a finalize pass that ended before its marker).
-// Strict: an error naming the card, as the cost contract is. Otherwise a
-// warning in the log — and on stderr under RIFTBOUND_REPORT_CARD_CONTRACTS, for
-// listing every card a test run trips. Strict is off by default only until the
-// cards the list names are fixed.
+// A card's finalize pass ended before its end-of-choices marker. Strict: an
+// error naming the card, as the cost contract and an unnameable prompt option
+// are. Otherwise a warning in the log — and on stderr under
+// RIFTBOUND_REPORT_CARD_CONTRACTS, for listing every card a test run trips.
+// Strict is off by default only until the cards that list names are fixed
+// (plans/reports/sweep-costs-followup-5.md has the list).
 void GameEngine::cardContractViolation(const std::string& what) {
     if (strict_card_contracts_) throw std::logic_error(what);
     events_.logWarn("CARD-CONTRACT: " + what);
@@ -7628,20 +7628,23 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
         }
     } unpark{*this};
 
-    // A card's prompt (every option a MakeChoice) is answered by value or by
-    // object: that is all an agent, a recorded game or a policy head has to
-    // tell the options apart. An option that carries neither, or two that
-    // carry the same, can only be told apart by position — a card bug.
+    // A card's prompt (every option a MakeChoice) is answered by value, by
+    // object or by a named card (Intent::chosen_card_def): that is all an
+    // agent, a recorded game or a policy head has to tell the options apart.
+    // An option that carries none of them, or two that carry the same, can
+    // only be told apart by position — a card bug.
     if (legal.size() > 1 &&
         std::all_of(legal.begin(), legal.end(),
                     [](const Intent& i) { return i.type == IntentType::MakeChoice; })) {
         for (size_t a = 0; a < legal.size(); ++a) {
             const bool unnamed = !legal[a].chosen_value.has_value() &&
-                                 legal[a].chosen_objects.empty();
+                                 legal[a].chosen_objects.empty() &&
+                                 legal[a].chosen_card_def == kInvalidId;
             bool twin = false;
             for (size_t b = a + 1; b < legal.size() && !twin; ++b)
                 twin = legal[a].chosen_value == legal[b].chosen_value &&
-                       legal[a].chosen_objects == legal[b].chosen_objects;
+                       legal[a].chosen_objects == legal[b].chosen_objects &&
+                       legal[a].chosen_card_def == legal[b].chosen_card_def;
             if (!unnamed && !twin) continue;
             std::string options;
             for (const auto& i : legal) {
@@ -7656,12 +7659,11 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
             const std::string source = state_.chain.resuming.has_value() &&
                                        state_.objectExists(state_.chain.resuming->source)
                 ? state_.getObject(state_.chain.resuming->source).name : std::string("?");
-            cardContractViolation(
+            throw std::logic_error(
                 "GameEngine::askAgent: a prompt (resolving: " + source + ") has an option that " +
                 (unnamed ? "carries neither a value nor an object"
                          : "is the same as another by value and object") +
                 ". Options:" + options);
-            break;   // one report per prompt
         }
     }
 

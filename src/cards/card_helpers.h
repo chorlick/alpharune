@@ -916,7 +916,7 @@ inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
 // state.battlefields[i]), so it composes with confirmOptional / pickTarget
 // and can be asked at finalization — but a card that calls it must not use
 // pickMode for anything else in the same callback. With no battlefield to
-// offer there is nothing to choose and nothing is asked.
+// offer there is nothing to choose and nothing is asked — then or later.
 
 /// Returns -1 while waiting for the agent, else the mode to hand to
 /// effectPlayLocation.
@@ -931,7 +931,13 @@ inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::strin
             *bfs[i].controller == ctx.controller)   // as battlefieldTakesUnitsFrom
             mask |= 1u << (i + 1);
     }
-    if (mask == 1u) return 0;
+    if (mask == 1u) {
+        // Nothing to choose: the base. Stored as the answer, so the question
+        // is not asked later — as the item resolves — should a battlefield
+        // have come under its controller's control by then.
+        card.settleMode(ctx, 0);
+        return 0;
+    }
     const int m = card.pickMode(ctx, label, static_cast<int>(labels.size()), labels, mask);
     return m == -1 ? -1 : std::max(0, m);
 }

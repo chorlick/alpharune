@@ -397,6 +397,16 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
     return x;
 }
 
+void Card::settleMode(CardContext& ctx, int mode) {
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) return;
+    auto& ri = *ri_opt;
+    if (choiceState(ri) & (kModeAwait | kModeDone)) return;
+    while (ri.resume_data.size() < 2) ri.resume_data.push_back(0);
+    ri.resume_data[1] = mode;
+    setChoiceState(ri, kModeAwait, kModeDone);
+}
+
 int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                     const std::vector<std::string>& mode_labels,
                     uint32_t legal_modes) {

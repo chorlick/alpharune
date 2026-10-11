@@ -180,7 +180,8 @@ protected:
         return legal.front();
     }
     static Intent keepOnTop(const std::vector<Intent>& legal) {      // a Predict prompt
-        for (const auto& i : legal) if (i.chosen_objects.empty() && !i.chosen_value) return i;
+        // Corrected (sweep-costs, 9.GG1): "Keep it" is now named by value 0.
+        for (const auto& i : legal) if (i.chosen_objects.empty()) return i;
         return legal.front();
     }
 

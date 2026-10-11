@@ -4732,7 +4732,8 @@ TEST_F(VerifyCardsTest, DianaLunari_VoidHatchlingLooksAfterThePredictBeforeTheRe
         const int at = n++;
         for (const auto& i : legal) {
             if (at == 1) {
-                if (i.chosen_objects.empty() && !i.chosen_value.has_value()) return i;
+                // Corrected (sweep-costs, 9.GG1): "Keep it" is named by value 0.
+                if (i.chosen_objects.empty()) return i;
             } else if (i.chosen_value.has_value() && *i.chosen_value == 1) {
                 return i;
             }

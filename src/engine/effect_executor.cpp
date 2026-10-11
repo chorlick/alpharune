@@ -1964,9 +1964,14 @@ void EffectExecutor::predict(PlayerId player, int count) {
             recycle_choice.chosen_objects = {card_id};
             choices.push_back(recycle_choice);
             // Choice 2: keep on top
+            // "Keep it": named by value 0, so the option can be told from the
+            // other by more than its position (a card's prompt is answered by
+            // value or by object).
             Intent keep_choice;
             keep_choice.type = IntentType::MakeChoice;
             keep_choice.player = player;
+            keep_choice.chosen_value = 0;
+            keep_choice.choice_label = "Keep it";
             choices.push_back(keep_choice);
 
             auto chosen = agent_query_(player, choices);
@@ -2071,6 +2076,8 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
             Intent skip_it;
             skip_it.type = IntentType::MakeChoice;
             skip_it.player = player;
+            skip_it.chosen_value = 0;      // named by value, as "Keep it" is
+            skip_it.choice_label = "Leave it";
             choices.push_back(skip_it);
 
             auto chosen = agent_query_(player, choices);

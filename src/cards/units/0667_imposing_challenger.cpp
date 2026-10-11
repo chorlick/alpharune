@@ -51,13 +51,35 @@ public:
         // "to a different battlefield" — any battlefield other than mine; the
         // controller picks when there is more than one.
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+        // Which battlefields those are is fixed on the first entry past the
+        // "may" (as the ability is finalized, CR 383.3) and kept on the chain
+        // item: resume_data[kDestsSlot] = how many + 1 (0 = not set yet), the
+        // ids after it. A battlefield added before this resolves (Baron
+        // Nashor's Pit) then neither makes it ask "which battlefield" as it
+        // resolves nor changes what the answer given at finalization means.
         std::vector<BattlefieldId> dests;
-        std::vector<std::string> labels;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (my_bf && bf.id == *my_bf) continue;
-            dests.push_back(bf.id);
-            labels.push_back("Battlefield #" + std::to_string(bf.id));
+        if (auto& ri = ctx.state.chain.resuming; ri.has_value()) {
+            constexpr size_t kDestsSlot = Card::kChoiceStateSlot + 1;
+            auto& rd = ri->resume_data;
+            if (rd.size() <= kDestsSlot || rd[kDestsSlot] == 0) {
+                rd.resize(kDestsSlot + 1, 0);
+                int32_t n = 0;
+                for (const auto& bf : ctx.state.battlefields) {
+                    if (my_bf && bf.id == *my_bf) continue;
+                    rd.push_back(static_cast<int32_t>(bf.id));
+                    ++n;
+                }
+                rd[kDestsSlot] = n + 1;
+            }
+            const size_t n = static_cast<size_t>(rd[kDestsSlot] - 1);
+            for (size_t i = 0; i < n && kDestsSlot + 1 + i < rd.size(); ++i)
+                dests.push_back(static_cast<BattlefieldId>(rd[kDestsSlot + 1 + i]));
+        } else {
+            for (const auto& bf : ctx.state.battlefields)
+                if (!my_bf || bf.id != *my_bf) dests.push_back(bf.id);
         }
+        std::vector<std::string> labels;
+        for (auto id : dests) labels.push_back("Battlefield #" + std::to_string(id));
         int which = 0;
         if (tgt != kInvalidId && dests.size() > 1)
             which = pickMode(ctx, "Imposing Challenger: move it to which battlefield",
@@ -67,6 +89,7 @@ public:
         if (!my_bf || dests.empty()) return;  // no other battlefield exists
         if (which < 0) return;                // waiting for the agent
         const BattlefieldId dest = dests[std::min(static_cast<size_t>(which), dests.size() - 1)];
+        if (dest == *my_bf) return;           // I have moved there since: not "a different battlefield"
         ctx.executor.moveToBattlefield(tgt, dest);
         ctx.events.logTrace("IMPOSING CHALLENGER: moved an enemy unit here to a different BF");
     }

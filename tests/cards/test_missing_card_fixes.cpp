@@ -157,11 +157,16 @@ TEST_F(MissingFixTest, FreshBeans_DrawsDuringShowdownOnYes) {
 
 TEST_F(MissingFixTest, FreshBeans_NoOpOutsideShowdown) {
     auto gear = addGear(P1, kFreshBeans, /*at_bf=*/0);
+    auto unit = addUnit(P1, kInvalidId, 2, /*at_bf=*/0);   // the unit that was played
     addToDeck(P1, kInvalidId);
-    // No showdown in progress.
-    EffectExecutor exec(state, events, card_db);
+    // No showdown in progress. On the engine path: "during a showdown" is the
+    // trigger condition (Card::triggerCondition, asked by
+    // TriggerManager::queueTrigger), so no ability goes on the chain and the
+    // "may" is never asked.
     int hand_before = handSize(P1);
-    fireTrigger(kFreshBeans, gear, P1, exec);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayAUnit, &agent, unit);
+    EXPECT_TRUE(agent.prompts.empty()) << "outside a showdown the ability does not trigger";
     EXPECT_EQ(handSize(P1), hand_before) << "no draw outside a showdown";
     EXPECT_FALSE(state.getObject(gear).is_exhausted);
 }

@@ -36,12 +36,12 @@ public:
         return runesControlled(state, controller) >= 7;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // With fewer than 7 runes there is no gear to choose. No return ahead
-        // of pickTarget — it stores "no target" on the chain item, so the
-        // resolution asks nothing if a seventh rune has arrived since.
-        std::vector<GameObjectId> candidates;
-        if (runesControlled(ctx.state, ctx.controller) >= 7) candidates = enemyGear(ctx);
-        GameObjectId tgt = pickTarget(ctx, "Tomb-Raider Barbara: choose an enemy gear", candidates);
+        // The rune count is not asked again here: it was the trigger
+        // condition (triggerCondition), and an ability that is on the chain
+        // resolves even if a rune has left since (CR 383.2.a.1: "it will
+        // still resolve").
+        GameObjectId tgt = pickTarget(ctx, "Tomb-Raider Barbara: choose an enemy gear",
+                                      enemyGear(ctx));
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         auto& gear = ctx.state.getObject(tgt);

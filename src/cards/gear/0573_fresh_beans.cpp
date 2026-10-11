@@ -29,12 +29,13 @@ public:
         return showdownInProgress(state);
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // No return ahead of the "may": outside a showdown confirmOptional
-        // stores the "no" on the chain item, so the resolution asks nothing
-        // whatever has begun since.
+        // "during a showdown" is not asked again here: it was the trigger
+        // condition (triggerCondition), and an ability that is on the chain
+        // resolves whether or not the showdown is still going on (CR
+        // 383.2.a.1). The "may" needs only its cost to be payable.
         int conf = confirmOptional(ctx, "Fresh Beans: exhaust to draw 1",
             [&] {
-                return showdownInProgress(ctx.state) && ctx.state.objectExists(ctx.source) &&
+                return ctx.state.objectExists(ctx.source) &&
                        !ctx.state.getObject(ctx.source).is_exhausted;
             });
         if (conf != 1) return;

@@ -684,17 +684,25 @@ TEST_F(VendettaA, Vendetta_SandstoneChimera_ChannelCapOnlyAtBattlefield) {
 // ── 824 Tomb-Raider Barbara ──────────────────────────────────────────────
 
 TEST_F(VendettaA, Vendetta_Barbara_KillsEnemyGearAtSevenRunes) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
     auto barbara = addUnit(P1, kBarbara, 0, 0);
     auto my_gear = addGear(P1);
     auto gear = addGear(P2);
 
+    // On the engine path: "if you control 7 or more runes" is the trigger
+    // condition (Card::triggerCondition, asked by TriggerManager::queueTrigger),
+    // so with 6 runes no ability goes on the chain and nothing is asked.
     runes(P1, 6);
-    fireTriggerAs(kBarbara, P1, barbara, TriggerType::WhenYouPlayMe, exec);
+    EnginePathAgent six(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(barbara, TriggerType::WhenYouPlayMe, &six);
+    EXPECT_TRUE(six.prompts.empty()) << "6 runes: the ability does not trigger";
     EXPECT_TRUE(state.getObject(gear).location.has_value()) << "6 runes: no effect";
 
     runes(P1, 1);
-    fireTriggerAs(kBarbara, P1, barbara, TriggerType::WhenYouPlayMe, exec);
+    EnginePathAgent seven(EnginePathAgent::script({static_cast<int>(gear)}));
+    fireTriggerThroughEngine(barbara, TriggerType::WhenYouPlayMe, &seven);
+    ASSERT_EQ(seven.prompts.size(), 1u) << "\"choose an enemy gear\"";
+    EXPECT_TRUE(seven.wasOffered(gear));
+    EXPECT_FALSE(seven.wasOffered(my_gear)) << "\"an enemy gear\"";
     EXPECT_FALSE(state.getObject(gear).location.has_value());
     EXPECT_EQ(state.getObject(gear).zone, ZoneType::Trash);
     EXPECT_TRUE(state.getObject(my_gear).location.has_value()) << "friendly gear untouched";

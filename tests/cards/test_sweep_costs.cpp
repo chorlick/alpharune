@@ -558,7 +558,16 @@ TEST_F(SweepCostsTest, Ezreal_OptionalAdditionalCostsCostOneLess) {
     addUnit(P1, kEzrealProdigy, 3);
     auto again = addToHand(P1, kFrigidTouch);
     setPool(P1, 3, 0);
-    EnginePathAgent with(EnginePathAgent::script({static_cast<int>(enemy), 1}));   // target, Repeat
+    // Explicit: pay the [Repeat] (the unlabelled 0/1 prompt: 1), and choose
+    // the enemy unit whenever a target is asked for.
+    EnginePathAgent with([enemy](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == enemy) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+        ADD_FAILURE() << "unexpected prompt";
+        return legal.front();
+    });
     play(again, &with, {enemy});
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0) << "[2] + a [Repeat] of [2] - [1]";
 }
@@ -662,7 +671,7 @@ TEST_F(SweepCostsTest, Equip_ATriggerItCausesResolvesWithTheEquip) {
 TEST_F(SweepCostsTest, Weaponmaster_ChargesTheEquipCostLessOnePower) {
     auto skyfall = addGear(P1, kSkyfallOfAreion);    // [Equip] [1][R] -> [1]
     auto first = addToHand(P1, kArmedAssailant);
-    EnginePathAgent a1(EnginePathAgent::choosing(skyfall));
+    EnginePathAgent a1(EnginePathAgent::choosing(skyfall, EnginePathAgent::May::Yes));
     playThroughEngine(first, &a1);                   // funded for the unit only
     ASSERT_TRUE(onBoard(first));
     EXPECT_TRUE(a1.prompts.empty()) << "the [1] can't be paid: not offered (CR 821.1.c.5)";
@@ -670,7 +679,7 @@ TEST_F(SweepCostsTest, Weaponmaster_ChargesTheEquipCostLessOnePower) {
 
     auto second = addToHand(P1, kArmedAssailant);
     state.player(P1).rune_pool.energy += 1;
-    EnginePathAgent a2(EnginePathAgent::script({1, static_cast<int>(skyfall)}));   // may, gear
+    EnginePathAgent a2(EnginePathAgent::choosing(skyfall, EnginePathAgent::May::Yes));
     playThroughEngine(second, &a2);
     EXPECT_EQ(o(skyfall).attached_to, std::optional<GameObjectId>{second});
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0) << "the [1] was charged";
@@ -683,7 +692,7 @@ TEST_F(SweepCostsTest, Weaponmaster_MovesAnAttachedEquipmentAndPaysANonResourceC
     o(holder).attachments.push_back(heirloom);
     setXp(P1, 1);
     auto wm = addToHand(P1, kArmedAssailant);
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(heirloom)}));   // may, gear
+    EnginePathAgent agent(EnginePathAgent::choosing(heirloom, EnginePathAgent::May::Yes));
     playThroughEngine(wm, &agent);
     EXPECT_EQ(o(heirloom).attached_to, std::optional<GameObjectId>{wm})
         << "even if it's already attached";
@@ -702,7 +711,7 @@ TEST_F(SweepCostsTest, SandSoldier_HasWeaponmasterFromTheEmperor) {
     act.type = IntentType::ActivateAbility;
     act.player = P1;
     act.ability_source = legend;
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword)}));   // may, gear
+    EnginePathAgent agent(EnginePathAgent::choosing(sword, EnginePathAgent::May::Yes));
     execute(act, &agent);
     GameObjectId soldier = kInvalidId;
     for (const auto& [id, obj] : state.objects)
@@ -1073,7 +1082,7 @@ TEST_F(SweepCostsTest, Weaponmaster_TheMayAndTheEquipmentAreChosenAtFinalization
     // first asked, P1's prompts are already answered and nothing is attached.
     auto sword = addGear(P1, kLongSword);
     auto wm = addToHand(P1, kArmedAssailant);
-    EnginePathAgent p1(EnginePathAgent::script({1, static_cast<int>(sword)}));   // may, gear
+    EnginePathAgent p1(EnginePathAgent::choosing(sword, EnginePathAgent::May::Yes));
     struct Watcher : AgentInterface {
         EnginePathAgent* p1 = nullptr;
         GameState* st = nullptr;
@@ -1110,7 +1119,7 @@ TEST_F(SweepCostsTest, Weaponmaster_TakingAnAttachedEquipmentAnnouncesTheUnattac
         if (e.object == sword && e.what_changed == "detached") ++unattached;
     });
     auto wm = addToHand(P1, kArmedAssailant);
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword)}));   // may, gear
+    EnginePathAgent agent(EnginePathAgent::choosing(sword, EnginePathAgent::May::Yes));
     playThroughEngine(wm, &agent);
     conn.disconnect();
     EXPECT_EQ(o(sword).attached_to, std::optional<GameObjectId>{wm});

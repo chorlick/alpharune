@@ -168,18 +168,47 @@ public:
     EnginePathAgent() = default;
     explicit EnginePathAgent(Picker p) : pick(std::move(p)) {}
 
-    Intent selectAction(const GameState&,
+    Intent selectAction(const GameState& state,
                         const std::vector<Intent>& legal) override {
         if (legal.empty()) return Intent{};
         const bool is_choice = std::all_of(legal.begin(), legal.end(),
             [](const Intent& i) { return i.type == IntentType::MakeChoice; });
         if (is_choice) {
             prompts.push_back(legal);
-            return pick ? pick(legal) : legal.front();
+            if (pick) return pick(legal);
+            // No picker. The default is the first option, except at a Predict
+            // "recycle this card or keep it" prompt, whose first option is
+            // "recycle": a test that plays a Vision / Predict card without
+            // saying anything must not have its deck reordered. Default: keep.
+            // A test that wants the recycle passes a picker.
+            if (isPredictRecycleOrKeep(state, legal)) { ++predict_kept_by_default; return legal[1]; }
+            return legal.front();
         }
         for (const auto& i : legal)
             if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
         return legal.front();
+    }
+
+    /// How often the no-picker default answered a Predict prompt with "keep".
+    int predict_kept_by_default = 0;
+
+    /// The prompt EffectExecutor::predict makes for one looked-at card: two
+    /// options, [0] names the card (recycle it), [1] names nothing (keep it),
+    /// and the card is the looked-at one: a Main Deck card that is at that
+    /// moment held out of its owner's deck.
+    static bool isPredictRecycleOrKeep(const GameState& state, const std::vector<Intent>& legal) {
+        if (legal.size() != 2) return false;
+        const Intent& recycle = legal[0];
+        const Intent& keep = legal[1];
+        if (recycle.chosen_objects.size() != 1 || recycle.chosen_value.has_value()) return false;
+        if (!keep.chosen_objects.empty() || keep.chosen_value.has_value() ||
+            !keep.choice_label.empty()) return false;
+        const GameObjectId card = recycle.chosen_objects.front();
+        if (!state.objectExists(card)) return false;
+        const auto& obj = state.getObject(card);
+        if (obj.zone != ZoneType::MainDeck) return false;
+        const auto& deck = state.player(obj.owner).main_deck;
+        return std::find(deck.begin(), deck.end(), card) == deck.end();
     }
 
     /// True if any prompt offered `id` as an object to choose.
@@ -191,19 +220,91 @@ public:
     }
 
     // ── Pickers ──
-    /// Choose object `id` when offered; say yes (1) to a yes/no; otherwise first.
-    static Picker choosing(GameObjectId id) {
-        return [id](const std::vector<Intent>& legal) {
+    /// The first option of every prompt, stated: at a Predict prompt that is
+    /// "recycle the card" (the no-picker default keeps it instead).
+    static Picker first() {
+        return [](const std::vector<Intent>& legal) { return legal.front(); };
+    }
+    /// What choosing(id) answers to a "may" (a Card::confirmOptional prompt,
+    /// options labelled "Yes ..." / "No ...").
+    enum class May { Unexpected, Yes, No };
+
+    /// Choose object `id` when a prompt offers it. What it does at any other
+    /// prompt is fixed, so nothing is answered by accident:
+    ///   a "may" (confirmOptional)   choosing(id) FAILS the test;
+    ///                               choosing(id, May::Yes) accepts it (the
+    ///                               "you may ..." that leads to the pick);
+    ///                               choosing(id, May::No) declines it
+    ///   one option only             taken (there is nothing to decide)
+    ///   objects, `id` not among them  the first one (a test that checks `id`
+    ///                               is NOT offered asserts on wasOffered)
+    ///   objects plus one option that names none ("No more targets", "None"),
+    ///   `id` not among them         AFTER this picker has chosen `id` once:
+    ///                               that option (the one target is chosen,
+    ///                               no more). If `id` was never offered the
+    ///                               test FAILS: choosing nothing would hide
+    ///                               a target that is wrongly not offered.
+    ///   anything else (a mode, an X, an unlabelled yes/no)
+    ///                               FAILS the test: script() is the picker
+    ///                               for those
+    /// (This used to say yes to every yes/no and take value 1 of any other
+    /// prompt, so an unrelated "may" on another card was silently accepted.)
+    static Picker choosing(GameObjectId id, May may = May::Unexpected) {
+        auto picked = std::make_shared<bool>(false);   // `id` has been chosen once
+        return [id, may, picked](const std::vector<Intent>& legal) {
             for (const auto& i : legal)
-                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
-            for (const auto& i : legal)
-                if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
-            return legal.front();
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) {
+                    *picked = true;
+                    return i;
+                }
+            const Intent* yes = nullptr;
+            const Intent* no = nullptr;
+            for (const auto& i : legal) {
+                if (i.choice_label.rfind("Yes", 0) == 0) yes = &i;
+                if (i.choice_label.rfind("No", 0) == 0) no = &i;
+            }
+            const bool is_may = yes != nullptr && no != nullptr && legal.size() == 2;
+            if (is_may && may == May::Yes) return *yes;
+            if (is_may && may == May::No) return *no;
+            if (!is_may) {
+                if (legal.size() == 1) return legal.front();
+                if (std::all_of(legal.begin(), legal.end(),
+                                [](const Intent& i) { return !i.chosen_objects.empty(); }))
+                    return legal.front();
+                // Objects and exactly one "none of them", once `id` has
+                // been chosen: stop there. Before that it is not an answer
+                // this picker may give (falls through to the failure).
+                const Intent* none = nullptr;
+                int without_object = 0;
+                for (const auto& i : legal)
+                    if (i.chosen_objects.empty()) { none = &i; ++without_object; }
+                if (*picked && without_object == 1 && legal.size() >= 2) return *none;
+            }
+            std::string options;
+            for (const auto& i : legal) {
+                options += " [" + i.choice_label;
+                if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
+                if (!i.chosen_objects.empty())
+                    options += " object=" + std::to_string(i.chosen_objects.front());
+                options += "]";
+            }
+            ADD_FAILURE() << "EnginePathAgent::choosing(" << id << "): a prompt arrived that does "
+                          << "not offer that object and that the test did not announce"
+                          << (is_may ? " (a \"may\": use choosing(id, May::Yes) or May::No)"
+                                     : " (not a \"may\": use script())")
+                          << ". Options:" << options;
+            return is_may ? *no : legal.front();
         };
     }
     /// Say yes to every yes/no (Card::confirmOptional labels its options
     /// "Yes — ..." / "No — ..."); first option of any other prompt, so a mode
     /// or X prompt is not mistaken for a "may".
+    /// At a Predict prompt the first option is "recycle the card", and that is
+    /// what accepting means there: to Predict is to look at the card and
+    /// choose "whether or not to Recycle it" (CR 437.1), and accepting takes
+    /// the action a prompt offers. This differs on purpose from the agent
+    /// with no picker, which keeps the card
+    /// (FixtureContractTest.AcceptingRecyclesAtAPredictPrompt pins it).
     static Picker accepting() {
         return [](const std::vector<Intent>& legal) {
             for (const auto& i : legal)
@@ -354,6 +455,17 @@ protected:
     /// works. BattlefieldId is unsigned; -1 would underflow to UINT_MAX
     /// and compare >= 0, silently routing the unit to a non-existent
     /// battlefield. Subagent surfaced this bug 2026-05-15.
+    /// With `def_id == kInvalidId` the unit is a "TestUnit": an object with no
+    /// card class behind it. It is NOT a token (isToken() is false; killed, it
+    /// goes to its owner's trash), but the engine skips it wherever it needs a
+    /// CardDef: it has no cost, no abilities and no printed text. Use a real
+    /// card id when the test depends on any of those.
+    ///
+    /// Control: a battlefield whose `controller` a test sets by hand keeps it
+    /// through a cleanup only while that player has a unit there (the engine's
+    /// updateBattlefieldControl, CR 323). Every *ThroughEngine helper runs a
+    /// cleanup, so put a unit at the battlefield as well.
+    /// (tests/cards/test_fixture_contract.cpp pins both.)
     GameObjectId addUnit(PlayerId owner, CardDefId def_id, int might = 0,
                           int at_bf = -1) {
         auto id = state.createObject();
@@ -589,10 +701,20 @@ protected:
         // damage_marked >= might.
         withEngine([&](GameEngine& e) {
             e.testHook_executeIntent(play);
-            e.testHook_runChain();
-            e.testHook_cleanup();
-            e.testHook_runChain();
+            settleLikeTheEngine(e);
         }, p1_agent, p2_agent, player);
+    }
+
+    /// What GameEngine::resolveMainPhaseDecision does after it has executed
+    /// an intent: resolve the triggers that queued, cleanup (which kills
+    /// lethally damaged units, CR 319), resolve the triggers the cleanup
+    /// queued. Every *ThroughEngine helper ends with it; a test that calls
+    /// testHook_executeIntent itself inside withEngine calls this after it
+    /// unless it is looking at the state before the cleanup on purpose.
+    static void settleLikeTheEngine(GameEngine& e) {
+        e.testHook_runChain();
+        e.testHook_cleanup();
+        e.testHook_runChain();
     }
 
     /// Put `source`'s triggered ability for `trigger` on the chain as if its
@@ -610,7 +732,7 @@ protected:
         withEngine([&](GameEngine& e) {
             ASSERT_TRUE(e.testHook_executor().canQueueTriggers());
             e.testHook_executor().queueTriggeredAbility(source, controller, trigger, subject);
-            e.testHook_runChain();
+            settleLikeTheEngine(e);
         }, p1_agent, p2_agent, controller);
     }
 
@@ -657,7 +779,7 @@ protected:
                               PlayerId turn_player = P1) {
         withEngine([&](GameEngine& e) {
             cause(e.testHook_executor(), e.mutableState());
-            e.testHook_runChain();
+            settleLikeTheEngine(e);
         }, p1_agent, p2_agent, turn_player);
     }
 

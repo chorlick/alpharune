@@ -3,42 +3,113 @@
 #
 #   -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;$PWD/scripts/ccache_pch_safe.sh"
 #
-# Why plain `ccache` is not safe here. CMake creates a PCH with
-#     c++ ... -x c++-header -include <dir>/cmake_pch.hxx -o <dir>/cmake_pch.hxx.gch -c cmake_pch.hxx.cxx
-# and when a header changes, Ninja reruns that command with the OLD .gch still
-# in place. ccache sees `-include X` next to an existing `X.gch`, concludes the
-# compile USES that precompiled header, and keys the result on the old .gch's
-# bytes instead of on the headers. Two rebuilds that start from the same .gch
-# (two worktrees that share a cache, or one tree that got the same .gch back
-# from the cache after a clean build) then share one result: the second gets a
-# .gch built from the first one's headers. GCC accepts it (-Winvalid-pch does
-# not check header contents) and every unit using the PCH is compiled against
-# the wrong declarations.
+# What it does
+#   * A compile that CREATES a precompiled header (`-x c++-header`) never goes
+#     to ccache. The old .gch and its .gch.sum are deleted, the compiler runs
+#     directly, and on success a checksum file `<pch>.gch.sum` is written.
+#   * Every other compile goes to ccache with `pch_external_checksum` on: for
+#     a unit that uses the PCH, ccache keys on the .gch.sum instead of on the
+#     .gch's bytes.
 #
-# The fix: delete the stale .gch before a PCH is created. Everything that is
-# not a PCH goes to ccache as is.
+# What the .gch.sum is
+#   A SHA-256 over everything that determines the PCH: the compiler's
+#   `--version` text, the whole command line of the PCH compile, and the name
+#   and RAW BYTES of every file the compiler read to make it (the list is the
+#   dependency file the same compile writes, -MF). Raw bytes on purpose: a
+#   comment-only edit moves line numbers, which reach object code through
+#   __LINE__, assert() and debug info, so it must change the key. Two PCHs
+#   with the same .sum were built by the same compiler, with the same flags,
+#   from byte-identical files at the same paths.
+#
+# Why a PCH is never cached (two ways plain ccache gets it wrong)
+#   1. CMake rebuilds a PCH with the OLD .gch still in place:
+#        c++ ... -x c++-header -include <dir>/cmake_pch.hxx -o <dir>/cmake_pch.hxx.gch ...
+#      ccache sees `-include X` next to an existing `X.gch`, takes the compile
+#      for one that USES that header and keys the result on the old .gch, not
+#      on the headers. Two rebuilds that start from the same .gch share one
+#      result: the second gets a .gch built from the first one's headers.
+#      Reproduced (two copies of this repository, one cache).
+#   2. From a clean build directory there is no old .gch, so ccache keys the
+#      PCH compile normally and can hit on the PREPROCESSED text, which has no
+#      comments. After a comment-only edit to a header it hands back the .gch
+#      made from the previous version of that file. GCC records every
+#      `#pragma once` header's size and time in the .gch; the record no longer
+#      matches, so a unit that includes the header gets it a second time
+#      ("redefinition of ..."). Reproduced with a comment reworded in place
+#      (same line count: a comment that adds a line changes the preprocessed
+#      text and misses). The error shows at the first unit that is really
+#      compiled; units that are cache hits themselves hide it.
+#
+# Why the .gch.sum (cost)
+#   GCC does not write byte-identical .gch files for identical inputs, so with
+#   ccache keying on the .gch itself every PCH rebuild made every unit that
+#   uses it a cache miss: a no-change clean rebuild of riftbound_tests was
+#   2 hits in 108 compiles and 222 s at -j3. Keyed on the .sum the same
+#   rebuild was 109 hits in 109 and 14 s (2026-10-11).
+
 out=""
+depfile=""
 is_pch=0
 prev=""
 for arg in "$@"; do
     if [ "$prev" = "-o" ]; then out=$arg; fi
+    if [ "$prev" = "-MF" ]; then depfile=$arg; fi
     if [ "$prev" = "-x" ]; then
         case "$arg" in c++-header|c-header) is_pch=1 ;; esac
     fi
     prev=$arg
 done
-#
-# A PCH is also never TAKEN from the cache. ccache can hit on the preprocessed
-# text, which ignores comments: after a comment-only edit to a header it handed
-# back a .gch made from the previous version of that file. GCC records each
-# `#pragma once` header's size and time in the .gch, the record no longer
-# matched the file, and the header was included a second time ("redefinition
-# of kInvalidId" in every unit). So the PCH itself is always compiled; the
-# units that use it are still cached, keyed on the .gch they were built with.
-if [ "$is_pch" = 1 ]; then
-    if [ -n "$out" ] && [ -f "$out" ]; then
-        rm -f -- "$out"
-    fi
-    exec "$@"
+
+if [ "$is_pch" != 1 ]; then
+    # A .gch.sum that is older than its .gch was not written for that .gch:
+    # something other than this version of the launcher rebuilt the PCH (an
+    # older launcher, plain ccache, the bare compiler) and left the checksum of
+    # the previous headers beside it. Keyed on that, a unit would be handed an
+    # object built against the previous headers. Seen on 2026-10-11 when this
+    # script was merged, reverted and merged again under worktrees that point
+    # at it by path. Without a .sum ccache hashes the .gch itself (correct,
+    # only slow), so drop the stale one.
+    prev=""
+    for arg in "$@"; do
+        if [ "$prev" = "-include" ]; then
+            gch="$arg.gch"
+            if [ -f "$gch" ] && [ -f "$gch.sum" ] && [ "$gch" -nt "$gch.sum" ]; then
+                rm -f -- "$gch.sum"
+            fi
+        fi
+        prev=$arg
+    done
+    export CCACHE_PCH_EXTSUM=1
+    exec ccache "$@"
 fi
-exec ccache "$@"
+
+# ── Creating a PCH: compile it for real, then describe what it was made from.
+if [ -n "$out" ]; then
+    rm -f -- "$out" "$out.sum"
+fi
+"$@"
+rc=$?
+if [ "$rc" != 0 ] || [ -z "$out" ] || [ ! -f "$out" ]; then
+    exit "$rc"
+fi
+
+# Without the dependency list there is nothing trustworthy to hash: leave no
+# .sum, and ccache falls back to hashing the .gch itself (correct, only slow).
+if [ -z "$depfile" ] || [ ! -f "$depfile" ]; then
+    exit 0
+fi
+
+sum_tmp="$out.sum.tmp.$$"
+{
+    "$1" --version 2>&1
+    printf '%s\0' "$@"
+    # The depfile is Make syntax: "target: dep dep \" continued over lines.
+    # Drop the target and the continuations, one path per line, sorted so the
+    # checksum does not depend on the order the compiler listed them in.
+    sed -e 's/\\$//' -e '1s/^[^:]*://' "$depfile" | tr -s ' \t' '\n\n' | grep -v '^$' | LC_ALL=C sort -u |
+    while IFS= read -r dep; do
+        # A listed file that cannot be read makes the checksum unusable.
+        sha256sum -- "$dep" || echo "UNREADABLE $dep $$ $(date +%s%N)"
+    done
+} | sha256sum > "$sum_tmp" && mv -f -- "$sum_tmp" "$out.sum"
+exit 0

@@ -8,8 +8,13 @@
 /// Agents are wired via `buildAgent(spec, ...)`:
 ///   random            — uniform random over legal actions
 ///   human             — block on browser input through HumanAgent
-///   mcts:sims=N       — OpenSpiel MCTSBot wrapped as AgentInterface
-///   ismcts:sims=N     — OpenSpiel ISMCTSBot wrapped as AgentInterface
+///   mcts:sims=N       — OpenSpiel MCTSBot over a mirror of the live game,
+///                       leaves scored by RiftboundHeuristicEvaluator (no rollout)
+///   ismcts:sims=N     — information-set MCTS: our IsMctsSearch (the ISMCTSBot
+///                       algorithm, reproducible for a seed), same mirror
+///                       and evaluator
+/// (agents/mcts_agent.{h,cpp}; keep this and the --help text below in step
+/// with that file.)
 ///
 /// When any seat is human:
 ///   • `god_mode` edits are accepted by the WebSocket API (--god-mode off
@@ -24,10 +29,12 @@
 #include "agents/random_agent.h"
 #include "cards/card_registry.h"
 #include "core/card_db.h"
+#include "openspiel/riftbound_game.h"
 #include "core/events.h"
 #include "core/version.h"
 #include "engine/batch_runner.h"
 #include "engine/game_engine.h"
+#include "io/batch_report.h"
 #include "io/play_server.h"
 #include "io/replay_writer.h"
 #include "io/state_renderer.h"
@@ -292,21 +299,26 @@ int main(int argc, char* argv[]) {
         "  human             Block at every decision and wait for a\n"
         "                    browser click via the WebSocket UI. Implies\n"
         "                    --web on, --render-html on, --debug, --trace.\n"
-        "  mcts:sims=N       OpenSpiel MCTSBot with a RandomRolloutEvaluator.\n"
-        "                    N is the simulation budget per decision (try\n"
-        "                    sims=20 for fast tests, sims=200+ for stronger\n"
-        "                    play). Each selectAction call rebuilds a fresh\n"
-        "                    OpenSpiel state by replaying action_history,\n"
-        "                    so interactive use is fine but cost grows with\n"
-        "                    decision depth.\n"
-        "  ismcts:sims=N     OpenSpiel ISMCTSBot for imperfect-info search.\n"
-        "                    Same N semantics as MCTS. Currently behaves\n"
-        "                    like MCTS at search time — proper hidden-info\n"
-        "                    determinization (sampling from the unseen card\n"
-        "                    pool) is queued as a follow-up. Caveat:\n"
-        "                    StateEditor god-mode edits do not participate\n"
-        "                    in MCTS planning; the bot sees the state\n"
-        "                    implied by action_history alone.\n"
+        "  mcts:sims=N       OpenSpiel MCTSBot. N is the simulation budget\n"
+        "                    per decision (try sims=20 for fast tests,\n"
+        "                    sims=200+ for stronger play). A leaf is scored\n"
+        "                    by a heuristic evaluator of the position, not\n"
+        "                    by a random rollout. The agent keeps a mirror\n"
+        "                    of the live game and, at each decision, replays\n"
+        "                    onto it only the choices made since its last\n"
+        "                    one, so the cost per decision does not grow\n"
+        "                    with the length of the game.\n"
+        "  ismcts:sims=N     Information-set MCTS: the engine's own search\n"
+        "                    (the algorithm of OpenSpiel's ISMCTSBot, made\n"
+        "                    reproducible for a fixed seed), same N, mirror\n"
+        "                    and evaluator. It does not yet sample the\n"
+        "                    opponent's hidden cards: each simulation runs\n"
+        "                    on a copy of the real state.\n"
+        "                    Caveat for both: a god-mode edit bypasses the\n"
+        "                    history the mirror is built from. After one the\n"
+        "                    agent searches from a copy of the live state at\n"
+        "                    main-phase decisions only and answers every\n"
+        "                    other decision at random.\n"
         "\n"
         "Common invocations:\n"
         "  ./riftbound --deck1 D1.txt --deck2 D2.txt\n"
@@ -387,10 +399,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (vm.count("dump-registry")) {
-            CardRegistry reg;
-            reg.loadAll();
-            CardDB db;
-            db.buildFromClasses(reg);  // authored data only; no ban-list applied
+            const CardDB& db = openspiel::sharedCards().db;   // authored data only
             auto out_path = vm["dump-registry"].as<std::string>();
             dumpRegistry(db, out_path);
             std::cout << "Dumped " << db.size() << " cards to " << out_path << "\n";
@@ -488,16 +497,19 @@ int main(int argc, char* argv[]) {
     // ── Load card database (from the C++ classes), decks ──────────────────
     // Card data — including tournament legality (CardDef::banned) — is owned by
     // the Card classes. registry.json and ban-list.csv are retired.
-    CardDB card_db;
-    CardRegistry card_registry;
+    // One card table per process: the one the search agents' games use
+    // (openspiel::sharedCards). This used to build a second registry and
+    // database of its own next to that one.
+    const openspiel::SharedCards* shared_cards = nullptr;
     try {
-        card_registry.loadAll();
-        card_db.buildFromClasses(card_registry);
-        std::cout << "Loaded " << card_db.size() << " cards from classes\n";
+        shared_cards = &openspiel::sharedCards();
     } catch (const std::exception& e) {
         std::cerr << "Failed to load cards: " << e.what() << "\n";
         return 1;
     }
+    const CardDB& card_db = shared_cards->db;
+    const CardRegistry& card_registry = shared_cards->registry;
+    std::cout << "Loaded " << card_db.size() << " cards from classes\n";
 
     DeckValidator validator(card_db);
     const bool wild = vm["wild"].as<bool>();
@@ -645,23 +657,15 @@ int main(int argc, char* argv[]) {
         try {
             batch.runBatch(deck1, deck2, num_games, cfg, results);
         } catch (const std::exception& e) {
-            std::cerr << "\nError: a game failed: " << e.what() << "\n"
-                      << "  (" << results.games_completed.load() << " of "
-                      << num_games << " games completed)\n";
+            // The games that completed are still results: table first, then
+            // the error. Exit status stays 1.
+            reportFailedBatch(std::cout, std::cerr, results, num_games, num_threads, e.what());
             return 1;
         }
 
-        std::cout << "\nResults (" << num_games << " games):\n"
-                  << "  P1 wins: " << results.p1_wins.load() << "\n"
-                  << "  P2 wins: " << results.p2_wins.load() << "\n"
-                  << "  Draws:   " << results.draws.load()   << "\n";
-        if (num_games > 1) {
-            std::cout << "  Avg turns: "
-                      << (results.total_turns.load() / num_games) << "\n"
-                      << "  Avg decisions: "
-                      << (results.total_decisions.load() / num_games) << "\n"
-                      << "  Threads: " << num_threads << "\n";
-        }
+        printBatchResults(std::cout, results, num_games, num_threads);
+        if (log_to_stdout)
+            std::cout << "Card tables built in this process: " << CardDB::tablesBuilt() << "\n";
         return 0;
     }
 
@@ -870,5 +874,7 @@ int main(int argc, char* argv[]) {
         if (!game_failed.load()) server->notifyGameFinished();
         server->stop();
     }
+    if (log_to_stdout)
+        std::cout << "Card tables built in this process: " << CardDB::tablesBuilt() << "\n";
     return game_failed.load() ? 1 : 0;
 }

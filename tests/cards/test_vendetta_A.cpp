@@ -787,7 +787,7 @@ TEST_F(VendettaA, Vendetta_Riven_WeaponmasterEquipsOnPlay) {
     auto riven = addUnit(P1, kRiven, 0, 0);
     auto sword = addGear(P1, /*equipment=*/true);
     auto enemy = addUnit(P2, kInvalidId, 9, 0);
-    EnginePathAgent yes(EnginePathAgent::choosing(sword));
+    EnginePathAgent yes(EnginePathAgent::choosing(sword, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(riven, TriggerType::WhenYouPlayMe, &yes);
     ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";
     ASSERT_TRUE(state.getObject(sword).attached_to.has_value());

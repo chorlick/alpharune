@@ -6,6 +6,7 @@
 /// loopback port, and talk to it over a WebSocket exactly as the browser
 /// does.
 
+#include "io/batch_report.h"
 #include "io/play_index_html.h"
 #include "io/play_server.h"
 #include "io/replay_writer.h"
@@ -978,6 +979,119 @@ TEST(GameRunnerReviewFix, DebugLogIsPrinted) {
     EXPECT_NE(out.find("Game 1 [seed=20261010] log"), std::string::npos);
 }
 
+// ─── 9.L3 — what a batch does after one game throws ─────────────────────────
+
+namespace {
+
+/// Plays at random, except that it throws at its first decision in the game
+/// whose seed is `bad_seed`.
+class ThrowsInOneGameAgent : public AgentInterface {
+public:
+    ThrowsInOneGameAgent(uint64_t seed, int seat, uint64_t bad_seed)
+        : inner_(seed * 2 + static_cast<uint64_t>(seat)), fail_(seed == bad_seed && seat == 0) {}
+    Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
+        if (fail_) throw std::runtime_error("injected fault");
+        return inner_.selectAction(state, legal);
+    }
+private:
+    RandomAgent inner_;
+    bool fail_;
+};
+
+} // namespace
+
+// Pins the behaviour, single-threaded so the order is fixed: the games before
+// the failing one ran and are counted, the failing game is named by number
+// and seed, the games after it are NOT run, and runBatch throws (the binary
+// then prints "Error: a game failed: ... (k of n games completed)" and exits
+// 1 without a results table).
+TEST(BatchRunnerFaultInjection, OneThread_EarlierGamesCountLaterGamesAreSkipped) {
+    constexpr uint64_t kBase = 4100;
+    constexpr int kGames = 5;
+    constexpr int kBadIndex = 2;   // the third game
+    std::atomic<int> games_started{0};
+    GameConfig cfg;
+    cfg.base_seed = kBase;
+    cfg.agent_factory = [&](int seat, uint64_t seed) -> std::unique_ptr<AgentInterface> {
+        if (seat == 0) games_started.fetch_add(1);
+        return std::make_unique<ThrowsInOneGameAgent>(seed, seat, kBase + kBadIndex);
+    };
+    AggregateResults results;
+    BatchRunner batch(cards().db, cards().registry, 1);
+    std::string what;
+    try {
+        batch.runBatch(cards().deck1, cards().deck2, kGames, cfg, results);
+        FAIL() << "expected the failing game's exception";
+    } catch (const std::runtime_error& e) {
+        what = e.what();
+    }
+    EXPECT_NE(what.find("game 3 [seed=" + std::to_string(kBase + kBadIndex) + "]"),
+              std::string::npos) << what;
+    EXPECT_NE(what.find("injected fault"), std::string::npos) << what;
+    EXPECT_EQ(results.games_completed.load(), kBadIndex) << "games 1 and 2 finished and count";
+    EXPECT_EQ(results.p1_wins.load() + results.p2_wins.load() + results.draws.load(), kBadIndex);
+    EXPECT_EQ(games_started.load(), kBadIndex + 1) << "games 4 and 5 were never started";
+
+    // 9.S1: what the binary prints then. The table for the two games that
+    // completed comes first, the error after it.
+    std::ostringstream printed;
+    reportFailedBatch(printed, printed, results, kGames, 1, what);
+    const std::string text = printed.str();
+    const auto table = text.find("Results (2 of 5 games completed):");
+    const auto error = text.find("Error: a game failed: game 3 [seed=");
+    ASSERT_NE(table, std::string::npos) << text;
+    ASSERT_NE(error, std::string::npos) << text;
+    EXPECT_LT(table, error) << text;
+    EXPECT_NE(text.find("  P1 wins: " + std::to_string(results.p1_wins.load()) + "\n"),
+              std::string::npos) << text;
+    EXPECT_NE(text.find("  Avg turns: " + std::to_string(results.total_turns.load() / 2) + "\n"),
+              std::string::npos) << "averaged over the completed games: " << text;
+    EXPECT_NE(text.find("(2 of 5 games completed)\n"), std::string::npos) << text;
+}
+
+// A batch that ran to the end prints the table it always did.
+TEST(BatchReport, ACompleteBatchPrintsTheUsualTable) {
+    AggregateResults results;
+    results.p1_wins = 3;
+    results.p2_wins = 1;
+    results.total_turns = 40;
+    results.total_decisions = 800;
+    results.games_completed = 4;
+    std::ostringstream out;
+    printBatchResults(out, results, 4, 2);
+    EXPECT_EQ(out.str(), "\nResults (4 games):\n  P1 wins: 3\n  P2 wins: 1\n  Draws:   0\n"
+                         "  Avg turns: 10\n  Avg decisions: 200\n  Threads: 2\n");
+}
+
+// With several workers the games already running finish and count; a game not
+// yet started when the failure is recorded is skipped. So the number completed
+// is anything from 0 to all but the failing one: what is pinned is that it is
+// never the failing game, that the process survives, and the game is named.
+TEST(BatchRunnerFaultInjection, ManyThreads_TheFailedGameIsNamedAndNeverCounted) {
+    constexpr uint64_t kBase = 4200;
+    constexpr int kGames = 6;
+    constexpr int kBadIndex = 3;
+    GameConfig cfg;
+    cfg.base_seed = kBase;
+    cfg.agent_factory = [&](int seat, uint64_t seed) -> std::unique_ptr<AgentInterface> {
+        return std::make_unique<ThrowsInOneGameAgent>(seed, seat, kBase + kBadIndex);
+    };
+    AggregateResults results;
+    BatchRunner batch(cards().db, cards().registry, 3);
+    std::string what;
+    try {
+        batch.runBatch(cards().deck1, cards().deck2, kGames, cfg, results);
+        FAIL() << "expected the failing game's exception";
+    } catch (const std::runtime_error& e) {
+        what = e.what();
+    }
+    EXPECT_NE(what.find("game 4 [seed=" + std::to_string(kBase + kBadIndex) + "]"),
+              std::string::npos) << what;
+    EXPECT_LE(results.games_completed.load(), kGames - 1);
+    EXPECT_EQ(results.p1_wins.load() + results.p2_wins.load() + results.draws.load(),
+              results.games_completed.load());
+}
+
 // ─── Carry-over (io-cli) — the first Ctrl-C ends a game with no human seat ───
 
 namespace {
@@ -1139,6 +1253,115 @@ TEST(PlayServerGodMode, EditAtANestedDecisionSaysTheListWasKept) {
     json again = c.nextDecision("P1");
     EXPECT_EQ(again["decision_id"].get<uint64_t>(), id0);
     EXPECT_EQ(again["legal"], first["legal"]);
+}
+
+// ─── 9.P1 — a god-mode edit at a showdown refreshes that decision too ────────
+
+// The engine checks a showdown answer against the list rebuilt from the edited
+// state and throws on a stale one. The server therefore has to hand the human
+// the rebuilt list, and refuse a click made on the old one, at a showdown as
+// it does in the main phase.
+namespace {
+
+/// Play P1 until it is asked a decision that offers `pass_word` ("PassFocus":
+/// a showdown; "PassPriority": chain priority) with a card it could play, take
+/// that card out of its hand by a god-mode edit, and check the server's side
+/// of it: the list is rebuilt, a click on the old list is refused, an answer
+/// from the new one is accepted and the game goes on. `head_for`: the action
+/// types to prefer, in order, at the decisions before that one.
+void editRebuildsTheListAt(const char* pass_word, const std::vector<const char*>& head_for) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    auto typeHas = [](const json& action, const char* word) {
+        return action["type"].get<std::string>().find(word) != std::string::npos;
+    };
+    auto indexOf = [&](const json& frame, const char* word) {
+        for (const auto& a : frame["legal"])
+            if (typeHas(a, word)) return a["index"].get<int>();
+        return -1;
+    };
+    auto edit = [&](json msg) {
+        c.send(msg);
+        json reply = c.nextReply();
+        EXPECT_EQ(reply["type"], "edit_ok") << reply.dump();
+        return c.nextDecision("P1");          // the frame broadcast after the edit
+    };
+
+    bool done = false;
+    uint64_t last = 0;
+    for (int i = 0; i < 400 && !done; ++i) {
+        json f = c.nextDecision("P1", last);
+        ASSERT_FALSE(f.is_null()) << "the game ended before a usable showdown, decision " << i;
+        last = f["decision_id"].get<uint64_t>();
+        const int pass_focus = indexOf(f, pass_word);
+        if (pass_focus < 0) {
+            // Not that decision: head for one.
+            int pick = -1;
+            for (const char* word : head_for)
+                if (pick < 0) pick = indexOf(f, word);
+            if (pick < 0) pick = 0;
+            c.send({{"type", "choose"}, {"player", "P1"}, {"index", pick}, {"decision_id", last}});
+            continue;
+        }
+        // The decision. Give P1 the means to play anything in hand...
+        json cur = edit({{"type", "edit_player"}, {"player", "P1"}, {"field", "energy"}, {"value", 20}});
+        cur = edit({{"type", "edit_player"}, {"player", "P1"}, {"field", "power"},
+                    {"domain_idx", -1}, {"value", 10}});
+        ASSERT_FALSE(cur.is_null());
+        ASSERT_GE(indexOf(cur, pass_word), 0) << "still that decision";
+        last = cur["decision_id"].get<uint64_t>();
+        int card = -1;
+        for (const auto& a : cur["legal"])
+            if (typeHas(a, "Play") && a.contains("card_object_id"))
+                card = a["card_object_id"].get<int>();
+        if (card < 0) {   // nothing playable at this one: pass and try the next
+            c.send({{"type", "choose"}, {"player", "P1"}, {"index", indexOf(cur, pass_word)},
+                    {"decision_id", last}});
+            continue;
+        }
+        // ...then take a playable card out of the hand while the engine waits.
+        const uint64_t id_before = last;
+        c.send({{"type", "edit_move"}, {"object_id", card}, {"to_player", "P1"}, {"to_zone", "Trash"}});
+        json reply = c.nextReply();
+        ASSERT_EQ(reply["type"], "edit_ok") << reply.dump();
+        EXPECT_TRUE(reply["legal_recomputed"].get<bool>()) << "the list is rebuilt";
+        json g = c.nextDecision("P1", id_before);
+        ASSERT_FALSE(g.is_null());
+        const uint64_t id_after = g["decision_id"].get<uint64_t>();
+        for (const auto& a : g["legal"])
+            EXPECT_NE(a.value("card_object_id", -1), card) << a.dump();
+        const int pass = indexOf(g, pass_word);
+        ASSERT_GE(pass, 0);
+
+        // A click on the pre-edit list is refused; it does not reach the
+        // engine (which would throw on it and end the game).
+        c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id_before}});
+        reply = c.nextReply();
+        EXPECT_EQ(reply["type"], "err");
+        EXPECT_NE(reply.value("msg", "").find("stale"), std::string::npos) << reply.dump();
+
+        // An answer from the new list is accepted and the game goes on.
+        c.send({{"type", "choose"}, {"player", "P1"}, {"index", pass}, {"decision_id", id_after}});
+        json next = c.readUntil([&](const json& m) {
+            return (m["type"] == "decision" || m["type"] == "state") &&
+                   m.value("decision_id", id_after) != id_after;
+        });
+        EXPECT_FALSE(next.is_null()) << "the game stopped after the answer";
+        done = true;
+    }
+    EXPECT_TRUE(done) << "no " << pass_word << " decision with a playable card was reached";
+}
+
+} // namespace
+
+TEST(PlayServerGodMode, EditAtAShowdownRecomputesAndAStaleClickDoesNotEndTheGame) {
+    editRebuildsTheListAt("PassFocus", {"Move", "PlayCard"});
+}
+
+// 9.S2: the same at a chain priority decision.
+TEST(PlayServerGodMode, EditAtAChainPriorityDecisionRecomputesAndAStaleClickDoesNotEndTheGame) {
+    editRebuildsTheListAt("PassPriority", {"PlayCard", "Move"});
 }
 
 } // namespace riftbound::test::review_fix_io_cli

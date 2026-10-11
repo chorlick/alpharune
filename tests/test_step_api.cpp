@@ -5,6 +5,7 @@
 /// Everything here plays real games through the real engine: the decks on
 /// disk, a seeded random chooser, no hand-fed state.
 
+#include <algorithm>
 #include <gtest/gtest.h>
 
 #include "cards/card_registry.h"
@@ -83,7 +84,7 @@ constexpr int kMaxDecisions = 4000;
 // to be the turn player, wrong for the second mulligan, chain priority,
 // showdown focus, combat damage and an opponent's trigger choices.
 TEST_F(StepApiTest, PerspectiveIsTheDecidingPlayerNotTheTurnPlayer) {
-    int decisions = 0, off_turn_decisions = 0, stale_closed = 0;
+    int decisions = 0, off_turn_decisions = 0, stale_closed = 0, nested_prompts = 0;
     for (uint64_t seed = 1; seed <= 6; ++seed) {
         auto g = begin(seed);
         std::mt19937_64 rng(seed * 7919);
@@ -92,26 +93,40 @@ TEST_F(StepApiTest, PerspectiveIsTheDecidingPlayerNotTheTurnPlayer) {
             ASSERT_EQ(step.kind, StepKind::NeedDecision);
             ASSERT_FALSE(step.legal.empty());
             ASSERT_NE(step.perspective, PlayerId::None);
-            // Every offered Intent names the player being asked — except in
-            // one engine state (reported as a new defect by the search
-            // stream): the main-phase loop can reach its decision with an
-            // item still on the chain, and generateLegalActions() then
-            // builds the stale priority holder's Closed-state options while
-            // the engine asks the TURN player. `perspective` is the seat the
-            // engine really asked, so it is right there too.
+            // Every offered Intent names the player being asked.
             const auto& gs = g->engine.state();
-            const bool stale_closed_main_phase =
-                gs.turn.isClosedState() && gs.chain.exists() &&
+            for (const auto& intent : step.legal) {
+                ASSERT_EQ(intent.player, step.perspective)
+                    << "seed " << seed << " decision " << n << ": "
+                    << intent.describe();
+            }
+            // The main-phase loop never reaches its decision (the one that
+            // offers End Turn) with an item still on the chain:
+            // advanceMainPhase settles the chain first. It used to, the
+            // options were then built for the stale priority holder, and
+            // this test allowed that in up to 5% of decisions.
+            const bool main_phase_decision = std::any_of(
+                step.legal.begin(), step.legal.end(),
+                [](const Intent& i) { return i.type == IntentType::EndTurn; });
+            if (main_phase_decision && gs.chain.exists()) ++stale_closed;
+            // The condition this test used to count ("Closed state, a chain,
+            // the turn player asked, the other player holding priority") is
+            // still met, about 50 times in these six games, by decisions that
+            // are fine: a card's or a cost's prompt (MakeChoice options only)
+            // put to the turn player while an item is finalized or resolves;
+            // priority_holder is simply not touched for those. What must
+            // never be put to the turn player in that condition is a list of
+            // game actions.
+            if (gs.turn.isClosedState() && gs.chain.exists() &&
                 step.perspective == gs.turn.turn_player &&
                 gs.turn.priority_holder.has_value() &&
-                *gs.turn.priority_holder != gs.turn.turn_player;
-            if (stale_closed_main_phase) {
-                ++stale_closed;
-            } else {
+                *gs.turn.priority_holder != gs.turn.turn_player) {
+                ++nested_prompts;
                 for (const auto& intent : step.legal) {
-                    ASSERT_EQ(intent.player, step.perspective)
-                        << "seed " << seed << " decision " << n << ": "
-                        << intent.describe();
+                    ASSERT_EQ(intent.type, IntentType::MakeChoice)
+                        << "seed " << seed << " decision " << n
+                        << ": a game action offered to the turn player while the other "
+                           "player holds priority: " << intent.describe();
                 }
             }
             ++decisions;
@@ -126,8 +141,9 @@ TEST_F(StepApiTest, PerspectiveIsTheDecidingPlayerNotTheTurnPlayer) {
     // reaches chain priority and combat damage.
     EXPECT_GT(off_turn_decisions, 6)
         << "no decision was ever made by the non-turn player";
-    EXPECT_LT(stale_closed * 20, decisions);   // an exception, not the rule
-    RecordProperty("stale_closed_main_phase_decisions", stale_closed);
+    EXPECT_EQ(stale_closed, 0)
+        << "a main-phase decision was reached with an unsettled chain";
+    RecordProperty("nested_prompts_to_the_turn_player", nested_prompts);
 }
 
 // 1.5 — exactly one history entry per decision, written by the engine, and it

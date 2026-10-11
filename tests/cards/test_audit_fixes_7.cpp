@@ -196,7 +196,7 @@ TEST_F(AuditFix7Test, Ornn_WeaponmasterEquipsEquipmentGear) {
     withEquipmentCard(gear);   // CR 821.1.c.4: see the fixture
 
     // [Weaponmaster] is a "may": the default agent would decline it.
-    EnginePathAgent yes(EnginePathAgent::choosing(gear));
+    EnginePathAgent yes(EnginePathAgent::choosing(gear, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(ornn, TriggerType::WhenYouPlayMe, &yes);
 
     ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";
@@ -567,7 +567,7 @@ TEST_F(AuditFix7Test, StarSpring_MovesAnotherUnitToBase) {
     auto other = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
     auto played = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
 
-    EnginePathAgent agent(EnginePathAgent::choosing(other));
+    EnginePathAgent agent(EnginePathAgent::choosing(other, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent, played);
 
     // `other` moved to its base; `played` stays at the battlefield.
@@ -584,7 +584,7 @@ TEST_F(AuditFix7Test, StarSpring_OnlyFiresOncePerTurnPerPlayer) {
     auto other = addUnit(P1, kInvalidId, 2, /*at_bf=*/0);
     auto played = addUnit(P1, kInvalidId, 3, /*at_bf=*/0);
 
-    EnginePathAgent agent(EnginePathAgent::choosing(other));
+    EnginePathAgent agent(EnginePathAgent::choosing(other, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent, played);
     ASSERT_TRUE(state.getObject(other).isAtBase());
     // First fire moved `other` to base. Bring it back to BF 0 and play a
@@ -593,7 +593,7 @@ TEST_F(AuditFix7Test, StarSpring_OnlyFiresOncePerTurnPerPlayer) {
     state.getObject(other).location = BattlefieldLocation{0};
     auto second = addUnit(P1, kInvalidId, 3, /*at_bf=*/0);
 
-    EnginePathAgent agent2(EnginePathAgent::choosing(other));
+    EnginePathAgent agent2(EnginePathAgent::choosing(other, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent2, second);
 
     // Already consumed this turn for this player -> no second move.

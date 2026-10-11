@@ -1853,7 +1853,12 @@ TEST_F(VerifyCardsTest, BlastCone_DoesNotOfferAnEnemyUnitItCannotMove) {
     o(guarded).cant_be_moved_by_enemy = true;            // what the Cutlass's aura sets
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 0);
     // Yes, the unit, to its base (mode 0); the stun "may" that follows is declined.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(free_unit), 0, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                              // "may move an enemy unit": yes
+        static_cast<int>(free_unit),    // which enemy unit
+        0,                              // where: mode 0 = its base (mode 2 = battlefield #1)
+        0,                              // the move triggers "you may exhaust this to [Stun] it": no
+    }));
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
     ASSERT_GE(agent.prompts.size(), 2u);
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
@@ -2271,7 +2276,13 @@ TEST_F(VerifyCardsTest, VoidBurrower_IsExhaustedBeforeTheOpponentCanRespondAndRe
         ++shown;
         if (e.revealed_to_all) ++to_all;
     });
-    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));   // yes; then banish none
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                         // "may exhaust me to reveal 2": yes
+        // "You may banish one": banish none. That is the prompt's first option,
+        // on purpose: it carries no value and no object, so kFirst is the only
+        // way a script can name it (the two revealed cards follow it).
+        EnginePathAgent::kFirst,
+    }));
     fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 1u) << "the may was decided at finalization";
         EXPECT_TRUE(live.getObject(legend).is_exhausted) << "\"exhaust me\" is the cost (CR 383.3.b)";
@@ -2353,10 +2364,18 @@ TEST_F(VerifyCardsTest, Deceiver_ThroughTheEngine_DecliningPaysNothingAndPlaysNo
 TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheRevealIsDecidedBeforeTheOpponentCanRespond) {
     auto reksai = addUnit(P1, kRekSaiSwarmQueen, 0, 0);
     addToDeck(P1, kMeditation);
-    addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kMeditation);
     int shown = 0;
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent&) { ++shown; });
-    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                       // "may reveal the top 2 cards": yes
+        // "You may banish one" (the two cards, then a decline option): the top
+        // card. The decline carries no value and no object and is not first,
+        // so a script cannot name it; this test is about the reveal, not the
+        // pick. Meditation is a [2] spell P1 has nothing to pay for, so it
+        // stays banished and nothing more is asked.
+        static_cast<int>(top),
+    }));
     fireAndProbe(reksai, TriggerType::WhenIAttack, &agent, [&](GameState&) {
         EXPECT_EQ(agent.prompts.size(), 1u)
             << "CR 383.3.a: a \"you may\" that opens the effect is decided at finalization";
@@ -2527,7 +2546,11 @@ TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,   // where the one Sand Soldier goes: option 1 = battlefield #1 (0 = base)
+        0,   // "Ready up to two of them" (the new token, then "ready no more" = 0):
+             // ready no more — readying is not what this test is about
+    }));
     playThroughEngine(spell, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
@@ -2569,7 +2592,11 @@ TEST_F(VerifyCardsTest, Guards_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheB
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
     addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kRest}));
+    // One prompt only: the [3] is paid from the pool, so there is no [Y] left
+    // and the "pay [Y] to ready it" may is not offered.
+    EnginePathAgent agent(EnginePathAgent::script({
+        0,   // where the Sand Soldier goes: mode 0 = base, the only place on offer
+    }));
     playThroughEngine(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u);
     EXPECT_EQ(agent.prompts[0].size(), 1u) << "the base, nothing else";
@@ -2993,9 +3020,16 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     auto unit = addUnit(P1, kShipyardSkulker, 0);
     state.battlefields[0].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
-    addUnit(P2, kMageseekerWarden, 0, 1);
+    auto warden = addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kFirst, EnginePathAgent::kFirst, 1, EnginePathAgent::kRest}));
+    // Two prompts, both asked as the spell resolves (the friendly unit is the
+    // play-time target handed to playAt).
+    EnginePathAgent agent(EnginePathAgent::script({
+        static_cast<int>(warden),   // "Deal 3 to an enemy unit at a battlefield": the Warden,
+                                    // the only enemy unit
+        0,                          // where the banished unit is played: option 0 = base,
+                                    // the only place on offer (asserted below)
+    }));
     playAt(spell, {unit}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
@@ -4704,8 +4738,14 @@ TEST_F(VerifyCardsTest, VoidBurrower_VoidHatchlingLooksBeforeTheReveal) {
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
         if (e.revealed_to_all) shown.push_back(e.card);
     });
-    // Yes to "exhaust me"; recycle the top card at the look; then banish none.
-    EnginePathAgent agent(EnginePathAgent::script({1, 1, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                         // "may exhaust me to reveal 2": yes
+        1,                         // Void Hatchling's look at the top card: 1 = recycle it (0 = keep)
+        // "You may banish one": banish none. That is the prompt's first option,
+        // on purpose: it carries no value and no object, so kFirst is the only
+        // way a script can name it (the two revealed cards follow it).
+        EnginePathAgent::kFirst,
+    }));
     fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
     conn.disconnect();
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the look, the banish";

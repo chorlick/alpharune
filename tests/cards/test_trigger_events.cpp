@@ -86,24 +86,24 @@ TEST_F(TriggerEventTest, PlayFromFacedown_FiresKatarina) {
 
 // ── WhenAnEnemyUnitDies: Pyke (P1, at a BF) enqueues when a P2 unit dies ──
 TEST_F(TriggerEventTest, EnemyUnitDies_FiresPyke) {
-    auto pyke = addUnit(P1, 707, 5, /*at_bf=*/0);   // at a battlefield
+    addUnit(P1, 707, 5, /*at_bf=*/0);   // at a battlefield
     auto enemy = addUnit(P2, kInvalidId, 3, /*at_bf=*/0);
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = chainSize();
-    events.emit(UnitDiedEvent{enemy, P2});          // an ENEMY (of P1) died
+    events.emit(UnitDiedEvent{enemy, P2, LocationId{}, 0});          // an ENEMY (of P1) died
     EXPECT_GT(chainSize(), before) << "Pyke's WhenAnEnemyUnitDies should enqueue";
 }
 
 TEST_F(TriggerEventTest, FriendlyUnitDies_DoesNotFirePyke) {
-    auto pyke = addUnit(P1, 707, 5, 0);
+    addUnit(P1, 707, 5, 0);
     auto friendly = addUnit(P1, kInvalidId, 3, 0);
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = chainSize();
-    events.emit(UnitDiedEvent{friendly, P1});        // friendly death, not enemy
+    events.emit(UnitDiedEvent{friendly, P1, LocationId{}, 0});        // friendly death, not enemy
     EXPECT_EQ(chainSize(), before);
 }
 
@@ -121,7 +121,7 @@ TEST_F(TriggerEventTest, UnitReturnsToHandHere_FiresRippersBay) {
 
 // ── WhenAShowdownBeginsHere: Diana (at the BF) enqueues ──
 TEST_F(TriggerEventTest, ShowdownBeginsHere_FiresDiana) {
-    auto diana = addUnit(P1, 641, 4, /*at_bf=*/1);
+    addUnit(P1, 641, 4, /*at_bf=*/1);
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
@@ -131,7 +131,7 @@ TEST_F(TriggerEventTest, ShowdownBeginsHere_FiresDiana) {
 }
 
 TEST_F(TriggerEventTest, ShowdownBeginsElsewhere_DoesNotFireDiana) {
-    auto diana = addUnit(P1, 641, 4, /*at_bf=*/1);
+    addUnit(P1, 641, 4, /*at_bf=*/1);
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
@@ -150,13 +150,13 @@ TEST_F(TriggerEventTest, OpponentPlaysAUnit_FiresVex) {
     size_t before = chainSize();
     events.emit(CardPlayedEvent{played, P2, CardType::Unit, /*count=*/1, /*energy=*/0});
     EXPECT_GT(chainSize(), before);
-    // The played-unit id is captured for Vex's onTrigger.
-    EXPECT_EQ(state.getObject(vex).card_counters["__opp_played_unit_id"],
-              static_cast<int>(played));
+    // The played unit is the trigger's subject.
+    EXPECT_EQ(state.chain.items.back().triggering_subject, played);
+    (void)vex;
 }
 
 TEST_F(TriggerEventTest, OwnPlayDoesNotFireVex) {
-    auto vex = addUnit(P1, 712, 4, 0);
+    addUnit(P1, 712, 4, 0);
     auto played = addUnit(P1, kInvalidId, 3, 0);
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);

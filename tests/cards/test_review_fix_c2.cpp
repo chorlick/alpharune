@@ -587,6 +587,8 @@ TEST_F(ReviewFixC2Test, GuerillaWarfare_ChoosesTheCardsAndHidingIsFreeThisTurn) 
     auto h2 = addToTrash(P1, kStandUnited);
     auto h3 = addToTrash(P1, kSpriteCall);
     auto plain = addToTrash(P1, kConfront);
+    // Control that survives a cleanup: a unit of P1's at the battlefield.
+    addUnit(P1, kInvalidId, 2, 0);
     state.battlefields[0].controller = P1;
 
     EnginePathAgent agent(script({O(h1), O(h3)}));

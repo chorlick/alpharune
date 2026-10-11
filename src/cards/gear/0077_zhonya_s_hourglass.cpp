@@ -28,9 +28,8 @@ public:
         // Kill the gear instead.
         ctx.executor.killObject(ctx.source);
         // Heal, exhaust, and recall the saved unit to its base.
-        ctx.executor.healObject(dying_unit);
-        ctx.executor.exhaustObject(dying_unit);
-        ctx.executor.moveToBase(dying_unit);
+        // "(Send it to base. This isn't a move.)" — CR 457-460.
+        ctx.executor.healExhaustRecall(dying_unit);
         return true;  // replacement consumed — the unit does not die
     }
 private:

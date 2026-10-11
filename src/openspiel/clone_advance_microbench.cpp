@@ -12,6 +12,9 @@
 //              prompt, mulligan); the engine is rebuilt from the nearest
 //              resumable ancestor by replaying the choices made since.
 //
+// It also times dropping the advanced clone (`~State`), which destroys an
+// engine whose game is still in progress.
+//
 // One number for "ApplyAction" would mix the two depending on where the
 // checkpoint happened to land, so the bench finds one checkpoint of each
 // kind at or after RIFTBOUND_CHECKPOINT and reports them separately. The
@@ -78,6 +81,7 @@ void measure(const ::open_spiel::State& state, const char* path, int decision,
     const auto legal = state.LegalActions();
     std::vector<double> us_clone(num_clones);
     std::vector<double> us_advance(num_clones);
+    std::vector<double> us_destroy(num_clones);
     std::uniform_int_distribution<size_t> pick(0, legal.size() - 1);
 
     for (int i = 0; i < num_clones; ++i) {
@@ -87,8 +91,13 @@ void measure(const ::open_spiel::State& state, const char* path, int decision,
         auto t1 = std::chrono::steady_clock::now();
         clone->ApplyAction(action);
         auto t2 = std::chrono::steady_clock::now();
+        // Dropping an advanced clone tears down its engine while the game
+        // is still in progress — what MCTS does with every simulation.
+        clone.reset();
+        auto t3 = std::chrono::steady_clock::now();
         us_clone[i]   = std::chrono::duration<double, std::micro>(t1 - t0).count();
         us_advance[i] = std::chrono::duration<double, std::micro>(t2 - t1).count();
+        us_destroy[i] = std::chrono::duration<double, std::micro>(t3 - t2).count();
     }
 
     std::cout << "\n=== " << num_clones << " Clone()+ApplyAction pairs at decision "
@@ -96,6 +105,7 @@ void measure(const ::open_spiel::State& state, const char* path, int decision,
               << legal.size() << " legal actions) ===\n";
     report("Clone()       (us):", us_clone);
     report("ApplyAction   (us):", us_advance);
+    report("~State        (us):", us_destroy);
 }
 
 } // namespace

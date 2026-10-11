@@ -41,8 +41,7 @@ public:
                                      buffed());
             if (!unit.has_value() || *unit == kInvalidId) return;   // waiting / none left
             auto& obj = ctx.state.getObject(*unit);
-            obj.buff_count -= 1;
-            obj.recomputeMight();
+            ctx.executor.spendBuff(*unit, ctx.controller);   // CR 427.2; "When you spend a buff"
             ctx.events.logTrace("MONASTERY OF HIRANA: spent a buff on " + obj.name);
         }
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)

@@ -124,6 +124,10 @@ protected:
     void cleanup() {
         withEngine([](GameEngine& e) { e.testHook_cleanup(); });
     }
+    /// A cleanup, then whatever it put on the chain.
+    void settle() {
+        withEngine([](GameEngine& e) { e.testHook_cleanup(); e.testHook_runChain(); });
+    }
     /// What the engine offers the turn player after a cleanup.
     std::vector<Intent> legalActions() {
         std::vector<Intent> out;
@@ -187,8 +191,7 @@ TEST_F(C7Test, VexApathetic_StunsTheUnitAnOpponentPlays) {
 
     // The remembered unit has left the board (back in hand): nothing happens.
     auto left = addToHand(P1, kLoyalPoro);
-    o(vex).card_counters["__opp_played_unit_id"] = static_cast<int>(left);
-    fireTriggerThroughEngine(vex, TriggerType::WhenOpponentPlaysAUnit);
+    fireTriggerThroughEngine(vex, TriggerType::WhenOpponentPlaysAUnit, nullptr, /*subject=*/left);
     EXPECT_FALSE(o(left).is_stunned);
 }
 
@@ -719,6 +722,9 @@ TEST_F(C7Test, RenektonBrute_BecomesEmpoweredWhenHisAbilityTakesHimToTen) {
     state.player(P1).rune_pool.energy = 1;
     activate(renekton);
     EXPECT_EQ(o(renekton).current_might, 10);
+    // "When my Might becomes 10 or more" is a triggered ability of its own
+    // (WhenMyMightReachesThreshold), queued when the state settles.
+    settle();
     EXPECT_TRUE(o(renekton).isEmpowered()) << "\"When my Might becomes 10 or more, empower me\"";
     cleanup();
     EXPECT_TRUE(o(renekton).hasKeyword(Keyword::Ganking)) << "[Empowered][>] [Deflect] and [Ganking]";
@@ -726,20 +732,23 @@ TEST_F(C7Test, RenektonBrute_BecomesEmpoweredWhenHisAbilityTakesHimToTen) {
     auto small = addUnit(P1, kRenektonBrute, 4, 0);
     state.player(P1).rune_pool.energy = 1;
     activate(small);
+    settle();
     EXPECT_FALSE(o(small).isEmpowered());
 }
 
-TEST_F(C7Test, RenektonBrute_IsCheckedAfterASpellAndWhenBuffed) {
-    auto after_spell = addUnit(P1, kRenektonBrute, 10, 0);
-    fireTriggerThroughEngine(after_spell, TriggerType::WhenYouPlayASpell);
-    EXPECT_TRUE(o(after_spell).isEmpowered());
-
+// "When my Might becomes 10 or more": whatever raised it (card text; the
+// engine fires WhenMyMightReachesThreshold on the edge).
+TEST_F(C7Test, RenektonBrute_IsEmpoweredWhateverTakesHimToTen) {
     auto buffed = addUnit(P1, kRenektonBrute, 9, 0);
+    settle();
+    EXPECT_FALSE(o(buffed).isEmpowered());
     resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.buffUnit(buffed); });
+    settle();
     EXPECT_TRUE(o(buffed).isEmpowered()) << "the buff took him to 10";
 
     auto low = addUnit(P1, kRenektonBrute, 4, 0);
-    fireTriggerThroughEngine(low, TriggerType::WhenYouPlayASpell);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.buffUnit(low); });
+    settle();
     EXPECT_FALSE(o(low).isEmpowered());
 }
 

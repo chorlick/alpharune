@@ -95,6 +95,22 @@ struct GameObject {
         bool in_combat = false;                 // at a battlefield with combat in progress
         std::vector<GameObjectId> attachments;  // gear attached at death
         KeywordSet keywords;                    // printed + aura + "this turn"
+        bool stunned = false;
+        // Where it was, and the other units its controller had there. For
+        // units that die at the same time (EffectExecutor::beginDeathBatch)
+        // this is taken for all of them before the first one leaves, so each
+        // sees the others ("if I didn't die alone").
+        std::optional<LocationId> location;
+        std::vector<GameObjectId> other_friendly_units_here;
+        // Who killed it: the controller of the spell or ability that did,
+        // else the player whose damage was lethal. None if nobody did.
+        PlayerId killed_by = PlayerId::None;
+        // Equipment on it whose effect text was a copy of its text
+        // (Card::copiesBearerText): its "When I die" triggers that many more times.
+        int text_copies = 0;
+        // Set by beginDeathBatch: the kill that follows keeps this snapshot
+        // instead of taking a new one. Cleared by endDeathBatch.
+        bool batch_pending = false;
     };
     LastKnown last_known;
 
@@ -121,6 +137,9 @@ struct GameObject {
     int temp_buff_count = 0;     // temporary buffs applied "this turn" (expire at expiration step)
     int temp_assault_value = 0;  // temporary assault applied "this turn"
     int temp_shield_value = 0;   // temporary shield applied "this turn"
+    int temp_deflect_value = 0;  // [Deflect N] given "this turn" (EffectExecutor::
+                                 // giveTemporaryKeyword); added to deflect_value by
+                                 // deflectCostFor, zeroed at the expiration step
     int temp_might_bonus = 0;    // temporary +N might applied "this turn"
     int moves_this_turn = 0;     // times this unit moved this turn (Kayn, Unleashed)
     bool immune_to_damage = false; // recomputed each recalculateAuras; set by a
@@ -205,6 +224,21 @@ struct GameObject {
     // path: when set it heals + exhausts + recalls the unit to base and clears
     // the flag (one-shot). Expires at end of turn if unused.
     bool death_replacement_recall_pending = false;
+
+    // A death replacement an effect put on THIS unit ("Choose a friendly
+    // unit. The next time it would die this turn, you may pay [C] to ...
+    // instead" — Unlicensed Armory). It belongs to the unit, so it applies
+    // whether or not the card that made it is still in play: both kill paths
+    // ask `card`'s Card::applyReplacement, for `controller`, before any other
+    // replacement (EffectExecutor::applyOwnDeathReplacement). One-shot;
+    // ignored once `turn` is over.
+    struct PendingDeathReplacement {
+        CardDefId card = kInvalidId;
+        PlayerId controller = PlayerId::None;
+        GameObjectId source = kInvalidId;
+        int turn = -1;
+    };
+    std::vector<PendingDeathReplacement> pending_death_replacements;
 
     // "If it would die this turn, banish it instead." (Smite 568) Both kill
     // paths consult this before the death happens: the unit is banished, so it

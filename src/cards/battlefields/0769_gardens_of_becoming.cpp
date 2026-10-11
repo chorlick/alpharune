@@ -28,7 +28,7 @@ public:
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
                     const std::vector<GameObjectId>&) override {
-        ctx.state.player(ctx.controller).xp += 1;
+        gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("GARDENS OF BECOMING: unit exhausted -> +1 XP");
     }
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {

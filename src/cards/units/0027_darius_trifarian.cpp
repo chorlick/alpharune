@@ -15,17 +15,25 @@ namespace {
 class DariusTrifarian : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "your second card" may be Darius himself (WhenYouPlayMe) or any other
+    // card played while he is on the board.
     std::vector<TriggerType> triggerTypes() const override {
-        return {TriggerType::WhenYouPlayAUnit,
+        return {TriggerType::WhenYouPlayMe,
+                TriggerType::WhenYouPlayAUnit,
                 TriggerType::WhenYouPlayASpell,
                 TriggerType::WhenYouPlayAGear};
     }
-    // "Your second card in a turn" is judged when the card is played, not
-    // when this resolves: a third card played in response must not undo it.
-    // (The count already includes the card just played.)
-    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
-                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
-        return state.player(controller).cards_played_this_turn == 2;
+    // "Your second card in a turn" is which play the triggering card was
+    // (playOrdinalThisTurn, stamped on the card as it is played), not the
+    // count when this is checked: a spell's play triggers fire as it resolves,
+    // after any cards played in response. A token is not a card.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType trigger, GameObjectId subject) const override {
+        const GameObjectId played = trigger == TriggerType::WhenYouPlayMe ? source : subject;
+        if (played == kInvalidId || !state.objectExists(played))
+            return state.player(controller).cards_played_this_turn == 2;
+        if (state.getObject(played).isToken()) return false;
+        return playOrdinalThisTurn(state, played) == 2;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board

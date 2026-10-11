@@ -265,7 +265,7 @@ TEST_F(WaveABatch1Test, VoidBurrower_ConquerBanishAndPlayTop) {
     // Agent: first picks "yes" to exhaust (confirmOptional publishes [no, yes]),
     // then picks the slot that banishes `top` (the slot whose chosen_objects
     // contains top).
-    PickByPredicateAgent agent([&](int call, const std::vector<Intent>& legal) -> Intent {
+    PickByPredicateAgent agent([&](int /*call*/, const std::vector<Intent>& legal) -> Intent {
         // confirmOptional yes/no: pick the "yes" (label starts with "optional:").
         for (auto& i : legal)
             if (!i.chosen_objects.empty() && i.chosen_objects[0] == top) return i;

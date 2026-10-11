@@ -13,7 +13,7 @@ Engine facts traced for this batch (apply to several cards below):
 - Token def 954 Recruit: might 1, tag `Recruit`, no keywords, `SuperType::Token` - matches every inline `createToken(..., "Recruit", 1, {"Recruit"}, ...)` caller. No defect. (It is the only token def in this batch.)
 
 ## Findings
-- [ ] **879 Renekton, Brute** - `units/0879_renekton_brute.cpp:19` [confirmed] high
+- [x] **879 Renekton, Brute** - `units/0879_renekton_brute.cpp:19` [confirmed] high — FIXED (sweep-triggers): `Card::mightThreshold()` + `TriggerType::WhenMyMightReachesThreshold`, judged on every settled state (`StateSettledEvent`); test: SweepTriggersTest.Renekton_IsEmpoweredWhenAnotherEffectTakesHimToTen, C7Test.RenektonBrute_*
   - Text: "When my Might becomes 10 or more, empower me."
   - Code: the class has only the `[1]: +1 [M]` activation and the `[Empowered][>]` aura. There is no trigger, no aura check and no engine hook for the Might threshold (grep for the card / "might becomes" finds nothing outside the def text).
   - Scenario: Renekton (4 [M]) pumps himself six times to 10 [M] -> never becomes Empowered, so never gains [Deflect] / [Ganking]. He prints no [Empower] cost, so his Empowered text is unreachable without another card.
@@ -44,12 +44,12 @@ Engine facts traced for this batch (apply to several cards below):
   - Text: "[E]: Play two [1] [M] Bird unit tokens with [Deflect]. ..." (the Poro itself has no [Deflect])
   - Code: the def sets `d.deflect_value = 1` and `Keyword::Deflect` on the Poro.
   - Scenario: opponent must pay [A] to choose the 5 [M] Poro with a spell or ability; the printed card has no such protection.
-- [ ] **718 Loyal Poro** - `units/0718_loyal_poro.cpp:28` [confirmed] medium
+- [x] **718 Loyal Poro** - `units/0718_loyal_poro.cpp:28` [confirmed] medium — FIXED (sweep-triggers): `LastKnown::other_friendly_units_here`, taken for a whole batch of deaths before the first unit leaves (`beginDeathBatch`); test: SweepTriggersTest.LoyalPoro_UnitsThatDieTogetherWereNotAlone
   - Text: "[Deathknell][>] If I didn't die alone, draw 1. (... I wasn't alone if there were other friendly units here.)"
   - Code: checks, when the trigger resolves from the chain, whether another friendly unit is currently at `last_location`. Units that died in the same combat/AoE have already left, and units that arrived after the death count.
   - Scenario: Loyal Poro and a friendly unit both die in the same combat -> at resolution nobody is there -> no draw, although the Poro did not die alone.
   - BLOCKED: "alone" has to be read from before the deaths. Needs `GameObject::LastKnown` to carry the other friendly units at the location, snapshotted for the whole batch before any unit of a simultaneous kill leaves (`processLethalDamage` kills one by one; `TriggerManager::onUnitDied` also bypasses `triggerCondition`, so the card cannot judge it at event time). Same engine work as the Battle Mistress 517 carry-over row.
-- [ ] **777 Lonely Poro** - `units/0777_lonely_poro.cpp:32` [confirmed] medium
+- [x] **777 Lonely Poro** - `units/0777_lonely_poro.cpp:32` [confirmed] medium — FIXED (sweep-triggers): as 718; test: SweepTriggersTest.LonelyPoro_UnitsThatDieTogetherDidNotDieAlone, .LonelyPoro_DrawsWhenItDiesAlone
   - Text: "[Deathknell][>] If I died alone, draw 1."
   - Code: same resolve-time scan as Loyal Poro (inverse condition).
   - Scenario: Lonely Poro and another friendly unit die together in combat -> the other unit is already gone at resolution -> draws 1 although it did not die alone. Conversely, it dies alone at base, a token is created there before the trigger resolves -> no draw.
@@ -83,7 +83,7 @@ Engine facts traced for this batch (apply to several cards below):
   - Text: "[Empowered][>][>>][Deathknell][>] ..."
   - Code: `d.keywords` sets only `Keyword::Empower`, not `Keyword::Deathknell`. The death trigger still dispatches and works (see engine facts above); the only effect is the missing keyword in rendered/dumped card data and in `last_known.keywords`.
   - Scenario: none in play today; a future "unit with [Deathknell]" check or the registry dump would not see these two.
-- [ ] **908 Reluctant Leader / 712 Vex, Apathetic** - `units/0908_reluctant_leader.cpp:22`, `units/0712_vex_apathetic.cpp:22` [plausible] low
+- [x] **908 Reluctant Leader / 712 Vex, Apathetic** - `units/0908_reluctant_leader.cpp:22`, `units/0712_vex_apathetic.cpp:22` [plausible] low — FIXED (sweep-triggers): a token is played (`TriggerManager::onTokenCreated` -> `announceUnitPlayed`); test: SweepTriggersTest.TokenUnit_IsAUnitBeingPlayed, .TokenUnit_IsAUnitTheOpponentPlayed
   - Text: "When you play another unit ..." / "When an opponent plays a unit ..."
   - Code: both rely on `CardPlayedEvent`; `createToken` never emits it, so unit tokens that card text says are "played" do not trigger either card.
   - Scenario: Noxian Emissary's Deathknell plays two Recruits with Reluctant Leader on board -> no +2 [M]; opponent plays tokens while Vex is at a battlefield -> not stunned.

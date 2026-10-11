@@ -20,10 +20,11 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        auto it = self.card_counters.find("__stunned_unit_id");
-        if (it == self.card_counters.end()) return;
-        auto stunned = static_cast<GameObjectId>(it->second);
-        if (!ctx.state.objectExists(stunned)) return;
+        (void)self;
+        // The stunned unit is the trigger's subject.
+        const GameObjectId stunned = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (stunned == kInvalidId || !ctx.state.objectExists(stunned)) return;
 
         // Determine the battlefield of the stunned enemy unit ("at a
         // battlefield" / "that battlefield").

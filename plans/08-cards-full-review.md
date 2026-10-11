@@ -58,7 +58,7 @@ cross-referenced.
   - Fix: fold `keyword_value` in the engine, or route every one through `auraKeyword()`.
   - c0: 332 Serrated Dirk, 387 Cloth Armor, 764 Black Flame Altar — verified ALREADY FIXED by this item; Black Flame Altar now uses `auraKeyword`
 
-- [ ] **8.4 Aura-granted keywords the engine never honours**
+- [x] **8.4 Aura-granted keywords the engine never honours** — FIXED: Vision by engine-auras-costs; Weaponmaster by sweep-triggers — both are now keyword abilities queued once per instance of the keyword, printed or granted (`src/engine/keyword_abilities.{h,cpp}`, `TriggerManager::queueKeywordAbilities`, CR 817.2 / 821.1.c.7), and Vision asks its controller; test: SweepTriggersTest.Weaponmaster_ASandSoldierTokenMayEquipAsItIsPlayed, .Weaponmaster_IsAMay, .Vision_TheControllerChoosesWhetherToRecycle, .Vision_EachInstanceTriggersSeparately, .Forecaster_HasOneInstanceOfVision
   - Vision is read from base keywords only, at play time, before any aura exists (`trigger_manager.cpp:317`): Forecaster 388 does nothing.
   - `Keyword::Weaponmaster` is read nowhere: Emperor of the Sands 512.
   - Vision — FIXED by engine-auras-costs (`shared:` commit in `TriggerManager::onCardPlayed`, possible now that 2.12 sets the location before `CardPlayedEvent`): the handler refreshes the continuous effects and asks `hasKeyword(Keyword::Vision)`; test: AuraVisionTest.Forecaster_MechPlayedLooksAtTheTopCard, .NoVisionSource_TopCardStays.

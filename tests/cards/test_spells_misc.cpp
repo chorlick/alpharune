@@ -492,7 +492,7 @@ TEST_F(BulletTimeTest, ElderDragonSynergy_X1_WipesAllEnemiesAtBF) {
     // GameEngine::processLethalDamage scans card.ability_text for the
     // phrase. Placing the dragon with card_def_id=680 is sufficient;
     // there's no per-object flag to set.
-    auto dragon = addUnit(P1, 680, /*might=*/0, /*at_bf=*/-1);  // base
+    addUnit(P1, 680, /*might=*/0, /*at_bf=*/-1);  // base
 
     auto big1 = addUnit(P2, kInvalidId, /*might=*/10, /*at_bf=*/0);
     auto big2 = addUnit(P2, kInvalidId, /*might=*/10, /*at_bf=*/0);

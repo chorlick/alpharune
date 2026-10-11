@@ -23,7 +23,8 @@ public:
         KeywordSet kw; kw.set(Keyword::Temporary);
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
                                   {"Fae"}, kw, destLocation(ctx.controller, dest),
-                                  /*enter_ready=*/true);
+                                  /*enter_ready=*/true,
+                                  tokenPlayLocations(ctx.state, ctx.controller));
         ctx.events.logTrace("SPRITE CALL: play ready 3 [M] Sprite [Temporary]");
     }
 private:

@@ -127,6 +127,8 @@ private:
     void onObjectStateChanged(const ObjectStateChangedEvent& e); // WhenIAmBuffed / WhenYouBuffAFriendlyUnit
     void onCardsDrawn(const CardsDrawnEvent& e);                  // WhenYouDrawACard
     void onLeftBoard(const LeftBoardEvent& e);                    // WhenIDie on a killed gear
+    void onTokenCreated(const TokenCreatedEvent& e);              // a token is played (CR 350.2)
+    void onStateSettled();                                        // WhenMyMightReachesThreshold
 
     // ── Helpers ──
 
@@ -135,10 +137,23 @@ private:
     /// on the spell that caused this trigger (relevant for
     /// WhenYouPlaySpell triggers like Virtuoso / Forgotten Library).
     /// 0 = not a play-triggered ability (default).
-    void fireTrigger(GameObjectId source, PlayerId controller,
+    /// Returns true if the ability went on the chain (false: suppressed, its
+    /// condition was not met, or it already triggered for this batch).
+    bool fireTrigger(GameObjectId source, PlayerId controller,
                      int triggering_spell_energy_spent = 0,
                      TriggerType which = TriggerType::None,
                      GameObjectId subject = kInvalidId);
+
+    /// "Your [Temporary] effects at my battlefield don't trigger."
+    bool temporaryTriggerSuppressed(GameObjectId source) const;
+
+    /// Queue one chain item per instance of `keyword`'s own triggered ability
+    /// on `object` (engine/keyword_abilities.h).
+    void queueKeywordAbilities(GameObjectId object, PlayerId controller,
+                               Keyword keyword, bool own_card_fires);
+
+    /// The "a unit was played" triggers shared by a unit card and a unit token.
+    void announceUnitPlayed(GameObjectId unit, PlayerId player);
 
     /// Fire `t` on any battlefield CARD (state_.battlefields[].card_object_id)
     /// that declares it, attributed to `player`. BF card objects have no

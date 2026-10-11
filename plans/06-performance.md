@@ -3,6 +3,11 @@
 **Nothing here was measured.** Mechanisms are confirmed by reading; magnitudes
 are not. Profile a rollout benchmark before and after each change.
 
+Items 6.4, 6.7, 6.8 and 6.9 have since been measured (stream `perf-search`);
+the numbers are under each. The fixed-seed 200-game random batch (fiora vs
+yi_rebuild, seed 20261010, 6 threads) does not go through any of the four
+(no search agent, no OpenSpiel state): 0.095 s before and after.
+
 - [ ] **6.1 Trace strings are built whether or not anyone is listening**
   - Where: `src/core/events.cpp:47-50`, `:90-102`. `logTrace` always runs `tagWithDecision` (snprintf plus concatenation), copies a `LogEvent` and emits a signal, with no enabled check.
   - About 885 `logTrace` call sites concatenate (`std::string` + `to_string`) before the call.
@@ -19,11 +24,13 @@ are not. Profile a rollout benchmark before and after each change.
   - Each handler scans all of `state_.objects` (deck, hand, trash included), often several times: `onCardPlayed` four passes, `onCombatStarted` a nested full scan at `:471-480`.
   - `ObjectStateChangedEvent::what_changed` is a `std::string` matched through up to 12 sequential compares (`trigger_manager.cpp:1064-1265`); keys longer than 15 characters allocate per emit. An interned enum would remove it.
 
-- [ ] **6.4 The legal-intent vector is deep-copied three to four times per decision**
+- [x] **6.4 The legal-intent vector is deep-copied three to four times per decision** — FIXED: `currentStep` / `applyChoice` / `beginGame` / `resumeFromSnapshot` return `const StepResult&`, `StepDriver` points at the parked legal list instead of copying it, `legalIntents()` returns a reference, `Prior` encodes each Intent once (one copy per decision is left: the engine's own `current_step_`); test: PerfSearchTest.CurrentStepIsAViewOfThePendingDecision
   - Where: `step_driver.cpp:83`, `step_driver.h:72`, `game_engine.cpp:163`, `:279`, `:294`, `riftbound_state.cpp:181`, `:218`, `:360`, `riftbound_state.h:170-173`.
   - `currentStep()` returns `StepResult` by value; `CurrentPlayer()` copies every `Intent` just to read `perspective`.
   - `RiftboundHeuristicEvaluator::Prior` (`mcts_agent.cpp:95-118`) calls `LegalActions` and `legalIntents` then runs an O(L²) `encodeAction` match. `LegalActions` allocates an `unordered_set` per call.
   - Fix direction: a `const StepResult&` accessor.
+  - Measured (`riftbound_search_microbench`, ns per call on a live state, before -> after): `CurrentPlayer` 128 -> 11, `legalIntents` 113 -> 5, `LegalActions` 170 -> 61. Wall time of `mcts:sims=50` unchanged within noise: the copies were real but small next to 6.7.
+  - `LegalActions` allocating an `unordered_set` per call: ALREADY FIXED before this stream (`encodeLegal` sorts and uniques a vector).
 
 - [ ] **6.5 Legal-action generation rescans all objects repeatedly**
   - `canAfford` rescans all objects for runes for every hand card (`game_engine.cpp:5696`); `availableEnergy` and `canPayAdditionalCost` rescan for every ability of every on-board object (`:3525-3527`); `runesInBase` allocates a vector per call (`:6056`). Compute rune counts once per generation.
@@ -35,16 +42,21 @@ are not. Profile a rollout benchmark before and after each change.
 - [ ] **6.6 `processLethalDamage` scans twice per pass even when nothing is damaged**
   - Where: `game_engine.cpp:5056-5057` calls `anyDamageIsLethalFor` twice, each a full scan with two `ability_text.find`s; also once per damaged target (`:2455`).
 
-- [ ] **6.7 `~StepDriver` plays the abandoned game to the end**
+- [x] **6.7 `~StepDriver` plays the abandoned game to the end** — FIXED: `~StepDriver` destroys the suspended fiber, which unwinds its stack (`forced_unwind`); nothing of the abandoned game runs. No engine `catch (...)` swallows the unwind (checked; `StepDriver::runInFiber` rethrows it). Tests: StepDriverTeardown.DestroyingAParkedDriverUnwindsInsteadOfDraining, PerfSearchTest.DroppingAnEngineMidGameDoesNotPlayTheGameOut, PerfSearchTest.AnEngineCanBeDroppedAtEveryDecisionOfAGame, PerfSearchTest.AFailedEngineStillReportsItsFailureAndCanBeDropped
   - Where: `step_driver.cpp:19-29`. It drains the fiber by feeding choice 0 until the game ends, so every engine abandoned mid-game (every discarded clone) runs the rest of the game, up to the 200-turn cap, with events and triggers firing.
   - Fix direction: unwind the fiber instead (boost.context `forced_unwind`; requires fixing the `catch (...)` in 1.7 first).
+  - Measured: teardown of an advanced clone (`riftbound_clone_advance_microbench`, `~State`) 464 -> 47 us at a replayed decision, 438 -> 36 us at a resumed one. `mcts:sims=50` vs random, 5 games, 1 thread, seed 20261010: 36.7 s -> 10.9 s, same game results. `ismcts:sims=20`, 8 games: 19.8 s -> 6.3 s (ISMCTS games are not reproducible run to run, so that is time for comparable, not identical, work).
+  - Carry-over from the search stream (a clone of a state that was walked by `ApplyAction` alone replays the game from its start, ~1.5 ms at decision 100, for every clone): FIXED: the first clone to replay a long way keeps the last resumable decision it passes on the shared snapshot (`Snapshot::offerNearerBase`), siblings start there and the original adopts it. Per clone at decision 100: 1588 -> 255 us (the first one: 2.0 ms). Test: RiftboundStateTest.OnlyTheFirstCloneOfAPositionReplaysTheWholeGame (`riftbound_openspiel_tests`).
 
-- [ ] **6.8 Card database rebuilt per agent and per seeded game**
+- [x] **6.8 Card database rebuilt per agent and per seeded game** — FIXED: `RiftboundGame` refers to one process-wide const card table (`openspiel::sharedCards()`), built on first use; test: RiftboundGameTest.EveryGameSharesOneCardTable (`riftbound_openspiel_tests`)
   - Each `MctsAgent` / `IsMctsAgent` constructor calls `LoadGame` (`mcts_agent.cpp:235`, `:388`), which runs `registry_.loadAll()`, `buildFromClasses` and two deck parses (`riftbound_game.cpp:52-57`) instead of sharing the process-wide const `CardDB` / `CardRegistry`. Same per game in `openspiel_match.cpp:457`.
+  - Measured: `LoadGame` 1385 -> 135 us. The remainder is the two deck files, still read per game on purpose (a deck file can change between two `LoadGame` calls).
+  - `openspiel_match.cpp` no longer exists. `src/main.cpp` still builds its own table once at startup, so a process that also runs a search agent holds two; `main.cpp` is not this stream's file (see report).
 
-- [ ] **6.9 Observation and info-set extraction is allocation- and scan-heavy**
+- [x] **6.9 Observation and info-set extraction is allocation- and scan-heavy** — FIXED: `extractStateFeatures` gathers its lists in one pass over the objects (`BoardIndex`) and can fill a caller-owned buffer; `InfoSetId` / `ObservationTensor` use a per-thread buffer; `computeInfoSetId` skips runs of zero floats (one multiply per run). Layout and every value unchanged (checksum over 150 decisions x 2 seats identical before and after). Tests: PerfSearchHash.SkippingZeroRunsDoesNotChangeTheInfoSetId, PerfSearchTest.FeaturesStillMatchTheStateQueriesTheyReplaced, PerfSearchTest.ExtractingIntoAReusedBufferMatchesAFreshExtraction, RiftboundStateTest.ObservationTensorAndKeyMatchThePlainFunctions
   - Where: `riftbound_state.cpp:280`, `:309`; `feature_extractor.cpp:186`, `:229`, `:251`, `:389-390`, `:541-542`, `:553`.
   - Every `ObservationTensor`, `InfoSetId`, `ObservationString` call builds a fresh 6188-float vector then copies or hashes it; ISMCTS does this per node lookup. Each extraction does about 24 full passes over `state.objects` (mostly `unitsAt` per battlefield per player, done twice).
+  - Measured (us per call, before -> after): `InfoSetId` 34.0 -> 5.0, `ObservationString` 34.1 -> 5.1, `ObservationTensor` 6.3 -> 3.3, `ml::extractStateFeatures` 5.7 -> 2.7, `ml::computeInfoSetId` 27.6 -> 2.2. The hash, not the extraction, was four fifths of the cost. `ismcts:sims=20`, 8 games: 5.8 s (after 6.7) -> 3.3 s.
 
 - [ ] **6.10 Every board query is a full scan of a node-based map of large objects**
   - Where: `src/core/game_state.cpp:39-88`, most of `card_helpers.h` (`payableEnergy`, `runesControlled`, `chooseableUnits`, …), `card.cpp:637`. Each walks all of `unordered_map<GameObjectId, GameObject>` and returns a fresh vector.

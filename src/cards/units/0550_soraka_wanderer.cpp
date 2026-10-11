@@ -45,9 +45,8 @@ public:
         // "if it has less Might than me"
         if (dying.current_might >= self.current_might) return false;
         ctx.events.logTrace("SORAKA, WANDERER: heal/exhaust/recall a dying ally here");
-        ctx.executor.healObject(dying_unit);
-        ctx.executor.exhaustObject(dying_unit);
-        ctx.executor.moveToBase(dying_unit);
+        // "(Send it to base. This isn't a move.)" — CR 457-460.
+        ctx.executor.healExhaustRecall(dying_unit);
         return true;
     }
 private:

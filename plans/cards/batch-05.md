@@ -112,7 +112,7 @@ Files read in full: 91 of 91.
   - Code: `if (oid == sid) continue;` excludes Sett; the text has no "other".
   - Scenario: buffed Sett alone at a battlefield -> 6 Might (5 + buff); should be 7.
 
-- [ ] **337 Minotaur Reckoner** - `units/0337_minotaur_reckoner.cpp:25` [documented] medium
+- [x] **337 Minotaur Reckoner** - `units/0337_minotaur_reckoner.cpp:25` [documented] medium — FIXED (sweep-triggers): effect moves to base are refused by `EffectExecutor::moveToBase`; a recall still happens; test: SweepTriggersTest.MinotaurReckoner_StopsEffectMovesToBase
   - Text: "Units can't move to base."
   - Code: stamps `cant_move_to_base = true` on every on-board unit; `recalculateAuras` never resets the flag (not in the reset block at game_engine.cpp:4391-4407). Only the standard-move generator reads it (2644); `EffectExecutor::moveToBase` does not.
   - Scenario: Reckoner dies -> every unit that was on board can never move back to base for the rest of the game. While it is alive, effect moves to base (Janna, Savior) still work.
@@ -130,7 +130,7 @@ Files read in full: 91 of 91.
   - Scenario: cannot sacrifice units to reduce the [Y][Y][Y][Y] cost.
   - BLOCKED: no card-side hook can do this. It needs an interactive additional cost in the engine's play path (choose any number of friendly units to kill before the cost is computed, then reduce the Power cost per kill): `OptionalAdditionalCost` is Energy / Power / discard only and `selfPowerCostReduction` cannot ask. Reported under "Needs another stream".
 
-- [ ] **423 Fae Dragon** - `units/0423_fae_dragon.cpp:22` [documented] medium
+- [x] **423 Fae Dragon** - `units/0423_fae_dragon.cpp:22` [documented] medium — FIXED (sweep-triggers): `EffectExecutor::spendBuff` announces every spend (`TriggerType::WhenYouSpendABuff`); the spending cards 147, 153, 157, 164, 230, 264, 277, 543 call it (146 / 207 / 150 spend through sweep-costs' play-cost path: its `spendBuff` helper must call the executor's when the streams meet); test: SweepTriggersTest.FaeDragon_PlaysGoldWhenItsControllerSpendsABuff
   - Text: "When you spend a buff, play a Gold gear token exhausted."
   - Code: not implemented (no spend-a-buff event exists). First clause buffs the first four unbuffed units in map order (S5).
   - Scenario: a buff is spent -> no Gold.

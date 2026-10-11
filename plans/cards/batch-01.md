@@ -59,7 +59,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: same defect as Purifier - AuraEffect with keyword Shield, keyword_value 0, might_bonus 0.
   - Scenario: a defending Mech gets no +1 [M].
 
-- [ ] **512 Emperor of the Sands** - `legends/0512_emperor_of_the_sands.cpp:36` [confirmed] high
+- [x] **512 Emperor of the Sands** - `legends/0512_emperor_of_the_sands.cpp:36` [confirmed] high — FIXED (sweep-triggers): [Weaponmaster] (and [Vision]) are keyword abilities queued per instance (`engine/keyword_abilities`), so a token or an aura-granted keyword triggers; test: SweepTriggersTest.Weaponmaster_ASandSoldierTokenMayEquipAsItIsPlayed, .Weaponmaster_IsAMay
   - Text: "Your Sand Soldiers have [Weaponmaster]."
   - Code: grants Keyword::Weaponmaster as an aura. Nothing reads that keyword (grep: only main.cpp / types.cpp name tables); Weaponmaster only exists as behaviour of WeaponmasterUnit card classes, and Sand Soldier tokens have no card class.
   - Scenario: Azir plays a Sand Soldier with an Equipment in base -> no Weaponmaster attach is ever offered.

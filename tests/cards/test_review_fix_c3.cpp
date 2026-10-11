@@ -467,7 +467,9 @@ TEST_F(C3Test, CurtainCall_TargetFitsTheModeAndALaterCastStartsFresh) {
     StepAgent second{V(2), O(at_base)};  // the same mode again, on a new play
     playThroughEngine(spell, &second);
     EXPECT_EQ(second.missed, 0);
-    EXPECT_EQ(state.getObject(at_base).damage_marked, 6);
+    // 3 + 3 on a 6-Might unit is lethal: the cleanup after the play kills it
+    // (playThroughEngine runs that cleanup, as a game does).
+    EXPECT_TRUE(inTrash(P2, at_base)) << "the second 3 damage added to the first";
 }
 
 TEST_F(C3Test, Eclipse_Predicts) {
@@ -1100,6 +1102,9 @@ TEST_F(C3Test, HereToHelp_MayBeDeclinedAndNeverPlaysToBase) {
         EXPECT_TRUE(agent.prompts.empty()) << "no battlefield controlled: nothing to offer";
         EXPECT_TRUE(inHand(P1, unit)) << "not played to base";
     }
+    // Control that survives a cleanup: a unit of P1's at each battlefield.
+    addUnit(P1, kInvalidId, 2, 0);
+    addUnit(P1, kInvalidId, 2, 1);
     control(P1, 0);
     control(P1, 1);
     backToHand(spell);

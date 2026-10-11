@@ -84,7 +84,7 @@ protected:
     /// Sets `might_bonus` from CardDef so attachment_might_bonus updates correctly,
     /// and sets `tags` so Weaponmaster equipment-detection can find it.
     GameObjectId addGearOnBoard(PlayerId owner, CardDefId def_id,
-                                  BattlefieldId at_bf = -1) {
+                                  int at_bf = -1) {
         auto id = state.createObject();
         auto& obj = state.getObject(id);
         obj.owner = owner;
@@ -102,9 +102,11 @@ protected:
         } else {
             obj.name = "TestGear";
         }
+        // (at_bf was a BattlefieldId, which is unsigned: the default -1 passed
+        // this test and put the gear at a battlefield that does not exist.)
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{at_bf};
+            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};

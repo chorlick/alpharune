@@ -58,7 +58,7 @@ public:
                                  std::to_string(threshold) + "M) at a BF to base");
         }
         // "Gain 1 XP." does not depend on the chosen unit.
-        ctx.state.player(ctx.controller).xp += 1;
+        gainXp(ctx, ctx.controller, 1);
     }
 private:
     const CardDef def_ = [] {

@@ -2,8 +2,12 @@
 #include "cards/card.h"
 #include "engine/effect_executor.h"
 #include "engine/deck_ops.h"
+#include "engine/keyword_abilities.h"
 
 namespace riftbound {
+
+// Defined with the other dispatch helpers below.
+static bool cardFiresOn(const CardRegistry& reg, CardDefId def_id, TriggerType t);
 
 TriggerManager::TriggerManager(GameState& state, EventBus& events,
                                const CardDB& card_db, ChainManager& chain,
@@ -52,6 +56,10 @@ void TriggerManager::subscribe() {
         [this](const CardsDrawnEvent& e) { onCardsDrawn(e); }));
     connections_.push_back(events_.on_left_board.connect(
         [this](const LeftBoardEvent& e) { onLeftBoard(e); }));
+    connections_.push_back(events_.on_token_created.connect(
+        [this](const TokenCreatedEvent& e) { onTokenCreated(e); }));
+    connections_.push_back(events_.on_state_settled.connect(
+        [this](const StateSettledEvent&) { onStateSettled(); }));
 }
 
 TriggerManager::~TriggerManager() {
@@ -61,28 +69,20 @@ TriggerManager::~TriggerManager() {
 }
 
 void TriggerManager::onUnitStunned(const UnitStunnedEvent& e) {
-    // WhenYouStun fires for cards controlled by the stunner when the
-    // stunned unit's controller is the opposite side (you can't trigger
-    // "stun an enemy" by stunning your own unit). Mirrors the pattern in
-    // onUnitDied / onCombatEnded.
-    if (e.stunner == e.victim_controller) return;  // self-stun, not "enemy"
+    // "When you stun an enemy unit" fires for the stunner's cards and legend
+    // when the stunned unit is the other player's (stunning your own unit is
+    // not stunning an enemy). The stunned unit is the trigger's subject.
+    if (e.stunner == e.victim_controller) return;
+    std::vector<GameObjectId> watchers;
     for (auto& [id, obj] : state_.objects) {
         if (obj.controller != e.stunner) continue;
         if (obj.card_def_id == kInvalidId) continue;
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
-        const Card* card = card_registry_.get(obj.card_def_id);
-        if (!card) continue;
-        if (card->triggerType() != TriggerType::WhenYouStun) continue;
-        events_.logTrace("TRIGGER: " + obj.name + " WhenYouStun (stunned=" +
-                         std::to_string(e.stunned_unit) + ")");
-        // Capture the stunned-unit id into card_counters so the trigger's
-        // onTrigger can read it post-resolution (combat designations get
-        // cleared by the time the chain item resolves — same pattern as
-        // __defend_attacker_id).
-        obj.card_counters["__stunned_unit_id"] =
-            static_cast<int>(e.stunned_unit);
-        chain_.addAbility(id, e.stunner, obj.card_def_id);
+        if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouStun))
+            watchers.push_back(id);
     }
+    for (auto wid : watchers)
+        fireTrigger(wid, e.stunner, 0, TriggerType::WhenYouStun, /*subject=*/e.stunned_unit);
     checkDelayedAbilities(TriggerType::WhenYouStun, e.stunner, e.stunned_unit);
 }
 
@@ -101,6 +101,10 @@ void TriggerManager::onDamageDealt(const DamageDealtEvent& e) {
 void TriggerManager::checkDelayedAbilities(TriggerType trigger,
                                             PlayerId relevant_player,
                                             GameObjectId event_object) {
+    // Decide what fires first, on a copy: queueing an ability emits events,
+    // and a handler may add a delayed ability (the vector can reallocate) —
+    // one added now did not see this event and must not fire for it.
+    std::vector<DelayedAbility> firing;
     for (auto& da : state_.delayed_abilities) {
         if (da.fired) continue;
         if (da.trigger != trigger) continue;
@@ -109,28 +113,30 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         // dies") fire only for the specific target. kInvalidId = unscoped.
         if (da.target_filter != kInvalidId &&
             da.target_filter != event_object) continue;
-
-        // every_time (cards-c2) and repeats (cards-c3) are the same idea added
-        // twice; either keeps the ability armed. One of them should go.
-        if (!da.every_time && !da.repeats) da.fired = true;
-        events_.logTrace("DELAYED_ABILITY: firing for " +
-                         (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
-        chain_.addAbility(da.source, da.controller, da.card_def_id);
-        // Stamp the originating trigger so the card's onTrigger can branch on
-        // ctx.firing_trigger (e.g. Grim Resolve's WhenIWinCombat XP rider,
-        // Targon's Peak's AtEndOfTurn ready-runes).
-        if (!state_.chain.items.empty()) {
-            state_.chain.items.back().fired_trigger = trigger;
-            // The event's object ("buff IT", "move ME"), as for any trigger.
-            state_.chain.items.back().triggering_subject = event_object;
-        }
+        if (!da.repeats) da.fired = true;
+        firing.push_back(da);
     }
-
-    // Remove fired abilities
+    // Remove the one-shot abilities that are about to fire.
     state_.delayed_abilities.erase(
         std::remove_if(state_.delayed_abilities.begin(), state_.delayed_abilities.end(),
             [](const DelayedAbility& da) { return da.fired; }),
         state_.delayed_abilities.end());
+
+    for (const auto& da : firing) {
+        events_.logTrace("DELAYED_ABILITY: firing for " +
+                         (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
+        const ChainItemId item_id = chain_.addAbility(da.source, da.controller, da.card_def_id);
+        // Stamp the originating trigger so the card's onTrigger can branch on
+        // ctx.firing_trigger (e.g. Grim Resolve's WhenIWinCombat XP rider,
+        // Targon's Peak's AtEndOfTurn ready-runes), and the event's object
+        // ("buff IT", "move ME"), as for any trigger.
+        for (auto& item : state_.chain.items) {
+            if (item.id != item_id) continue;
+            item.fired_trigger = trigger;
+            item.triggering_subject = event_object;
+            break;
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -242,36 +248,48 @@ void TriggerManager::fireLegendTrigger(TriggerType t, PlayerId relevant_player,
     }
 }
 
-void TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
+// LeBlanc, Everywhere at Once: "your [Temporary] effects at my battlefield
+// don't trigger." True when `source` is a friendly [Temporary] unit at — or,
+// for its own death, last at — a battlefield where a card of its controller
+// says so (Card::suppressesTemporaryTriggersHere).
+bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
+    const auto& obj = state_.getObject(source);
+    if (!obj.isUnit()) return false;
+    // A unit that has died is judged as it last existed (CR 383.2.c.3.b).
+    const bool dead = !obj.location.has_value() && obj.last_known.valid;
+    const bool temporary = dead ? obj.last_known.keywords.has(Keyword::Temporary)
+                                : obj.hasKeyword(Keyword::Temporary);
+    if (!temporary) return false;
+    const std::optional<LocationId> where = dead ? obj.last_known.location : obj.location;
+    if (!where.has_value() || !std::holds_alternative<BattlefieldLocation>(*where)) return false;
+    const BattlefieldId bf = std::get<BattlefieldLocation>(*where).id;
+    for (const auto& [oid, other] : state_.objects) {
+        if (oid == source || other.controller != obj.controller) continue;
+        const auto obf = other.battlefieldId();
+        if (!obf || *obf != bf) continue;
+        const Card* oc = card_registry_.get(other.card_def_id);
+        if (oc && oc->suppressesTemporaryTriggersHere()) {
+            events_.logTrace("TRIGGER_SUPPRESSED: " + obj.name +
+                             " (Temporary) at LeBlanc's battlefield");
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
                                   int triggering_spell_energy_spent,
                                   TriggerType which,
                                   GameObjectId subject) {
-    if (!state_.objectExists(source)) return;
+    if (!state_.objectExists(source)) return false;
     auto& obj = state_.getObject(source);
 
-    // Skip triggers on gear with inactive rules text (CR 718.2)
-    if (obj.is_rules_text_inactive) return;
+    // An attached gear's printed rules text is Inactive (CR 718.2): its own
+    // triggered abilities do not trigger. (Abilities in its EFFECT text speak
+    // for the unit and go through queueEquippedTrigger instead.)
+    if (obj.is_rules_text_inactive) return false;
 
-    // LeBlanc, Everywhere at Once (652): "your [Temporary] effects at my
-    // battlefield don't trigger." If this firing source is a friendly
-    // [Temporary] unit at a battlefield, and a same-controller card there
-    // declares it suppresses Temporary triggers, skip firing.
-    if (obj.isUnit() && obj.hasKeyword(Keyword::Temporary) && obj.location.has_value()) {
-        if (auto bf = obj.battlefieldId()) {
-            for (auto& [oid, other] : state_.objects) {
-                if (oid == source) continue;
-                if (other.controller != obj.controller) continue;
-                auto obf = other.battlefieldId();
-                if (!obf || *obf != *bf) continue;
-                Card* oc = card_registry_.get(other.card_def_id);
-                if (oc && oc->suppressesTemporaryTriggersHere()) {
-                    events_.logTrace("TRIGGER_SUPPRESSED: " + obj.name +
-                                     " (Temporary) at LeBlanc's battlefield");
-                    return;
-                }
-            }
-        }
-    }
+    if (temporaryTriggerSuppressed(source)) return false;
 
     // For single-trigger cards `which` may be None; resolve it from the
     // card so multi-trigger cards still record which event fired.
@@ -279,31 +297,197 @@ void TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     if (fired == TriggerType::None) {
         fired = getTrigger(card_registry_, obj.card_def_id);
     }
-    if (fired == TriggerType::None) return;
+    if (fired == TriggerType::None) return false;
 
+    const Card* card = card_registry_.get(obj.card_def_id);
     // The card's intervening condition ("When a BUFFED friendly unit dies"):
     // if it isn't met the ability does not trigger.
-    if (const Card* card = card_registry_.get(obj.card_def_id);
-        card && !card->triggerCondition(state_, source, controller, fired, subject))
-        return;
+    if (card && !card->triggerCondition(state_, source, controller, fired, subject))
+        return false;
+    // "When ONE OR MORE ...": events that happen together trigger it once. An
+    // ability of this source for this trigger that has not been finalized yet
+    // came from the same set of events (nobody has had priority since).
+    if (card && card->triggersOncePerBatch(fired)) {
+        for (const auto& ci : state_.chain.items)
+            if (ci.source == source && ci.status == ChainItemStatus::Pending &&
+                ci.is_ability && !ci.is_activated_ability && ci.fired_trigger == fired)
+                return false;
+    }
 
     events_.logDebug("TRIGGER: " + obj.name + " (" + toString(controller) +
                      ") fires ability");
-    chain_.addAbility(source, controller, obj.card_def_id);
+    const ChainItemId item_id = chain_.addAbility(source, controller, obj.card_def_id);
     // Snapshot the triggering spell's spent value on the just-added
     // chain item so resume-time reads aren't subject to clobber by a
-    // subsequent spell-play. Phase 6q+ engine-audit follow-on for
-    // Virtuoso / Forgotten Library correctness.
-    if (!state_.chain.items.empty()) {
-        state_.chain.items.back().fired_trigger = fired;
-        if (triggering_spell_energy_spent > 0) {
-            state_.chain.items.back().triggering_spell_energy_spent =
-                triggering_spell_energy_spent;
-        }
-        if (subject != kInvalidId) {
-            state_.chain.items.back().triggering_subject = subject;
+    // subsequent spell-play. Found by id: adding an item can put others above it.
+    for (auto& item : state_.chain.items) {
+        if (item.id != item_id) continue;
+        item.fired_trigger = fired;
+        if (triggering_spell_energy_spent > 0)
+            item.triggering_spell_energy_spent = triggering_spell_energy_spent;
+        if (subject != kInvalidId) item.triggering_subject = subject;
+        break;
+    }
+    // An Equipment on this unit whose effect text is a copy of the unit's
+    // text (Card::copiesBearerText) has this same ability, speaking for the
+    // unit: it triggers once more per such Equipment, each instance its own
+    // pending ability with its own choices.
+    if (obj.isUnit() && effect_executor_) {
+        const int copies = effect_executor_->textCopiesOn(source);
+        ChainItem queued;
+        bool found = false;
+        for (const auto& item : state_.chain.items)
+            if (item.id == item_id) { queued = item; found = true; break; }
+        for (int i = 0; found && i < copies; ++i) {
+            ChainItem copy = queued;
+            copy.id = state_.chain.allocateId();
+            state_.chain.items.push_back(std::move(copy));
+            events_.logDebug("TRIGGER: " + state_.getObject(source).name +
+                             " — the same ability in an Equipment's copied text");
         }
     }
+    return true;
+}
+
+// A keyword's own "when this is played" ability ([Vision], [Weaponmaster]):
+// one chain item per instance of the keyword (CR 817.2, 821.1.c.7), resolved
+// by engine/keyword_abilities. `own_card_fires`: the object's Card class
+// implements the printed instance itself.
+void TriggerManager::queueKeywordAbilities(GameObjectId object, PlayerId controller,
+                                           Keyword keyword, bool own_card_fires) {
+    if (!state_.objectExists(object) || !keywordAbilityCard(keyword)) return;
+    const int instances =
+        keywordAbilityInstances(state_.getObject(object), keyword, own_card_fires);
+    if (instances <= 0 || temporaryTriggerSuppressed(object)) return;
+    for (int i = 0; i < instances; ++i) {
+        events_.logDebug("TRIGGER: " + state_.getObject(object).name + " [" +
+                         toString(keyword) + "] (" + toString(controller) + ")");
+        // Not the source's card: the ability is the keyword's (kInvalidId
+        // keeps the source card's own callbacks and finalize pass out of it).
+        const ChainItemId item_id = chain_.addAbility(object, controller, kInvalidId);
+        for (auto& item : state_.chain.items) {
+            if (item.id != item_id) continue;
+            item.fired_trigger = TriggerType::WhenYouPlayMe;
+            item.keyword_ability = keyword;
+            break;
+        }
+    }
+}
+
+// "When you play a unit" and its relatives, for a unit card or a unit token
+// (a token is played too, CR 350.2): the player's other cards in play, their
+// delayed abilities, the battlefield it was played to, the other player's
+// "When an opponent plays a unit", and the player's legend.
+void TriggerManager::announceUnitPlayed(GameObjectId unit, PlayerId player) {
+    std::vector<GameObjectId> watchers;
+    for (auto& [id, other] : state_.objects) {
+        if (id == unit || !other.location.has_value()) continue;
+        if (other.controller != player) continue;
+        if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAUnit))
+            watchers.push_back(id);
+    }
+    for (auto wid : watchers)
+        fireTrigger(wid, player, 0, TriggerType::WhenYouPlayAUnit, /*subject=*/unit);
+
+    // "When a friendly unit is played this turn, ..." (Rally the Troops).
+    checkDelayedAbilities(TriggerType::WhenYouPlayAUnit, player, unit);
+
+    // Battlefield cards with "When you play a unit here" (e.g. Star Spring).
+    // Fire only on the battlefield the just-played unit landed at.
+    if (state_.objectExists(unit)) {
+        if (auto played_bf = state_.getObject(unit).battlefieldId())
+            fireBattlefieldTriggers(TriggerType::WhenYouPlayAUnit, player, *played_bf,
+                                    /*subject=*/unit);
+    }
+
+    // "When an opponent plays a unit" — the other player's cards in play; the
+    // played unit is the subject (Vex, Apathetic stuns it).
+    const PlayerId opp = opponent(player);
+    std::vector<GameObjectId> opp_watchers;
+    for (auto& [id, other] : state_.objects) {
+        if (other.controller != opp || !other.location.has_value()) continue;
+        if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenOpponentPlaysAUnit))
+            opp_watchers.push_back(id);
+    }
+    for (auto wid : opp_watchers)
+        fireTrigger(wid, opp, 0, TriggerType::WhenOpponentPlaysAUnit, /*subject=*/unit);
+
+    // Legends say "When you play a unit," too; the legend has no location.
+    fireLegendTrigger(TriggerType::WhenYouPlayAUnit, player, 0, /*subject=*/unit);
+}
+
+// A token is PLAYED (CR 350.2: "Tokens are not cards, but can still be
+// Played"), so abilities that trigger on playing a unit or a gear see it.
+// Not "When you play a card": a token is not a card.
+void TriggerManager::onTokenCreated(const TokenCreatedEvent& e) {
+    if (!state_.objectExists(e.object) || e.controller == PlayerId::None) return;
+    if (!state_.getObject(e.object).location.has_value()) return;
+    const PlayerId player = e.controller;
+
+    if (e.card_type == CardType::Unit) {
+        // "When you play a token unit" (Lillia, Protector of Dreams).
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, other] : state_.objects) {
+            if (id == e.object || other.controller != player) continue;
+            if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
+            if (other.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayATokenUnit))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, player, 0, TriggerType::WhenYouPlayATokenUnit, /*subject=*/e.object);
+        announceUnitPlayed(e.object, player);
+    } else if (e.card_type == CardType::Gear) {
+        std::vector<std::pair<GameObjectId, TriggerType>> fires;
+        for (auto& [id, other] : state_.objects) {
+            if (id == e.object || other.card_def_id == kInvalidId) continue;
+            if (!other.location.has_value()) continue;
+            if (other.controller == player &&
+                cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAGear))
+                fires.push_back({id, TriggerType::WhenYouPlayAGear});
+            if (other.controller != player &&
+                cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenOpponentPlaysAGear))
+                fires.push_back({id, TriggerType::WhenOpponentPlaysAGear});
+        }
+        for (auto& [id, t] : fires)
+            fireTrigger(id, state_.getObject(id).controller, 0, t, /*subject=*/e.object);
+    }
+
+    // The token's own keyword abilities. It has just been put on the board,
+    // after the last aura pass: refresh the continuous effects so a keyword it
+    // has from one ("Your Sand Soldiers have [Weaponmaster]") is there.
+    if (e.card_type == CardType::Unit || e.card_type == CardType::Gear) {
+        if (effect_executor_) effect_executor_->recalculateContinuousEffects();
+        if (!state_.objectExists(e.object)) return;
+        const bool has_card =
+            card_registry_.get(state_.getObject(e.object).card_def_id) != nullptr;
+        queueKeywordAbilities(e.object, player, Keyword::Vision, false);
+        if (e.card_type == CardType::Unit)
+            queueKeywordAbilities(e.object, player, Keyword::Weaponmaster, has_card);
+    }
+}
+
+// "When my Might becomes N or more" (Card::mightThreshold): fires on the edge
+// from below N to N or more, judged each time the state has settled, so it
+// sees every source of Might (buffs, auras, Equipment, "this turn" effects).
+void TriggerManager::onStateSettled() {
+    static const std::string kAtThreshold = "__at_might_threshold";
+    std::vector<GameObjectId> crossed;
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.location.has_value() || !obj.isUnit() || obj.card_def_id == kInvalidId) continue;
+        const Card* card = card_registry_.get(obj.card_def_id);
+        const int n = card ? card->mightThreshold() : 0;
+        if (n <= 0) continue;
+        const bool at = obj.current_might >= n;
+        auto it = obj.card_counters.find(kAtThreshold);
+        const bool was = it != obj.card_counters.end() && it->second != 0;
+        if (at == was) continue;
+        obj.card_counters[kAtThreshold] = at ? 1 : 0;
+        if (at) crossed.push_back(id);
+    }
+    for (auto id : crossed)
+        fireTrigger(id, state_.getObject(id).controller, 0,
+                    TriggerType::WhenMyMightReachesThreshold, /*subject=*/id);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -327,6 +511,12 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     // onSpellResolved (and never, if it is countered — 420.4.a.1 / 426.1.b).
     if (e.card_type == CardType::Spell)
         obj.card_counters["__energy_spent_on_play"] = e.energy_spent;
+    // Which play of its controller's turn this is ("your first card each
+    // turn", "your second card"): kept on the card, because a spell's play
+    // triggers fire only when it resolves — by then later plays have moved
+    // PlayerState::cards_played_this_turn on. Turn-stamped (turn + 1).
+    obj.card_counters["__play_ordinal"] = e.cards_played_this_turn;
+    obj.card_counters["__play_ordinal_turn"] = state_.turn.turn_number + 1;
 
     // "When you play a card" (any type) on the player's other cards + legend,
     // and "When an opponent plays a gear" on the other player's cards.
@@ -347,42 +537,17 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
                         /*subject=*/e.object);
     }
 
-    // Vision keyword: "When you play me, look at top card, may recycle it"
-    // CR 817.1.b — the recycle decision is a "may" (optional). Phase 6q+:
-    // we surface the peek via CardRevealedEvent (so observation tracking
-    // works) and auto-recycle spells as a deterministic placeholder for
-    // the agent's "yes". Wiring as a true agent-choice would need a
-    // synthetic Card-less trigger (keyword has no Card subclass to
-    // attach confirmOptional to) — queued as a follow-up. Today's
-    // behavior is CR-correct in effect for spells (always recycled);
-    // non-spell top cards are left in place (auto-no).
-    // The permanent may have [Vision] from a continuous effect instead of
-    // its own text ("Your Mechs have [Vision]", "Other friendly units have
-    // [Vision]"). It has just entered play, after the last aura pass, so
-    // refresh the continuous effects before asking.
-    if (obj.isPermanent() && !obj.keywords.has(Keyword::Vision) && effect_executor_)
-        effect_executor_->recalculateContinuousEffects();
-    if (obj.hasKeyword(Keyword::Vision) && obj.isPermanent()) {
-        auto& ps = state_.player(e.player);
-        if (!ps.main_deck.empty()) {
-            auto top_card = ps.main_deck.back();
-            auto& top_obj = state_.getObject(top_card);
-            // Reveal the peeked card to the controller only (private).
-            events_.emit(CardRevealedEvent{
-                top_card, top_obj.card_def_id, top_obj.owner,
-                /*revealed_to_all=*/false, /*revealed_to=*/e.player,
-                ZoneType::MainDeck});
-            const auto looker = knowledge::only(e.player);
-            knowledge::seenInDeck(state_, top_card, looker, DeckEnd::Top, 0);
-            if (top_obj.isSpell()) {
-                deck::takeTop(state_, e.player, deck::Place::Held, looker);
-                deck::putOnBottom(state_, e.player, top_card, deck::Place::Held, looker);
-                // Vision is a Predict (CR 817.1.b), and what it puts on the bottom
-                // is Recycled (CR 437.1):
-                // announce it like EffectExecutor::recycleCards does.
-                events_.emit(ObjectStateChangedEvent{top_card, "recycled_main"});
-            }
-        }
+    // [Vision] (CR 817): "When this is played, [Predict]." Each instance is a
+    // triggered ability of its own (817.2) and the controller decides for each
+    // whether to recycle (817.2.a), so each goes on the chain
+    // (queueKeywordAbilities). The permanent may have [Vision] from a
+    // continuous effect instead of its own text ("Your Mechs have [Vision]");
+    // it has just been put where it is going, after the last aura pass, so
+    // the continuous effects are refreshed before counting.
+    if (obj.isPermanent()) {
+        if (effect_executor_) effect_executor_->recalculateContinuousEffects();
+        queueKeywordAbilities(e.object, e.player, Keyword::Vision, false);
+        if (!state_.objectExists(e.object)) return;
     }
 
     // "When you play me" — fire on the card that was just played
@@ -395,58 +560,21 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
         }
     }
 
-    // "When you play a unit" / "When you play a spell" — fire on OTHER objects
-    for (auto& [id, other] : state_.objects) {
-        if (!other.location.has_value()) continue;
-        if (other.controller != e.player) continue;
-        if (id == e.object) continue;
-
-        if (e.card_type == CardType::Unit &&
-            cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAUnit)) {
-            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAUnit, /*subject=*/e.object);
-        }
-        if (e.card_type == CardType::Gear &&
-            cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAGear)) {
-            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAGear, /*subject=*/e.object);
-        }
-    }
-
-    // "When a friendly unit is played this turn, ..." (Rally the Troops).
-    if (e.card_type == CardType::Unit)
-        checkDelayedAbilities(TriggerType::WhenYouPlayAUnit, e.player, e.object);
-
-    // Battlefield cards with "When you play a unit here" (e.g. Star Spring).
-    // Fire only on the battlefield the just-played unit landed at.
-    if (e.card_type == CardType::Unit && state_.objectExists(e.object)) {
-        auto played_bf = state_.getObject(e.object).battlefieldId();
-        if (played_bf) {
-            fireBattlefieldTriggers(TriggerType::WhenYouPlayAUnit, e.player, *played_bf,
-                                    /*subject=*/e.object);
-        }
-    }
-
-    // "When an opponent plays a unit" — fire on the OPPONENT's on-board cards
-    // (Vex, Apathetic: gated "while I'm at a battlefield"; stuns the played
-    // unit). The played unit's id is captured into the watcher's card_counters
-    // so its onTrigger can act on it (triggers receive empty targets).
-    if (e.card_type == CardType::Unit) {
-        PlayerId opp = opponent(e.player);
+    // "When you play a gear" — the player's OTHER cards in play.
+    if (e.card_type == CardType::Gear) {
+        std::vector<GameObjectId> watchers;
         for (auto& [id, other] : state_.objects) {
-            if (other.controller != opp || !other.location.has_value()) continue;
-            if (cardFiresOn(card_registry_, other.card_def_id,
-                            TriggerType::WhenOpponentPlaysAUnit)) {
-                other.card_counters["__opp_played_unit_id"] = static_cast<int>(e.object);
-                fireTrigger(id, opp, 0, TriggerType::WhenOpponentPlaysAUnit);
-            }
+            if (id == e.object || !other.location.has_value()) continue;
+            if (other.controller != e.player) continue;
+            if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAGear))
+                watchers.push_back(id);
         }
+        for (auto wid : watchers)
+            fireTrigger(wid, e.player, 0, TriggerType::WhenYouPlayAGear, /*subject=*/e.object);
     }
 
-    // Legend-zone sweep: legends say "When you play a spell/unit," — the
-    // legend itself has no location, so the loop above skips it. Fire any
-    // matching legend on the acting player's side.
-    if (e.card_type == CardType::Unit) {
-        fireLegendTrigger(TriggerType::WhenYouPlayAUnit, e.player, 0, /*subject=*/e.object);
-    }
+    // "When you play a unit" and its relatives.
+    if (e.card_type == CardType::Unit) announceUnitPlayed(e.object, e.player);
 }
 
 void TriggerManager::onSpellResolved(const SpellResolvedEvent& e) {
@@ -716,6 +844,8 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
                     TriggerType::WhenIDie)) {
         queueOwnDeathTrigger(e.object, e.controller);
     }
+    // 'This turn, it has "When I die, ..."' set on the unit by an effect
+    // (delayed abilities scoped to it) is checked at the end of this handler.
 
     // "When a friendly unit dies" — fire on other objects the controller owns.
     // "When an enemy unit dies" — fire on the OPPONENT's objects (Pyke,
@@ -771,25 +901,24 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
                            opponent(e.controller), e.object);
 }
 
-// "When I die" / [Deathknell] on the object that died. Karthus, Eternal: "Your
-// Deathknell effects trigger an additional time." — `deathknell_double_count`
-// is bumped per controlled Karthus by recalculateAuras, and each adds one more
-// chain item. Zero in the default case.
+// "When I die" / [Deathknell] on the object that died. It triggers like any
+// other ability — through fireTrigger, so the card's triggerCondition and the
+// "[Temporary] effects here don't trigger" suppression apply. Karthus,
+// Eternal: "Your Deathknell effects trigger an additional time." —
+// `deathknell_double_count` is bumped per controlled Karthus by
+// recalculateAuras, and each adds one more chain item. Zero in the default case.
 void TriggerManager::queueOwnDeathTrigger(GameObjectId object, PlayerId controller) {
+    if (!fireTrigger(object, controller, 0, TriggerType::WhenIDie, /*subject=*/object)) return;
     const auto& obj = state_.getObject(object);
     // Only a [Deathknell] ability is repeated: a plain "When I die ..." (Draven,
     // Audacious "When I die in combat") is not a Deathknell effect.
     const int extra = obj.hasKeyword(Keyword::Deathknell)
-        ? state_.player(controller).deathknell_double_count : 0;
-    const int fires = 1 + std::max(0, extra);
-    for (int i = 0; i < fires; ++i) {
-        const ChainItemId item_id = chain_.addAbility(object, controller, obj.card_def_id);
-        for (auto& item : state_.chain.items)
-            if (item.id == item_id) item.fired_trigger = TriggerType::WhenIDie;
-    }
+        ? std::max(0, state_.player(controller).deathknell_double_count) : 0;
+    for (int i = 0; i < extra; ++i)
+        fireTrigger(object, controller, 0, TriggerType::WhenIDie, /*subject=*/object);
     if (extra > 0) {
         events_.logTrace("DEATHKNELL_DOUBLE: " + obj.name + " fires " +
-                         std::to_string(fires) + " times (Karthus aura)");
+                         std::to_string(1 + extra) + " times (Karthus aura)");
     }
 }
 
@@ -816,6 +945,8 @@ void TriggerManager::onLeftBoard(const LeftBoardEvent& e) {
     // (Scrapheap, Sprite Fountain, Treasure Trove). Units are handled by
     // onUnitDied.
     if (!state_.objectExists(e.object)) return;
+    // Off the board the Might-threshold edge is forgotten (onStateSettled).
+    state_.getObject(e.object).card_counters.erase("__at_might_threshold");
     const auto& gear = state_.getObject(e.object);
     if (gear.card_def_id == kInvalidId || e.controller == PlayerId::None) return;
     // "When this leaves the board," — any departure, a kill included
@@ -824,16 +955,14 @@ void TriggerManager::onLeftBoard(const LeftBoardEvent& e) {
         fireTrigger(e.object, e.controller, 0, TriggerType::WhenILeaveTheBoard, e.object);
     if (!e.was_killed || e.card_type != CardType::Gear) return;
     if (!cardFiresOn(card_registry_, gear.card_def_id, TriggerType::WhenIDie)) return;
-    const Card* card = card_registry_.get(gear.card_def_id);
-    if (card && !card->triggerCondition(state_, e.object, e.controller,
-                                        TriggerType::WhenIDie, e.object))
-        return;
     queueOwnDeathTrigger(e.object, e.controller);
 }
 
 void TriggerManager::onScore(const ScoreEvent& e) {
     auto bf_loc = BattlefieldLocation{e.battlefield};
     auto units = state_.unitsAt(bf_loc, e.player);
+    // Everything queued from here on is one of this score's abilities.
+    const ChainItemId first_new_item = state_.chain.next_id;
 
     // Legend-zone sweep first: legends like Green Father / Gloomist /
     // Deceiver have "When you conquer or hold," text encoded as the
@@ -954,6 +1083,42 @@ void TriggerManager::onScore(const ScoreEvent& e) {
         }
         if (cardFiresOn(card_registry_, bf_def, TriggerType::WhenYouScoreHere)) {
             fireTrigger(bf.card_object_id, e.player, 0, TriggerType::WhenYouScoreHere);
+        }
+    }
+
+    // "Your hold effects for holding here trigger an additional time." (Blue
+    // Sentinel) / "Your conquer effects for conquering here ..." (Red
+    // Brambleback): each card that says so (Card::extraScoreTriggers) makes
+    // every ability the scoring player's hold / conquer just triggered — on
+    // units here, their Equipment, the legend, the battlefield, delayed
+    // abilities — trigger once more. Each copy is its own pending ability:
+    // its choices are made separately when it is finalized.
+    {
+        int extra = 0;
+        for (const auto& [id, obj] : state_.objects) {
+            if (obj.controller != e.player || !obj.location.has_value()) continue;
+            const Card* card = card_registry_.get(obj.card_def_id);
+            // (Once more per Equipment that copies the unit's text.)
+            if (card)
+                extra += std::max(0, card->extraScoreTriggers(
+                    state_, id, e.player, e.battlefield, e.method == ScoreMethod::Hold)) *
+                    (1 + (effect_executor_ ? effect_executor_->textCopiesOn(id) : 0));
+        }
+        if (extra > 0) {
+            std::vector<ChainItem> triggered;
+            for (const auto& ci : state_.chain.items)
+                if (ci.id >= first_new_item && ci.controller == e.player &&
+                    ci.is_ability && !ci.is_activated_ability)
+                    triggered.push_back(ci);
+            for (int n = 0; n < extra; ++n)
+                for (ChainItem copy : triggered) {
+                    copy.id = state_.chain.allocateId();
+                    state_.chain.items.push_back(std::move(copy));
+                }
+            if (!triggered.empty())
+                events_.logTrace("SCORE_TRIGGERS: " + std::to_string(triggered.size()) +
+                                 " ability(ies) trigger " + std::to_string(extra) +
+                                 " additional time(s)");
         }
     }
 
@@ -1108,6 +1273,17 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
                     TriggerType::AtEndOfTurn)) {
                 fireTrigger(ps.legend_zone, e.turn_player, 0, TriggerType::AtEndOfTurn);
             }
+        }
+        // An Equipment's "At the end of your turn, ..." in its effect text
+        // speaks for the unit it is attached to (Blighted Battleaxe).
+        {
+            std::vector<GameObjectId> bearers;
+            for (auto& [id, obj] : state_.objects)
+                if (obj.isUnit() && obj.location.has_value() &&
+                    obj.controller == e.turn_player && !obj.attachments.empty())
+                    bearers.push_back(id);
+            for (auto uid : bearers)
+                fireEquippedTriggers(uid, e.turn_player, TriggerType::AtEndOfTurn);
         }
         // Battlefield cards with an AtEndOfTurn trigger.
         fireBattlefieldTriggers(TriggerType::AtEndOfTurn, e.turn_player);
@@ -1432,6 +1608,28 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         return;
     }
 
+    // "When you spend a buff" (EffectExecutor::spendBuff) — the spender's
+    // cards in play and legend; the unit that had the buff is the subject.
+    if (e.what_changed == "buff_spent") {
+        PlayerId spender = controller;
+        auto& counters = state_.getObject(e.object).card_counters;
+        if (auto it = counters.find("__buff_spent_by"); it != counters.end()) {
+            spender = static_cast<PlayerId>(it->second);
+            counters.erase(it);
+        }
+        if (spender == PlayerId::None) return;
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != spender || obj.card_def_id == kInvalidId) continue;
+            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouSpendABuff))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, spender, 0, TriggerType::WhenYouSpendABuff, /*subject=*/e.object);
+        return;
+    }
+
     // Only the "buffed" state change drives the remaining triggers today.
     if (e.what_changed != "buffed") return;
     // "When you buff me" — fires on the buffed object itself (Simian Ancestor).
@@ -1457,6 +1655,21 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
 }
 
 void TriggerManager::onCardHidden(const CardHiddenEvent& e) {
+    // "You can look at their facedown cards this turn." (Scuttle Crab) covers
+    // a card hidden after the permission was given: the other player is shown
+    // it as it is hidden. A look, not an ability — nothing goes on the chain.
+    {
+        const PlayerId looker = opponent(e.player);
+        if (state_.player(looker).may_look_at_opp_facedown_turn == state_.turn.turn_number &&
+            state_.objectExists(e.card)) {
+            const auto& hidden = state_.getObject(e.card);
+            events_.emit(CardRevealedEvent{e.card, hidden.card_def_id, hidden.owner,
+                                           /*revealed_to_all=*/false, /*revealed_to=*/looker,
+                                           ZoneType::FacedownZone});
+            knowledge::seen(state_, e.card, deck::Place::Facedown, knowledge::only(looker));
+        }
+    }
+    checkDelayedAbilities(TriggerType::WhenAnOpponentHidesACard, opponent(e.player), e.card);
     // "When you hide a card" — fires on the hiding player's on-board cards
     // (Katarina, Reckless: "ready me").
     for (auto& [id, obj] : state_.objects) {

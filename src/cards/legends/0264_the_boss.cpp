@@ -59,15 +59,12 @@ public:
             return false;
         if (!payOnePower(ctx, me, *pay_with)) return false;
         ctx.executor.exhaustObject(ctx.source);
-        victim.buff_count -= 1;
-        victim.recomputeMight();
+        ctx.executor.spendBuff(dying_unit, me);
         ctx.events.logTrace("THE BOSS: save buffed unit " + victim.name +
                             " (pay [C], exhaust me, spend buff) -> heal/exhaust/recall");
         // Heal, exhaust, recall to base — out of the combat it was in.
-        ctx.executor.healObject(dying_unit);
-        ctx.executor.exhaustObject(dying_unit);
-        ctx.executor.moveToBase(dying_unit);
-        ctx.state.getObject(dying_unit).combat_designation = CombatDesignation::None;
+        // "(Send it to base. This isn't a move.)" — CR 457-460.
+        ctx.executor.healExhaustRecall(dying_unit);
         return true;  // replacement consumed — the unit does not die
     }
 private:

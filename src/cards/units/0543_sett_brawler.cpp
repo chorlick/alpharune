@@ -42,8 +42,7 @@ public:
         auto& self = ctx.state.getObject(ctx.source);
         if (costDueNow(ctx)) {
             if (!self.location.has_value() || self.buff_count <= 0) return;
-            self.buff_count -= 1;
-            self.recomputeMight();
+            ctx.executor.spendBuff(ctx.source, ctx.controller);   // CR 427.2; "When you spend a buff"
         }
         if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         if (!self.location.has_value()) return;   // left the board

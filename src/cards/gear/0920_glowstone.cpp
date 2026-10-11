@@ -36,9 +36,10 @@ public:
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         const PlayerId chosen = who == 0 ? ctx.controller : opponent(ctx.controller);
         ctx.executor.takeControl(ctx.source, chosen, /*until_end_of_turn=*/false);
-        auto& self = ctx.state.getObject(ctx.source);
-        self.location = BaseLocation{chosen};
-        self.zone = ZoneType::Base;
+        // Recalled on its own: an attached card cannot change location apart
+        // from its unit (CR 718.5.c), so it comes off first.
+        ctx.executor.unattachGear(ctx.source);
+        ctx.executor.recallToBase(ctx.source);
         ctx.events.logTrace(std::string("GLOWSTONE: ") + toString(chosen) +
                             " gains control of it and recalls it");
     }

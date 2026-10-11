@@ -18,7 +18,8 @@ public:
         // "Take control of it and recall it. (Send it to your base.)"
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
         ctx.executor.takeControl(targets[0], ctx.controller, /*until_end_of_turn=*/false);
-        ctx.executor.moveToBase(targets[0]);
+        // A recall, not a move (CR 458): to its new controller's base.
+        ctx.executor.recallToBase(targets[0]);
         ctx.events.logTrace("POSSESSION: take control + recall to base");
     }
     TargetRequirements getTargetRequirements() const override {

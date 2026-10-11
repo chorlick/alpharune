@@ -334,9 +334,14 @@ set(RIFTBOUND_CORE_LIBS
 # compilations that use the PCH. The launcher must be scripts/ccache_pch_safe.sh
 # rather than `ccache` itself:
 #   -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;<checkout>/scripts/ccache_pch_safe.sh"
-# Plain ccache keys a PCH *rebuild* on the stale .gch still in the build
-# directory, not on the headers, and can hand back a .gch built from other
-# header contents (the script's header comment has the mechanism).
+# The script never sends a PCH compile to ccache: a PCH is always compiled,
+# never cached. Only the units that use it are cached. Plain ccache gets a
+# cached PCH wrong in two ways (the script's comments have the mechanisms):
+#  - a PCH *rebuild* is keyed on the stale .gch still in the build directory,
+#    not on the headers, so it can return a .gch built from other headers;
+#  - a hit on the preprocessed text (which ignores comments) returns a .gch
+#    whose `#pragma once` records (file size and time) no longer match a header
+#    that had a comment-only edit, and that header is then included twice.
 option(RIFTBOUND_USE_PCH "Precompile the common engine headers (src/pch.h)" ON)
 set(RIFTBOUND_PCH_CCACHE_FLAG "")
 if(RIFTBOUND_USE_PCH AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache"
@@ -345,11 +350,13 @@ if(RIFTBOUND_USE_PCH AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache"
     if(NOT CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache_pch_safe")
         message(WARNING
             "CMAKE_CXX_COMPILER_LAUNCHER runs ccache directly while precompiled "
-            "headers are on. After a header in a PCH changes, ccache can restore "
-            "a .gch that was built from different header contents. Use "
-            "scripts/ccache_pch_safe.sh as the launcher (see CLAUDE.md, "
-            "\"ccache\"), or run `cmake --build <dir> --target clean` before a "
-            "build you rely on.")
+            "headers are on, so ccache caches the PCH itself. After a header in "
+            "the PCH changes it can restore a .gch built from different header "
+            "contents, or (after a comment-only edit) one whose `#pragma once` "
+            "records no longer match, which fails with redefinition errors. A "
+            "clean build does not avoid this. Use scripts/ccache_pch_safe.sh as "
+            "the launcher: it always compiles a PCH and caches only the units "
+            "that use it (see CLAUDE.md, \"ccache\").")
     endif()
 endif()
 if(RIFTBOUND_USE_PCH)
@@ -423,6 +430,7 @@ add_library(riftbound_core
     src/engine/chain_manager.cpp
     src/engine/effect_executor.cpp
     src/engine/trigger_manager.cpp
+    src/engine/keyword_abilities.cpp
     src/engine/knowledge_tracker.cpp
     src/engine/deck_ops.cpp
     src/io/state_renderer.cpp

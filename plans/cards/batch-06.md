@@ -39,7 +39,7 @@ Engine facts traced for this batch (used by the findings below):
   - Text: "[Backline] ... Your [Temporary] effects at my battlefield don't trigger."
   - Code: def sets `Keyword::Temporary` on LeBlanc (the comment at line 24 wrongly says she is herself [Temporary]).
   - Scenario: LeBlanc dies at the start of her controller's next Beginning Phase instead of staying to protect Temporary units.
-- [ ] **649 Blue Sentinel** - `units/0649_blue_sentinel.cpp:18` [confirmed] high
+- [x] **649 Blue Sentinel** - `units/0649_blue_sentinel.cpp:18` [confirmed] high — FIXED (sweep-triggers): `Card::extraScoreTriggers` + `TriggerManager::onScore` queue every hold ability of that hold once more; test: SweepTriggersTest.BlueSentinel_HoldEffectsHereTriggerAnAdditionalTime, .BlueSentinel_DoesNotDoubleAHoldAtAnotherBattlefield
   - c6: FIXED (second sentence): the hold queues a `DelayedAbility{AtStartOfMain}` that adds the [A]; nothing is added at the hold; test: C6Test.BlueSentinel_AddsThePowerAtTheNextMainPhaseNotAtTheHold
   - BLOCKED (first sentence, "hold effects for holding here trigger an additional time"): needs `TriggerManager::onScore` to queue every hold trigger for the battlefield (units, their gear, the legend, the battlefield card) once more per such unit there, as `queueOwnDeathTrigger` does with `deathknell_double_count`. Same engine change as Red Brambleback 591 (conquer). Engine work, not a card stream's.
   - Text: "Your hold effects for holding here trigger an additional time. When I hold, [Add] [A] at the start of your next Main Phase."
@@ -100,7 +100,7 @@ Engine facts traced for this batch (used by the findings below):
   - Code: not implemented; Maduli readies in the normal Awaken step and by effects.
   - Scenario: Maduli (7 cost, 6 Might) attacks, readies next turn and attacks again with a standard move; the [P] ability is meant to be his only way to move.
   - Also `canActivateAbility` (line 32) evaluates only the first Maduli found in the object map, so a second copy's legality follows the first's Might/location.
-- [ ] **620 Lillia, Protector of Dreams** - `units/0620_lillia_protector_of_dreams.cpp:50` [confirmed + documented] high
+- [x] **620 Lillia, Protector of Dreams** - `units/0620_lillia_protector_of_dreams.cpp:50` [confirmed + documented] high — FIXED (sweep-triggers): `TriggerType::WhenYouPlayATokenUnit` fired from `TokenCreatedEvent`; test: SweepTriggersTest.TokenUnit_IsAUnitBeingPlayed, .TokenGear_DoesNotTriggerPlayAUnit
   - c6: FIXED (def): `Keyword::Tank` removed from Lillia herself; test: C6Test.Defs_KeywordsThatBelongToSomethingElseAreGone
   - BLOCKED ("When you play a token unit, give me +1 [M] this turn"): `EffectExecutor::createToken` emits `TokenCreatedEvent` / `EnteredBoardEvent` only and `TriggerManager` dispatches no trigger from either. Needs a "when you play a token unit" `TriggerType` fired from `TokenCreatedEvent` on the controller's cards in play (engine).
   - Text: "When you play a token unit, give me +1 [M] this turn. Your token units have [Tank]."
@@ -183,7 +183,7 @@ Engine facts traced for this batch (used by the findings below):
   - Text: "Spend 2 XP: [Buff] me."
   - Code: activation is offered whenever XP >= 2, even when already buffed, where it is a free no-op (line 34 returns before spending).
   - Scenario: buffed Crowd Favorite keeps a legal action that does nothing.
-- [ ] **648 Zilean, Time Mage** - `units/0648_zilean_time_mage.cpp:23` [documented] low
+- [x] **648 Zilean, Time Mage** - `units/0648_zilean_time_mage.cpp:23` [documented] low — FIXED (sweep-triggers): `createToken` asks the "may", lets the controller place the copy when the instruction gave a choice of location, and `lastTokensCreated()` hands back every token (Keeper of Masks 643, Zed 810 use it); test: SweepTriggersTest.Zilean_AdditionalCopyIsAskedAndPlacedByChoice, .Zilean_AdditionalCopyCanBeDeclined, C6Test.KeeperOfMasks_ZileansExtraReflectionBecomesACopyToo
   - c6: the [plausible] scenario is confirmed and FIXED in Keeper of Masks 643: it turns every Reflection its play created into a copy, Zilean's extra one included; test: C6Test.KeeperOfMasks_ZileansExtraReflectionBecomesACopyToo
   - BLOCKED (the "may", and the copy in general): the extra token is made inside `EffectExecutor::createToken`, which cannot ask the controller and does not hand the copy's id back to the card that asked for the token. Needs the executor to return all created ids and a choice point (engine).
   - Text: "Once each turn ... you may play that token and an additional copy of it instead."
@@ -193,7 +193,7 @@ Engine facts traced for this batch (used by the findings below):
   - Text: "you may move any number of your token units to this battlefield."
   - Code: always moves every token unit.
   - Scenario: a token holding another battlefield is pulled off it, giving up that hold.
-- [ ] **550 Soraka, Wanderer** - `units/0550_soraka_wanderer.cpp:50` [confirmed] low
+- [x] **550 Soraka, Wanderer** - `units/0550_soraka_wanderer.cpp:50` [confirmed] low — FIXED (sweep-triggers): `EffectExecutor::healExhaustRecall` / `recallToBase`; test: SweepTriggersTest.Soraka_RecallsTheUnitWithoutMovingIt
   - BLOCKED: needs a recall primitive in the executor that is not a move (no `UnitMovedEvent`, gear stays attached) — the same one Vilemaw's Lair 290 and Back-Alley Bar 272 wait for (STATUS carry-over, sweep). The engine's own recalls (`death_replacement_recall_pending` in `killUnit` / `killObject`) emit `UnitMovedEvent` too.
   - Text: "recall it. (Send it to base. This isn't a move.)"
   - Code: `moveToBase` emits `UnitMovedEvent`, so the recalled unit's WhenIMove fires.

@@ -44,8 +44,7 @@ public:
             if (!from.has_value() || *from == kInvalidId) return;   // waiting / no buff to spend
             if (costDueNow(ctx)) {
                 auto& unit = ctx.state.getObject(*from);
-                unit.buff_count -= 1;
-                unit.recomputeMight();
+                ctx.executor.spendBuff(*from, ctx.controller);   // CR 427.2; "When you spend a buff"
                 ctx.events.logTrace("WILDCLAW SHAMAN: spent " + unit.name + "'s buff");
             }
         }

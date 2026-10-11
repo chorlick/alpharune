@@ -182,6 +182,12 @@ iteration must apply these.
   (`RIFTBOUND_LIBTORCH_VARIANT` = `cpu` ~200 MB, or `cu121` ~2.5 GB). No
   downloaded copy is on disk now. Use that switch; point `LIBTORCH_DIR` at the
   conda copy first, download only if that does not link. Every design call made on the user's behalf is listed for review.
+- **v6 tooling is C++ only (user, 2026-10-11):** no Python; the engine stays
+  free of libtorch and is compiled into the trainer (`add_subdirectory`), one
+  process, plain function calls; keep the code base flat. First training
+  target, when the user asks for it: one model, Yi vs Fiora, then the same
+  model continues on Fiora, then a third deck — continued training of one
+  checkpoint, no weight merging, no distillation (trainer `plans/README.md`).
 - **Stage 5 and v6 (user, 2026-10-11):** the trainer plan does not run until
   the engine fixes are merged, and every finding is required first. If stage 5
   is reached unattended, follow README stage 5: check whether v6 has replaced

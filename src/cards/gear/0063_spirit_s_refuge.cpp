@@ -21,11 +21,10 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> friendly;
-        for (auto& [id, obj] : ctx.state.objects)
-            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
-                friendly.push_back(id);
-        std::sort(friendly.begin(), friendly.end());   // stable option order, not hash order
+        const PlayerId me = ctx.controller;
+        const auto friendly = boardObjects(ctx.state, [me](const GameObject& o) {
+            return o.isUnit() && o.controller == me;
+        });
         const GameObjectId t = pickTarget(ctx, "Spirit's Refuge: buff a friendly unit", friendly);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (t == kInvalidId) return;          // none / mistarget / waiting
@@ -34,8 +33,7 @@ public:
     // "Friendly buffed units have [Deflect] if they didn't already."
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Active only while an on-board instance exists. One instance is
-        // enough and more add nothing: a unit that already has [Deflect] —
-        // printed, or from another Refuge in this pass — is skipped.
+        // enough and more add nothing.
         GameObjectId self_id = kInvalidId;
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId()) continue;
@@ -48,23 +46,14 @@ public:
             if (!u.isUnit() || u.controller != controller || !u.location.has_value())
                 continue;
             if (u.buff_count <= 0) continue;  // "buffed" = has a +1 [M] buff
-            // "if they didn't already". KNOWN GAP, not fixable in this file:
-            // this only sees the [Deflect] that is printed, given "this turn",
-            // from Equipment (Step 1a' of GameEngine::recalculateAuras) or
-            // from a hook that ALREADY ran this pass. The hooks run in
-            // state.objects (hash) order, so a card whose hook runs after
-            // this one (Allay 603, Jax 377, ...; Fiora 232 in the later
-            // applyMightDependentAura hook) adds a second [Deflect] effect
-            // and EffectExecutor::deflectCostFor sums them: the unit costs
-            // [A][A] to choose instead of [A]. Moving this grant to
-            // applyMightDependentAura would only fix the ordinary hooks, not
-            // Fiora's. It needs the engine: either a hook called after every
-            // applyPassiveAura AND applyMightDependentAura (before the last
-            // fold), or an AuraEffect flag ("only if absent") that
-            // deflectCostFor / the fold skip when the object has [Deflect]
-            // from any other source.
-            if (hasKeywordInAuraPass(u, Keyword::Deflect)) continue;
-            auraKeyword(u, self_id, Keyword::Deflect, 1);
+            // "if they didn't already": this hook cannot know — another
+            // card's hook may add [Deflect] after it ran (Allay, Jax; Fiora
+            // in the later Might-dependent hook) — so the grant is marked
+            // "only if absent" and the engine drops it, once every hook of
+            // the pass has run, from a unit that has [Deflect] printed, "this
+            // turn", from an Equipment or from any other effect. The unit
+            // then costs the [A] its own [Deflect] says, never one more.
+            auraKeywordIfAbsent(u, self_id, Keyword::Deflect, 1);
         }
     }
 private:

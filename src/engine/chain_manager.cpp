@@ -194,7 +194,7 @@ void ChainManager::processFEPR(
         // Step 1: Finalize
         // Permanents resolve immediately here (CR 337.1.c).
         // If finalize removed all items, chain is empty → done.
-        bool finalized_something = stepFinalize(resolve_permanent);
+        stepFinalize(resolve_permanent);
         if (!state_.chain.exists()) {
             // Chain emptied during finalization
             state_.turn.oc_state = OpenClosedState::Open;
@@ -225,10 +225,8 @@ void ChainManager::processFEPR(
     }
 }
 
-bool ChainManager::stepFinalize(
+void ChainManager::stepFinalize(
     std::function<void(const ChainItem&)> resolve_permanent) {
-
-    bool finalized_any = false;
 
     // Finalize pending items in order (oldest pending first)
     // Use index loop since vector may be modified
@@ -237,7 +235,6 @@ bool ChainManager::stepFinalize(
         if (item.status != ChainItemStatus::Pending) continue;
 
         item.status = ChainItemStatus::Finalized;
-        finalized_any = true;
 
         // Choices made at finalization (targets; see setFinalizeChoices). The
         // callback may put triggered abilities on the chain, so re-take the
@@ -271,7 +268,6 @@ bool ChainManager::stepFinalize(
         }
     }
 
-    return finalized_any;
 }
 
 bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,

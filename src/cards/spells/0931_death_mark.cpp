@@ -41,9 +41,8 @@ public:
         };
         playTokensChoosingLocations(ctx, "Death Mark: play the Shadow Clone", 1, make, made);
     }
-    // "[Flow] [1][A][A]": an any-domain grant. GameEngine::trashGrantCost
-    // turns it into a domain mask (any_domain -> every Domain), so each [A]
-    // may come from a different domain.
+    // "[Flow] [1][A][A]" — each [A] is Power of any domain: the two need not
+    // share one (GameEngine::trashGrantCost / resource::payIn).
     FlowCost flowCost() const override { return flow(1, 2, Domain::Fury, /*any_domain=*/true); }
 private:
     const CardDef def_ = [] {

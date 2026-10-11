@@ -45,9 +45,10 @@ public:
     //     their costs. (Use only if unattached.)" ──
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        // ENGINE-GAP: ActivationCost has no "banish this" field, so that part
-        // of the cost is paid as the ability resolves (onActivate).
-        return {.exhaust = false, .energy = 3, .power = 1, .power_domain = Domain::Mind};
+        // All of it is the cost, paid as the ability is activated: the Drive
+        // is banished before anyone can respond (ActivationCost::banish_self).
+        return {.exhaust = false, .energy = 3, .power = 1, .power_domain = Domain::Mind,
+                .banish_self = true};
     }
     // "(Use only if unattached.)" — asked of the copy that is activating. Not
     // offered with nothing to play back (the activation would only banish it).
@@ -60,23 +61,21 @@ public:
         return gear.location.has_value() && !gear.attached_to.has_value() &&
                !banishedWithThis(state, gear).empty();
     }
-    // No location is printed, so each unit goes to its controller's base or to
-    // a battlefield they control, chosen unit by unit (CR 355.2.a). The
-    // callback is re-entered after every answer, and by then the Drive is
-    // banished, so progress lives on the resolving item: resume_point kPlaying
-    // once the cost is paid (kAwaitWhere while a location is being asked) and
-    // resume_data = [units played so far, the units to play...].
+    // CR 355.2.a: each unit goes to its controller's base or to a battlefield
+    // they control that units may be played to — asked one unit at a time.
+    // The Drive is already banished when this resolves, so progress lives on
+    // the resolving item: resume_point kPlaying once the list is taken
+    // (kAwaitWhere while a location is being asked), resume_data = [units
+    // played so far, the unit ids...].
+    static constexpr int kPlaying = 31;
+    static constexpr int kAwaitWhere = 32;
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& ri = ctx.state.chain.resuming;
         const auto& bfs = ctx.state.battlefields;
-        // A battlefield the controller may play a unit to (as Wild Claw 876):
-        // one they control, not one where units can't be played, and none
-        // while they may only play units to base.
         auto unitPlayableAt = [&](const BattlefieldState& bf) {
             return bf.controller.has_value() && *bf.controller == ctx.controller &&
-                   !bf.blocks_unit_play &&
-                   !ctx.state.player(ctx.controller).units_play_base_only;
+                   battlefieldTakesUnitsFrom(ctx.state, ctx.controller, bf);
         };
         auto play = [&](GameObjectId uid, std::optional<LocationId> where) {
             // playIgnoringCost takes the card out of the banishment zone itself.
@@ -105,12 +104,11 @@ public:
             }
         } else {
             auto& gear = ctx.state.getObject(ctx.source);
-            // Left the board or was attached in response: the cost can't be paid.
-            if (!gear.location.has_value() || gear.attached_to.has_value()) return;
+            // "Banish this" was paid by the engine as the ability was activated;
+            // the Drive is in banishment now and still knows what it banished.
+            // Only the units that are still there are played.
             to_play = banishedWithThis(ctx.state, gear);
             gear.tracked_objects.clear();
-            // "Banish this" (cost), then the effect.
-            ctx.executor.banishObject(ctx.source);
             if (ri.has_value()) {
                 ri->resume_data.assign(1, 0);
                 for (auto uid : to_play) ri->resume_data.push_back(static_cast<int32_t>(uid));
@@ -119,8 +117,6 @@ public:
         }
         for (; next < to_play.size(); ++next) {
             const GameObjectId uid = to_play[next];
-            // Ask where, when there is a chain item to resume and a
-            // battlefield to offer.
             if (ri.has_value() && ctx.state.objectExists(uid)) {
                 std::vector<Intent> where;
                 for (size_t i = 0; i < bfs.size(); ++i)
@@ -142,7 +138,6 @@ public:
         }
     }
 private:
-    enum : int { kPlaying = 31, kAwaitWhere = 32 };
     /// The units this Drive banished that are still in banishment.
     static std::vector<GameObjectId> banishedWithThis(const GameState& state,
                                                       const GameObject& gear) {

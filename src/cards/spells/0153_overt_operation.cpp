@@ -65,8 +65,7 @@ public:
         } else if (ri.resume_point != kAsking) {
             ri.resume_data.assign(1, 0);
             for (auto id : friendly_units())
-                if (has_buff(id) && ri.resume_data.size() <= kMaxAsked)
-                    ri.resume_data.push_back(static_cast<int32_t>(id));
+                if (has_buff(id)) ri.resume_data.push_back(static_cast<int32_t>(id));
         }
         ri.resume_point = kAsking;
         while (ri.resume_data[0] + 1 < static_cast<int32_t>(ri.resume_data.size())) {
@@ -85,10 +84,6 @@ public:
         buff_all();
     }
 private:
-    // One question per buffed friendly unit. ChainManager::runResumable allows
-    // 1024 re-entries per resolution (kMaxResumeIterations) and throws beyond
-    // that; no board comes near it, this only keeps the spell under the bound.
-    static constexpr size_t kMaxAsked = 1000;
     enum : int { kAsking = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {

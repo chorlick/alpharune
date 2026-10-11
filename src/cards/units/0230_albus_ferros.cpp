@@ -29,7 +29,8 @@ public:
             for (int i = 0; i < obj.buff_count; ++i) buffs.push_back(id);
         }
         std::vector<GameObjectId> chosen;
-        if (!pickSeveral(ctx, "Albus Ferros: spend a buff from", kPickSeveralMaxPicks,
+        // "any number": as many as there are buffs.
+        if (!pickSeveral(ctx, "Albus Ferros: spend a buff from", static_cast<int>(buffs.size()),
                          buffs, chosen)) return;   // waiting for the agent
         int spent = 0;
         for (auto id : chosen) {

@@ -2845,6 +2845,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
                 if (src_bf.blocks_move_to_base) allow_to_base = false;
             }
             if (unit.cant_move_to_base) allow_to_base = false;  // Determined Sentry
+            if (unit.aura_cant_move_to_base) allow_to_base = false;  // Minotaur Reckoner
             if (allow_to_base) {
                 actions.push_back(Intent::standardMove(
                     player, {unit_id}, BaseLocation{player}));
@@ -4802,6 +4803,7 @@ void GameEngine::recalculateAuras() {
         obj.granted_abilities = obj.temp_granted_abilities;  // Forge / Gardens / Heimerdinger re-add theirs; "this turn" grants persist
         obj.prevent_enemy_spell_ability_damage = false;      // Esteemed Hierophant
         obj.cant_be_moved_by_enemy = false;                  // Jagged Cutlass
+        obj.aura_cant_move_to_base = false;                  // Minotaur Reckoner
         obj.empower_cost_reduction = 0;              // Risen Altar
         // Empowered is a board status (CR 442.2): it doesn't survive leaving.
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) {

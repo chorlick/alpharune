@@ -223,6 +223,10 @@ struct GameObject {
     // main-phase move generator (parallel to BattlefieldState::blocks_move_to_base,
     // which is the per-battlefield variant).
     bool cant_move_to_base = false;
+    // The continuous form ("Units can't move to base." — Minotaur Reckoner):
+    // cleared at the start of every aura pass and re-asserted by the source's
+    // Card::applyPassiveAura, so it ends when the source leaves the board.
+    bool aura_cant_move_to_base = false;
 
     // ── Take-control reversion (CR 416, Phase 6q+) ──
     // EffectExecutor::takeControl with `until_end_of_turn=true` snapshots

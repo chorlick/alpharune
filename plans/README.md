@@ -335,10 +335,10 @@ All of:
 
 - [x] No `- [ ]` remains in any file under `plans/` except this list (`plans/remaining/` holds no item).
 - [x] Every stream in `STATUS.md` is `merged`; every gate row has evidence.
-- [ ] `master` contains the final integration commit.
+- [x] `master` contains the final integration commit.
 - [x] Full test suite and smoke pass on that commit.
-- [ ] No `fix/*` branch and no worktree remains; `.worktrees/` is gone.
-- [ ] The user has the final report (section 7 step 6).
+- [x] No `fix/*` branch and no worktree remains; `.worktrees/` is gone.
+- [x] The user has the final report (section 7 step 6).
 
 Tick these last, on `master`, as the final commit of the run.
 

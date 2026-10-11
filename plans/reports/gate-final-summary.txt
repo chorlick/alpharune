@@ -1,0 +1,23 @@
+commit 079da50  18:45:33
+build rc=0
+tests rc=0
+[  PASSED  ] 3065 tests.
+openspiel_tests rc=0
+[  PASSED  ] 27 tests.
+clone_equiv rc=0
+  game 10: OK (50 walked, 176 post-clone, terminal, clone=10.586 us)
+
+Clone-equivalence: 10/10 passed, 0 skipped, 0 failed in 0.0302984s
+smoke rc=0
+Results (200 games):
+  P1 wins: 138
+  P2 wins: 62
+  Draws:   0
+  Avg turns: 17
+  Avg decisions: 295
+  Threads: 6
+mcts batch without fault rc=0 (want 0)
+mcts batch with RIFTBOUND_STEP_FAULT_AT=40 rc=1 (want non-zero, not a draw)
+Error: a game failed: game 1 [seed=7]: RIFTBOUND_STEP_FAULT_AT: injected engine fault at decision 40
+  Draws:   0
+done 18:49:12

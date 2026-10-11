@@ -33,7 +33,7 @@ public:
             if (step % 4 == 3) {
                 out = ctx.state.player(p).hand;
             } else {
-                for (auto& [id, obj] : ctx.state.objects) {
+                for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                     if (obj.controller != p || !obj.location.has_value()) continue;
                     if (step % 4 == 0 ? obj.isUnit() : step % 4 == 1 ? obj.isGear() : obj.isRune())
                         out.push_back(id);

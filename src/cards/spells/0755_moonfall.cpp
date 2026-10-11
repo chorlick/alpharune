@@ -31,7 +31,7 @@ public:
     static uint32_t battlefieldMask(const GameState& state, PlayerId p) {
         uint32_t mask = 0;
         for (size_t i = 0; i < state.battlefields.size() && i < 32; ++i)
-            for (const auto& [id, obj] : state.objects) {
+            for (const auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != p) continue;
                 const auto at = obj.battlefieldId();
                 if (at.has_value() && *at == state.battlefields[i].id) { mask |= (1u << i); break; }
@@ -82,7 +82,7 @@ public:
         }
         // "Then give enemy units there -2 [M] this turn."
         std::vector<GameObjectId> there;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
             const auto at = obj.battlefieldId();
             if (at.has_value() && *at == bf) there.push_back(id);

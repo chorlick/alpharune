@@ -41,7 +41,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller == controller && obj.location.has_value())
                 out.push_back(id);
         }

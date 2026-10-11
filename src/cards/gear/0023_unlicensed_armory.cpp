@@ -37,7 +37,7 @@ public:
         const GameState& state, PlayerId controller,
         int /*ability_index*/) const override {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             out.push_back(id);

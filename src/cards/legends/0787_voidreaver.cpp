@@ -47,7 +47,7 @@ public:
         std::vector<GameObjectId> out;
         if (ability_index == 0) {
             // Any unit (buff target).
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || !obj.location.has_value()) continue;
                 // "Can't be chosen by enemy spells and abilities."
                 if (obj.controller != controller && obj.untargetable_by_enemy) continue;
@@ -55,7 +55,7 @@ public:
             }
         } else {
             // Exhausted friendly unit at a battlefield.
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (!std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;

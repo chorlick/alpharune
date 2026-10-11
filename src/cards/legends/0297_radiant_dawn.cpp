@@ -23,7 +23,7 @@ public:
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> friendly;
-        for (const auto& [id, obj] : ctx.state.objects)
+        for (const auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
         std::sort(friendly.begin(), friendly.end());

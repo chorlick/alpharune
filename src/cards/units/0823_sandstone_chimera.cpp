@@ -19,7 +19,7 @@ public:
     //  their Channel Phase." TurnState::channel_phase_cap is reset every aura
     // pass and re-asserted here.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
             state.turn.channel_phase_cap = 1;

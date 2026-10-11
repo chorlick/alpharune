@@ -23,7 +23,7 @@ public:
     // aura (not a base keyword) so it is correctly absent when no XP was gained.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (state.player(controller).xp_gained_this_turn <= 0) return;
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;  // must be on board
             GameObject::AuraEffect ae;

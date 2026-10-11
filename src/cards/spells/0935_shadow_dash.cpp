@@ -16,7 +16,7 @@ namespace {
 std::vector<BattlefieldId> battlefieldsWithUnitsOf(const GameState& state, PlayerId player) {
     std::vector<BattlefieldId> out;
     for (const auto& bf : state.battlefields) {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != player) continue;
             auto at = obj.battlefieldId();
             if (at.has_value() && *at == bf.id) { out.push_back(bf.id); break; }
@@ -85,7 +85,7 @@ public:
         ctx.executor.moveToBattlefield(u, bf);
         // "If you have exactly two units there, they each get +1 [M] this turn."
         std::vector<GameObjectId> mine;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             auto at = obj.battlefieldId();
             if (at.has_value() && *at == bf) mine.push_back(id);

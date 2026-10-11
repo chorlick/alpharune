@@ -22,7 +22,7 @@ public:
         forEachSelfOnce(*this, state, controller,
             [&](GameObjectId sid, GameObject& self) {
                 const int bonus = self.isEmpowered() ? 2 : 1;
-                for (auto& [uid, u] : state.objects) {
+                for (auto& [uid, u] : state.objects.onBoard()) {
                     if (!u.isUnit() || u.controller != controller) continue;
                     if (!u.location.has_value()) continue;
                     auraMight(u, sid, bonus);

@@ -31,7 +31,7 @@ public:
         trash.erase(it);
         ctx.executor.recycleCards(ctx.controller, {ctx.source});
         int readied = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isRune() || obj.controller != ctx.controller) continue;
             if (!obj.is_exhausted) continue;
             if (!obj.location.has_value()) continue;

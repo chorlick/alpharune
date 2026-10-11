@@ -20,7 +20,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> others;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source || !obj.isUnit()) continue;
             if (obj.controller != ctx.controller || !obj.location.has_value()) continue;
             others.push_back(id);

@@ -35,11 +35,11 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
         int own_formulas = 0;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.isGear() && obj.location.has_value() && obj.controller == controller &&
                 obj.card_def_id == cardDefId()) ++own_formulas;
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isGear() || !obj.location.has_value()) continue;
             if (obj.controller != controller && obj.untargetable_by_enemy) continue;
             if (obj.controller == controller && obj.card_def_id == cardDefId() &&

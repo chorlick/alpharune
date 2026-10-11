@@ -37,7 +37,7 @@ public:
         if (ability_index != 0) return {};
         if (state.turn.turn_player != controller) return {};   // "If it's your turn"
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller) continue;
             auto bf = obj.battlefieldId();
             if (!bf) continue;

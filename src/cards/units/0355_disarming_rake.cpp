@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto gearTargets = [&]() {
             std::vector<GameObjectId> gears;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isGear()) continue;
                 if (!obj.location.has_value()) continue;  // must be on board
                 gears.push_back(id);

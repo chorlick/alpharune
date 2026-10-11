@@ -28,7 +28,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return out;
         const auto& self = ctx.state.getObject(ctx.source);
         if (!self.location.has_value()) return out;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() && !obj.isGear()) continue;
             if (!obj.location.has_value() || *obj.location != *self.location) continue;
             if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;

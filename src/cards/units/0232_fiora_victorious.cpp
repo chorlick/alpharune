@@ -25,7 +25,7 @@ public:
     // card's +[M] aura counts in the pass it appears.
     bool hasMightDependentAura() const override { return true; }
     void applyMightDependentAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
             if (!self.location.has_value()) continue;

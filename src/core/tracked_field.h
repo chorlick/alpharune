@@ -13,9 +13,14 @@
 /// table adopts the object it is part of (ObjectTable does that for every
 /// object it inserts or copies). Assigning to a field keeps the table it
 /// already reports to.
+///
+/// The flag is atomic because readers of a const table may be on other
+/// threads (object_table.h, "Threads"); a write to a field is still a write
+/// to the state, which needs the state to oneself as any other write does.
 
 #include "types.h"
 
+#include <atomic>
 #include <optional>
 #include <utility>
 
@@ -41,13 +46,13 @@ private:
     void set(const T& v) {
         if (value_ == v) return;
         value_ = v;
-        if (stale_) *stale_ = true;
+        if (stale_) stale_->store(true, std::memory_order_release);
     }
-    void reportTo(bool* stale) { stale_ = stale; }
-    bool reportsTo(const bool* stale) const { return stale_ == stale; }
+    void reportTo(std::atomic<bool>* stale) { stale_ = stale; }
+    bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
 
     T value_{};
-    bool* stale_ = nullptr;
+    std::atomic<bool>* stale_ = nullptr;
 };
 
 /// `std::optional<LocationId>` whose assignments are reported. Read access is
@@ -101,13 +106,13 @@ private:
     void set(const Value& v) {
         if (value_ == v) return;
         value_ = v;
-        if (stale_) *stale_ = true;
+        if (stale_) stale_->store(true, std::memory_order_release);
     }
-    void reportTo(bool* stale) { stale_ = stale; }
-    bool reportsTo(const bool* stale) const { return stale_ == stale; }
+    void reportTo(std::atomic<bool>* stale) { stale_ = stale; }
+    bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
 
     Value value_;
-    bool* stale_ = nullptr;
+    std::atomic<bool>* stale_ = nullptr;
 };
 
 }  // namespace riftbound

@@ -27,7 +27,7 @@ public:
         // "While I'm at a battlefield" — only when an instance of me is actually
         // at a BF (applyPassiveAura doesn't pass our object id, so scan).
         bool at_bf = false;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&
                 obj.isAtBattlefield()) { at_bf = true; break; }
         }

@@ -28,7 +28,7 @@ public:
 
         auto unitsHere = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 auto bf = obj.battlefieldId();
                 if (bf && *bf == here) out.push_back(id);

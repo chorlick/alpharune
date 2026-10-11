@@ -23,7 +23,7 @@ public:
     // call re-asserts the flag on all my copies, so a copy reset later in the
     // engine's pass is set again by its own call.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             if (obj.combat_designation == CombatDesignation::None)

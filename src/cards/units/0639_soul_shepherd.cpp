@@ -20,7 +20,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
             if (!self.location.has_value()) return;
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != controller) continue;
                 if (!obj.isToken() || !obj.location.has_value()) continue;
                 auraMight(obj, sid, 1);

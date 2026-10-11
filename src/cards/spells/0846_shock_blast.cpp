@@ -18,7 +18,7 @@ public:
     // "This costs [2] less if you control something that's [Empowered].
     //  Deal 4 to a unit at a battlefield."
     int selfCostReduction(const GameState& state, PlayerId player) const override {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.inPlay()) {
             if (obj.controller != player || !obj.isEmpowered()) continue;
             if (obj.location.has_value() || obj.zone == ZoneType::LegendZone) return 2;
         }

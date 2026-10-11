@@ -18,7 +18,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "choose an enemy unit. If it is stunned, kill it. Otherwise, stun it."
         std::vector<GameObjectId> enemies;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller != ctx.controller &&
                 obj.location.has_value() && !obj.untargetable_by_enemy)
                 enemies.push_back(id);

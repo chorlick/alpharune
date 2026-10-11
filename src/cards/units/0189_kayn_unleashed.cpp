@@ -21,6 +21,7 @@ public:
     // moves_this_turn; here we re-assert immunity each cleanup while the count
     // is >= 2.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // (Every object: finds its own instances by card id, wherever they are.)
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller)
                 continue;

@@ -25,7 +25,7 @@ public:
         if (!my_bf) return;
         // Collect first, then damage (no mutation while iterating objects).
         std::vector<GameObjectId> enemies;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
             auto bf = obj.battlefieldId();
             if (bf && *bf == *my_bf) enemies.push_back(id);

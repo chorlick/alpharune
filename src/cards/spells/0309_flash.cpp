@@ -44,7 +44,7 @@ public:
         };
         auto candidates = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (movable(id) && !picked_before(id)) out.push_back(id);
             std::sort(out.begin(), out.end());
             return out;

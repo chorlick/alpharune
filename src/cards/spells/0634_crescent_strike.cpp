@@ -25,7 +25,7 @@ public:
         if (!bf.has_value()) return;
         // Collect first, damage, then kill (AoE: never kill inside the loop).
         std::vector<GameObjectId> hit = {main};
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == main || !obj.isUnit() || obj.controller == ctx.controller) continue;
             if (obj.battlefieldId() == bf) hit.push_back(id);
         }

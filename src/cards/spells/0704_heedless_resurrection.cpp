@@ -33,7 +33,7 @@ public:
     }
     static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId me) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.isUnit() && obj.controller == me && obj.location.has_value())
                 out.push_back(id);
         return out;

@@ -23,7 +23,7 @@ public:
                 std::vector<GameObjectId> out;
                 for (const auto& bf : ctx.state.battlefields) {
                     if (bf.card_object_id != ctx.source) continue;
-                    for (auto& [id, obj] : ctx.state.objects) {
+                    for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                         if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                         auto ubf = obj.battlefieldId();
                         if (ubf && *ubf == bf.id) out.push_back(id);

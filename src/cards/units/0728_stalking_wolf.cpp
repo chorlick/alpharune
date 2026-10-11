@@ -38,7 +38,7 @@ public:
     }
     static std::vector<GameObjectId> fodder(const GameState& state, PlayerId player) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (isFodder(obj, player)) out.push_back(id);
         std::sort(out.begin(), out.end());
         return out;

@@ -78,7 +78,7 @@ public:
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& /*data*/) override {
         std::vector<GameObjectId> friendly;
-        for (auto& [oid, u] : ctx.state.objects)
+        for (auto& [oid, u] : ctx.state.objects.onBoard())
             if (u.isUnit() && u.controller == ctx.controller && u.location.has_value())
                 friendly.push_back(oid);
         std::sort(friendly.begin(), friendly.end());

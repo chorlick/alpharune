@@ -19,7 +19,7 @@ public:
         // "gain 1 XP for each friendly unit" — count on-board friendly units
         // (including myself, who has just entered).
         int friendly_units = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
             ++friendly_units;

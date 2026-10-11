@@ -22,12 +22,12 @@ public:
     // units here there is no Assault at all (a bare Assault effect would count
     // as Assault 1).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             auto my_bf = self.battlefieldId();
             if (!my_bf) continue;
             int enemies = 0;
-            for (auto& [tid, tgt] : state.objects) {
+            for (auto& [tid, tgt] : state.objects.onBoard()) {
                 if (!tgt.isUnit() || tgt.controller == controller) continue;
                 if (tgt.battlefieldId() == my_bf) ++enemies;
             }

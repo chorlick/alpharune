@@ -23,7 +23,7 @@ public:
         // Find this gear's on-board instance(s); if attached and the
         // controller has >= 3 XP, push +1 might onto the equipped unit.
         if (state.player(controller).xp < 3) return;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller) continue;
             // On the board and attached to a unit that is on the board: a

@@ -18,7 +18,7 @@ public:
     // board as the spell resolves; nothing is chosen.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> units;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 units.push_back(id);
         for (auto id : units) ctx.executor.giveTemporaryMight(id, 2);

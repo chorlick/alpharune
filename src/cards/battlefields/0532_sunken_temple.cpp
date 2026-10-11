@@ -25,7 +25,7 @@ public:
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
         const auto my_bf = battlefieldOfCard(state, source);
         if (!my_bf) return false;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.isUnit() && obj.controller == controller &&
                 obj.battlefieldId() == my_bf && isMighty(obj)) return true;
         return false;

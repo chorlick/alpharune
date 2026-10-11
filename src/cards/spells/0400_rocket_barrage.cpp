@@ -37,7 +37,7 @@ public:
     }
     static std::vector<GameObjectId> gearOnBoard(const GameState& state, PlayerId me) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isGear() || !obj.location.has_value()) continue;
             if (obj.controller != me && obj.untargetable_by_enemy) continue;
             out.push_back(id);

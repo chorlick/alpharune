@@ -63,7 +63,7 @@ public:
         const GameState& state, PlayerId controller) const override {
         // All units on the board; enumerateLegalTargetSets pairs them up.
         std::vector<GameObjectId> targets;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             // "Can't be chosen by enemy spells and abilities."
             if (obj.controller != controller && obj.untargetable_by_enemy) continue;

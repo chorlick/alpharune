@@ -37,7 +37,7 @@ public:
             ctx.state.getObject(ctx.source).card_counters[kFiredTurn] =
                 ctx.state.turn.turn_number + 1;   // +1: avoid the 0-default
         std::vector<GameObjectId> friendly;
-        for (const auto& [id, obj] : ctx.state.objects)
+        for (const auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
         std::sort(friendly.begin(), friendly.end());

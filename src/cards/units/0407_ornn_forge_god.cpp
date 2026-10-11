@@ -20,11 +20,11 @@ public:
     // "I have +1 [M] for each friendly gear." Recomputed every aura pass.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Locate this OrnnForgeGod instance (on board, controlled by `controller`).
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
             int gear_count = 0;
-            for (auto& [gid, g] : state.objects) {
+            for (auto& [gid, g] : state.objects.onBoard()) {
                 if (g.isGear() && g.controller == controller && g.location.has_value())
                     ++gear_count;
             }

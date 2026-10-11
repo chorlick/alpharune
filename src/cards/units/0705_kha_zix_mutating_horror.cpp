@@ -24,7 +24,7 @@ public:
         // Count enemy units at this BF — "alone" means exactly 1.
         auto opp = opponent(ctx.controller);
         int enemy_count = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp) continue;
             if (obj.battlefieldId() == bf_id) ++enemy_count;
         }

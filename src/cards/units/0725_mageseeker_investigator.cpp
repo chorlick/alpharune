@@ -23,7 +23,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (controller == PlayerId::None) return;
         const PlayerId opp = opponent(controller);
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller)
                 continue;
             auto bf = obj.battlefieldId();

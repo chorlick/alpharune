@@ -36,7 +36,7 @@ public:
             if (cz.isUnit() && hasTag(cz, "Teemo")) out.push_back(ps.champion_zone);
         }
         // On board.
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.owner != controller) continue;
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             if (hasTag(obj, "Teemo")) out.push_back(id);

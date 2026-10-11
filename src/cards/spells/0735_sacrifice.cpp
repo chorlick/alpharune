@@ -29,7 +29,7 @@ public:
     }
     static std::vector<GameObjectId> mightyUnits(const GameState& state, PlayerId controller) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller == controller &&
                 obj.location.has_value() && obj.current_might >= 5) {
                 out.push_back(id);

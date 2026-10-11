@@ -21,7 +21,7 @@ public:
         if (!self.location.has_value()) return;  // must be "here" at a location
         const auto here = *self.location;
         int granted = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;                  // "other" units
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value() || *obj.location != here) continue;

@@ -22,7 +22,7 @@ public:
         const auto& self = ctx.state.getObject(ctx.source);
         if (!self.location.has_value()) return;
         const LocationId here = *self.location;   // a battlefield, or my base
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;  // "other units"
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (obj.location.has_value() && *obj.location == here)

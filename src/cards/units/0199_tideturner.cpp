@@ -28,7 +28,7 @@ public:
             std::vector<GameObjectId> out;
             const auto& self = ctx.state.getObject(ctx.source);
             if (!self.location.has_value()) return out;
-            for (const auto& [id, obj] : ctx.state.objects) {
+            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (id == ctx.source || !obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value() || *obj.location == *self.location) continue;
                 out.push_back(id);

@@ -31,7 +31,7 @@ public:
         // location (only meaningful when the unit is on board somewhere).
         if (!tgt.location.has_value()) return;
         int friendly_here = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;

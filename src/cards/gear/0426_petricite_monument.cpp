@@ -20,14 +20,14 @@ public:
     // on-board instance of this gear controlled by `controller` exists.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         GameObjectId self_id = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             self_id = id;
             break;
         }
         if (self_id == kInvalidId) return;
-        for (auto& [uid, u] : state.objects) {
+        for (auto& [uid, u] : state.objects.onBoard()) {
             if (!u.isUnit() || u.controller != controller || !u.location.has_value())
                 continue;
             GameObject::AuraEffect ae;

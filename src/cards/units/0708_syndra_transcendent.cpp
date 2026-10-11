@@ -20,7 +20,7 @@ public:
     // spell-play path builds a RepeatCost from these when the spell has no
     // printed [Repeat]. [2][P] = 2 energy + 1 Chaos power.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller)
                 continue;
             auto bf = obj.battlefieldId();

@@ -21,7 +21,7 @@ public:
         const auto here = ctx.state.getObject(targets[0]).battlefieldId();
         if (!here.has_value()) return;
         int enemies = 0;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller != ctx.controller && obj.battlefieldId() == here)
                 ++enemies;
         if (enemies > 0) ctx.executor.giveTemporaryMight(targets[0], 2 * enemies);

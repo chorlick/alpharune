@@ -23,7 +23,7 @@ public:
             [&](const GameObject& u) {
                 const auto bf = u.battlefieldId();
                 if (!bf) return false;
-                for (const auto& [id, o] : state.objects)
+                for (const auto& [id, o] : state.objects.onBoard())
                     if (id != u.id && o.isUnit() && o.battlefieldId() == bf) return true;
                 return false;
             });

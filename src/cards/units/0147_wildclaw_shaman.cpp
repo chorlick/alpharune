@@ -26,7 +26,7 @@ public:
         // the chain (CR 383.3). No buffed unit, no offer.
         auto buffed = [&]() {
             std::vector<GameObjectId> out;
-            for (const auto& [id, obj] : ctx.state.objects)
+            for (const auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == ctx.controller &&
                     obj.location.has_value() && obj.buff_count > 0)
                     out.push_back(id);

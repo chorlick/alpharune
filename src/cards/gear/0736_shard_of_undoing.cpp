@@ -56,7 +56,7 @@ public:
         // Deflect and no "can't be chosen").
         const PlayerId opp = opponent(ctx.controller);
         std::vector<GameObjectId> theirs;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.isUnit() && obj.controller == opp && obj.location.has_value())
                 theirs.push_back(id);
         std::sort(theirs.begin(), theirs.end());

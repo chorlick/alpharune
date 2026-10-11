@@ -20,7 +20,7 @@ public:
     const CardDef& def() const override { return def_; }
 
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             GameObject::AuraEffect ae;

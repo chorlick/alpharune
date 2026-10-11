@@ -26,7 +26,7 @@ public:
         const auto none = static_cast<int32_t>(kInvalidId);
         auto unitsOf = [&](PlayerId p) {
             std::vector<GameObjectId> out;
-            for (const auto& [id, obj] : ctx.state.objects)
+            for (const auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == p && obj.location.has_value())
                     out.push_back(id);
             std::sort(out.begin(), out.end());
@@ -69,7 +69,7 @@ public:
         ri.resume_point = 3;
         // Collect before killing (killing mutates zones / fires events).
         std::vector<GameObjectId> doomed;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             if (static_cast<int32_t>(id) == ri.resume_data[0] ||
                 static_cast<int32_t>(id) == ri.resume_data[1]) continue;

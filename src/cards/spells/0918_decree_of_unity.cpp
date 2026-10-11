@@ -24,7 +24,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (!obj.isUnit() && !obj.isGear()) continue;
             if (obj.controller == controller || obj.untargetable_by_enemy) continue;

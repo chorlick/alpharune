@@ -35,7 +35,7 @@ public:
         if (ctx.state.objectExists(ctx.source)) {
             const auto& self = ctx.state.getObject(ctx.source);
             if (!self.attached_to.has_value() && self.isAtBattlefield()) {
-                for (const auto& [id, obj] : ctx.state.objects) {
+                for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
                     if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                     if (!obj.location.has_value() || *obj.location != *self.location) continue;
                     here.push_back(id);

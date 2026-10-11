@@ -25,7 +25,7 @@ public:
         const PlayerId players[2] = {ctx.controller, opponent(ctx.controller)};
         auto own_units = [&](PlayerId p) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == p && obj.location.has_value())
                     out.push_back(id);
             std::sort(out.begin(), out.end());

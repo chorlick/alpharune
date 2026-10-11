@@ -136,7 +136,7 @@ public:
                 endCopy(ctx, ctx.source, static_cast<GameObjectId>(it->second - 1));
         }
         std::vector<GameObjectId> others;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == unit || !obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
             others.push_back(id);

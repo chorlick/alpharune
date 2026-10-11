@@ -35,7 +35,7 @@ public:
     bool needsPlayTimeTargetPair() const override { return true; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         bool friendly = false, enemy = false;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             if (obj.controller == controller) friendly = true;
             else if (obj.isAtBattlefield() && !obj.untargetable_by_enemy) enemy = true;
@@ -44,12 +44,12 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> friendly;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
         auto enemy_fn = [&](GameObjectId /*a*/) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
                 if (!obj.isAtBattlefield() || obj.untargetable_by_enemy) continue;
                 out.push_back(id);

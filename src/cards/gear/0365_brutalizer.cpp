@@ -30,6 +30,7 @@ public:
         static const char* const kBearer = "__brutalizer_bearer";
         static const char* const kTurn = "__brutalizer_attach_turn";
         const int this_turn = state.turn.turn_number + 1;
+        // (Every object: finds its own instances by card id; one off the board has its counters cleared.)
         for (auto& [gid, gear] : state.objects) {
             if (gear.card_def_id != cardDefId() || gear.controller != controller) continue;
             if (!gear.location.has_value() || !gear.attached_to.has_value()) {

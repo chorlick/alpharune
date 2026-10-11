@@ -25,7 +25,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto fodder = [&](const std::vector<int32_t>& taken) {
             std::vector<GameObjectId> out;
-            for (const auto& [id, obj] : ctx.state.objects) {
+            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (id == ctx.source || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (!obj.isUnit() && !obj.isGear()) continue;

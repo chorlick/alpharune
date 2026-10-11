@@ -21,7 +21,7 @@ public:
     // they play enters ready if a Wurm other than itself is listed — so a
     // lone Wurm enters exhausted and a second Wurm enters ready.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             state.player(controller).units_enter_ready_by.push_back(id);

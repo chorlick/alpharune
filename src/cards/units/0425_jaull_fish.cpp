@@ -19,7 +19,7 @@ public:
     // engine-handled.) Mighty = current_might >= 5.
     int selfCostReduction(const GameState& state, PlayerId player) const override {
         int mighty = 0;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != player) continue;
             if (!obj.location.has_value()) continue;
             if (isMighty(obj)) ++mighty;

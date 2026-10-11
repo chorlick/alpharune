@@ -19,6 +19,7 @@ public:
     // a battlefield's facedown zone — it has no board location, hidden_at says
     // which battlefield.
     static bool controlsFacedownCard(const GameState& state, PlayerId player) {
+        // (Every object: facedown cards, which are not on the board.)
         for (const auto& [id, obj] : state.objects)
             if (obj.controller == player && obj.is_hidden && obj.hidden_at != kInvalidId)
                 return true;

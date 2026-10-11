@@ -21,10 +21,10 @@ public:
         // board is its own source (two of them: Deflect 2, CR 809.2). The
         // keywords are not printed on the card itself — a Breakneck Mech has
         // them because it is one of your Mechs.
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
                 if (!hasTag(u, "Mech")) continue;
                 auraKeyword(u, sid, Keyword::Deflect);
@@ -36,7 +36,7 @@ public:
     // one, another Breakneck Mech included.
     bool entersReadyOnPlay(const GameState& state, PlayerId controller,
                            const GameObject& self) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value())
                 continue;
             if (id == self.id) continue;   // "another Mech"

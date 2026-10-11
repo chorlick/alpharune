@@ -33,7 +33,7 @@ public:
         if (anchor == kInvalidId || !ctx.state.objectExists(anchor)) return;
         auto bf = ctx.state.getObject(anchor).battlefieldId();
         if (!bf) return;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (obj.battlefieldId() != bf) continue;
             if (obj.controller == ctx.controller)

@@ -38,7 +38,7 @@ public:
         // readying, so only those are offered.
         auto exhausted_gear = [&](GameObjectId except) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isGear() || !obj.location.has_value() || !obj.is_exhausted) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
                 if (id != except) out.push_back(id);

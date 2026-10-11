@@ -16,13 +16,13 @@ class AllayEagerAdmirer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
             if (!self.isAtBattlefield()) continue;     // "While I'm at a battlefield"
             auto bf = self.battlefieldId();
             if (!bf) continue;
-            for (auto& [tid, tgt] : state.objects) {
+            for (auto& [tid, tgt] : state.objects.onBoard()) {
                 if (tid == sid) continue;               // "other"
                 if (!tgt.isUnit() || tgt.controller != controller) continue; // "your units"
                 auto tbf = tgt.battlefieldId();

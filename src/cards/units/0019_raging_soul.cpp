@@ -21,7 +21,7 @@ public:
     //  so this tracks the live discard flag and drops off at end of turn.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (!state.player(controller).has_discarded_this_turn) return;
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;
             // Ganking (movement keyword — presence only).

@@ -22,6 +22,7 @@ public:
     // (GameObject::cant_be_moved_by_enemy is reset every aura pass and
     // honoured by EffectExecutor::moveToBase / moveToBattlefield.)
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // (Every object: finds its own instances by card id, wherever they are.)
         for (auto& [gid, gear] : state.objects) {
             if (gear.card_def_id != cardDefId() || gear.controller != controller) continue;
             if (!gear.attached_to.has_value() || !state.objectExists(*gear.attached_to)) continue;

@@ -18,7 +18,7 @@ public:
 
     // "While you have another unit here, I have +1 [M]." Conditional self-aura.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;
             // "here" — my location, a battlefield or my base (CR 464.2.b).

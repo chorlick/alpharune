@@ -26,11 +26,11 @@ public:
     // so it is decided in the Might-dependent hook, on this pass's Might.
     bool hasMightDependentAura() const override { return true; }
     void applyMightDependentAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             auto my_bf = self.battlefieldId();
             if (!my_bf) continue;
-            for (auto& [tid, tgt] : state.objects) {
+            for (auto& [tid, tgt] : state.objects.onBoard()) {
                 if (!tgt.isUnit() || tgt.controller == controller) continue;  // enemy
                 if (tgt.battlefieldId() != my_bf) continue;                    // here
                 if (tgt.current_might >= self.current_might) continue;          // less Might

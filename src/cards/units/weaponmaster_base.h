@@ -47,7 +47,7 @@ public:
     static std::vector<GameObjectId> weaponmasterChoices(const CardContext& ctx,
                                                          GameObjectId unit) {
         std::vector<GameObjectId> equipment;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isGear() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
             if (std::find(obj.tags.begin(), obj.tags.end(), "Equipment") == obj.tags.end()) continue;

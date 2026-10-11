@@ -33,7 +33,7 @@ public:
         // enemy ones that can't be chosen by enemy abilities are left out.
         auto find_targets = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.inPlay()) {
                 if (id == ctx.source || !obj.is_exhausted) continue;
                 const bool legend = obj.isLegend() && obj.zone == ZoneType::LegendZone;
                 if (!obj.location.has_value() && !legend) continue;

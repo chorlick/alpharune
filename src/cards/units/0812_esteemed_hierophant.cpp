@@ -21,7 +21,7 @@ public:
     // and honoured by EffectExecutor::dealDamage for enemy sources only.)
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (runesControlled(state, controller) < 7) return;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             obj.prevent_enemy_spell_ability_damage = true;

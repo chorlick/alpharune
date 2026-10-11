@@ -17,7 +17,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         int mighty = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
             if (obj.current_might >= 5) mighty++;

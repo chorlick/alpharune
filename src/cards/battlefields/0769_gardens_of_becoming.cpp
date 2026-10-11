@@ -38,7 +38,7 @@ public:
         for (const auto& b : state.battlefields) {
             if (!state.objectExists(b.card_object_id)) continue;
             if (state.getObject(b.card_object_id).card_def_id != cardDefId()) continue;
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit()) continue;
                 auto ubf = obj.battlefieldId();
                 if (!ubf || *ubf != b.id) continue;

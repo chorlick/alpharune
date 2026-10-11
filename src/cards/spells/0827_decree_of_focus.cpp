@@ -27,7 +27,7 @@ public:
     }
     static bool qualifies(const GameState& state, PlayerId controller, const GameObject& unit) {
         if (unit.isAtBattlefield() && unit.combat_designation != CombatDesignation::None) {
-            for (const auto& [eid, e] : state.objects) {
+            for (const auto& [eid, e] : state.objects.onBoard()) {
                 if (!e.isUnit() || e.controller == controller || !e.location.has_value()) continue;
                 if (!(*e.location == *unit.location)) continue;
                 if (e.combat_designation == CombatDesignation::None) continue;
@@ -54,7 +54,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(const GameState& state,
                                                     PlayerId controller) const override {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
             if (qualifies(state, controller, obj)) out.push_back(id);
         }

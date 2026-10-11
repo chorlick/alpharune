@@ -32,7 +32,7 @@ public:
     bool needsPlayTimeTargetPair() const override { return true; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> legal_friendly;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (!obj.isUnit()) continue;
             if (obj.controller != ctx.controller) continue;
@@ -40,7 +40,7 @@ public:
         }
         auto enemy_fn = [&](GameObjectId /*picked_a*/) {
             std::vector<GameObjectId> legal_enemy;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.location.has_value()) continue;
                 if (!obj.isUnit()) continue;
                 if (obj.controller == ctx.controller) continue;

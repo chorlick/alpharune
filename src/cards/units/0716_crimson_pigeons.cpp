@@ -19,10 +19,12 @@ public:
     // attacker and at least one OTHER friendly unit is also attacking, grant
     // a +2 [M] aura to self.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // (Every object: finds its own instances by card id, wherever they are.)
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (self.combat_designation != CombatDesignation::Attacker) continue;
             bool another_attacker = false;
+            // (Every object: reads the combat designation, which a unit keeps wherever it is until cleanup.)
             for (auto& [oid, other] : state.objects) {
                 if (oid == sid) continue;
                 if (!other.isUnit() || other.controller != controller) continue;

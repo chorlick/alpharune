@@ -46,7 +46,7 @@ public:
         // nothing: it returns the runes named then, without any that has been
         // readied or has left the board since, and no other in its place.
         std::vector<GameObjectId> exhausted;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (readiable(id)) exhausted.push_back(id);
         const auto chosen = selectSeveral(ctx, label, exhausted, /*max_picks=*/4);
         if (!chosen.has_value()) return;   // waiting for the agent

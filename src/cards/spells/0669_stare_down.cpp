@@ -47,7 +47,7 @@ public:
             const int threshold = ctx.state.getObject(chosen).current_might;
             const BattlefieldId bf = bfs[mode].id;
             std::vector<GameObjectId> weaker;
-            for (const auto& [id, obj] : ctx.state.objects) {
+            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
                 const auto at = obj.battlefieldId();
                 if (!at.has_value() || *at != bf) continue;

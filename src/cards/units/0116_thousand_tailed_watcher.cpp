@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         PlayerId opp = opponent(ctx.controller);
         std::vector<GameObjectId> enemies;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp) continue;
             if (!obj.location.has_value()) continue;
             enemies.push_back(id);

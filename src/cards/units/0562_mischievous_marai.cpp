@@ -45,7 +45,7 @@ public:
         // stores "no target" on the chain item.
         std::vector<GameObjectId> legal;
         if (my_bf) {
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != opp) continue;
                 if (obj.untargetable_by_enemy) continue;
                 auto bf = obj.battlefieldId();

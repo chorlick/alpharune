@@ -18,7 +18,7 @@ public:
     // recomputed each cleanup. NOTE: the printed def keyword set must NOT
     // include Ganking unconditionally — it is granted only while buffed.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
             if (self.buff_count <= 0) continue;

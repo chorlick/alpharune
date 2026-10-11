@@ -827,6 +827,8 @@ void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
     {
         const int mark = static_cast<int>(e.battlefield) + 1;
         std::vector<GameObjectId> participants;
+        // (Every object: the mark is also taken off a unit that has left the
+        // board since the combat began. Once per combat.)
         for (auto& [id, obj] : state_.objects) {
             auto it = obj.card_counters.find(kCombatParticipantKey);
             if (it == obj.card_counters.end() || it->second != mark) continue;
@@ -945,6 +947,7 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
         state_.getObject(e.object).last_known.killed_by != PlayerId::None) {
         const PlayerId killer = state_.getObject(e.object).last_known.killed_by;
         std::vector<GameObjectId> watchers;
+        // (Every object: a watcher may be a card in the killer's trash.)
         for (auto& [id, other] : state_.objects) {
             if (id == e.object || other.card_def_id == kInvalidId) continue;
             bool on_board = other.location.has_value() && other.controller == killer;

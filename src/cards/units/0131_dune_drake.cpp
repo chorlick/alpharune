@@ -22,7 +22,7 @@ public:
         if (!bf) return;
         PlayerId opp = opponent(ctx.controller);
         bool ready_enemy_here = false;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp) continue;
             auto obf = obj.battlefieldId();
             if (!obf || *obf != *bf) continue;

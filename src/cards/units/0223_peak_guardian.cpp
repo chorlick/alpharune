@@ -25,7 +25,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (obj.battlefieldId() != my_bf) continue;

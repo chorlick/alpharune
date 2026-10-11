@@ -26,7 +26,7 @@ public:
         // Collect ALL units here (both players) before dealing/killing (AoE
         // collect-then-kill to avoid iterator invalidation).
         std::vector<GameObjectId> units_here;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             auto bf = obj.battlefieldId();
             if (bf && *bf == here) units_here.push_back(id);

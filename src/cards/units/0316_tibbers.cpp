@@ -18,7 +18,7 @@ public:
         // "deal 3 to all units at battlefields" — units in a base are untouched.
         {
             std::vector<GameObjectId> to_damage;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
                 to_damage.push_back(id);
             }

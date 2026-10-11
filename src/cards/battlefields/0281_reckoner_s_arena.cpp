@@ -47,7 +47,7 @@ public:
     static bool suppressed(CardContext& ctx, GameObjectId uid, BattlefieldId bf) {
         const auto& unit = ctx.state.getObject(uid);
         if (!unit.hasKeyword(Keyword::Temporary)) return false;
-        for (const auto& [oid, other] : ctx.state.objects) {
+        for (const auto& [oid, other] : ctx.state.objects.onBoard()) {
             if (oid == uid || other.controller != unit.controller) continue;
             auto obf = other.battlefieldId();
             if (!obf || *obf != bf) continue;
@@ -84,7 +84,7 @@ public:
         // Snapshot the holder's units here first: queuing and gear effects can
         // touch the object map.
         std::vector<GameObjectId> units;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             auto ubf = obj.battlefieldId();
             if (ubf && *ubf == *my_bf) units.push_back(id);

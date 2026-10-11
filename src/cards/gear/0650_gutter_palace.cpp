@@ -22,7 +22,7 @@ public:
         const auto& ps = ctx.state.player(ctx.controller);
         int hand = static_cast<int>(ps.hand.size());
         int units_at_bf = 0;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller == ctx.controller &&
                 obj.battlefieldId().has_value()) {
                 ++units_at_bf;

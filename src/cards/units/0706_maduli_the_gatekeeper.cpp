@@ -66,7 +66,7 @@ private:
             if (my_bf && *my_bf == bf.id) continue;
             int enemy_might = 0;
             bool occupied = false;
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != opp) continue;
                 auto ubf = obj.battlefieldId();
                 if (!ubf || *ubf != bf.id) continue;

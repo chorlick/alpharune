@@ -42,7 +42,7 @@ public:
             const LocationId loc = d <= 0
                 ? LocationId{BaseLocation{av.controller}}
                 : LocationId{BattlefieldLocation{static_cast<BattlefieldId>(d - 1)}};
-            for (const auto& [id, obj] : state.objects) {
+            for (const auto& [id, obj] : state.objects.onBoard()) {
                 if (id == a || !obj.isUnit() || obj.controller != av.controller) continue;
                 if (!obj.location.has_value() || !(*obj.location == loc)) continue;
                 out.push_back(d);

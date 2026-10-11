@@ -35,7 +35,7 @@ public:
         // The battlefield is fixed by the play-time target on case 0.
         auto build_choices = [&](BattlefieldId bf, std::vector<GameObjectId>& units) {
             units.clear();
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 auto ubf = obj.battlefieldId();
                 if (ubf && *ubf == bf) units.push_back(id);

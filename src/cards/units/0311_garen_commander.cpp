@@ -18,12 +18,12 @@ public:
     // "Other friendly units have +1 [M] here." Static buff to every OTHER
     // friendly unit at the same battlefield as me.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller)
                 continue;
             auto my_bf = self.battlefieldId();
             if (!my_bf) continue;  // "here" — only while I'm at a battlefield
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (uid == sid) continue;  // "other"
                 if (!u.isUnit() || u.controller != controller) continue;
                 if (u.battlefieldId() != my_bf) continue;  // same battlefield

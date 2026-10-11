@@ -21,7 +21,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachSelfOnce(*this, state, controller, [&](GameObjectId self_id, GameObject& self) {
             if (!self.location.has_value()) return;
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit() || u.controller != controller || !u.location.has_value())
                     continue;
                 if (std::find(u.tags.begin(), u.tags.end(), "Mech") == u.tags.end()) continue;

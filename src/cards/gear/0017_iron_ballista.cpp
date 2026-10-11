@@ -34,7 +34,7 @@ public:
         const GameState& state, PlayerId controller,
         int /*ability_index*/) const override {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
             // "Can't be chosen by enemy spells and abilities."
             if (obj.controller != controller && obj.untargetable_by_enemy) continue;

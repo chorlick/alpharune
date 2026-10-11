@@ -18,13 +18,13 @@ public:
     // "While you have 8+ runes, I have +4 [M]." Conditional self might aura.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         int runes = 0;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isRune() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             ++runes;
         }
         if (runes < 8) return;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             GameObject::AuraEffect ae;

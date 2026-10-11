@@ -17,6 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     static bool oppHasStunned(const GameState& state, PlayerId controller) {
         PlayerId opp = opponent(controller);
+        // (Every object: a unit keeps Stunned in whatever zone it is until the Ending Step.)
         for (auto& [id, obj] : state.objects) {
             if (obj.controller != opp) continue;
             if (!obj.isUnit()) continue;

@@ -40,7 +40,7 @@ private:
         const auto bf = battlefieldOfCard(state, bf_card);
         if (!bf.has_value()) return 0;
         int count = 0;
-        for (const auto& [uid, u] : state.objects)
+        for (const auto& [uid, u] : state.objects.onBoard())
             if (u.isUnit() && u.controller == controller && u.battlefieldId() == bf) ++count;
         return count;
     }

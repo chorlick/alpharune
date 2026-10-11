@@ -16,7 +16,7 @@ public:
     const CardDef& def() const override { return def_; }
     int selfCostReduction(const GameState& state, PlayerId player) const override {
         int highest = 0;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != player) continue;
             if (!obj.location.has_value()) continue;
             if (obj.current_might > highest) highest = obj.current_might;

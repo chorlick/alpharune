@@ -19,13 +19,19 @@
 #include "rules/deck_validator.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <random>
+#include <regex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -386,9 +392,10 @@ TEST_F(PerfEngineCards, DamageAUnitDidToItsOwnSideIsNotTheOtherPlayersDamage) {
     EXPECT_EQ(TCountingElder::asked, 0);
 }
 
-// 6.11 — the "becomes [Mighty]" edge is kept in GameObject::was_mighty, not in
-// a string-keyed counter: it fires once on the way up, re-arms on the way
-// down and is forgotten off the board.
+// 6.11 / 9.KK3 — the "becomes [Mighty]" edge is a stamp on the unit
+// (GameObject::mighty_seen), not a string-keyed counter and not a flag that a
+// walk over every object has to clear: it fires once on the way up, re-arms on
+// the way down and is forgotten off the board.
 TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
     const GameObjectId unit = addUnit(P1, kInvalidId, 4);
     int announced = 0;
@@ -396,18 +403,22 @@ TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
         if (e.object == unit && e.what_changed == "became_mighty") ++announced;
     });
     auto cleanup = [&] { withEngine([](GameEngine& e) { e.testHook_cleanup(); }); };
+    // "Was Mighty at the last cleanup": the unit's stamp is that cleanup's.
+    auto wasMighty = [&] {
+        return o(unit).mighty_seen != 0 && o(unit).mighty_seen == state.mighty_checks;
+    };
     cleanup();
     EXPECT_EQ(announced, 0);
-    EXPECT_FALSE(o(unit).was_mighty);
+    EXPECT_FALSE(wasMighty());
     o(unit).base_might = 5;
     cleanup();
     EXPECT_EQ(announced, 1);
-    EXPECT_TRUE(o(unit).was_mighty);
+    EXPECT_TRUE(wasMighty());
     cleanup();
     EXPECT_EQ(announced, 1) << "still Mighty: not announced again";
     o(unit).base_might = 4;
     cleanup();
-    EXPECT_FALSE(o(unit).was_mighty) << "below 5 the edge is armed again";
+    EXPECT_FALSE(wasMighty()) << "below 5 the edge is armed again";
     o(unit).base_might = 6;
     cleanup();
     EXPECT_EQ(announced, 2);
@@ -415,11 +426,36 @@ TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
     o(unit).location = std::nullopt;
     o(unit).zone = ZoneType::Hand;
     cleanup();
-    EXPECT_FALSE(o(unit).was_mighty);
+    EXPECT_FALSE(wasMighty());
     o(unit).location = BaseLocation{P1};
     o(unit).zone = ZoneType::Base;
     cleanup();
     EXPECT_EQ(announced, 3);
+    // Off the board for several cleanups and back below 5, then up again.
+    o(unit).location = std::nullopt;
+    o(unit).zone = ZoneType::Hand;
+    cleanup();
+    cleanup();
+    o(unit).base_might = 4;
+    o(unit).location = BaseLocation{P1};
+    o(unit).zone = ZoneType::Base;
+    cleanup();
+    EXPECT_EQ(announced, 3);
+    o(unit).base_might = 5;
+    cleanup();
+    EXPECT_EQ(announced, 4);
+    // Two units crossing in the same cleanup are announced in table order,
+    // each once.
+    const GameObjectId other = addUnit(P1, kInvalidId, 7);
+    int other_announced = 0;
+    auto conn2 = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == other && e.what_changed == "became_mighty") ++other_announced;
+    });
+    cleanup();
+    cleanup();
+    EXPECT_EQ(other_announced, 1);
+    EXPECT_EQ(announced, 4);
+    conn2.disconnect();
     EXPECT_TRUE(o(unit).card_counters.empty()) << "the edge no longer lives in card_counters";
     conn.disconnect();
 }
@@ -928,6 +964,138 @@ TEST(PerfEngineKnowledge, PruneDropsAndKeepsWhatItDid) {
     EXPECT_EQ(theirs.size(), theirs_before);
     EXPECT_EQ(own.size(), own_before);
     EXPECT_EQ(st.knowledge.groups.size(), 1u);
+}
+
+// ─── 9.KK4: a const state may be queried from several threads ───────────────
+
+// Four threads ask a const state the board at the same moment, right after an
+// object moved (so the lists are stale and the first query has to rebuild
+// them), four hundred times over. Every answer must be the walk's. Without
+// the guarded rebuild two threads refill the same lists at once: wrong
+// answers, or a crash.
+TEST(PerfEngineTable, AConstStateCanBeQueriedFromSeveralThreadsAtOnce) {
+    GameState state = scatteredState(120);
+    const GameState& shared = state;
+    constexpr int kThreads = 4;
+    std::atomic<long> wrong{0};
+    std::atomic<long> asked{0};
+    for (int round = 0; round < 400; ++round) {
+        // A move by the only writer, before the readers start.
+        const GameObjectId mover = static_cast<GameObjectId>(1 + round % 100);
+        if (state.getObject(mover).location.has_value()) state.getObject(mover).location.reset();
+        else state.getObject(mover).location = BattlefieldLocation{static_cast<BattlefieldId>(round % 3)};
+        const auto board = Walk::where(shared, [](const GameObject& o) { return o.location.has_value(); });
+        const LocationId here{BattlefieldLocation{static_cast<BattlefieldId>(round % 3)}};
+        const auto units_here = Walk::where(shared, [&](const GameObject& o) {
+            return o.isUnit() && o.controller == PlayerId::Player1 && o.location.has_value() &&
+                   *o.location == here;
+        });
+        const std::size_t built = shared.objects.indexRebuilds();
+        std::atomic<bool> go{false};
+        std::vector<std::thread> readers;
+        for (int t = 0; t < kThreads; ++t)
+            readers.emplace_back([&] {
+                while (!go.load(std::memory_order_acquire)) {}
+                for (int i = 0; i < 20; ++i) {
+                    if (Walk::ids(shared.objects.onBoard()) != board) ++wrong;
+                    if (shared.unitsAt(here, PlayerId::Player1) != units_here) ++wrong;
+                    if (shared.allUnitsControlledBy(PlayerId::Player2).size() > board.size()) ++wrong;
+                    asked += 3;
+                }
+            });
+        go.store(true, std::memory_order_release);
+        for (auto& r : readers) r.join();
+        ASSERT_EQ(shared.objects.indexRebuilds(), built + 1)
+            << "the stale lists were rebuilt once, by one of the threads (round " << round << ")";
+    }
+    EXPECT_EQ(wrong.load(), 0);
+    EXPECT_EQ(asked.load(), 400L * kThreads * 60);
+}
+
+// A table that never held an object answers without building anything.
+TEST(PerfEngineTable, AnEmptyTableAnswersWithEmptyRanges) {
+    const GameState empty;
+    EXPECT_TRUE(empty.objects.onBoard().empty());
+    EXPECT_TRUE(empty.objects.inPlay().empty());
+    EXPECT_TRUE(empty.objects.atLocation(LocationId{BaseLocation{PlayerId::Player1}}).empty());
+    EXPECT_TRUE(empty.unitsAt(LocationId{BattlefieldLocation{0}}, PlayerId::Player1).empty());
+    EXPECT_EQ(empty.objects.indexRebuilds(), 0u);
+}
+
+// ─── 9.KK2: card code reads the board through the object table's lists ──────
+
+// A source scan: a card file may walk every object of the game
+// (`for (... : state.objects)`) only where it has to see a zone the board
+// lists do not hold, and then it says so. 337 such walks in src/cards were
+// walks over the board in disguise (they skipped everything without a
+// location first); they now name the list. The ones below are the walks that
+// stay, each with its reason. A new card that walks every object fails here:
+// use state.objects.onBoard() / inPlay() / atLocation(loc) (CLAUDE.md, "Object
+// table and board index"), or add the loop to this list with its reason and
+// the "// (Every object: ...)" comment above it.
+TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
+    const std::map<std::string, std::pair<int, std::string>> allowed = {
+        {"card.cpp", {1, "costStateFingerprint digests cards in every zone"}},
+        {"gear/0101_mushroom_pouch.cpp", {1, "facedown cards"}},
+        {"gear/0181_pack_of_wonders.cpp", {1, "the board and facedown cards"}},
+        {"gear/0365_brutalizer.cpp", {1, "its own instances by card id; clears a counter off the board"}},
+        {"gear/0509_shurelya_s_requiem.cpp", {1, "its own instances by card id"}},
+        {"gear/0710_cursed_sarcophagus.cpp", {1, "its own instances by card id"}},
+        {"gear/0860_jagged_cutlass.cpp", {1, "its own instances by card id"}},
+        {"spells/0576_monster_harpoon.cpp", {1, "facedown cards"}},
+        {"legends/0317_wuju_bladesman_starter.cpp", {1, "its own legend object by card id"}},
+        {"legends/0502_purifier.cpp", {2, "its own legend object by card id; Equipment by attachment, in any zone"}},
+        {"legends/0512_emperor_of_the_sands.cpp", {2, "its own legend object by card id; Sand Soldiers by name, in any zone"}},
+        {"legends/0784_wuju_master.cpp", {1, "its own legend object by card id"}},
+        {"units/0189_kayn_unleashed.cpp", {1, "its own instances by card id"}},
+        {"units/0362_royal_entourage.cpp", {1, "Legends (the Legend Zone)"}},
+        {"units/0377_jax_unmatched.cpp", {1, "Equipment you own in any zone, the hand included"}},
+        {"units/0432_fiora_peerless.cpp", {1, "its own instances by card id; clears a counter off the board"}},
+        {"units/0597_monch.cpp", {1, "Stunned units in any zone"}},
+        {"units/0716_crimson_pigeons.cpp", {2, "its own instances by card id; combat designations"}},
+        {"battlefields/0764_black_flame_altar.cpp", {1, "battlefield cards, which have no location"}},
+    };
+    const char* root_env = std::getenv("RIFTBOUND_ROOT");
+    const std::filesystem::path cards = std::filesystem::path(root_env ? root_env : "..") / "src" / "cards";
+    ASSERT_TRUE(std::filesystem::is_directory(cards)) << cards;
+    // `for (<anything> : <something>objects)` — a range-for over the table
+    // itself, not over one of its lists (those end in `()`).
+    const std::regex full_walk(R"(for \([^;()]*:\s*[A-Za-z_][A-Za-z0-9_.>()-]*\bobjects\))");
+    std::map<std::string, int> found;
+    int files = 0;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(cards)) {
+        const auto ext = entry.path().extension();
+        if (!entry.is_regular_file() || (ext != ".cpp" && ext != ".h")) continue;
+        ++files;
+        std::ifstream in(entry.path());
+        std::string line, previous;
+        const std::string name = std::filesystem::relative(entry.path(), cards).generic_string();
+        while (std::getline(in, line)) {
+            const auto comment = line.find("//");
+            const std::string code = line.substr(0, comment);
+            if (std::regex_search(code, full_walk)) {
+                ++found[name];
+                EXPECT_NE(previous.find("// (Every object:"), std::string::npos)
+                    << name << ": a walk over every object without the comment that says "
+                       "which zone it has to see:\n" << line;
+            }
+            if (line.find_first_not_of(" \t") != std::string::npos) previous = line;
+        }
+    }
+    EXPECT_GT(files, 900);
+    for (const auto& [name, count] : found) {
+        const auto it = allowed.find(name);
+        if (it == allowed.end()) {
+            ADD_FAILURE() << "src/cards/" << name << " walks every object of the game " << count
+                          << " time(s). Use state.objects.onBoard() / inPlay() / atLocation(loc) "
+                             "if it only looks at the board; otherwise list it here with its reason.";
+            continue;
+        }
+        EXPECT_EQ(count, it->second.first) << "src/cards/" << name << " (" << it->second.second << ")";
+    }
+    for (const auto& [name, why] : allowed)
+        EXPECT_EQ(found.count(name), 1u) << "src/cards/" << name << " no longer walks every object ("
+                                         << why.second << "): take it off the list";
 }
 
 }  // namespace test_review_fix_perf_engine

@@ -22,7 +22,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> others;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;

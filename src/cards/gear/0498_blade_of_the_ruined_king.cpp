@@ -23,7 +23,7 @@ public:
     static std::vector<GameObjectId> killable(const GameState& state, PlayerId player,
                                               GameObjectId unit) {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != player) continue;
             if (!obj.location.has_value()) continue;
             if (id == unit) continue;  // can't kill the unit we're equipping

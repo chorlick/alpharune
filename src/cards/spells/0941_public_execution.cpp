@@ -15,7 +15,7 @@ namespace {
 // [vendetta-E] local helpers
 std::vector<GameObjectId> executioners(const GameState& state, PlayerId player) {
     std::vector<GameObjectId> out;
-    for (const auto& [id, obj] : state.objects)
+    for (const auto& [id, obj] : state.objects.onBoard())
         if (obj.isUnit() && obj.controller == player && obj.location.has_value())
             out.push_back(id);
     std::sort(out.begin(), out.end());

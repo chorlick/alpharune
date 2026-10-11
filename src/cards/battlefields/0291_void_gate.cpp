@@ -25,7 +25,7 @@ public:
         for (auto& bf : state.battlefields) {
             if (!state.objectExists(bf.card_object_id)) continue;
             if (state.getObject(bf.card_object_id).card_def_id != cardDefId()) continue;
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || !obj.location.has_value()) continue;
                 if (!std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;
                 if (std::get<BattlefieldLocation>(*obj.location).id != bf.id) continue;

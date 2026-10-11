@@ -836,6 +836,9 @@ struct GameState {
     // (core/object_table.h).
     ObjectTable objects;
     GameObjectId next_object_id = 1;
+    // How many times cleanup has looked for units that became [Mighty]
+    // (GameObject::mighty_seen is compared with it).
+    uint32_t mighty_checks = 0;
 
     // Turn
     TurnState turn;

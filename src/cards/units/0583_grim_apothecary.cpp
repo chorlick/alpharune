@@ -21,7 +21,7 @@ public:
         // "a friendly unit at a battlefield" — the controller picks which
         // (this unit included, if it was played to one).
         std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.isAtBattlefield())
                 legal.push_back(id);
         int conf = confirmOptional(ctx,

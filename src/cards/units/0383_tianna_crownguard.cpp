@@ -20,7 +20,7 @@ public:
     //   a Tianna I control is at a battlefield, set my opponent's
     //   cannot_gain_points (reset each recalc; consulted by scoreHold/scoreConquer).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value() ||
                 !std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;

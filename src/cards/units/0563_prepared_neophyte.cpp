@@ -20,7 +20,7 @@ public:
         // The most any one spell cost this turn — a cheaper spell played
         // afterwards does not take the bonus away.
         if (state.player(controller).max_spell_spent_this_turn < 4) return;
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
             GameObject::AuraEffect ae;

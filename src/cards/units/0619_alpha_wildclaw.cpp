@@ -22,11 +22,11 @@ public:
     // the Might-dependent hook, on this pass's Might.
     bool hasMightDependentAura() const override { return true; }
     void applyMightDependentAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             const auto here = self.battlefieldId();
             if (!here.has_value()) continue;   // "here" is a battlefield
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (uid == sid || !u.isUnit() || u.controller != controller) continue;
                 if (u.battlefieldId() != here) continue;
                 if (u.current_might < self.current_might) u.untargetable_by_enemy = true;

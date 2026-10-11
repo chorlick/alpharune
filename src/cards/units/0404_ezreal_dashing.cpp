@@ -30,7 +30,7 @@ public:
         // resolution asks nothing if I am at a battlefield again by then.
         std::vector<GameObjectId> here;
         if (my_bf) {
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
                 if (obj.battlefieldId() != my_bf || obj.untargetable_by_enemy) continue;
                 here.push_back(id);
@@ -53,7 +53,7 @@ public:
     // The engine calls this once per (card, controller), so the loop visits
     // each Ezreal of that controller once and gives each one effect.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             GameObject::AuraEffect ae;

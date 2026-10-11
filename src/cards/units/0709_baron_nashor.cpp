@@ -20,7 +20,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
             if (!self.location.has_value()) return;
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (uid == sid) continue;  // "other"
                 if (!u.isUnit() || u.controller != controller) continue;
                 if (!u.location.has_value()) continue;

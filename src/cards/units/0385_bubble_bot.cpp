@@ -20,7 +20,7 @@ public:
     // "When you play me, ready another friendly Mech." — the controller's choice.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> mechs;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;                 // "another"
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;

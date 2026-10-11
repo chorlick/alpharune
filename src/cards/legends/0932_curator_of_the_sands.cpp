@@ -47,7 +47,7 @@ public:
         };
         auto exhausted_runes = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (readiable(id)) out.push_back(id);
             std::sort(out.begin(), out.end());
             return out;

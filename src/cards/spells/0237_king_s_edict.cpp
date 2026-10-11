@@ -25,7 +25,7 @@ public:
         if (ri.resume_point == kDone) return;
         const PlayerId opp = opponent(ctx.controller);
         std::vector<GameObjectId> units;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller != ctx.controller && obj.location.has_value())
                 units.push_back(id);
         std::sort(units.begin(), units.end());

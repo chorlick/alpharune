@@ -18,7 +18,7 @@ public:
     // "You ignore [Tank] while assigning combat damage here." Continuous flag on
     // my battlefield, re-asserted every aura pass (reset in recalculateAuras).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.isUnit()) continue;
             auto bf = obj.battlefieldId();

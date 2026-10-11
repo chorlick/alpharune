@@ -23,14 +23,14 @@ public:
     // ; a recall is not a move and still happens (CR 458.3).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         bool present = false;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             present = true;
             break;
         }
         if (!present) return;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             obj.aura_cant_move_to_base = true;
         }

@@ -132,6 +132,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
     }
     // Order-independent over the object map.
     uint64_t objects = 0;
+    // (Every object: the fingerprint digests cards in every zone.)
     for (const auto& [id, obj] : state.objects) {
         uint64_t o = 1469598103934665603ull;
         auto omix = [&o](uint64_t v) { o = (o ^ v) * 1099511628211ull; };

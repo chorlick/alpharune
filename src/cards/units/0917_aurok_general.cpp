@@ -21,7 +21,7 @@ public:
     // "[Empowered][>] Your units that are [Empowered] have +2 [M] (including me)."
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachEmpoweredSelf(*this, state, controller, [&](GameObjectId sid, GameObject&) {
-            for (auto& [id, obj] : state.objects) {
+            for (auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != controller) continue;
                 if (!obj.location.has_value() || !obj.isEmpowered()) continue;
                 auraMight(obj, sid, 2);

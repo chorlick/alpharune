@@ -35,14 +35,14 @@ public:
         // Active only while an on-board instance exists. One instance is
         // enough and more add nothing.
         GameObjectId self_id = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             self_id = id;
             break;
         }
         if (self_id == kInvalidId) return;
-        for (auto& [uid, u] : state.objects) {
+        for (auto& [uid, u] : state.objects.onBoard()) {
             if (!u.isUnit() || u.controller != controller || !u.location.has_value())
                 continue;
             if (u.buff_count <= 0) continue;  // "buffed" = has a +1 [M] buff

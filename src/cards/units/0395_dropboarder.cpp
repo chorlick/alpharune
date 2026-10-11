@@ -18,7 +18,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         int gear = 0;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isGear() && obj.controller == ctx.controller &&
                 obj.location.has_value()) {
                 ++gear;

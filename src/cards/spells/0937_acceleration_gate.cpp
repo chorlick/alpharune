@@ -32,7 +32,7 @@ public:
         auto& ri = *ctx.state.chain.resuming;
         auto candidates = [&]() {
             std::vector<GameObjectId> out;
-            for (const auto& [id, obj] : ctx.state.objects) {
+            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.location.has_value() || !obj.is_exhausted) continue;
                 if (!obj.isUnit() && !obj.isGear() && !obj.isRune()) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;

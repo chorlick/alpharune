@@ -31,7 +31,7 @@ public:
                    obj.location.has_value() && obj.battlefieldId() != my_bf;
         };
         std::vector<GameObjectId> tokens;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (movable(id)) tokens.push_back(id);
         // "you may move any number": the controller names them one at a time.
         auto picked = selectSeveral(ctx, "Azir, Sovereign: move a token unit here", tokens);

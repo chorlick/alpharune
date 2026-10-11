@@ -20,7 +20,7 @@ public:
     bool entersReadyOnPlay(const GameState& state, PlayerId controller,
                            const GameObject& self) const override {
         int n = 0;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (id == self.id) continue;   // "other"
             if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.isAtBase()) continue;

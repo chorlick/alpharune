@@ -23,7 +23,7 @@ public:
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;
         int attackers = 0, defenders = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.battlefieldId() != my_bf) continue;
             if (obj.combat_designation == CombatDesignation::Attacker) ++attackers;
             else if (obj.combat_designation == CombatDesignation::Defender) ++defenders;
@@ -38,6 +38,7 @@ public:
         RIFT_TRACE(ctx.events, "FIORA PEERLESS: one on one -> doubled Might this combat");
     }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // (Every object: finds its own instances by card id; one off the board has its counter cleared.)
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             auto bonus = self.card_counters.find("__fiora_combat_bonus");

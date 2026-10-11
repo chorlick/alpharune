@@ -22,22 +22,50 @@ struct GameObject {
     PlayerId owner = PlayerId::None;
     PlayerId controller = PlayerId::None;
 
-    // ── Identity (copied from CardDef, may be modified by layers) ──
-    std::string name;
+    // ── The fields read most ──
+    // Kept together at the front of the object on purpose. The engine still
+    // has walks over every object of a game (the cleanup's change checksum,
+    // the reset of statuses on cards in any zone, the per-turn expirations),
+    // and each object is its own heap node: with these fields spread over the
+    // ~700 bytes of a GameObject such a walk touched four or five cache lines
+    // per object; here it touches one or two (plans/09 item 9.KK3). Each is
+    // documented where it used to be declared, further down.
     CardType card_type = CardType::Unit;
     SuperType super_type = SuperType::None;
-    std::vector<std::string> tags;
-    std::vector<Domain> domains;
-
-    // ── Unit stats ──
-    int base_might = 0;
-    int current_might = 0;  // after layers (assault, shield, buffs, auras)
-    int damage_marked = 0;
-
-    // ── State ──
     bool is_exhausted = false;
     bool is_stunned = false;
     bool is_hidden = false;             // facedown at a battlefield
+    CombatDesignation combat_designation = CombatDesignation::None;
+    bool untargetable_by_enemy = false;
+    bool untargetable_by_enemy_this_turn = false;
+    bool control_reverts_eot = false;
+    bool control_reverts_on_source_leave = false;
+    // Both read as the plain value (a ZoneType, an optional LocationId). They
+    // are tracked fields because the board index of the object table is built
+    // from them: assigning either tells the table (core/tracked_field.h,
+    // core/object_table.h). A location is replaced, never edited in place.
+    TrackedField<ZoneType> zone{ZoneType::MainDeck};
+    TrackedLocation location;  // only meaningful when on board
+    // Unit stats.
+    int base_might = 0;
+    int current_might = 0;  // after layers (assault, shield, buffs, auras)
+    int damage_marked = 0;
+    int aura_might_bonus = 0;   // cached sum of aura might bonuses
+    // The "becomes [Mighty]" edge: the number of the cleanup that last saw
+    // this unit on the board with 5+ [M] (GameState::mighty_checks then), 0
+    // for never. The unit "was Mighty" at a cleanup if this is the number of
+    // the one before. A unit off the board is not looked at and its number
+    // goes stale by itself, so the edge is forgotten there without a walk
+    // over every object (GameEngine::cleanup).
+    uint32_t mighty_seen = 0;
+
+    // ── Identity (copied from CardDef, may be modified by layers) ──
+    std::string name;
+    std::vector<std::string> tags;
+    std::vector<Domain> domains;
+
+    // ── State ── (is_exhausted, is_stunned, is_hidden and the unit stats are
+    // declared with the other often-read fields at the top)
     BattlefieldId hidden_at = kInvalidId; // which BF it's hidden at
     int hidden_on_turn = -1;            // turn it was hidden (gains Reaction next turn)
 
@@ -45,14 +73,14 @@ struct GameObject {
     // Number of Empowered statuses. 0 = not Empowered. Normally binary (0/1);
     // objects allowed to be Empowered multiple times (Kayle, Justified) stack
     // up to Card::maxEmpower(). Cleared when the object leaves the board.
-    int empowered = 0;
+    // (empowered: declared in the aura block below)
     // Deferred end-of-turn flip set by "Empower X. Disempower it at end of
     // turn" (-1) and "Disempower X. Empower it at end of turn" (+1). Applied
     // and cleared by the expiration step.
-    int empower_flip_eot = 0;
+    // (empower_flip_eot: declared in the aura block below)
     // Aura-computed reduction to THIS object's [Empower] energy cost (Risen
     // Altar). Reset each recalculateAuras.
-    int empower_cost_reduction = 0;
+    // (empower_cost_reduction: declared in the aura block below)
     bool isEmpowered() const { return empowered > 0; }
 
     // ── Flow / "then banish this" (Vendetta) ──
@@ -66,14 +94,14 @@ struct GameObject {
     int damage_taken_this_turn = 0;
     // Recomputed each recalculateAuras: prevent all damage that ENEMY spells
     // and abilities would deal to me (Esteemed Hierophant).
-    bool prevent_enemy_spell_ability_damage = false;
+    // (prevent_enemy_spell_ability_damage: declared in the aura block below)
     // Recomputed each recalculateAuras: enemy spells and abilities can't move
     // me (Jagged Cutlass).
-    bool cant_be_moved_by_enemy = false;
+    // (cant_be_moved_by_enemy: declared in the aura block below)
     // "It can't be chosen by enemy spells and abilities this turn" (Twilight
     // Shroud). ORed into untargetable_by_enemy by the aura pass; cleared at
     // end of turn.
-    bool untargetable_by_enemy_this_turn = false;
+    // (untargetable_by_enemy_this_turn: declared at the top)
 
     // ── Counted damage prevention (Ki Barrier: "prevent the next 7 damage") ──
     // Remaining damage to prevent this turn. dealDamage consumes it; expires at
@@ -128,12 +156,7 @@ struct GameObject {
     int damage_marked_by[2] = {0, 0};
 
     // ── Position ──
-    // Both read as the plain value (a ZoneType, an optional LocationId). They
-    // are tracked fields because the board index of the object table is built
-    // from them: assigning either tells the table (core/tracked_field.h,
-    // core/object_table.h). A location is replaced, never edited in place.
-    TrackedField<ZoneType> zone{ZoneType::MainDeck};
-    TrackedLocation location;  // only meaningful when on board
+    // (zone and location: declared at the top)
     // Last on-board location before the unit died / left play. Populated
     // by EffectExecutor::killObject just before clearing `location`.
     // Used by Deathknell triggers that need to know "where did I die"
@@ -141,8 +164,7 @@ struct GameObject {
     // this location). Stays valid across the trigger's chain item.
     std::optional<LocationId> last_location;
 
-    // ── Combat ──
-    CombatDesignation combat_designation = CombatDesignation::None;
+    // ── Combat ── (combat_designation: declared at the top)
 
     // ── Buffs ──
     int buff_count = 0;          // +1 might per buff
@@ -154,9 +176,7 @@ struct GameObject {
                                  // deflectCostFor, zeroed at the expiration step
     int temp_might_bonus = 0;    // temporary +N might applied "this turn"
     int moves_this_turn = 0;     // times this unit moved this turn (Kayn, Unleashed)
-    bool was_mighty = false;     // had 5+ [M] at the last cleanup while on the board:
-                                 // the "becomes [Mighty]" edge (GameEngine::cleanup)
-    bool immune_to_damage = false; // recomputed each recalculateAuras; set by a
+    // immune_to_damage (declared in the aura block below): recomputed each recalculateAuras; set by a
                                    // card's applyPassiveAura when its condition
                                    // holds (Kayn, Unleashed: "if I have moved twice
                                    // this turn, I don't take damage"). dealDamage
@@ -166,7 +186,7 @@ struct GameObject {
                                    // "the next spell you play deals N Bonus
                                    // Damage" — applies to every instance the spell
                                    // deals). Set from PlayerState::next_spell_bonus_damage.
-    int spells_targeting_me_cost_reduction = 0; // Irelia, Graceful (462): "your
+    // spells_targeting_me_cost_reduction (declared in the aura block below): Irelia, Graceful (462): "your
                                    // spells that choose me cost [1]/[A] less."
                                    // Recomputed each recalculateAuras; the spell
                                    // cost path reduces by this when I'm a target.
@@ -184,11 +204,11 @@ struct GameObject {
         // "I have all [E] abilities of ...").
         bool exhaust_cost_only = false;
     };
-    std::vector<GrantedAbilityRef> granted_abilities;
+    // (granted_abilities: declared in the aura block below)
     // Abilities granted "this turn" by a resolved effect (Dominus: `give it
     // "[A][A]: Ready me."`). Merged into granted_abilities every aura pass and
     // cleared at end of turn.
-    std::vector<GrantedAbilityRef> temp_granted_abilities;
+    // (temp_granted_abilities: declared in the aura block below)
 
     // ── Keywords (computed via layers, cached) ──
     KeywordSet keywords;
@@ -210,7 +230,7 @@ struct GameObject {
     // Card's canBeChosenByEnemy() method. Card::enumerateLegalTargets
     // reads this flag to filter out untargetable enemies. Baron Nashor
     // ([709]) is the canonical example.
-    bool untargetable_by_enemy = false;
+    // (untargetable_by_enemy: declared at the top)
 
     // ── Per-card persistent counters (legend state, etc.) ──
     // Generic int counters keyed by name so multiple card classes can have
@@ -274,7 +294,7 @@ struct GameObject {
     // The continuous form ("Units can't move to base." — Minotaur Reckoner):
     // cleared at the start of every aura pass and re-asserted by the source's
     // Card::applyPassiveAura, so it ends when the source leaves the board.
-    bool aura_cant_move_to_base = false;
+    // (aura_cant_move_to_base: declared in the aura block below)
     // "It can't be moved this turn" / "They can't move it this turn" (Vex,
     // Apathetic): no Standard Move and no move by an effect of its
     // controller's until the turn ends (cleared with the other "this turn"
@@ -287,7 +307,7 @@ struct GameObject {
     // this flag. Expiration step (end-of-turn) restores `controller` from
     // the snapshot and clears the flag. Permanent control changes do NOT
     // set the flag.
-    bool control_reverts_eot = false;
+    // (control_reverts_eot: declared at the top)
     PlayerId original_controller_eot = PlayerId::None;
 
     // ── Take-control reversion "until I leave the board" (Akshan 431) ──
@@ -296,7 +316,7 @@ struct GameObject {
     // returns. GameEngine::revertLapsedControl (run in cleanup) restores
     // `controller` and clears these once the source object is no longer in
     // play. Independent of the end-of-turn variant above.
-    bool control_reverts_on_source_leave = false;
+    // (control_reverts_on_source_leave: declared at the top)
     GameObjectId control_source_obj = kInvalidId;
     PlayerId control_revert_to = PlayerId::None;
 
@@ -323,8 +343,24 @@ struct GameObject {
         // auraKeywordIfAbsent in card_helpers.h).
         bool only_if_absent = false;
     };
+    // ── What an aura pass resets ──
+    // GameEngine::recalculateAuras clears these on every object of the game at
+    // the start of every pass (a continuous effect that has ended must end
+    // wherever its card is now). They are declared together so that the clear
+    // writes two cache lines of an object instead of eight (plans/09 item
+    // 9.KK3); each is documented where it used to be declared, above.
+    int empowered = 0;
+    int empower_flip_eot = 0;
+    int empower_cost_reduction = 0;
+    bool prevent_enemy_spell_ability_damage = false;
+    bool cant_be_moved_by_enemy = false;
+    bool immune_to_damage = false;
+    int spells_targeting_me_cost_reduction = 0;
+    std::vector<GrantedAbilityRef> granted_abilities;
+    std::vector<GrantedAbilityRef> temp_granted_abilities;
+    bool aura_cant_move_to_base = false;
     std::vector<AuraEffect> aura_effects;  // active auras affecting this object
-    int aura_might_bonus = 0;              // cached sum of aura might bonuses
+    // (aura_might_bonus, the cached sum of aura might bonuses: declared at the top)
     KeywordSet aura_keywords;              // cached union of aura-granted keywords
     bool aura_no_combat_damage = false;    // cached: any aura suppresses combat dmg
     int aura_bonus_damage_taken = 0;       // cached: +N spell/ability damage taken (Void Gate)

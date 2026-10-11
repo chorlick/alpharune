@@ -44,7 +44,7 @@ public:
 
         // "move an enemy gear to your base" — the controller chooses which.
         std::vector<GameObjectId> enemy_gear;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (paid && obj.isGear() && obj.controller != me && obj.location.has_value())
                 enemy_gear.push_back(id);
         const GameObjectId target_gear = pickTarget(ctx, "Akshan: move an enemy gear to your base",

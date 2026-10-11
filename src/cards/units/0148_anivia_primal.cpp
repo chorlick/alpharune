@@ -21,7 +21,7 @@ public:
         const auto here = ctx.state.getObject(ctx.source).battlefieldId();
         if (!here) return;   // no longer at a battlefield
         std::vector<GameObjectId> to_damage;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
             if (obj.battlefieldId() != here) continue;
             to_damage.push_back(id);

@@ -10,7 +10,7 @@ States: `pending` → `running` → `returned` → `merged` (or `blocked`).
 
 | Field | Value |
 |---|---|
-| Current stage | 2 |
+| Current stage | 3 |
 | Integration branch | `fix/integration` (`.worktrees/integration`) |
 | Baseline commit (master at stage 0) | `c7143f1` |
 | Baseline tests | 1511 run: 1508 passed, 2 failed, 1 skipped (1 disabled). Failing at baseline: `CardTestFixture.BaronNashor_IntegrationFullPlayPathCreatesPit`, `ChainTestFixture.FullGameRunsWithSpellsInDecks` (both: deleted deck file, item 7.40) |
@@ -81,7 +81,7 @@ iteration must apply these.
 | 2 | cards-c4 | merged | `fd00d2c` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
 | 2 | cards-c5 | merged | `870307e` (merge `b95b4e4`) | gate-c5: 2100/2100, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 33 of 39 batch-05 boxes + 6 batch-09 + 4 batch-10; 7 BLOCKED on engine work; 5 `shared:` commits |
 | 2 | cards-c6 | merged | `d06b58d` (merge `a07ce94`) | gate-c6: 2161/2161, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 39 of 46 batch-06 boxes + 1 batch-10; 7 BLOCKED on engine work; one `shared:` commit |
-| 2 | cards-c7 | returned | `8ff64db` (merged, stage 2 gate running) | 2203 passed, 0 failed (clean namespaced build, on its branch) | 10 of 18 batch-07 boxes + 6 batch-10; 8 left BLOCKED on engine work; one `shared:` commit; `kKnownOffenders` now empty (all 26 target-less-trigger cards converted) |
+| 2 | cards-c7 | merged | `8ff64db` (merge `76ab21f`) | stage 2 gate: 2203/2203 | 10 of 18 batch-07 boxes + 6 batch-10; 8 left BLOCKED on engine work; one `shared:` commit; `kKnownOffenders` now empty (all 26 target-less-trigger cards converted) |
 | 3 | sweep | pending | | | |
 | 3 | perf-engine | pending | | | |
 | 3 | perf-search | pending | | | |
@@ -95,7 +95,7 @@ iteration must apply these.
 |---|---|---|
 | Stage 0 baseline | yes | `c7143f1`; tests 1508/1511 (2 baseline failures above); smoke: 200 games fiora vs yi_rebuild, `--seed 20261010 --threads 6`, exit 0, P1 128 / P2 72 / 0 draws, no exception; `riftbound_clone_equiv_test` FAILS at baseline (hard-coded `decks/leblanc_test.txt`, item 7.40) and must pass at the stage 1 gate |
 | Stage 1 | yes | `b0d329b` (all 8 streams): suite 1726/1726, `riftbound_openspiel_tests` 17/17, clone-equiv 10/10, smoke 200 games fiora vs yi_rebuild seed 20261010 rc=0 P1 130 / P2 70 / 0 draws, MCTS batch rc=0, fault injection rc=1 with "game 1 [seed=7]: injected engine fault" (1.7 confirmed: failure, not a draw). Logs `.worktrees/logs/gate-stage1/`. Checkbox criterion: 87+8 ticked; stage 1 items left `[ ]` because the rest of each is card or cross-stream work, all in carry-over — 3.1, 3.24, 7.30, 7.1 (card streams, sweep ticks), 8.7 (cards), 5.4, 8.4, 8.9 (sweep) |
-| Stage 2 | | |
+| Stage 2 | yes | `76ab21f` (all 8 card streams), clean rebuild on a private cache: suite 2203/2203, `riftbound_openspiel_tests` 17/17, clone-equiv 10/10, smoke 200 games rc=0 P1 138 / P2 62 / 0 draws, MCTS batch rc=0, fault injection rc=1. Logs `.worktrees/logs/gate-stage2/`. Checkbox criterion: card streams ticked every item they could finish; ~40 card items stay `[ ]` with BLOCKED sub-bullets needing engine work, all in carry-over for the stage 3 sweep |
 | Stage 3 | | |
 | Stage 4 | | |
 | Stage 5 | | |
@@ -308,3 +308,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c6 (`d06b58d`) merged cleanly, gate running. 9 rows to carry-over.
 - 2026-10-10 cards-c6 verified (gate-c6): 2161 run, 2161 passed; smoke 135 / 65 / 0. Worktree and branch removed. cards-c7 messaged with the c5/c6 hand-overs.
 - 2026-10-10 cards-c7 (`8ff64db`) merged cleanly; stage 2 gate started on a clean rebuild. 7 rows to carry-over.
+- 2026-10-11 STAGE 2 GATE PASSED at `76ab21f` (clean rebuild). cards-c7 worktree and branch removed.

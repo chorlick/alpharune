@@ -20,22 +20,37 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIMoveToFB; }
+    // "the same battlefield" is the battlefield of the trigger condition ("When
+    // I move to a battlefield"), not "here": it is checked when the condition
+    // is fulfilled (CR 359.3.f.3) and where I go afterwards — another
+    // battlefield, my base, off the board — does not change it (the Lillia,
+    // Fae Fawn example there). It is noted on the chain item the first time
+    // this runs, which is as the trigger is finalized: battlefield id + 1 in
+    // resume_data[kBattlefieldSlot], clear of the choice helpers' slots 0..6.
+    static constexpr size_t kBattlefieldSlot = 7;
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        // "the same battlefield" is read off me: once I have left the board
-        // (or gone back to base) after [P] was paid, where I am is no longer
-        // available and the instruction based on it is ignored (CR
-        // 359.3.e.12; the CR 811.1.d example: an effect that can't reference
-        // where its unit was "will mistarget"). The [P] stays spent.
-        if (!my_bf) return;
+        std::optional<BattlefieldId> my_bf;
+        auto& ri = ctx.state.chain.resuming;
+        if (ri.has_value() && ri->resume_data.size() > kBattlefieldSlot &&
+            ri->resume_data[kBattlefieldSlot] != 0) {
+            my_bf = static_cast<BattlefieldId>(ri->resume_data[kBattlefieldSlot] - 1);
+        } else {
+            my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+            // Gone before the battlefield could be noted: nothing to refer to.
+            if (!my_bf) return;
+            if (ri.has_value()) {
+                while (ri->resume_data.size() <= kBattlefieldSlot) ri->resume_data.push_back(0);
+                ri->resume_data[kBattlefieldSlot] = static_cast<int32_t>(*my_bf) + 1;
+            }
+        }
         auto movable = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
                 if (id == ctx.source) continue;
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
-                if (obj.battlefieldId() == my_bf) continue;  // already here
+                if (obj.battlefieldId() == my_bf) continue;  // already there
                 out.push_back(id);
             }
             return out;
@@ -54,7 +69,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
         if (conf < 1 || tgt == kInvalidId) return;  // waiting / declined / mistarget
         ctx.executor.moveToBattlefield(tgt, *my_bf);
-        ctx.events.logTrace("FAE PORTER: paid [P] -> moved a unit to my battlefield");
+        ctx.events.logTrace("FAE PORTER: paid [P] -> moved a unit to the battlefield I moved to");
     }
 private:
     const CardDef def_ = [] {

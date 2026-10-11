@@ -21,8 +21,13 @@ public:
     //  battlefield a unit is dying at, on behalf of that unit's controller.
     bool hasReplacementEffect() const override { return true; }
     // The conditions, before the "may" and the payment.
-    bool replacementApplies(const GameState& state, GameObjectId self, PlayerId /*controller*/,
-                            GameObjectId dying_unit) const override {
+    Applies replacementAppliesTo(const GameState& state, GameObjectId self_object,
+                                 PlayerId controller, GameObjectId dying_unit) const override {
+        return conditionsHold(state, self_object, controller, dying_unit) ? Applies::Yes
+                                                                          : Applies::No;
+    }
+    bool conditionsHold(const GameState& state, GameObjectId self, PlayerId /*controller*/,
+                        GameObjectId dying_unit) const {
         if (!state.objectExists(dying_unit)) return false;
         const auto& unit = state.getObject(dying_unit);
         if (!unit.isUnit()) return false;

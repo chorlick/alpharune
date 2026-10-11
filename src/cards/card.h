@@ -739,12 +739,19 @@ public:
     /// more than one replacement applies, that controller chooses the order
     /// (CR 372; EffectExecutor::applyDeathReplacements), so the engine needs
     /// to know which do before it applies any. Every card with
-    /// hasReplacementEffect() defines this (the default applies to nothing),
-    /// and its applyReplacement starts by asking it, so the two cannot drift.
-    virtual bool replacementApplies(const GameState& /*state*/, GameObjectId /*self*/,
-                                    PlayerId /*controller*/,
-                                    GameObjectId /*dying_unit*/) const {
-        return false;
+    /// hasReplacementEffect() overrides replacementAppliesTo and answers Yes
+    /// or No; the default, NotDefined, applies to nothing and is what a test
+    /// over the registry looks for. Its applyReplacement starts by asking
+    /// replacementApplies, so the two cannot drift.
+    enum class Applies : uint8_t { NotDefined, No, Yes };
+    virtual Applies replacementAppliesTo(const GameState& /*state*/, GameObjectId /*self*/,
+                                         PlayerId /*controller*/,
+                                         GameObjectId /*dying_unit*/) const {
+        return Applies::NotDefined;
+    }
+    bool replacementApplies(const GameState& state, GameObjectId self, PlayerId controller,
+                            GameObjectId dying_unit) const {
+        return replacementAppliesTo(state, self, controller, dying_unit) == Applies::Yes;
     }
 
     // ── Equipment / Equip (CR 716-725, 818) ──

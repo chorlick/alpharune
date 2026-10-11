@@ -44,6 +44,8 @@ constexpr CardDefId kTFinalSpell = 1089;     // spell: "choose an enemy unit" at
 constexpr CardDefId kTFinalRepeat = 1090;    // the same with [Repeat] [1]
 constexpr CardDefId kTPlayerSpell = 1091;    // spell: plays a kTFinalSpell from hand, then marks itself
 constexpr CardDefId kTRechooser = 1092;      // [Reaction] spell: the spell below makes new choices
+constexpr CardDefId kTPokeSpell = 1093;      // spell: target one enemy unit, chosen with the play
+constexpr CardDefId kTRepeatUnit = 1094;     // a UNIT that declares repeatCosts (never registered)
 constexpr CardDefId kTurnToDust = 632;
 constexpr CardDefId kSpinningAxe = 504;      // Equipment that prints [Temporary]
 constexpr CardDefId kPerchedGrimwyrm = 338;  // "play me only to a battlefield you conquered this turn"
@@ -222,6 +224,23 @@ public:
     }
 };
 
+// "Choose an enemy unit." — the target rides in the Play intent.
+class TPokeSpell : public SpellCard {
+public:
+    VE_TEST_CARD_DEF([] { return makeDef(kTPokeSpell, "Test Poke", CardType::Spell); }())
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true};
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        for (auto t : targets) ctx.state.getObject(t).card_counters["hit"]++;
+    }
+};
+class TRepeatUnit : public UnitCard {
+public:
+    VE_TEST_CARD_DEF([] { return makeDef(kTRepeatUnit, "Test Repeat Unit", CardType::Unit); }())
+    std::vector<RepeatCost> repeatCosts() const override { return {RepeatCost{.energy = 1}}; }
+};
+
 // ─── Agents ─────────────────────────────────────────────────────────────────
 
 /// Answers every decision with `answer(state, legal)`; counts what it was asked.
@@ -269,6 +288,7 @@ protected:
         card_registry.registerCard(kTFinalRepeat, std::make_unique<TFinalRepeat>());
         card_registry.registerCard(kTPlayerSpell, std::make_unique<TPlayerSpell>());
         card_registry.registerCard(kTRechooser, std::make_unique<TRechooser>());
+        card_registry.registerCard(kTPokeSpell, std::make_unique<TPokeSpell>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1772,6 +1792,148 @@ TEST_F(VerifyEngineTest, ChannelPhase_TheExtraRuneGoesToWhoeverDidNotGoFirst) {
     // extra turn before it does not make it "the second player").
     EXPECT_EQ(channeled(P1, 0), 2);
     EXPECT_EQ(channeled(P1, 2), 2);
+}
+
+// ═══ 9.Y1: a re-chosen target is chosen like any target ═════════════════════
+
+// A spell whose target rides in the Play intent is told to make new choices
+// (CR 750-755): the new target's Deflect is paid and the choice is counted
+// ("chosen enemy units ... with spells", Prodigal Explorer's count).
+TEST_F(VerifyEngineTest, MakeNewChoices_AReChosenTargetPaysDeflectAndCounts) {
+    auto e1 = addVanilla(P2, 3);
+    auto e2 = addVanilla(P2, 3);
+    o(e2).keywords.set(Keyword::Deflect);
+    o(e2).deflect_value = 1;
+    auto spell = addToHand(P1, kTPokeSpell);
+    auto rechooser = addToHand(P2, kTRechooser);
+    ps(P1).rune_pool.universal_power = 1;
+    PickInOrder me;
+    me.picks = {e2};                       // the re-choice
+    bool responded = false;
+    int count_before_rechoice = -1;
+    LambdaAgent them([&](const GameState& st, const std::vector<Intent>& legal) {
+        if (!responded)
+            for (const auto& i : legal)
+                if (i.type == IntentType::PlayReaction && i.card == rechooser) {
+                    responded = true;
+                    count_before_rechoice = st.player(P1).enemy_choices_this_turn;
+                    return i;
+                }
+        return passOrFirst(legal);
+    });
+    Intent play = playOf(spell);
+    play.targets = {e1};
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(play);
+        e.testHook_runChain();
+    }, &me, &them);
+    ASSERT_TRUE(responded);
+    ASSERT_EQ(me.object_prompts, 1) << "asked for the new target";
+    EXPECT_EQ(o(e2).card_counters["hit"], 1);
+    EXPECT_EQ(o(e1).card_counters["hit"], 0);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "Deflect for the new target";
+    EXPECT_EQ(ps(P1).enemy_choices_this_turn, count_before_rechoice + 1)
+        << "the new choice is a choice of an enemy unit with a spell";
+}
+
+// A new target whose Deflect cannot be paid is not offered.
+TEST_F(VerifyEngineTest, MakeNewChoices_ATargetWhoseDeflectCannotBePaidIsNotOffered) {
+    auto e1 = addVanilla(P2, 3);
+    auto e2 = addVanilla(P2, 3);
+    o(e2).keywords.set(Keyword::Deflect);
+    o(e2).deflect_value = 1;
+    auto spell = addToHand(P1, kTPokeSpell);
+    auto rechooser = addToHand(P2, kTRechooser);
+    EnginePathAgent me;                    // no Power: only e1 can be chosen again
+    bool responded = false;
+    LambdaAgent them([&](const GameState&, const std::vector<Intent>& legal) {
+        if (!responded)
+            for (const auto& i : legal)
+                if (i.type == IntentType::PlayReaction && i.card == rechooser) {
+                    responded = true;
+                    return i;
+                }
+        return passOrFirst(legal);
+    });
+    Intent play = playOf(spell);
+    play.targets = {e1};
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(play);
+        e.testHook_runChain();
+    }, &me, &them);
+    ASSERT_TRUE(responded);
+    ASSERT_EQ(me.prompts.size(), 1u);
+    EXPECT_FALSE(me.wasOffered(e2));
+    EXPECT_TRUE(me.wasOffered(e1));
+    EXPECT_EQ(o(e1).card_counters["hit"], 1);
+}
+
+// ═══ 9.Y3: an effect-played spell is Finalized when its choices are made ════
+
+TEST_F(VerifyEngineTest, EffectPlayedSpell_IsFinalizedAndAnnouncedAsItIsPutOnTheChain) {
+    auto e1 = addVanilla(P2, 3);
+    auto outer = addToHand(P1, kTPlayerSpell);
+    auto inner = addToHand(P1, kTFinalSpell);
+    GameEngine* engine = nullptr;
+    int finalized_events = 0;
+    int after_play_at_event = -1;
+    boost::signals2::scoped_connection c = events.on_chain_item_finalized.connect(
+        [&](const ChainItemFinalizedEvent& ev) {
+            if (ev.source != inner) return;
+            ++finalized_events;
+            const auto& st = engine->state();
+            auto& counters = st.getObject(outer).card_counters;
+            auto it = counters.find("after_play");
+            after_play_at_event = it == counters.end() ? 0 : it->second;
+            for (const auto& ci : st.chain.items) {
+                if (ci.source == inner) {
+                    EXPECT_EQ(ci.status, ChainItemStatus::Finalized);
+                }
+            }
+        });
+    PickInOrder me;
+    me.picks = {e1};
+    const Intent play = playOf(outer);
+    withEngine([&](GameEngine& e) {
+        engine = &e;
+        e.testHook_executeIntent(play);
+        e.testHook_runChain();
+    }, &me);
+    EXPECT_EQ(finalized_events, 1) << "announced once, not again at the Finalize step";
+    EXPECT_EQ(after_play_at_event, 0) << "while the effect that played it was under way";
+    EXPECT_EQ(me.object_prompts, 1) << "and not asked a second time";
+    EXPECT_EQ(o(e1).card_counters["hit"], 1);
+}
+
+// ═══ 9.Y2: [Repeat] exists on spells only ═══════════════════════════════════
+
+// CR 820.1.a allows Repeat on abilities; the engine offers the cost only as a
+// spell is played (executePlaySpell). No card prints Repeat on anything else:
+// this fails the day one does, instead of the cost silently never being offered.
+TEST_F(VerifyEngineTest, Registry_OnlySpellsDeclareRepeatCosts) {
+    auto offenders = [&](const std::vector<const Card*>& cards) {
+        std::vector<std::string> out;
+        for (const Card* c : cards)
+            if (c && c->def().card_type != CardType::Spell && !c->repeatCosts().empty())
+                out.push_back(c->def().name);
+        return out;
+    };
+    std::vector<const Card*> all;
+    int spells_with_repeat = 0;
+    for (CardDefId id = 1; id <= 1100; ++id) {
+        const Card* c = card_registry.get(id);
+        if (!c) continue;
+        all.push_back(c);
+        if (c->def().card_type == CardType::Spell && !c->repeatCosts().empty())
+            ++spells_with_repeat;
+    }
+    EXPECT_GT(all.size(), 900u);
+    EXPECT_GT(spells_with_repeat, 0) << "control: the scan does see Repeat costs";
+    const auto bad = offenders(all);
+    EXPECT_TRUE(bad.empty()) << "a non-spell declares repeatCosts(): " << bad.front();
+    // The scan can fail: a unit that declares one is reported.
+    const TRepeatUnit probe;
+    EXPECT_EQ(offenders({&probe}).size(), 1u);
 }
 
 }  // namespace

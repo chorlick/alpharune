@@ -703,9 +703,14 @@ constexpr int kSplitDamageCeaseAwait = 105;
 /// false while a prompt is pending or the finalize pass has ended. `legal` are
 /// the units the controller may choose right now; `total` the damage to divide
 /// right now; `damaged` receives the units that were dealt damage.
+/// `may_choose_none`: the text says "any number of" / "up to" units, so zero is
+/// a legal choice (CR 355.13) — the first prompt then also offers "No more
+/// targets", after the units (an agent that takes the first option still
+/// damages something). Without it at least one target is chosen.
 inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int total,
                              GameObjectId damage_source, std::vector<GameObjectId> legal,
-                             std::vector<GameObjectId>& damaged) {
+                             std::vector<GameObjectId>& damaged,
+                             bool may_choose_none = false) {
     std::sort(legal.begin(), legal.end());
     auto dealAll = [&](const std::vector<std::pair<GameObjectId, int>>& alloc) {
         for (const auto& [id, n] : alloc) {
@@ -801,6 +806,8 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             if (targetCount() >= 1)
                 options.push_back(valChoice(ctx.controller, 0, "No more targets"));
             for (auto t : can_pick) options.push_back(objChoice(ctx.controller, t));
+            if (targetCount() == 0 && may_choose_none)
+                options.push_back(valChoice(ctx.controller, 0, "No more targets"));
             ctx.events.logTrace("SPLIT_PROMPT: " + label + " (target " +
                                 std::to_string(targetCount() + 1) + ")");
             ctx.executor.requestChoice(ctx.controller, std::move(options),

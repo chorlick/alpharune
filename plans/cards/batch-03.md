@@ -11,11 +11,11 @@ Engine facts traced for this batch (referenced below):
 - Delayed abilities expire only when `expires_on_turn == turn_number` (game_engine.cpp:1157-1162); the default `-1` is never removed.
 
 ## Findings
-- [ ] **389 Frigid Touch / 571 Upstage Comedy / 696 Existential Dread / 400 Rocket Barrage** - `spells/0389_frigid_touch.cpp:26`, `spells/0571_upstage_comedy.cpp:26`, `spells/0696_existential_dread.cpp:28`, `spells/0400_rocket_barrage.cpp:32` [confirmed] high
+- [x] **389 Frigid Touch / 571 Upstage Comedy / 696 Existential Dread / 400 Rocket Barrage** - `spells/0389_frigid_touch.cpp:26`, `spells/0571_upstage_comedy.cpp:26`, `spells/0696_existential_dread.cpp:28`, `spells/0400_rocket_barrage.cpp:32` [confirmed] high — ALREADY FIXED: `ChainManager::stepResolve` runs each Repeat through `runResumable` (3a8f291, 02 item 2.4); Rocket Barrage and Existential Dread also changed here (see their own entries); test: ChainTriggerFixTest.Repeat_RepeatedEffectGetsItsOwnChoiceAndHappens, C3Test.Repeat_ATwoTargetSpellChoosesAgainForItsRepeat, JhinDeckTest.RocketBarrage_WithRepeat_TwoEffectsResolve
   - Text: "[Repeat] [cost] (You may pay the additional cost to repeat this spell's effect.)"
   - Code: the repeated execution calls `pickTarget` (389/571/696) or `pickMode` (400). In the Repeat loop the helper publishes a choice and returns "waiting"; nothing services it, so the repeat does nothing, and the choice stays pending in the executor.
   - Scenario: pay [2] to repeat Frigid Touch -> only one -2 [M] is applied, the [2] is lost; the stale pending choice is then consumed by the next chain item to resolve, which asks the agent the Frigid Touch target question and runs that other item's `onResolve` twice (e.g. a following "Draw 3" draws 6).
-- [ ] **484 Deathgrip** - `spells/0484_deathgrip.cpp:18` [confirmed] high
+- [x] **484 Deathgrip** - `spells/0484_deathgrip.cpp:18` [confirmed] high — FIXED: `enumerateLegalTargetSets` lists {kill, pump} pairs and {kill} alone when there is one friendly unit; roles are read from the chain item so a dropped target cannot shift them; the pump needs the kill to have happened; test: C3Test.Deathgrip_IsOfferedWithTwoFriendlyUnitsAndPumpsTheSecond, C3Test.Deathgrip_IsPlayableOnASingleFriendlyUnit
   - Text: "Kill a friendly unit. If you do, give +[M] equal to its Might to another friendly unit this turn. Draw 1."
   - Code: `count = 2, must_be_friendly`, no `needsPlayTimeTargetPair`. The generator's count-2 branch pairs friendly targets with ENEMY targets; the enemy list is always empty, so zero Play intents are emitted.
   - Scenario: Deathgrip in hand with two friendly units and enough runes -> the card is never offered as a legal action.
@@ -23,27 +23,29 @@ Engine facts traced for this batch (referenced below):
   - Text: "Choose a unit you control and another unit you control at a different location. If at least one of them has [Temporary], move each to the other's location. Draw 1."
   - Code: same `count = 2, must_be_friendly` shape -> never offered from hand. From facedown the hidden-play generator (game_engine.cpp:3154) passes ONE target, and `onResolve` returns at `targets.size() < 2` before the draw.
   - Scenario: from hand the card is unplayable; hidden then played -> no swap and no "Draw 1".
-- [ ] **501 Danger Zone** - `spells/0501_danger_zone.cpp:17-23` [confirmed] high
+  - c3: FIXED from hand: `enumerateLegalTargetSets` lists ordered pairs at different locations, and Draw 1 no longer depends on the two units; test: C3Test.SmokeAndMirrors_IsOfferedForUnitsAtDifferentLocationsOnly, AuditFix6Test.SmokeMirrors_FewerThanTwoTargetsNoOp (corrected)
+  - BLOCKED: played from facedown it is still never offered — the hidden-play generator (`game_engine.cpp`, `all_here` filter) requires EVERY target at the hidden battlefield, but CR 811.1.d.4 frees a target whose own restriction makes that impossible (the rule's example is this card). Needs an engine change: per-target treatment in the hidden generator.
+- [x] **501 Danger Zone** - `spells/0501_danger_zone.cpp:17-23` [confirmed] high — FIXED: no target; every Mech unit you control gets +1 [M]; test: C3Test.DangerZone_GivesEveryMechAndOnlyMechsPlusOne, C3Test.DangerZone_IsPlayableWithNoUnits
   - Text: "Give your Mechs +1 [M] this turn."
   - Code: takes one friendly-unit target (any unit, no Mech check) and gives that one unit +1.
   - Scenario: three Mechs and a Recruit on board -> only one chosen unit gets +1 (and it may be the non-Mech Recruit); with no friendly unit the card can't be played at all.
-- [ ] **518 On the Hunt** - `spells/0518_on_the_hunt.cpp:17-23` [confirmed] high
+- [x] **518 On the Hunt** - `spells/0518_on_the_hunt.cpp:17-23` [confirmed] high — FIXED: no target; readies every unit you control; test: C3Test.OnTheHunt_ReadiesAllYourUnits
   - Text: "Ready your units."
   - Code: readies the single targeted friendly unit.
   - Scenario: four exhausted units -> one is readied.
-- [ ] **577 Right of Conquest** - `spells/0577_right_of_conquest.cpp:18-19` [confirmed] high
+- [x] **577 Right of Conquest** - `spells/0577_right_of_conquest.cpp:18-19` [confirmed] high — FIXED: draws 1, then 1 per battlefield you control; test: C3Test.RightOfConquest_DrawsOnePlusOnePerControlledBattlefield
   - Text: "Draw 1, then draw 1 for each battlefield you or allies control."
   - Code: always draws exactly 2.
   - Scenario: controlling 0 battlefields draws 2 (should be 1); controlling 2 draws 2 (should be 3).
-- [ ] **634 Crescent Strike** - `spells/0634_crescent_strike.cpp:19-29` [confirmed] high
+- [x] **634 Crescent Strike** - `spells/0634_crescent_strike.cpp:19-29` [confirmed] high — FIXED: the target must be at a battlefield; 4 to it and 1 to each other enemy unit there, kills after all damage; test: C3Test.CrescentStrike_HitsTheOtherEnemyUnitsThereAndNeedsABattlefield
   - Text: "Choose a battlefield and an enemy unit there. Deal 4 to that unit and 1 to each other enemy unit there."
   - Code: deals 4 to one enemy unit anywhere (no `must_be_at_battlefield`); the 1-damage splash is not implemented.
   - Scenario: three enemy units at a battlefield -> the other two take nothing; an enemy unit in its base can be targeted.
-- [ ] **402 Bellows Breath** - `spells/0402_bellows_breath.cpp:19` [confirmed] high
+- [x] **402 Bellows Breath** - `spells/0402_bellows_breath.cpp:19` [confirmed] high — FIXED: `enumerateLegalTargetSets` lists sets of 1-3 units sharing a location (engine side: 08 item 8.6); test: C3Test.BellowsBreath_TargetSetsAreUnitsAtOneLocation
   - Text: "Deal 1 to up to three units at the same location."
   - Code: `count = 3`, but the generator emits one target per intent for any count other than 2, so `targets` never holds more than one unit.
   - Scenario: three enemy 1 [M] units at one battlefield -> only one is hit.
-- [ ] **616 Tricksy Tentacles** - `spells/0616_tricksy_tentacles.cpp:17-23` [confirmed] high
+- [x] **616 Tricksy Tentacles** - `spells/0616_tricksy_tentacles.cpp:17-23` [confirmed] high — FIXED: repeated picks against a Might budget of 8 (Deflect paid, choices recorded), then one location for all of them — their base or any battlefield; test: C3Test.TricksyTentacles_MovesSeveralUnitsWithinTheMightBudgetToOneLocation
   - Text: "Move any number of enemy units with the same controller and a total Might of 8 or less to a single location."
   - Code: moves exactly one enemy unit with Might <= 8 to its own base.
   - Scenario: four enemy 2 [M] units -> only one moves, and it can only go to base, never to a battlefield.
@@ -51,107 +53,111 @@ Engine facts traced for this batch (referenced below):
   - Text: "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn."
   - Code: the Repeat cost is not parsed, so no repeat exists; instead `discardThenAct` makes the base resolution discard a card (mandatory whenever the hand is non-empty) and grants a single Assault 4.
   - Scenario: cast with two cards in hand -> forced to discard one for one Assault 4; the printed option (keep the cards for one effect, or discard for a second effect) is unavailable.
+  - c3: FIXED the forced discard: the base effect is only "Give a unit [Assault 4] this turn"; test: C3Test.SquareUp_DoesNotForceADiscard
+  - BLOCKED: the Repeat itself ("[Repeat] — Discard 1") needs a card-declared Repeat cost read by `executePlaySpell` (STATUS carry-over, chain-triggers 8.9 last bullet; assigned to sweep).
 - [ ] **743 Curtain Call** - `spells/0743_curtain_call.cpp:21-60` [confirmed] high
   - Text: "[Repeat] — [1] / [A] / [1][A] (You may pay each additional cost to repeat this spell's effect.) Choose one you haven't already chosen —"
   - Code: `parseRepeatCost` rejects this text and the card has no payment or loop of its own (the engine comment says the card handles it; it does not). The spell resolves one mode only. `card_counters["curtain_call_used_mask"]` is never cleared.
   - Scenario: with [1][A] spare the player can never get a second or third mode; if the same card object is cast again later (recycled and redrawn), the mode used earlier is still masked out.
-- [ ] **625 Eclipse** - `spells/0625_eclipse.cpp:17-20` [confirmed] high
+  - c3: FIXED what the card owns: the "already chosen" mask belongs to one play (keyed by the chain item), so a later cast starts fresh; the mode is chosen first and its target from the units that mode can affect (no more any-unit play target); test: C3Test.CurtainCall_TargetFitsTheModeAndALaterCastStartsFresh, JhinDeckTest.CurtainCall_*
+  - BLOCKED: the three Repeat costs ("[1] / [A] / [1][A]") need a card-declared Repeat cost read by `executePlaySpell` (STATUS carry-over, chain-triggers 8.9 last bullet; assigned to sweep).
+- [x] **625 Eclipse** - `spells/0625_eclipse.cpp:17-20` [confirmed] high — FIXED: calls `executor.predict(controller, 1)` after the -4 [M]; test: C3Test.Eclipse_Predicts
   - Text: "Give a unit -4 [M] this turn. [Predict]."
   - Code: only the -4 [M]; `executor.predict` is never called (the engine does not act on `Keyword::Predict`).
   - Scenario: every cast skips the Predict.
-- [ ] **487 Rally the Troops** - `spells/0487_rally_the_troops.cpp:20-31` [documented] high
+- [x] **487 Rally the Troops** - `spells/0487_rally_the_troops.cpp:20-31` [documented] high — FIXED: a repeating delayed ability (new `DelayedAbility::repeats`, checked on unit plays, subject passed as `triggering_subject` — `shared:` 12d597e) buffs each friendly unit played until end of turn; test: C3Test.RallyTheTroops_BuffsEveryFriendlyUnitPlayedThisTurn, C3Test.RallyTheTroops_DoesNotBuffAnOpponentsUnit
   - Text: "When a friendly unit is played this turn, buff it. Draw 1."
   - Code: draws 1 only.
   - Scenario: play Rally then two units -> neither is buffed.
-- [ ] **503 Relentless Pursuit** - `spells/0503_relentless_pursuit.cpp:27-68` [documented] high
+- [x] **503 Relentless Pursuit** - `spells/0503_relentless_pursuit.cpp:27-68` [documented] high — FIXED: the controller chooses the destination (base or any other battlefield), whether to attach and which Equipment (one attached elsewhere may move over); the conquer rider is a delayed ability scoped to the unit, with a real "may"; test: C3Test.RelentlessPursuit_MovesALoneUnitWhereItsControllerChooses, C3Test.RelentlessPursuit_AttachingIsOptionalAndTheConquerRiderIsArmed
   - Text: "Move a friendly unit. You may attach up to one Equipment with the same controller to it. This turn, that unit has \"When I conquer, you may move me to my base.\""
   - Code: destination is the first battlefield where the controller has ANOTHER unit (no move at all otherwise, never to base or an empty/enemy battlefield); the first unattached Equipment in container order is attached without asking; the conquer rider is a no-op.
   - Scenario: one unit in base, no other units out -> the spell moves nothing; with two loose Equipment the player gets no say in which (or whether) one is attached.
-- [ ] **Repeat cost payable many times (all engine-parsed Repeat cards: 389, 400, 402, 501, 571, 594, 623, 696)** - engine `game_engine.cpp:1862-1890` [confirmed] medium
+- [x] **Repeat cost payable many times (all engine-parsed Repeat cards: 389, 400, 402, 501, 571, 594, 623, 696)** - engine `game_engine.cpp:1862-1890` [confirmed] medium — ALREADY FIXED: `executePlaySpell` offers the cost once (`kRepeatPaymentsPerCost`, a805677, 08 item 8.9); test: ChainTriggerFixTest.Repeat_CostCanBePaidOnlyOnce
   - Text: CR 820.1.c.3 "Each Repeat Cost can be paid only a single time."
   - Code: `executePlaySpell` loops up to `kRepeatSafetyCap = 32` tranches while affordable.
   - Scenario: Downstage Dramatics with 8 energy -> base + 3 repeats = draw 4 (rules: draw 2 at most).
-- [ ] **520 Riposte** - `spells/0520_riposte.cpp:70-77` [confirmed] medium
+- [x] **520 Riposte** - `spells/0520_riposte.cpp:70-77` [confirmed] medium — FIXED: the counter no longer depends on the friendly unit — a mistargeted unit only loses its own +[M]; test: C3Test.Riposte_StillCountersWhenTheChosenUnitIsGone
   - Text: "Counter that spell and give that unit +[M] equal to that spell's Energy cost this turn."
   - Code: if the friendly unit chosen at play is no longer legal, `targets` arrives empty, `pickTarget` returns the mistarget `kInvalidId`, and the card returns before `counterChainTop`.
   - Scenario: opponent kills the chosen unit in response -> Riposte counters nothing.
-- [ ] **735 Sacrifice** - `spells/0735_sacrifice.cpp:37-44` [confirmed] medium
+- [x] **735 Sacrifice** - `spells/0735_sacrifice.cpp:37-44` [confirmed] medium — FIXED: `kFinalizeResolve` — the Mighty unit is chosen and killed as the spell is played (`costDueNow`), and the effect no longer depends on it; test: C3Test.Sacrifice_KillsTheMightyUnitAsItIsPlayed
   - Text: "As an additional cost to play this, kill a friendly [Mighty] unit."
   - Code: the kill happens inside `onResolve`, not when the spell is played.
   - Scenario: opponent counters Sacrifice -> the Mighty unit is never killed (the cost was never paid); if the chosen unit drops below 5 [M] in response the spell does nothing and no cost is paid either.
-- [ ] **635 Deadly Flourish** - `spells/0635_deadly_flourish.cpp:18-20,33-39,81` [confirmed] medium
+- [x] **635 Deadly Flourish** - `spells/0635_deadly_flourish.cpp:18-20,33-39,81` [confirmed] medium — FIXED: `must_be_enemy`; `Keyword::Reaction` removed from the def; the death-watch expires this turn (`expires_on_turn`); test: C3Test.DeadlyFlourish_TakesAnEnemyUnitHasNoTimingKeywordAndWatchesThisTurnOnly
   - Text: "Deal 3 to an enemy unit. When it dies this turn, play a Gold gear token exhausted." (no timing keyword printed)
   - Code: target requirement has no `must_be_enemy`; `Keyword::Reaction` is set although the text prints neither [Action] nor [Reaction]; the delayed ability keeps `expires_on_turn = -1`, which is never expired.
   - Scenario: can deal 3 to a friendly unit; playable in a closed state; a unit that survives and dies three turns later still pays out a Gold token.
-- [ ] **933 Siphoning Strike** - `spells/0933_siphoning_strike.cpp:34-40` [confirmed] medium
+- [x] **933 Siphoning Strike** - `spells/0933_siphoning_strike.cpp:34-40` [confirmed] medium — FIXED: `expires_on_turn` set to the current turn; test: C3Test.SiphoningStrike_DeathWatchExpiresWithTheTurn
   - Text: "When it dies this turn, channel 1 rune exhausted."
   - Code: same delayed-ability shape with `expires_on_turn = -1` (never removed).
   - Scenario: the unit survives the 4 damage and dies on a later turn -> the controller still channels a rune.
-- [ ] **600 Skyward Strike** - `spells/0600_skyward_strike.cpp:32-38` [confirmed] medium
+- [x] **600 Skyward Strike** - `spells/0600_skyward_strike.cpp:32-38` [confirmed] medium — FIXED: the move always happens, to a destination the controller chooses (base or any other battlefield); at Level 6 a second target is also stunned; all chosen at finalization; test: C3Test.SkywardStrike_MovesWhereChosenAndAtLevelSixAlsoStuns
   - Text: "Move an enemy unit. [Level 6][>] [Stun] an enemy unit." (no "instead")
   - Code: at 6+ XP it only stuns and skips the move; below that the move is always to the unit's base (CR 355.4: the player chooses the destination).
   - Scenario: at Level 6 the enemy unit is stunned but stays at the battlefield; below Level 6 an enemy unit already in base can be chosen and nothing happens, and it can never be pulled to a battlefield.
-- [ ] **760 Keeper's Verdict** - `spells/0760_keeper_s_verdict.cpp:40-41` [confirmed] medium
+- [x] **760 Keeper's Verdict** - `spells/0760_keeper_s_verdict.cpp:40-41` [confirmed] medium — FIXED: the unit's OWNER is asked top or bottom; the card goes into the deck through `deck_ops`; a token ceases to exist; test: C3Test.KeepersVerdict_TheOwnerChoosesTopOrBottom, EnginePathTest.SpellTargetThenModeIsAskedThroughTheEngine (corrected)
   - Text: "Its owner places it on the top or bottom of their Main Deck."
   - Code: `pickMode` asks `ctx.controller` (the caster).
   - Scenario: the caster always sends the unit to the bottom; the owner would choose top to redraw it.
-- [ ] **745 Thrill of the Hunt** - `spells/0745_thrill_of_the_hunt.cpp:30,59-63` [confirmed] medium
+- [x] **745 Thrill of the Hunt** - `spells/0745_thrill_of_the_hunt.cpp:30,59-63` [confirmed] medium — FIXED: the battlefield choice was fixed by helpers (2e0f181, EnginePathTest.ThrillOfTheHuntBanishesItsUnitOnce); here the re-played unit loses buffs, temporary Might, stun, Empowered and its combat role, and a token is not played back; test: C3Test.ThrillOfTheHunt_TheUnitComesBackWithoutItsStatuses
   - Text: "Banish a friendly unit, then its owner plays it to any battlefield, ignoring its cost."
   - Code: `pickMode` after a completed `pickTarget` returns `resume_data[1]` = 0 without asking (S6), so the unit always goes to `battlefields[0]`. Unlike Temporal Breach, nothing resets `buff_count`, `temp_might_bonus`, `is_stunned`, `empowered` or `combat_designation` on the re-played unit.
   - Scenario: two battlefields -> the unit can never be sent to the second; a stunned, buffed attacker comes back still stunned, buffed and designated Attacker.
-- [ ] **505 Void Rush** - `spells/0505_void_rush.cpp:33-57` [confirmed] medium
+- [x] **505 Void Rush** - `spells/0505_void_rush.cpp:33-57` [confirmed] medium — FIXED: a real "may" and a choice between the revealed cards, offered only for cards payable at the reduced cost (nothing is banished and left there); a unit's location is chosen; the deck is edited only through `banishObject` / `deck_ops`; test: C3Test.VoidRush_ThePlayerChoosesWhichCardAndMayDecline, C3Test.VoidRush_DecliningDrawsBoth
   - Text: "You may banish one, then play it, reducing its cost by [2]. Draw any you didn't banish."
   - Code: always takes the first revealed non-rune card (the top card), with no choice and no decline; it is banished before affordability is checked, and stays banished if it can't be paid for. Units land in base only.
   - Scenario: top card costs 9, second costs 2, 3 energy available -> the 9-drop is banished and lost, the player draws only one card.
-- [ ] **821 Resonating Strike / 822 Sanction / 839 Mesmerize** - `spells/0821_resonating_strike.cpp:38,61-66`, `spells/0822_sanction.cpp:23,30-36`, `spells/0839_mesmerize.cpp:23,31-37` [confirmed] medium
+- [x] **821 Resonating Strike / 822 Sanction / 839 Mesmerize** - `spells/0821_resonating_strike.cpp:38,61-66`, `spells/0822_sanction.cpp:23,30-36`, `spells/0839_mesmerize.cpp:23,31-37` [confirmed] medium — FIXED: no engine play-time target any more; `kFinalizeResolve` chooses the battlefield / mode first and then a unit that fits it; test: C3Test.ModalSpellsChooseTheModeFirstSoTheTargetAlwaysFits, C3Test.ResonatingStrike_OffersOnlyUnitsThatAreNotAtTheChosenBattlefield
   - Text: 821 "Choose a battlefield you control and a unit you control at a different location."; 822/839 "Choose one —" with a different target class per mode.
   - Code: `needsPlayTimeTarget()` makes `executePlaySpell` ask for the unit first, from the default requirement list (any friendly unit / any unit). The battlefield or mode is asked at resolution with a mask that ignores the unit already chosen; `pickTarget` then returns the pre-chosen unit only if it fits, else a mistarget.
   - Scenario: Mesmerize - pick an enemy unit at play (paying Deflect), then pick "Return a friendly unit" -> nothing happens. Resonating Strike - the unit already standing on the only controlled battlefield is offered at play and guarantees a fizzle. Sanction - pick a non-Empowered unit, then the Disempower mode -> nothing.
-- [ ] **696 Existential Dread** - `spells/0696_existential_dread.cpp:18-22,31,35` [confirmed] medium
+- [x] **696 Existential Dread** - `spells/0696_existential_dread.cpp:18-22,31,35` [confirmed] medium — FIXED: only attacking enemy units are legal targets (`enumerateLegalTargets`), `stunUnitBy(picked, ctx.source)`; test: C3Test.ExistentialDread_NeedsAnAttackerAndStunsForItsController
   - Text: "[Stun] an attacking enemy unit."
   - Code: legal targets are every enemy unit at a battlefield; a non-attacker is accepted and then silently ignored; uses `stunUnit` (self-attributed) instead of `stunUnitBy(picked, ctx.source)`.
   - Scenario: playable with no attackers on board and wasted; "when you stun" triggers of the caster never fire.
-- [ ] **758 Void Assault** - `spells/0758_void_assault.cpp:28,38-48` [documented] medium
+- [x] **758 Void Assault** - `spells/0758_void_assault.cpp:28,38-48` [documented] medium — FIXED: each unit has its own destination (one prompt over the combinations) and a unit that is no longer a legal target does not stop the other; roles read from the chain item. Attacker designation: NOT A DEFECT — cleanup applies Contested for the turn player first (`GameEngine::cleanup`, CR 190.3.a loop) and `bf.attacker = bf.contested_by`; the caster can only play this on their own turn; test: C3Test.VoidAssault_EachUnitGetsItsOwnDestination
   - Text: "Move a friendly unit, then move an enemy unit. (If they both move to a battlefield you don't control, you're the attacker.)"
   - Code: one destination for both units; attacker designation not applied; returns without moving anything if either target became illegal.
   - Scenario: cannot move the friendly unit to battlefield A and the enemy unit to its base; opponent bounces the enemy target in response -> the friendly unit is not moved either.
-- [ ] **568 Smite** - `spells/0568_smite.cpp:22-30` [documented] medium
+- [x] **568 Smite** - `spells/0568_smite.cpp:22-30` [documented] medium — FIXED: the unit carries `GameObject::banish_if_would_die_this_turn`, consulted by both kill paths and cleared at end of turn (`shared:` 5b80478); test: C3Test.Smite_BanishesTheUnitIfItDiesLaterThisTurn
   - Text: "If it would die this turn, banish it instead."
   - Code: banishes only if the 3 damage is immediately lethal.
   - Scenario: a 5 [M] unit takes 3 from Smite and then dies in combat the same turn -> goes to trash, Deathknell fires.
-- [ ] **582 Dancing Grenade** - `spells/0582_dancing_grenade.cpp:26-33` [documented] medium
+- [x] **582 Dancing Grenade** - `spells/0582_dancing_grenade.cpp:26-33` [documented] medium — FIXED: the damaged unit's controller is offered the replay for [A]; paying puts the spell back on the chain under their control with a target of their choice; the hit count is turn-stamped. Remaining engine gap noted in the card: the card object is in its owner's trash while the replay is on the chain; test: C3Test.DancingGrenade_TheUnitsControllerMayPlayItAgainForOnePower, C3Test.DancingGrenade_TheHitCountDoesNotCarryIntoALaterTurn
   - Text: "Its controller may play this spell again for [A]. If they do, this deals 1 additional Bonus Damage for each time this spell has dealt damage this turn."
   - Code: the replay offer is not implemented; `__dancing_grenade_hits` on the card object is never reset.
   - Scenario: the opponent is never offered the bounce-back; the same card object cast again on a later turn deals 3, then 4.
-- [ ] **663 Call to Battle** - `spells/0663_call_to_battle.cpp:43-77` [documented] medium
+- [x] **663 Call to Battle** - `spells/0663_call_to_battle.cpp:43-77` [documented] medium — FIXED: the caster chooses the battlefield, the opponent chooses which of their units moves; test: C3Test.CallToBattle_BothPlayersChoose
   - Text: "Move a unit you control to a battlefield you control. Then, choose an opponent. They move a unit they control to the same battlefield."
   - Code: destination is the first controlled battlefield; the opponent's unit is auto-picked as their highest-Might unit elsewhere.
   - Scenario: the opponent would send a 1 [M] token; the engine sends their 7 [M] champion.
-- [ ] **475 Guards!** - `spells/0475_guards.cpp:25-33,29` [confirmed] medium
+- [x] **475 Guards!** - `spells/0475_guards.cpp:25-33,29` [confirmed] medium — FIXED: the token id lives on the chain item, not the card; the token's location is chosen, and is the hidden battlefield when played from facedown (`shared:` 87ac839 records it); test: C3Test.Guards_ALaterCastOfTheSameCardMakesANewToken, C3Test.Guards_PlayedFromFacedownTheTokenGoesToThatBattlefield
   - Text: "Play a 2 [M] Sand Soldier unit token. Then do this: You may pay [C] to ready it."
   - Code: `__guards_token` on the spell object is never cleared, so a second cast of the same card object skips token creation and points at the old token. When played from facedown the token still goes to base (CR 811.1.d.5 requires that battlefield).
   - Scenario: Guards! is recycled, redrawn and cast again -> no token is created.
-- [ ] **400 Rocket Barrage** - `spells/0400_rocket_barrage.cpp:18-22` [confirmed] medium
+- [x] **400 Rocket Barrage** - `spells/0400_rocket_barrage.cpp:18-22` [confirmed] medium — FIXED: no play target; the mode is chosen, then a unit in a base or a gear accordingly; unplayable with neither; test: C3Test.RocketBarrage_ChoosesTheModeThenATargetThatFitsIt, C3Test.RocketBarrage_IsNotPlayableWithNothingEitherModeCanAffect
   - Text: "Deal 4 to a unit in a base. / Kill a gear."
   - Code: `TargetRequirements{.count = 1}` with no type filter; every on-board object (runes, units at battlefields) is a legal play target, and one that fits neither mode makes `pickMode` return -2.
   - Scenario: the player targets a unit at a battlefield or a rune -> the spell resolves with no effect.
-- [ ] **575 Lotus Trap / 853 Temporal Breach / 821 Resonating Strike** (Hidden + needsPlayTimeTarget) - `spells/0575_lotus_trap.cpp:25-26`, `spells/0853_temporal_breach.cpp:25-26` [confirmed] low
+- [x] **575 Lotus Trap / 853 Temporal Breach / 821 Resonating Strike** (Hidden + needsPlayTimeTarget) - `spells/0575_lotus_trap.cpp:25-26`, `spells/0853_temporal_breach.cpp:25-26` [confirmed] low — FIXED: 575 / 853 keep the target the hidden play locked in (`lockedPlayTarget`); 821 takes no engine target and restricts its battlefield to the hidden one; test: C3Test.LotusTrap_PlayedFromFacedownKeepsTheTargetItWasPlayedWith
   - Text: CR 811.1.d.2 - a hidden spell's targets must come from the battlefield it was hidden at.
   - Code: the hidden-play intent carries a target at that battlefield, but these cards ignore `targets` and call `pickTarget` over all units; `resume_data[5]` is not set on this path, so the agent is asked again with no restriction.
   - Scenario: Lotus Trap hidden at battlefield A is played and then pointed at a unit at battlefield B.
-- [ ] **520 Riposte / 750 Lilting Lullaby / 826 Crumbling Sands** - `spells/0520_riposte.cpp:32-37`, `spells/0750_lilting_lullaby.cpp:23-28`, `spells/0826_crumbling_sands.cpp:19-23` [confirmed] low
+- [x] **520 Riposte / 750 Lilting Lullaby / 826 Crumbling Sands** - `spells/0520_riposte.cpp:32-37`, `spells/0750_lilting_lullaby.cpp:23-28`, `spells/0826_crumbling_sands.cpp:19-23` [confirmed] low — FIXED: `hasLegalTargets` requires the chain TOP to be a spell (also Hard Bargain 457, Abandon 693); test: C3Test.CountersAreOnlyPlayableAgainstTheChainTop
   - Text: "Counter a spell."
   - Code: `hasLegalTargets` scans the whole chain for any spell, while resolution only peeks the top.
   - Scenario: the chain is [enemy spell, triggered ability]; the counter is offered and paid for, then does nothing because the top item is an ability.
-- [ ] **368 Not So Fast / 668 Repulse** - `spells/0368_not_so_fast.cpp:36`, `spells/0668_repulse.cpp:42` [plausible] low
+- [x] **368 Not So Fast / 668 Repulse** - `spells/0368_not_so_fast.cpp:36`, `spells/0668_repulse.cpp:42` [plausible] low — NOT A DEFECT (any more): no triggered ability is given `targets` — every `chain_.addAbility` call in `trigger_manager.cpp` passes none and the event's subject travels in `ChainItem::triggering_subject` (07 item 7.1, 515e90b), which neither card reads; a trigger's real choices are in `chosen_objects`
   - Text: "... an enemy spell or ability that chooses a friendly unit ..."
   - Code: reads `top.targets` as choices; for a triggered ability `targets` holds the triggering event's subject (game_engine.cpp:1194), not something it chose.
   - Scenario: an enemy "when an opponent plays a unit" trigger whose subject is my unit is treated as choosing that unit and can be countered.
-- [ ] **747 Death from Below** - `spells/0747_death_from_below.cpp:27-38` [confirmed] low
+- [x] **747 Death from Below** - `spells/0747_death_from_below.cpp:27-38` [confirmed] low — FIXED: the replay is offered as the spell resolves (pay [A], it goes back on the chain and a new target is chosen), whatever the timing; no standing grant; test: C3Test.DeathFromBelow_TheReplayIsOfferedAsItResolvesAndLeavesNoStandingGrant, CardTestFixture.DeathFromBelow_GrantsTrashReplayWhenMightLow (corrected)
   - Text: "Then, if it had 3 [M] or less, do this: You may play this from your trash for [A]."
   - Code: adds a trash-replay grant that lasts until end of turn and obeys normal spell timing (the card has no [Action]/[Reaction]).
   - Scenario: cast on the opponent's turn through a cost-free play effect -> the replay is never available; cast on your own turn -> it can be replayed much later in the turn.
-- [ ] **485 Drag Under** - `spells/0485_drag_under.cpp:17-23` [plausible] low
+- [x] **485 Drag Under** - `spells/0485_drag_under.cpp:17-23` [plausible] low — FIXED (confirmed by reading): `playPayingCost` / `canPlayPayingCost` now stage `current_play_source` from the card's zone (`shared:` a0174b0); test: C3Test.DragUnder_CostsTwoLessWhenAnEffectPlaysItFromOutsideTheHand
   - Text: "I cost [2] less to play from anywhere other than your hand."
   - Code: keys on `current_play_source`, which `executePlaySpell` sets only around its own `payCardCost`; effect-driven plays (`playPayingCost`, e.g. Void Rush from the deck) leave it at Hand.
   - Scenario: Void Rush plays Drag Under off the deck -> no [2] reduction.
@@ -159,11 +165,12 @@ Engine facts traced for this batch (referenced below):
   - Text: "[Flow] [1][A][A]"
   - Code: wired correctly as `flow(1, 2, any_domain)`, but the engine's any-domain grant path tries one single domain for the whole power amount (game_engine.cpp:3437-3443, 6172-6181).
   - Scenario: one Fury rune and one Chaos rune available for power -> the Flow play is not offered.
-- [ ] **887 Up from the Deep (also 606, 631, 931, 475)** - `spells/0887_up_from_the_deep.cpp:24` [documented] low
+  - BLOCKED: engine — the any-domain grant path in `generateTrashReplayActions` / `payTrashReplayGrant` pays the whole [A][A] from one domain (also listed in 08 item 8.16). The card's `flowCost` is right; nothing to change in the card file.
+- [x] **887 Up from the Deep (also 606, 631, 931, 475)** - `spells/0887_up_from_the_deep.cpp:24` [documented] low — FIXED: 887, 606, 631 and Arise! 513 choose base or a controlled battlefield per token (`playTokensChoosingLocations`); 931 and 475 for their one token; test: C3Test.TokensWithNoPrintedLocationCanGoToAControlledBattlefield, C3Test.FlurryOfFeathers_PlaysFourBirdsOnceWhateverTheLocationPrompts, C3Test.DeathMark_BurnsOnceAndTheCloneCanGoToAControlledBattlefield, C3Test.Arise_EachSandSoldierCanBePlayedToAControlledBattlefield
   - Text: "Play two 1 [M] Tentacle unit tokens" (no location printed)
   - Code: tokens always go to the controller's base; Iterative Design (838) offers base or a controlled battlefield for the same wording.
   - Scenario: the player cannot put the tokens on a battlefield they control.
-- [ ] **594 Double Trouble** - `spells/0594_double_trouble.cpp:40-47` [confirmed] low
+- [x] **594 Double Trouble** - `spells/0594_double_trouble.cpp:40-47` [confirmed] low — FIXED: a real "may" and a choice of unit; the unit is drawn through `drawCards`; cards leave the deck through `deck_ops`; test: C3Test.DoubleTrouble_RevealingAUnitIsOptionalChosenAndARealDraw
   - Text: "You may reveal a unit from among them and draw it."
   - Code: moves the card to hand by hand instead of through `drawCards`, so no draw event is emitted (and see S5).
   - Scenario: "when you draw" effects do not see this draw.
@@ -172,6 +179,7 @@ Engine facts traced for this batch (referenced below):
 - S5: 503 Relentless Pursuit (destination, Equipment), 505 Void Rush (card to banish), 594 Double Trouble (first unit, not optional), 663 Call to Battle (battlefield), 665 Disposal Order (most recent 3 trash cards, documented), 669 Stare Down (battlefield, documented), 755 Moonfall (battlefield and the enemy unit moved)
 - S6: 745 Thrill of the Hunt (pickMode after pickTarget -> always battlefield 0); 760 Keeper's Verdict has the same order on its `targets.empty()` fallback path
 - S7: 632 Turn to Dust
+  - c3: S5 / S6 / S7 all FIXED in the cards listed (503, 505, 594, 663, 665, 669, 755; 745, 760; 632): see the entries above; test: C3Test.DisposalOrder_TheCasterChoosesWhichCards, C3Test.StareDown_TheBattlefieldIsChosenAndTheXpIsGainedOnce, C3Test.Moonfall_TheBattlefieldAndTheEnemyUnitAreChosen, C3Test.TurnToDust_TheGearKeepsTemporaryPastTheEndOfTheTurn
 
 ## Not read
 None

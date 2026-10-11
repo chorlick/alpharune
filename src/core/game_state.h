@@ -189,6 +189,10 @@ struct PlayerState {
         bool affects_friendly_only = false; // restricts to plays by the modifier's controller
         bool affects_enemy_only = false;    // restricts to plays by the opponent
         bool gear_only = false;             // applies only to gear plays (Ornn's Forge)
+        // Applies only to a card whose printed Energy cost is at most this
+        // (-1 = any): "a gear with Energy cost no more than [7]" (Jayce, Man
+        // of Progress).
+        int max_printed_energy_cost = -1;
         bool units_only = false;            // applies only to unit plays (Vaults of Helia)
         std::string required_tag;           // applies only to cards with this tag (Herald of Scales: "Dragon")
         // Pushed by a Card::applyPassiveAura hook, i.e. a continuous effect.

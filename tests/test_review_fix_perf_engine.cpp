@@ -761,7 +761,7 @@ TEST_F(PerfEngineCards, EveryCardFiresOnExactlyItsTriggerTypes) {
     EXPECT_GT(cards, 900);
     EXPECT_GT(with_trigger, 300);
     // Ids nobody registered, small and huge.
-    EXPECT_EQ(card_registry.get(0), nullptr);
+    EXPECT_EQ(card_registry.get(CardDefId::fromRaw(0)), nullptr);
     EXPECT_EQ(card_registry.get(999), nullptr);
     EXPECT_EQ(card_registry.get(70000), nullptr);
     EXPECT_EQ(card_registry.get(kInvalidId), nullptr);

@@ -17,7 +17,7 @@ namespace riftbound {
 class CardRegistry;  // fwd-decl: buildFromClasses sources data from registered cards
 
 struct CardDef {
-    CardDefId id = 0;           // registry card_id (1-based, 0 = PAD)
+    CardDefId id;               // registry card_id (1-based); kInvalidId until the class sets it
     std::string def_id;          // gallery ID like "ogn-001-298"
     std::string name;
     std::string set_code;

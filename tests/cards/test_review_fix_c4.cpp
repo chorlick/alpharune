@@ -146,7 +146,7 @@ protected:
         return out;
     }
     bool canActivate(const std::vector<Intent>& legal, GameObjectId source,
-                     CardDefId granted_by = 0) {
+                     CardDefId granted_by = kInvalidId) {
         return std::any_of(legal.begin(), legal.end(), [&](const Intent& i) {
             return i.type == IntentType::ActivateAbility && i.ability_source == source &&
                    i.granted_ability_def == granted_by;

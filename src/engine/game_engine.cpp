@@ -1470,7 +1470,7 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
             runFinalizePass(item);
         return;
     }
-    const Card* card = (item.is_ability && item.granted_ability_def != 0)
+    const Card* card = (item.is_ability && item.granted_ability_def != kInvalidId)
         ? card_registry_.get(item.granted_ability_def)
         : card_registry_.get(item.card_def_id);
     if (!card) return;
@@ -1801,7 +1801,7 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
     // an opt-in, and has no marker to reach.)
     if (!(done.finalize_checked & (64 | 128)) && done.reflexive_index < 0 &&
         done.card_def_id != kInvalidId) {
-        const Card* owner = (done.is_ability && done.granted_ability_def != 0)
+        const Card* owner = (done.is_ability && done.granted_ability_def != kInvalidId)
             ? card_registry_.get(done.granted_ability_def)
             : card_registry_.get(done.card_def_id);
         const unsigned bit = done.is_spell ? Card::kFinalizeResolve
@@ -1883,7 +1883,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     Card* ability_card = card_registry_.get(source.card_def_id);
     // Aura-granted ability: the COST descriptor comes from the granting
     // card, but the cost is paid by the BEARER (source) below.
-    Card* cost_card = (intent.granted_ability_def != 0)
+    Card* cost_card = (intent.granted_ability_def != kInvalidId)
         ? card_registry_.get(intent.granted_ability_def) : ability_card;
     ActivationCost act_cost;
     if (cost_card) {
@@ -2040,7 +2040,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // dispatches to the granting card's onActivate (Forge/Gardens/Heimer).
     // Found by id: a "when you choose a friendly unit" trigger may already
     // sit above the ability on the chain.
-    if (intent.granted_ability_def != 0)
+    if (intent.granted_ability_def != kInvalidId)
         for (auto& ci : state_.chain.items)
             if (ci.id == ability_item_id) {
                 ci.granted_ability_def = intent.granted_ability_def;
@@ -3100,7 +3100,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
         auto reqs = card->getTargetRequirements();
         auto legal = card->enumerateLegalTargets(state_, item.controller);
         if (item.is_ability && item.is_activated_ability) {
-            const Card* acard = (item.granted_ability_def != 0)
+            const Card* acard = (item.granted_ability_def != kInvalidId)
                 ? card_registry_.get(item.granted_ability_def) : card;
             if (acard) {
                 const auto& abs = acard->abilities();
@@ -3159,7 +3159,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                 // so single-ability cards keep working unchanged.
                 // Aura-granted ability (Forge/Gardens/Heimer): run the GRANTING
                 // card's onActivate with the bearer (item.source) as ctx.source.
-                Card* act_card = (item.granted_ability_def != 0)
+                Card* act_card = (item.granted_ability_def != kInvalidId)
                     ? card_registry_.get(item.granted_ability_def) : card;
                 bool is_empower = false;
                 if (act_card) {

@@ -2083,7 +2083,8 @@ TEST_F(SweepTriggersTest, ReplacementEffects_EveryCardDefinesWhenItApplies) {
     auto probe = addUnit(P2, kInvalidId, 2, 1);
     std::vector<CardDefId> found;
     int without = 0;
-    for (CardDefId id = 1; id <= 1100; ++id) {
+    for (uint32_t n = 1; n <= 1100; ++n) {
+        const CardDefId id = CardDefId::fromRaw(n);
         const Card* c = card_registry.get(id);
         if (!c) continue;
         const auto answer = c->replacementAppliesTo(state, kInvalidId, P2, probe);
@@ -2956,7 +2957,8 @@ static std::string reflexiveDeclarationProblem(const Card& card) {
 
 TEST_F(SweepTriggersTest, Reflexive_EveryCardWithThePhraseDeclaresItself) {
     int with_phrase = 0;
-    for (CardDefId id = 1; id <= 1100; ++id) {
+    for (uint32_t n = 1; n <= 1100; ++n) {
+        const CardDefId id = CardDefId::fromRaw(n);
         const Card* c = card_registry.get(id);
         if (!c) continue;
         EXPECT_EQ(reflexiveDeclarationProblem(*c), "") << c->def().name << " (" << id << ")";

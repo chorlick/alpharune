@@ -157,11 +157,12 @@ public:
 };
 
 // "Choose an enemy unit." as a triggered ability of a unit, a gear, a legend.
-template <class Base, CardDefId kId, CardType kType>
+// (An id is not a structural type: the template takes its number.)
+template <class Base, uint32_t kIdRaw, CardType kType>
 class TChooser : public Base {
 public:
     const CardDef& def() const override {
-        static const CardDef d = [] { auto x = makeDef(kId, "Test Chooser", kType);
+        static const CardDef d = [] { auto x = makeDef(CardDefId::fromRaw(kIdRaw), "Test Chooser", kType);
                                       x.might = 2; return x; }();
         return d;
     }
@@ -174,9 +175,9 @@ public:
         if (Card::finalizingChoices(ctx)) return;
     }
 };
-using TChooserUnit = TChooser<UnitCard, kTChooserUnit, CardType::Unit>;
-using TChooserGear = TChooser<GearCard, kTChooserGear, CardType::Gear>;
-using TChooserLegend = TChooser<LegendCard, kTChooserLegend, CardType::Legend>;
+using TChooserUnit = TChooser<UnitCard, kTChooserUnit.raw(), CardType::Unit>;
+using TChooserGear = TChooser<GearCard, kTChooserGear.raw(), CardType::Gear>;
+using TChooserLegend = TChooser<LegendCard, kTChooserLegend.raw(), CardType::Legend>;
 
 // "Choose an enemy unit." — chosen as the spell is finalized (kFinalizeResolve);
 // the effect marks the unit.
@@ -1920,7 +1921,8 @@ TEST_F(VerifyEngineTest, Registry_OnlySpellsDeclareRepeatCosts) {
     };
     std::vector<const Card*> all;
     int spells_with_repeat = 0;
-    for (CardDefId id = 1; id <= 1100; ++id) {
+    for (uint32_t n = 1; n <= 1100; ++n) {
+        const CardDefId id = CardDefId::fromRaw(n);
         const Card* c = card_registry.get(id);
         if (!c) continue;
         all.push_back(c);

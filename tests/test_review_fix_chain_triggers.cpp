@@ -722,7 +722,8 @@ TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
     registry.loadAll();
     std::vector<CardDefId> unexpected;
     std::vector<CardDefId> fixed;
-    for (CardDefId id = 1; id <= static_cast<CardDefId>(ml::kCardVocabSize); ++id) {
+    for (uint32_t n = 1; n <= static_cast<uint32_t>(ml::kCardVocabSize); ++n) {
+        const CardDefId id = CardDefId::fromRaw(n);
         const Card* card = registry.get(id);
         if (!card) continue;
         const bool is_spell = card->def().card_type == CardType::Spell;
@@ -738,12 +739,12 @@ TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
         if (!waits && kKnownOffenders.count(id)) fixed.push_back(id);
     }
     std::string list;
-    for (auto id : unexpected) list += std::to_string(id) + " ";
+    for (auto id : unexpected) list += toString(id) + " ";
     EXPECT_TRUE(unexpected.empty())
         << "cards with a trigger and target requirements but no kFinalizeTrigger: " << list
         << "\nUse pickTarget + choicesAtFinalization() (see plans/07-cards-second-pass.md, 7.1).";
     std::string done;
-    for (auto id : fixed) done += std::to_string(id) + " ";
+    for (auto id : fixed) done += toString(id) + " ";
     if (!fixed.empty())
         std::cout << "[ note ] fixed; remove from kKnownOffenders: " << done << "\n";
 }

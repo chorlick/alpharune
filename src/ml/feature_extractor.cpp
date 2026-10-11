@@ -12,8 +12,9 @@ namespace {
 // the loss during training. This helper returns 0.0f for invalid/token IDs.
 inline float safeCardId(CardDefId id) {
     if (id == kInvalidId) return 0.0f;
-    if (id < 1 || id > kCardVocabSize) return 0.0f;
-    return static_cast<float>(id);
+    const uint32_t n = id.raw();
+    if (n < 1 || n > kCardVocabSize) return 0.0f;
+    return static_cast<float>(n);
 }
 
 // BattlefieldIds are typically 0..3 but the type is uint32_t. If a bug ever
@@ -117,7 +118,7 @@ void extractSideFeatures(const GameState& state,
         if (u.hasKeyword(Keyword::Shield)) num_shield++;
         if (u.hasKeyword(Keyword::Deflect)) num_deflect++;
 
-        CardDefId gear_def = 0;
+        CardDefId gear_def;  // none: safeCardId gives 0
         for (auto aid : u.attachments) {
             if (state.objectExists(aid)) {
                 gear_def = state.getObject(aid).card_def_id;
@@ -390,7 +391,7 @@ void extractStateFeatures(const GameState& state,
     for (int i = 0; i < kMaxChainItems; ++i) {
         if (i < static_cast<int>(state.chain.items.size())) {
             auto& item = state.chain.items[i];
-            CardDefId src_def = 0;
+            CardDefId src_def;  // none: safeCardId gives 0
             if (state.objectExists(item.source))
                 src_def = state.getObject(item.source).card_def_id;
             features.push_back(safeCardId(src_def));
@@ -473,7 +474,7 @@ void extractStateFeatures(const GameState& state,
         if (slot < static_cast<int>(state.chain.items.size())) {
             auto& item = state.chain.items[slot];
             for (int t = 0; t < 2; ++t) {
-                CardDefId td = 0;
+                CardDefId td;  // none: safeCardId gives 0
                 if (t < static_cast<int>(item.targets.size())
                     && state.objectExists(item.targets[t]))
                     td = state.getObject(item.targets[t]).card_def_id;
@@ -531,7 +532,7 @@ void extractStateFeatures(const GameState& state,
         features.resize(start + kCardVocabSize, 0.0f);
         for (auto oid : zone_ids) {
             if (!state.objectExists(oid)) continue;
-            CardDefId id = state.getObject(oid).card_def_id;
+            const uint32_t id = state.getObject(oid).card_def_id.raw();
             if (id < 1 || id > kCardVocabSize) continue;
             features[start + (id - 1)] += 1.0f;
         }

@@ -11,9 +11,9 @@ namespace {
 uint32_t defIdOf(const GameState& state, GameObjectId obj) {
     if (obj == kInvalidId) return 0;
     if (!state.objectExists(obj)) return 0;
-    uint32_t def = state.getObject(obj).card_def_id;
+    const CardDefId def = state.getObject(obj).card_def_id;
     if (def == kInvalidId) return 0;
-    return def;
+    return def.raw();
 }
 
 /// Encode a card_def_id (1..kNumCardDefIds) into a 0-indexed slot offset.
@@ -206,7 +206,7 @@ int encodeAction(const Intent& intent, const GameState& state) {
             }
             uint32_t first = 0;
             if (intent.chosen_card_def != kInvalidId) {
-                first = intent.chosen_card_def;          // a named card
+                first = intent.chosen_card_def.raw();          // a named card
             } else if (!intent.chosen_objects.empty()) {
                 first = defIdOf(state, intent.chosen_objects[0]);
             }
@@ -283,10 +283,14 @@ int64_t historyToken(const Intent& intent, const GameState& state) {
     fp.addIds(intent.chosen_objects);
     fp.add(intent.chosen_value.has_value() ? 1 : 0);
     fp.add(static_cast<uint64_t>(intent.chosen_value.value_or(0)));
-    fp.add(static_cast<uint64_t>(intent.chosen_card_def));
+    fp.add(static_cast<uint64_t>(intent.chosen_card_def.raw()));
     fp.add(intent.pay_location_cost ? 1 : 0);
     fp.add(intent.use_alt_play_cost ? 1 : 0);
-    fp.add(static_cast<uint64_t>(intent.granted_ability_def));
+    // "The source's own ability" was 0 in this field before ids were types
+    // (plans/05 item 5.5); the token keeps that number.
+    fp.add(intent.granted_ability_def == kInvalidId
+               ? uint64_t{0}
+               : static_cast<uint64_t>(intent.granted_ability_def.raw()));
 
     const int slot = encodeAction(intent, state);
     const int64_t slot_bits =

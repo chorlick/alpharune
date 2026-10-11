@@ -183,7 +183,7 @@ TEST_F(CardTestFixture, CopyUnit_PreservesCardDefIdOnToken) {
     EffectExecutor exec(state, events, card_db);
     exec.copyUnit(refl, src);
 
-    EXPECT_EQ(state.getObject(refl).card_def_id, 734)
+    EXPECT_EQ(state.getObject(refl).card_def_id, CardDefId{734})
         << "copyUnit must propagate card_def_id so TriggerManager can find "
            "the source's Deathknell via card_registry lookup.";
     EXPECT_TRUE(state.getObject(refl).isToken())
@@ -230,7 +230,7 @@ TEST_F(CardTestFixture, ReflectionCopyEmitsUnitDiedEventWithCardDefId) {
     // the trigger.
     EXPECT_EQ(state.getObject(refl).zone, ZoneType::Banishment);
     EXPECT_FALSE(inTrash(P1, refl));
-    EXPECT_EQ(state.getObject(refl).card_def_id, 734)
+    EXPECT_EQ(state.getObject(refl).card_def_id, CardDefId{734})
         << "card_def_id stays 734 even after the token ceases to exist "
            "— this is what lets a queued Deathknell still resolve.";
 }

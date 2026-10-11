@@ -211,7 +211,7 @@ struct GameObject {
     // an activation per ref and dispatch routes to that card's onActivate with
     // THIS object as the source. Reset each recalculateAuras.
     struct GrantedAbilityRef {
-        CardDefId source_def_id = 0;  // 0 = none; else the granting card
+        CardDefId source_def_id = kInvalidId;  // the granting card
         int ability_index = 0;
         // Granted only if that ability's cost includes [E] (Heimerdinger:
         // "I have all [E] abilities of ...").

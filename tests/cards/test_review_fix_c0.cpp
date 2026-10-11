@@ -154,7 +154,7 @@ protected:
     /// Activate an ability of `source` through the engine (cost, chain,
     /// finalization, resolution).
     void activate(GameObjectId source, AgentInterface* agent = nullptr,
-                  std::vector<GameObjectId> targets = {}, CardDefId granted = 0) {
+                  std::vector<GameObjectId> targets = {}, CardDefId granted = kInvalidId) {
         Intent act;
         act.type = IntentType::ActivateAbility;
         act.player = o(source).controller;

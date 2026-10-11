@@ -619,9 +619,9 @@ struct ChainItem {
     // Aura-granted activated ability (Forge/Gardens/Heimerdinger): nonzero = this
     // ActivateAbility runs the GRANTED ability whose logic lives on card def
     // `granted_ability_def`, dispatched with `source` (the bearer) as the actor.
-    // 0 = the source's own ability. Copied from Intent::granted_ability_def when
+    // kInvalidId = the source's own ability. Copied from Intent::granted_ability_def when
     // the activation is enqueued.
-    CardDefId granted_ability_def = 0;
+    CardDefId granted_ability_def = kInvalidId;
 
     // Phase C-1 commit 6 — resumable resolution.
     // `resume_point == 0` means "fresh — Card::onResolve has not run on this

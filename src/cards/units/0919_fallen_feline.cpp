@@ -63,12 +63,12 @@ public:
             auto c = ctx.executor.takeChoice();
             while (ri.resume_data.size() <= kDefSlot) ri.resume_data.push_back(0);
             ri.resume_data[kDefSlot] =
-                c.has_value() ? static_cast<int32_t>(c->chosen_card_def) : -1;
+                c.has_value() ? static_cast<int32_t>(c->chosen_card_def.raw()) : -1;
             ri.resume_point = kNamed;
         }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (ri.resume_point != kNamed || ri.resume_data.size() <= kDefSlot) return;
-        const auto def_id = static_cast<CardDefId>(ri.resume_data[kDefSlot]);
+        const auto def_id = CardDefId::fromRaw(ri.resume_data[kDefSlot]);
         if (def_id == kInvalidId || db.all().find(def_id) == db.all().end()) return;
         const std::string name = db.get(def_id).name;
         ctx.state.getObject(ctx.source).string_state[kNamedKey] = name;

@@ -17,10 +17,12 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "[1][R], Recycle a unit from your trash, [E]: Play a 3 [M] Mech unit
-    // token to your base." The [1][R] + [E] portion is the structured cost;
-    // the "recycle a unit from your trash" additional cost is handled in
-    // onActivate (and gated by canActivateAbility so the ability is only
-    // offered when a unit is in trash).
+    // token to your base." The [1][R] + [E] portion is the structured cost.
+    // "Recycle a unit from your trash" is a cost too: it is paid as the
+    // ability is finalized (kFinalizeActivate + costDueNow), with the unit its
+    // controller picks; canActivateAbility offers the ability only when a unit
+    // is in the trash.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
         return ActivationCost{.exhaust = true, .energy = 1, .power = 1,
@@ -34,17 +36,20 @@ public:
         return false;
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Pay the "Recycle a unit from your trash" additional cost.
-        auto& ps = ctx.state.player(ctx.controller);
-        GameObjectId unit_in_trash = kInvalidId;
-        for (auto it = ps.trash.rbegin(); it != ps.trash.rend(); ++it) {
-            if (!ctx.state.objectExists(*it)) continue;
-            if (ctx.state.getObject(*it).isUnit()) { unit_in_trash = *it; break; }
+        if (costDueNow(ctx)) {
+            auto& ps = ctx.state.player(ctx.controller);
+            std::vector<GameObjectId> units;
+            for (auto id : ps.trash)
+                if (ctx.state.objectExists(id) && ctx.state.getObject(id).isUnit())
+                    units.push_back(id);
+            const auto pick = selectObject(ctx, "Assembly Rig: recycle which unit from your trash",
+                                           units);
+            if (!pick.has_value() || *pick == kInvalidId) return;   // waiting / cost can't be paid
+            if (std::find(units.begin(), units.end(), *pick) == units.end()) return;
+            ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), *pick), ps.trash.end());
+            ctx.executor.recycleCards(ctx.controller, {*pick});
         }
-        if (unit_in_trash == kInvalidId) return;  // shouldn't happen (gated)
-        auto trit = std::find(ps.trash.begin(), ps.trash.end(), unit_in_trash);
-        if (trit != ps.trash.end()) ps.trash.erase(trit);
-        ctx.executor.recycleCards(ctx.controller, {unit_in_trash});
+        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
 
         // Play a 3 [M] Mech unit token to base.
         LocationId loc{BaseLocation{ctx.controller}};

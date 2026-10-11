@@ -31,11 +31,9 @@ public:
                 ri.targets.push_back(kInvalidId);
                 return;
             }
+            // It stays banished while the location is picked; playIgnoringCost
+            // takes it out of the banishment zone when it plays it.
             ctx.executor.banishObject(u);
-            // banishObject pushed it to banishment; playIgnoringCost will
-            // re-zone it, so remove the duplicate banishment entry now.
-            auto& bz = ctx.state.player(ctx.state.getObject(u).owner).banishment;
-            bz.erase(std::remove(bz.begin(), bz.end(), u), bz.end());
             ri.targets.push_back(u);
         }
         GameObjectId unit_id = ri.targets.front();

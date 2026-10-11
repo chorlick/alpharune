@@ -20,10 +20,20 @@ public:
     TriggerType triggerType() const override {
         return TriggerType::WhenYouReadyAFriendlyUnit;
     }
+    // "a friendly UNIT": the ready event is raised for runes and gear too.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/,
+                          PlayerId /*controller*/, TriggerType /*trigger*/,
+                          GameObjectId subject) const override {
+        return subject != kInvalidId && state.objectExists(subject) &&
+               state.getObject(subject).isUnit();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         GameObjectId subject = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
+        // Still a unit on the board when this resolves.
+        const auto& readied = ctx.state.getObject(subject);
+        if (!readied.isUnit() || !readied.location.has_value()) return;
         ctx.executor.giveTemporaryMight(subject, 1);
         ctx.events.logTrace("PIRATE'S HAVEN: readied friendly -> +1 [M] this turn");
     }

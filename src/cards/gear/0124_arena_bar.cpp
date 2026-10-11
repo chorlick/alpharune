@@ -14,13 +14,25 @@ namespace {
 class ArenaBar : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[E]: Buff an exhausted friendly unit."
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // The engine drops a target that is no longer legal (enumerateLegalTargets
+        // below), so a unit readied in response is not buffed.
         if (!targets.empty())
             ctx.executor.buffUnit(targets[0]);
     }
     TriggerType triggerType() const override { return TriggerType::Activated; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    }
+    // TargetRequirements has no "exhausted" filter: narrow the list here.
+    std::vector<GameObjectId> enumerateLegalTargets(const GameState& state,
+                                                    PlayerId controller) const override {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == controller && obj.location.has_value() &&
+                obj.is_exhausted) out.push_back(id);
+        return out;
     }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }

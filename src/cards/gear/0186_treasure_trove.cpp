@@ -15,9 +15,9 @@ class TreasureTrove : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // PARTIAL: modeled on WhenIDie (no "leaves the board" trigger exists, so a
-    // bounce-to-hand departure does not fire the draw + channel).
-    TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    // "When this leaves the board": killed, returned to hand, recycled or
+    // banished alike (WhenILeaveTheBoard, fired from LeftBoardEvent).
+    TriggerType triggerType() const override { return TriggerType::WhenILeaveTheBoard; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
@@ -32,7 +32,9 @@ public:
                               .power_domain = Domain::Chaos};
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        // Only while it is still on the board (it may have left in response).
+        if (!ctx.state.objectExists(ctx.source) ||
+            !ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.killObject(ctx.source);
         ctx.events.logTrace("TREASURE TROVE: [P],[E] -> kill this");
     }

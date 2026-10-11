@@ -15,17 +15,23 @@ class MushroomPouch : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
+    // "if you control a facedown card at a battlefield": a hidden card sits in
+    // a battlefield's facedown zone — it has no board location, hidden_at says
+    // which battlefield.
+    static bool controlsFacedownCard(const GameState& state, PlayerId player) {
+        for (const auto& [id, obj] : state.objects)
+            if (obj.controller == player && obj.is_hidden && obj.hidden_at != kInvalidId)
+                return true;
+        return false;
+    }
+    // An "if" in the trigger: checked when it would trigger and again as it
+    // resolves.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return controlsFacedownCard(state, controller);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "if you control a facedown card at a battlefield, draw 1."
-        bool has_facedown = false;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.controller != ctx.controller) continue;
-            if (!obj.is_hidden) continue;
-            if (!obj.isAtBattlefield()) continue;
-            has_facedown = true;
-            break;
-        }
-        if (!has_facedown) return;
+        if (!controlsFacedownCard(ctx.state, ctx.controller)) return;
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("MUSHROOM POUCH: facedown card present -> draw 1");
     }

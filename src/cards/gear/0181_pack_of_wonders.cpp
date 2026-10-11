@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -25,35 +26,47 @@ public:
         ab.needs_activation_time_target = true;  // pickTarget excludes self
         return {ab};
     }
-    // Broad gate: any friendly gear/unit on board other than self.
+    // "another friendly gear, unit, or facedown card": the controller's units
+    // and gear on the board other than this Pack, and the cards they have
+    // hidden at a battlefield (no board location; GameObject::hidden_at).
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller,
-        int /*ability_index*/) const override {
+        int /*ability_index*/, GameObjectId source) const override {
         std::vector<GameObjectId> out;
         for (auto& [id, obj] : state.objects) {
-            if (obj.controller != controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (!(obj.isUnit() || obj.isGear())) continue;
-            out.push_back(id);
+            if (id == source || obj.controller != controller) continue;   // "another"
+            const bool on_board = obj.location.has_value() && (obj.isUnit() || obj.isGear());
+            const bool facedown = obj.is_hidden && obj.hidden_at != kInvalidId;
+            if (on_board || facedown) out.push_back(id);
         }
         return out;
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;             // "another"
-            if (obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (!(obj.isUnit() || obj.isGear())) continue;
-            legal.push_back(id);
-        }
-        // (Facedown-card targets unmodeled — see header comment.)
-        GameObjectId picked = pickTarget(ctx, "Pack of Wonders: bounce a friendly "
-                                              "gear/unit", legal);
+        const auto legal = enumerateLegalTargets(ctx.state, ctx.controller, 0, ctx.source);
+        GameObjectId picked = pickTarget(ctx, "Pack of Wonders: return a friendly gear, unit "
+                                              "or facedown card to hand", legal);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        ctx.executor.bounceToHand(picked);
-        ctx.events.logTrace("PACK OF WONDERS: returned a friendly gear/unit to hand");
+        if (std::find(legal.begin(), legal.end(), picked) == legal.end()) return;
+        auto& obj = ctx.state.getObject(picked);
+        if (!obj.is_hidden) {
+            ctx.executor.bounceToHand(picked);
+            ctx.events.logTrace("PACK OF WONDERS: returned a friendly gear/unit to hand");
+            return;
+        }
+        // A facedown card: out of the battlefield's facedown zone, into its
+        // owner's hand (it was never on the board, so nothing "leaves" it).
+        for (auto& bf : ctx.state.battlefields)
+            bf.facedown.erase(std::remove(bf.facedown.begin(), bf.facedown.end(), picked),
+                              bf.facedown.end());
+        obj.is_hidden = false;
+        obj.hidden_at = kInvalidId;
+        obj.zone = ZoneType::Hand;
+        obj.location = std::nullopt;
+        ctx.state.player(obj.owner).hand.push_back(picked);
+        knowledge::moved(ctx.state, picked, deck::Place::Facedown, deck::Place::Hand,
+                         knowledge::nobody());
+        ctx.events.logTrace("PACK OF WONDERS: returned a facedown card to hand");
     }
 private:
     const CardDef def_ = [] {

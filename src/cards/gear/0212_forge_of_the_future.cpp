@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,11 +15,61 @@ namespace {
 class ForgeOfTheFuture : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.killObject(targets[0]);
-    }
+    // "When you play this, play a 1 [M] Recruit unit token at your base."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        LocationId loc{BaseLocation{ctx.controller}};
+        ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
+                                 1, {"Recruit"}, KeywordSet{}, loc, false);
+        ctx.events.logTrace("FORGE OF THE FUTURE: played -> 1[M] Recruit to base");
+    }
+
+    // "Kill this: Recycle up to 4 cards from trashes."
+    // "Kill this" is the whole cost (no [E]): it is paid as the ability is
+    // finalized (kFinalizeActivate + costDueNow). The cards — from either
+    // player's trash, each to its owner's Main Deck — are picked one at a time
+    // as the ability resolves, stopping at "None".
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
+    std::vector<ActivatedAbility> activatedAbilities() const override {
+        return {ActivatedAbility{}};
+    }
+    void onActivate(CardContext& ctx, int /*ability_index*/,
+                    const std::vector<GameObjectId>& /*targets*/) override {
+        if (costDueNow(ctx)) {
+            if (!ctx.state.objectExists(ctx.source) ||
+                !ctx.state.getObject(ctx.source).location.has_value()) return;   // nothing to kill
+            ctx.executor.killObject(ctx.source);
+        }
+        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
+        auto in_trashes = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto pid : {PlayerId::Player1, PlayerId::Player2})
+                for (auto cid : ctx.state.player(pid).trash)
+                    if (ctx.state.objectExists(cid)) out.push_back(cid);
+            return out;
+        };
+        std::vector<GameObjectId> picks;
+        for (size_t i = 0; i < 4; ++i) {
+            std::vector<GameObjectId> rest;
+            for (auto cid : in_trashes())
+                if (std::find(picks.begin(), picks.end(), cid) == picks.end()) rest.push_back(cid);
+            if (rest.empty()) break;
+            const auto pick = selectObject(ctx, "Forge of the Future: recycle a card from a trash (" +
+                                                std::to_string(i + 1) + " of up to 4)",
+                                           rest, 7 + 2 * i, /*may_decline=*/true);
+            if (!pick.has_value()) return;          // waiting on the agent
+            if (*pick == kInvalidId) break;         // "up to": done
+            if (std::find(rest.begin(), rest.end(), *pick) == rest.end()) break;
+            picks.push_back(*pick);
+        }
+        for (auto cid : picks) {
+            auto& trash = ctx.state.player(ctx.state.getObject(cid).owner).trash;
+            trash.erase(std::remove(trash.begin(), trash.end(), cid), trash.end());
+        }
+        if (!picks.empty()) ctx.executor.recycleCards(ctx.controller, picks);
+        ctx.events.logTrace("FORGE OF THE FUTURE: killed -> recycled " +
+                            std::to_string(picks.size()) + " card(s) from trashes");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

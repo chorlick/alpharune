@@ -659,6 +659,18 @@ TEST_F(C0Test, ValleyOfIdols_BuffsTheUnitThatWasPlayed) {
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
 }
 
+TEST_F(C0Test, ValleyOfIdols_ARealPlayHandsTheTriggerItsUnit) {
+    battlefield(0, kValleyOfIdols);
+    auto bystander = addUnit(P1, kRecruit, 0, 0);
+    auto card = addToHand(P1, kRecruit);
+    state.player(P1).rune_pool.energy = 1;          // the [1] for the buff
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    playThroughEngine(card, &agent, LocationId{BattlefieldLocation{0}});
+    ASSERT_TRUE(o(card).isAtBattlefield());
+    EXPECT_EQ(o(card).buff_count, 1);
+    EXPECT_EQ(o(bystander).buff_count, 0);
+}
+
 TEST_F(C0Test, TheAcademy_GrantedRepeatCostsTheWholeBaseCost) {
     // "[Repeat] equal to its base cost": Primal Strength is [4][O], so the
     // Repeat is [4][O], not [4].
@@ -728,11 +740,16 @@ TEST_F(C0Test, SunDisc_NeedsAnotherCardPlayedThisTurn) {
     fireTriggerThroughEngine(disc, TriggerType::WhenYouPlayAUnit, nullptr, unit);
     EXPECT_TRUE(o(unit).is_exhausted);
 
+    // A card was played this turn: armed, and the next unit played — a real
+    // play from hand, which is what hands the trigger its subject — is readied.
     o(disc).is_exhausted = false;
     state.player(P1).cards_played_this_turn = 1;
     activate(disc);
-    fireTriggerThroughEngine(disc, TriggerType::WhenYouPlayAUnit, nullptr, unit);
-    EXPECT_FALSE(o(unit).is_exhausted);
+    auto played = addToHand(P1, kRecruit);
+    playThroughEngine(played);
+    ASSERT_TRUE(o(played).location.has_value());
+    EXPECT_FALSE(o(played).is_exhausted) << "\"enters ready\"";
+    EXPECT_TRUE(o(unit).is_exhausted) << "only the unit that was played";
 }
 
 TEST_F(C0Test, SunDisc_DoesNotCountItselfOnTheTurnItIsPlayed) {

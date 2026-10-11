@@ -4504,6 +4504,7 @@ void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_ty
                             return tgt_bf && *tgt_bf == bf.id;
                         };
                         auto all_targets = card_obj->enumerateLegalTargets(state_, player);
+                        bool offered = false;
                         for (auto& tset : spellTargetSets(card_obj, state_, player, req,
                                                           all_targets)) {
                             bool ok = true;
@@ -4517,6 +4518,23 @@ void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_ty
                             play.player = player;
                             play.card = card_id;
                             play.targets = std::move(tset);
+                            actions.push_back(play);
+                            offered = true;
+                        }
+                        // "Any number of" / "up to N" includes none (CR
+                        // 355.13): a spell whose choice is optional
+                        // (TargetRequirements::optional) is playable from
+                        // facedown choosing nothing when its battlefield has
+                        // nothing to choose. Judge ruling 2026-10-11 (plans/09
+                        // 9.Z4): this wins over CR 811.1.d's "no valid
+                        // targets" — the spell resolves and does nothing.
+                        // (From hand the same empty play is offered by
+                        // generateSpellActions.)
+                        if (!offered && req.optional) {
+                            Intent play;
+                            play.type = intent_type;
+                            play.player = player;
+                            play.card = card_id;
                             actions.push_back(play);
                         }
                         continue;

@@ -38,6 +38,8 @@ public:
         // 054.1): two restrictions that contradict leave no location, so the
         // unit is not played at all (Vendetta FAQ, Perched Grimwyrm at
         // Rockfall Path) and the rest of the text has no "it" to ready (CR 055).
+        // (judge ruling 2026-10-11: confirmed — nothing happens, the Sand Soldier is not played and
+        // the reflexive "pay [C] to ready it" is never reached; plans/09 9.I7.)
         if (where.count() == 0) return;                  // nowhere to play it
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
                             where.count(), where.labels);

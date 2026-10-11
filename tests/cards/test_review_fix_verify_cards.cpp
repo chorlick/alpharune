@@ -3337,8 +3337,13 @@ TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier
             EXPECT_NE(obj.battlefieldId(), std::optional<BattlefieldId>{0})
                 << "\"Units can't be played here.\"";
         }
+    // 9.I7, judge ruling 2026-10-11 (confirmed): nothing happens — and the
+    // reflexive "Then do this: you may pay [C] to ready it" is not put on the
+    // chain: nothing is asked, nothing is paid, nothing is left on the chain.
     EXPECT_TRUE(agent.prompts.empty()) << "no location to pick, no token to ready";
     EXPECT_EQ(power(P1, Domain::Order), 1) << "[Y] not spent on a token that does not exist";
+    EXPECT_TRUE(state.chain.items.empty()) << "no reflexive ability was queued";
+    EXPECT_FALSE(state.chain.resuming.has_value());
 }
 
 // ═══ 9.G6: Udyr, Wildman 157 — NOT A DEFECT ═════════════════════════════════
@@ -6548,13 +6553,15 @@ TEST_F(VerifyCardsTest, Pin_ForgeOfTheFuture_ZeroCardsRecycled) {
     EXPECT_EQ(deckSize(P1), deck_before);
 }
 
-// ─── Emperor's Divide 366 from facedown (CR 811.1.d; not a defect) ──────────
+// ─── Emperor's Divide 366 from facedown ─────────────────────────────────────
 // From hand, "any number" may be zero (CR 355.13, pinned above). From facedown
-// the choice is tied to the battlefield it was hidden at (CR 811.1.d.2), and
-// CR 811.1.d says a spell with no valid targets under that restriction cannot
-// be played from facedown: with no friendly unit there it is not offered,
-// wherever else the player has units.
-TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FromFacedownNeedsAFriendlyUnitAtItsBattlefield) {
+// the choice is tied to the battlefield it was hidden at (CR 811.1.d.2). This
+// test used to pin that with no friendly unit there the spell is NOT offered
+// (CR 811.1.d read as overriding 355.13). JUDGE RULING 2026-10-11 (plans/09
+// 9.Z4): it CAN be played choosing zero units — its first two expectations
+// are flipped by that ruling; a unit at another battlefield is still no
+// target, and with a unit at its battlefield the plays are as before.
+TEST_F(VerifyCardsTest, EmperorsDivide_FromFacedownWithNoFriendlyUnitThereIsPlayedChoosingNone) {
     state.turn.turn_number = 3;
     state.battlefields[0].controller = P1;
     state.battlefields[1].controller = P1;
@@ -6586,9 +6593,18 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FromFacedownNeedsAFriendlyUnitAtItsBa
         return out;
     };
 
-    EXPECT_TRUE(hiddenPlays().empty()) << "no friendly unit at any battlefield";
+    {
+        const auto none = hiddenPlays();
+        ASSERT_EQ(none.size(), 1u) << "no friendly unit at any battlefield: played choosing none";
+        EXPECT_TRUE(none[0].targets.empty());
+    }
     auto elsewhere = addUnit(P1, kInvalidId, 2, 1);
-    EXPECT_TRUE(hiddenPlays().empty()) << "a unit at another battlefield is no target (811.1.d.2)";
+    {
+        const auto none = hiddenPlays();
+        ASSERT_EQ(none.size(), 1u);
+        EXPECT_TRUE(none[0].targets.empty())
+            << "a unit at another battlefield is no target (811.1.d.2): still the empty play";
+    }
 
     // The control: a friendly unit at its battlefield makes it playable.
     auto here = addUnit(P1, kInvalidId, 2, 0);
@@ -8315,6 +8331,162 @@ TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceIsReturnedTwiceWhenBoth
     EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
     EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(x));
     EXPECT_EQ(counters.at("__probe_2"), static_cast<int>(y));
+}
+
+
+// ═══ Judge rulings 2026-10-11 ═══════════════════════════════════════════════
+
+// ─── 9.Z4: a hidden spell with "any number of" / "up to N" and nothing to
+// choose at its battlefield is playable from facedown choosing none ─────────
+// (CR 355.13 wins over 811.1.d's "no valid targets".) The rule is applied in
+// one place, GameEngine::generateHiddenPlayActions, to every spell whose
+// requirement is optional. The [Hidden] spells with that wording are three:
+// Emperor's Divide 366 (was refused: the test above and this one), Fox-Fire
+// 253 and Guerilla Warfare 260 (were already offered: pinned here).
+struct HiddenSpellSetup {
+    static GameObjectId hide(VerifyCardsTest& t, GameState& state, GameObjectId spell, int bf) {
+        (void)t;
+        auto& card = state.getObject(spell);
+        auto& h = state.player(card.owner).hand;
+        h.erase(std::remove(h.begin(), h.end(), spell), h.end());
+        card.zone = ZoneType::BattlefieldZone;
+        card.is_hidden = true;
+        card.hidden_at = static_cast<BattlefieldId>(bf);
+        card.hidden_on_turn = 2;
+        state.battlefields[bf].facedown.push_back(spell);
+        return spell;
+    }
+};
+
+TEST_F(VerifyCardsTest, EmperorsDivide_PlayedFromFacedownChoosingNone_MovesNothing) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    state.battlefields[1].controller = P1;
+    auto spell = HiddenSpellSetup::hide(*this, state, addToHand(P1, kEmperorsDivide), 0);
+    auto elsewhere = addUnit(P1, kInvalidId, 2, 1);
+    auto enemy_here = addUnit(P2, kInvalidId, 2, 0);
+    std::vector<Intent> plays;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    state.turn.phase = TurnPhase::MainPhase;
+    state.turn.turn_player = P1;
+    withEngine([&](GameEngine& e) {
+        e.mutableState().turn.oc_state = OpenClosedState::Closed;
+        e.mutableState().turn.priority_holder = P1;
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == spell) plays.push_back(i);
+        e.mutableState().turn.oc_state = OpenClosedState::Open;
+        e.mutableState().turn.priority_holder = std::nullopt;
+        ASSERT_EQ(plays.size(), 1u);
+        ASSERT_TRUE(plays[0].targets.empty());
+        e.testHook_executeIntent(plays[0]);
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to choose";
+    EXPECT_TRUE(inTrash(P1, spell)) << "it was played and resolved";
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1}) << "nothing moved";
+    EXPECT_EQ(bfOf(enemy_here), std::optional<BattlefieldId>{0});
+}
+
+TEST_F(VerifyCardsTest, Pin_FoxFire_PlayedFromFacedownWithNoUnitAtItsBattlefield_KillsNothing) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    auto spell = HiddenSpellSetup::hide(*this, state, addToHand(P1, kFoxFire), 0);
+    auto elsewhere = addUnit(P2, kInvalidId, 1, 1);
+    std::vector<Intent> plays;
+    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kRest}));
+    state.turn.phase = TurnPhase::MainPhase;
+    state.turn.turn_player = P1;
+    withEngine([&](GameEngine& e) {
+        e.mutableState().turn.oc_state = OpenClosedState::Closed;
+        e.mutableState().turn.priority_holder = P1;
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == spell) plays.push_back(i);
+        e.mutableState().turn.oc_state = OpenClosedState::Open;
+        e.mutableState().turn.priority_holder = std::nullopt;
+        ASSERT_EQ(plays.size(), 1u) << "\"any number of units\" includes none";
+        e.testHook_executeIntent(plays[0]);
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_FALSE(agent.wasOffered(elsewhere)) << "tied to its battlefield (CR 811.1.d.2)";
+    EXPECT_TRUE(inTrash(P1, spell));
+    EXPECT_TRUE(o(elsewhere).location.has_value()) << "nothing was killed";
+}
+
+TEST_F(VerifyCardsTest, Pin_GuerillaWarfare_PlayedFromFacedownWithNoHiddenCardInTheTrash) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    auto spell = HiddenSpellSetup::hide(*this, state, addToHand(P1, kGuerillaWarfare), 0);
+    std::vector<Intent> plays;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    state.turn.phase = TurnPhase::MainPhase;
+    state.turn.turn_player = P1;
+    withEngine([&](GameEngine& e) {
+        e.mutableState().turn.oc_state = OpenClosedState::Closed;
+        e.mutableState().turn.priority_holder = P1;
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == spell) plays.push_back(i);
+        e.mutableState().turn.oc_state = OpenClosedState::Open;
+        e.mutableState().turn.priority_holder = std::nullopt;
+        ASSERT_EQ(plays.size(), 1u) << "\"up to two cards\" includes none";
+        e.testHook_executeIntent(plays[0]);
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(ps(P1).hide_ignoring_costs_this_turn) << "the second sentence stands alone";
+}
+
+// ─── 9.R5: the Rune Deck is "a deck" for Void Hatchling 341 ─────────────────
+// Twisted Fate, Gambler 200: "When I attack, reveal the top rune of your rune
+// deck, then recycle it. Do one of the following based on its domain". With a
+// Void Hatchling its controller looks at the top rune first and may recycle
+// it; the rune revealed is the one on top after that. (Fails on the old code:
+// no look — the Order rune on top was revealed and the first prompt was the
+// stun.) Twisted Fate is the only card that reveals from a Rune Deck.
+TEST_F(VerifyCardsTest, TwistedFateGambler_VoidHatchlingLooksAtTheTopRuneFirstAndMayRecycleIt) {
+    withVoidHatchling();
+    auto tf = addUnit(P1, kTwistedFateGambler, 0, 0);
+    auto enemy = addUnit(P2, kInvalidId, 5, 0);
+    auto drawn = addToDeck(P1, kShipyardSkulker);
+    auto below = addRuneToRuneDeck(P1, Domain::Mind);     // second from the top
+    auto top = addRuneToRuneDeck(P1, Domain::Order);      // the top rune
+    ASSERT_EQ(ps(P1).rune_deck.back(), top);
+    EnginePathAgent agent(EnginePathAgent::script({1}));   // the look: recycle it
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the look; [B] Draw 1 asks nothing";
+    EXPECT_TRUE(askedLabel(agent, "Void Hatchling"));
+    EXPECT_TRUE(inHand(P1, drawn)) << "the Mind rune below was the one revealed: Draw 1";
+    EXPECT_FALSE(o(enemy).is_stunned) << "the Order rune was recycled at the look, not revealed";
+    ASSERT_EQ(ps(P1).rune_deck.size(), 2u);
+    EXPECT_EQ(ps(P1).rune_deck[1], top) << "recycled at the look: under the deck";
+    EXPECT_EQ(ps(P1).rune_deck[0], below) << "revealed, then recycled: the bottom";
+}
+
+TEST_F(VerifyCardsTest, TwistedFateGambler_VoidHatchlingMayLeaveTheTopRune) {
+    withVoidHatchling();
+    auto tf = addUnit(P1, kTwistedFateGambler, 0, 0);
+    auto enemy = addUnit(P2, kInvalidId, 5, 0);
+    auto drawn = addToDeck(P1, kShipyardSkulker);
+    addRuneToRuneDeck(P1, Domain::Mind);
+    auto top = addRuneToRuneDeck(P1, Domain::Order);
+    // The look: leave it; then [Y] "Stun an enemy unit".
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(enemy)}));
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(o(enemy).is_stunned);
+    EXPECT_FALSE(inHand(P1, drawn));
+    EXPECT_EQ(ps(P1).rune_deck.front(), top) << "revealed, then recycled";
+}
+
+// Without a Hatchling nothing is asked before the reveal.
+TEST_F(VerifyCardsTest, Pin_TwistedFateGambler_NoVoidHatchling_NoLook) {
+    auto tf = addUnit(P1, kTwistedFateGambler, 0, 0);
+    auto drawn = addToDeck(P1, kShipyardSkulker);
+    addRuneToRuneDeck(P1, Domain::Order);
+    addRuneToRuneDeck(P1, Domain::Mind);                  // the top rune
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inHand(P1, drawn));
 }
 
 }  // namespace

@@ -33,6 +33,7 @@ public:
         // Both modes are always legal: "up to 3 cards" includes none (CR
         // 355.13), so the first can be chosen with an empty opposing trash
         // (it then does nothing).
+        // (judge ruling 2026-10-11: confirmed — the "up to 3" mode may be chosen with zero cards; plans/09 9.W2.)
         static const std::vector<std::string> kModes = {
             "Recycle up to 3 from opponent's trash", "Draw 1"};
         int mode = pickMode(ctx, "Disposal Order: choose one", /*num_modes=*/2,

@@ -1957,8 +1957,27 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
 
 // Void Hatchling (341): "If you would reveal cards from a deck, look at the
 // top card first. You may recycle it. Then reveal those cards."
-void EffectExecutor::lookBeforeReveal(PlayerId player) {
+void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     auto& ps = state_.player(player);
+    if (deck == ZoneType::RuneDeck) {
+        // The Rune Deck is "a deck" (judge ruling 2026-10-11, plans/09 9.R5):
+        // the look and the "may recycle it" come before a reveal from it too.
+        // Its top is the back of the list; a recycled rune goes to the bottom.
+        if (!ps.has_reveal_peek || ps.rune_deck.empty() || !agent_query_) return;
+        const GameObjectId top = ps.rune_deck.back();
+        if (!state_.objectExists(top)) return;
+        Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
+        Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
+        keep.choice_label = "Void Hatchling: leave " + state_.getObject(top).name + " on top of your Rune Deck";
+        recyc.choice_label = "Void Hatchling: recycle " + state_.getObject(top).name;
+        const auto chosen = agent_query_(player, {keep, recyc});
+        if (chosen.chosen_value.value_or(0) == 1) {
+            ps.rune_deck.pop_back();
+            recycleCards(player, {top});
+            RIFT_TRACE(events_, "VOID HATCHLING: recycled the peeked top rune before revealing");
+        }
+        return;
+    }
     if (!ps.has_reveal_peek || ps.main_deck.empty() || !agent_query_) return;
     GameObjectId top = ps.main_deck.back();
     if (!state_.objectExists(top)) return;

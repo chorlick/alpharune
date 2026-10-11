@@ -23,6 +23,12 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
         if (ps.rune_deck.empty()) return;
+        // Void Hatchling 341 ("If you would reveal cards from a deck, look at
+        // the top card first. You may recycle it."): the Rune Deck is a deck
+        // (judge ruling 2026-10-11, plans/09 9.R5), so the look comes first
+        // and the rune revealed is the one on top after it.
+        ctx.executor.lookBeforeReveal(ctx.controller, ZoneType::RuneDeck);
+        if (ps.rune_deck.empty()) return;
         GameObjectId rune = ps.rune_deck.back();
         const auto& robj = ctx.state.getObject(rune);
         int32_t payoff = 0;

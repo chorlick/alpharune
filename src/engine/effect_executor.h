@@ -415,7 +415,9 @@ public:
     /// by revealUntil / revealAndChoose; a card that reveals from `player`'s
     /// deck by hand calls it once, before it takes the cards. Does nothing
     /// without the effect.
-    void lookBeforeReveal(PlayerId player);
+    /// `deck`: the deck the reveal is from — the Main Deck, or the Rune Deck
+    /// (Twisted Fate, Gambler: "reveal the top rune of your rune deck").
+    void lookBeforeReveal(PlayerId player, ZoneType deck = ZoneType::MainDeck);
     std::pair<GameObjectId, std::vector<GameObjectId>>
         revealUntil(PlayerId player, CardType condition);
     /// Play `card` from its current zone onto the board without paying

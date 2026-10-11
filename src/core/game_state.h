@@ -638,6 +638,9 @@ struct ChainItem {
     // Finalized targets are checked for legality once as the item resolves
     // (a target that is no longer legal is a mistarget). 1 = single, 2 = pair.
     uint8_t finalize_checked = 0;
+    // The state digest taken when Card::costDueNow first said "due" in the
+    // current finalize-pass run (Card::costStateFingerprint).
+    uint64_t cost_due_fingerprint = 0;
 
     // ── Repeat (CR 820) — optional additional cost ──
     // `repeats_paid` is the number of times the Repeat cost was paid as

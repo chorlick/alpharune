@@ -15,33 +15,29 @@ namespace {
 class ViPeacekeeper : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When I attack, [Stun] an enemy unit here." The unit is chosen by Vi's
+    // controller as the ability goes on the chain (CR 383.3); the engine
+    // hands a trigger no targets.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_enemy = true,
-                                   .must_be_at_battlefield = true};
-    }
-    std::vector<GameObjectId> enumerateLegalTargets(
-        const GameState& state, PlayerId controller) const override {
-        // Restrict to enemy units at this Vi's battlefield.
-        std::vector<GameObjectId> out;
-        // The actual filter happens at intent-gen time using
-        // ctx.source's battlefield. Without knowing source here, return
-        // all enemy units at any battlefield — engine will narrow as
-        // needed.
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller == controller) continue;
-            // "Can't be chosen by enemy spells and abilities."
-            if (obj.untargetable_by_enemy) continue;
-            if (!obj.location.has_value()) continue;
-            if (!std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;
-            out.push_back(id);
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> enemies_here;
+        if (ctx.state.objectExists(ctx.source)) {
+            if (auto here = ctx.state.getObject(ctx.source).battlefieldId()) {
+                const PlayerId me = ctx.controller;
+                const BattlefieldId bf = *here;
+                enemies_here = chooseableUnits(ctx.state, me, [me, bf](const GameObject& o) {
+                    auto obf = o.battlefieldId();
+                    return o.controller != me && obf && *obf == bf;
+                });
+                std::sort(enemies_here.begin(), enemies_here.end());
+            }
         }
-        return out;
-    }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        ctx.executor.stunUnit(targets[0]);
+        const GameObjectId t = pickTarget(ctx, "Vi, Peacekeeper: stun an enemy unit here",
+                                          enemies_here);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.stunUnitBy(t, ctx.source);
         ctx.events.logTrace("VI: stun on attack");
     }
 private:

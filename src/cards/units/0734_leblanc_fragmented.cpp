@@ -16,8 +16,15 @@ class LeBlancFragmented : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        int draw_count = (ctx.state.turn.phase == TurnPhase::BeginningStep) ? 2 : 1;
+    // "Draw 1. If it's your Beginning Phase, draw 2 instead." The Beginning
+    // Phase is the Awaken, Beginning and Scoring steps of her controller's
+    // own turn (as EffectExecutor::killObject reads it).
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const TurnPhase ph = ctx.state.turn.phase;
+        const bool my_beginning = ctx.state.turn.turn_player == ctx.controller &&
+            (ph == TurnPhase::AwakenPhase || ph == TurnPhase::BeginningStep ||
+             ph == TurnPhase::ScoringStep);
+        int draw_count = my_beginning ? 2 : 1;
         ctx.executor.drawCards(ctx.controller, draw_count);
     }
 private:

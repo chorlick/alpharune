@@ -31,7 +31,10 @@ public:
             return out;
         };
         auto still_legal = [&]() {
-            return ctx.state.objectExists(ctx.source) && !trashed_units().empty();
+            // objectExists is true for every id ever created: I must be on the board.
+            return ctx.state.objectExists(ctx.source) &&
+                   ctx.state.getObject(ctx.source).location.has_value() &&
+                   !trashed_units().empty();
         };
         if (!still_legal()) return;
         int conf = confirmOptional(ctx, "Shadow Clone: banish a unit from your trash?",
@@ -40,6 +43,7 @@ public:
         GameObjectId picked = pickTarget(ctx, "Shadow Clone: unit to banish", trashed_units());
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // I left the board
         ctx.executor.banishObject(picked);
         ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Assault, 4);
     }

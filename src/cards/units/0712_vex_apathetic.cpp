@@ -17,8 +17,10 @@ public:
     // "[Deflect] ... When an opponent plays a unit while I'm at a battlefield,
     // [Stun] it." [Deflect] is engine-handled. The played-unit id is captured
     // by TriggerManager into card_counters["__opp_played_unit_id"].
-    // TODO: "They can't move it this turn / it doesn't deal combat damage this
-    // turn" — needs per-unit can't-move / no-combat-damage flags (not modeled).
+    // ("It doesn't deal combat damage this turn" is the stun itself.)
+    // ENGINE-GAP: "They can't move it this turn" needs a per-unit
+    // can't-move-this-turn flag read by the move generator; there is none, so
+    // a unit that entered ready (or is readied later) can still be moved.
     TriggerType triggerType() const override { return TriggerType::WhenOpponentPlaysAUnit; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
@@ -27,7 +29,10 @@ public:
         auto it = self.card_counters.find("__opp_played_unit_id");
         if (it == self.card_counters.end()) return;
         GameObjectId victim = static_cast<GameObjectId>(it->second);
+        // The unit must still be on the board, under an opponent's control.
         if (!ctx.state.objectExists(victim)) return;
+        const auto& v = ctx.state.getObject(victim);
+        if (!v.isUnit() || !v.location.has_value() || v.controller == ctx.controller) return;
         ctx.executor.stunUnitBy(victim, ctx.source);
         ctx.events.logTrace("VEX APATHETIC: opponent played a unit -> stun it");
     }

@@ -48,18 +48,26 @@ public:
             return out;
         };
         int conf = confirmOptional(ctx, "Profiteer: disempower something to empower something?",
-                                   [&]() { return !mine_empowered().empty(); });
+            [&]() { return costAlreadyPaid(ctx) || !mine_empowered().empty(); });
         if (conf != 1) return;                        // waiting, declined or nothing Empowered
-        auto [paid, gain] = pickTargetPair(ctx, "Profiteer", mine_empowered(), recipients);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        const bool suspending = (paid == kInvalidId || gain == kInvalidId) &&
-                                ctx.state.chain.resuming.has_value() &&
-                                (ctx.state.chain.resuming->resume_point == 10 ||
-                                 ctx.state.chain.resuming->resume_point == 12);
-        if (suspending) return;
-        if (paid == kInvalidId || !ctx.state.objectExists(paid)) return;
-        if (!ctx.executor.disempower(paid)) return;   // cost not paid -> no effect
-        if (gain != kInvalidId && ctx.state.objectExists(gain)) ctx.executor.empower(gain);
+        // What is disempowered is the cost (a pick, not a target); what is
+        // empowered is the target. The cost is paid as the ability goes on
+        // the chain (CR 383.3), after the target is chosen.
+        const auto& ri = ctx.state.chain.resuming;
+        auto paid = selectObject(ctx, "Profiteer: disempower which", mine_empowered());
+        if (!paid.has_value()) return;                // waiting
+        GameObjectId gain = kInvalidId;
+        if (*paid != kInvalidId) {
+            gain = pickTarget(ctx, "Profiteer: empower which", recipients(*paid));
+            if (gain == kInvalidId && ri.has_value() && ri->resume_point == 7) return;   // waiting
+        }
+        if (costDueNow(ctx)) {
+            if (*paid == kInvalidId || gain == kInvalidId) return;   // nothing to pay with / for
+            if (!ctx.executor.disempower(*paid)) return;             // cost not paid -> no effect
+        }
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (gain == kInvalidId || !ctx.state.objectExists(gain)) return;   // mistarget
+        ctx.executor.empower(gain);
         ctx.events.logTrace("PROFITEER: disempowered one thing to empower another");
     }
 private:

@@ -40,9 +40,8 @@ private:
         d.tags = {R"RB(Mech)RB", R"RB(Zaun)RB"};
         d.energy_cost = 2;
         d.might = 1;
-        d.deflect_value = 1;
+        // [Deflect] belongs to the Bird token only, not to the Dredger.
         d.keywords.set(Keyword::Deathknell);
-        d.keywords.set(Keyword::Deflect);
         d.ability_text = R"RB([Deathknell][>] Play a 1 [M] Bird unit token with [Deflect] to your base. (When I die, get the effect. Opponents must pay [A] to choose a [Deflect] unit with a spell or ability.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/84d8b6d7a9cab2b78a465a8e0caf597f3ef5a175-744x1039.png?accountingTag=RB)RB";
         return d;

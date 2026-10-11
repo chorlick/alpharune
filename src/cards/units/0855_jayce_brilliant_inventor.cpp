@@ -24,29 +24,30 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouPlayACard};
     }
+    static constexpr const char* kFirstGearTurn = "__jayce_first_gear_turn";
+    // "the first time you play a non-token gear each turn": judged when the
+    // gear is played. The stamp below is written as the ability goes on the
+    // chain, before another gear can be played.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId subject) const override {
+        if (trigger != TriggerType::WhenYouPlayACard) return true;
+        if (subject == kInvalidId || !state.objectExists(subject)) return false;
+        const auto& played = state.getObject(subject);
+        if (!played.isGear() || played.isToken()) return false;      // non-token gear only
+        const auto& counters = state.getObject(source).card_counters;
+        auto it = counters.find(kFirstGearTurn);
+        return it == counters.end() || it->second != state.turn.turn_number + 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        const bool first_entry = !ctx.state.chain.resuming.has_value() ||
-                                 ctx.state.chain.resuming->resume_point == 0;
-        const int turn_id = ctx.state.turn.turn_number + 1;   // +1 so 0 = never
-        if (first_entry) {
-            int& gear_turn = self.card_counters["__jayce_first_gear_turn"];
-            if (ctx.firing_trigger == TriggerType::WhenYouPlayACard) {
-                GameObjectId played = ctx.state.chain.resuming.has_value()
-                    ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-                if (played == kInvalidId || !ctx.state.objectExists(played)) return;
-                const auto& p = ctx.state.getObject(played);
-                if (!p.isGear() || p.isToken()) return;       // non-token gear only
-                if (gear_turn == turn_id) return;             // not the first this turn
-                gear_turn = turn_id;
-            } else {
-                // Played after a non-token gear this turn: a later gear this
-                // turn is not "the first".
-                if (ctx.state.player(ctx.controller).played_nontoken_gear_this_turn)
-                    gear_turn = turn_id;
-            }
-        }
+        // A non-token gear has been played this turn (the one that triggered
+        // me, or one played before I was): later ones are not "the first".
+        // Writing the same stamp again on a re-entry changes nothing, and no
+        // path below depends on it, so a re-chosen ability is not lost.
+        if (ctx.firing_trigger == TriggerType::WhenYouPlayACard ||
+            ctx.state.player(ctx.controller).played_nontoken_gear_this_turn)
+            ctx.state.getObject(ctx.source).card_counters[kFirstGearTurn] =
+                ctx.state.turn.turn_number + 1;   // +1 so 0 = never
         auto find_targets = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {

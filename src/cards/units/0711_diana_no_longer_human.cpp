@@ -14,7 +14,12 @@ namespace {
 class DianaNoLongerHuman : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    // "When you play a spell, give me +2 [M] this turn." Only while she is
+    // still on the board when the ability resolves (objectExists is true for
+    // every id ever created).
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }

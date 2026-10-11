@@ -57,6 +57,7 @@ private:
         d.might = 4;
         d.rarity = Rarity::Uncommon;
         d.keywords.set(Keyword::Empower);
+        d.keywords.set(Keyword::Deathknell);
         d.ability_text = R"RB([Empower] [1][A][A] ([1][A][A]: Empower me. Use only if not Empowered.)
 [Empowered][>] I have +2 [M].
 [Empowered][>][>>][Deathknell][>] Channel 2 runes exhausted. (When I die while Empowered, get the effect.))RB";

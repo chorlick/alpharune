@@ -17,12 +17,22 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "If your score is not within 3 points of the Victory Score, I enter ready."
+    // The Victory Score in effect: the mode's score plus what battlefields in
+    // play add to it (TurnState::victory_score_bonus, set every aura pass).
     bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
-        return state.mode.victory_score - state.player(controller).score > 3;
+        const int victory = state.mode.victory_score + state.turn.victory_score_bonus;
+        return victory - state.player(controller).score > 3;
     }
     // "When I attack, you may move any number of enemy units here each with
     // 5 [M] or less to their base." Offered one unit at a time with a trailing
     // "done" choice (empty chosen_objects) until the agent stops or none remain.
+    // Each unit moved is a unit chosen: units that can't be chosen by enemy
+    // abilities are left out, Deflect is paid (Card::offerableChoices /
+    // commitChosenObject).
+    // ENGINE-GAP: the resolve loop allows 16 re-entries, so at most kMaxMoves
+    // units can be moved by one attack.
+    static constexpr int kMaxMoves = 12;
+    static constexpr size_t kMovedSlot = 7;   // resume_data: units moved so far
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;    // needs the resume loop
@@ -30,29 +40,23 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!bf) return;
+        while (ri.resume_data.size() <= kMovedSlot) ri.resume_data.push_back(0);
         auto eligible = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+            const PlayerId me = ctx.controller;
+            const BattlefieldId here = *bf;
+            auto out = chooseableUnits(ctx.state, me, [me, here](const GameObject& obj) {
                 auto obf = obj.battlefieldId();
-                if (!obf || *obf != *bf) continue;
-                if (obj.current_might > 5) continue;
-                out.push_back(id);
-            }
+                return obj.controller != me && obf && *obf == here && obj.current_might <= 5;
+            });
             std::sort(out.begin(), out.end());
-            return out;
+            return offerableChoices(ctx, out);
         };
         auto offer = [&]() {
+            if (ri.resume_data[kMovedSlot] >= kMaxMoves) return false;
             auto units = eligible();
             if (units.empty()) return false;
             std::vector<Intent> out;
-            for (auto uid : units) {
-                Intent c;
-                c.type = IntentType::MakeChoice;
-                c.player = ctx.controller;
-                c.chosen_objects = {uid};
-                out.push_back(std::move(c));
-            }
+            for (auto uid : units) out.push_back(objChoice(ctx.controller, uid));
             Intent done;
             done.type = IntentType::MakeChoice;
             done.player = ctx.controller;
@@ -71,7 +75,9 @@ public:
             auto uid = choice->chosen_objects[0];
             auto legal = eligible();
             if (std::find(legal.begin(), legal.end(), uid) != legal.end()) {
+                commitChosenObject(ctx, uid);
                 ctx.executor.moveToBase(uid);
+                ++ri.resume_data[kMovedSlot];
                 ctx.events.logTrace("CORRUPTED DRAGON: moved an enemy unit to its base");
             }
             if (!offer()) ri.resume_point = 2;

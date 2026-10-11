@@ -17,42 +17,47 @@ namespace {
 //  control. You may play me to its battlefield (even if you don't have other
 //  units there)."
 //
-// The mandatory sacrifice is modeled as a WhenYouPlayMe forced kill of an
-// agent-chosen Bird/Cat/Dog/Poro. APPROXIMATIONS / ENGINE GAP:
-//  - Timing: the sacrifice fires as a play trigger (after Stalking Wolf is on
-//    the board), not strictly as a pre-play additional cost.
-//  - "play me to its battlefield": tying Stalking Wolf's landing zone to the
-//    sacrificed unit's battlefield is not modeled — getPlayLocations is
-//    consulted before the kill choice exists, so the location can't depend on
-//    it. Stalking Wolf lands per the normal play rules.
+// The engine has no hook for a "kill a unit" additional play cost, so:
+//  - canBePlayed gates the play on having a Bird, Cat, Dog or Poro to kill;
+//  - the kill is the cost of my WhenYouPlayMe ability, chosen and paid as
+//    that ability goes on the chain (CR 383.3), before anyone can respond.
+// APPROX: the kill happens just after I enter the board, not before. "Its
+// battlefield, even if you don't have other units there" needs nothing more:
+// the unit to be killed is still at its battlefield while the Ambush
+// locations are offered, so a battlefield where it is the only friendly unit
+// is offered like any other.
 
 class StalkingWolf : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    static bool isFodder(const GameObject& obj, PlayerId player) {
+        return obj.isUnit() && obj.controller == player && obj.location.has_value() &&
+               (hasTag(obj, "Bird") || hasTag(obj, "Cat") ||
+                hasTag(obj, "Dog") || hasTag(obj, "Poro"));
+    }
+    bool canBePlayed(const GameState& state, PlayerId player) const override {
+        for (const auto& [id, obj] : state.objects)
+            if (isFodder(obj, player)) return true;
+        return false;
+    }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (hasTag(obj, "Bird") || hasTag(obj, "Cat") ||
-                hasTag(obj, "Dog") || hasTag(obj, "Poro")) {
-                legal.push_back(id);
+        if (!costAlreadyPaid(ctx)) {
+            std::vector<GameObjectId> legal;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (id != ctx.source && isFodder(obj, ctx.controller)) legal.push_back(id);
+            std::sort(legal.begin(), legal.end());
+            // Paying a cost, not choosing a unit: no Deflect, no "chosen" trigger.
+            auto victim = selectObject(
+                ctx, "Stalking Wolf: kill a Bird/Cat/Dog/Poro you control", legal);
+            if (!victim.has_value() || *victim == kInvalidId) return;   // waiting / none
+            if (costDueNow(ctx)) {
+                ctx.executor.killObject(*victim);
+                ctx.events.logTrace("STALKING WOLF: killed a Bird/Cat/Dog/Poro (additional cost)");
             }
         }
-        if (legal.empty()) return;
-        GameObjectId victim = pickTarget(ctx, "Stalking Wolf: kill a Bird/Cat/Dog/Poro you control",
-                                         legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (victim == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended
-        }
-        if (victim == kInvalidId || !ctx.state.objectExists(victim)) return;
-        ctx.executor.killObject(victim);
-        ctx.events.logTrace("STALKING WOLF: sacrificed a Bird/Cat/Dog/Poro (additional cost)");
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
     }
 private:
     const CardDef def_ = [] {

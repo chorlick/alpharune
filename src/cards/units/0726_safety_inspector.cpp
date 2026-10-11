@@ -16,67 +16,76 @@ namespace {
 //  When you play me, each player must kill one of their units. If you paid my
 //  additional cost, you don't kill a unit this way."
 //
-// The optional 3-XP payment is offered at trigger time via confirmOptional.
-// The controller's own kill is the controller's choice (pickTarget). The
-// OPPONENT's forced kill is approximated as their rational pick — lowest-Might
-// unit they control (same convention as King's Edict #237).
+// Each player chooses among their own units as the ability resolves (nothing
+// is targeted, CR 355.10.e) — the controller first, then the opponent — and
+// the chosen units die together.
+// ENGINE-GAP: the 3 XP is an additional cost of PLAYING the card, but
+// Card::OptionalAdditionalCost has no XP cost. It is asked and paid when the
+// play trigger is finalized (before anyone can respond), which is as close as
+// a card can get.
 
 class SafetyInspector : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
+        auto& ri = ctx.state.chain.resuming;
+        // "Paid" is remembered on the chain item so the XP is spent once,
+        // however often the ability is re-entered.
+        bool paid_xp = ri.has_value() && ri->resume_data.size() > kPaidSlot &&
+                       ri->resume_data[kPaidSlot] == 1;
 
-        // Optional additional cost: spend 3 XP (skips the controller's kill).
-        int paid = confirmOptional(ctx, "Safety Inspector: spend 3 XP to skip your kill?",
-            [&]() { return ctx.state.player(ctx.controller).xp >= 3; });
-        if (paid == -1) return;  // waiting on agent
-
-        bool skip_own_kill = false;
-        if (paid == 1 && ps.xp >= 3) {
+        int pay = confirmOptional(ctx, "Safety Inspector: spend 3 XP to skip your kill?",
+            [&]() { return paid_xp || ps.xp >= 3; });
+        if (pay == -1) return;  // waiting on agent
+        if (pay == 1 && !paid_xp && costDueNow(ctx) && ps.xp >= 3) {
             ps.xp -= 3;
-            skip_own_kill = true;
+            paid_xp = true;
+            if (ri.has_value()) {
+                while (ri->resume_data.size() <= kPaidSlot) ri->resume_data.push_back(0);
+                ri->resume_data[kPaidSlot] = 1;
+            }
             ctx.events.logTrace("SAFETY INSPECTOR: paid 3 XP -> skip own kill");
         }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
 
-        // Controller's kill (agent-chosen) unless they paid.
-        if (!skip_own_kill) {
-            std::vector<GameObjectId> own;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                own.push_back(id);
-            }
-            if (!own.empty()) {
-                GameObjectId victim = pickTarget(ctx, "Safety Inspector: kill one of your units",
-                                                 own);
-                if (victim == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                    ctx.state.chain.resuming->resume_point == 7) {
-                    return;  // suspended for agent decision
-                }
-                if (victim != kInvalidId && ctx.state.objectExists(victim))
-                    ctx.executor.killObject(victim);
-            }
+        auto units_of = [&](PlayerId p) {
+            std::vector<GameObjectId> out;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (obj.isUnit() && obj.controller == p && obj.location.has_value())
+                    out.push_back(id);
+            return out;
+        };
+        const PlayerId opp = opponent(ctx.controller);
+        GameObjectId mine = kInvalidId;
+        if (!paid_xp) {
+            auto pick = selectObjectAs(ctx, ctx.controller,
+                                       "Safety Inspector: kill one of your units",
+                                       units_of(ctx.controller), kOwnPickSlot);
+            if (!pick.has_value()) return;   // waiting on the controller
+            mine = *pick;
         }
-
-        // Opponent's forced kill — approximate their rational pick (lowest Might).
-        PlayerId opp = opponent(ctx.controller);
-        GameObjectId opp_victim = kInvalidId;
-        int best_might = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.location.has_value()) continue;
-            if (opp_victim == kInvalidId || obj.current_might < best_might) {
-                opp_victim = id;
-                best_might = obj.current_might;
-            }
-        }
-        if (opp_victim != kInvalidId) {
-            ctx.executor.killObject(opp_victim);
-            ctx.events.logTrace("SAFETY INSPECTOR: opponent's chosen unit killed (approx.)");
-        }
+        auto theirs = selectObjectAs(ctx, opp, "Safety Inspector: kill one of your units",
+                                     units_of(opp), kOppPickSlot);
+        if (!theirs.has_value()) return;     // waiting on the opponent
+        auto still_theirs = [&](GameObjectId id, PlayerId p) {
+            if (id == kInvalidId || !ctx.state.objectExists(id)) return false;
+            const auto& o = ctx.state.getObject(id);
+            return o.isUnit() && o.location.has_value() && o.controller == p;
+        };
+        const bool kill_mine = still_theirs(mine, ctx.controller);
+        const bool kill_theirs = still_theirs(*theirs, opp);
+        if (kill_mine) ctx.executor.killObject(mine);
+        if (kill_theirs) ctx.executor.killObject(*theirs);
+        ctx.events.logTrace("SAFETY INSPECTOR: each player killed one of their units");
     }
+private:
+    // resume_data slots (0..6 belong to the Card::pick* helpers).
+    static constexpr size_t kOwnPickSlot = 7;
+    static constexpr size_t kOppPickSlot = 9;
+    static constexpr size_t kPaidSlot = 11;
 private:
     const CardDef def_ = [] {
         CardDef d;

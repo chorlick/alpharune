@@ -27,60 +27,103 @@ public:
     }
 
 private:
+    // Top (up to) 3 cards of the controller's Main Deck (back = top).
+    static std::vector<GameObjectId> topThree(const CardContext& ctx) {
+        const auto& deck = ctx.state.player(ctx.controller).main_deck;
+        std::vector<GameObjectId> out;
+        for (auto it = deck.rbegin(); it != deck.rend() && out.size() < 3; ++it)
+            if (ctx.state.objectExists(*it)) out.push_back(*it);
+        return out;
+    }
+    static std::vector<GameObjectId> unitsAmong(const CardContext& ctx,
+                                                const std::vector<GameObjectId>& cards) {
+        std::vector<GameObjectId> out;
+        for (auto id : cards)
+            if (ctx.state.getObject(id).isUnit()) out.push_back(id);
+        return out;
+    }
+
     // "When I move to a battlefield, look at the top 3 cards of your Main Deck.
     // You may reveal a unit from among them and draw it. Recycle the rest."
-    // Agent-choice of WHICH unit approximated: draw the first revealed unit.
+    // The three cards stay on the deck while the controller decides; only the
+    // unit they choose is revealed to the opponent.
     void onMove(CardContext& ctx) {
-        auto& ps = ctx.state.player(ctx.controller);
-        std::vector<GameObjectId> looked;
-        for (int i = 0; i < 3 && !ps.main_deck.empty(); ++i) {
-            // "Look at": private to the controller.
-            looked.push_back(deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller)));
-        }
-        if (looked.empty()) return;
-        GameObjectId drawn = kInvalidId;
-        for (auto cid : looked) {
-            if (!ctx.state.objectExists(cid)) continue;
-            auto& obj = ctx.state.getObject(cid);
-            ctx.events.emit(CardRevealedEvent{
-                cid, obj.card_def_id, obj.owner,
-                /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
-                ZoneType::MainDeck});
-            if (drawn == kInvalidId && obj.isUnit()) {
-                // The unit is revealed before it is drawn.
-                knowledge::seen(ctx.state, cid, deck::Place::Held, knowledge::everyone());
-                obj.zone = ZoneType::Hand;
-                ps.hand.push_back(cid);
-                drawn = cid;
-                ctx.events.logTrace("RIFT HERALD: drew unit " + obj.name);
+        const auto& ri = ctx.state.chain.resuming;
+        if (!ri.has_value() || ri->resume_point == 0) {
+            // "Look at": private to the controller, once.
+            int depth = 0;
+            for (auto cid : topThree(ctx)) {
+                const auto& obj = ctx.state.getObject(cid);
+                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller),
+                                      DeckEnd::Top, depth++);
+                ctx.events.emit(CardRevealedEvent{
+                    cid, obj.card_def_id, obj.owner,
+                    /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller,
+                    ZoneType::MainDeck});
             }
         }
-        // Recycle the rest (everything not drawn).
+        int conf = confirmOptional(ctx, "Rift Herald: reveal a unit from the top 3 and draw it?",
+                                   [&]() { return !unitsAmong(ctx, topThree(ctx)).empty(); });
+        if (conf == -1) return;  // waiting for agent
+
+        const std::vector<GameObjectId> looked = topThree(ctx);
+        GameObjectId drawn = kInvalidId;
+        if (conf == 1) {
+            drawn = pickTarget(ctx, "Rift Herald: choose a unit to draw",
+                               unitsAmong(ctx, looked));
+            if (drawn == kInvalidId && ri.has_value() && ri->resume_point == 7)
+                return;  // suspended for the choice
+        }
+        if (looked.empty()) return;
+
+        // Take the looked-at cards off the deck, recycle the ones not drawn,
+        // then reveal the chosen unit, put it back on top and draw it, so the
+        // draw is a real draw (draw count, "when you draw" triggers).
         std::vector<GameObjectId> rest;
-        for (auto cid : looked) if (cid != drawn) rest.push_back(cid);
+        for (auto cid : looked) {
+            deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller),
+                       /*slot_public=*/false);
+            if (cid != drawn) rest.push_back(cid);
+        }
         if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
+        if (drawn != kInvalidId) {
+            const auto& obj = ctx.state.getObject(drawn);
+            ctx.events.emit(CardRevealedEvent{
+                drawn, obj.card_def_id, obj.owner,
+                /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
+                ZoneType::MainDeck});
+            deck::putOnTop(ctx.state, ctx.controller, drawn, deck::Place::Held,
+                           knowledge::everyone());
+            ctx.executor.drawCards(ctx.controller, 1);
+            ctx.events.logTrace("RIFT HERALD: revealed and drew unit " + obj.name);
+        }
     }
 
     // [Deathknell]: "Play a unit from your hand to your base, ignoring its
-    // Energy cost. (You must still pay its Power cost.)" Power-cost payment is
-    // approximated as free (no structured per-effect power-payment hook).
+    // Energy cost. (You must still pay its Power cost.)" Only units whose
+    // Power cost can be paid are offered.
+    std::vector<GameObjectId> playableHandUnits(CardContext& ctx) const {
+        const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
+        std::vector<GameObjectId> out;
+        for (auto cid : ctx.state.player(ctx.controller).hand) {
+            if (!ctx.state.objectExists(cid) || !ctx.state.getObject(cid).isUnit()) continue;
+            if (ctx.executor.canPlayPayingCost(ctx.controller, cid, power_only))
+                out.push_back(cid);
+        }
+        return out;
+    }
     void onDeath(CardContext& ctx) {
-        auto& ps = ctx.state.player(ctx.controller);
-        std::vector<GameObjectId> hand_units;
-        for (auto cid : ps.hand) {
-            if (!ctx.state.objectExists(cid)) continue;
-            if (ctx.state.getObject(cid).isUnit()) hand_units.push_back(cid);
-        }
-        if (hand_units.empty()) return;
         GameObjectId picked = pickTarget(ctx, "Rift Herald (deathknell: unit from hand)",
-                                          hand_units);
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
+                                         playableHandUnits(ctx));
+        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;  // none / waiting
+        const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
+        // playPayingCost takes the unit out of the hand once it is paid for.
+        if (!ctx.executor.playPayingCost(ctx.controller, picked,
+                                         LocationId{BaseLocation{ctx.controller}},
+                                         power_only)) {
+            ctx.events.logTrace("RIFT HERALD: can't pay that unit's Power cost");
+            return;
         }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        ctx.executor.playIgnoringCost(ctx.controller, picked,
-                                      LocationId{BaseLocation{ctx.controller}});
         ctx.events.logTrace("RIFT HERALD: deathknell -> played a unit from hand to base");
     }
 private:

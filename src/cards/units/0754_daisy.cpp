@@ -19,29 +19,33 @@ public:
     int selfCostReduction(const GameState& state, PlayerId player) const override {
         return scanFriendlyTags(state, player).count();
     }
+    // "When I attack while your units have all 4 tags, [Stun] an enemy unit
+    // here." The tag condition is judged when she attacks; the unit is her
+    // controller's choice, made as the ability goes on the chain (CR 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return scanFriendlyTags(state, controller).allFour();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        auto pres = scanFriendlyTags(ctx.state, ctx.controller);
-        if (!pres.allFour()) {
-            ctx.events.logTrace("DAISY: union not satisfied (count=" +
-                                 std::to_string(pres.count()) + "/4) — no stun");
-            return;
+        std::vector<GameObjectId> enemies_here;
+        if (ctx.state.objectExists(ctx.source)) {
+            if (auto here = ctx.state.getObject(ctx.source).battlefieldId()) {
+                const PlayerId me = ctx.controller;
+                const BattlefieldId bf = *here;
+                enemies_here = chooseableUnits(ctx.state, me, [me, bf](const GameObject& o) {
+                    auto obf = o.battlefieldId();
+                    return o.controller != me && obf && *obf == bf;
+                });
+                std::sort(enemies_here.begin(), enemies_here.end());
+            }
         }
-        // Stun an enemy unit at my location.
-        if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        if (!self.location.has_value()) return;
-        PlayerId opp = opponent(ctx.controller);
-        for (auto& [oid, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.location.has_value()) continue;
-            if (*obj.location != *self.location) continue;
-            if (obj.is_stunned) continue;
-            ctx.events.logTrace("DAISY: stunning " + obj.name + " (id=" +
-                                 std::to_string(oid) + ")");
-            ctx.executor.stunUnit(oid);
-            return;
-        }
+        const GameObjectId t = pickTarget(ctx, "Daisy!: stun an enemy unit here", enemies_here);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.stunUnitBy(t, ctx.source);   // attributed, for "when you stun"
+        ctx.events.logTrace("DAISY: stunned " + ctx.state.getObject(t).name);
     }
 private:
     const CardDef def_ = [] {

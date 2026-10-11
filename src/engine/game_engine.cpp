@@ -1524,8 +1524,23 @@ void GameEngine::runFinalizePass(ChainItem& item) {
     // and reaching it is an engine error, not a quiet end of the choices.
     constexpr int kMaxChoices = 1024;
     for (int iter = 0; ; ++iter) {
+        state_.chain.resuming->finalize_checked &= static_cast<uint8_t>(~32);
         resolveSpell(*state_.chain.resuming);
         if (!effect_executor_->hasPendingChoice()) break;
+        // The cost contract (card.h): a cost is paid immediately before the
+        // end-of-choices marker. A card that paid — the state changed since
+        // costDueNow() said "due" in this run — and then asked a question
+        // would be re-entered with the cost due again and pay it twice. That
+        // is a card bug, reported here instead of charged to the player.
+        if ((state_.chain.resuming->finalize_checked & 32) &&
+            Card::costStateFingerprint(state_) != state_.chain.resuming->cost_due_fingerprint) {
+            const GameObjectId src = state_.chain.resuming->source;
+            throw std::logic_error(
+                "GameEngine::runFinalizePass: " +
+                (state_.objectExists(src) ? state_.getObject(src).name : std::string("?")) +
+                " paid a cost and then asked for a choice before its end-of-choices"
+                " marker (costs go immediately before finalizingChoices)");
+        }
         if (iter >= kMaxChoices) {
             const GameObjectId src = state_.chain.resuming->source;
             throw std::logic_error(
@@ -1581,24 +1596,18 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // (canPayEquip). An Equip that cannot be paid does nothing and was not
     // offered. Attached Equipment is not handled here: its Equip is Inactive
     // (CR 718.2, 721.2), so the intent falls through to its other abilities.
-    // Gear that defers its target (needsEquipTimeTarget) chooses it inside
-    // its own onEquip.
     if (source.isGear() && !source.attached_to.has_value()) {
         Card* gear_card = card_registry_.get(source.card_def_id);
         if (gear_card && gear_card->hasEquipAbility()) {
-            bool has_target = !intent.targets.empty();
-            if (has_target || gear_card->needsEquipTimeTarget()) {
+            // An Equip intent always names the unit (the generator emits one
+            // per payable (gear, unit) pair).
+            if (!intent.targets.empty()) {
                 CardContext equip_ctx{state_, events_, *effect_executor_,
                                      intent.player, intent.ability_source};
                 equip_ctx.registry = &card_registry_;
                 const size_t chain_before = state_.chain.items.size();
-                bool attached = false;
-                if (has_target) {
-                    attached = gear_card->payEquipAndAttach(
-                        equip_ctx, intent.targets[0], equipTerms(intent.player));
-                } else {
-                    attached = gear_card->onEquip(equip_ctx, kInvalidId);
-                }
+                const bool attached = gear_card->payEquipAndAttach(
+                    equip_ctx, intent.targets[0], equipTerms(intent.player));
                 if (attached) {
                     // An Equip is an activated ability of a gear (CR 818.1):
                     // it counts as this turn's gear ability.
@@ -3424,9 +3433,6 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
     // discounts must be payable for that unit, and an Equipment that is
     // already attached is not offered — its Rules Text, the Equip ability
     // included, is Inactive while attached (CR 718.2, 721.2).
-    // A gear that opts into needsEquipTimeTarget gets ONE intent (no target)
-    // and picks the unit inside onEquip (action-vocab collision, like
-    // needsPlayTimeTarget); it is offered while some unit could be equipped.
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isGear() || obj.controller != player) continue;
         if (!obj.location.has_value()) continue;
@@ -3434,7 +3440,6 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         Card* gear_card = card_registry_.get(obj.card_def_id);
         if (!gear_card || !gear_card->hasEquipAbility()) continue;
 
-        bool one_intent_emitted = false;
         for (auto& [uid, unit] : state_.objects) {
             if (!unit.isUnit() || unit.controller != player) continue;
             if (!unit.location.has_value()) continue;
@@ -3444,12 +3449,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
             equip.type = IntentType::ActivateAbility;
             equip.player = player;
             equip.ability_source = id;
-            if (gear_card->needsEquipTimeTarget()) {
-                if (one_intent_emitted) break;
-                one_intent_emitted = true;
-            } else {
-                equip.targets = {uid};
-            }
+            equip.targets = {uid};
             actions.push_back(equip);
         }
     }
@@ -3850,7 +3850,20 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
     for (auto card_id : ps.hand) {
         auto& card = state_.getObject(card_id);
         if (!card.isSpell()) continue;
-        if (!canAfford(player, card_id)) continue;
+        // The play gate (CR 355 -> 356): targets are chosen before the cost
+        // is determined, so a spell is offered with the targets it can be
+        // paid for — a discount from the chosen object ("your spells that
+        // choose me cost [1] or [A] less") can make it playable, and a
+        // Deflect it cannot pay on top of its cost rules a target out.
+        const bool afford_plain = canAfford(player, card_id);
+        auto affordableChoosing = [&](const std::vector<GameObjectId>& tset) {
+            if (afford_plain) {
+                int deflect = 0;
+                for (auto t : tset) deflect += deflectCostFor(state_, player, t);
+                if (deflect == 0) return true;   // nothing the targets add
+            }
+            return canAffordChoosing(player, card_id, tset);
+        };
 
         // Check timing keywords
         bool has_action = card.keywords.has(Keyword::Action);
@@ -3931,6 +3944,12 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
         if (spell_card && req.count > 0 &&
             (spell_card->needsPlayTimeTarget() ||
              spell_card->needsPlayTimeTargetPair())) {
+            // Offered while some target leaves it payable (the target itself
+            // is picked, from the payable ones, as the spell is played).
+            bool payable = legal_targets.empty() && afford_plain;
+            for (auto t : legal_targets)
+                if (affordableChoosing({t})) { payable = true; break; }
+            if (!payable) continue;
             Intent play;
             play.type = intent_type;
             play.player = player;
@@ -3943,6 +3962,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
 
         if (req.count == 0) {
             // No targeting needed
+            if (!afford_plain) continue;
             Intent play;
             play.type = intent_type;
             play.player = player;
@@ -3950,6 +3970,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             emit(play);
         } else if (req.optional && legal_targets.empty()) {
             // Optional targeting with no targets — play without targets
+            if (!afford_plain) continue;
             Intent play;
             play.type = intent_type;
             play.player = player;
@@ -3959,6 +3980,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             // One intent per legal choice of targets (one target, or a set
             // for a multi-target spell — see spellTargetSets).
             for (auto& tset : spellTargetSets(spell_card, state_, player, req, legal_targets)) {
+                if (!affordableChoosing(tset)) continue;
                 Intent play;
                 play.type = intent_type;
                 play.player = player;

@@ -646,6 +646,9 @@ struct ChainItem {
     // Finalized targets are checked for legality once as the item resolves
     // (a target that is no longer legal is a mistarget). 1 = single, 2 = pair.
     uint8_t finalize_checked = 0;
+    // The state digest taken when Card::costDueNow first said "due" in the
+    // current finalize-pass run (Card::costStateFingerprint).
+    uint64_t cost_due_fingerprint = 0;
 
     // ── Repeat (CR 820) — optional additional cost ──
     // `repeats_paid` is the number of times the Repeat cost was paid as
@@ -680,6 +683,14 @@ struct ChainItem {
     // Card::onTrigger. kInvalidId for every other item.
     GameObjectId equipped_unit = kInvalidId;
 
+    // Set for an ability triggered by a unit moving ("When I move", "When a
+    // unit moves from here", ...): where that move started and ended. It
+    // belongs to the trigger, not to the unit — a unit that moves again
+    // before this resolves gives its second trigger a different one. Cards
+    // read it with triggeringMove() (card_helpers.h).
+    struct Move { LocationId from; LocationId to; };
+    std::optional<Move> triggering_move;
+
     // Set for a keyword's own triggered ability ([Vision]: "When this is
     // played, [Predict]", CR 817; [Weaponmaster], CR 821). The keyword may
     // come from a continuous effect and the object may be a token with no
@@ -701,6 +712,11 @@ struct ChainState {
     // progress across re-entry. Counter spells continue to use
     // `items.back()` to find their target — `resuming` is a separate slot.
     std::optional<ChainItem> resuming;
+
+    // The move TriggerManager::onUnitMoved is announcing right now: every
+    // ability it queues gets it as ChainItem::triggering_move, and a
+    // triggerCondition evaluated meanwhile reads it. Empty outside that call.
+    std::optional<ChainItem::Move> move_being_announced;
 
     bool exists() const { return !items.empty(); }
 

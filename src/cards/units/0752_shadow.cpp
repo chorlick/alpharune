@@ -15,7 +15,9 @@ namespace {
 class Shadow : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "If you play me to a battlefield, I enter ready."
+    // "If you play me to a battlefield, I enter ready." A condition on where I
+    // was played, not a permission to be played to any battlefield (no
+    // extraPlayLocations(): base or a battlefield my controller controls, CR 355.2).
     bool entersReadyOnPlay(const GameState&, PlayerId, const GameObject& self) const override {
         return self.isAtBattlefield();
     }
@@ -93,7 +95,6 @@ private:
         d.energy_cost = 3;
         d.might = 3;
         d.rarity = Rarity::Epic;
-        d.keywords.set(Keyword::Action);
         d.ability_text = R"RB(If you play me to a battlefield, I enter ready.
 [Action][>] [1][A], [E]: [Stun] an enemy unit attacking here. (It doesn't deal combat damage this turn.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/690ee4937b3926810d8ed814afd14d4d9e98b13e-744x1039.png)RB";

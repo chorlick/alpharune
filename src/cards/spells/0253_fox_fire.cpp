@@ -80,9 +80,11 @@ public:
             }
         }
         ri.resume_point = kDone;
-        DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
-        for (auto id : ri.resume_data)
-            ctx.executor.killObject(static_cast<GameObjectId>(id));
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
+            for (auto id : ri.resume_data)
+                ctx.executor.killObject(static_cast<GameObjectId>(id));
+        }
         ctx.events.logTrace("FOX-FIRE: killed " + std::to_string(ri.resume_data.size()) +
                             " chosen units (total Might <= 4) at one battlefield");
     }

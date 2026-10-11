@@ -306,6 +306,11 @@ public:
     /// run reached the marker with it paid — also when no finalize pass ran
     /// and a later prompt re-enters the card.
     static bool costDueNow(CardContext& ctx);
+    /// A cheap digest of what a cost payment changes (pools, zone sizes, XP,
+    /// each object's zone / exhaustion / buffs / damage). The engine compares
+    /// it across a finalize-pass run to catch a card that paid a cost and
+    /// then asked for a choice before its marker.
+    static uint64_t costStateFingerprint(const GameState& state);
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
     static bool costAlreadyPaid(const CardContext& ctx);
@@ -759,20 +764,11 @@ public:
     bool payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTerms& terms);
     bool payEquipAndAttach(CardContext& ctx, GameObjectId unit);
 
-    /// Activate this gear's Equip on `unit`: pay equipCost() and attach. The
-    /// default is all a gear with a declared equipCost() needs.
-    virtual bool onEquip(CardContext& ctx, GameObjectId unit);
-
-    /// Whether THIS gear defers equip-time target selection to onEquip
-    /// via pickTarget. When true, generateMainPhaseActions emits ONE
-    /// equip intent per gear (no per-target enumeration), and the
-    /// engine's equip-execution path calls `onEquip(ctx, kInvalidId)`
-    /// — the Card uses `pickTarget` inside `onEquip` to resolve the
-    /// target at activation time. Mirrors `needsPlayTimeTarget` /
-    /// `needs_activation_time_target` and fixes the same action-vocab
-    /// collision class for equip intents. Default false (legacy
-    /// per-target enumeration).
-    virtual bool needsEquipTimeTarget() const { return false; }
+    /// This gear's Equip on `unit` at its printed terms (no discount): pay
+    /// equipCost() and attach. The engine's own Equip path is
+    /// payEquipAndAttach with GameEngine::equipTerms; an Equip intent always
+    /// names the unit.
+    bool onEquip(CardContext& ctx, GameObjectId unit);
 
     /// Trigger type that fires on the equipped UNIT (from effect_text).
     /// e.g., "When I conquer" in effect_text → WhenIConquer on the unit.

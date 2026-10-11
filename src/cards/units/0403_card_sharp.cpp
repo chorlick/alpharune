@@ -48,10 +48,9 @@ public:
             auto tok = ctx.executor.createToken(opp, CardType::Gear, "Gold",
                                                 0, {}, {}, loc, /*enter_ready=*/false, {},
                                                 // CR 187.5: the registered Gold card
-                                                kGoldGearCardDefId);
-            if (ctx.state.objectExists(tok)) {
-                ctx.state.getObject(tok).is_exhausted = !ctx.state.player(opp).tokens_enter_ready;
-            }
+                                                kGoldGearCardDefId,
+                                                /*enters_exhausted=*/true);
+            (void)tok;
             // "For each opponent who did, you play a Gold gear token exhausted."
             createGoldExhausted(ctx);
         }

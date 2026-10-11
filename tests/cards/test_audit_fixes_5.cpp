@@ -515,12 +515,12 @@ TEST_F(AuditFix5Test, IvernNurturer_EmptyDeckNoop) {
 
 // WhenIMove: creates a 3-Might Sprite token with [Temporary] at the location
 // she moved FROM ("When I move from a location, play a ... token there"),
-// which TriggerManager::onUnitMoved notes on her as "__moved_from_bf".
+// the origin of the move that triggered it (ChainItem::triggering_move).
 TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
     EffectExecutor exec(state, events, card_db);
     BattlefieldId bf = 0;
     auto lillia = addUnit(P1, kLillia, 3, /*at_bf=*/1);
-    state.getObject(lillia).card_counters["__moved_from_bf"] = static_cast<int>(bf);
+    AnnouncedMove moved(state, LocationId{BattlefieldLocation{bf}}, LocationId{BattlefieldLocation{1}});
 
     fireTriggerAs(kLillia, P1, lillia, TriggerType::WhenIMove, exec);
 
@@ -540,7 +540,8 @@ TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
 // location, play a 3 [M] Sprite unit token with [Temporary] there.": "there"
 // is the location she left, wherever she is by the time the ability resolves.
 // The token is in her base only when her base is what she moved from.
-TEST_F(AuditFix5Test, Lillia_NoLocationFallsBackToBase) {
+// (Renamed for 09 item 9.K1: there is no base fallback; the old name described one.)
+TEST_F(AuditFix5Test, Lillia_TheSpriteIsPlayedWhereSheMovedFromEvenAfterSheLeftTheBoard) {
     auto spritesAt = [&](const LocationId& where) {
         int n = 0;
         for (auto& [id, obj] : state.objects)

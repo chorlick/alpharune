@@ -36,7 +36,6 @@ private:
         d.artist = R"RB(Six More Vodka)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB(When you hold here, give your next spell this turn [Repeat] equal to its base cost. (You may pay the additional cost to repeat the spell's effect.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/82646c995f3d0b897ce97f7b68c35f5fd9384b8e-1039x744.png)RB";
         return d;

@@ -10,14 +10,20 @@
 
 #include "open_spiel/spiel.h"
 #include "open_spiel/algorithms/mcts.h"
-#include "open_spiel/algorithms/is_mcts.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+#include <map>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace riftbound {
 
@@ -434,11 +440,149 @@ Intent MctsAgent::selectAction(const GameState& state,
     return *intent;
 }
 
+namespace {
+
+// ─── Information-set MCTS ──────────────────────────────────────────────────
+
+/// Information-set MCTS: the algorithm of OpenSpiel's `ISMCTSBot`
+/// (open_spiel/algorithms/is_mcts.cc) in the one configuration this agent
+/// uses — UCT selection, a fresh world sample per simulation, nodes keyed by
+/// (deciding player, ObservationString), final policy = visit counts — with
+/// one difference: a node's children are kept in ACTION ORDER (std::map).
+///
+/// `ISMCTSBot` keeps them in an absl::flat_hash_map and iterates it to build
+/// the tie-break candidates of every UCT step and the final policy it
+/// samples the move from. absl seeds every table from a thread-local counter
+/// that starts at an address, and salts its hash with another address, so
+/// the iteration order is not a function of the bot's seed: with fixed seeds
+/// the agent played a different game on each run of a batch, and a different
+/// second game inside one process (plans/09 item 9.E2: a seeded 6-game batch
+/// gave four different results in four runs and one result in four runs with
+/// address-space randomisation switched off, `setarch -R`). Here every choice
+/// is a function of the seed and the position only
+/// (IsMctsAgentTest.TheSameSeedsPlayTheSameGame).
+class IsMctsSearch {
+public:
+    IsMctsSearch(uint64_t seed,
+                 std::shared_ptr<::open_spiel::algorithms::Evaluator> evaluator,
+                 double uct_c, int max_simulations)
+        : rng_(seed), evaluator_(std::move(evaluator)), uct_c_(uct_c),
+          max_simulations_(max_simulations) {}
+
+    /// Search from `root` and return the action to play: sampled in
+    /// proportion to the root's visit counts.
+    ::open_spiel::Action step(const ::open_spiel::State& root) {
+        nodes_.clear();
+        const std::vector<::open_spiel::Action> legal = root.LegalActions();
+        if (legal.size() == 1) return legal.front();
+
+        const Key root_key = keyOf(root);
+        nodes_[root_key];                       // the root starts unexpanded
+        for (int sim = 0; sim < max_simulations_; ++sim) {
+            // The world sample: a clone (no determinisation of hidden cards
+            // yet — the same resampler the agent gave ISMCTSBot).
+            std::unique_ptr<::open_spiel::State> world = root.Clone();
+            simulate(*world);
+        }
+
+        const Node& node = nodes_[root_key];
+        if (node.total_visits <= 0 || node.children.empty()) return legal.front();
+        // Children in action order; `pick` falls in [0, total_visits).
+        std::uniform_int_distribution<int> dist(0, node.total_visits - 1);
+        int pick = dist(rng_);
+        for (const auto& [action, child] : node.children) {
+            if (pick < child.visits) return action;
+            pick -= child.visits;
+        }
+        return node.children.rbegin()->first;
+    }
+
+private:
+    using Key = std::pair<::open_spiel::Player, std::string>;
+    struct Child {
+        int visits = 0;
+        double return_sum = 0.0;
+    };
+    struct Node {
+        std::map<::open_spiel::Action, Child> children;   // ordered: see the class comment
+        int total_visits = kUnexpanded;
+    };
+    static constexpr int kUnexpanded = -1;
+    static constexpr double kTieTolerance = 1e-5;
+
+    static Key keyOf(const ::open_spiel::State& state) {
+        return {state.CurrentPlayer(), state.ObservationString()};
+    }
+
+    std::vector<double> simulate(::open_spiel::State& state) {
+        if (state.IsTerminal()) return state.Returns();
+
+        const std::vector<::open_spiel::Action> legal = state.LegalActions();
+        const ::open_spiel::Player player = state.CurrentPlayer();
+        // std::map nodes: a reference stays valid while deeper simulations
+        // insert more.
+        Node& node = nodes_[keyOf(state)];
+        if (node.total_visits == kUnexpanded) {
+            node.total_visits = 0;              // stepped out of the tree: expand
+            return evaluator_->Evaluate(state);
+        }
+
+        ::open_spiel::Action chosen = ::open_spiel::kInvalidAction;
+        if (node.children.size() != legal.size()) {
+            // An action not tried yet, in a shuffled order so the move order
+            // does not bias which is tried first.
+            std::vector<::open_spiel::Action> order = legal;
+            std::shuffle(order.begin(), order.end(), rng_);
+            for (::open_spiel::Action a : order) {
+                if (node.children.find(a) == node.children.end()) { chosen = a; break; }
+            }
+        }
+        if (chosen == ::open_spiel::kInvalidAction) chosen = selectUct(node);
+
+        // Count the visit before descending: with imperfect recall the same
+        // (node, action) can come up again inside this simulation.
+        node.total_visits++;
+        node.children[chosen].visits++;
+
+        state.ApplyAction(chosen);
+        std::vector<double> returns = simulate(state);
+        node.children[chosen].return_sum += returns[player];
+        return returns;
+    }
+
+    ::open_spiel::Action selectUct(const Node& node) {
+        double best = -std::numeric_limits<double>::infinity();
+        std::vector<std::pair<::open_spiel::Action, double>> values;
+        values.reserve(node.children.size());
+        for (const auto& [action, child] : node.children) {
+            const double value = child.return_sum / child.visits +
+                uct_c_ * std::sqrt(std::log(static_cast<double>(node.total_visits)) /
+                                   child.visits);
+            values.emplace_back(action, value);
+            best = std::max(best, value);
+        }
+        std::vector<::open_spiel::Action> candidates;
+        for (const auto& [action, value] : values)
+            if (value > best - kTieTolerance) candidates.push_back(action);
+        if (candidates.size() == 1) return candidates.front();
+        std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+        return candidates[dist(rng_)];
+    }
+
+    std::mt19937_64 rng_;
+    std::shared_ptr<::open_spiel::algorithms::Evaluator> evaluator_;
+    double uct_c_;
+    int max_simulations_;
+    std::map<Key, Node> nodes_;
+};
+
+} // namespace
+
 // ─── IsMctsAgent ───────────────────────────────────────────────────────────
 
 struct IsMctsAgent::Impl {
     std::shared_ptr<const ::open_spiel::Game> game;
-    std::unique_ptr<::open_spiel::algorithms::ISMCTSBot> bot;
+    std::unique_ptr<IsMctsSearch> search;
     int sims;
     std::unique_ptr<LiveMirror> mirror;
 
@@ -453,27 +597,14 @@ struct IsMctsAgent::Impl {
         }
         mirror = std::make_unique<LiveMirror>(game, engine_seed,
                                               mcts_seed ^ 0xC3C3C3C3u);
-        auto evaluator = std::make_shared<RiftboundHeuristicEvaluator>();
-        bot = std::make_unique<::open_spiel::algorithms::ISMCTSBot>(
-            /*seed=*/static_cast<int>(mcts_seed ^ 0x3C3C3C3C),
-            evaluator,
+        // The world sample of each simulation is a Clone() of the root: hidden
+        // information is not determinised, so the search sees the real hands
+        // and decks (it "behaves like perfect-info MCTS", see mcts_agent.h).
+        search = std::make_unique<IsMctsSearch>(
+            /*seed=*/mcts_seed ^ 0x3C3C3C3Cu,
+            std::make_shared<RiftboundHeuristicEvaluator>(),
             /*uct_c=*/2.0,
-            /*max_simulations=*/sims,
-            /*max_world_samples=*/
-                ::open_spiel::algorithms::kUnlimitedNumWorldSamples,
-            /*final_policy_type=*/
-                ::open_spiel::algorithms::ISMCTSFinalPolicyType::kNormalizedVisitCount,
-            /*use_observation_string=*/true,
-            /*allow_inconsistent_action_sets=*/false);
-        // Minimum-viable resampler: Clone() rather than determinize hidden
-        // info. TODO: proper resampling from the unseen card pool.
-        bot->SetResampler(
-            [](const ::open_spiel::State& st,
-               ::open_spiel::Player /*pl*/,
-               std::function<double()> /*rng*/)
-                -> std::unique_ptr<::open_spiel::State> {
-                return st.Clone();
-            });
+            /*max_simulations=*/sims);
     }
 };
 
@@ -500,7 +631,7 @@ Intent IsMctsAgent::selectAction(const GameState& state,
     if (!os_state || os_state->IsTerminal()) {
         return impl_->mirror->unsearched(legal_actions);
     }
-    ::open_spiel::Action chosen_action = impl_->bot->Step(*os_state);
+    ::open_spiel::Action chosen_action = impl_->search->step(*os_state);
     const Intent* intent = openspiel::decodeAction(
         static_cast<int>(chosen_action), legal_actions, state);
     if (!intent) return impl_->mirror->unsearched(legal_actions);

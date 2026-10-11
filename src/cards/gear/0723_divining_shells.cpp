@@ -66,7 +66,6 @@ private:
         d.domains = {Domain::Order};
         d.energy_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Action);
         d.keywords.set(Keyword::Vision);
         d.ability_text = R"RB([Vision] (When you play this, look at the top card of your Main Deck. You may recycle it.)
 [Action][>] Kill this, [E]: Give a unit +2 [M] this turn.)RB";

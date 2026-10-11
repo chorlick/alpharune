@@ -111,6 +111,10 @@ struct GameObject {
         // Set by beginDeathBatch: the kill that follows keeps this snapshot
         // instead of taking a new one. Cleared by endDeathBatch.
         bool batch_pending = false;
+        // What the unit looked like when that snapshot was taken. A unit that
+        // was listed in a batch, survived it and has changed since is
+        // snapshotted afresh when it does die (EffectExecutor::snapshotLastKnown).
+        uint64_t batch_stamp = 0;
     };
     LastKnown last_known;
 

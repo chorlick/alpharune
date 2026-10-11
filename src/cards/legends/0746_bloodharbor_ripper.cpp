@@ -39,11 +39,9 @@ public:
         auto loc = BaseLocation{ctx.controller};
         auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
                                             0, {}, KeywordSet{}, loc,
-                                            /*enter_ready=*/false, {}, kGoldGearCardDefId);
-        if (ctx.state.objectExists(tid)) {
-            auto& tok = ctx.state.getObject(tid);
-            tok.is_exhausted = true;  // "exhausted"
-        }
+                                            /*enter_ready=*/false, {}, kGoldGearCardDefId,
+                                            /*enters_exhausted=*/true);   // "exhausted"
+        (void)tid;
         ctx.events.logTrace("BLOODHARBOR RIPPER: created exhausted Gold gear token");
     }
 private:
@@ -61,7 +59,6 @@ private:
         d.domains = {Domain::Fury, Domain::Chaos};
         d.tags = {R"RB(Pyke)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([1], [E]: Return a friendly unit at a battlefield to its owner's hand. Play a Gold gear token exhausted. (It has "[Reaction][>] Kill this, [E]: [Add] [A]."))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8ca1bfde8d898a11a6abc73bbab8fc7092b0dcb4-744x1039.png?accountingTag=RB)RB";
         return d;

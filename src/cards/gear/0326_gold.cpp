@@ -59,7 +59,6 @@ private:
         d.artist = R"RB(Kudos Productions)RB";
         d.card_type = CardType::Gear;
         d.super_type = SuperType::Token;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB(Kill this, [E]: [Reaction] — [Add] [A]. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e878c39b562a4e870e93b819c6d85cdf3fdc5238-744x1039.png)RB";
         return d;

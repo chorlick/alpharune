@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <set>
 #include <vector>
@@ -68,6 +69,8 @@ constexpr CardDefId kTPlaysFromHand = 1054;        // spell: play a card from ha
 constexpr CardDefId kTPowerTouch = 1055;           // spell costing one Fury Power: buff a unit
 constexpr CardDefId kTCounter = 1056;              // [Reaction] spell: counter the item under it
 constexpr CardDefId kTFalseDeclaration = 1057;     // [2] finalize-pass spell that chooses nothing
+constexpr CardDefId kTUnnamedOption = 1058;        // spell whose prompt has an option with no value / object
+constexpr CardDefId kTNoMarker = 1059;             // finalize-pass spell that returns before its marker
 constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kSkyCrusier = 847;
 constexpr CardDefId kSafetyInspector = 726;
@@ -161,6 +164,49 @@ private:
     CardDef def_;
 };
 
+/// A spell whose prompt offers "yes" by value and a decline that carries
+/// neither a value nor an object.
+class TUnnamedOption : public SpellCard {
+public:
+    TUnnamedOption() {
+        def_.id = kTUnnamedOption;
+        def_.name = "Test Unnamed Option";
+        def_.card_type = CardType::Spell;
+    }
+    const CardDef& def() const override { return def_; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == 20) { ctx.executor.takeChoice(); ri.resume_point = 21; return; }
+        if (ri.resume_point == 21) return;
+        Intent yes, decline;
+        yes.type = decline.type = IntentType::MakeChoice;
+        yes.player = decline.player = ctx.controller;
+        yes.chosen_value = 1;
+        ctx.executor.requestChoice(ctx.controller, {decline, yes}, "Test Unnamed Option");
+        ri.resume_point = 20;
+    }
+private:
+    CardDef def_;
+};
+
+/// Opted into choices at finalization, and returns without reaching the marker.
+class TNoMarker : public SpellCard {
+public:
+    TNoMarker() {
+        def_.id = kTNoMarker;
+        def_.name = "Test No Marker";
+        def_.card_type = CardType::Spell;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId, GameObjectId) const override {
+        return FinalizeChoice::No;
+    }
+    void onResolve(CardContext&, const std::vector<GameObjectId>&) override {}
+private:
+    CardDef def_;
+};
+
 /// "[Reaction] Counter a spell or ability." Peek-and-pop: it resolves, then
 /// removes the item that is now on top of the chain.
 class TCounter : public SpellCard {
@@ -215,6 +261,8 @@ protected:
         card_registry.registerCard(kTPowerTouch, std::make_unique<TPowerTouch>());
         card_registry.registerCard(kTCounter, std::make_unique<TCounter>());
         card_registry.registerCard(kTFalseDeclaration, std::make_unique<TFalseDeclaration>());
+        card_registry.registerCard(kTUnnamedOption, std::make_unique<TUnnamedOption>());
+        card_registry.registerCard(kTNoMarker, std::make_unique<TNoMarker>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1939,6 +1987,7 @@ class WalkAgent : public AgentInterface {
 public:
     std::vector<int> prefix;
     std::vector<int> option_counts;
+    std::set<std::string>* labels = nullptr;   // every option label met, if wanted
     Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
         if (legal.empty()) return Intent{};
         const bool is_choice = std::all_of(legal.begin(), legal.end(),
@@ -1948,6 +1997,9 @@ public:
                 if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
             return legal.front();
         }
+        if (labels)
+            for (const auto& i : legal)
+                if (!i.choice_label.empty()) labels->insert(i.choice_label);
         const size_t k = option_counts.size();
         option_counts.push_back(static_cast<int>(legal.size()));
         const int idx = k < prefix.size() ? prefix[k] : 0;
@@ -1956,11 +2008,23 @@ public:
 };
 
 TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
-    // For every finalize-pass spell: on one varied board, walk every way the
+    // For every finalize-pass spell: on varied boards, walk every way the
     // engine offers to play it and every sequence of choices it then asks
     // for, and collect the friendly units it actually chooses (the engine's
     // "chosen_by_controller" announcement). Card::mayChooseAtFinalization
-    // must say Yes for exactly those.
+    // must say Yes for exactly those. Two boards, so that every mode of the
+    // modal spells is reached: the second adds Empowered units (Sanction's
+    // "Disempower a unit that's [Empowered]"). The modes are checked by the
+    // labels the cards give them.
+    const std::map<CardDefId, std::vector<std::string>> modes = {
+        {kRocketBarrage, {"Deal 4 to a unit in a base", "Kill a gear"}},
+        {kCurtainCall, {"Draw 1", "Deal 2 (BF)", "Deal 3 (base)", "-4M (BF)"}},
+        {839, {"Return a friendly unit to its owner's hand",                 // Mesmerize
+               "Give an enemy unit -2 [M] this turn"}},
+        {822, {"Empower a unit (disempower it at end of turn)",              // Sanction
+               "Disempower an Empowered unit (empower it at end of turn)"}},
+    };
+    std::map<CardDefId, std::set<std::string>> labels_seen;
     const GameState blank = state;
     std::vector<CardDefId> spells;
     for (const auto& [id, def] : card_db.all()) {
@@ -1974,6 +2038,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
     ASSERT_GE(spells.size(), 30u);
 
     int capped = 0;
+    for (int board = 0; board < 2; ++board)
     for (CardDefId id : spells) {
         state = blank;
         // The board: friendly units in base, at two battlefields, one Mighty,
@@ -1994,10 +2059,16 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
         o(sword).zone = o(equipped).zone;
         o(equipped).attachments.push_back(sword);
         addGear(P1, kLongSword);
-        addUnit(P2, kInvalidId, 2, 0);
+        const GameObjectId enemy_here = addUnit(P2, kInvalidId, 2, 0);
         addUnit(P2, kInvalidId, 5, 1);
         addUnit(P2, kInvalidId, 3);
         addGear(P2);
+        if (board == 1) {
+            // Empowered units on both sides.
+            o(mine[1].first).empowered = 1;
+            mine[1].second += ", Empowered";
+            o(enemy_here).empowered = 1;
+        }
         addToHand(P1, kPoutyPoro);
         addToHand(P1, kPoutyPoro);
         addToTrash(P1, kPoutyPoro);
@@ -2028,6 +2099,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                 state = start;
                 WalkAgent walker;
                 walker.prefix = prefix;
+                walker.labels = &labels_seen[id];
                 ++runs;
                 try {
                     withEngine([&](GameEngine& e) { e.testHook_executeIntent(intent); },
@@ -2059,9 +2131,10 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
             // A walk that hit the cap may have missed a choice: then only
             // "chosen implies declared" is checked.
             if (was || complete) {
-                EXPECT_EQ(yes, was) << card_db.get(id).name << " (" << id << "): the unit "
-                                    << where << (was ? " is chosen by it but declared No"
-                                                     : " is declared Yes but never chosen")
+                EXPECT_EQ(yes, was) << card_db.get(id).name << " (" << id << "), board " << board
+                                    << ": the unit " << where
+                                    << (was ? " is chosen by it but declared No"
+                                            : " is declared Yes but never chosen")
                                     << " (" << plays.size() << " offered plays, " << runs
                                     << " walks)";
             }
@@ -2070,7 +2143,152 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                                     << ") is not playable on the test board";
     }
     EXPECT_EQ(capped, 0) << "every spell's choices were walked to the end";
+    // Every mode of every modal spell among them was reached on some board.
+    for (const auto& [id, labels] : modes) {
+        ASSERT_TRUE(std::find(spells.begin(), spells.end(), id) != spells.end()) << id;
+        for (const auto& label : labels)
+            EXPECT_TRUE(labels_seen[id].count(label) > 0)
+                << card_db.get(id).name << " (" << id << "): mode \"" << label
+                << "\" was never offered on the test boards";
+    }
+    // And no other of the spells has modes: a prompt of labelled, valued
+    // options that is not a yes/no would be one.
+    for (CardDefId id : spells) {
+        if (modes.count(id)) continue;
+        for (const auto& label : labels_seen[id])
+            EXPECT_TRUE(label.rfind("Yes", 0) == 0 || label.rfind("No", 0) == 0 ||
+                        label.rfind("Base", 0) == 0 || label.rfind("Battlefield", 0) == 0 ||
+                        label.rfind("BF#", 0) == 0 || label.find("Stop") != std::string::npos ||
+                        label.rfind("None", 0) == 0 || label.find("no more") != std::string::npos ||
+                        label.rfind("pay", 0) == 0 || label.rfind("cost", 0) == 0)
+                << card_db.get(id).name << " (" << id << ") offered a labelled option the test "
+                << "does not know: \"" << label << "\" — a mode to add to the table?";
+    }
     state = blank;
+}
+
+// ─── 9.DD2: what "the state changed" digests ────────────────────────────────
+
+TEST_F(SweepCostsTest, CostFingerprint_SeesAUnitMoveBetweenLocations) {
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    const uint64_t before = Card::costStateFingerprint(state);
+    o(unit).location = BattlefieldLocation{1};       // still "on the board"
+    EXPECT_NE(Card::costStateFingerprint(state), before);
+    o(unit).location = BattlefieldLocation{0};
+    EXPECT_EQ(Card::costStateFingerprint(state), before);
+    o(unit).is_stunned = true;
+    EXPECT_NE(Card::costStateFingerprint(state), before);
+    o(unit).is_stunned = false;
+    o(unit).controller = P2;
+    EXPECT_NE(Card::costStateFingerprint(state), before);
+}
+
+TEST_F(SweepCostsTest, CostFingerprint_SeesEachPoolAndTheChampionZone) {
+    const uint64_t before = Card::costStateFingerprint(state);
+    // One Power moved from one Domain to another: the total is the same.
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    const uint64_t fury = Card::costStateFingerprint(state);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 0;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Calm)] = 1;
+    EXPECT_NE(Card::costStateFingerprint(state), fury);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Calm)] = 0;
+    state.player(P1).rune_pool.spell_power = 1;
+    const uint64_t spell = Card::costStateFingerprint(state);
+    state.player(P1).rune_pool.spell_power = 0;
+    state.player(P1).rune_pool.gear_power = 1;
+    EXPECT_NE(Card::costStateFingerprint(state), spell);
+    state.player(P1).rune_pool.gear_power = 0;
+    ASSERT_EQ(Card::costStateFingerprint(state), before);
+    state.player(P1).champion_zone = 7;
+    EXPECT_NE(Card::costStateFingerprint(state), before);
+}
+
+TEST_F(SweepCostsTest, CostFingerprint_SeesABattlefieldsFacedownCardsAndController) {
+    const uint64_t before = Card::costStateFingerprint(state);
+    state.battlefields[0].facedown.push_back(42);
+    EXPECT_NE(Card::costStateFingerprint(state), before);
+    state.battlefields[0].facedown.clear();
+    state.battlefields[0].controller = P1;
+    EXPECT_NE(Card::costStateFingerprint(state), before);
+}
+
+// NOT digested, on purpose: an object's card_counters. Cards and the choice
+// helpers write progress there while choices are made; a digest that moved
+// with them would call bookkeeping a payment (the cost contract, 9.J2).
+TEST_F(SweepCostsTest, CostFingerprint_DoesNotMoveWithACardsOwnCounters) {
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    const uint64_t before = Card::costStateFingerprint(state);
+    o(unit).card_counters["__some_progress"] = 3;
+    EXPECT_EQ(Card::costStateFingerprint(state), before);
+}
+
+// ─── 9.EE1 / 9.EE2: the two card contracts the engine checks as it runs ─────
+
+TEST_F(SweepCostsTest, CardContract_AnOptionWithNeitherValueNorObjectIsReported) {
+    auto spell = addToHand(P1, kTUnnamedOption);
+    int warnings = 0;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.level == LogLevel::Warning &&
+            e.message.find("CARD-CONTRACT") != std::string::npos &&
+            e.message.find("neither a value nor an object") != std::string::npos) ++warnings;
+    });
+    // By default: a warning in the log, and the game goes on.
+    play(spell);
+    EXPECT_EQ(warnings, 1);
+    conn.disconnect();
+
+    // Strict: an error that names the card.
+    auto again = addToHand(P1, kTUnnamedOption);
+    Intent i;
+    i.type = IntentType::PlayCard;
+    i.player = P1;
+    i.card = again;
+    try {
+        withEngine([&](GameEngine& e) {
+            e.setStrictCardContracts(true);
+            e.testHook_executeIntent(i);
+        });
+        ADD_FAILURE() << "the strict engine accepted an unnameable option";
+    } catch (const std::logic_error& ex) {
+        EXPECT_NE(std::string(ex.what()).find("Test Unnamed Option"), std::string::npos)
+            << ex.what();
+    }
+}
+
+TEST_F(SweepCostsTest, CardContract_AFinalizePassThatEndsBeforeItsMarkerIsReported) {
+    auto spell = addToHand(P1, kTNoMarker);
+    int warnings = 0;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.level == LogLevel::Warning &&
+            e.message.find("before its end-of-choices marker") != std::string::npos) ++warnings;
+    });
+    play(spell);
+    EXPECT_EQ(warnings, 1);
+    conn.disconnect();
+
+    auto again = addToHand(P1, kTNoMarker);
+    Intent i;
+    i.type = IntentType::PlayCard;
+    i.player = P1;
+    i.card = again;
+    try {
+        withEngine([&](GameEngine& e) {
+            e.setStrictCardContracts(true);
+            e.testHook_executeIntent(i);
+        });
+        ADD_FAILURE() << "the strict engine accepted a pass that never reached its marker";
+    } catch (const std::logic_error& ex) {
+        EXPECT_NE(std::string(ex.what()).find("Test No Marker"), std::string::npos) << ex.what();
+    }
+    // A card that does reach its marker is not reported, strict or not.
+    auto fine = addToHand(P1, kTFalseDeclaration);
+    setPool(P1, 2, 0);
+    Intent ok = i;
+    ok.card = fine;
+    EXPECT_NO_THROW(withEngine([&](GameEngine& e) {
+        e.setStrictCardContracts(true);
+        e.testHook_executeIntent(ok);
+    }));
 }
 
 }  // namespace riftbound::test::sweep_costs

@@ -1762,6 +1762,31 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
     ChainItem done = std::move(*state_.chain.resuming);
     state_.chain.resuming.reset();
     if (outer.has_value()) state_.chain.resuming = std::move(*outer);
+    // The pass of a card that opted its callback into choices at finalization
+    // ends at the card's end-of-choices marker (Card::finalizingChoices). One
+    // that returned before it stored nothing the resolution can rely on: the
+    // card would be entered again as it resolves and its helpers would ask
+    // then, after everyone had the chance to respond. That is a card bug,
+    // reported here. (A reflexive trigger's pass is the engine's doing, not
+    // an opt-in, and has no marker to reach.)
+    if (!(done.finalize_checked & 64) && done.reflexive_index < 0 &&
+        done.card_def_id != kInvalidId) {
+        const Card* owner = (done.is_ability && done.granted_ability_def != 0)
+            ? card_registry_.get(done.granted_ability_def)
+            : card_registry_.get(done.card_def_id);
+        const unsigned bit = done.is_spell ? Card::kFinalizeResolve
+                           : (done.is_ability && !done.is_activated_ability)
+                               ? Card::kFinalizeTrigger : Card::kFinalizeActivate;
+        if (owner && (owner->choicesAtFinalization() & bit)) {
+            const GameObjectId src = done.source;
+            cardContractViolation(
+                "GameEngine::runFinalizePass: " +
+                (state_.objectExists(src) ? state_.getObject(src).name : std::string("?")) +
+                " returned from its finalize pass before its end-of-choices marker"
+                " (every path of a callback opted into choices at finalization ends at"
+                " finalizingChoices)");
+        }
+    }
     return done;
 }
 
@@ -2173,6 +2198,19 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
         if (!(addl.exists && addl.mandatory) && with(Card::PlayCostAdjust{})) return true;
     }
     return false;
+}
+
+// A card broke one of the two contracts the engine can see only as it runs
+// (an unnameable prompt option; a finalize pass that ended before its marker).
+// Strict: an error naming the card, as the cost contract is. Otherwise a
+// warning in the log — and on stderr under RIFTBOUND_REPORT_CARD_CONTRACTS, for
+// listing every card a test run trips. Strict is off by default only until the
+// cards the list names are fixed.
+void GameEngine::cardContractViolation(const std::string& what) {
+    if (strict_card_contracts_) throw std::logic_error(what);
+    events_.logWarn("CARD-CONTRACT: " + what);
+    static const bool report = std::getenv("RIFTBOUND_REPORT_CARD_CONTRACTS") != nullptr;
+    if (report) std::fprintf(stderr, "CARD-CONTRACT: %s\n", what.c_str());
 }
 
 // ── A spell's choices before its cost: probing and the viable pass ──────────
@@ -7589,6 +7627,43 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
             e.pending_query_ = PendingQuery::None;
         }
     } unpark{*this};
+
+    // A card's prompt (every option a MakeChoice) is answered by value or by
+    // object: that is all an agent, a recorded game or a policy head has to
+    // tell the options apart. An option that carries neither, or two that
+    // carry the same, can only be told apart by position — a card bug.
+    if (legal.size() > 1 &&
+        std::all_of(legal.begin(), legal.end(),
+                    [](const Intent& i) { return i.type == IntentType::MakeChoice; })) {
+        for (size_t a = 0; a < legal.size(); ++a) {
+            const bool unnamed = !legal[a].chosen_value.has_value() &&
+                                 legal[a].chosen_objects.empty();
+            bool twin = false;
+            for (size_t b = a + 1; b < legal.size() && !twin; ++b)
+                twin = legal[a].chosen_value == legal[b].chosen_value &&
+                       legal[a].chosen_objects == legal[b].chosen_objects;
+            if (!unnamed && !twin) continue;
+            std::string options;
+            for (const auto& i : legal) {
+                options += " [" + i.choice_label;
+                if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
+                for (auto o : i.chosen_objects) {
+                    options += " object=" + std::to_string(o);
+                    if (state_.objectExists(o)) options += "(" + state_.getObject(o).name + ")";
+                }
+                options += "]";
+            }
+            const std::string source = state_.chain.resuming.has_value() &&
+                                       state_.objectExists(state_.chain.resuming->source)
+                ? state_.getObject(state_.chain.resuming->source).name : std::string("?");
+            cardContractViolation(
+                "GameEngine::askAgent: a prompt (resolving: " + source + ") has an option that " +
+                (unnamed ? "carries neither a value nor an object"
+                         : "is the same as another by value and object") +
+                ". Options:" + options);
+            break;   // one report per prompt
+        }
+    }
 
     Intent chosen = getAgent(player).selectAction(state_, legal);
     parked_legal_ = nullptr;

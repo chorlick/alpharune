@@ -268,6 +268,9 @@ public:
     // Card::canActivateAbility / canActivateAbilityAt first — an activation
     // "from" a trash, a hand, or of another player's card does nothing.
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
+    /// Make a card-contract violation (GameEngine::cardContractViolation) an
+    /// error instead of a logged warning.
+    void setStrictCardContracts(bool strict) { strict_card_contracts_ = strict; }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
     // The top-level main-phase decision, asked of `p`'s agent.
@@ -826,6 +829,8 @@ private:
     /// A spell's finalize-pass choices made before its cost was paid; adopted
     /// by chooseTargetsAtFinalize when the spell goes on the chain.
     std::optional<ChainItem> prefinalized_spell_;
+    void cardContractViolation(const std::string& what);
+    bool strict_card_contracts_ = false;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
     /// One agent decision among `options` for `player`, logged like any other.

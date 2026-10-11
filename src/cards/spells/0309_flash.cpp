@@ -17,8 +17,8 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     // "Move up to 2 friendly units to base." The units are chosen one prompt
-    // at a time as the spell is played; after the first, the controller may
-    // stop ("up to"). Progress lives on the item: resume_point kAwait while a
+    // at a time as the spell is played; at each, the first included, the
+    // controller may stop ("up to"). Progress lives on the item: resume_point kAwait while a
     // prompt is out, kChosen once the choices are made; resume_data = the
     // units chosen.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
@@ -59,8 +59,9 @@ public:
                 const auto units = candidates();
                 if (!units.empty()) {
                     std::vector<Intent> options;
-                    if (!ri.resume_data.empty())
-                        options.push_back(valChoice(ctx.controller, 0, "No more units"));
+                    // "up to 2" includes none (CR 355.13): offered on the
+                    // first prompt too.
+                    options.push_back(valChoice(ctx.controller, 0, "No more units"));
                     for (auto id : units) options.push_back(objChoice(ctx.controller, id));
                     ctx.executor.requestChoice(ctx.controller, std::move(options),
                         "Flash: move up to 2 friendly units to base");

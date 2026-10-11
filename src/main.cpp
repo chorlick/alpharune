@@ -24,6 +24,7 @@
 #include "agents/random_agent.h"
 #include "cards/card_registry.h"
 #include "core/card_db.h"
+#include "openspiel/riftbound_game.h"
 #include "core/events.h"
 #include "core/version.h"
 #include "engine/batch_runner.h"
@@ -387,10 +388,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (vm.count("dump-registry")) {
-            CardRegistry reg;
-            reg.loadAll();
-            CardDB db;
-            db.buildFromClasses(reg);  // authored data only; no ban-list applied
+            const CardDB& db = openspiel::sharedCards().db;   // authored data only
             auto out_path = vm["dump-registry"].as<std::string>();
             dumpRegistry(db, out_path);
             std::cout << "Dumped " << db.size() << " cards to " << out_path << "\n";
@@ -488,16 +486,19 @@ int main(int argc, char* argv[]) {
     // ── Load card database (from the C++ classes), decks ──────────────────
     // Card data — including tournament legality (CardDef::banned) — is owned by
     // the Card classes. registry.json and ban-list.csv are retired.
-    CardDB card_db;
-    CardRegistry card_registry;
+    // One card table per process: the one the search agents' games use
+    // (openspiel::sharedCards). This used to build a second registry and
+    // database of its own next to that one.
+    const openspiel::SharedCards* shared_cards = nullptr;
     try {
-        card_registry.loadAll();
-        card_db.buildFromClasses(card_registry);
-        std::cout << "Loaded " << card_db.size() << " cards from classes\n";
+        shared_cards = &openspiel::sharedCards();
     } catch (const std::exception& e) {
         std::cerr << "Failed to load cards: " << e.what() << "\n";
         return 1;
     }
+    const CardDB& card_db = shared_cards->db;
+    const CardRegistry& card_registry = shared_cards->registry;
+    std::cout << "Loaded " << card_db.size() << " cards from classes\n";
 
     DeckValidator validator(card_db);
     const bool wild = vm["wild"].as<bool>();
@@ -662,6 +663,8 @@ int main(int argc, char* argv[]) {
                       << (results.total_decisions.load() / num_games) << "\n"
                       << "  Threads: " << num_threads << "\n";
         }
+        if (log_to_stdout)
+            std::cout << "Card tables built in this process: " << CardDB::tablesBuilt() << "\n";
         return 0;
     }
 
@@ -870,5 +873,7 @@ int main(int argc, char* argv[]) {
         if (!game_failed.load()) server->notifyGameFinished();
         server->stop();
     }
+    if (log_to_stdout)
+        std::cout << "Card tables built in this process: " << CardDB::tablesBuilt() << "\n";
     return game_failed.load() ? 1 : 0;
 }

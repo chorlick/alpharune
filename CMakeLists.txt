@@ -593,3 +593,18 @@ endif()
 
 include(GoogleTest)
 gtest_discover_tests(riftbound_tests)
+
+# One card table per process (plan item 9.E3): a game with a search agent in
+# the `riftbound` binary must build the registry + database once. main.cpp
+# used to build its own next to openspiel::sharedCards(). `--debug` prints the
+# count (CardDB::tablesBuilt).
+add_test(NAME riftbound_one_card_table
+    COMMAND riftbound --deck1 decks/yi_rebuild.txt --deck2 decks/fiora.txt
+            --agent1 mcts:sims=2 --agent2 ismcts:sims=2 --seed 7 --debug
+            --render-html off --web off
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+set_tests_properties(riftbound_one_card_table PROPERTIES
+    ENVIRONMENT "RIFTBOUND_ROOT=${PROJECT_SOURCE_DIR}"
+    PASS_REGULAR_EXPRESSION "Card tables built in this process: 1\n"
+    TIMEOUT 300)
+

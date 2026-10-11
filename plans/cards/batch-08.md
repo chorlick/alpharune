@@ -59,12 +59,12 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "You may banish a unit from among them ... and play it"
   - Code: when any eligible unit is in the top 5 the pick is mandatory (comment: "we always play the chosen one"); the unit is also played straight from the deck with no banish step, so banish triggers / `cards_banished_this_turn` never see it.
   - Scenario: the only eligible unit is one you would rather recycle -> it is played anyway.
-- [ ] **671 Blood Rose / 783 Piltover Enforcer / 274 Fortified Position** - `gear/0671_blood_rose.cpp:47-48`, `legends/0783_piltover_enforcer.cpp:32`, `battlefields/0274_fortified_position.cpp:25` [confirmed] low
+- [x] **671 Blood Rose / 783 Piltover Enforcer / 274 Fortified Position** - `gear/0671_blood_rose.cpp:47-48`, `legends/0783_piltover_enforcer.cpp:32`, `battlefields/0274_fortified_position.cpp:25` [confirmed] low — FIXED: all three verified in the code by sweep-verify-cards (`chooseableUnits` with no controller filter); test: C0Test.FortifiedPosition_OffersEveryUnit, ReviewFixC1Test.BloodRose_ReadiesAnyUnit, ReviewFixC1Test.PiltoverEnforcer_CanReadyAnEnemyUnit; 940 pinned by VerifyCardsTest.Pin_Batch08_MatriarchOfWar940_ReadyAUnitOffersEitherPlayers
   - Text: "Ready a unit." / "ready a unit." / "choose a unit. It gains [Shield 2] this combat."
   - Code: all three restrict the choice to friendly units. Matriarch of War (940), same "Ready a unit" wording, offers every unit.
   - Scenario: an enemy unit can never be chosen (rarely wanted, but legal by the text).
   - c0: 274 Fortified Position — FIXED: offers every chooseable unit on the board, either player's; test: C0Test.FortifiedPosition_OffersEveryUnit
-  - c2: 940 Matriarch of War — NOT A DEFECT: named only as the correct comparison ("Ready a unit." offers every unit, `enumerateLegalTargets` in `legends/0940_matriarch_of_war.cpp`); nothing to change.
+  - c2: 940 Matriarch of War — NOT A DEFECT: named only as the correct comparison ("Ready a unit." offers every unit, `enumerateLegalTargets` in `legends/0940_matriarch_of_war.cpp`); nothing to change.; pinned by VerifyCardsTest.Pin_Batch08_MatriarchOfWar940_ReadyAUnitOffersEitherPlayers; clarified in legends/0940_matriarch_of_war.cpp
   - c1: 671 Blood Rose, 783 Piltover Enforcer — FIXED: any unit on the board can be chosen (Blood Rose also had no target list of its own, so its ability was never offered); test: ReviewFixC1Test.BloodRose_ReadiesAnyUnit, ReviewFixC1Test.PiltoverEnforcer_CanReadyAnEnemyUnit. 274 Fortified Position is not in c1's range.
 - [x] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low — FIXED: when both cards are kept the controller chooses which goes on top; test: ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
   - Text: "[Predict 2] ... Recycle any of them and put the rest back in any order."

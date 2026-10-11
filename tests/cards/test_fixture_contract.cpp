@@ -139,6 +139,19 @@ TEST(FixtureContractPickers, ChoosingFailsTheTestAtAModeOrUnlabelledYesNo) {
     EXPECT_NONFATAL_FAILURE(pick({zero, one}), "use script()");
 }
 
+TEST(FixtureContractPickers, ChoosingStopsAtObjectsPlusANoneOption) {
+    auto prompt = objectPrompt({3, 9});
+    Intent none;
+    none.type = IntentType::MakeChoice;
+    none.chosen_value = 0;
+    none.choice_label = "No more targets";
+    prompt.insert(prompt.begin(), none);
+    auto pick = EnginePathAgent::choosing(7);
+    EXPECT_TRUE(pick(prompt).chosen_objects.empty()) << "7 is not offered: choose nothing else";
+    prompt.push_back(objectPrompt({7}).front());
+    EXPECT_EQ(pick(prompt).chosen_objects.front(), 7u) << "offered: chosen";
+}
+
 TEST(FixtureContractPickers, ChoosingTakesTheOnlyOptionAndTheFirstOfOtherObjects) {
     auto pick = EnginePathAgent::choosing(7);
     EXPECT_EQ(pick(objectPrompt({3})).chosen_objects.front(), 3u);

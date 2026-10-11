@@ -238,6 +238,8 @@ public:
     ///   one option only             taken (there is nothing to decide)
     ///   objects, `id` not among them  the first one (a test that checks `id`
     ///                               is NOT offered asserts on wasOffered)
+    ///   objects plus one option that names none ("No more targets", "None"),
+    ///   `id` not among them         that option: nothing else is chosen
     ///   anything else (a mode, an X, an unlabelled yes/no)
     ///                               FAILS the test: script() is the picker
     ///                               for those
@@ -261,6 +263,12 @@ public:
                 if (std::all_of(legal.begin(), legal.end(),
                                 [](const Intent& i) { return !i.chosen_objects.empty(); }))
                     return legal.front();
+                // Objects and exactly one "none of them": stop there.
+                const Intent* none = nullptr;
+                int without_object = 0;
+                for (const auto& i : legal)
+                    if (i.chosen_objects.empty()) { none = &i; ++without_object; }
+                if (without_object == 1 && legal.size() >= 2) return *none;
             }
             std::string options;
             for (const auto& i : legal) {

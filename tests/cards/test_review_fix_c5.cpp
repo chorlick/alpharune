@@ -119,6 +119,7 @@ protected:
         if (equipment) g.tags.push_back("Equipment");
         g.zone = ZoneType::Base;
         g.location = BaseLocation{owner};
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
     /// Attach `gear` to `unit` (board bookkeeping only).

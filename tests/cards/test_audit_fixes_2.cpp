@@ -89,8 +89,7 @@ protected:
     bool runEquip(GameObjectId gear, GameObjectId unit, EffectExecutor& exec) {
         Card* c = card_registry.get(state.getObject(gear).card_def_id);
         if (!c) return false;
-        CardContext ctx{state, events, exec, state.getObject(gear).controller, gear};
-        return c->onEquip(ctx, unit);
+        return equipThroughEngine(gear, unit);
     }
 
     /// Picker that selects the intent with chosen_value == v (for confirm / mode).

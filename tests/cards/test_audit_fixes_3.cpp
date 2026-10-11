@@ -54,6 +54,7 @@ protected:
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
         }
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
 

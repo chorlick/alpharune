@@ -142,6 +142,7 @@ protected:
         if (equipment) g.tags = {"Equipment"};
         g.location = LocationId{BaseLocation{owner}};
         g.zone = ZoneType::Base;
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
     LocationId base(PlayerId p) { return LocationId{BaseLocation{p}}; }

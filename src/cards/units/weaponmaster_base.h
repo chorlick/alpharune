@@ -51,13 +51,9 @@ public:
             if (!obj.isGear() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
             if (std::find(obj.tags.begin(), obj.tags.end(), "Equipment") == obj.tags.end()) continue;
-            if (obj.card_def_id == kInvalidId) {
-                // An Equipment with no card behind it declares no Equip
-                // cost: there is nothing to pay.
-                if (obj.attached_to.has_value() && *obj.attached_to == unit) continue;
-                equipment.push_back(id);
-                continue;
-            }
+            // A card with no Equip cost can't be equipped this way (CR
+            // 821.1.c.4) — that includes an object with no card behind it.
+            if (obj.card_def_id == kInvalidId) continue;
             const Card* gc = ctx.registry ? ctx.registry->get(obj.card_def_id) : nullptr;
             if (!gc || !gc->canPayEquip(ctx.state, ctx.controller, id, unit, weaponmasterTerms()))
                 continue;
@@ -69,17 +65,13 @@ public:
     /// Pay `gear`'s Equip cost on Weaponmaster's terms and attach it to `unit`.
     static bool weaponmasterEquip(CardContext& ctx, GameObjectId gear, GameObjectId unit) {
         if (!ctx.state.objectExists(gear)) return false;
-        if (ctx.state.getObject(gear).card_def_id == kInvalidId) {
-            // An Equipment with no card behind it has no Equip cost to pay.
-            if (!ctx.executor.attachGear(gear, unit)) return false;
-        } else {
-            Card* gc = ctx.registry ? ctx.registry->get(ctx.state.getObject(gear).card_def_id)
-                                    : nullptr;
-            if (!gc) return false;
-            CardContext gear_ctx{ctx.state, ctx.events, ctx.executor, ctx.controller, gear};
-            gear_ctx.registry = ctx.registry;
-            if (!gc->payEquipAndAttach(gear_ctx, unit, weaponmasterTerms())) return false;
-        }
+        if (ctx.state.getObject(gear).card_def_id == kInvalidId) return false;   // CR 821.1.c.4
+        Card* gc = ctx.registry ? ctx.registry->get(ctx.state.getObject(gear).card_def_id)
+                                : nullptr;
+        if (!gc) return false;
+        CardContext gear_ctx{ctx.state, ctx.events, ctx.executor, ctx.controller, gear};
+        gear_ctx.registry = ctx.registry;
+        if (!gc->payEquipAndAttach(gear_ctx, unit, weaponmasterTerms())) return false;
         ctx.events.logTrace("WEAPONMASTER: " + ctx.state.getObject(unit).name + " equips " +
                             ctx.state.getObject(gear).name + " (Equip cost, [A] less)");
         return true;

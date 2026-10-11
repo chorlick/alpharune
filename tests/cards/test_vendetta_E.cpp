@@ -807,9 +807,9 @@ TEST_F(VendettaE, Vendetta_PendulumBlade_MoveToBattlefieldGivesTwoMight) {
     auto gear = addGear(P1, kPendulumBlade);
     addRune(P1, Domain::Calm);
     auto ctx = ctxFor(exec, P1, gear);
-    EXPECT_FALSE(card->onEquip(ctx, unit)) << "[Equip] [R] needs a Fury rune";
+    EXPECT_FALSE(equipThroughEngine(gear, unit)) << "[Equip] [R] needs a Fury rune";
     addRune(P1, Domain::Fury);
-    ASSERT_TRUE(card->onEquip(ctx, unit));
+    ASSERT_TRUE(equipThroughEngine(gear, unit));
     EXPECT_EQ(state.getObject(unit).current_might, 3) << "+1 [M] from the Equipment";
 
     card->onEquippedTrigger(ctx, unit, {});
@@ -1032,14 +1032,13 @@ TEST_F(VendettaE, Vendetta_JaggedCutlass_EquipForBodyPower) {
     ASSERT_TRUE(card->hasEquipAbility());
     auto unit = addUnit(P1, kInvalidId, 2, 0);
     auto gear = addGear(P1, kJaggedCutlass);
-    auto ctx = ctxFor(exec, P1, gear);
 
     addRune(P1, Domain::Fury);
-    EXPECT_FALSE(card->onEquip(ctx, unit)) << "[O] needs a Body rune";
+    EXPECT_FALSE(equipThroughEngine(gear, unit)) << "[O] needs a Body rune";
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
 
     auto body = addRune(P1, Domain::Body);
-    ASSERT_TRUE(card->onEquip(ctx, unit));
+    ASSERT_TRUE(equipThroughEngine(gear, unit));
     EXPECT_TRUE(state.getObject(gear).attached_to == std::optional<GameObjectId>(unit));
     EXPECT_EQ(state.getObject(unit).current_might, 4) << "+2 [M]";
     EXPECT_FALSE(onBoard(body)) << "the Body rune was recycled";
@@ -1249,15 +1248,14 @@ TEST_F(VendettaE, Vendetta_ShadySpectacles_BearerBecomesACopy) {
     auto bearer = addUnit(P1, kInvalidId, 5, 0);
     auto model  = addUnit(P1, kPunchingPoro, 0, 0);
     auto gear = addGear(P1, kShadySpectacles);
-    auto ctx = ctxFor(exec, P1, gear);
 
     // [1][Y]: with no Order rune nothing happens.
     addRune(P1, Domain::Fury);
-    EXPECT_FALSE(card->onEquip(ctx, bearer));
+    EXPECT_FALSE(equipThroughEngine(gear, bearer));
     EXPECT_EQ(state.getObject(bearer).card_def_id, kInvalidId);
 
     addRune(P1, Domain::Order);
-    ASSERT_TRUE(card->onEquip(ctx, bearer));
+    ASSERT_TRUE(equipThroughEngine(gear, bearer));
     const auto& b = state.getObject(bearer);
     EXPECT_TRUE(state.getObject(gear).attached_to == std::optional<GameObjectId>(bearer));
     EXPECT_EQ(b.card_def_id, kPunchingPoro);
@@ -1276,8 +1274,7 @@ TEST_F(VendettaE, Vendetta_ShadySpectacles_NoOtherUnitJustAttaches) {
     auto gear = addGear(P1, kShadySpectacles);
     addRune(P1, Domain::Fury);
     addRune(P1, Domain::Order);
-    auto ctx = ctxFor(exec, P1, gear);
-    ASSERT_TRUE(card->onEquip(ctx, bearer));
+    ASSERT_TRUE(equipThroughEngine(gear, bearer));
     EXPECT_EQ(state.getObject(bearer).card_def_id, kInvalidId);
     EXPECT_EQ(state.getObject(bearer).base_might, 5);
 }

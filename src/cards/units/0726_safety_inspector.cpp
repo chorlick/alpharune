@@ -26,7 +26,7 @@ namespace {
 class SafetyInspector : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    static constexpr const char* kPaid = "__safety_inspector_paid";
+    static constexpr const char* kPaid = kAdditionalCostPaid;   // forgotten by the engine as each play begins
     AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
                                           PlayerId player, GameObjectId self) const override {
         (void)db; (void)self;

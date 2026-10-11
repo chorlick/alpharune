@@ -3463,11 +3463,15 @@ TEST_F(VerifyCardsTest, RivenShattered_AttackDealsTwoPerAttachedEquipmentToTheCh
 // which passed no agent and so declined the may whatever the card did) and
 // 08 S2 / 07 item 7.26: a Weaponmaster unit that is no longer on the board
 // when its play trigger is finalized is not asked anything and gets nothing.
-// The agent accepts and would choose the Equipment; the Equipment has no card
-// behind it, so nothing but the base's own on-board check keeps it off the list.
+// The agent accepts and would choose the Equipment; its Equip costs nothing
+// under Weaponmaster (Long Sword, "[Equip] [R]"), so nothing but the base's own
+// on-board check keeps it off the list.
+// Corrected (sweep-costs, 9.N5): the Equipment has a card behind it — one with
+// none has no Equip cost and can't be equipped this way (CR 821.1.c.4).
 TEST_F(VerifyCardsTest, Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEquipped) {
     auto bare = addGear(P1, kInvalidId);
     o(bare).tags = {"Equipment"};
+    withEquipmentCard(bare);
 
     // Control: on the board, the same agent is asked and equips it.
     auto control = addUnit(P1, kVeteranPoro421, 0);

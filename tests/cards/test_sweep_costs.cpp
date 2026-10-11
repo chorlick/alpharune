@@ -57,7 +57,14 @@ constexpr CardDefId kTCostThenPrompt = 1052;       // spell: spend 1 XP, then ch
 constexpr CardDefId kTCostThenPromptFinal = 1053;  // the same, choices at finalization
 constexpr CardDefId kTPlaysFromHand = 1054;        // spell: play a card from hand, ignoring its cost
 constexpr CardDefId kTPowerTouch = 1055;           // spell costing one Fury Power: buff a unit
+constexpr CardDefId kTCounter = 1056;              // [Reaction] spell: counter the item under it
 constexpr CardDefId kRisenAltar = 950;
+constexpr CardDefId kSkyCrusier = 847;
+constexpr CardDefId kSafetyInspector = 726;
+constexpr CardDefId kFoxFire = 253;            // [3]; chooses in its finalize pass
+constexpr CardDefId kRocketBarrage = 400;      // [4][B]; chooses in its finalize pass
+constexpr CardDefId kResonatingStrike = 821;   // [2] + 1 Power; chooses in its finalize pass
+constexpr CardDefId kMelDefiantSoul = 897;
 
 /// "Spend 1 XP. Buff a unit." The XP is a cost that is not idempotent, and a
 /// prompt follows it, so the callback is re-entered after the payment.
@@ -116,6 +123,27 @@ private:
     CardDef def_;
 };
 
+/// "[Reaction] Counter a spell or ability." Peek-and-pop: it resolves, then
+/// removes the item that is now on top of the chain.
+class TCounter : public SpellCard {
+public:
+    TCounter() {
+        def_.id = kTCounter;
+        def_.name = "Test Counter";
+        def_.card_type = CardType::Spell;
+        def_.keywords.set(Keyword::Reaction);
+    }
+    const CardDef& def() const override { return def_; }
+    bool hasLegalTargets(const GameState& state, PlayerId) const override {
+        return !state.chain.items.empty();
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.chain.items.empty()) ctx.state.chain.items.pop_back();
+    }
+private:
+    CardDef def_;
+};
+
 /// "Play a spell from your hand, ignoring its cost."
 class TPlaysFromHand : public SpellCard {
 public:
@@ -147,6 +175,7 @@ protected:
             std::make_unique<TCostThenPrompt>(kTCostThenPromptFinal, true));
         card_registry.registerCard(kTPlaysFromHand, std::make_unique<TPlaysFromHand>());
         card_registry.registerCard(kTPowerTouch, std::make_unique<TPowerTouch>());
+        card_registry.registerCard(kTCounter, std::make_unique<TCounter>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -236,6 +265,25 @@ protected:
         for (const auto& i : legal(P1, settle))
             if (i.type == IntentType::ActivateAbility && i.ability_source == gear) out.push_back(i);
         return out;
+    }
+    /// Put `card` (in its owner's hand) facedown at battlefield `bf`, hidden
+    /// since last turn.
+    void hideAt(GameObjectId card, int bf) {
+        auto& hand = state.player(o(card).owner).hand;
+        hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
+        o(card).zone = ZoneType::FacedownZone;
+        o(card).is_hidden = true;
+        o(card).hidden_at = static_cast<BattlefieldId>(bf);
+        o(card).hidden_on_turn = state.turn.turn_number - 1;
+        state.battlefields[bf].facedown.push_back(card);
+    }
+    /// A hidden card is played with [Reaction] timing: an enemy item on the
+    /// chain (it does nothing), priority with `p`.
+    void reactionWindowFor(PlayerId p) {
+        pushSpellOnChain(opponent(p));
+        state.chain.items.back().status = ChainItemStatus::Finalized;
+        state.turn.oc_state = OpenClosedState::Closed;
+        state.turn.priority_holder = p;
     }
     bool canAfford(GameObjectId card) {
         bool ok = false;
@@ -473,7 +521,8 @@ TEST_F(SweepCostsTest, UndyingLoyalty_TheDiscountFollowsTheUnitChosenAsItIsPlaye
     EXPECT_FALSE(playOffered(spell)) << "no unit of cost [2] or less in the trash";
     auto poro = addToTrash(P1, kPoutyPoro);          // a Poro: [2] less
     ASSERT_TRUE(playOffered(spell)) << "[2] less with a Poro leaves only the Power";
-    EnginePathAgent agent(EnginePathAgent::choosing(poro));
+    // Where it is played (the spell's finalize-pass choice), then the unit.
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(poro)}));
     play(spell, &agent);
     EXPECT_TRUE(onBoard(poro));
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
@@ -501,7 +550,7 @@ TEST_F(SweepCostsTest, Ezreal_OptionalAdditionalCostsCostOneLess) {
     auto enemy = addUnit(P2, kInvalidId, 9, 0);
     auto spell = addToHand(P1, kFrigidTouch);
     setPool(P1, 3, 0);
-    EnginePathAgent plain(EnginePathAgent::choosing(enemy));
+    EnginePathAgent plain(EnginePathAgent::script({static_cast<int>(enemy)}));
     play(spell, &plain, {enemy});
     EXPECT_EQ(state.player(P1).rune_pool.energy, 1) << "the Repeat could not be paid";
 
@@ -971,7 +1020,7 @@ TEST_F(SweepCostsTest, PlayGate_ATargetWhoseDeflectCannotBePaidWithTheCostIsNotO
     o(two).deflect_value = 2;
     setPool(P1, 1, 0);
     addRune(P1, Domain::Mind);
-    EnginePathAgent agent(EnginePathAgent::choosing(two));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(one)}));
     play(spell, &agent);
     EXPECT_TRUE(agent.wasOffered(one));
     EXPECT_FALSE(agent.wasOffered(two)) << "cost + Deflect 2 is more than there is";
@@ -1190,6 +1239,387 @@ TEST_F(SweepCostsTest, TrashReplayGrant_ADiscountAppliesToTheGrantCost) {
     execute(*offer);
     EXPECT_TRUE(onBoard(legion));
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+}
+
+// ─── 9.L2: target discounts on plays that are not from hand ─────────────────
+
+TEST_F(SweepCostsTest, TrashReplayGrant_ATargetsDiscountCountsTowardTheGrantCost) {
+    // A grant to replay Frigid Touch from the trash for [2]; Irelia, Graceful
+    // takes [1] off a spell that chooses her. With [1] the play is offered,
+    // and she is the only unit it can choose.
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto spell = addToTrash(P1, kFrigidTouch);
+    PlayerState::TrashReplayGrant grant;
+    grant.card = spell;
+    grant.energy = 2;
+    state.player(P1).trash_replay_grants.push_back(grant);
+    setPool(P1, 1, 0);
+    std::optional<Intent> offer;
+    for (const auto& i : legal())
+        if (i.card == spell && i.play_source == Intent::PlaySource::Trash) offer = i;
+    ASSERT_TRUE(offer.has_value()) << "[2] - [1] for choosing Irelia";
+    EnginePathAgent agent(EnginePathAgent::choosing(irelia));
+    execute(*offer, &agent);
+    EXPECT_TRUE(agent.wasOffered(irelia));
+    EXPECT_FALSE(agent.wasOffered(other));
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(o(irelia).temp_might_bonus, -2) << "it was played and resolved";
+}
+
+TEST_F(SweepCostsTest, TrashReplayGrant_ATargetsDiscountTakesThePowerOfAGrantWithNoEnergy) {
+    // The "[A] less" half: a grant of one Fury Power (Test Power Touch, a test
+    // card), nothing to pay it with, playable by choosing Irelia.
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto spell = addToTrash(P1, kTPowerTouch);
+    PlayerState::TrashReplayGrant grant;
+    grant.card = spell;
+    grant.power = 1;
+    grant.power_domain = Domain::Fury;
+    state.player(P1).trash_replay_grants.push_back(grant);
+    setPool(P1, 0, 0);
+    std::optional<Intent> offer;
+    for (const auto& i : legal())
+        if (i.card == spell && i.play_source == Intent::PlaySource::Trash) offer = i;
+    ASSERT_TRUE(offer.has_value());
+    EnginePathAgent agent(EnginePathAgent::choosing(irelia));
+    execute(*offer, &agent);
+    EXPECT_FALSE(agent.wasOffered(other));
+    EXPECT_EQ(o(irelia).buff_count, 1);
+}
+
+// NOT A DEFECT (9.L2, hidden plays): a card played from facedown ignores its
+// base cost (CR 811), so there is no cost for a target's discount to make
+// payable — the generator has no cost gate and needs none. What a target adds
+// is its Deflect, and that does gate the offer.
+TEST_F(SweepCostsTest, HiddenPlay_HasNoCostGateAndATargetIsOfferedOnlyIfItsDeflectCanBePaid) {
+    state.battlefields[0].controller = P1;
+    state.turn.turn_number = 3;
+    addUnit(P1, kInvalidId, 2, 0);
+    auto plain = addUnit(P2, kInvalidId, 3, 0);
+    auto guarded = addUnit(P2, kInvalidId, 3, 0);
+    o(guarded).keywords.set(Keyword::Deflect);
+    o(guarded).deflect_value = 1;
+    // Test Power Touch (printed cost: one Fury Power) facedown at battlefield 0
+    // since last turn.
+    auto spell = addToHand(P1, kTPowerTouch);
+    auto& hand = state.player(P1).hand;
+    hand.erase(std::remove(hand.begin(), hand.end(), spell), hand.end());
+    o(spell).zone = ZoneType::FacedownZone;
+    o(spell).is_hidden = true;
+    o(spell).hidden_at = 0;
+    o(spell).hidden_on_turn = 2;
+    state.battlefields[0].facedown.push_back(spell);
+    // A hidden card is played with [Reaction] timing: an enemy item on the
+    // chain (it does nothing), priority with P1.
+    pushSpellOnChain(P2);
+    state.chain.items.back().status = ChainItemStatus::Finalized;
+    state.turn.oc_state = OpenClosedState::Closed;
+    state.turn.priority_holder = P1;
+    auto offerOn = [&](GameObjectId target) -> std::optional<Intent> {
+        for (const auto& i : legal())
+            if (i.card == spell && !i.targets.empty() && i.targets.front() == target) return i;
+        return std::nullopt;
+    };
+    setPool(P1, 0, 0);
+    EXPECT_TRUE(offerOn(plain).has_value()) << "no resources at all: the base cost is ignored";
+    EXPECT_FALSE(offerOn(guarded).has_value()) << "its Deflect cannot be paid";
+    setPool(P1, 0, 1);
+    auto offer = offerOn(guarded);
+    ASSERT_TRUE(offer.has_value());
+    execute(*offer);
+    EXPECT_EQ(o(guarded).buff_count, 1);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "the Deflect, and nothing else";
+}
+
+// ─── 9.N2: a spell that chooses in its finalize pass pays after choosing ────
+
+TEST_F(SweepCostsTest, FinalizePassSpell_ADiscountFromWhatItChoosesCountsBeforePayment) {
+    // Resonating Strike ([2] + 1 Power; kFinalizeResolve): "Choose a
+    // battlefield you control and a unit you control at a different location."
+    // Irelia, Graceful: "Your spells that choose me cost [1] or [A] less."
+    // With [1] and one Power the spell is payable only by choosing Irelia.
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 2, 0);                       // holds the battlefield
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);       // in base
+    auto other = addUnit(P1, kInvalidId, 3);             // in base
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kResonatingStrike);
+    setPool(P1, 1, 1);
+    ASSERT_TRUE(playOffered(spell)) << "the generator counts a choice that makes it payable";
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(irelia)}));
+    play(spell, &agent);
+    EXPECT_TRUE(agent.wasOffered(irelia));
+    EXPECT_FALSE(agent.wasOffered(other)) << "[2] is out of reach for any other unit";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 0u) << "it was played and resolved";
+    EXPECT_TRUE(inTrash(P1, spell));
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_WithoutADiscountItPaysItsFullCostAndIsNotOfferedShort) {
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 2, 0);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto spell = addToHand(P1, kResonatingStrike);
+    setPool(P1, 1, 1);
+    EXPECT_FALSE(playOffered(spell)) << "nothing it can choose takes anything off";
+    setPool(P1, 2, 1);
+    ASSERT_TRUE(playOffered(spell));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(other)}));
+    play(spell, &agent);
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(o(other).battlefieldId().value_or(99), 0u);
+}
+
+// ─── 9.T1: its Deflect is judged, and paid, with the spell's cost ───────────
+
+TEST_F(SweepCostsTest, FinalizePassSpell_AUnitIsOfferedOnlyIfItsDeflectCanBePaidWithTheCost) {
+    // Rocket Barrage ([4][B]; kFinalizeResolve): "Deal 4 to a unit in a base."
+    // Its choices are made before its cost is paid, each one's Deflect in the
+    // same step — so a unit is on offer only while the cost AND its Deflect
+    // can be paid together.
+    auto plain = addUnit(P2, kInvalidId, 9);
+    auto guarded = addUnit(P2, kInvalidId, 9);
+    o(guarded).keywords.set(Keyword::Deflect);
+    o(guarded).deflect_value = 1;
+
+    // [4] floating and one Mind rune: the rune is the spell's [B]. It could
+    // pay the Deflect instead — and then the spell could not be paid for.
+    auto spell = addToHand(P1, kRocketBarrage);
+    setPool(P1, 4, 0);
+    addRune(P1, Domain::Mind);
+    EnginePathAgent short_agent(EnginePathAgent::script({0, static_cast<int>(plain)}));   // mode, unit
+    play(spell, &short_agent);
+    EXPECT_TRUE(short_agent.wasOffered(plain));
+    EXPECT_FALSE(short_agent.wasOffered(guarded)) << "[4][B] + its Deflect is more than there is";
+    EXPECT_EQ(o(plain).damage_marked, 4);
+    EXPECT_TRUE(inTrash(P1, spell)) << "the spell was paid for and resolved";
+
+    // With one more Power the guarded unit is offered, and everything is spent.
+    auto again = addToHand(P1, kRocketBarrage);
+    setPool(P1, 4, 1);
+    auto rune = addRune(P1, Domain::Mind);
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(guarded)}));
+    play(again, &agent);
+    EXPECT_TRUE(agent.wasOffered(guarded));
+    EXPECT_EQ(o(guarded).damage_marked, 4);
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+    EXPECT_FALSE(onBoard(rune)) << "recycled for the [B]";
+}
+
+// ─── 9.T2: a hidden spell needs its choices at its battlefield (CR 811.1.d) ─
+
+TEST_F(SweepCostsTest, HiddenPlay_AFinalizePassSpellNeedsSomethingToChooseAtItsBattlefield) {
+    // Resonating Strike hidden at battlefield 0: "Choose a battlefield you
+    // control and a unit you control at a different location." From facedown
+    // the battlefield is the one it was hidden at.
+    state.battlefields[0].controller = P1;
+    state.turn.turn_number = 3;
+    addUnit(P1, kInvalidId, 2, 0);                      // here: not "at a different location"
+    auto spell = addToHand(P1, kResonatingStrike);
+    hideAt(spell, 0);
+    reactionWindowFor(P1);
+    auto offered = [&] {
+        for (const auto& i : legal())
+            if (i.card == spell) return true;
+        return false;
+    };
+    EXPECT_FALSE(offered()) << "no unit of mine anywhere else to move here";
+    addUnit(P1, kInvalidId, 2);                         // in base
+    EXPECT_TRUE(offered());
+}
+
+// NOT A DEFECT (9.T2, Fox-Fire 253): "Kill any number of units" includes zero
+// (CR 355.13), so the spell is playable with nothing to choose — from
+// facedown as from hand.
+TEST_F(SweepCostsTest, HiddenPlay_FoxFireMayBePlayedWithNothingToChoose) {
+    state.battlefields[0].controller = P1;
+    state.turn.turn_number = 3;
+    addUnit(P1, kInvalidId, 9, 0);                      // too big for Fox-Fire
+    auto spell = addToHand(P1, kFoxFire);
+    hideAt(spell, 0);
+    reactionWindowFor(P1);
+    bool offered = false;
+    for (const auto& i : legal())
+        if (i.card == spell) offered = true;
+    EXPECT_TRUE(offered);
+}
+
+// ─── 9.N5: Weaponmaster needs an Equip cost to pay (CR 821.1.c.4) ───────────
+
+TEST_F(SweepCostsTest, Weaponmaster_AnEquipmentWithNoEquipCostCannotBeEquippedThisWay) {
+    auto bare = addGear(P1, kInvalidId, /*equipment=*/true);   // no card, so no Equip cost
+    auto wm = addToHand(P1, kArmedAssailant);
+    EnginePathAgent agent(EnginePathAgent::choosing(bare));
+    playThroughEngine(wm, &agent);
+    ASSERT_TRUE(onBoard(wm));
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to offer";
+    EXPECT_FALSE(o(bare).attached_to.has_value());
+}
+
+// ─── 9.M26: a typed discard as an activation cost is the player's choice ────
+
+TEST_F(SweepCostsTest, TypedDiscardCost_SkyCrusierDiscardsTheGearThePlayerPicks) {
+    // "Discard a gear, [1], [E]: Deal 4 to a unit at a battlefield."
+    auto crusier = addUnit(P1, kSkyCrusier, 3);
+    auto enemy = addUnit(P2, kInvalidId, 9, 0);
+    auto not_gear = addToHand(P1, kPoutyPoro);
+    setPool(P1, 1, 0);
+    auto offers = [&] {
+        std::vector<Intent> out;
+        for (const auto& i : legal())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == crusier)
+                out.push_back(i);
+        return out;
+    };
+    EXPECT_TRUE(offers().empty()) << "no gear in hand: the cost can't be paid";
+    auto gear1 = addToHand(P1, kLongSword);
+    auto gear2 = addToHand(P1, kSkyfallOfAreion);
+    auto act = offers();
+    ASSERT_FALSE(act.empty());
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(gear2), static_cast<int>(enemy)}));
+    execute(act.front(), &agent);
+    EXPECT_TRUE(agent.wasOffered(gear1));
+    EXPECT_FALSE(agent.wasOffered(not_gear)) << "only gear pays a \"Discard a gear\" cost";
+    EXPECT_TRUE(inTrash(P1, gear2)) << "the one the player picked";
+    EXPECT_TRUE(inHand(P1, gear1));
+    EXPECT_TRUE(inHand(P1, not_gear));
+    EXPECT_EQ(o(enemy).damage_marked, 4);
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+}
+
+TEST_F(SweepCostsTest, TypedDiscardCost_MelEmpowersByDiscardingTheSpellThePlayerPicks) {
+    // Mel, Defiant Soul: "[Empower] — Discard a spell".
+    auto mel = addUnit(P1, kMelDefiantSoul, 3);
+    auto not_spell = addToHand(P1, kPoutyPoro);
+    auto offers = [&] {
+        std::vector<Intent> out;
+        for (const auto& i : legal())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == mel)
+                out.push_back(i);
+        return out;
+    };
+    EXPECT_TRUE(offers().empty()) << "no spell in hand";
+    auto spell1 = addToHand(P1, kWallop);
+    auto spell2 = addToHand(P1, kFrigidTouch);
+    auto act = offers();
+    ASSERT_FALSE(act.empty());
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(spell2)}));
+    execute(act.front(), &agent);
+    EXPECT_TRUE(agent.wasOffered(spell1));
+    EXPECT_FALSE(agent.wasOffered(not_spell));
+    EXPECT_TRUE(inTrash(P1, spell2));
+    EXPECT_TRUE(inHand(P1, spell1));
+    EXPECT_EQ(o(mel).empowered, 1);
+}
+
+// ─── 9.M27: Energy comes from runes in the player's base, lowest id first ───
+
+TEST_F(SweepCostsTest, PayEnergy_ExhaustsTheLowestIdBaseRuneAndNoRuneOutsideTheBase) {
+    // Jax, Unrelenting: "When you attach an Equipment to me, you may pay [1]
+    // to draw 1." pays through payEnergy (card_helpers.h).
+    auto jax = addUnit(P1, kJaxUnrelenting, 3);
+    auto stray = addRune(P1, Domain::Calm);          // lowest id, but not in the base
+    o(stray).zone = ZoneType::BattlefieldZone;
+    o(stray).location = BattlefieldLocation{0};
+    addToDeck(P1, kPoutyPoro);
+    addToDeck(P1, kPoutyPoro);
+    setPool(P1, 0, 0);
+
+    // Only the stray rune: nothing to pay with, so the may is not offered.
+    EnginePathAgent none(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(jax, TriggerType::WhenEquipmentAttachedToMe, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_FALSE(o(stray).is_exhausted);
+    EXPECT_EQ(handSize(P1), 0);
+
+    auto first = addRune(P1, Domain::Fury);
+    auto second = addRune(P1, Domain::Mind);
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(jax, TriggerType::WhenEquipmentAttachedToMe, &yes);
+    EXPECT_EQ(handSize(P1), 1);
+    EXPECT_TRUE(o(first).is_exhausted) << "the lowest-id rune in the base";
+    EXPECT_FALSE(o(second).is_exhausted);
+    EXPECT_FALSE(o(stray).is_exhausted) << "a rune outside the base gives no Energy";
+}
+
+// ─── 9.R2: what was paid for one play is forgotten when the next begins ─────
+
+/// The opponent answers the first thing they get priority on with Test
+/// Counter (a [Reaction] test spell that counters the item under it by
+/// peek-and-pop, as the engine's counters do), then passes.
+class CountersOnceAgent : public AgentInterface {
+public:
+    GameObjectId counter_card = kInvalidId;
+    int played = 0;
+    Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+        if (played == 0)
+            for (const auto& i : legal)
+                if (i.card == counter_card && (i.type == IntentType::PlayReaction ||
+                                               i.type == IntentType::PlayActionCard ||
+                                               i.type == IntentType::PlayCard)) {
+                    ++played;
+                    return i;
+                }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+        return legal.empty() ? Intent{} : legal.front();
+    }
+};
+
+TEST_F(SweepCostsTest, PaidFlag_ZaunPunkReplayedWithoutPayingDoesNotKillAGear) {
+    auto mine = addGear(P1);
+    auto theirs = addGear(P2);
+    auto punk = addToHand(P1, kZaunPunk);
+    setPool(P1, 3, 0);
+    EnginePathAgent pays(EnginePathAgent::script({1, static_cast<int>(mine)}));
+    CountersOnceAgent counters;
+    counters.counter_card = addToHand(P2, kTCounter);
+    playThroughEngine(punk, &pays, std::nullopt, &counters, /*fund=*/false);
+    ASSERT_EQ(counters.played, 1) << "the play trigger was on the chain and was countered";
+    ASSERT_FALSE(onBoard(mine)) << "the additional cost was paid";
+    ASSERT_TRUE(onBoard(theirs)) << "the trigger never resolved";
+
+    // Back to hand, and played again with no gear to pay the cost with.
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.bounceToHand(punk); });
+    ASSERT_TRUE(inHand(P1, punk));
+    setPool(P1, 3, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(theirs));
+    play(punk, &agent);
+    EXPECT_TRUE(onBoard(punk));
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to pay with, so nothing is asked";
+    EXPECT_TRUE(onBoard(theirs)) << "this play paid nothing: no \"kill a gear\"";
+}
+
+TEST_F(SweepCostsTest, PaidFlag_SafetyInspectorReplayedWithoutPayingStillKillsItsOwnUnit) {
+    // "You may spend 3 XP as an additional cost ... if you paid it, skip your kill."
+    auto my_unit = addUnit(P1, kInvalidId, 2);
+    auto their_unit = addUnit(P2, kInvalidId, 2);
+    auto inspector = addToHand(P1, kSafetyInspector);
+    const auto& def = card_db.get(kSafetyInspector);
+    setPool(P1, def.energy_cost, def.power_cost);
+    setXp(P1, 3);
+    EnginePathAgent pays(EnginePathAgent::script({1}));
+    CountersOnceAgent counters;
+    counters.counter_card = addToHand(P2, kTCounter);
+    playThroughEngine(inspector, &pays, std::nullopt, &counters, /*fund=*/false);
+    ASSERT_EQ(counters.played, 1) << "the play trigger was on the chain and was countered";
+    ASSERT_EQ(state.player(P1).xp, 0) << "the additional cost was paid";
+    ASSERT_TRUE(onBoard(my_unit));
+
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.bounceToHand(inspector); });
+    ASSERT_TRUE(inHand(P1, inspector));
+    setPool(P1, def.energy_cost, def.power_cost);          // and no XP this time
+    EnginePathAgent agent(EnginePathAgent::choosing(my_unit));
+    EnginePathAgent them(EnginePathAgent::choosing(their_unit));
+    playThroughEngine(inspector, &agent, std::nullopt, &them, /*fund=*/false);
+    EXPECT_TRUE(onBoard(inspector));
+    EXPECT_FALSE(onBoard(my_unit)) << "unpaid this time: I kill one of my units too";
+    EXPECT_FALSE(onBoard(their_unit));
 }
 
 }  // namespace riftbound::test::sweep_costs

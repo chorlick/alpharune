@@ -119,14 +119,7 @@ protected:
     /// attached to `unit`. `exec` is unused: the engine uses its own. This
     /// used to call Card::onEquip directly, with no registry on the context.
     bool runEquip(GameObjectId gear, GameObjectId unit, EffectExecutor& /*exec*/) {
-        Intent equip;
-        equip.type = IntentType::ActivateAbility;
-        equip.player = state.getObject(gear).controller;
-        equip.ability_source = gear;
-        equip.targets = {unit};
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(equip); },
-                   nullptr, nullptr, equip.player);
-        return state.getObject(gear).attached_to == std::optional<GameObjectId>{unit};
+        return equipThroughEngine(gear, unit);
     }
 
     /// Add enough ready runes of `domain` (and a few generic) to pay any

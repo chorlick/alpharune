@@ -316,8 +316,7 @@ TEST_F(AuditFix0Test, ZeroDrive_EquipPaysAndAttaches) {
     int gear_bonus = state.getObject(gear).might_bonus;  // +2 per registry
     int runes_before = readyRuneCount(P1) + exhaustedRuneCount(P1);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = c->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>(unit));
@@ -335,8 +334,7 @@ TEST_F(AuditFix0Test, ZeroDrive_EquipFailsWhenCantAfford) {
 
     Card* c = card_registry.get(kZeroDrive);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = c->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok) << "no runes → can't pay";
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value())

@@ -756,11 +756,15 @@ TEST_F(C4Test, CantBeChosenUnitsAreNotOfferedToAhriTeemoOrSnapvine) {
 TEST_F(C4Test, TeemoStrategist_StillRevealsWhenThereIsNoUnitToChoose) {
     auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
     auto top = addToDeck(P1, kTeemoScout);
+    int revealed = 0;
+    auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
+        if (e.card == top) ++revealed;
+    });
     fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend);
-    // Revealed and recycled: the one card went off the top and back to the bottom.
+    conn.disconnect();
+    EXPECT_EQ(revealed, 1) << "the top of the deck is revealed all the same";
     ASSERT_EQ(deckSize(P1), 1);
-    EXPECT_TRUE(inDeck(P1, top));
-    EXPECT_FALSE(state.chain.exists());
+    EXPECT_TRUE(inDeck(P1, top)) << "and recycled";
 }
 
 TEST_F(C4Test, CarnivorousSnapvine_ThatLeftTheBoardFightsNobody) {

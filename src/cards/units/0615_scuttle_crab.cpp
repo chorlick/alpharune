@@ -28,15 +28,18 @@ public:
             // [Deathknell] — choose an opponent (only one in 1v1): they reveal
             // their hand, and I may look at their facedown cards this turn.
             auto opp = opponent(ctx.controller);
-            auto show = [&](GameObjectId card_id, ZoneType zone) {
+            // "They reveal their hand" is a reveal: to all players (CR 425.1).
+            // "I may look at their facedown cards" is a look: mine alone.
+            auto show = [&](GameObjectId card_id, ZoneType zone, bool to_all) {
                 if (!ctx.state.objectExists(card_id)) return;
                 auto& obj = ctx.state.getObject(card_id);
                 ctx.events.emit(CardRevealedEvent{
                     card_id, obj.card_def_id, obj.owner,
-                    /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller, zone});
+                    /*revealed_to_all=*/to_all,
+                    /*revealed_to=*/to_all ? PlayerId::None : ctx.controller, zone});
             };
             for (auto card_id : ctx.state.player(opp).hand)
-                show(card_id, ZoneType::Hand);
+                show(card_id, ZoneType::Hand, /*to_all=*/true);
             // "this turn": the cards facedown now, and — through the standing
             // permission — any the opponent hides later this turn
             // (TriggerManager::onCardHidden shows them).
@@ -46,7 +49,7 @@ public:
                 for (auto card_id : bf.facedown)
                     if (ctx.state.objectExists(card_id) &&
                         ctx.state.getObject(card_id).controller == opp)
-                        show(card_id, ZoneType::FacedownZone);
+                        show(card_id, ZoneType::FacedownZone, /*to_all=*/false);
             gainXp(ctx, ctx.controller, 1);
             RIFT_TRACE(ctx.events, "SCUTTLE CRAB: [Deathknell] reveal opp hand + facedown cards, +1 XP");
         }

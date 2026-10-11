@@ -6,6 +6,7 @@
 /// Every test drives the real GameEngine (TriggerManager + ChainManager +
 /// finalization) through the fixture's engine entry points.
 
+#include "ml/feature_extractor.h"
 #include "cards/card_test_fixture.h"
 #include "cards/card_helpers.h"
 #include "engine/chain_manager.h"
@@ -2083,7 +2084,7 @@ TEST_F(SweepTriggersTest, ReplacementEffects_EveryCardDefinesWhenItApplies) {
     auto probe = addUnit(P2, kInvalidId, 2, 1);
     std::vector<CardDefId> found;
     int without = 0;
-    for (uint32_t n = 1; n <= 1100; ++n) {
+    for (uint32_t n = 1; n <= static_cast<uint32_t>(ml::kCardVocabSize); ++n) {
         const CardDefId id = CardDefId::fromRaw(n);
         const Card* c = card_registry.get(id);
         if (!c) continue;
@@ -2957,7 +2958,7 @@ static std::string reflexiveDeclarationProblem(const Card& card) {
 
 TEST_F(SweepTriggersTest, Reflexive_EveryCardWithThePhraseDeclaresItself) {
     int with_phrase = 0;
-    for (uint32_t n = 1; n <= 1100; ++n) {
+    for (uint32_t n = 1; n <= static_cast<uint32_t>(ml::kCardVocabSize); ++n) {
         const CardDefId id = CardDefId::fromRaw(n);
         const Card* c = card_registry.get(id);
         if (!c) continue;

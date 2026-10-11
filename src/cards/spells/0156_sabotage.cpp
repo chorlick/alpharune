@@ -35,8 +35,8 @@ public:
                     /*card=*/card_id,
                     /*card_def_id=*/obj.card_def_id,
                     /*owner=*/obj.owner,
-                    /*revealed_to_all=*/false,
-                    /*revealed_to=*/ctx.controller,
+                    /*revealed_to_all=*/true,   // CR 425.1: to all players
+                    /*revealed_to=*/PlayerId::None,
                     /*source_zone=*/ZoneType::Hand,
                 });
                 RIFT_TRACE(ctx.events, "SABOTAGE: revealed " + obj.name +

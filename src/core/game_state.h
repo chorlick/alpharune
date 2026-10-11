@@ -988,6 +988,9 @@ struct GameState {
         if (e.card_def_id == kInvalidId) return;
         auto bump = [&](PlayerId obs) {
             if (obs == PlayerId::None) return;
+            // A hand revealed to all players (CR 425.1) shows its owner
+            // nothing: they are not an observer of their own hand.
+            if (obs == e.owner && e.source_zone == ZoneType::Hand) return;
             ++player(obs).observed_cards[e.card_def_id];
         };
         if (e.revealed_to_all) {

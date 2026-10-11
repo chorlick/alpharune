@@ -864,6 +864,7 @@ inline LocationId effectPlayLocation(const GameState& state, PlayerId player, in
             return BattlefieldLocation{bf.id};
     }
     return BaseLocation{player};
+}
 
 // ── Played from facedown (CR 811) ───────────────────────────────────────────
 /// The battlefield the spell `spell` was hidden at, if this play of it is from

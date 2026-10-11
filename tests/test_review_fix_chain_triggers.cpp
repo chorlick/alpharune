@@ -18,6 +18,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <stdexcept>
@@ -701,6 +706,10 @@ TEST_F(ChainTriggerFixTest, ChosenUnit_IreliaTriggersOnHerOwnChoice) {
 // fixed card by card. It may only shrink: fix a card, then delete its id
 // here. (Forge of the Future 212 is on the review's list too but declares no
 // requirements, so this check cannot see it.)
+//
+// 9.B13: this first test is only a proxy (requirements declared + no opt-in).
+// A card that reads `targets` without declaring requirements, and every
+// onEquippedTrigger, passes it; the source scan below is the real check.
 
 TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
     static const std::set<CardDefId> kKnownOffenders = {
@@ -737,6 +746,278 @@ TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
     for (auto id : fixed) done += std::to_string(id) + " ";
     if (!fixed.empty())
         std::cout << "[ note ] fixed; remove from kKnownOffenders: " << done << "\n";
+}
+
+// ─── 9.B13 — no card reads the `targets` of a trigger (source scan) ─────────
+//
+// "Does this card read the vector it is handed" cannot be asked of a compiled
+// card, and the engine always hands a trigger an empty one, so the check is
+// made on the source: every onTrigger / onEquippedTrigger DEFINITION under
+// src/cards/<dir>/ whose vector parameter has a name must not use that name
+// in its body, except to forward it to a base class's callback
+// (`WeaponmasterUnit::onTrigger(ctx, targets)`).
+//
+// Known blind spots of the scan (kept simple on purpose):
+//   - it is text, not a C++ parser: a callback produced by a macro, or one
+//     whose parameter list or body hides behind a macro, is not seen;
+//   - a card that forwards to a base class is trusted; the base class's own
+//     definition is scanned only if it lives under src/cards/<dir>/;
+//   - a lambda parameter or local in the body with the same name as the
+//     vector parameter is reported as a read (a false positive: rename it);
+//   - `(void)targets;` counts as a read: leave the parameter unnamed instead;
+//   - a digit separator directly before a character literal (1'000'x') would
+//     confuse the literal skipper; no card file has one.
+namespace trigger_source_audit {
+
+bool isIdent(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; }
+bool isSpace(char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; }
+
+/// `src` with comments, string literals (raw ones included) and character
+/// literals replaced by spaces, newlines kept: the same offsets and line
+/// numbers, and no brace, paren or name left in text that is not code.
+std::string blankCommentsAndLiterals(const std::string& src) {
+    std::string out = src;
+    const size_t n = src.size();
+    size_t i = 0;
+    while (i < n) {
+        const char c = src[i];
+        const bool after_word = i > 0 && isIdent(src[i - 1]);
+        size_t j = i + 1;
+        if (c == '/' && i + 1 < n && src[i + 1] == '/') {
+            j = src.find('\n', i);
+            if (j == std::string::npos) j = n;
+        } else if (c == '/' && i + 1 < n && src[i + 1] == '*') {
+            j = src.find("*/", i + 2);
+            j = (j == std::string::npos) ? n : j + 2;
+        } else if (c == 'R' && i + 1 < n && src[i + 1] == '"' && !after_word) {
+            const size_t open = src.find('(', i + 2);
+            if (open == std::string::npos) break;
+            const std::string close = ")" + src.substr(i + 2, open - (i + 2)) + "\"";
+            j = src.find(close, open + 1);
+            j = (j == std::string::npos) ? n : j + close.size();
+        } else if (c == '"' || (c == '\'' && !after_word)) {
+            j = i + 1;
+            while (j < n && src[j] != c && src[j] != '\n') {
+                if (src[j] == '\\') ++j;
+                ++j;
+            }
+            j = std::min(j + 1, n);
+        } else {
+            ++i;
+            continue;
+        }
+        for (size_t k = i; k < j && k < n; ++k)
+            if (out[k] != '\n') out[k] = ' ';
+        i = j;
+    }
+    return out;
+}
+
+size_t skipSpace(const std::string& s, size_t i) {
+    while (i < s.size() && isSpace(s[i])) ++i;
+    return i;
+}
+
+/// Position of the `close` that matches the `open` at `i`; npos if unmatched.
+size_t matchingClose(const std::string& s, size_t i, char open, char close) {
+    int depth = 0;
+    for (; i < s.size(); ++i) {
+        if (s[i] == open) ++depth;
+        else if (s[i] == close && --depth == 0) return i;
+    }
+    return std::string::npos;
+}
+
+/// The identifier that ends just before `i` (spaces skipped); `begin` gets
+/// where it starts. Empty if what is there is not an identifier.
+std::string wordBefore(const std::string& s, size_t i, size_t* begin = nullptr) {
+    while (i > 0 && isSpace(s[i - 1])) --i;
+    const size_t end = i;
+    while (i > 0 && isIdent(s[i - 1])) --i;
+    if (begin) *begin = i;
+    return s.substr(i, end - i);
+}
+
+/// Scan one source file. Returns the number of onTrigger / onEquippedTrigger
+/// definitions seen and appends one "file:line: ..." entry to `findings` per
+/// read of a named vector parameter.
+int auditSource(const std::string& file, const std::string& raw,
+                std::vector<std::string>& findings) {
+    const std::string s = blankCommentsAndLiterals(raw);
+    static const char* const kCallbacks[] = {"onTrigger", "onEquippedTrigger"};
+    int definitions = 0;
+    for (const std::string fn : kCallbacks) {
+        for (size_t at = s.find(fn); at != std::string::npos; at = s.find(fn, at + fn.size())) {
+            if (at > 0 && isIdent(s[at - 1])) continue;
+            const size_t lp = skipSpace(s, at + fn.size());
+            if (lp >= s.size() || s[lp] != '(') continue;
+            const size_t rp = matchingClose(s, lp, '(', ')');
+            if (rp == std::string::npos) continue;
+            // A definition: the parameter list is followed by `{`, with only
+            // specifiers in between. Anything else is a call or a declaration.
+            size_t body = skipSpace(s, rp + 1);
+            for (;;) {
+                size_t j = body;
+                while (j < s.size() && isIdent(s[j])) ++j;
+                const std::string word = s.substr(body, j - body);
+                if (word != "const" && word != "override" && word != "final" &&
+                    word != "noexcept") break;
+                body = skipSpace(s, j);
+            }
+            if (body >= s.size() || s[body] != '{') continue;
+            ++definitions;
+
+            // The vector parameter's name: the identifier its declaration ends
+            // with. None for `const std::vector<GameObjectId>&` and for a
+            // `/*commented*/` name (comments are blanked).
+            std::string name;
+            int depth = 0;
+            size_t start = lp + 1;
+            for (size_t q = lp + 1; q <= rp; ++q) {
+                const char ch = s[q];
+                if (ch == '<' || ch == '(' || ch == '{') ++depth;
+                else if ((ch == '>' || ch == ')' || ch == '}') && q != rp) --depth;
+                if (!((ch == ',' && depth == 0) || q == rp)) continue;
+                const std::string param = s.substr(start, q - start);
+                start = q + 1;
+                if (param.find("vector") == std::string::npos) continue;
+                const std::string word = wordBefore(param, param.size());
+                if (!word.empty() && word != "const" &&
+                    std::isdigit(static_cast<unsigned char>(word[0])) == 0) name = word;
+            }
+            if (name.empty()) continue;   // unnamed: it cannot be read
+
+            size_t end = matchingClose(s, body, '{', '}');
+            if (end == std::string::npos) end = s.size();
+            std::vector<size_t> parens;   // open parens enclosing the scan position
+            for (size_t q = body; q < end; ++q) {
+                if (s[q] == '(') parens.push_back(q);
+                else if (s[q] == ')' && !parens.empty()) parens.pop_back();
+                if (s.compare(q, name.size(), name) != 0 || isIdent(s[q - 1]) ||
+                    (q + name.size() < s.size() && isIdent(s[q + name.size()]))) continue;
+                // Allowed: the name as a whole argument of `Base::onTrigger(...)`
+                // / `Base::onEquippedTrigger(...)`.
+                bool forwarded = false;
+                if (!parens.empty()) {
+                    size_t callee_begin = 0;
+                    const std::string callee = wordBefore(s, parens.back(), &callee_begin);
+                    size_t b = callee_begin;
+                    while (b > 0 && isSpace(s[b - 1])) --b;
+                    const bool base_call = b >= 2 && s[b - 2] == ':' && s[b - 1] == ':';
+                    size_t before = q;
+                    while (before > 0 && isSpace(s[before - 1])) --before;
+                    const size_t after = skipSpace(s, q + name.size());
+                    const bool whole_argument =
+                        before > 0 && (s[before - 1] == '(' || s[before - 1] == ',') &&
+                        after < s.size() && (s[after] == ')' || s[after] == ',');
+                    forwarded = base_call && whole_argument &&
+                                (callee == "onTrigger" || callee == "onEquippedTrigger");
+                }
+                if (!forwarded) {
+                    const auto line = 1 + std::count(
+                        s.begin(), s.begin() + static_cast<std::ptrdiff_t>(q), '\n');
+                    findings.push_back(file + ":" + std::to_string(line) + ": " + fn +
+                                       " reads `" + name + "`");
+                }
+                q += name.size() - 1;
+            }
+        }
+    }
+    return definitions;
+}
+
+}  // namespace trigger_source_audit
+
+// The scan itself can fail: it flags a reader (of either callback, under any
+// parameter name) and lets the three legitimate shapes through.
+TEST(TargetlessTriggerAudit, TheSourceScanFlagsAReaderAndAllowsAForward) {
+    using trigger_source_audit::auditSource;
+    auto findingsIn = [](const std::string& src) {
+        std::vector<std::string> out;
+        EXPECT_EQ(auditSource("sample.cpp", src, out), 1) << "one definition in the sample";
+        return out;
+    };
+    const std::string head = "struct A : UnitCard {\n    const char* t = R\"RB(a // b { ( )RB\";\n";
+    // Reads the vector: both uses are reported, with their lines.
+    auto reader = findingsIn(head +
+        "    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {\n"
+        "        if (!targets.empty()) use(ctx, targets[0]);\n"
+        "    }\n};\n");
+    ASSERT_EQ(reader.size(), 2u);
+    EXPECT_EQ(reader[0], "sample.cpp:4: onTrigger reads `targets`");
+    // An Equipment's callback, the parameter on its own line under another name.
+    EXPECT_EQ(findingsIn(head +
+        "    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,\n"
+        "                           const std::vector<GameObjectId>& chosen) override {\n"
+        "        for (auto id : chosen) hit(ctx, unit, id);\n"
+        "    }\n};\n").size(), 1u);
+    // Handing it to anything but a base class's callback is a read.
+    EXPECT_EQ(findingsIn(head +
+        "    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {\n"
+        "        helper(ctx, targets);\n"
+        "    }\n};\n").size(), 1u);
+    // Forwarded to the base class: fine.
+    EXPECT_TRUE(findingsIn(head +
+        "    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {\n"
+        "        if (ctx.firing_trigger == TriggerType::WhenIAttack) return;\n"
+        "        WeaponmasterUnit::onTrigger(ctx, targets);\n"
+        "    }\n};\n").empty());
+    // Unnamed, or named only in a comment: nothing to read, whatever the body
+    // calls its own variables.
+    EXPECT_TRUE(findingsIn(head +
+        "    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {\n"
+        "        std::vector<GameObjectId> targets;   // targets are never passed\n"
+        "        log(\"targets\"); use(ctx, targets);\n"
+        "    }\n};\n").empty());
+    EXPECT_TRUE(findingsIn(head +
+        "    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {\n"
+        "        Base::onTrigger(ctx, {});\n"
+        "    }\n};\n").empty());
+}
+
+TEST(TargetlessTriggerAudit, NoCardReadsTheTargetsItsTriggerIsHanded) {
+    namespace fs = std::filesystem;
+    const char* root = std::getenv("RIFTBOUND_ROOT");
+    if (!root) {
+        GTEST_SKIP() << "RIFTBOUND_ROOT is not set: the card sources (src/cards) cannot be "
+                        "located, so the source audit did not run";
+    }
+    const fs::path cards = fs::path(root) / "src" / "cards";
+    ASSERT_TRUE(fs::is_directory(cards))
+        << cards.string() << " is not a directory: RIFTBOUND_ROOT must be the checkout root";
+
+    std::vector<fs::path> files;
+    for (const auto& dir : fs::directory_iterator(cards)) {
+        if (!dir.is_directory()) continue;
+        for (const auto& entry : fs::directory_iterator(dir.path())) {
+            const auto ext = entry.path().extension();
+            if (entry.is_regular_file() && (ext == ".cpp" || ext == ".h"))
+                files.push_back(entry.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+
+    int definitions = 0;
+    std::vector<std::string> findings;
+    for (const auto& path : files) {
+        std::ifstream in(path, std::ios::binary);
+        ASSERT_TRUE(in.good()) << "cannot read " << path.string();
+        const std::string raw((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+        definitions += trigger_source_audit::auditSource(
+            fs::relative(path, fs::path(root)).generic_string(), raw, findings);
+    }
+    // 438 when this was written; far fewer means the scan stopped recognising
+    // definitions and would pass without having looked.
+    EXPECT_GE(definitions, 400) << "onTrigger / onEquippedTrigger definitions found in "
+                                << files.size() << " files";
+    std::string list;
+    for (const auto& f : findings) list += "\n  " + f;
+    EXPECT_TRUE(findings.empty())
+        << "the engine never passes targets to a trigger (the vector is always empty); "
+           "these callbacks read it:" << list
+        << "\nChoose with pickTarget / pickTargetPair under kFinalizeTrigger and leave the "
+           "parameter unnamed (plans/07-cards-second-pass.md, 7.1).";
 }
 
 }  // namespace

@@ -1689,19 +1689,6 @@ TEST_F(VerifyCardsTest, ElderDragon_DeflectIsCountedAcrossLocations) {
 
 // 446 Fae Porter — NOT A DEFECT: "the same battlefield" is read off the Porter.
 // Once it has left the board that information is gone and the move is ignored
-// (CR 359.3.e.12); the [P] paid at finalization stays spent.
-TEST_F(VerifyCardsTest, Pin_FaePorter_GoneBeforeResolutionMovesNobodyAndThePowerStaysSpent) {
-    auto porter = addUnit(P1, kFaePorter, 0, 0);
-    auto ally = addUnit(P1, kShipyardSkulker, 0);
-    power(P1, Domain::Chaos) = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
-    fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
-        EXPECT_EQ(live.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
-        removeFromBoard(live, porter);                    // in response: the Porter dies
-    });
-    EXPECT_EQ(power(P1, Domain::Chaos), 0) << "a cost paid is not refunded";
-    EXPECT_TRUE(o(ally).isAtBase()) << "no Porter, no \"same battlefield\" to move to";
-}
 
 // 373 Azir, Ascendant: "Use only once per turn" — an activation is a use even
 // if the chosen unit is gone when it resolves.
@@ -2657,6 +2644,310 @@ TEST_F(VerifyCardsTest, Pin_Batch08_ConvergentMutation108_AUnitThatLeftInRespons
     executeAndProbe(play, nullptr, [](GameState&) {});
     EXPECT_EQ(o(chosen2).temp_might_bonus, 3);
     EXPECT_EQ(o(chosen2).current_might, 4);
+}
+
+// ═══ Tranche 3: "opponents can only play units to their base" (Mageseeker
+// Warden) — the other half of the play-location filter in 704, 515 and 876.
+// The flag is rebuilt from the Warden by every cleanup; it is also set here
+// so the tests do not depend on one running.
+
+TEST_F(VerifyCardsTest, HeedlessResurrection_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheBase) {
+    auto spell = addToHand(P1, kHeedlessResurrection);
+    auto victim = addUnit(P1, kShipyardSkulker, 0);
+    auto corpse = addToTrash(P1, kShipyardSkulker);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
+    addUnit(P2, kMageseekerWarden, 0, 1);
+    ps(P1).units_play_base_only = true;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(victim), static_cast<int>(corpse), 1}));
+    playThroughEngine(spell, &agent);
+    ASSERT_FALSE(agent.prompts.empty());
+    EXPECT_FALSE(promptOffersValue(agent, agent.prompts.size() - 1, 1))
+        << "battlefield #0 is controlled, but units may only go to the base";
+    ASSERT_TRUE(onBoard(corpse));
+    EXPECT_TRUE(o(corpse).isAtBase());
+}
+
+TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheBase) {
+    auto spell = addToHand(P1, kArcaneShift);
+    auto unit = addUnit(P1, kShipyardSkulker, 0);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
+    addUnit(P2, kMageseekerWarden, 0, 1);
+    ps(P1).units_play_base_only = true;
+    EnginePathAgent agent(EnginePathAgent::script({1, 1, 1}));
+    playAt(spell, {unit}, &agent);
+    for (size_t n = 0; n < agent.prompts.size(); ++n)
+        for (const auto& i : agent.prompts[n])
+            if (i.chosen_objects.empty())
+                EXPECT_TRUE(!i.chosen_value.has_value() || *i.chosen_value == 0)
+                    << "a battlefield was offered as a place to play the unit";
+    ASSERT_TRUE(onBoard(unit));
+    EXPECT_TRUE(o(unit).isAtBase());
+}
+
+TEST_F(VerifyCardsTest, WildClaw_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheBase) {
+    addToDeck(P1, kMeditation);
+    auto mech = addToDeck(P1, kMegaMech);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kMeditation);
+    auto spell = addToHand(P1, kWildClaw);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
+    addUnit(P2, kMageseekerWarden, 0, 1);
+    ps(P1).units_play_base_only = true;
+    ps(P1).rune_pool.energy = 2;
+    // The card; then "battlefield #0" if a place is asked (it must not be).
+    int asked = 0;
+    bool bf_offered = false;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        if (asked++ == 0) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == mech) return i;
+            return legal.front();
+        }
+        for (const auto& i : legal)
+            if (i.choice_label.find("battlefield") != std::string::npos) { bf_offered = true; return i; }
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    EXPECT_FALSE(bf_offered) << "units may only go to the base";
+    ASSERT_TRUE(onBoard(mech));
+    EXPECT_TRUE(o(mech).isAtBase());
+}
+
+// ═══ Tranche 3: plans/09 section G ═══════════════════════════════════════════
+/* REPLACES AN EXISTING TEST
+   Delete VerifyCardsTest.Pin_FaePorter_GoneBeforeResolutionMovesNobodyAndThePowerStaysSpent
+   (and its three-line comment): it pins the reading 9.G2 overturns and fails
+   on the fixed card. FaePorter_GoneBeforeResolution_... below takes its place.
+*/
+
+// ═══ 9.G2: Fae Porter 446 — "the same battlefield" is the trigger's ═════════
+// "When I move to a battlefield, you may pay [P] to move a unit you control to
+// the same battlefield." The battlefield comes from the trigger condition, so
+// it is fixed when the condition is fulfilled (CR 359.3.f.3), not read off the
+// Porter as the ability resolves.
+TEST_F(VerifyCardsTest, FaePorter_MovedOnInResponse_TheUnitGoesToTheBattlefieldOfTheTrigger) {
+    auto porter = addUnit(P1, kFaePorter, 0, 0);
+    auto ally = addUnit(P1, kShipyardSkulker, 0);
+    power(P1, Domain::Chaos) = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+        EXPECT_TRUE(live.getObject(ally).isAtBase()) << "not moved yet";
+        // In response the Porter ends up at the other battlefield.
+        live.getObject(porter).location = BattlefieldLocation{1};
+    });
+    EXPECT_EQ(bfOf(porter), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0})
+        << "the battlefield the Porter moved to, not the one it is at now";
+}
+
+TEST_F(VerifyCardsTest, FaePorter_BackAtBaseInResponse_TheUnitStillGoesToTheBattlefieldOfTheTrigger) {
+    auto porter = addUnit(P1, kFaePorter, 0, 0);
+    auto ally = addUnit(P1, kShipyardSkulker, 0);
+    power(P1, Domain::Chaos) = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+        auto& p = live.getObject(porter);
+        p.location = BaseLocation{P1};
+        p.zone = ZoneType::Base;
+    });
+    EXPECT_TRUE(o(porter).isAtBase());
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0});
+}
+
+// The CR 359.3.f.3 example: Lillia leaving the board in response "will not
+// affect where the Sprite token will be played". Same here.
+TEST_F(VerifyCardsTest, FaePorter_GoneBeforeResolution_TheUnitStillGoesToTheBattlefieldOfTheTrigger) {
+    auto porter = addUnit(P1, kFaePorter, 0, 0);
+    auto ally = addUnit(P1, kShipyardSkulker, 0);
+    power(P1, Domain::Chaos) = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+        EXPECT_EQ(live.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
+        removeFromBoard(live, porter);                    // in response: the Porter dies
+    });
+    EXPECT_FALSE(onBoard(porter));
+    EXPECT_EQ(power(P1, Domain::Chaos), 0);
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0})
+        << "the battlefield was noted when the Porter moved there";
+}
+
+// A unit that got to that battlefield by itself in the meantime is no longer
+// "a unit to move there": a mistarget, and it is not moved anywhere else.
+TEST_F(VerifyCardsTest, FaePorter_TheChosenUnitAlreadyAtThatBattlefieldIsNotMovedToThePortersNewOne) {
+    auto porter = addUnit(P1, kFaePorter, 0, 0);
+    auto ally = addUnit(P1, kShipyardSkulker, 0);
+    power(P1, Domain::Chaos) = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+        live.getObject(porter).location = BattlefieldLocation{1};
+        auto& a = live.getObject(ally);
+        a.location = BattlefieldLocation{0};
+        a.zone = ZoneType::BattlefieldZone;
+    });
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0}) << "not dragged to battlefield #1";
+}
+
+// ═══ 9.G3: Guards! 475 from facedown at "Units can't be played here." ═══════
+// CR 811.1.d restricts the unit to the battlefield the spell was hidden at;
+// Rockfall Path's text forbids playing units there and a rule does not lift a
+// card's "can't" (CR 002, 054.1). No location is left: no token (Vendetta FAQ,
+// Perched Grimwyrm at Rockfall Path), and nothing to pay [Y] for.
+TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier) {
+    state.turn.turn_number = 3;
+    auto hide = [&](int bf) {
+        auto spell = addToHand(P1, kGuards);
+        auto& h = ps(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), spell), h.end());
+        auto& card = o(spell);
+        card.zone = ZoneType::BattlefieldZone;
+        card.is_hidden = true;
+        card.hidden_at = static_cast<BattlefieldId>(bf);
+        card.hidden_on_turn = 2;
+        state.battlefields[bf].facedown.push_back(spell);
+        return spell;
+    };
+    auto playHidden = [&](GameObjectId spell, AgentInterface* agent) {
+        Intent play;
+        play.type = IntentType::PlayReaction;
+        play.player = P1;
+        play.card = spell;
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(play);
+            e.testHook_runChain();
+        }, agent);
+    };
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;        // Rockfall Path
+    state.battlefields[1].controller = P1;
+
+    // The control: hidden at a battlefield units can be played to.
+    EnginePathAgent free_agent;
+    playHidden(hide(1), &free_agent);
+    ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1) << "this setup does play a hidden Guards!";
+    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
+
+    // Hidden at the battlefield units can't be played to.
+    power(P1, Domain::Order) = 1;
+    EnginePathAgent agent(EnginePathAgent::script({0, 1}));
+    playHidden(hide(0), &agent);
+    EXPECT_EQ(countNamed(P1, "Sand Soldier"), 1) << "no second token: not there, not anywhere";
+    for (const auto& [id, obj] : state.objects)
+        if (obj.name == "Sand Soldier" && obj.location.has_value())
+            EXPECT_NE(obj.battlefieldId(), std::optional<BattlefieldId>{0})
+                << "\"Units can't be played here.\"";
+    EXPECT_TRUE(agent.prompts.empty()) << "no location to pick, no token to ready";
+    EXPECT_EQ(power(P1, Domain::Order), 1) << "[Y] not spent on a token that does not exist";
+}
+
+// ═══ 9.G6: Udyr, Wildman 157 — NOT A DEFECT ═════════════════════════════════
+// "Deal 2 to a unit at a battlefield." / "Stun a unit at a battlefield." read
+// nothing off Udyr. The ability is its own chain item (CR 377.3.a.1); only an
+// instruction that checks information about a card that has left is ignored
+// (CR 359.3.e.12) — which is the other two modes ("Ready me", "Give me
+// [Ganking]", pinned by Udyr_LeftInResponse_IsNeitherReadiedNorGivenGanking).
+TEST_F(VerifyCardsTest, Pin_Udyr_LeftInResponse_DealTwoAndStunStillResolve) {
+    for (int mode : {0, 1}) {                         // Deal 2 / Stun
+        SCOPED_TRACE("mode " + std::to_string(mode));
+        auto udyr = addUnit(P1, kUdyrWildman);
+        o(udyr).buff_count = 1;
+        auto enemy = addUnit(P2, kShipyardSkulker, 0, 0);     // 3 [M]: survives 2
+        Intent act;
+        act.type = IntentType::ActivateAbility;
+        act.player = P1;
+        act.ability_source = udyr;
+        EnginePathAgent agent(EnginePathAgent::script({mode, static_cast<int>(enemy)}));
+        executeAndProbe(act, &agent, [&](GameState& live) {
+            EXPECT_EQ(live.getObject(udyr).buff_count, 0) << "spent as the ability was activated";
+            EXPECT_EQ(live.getObject(enemy).damage_marked, 0) << "not resolved yet";
+            EXPECT_FALSE(live.getObject(enemy).is_stunned) << "not resolved yet";
+            removeFromBoard(live, udyr);                      // in response: Udyr leaves
+        });
+        ASSERT_EQ(agent.prompts.size(), 2u) << "the mode, then its unit";
+        EXPECT_FALSE(onBoard(udyr));
+        ASSERT_TRUE(onBoard(enemy));
+        if (mode == 0) {
+            EXPECT_EQ(o(enemy).damage_marked, 2) << "\"Deal 2 to a unit at a battlefield.\"";
+            EXPECT_FALSE(o(enemy).is_stunned);
+        } else {
+            EXPECT_TRUE(o(enemy).is_stunned) << "\"Stun a unit at a battlefield.\"";
+            EXPECT_EQ(o(enemy).damage_marked, 0);
+        }
+    }
+}
+
+// ═══ 9.G7: Dusk Rose Lab 765 — banished instead of dying is not killed ══════
+// "you may kill a unit you control here to draw 1": the kill is the cost. A
+// death replaced by "banish it instead" does not occur (CR 370.1.b,
+// 370.1.c.1; the Deathgrip example of CR 359.3.e.14.b), so nothing was paid.
+TEST_F(VerifyCardsTest, DuskRoseLab_AUnitBanishedInsteadOfDyingWasNotKilled_NoDraw) {
+    auto lab = battlefieldCard(0, kDuskRoseLab);
+    addToDeck(P1, kRecruit);
+    auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);   // P1 keeps units (and control) here
+    auto unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(unit).banish_if_would_die_this_turn = true;        // Smite: "banish it instead"
+    EnginePathAgent agent(EnginePathAgent::choosing(unit));   // yes, then which unit
+    fireTriggerThroughEngine(lab, TriggerType::AtStartOfBeginning, &agent);
+    EXPECT_FALSE(onBoard(unit));
+    EXPECT_TRUE(inBanishment(P1, unit)) << "the replacement applied";
+    EXPECT_FALSE(inTrash(P1, unit));
+    EXPECT_TRUE(onBoard(keeper)) << "the cost is attempted once";
+    EXPECT_EQ(handSize(P1), 0) << "banished, not killed: no draw";
+    EXPECT_EQ(deckSize(P1), 1);
+}
+
+// The same for a token, which is in the same place banished or dead (CR 183.1).
+TEST_F(VerifyCardsTest, DuskRoseLab_ATokenBanishedInsteadOfDyingWasNotKilled_NoDraw) {
+    auto lab = battlefieldCard(0, kDuskRoseLab);
+    addToDeck(P1, kRecruit);
+    auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto token = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(token).is_token = true;
+    o(token).banish_if_would_die_this_turn = true;
+    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    fireTriggerThroughEngine(lab, TriggerType::AtStartOfBeginning, &agent);
+    EXPECT_FALSE(onBoard(token));
+    EXPECT_TRUE(onBoard(keeper));
+    EXPECT_EQ(handSize(P1), 0) << "banished, not killed: no draw";
+}
+
+// ...and a token that does die pays the cost like any unit.
+TEST_F(VerifyCardsTest, DuskRoseLab_KillingATokenPaysTheCost) {
+    auto lab = battlefieldCard(0, kDuskRoseLab);
+    addToDeck(P1, kRecruit);
+    auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto token = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(token).is_token = true;
+    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    fireTriggerThroughEngine(lab, TriggerType::AtStartOfBeginning, &agent);
+    EXPECT_FALSE(onBoard(token));
+    EXPECT_TRUE(onBoard(keeper));
+    EXPECT_EQ(handSize(P1), 1) << "killed: draw 1";
+}
+
+// ═══ 9.G9: Elder Dragon 680 — its own Deflect filter asks ignoresDeflect() ══
+// A pin: Elder Dragon's text has no "ignore [Deflect]", so ignoresDeflect()
+// is false and [Deflect] (CR 809) is charged — a unit whose cost can't be paid
+// is not offered. (The card's filter now reads the same hook
+// Card::offerableChoices does; no card path makes it true for Elder Dragon.)
+TEST_F(VerifyCardsTest, Pin_ElderDragon_DoesNotIgnoreDeflect) {
+    const Card* card = card_registry.get(kElderDragon);
+    ASSERT_NE(card, nullptr);
+    EXPECT_FALSE(card->ignoresDeflect()) << "nothing in its text says so";
+    auto dragon = addUnit(P1, kElderDragon, 0, 1);
+    auto plain = addUnit(P2, kShipyardSkulker, 0);        // in P2's base
+    auto deflect = addUnit(P2, kIreliaFervent, 0, 0);     // [Deflect]: [A] to choose
+    // P1 has no Power and no rune: the [A] can't be paid.
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(plain)}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "only the location with a unit that can be chosen";
+    EXPECT_TRUE(agent.wasOffered(plain));
+    EXPECT_FALSE(agent.wasOffered(deflect)) << "its [Deflect] can't be paid";
+    EXPECT_TRUE(!onBoard(plain) || o(plain).damage_marked >= 1) << "\"Deal 1 to them\"";
+    ASSERT_TRUE(onBoard(deflect));
+    EXPECT_EQ(o(deflect).damage_marked, 0);
 }
 
 }  // namespace

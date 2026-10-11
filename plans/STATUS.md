@@ -54,7 +54,7 @@ iteration must apply these.
 | 1 | chain-triggers | merged | `6d4dd76` (merge `c9ad6b4`) | 1583 run, 1580 passed, 2 baseline failures | 12 items closed; 7.1 decision recorded (cards use `pickTarget` + `kFinalizeTrigger`); 8.9 has one bullet left, in carry-over |
 | 1 | engine-auras-costs | merged | `3ba5256` (merge `a8af2ef`) | 1631 run, 1628 passed, 2 baseline failures | 10 items closed; 5.4 and 8.4 partly done, remainder in carry-over; edited 25 card files (listed in carry-over) |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
-| 1 | io-cli | returned | `ae7961b` merged and verified in batch (1707 passed, 0 failed); follow-up commits pending | | all 21 items of 04 ticked; sent back for: decision-id `handleChoose` + seat (4.3/1.10), close the trace-log hidden-card leak (4.5), confirm batch exit on engine exception, CLAUDE.md / `scripts/generate_replays.py` references to the deleted OpenSpiel CLI |
+| 1 | io-cli | returned | `f3e2208` (follow-ups merged, verification batched with integrity) | 1707 passed, 0 failed (on its branch) | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
 | 1 | integrity | running | | | based on `ec13e47`; also carries two build tasks: ccache across worktrees, unity-built tests |
 | 2 | cards-c0 | pending | | | |
 | 2 | cards-c1 | pending | | | |
@@ -76,7 +76,7 @@ iteration must apply these.
 | Gate | Passed | Evidence |
 |---|---|---|
 | Stage 0 baseline | yes | `c7143f1`; tests 1508/1511 (2 baseline failures above); smoke: 200 games fiora vs yi_rebuild, `--seed 20261010 --threads 6`, exit 0, P1 128 / P2 72 / 0 draws, no exception; `riftbound_clone_equiv_test` FAILS at baseline (hard-coded `decks/leblanc_test.txt`, item 7.40) and must pass at the stage 1 gate |
-| Stage 1 | | |
+| Stage 1 | | early run at `c0975fc` (7 of 8 streams): suite 1707/1707, `riftbound_openspiel_tests` 17/17, clone-equiv 10/10, smoke 200 games P1 130 / P2 70 / 0 draws rc=0, fault injection exits 1 with message (1.7 confirmed) — logs in `.worktrees/logs/gate-pre1/`; real gate pending integrity |
 | Stage 2 | | |
 | Stage 3 | | |
 | Stage 4 | | |
@@ -90,6 +90,8 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| io-cli | `scripts/generate_replays.py` is dead (targets the removed `riftbound_openspiel` binary, `decks/*.json`, a registry file); root `README.md` still lists it — delete or rewrite | cleanup | open |
+| io-cli | fair-play mode now forwards no `log` lines, so the UI log panel is empty for a human player until `LogEvent` carries a visibility tag | sweep (with the LogEvent row) | open |
 | io-cli | NEW: `LogEvent` (`src/core/events.h`) has no player / visibility tag — finer fix for the 4.5 trace leak than withholding the stream | sweep | open |
 | io-cli | NEW: god-mode edits do not recompute the pending decision's legal actions (stale intent can be applied); documented, not fixed | sweep | open |
 | io-cli | NEW: spectator mode first Ctrl-C runs the AI game to completion before exit | sweep (low) | open |
@@ -181,3 +183,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 helpers (`2e0f181`) and search (`44a7541`) merged as one batch; verification build queued. 11 search rows to carry-over.
 - 2026-10-10 io-cli (`ae7961b`) merged into the same batch; io-cli sent back for four follow-ups. 6 rows to carry-over.
 - 2026-10-10 batch helpers + search + io-cli verified: 1707 run, 1707 passed, 0 failed, 28 disabled (27 are the 7.1 work-list rows). Baseline failures are gone (7.40). helpers and search worktrees and branches removed; io-cli kept for its follow-up (also fixing a WebSocket-handshake race it found by repeating its server tests).
+- 2026-10-10 early gate run at `c0975fc` all green (see Gates). io-cli follow-ups (`f3e2208`) merged; verification batched with integrity.

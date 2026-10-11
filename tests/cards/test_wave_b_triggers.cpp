@@ -150,6 +150,7 @@ TEST_F(TriggerClusterTest, FioraWorthy_DeclineLeavesExhausted) {
 TEST_F(TriggerClusterTest, GrandDuelist_ExhaustsSelfOnBecameMighty) {
     auto legend = addUnit(P1, kGrandDuelist, 0, /*at_bf=*/-1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     EffectExecutor exec(state, events, card_db);
     driveTriggerWithSubject(state, events, card_registry, kGrandDuelist, P1, legend, kInvalidId,
         TriggerType::WhenAUnitBecomesMighty, exec,

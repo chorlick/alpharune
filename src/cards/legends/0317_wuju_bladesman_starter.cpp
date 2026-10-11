@@ -17,8 +17,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Confirm an on-board instance of this legend controlled by `controller`.
         GameObjectId self_id = kInvalidId;
-        // (Every object: finds its own legend object by card id, in whatever zone.)
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.inPlay()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
             self_id = sid;

@@ -244,6 +244,7 @@ TEST_F(WaveABatch1Test, VoidBurrower_ConquerBanishAndPlayTop) {
     exec.setCardRegistry(&card_registry);
     auto legend = addUnit(P1, kVoidBurrower, 0, -1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     state.getObject(legend).is_exhausted = false;
 
     // Top 2 cards: top (back) is a unit we will banish+play; second recycled.
@@ -293,6 +294,7 @@ TEST_F(WaveABatch1Test, VoidBurrower_DeclineDoesNothing) {
     exec.setCardRegistry(&card_registry);
     auto legend = addUnit(P1, kVoidBurrower, 0, -1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     state.getObject(legend).is_exhausted = false;
     auto a = addToDeck(P1, kInvalidId);
     auto b = addToDeck(P1, kInvalidId);

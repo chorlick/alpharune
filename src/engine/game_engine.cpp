@@ -5921,7 +5921,17 @@ void GameEngine::recalculateAuras() {
         obj.aura_no_combat_damage = false;
         obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
         // Empowered is a board status (CR 442.2): it doesn't survive leaving.
+        // Nor does Stunned (CR 424.1 stuns "Units on the Board"; CR 124.1: an
+        // object that changes zones to a Non-Board Zone is a new object and
+        // every temporary modification stops being tracked on it). The paths
+        // that take an object off the board each reset what they know of;
+        // this is the one place every such object passes before anything
+        // looks at it again, so statuses that do not survive leaving are
+        // dropped here, for whatever route it left by (plans/09 item 9.LL1: a
+        // stunned unit returned to hand stayed "a stunned unit" until the
+        // Ending Step).
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) {
+            obj.is_stunned = false;
             obj.empowered = 0;
             obj.empower_flip_eot = 0;
         }

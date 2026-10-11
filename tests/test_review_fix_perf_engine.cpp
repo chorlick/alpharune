@@ -1026,7 +1026,7 @@ TEST(PerfEngineTable, AnEmptyTableAnswersWithEmptyRanges) {
 
 // A source scan: a card file may walk every object of the game
 // (`for (... : state.objects)`) only where it has to see a zone the board
-// lists do not hold, and then it says so. 337 such walks in src/cards were
+// lists do not hold, and then it says so. 344 such walks in src/cards were
 // walks over the board in disguise (they skipped everything without a
 // location first); they now name the list. The ones below are the walks that
 // stay, each with its reason. A new card that walks every object fails here:
@@ -1043,15 +1043,10 @@ TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
         {"gear/0710_cursed_sarcophagus.cpp", {1, "its own instances by card id"}},
         {"gear/0860_jagged_cutlass.cpp", {1, "its own instances by card id"}},
         {"spells/0576_monster_harpoon.cpp", {1, "facedown cards"}},
-        {"legends/0317_wuju_bladesman_starter.cpp", {1, "its own legend object by card id"}},
-        {"legends/0502_purifier.cpp", {2, "its own legend object by card id; Equipment by attachment, in any zone"}},
-        {"legends/0512_emperor_of_the_sands.cpp", {2, "its own legend object by card id; Sand Soldiers by name, in any zone"}},
-        {"legends/0784_wuju_master.cpp", {1, "its own legend object by card id"}},
         {"units/0189_kayn_unleashed.cpp", {1, "its own instances by card id"}},
         {"units/0362_royal_entourage.cpp", {1, "Legends (the Legend Zone)"}},
         {"units/0377_jax_unmatched.cpp", {1, "Equipment you own in any zone, the hand included"}},
         {"units/0432_fiora_peerless.cpp", {1, "its own instances by card id; clears a counter off the board"}},
-        {"units/0597_monch.cpp", {1, "Stunned units in any zone"}},
         {"units/0716_crimson_pigeons.cpp", {2, "its own instances by card id; combat designations"}},
         {"battlefields/0764_black_flame_altar.cpp", {1, "battlefield cards, which have no location"}},
     };
@@ -1096,6 +1091,172 @@ TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
     for (const auto& [name, why] : allowed)
         EXPECT_EQ(found.count(name), 1u) << "src/cards/" << name << " no longer walks every object ("
                                          << why.second << "): take it off the list";
+}
+
+// ─── 9.LL1: cards that looked at objects off the board ──────────────────────
+
+class PerfEngineOffBoard : public PerfEngineCards {
+protected:
+    static constexpr CardDefId kMonch = 597;
+    static constexpr CardDefId kEmperorOfTheSands = 512;
+    static constexpr CardDefId kPurifier = 502;
+    static constexpr CardDefId kLongSword = 345;   // an Equipment
+
+    GameObjectId addLegend(PlayerId owner, CardDefId def_id) {
+        const GameObjectId id = state.createObject();
+        GameObject& l = o(id);
+        l.owner = l.controller = owner;
+        l.card_def_id = def_id;
+        l.card_type = CardType::Legend;
+        l.name = card_db.get(def_id).name;
+        l.zone = ZoneType::LegendZone;
+        state.player(owner).legend_zone = id;
+        return id;
+    }
+    GameObjectId addEquipment(PlayerId owner, CardDefId def_id) {
+        const GameObjectId id = state.createObject();
+        GameObject& g = o(id);
+        g.owner = g.controller = owner;
+        g.card_def_id = def_id;
+        g.card_type = CardType::Gear;
+        const auto& def = card_db.get(def_id);
+        g.name = def.name;
+        g.tags = def.tags;
+        g.keywords = def.keywords;
+        g.might_bonus = def.might_bonus;
+        g.zone = ZoneType::Base;
+        g.location = BaseLocation{owner};
+        return id;
+    }
+    void cleanup() { withEngine([](GameEngine& e) { e.testHook_cleanup(); }); }
+    bool hasAuraKeyword(GameObjectId id, Keyword kw) {
+        for (const auto& ae : o(id).aura_effects)
+            if (ae.keyword == kw) return true;
+        return false;
+    }
+};
+
+// CR 124.1: a Game Object that changes zones to a Non-Board Zone is a new
+// object and "all Temporary Modifications of all kinds cease to be tracked on
+// it"; CR 424.1 stuns "Units on the Board". A unit that is stunned and then
+// returned to its owner's hand is not a stunned unit any more — it kept the
+// status until the Ending Step, and Monch ("If an opponent controls a stunned
+// unit, I cost [2] less and enter ready") counted it.
+TEST_F(PerfEngineOffBoard, AStunnedUnitThatLeavesTheBoardIsNoLongerStunned) {
+    const GameObjectId bounced = addUnit(P2, kInvalidId, 3);
+    const GameObjectId killed = addUnit(P2, kInvalidId, 3, 0);
+    const GameObjectId stays = addUnit(P1, kInvalidId, 3);
+    const Card* monch = card_registry.get(kMonch);
+    ASSERT_NE(monch, nullptr);
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().stunUnit(bounced);
+        e.testHook_executor().stunUnit(killed);
+        e.testHook_executor().stunUnit(stays);
+        e.testHook_cleanup();
+    });
+    ASSERT_TRUE(o(bounced).is_stunned);
+    EXPECT_EQ(monch->selfCostReduction(state, P1), 2) << "an opponent controls a stunned unit";
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().bounceToHand(bounced);
+        e.testHook_executor().killObject(killed);
+        e.testHook_cleanup();
+    });
+    ASSERT_FALSE(o(bounced).location.has_value());
+    ASSERT_FALSE(o(killed).location.has_value());
+    EXPECT_FALSE(o(bounced).is_stunned) << "the card in the hand is a new object (CR 124.1)";
+    EXPECT_FALSE(o(killed).is_stunned);
+    EXPECT_TRUE(o(stays).is_stunned) << "a unit still on the board stays stunned";
+    EXPECT_EQ(monch->selfCostReduction(state, P1), 0)
+        << "the opponent controls no stunned unit: the only ones left the board";
+    EXPECT_EQ(monch->selfCostReduction(state, P2), 2) << "P1's unit on the board is still stunned";
+}
+
+// A unit that is on the board and stunned still counts, and one played again
+// after leaving does not come back stunned.
+TEST_F(PerfEngineOffBoard, MonchLooksAtTheBoardOnly) {
+    const Card* monch = card_registry.get(kMonch);
+    const GameObjectId unit = addUnit(P2, kInvalidId, 3);
+    // Stunned set by hand on a card in a hand (no engine path leaves it so
+    // after a cleanup; this is the walk itself): not "a stunned unit".
+    o(unit).location = std::nullopt;
+    o(unit).zone = ZoneType::Hand;
+    o(unit).is_stunned = true;
+    EXPECT_EQ(monch->selfCostReduction(state, P1), 0);
+    o(unit).location = BaseLocation{P2};
+    o(unit).zone = ZoneType::Base;
+    EXPECT_EQ(monch->selfCostReduction(state, P1), 2);
+}
+
+// Emperor of the Sands: "Your Sand Soldiers have [Weaponmaster]." A Sand
+// Soldier is a token; off the board it has ceased to exist (CR 186.1), and
+// the object the engine keeps for it is not one of "your Sand Soldiers".
+TEST_F(PerfEngineOffBoard, EmperorOfTheSandsGivesNothingToASandSoldierThatHasCeasedToExist) {
+    addLegend(P1, kEmperorOfTheSands);
+    auto soldier = [&](int at_bf) {
+        const GameObjectId id = addUnit(P1, kInvalidId, 2, at_bf);
+        o(id).name = "Sand Soldier";
+        o(id).is_token = true;
+        return id;
+    };
+    const GameObjectId alive = soldier(0);
+    const GameObjectId dead = soldier(-1);
+    cleanup();
+    ASSERT_TRUE(hasAuraKeyword(alive, Keyword::Weaponmaster));
+    ASSERT_TRUE(hasAuraKeyword(dead, Keyword::Weaponmaster));
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().killObject(dead);
+        e.testHook_cleanup();
+    });
+    ASSERT_FALSE(o(dead).location.has_value());
+    EXPECT_TRUE(hasAuraKeyword(alive, Keyword::Weaponmaster));
+    EXPECT_TRUE(o(alive).hasKeyword(Keyword::Weaponmaster));
+    EXPECT_TRUE(o(dead).aura_effects.empty()) << "nothing is given to a token that is gone";
+    EXPECT_FALSE(o(dead).hasKeyword(Keyword::Weaponmaster));
+}
+
+// Purifier: "Your Equipment each give [Assault]." An Equipment that leaves
+// the board comes off its unit on the way (EffectExecutor::unattachGear, CR
+// 719.5 / 124.1), by every route, so no Equipment off the board is still
+// "attached": the unit loses the [Assault] with it.
+TEST_F(PerfEngineOffBoard, PurifierGivesAssaultOnlyThroughEquipmentOnTheBoard) {
+    addLegend(P1, kPurifier);
+    const GameObjectId bearer_a = addUnit(P1, kInvalidId, 3);
+    const GameObjectId bearer_b = addUnit(P1, kInvalidId, 3);
+    const GameObjectId bearer_c = addUnit(P1, kInvalidId, 3);
+    const GameObjectId sword_a = addEquipment(P1, kLongSword);
+    const GameObjectId sword_b = addEquipment(P1, kLongSword);
+    const GameObjectId sword_c = addEquipment(P1, kLongSword);
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword_a, bearer_a));
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword_b, bearer_b));
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword_c, bearer_c));
+        e.testHook_cleanup();
+    });
+    for (GameObjectId u : {bearer_a, bearer_b, bearer_c})
+        ASSERT_TRUE(hasAuraKeyword(u, Keyword::Assault)) << u;
+    // One Equipment is returned to hand, one is killed; the third stays.
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().bounceToHand(sword_a);
+        e.testHook_executor().killObject(sword_b);
+        e.testHook_cleanup();
+    });
+    ASSERT_FALSE(o(sword_a).location.has_value());
+    ASSERT_FALSE(o(sword_b).location.has_value());
+    EXPECT_FALSE(o(sword_a).attached_to.has_value()) << "an Equipment in a hand is attached to nothing";
+    EXPECT_FALSE(o(sword_b).attached_to.has_value());
+    EXPECT_TRUE(o(bearer_a).attachments.empty());
+    EXPECT_FALSE(hasAuraKeyword(bearer_a, Keyword::Assault));
+    EXPECT_FALSE(hasAuraKeyword(bearer_b, Keyword::Assault));
+    EXPECT_TRUE(hasAuraKeyword(bearer_c, Keyword::Assault));
+    // And if its unit leaves, the Equipment stays on the board unattached
+    // (CR 719.5) and gives nothing to the card that left.
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().bounceToHand(bearer_c);
+        e.testHook_cleanup();
+    });
+    EXPECT_TRUE(o(sword_c).location.has_value());
+    EXPECT_FALSE(o(sword_c).attached_to.has_value());
+    EXPECT_TRUE(o(bearer_c).aura_effects.empty());
 }
 
 }  // namespace test_review_fix_perf_engine

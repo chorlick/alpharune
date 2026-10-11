@@ -20,8 +20,7 @@ public:
         // Find an on-board instance of this legend controlled by `controller`.
         bool present = false;
         GameObjectId self_id = kInvalidId;
-        // (Every object: finds its own legend object by card id, in whatever zone.)
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.inPlay()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
             present = true;
@@ -31,8 +30,9 @@ public:
         if (!present) return;
         // Grant [Weaponmaster] to friendly Sand Soldiers. "Sand Soldier" is the
         // token's name; its tag is Shurima (CR 187.3), so match on the name.
-        // (Every object: Sand Soldiers by name, in whatever zone the object is.)
-        for (auto& [uid, u] : state.objects) {
+        // "Your Sand Soldiers" are the tokens on the board: a token that left
+        // it has ceased to exist (CR 186.1), though its object is kept.
+        for (auto& [uid, u] : state.objects.onBoard()) {
             if (!u.isUnit() || u.controller != controller) continue;
             if (u.name != "Sand Soldier") continue;
             GameObject::AuraEffect ae;

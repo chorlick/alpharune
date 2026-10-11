@@ -18,8 +18,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Confirm an on-board instance of this legend controlled by `controller`.
         GameObjectId self_id = kInvalidId;
-        // (Every object: finds its own legend object by card id, in whatever zone.)
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.inPlay()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
             self_id = sid;
@@ -28,15 +27,18 @@ public:
         if (self_id == kInvalidId) return;
         // For each friendly Equipment that is attached to a unit, grant the
         // equipped unit [Assault] via an aura effect.
-        // (Every object: Equipment by its attachment, in whatever zone the object is.)
-        for (auto& [gid, g] : state.objects) {
+        // "Your Equipment each give [Assault]": Equipment on the board. One
+        // that leaves the board comes off its unit on the way, by every route
+        // (EffectExecutor::unattachGear, CR 719.5), so none off the board is
+        // attached; and a unit that left has no attachments.
+        for (auto& [gid, g] : state.objects.onBoard()) {
             if (g.controller != controller) continue;
             if (!isEquipment(g)) continue;
             if (!g.attached_to.has_value()) continue;
             auto uid = *g.attached_to;
             if (!state.objects.count(uid)) continue;
             auto& u = state.objects.at(uid);
-            if (!u.isUnit()) continue;
+            if (!u.isUnit() || !u.location.has_value()) continue;
             GameObject::AuraEffect ae;
             ae.source = self_id;
             ae.keyword = Keyword::Assault;

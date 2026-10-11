@@ -573,6 +573,7 @@ TEST_F(AuditFix1Test, Deceiver_CreatesCopyTokenWithTemporary) {
     // A legend object as the source.
     auto legend = addUnit(P1, kDeceiver, 0, /*at_bf=*/-1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     state.getObject(legend).is_exhausted = false;
     // P1 controls BF 0 and has a unit there to copy.
     state.battlefields[0].controller = P1;
@@ -630,6 +631,7 @@ TEST_F(AuditFix1Test, Deceiver_CreatesCopyTokenWithTemporary) {
 TEST_F(AuditFix1Test, Deceiver_NoOpWhenLegendExhausted) {
     auto legend = addUnit(P1, kDeceiver, 0, -1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     state.getObject(legend).is_exhausted = true;           // can't pay exhaust
     addToHand(P1, kSpellCleave);
     state.battlefields[0].controller = P1;
@@ -649,6 +651,7 @@ TEST_F(AuditFix1Test, Deceiver_NoOpWhenLegendExhausted) {
 TEST_F(AuditFix1Test, Deceiver_NoOpWhenHandEmpty) {
     auto legend = addUnit(P1, kDeceiver, 0, -1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     state.getObject(legend).is_exhausted = false;
     state.battlefields[0].controller = P1;
     // Empty hand -> can't pay discard cost.
@@ -669,6 +672,7 @@ TEST_F(AuditFix1Test, Deceiver_NoUnitToCopyStillMakesTemporaryToken) {
     // still gets [Temporary].
     auto legend = addUnit(P1, kDeceiver, 0, -1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     state.getObject(legend).is_exhausted = false;
     state.battlefields[0].controller = P1;
     // The conquered battlefield's card: a conquer / hold trigger's subject.

@@ -64,6 +64,7 @@ protected:
         obj.owner = player;
         obj.controller = player;
         obj.card_type = CardType::Legend;
+        obj.zone = ZoneType::LegendZone;
         obj.name = def.name;
         state.player(player).legend_zone = id;
         return id;

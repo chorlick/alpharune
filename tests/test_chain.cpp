@@ -437,9 +437,12 @@ TEST_F(ChainTestFixture, DisintegrateKillsAndDraws) {
 
     resolveCard(state, exec, kDisintegrateId, PlayerId::Player1, kInvalidId, {target});
 
-    // Should have killed and drawn
+    // It kills. "If this kills it, do this: draw 1." is a reflexive trigger
+    // (CR 387-389): a chain item the engine queues, so with this bare executor
+    // nothing is drawn here — SweepTriggersTest.Reflexive_Disintegrate* plays
+    // the card through the engine and checks the draw.
     EXPECT_EQ(state.getObject(target).zone, ZoneType::Trash);
-    EXPECT_EQ(cards_drawn, 1);
+    EXPECT_EQ(cards_drawn, 0);
 }
 
 TEST_F(ChainTestFixture, DisintegrateNoDrawIfNotLethal) {

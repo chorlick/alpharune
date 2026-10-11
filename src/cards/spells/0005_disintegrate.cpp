@@ -23,8 +23,15 @@ public:
             ctx.executor.killObject(targets[0]);
             killed = true;
         }
-        // "If this kills it, do this: draw 1." Only draw on a kill.
-        if (killed) ctx.executor.drawCards(ctx.controller, 1);
+        // "If this kills it, do this: draw 1." — a reflexive trigger (CR
+        // 388): on a kill it goes on the chain as an item of its own.
+        if (killed) ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& /*data*/) override {
+        if (finalizingChoices(ctx)) return;   // nothing to choose
+        ctx.executor.drawCards(ctx.controller, 1);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_at_battlefield = true};

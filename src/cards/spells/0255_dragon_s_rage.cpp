@@ -17,10 +17,10 @@ public:
     const CardDef& def() const override { return def_; }
     // "Move an enemy unit. Then do this: Choose another enemy unit at its
     //  destination. They deal damage equal to their Mights to each other."
-    // The caster chooses the unit (as the spell is played), where it moves,
-    // and — once it is there — which other enemy unit it fights. The move
-    // happens between two choices, so it is recorded on the resolving item
-    // (resume_point kMoved) and done once.
+    // The caster chooses the unit (as the spell is played) and where it
+    // moves. "Then do this" is a reflexive trigger (CR 388): once the unit has
+    // been moved it goes on the chain as an item of its own, and which other
+    // enemy unit it fights is chosen as that item is finalized.
     bool needsPlayTimeTarget() const override { return true; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         GameObjectId mover;
@@ -33,42 +33,39 @@ public:
         if (mover == kInvalidId || !ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
         if (ri.resume_point == kDone) return;
-        if (ri.resume_point != kMoved && ri.resume_point != kAwait) {
-            const auto& u = ctx.state.getObject(mover);
-            if (!u.isUnit() || !u.location.has_value()) return;
-            const int dest = pickMoveDest(*this, ctx, "Dragon's Rage: move it to", u);
-            if (dest < 0) return;   // waiting, or nowhere to move it
-            moveTo(ctx, mover, dest);
-            ri.resume_point = kMoved;
-        }
-
-        // "Choose another enemy unit at its destination."
+        const auto& u = ctx.state.getObject(mover);
+        if (!u.isUnit() || !u.location.has_value()) return;
+        const int dest = pickMoveDest(*this, ctx, "Dragon's Rage: move it to", u);
+        if (dest < 0) return;   // waiting, or nowhere to move it
+        moveTo(ctx, mover, dest);
+        ri.resume_point = kDone;
+        ctx.events.logTrace("DRAGON'S RAGE: moved an enemy unit");
+        ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
+                                           {static_cast<int32_t>(mover)});
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data[0]`: the unit that was moved. "Choose another enemy unit at its
+    // destination. They deal damage equal to their Mights to each other."
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (data.empty()) return;
+        const auto mover = static_cast<GameObjectId>(data[0]);
+        auto in_play = [&](GameObjectId id) {
+            return ctx.state.objectExists(id) && ctx.state.getObject(id).isUnit() &&
+                   ctx.state.getObject(id).location.has_value();
+        };
         std::vector<GameObjectId> others;
-        if (ctx.state.getObject(mover).location.has_value()) {
+        if (in_play(mover)) {
             const auto here = ctx.state.getObject(mover).location;
-            others = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
-                return u.controller != ctx.controller && u.id != mover && u.location == here;
+            others = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller && o.id != mover && o.location == here;
             });
             std::sort(others.begin(), others.end());
-            others = offerableChoices(ctx, others);
         }
-        if (ri.resume_point != kAwait) {
-            if (others.empty()) {
-                ri.resume_point = kDone;
-                ctx.events.logTrace("DRAGON'S RAGE: moved enemy unit (no other enemy unit there)");
-                return;
-            }
-            std::vector<Intent> options;
-            for (auto id : others) options.push_back(objChoice(ctx.controller, id));
-            ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                       "Dragon's Rage: another enemy unit at its destination");
-            ri.resume_point = kAwait;
-            return;
-        }
-        ri.resume_point = kDone;
-        const GameObjectId other = takenObject(ctx);
-        if (std::find(others.begin(), others.end(), other) == others.end()) return;
-        commitChosenObject(ctx, other);
+        const GameObjectId other = pickTarget(
+            ctx, "Dragon's Rage: another enemy unit at its destination", others);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 388.4)
+        if (other == kInvalidId || !in_play(other) || !in_play(mover)) return;
         // "They deal damage equal to their Mights to each other." — their
         // Mights where they now stand.
         ctx.executor.recalculateContinuousEffects();
@@ -83,13 +80,13 @@ public:
                 if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
             }
         }
-        ctx.events.logTrace("DRAGON'S RAGE: moved + mutual-Might damage");
+        ctx.events.logTrace("DRAGON'S RAGE: mutual-Might damage");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true};
     }
 private:
-    enum : int { kMoved = 20, kAwait = 21, kDone = 22 };
+    enum : int { kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

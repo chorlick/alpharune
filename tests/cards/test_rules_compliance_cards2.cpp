@@ -1181,7 +1181,10 @@ TEST_F(RulesCards2Test, RulesCards2_Arise_ControllerChoosesWhichTwoTokensToReady
         return *best;
     };
 
-    driveSpell(kArise, P1, spell, {}, highest, exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    EnginePathAgent engine_agent(highest);
+    playThroughEngine(spell, &engine_agent);
 
     ASSERT_EQ(countOnBoard(P1, "Sand Soldier"), 3) << "one per Equipment";
     EXPECT_EQ(prompts, 2) << "\"Ready up to two of them\"";
@@ -1207,7 +1210,10 @@ TEST_F(RulesCards2Test, RulesCards2_Arise_UpToTwoMayBeNone) {
     auto spell = addToHand(P1, kArise);
     Seen seen;
 
-    driveSpell(kArise, P1, spell, {}, watch(seen, &RulesCards2Test::no), exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    EnginePathAgent engine_agent(watch(seen, &RulesCards2Test::no));
+    playThroughEngine(spell, &engine_agent);
 
     EXPECT_EQ(seen.prompts, 1);
     ASSERT_EQ(countOnBoard(P1, "Sand Soldier"), 3);
@@ -1221,7 +1227,10 @@ TEST_F(RulesCards2Test, RulesCards2_Arise_OneTokenOnePick) {
     auto spell = addToHand(P1, kArise);
     Seen seen;
 
-    driveSpell(kArise, P1, spell, {}, watch(seen, &RulesCards2Test::yes), exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    EnginePathAgent engine_agent(watch(seen, &RulesCards2Test::yes));
+    playThroughEngine(spell, &engine_agent);
 
     EXPECT_EQ(seen.prompts, 1) << "nothing left to ready after the only token";
     ASSERT_EQ(countOnBoard(P1, "Sand Soldier"), 1);

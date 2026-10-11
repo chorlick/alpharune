@@ -428,7 +428,9 @@ TEST_F(AuditFix4Test, KeeperOfMasks_CreatesTwoReflectionCopies) {
     exec.setCardRegistry(&card_registry);
 
     size_t before = state.objects.size();
-    fireTrigger(kKeeperOfMasks, keeper, P1, exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    fireTriggerThroughEngine(keeper, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(state.objects.size(), before + 2) << "two Reflection tokens created";
 
     int copies = 0;

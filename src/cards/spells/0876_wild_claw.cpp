@@ -73,8 +73,8 @@ public:
     }
 
     // Resume points: 0 look + offer a card, 1 take the card (banish, pay,
-    // recycle the rest), 2 take the location and play, 3 offer Empower,
-    // 4 take the Empower answer. resume_data[0] = the played card.
+    // recycle the rest), 2 take the location and play, 3 queue the reflexive
+    // trigger, 5 done. resume_data[0] = the played card.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;  // needs the chain's resume slot
         auto& ri = *ctx.state.chain.resuming;
@@ -176,25 +176,31 @@ public:
         if (ri.resume_point == 3) {
             const GameObjectId chosen = static_cast<GameObjectId>(ri.resume_data[0]);
             ri.resume_point = 5;
-            if (!ctx.state.objectExists(chosen)) return;
-            const auto& played = ctx.state.getObject(chosen);
-            if (!played.location.has_value() || played.isEmpowered()) return;
-            ctx.executor.requestChoice(
-                ctx.controller,
-                {intChoice(ctx.controller, 0, "No — Wild Claw: Empower " + played.name),
-                 intChoice(ctx.controller, 1, "Yes — Wild Claw: Empower " + played.name)},
-                "may: Wild Claw: Empower " + played.name);
-            ri.resume_point = 4;
-            return;
+            // "Then you may do this: Empower it." — a reflexive trigger (CR
+            // 388): with the card played it goes on the chain as an item of
+            // its own; the "may" is decided as that item is finalized (CR
+            // 388.4).
+            if (ctx.state.objectExists(chosen) &&
+                ctx.state.getObject(chosen).location.has_value())
+                ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
+                                                   {static_cast<int32_t>(chosen)});
         }
-
-        if (ri.resume_point == 4) {
-            auto choice = ctx.executor.takeChoice();
-            const GameObjectId chosen = static_cast<GameObjectId>(ri.resume_data[0]);
-            ri.resume_point = 5;
-            if (choice && choice->chosen_value.has_value() && *choice->chosen_value == 1)
-                ctx.executor.empower(chosen);
-        }
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data[0]`: the card this spell played.
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (data.empty()) return;
+        const auto played = static_cast<GameObjectId>(data[0]);
+        auto can_empower = [&]() {
+            return ctx.state.objectExists(played) &&
+                   ctx.state.getObject(played).location.has_value() &&
+                   !ctx.state.getObject(played).isEmpowered();
+        };
+        const int conf = confirmOptional(ctx, "Wild Claw: Empower it", can_empower);
+        if (finalizingChoices(ctx)) return;   // the "may" ends here (CR 388.4)
+        if (conf < 1 || !can_empower()) return;
+        ctx.executor.empower(played);
     }
 private:
     const CardDef def_ = [] {

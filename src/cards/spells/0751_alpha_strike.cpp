@@ -61,13 +61,19 @@ public:
                 }
             }
         }
-        if (kills > 0) {
-            gainXp(ctx, ctx.controller, kills);
-            ctx.events.logTrace("ALPHA STRIKE: " + std::to_string(kills) +
-                                " kill(s) -> gain " + std::to_string(kills) +
-                                " XP (now " +
-                                std::to_string(ctx.state.player(ctx.controller).xp) + ")");
-        }
+        // "Then for each unit this kills, do this: Gain 1 XP." — one
+        // reflexive trigger per unit killed (CR 388.1.a, 389.2), each a chain
+        // item of its own.
+        for (int i = 0; i < kills; ++i)
+            ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
+        if (kills > 0)
+            ctx.events.logTrace("ALPHA STRIKE: " + std::to_string(kills) + " kill(s)");
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& /*data*/) override {
+        if (finalizingChoices(ctx)) return;   // nothing to choose
+        gainXp(ctx, ctx.controller, 1);
     }
 private:
     const CardDef def_ = [] {

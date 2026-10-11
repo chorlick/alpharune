@@ -322,7 +322,6 @@ TEST_F(AuditFix6Test, Rabadon_EquipFailsWithoutRune) {
     auto gear = addGear(P1, kRabadon, /*at_bf=*/0);
     // No runes.
 
-    Card* c = card_registry.get(kRabadon);
     EffectExecutor exec(state, events, card_db);
     bool ok = equipThroughEngine(gear, unit);
 
@@ -339,7 +338,6 @@ TEST_F(AuditFix6Test, SoulSword_EquipFailsWithWrongDomainRune) {
     auto gear = addGear(P1, kSoulSword, /*at_bf=*/0);
     addRune(P1, Domain::Body);  // wrong domain for [G]
 
-    Card* c = card_registry.get(kSoulSword);
     EffectExecutor exec(state, events, card_db);
     bool ok = equipThroughEngine(gear, unit);
 
@@ -353,7 +351,6 @@ TEST_F(AuditFix6Test, SoulSword_EquipSucceedsWithCalmRune) {
     auto gear = addGear(P1, kSoulSword, /*at_bf=*/0);
     addRune(P1, Domain::Calm);
 
-    Card* c = card_registry.get(kSoulSword);
     EffectExecutor exec(state, events, card_db);
     bool ok = equipThroughEngine(gear, unit);
 
@@ -575,7 +572,7 @@ TEST_F(AuditFix6Test, BlastCone_PlayMovesEnemyToBase) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
-    EnginePathAgent yes(EnginePathAgent::script({1}));
+    EnginePathAgent yes(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     // Enemy moved to its own base (moveToBase uses controller's base).
@@ -620,7 +617,7 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustedCannotStun) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
-    EnginePathAgent yes(EnginePathAgent::script({1}));
+    EnginePathAgent yes(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     EXPECT_TRUE(state.getObject(enemy).isAtBase());     // still moved

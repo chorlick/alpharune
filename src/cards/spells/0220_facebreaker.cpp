@@ -1,3 +1,4 @@
+#include "cards/card_helpers.h"
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
@@ -15,6 +16,19 @@ class Facebreaker : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // The friendly unit: one at a battlefield where there is an enemy unit.
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+            [&](const GameObject& u) {
+                const auto bf = u.battlefieldId();
+                if (!bf) return false;
+                for (const auto& [id, e] : state.objects)
+                    if (e.isUnit() && e.controller != controller && e.battlefieldId() == bf)
+                        return true;
+                return false;
+            });
+    }
     TargetRequirements getTargetRequirements() const override {
         // Two targets — friendly first, enemy second; the same-battlefield
         // pairing is enforced in pickTargetPair's legal_b_fn below.

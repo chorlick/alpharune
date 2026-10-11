@@ -86,7 +86,7 @@ protected:
     }
 
     /// Run a gear's onEquip against `unit`, return success.
-    bool runEquip(GameObjectId gear, GameObjectId unit, EffectExecutor& exec) {
+    bool runEquip(GameObjectId gear, GameObjectId unit, EffectExecutor& /*exec*/) {
         Card* c = card_registry.get(state.getObject(gear).card_def_id);
         if (!c) return false;
         return equipThroughEngine(gear, unit);

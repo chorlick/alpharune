@@ -16,6 +16,18 @@ class Switcheroo : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // A unit at a battlefield with another unit there.
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+            [&](const GameObject& u) {
+                const auto bf = u.battlefieldId();
+                if (!bf) return false;
+                for (const auto& [id, o] : state.objects)
+                    if (id != u.id && o.isUnit() && o.battlefieldId() == bf) return true;
+                return false;
+            });
+    }
     bool isActionAbility() const override { return true; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true,

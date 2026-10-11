@@ -39,14 +39,15 @@ public:
     }
     // The unit it chooses: one I control that is somewhere other than a
     // battlefield I control (the play gate's view of the pick below).
-    bool mayChooseAtFinalization(const GameState& state, PlayerId controller,
-                                 GameObjectId object) const override {
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
         for (const auto& bf : state.battlefields) {
             if (!controls(bf, controller)) continue;
             const auto units = unitsElsewhere(state, controller, bf.id);
-            if (std::find(units.begin(), units.end(), object) != units.end()) return true;
+            if (std::find(units.begin(), units.end(), object) != units.end())
+                return FinalizeChoice::Yes;
         }
-        return false;
+        return FinalizeChoice::No;
     }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         for (const auto& bf : state.battlefields)

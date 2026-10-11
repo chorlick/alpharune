@@ -816,7 +816,7 @@ TEST_F(C4Test, Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses) {
     auto dead = inTrashOf(P1, kFirstMate);
     auto card = addToHand(P1, kSoulgorger);
     // yes; the unit; battlefield 1 (mode 2).
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(dead), 2}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(dead), 2, EnginePathAgent::kRest}));
     playThroughEngine(card, &agent);
     // (A fourth prompt is the revived First Mate's own play trigger.)
     ASSERT_GE(agent.prompts.size(), 3u) << "the may, the unit, where";
@@ -875,7 +875,7 @@ TEST_F(C4Test, Nocturne_PlayingCostsOnePower_AndBanishingAloneIsAllowed) {
 
     // No Power: the banish is still a "may", playing is not on offer.
     auto second = offBoard(P1, kNocturne, ZoneType::MainDeck);
-    EnginePathAgent poor(EnginePathAgent::script({1}));
+    EnginePathAgent poor(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     fireTriggerThroughEngine(second, TriggerType::WhenIRevealedFromTop, &poor);
     ASSERT_EQ(poor.prompts.size(), 2u);
     EXPECT_EQ(poor.prompts[1].size(), 1u) << "only \"don't play me\"";

@@ -20,6 +20,12 @@ public:
     // The battlefield, whether to move a unit, and which one are chosen as the
     // spell is played (CR 355).
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
 
     /// Battlefields where `p` has a unit, as a pickMode mask over the slots.
     static uint32_t battlefieldMask(const GameState& state, PlayerId p) {

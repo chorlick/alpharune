@@ -1830,7 +1830,7 @@ TEST_F(VerifyCardsTest, BlastCone_DoesNotOfferAnEnemyUnitItCannotMove) {
     o(guarded).cant_be_moved_by_enemy = true;            // what the Cutlass's aura sets
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 0);
     // Yes, the unit, to its base (mode 0); the stun "may" that follows is declined.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(free_unit), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(free_unit), 0, EnginePathAgent::kRest}));
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
     ASSERT_GE(agent.prompts.size(), 2u);
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
@@ -2248,7 +2248,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_IsExhaustedBeforeTheOpponentCanRespondAndRe
         ++shown;
         if (e.revealed_to_all) ++to_all;
     });
-    EnginePathAgent agent(EnginePathAgent::script({1}));   // yes; then banish none
+    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));   // yes; then banish none
     fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 1u) << "the may was decided at finalization";
         EXPECT_TRUE(live.getObject(legend).is_exhausted) << "\"exhaust me\" is the cost (CR 383.3.b)";
@@ -2333,7 +2333,7 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheRevealIsDecidedBeforeTheOpponentCanR
     addToDeck(P1, kMeditation);
     int shown = 0;
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent&) { ++shown; });
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     fireAndProbe(reksai, TriggerType::WhenIAttack, &agent, [&](GameState&) {
         EXPECT_EQ(agent.prompts.size(), 1u)
             << "CR 383.3.a: a \"you may\" that opens the effect is decided at finalization";
@@ -2504,7 +2504,7 @@ TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     playThroughEngine(spell, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
@@ -2546,7 +2546,7 @@ TEST_F(VerifyCardsTest, Guards_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheB
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
     addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kRest}));
     playThroughEngine(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u);
     EXPECT_EQ(agent.prompts[0].size(), 1u) << "the base, nothing else";
@@ -2956,7 +2956,7 @@ TEST_F(VerifyCardsTest, HeedlessResurrection_APlayerWhoMayOnlyPlayUnitsToBaseIsO
     addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(victim), static_cast<int>(corpse), 1}));
+        {static_cast<int>(victim), static_cast<int>(corpse), EnginePathAgent::kFirst}));   // only "Base" is offered (asserted below)
     playThroughEngine(spell, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     EXPECT_FALSE(promptOffersValue(agent, agent.prompts.size() - 1, 1))
@@ -2972,7 +2972,7 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
     addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    EnginePathAgent agent(EnginePathAgent::script({1, 1, 1}));
+    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kFirst, EnginePathAgent::kFirst, 1, EnginePathAgent::kRest}));
     playAt(spell, {unit}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
@@ -4682,7 +4682,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_VoidHatchlingLooksBeforeTheReveal) {
         if (e.revealed_to_all) shown.push_back(e.card);
     });
     // Yes to "exhaust me"; recycle the top card at the look; then banish none.
-    EnginePathAgent agent(EnginePathAgent::script({1, 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, 1, EnginePathAgent::kRest}));
     fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
     conn.disconnect();
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the look, the banish";

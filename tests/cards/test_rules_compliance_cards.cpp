@@ -589,7 +589,10 @@ TEST_F(RulesCardsTest, RulesCards_CR355_14_AlphaStrike_ControllerMayPutAllDamage
 
     driveSpell(kAlphaStrike, P1, spell, {striker}, yesThen(e1, &seen), exec);
 
-    EXPECT_EQ(seen.prompts, 4) << "CR 355.14.e: the division is decided at resolution";
+    // One target, then "No more targets": a single target takes everything, so
+    // there is no division to ask about. (4 prompts, one per point, before
+    // the targets were chosen up front — plans/09 item 9.M4.)
+    EXPECT_EQ(seen.prompts, 2) << "CR 355.14.b: the target, and that there are no more";
     EXPECT_FALSE(seen.wasOffered(in_base)) << "\"enemy units at battlefields\" only";
     EXPECT_TRUE(inTrash(P2, e1))
         << "CR 355.14: all 4 damage on the 3 [M] unit kills it (an even spread would not)";
@@ -664,7 +667,7 @@ TEST_F(RulesCardsTest, RulesCards_CR355_14_Volibear_ControllerChoosesAmongEnemyU
     driveResumableTrigger(kVolibearFurious, P1, voli, yesThen(big, &seen), exec,
                           TriggerType::WhenIAttack);
 
-    EXPECT_EQ(seen.prompts, 5);
+    EXPECT_EQ(seen.prompts, 2) << "the target, \"No more targets\" (was one prompt per point)";
     EXPECT_EQ(state.getObject(big).damage_marked, 5)
         << "CR 355.14.e: all 5 where the controller put them";
     EXPECT_EQ(state.getObject(small).damage_marked, 0)

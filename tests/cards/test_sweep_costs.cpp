@@ -1183,4 +1183,96 @@ TEST_F(SweepCostsTest, TrashReplayGrant_ADiscountAppliesToTheGrantCost) {
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
 }
 
+// ─── 9.L2: target discounts on plays that are not from hand ─────────────────
+
+TEST_F(SweepCostsTest, TrashReplayGrant_ATargetsDiscountCountsTowardTheGrantCost) {
+    // A grant to replay Frigid Touch from the trash for [2]; Irelia, Graceful
+    // takes [1] off a spell that chooses her. With [1] the play is offered,
+    // and she is the only unit it can choose.
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto spell = addToTrash(P1, kFrigidTouch);
+    PlayerState::TrashReplayGrant grant;
+    grant.card = spell;
+    grant.energy = 2;
+    state.player(P1).trash_replay_grants.push_back(grant);
+    setPool(P1, 1, 0);
+    std::optional<Intent> offer;
+    for (const auto& i : legal())
+        if (i.card == spell && i.play_source == Intent::PlaySource::Trash) offer = i;
+    ASSERT_TRUE(offer.has_value()) << "[2] - [1] for choosing Irelia";
+    EnginePathAgent agent(EnginePathAgent::choosing(irelia));
+    execute(*offer, &agent);
+    EXPECT_TRUE(agent.wasOffered(irelia));
+    EXPECT_FALSE(agent.wasOffered(other));
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(o(irelia).temp_might_bonus, -2) << "it was played and resolved";
+}
+
+TEST_F(SweepCostsTest, TrashReplayGrant_ATargetsDiscountTakesThePowerOfAGrantWithNoEnergy) {
+    // The "[A] less" half: a grant of one Fury Power (Test Power Touch, a test
+    // card), nothing to pay it with, playable by choosing Irelia.
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto spell = addToTrash(P1, kTPowerTouch);
+    PlayerState::TrashReplayGrant grant;
+    grant.card = spell;
+    grant.power = 1;
+    grant.power_domain = Domain::Fury;
+    state.player(P1).trash_replay_grants.push_back(grant);
+    setPool(P1, 0, 0);
+    std::optional<Intent> offer;
+    for (const auto& i : legal())
+        if (i.card == spell && i.play_source == Intent::PlaySource::Trash) offer = i;
+    ASSERT_TRUE(offer.has_value());
+    EnginePathAgent agent(EnginePathAgent::choosing(irelia));
+    execute(*offer, &agent);
+    EXPECT_FALSE(agent.wasOffered(other));
+    EXPECT_EQ(o(irelia).buff_count, 1);
+}
+
+// NOT A DEFECT (9.L2, hidden plays): a card played from facedown ignores its
+// base cost (CR 811), so there is no cost for a target's discount to make
+// payable — the generator has no cost gate and needs none. What a target adds
+// is its Deflect, and that does gate the offer.
+TEST_F(SweepCostsTest, HiddenPlay_HasNoCostGateAndATargetIsOfferedOnlyIfItsDeflectCanBePaid) {
+    state.battlefields[0].controller = P1;
+    state.turn.turn_number = 3;
+    addUnit(P1, kInvalidId, 2, 0);
+    auto plain = addUnit(P2, kInvalidId, 3, 0);
+    auto guarded = addUnit(P2, kInvalidId, 3, 0);
+    o(guarded).keywords.set(Keyword::Deflect);
+    o(guarded).deflect_value = 1;
+    // Test Power Touch (printed cost: one Fury Power) facedown at battlefield 0
+    // since last turn.
+    auto spell = addToHand(P1, kTPowerTouch);
+    auto& hand = state.player(P1).hand;
+    hand.erase(std::remove(hand.begin(), hand.end(), spell), hand.end());
+    o(spell).zone = ZoneType::FacedownZone;
+    o(spell).is_hidden = true;
+    o(spell).hidden_at = 0;
+    o(spell).hidden_on_turn = 2;
+    state.battlefields[0].facedown.push_back(spell);
+    // A hidden card is played with [Reaction] timing: an enemy item on the
+    // chain (it does nothing), priority with P1.
+    pushSpellOnChain(P2);
+    state.chain.items.back().status = ChainItemStatus::Finalized;
+    state.turn.oc_state = OpenClosedState::Closed;
+    state.turn.priority_holder = P1;
+    auto offerOn = [&](GameObjectId target) -> std::optional<Intent> {
+        for (const auto& i : legal())
+            if (i.card == spell && !i.targets.empty() && i.targets.front() == target) return i;
+        return std::nullopt;
+    };
+    setPool(P1, 0, 0);
+    EXPECT_TRUE(offerOn(plain).has_value()) << "no resources at all: the base cost is ignored";
+    EXPECT_FALSE(offerOn(guarded).has_value()) << "its Deflect cannot be paid";
+    setPool(P1, 0, 1);
+    auto offer = offerOn(guarded);
+    ASSERT_TRUE(offer.has_value());
+    execute(*offer);
+    EXPECT_EQ(o(guarded).buff_count, 1);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "the Deflect, and nothing else";
+}
+
 }  // namespace riftbound::test::sweep_costs

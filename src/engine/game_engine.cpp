@@ -2110,8 +2110,15 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             // Only targets the spell can still be paid for with: its cost
             // and that target's Deflect are owed together (CR 356.2.a.2).
             std::vector<GameObjectId> legal;
+            // A play through a trash-replay grant is judged on the grant's
+            // cost — the gate the generator offered it by.
+            const PlayerState::TrashReplayGrant* grant =
+                intent.play_source == Intent::PlaySource::Trash
+                    ? trashGrantFor(intent.player, intent.card) : nullptr;
             for (auto t : sc->enumerateLegalTargets(state_, intent.player))
-                if (canAffordChoosing(intent.player, intent.card, {t})) legal.push_back(t);
+                if (grant ? canPayTrashGrant(intent.player, intent.card, *grant, {t})
+                          : canAffordChoosing(intent.player, intent.card, {t}))
+                    legal.push_back(t);
             if (!legal.empty()) {
                 std::vector<Intent> options;
                 options.reserve(legal.size());
@@ -2141,7 +2148,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     // additional costs); otherwise the normal play_source-aware path runs.
     bool paid_via_grant = false;
     if (intent.play_source == Intent::PlaySource::Trash) {
-        paid_via_grant = payTrashReplayGrant(intent.player, intent.card);
+        paid_via_grant = payTrashReplayGrant(intent.player, intent.card, play_targets);
     }
     if (!paid_via_grant) {
         ps.current_play_source = intent.play_source;
@@ -3766,6 +3773,11 @@ std::vector<std::vector<GameObjectId>> spellTargetSets(
 // CR 811: `player`'s facedown cards. A permanent goes to the battlefield it
 // was hidden at (executePlayFromHidden / ChainManager); a spell's targets are
 // tied to that battlefield, target by target (CR 811.1.d.2, .4).
+// A card played from facedown is played ignoring its base cost (CR 811;
+// executePlayFromHidden charges nothing), so there is no cost gate here and no
+// discount can matter: what a target adds — its Deflect — is the whole price,
+// and Card::enumerateLegalTargets already leaves out a target whose Deflect
+// the player cannot pay.
 void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_type,
                                            std::vector<Intent>& actions) const {
     const auto& ps = state_.player(player);
@@ -3996,10 +4008,14 @@ static bool anyCombatInProgress(const GameState& state);
 // to it as to any other play (CR 356.3, 356.4) — the same pipeline as a play
 // for the printed cost (netCardCost). The Power is paid in the grant's Domain.
 GameEngine::TrashGrantCost GameEngine::trashGrantCost(
-    PlayerId player, GameObjectId card_id, const PlayerState::TrashReplayGrant& grant) const {
+    PlayerId player, GameObjectId card_id, const PlayerState::TrashReplayGrant& grant,
+    const std::vector<GameObjectId>& targets, bool prefer_power) const {
     TrashGrantCost out;
-    const auto net = netCardCost(player, card_id, Card::PlayCostAdjust{}, grant.energy,
-                                 grant.power);
+    // A discount applies to whatever cost is being paid (CR 356.4): the
+    // grant's, as it would the card's own — what the chosen targets take off
+    // included.
+    const auto adj = targetCostDiscount(player, targets, prefer_power, nullptr);
+    const auto net = netCardCost(player, card_id, adj, grant.energy, grant.power);
     out.energy = net.first;
     out.power = net.second;
     out.domains = resource::maskOf(grant.any_domain ? Domain::Count : grant.power_domain);
@@ -4007,19 +4023,37 @@ GameEngine::TrashGrantCost GameEngine::trashGrantCost(
     return out;
 }
 
+const PlayerState::TrashReplayGrant* GameEngine::trashGrantFor(PlayerId player,
+                                                               GameObjectId card_id) const {
+    for (const auto& g : state_.player(player).trash_replay_grants)
+        if (g.card == card_id) return &g;
+    return nullptr;
+}
+
 bool GameEngine::canPayTrashGrant(PlayerId player, GameObjectId card_id,
                                   const PlayerState::TrashReplayGrant& grant,
-                                  int deflect) const {
+                                  const std::vector<GameObjectId>& targets) const {
     const auto& card = state_.getObject(card_id);
-    const auto cost = trashGrantCost(player, card_id, grant);
+    int deflect = 0;
+    const Card* cc = card.card_def_id != kInvalidId ? card_registry_.get(card.card_def_id)
+                                                    : nullptr;
+    if (!cc || !cc->ignoresDeflect())
+        for (auto t : targets) deflect += deflectCostFor(state_, player, t);
     const SpendFor f = spendForObject(card);
-    if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
-        return false;
-    // "[A] more" and Deflect are owed on top, from what the grant's own Power
-    // leaves.
-    const int extra = cost.extra_any + deflect;
-    return extra <= 0 ||
-           resource::payablePower(state_, player, Domain::Count, f) - cost.power >= extra;
+    bool has_choice = false;
+    (void)targetCostDiscount(player, targets, false, &has_choice);
+    for (int prefer_power = 0; prefer_power < (has_choice ? 2 : 1); ++prefer_power) {
+        const auto cost = trashGrantCost(player, card_id, grant, targets, prefer_power == 1);
+        if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
+            continue;
+        // "[A] more" and Deflect are owed on top, from what the grant's own
+        // Power leaves.
+        const int extra = cost.extra_any + deflect;
+        if (extra <= 0 ||
+            resource::payablePower(state_, player, Domain::Count, f) - cost.power >= extra)
+            return true;
+    }
+    return false;
 }
 
 void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
@@ -4060,11 +4094,7 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
         // card's own (canAffordChoosing adds what the targets change).
         auto affordable = [&](const std::vector<GameObjectId>& targets) {
             if (!grant) return canAffordChoosing(player, card_id, targets);
-            int deflect = 0;
-            const Card* cc = card_registry_.get(card.card_def_id);
-            if (!cc || !cc->ignoresDeflect())
-                for (auto t : targets) deflect += deflectCostFor(state_, player, t);
-            return canPayTrashGrant(player, card_id, *grant, deflect);
+            return canPayTrashGrant(player, card_id, *grant, targets);
         };
         auto make = [&](IntentType type, std::vector<GameObjectId> tgts,
                         std::optional<LocationId> where) {
@@ -6696,7 +6726,8 @@ bool GameEngine::payAdditionalCost(PlayerId player, int energy, int power,
 }
 
 
-bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id) {
+bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
+                                     const std::vector<GameObjectId>& targets) {
     auto& ps = state_.player(player);
     auto it = std::find_if(ps.trash_replay_grants.begin(),
                            ps.trash_replay_grants.end(),
@@ -6710,8 +6741,12 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id) {
     // same amounts generateTrashReplayActions checked (trashGrantCost).
     bool ok = state_.objectExists(card_id);
     if (ok) {
-        const auto cost = trashGrantCost(player, card_id, grant);
+        // With an "or" discount from a target ([1] or [A] less), the Energy
+        // half is taken when that leaves the cost payable, else the Power half.
         const SpendFor f = spendForObject(state_.getObject(card_id));
+        auto cost = trashGrantCost(player, card_id, grant, targets, false);
+        if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
+            cost = trashGrantCost(player, card_id, grant, targets, true);
         ok = resource::payIn(state_, events_, player, cost.energy, cost.power, cost.domains, f);
         if (ok && cost.extra_any > 0)
             ok = resource::pay(state_, events_, player, 0, cost.extra_any, Domain::Count, f);

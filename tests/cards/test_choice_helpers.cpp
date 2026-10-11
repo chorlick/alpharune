@@ -375,15 +375,13 @@ TEST_F(ChoiceHelperTest, EquipCostsCountAsPowerSpentAndAreAllOrNothing) {
     ASSERT_NE(bow, nullptr);
     ASSERT_TRUE(bow->hasEquipAbility());
 
-    CardContext c1{state, events, exec, P1, bow1};
-    EXPECT_FALSE(bow->onEquip(c1, unit)) << "no Fury power: nothing paid, nothing attached";
+    EXPECT_FALSE(equipThroughEngine(bow1, unit)) << "no Fury power: nothing paid, nothing attached";
     EXPECT_FALSE(state.getObject(bow1).attached_to.has_value());
 
     addRune(P1, Domain::Fury);
     addRune(P1, Domain::Fury);
-    EXPECT_TRUE(bow->onEquip(c1, unit));
-    CardContext c2{state, events, exec, P1, bow2};
-    EXPECT_TRUE(bow->onEquip(c2, unit));
+    EXPECT_TRUE(equipThroughEngine(bow1, unit));
+    EXPECT_TRUE(equipThroughEngine(bow2, unit));
     EXPECT_EQ(state.player(P1).power_spent_this_turn, 2);
     EXPECT_EQ(state.getObject(unit).attachments.size(), 2u);
 
@@ -393,8 +391,7 @@ TEST_F(ChoiceHelperTest, EquipCostsCountAsPowerSpentAndAreAllOrNothing) {
     auto gone = addUnit(P1, kInvalidId, 2);
     state.getObject(gone).location = std::nullopt;
     state.getObject(gone).zone = ZoneType::Trash;
-    CardContext c3{state, events, exec, P1, bow3};
-    EXPECT_FALSE(bow->onEquip(c3, gone));
+    EXPECT_FALSE(equipThroughEngine(bow3, gone));
     EXPECT_EQ(state.player(P1).power_spent_this_turn, 2) << "and nothing was paid";
 }
 

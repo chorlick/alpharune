@@ -306,8 +306,7 @@ TEST_F(AuditFix6Test, Rabadon_EquipPaysAnyPowerAndAttaches) {
     EXPECT_TRUE(c->hasEquipAbility());
 
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = c->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>(unit));
@@ -325,8 +324,7 @@ TEST_F(AuditFix6Test, Rabadon_EquipFailsWithoutRune) {
 
     Card* c = card_registry.get(kRabadon);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = c->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
@@ -343,8 +341,7 @@ TEST_F(AuditFix6Test, SoulSword_EquipFailsWithWrongDomainRune) {
 
     Card* c = card_registry.get(kSoulSword);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = c->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
@@ -358,8 +355,7 @@ TEST_F(AuditFix6Test, SoulSword_EquipSucceedsWithCalmRune) {
 
     Card* c = card_registry.get(kSoulSword);
     EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = c->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>(unit));

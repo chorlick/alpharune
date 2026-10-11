@@ -703,10 +703,23 @@ private:
         resource::DomainMask domains = resource::kAnyDomain;
         int extra_any = 0;
     };
+    /// What a grant play costs with `targets` chosen: the grant's cost after
+    /// increases and discounts (CR 356.3-4), those from the chosen targets
+    /// included ("your spells that choose me cost [1] or [A] less" — the
+    /// Power half when `prefer_power`).
     TrashGrantCost trashGrantCost(PlayerId player, GameObjectId card_id,
-                                  const PlayerState::TrashReplayGrant& grant) const;
+                                  const PlayerState::TrashReplayGrant& grant,
+                                  const std::vector<GameObjectId>& targets,
+                                  bool prefer_power) const;
+    /// Whether the grant's cost and the targets' Deflect can be paid together
+    /// (with either half of an "or" discount). The one gate for the
+    /// trash-replay generator and the play-time target choice.
     bool canPayTrashGrant(PlayerId player, GameObjectId card_id,
-                          const PlayerState::TrashReplayGrant& grant, int deflect) const;
+                          const PlayerState::TrashReplayGrant& grant,
+                          const std::vector<GameObjectId>& targets) const;
+    /// The standing or pushed grant for `card_id`, if `player` has one.
+    const PlayerState::TrashReplayGrant* trashGrantFor(PlayerId player,
+                                                       GameObjectId card_id) const;
     Card::HideCost hideCostFor(PlayerId player) const;
     int firstGearAbilityDiscount(PlayerId player) const;
     Card::EquipTerms equipTerms(PlayerId player) const;
@@ -767,7 +780,8 @@ private:
     /// `card_id` (auto-spends via payAdditionalCost; an [A] grant picks the
     /// first payable domain) and consumes the grant. Returns true if a grant
     /// was found and paid, false otherwise (caller falls back to printed cost).
-    bool payTrashReplayGrant(PlayerId player, GameObjectId card_id);
+    bool payTrashReplayGrant(PlayerId player, GameObjectId card_id,
+                             const std::vector<GameObjectId>& targets = {});
 
     // ── Optional additional costs (CR 356.2.b): Accelerate, Repeat, "you may pay" ──
     /// "Optional additional costs you pay cost [1] or [A] less": the discount

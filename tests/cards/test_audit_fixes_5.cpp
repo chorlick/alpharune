@@ -202,8 +202,7 @@ TEST_F(AuditFix5Test, Svellsongur_EquipSucceeds) {
 
     Card* card = card_registry.get(kSvellsongur);
     ASSERT_NE(card, nullptr);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(state.getObject(gear).attached_to, unit);
@@ -222,8 +221,7 @@ TEST_F(AuditFix5Test, Svellsongur_EquipFailsNoDomainRune) {
     addRune(P1, Domain::Fury);
 
     Card* card = card_registry.get(kSvellsongur);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
@@ -239,8 +237,7 @@ TEST_F(AuditFix5Test, Svellsongur_EquipFailsInsufficientEnergy) {
     addRune(P1, Domain::Calm, /*exhausted=*/true);
 
     Card* card = card_registry.get(kSvellsongur);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
@@ -257,8 +254,7 @@ TEST_F(AuditFix5Test, EdgeOfNight_EquipGrantsMight) {
 
     Card* card = card_registry.get(kEdgeOfNight);
     ASSERT_NE(card, nullptr);
-    CardContext ctx{state, events, exec, P1, gear};
-    bool ok = card->onEquip(ctx, unit);
+    bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(state.getObject(gear).attached_to, unit);
@@ -273,8 +269,7 @@ TEST_F(AuditFix5Test, EdgeOfNight_EquipFailsNoChaos) {
     addRune(P1, Domain::Calm);
 
     Card* card = card_registry.get(kEdgeOfNight);
-    CardContext ctx{state, events, exec, P1, gear};
-    EXPECT_FALSE(card->onEquip(ctx, unit));
+    EXPECT_FALSE(equipThroughEngine(gear, unit));
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
 }
 

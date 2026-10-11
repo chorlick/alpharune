@@ -23,6 +23,7 @@ public:
         for (auto& [id, obj] : ctx.state.objects)
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
+        std::sort(friendly.begin(), friendly.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Inviolus Vox: give a friendly unit +8 [M]",
                                           friendly);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

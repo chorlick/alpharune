@@ -23,7 +23,7 @@ Engine facts traced for this batch (apply to several cards below):
   - Text: "I have +1 [M] for each other unit you control here with my name."
   - Code: no `applyPassiveAura` at all; only [Hidden] and `unlimited_copies` are modelled (the class comment lists those two and omits the Might line).
   - Scenario: three Spiderlings at one battlefield are 1 [M] each instead of 3 [M] each; the whole point of the any-number-of-copies deck is lost.
-- [ ] **732 Atakhan** - `units/0732_atakhan.cpp:19` [documented] high
+- [x] **732 Atakhan** - `units/0732_atakhan.cpp:19` [documented] high — FIXED (sweep-costs): the kill is chosen before payment and takes the unit's printed Energy and Power off; test: SweepCostsTest.Atakhan_KillsAUnitAndCostsItsPrintedCostLess, SweepCostsTest.Atakhan_TheKillCanBeDeclinedWhenTheFullCostIsPayable
   - Text: "You may kill a friendly unit as an additional cost to play me. If you do, I cost [1] less for each Energy it costs and [Y] less for each Power it costs."
   - Code: not implemented (comment: "ENGINE GAP ... Left unimplemented").
   - Scenario: player with a 6-cost unit on board wants to sacrifice it to play Atakhan for [4][Y][Y][Y]-ish -> no such option; Atakhan always costs the full [10][Y][Y][Y].
@@ -58,7 +58,7 @@ Engine facts traced for this batch (apply to several cards below):
   - Text: "[Stun] it. They can't move it this turn."
   - Code: only stuns (TODO comment: can't-move flag not modelled).
   - Scenario: opponent plays a unit with a ready/[Accelerate] entry to base while Vex is at a battlefield -> it is stunned but can still be moved to a battlefield this turn (to contest / conquer an empty one).
-- [ ] **740 Poppy, Defender of the Meek** - `units/0740_poppy_defender_of_the_meek.cpp:24` [documented] medium
+- [x] **740 Poppy, Defender of the Meek** - `units/0740_poppy_defender_of_the_meek.cpp:24` [documented] medium — FIXED (sweep-costs): the 3 XP are spent before payment and count toward affordability; test: SweepCostsTest.Poppy_SpendsXpForADiscountChosenBeforePayment
   - Text: "You may spend 3 XP as an additional cost to play me. If you do, I cost [3] less."
   - Code: `selfCostReduction` returns 3 whenever XP >= 3 and the WhenYouPlayMe trigger then deducts 3 XP - no choice. The deduction also runs when Poppy is played by an effect that ignores her cost.
   - Scenario: player with exactly 3 XP and plenty of Energy wants to keep the XP for a [Level 3] effect -> forced to spend it. Poppy put into play free by an effect with 3+ XP -> loses 3 XP for no discount.

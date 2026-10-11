@@ -25,6 +25,7 @@ public:
         for (auto& [id, obj] : ctx.state.objects)
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
+        std::sort(friendly.begin(), friendly.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Spirit's Refuge: buff a friendly unit", friendly);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (t == kInvalidId) return;          // none / mistarget / waiting
@@ -47,7 +48,22 @@ public:
             if (!u.isUnit() || u.controller != controller || !u.location.has_value())
                 continue;
             if (u.buff_count <= 0) continue;  // "buffed" = has a +1 [M] buff
-            if (hasKeywordInAuraPass(u, Keyword::Deflect)) continue;  // "if they didn't already"
+            // "if they didn't already". KNOWN GAP, not fixable in this file:
+            // this only sees the [Deflect] that is printed, given "this turn",
+            // from Equipment (Step 1a' of GameEngine::recalculateAuras) or
+            // from a hook that ALREADY ran this pass. The hooks run in
+            // state.objects (hash) order, so a card whose hook runs after
+            // this one (Allay 603, Jax 377, ...; Fiora 232 in the later
+            // applyMightDependentAura hook) adds a second [Deflect] effect
+            // and EffectExecutor::deflectCostFor sums them: the unit costs
+            // [A][A] to choose instead of [A]. Moving this grant to
+            // applyMightDependentAura would only fix the ordinary hooks, not
+            // Fiora's. It needs the engine: either a hook called after every
+            // applyPassiveAura AND applyMightDependentAura (before the last
+            // fold), or an AuraEffect flag ("only if absent") that
+            // deflectCostFor / the fold skip when the object has [Deflect]
+            // from any other source.
+            if (hasKeywordInAuraPass(u, Keyword::Deflect)) continue;
             auraKeyword(u, self_id, Keyword::Deflect, 1);
         }
     }

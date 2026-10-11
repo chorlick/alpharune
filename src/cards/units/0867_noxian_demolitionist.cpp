@@ -27,7 +27,9 @@ public:
             for (auto& [id, obj] : ctx.state.objects) {
                 if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
-                // Tokens have no CardDef-backed cost: Energy cost 0.
+                // Tokens have no CardDef-backed cost: Energy cost 0. A gear
+                // token may have no card at all (card_def_id == kInvalidId), so
+                // the card table is only consulted for a real card.
                 int cost = 0;
                 if (!obj.isToken() && obj.card_def_id != kInvalidId)
                     cost = ctx.executor.cardDB().get(obj.card_def_id).energy_cost;

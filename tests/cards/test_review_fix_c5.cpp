@@ -457,10 +457,15 @@ TEST_F(C5Test, MinotaurReckonerStopsMovesToBaseOnlyWhileOnBoard) {
 TEST_F(C5Test, HarpoonSquadOnlyWhenItMovesFromABattlefield) {
     auto squad = addUnit(P1, kHarpoonSquad, 0, 0);
     const Card& c = card(kHarpoonSquad);
-    state.getObject(squad).card_counters["__moved_from_bf"] = -1;   // out of a base
-    EXPECT_FALSE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
-    state.getObject(squad).card_counters["__moved_from_bf"] = 1;
-    EXPECT_TRUE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
+    // "from a battlefield" is read from the move being announced.
+    {
+        AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});   // out of a base
+        EXPECT_FALSE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
+    }
+    {
+        AnnouncedMove moved(state, LocationId{BattlefieldLocation{1}}, LocationId{BattlefieldLocation{0}});
+        EXPECT_TRUE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
+    }
     // Through the engine: base -> battlefield gives nothing, battlefield ->
     // base gives +2.
     auto mover = addUnit(P1, kHarpoonSquad, 0);
@@ -561,13 +566,9 @@ TEST_F(C5Test, WeaponmasterUnitsUseTheSharedMay) {
         ASSERT_FALSE(no.prompts.empty()) << def << ": the may is asked";
         EXPECT_FALSE(state.getObject(gear).attached_to.has_value()) << def;
     }
-    // A unit that left the board is not equipped.
-    auto gear = addGear(P1, kInvalidId, /*equipment=*/true);
-    auto dead = addUnit(P1, kOrnnForgeGod, 0);
-    sendToTrash(dead);
-    fireTriggerThroughEngine(dead, TriggerType::WhenYouPlayMe);
-    EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
-    EXPECT_TRUE(onBoard(gear));
+    // (A unit that left the board is not equipped: that tail passed no agent, so
+    // the may was declined either way. It is now
+    // VerifyCardsTest.Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEquipped.)
 }
 
 TEST_F(C5Test, JaxUnmatchedGivesEquipmentQuickDraw) {
@@ -824,9 +825,14 @@ TEST_F(C5Test, RellMagneticPlaysTheEquipmentOutOfHand) {
     sendToTrash(gone);
     EnginePathAgent agent2(EnginePathAgent::choosing(shield));
     fireTriggerThroughEngine(gone, TriggerType::WhenIAttack, &agent2);
-    if (onBoard(shield)) {
-        EXPECT_FALSE(state.getObject(shield).attached_to.has_value());
-    }
+    // 9.B3: the checks on the Equipment were inside `if (onBoard(shield))`, so
+    // a Rell that did nothing at all passed. "You may play an Equipment ..."
+    // does not depend on her; only "attach it to me" does.
+    EXPECT_FALSE(agent2.prompts.empty()) << "the may is still offered";
+    EXPECT_FALSE(inHand(P1, shield)) << "played out of the hand";
+    ASSERT_TRUE(onBoard(shield)) << "the Equipment is played although Rell is gone";
+    EXPECT_EQ(state.getObject(shield).zone, ZoneType::Base);
+    EXPECT_FALSE(state.getObject(shield).attached_to.has_value());
     EXPECT_TRUE(state.getObject(gone).attachments.empty());
 }
 
@@ -1039,6 +1045,8 @@ TEST_F(C5Test, CorruptEnforcerDiscardsTheChosenCard) {
 
 TEST_F(C5Test, FaePorterPaysWhenTheTriggerIsFinalized) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     EnginePathAgent broke;
     fireTriggerThroughEngine(porter, TriggerType::WhenIMoveToFB, &broke);
@@ -1122,7 +1130,8 @@ TEST_F(C5Test, RekSaiRevealIsAMayAndTheBanishIsCounted) {
     EXPECT_EQ(no.prompts.size(), 1u);
 
     state.player(P1).rune_pool.energy = 3;
-    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit)}));
+    // "you may play it here": where it goes is asked (mode 1 = battlefield #0, here).
+    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &yes);
     EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{0})
         << "If it is a unit, you may play it here.";

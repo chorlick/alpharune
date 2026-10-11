@@ -79,10 +79,13 @@ public:
             }
             std::sort(hit.begin(), hit.end());
             for (auto id : hit) ctx.executor.dealDamage(id, id == focus ? 2 : 1, ctx.source);
-            for (auto id : hit)
-                if (ctx.state.getObject(id).location.has_value() &&
-                    ctx.state.getObject(id).hasLethalDamage())
-                    ctx.executor.killObject(id);
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, hit);   // they die at the same time
+                for (auto id : hit)
+                    if (ctx.state.getObject(id).location.has_value() &&
+                        ctx.state.getObject(id).hasLethalDamage())
+                        ctx.executor.killObject(id);
+            }
         } else if (payoff & kMind) {
             ctx.executor.drawCards(ctx.controller, 1);
         } else if (payoff & kOrder) {

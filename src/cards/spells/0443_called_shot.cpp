@@ -17,6 +17,10 @@ namespace {
 class CalledShot : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [P]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.power = 1, .power_domain = Domain::Chaos}};
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
         auto& ps = ctx.state.player(ctx.controller);

@@ -30,8 +30,7 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (ctx.firing_trigger != TriggerType::WhenIAttack) {
-            if (finalizingChoices(ctx)) return;   // the base's choices stay at resolution
-            WeaponmasterUnit::onTrigger(ctx, targets);
+            WeaponmasterUnit::onTrigger(ctx, targets);   // marks its own end of choices
             return;
         }
         // "When I attack, choose an enemy unit here. Deal 2 to it for each

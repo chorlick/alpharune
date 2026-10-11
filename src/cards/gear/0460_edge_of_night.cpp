@@ -17,11 +17,8 @@ public:
     const CardDef& def() const override { return def_; }
 
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        // [C] = Chaos-domain power, no energy (mirrors original
-        // SimpleEquipGear(460, Domain::Chaos) with energy_cost 0).
-        return standardEquip(ctx, ctx.source, unit,
-                                         /*energy_cost=*/0, Domain::Chaos);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 0, .power = 1, .power_domain = Domain::Chaos};
     }
 
     // "When you play this from face down, attach it to a unit you control

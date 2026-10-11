@@ -51,16 +51,44 @@ public:
         int conf = confirmOptional(ctx,
             "Dusk Rose Lab: kill a unit here to draw 1?", still_legal);
         if (conf < 1) return;    // waiting for the agent, declined, or no unit here
-        if (costDueNow(ctx)) {
+        // The cost is attempted once. A death that was replaced is not a
+        // kill: the cost was not paid, so there is no draw — and no second
+        // attempt when the ability resolves, which is why the failed attempt
+        // is kept on the chain item (past selectObject's slots 7..8) and the
+        // marker below is still reached.
+        constexpr size_t kKillReplacedSlot = 9;
+        auto kill_replaced = [&]() {
+            const auto& ri = ctx.state.chain.resuming;
+            return ri.has_value() && ri->resume_data.size() > kKillReplacedSlot &&
+                   ri->resume_data[kKillReplacedSlot] == 1;
+        };
+        if (costDueNow(ctx) && !kill_replaced()) {
             const auto picked = selectObject(ctx, "Dusk Rose Lab (unit to kill)", unitsHere(ctx));
             if (!picked.has_value() || *picked == kInvalidId) return;   // waiting / none
             const auto here = unitsHere(ctx);
             if (std::find(here.begin(), here.end(), *picked) == here.end()) return;
+            // "Killed" is the unit dying, not the unit leaving: a replacement
+            // puts another event in the death's place and the death does not
+            // occur (CR 370.1.b, 370.1.c.1; the Deathgrip example of CR
+            // 359.3.e.14.b), wherever the unit ends up — still here, recalled,
+            // or banished by "If it would die this turn, banish it instead."
+            // That last one is read before the kill, because a banished token
+            // is where a dead one is (CR 183.1); a dead card is in the trash.
+            const bool banish_instead =
+                ctx.state.getObject(*picked).banish_if_would_die_this_turn;
             ctx.executor.killObject(*picked);
-            // A death that was replaced is not a kill: the cost was not paid.
-            if (ctx.state.getObject(*picked).location.has_value()) return;
+            const auto& after = ctx.state.getObject(*picked);
+            const bool died = !after.location.has_value() && !banish_instead &&
+                              (after.isToken() || after.zone == ZoneType::Trash);
+            if (!died) {
+                if (!ctx.state.chain.resuming.has_value()) return;   // direct call: no item
+                auto& data = ctx.state.chain.resuming->resume_data;
+                while (data.size() <= kKillReplacedSlot) data.push_back(0);
+                data[kKillReplacedSlot] = 1;
+            }
         }
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (kill_replaced()) return;          // the unit did not die: nothing was paid
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("DUSK ROSE LAB: killed a unit here -> draw 1");
     }

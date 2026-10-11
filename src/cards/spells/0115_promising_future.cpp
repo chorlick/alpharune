@@ -63,6 +63,11 @@ public:
             std::vector<GameObjectId> top;
             for (int i = 0; i < n; ++i)
                 top.push_back(ps.main_deck[ps.main_deck.size() - 1 - i]);
+            // "banishes one of them": only a card among those looked at can be
+            // the answer. Anything else is not on offer — the top card is
+            // banished instead (the banish is not optional).
+            if (std::find(top.begin(), top.end(), banished) == top.end())
+                banished = top.empty() ? kInvalidId : top.front();
             // Remove all top-5 from the deck.
             for (auto cid : top) {
                 deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(p), /*slot_public=*/false);

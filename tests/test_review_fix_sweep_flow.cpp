@@ -127,8 +127,10 @@ public:
     TEST_CARD_DEF([] { auto d = makeDef(kTEquipGear, "Test Equip Blade", CardType::Gear);
                        d.tags = {"Equipment"}; d.might_bonus = 1; return d; }())
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return standardEquip(ctx, ctx.source, unit, std::nullopt);
+    // Corrected (sweep-costs): an Equip cost is declared (Card::equipCost) and
+    // charged by the engine, not paid inside onEquip.
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .power = 1, .power_any_domain = true};
     }
 };
 

@@ -41,11 +41,14 @@ public:
         // Kill lethally-damaged units (after all damage is marked); gain 1 XP
         // per unit this kills.
         int kills = 0;
-        for (auto id : damaged) {
-            if (!ctx.state.objectExists(id)) continue;
-            if (ctx.state.getObject(id).hasLethalDamage()) {
-                ctx.executor.killObject(id);
-                ++kills;
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, damaged);   // they die at the same time
+            for (auto id : damaged) {
+                if (!ctx.state.objectExists(id)) continue;
+                if (ctx.state.getObject(id).hasLethalDamage()) {
+                    ctx.executor.killObject(id);
+                    ++kills;
+                }
             }
         }
         if (kills > 0) {

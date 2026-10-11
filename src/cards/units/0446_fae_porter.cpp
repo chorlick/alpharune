@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include <stdexcept>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -20,17 +21,25 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIMoveToFB; }
+    // "the same battlefield" is the battlefield of the trigger condition ("When
+    // I move to a battlefield"), not "here": it is fixed when the condition is
+    // fulfilled (CR 359.3.f.3) and where I go afterwards — another
+    // battlefield, my base, off the board — does not change it (the Lillia,
+    // Fae Fawn example there). It is the destination of the move that
+    // triggered this, carried on the chain item (triggeringMove).
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
+        const auto* move = triggeringMove(ctx.state);
+        if (!move) throw std::logic_error("Fae Porter: \"When I move\" resolved without a move");
+        const std::optional<BattlefieldId> my_bf = battlefieldOfLocation(move->to);
+        if (!my_bf) return;   // WhenIMoveToFB: cannot happen
         auto movable = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
                 if (id == ctx.source) continue;
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
-                if (obj.battlefieldId() == my_bf) continue;  // already here
+                if (obj.battlefieldId() == my_bf) continue;  // already there
                 out.push_back(id);
             }
             return out;
@@ -49,7 +58,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
         if (conf < 1 || tgt == kInvalidId) return;  // waiting / declined / mistarget
         ctx.executor.moveToBattlefield(tgt, *my_bf);
-        ctx.events.logTrace("FAE PORTER: paid [P] -> moved a unit to my battlefield");
+        ctx.events.logTrace("FAE PORTER: paid [P] -> moved a unit to the battlefield I moved to");
     }
 private:
     const CardDef def_ = [] {

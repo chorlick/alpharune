@@ -768,7 +768,8 @@ TEST_F(C4Test, TeemoStrategist_StillRevealsWhenThereIsNoUnitToChoose) {
 }
 
 TEST_F(C4Test, CarnivorousSnapvine_ThatLeftTheBoardFightsNobody) {
-    auto enemy = addUnit(P2, kInvalidId, 4, 0);
+    // More Might than the Snapvine: a killed-and-reset unit cannot pass for "no damage".
+    auto enemy = addUnit(P2, kInvalidId, 9, 0);
     auto vine = addUnit(P1, kSnapvine);
     EnginePathAgent agent(EnginePathAgent::choosing(enemy));
     withEngine([&](GameEngine& e) {
@@ -776,6 +777,7 @@ TEST_F(C4Test, CarnivorousSnapvine_ThatLeftTheBoardFightsNobody) {
         e.testHook_executor().bounceToHand(vine);     // returned to hand in response
         e.testHook_runChain();
     }, &agent);
+    EXPECT_TRUE(o(enemy).location.has_value());
     EXPECT_EQ(o(enemy).damage_marked, 0);
     EXPECT_TRUE(inHand(P1, vine));
     EXPECT_FALSE(inTrash(P1, vine)) << "not also \"killed\" from the hand";

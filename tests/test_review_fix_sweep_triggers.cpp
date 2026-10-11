@@ -55,6 +55,11 @@ constexpr CardDefId kShepherdsHeirloom = 720; // "When you play this, gain 1 XP.
 constexpr CardDefId kSvellsongur     = 382;  // "copy that unit's text to this Equipment's effect text"
 constexpr CardDefId kCaptainFarron   = 15;   // "Other friendly units here have [Assault]."
 constexpr CardDefId kChemtechEnforcer = 3;   // printed [Assault 2]
+constexpr CardDefId kTheRuination    = 742;  // "Kill all units."
+constexpr CardDefId kKarmaChanneler  = 235;  // "When you recycle one or more cards to your Main Deck, buff a friendly unit."
+constexpr CardDefId kStackedDeck     = 183;  // "Look at the top 3 ... Put 1 into your hand and recycle the rest."
+constexpr CardDefId kFateWeaver      = 626;  // looks at the top 4, may reveal a spell and draw it
+constexpr CardDefId kShadowCloneCard = 955;  // the Shadow Clone token card
 
 /// Passes priority; reports, each time it is asked while `spell` has a play on
 /// the chain, whether the card is also filed in its owner's trash.
@@ -874,6 +879,7 @@ TEST_F(SweepTriggersTest, IgnoresDeflect_IsHonouredForATargetChosenAsTheSpellIsP
     obj(enemy).deflect_value = 1;
     auto spell = addToHand(P1, kDecreeOfInsight);
     state.player(P1).rune_pool.energy += card_db.get(kDecreeOfInsight).energy_cost;
+    state.player(P1).rune_pool.universal_power = 1;      // could pay for [Deflect]; must not
     Intent play;
     play.type = IntentType::PlayCard;
     play.player = P1;
@@ -882,6 +888,7 @@ TEST_F(SweepTriggersTest, IgnoresDeflect_IsHonouredForATargetChosenAsTheSpellIsP
     EnginePathAgent agent(EnginePathAgent::choosing(enemy));
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
     EXPECT_EQ(obj(enemy).temp_might_bonus, -5) << "no [A] was needed for its [Deflect]";
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1) << "[Deflect] was not charged";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1040,6 +1047,508 @@ TEST_F(SweepTriggersTest, Svellsongur_CountsAnAdditionalTimeEffectAgain) {
     for (const auto& da : state.delayed_abilities) if (da.source == sentinel) ++scheduled;
     // "When I hold" twice (the card's and the copy's), each two additional times.
     EXPECT_EQ(scheduled, 6);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. Follow-up (plans/09 section D)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.D2: units one effect kills together are one batch. The Ruination 742
+// ("Kill all units.") against Loyal Poro, Lonely Poro and Battle Mistress.
+TEST_F(SweepTriggersTest, KillAllEffect_UnitsItKillsDiedTogether) {
+    stockDeck(P1, 6);
+    addUnit(P1, kLoyalPoro, 1, 0);
+    addUnit(P1, kLoyalPoro, 1, 0);          // each had the other: 2 draws
+    addUnit(P1, kLonelyPoro, 1, 0);         // not alone: no draw
+    auto legend = addLegend(P2, kBattleMistress);
+    auto spell = addToHand(P2, kTheRuination);
+    int legend_abilities = 0;
+    TrashWatcher p1;                         // passes; counts nothing useful here
+    struct Counter : AgentInterface {
+        GameObjectId legend = kInvalidId;
+        int* seen = nullptr;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            int n = 0;
+            for (const auto& ci : st.chain.items) if (ci.source == legend) ++n;
+            *seen = std::max(*seen, n);
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+            return legal.empty() ? Intent{} : legal.front();
+        }
+    } p2;
+    p2.legend = legend;
+    p2.seen = &legend_abilities;
+    const int before = handSize(P1);
+    playThroughEngine(spell, &p1, std::nullopt, &p2);
+    EXPECT_EQ(handSize(P1) - before, 2) << "two Loyal Poros that died together; the Lonely Poro did not die alone";
+    EXPECT_EQ(legend_abilities, 1) << "\"one or more enemy units die\": once";
+}
+
+// 9.D4: the mulligan's recycle is announced, once for the cards set aside.
+TEST_F(SweepTriggersTest, Mulligan_AnnouncesTheRecycleOnce) {
+    stockDeck(P1, 6);
+    auto a = addToHand(P1, kLoyalPoro);
+    auto b = addToHand(P1, kLoyalPoro);
+    auto karma = addUnit(P1, kKarmaChanneler, 2, -1);
+    int announced = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.what_changed == "recycled_main") ++announced;
+    });
+    EnginePathAgent agent(EnginePathAgent::choosing(karma));
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(Intent::mulligan(P1, {a, b}));
+        e.testHook_runChain();
+    }, &agent);
+    conn.disconnect();
+    EXPECT_EQ(announced, 1);
+    EXPECT_TRUE(inDeck(P1, a) && inDeck(P1, b));
+    EXPECT_EQ(obj(karma).buff_count, 1) << "\"When you recycle one or more cards to your Main Deck\"";
+}
+
+// 9.D4 / 9.D10: a card played in response goes through the callback the engine
+// installs (ChainManager::setPlayCard), and a play that adds no chain item is
+// not offered again in that priority window.
+TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayIsNotReoffered) {
+    auto source = addUnit(P1, kInvalidId, 2, -1);
+    auto reaction = addToHand(P2, kDecreeOfInsight);
+    ChainManager cm(state, events, card_db);
+    std::vector<Intent> played;
+    cm.setPlayCard([&](const Intent& i) { played.push_back(i); });   // adds no chain item
+    cm.addAbility(source, P1, kInvalidId);
+    int p2_asked = 0, p2_offered_play = 0;
+    Intent play;
+    play.type = IntentType::PlayReaction;
+    play.player = P2;
+    play.card = reaction;
+    cm.processFEPR(
+        [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
+            if (p == P2) {
+                ++p2_asked;
+                for (const auto& i : legal)
+                    if (i.type == IntentType::PlayReaction) { ++p2_offered_play; return i; }
+            }
+            return Intent::passPriority(p);
+        },
+        [](const ChainItem&) {},
+        [](const ChainItem&) {},
+        [&](PlayerId p) {
+            std::vector<Intent> out{Intent::passPriority(p)};
+            if (p == P2) out.push_back(play);
+            return out;
+        });
+    ASSERT_EQ(played.size(), 1u) << "the play went to the engine's play path, once";
+    EXPECT_EQ(played[0].card, reaction);
+    EXPECT_EQ(p2_offered_play, 1) << "it did not happen, so it is not offered again";
+    EXPECT_EQ(p2_asked, 2) << "asked again without it, and passed";
+    EXPECT_TRUE(inHand(P2, reaction)) << "the bare fallback path did not run";
+}
+
+// 9.D4: the same through the real engine — a [Reaction] spell played in
+// response is played like any other card: Feral Strength 357's [Repeat] [2]
+// is offered and paid as it is played (only the engine's play path does that).
+TEST_F(SweepTriggersTest, ReactionPlay_ThroughTheEngineIsAFullPlay) {
+    constexpr CardDefId kFeralStrength = 357;   // "[Reaction] [Repeat] [2] Give a unit +2 [M] this turn."
+    auto target = addUnit(P2, kInvalidId, 3, 0);
+    auto first = addToHand(P1, kDredgeUp);
+    stockDeck(P1, 2);
+    auto reaction = addToHand(P2, kFeralStrength);
+    state.player(P2).rune_pool.energy = card_db.get(kFeralStrength).energy_cost + 2;
+    struct Responder : AgentInterface {
+        GameObjectId card = kInvalidId, target = kInvalidId;
+        int repeat_prompts = 0;
+        Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+            for (const auto& i : legal)
+                if (i.type == IntentType::PlayReaction && i.card == card &&
+                    (i.targets.empty() || i.targets.front() == target)) return i;
+            for (const auto& i : legal)
+                if (i.type == IntentType::MakeChoice && !i.chosen_objects.empty() &&
+                    i.chosen_objects.front() == target) return i;
+            for (const auto& i : legal)
+                if (i.type == IntentType::MakeChoice && i.chosen_value && *i.chosen_value == 1) {
+                    ++repeat_prompts;
+                    return i;
+                }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+            return legal.empty() ? Intent{} : legal.front();
+        }
+    } p2;
+    p2.card = reaction;
+    p2.target = target;
+    playThroughEngine(first, nullptr, std::nullopt, &p2);
+    EXPECT_TRUE(inTrash(P2, reaction));
+    EXPECT_EQ(state.player(P2).cards_played_this_turn, 1);
+    EXPECT_GE(p2.repeat_prompts, 1) << "[Repeat] was offered as the card was played";
+    EXPECT_EQ(state.player(P2).rune_pool.energy, 0) << "its cost and the Repeat cost were paid";
+    EXPECT_EQ(obj(target).temp_might_bonus, 4) << "the effect was repeated";
+}
+
+// 9.D7: Stacked Deck 183 says "Put 1 into your hand" — not a draw.
+TEST_F(SweepTriggersTest, StackedDeck_PuttingACardIntoHandIsNotADraw) {
+    EXPECT_NE(card_db.get(kStackedDeck).ability_text.find("Put 1 into your hand"),
+              std::string::npos);
+    stockDeck(P1, 4);
+    auto spell = addToHand(P1, kStackedDeck);
+    const int draws = state.player(P1).draws_this_turn;
+    int drawn_events = 0;
+    auto conn = events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
+        if (e.player == P1) drawn_events += e.count;
+    });
+    playThroughEngine(spell);
+    conn.disconnect();
+    EXPECT_EQ(handSize(P1), 1) << "one card was put into hand";
+    EXPECT_EQ(state.player(P1).draws_this_turn, draws);
+    EXPECT_EQ(drawn_events, 0);
+}
+
+// 9.D9: a token is its registered token card when its play is announced, and
+// so is an additional copy.
+TEST_F(SweepTriggersTest, CreateToken_TheTokenCardIsSetBeforeThePlayIsAnnounced) {
+    addUnit(P1, kZilean, 5, 0);
+    std::vector<CardDefId> seen;
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        auto c = events.on_token_created.connect([&](const TokenCreatedEvent& ev) {
+            seen.push_back(e.mutableState().getObject(ev.object).card_def_id);
+        });
+        e.testHook_executor().createToken(P1, CardType::Unit, "Shadow Clone", 0, {},
+                                          KeywordSet{}, base(P1), false, {}, kShadowCloneCard);
+        c.disconnect();
+    }, &yes);
+    ASSERT_EQ(seen.size(), 2u) << "the token and Zilean's additional copy";
+    EXPECT_EQ(seen[0], kShadowCloneCard);
+    EXPECT_EQ(seen[1], kShadowCloneCard);
+}
+
+// 9.D11: a prompt line that lists cards from a deck by name is for the player
+// being asked only; one that lists units on the board is for both.
+TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
+    auto weaver = addUnit(P1, kFateWeaver, 3, 0);
+    stockDeck(P1, 2);
+    auto spell = addToDeck(P1, kDeathFromBelow);
+    const std::string name = obj(spell).name;
+    int private_lines = 0, leaked = 0;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("TGT_PROMPT") == std::string::npos) return;
+        if (e.message.find(name) == std::string::npos) return;
+        if (e.visibleTo(P1) && !e.visibleTo(P2)) ++private_lines; else ++leaked;
+    });
+    EnginePathAgent agent(EnginePathAgent::choosing(spell));
+    fireTriggerThroughEngine(weaver, TriggerType::WhenYouPlayMe, &agent);
+    conn.disconnect();
+    EXPECT_GE(private_lines, 1);
+    EXPECT_EQ(leaked, 0);
+
+    // Units on the board: public.
+    auto vex = addUnit(P1, kVexMocking, 5, 0);
+    (void)vex;
+    auto bramble = addUnit(P1, kRedBrambleback, 0, 0);
+    int public_lines = 0, hidden_lines = 0;
+    auto conn2 = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("TGT_PROMPT") == std::string::npos) return;
+        (e.isPublic() ? public_lines : hidden_lines)++;
+    });
+    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, 0); e.testHook_runChain(); });
+    conn2.disconnect();
+    (void)bramble;
+    EXPECT_GE(public_lines, 1);
+    EXPECT_EQ(hidden_lines, 0);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 16. Second follow-up (plans/09 section H)
+// ═══════════════════════════════════════════════════════════════════════════
+
+constexpr CardDefId kTKillBuffKill = 1099;   // test spell, see below
+
+// A spell that opens one death batch over the enemy units at battlefield 0,
+// kills the first, buffs the second and then kills it too — all in one block,
+// with the batch still open (what 9.H1 guards against).
+class TKillBuffKill : public SpellCard {
+public:
+    const CardDef& def() const override {
+        static const CardDef d = [] {
+            CardDef c;
+            c.id = kTKillBuffKill;
+            c.name = "Test Kill Buff Kill";
+            c.card_type = CardType::Spell;
+            return c;
+        }();
+        return d;
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        std::vector<GameObjectId> units;
+        for (const auto& [id, o] : ctx.state.objects)
+            if (o.isUnit() && o.controller != ctx.controller && o.location.has_value())
+                units.push_back(id);
+        std::sort(units.begin(), units.end());
+        if (units.size() < 2) return;
+        DeathBatch together(ctx.executor, units);
+        ctx.executor.killObject(units[0]);
+        ctx.executor.buffUnit(units[1]);             // the survivor changes
+        ctx.executor.killObject(units[1]);           // ... and dies later, batch still open
+    }
+};
+
+class SweepTriggersCardTest : public SweepTriggersTest {
+protected:
+    void SetUp() override {
+        SweepTriggersTest::SetUp();
+        card_registry.registerCard(kTKillBuffKill, std::make_unique<TKillBuffKill>());
+        card_db.buildFromClasses(card_registry);
+    }
+};
+
+// 9.H1: a unit listed in a batch that survives, is changed and dies later
+// gets last-known information from when it died, not from the batch.
+TEST_F(SweepTriggersCardTest, DeathBatch_ASurvivorThatChangedIsSnapshottedAfresh) {
+    auto first = addUnit(P2, kInvalidId, 2, 0);
+    auto second = addUnit(P2, kInvalidId, 2, 0);
+    ASSERT_LT(first, second);
+    auto spell = addToHand(P1, kTKillBuffKill);
+    playThroughEngine(spell);
+    ASSERT_FALSE(obj(first).location.has_value());
+    ASSERT_FALSE(obj(second).location.has_value());
+    // The first died with the second beside it.
+    EXPECT_EQ(obj(first).last_known.other_friendly_units_here,
+              std::vector<GameObjectId>{second});
+    // The second died later: buffed, and alone.
+    EXPECT_EQ(obj(second).last_known.buff_count, 1);
+    EXPECT_TRUE(obj(second).last_known.other_friendly_units_here.empty());
+}
+
+// 9.H2 (NOT A DEFECT, CR 420.4.a.1 / 420.4.b): when the first card played is
+// countered, Astral Heron 831 does not trigger for it, and the card played
+// after it is the second card, not "your first card".
+TEST_F(SweepTriggersTest, AstralHeron_ACounteredFirstCardStillCountsAsPlayed) {
+    constexpr CardDefId kAstralHeron = 831;
+    auto heron = addUnit(P1, kAstralHeron, 0, 0);
+    auto second = addToHand(P1, kDredgeUp);
+    // The first card was played and countered: it was never announced as
+    // played, but it was the first card of the turn.
+    state.player(P1).cards_played_this_turn = 2;
+    obj(second).card_counters["__play_ordinal"] = 2;
+    obj(second).card_counters["__play_ordinal_turn"] = state.turn.turn_number + 1;
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, second);
+    EXPECT_TRUE(state.player(P1).cost_modifiers.empty());
+}
+
+// 9.H3: "play a Gold gear token exhausted" — exhausted when its play is
+// announced, for Bloodharbor Ripper 746 and Card Sharp 403.
+TEST_F(SweepTriggersTest, GoldToken_PlayedExhaustedIsExhaustedWhenAnnounced) {
+    constexpr CardDefId kBloodharborRipper = 746, kCardSharp = 403;
+    auto legend = addLegend(P1, kBloodharborRipper);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    auto sharp = addToHand(P1, kCardSharp);
+    state.player(P1).rune_pool.energy = 1 + card_db.get(kCardSharp).energy_cost;
+    state.player(P1).rune_pool.universal_power = card_db.get(kCardSharp).power_cost;
+    int announced = 0, ready_when_announced = 0;
+    EnginePathAgent yes1(EnginePathAgent::script({1})), yes2(EnginePathAgent::script({1}));
+    withEngine([&](GameEngine& e) {
+        auto conn = events.on_token_created.connect([&](const TokenCreatedEvent& ev) {
+            if (ev.card_type != CardType::Gear) return;
+            ++announced;
+            if (!e.mutableState().getObject(ev.object).is_exhausted) ++ready_when_announced;
+        });
+        Intent act;
+        act.type = IntentType::ActivateAbility;
+        act.player = P1;
+        act.ability_source = legend;
+        act.targets = {unit};
+        e.testHook_executeIntent(act);
+        EXPECT_EQ(announced, 1) << "Bloodharbor Ripper";
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = sharp;
+        play.play_location = LocationId{BaseLocation{P1}};
+        e.testHook_executeIntent(play);
+        conn.disconnect();
+    }, &yes1, &yes2);
+    EXPECT_EQ(announced, 4) << "the Ripper's, then Card Sharp: mine, theirs, and mine again";
+    EXPECT_EQ(ready_when_announced, 0);
+}
+
+// ... unless "your tokens enter ready" replaces how it enters (CR 184.1).
+TEST_F(SweepTriggersTest, GoldToken_EntersExhaustedYieldsToTokensEnterReady) {
+    GameObjectId plain = kInvalidId, replaced = kInvalidId;
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        plain = exec.createToken(P1, CardType::Gear, "Gold", 0, {}, KeywordSet{}, base(P1),
+                                 false, {}, kGoldGearCardDefId, /*enters_exhausted=*/true);
+        e.mutableState().player(P1).tokens_enter_ready = true;
+        replaced = exec.createToken(P1, CardType::Gear, "Gold", 0, {}, KeywordSet{}, base(P1),
+                                    false, {}, kGoldGearCardDefId, /*enters_exhausted=*/true);
+    });
+    EXPECT_TRUE(obj(plain).is_exhausted);
+    EXPECT_FALSE(obj(replaced).is_exhausted);
+}
+
+// 9.H4: an ability used in response that adds nothing to the chain (a rune's
+// Add) is not a pass — twelve of them, then a real response, in one window.
+TEST_F(SweepTriggersTest, PriorityWindow_CostOnlyActivationsAreNotPasses) {
+    auto source = addUnit(P1, kInvalidId, 2, -1);
+    auto rune = addUnit(P1, kInvalidId, 0, -1);
+    auto reaction = addToHand(P1, kDecreeOfInsight);
+    ChainManager cm(state, events, card_db);
+    int activations = 0, plays = 0;
+    cm.setActivateAbility([&](const Intent&) { ++activations; return false; });   // cost-only
+    cm.setPlayCard([&](const Intent&) { ++plays; cm.addAbility(source, P1, kInvalidId); });
+    cm.addAbility(source, P1, kInvalidId);
+    Intent tap;
+    tap.type = IntentType::ActivateReactionAbility;
+    tap.player = P1;
+    tap.ability_source = rune;
+    Intent play;
+    play.type = IntentType::PlayReaction;
+    play.player = P1;
+    play.card = reaction;
+    constexpr int kTaps = 12;
+    cm.processFEPR(
+        [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
+            if (p == P1 && plays == 0) {
+                const IntentType want = activations < kTaps ? IntentType::ActivateReactionAbility
+                                                            : IntentType::PlayReaction;
+                for (const auto& i : legal) if (i.type == want) return i;
+            }
+            return Intent::passPriority(p);
+        },
+        [](const ChainItem&) {},
+        [](const ChainItem&) {},
+        [&](PlayerId p) {
+            std::vector<Intent> out{Intent::passPriority(p)};
+            if (p == P1) { out.push_back(tap); out.push_back(play); }
+            return out;
+        });
+    EXPECT_EQ(activations, kTaps);
+    EXPECT_EQ(plays, 1) << "the window was still open for the real response";
+    EXPECT_TRUE(state.chain.items.empty());
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 17. The move travels with its trigger (plans/09 section I)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.I2 / 9.I3: Lillia, Fae Fawn 644 moves twice before either "When I move"
+// resolves — a Sprite where each move started, not two at the second origin.
+TEST_F(SweepTriggersTest, MoveTrigger_TwoMovesGiveEachTriggerItsOwnOrigin) {
+    constexpr CardDefId kLilliaFaeFawn = 644;
+    auto lillia = addUnit(P1, kLilliaFaeFawn, 3, -1);
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        exec.moveToBattlefield(lillia, state.battlefields[0].id);   // base -> 0
+        exec.moveToBattlefield(lillia, state.battlefields[1].id);   // 0 -> 1
+        int with_move = 0;
+        for (const auto& ci : e.mutableState().chain.items)
+            if (ci.source == lillia && ci.triggering_move.has_value()) ++with_move;
+        EXPECT_EQ(with_move, 2);
+        EXPECT_FALSE(e.mutableState().chain.move_being_announced.has_value());
+        e.testHook_runChain();
+    });
+    int in_base = 0, at_bf0 = 0, elsewhere = 0;
+    for (auto t : tokenUnits(P1)) {
+        if (obj(t).name != "Sprite") continue;
+        if (obj(t).isAtBase()) ++in_base;
+        else if (obj(t).battlefieldId() == std::optional<BattlefieldId>{state.battlefields[0].id}) ++at_bf0;
+        else ++elsewhere;
+    }
+    EXPECT_EQ(in_base, 1) << "the first move started in base";
+    EXPECT_EQ(at_bf0, 1) << "the second move started at battlefield 0";
+    EXPECT_EQ(elsewhere, 0);
+}
+
+// 9.I1: Fae Porter 446 — "the same battlefield" is where the move ended, read
+// from the trigger, with the Porter already gone from it when it is finalized.
+TEST_F(SweepTriggersTest, MoveTrigger_FaePorterUsesTheDestinationOfItsMove) {
+    constexpr CardDefId kFaePorter = 446;
+    auto porter = addUnit(P1, kFaePorter, 2, -1);
+    auto ally = addUnit(P1, kInvalidId, 2, -1);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        exec.moveToBattlefield(porter, state.battlefields[1].id);
+        // It leaves the battlefield before its trigger is finalized.
+        auto& p = e.mutableState().getObject(porter);
+        p.location = LocationId{BaseLocation{P1}};
+        p.zone = ZoneType::Base;
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_EQ(obj(ally).battlefieldId(), std::optional<BattlefieldId>{state.battlefields[1].id});
+    EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
+}
+
+// Akali, Deadly Weapon 808: "a battlefield I moved to or from" are the ends
+// of that move, also after she has moved on.
+TEST_F(SweepTriggersTest, MoveTrigger_AkaliChoosesAtTheEndsOfThatMove) {
+    constexpr CardDefId kAkali = 808;
+    auto akali = addUnit(P1, kAkali, 3, 0);
+    auto left_behind = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(left_behind));
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        exec.moveToBase(akali);                    // 0 -> base: only battlefield 0 qualifies
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_EQ(obj(left_behind).damage_marked, 1);
+    EXPECT_TRUE(agent.wasOffered(left_behind));
+}
+
+// A move trigger cannot resolve without its move (9.I3: no silent default).
+TEST_F(SweepTriggersTest, MoveTrigger_WithoutAMoveIsAnError) {
+    constexpr CardDefId kLilliaFaeFawn = 644;
+    auto lillia = addUnit(P1, kLilliaFaeFawn, 3, 0);
+    EXPECT_THROW(fireTriggerThroughEngine(lillia, TriggerType::WhenIMove), std::logic_error);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 18. Third follow-up (plans/09 9.J5, 9.K2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.J5: only something on the board can be killed (CR 429.2.a) — a unit that
+// was banished as it died is not killed a second time.
+TEST_F(SweepTriggersTest, KillObject_AUnitBanishedOnDeathIsNotKilledAgain) {
+    auto unit = addUnit(P1, kLoyalPoro, 1, 0);
+    obj(unit).banish_if_would_die_this_turn = true;      // "If it would die this turn, banish it instead."
+    int left = 0, died = 0;
+    auto c1 = events.on_left_board.connect([&](const LeftBoardEvent& e) { if (e.object == unit) ++left; });
+    auto c2 = events.on_unit_died.connect([&](const UnitDiedEvent& e) { if (e.object == unit) ++died; });
+    resolveThroughEngine([&](EffectExecutor& exec, GameState& live) {
+        exec.killObject(unit);
+        EXPECT_EQ(live.getObject(unit).zone, ZoneType::Banishment);
+        EXPECT_FALSE(live.getObject(unit).location.has_value());
+        // Had it kept a location by mistake, only the zone would tell: the
+        // guard is "not on the board", whatever zone that is.
+        exec.killObject(unit);
+    });
+    c1.disconnect(); c2.disconnect();
+    EXPECT_EQ(left, 1);
+    EXPECT_EQ(died, 0) << "banished instead of dying";
+    const auto& banished = state.player(P1).banishment;
+    EXPECT_EQ(std::count(banished.begin(), banished.end(), unit), 1);
+    EXPECT_EQ(obj(unit).zone, ZoneType::Banishment);
+}
+
+// 9.K2: a survivor of an open batch that was only GIVEN a keyword since, and
+// then dies in it, is taken afresh: its last-known keywords include the grant.
+TEST_F(SweepTriggersTest, DeathBatch_ASurvivorGivenAKeywordIsSnapshottedAfresh) {
+    auto first = addUnit(P2, kInvalidId, 2, 0);
+    auto second = addUnit(P2, kInvalidId, 2, 0);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        DeathBatch together(exec, {first, second});
+        exec.killObject(first);
+        exec.giveTemporaryKeyword(second, Keyword::Ganking, 0);
+        exec.killObject(second);
+    });
+    ASSERT_FALSE(obj(second).location.has_value());
+    EXPECT_TRUE(obj(second).last_known.keywords.has(Keyword::Ganking));
+    EXPECT_TRUE(obj(second).last_known.other_friendly_units_here.empty());
+    EXPECT_EQ(obj(first).last_known.other_friendly_units_here, std::vector<GameObjectId>{second});
 }
 
 }  // namespace

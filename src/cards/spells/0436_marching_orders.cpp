@@ -19,6 +19,10 @@ namespace {
 class MarchingOrders : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [3]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 3}};
+    }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true};
@@ -62,9 +66,12 @@ public:
         ctx.executor.dealDamage(b, might_a, a);
         ctx.executor.dealDamage(a, might_b, b);
         // Collect-then-kill (AoE invariant).
-        for (auto id : {a, b})
-            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, std::vector<GameObjectId>{a, b});   // they die at the same time
+            for (auto id : {a, b})
+                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
+                    ctx.executor.killObject(id);
+        }
         ctx.events.logTrace("MARCHING ORDERS: mutual Might damage between friendly + enemy");
     }
 private:

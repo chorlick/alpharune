@@ -51,18 +51,19 @@ public:
             ctx.state.chain.resuming->resume_point == 7)
             return;   // waiting for the agent
         // The payment covers this play only.
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         counters.erase("__akshan_paid");
         if (target_gear == kInvalidId) return;
+
+        // "You control it until I leave the board." Reverts to the original
+        // owner via GameEngine::revertLapsedControl once this Akshan is gone —
+        // so nothing is taken, and nothing is detached, if I already left.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
 
         // Detach it from whatever it was equipped to (it moves zones).
         const bool is_equipment = isEquipment(ctx.state.getObject(target_gear));
         if (ctx.state.getObject(target_gear).attached_to.has_value())
             ctx.executor.unattachGear(target_gear);
-
-        // "You control it until I leave the board." Reverts to the original
-        // owner via GameEngine::revertLapsedControl once this Akshan is gone —
-        // so nothing is taken if I already left.
-        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.takeControlUntilSourceLeaves(target_gear, me, ctx.source);
         ctx.executor.moveToBase(target_gear);
         ctx.events.logTrace("AKSHAN: stole enemy gear until I leave the board");

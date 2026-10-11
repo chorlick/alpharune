@@ -21,13 +21,12 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         {
-            auto clone_id = ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone", 0,
+            ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone", 0,
                                  // CR 187.11: 0 Might, no tags ("Shadow Clone" is its name).
                                  std::vector<std::string>{}, KeywordSet{},
-                                 BaseLocation{ctx.controller}, /*enter_ready=*/false);
-            // Carry the Shadow Clone token card so its "When I attack" ability fires.
-            if (ctx.state.objectExists(clone_id))
-                ctx.state.getObject(clone_id).card_def_id = 955;
+                                 BaseLocation{ctx.controller}, /*enter_ready=*/false, {},
+                                 // the Shadow Clone token card ("When I attack")
+                                 /*token_card=*/955);
         }
         ctx.events.logTrace("ZED, WITHOUT A SOUND: conquer -> Shadow Clone token to base");
     }

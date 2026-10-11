@@ -37,10 +37,13 @@ public:
             return out;
         };
         auto pay_and_score = [&](const std::vector<GameObjectId>& victims) {
-            for (auto id : victims) {
-                if (!ctx.state.objectExists(id)) continue;
-                if (ctx.state.getObject(id).isGear()) ctx.executor.unattachGear(id);
-                ctx.executor.killObject(id);
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, victims);   // they die at the same time
+                for (auto id : victims) {
+                    if (!ctx.state.objectExists(id)) continue;
+                    if (ctx.state.getObject(id).isGear()) ctx.executor.unattachGear(id);
+                    ctx.executor.killObject(id);
+                }
             }
             // CR 194.1.c: scorePoints honours "can't gain points" and ends the
             // game at once at the Victory Score.

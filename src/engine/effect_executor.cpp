@@ -3,6 +3,7 @@
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "engine/deck_ops.h"
+#include "engine/trash_replacement.h"
 #include "cards/card_helpers.h"
 
 #include <algorithm>
@@ -186,14 +187,48 @@ static PlayerId killerOf(const GameState& state, const GameObject& obj) {
     return theirs >= own ? other : obj.controller;
 }
 
+// What an effect applied to a unit changes about it, Might and keywords it was
+// GIVEN included ("this turn" grants, buffs, Empowered). The computed totals
+// (current_might, the keyword set with auras folded in) are left out on
+// purpose: another unit of the batch dying can take an aura away mid-batch,
+// and that must not look like the unit was changed.
+static uint64_t deathBatchStamp(const GameObject& obj) {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.damage_marked)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_might_bonus)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_buff_count)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_assault_value)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_shield_value)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_deflect_value)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.empowered)));
+    mix(obj.temp_keywords.bits);
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.buff_count)));
+    mix(obj.is_stunned ? 1 : 0);
+    mix(static_cast<uint64_t>(obj.controller));
+    mix(obj.attachments.size());
+    if (obj.location.has_value()) {
+        mix(obj.location->index() + 1);
+        if (auto bf = obj.battlefieldId()) mix(static_cast<uint64_t>(*bf) + 17);
+    }
+    return h;
+}
+
 void EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
     for (auto id : units) {
         if (!state_.objectExists(id) || !state_.getObject(id).location.has_value()) continue;
         state_.getObject(id).last_known.batch_pending = false;
         snapshotLastKnown(id);
         state_.getObject(id).last_known.batch_pending = true;
+        state_.getObject(id).last_known.batch_stamp = deathBatchStamp(state_.getObject(id));
     }
 }
+
+DeathBatch::DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units)
+    : executor_(executor), units_(std::move(units)) {
+    executor_.beginDeathBatch(units_);
+}
+DeathBatch::~DeathBatch() { executor_.endDeathBatch(units_); }
 
 void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units) {
     for (auto id : units)
@@ -206,7 +241,10 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
     auto& lk = obj.last_known;
     // Taken with the rest of its batch while they were all on the board
     // (beginDeathBatch): that is the state "as it died" for every one of them.
-    if (lk.batch_pending && lk.valid) return;
+    // A unit that survived its batch and was changed since (buffed, moved,
+    // stunned, damaged again) is not "as it was then": take it afresh.
+    if (lk.batch_pending && lk.valid && lk.batch_stamp == deathBatchStamp(obj)) return;
+    lk.batch_pending = false;
     lk.valid = true;
     lk.stunned = obj.is_stunned;
     lk.location = obj.location;
@@ -235,10 +273,10 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
 void EffectExecutor::killObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
-    if (obj.zone == ZoneType::Trash) return; // already dead
-    // CR 429.2.a: only something on the board can be killed. A dead token
-    // sits in Banishment, a bounced unit in a hand — killing either again
-    // would announce a second death.
+    // CR 429.2.a: only something on the board can be killed. A dead unit is
+    // in a trash, a dead token or a unit banished as it died (Smite, Endless
+    // Riches) in Banishment, a bounced unit in a hand — killing any of them
+    // again would announce a second death. The test is the board, not a zone.
     if (!onBoard(obj)) return;
     events_.logTrace("EFFECT: kill " + obj.name + " (id=" + std::to_string(target) + ")");
     // Last-known information for "When I die" (CR 383.2.c.3.b).
@@ -326,6 +364,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         obj.combat_designation = CombatDesignation::None;
         if (!is_token) {
             state_.player(obj.owner).trash.push_back(target);
+            settleInTrash(state_, events_, target);
         } else {
             events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
                              " (id=" + std::to_string(target) + ")");
@@ -364,6 +403,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         obj.location = std::nullopt;
         if (!is_token) {
             state_.player(obj.owner).trash.push_back(target);
+            settleInTrash(state_, events_, target);
         } else {
             events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
                              " (id=" + std::to_string(target) + ")");
@@ -484,38 +524,9 @@ int EffectExecutor::payableAnyPower(PlayerId player) const {
 
 bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
     if (amount <= 0) return true;
-    if (payableAnyPower(player) < amount) return false;
-    auto& ps = state_.player(player);
-    auto take = [&amount](int& from) {
-        int n = std::min(from, amount);
-        from -= n;
-        amount -= n;
-    };
-    take(ps.rune_pool.universal_power);
-    for (int di = 0; di < static_cast<int>(Domain::Count); ++di) take(ps.rune_pool.power[di]);
-    if (amount <= 0) return true;
-    // Recycle runes, exhausted ones first (they have nothing else to give).
-    LocationId base{BaseLocation{player}};
-    std::vector<GameObjectId> runes;
-    for (auto& [id, obj] : state_.objects)
-        if (obj.isRune() && obj.controller == player &&
-            obj.location.has_value() && *obj.location == base) runes.push_back(id);
-    std::stable_sort(runes.begin(), runes.end(), [&](GameObjectId a, GameObjectId b) {
-        return state_.getObject(a).is_exhausted > state_.getObject(b).is_exhausted;
-    });
-    for (auto rid : runes) {
-        if (amount <= 0) break;
-        auto& rune = state_.getObject(rid);
-        rune.location = std::nullopt;
-        rune.zone = ZoneType::RuneDeck;
-        rune.is_exhausted = false;
-        ps.rune_deck.insert(ps.rune_deck.begin(), rid);
-        ps.power_spent_this_turn++;
-        events_.emit(LeftBoardEvent{rid, player, CardType::Rune, base,
-                                    ZoneType::RuneDeck, false});
-        --amount;
-    }
-    return amount <= 0;
+    // The one payment rule (engine/resource_payment.h): floating Power, then
+    // runes recycled from the base, exhausted ones first.
+    return resource::pay(state_, events_, player, 0, amount, Domain::Count);
 }
 
 bool EffectExecutor::burnOut(PlayerId player) {
@@ -1162,6 +1173,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
             ps.hand.erase(it);
             state_.getObject(to_discard).zone = ZoneType::Trash;
             ps.trash.push_back(to_discard);
+            settleInTrash(state_, events_, to_discard);
             discarded.push_back(to_discard);
         }
     }
@@ -1190,6 +1202,7 @@ void EffectExecutor::applyDiscard(PlayerId player, GameObjectId card_id) {
     ps.hand.erase(it);
     obj.zone = ZoneType::Trash;
     ps.trash.push_back(card_id);
+    settleInTrash(state_, events_, card_id);
     ps.has_discarded_this_turn = true;
     events_.emit(CardsDiscardedEvent{player, {card_id}});
     events_.emit(ObjectStateChangedEvent{card_id, "discarded"});
@@ -1592,7 +1605,8 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
                                           const std::vector<std::string>& tags,
                                           KeywordSet keywords, LocationId location,
                                           bool enter_ready,
-                                          const std::vector<LocationId>& location_choices) {
+                                          const std::vector<LocationId>& location_choices,
+                                          CardDefId token_card, bool enters_exhausted) {
     if (token_depth_ == 0) last_tokens_.clear();
     const bool asked_enter_ready = enter_ready;
     auto id = state_.createObject();
@@ -1603,6 +1617,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     obj.card_type = type;
     obj.super_type = SuperType::Token;
     obj.is_token = true;   // CR 185.1 intrinsic
+    obj.card_def_id = token_card;
     obj.name = name;
     obj.base_might = might;
     obj.current_might = might;
@@ -1619,7 +1634,10 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
         (state_.player(controller).units_enter_ready_this_turn ||
          state_.player(controller).otherUnitsEnterReady(obj.id)))
         enter_ready = true;
-    obj.is_exhausted = !enter_ready && type == CardType::Unit; // units enter exhausted unless ready
+    // Units enter exhausted unless ready; anything enters exhausted when its
+    // instruction says so and "your tokens enter ready" does not replace that.
+    obj.is_exhausted = (!enter_ready && type == CardType::Unit) ||
+                       (enters_exhausted && !state_.player(controller).tokens_enter_ready);
 
     if (std::holds_alternative<BaseLocation>(location)) {
         obj.zone = ZoneType::Base;
@@ -1660,7 +1678,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
             events_.logTrace("TOKEN: an additional copy of " + name + " is played");
             ++token_depth_;
             createToken(controller, type, name, might, tags, keywords, copy_at,
-                        asked_enter_ready, location_choices);
+                        asked_enter_ready, location_choices, token_card, enters_exhausted);
             --token_depth_;
         }
     }

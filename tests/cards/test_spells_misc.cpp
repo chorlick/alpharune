@@ -453,7 +453,11 @@ TEST_F(BulletTimeTest, OnlyEnemiesAtTargetedBF_AreHit) {
     EffectExecutor exec(state, events, card_db);
     driveSpellWithTargets(state, events, exec, card_registry, src,
         kBulletTime, P1, {e_bf0_a},
-        [](const std::vector<Intent>& legal) { return pickXSlot(legal, 1); });
+        // Bullet Time names a battlefield (pickMode), then asks X: battlefield
+        // #0 first, then X = 1 (the card text chooses no unit).
+        [n = 0](const std::vector<Intent>& legal) mutable {
+            return pickXSlot(legal, n++ == 0 ? 0 : 1);
+        });
 
     EXPECT_EQ(state.getObject(e_bf0_a).damage_marked, 1);
     EXPECT_EQ(state.getObject(e_bf0_b).damage_marked, 1);
@@ -513,9 +517,11 @@ TEST_F(BulletTimeTest, ElderDragonSynergy_X1_WipesAllEnemiesAtBF) {
     Card* card = card_registry.get(kBulletTime);
     CardContext ctx{state, events, exec, P1, src};
     card->onResolve(ctx, {big1});  // anchor — uses BF#0
+    // Bullet Time names a battlefield first (#0), then asks X (1).
+    int prompt = 0;
     while (exec.hasPendingChoice()) {
         auto pending = exec.consumePendingChoice();
-        exec.recordChoice(pickXSlot(pending.legal, 1));
+        exec.recordChoice(pickXSlot(pending.legal, prompt++ == 0 ? 0 : 1));
         card->onResolve(ctx, {big1});
     }
     state.chain.resuming.reset();
@@ -764,6 +770,8 @@ TEST_F(LilliaFaeFawnTest, OnMoveCreatesSpriteTokenWithTemporary) {
     Card* c = card_registry.get(kLilliaFaeFawn);
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->triggerType(), TriggerType::WhenIMove);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     c->onTrigger(ctx, {});
 
     EXPECT_EQ(countTokensNamed(state, P1, "Sprite"), 1);

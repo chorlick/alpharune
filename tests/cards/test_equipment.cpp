@@ -114,16 +114,23 @@ protected:
         return id;
     }
 
-    /// Wrapper: equip `gear` to `unit`, return success flag.
-    bool runEquip(GameObjectId gear, GameObjectId unit, EffectExecutor& exec) {
-        Card* c = card_registry.get(state.getObject(gear).card_def_id);
-        if (!c) return false;
-        CardContext ctx{state, events, exec, state.getObject(gear).controller, gear};
-        return c->onEquip(ctx, unit);
+    /// Activate `gear`'s Equip on `unit` through the engine (the intent the
+    /// generator emits, GameEngine::payAndQueueAbility); true if it is now
+    /// attached to `unit`. `exec` is unused: the engine uses its own. This
+    /// used to call Card::onEquip directly, with no registry on the context.
+    bool runEquip(GameObjectId gear, GameObjectId unit, EffectExecutor& /*exec*/) {
+        Intent equip;
+        equip.type = IntentType::ActivateAbility;
+        equip.player = state.getObject(gear).controller;
+        equip.ability_source = gear;
+        equip.targets = {unit};
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(equip); },
+                   nullptr, nullptr, equip.player);
+        return state.getObject(gear).attached_to == std::optional<GameObjectId>{unit};
     }
 
     /// Add enough ready runes of `domain` (and a few generic) to pay any
-    /// reasonable equip cost. The standardEquip helper exhausts ready runes
+    /// reasonable equip cost. The Equip payment exhausts ready runes
     /// for energy and recycles a matching-domain rune for power.
     void giveRunesForEquip(PlayerId owner, Domain domain, int extra_energy = 0) {
         // Always have at least one matching-domain rune for the recycle cost.

@@ -966,6 +966,8 @@ TEST_F(C6Test, ArachnoidHorror_CanBePlayedWhereAnEnemyUnitIsAlone) {
 
 // ── 680 Elder Dragon ────────────────────────────────────────────────────────
 
+// (The choice only: nothing dies here. "Damage first, kills in a second pass"
+// — 07 item 7.36 — is VerifyCardsTest.ElderDragon_DamagesEveryChosenUnitBeforeAnyDies.)
 TEST_F(C6Test, ElderDragon_ChoosesUpToOnePerLocation) {
     auto dragon = addUnit(P1, kElderDragon, 0, 0);
     auto base_a = vanilla(P2, 5);

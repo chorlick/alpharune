@@ -136,7 +136,7 @@ Engine facts traced for this batch (so the findings below are not re-derived):
   - Text: "Buffs give an additional +1 [M] to friendly units this turn."
   - Code: only the single buff.
   - Scenario: three buffed friendly units should each have +1 more this turn; they do not.
-- [ ] **146 Wallop / 207 Call to Glory** - `spells/0146_wallop.cpp:22-29`, `spells/0207_call_to_glory.cpp:20-25` [documented] medium
+- [x] **146 Wallop / 207 Call to Glory** - `spells/0146_wallop.cpp:22-29`, `spells/0207_call_to_glory.cpp:20-25` [documented] medium — FIXED (sweep-costs): "spend a buff ... ignore this spell's cost" is an additional cost chosen before payment (`PlayCostAdjust::ignore_cost`); test: SweepCostsTest.Wallop_SpendingABuffIgnoresTheCost, SweepCostsTest.CallToGlory_SpendingABuffIgnoresTheCost
   - Text: "As you play this, you may spend a buff as an additional cost. If you do, ignore this spell's cost."
   - Code: not implemented; always full cost.
   - Scenario: a player with a buffed unit and no Energy cannot play either spell.

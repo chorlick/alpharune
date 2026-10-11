@@ -29,6 +29,7 @@ public:
                     return u.controller != ctx.controller && u.battlefieldId() == my_bf;
                 });
         }
+        std::sort(legal.begin(), legal.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Ahri, Inquisitive: give an enemy unit here -2 [M]",
                                           legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
@@ -49,6 +50,8 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Mind};
+        // Tags as printed on SFD-227 (cards/raw/gallery_raw.json): the Spiritforged
+        // reprint is not a copy of the Origins def — OGN-119 (card 119) also prints Ionia.
         d.tags = {R"RB(Ahri)RB"};
         d.energy_cost = 3;
         d.power_cost = 1;

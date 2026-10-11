@@ -1040,11 +1040,17 @@ TEST_F(ReviewFixC1Test, MightOfDemacia_CountsUnitsAtTheConqueredBattlefield) {
     addUnit(P1, kInvalidId, 2, 1);                               // the conquest
     for (int i = 0; i < 4; ++i) addToDeck(P1, kInvalidId);
     state.player(P1).battlefields_scored_this_turn.insert(0);
-    bfCard(0);
+    auto held = bfCard(0);
     auto conquered = bfCard(1);
 
     fireTriggerThroughEngine(garen, TriggerType::WhenIConquer, nullptr, conquered);
     EXPECT_EQ(handSize(P1), 0) << "one unit at that battlefield";
+
+    // 9.B10: `== 0` alone also held for a legend that never draws. Conquering
+    // the battlefield that has the 4 units draws the 2.
+    fireTriggerThroughEngine(garen, TriggerType::WhenIConquer, nullptr, held);
+    EXPECT_EQ(handSize(P1), 2) << "4+ units at that battlefield: draw 2";
+    EXPECT_EQ(deckSize(P1), 2);
 }
 
 TEST_F(ReviewFixC1Test, ProdigalExplorer_IsAReactionWithAGate) {

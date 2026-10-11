@@ -437,18 +437,41 @@ TEST_F(C3Test, TricksyTentacles_MovesSeveralUnitsWithinTheMightBudgetToOneLocati
         EXPECT_TRUE(i.chosen_objects.empty() || i.chosen_objects.front() != big);
 }
 
+// Corrected (sweep-costs, 8.9): the Repeat is now offered — its cost is the
+// card's declaration (Card::repeatCosts) — so there is one prompt, and
+// declining it keeps the hand.
 TEST_F(C3Test, SquareUp_DoesNotForceADiscard) {
     // "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn." The
     // discard is the Repeat's cost; the base effect used to demand it.
     auto spell = addToHand(P1, kSquareUp);
     auto keep = addToHand(P1, kSkulker);
     auto unit = addUnit(P1, kInvalidId, 2, 0);
-    StepAgent agent;
+    StepAgent agent{V(0)};   // decline the Repeat
     playAt(spell, {unit}, &agent);
-    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(agent.missed, 0);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "only the Repeat offer";
     EXPECT_TRUE(inHand(P1, keep));
     EXPECT_TRUE(state.getObject(unit).hasKeyword(Keyword::Assault));
     EXPECT_EQ(state.getObject(unit).assault_value, 4);
+}
+
+TEST_F(C3Test, SquareUp_RepeatIsPaidWithADiscard) {
+    auto spell = addToHand(P1, kSquareUp);
+    auto fodder = addToHand(P1, kSkulker);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    StepAgent agent{V(1)};   // pay the Repeat
+    playAt(spell, {unit}, &agent);
+    EXPECT_EQ(agent.missed, 0);
+    EXPECT_FALSE(inHand(P1, fodder)) << "the discard is the Repeat's cost";
+    EXPECT_EQ(state.getObject(unit).assault_value, 8) << "the effect ran twice";
+
+    // With nothing to discard the Repeat is not offered.
+    auto again = addToHand(P1, kSquareUp);
+    auto other = addUnit(P1, kInvalidId, 2, 0);
+    StepAgent none;
+    playAt(again, {other}, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_EQ(state.getObject(other).assault_value, 4);
 }
 
 TEST_F(C3Test, CurtainCall_TargetFitsTheModeAndALaterCastStartsFresh) {
@@ -506,6 +529,15 @@ TEST_F(C3Test, RallyTheTroops_DoesNotBuffAnOpponentsUnit) {
     playThroughEngine(spell);
     auto theirs = addToHand(P2, kSkulker);
     playThroughEngine(theirs);
+    // 9.B7: nothing showed the opponent's unit was played at all (a play that
+    // never happened leaves buff_count at 0 too), nor that the rider was live.
+    EXPECT_FALSE(inHand(P2, theirs));
+    ASSERT_TRUE(onBoard(theirs)) << "the opponent's unit reached the board";
+    EXPECT_EQ(state.getObject(theirs).controller, P2);
+    EXPECT_EQ(state.getObject(theirs).buff_count, 0);
+    auto mine = addToHand(P1, kSkulker);
+    playThroughEngine(mine);
+    EXPECT_EQ(state.getObject(mine).buff_count, 1) << "the rider is live: a friendly unit is buffed";
     EXPECT_EQ(state.getObject(theirs).buff_count, 0);
 }
 
@@ -676,7 +708,9 @@ TEST_F(C3Test, SkywardStrike_MovesWhereChosenAndAtLevelSixAlsoStuns) {
 
 TEST_F(C3Test, KeepersVerdict_TheOwnerChoosesTopOrBottom) {
     auto spell = addToHand(P1, kKeepersVerdict);
-    auto victim = addUnit(P2, kInvalidId, 3, 0);
+    // A real card: a unit with no card behind it is a token, and a token's
+    // owner is not asked (it ceases to exist, CR 183.1).
+    auto victim = addUnit(P2, 175, 3, 0);   // Shipyard Skulker
     addToDeck(P2, kInvalidId);
     addToDeck(P2, kInvalidId);
     StepAgent p1{O(victim)};

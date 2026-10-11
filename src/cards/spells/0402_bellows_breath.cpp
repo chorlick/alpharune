@@ -15,6 +15,10 @@ namespace {
 class BellowsBreath : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [1][B]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 1, .power = 1, .power_domain = Domain::Mind}};
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 3, .must_be_unit = true, .optional = true};
     }
@@ -66,10 +70,13 @@ public:
         for (auto t : hit) {
             if (ctx.state.objectExists(t)) ctx.executor.dealDamage(t, 1, ctx.source);
         }
-        for (auto t : hit) {
-            if (ctx.state.objectExists(t) &&
-                ctx.state.getObject(t).hasLethalDamage()) {
-                ctx.executor.killObject(t);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, hit);   // they die at the same time
+            for (auto t : hit) {
+                if (ctx.state.objectExists(t) &&
+                    ctx.state.getObject(t).hasLethalDamage()) {
+                    ctx.executor.killObject(t);
+                }
             }
         }
         ctx.events.logTrace("BELLOWS BREATH: dealt 1 to " +

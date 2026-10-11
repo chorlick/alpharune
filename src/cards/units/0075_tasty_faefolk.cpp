@@ -14,7 +14,7 @@ namespace {
 class TastyFaefolk : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.channelRunes(ctx.controller, 2, true);
         ctx.executor.drawCards(ctx.controller, 1);
     }

@@ -15,6 +15,10 @@ namespace {
 class PiercingLight : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [2][R]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 2, .power = 1, .power_domain = Domain::Fury}};
+    }
     // "Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
     // The two slots differ: the first must be at a battlefield, the second is
     // any other unit (a base unit included) and may be left out. The location

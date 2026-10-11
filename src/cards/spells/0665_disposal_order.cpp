@@ -58,9 +58,15 @@ public:
         }
         auto& ri = *ri_opt;
         while (ri.resume_data.size() <= kCountSlot) ri.resume_data.push_back(0);
+        // The ids picked so far follow the count. Read by index: the loop above
+        // guarantees size() > kCountSlot, which the compiler could not see
+        // through an iterator-range constructor (GCC 13 -Wfree-nonheap-object,
+        // a false positive: the range was never negative).
         auto picked = [&]() {
-            return std::vector<GameObjectId>(ri.resume_data.begin() + kCountSlot + 1,
-                                             ri.resume_data.end());
+            std::vector<GameObjectId> out;
+            for (size_t i = kCountSlot + 1; i < ri.resume_data.size(); ++i)
+                out.push_back(static_cast<GameObjectId>(ri.resume_data[i]));
+            return out;
         };
         auto candidates = [&]() {
             const auto have = picked();

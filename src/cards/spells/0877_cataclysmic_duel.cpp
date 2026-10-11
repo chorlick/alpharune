@@ -78,7 +78,10 @@ public:
         std::sort(doomed.begin(), doomed.end());
         ctx.events.logTrace("CATACLYSMIC DUEL: killing " + std::to_string(doomed.size()) +
                             " unchosen unit(s)");
-        for (auto id : doomed) ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, doomed);   // they die at the same time
+            for (auto id : doomed) ctx.executor.killObject(id);
+        }
     }
 private:
     const CardDef def_ = [] {

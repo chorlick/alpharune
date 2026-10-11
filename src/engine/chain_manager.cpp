@@ -1,3 +1,4 @@
+#include "engine/trash_replacement.h"
 #include "chain_manager.h"
 
 #include "effect_executor.h"
@@ -285,6 +286,16 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     PlayerId current = first_priority;
 
     constexpr int kMaxPriorityPasses = 10; // safety (2 players × some margin)
+    // Plays that were chosen in this window and did not happen. They are not
+    // offered again: choosing one changes nothing, so asking again with the
+    // same options would only repeat it.
+    std::vector<Intent> failed_plays;
+    // An ability used in response that puts nothing on the chain (a rune's
+    // Add, CR 164.2) is not a pass: the player keeps priority and the window
+    // goes on, however many of them are used. The bound only stops an
+    // activation that keeps being chosen without ever changing anything.
+    constexpr int kMaxCostOnlyActivations = 512;
+    int cost_only_activations = 0;
 
     for (int pass = 0; pass < kMaxPriorityPasses; ++pass) {
         state_.turn.priority_holder = current;
@@ -295,6 +306,12 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         auto actions = gen_closed_actions
             ? gen_closed_actions(current)
             : generateClosedStateActions(current);
+        if (!failed_plays.empty())
+            actions.erase(std::remove_if(actions.begin(), actions.end(),
+                [&](const Intent& a) {
+                    return std::find(failed_plays.begin(), failed_plays.end(), a) !=
+                           failed_plays.end();
+                }), actions.end());
 
         // Query agent
         auto chosen = query_agent(current, actions);
@@ -332,7 +349,11 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             if (state_.chain.next_id != before)
                 return true; // Item added → restart FEPR from Finalize
             // The play did not happen (its cost could not be paid after all):
-            // the same player keeps priority and chooses again.
+            // the same player keeps priority and chooses again, without it.
+            // (An activated ability that adds no item is different: a
+            // cost-only ability — a rune's Add — has done its work, and is
+            // offered again only while it is still legal.)
+            failed_plays.push_back(chosen);
         } else if (chosen.type == IntentType::PlayReaction) {
             // No engine attached (a ChainManager driven on its own): the bare
             // mechanics — leave the zone, pay the printed cost, go on the chain.
@@ -410,7 +431,9 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
                 return true;   // item added → restart FEPR from Finalize
             }
             // No chain item (cost-only effect or nothing happened): the same
-            // player keeps priority and chooses again.
+            // player keeps priority and chooses again. This did not use up one
+            // of the window's passes.
+            if (++cost_only_activations <= kMaxCostOnlyActivations) --pass;
         }
     }
 
@@ -484,7 +507,10 @@ void ChainManager::abandonChain(const std::string& why) {
         obj.zone = ZoneType::Trash;
         obj.location = std::nullopt;
         const PlayerId home = obj.owner != PlayerId::None ? obj.owner : item.controller;
-        if (!obj.isToken()) state_.player(home).trash.push_back(item.source);
+        if (!obj.isToken()) {
+            state_.player(home).trash.push_back(item.source);
+            settleInTrash(state_, events_, item.source);
+        }
     }
     state_.chain.items.clear();
     state_.chain.resuming.reset();
@@ -592,6 +618,7 @@ void ChainManager::stepResolve(
                 state_.player(home).cards_banished_this_turn++;
             } else {
                 state_.player(home).trash.push_back(resolved.source);
+                settleInTrash(state_, events_, resolved.source);
             }
 
             events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});

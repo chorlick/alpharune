@@ -15,34 +15,32 @@ namespace {
 class BulletTime : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_at_battlefield = true};
-    }
-    // The battlefield is named by a unit there, chosen as the spell is
-    // played; X is asked as it resolves. Nothing is paid or dealt before both
-    // are known: the callback is re-entered from the top with each answer.
-    bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId target_unit;
-        if (!targets.empty()) {
-            target_unit = targets[0];
-        } else {
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            target_unit = pickTarget(ctx, "Bullet Time", legal);
-        }
-        if (target_unit == kInvalidId) return;
-        if (!ctx.state.objectExists(target_unit)) return;
-        auto& tgt = ctx.state.getObject(target_unit);
-        if (!tgt.isAtBattlefield()) return;
-        auto bf_id_opt = tgt.battlefieldId();
-        if (!bf_id_opt.has_value()) return;
-        auto bf_id = *bf_id_opt;
+    // "... to all enemy units at a battlefield": a battlefield is chosen, not
+    // a unit there — no Deflect is owed, nothing is "chosen", and a
+    // battlefield may be named whatever stands on it. It is chosen as the
+    // spell is played (CR 355); X is asked as it resolves. Nothing is paid or
+    // dealt before both are known: the callback is re-entered from the top
+    // with each answer.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const auto& bfs = ctx.state.battlefields;
+        const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        std::vector<std::string> labels;
+        for (int i = 0; i < n; ++i)
+            labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+                ? ctx.state.getObject(bfs[i].card_object_id).name
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+        const int mode = pickMode(ctx, "Bullet Time: battlefield", n, labels);
+        if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield
+        if (finalizingChoices(ctx)) return;  // choices end here (CR 355)
+        const BattlefieldId bf_id = bfs[mode].id;
 
         // "Pay any amount of [A]": up to all the Power the controller can
         // pay — floating Power plus every rune in base, ready or exhausted
-        // (CR 164.2.b).
-        const int max_x = ctx.executor.payableAnyPower(ctx.controller);
+        // (CR 164.2.b). pickXAmount publishes one int-coded MakeChoice per X
+        // and the action vocabulary has 16 int slots (0..15), so X is capped
+        // at 15.
+        const int max_x = std::min(ctx.executor.payableAnyPower(ctx.controller), 15);
         int x = pickXAmount(ctx, "Bullet Time: X power", 0, max_x);
         if (x < 0) return;  // pending choice
         if (x == 0) {

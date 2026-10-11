@@ -85,7 +85,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: only onEquip is implemented; nothing sets `PlayerState::bonus_damage_dealt` (the field dealDamage reads), so the effect text does nothing.
   - Scenario: equipped Deathcrown, controller casts a 2-damage spell -> deals 2, not 5.
 
-- [ ] **809 Endless Riches** - `gear/0809_endless_riches.cpp:50` [confirmed] high
+- [x] **809 Endless Riches** - `gear/0809_endless_riches.cpp:50` [confirmed] high — FIXED (sweep-costs): cards of every type are offered from the trash at their own cost (`generateTrashReplayActions`), and `settleInTrash` (`engine/trash_replacement.h`) banishes what would go to the trash from anywhere but the Main Deck (kills, discards, resolved / countered spells, removed facedown cards); test: SweepCostsTest.EndlessRiches_CardsArePlayedFromTheTrashAtTheirOwnCost, SweepCostsTest.EndlessRiches_WhatWouldGoToTheTrashIsBanishedExceptFromTheDeck
   - Text: "You may play cards from your trash. If a card would go to your trash from anywhere other than your Main Deck, banish it instead."
   - Code: sets `may_play_from_trash` and `trash_goes_to_banish`, but neither flag is read anywhere in src/ (only reset in recalculateAuras).
   - Scenario: player plays Endless Riches -> hand and trash banished, draw phase skipped, 7 cards burned to trash, and none of them can be played; the player is locked out of cards for the rest of the game.
@@ -161,7 +161,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: nothing adds the Mech tag to the bearer (no hook in the card, no engine handling of the effect_text).
   - Scenario: equipped unit is ignored by Mechanized Menace, Rumble Hotheaded, Bubble Bot, Breakneck Mech and "Your Mechs each have".
 
-- [ ] **294 Daughter of the Void / 506 Fire Below the Mountain / 786 Scorn of the Moon** - `legends/0294_daughter_of_the_void.cpp:24`, `legends/0506_fire_below_the_mountain.cpp:24`, `legends/0786_scorn_of_the_moon.cpp:22` [confirmed; 506 and 786 documented] medium
+- [x] **294 Daughter of the Void / 506 Fire Below the Mountain / 786 Scorn of the Moon** - `legends/0294_daughter_of_the_void.cpp:24`, `legends/0506_fire_below_the_mountain.cpp:24`, `legends/0786_scorn_of_the_moon.cpp:22` [confirmed; 506 and 786 documented] medium — FIXED (sweep-costs): restricted pools `RunePool::spell_power` / `gear_power` / `showdown_energy`, spent only for the matching `SpendFor` (`engine/resource_payment.h`); test: SweepCostsTest.RestrictedPower_SpellOnlyPaysForSpellsOnly, SweepCostsTest.RestrictedPower_GearOnlyPaysForGearAndGearAbilities, SweepCostsTest.RestrictedEnergy_ShowdownOnlyIsUnusableOutsideAShowdown
   - Text: "Use only to play spells." / "Use only to play gear or use gear abilities." / "Spend this Energy only during showdowns."
   - Code: plain addFloatingUniversalPower / addFloatingEnergy with no spend restriction (only unit-only Energy has a restricted pool).
   - Scenario: Kai'Sa's [A] pays for a unit; Ornn's [A] pays for a spell; Diana's [1] is spent in the main phase.
@@ -211,6 +211,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Text: "Your units here have [Ganking]."
   - Code: "here" is read from the gear's own location, which only GameEngine::moveUnit keeps in step with the bearer; executor.moveToBase / moveToBattlefield do not move attachments.
   - Scenario: bearer is moved by an effect -> the aura stays at the old battlefield.
+  - verify-cards: the carry-over finding "the hook grants Ganking here but the def has no such sentence" is NOT A DEFECT: the sentence is the Equipment's `effect_text`; pinned by VerifyCardsTest.Pin_Shurelya509_UnitsWhereTheBearerIsHaveGanking; clarified in gear/0509_shurelya_s_requiem.cpp
 
 ## Systemic
 - S2: 490 Altar of Memories, 256 Unforgiven, 746 Bloodharbor Ripper, 254 Blind Monk, 864 Tools of Empire
@@ -220,7 +221,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
 - S4: 430 Warmog's Armor, 254 Blind Monk, 297 Radiant Dawn
   - c1: ALREADY FIXED by 02 item 2.14 (`buffUnit` places a Buff only on a unit without one); none of the three prints "if it was buffed this way".
 - S5: 460 Edge of Night, 636 Frigid Jewel, 297 Radiant Dawn, 315 Dark Child - Starter, 471 Last Rites (equip cost), 554 Grandmaster at Arms (which Equipment)
-  - c1: 460, 636, 297 FIXED (`pickTarget` + `kFinalizeTrigger`; tests: ReviewFixC1Test.EdgeOfNight_TheControllerChoosesTheUnitHere, PerTurnTest.FrigidJewel_BuffsAFriendlyUnitOnSecondDraw, ReviewFixC1Test.RadiantDawn_TheControllerChoosesTheUnitToBuff); 471 and 554 FIXED (see their entries). 315 Dark Child NOT A DEFECT as a choice: an exhausted rune is worth the same whatever its Domain (ready it gives [1]; it is recycled for Power ready or exhausted, CR 164.2.b) and readying fewer is never better — the pick was made independent of map order; test: ReviewFixC1Test.DarkChild_ReadiesTwoRunes.
+  - c1: 460, 636, 297 FIXED (`pickTarget` + `kFinalizeTrigger`; tests: ReviewFixC1Test.EdgeOfNight_TheControllerChoosesTheUnitHere, PerTurnTest.FrigidJewel_BuffsAFriendlyUnitOnSecondDraw, ReviewFixC1Test.RadiantDawn_TheControllerChoosesTheUnitToBuff); 471 and 554 FIXED (see their entries). 315 Dark Child NOT A DEFECT as a choice: an exhausted rune is worth the same whatever its Domain (ready it gives [1]; it is recycled for Power ready or exhausted, CR 164.2.b) and readying fewer is never better — the pick was made independent of map order; test: ReviewFixC1Test.DarkChild_ReadiesTwoRunes. Pinned by VerifyCardsTest.Pin_Batch01_DarkChild315_ReadiesTwoRunesWithoutAsking; clarified in legends/0315_dark_child_starter.cpp (comment in `onTrigger`).
 - S6: 490 Altar of Memories (pickMode after pickTarget -> always "top")
   - c1: ALREADY FIXED by 03 item 3.1 (helpers compose in any order); test: EnginePathTest.DeathTriggerWithMayTargetAndModeResolvesThroughTheEngine.
 

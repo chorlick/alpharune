@@ -14,7 +14,7 @@ namespace {
 class KogMawCaustic : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "Deal 4 to all units at MY battlefield": the battlefield I died at
         // (last-known location, CR 383.2.c.3.b). Dying anywhere else (base)
         // there is no such battlefield and nothing is dealt.
@@ -32,10 +32,13 @@ public:
             }
             for (auto id : to_damage)
                 ctx.executor.dealDamage(id, 4, ctx.source);
-            for (auto id : to_damage) {
-                if (ctx.state.objectExists(id) &&
-                    ctx.state.getObject(id).hasLethalDamage()) {
-                    ctx.executor.killObject(id);
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, to_damage);   // they die at the same time
+                for (auto id : to_damage) {
+                    if (ctx.state.objectExists(id) &&
+                        ctx.state.getObject(id).hasLethalDamage()) {
+                        ctx.executor.killObject(id);
+                    }
                 }
             }
         }

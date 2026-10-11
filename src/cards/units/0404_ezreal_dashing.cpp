@@ -46,6 +46,8 @@ public:
     }
 
     // ── "I don't deal combat damage." ──
+    // The engine calls this once per (card, controller), so the loop visits
+    // each Ezreal of that controller once and gives each one effect.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;

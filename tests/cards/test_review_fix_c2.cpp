@@ -1188,7 +1188,8 @@ TEST_F(ReviewFixC2Test, BulletTime_XCountsReadyRunesAndPaysThroughTheEngine) {
     auto e2 = addUnit(P2, kInvalidId, 9, 0);
     for (int i = 0; i < 3; ++i) addRune(P1, Domain::Body);   // all ready
 
-    EnginePathAgent agent(script({O(e1), V(3)}));
+    // "all enemy units at a battlefield": the battlefield is a mode, no unit is chosen.
+    EnginePathAgent agent(script({V(0), V(3)}));
     playThroughEngine(addToHand(P1, kBulletTime), &agent);
     EXPECT_EQ(state.getObject(e1).damage_marked, 3);
     EXPECT_EQ(state.getObject(e2).damage_marked, 3);
@@ -1277,9 +1278,17 @@ TEST_F(ReviewFixC2Test, HandBuiltUnitChoicesSkipAnUnchoosableEnemyUnit) {
     EXPECT_FALSE(star.wasOffered(baron)) << "Falling Star";
     EXPECT_TRUE(star.wasOffered(plain));
 
-    EnginePathAgent shot;
+    // 9.B6: nothing showed Angle Shot prompted at all, so "Baron not offered"
+    // held for a spell that asked nothing. It has an Equipment to move and a
+    // friendly unit to choose, and must offer that unit.
+    auto equipment = addGear(P1);
+    state.getObject(equipment).tags.push_back("Equipment");
+    EnginePathAgent shot(EnginePathAgent::choosing(mine));
     playThroughEngine(addToHand(P1, kAngleShot), &shot);
     EXPECT_FALSE(shot.wasOffered(baron)) << "Angle Shot";
+    EXPECT_TRUE(shot.wasOffered(mine)) << "Angle Shot offers the units that can be chosen";
+    EXPECT_TRUE(shot.wasOffered(equipment));
+    EXPECT_EQ(state.getObject(equipment).attached_to, std::optional<GameObjectId>{mine});
 
     // Whirlwind: each player chooses; Baron's own controller may pick it, the
     // caster may not.

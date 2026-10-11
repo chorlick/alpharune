@@ -47,12 +47,13 @@ public:
         for (auto cid : revealed) {
             if (!ctx.state.objectExists(cid)) continue;
             const auto& c = ctx.state.getObject(cid);
-            // Private reveal to the controller.
+            // "Reveal the top 5 cards": both players see them, as the deck
+            // bookkeeping above already records (knowledge::everyone()).
             ctx.events.emit(CardRevealedEvent{
                 /*card=*/cid,
                 /*card_def_id=*/c.card_def_id,
                 /*owner=*/c.owner,
-                /*revealed_to_all=*/false,
+                /*revealed_to_all=*/true,
                 /*revealed_to=*/ctx.controller,
                 /*source_zone=*/ZoneType::MainDeck,
             });

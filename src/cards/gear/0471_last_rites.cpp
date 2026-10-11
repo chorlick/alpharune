@@ -21,12 +21,17 @@ public:
     // the chain, so which two cards are recycled is a direct agent decision
     // (EffectExecutor::chooseObjectNow).
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
+    // "[Equip] — [P], Recycle 2 cards from your trash".
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .power = 1, .power_domain = Domain::Chaos};
+    }
+    bool canPayEquipExtraCost(const GameState& state, PlayerId controller, GameObjectId,
+                              GameObjectId) const override {
+        return state.player(controller).trash.size() >= 2;
+    }
+    bool payEquipExtraCost(CardContext& ctx, GameObjectId) override {
         auto& ps = ctx.state.player(ctx.controller);
-        if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
         if (ps.trash.size() < 2) return false;
-        if (!payableOnePower(ctx.state, ctx.controller, Domain::Chaos)) return false;
-
         GameObjectId last_recycled = kInvalidId;
         for (int i = 0; i < 2; ++i) {
             std::vector<GameObjectId> in_trash(ps.trash.begin(), ps.trash.end());
@@ -41,7 +46,7 @@ public:
         // "When you recycle one or more cards to your Main Deck" (once).
         if (last_recycled != kInvalidId)
             ctx.events.emit(ObjectStateChangedEvent{last_recycled, "recycled_main"});
-        return standardEquip(ctx, ctx.source, unit, /*energy=*/0, Domain::Chaos);
+        return true;
     }
 
     // Equipped: "When I conquer or hold, you may play a unit from your trash.

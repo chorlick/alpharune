@@ -27,7 +27,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "[E]: Attach an Equipment you control to a unit you control."
   - Code: candidates require `!obj.attached_to.has_value()`. CR 435.1.f: attaching an attached card detaches it from its current bearer, and `attachFree` already handles that.
   - Scenario: your only Equipment is attached to unit A -> `equips` is empty, the legend is exhausted and nothing happens; the Equipment can never be moved to unit B.
-- [ ] **29 Falling Star / 466 Switcheroo / 334 Angle Shot / 187 Whirlwind** - `spells/0029_falling_star.cpp:26-31`, `spells/0466_switcheroo.cpp:25-29,35-39`, `spells/0334_angle_shot.cpp:27-31`, `spells/0187_whirlwind.cpp:24-29` [confirmed] medium
+- [x] **29 Falling Star / 466 Switcheroo / 334 Angle Shot / 187 Whirlwind** - `spells/0029_falling_star.cpp:26-31`, `spells/0466_switcheroo.cpp:25-29,35-39`, `spells/0334_angle_shot.cpp:27-31`, `spells/0187_whirlwind.cpp:24-29` [confirmed] medium — FIXED (verified in the code by sweep-verify-cards): all four build their unit lists with `chooseableUnits` (Angle Shot also filters the Equipment; Whirlwind offers per choosing player through `offerableChoices` and pays Deflect with `commitChosenObject`); test: ReviewFixC2Test.HandBuiltUnitChoicesSkipAnUnchoosableEnemyUnit, ReviewFixC2Test.Whirlwind_ChoosingAnOpponentsDeflectUnitCostsPower, C3Test.Switcheroo_DoesNotOfferAUnitThatCannotBeChosenByEnemySpells
   - Text: each chooses "a unit".
   - Code: the hand-built candidate lists omit the `untargetable_by_enemy` filter that `Card::enumerateLegalTargets` / `chooseableUnits` apply (Challenge 128, Facebreaker 220, Strike Down 429 in this batch do filter). Whirlwind also builds raw `MakeChoice` options, so no Deflect is charged (same class as 07 item 7.30).
   - Scenario: opponent controls a "can't be chosen by enemy spells and abilities" unit (Baron Nashor) -> Falling Star deals 3 to it, Switcheroo swaps its Might, Whirlwind bounces it.
@@ -42,7 +42,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Code: not implemented (the trace line says "Gold-add bonus passive not modeled"; nothing in `gear/0326_gold.cpp` reads the score).
   - Scenario: at 5+ points, killing a Gold adds only [A], never the extra [1].
   - c0: 326 Gold — the Gold half is done: `gear/0326_gold.cpp` adds floating Energy equal to `card_counters["__gold_add_bonus_energy"]` on its controller's legend object (absent / 0 = none). Chem-Baroness 556 (c1) only has to set that counter on itself from `applyPassiveAura` while the score condition holds; test: C0Test.Gold_AddsTheLegendsBonusEnergy
-- [ ] **259 Swift Scout** - `legends/0259_swift_scout.cpp:18-20` [documented] medium
+- [x] **259 Swift Scout** - `legends/0259_swift_scout.cpp:18-20` [documented] medium — FIXED (sweep-costs): `Card::adjustHideCost` (`GameEngine::hideCostFor` / `canPayHideCost`); test: SweepCostsTest.SwiftScout_HidesForOneEnergyInsteadOfThePower
   - Text: "You may pay [1] to hide a card with [Hidden] instead of [A]."
   - Code: not implemented ("ENGINE GAP" comment); the hide cost path (`game_engine.cpp:2505`) always recycles a rune.
   - Scenario: Teemo player with one ready rune and no rune to spare for Power cannot hide a card for [1].
@@ -59,12 +59,12 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "You may banish a unit from among them ... and play it"
   - Code: when any eligible unit is in the top 5 the pick is mandatory (comment: "we always play the chosen one"); the unit is also played straight from the deck with no banish step, so banish triggers / `cards_banished_this_turn` never see it.
   - Scenario: the only eligible unit is one you would rather recycle -> it is played anyway.
-- [ ] **671 Blood Rose / 783 Piltover Enforcer / 274 Fortified Position** - `gear/0671_blood_rose.cpp:47-48`, `legends/0783_piltover_enforcer.cpp:32`, `battlefields/0274_fortified_position.cpp:25` [confirmed] low
+- [x] **671 Blood Rose / 783 Piltover Enforcer / 274 Fortified Position** - `gear/0671_blood_rose.cpp:47-48`, `legends/0783_piltover_enforcer.cpp:32`, `battlefields/0274_fortified_position.cpp:25` [confirmed] low — FIXED: all three verified in the code by sweep-verify-cards (`chooseableUnits` with no controller filter); test: C0Test.FortifiedPosition_OffersEveryUnit, ReviewFixC1Test.BloodRose_ReadiesAnyUnit, ReviewFixC1Test.PiltoverEnforcer_CanReadyAnEnemyUnit; 940 pinned by VerifyCardsTest.Pin_Batch08_MatriarchOfWar940_ReadyAUnitOffersEitherPlayers
   - Text: "Ready a unit." / "ready a unit." / "choose a unit. It gains [Shield 2] this combat."
   - Code: all three restrict the choice to friendly units. Matriarch of War (940), same "Ready a unit" wording, offers every unit.
   - Scenario: an enemy unit can never be chosen (rarely wanted, but legal by the text).
   - c0: 274 Fortified Position — FIXED: offers every chooseable unit on the board, either player's; test: C0Test.FortifiedPosition_OffersEveryUnit
-  - c2: 940 Matriarch of War — NOT A DEFECT: named only as the correct comparison ("Ready a unit." offers every unit, `enumerateLegalTargets` in `legends/0940_matriarch_of_war.cpp`); nothing to change.
+  - c2: 940 Matriarch of War — NOT A DEFECT: named only as the correct comparison ("Ready a unit." offers every unit, `enumerateLegalTargets` in `legends/0940_matriarch_of_war.cpp`); nothing to change.; pinned by VerifyCardsTest.Pin_Batch08_MatriarchOfWar940_ReadyAUnitOffersEitherPlayers; clarified in legends/0940_matriarch_of_war.cpp
   - c1: 671 Blood Rose, 783 Piltover Enforcer — FIXED: any unit on the board can be chosen (Blood Rose also had no target list of its own, so its ability was never offered); test: ReviewFixC1Test.BloodRose_ReadiesAnyUnit, ReviewFixC1Test.PiltoverEnforcer_CanReadyAnEnemyUnit. 274 Fortified Position is not in c1's range.
 - [x] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low — FIXED: when both cards are kept the controller chooses which goes on top; test: ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
   - Text: "[Predict 2] ... Recycle any of them and put the rest back in any order."
@@ -90,7 +90,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
 ## Systemic
 - S2: 242 Baited Hook (`targets[0]` killed and its Might read after only `objectExists`; CR 359.3.e.12 uses this exact card as the example), 152 Mistfall (`readyObject(subject)`), 555 Blade Dancer (`readyObject(chosen)` after the cost is paid), 108 Convergent Mutation (`targets[0]`)
   - c0: 242 Baited Hook — FIXED (the victim must be a unit on the board; its Might is read before the kill and kept on the chain item; a replaced death stops the ability); 152 Mistfall — FIXED (the subject must still be a unit on the board); test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit, .Mistfall_NotOfferedWithoutThePowerAndPaysFromThePool
-  - c2: 108 Convergent Mutation — ALREADY FIXED: `targets[0]` reaches the card only if it is still a legal target (on the board and friendly; `GameEngine::resolveSpell` re-validation) and `giveTemporaryMight` / the executor guard (02 item 2.28) ignore an off-board unit; the card is unchanged.
+  - c2: 108 Convergent Mutation — ALREADY FIXED: `targets[0]` reaches the card only if it is still a legal target — `GameEngine::resolveSpell` re-validates the play-time targets against `Card::enumerateLegalTargets` (a friendly unit on the board) and drops the rest, so `onResolve` gets an empty list and returns at its `targets.empty()` check before asking for the other unit. `EffectExecutor::giveTemporaryMight` is not a guard (it only checks `objectExists`); the card is unchanged; test: VerifyCardsTest.Pin_Batch08_ConvergentMutation108_AUnitThatLeftInResponseGetsNoMight (line corrected by sweep-verify-cards, 09 item 9.A25)
   - c1: 555 Blade Dancer — FIXED: readies the chosen unit only if it is still a unit on the board
 - S3: 63 Spirit's Refuge (see finding)
 - S4: 787 Voidreaver (ability 0), 278 Navori Fighting Pit, 63 Spirit's Refuge (the last two are also S1, already listed in 07)

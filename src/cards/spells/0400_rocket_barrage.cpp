@@ -15,6 +15,10 @@ namespace {
 class RocketBarrage : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [4][B]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 4, .power = 1, .power_domain = Domain::Mind}};
+    }
     // "Choose one — Deal 4 to a unit in a base. / Kill a gear."
     // The mode and then that mode's target are chosen as the spell is played
     // (CR 355), and again when the Repeat executes ("may make different

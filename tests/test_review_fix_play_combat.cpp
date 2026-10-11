@@ -763,6 +763,12 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_GoesToTheOwnersDeckAndAnnouncesLeaving
     std::vector<LeftBoardEvent> left;
     conns_.emplace_back(events.on_left_board.connect(
         [&](const LeftBoardEvent& e) { left.push_back(e); }));
+    // 9.D4: the recycle is announced ("When you recycle one or more cards").
+    int recycled_announced = 0;
+    conns_.emplace_back(events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent& e) {
+            if (e.object == gear && e.what_changed == "recycled_main") ++recycled_announced;
+        }));
 
     Intent act;
     act.type = IntentType::ActivateAbility;
@@ -780,12 +786,18 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_GoesToTheOwnersDeckAndAnnouncesLeaving
     ASSERT_EQ(left.size(), 1u);
     EXPECT_EQ(left[0].object, gear);
     EXPECT_EQ(left[0].destination, ZoneType::MainDeck);
+    EXPECT_EQ(recycled_announced, 1);
 }
 
 TEST_F(PlayCombatFixTest, RecycleSelfCost_TokenCeasesToExistInstead) {
     makeEngine();
     auto gear = onBoard(P1, kTRecycleGear);
     s().getObject(gear).super_type = SuperType::Token;
+    int recycled_announced = 0;
+    conns_.emplace_back(events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent& e) {
+            if (e.what_changed == "recycled_main") ++recycled_announced;
+        }));
 
     Intent act;
     act.type = IntentType::ActivateAbility;
@@ -795,6 +807,7 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_TokenCeasesToExistInstead) {
 
     EXPECT_EQ(s().getObject(gear).zone, ZoneType::Banishment) << "CR 183.1";
     EXPECT_TRUE(s().player(P1).main_deck.empty()) << "a token is never shuffled into a deck";
+    EXPECT_EQ(recycled_announced, 0) << "nothing was recycled into a deck";
 }
 
 // ─── 2.29: "becomes Mighty" re-arms when the unit leaves the board ──────────

@@ -24,6 +24,7 @@ public:
             if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
                 obj.location.has_value())
                 others.push_back(id);
+        std::sort(others.begin(), others.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Ribbon Dancer: give another friendly unit +1 [M]",
                                           others);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

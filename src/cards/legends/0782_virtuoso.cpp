@@ -87,6 +87,7 @@ public:
                     ownerPS.banishment.erase(it);
                     obj.zone = ZoneType::Trash;
                     ownerPS.trash.push_back(id);
+                    settleInTrash(ctx.state, ctx.events, id);
                     moved++;
                 }
             }

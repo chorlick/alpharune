@@ -38,7 +38,10 @@ public:
             std::vector<GameObjectId> doomed;
             for (PlayerId p : players)
                 if (auto units = own_units(p); !units.empty()) doomed.push_back(units.front());
-            for (auto id : doomed) ctx.executor.killObject(id);
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, doomed);   // they die at the same time
+                for (auto id : doomed) ctx.executor.killObject(id);
+            }
             return;
         }
         auto& ri = *ctx.state.chain.resuming;
@@ -66,8 +69,11 @@ public:
             return;
         }
         ri.resume_point = kDone;
-        for (auto id : ri.resume_data)
-            ctx.executor.killObject(static_cast<GameObjectId>(id));
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
+            for (auto id : ri.resume_data)
+                ctx.executor.killObject(static_cast<GameObjectId>(id));
+        }
     }
 private:
     enum : int { kAwaitCaster = 21, kAwaitOpponent = 22, kDone = 23 };

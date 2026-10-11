@@ -31,18 +31,30 @@ public:
 
         // "choose up to one enemy unit at each location": one prompt per
         // location that has a choice, each with a "None".
+        // [Deflect] (CR 809) is paid for every unit chosen, and all of it
+        // once the last pick is in: a unit is offered only if its cost can
+        // be paid on top of what the picks so far already owe. This is
+        // Card::offerableChoices with a running total, so like it (and like
+        // commitChosenObject, which pays) it asks ignoresDeflect() — false
+        // for this card, whose text does not say so.
         std::vector<GameObjectId> chosen;
+        const bool taxed = !ignoresDeflect();
+        const int payable = ctx.executor.payableAnyPower(ctx.controller);
+        int owed = 0;
         size_t slot = 7;
         for (const auto& loc : locations) {
-            const auto here = offerableChoices(ctx,
-                chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
-                    return u.controller == opp && *u.location == loc;
-                }));
+            const auto here = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                return u.controller == opp && *u.location == loc &&
+                       (!taxed ||
+                        ctx.executor.deflectCostFor(ctx.controller, u.id) <= payable - owed);
+            });
             const auto pick = selectObject(ctx, "Elder Dragon: choose up to one enemy unit here",
                                            here, slot, /*may_decline=*/true);
             slot += 2;
             if (!pick.has_value()) return;     // waiting for the agent
-            if (*pick != kInvalidId) chosen.push_back(*pick);
+            if (*pick == kInvalidId) continue;
+            chosen.push_back(*pick);
+            if (taxed) owed += ctx.executor.deflectCostFor(ctx.controller, *pick);
         }
         // Choosing is what [Deflect] taxes and what "chosen" abilities see:
         // done once, with the choices (CR 355).
@@ -63,9 +75,12 @@ public:
         // Units this 1 damage is lethal for by itself. The rest die in the
         // cleanup that follows, where "any amount of your damage is enough"
         // applies (GameEngine::processLethalDamage).
-        for (auto id : hit)
-            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, hit);   // they die at the same time
+            for (auto id : hit)
+                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
+                    ctx.executor.killObject(id);
+        }
     }
 private:
     const CardDef def_ = [] {

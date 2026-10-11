@@ -294,9 +294,19 @@ public:
     enum : unsigned { kFinalizeTrigger = 1, kFinalizeResolve = 2, kFinalizeActivate = 4 };
     virtual unsigned choicesAtFinalization() const { return 0; }
     /// True while the engine is collecting this item's finalization choices.
+    /// The marker also ends the card's cost section on every path: a cost
+    /// that costDueNow() said was due counts as paid once a run reaches it.
     static bool finalizingChoices(const CardContext& ctx);
-    /// False at resolution when the cost was already paid at finalization.
+    /// Whether the cost is still to be paid in this run. Due exactly once per
+    /// chain item: false after it was paid at finalization, and false after a
+    /// run reached the marker with it paid — also when no finalize pass ran
+    /// and a later prompt re-enters the card.
     static bool costDueNow(CardContext& ctx);
+    /// A cheap digest of what a cost payment changes (pools, zone sizes, XP,
+    /// each object's zone / exhaustion / buffs / damage). The engine compares
+    /// it across a finalize-pass run to catch a card that paid a cost and
+    /// then asked for a choice before its marker.
+    static uint64_t costStateFingerprint(const GameState& state);
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
     static bool costAlreadyPaid(const CardContext& ctx);
@@ -674,20 +684,64 @@ public:
     /// Whether this gear has an equip ability.
     virtual bool hasEquipAbility() const { return false; }
 
-    /// Pay the equip cost and attach to unit. Card handles its own cost logic.
-    /// Returns true if equip succeeded (cost paid, attached).
-    virtual bool onEquip(CardContext& ctx, GameObjectId unit) { return false; }
+    /// The cost of this gear's [Equip] ability (CR 818.1.c), as data the
+    /// engine charges: `[Equip] [1][R]` is {energy 1, power 1, Fury}. `unit`
+    /// is the unit being equipped (kInvalidId when only "could any Equip be
+    /// paid" is asked), for text that alters the cost by the choice (CR
+    /// 818.1.c.4 — Hextech Gauntlets). valid = false: no Equip cost, so it
+    /// can't be paid (CR 821.1.c.4).
+    struct EquipCost {
+        bool valid = false;
+        int energy = 0;
+        int power = 0;
+        Domain power_domain = Domain::Fury;
+        bool power_any_domain = false;   // the Power is [A]
+    };
+    virtual EquipCost equipCost(const GameState& /*state*/, PlayerId /*controller*/,
+                                GameObjectId /*gear*/, GameObjectId /*unit*/) const {
+        return {};
+    }
+    /// The non-resource part of an Equip cost (CR 818.1.c.3: "Kill a friendly
+    /// unit", "Recycle 2 cards from your trash"). canPay is asked before
+    /// anything is paid; pay runs after the Energy / Power and returns false
+    /// if it could not be paid after all (the gear is then not attached).
+    virtual bool canPayEquipExtraCost(const GameState& /*state*/, PlayerId /*controller*/,
+                                      GameObjectId /*gear*/, GameObjectId /*unit*/) const {
+        return true;
+    }
+    virtual bool payEquipExtraCost(CardContext& /*ctx*/, GameObjectId /*unit*/) { return true; }
+    /// Called once this gear has been attached to `unit` by paying its Equip
+    /// cost (the Equip ability, or Weaponmaster).
+    virtual void onEquipped(CardContext& /*ctx*/, GameObjectId /*unit*/) {}
 
-    /// Whether THIS gear defers equip-time target selection to onEquip
-    /// via pickTarget. When true, generateMainPhaseActions emits ONE
-    /// equip intent per gear (no per-target enumeration), and the
-    /// engine's equip-execution path calls `onEquip(ctx, kInvalidId)`
-    /// — the Card uses `pickTarget` inside `onEquip` to resolve the
-    /// target at activation time. Mirrors `needsPlayTimeTarget` /
-    /// `needs_activation_time_target` and fixes the same action-vocab
-    /// collision class for equip intents. Default false (legacy
-    /// per-target enumeration).
-    virtual bool needsEquipTimeTarget() const { return false; }
+    /// How an Equip cost is being paid.
+    struct EquipTerms {
+        int energy_discount = 0;        // "the first gear ability each turn costs [1] less"
+        int power_discount = 0;         // Weaponmaster: "for [A] less" (CR 821.1.c)
+        bool even_if_attached = false;  // Weaponmaster: "even if it's already attached"
+    };
+    /// This gear's Equip cost for `unit` after `terms`' discounts.
+    EquipCost netEquipCost(const GameState& state, PlayerId controller, GameObjectId gear,
+                           GameObjectId unit, const EquipTerms& terms) const;
+    /// Whether `controller` could pay this gear's Equip cost to attach `gear`
+    /// to `unit` right now. An Equipment that is attached cannot activate its
+    /// own Equip (its Rules Text is Inactive — CR 718.2, 721.2) unless the
+    /// terms say so. The single gate for the Equip generator, the Equip
+    /// execution and Weaponmaster.
+    bool canPayEquip(const GameState& state, PlayerId controller, GameObjectId gear,
+                     GameObjectId unit, const EquipTerms& terms) const;
+    bool canPayEquip(const GameState& state, PlayerId controller, GameObjectId gear,
+                     GameObjectId unit) const;
+    /// Pay this gear's Equip cost and attach ctx.source to `unit`. All or
+    /// nothing; returns true if it was attached.
+    bool payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTerms& terms);
+    bool payEquipAndAttach(CardContext& ctx, GameObjectId unit);
+
+    /// This gear's Equip on `unit` at its printed terms (no discount): pay
+    /// equipCost() and attach. The engine's own Equip path is
+    /// payEquipAndAttach with GameEngine::equipTerms; an Equip intent always
+    /// names the unit.
+    bool onEquip(CardContext& ctx, GameObjectId unit);
 
     /// Trigger type that fires on the equipped UNIT (from effect_text).
     /// e.g., "When I conquer" in effect_text → WhenIConquer on the unit.
@@ -739,6 +793,100 @@ public:
                                                           PlayerId /*player*/) const {
         return optionalAdditionalCost();
     }
+
+    // ── Additional costs chosen before the cost is paid (CR 356) ──
+    // "As you play me, you may discard 1 as an additional cost. If you do,
+    // reduce my cost by [2]." / "As an additional cost to play me, kill a
+    // friendly unit." / "you may spend a buff ... If you do, ignore this
+    // spell's cost." These are chosen and paid as the card is played, BEFORE
+    // its Energy / Power cost is determined, so what they take off the cost
+    // counts toward whether the card can be played at all.
+    /// What paying such a cost takes off the card's cost.
+    struct PlayCostAdjust {
+        int energy_reduction = 0;
+        int power_reduction = 0;
+        bool ignore_cost = false;      // "ignore this spell's cost"
+    };
+    /// The card's additional cost as the play gate sees it.
+    struct AdditionalPlayCost {
+        bool exists = false;       // the card prints one that applies right now
+        bool mandatory = false;    // "As an additional cost to play me, ..." (not "you may")
+        bool payable = false;      // it can be paid right now
+        PlayCostAdjust best;       // the most paying it can take off the cost
+    };
+    /// Asked by the play gate (GameEngine::canAfford). `self` is the card
+    /// being played, still in the zone it is played from. A mandatory cost
+    /// that is not payable makes the card unplayable; an optional one is
+    /// counted toward affordability at its `best`.
+    /// Default: derived from optionalAdditionalCost() when that is a discard
+    /// with reduce_energy (Brazen Buccaneer).
+    virtual AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                                  PlayerId player, GameObjectId self) const;
+    /// Called by the engine as the card is played, after it left its zone and
+    /// before its cost is paid: make the choices (ctx.executor.confirmNow /
+    /// chooseObjectNow / discardCards), pay the additional cost, and return
+    /// what it takes off. `affordable(adj)` says whether the card's cost could
+    /// be paid with `adj` applied — an optional cost may be declined only
+    /// while `affordable` holds without it (the play was offered on the
+    /// strength of it). Only called when additionalPlayCost(...).exists and
+    /// .payable.
+    virtual PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx, const std::function<bool(const PlayCostAdjust&)>& affordable);
+
+    /// "Optional additional costs you pay cost [1] or [A] less." (Ezreal,
+    /// Prodigy): how many such discounts `self`, on its controller's board,
+    /// gives. Applies to Accelerate, Repeat and "you may pay" costs.
+    virtual int optionalCostDiscount(const GameState& /*state*/, GameObjectId /*self*/) const {
+        return 0;
+    }
+
+    // ── Repeat (CR 820) ──
+    /// One printed Repeat cost. A card with several ("[Repeat] — [1] / [A] /
+    /// [1][A]") returns each; each may be paid once (CR 820.1.c.3) and each
+    /// payment repeats the spell's effect once more.
+    struct RepeatCost {
+        int energy = 0;
+        int power = 0;
+        Domain power_domain = Domain::Count;   // Domain::Count = [A]
+        int discard_cards = 0;                 // "[Repeat] — Discard 1"
+    };
+    virtual std::vector<RepeatCost> repeatCosts() const { return {}; }
+
+    // ── Play from trash ──
+    /// "You may play me from your trash for <cost>." (Undying Legion). Asked
+    /// of a card while it is in its owner's trash; valid = true keeps a
+    /// standing play-from-trash permission at that cost (like [Flow], without
+    /// the banish).
+    struct TrashPlayCost {
+        bool valid = false;
+        int energy = 0;
+        int power = 0;
+        Domain power_domain = Domain::Fury;
+        bool any_domain = false;
+    };
+    virtual TrashPlayCost trashPlayCost(const GameState& /*state*/, PlayerId /*owner*/,
+                                        GameObjectId /*self*/) const { return {}; }
+
+    // ── Hide cost (CR 811.1.b) ──
+    /// What hiding a card costs `controller`. The engine starts from [A]
+    /// (waived by PlayerState::hide_ignoring_costs_this_turn) and asks every
+    /// card the player has in play — board and Legend Zone — to adjust it.
+    struct HideCost {
+        bool waived = false;         // nothing to pay
+        int power = 1;               // [A]
+        bool energy_instead = false; // may pay `energy` Energy instead of the [A]
+        int energy = 0;
+    };
+    virtual void adjustHideCost(const GameState& /*state*/, PlayerId /*controller*/,
+                                HideCost& /*cost*/) const {}
+
+    /// Power-side counterpart of activationCostReductionFor ("[Empower] costs
+    /// ... cost [1] or [A] less"): `unused_energy_reduction` is how much of the
+    /// Energy reduction found no Energy to take off. Default: for the Empower
+    /// ability, that much Power, up to the source's empower_cost_reduction.
+    virtual int activationPowerReductionFor(const GameState& state, PlayerId controller,
+                                            GameObjectId source, int ability_index,
+                                            int unused_energy_reduction) const;
 
     // ── Alternative play cost ──
     /// "You may play me for <alt cost> [instead of my printed cost]" when a

@@ -48,13 +48,13 @@ Engine facts traced for this batch (referenced below):
   - Text: "Move any number of enemy units with the same controller and a total Might of 8 or less to a single location."
   - Code: moves exactly one enemy unit with Might <= 8 to its own base.
   - Scenario: four enemy 2 [M] units -> only one moves, and it can only go to base, never to a battlefield.
-- [ ] **579 Square Up** - `spells/0579_square_up.cpp:18-25` [confirmed] high
+- [x] **579 Square Up** - `spells/0579_square_up.cpp:18-25` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the discard; test: C3Test.SquareUp_DoesNotForceADiscard, C3Test.SquareUp_RepeatIsPaidWithADiscard
   - Text: "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn."
   - Code: the Repeat cost is not parsed, so no repeat exists; instead `discardThenAct` makes the base resolution discard a card (mandatory whenever the hand is non-empty) and grants a single Assault 4.
   - Scenario: cast with two cards in hand -> forced to discard one for one Assault 4; the printed option (keep the cards for one effect, or discard for a second effect) is unavailable.
   - c3: FIXED the forced discard: the base effect is only "Give a unit [Assault 4] this turn"; test: C3Test.SquareUp_DoesNotForceADiscard
   - BLOCKED: the Repeat itself ("[Repeat] — Discard 1") needs a card-declared Repeat cost read by `executePlaySpell` (STATUS carry-over, chain-triggers 8.9 last bullet; assigned to sweep).
-- [ ] **743 Curtain Call** - `spells/0743_curtain_call.cpp:21-60` [confirmed] high
+- [x] **743 Curtain Call** - `spells/0743_curtain_call.cpp:21-60` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the three costs, each offered once; test: SweepCostsTest.CurtainCall_EachRepeatCostIsOfferedOnceAndRunsAnotherMode
   - Text: "[Repeat] — [1] / [A] / [1][A] (You may pay each additional cost to repeat this spell's effect.) Choose one you haven't already chosen —"
   - Code: `parseRepeatCost` rejects this text and the card has no payment or loop of its own (the engine comment says the card handles it; it does not). The spell resolves one mode only. `card_counters["curtain_call_used_mask"]` is never cleared.
   - Scenario: with [1][A] spare the player can never get a second or third mode; if the same card object is cast again later (recycled and redrawn), the mode used earlier is still masked out.
@@ -116,7 +116,7 @@ Engine facts traced for this batch (referenced below):
   - Text: "[Stun] an attacking enemy unit."
   - Code: legal targets are every enemy unit at a battlefield; a non-attacker is accepted and then silently ignored; uses `stunUnit` (self-attributed) instead of `stunUnitBy(picked, ctx.source)`.
   - Scenario: playable with no attackers on board and wasted; "when you stun" triggers of the caster never fire.
-- [x] **758 Void Assault** - `spells/0758_void_assault.cpp:28,38-48` [documented] medium — FIXED: each unit has its own destination (one prompt over the combinations) and a unit that is no longer a legal target does not stop the other; roles read from the chain item. Attacker designation: NOT A DEFECT — cleanup applies Contested for the turn player first (`GameEngine::cleanup`, CR 190.3.a loop) and `bf.attacker = bf.contested_by`; the caster can only play this on their own turn; test: C3Test.VoidAssault_EachUnitGetsItsOwnDestination
+- [x] **758 Void Assault** - `spells/0758_void_assault.cpp:28,38-48` [documented] medium — FIXED: each unit has its own destination (one prompt over the combinations) and a unit that is no longer a legal target does not stop the other; roles read from the chain item. Attacker designation: NOT A DEFECT — cleanup applies Contested for the turn player first (`GameEngine::cleanup`, CR 190.3.a loop) and `bf.attacker = bf.contested_by`; the caster can only play this on their own turn; test: C3Test.VoidAssault_EachUnitGetsItsOwnDestination; attacker designation pinned by VerifyCardsTest.Pin_Batch03_VoidAssault758_TheCasterContestsAndIsTheAttacker; clarified in spells/0758_void_assault.cpp (comment above `onResolve`)
   - Text: "Move a friendly unit, then move an enemy unit. (If they both move to a battlefield you don't control, you're the attacker.)"
   - Code: one destination for both units; attacker designation not applied; returns without moving anything if either target became illegal.
   - Scenario: cannot move the friendly unit to battlefield A and the enemy unit to its base; opponent bounces the enemy target in response -> the friendly unit is not moved either.
@@ -148,7 +148,7 @@ Engine facts traced for this batch (referenced below):
   - Text: "Counter a spell."
   - Code: `hasLegalTargets` scans the whole chain for any spell, while resolution only peeks the top.
   - Scenario: the chain is [enemy spell, triggered ability]; the counter is offered and paid for, then does nothing because the top item is an ability.
-- [x] **368 Not So Fast / 668 Repulse** - `spells/0368_not_so_fast.cpp:36`, `spells/0668_repulse.cpp:42` [plausible] low — NOT A DEFECT (any more): no triggered ability is given `targets` — every `chain_.addAbility` call in `trigger_manager.cpp` passes none and the event's subject travels in `ChainItem::triggering_subject` (07 item 7.1, 515e90b), which neither card reads; a trigger's real choices are in `chosen_objects`
+- [x] **368 Not So Fast / 668 Repulse** - `spells/0368_not_so_fast.cpp:36`, `spells/0668_repulse.cpp:42` [plausible] low — NOT A DEFECT (any more): no triggered ability is given `targets` — every `chain_.addAbility` call in `trigger_manager.cpp` passes none and the event's subject travels in `ChainItem::triggering_subject` (07 item 7.1, 515e90b), which neither card reads; a trigger's real choices are in `chosen_objects`; pinned by VerifyCardsTest.Pin_Batch03_NotSoFastAndRepulse_ATriggersSubjectIsNotAChoice; clarified in spells/0368_not_so_fast.cpp and spells/0668_repulse.cpp
   - Text: "... an enemy spell or ability that chooses a friendly unit ..."
   - Code: reads `top.targets` as choices; for a triggered ability `targets` holds the triggering event's subject (game_engine.cpp:1194), not something it chose.
   - Scenario: an enemy "when an opponent plays a unit" trigger whose subject is my unit is treated as choosing that unit and can be countered.
@@ -160,7 +160,7 @@ Engine facts traced for this batch (referenced below):
   - Text: "I cost [2] less to play from anywhere other than your hand."
   - Code: keys on `current_play_source`, which `executePlaySpell` sets only around its own `payCardCost`; effect-driven plays (`playPayingCost`, e.g. Void Rush from the deck) leave it at Hand.
   - Scenario: Void Rush plays Drag Under off the deck -> no [2] reduction.
-- [ ] **931 Death Mark** - `spells/0931_death_mark.cpp:34` [confirmed] low
+- [x] **931 Death Mark** - `spells/0931_death_mark.cpp:34` [confirmed] low — FIXED (sweep-costs): a grant's Power is paid by Domain mask (`resource::payIn`), so [A][A] may come from two Domains; test: SweepCostsTest.DeathMark_FlowPaysTwoAnyPowerFromTwoDomains
   - Text: "[Flow] [1][A][A]"
   - Code: wired correctly as `flow(1, 2, any_domain)`, but the engine's any-domain grant path tries one single domain for the whole power amount (game_engine.cpp:3437-3443, 6172-6181).
   - Scenario: one Fury rune and one Chaos rune available for power -> the Flow play is not offered.

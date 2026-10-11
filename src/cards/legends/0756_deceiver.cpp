@@ -16,6 +16,10 @@ class Deceiver : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
+    // "you may discard 1 and exhaust me to ...": the "may" opens the effect and
+    // the cost follows it at once, so both are settled as the ability is
+    // finalized (CR 383.3.a / 383.3.b) — before anyone can respond.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
 
     // "there" is the battlefield that was conquered or held: the trigger's
     // subject is that battlefield's card object.
@@ -32,7 +36,7 @@ public:
     static constexpr size_t kPhase = 7;
     static constexpr size_t kToken = 8;
     static constexpr size_t kBf = 9;
-    enum : int32_t { kConfirm = 0, kAwaitDiscard = 1, kCopy = 2, kFinished = 3 };
+    enum : int32_t { kConfirm = 0, kAwaitDiscard = 1, kCopy = 2, kFinished = 3, kPaid = 4 };
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.chain.resuming.has_value()) return;
@@ -46,17 +50,18 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& ps = ctx.state.player(ctx.controller);
         // Both halves of the cost must be payable: discard 1 and exhaust me.
+        // (Once it is paid, being exhausted no longer argues against the effect.)
         auto can_pay = [&]() {
-            return ctx.state.objectExists(ctx.source) &&
-                   !ctx.state.getObject(ctx.source).is_exhausted && !ps.hand.empty();
+            return costAlreadyPaid(ctx) || slot(kPhase) >= kCopy ||
+                   (ctx.state.objectExists(ctx.source) &&
+                    !ctx.state.getObject(ctx.source).is_exhausted && !ps.hand.empty());
         };
 
-        if (slot(kPhase) == kConfirm) {
-            // "you may discard 1 and exhaust me": optional (CR 383.3.a).
-            const int go = confirmOptional(
-                ctx, "Deceiver: discard 1 and exhaust me to play a Reflection", can_pay);
-            if (go == -1) return;           // waiting
-            if (go != 1) { slot(kPhase) = kFinished; return; }   // declined, or can't pay
+        // "you may discard 1 and exhaust me": optional (CR 383.3.a).
+        const int go = confirmOptional(
+            ctx, "Deceiver: discard 1 and exhaust me to play a Reflection", can_pay);
+        if (go == -1) return;           // waiting
+        if (go == 1 && slot(kPhase) == kConfirm) {
             std::vector<Intent> choices;
             for (auto card_id : ps.hand) choices.push_back(objChoice(ctx.controller, card_id));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
@@ -64,8 +69,7 @@ public:
             slot(kPhase) = kAwaitDiscard;
             return;
         }
-
-        if (slot(kPhase) == kAwaitDiscard) {
+        if (go == 1 && slot(kPhase) == kAwaitDiscard) {
             auto choice = ctx.executor.takeChoice();
             if (!can_pay()) { slot(kPhase) = kFinished; return; }
             GameObjectId discard = ps.hand.front();
@@ -74,9 +78,16 @@ public:
                     ps.hand.end())
                 discard = choice->chosen_objects[0];
             // Pay the cost: exhaust me, discard the chosen card.
-            ctx.executor.exhaustObject(ctx.source);
-            ctx.executor.applyDiscard(ctx.controller, discard);
+            if (costDueNow(ctx)) {
+                ctx.executor.exhaustObject(ctx.source);
+                ctx.executor.applyDiscard(ctx.controller, discard);
+            }
+            slot(kPhase) = kPaid;
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (go != 1) { slot(kPhase) = kFinished; return; }   // declined, or can't pay
 
+        if (slot(kPhase) == kPaid) {
             auto bf = scoredBattlefield(ctx.state, ctx.controller);
             LocationId loc = bf.has_value()
                 ? LocationId{BattlefieldLocation{*bf}}
@@ -92,10 +103,14 @@ public:
             slot(kBf) = bf.has_value() ? static_cast<int32_t>(*bf) + 1 : 0;
             slot(kPhase) = kCopy;
         }
+        if (slot(kPhase) != kCopy) return;
 
         // "Then do this: It becomes a copy of another unit there." Which unit
         // is the controller's choice (any controller's unit; units that can't
-        // be chosen by enemy spells and abilities are not offered).
+        // be chosen by enemy spells and abilities are not offered). "Do this"
+        // is a reflexive trigger (CR 388): it goes on the chain as this
+        // ability resolves, so its unit is chosen then, with the token in
+        // play — not when the conquer / hold ability was finalized.
         if (slot(kBf) == 0) { slot(kPhase) = kFinished; return; }
         const auto token = static_cast<GameObjectId>(slot(kToken));
         const auto bf = static_cast<BattlefieldId>(slot(kBf) - 1);

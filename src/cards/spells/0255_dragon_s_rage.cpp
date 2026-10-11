@@ -76,9 +76,12 @@ public:
         int m_other = ctx.state.getObject(other).current_might;
         ctx.executor.dealDamage(other, m_mover, mover);
         ctx.executor.dealDamage(mover, m_other, other);
-        for (auto id : {mover, other}) {
-            const auto& obj = ctx.state.getObject(id);
-            if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, std::vector<GameObjectId>{mover, other});   // they die at the same time
+            for (auto id : {mover, other}) {
+                const auto& obj = ctx.state.getObject(id);
+                if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
+            }
         }
         ctx.events.logTrace("DRAGON'S RAGE: moved + mutual-Might damage");
     }

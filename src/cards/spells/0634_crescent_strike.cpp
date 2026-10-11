@@ -30,9 +30,12 @@ public:
             if (obj.battlefieldId() == bf) hit.push_back(id);
         }
         for (auto id : hit) ctx.executor.dealDamage(id, id == main ? 4 : 1, ctx.source);
-        for (auto id : hit)
-            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, hit);   // they die at the same time
+            for (auto id : hit)
+                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
+                    ctx.executor.killObject(id);
+        }
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true,

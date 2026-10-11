@@ -745,4 +745,45 @@ TEST(PerfEngineFacts, AStateChangeKeyComparesByItsText) {
     static_assert(sizeof(StateChangeKey) <= 2 * sizeof(void*), "a key is a pointer and a length");
 }
 
+// ─── 6.2: the aura pass ─────────────────────────────────────────────────────
+
+// recalculateAuras walks every object once to clear what the last pass left
+// (it was three walks: the clear, the "can't be chosen" reset, and the fold's
+// own reset), and the rest of the pass walks the board. What a pass leaves on
+// a card that is no longer in play must still be cleared, and a card off the
+// board that a hook gives an effect to must still have it folded.
+TEST_F(PerfEngineCards, AnAuraPassClearsWhatTheLastOneLeftOnACardOffTheBoard) {
+    const GameObjectId gone = addUnit(P1, kInvalidId, 3);
+    const GameObjectId stays = addUnit(P1, kInvalidId, 3);
+    for (GameObjectId id : {gone, stays}) {
+        GameObject::AuraEffect ae;
+        ae.source = stays;
+        ae.might_bonus = 2;
+        ae.keyword = Keyword::Tank;
+        o(id).aura_effects.push_back(ae);
+        o(id).aura_might_bonus = 2;
+        o(id).aura_keywords.set(Keyword::Tank);
+        o(id).aura_no_combat_damage = true;
+        o(id).aura_bonus_damage_taken = 1;
+        o(id).untargetable_by_enemy = true;
+        o(id).empowered = 1;
+    }
+    // One of them leaves the board (to a hand) before the next pass.
+    o(gone).location = std::nullopt;
+    o(gone).zone = ZoneType::Hand;
+    state.player(P1).hand.push_back(gone);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    for (GameObjectId id : {gone, stays}) {
+        EXPECT_TRUE(o(id).aura_effects.empty()) << id;
+        EXPECT_EQ(o(id).aura_might_bonus, 0) << id;
+        EXPECT_FALSE(o(id).aura_keywords.has(Keyword::Tank)) << id;
+        EXPECT_FALSE(o(id).aura_no_combat_damage) << id;
+        EXPECT_EQ(o(id).aura_bonus_damage_taken, 0) << id;
+        EXPECT_FALSE(o(id).untargetable_by_enemy) << id;
+    }
+    EXPECT_EQ(o(gone).empowered, 0) << "Empowered does not survive leaving the board";
+    EXPECT_EQ(o(stays).empowered, 1);
+    EXPECT_EQ(o(stays).current_might, 3) << "Might recomputed without the stale bonus";
+}
+
 }  // namespace test_review_fix_perf_engine

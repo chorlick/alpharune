@@ -848,7 +848,7 @@ void GameEngine::awakenPhase() {
 
     // Ready all game objects the turn player controls (CR 315.1.b)
     auto player = state_.turn.turn_player;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
             const Card* card = obj.card_def_id != kInvalidId
                 ? card_registry_.get(obj.card_def_id) : nullptr;
@@ -879,7 +879,7 @@ void GameEngine::beginningStep() {
     // AND gear — Fading Memories (180) can grant [Temporary] to either.
     std::vector<GameObjectId> units_to_kill;
     std::vector<GameObjectId> gear_to_kill;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.keywords.has(Keyword::Temporary)) continue;
         if (obj.controller != state_.turn.turn_player) continue;
         if (!obj.location.has_value()) continue;
@@ -1296,7 +1296,7 @@ void GameEngine::doExpirationBody() {
         expireTemporaryKeywords(obj, card_db_);
     }
     // Recompute might for all units after expiration
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.isUnit() && obj.location.has_value()) {
             obj.recomputeMight();
         }
@@ -1883,7 +1883,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // Empowered, "use only if unattached", once a turn), asked of the card
     // the ability comes from, for this source.
     if (cost_card) {
-        const auto gate_abilities = cost_card->activatedAbilities();
+        auto gate_abilities = cost_card->activatedAbilities();
         int gate_idx = intent.ability_index;
         if (gate_idx < 0 || gate_idx >= static_cast<int>(gate_abilities.size())) gate_idx = 0;
         if (!cost_card->canActivateAbility(state_, intent.player)) return false;
@@ -3220,7 +3220,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
     // Reaction timing. Its controller chooses the unit as it lands.
     if (card.isGear() && card.hasKeyword(Keyword::QuickDraw)) {
         std::vector<GameObjectId> units;
-        for (auto& [uid, unit] : state_.objects) {
+        for (auto& [uid, unit] : state_.objects.onBoard()) {
             if (!unit.isUnit() || unit.controller != item.controller) continue;
             if (!unit.location.has_value()) continue;
             units.push_back(uid);
@@ -3548,7 +3548,7 @@ std::vector<DamageAssignment> lethalCascade(const GameState& state,
 bool GameEngine::anyDamageIsLethalFor(PlayerId damager) const {
     // "Any amount of your damage is enough to kill." (CR 142.4.c) — a unit
     // `damager` has in play says so through Card::anyDamageIsLethal().
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
         const Card* card = card_registry_.get(obj.card_def_id);
@@ -4656,6 +4656,7 @@ bool GameEngine::payableThroughAFinalizeChoice(
     if (!cc || cc->needsPlayTimeTarget() ||
         !(cc->choicesAtFinalization() & Card::kFinalizeResolve)) return false;
     // Only an object that takes something off the cost can change the answer.
+    bool declared = false;
     for (const auto& [id, obj] : state_.objects) {
         if (!obj.location.has_value()) continue;
         if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction <= 0 &&
@@ -4663,15 +4664,18 @@ bool GameEngine::payableThroughAFinalizeChoice(
         if (cc->mayChooseAtFinalization(state_, player, id) != Card::FinalizeChoice::Yes) continue;
         if (!(grant ? canPayTrashGrant(player, card_id, *grant, {id})
                     : canAffordChoosing(player, card_id, {id}))) continue;
-        // An object that could pay for it, by the card's own declaration.
-        // Whether the card's choices can actually be made that way — a mode
-        // or a battlefield chosen first may rule the object out — is found by
-        // making them: the play is offered only if a complete payable
-        // sequence exists. (Nothing of the probe is kept or seen; `this` is
-        // const to its callers in every way they can observe.)
-        return const_cast<GameEngine*>(this)->prePlayProbe(player, card_id, grant);
+        declared = true;
+        break;
     }
-    return false;
+    if (!declared) return false;
+    // An object that could pay for it, by the card's own declaration.
+    // Whether the card's choices can actually be made that way — a mode
+    // or a battlefield chosen first may rule the object out — is found by
+    // making them: the play is offered only if a complete payable
+    // sequence exists. (Nothing of the probe is kept or seen; `this` is
+    // const to its callers in every way they can observe. Called after the
+    // walk above, not from inside it: the probe plays on the state.)
+    return const_cast<GameEngine*>(this)->prePlayProbe(player, card_id, grant);
 }
 
 bool GameEngine::canPayTrashGrant(PlayerId player, GameObjectId card_id,
@@ -5165,7 +5169,7 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
                      toString(*bf.attacker) + " defender=" + toString(*bf.defender));
 
     // Assign combat designations to units
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf_id}})) {
         if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
         auto unit_bf = obj.battlefieldId();
         if (!unit_bf || *unit_bf != bf_id) continue;
@@ -5499,7 +5503,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     processLethalDamage();
 
     // Heal surviving units (CR 461.1.a.1)
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf_id}})) {
         if (obj.isUnit() && obj.isAtBattlefield()) {
             auto unit_bf = obj.battlefieldId();
             if (unit_bf && *unit_bf == bf_id) {
@@ -5820,6 +5824,11 @@ void GameEngine::recalculateAuras() {
         obj.cant_be_moved_by_enemy = false;                  // Jagged Cutlass
         obj.aura_cant_move_to_base = false;                  // Minotaur Reckoner
         obj.empower_cost_reduction = 0;              // Risen Altar
+        // The two below were passes of their own over every object (the fold
+        // in Step 4 cleared the first; the second ran just before the hooks).
+        // Nothing between here and there writes either.
+        obj.aura_no_combat_damage = false;
+        obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
         // Empowered is a board status (CR 442.2): it doesn't survive leaving.
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) {
             obj.empowered = 0;
@@ -5881,7 +5890,7 @@ void GameEngine::recalculateAuras() {
     // Step 1a': Equipment-granted keywords and stats. Before the card hooks,
     // so a hook whose effect depends on a keyword ("Units here with [Tank]
     // have +1 [M]") sees the ones an Equipment gives (hasKeywordInAuraPass).
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         for (auto gear_id : obj.attachments) {
             if (!state_.objectExists(gear_id)) continue;
@@ -5937,13 +5946,15 @@ void GameEngine::recalculateAuras() {
     // Cards whose continuous effect is conditional on Might: they get a second
     // hook after the fold below (Card::applyMightDependentAura).
     std::vector<std::pair<const Card*, PlayerId>> might_dependent;
-    // Reset first, in a pass of its own: a hook below may set the flag on
-    // ANOTHER object ("Your units here ... can't be chosen by enemy spells and
-    // abilities"), which a reset inside the hook loop would undo for every
-    // object the loop reaches after the hook ran.
-    for (auto& [id, obj] : state_.objects)
-        obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
-    for (auto& [id, obj] : state_.objects) {
+    // untargetable_by_enemy was reset for every object in Step 1, before any
+    // hook: a hook below may set the flag on ANOTHER object ("Your units here
+    // ... can't be chosen by enemy spells and abilities"), which a reset
+    // inside the hook loop would undo for every object the loop reaches after
+    // the hook ran.
+    // The walk is over the objects in play (the board and the Legend Zones):
+    // nothing else passes the test at the top of the body. A hook is a
+    // continuous effect; it does not move objects.
+    for (auto& [id, obj] : state_.objects.inPlay()) {
         // On-board cards AND legends (LegendZone, no location) broadcast their
         // passive auras. Without including legends, legend-sourced passives
         // (Purifier's [Assault], Wuju Master's +1 [M], etc.) never fired.
@@ -6001,7 +6012,7 @@ void GameEngine::recalculateAuras() {
         (void)card;
     };
     std::vector<GameObjectId> text_copied;
-    for (auto& [id, obj] : state_.objects)
+    for (auto& [id, obj] : state_.objects.onBoard())
         if (obj.isUnit() && obj.location.has_value() && obj.card_def_id != kInvalidId &&
             !obj.attachments.empty() && effect_executor_->textCopiesOn(id) > 0)
             text_copied.push_back(id);
@@ -6057,7 +6068,7 @@ void GameEngine::recalculateAuras() {
     // Step 3c, Equipment keywords, moved up to Step 1a'.)
 
     // "Buffs give an additional +N [M] to friendly units this turn."
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value() || obj.buff_count <= 0) continue;
         const int bonus = state_.player(obj.controller).buff_might_bonus_this_turn;
         if (bonus <= 0) continue;
@@ -6070,6 +6081,12 @@ void GameEngine::recalculateAuras() {
     // Step 4: Rebuild cached aura values on all objects
     auto foldAuras = [&]() {
         for (auto& [id, obj] : state_.objects) {
+            // No effects and not a unit on the board: the four cached values
+            // are as Step 1 left them and there is no Might to recompute.
+            // (Checked on every object, not only those in play: a hook may
+            // put an effect on a card in a hand or a trash.)
+            if (obj.aura_effects.empty() && !(obj.isUnit() && obj.location.has_value()))
+                continue;
             obj.aura_might_bonus = 0;
             obj.aura_keywords.reset();
             obj.aura_no_combat_damage = false;
@@ -6154,7 +6171,7 @@ void GameEngine::recalculateAuras() {
     }
 
     // Risen Altar: battlefield-scoped [Empower] discount lands on the units there.
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit()) continue;
         if (auto bf = obj.battlefieldId()) {
             for (auto& b : state_.battlefields)
@@ -6388,7 +6405,7 @@ void GameEngine::processLethalDamage() {
     };
 
     std::vector<GameObjectId> to_kill;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.damage_marked <= 0) continue;
 
@@ -6467,7 +6484,7 @@ void GameEngine::recallMisplacedObjects() {
     // 719.3.a; "recalled" is announced). Collected first: recalling moves
     // attachments, and the loop walks the object map.
     std::vector<GameObjectId> misplaced;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.location.has_value() || obj.is_hidden) continue;   // facedown cards stay put
         if (obj.controller == PlayerId::None) continue;
         const LocationId home{BaseLocation{obj.controller}};
@@ -7037,6 +7054,8 @@ bool GameEngine::canAffordWith(PlayerId player, GameObjectId card_obj, int extra
     int ready_total = 0;
     int matching_ready = 0;
     int matching_exhausted = 0;
+    // (The player's base, from the board index: this is asked for every card
+    // in hand at every decision — plans/06 item 6.5.)
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
@@ -7580,7 +7599,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
 }
 
 void GameEngine::healAllUnits() {
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.isUnit() && obj.damage_marked > 0 && obj.location.has_value()) {
             obj.damage_marked = 0;
         }

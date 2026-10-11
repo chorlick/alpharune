@@ -42,14 +42,30 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (conf < 1 || eq == kInvalidId) return;   // waiting / declined / none
         // Play it ignoring cost (to base; playIgnoringCost takes it out of the
-        // hand). "If you do, attach it to me" — only while I'm still on the
-        // board: an Equipment can't follow a unit that left it.
+        // hand). "If you do, then do this: Attach it to me." — a reflexive
+        // trigger (CR 388): if it was played it goes on the chain as an item
+        // of its own.
         ctx.executor.playIgnoringCost(ctx.controller, eq,
                                       LocationId{BaseLocation{ctx.controller}});
-        if (ctx.state.getObject(eq).location.has_value() &&
-            equipEndsOnBoard(ctx.state, eq, ctx.source))
+        if (ctx.state.getObject(eq).location.has_value())
+            ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
+                                               {static_cast<int32_t>(eq)});
+        ctx.events.logTrace("RELL MAGNETIC: played an Equipment (free)");
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data[0]`: the Equipment that was played.
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (finalizingChoices(ctx)) return;   // nothing to choose
+        if (data.empty()) return;
+        const auto eq = static_cast<GameObjectId>(data[0]);
+        // Only while both are still on the board: an Equipment can't follow a
+        // unit that left it.
+        if (ctx.state.objectExists(eq) && ctx.state.getObject(eq).location.has_value() &&
+            equipEndsOnBoard(ctx.state, eq, ctx.source)) {
             attachFree(ctx, eq, ctx.source);
-        ctx.events.logTrace("RELL MAGNETIC: played + attached an Equipment (free)");
+            ctx.events.logTrace("RELL MAGNETIC: attached the Equipment to me");
+        }
     }
 private:
     const CardDef def_ = [] {

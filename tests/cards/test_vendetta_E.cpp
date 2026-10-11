@@ -1171,12 +1171,14 @@ TEST_F(VendettaE, Vendetta_ForgottenRelic_BurnedUnitGivesItsMight) {
     auto top = addToDeck(P1, kPunchingPoro);
 
     int call = 0;
-    driveResumableTrigger(kForgottenRelic, P1, gear,
-        [&](const std::vector<Intent>& legal) {
-            ++call;
-            EXPECT_FALSE(offers(legal, enemy)) << "a FRIENDLY unit";
-            return script({O(b)})(legal);
-        }, exec, TriggerType::AtStartOfBeginning);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) {
+        ++call;
+        EXPECT_FALSE(offers(legal, enemy)) << "a FRIENDLY unit";
+        return script({O(b)})(legal);
+    });
+    fireTriggerThroughEngine(gear, TriggerType::AtStartOfBeginning, &engine_agent);
 
     EXPECT_EQ(call, 1);
     EXPECT_TRUE(inTrash(P1, top));

@@ -112,6 +112,7 @@ public:
 
     // `data` = {the Reflection token, its battlefield + 1 (0 = none)}.
     static constexpr int kBecomeACopy = 0;
+    bool hasReflexiveTrigger() const override { return true; }
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& data) override {
         if (data.size() < 2) return;

@@ -27,19 +27,35 @@ public:
             // "to your base": the base must name its player — a default
             // BaseLocation{} is PlayerId::None's base, i.e. nobody's.
             BaseLocation{ctx.controller}, /*enter_ready=*/true);
-        if (token != kInvalidId && ctx.state.objectExists(token)) {
-            ctx.executor.copyUnit(token, targets[0]);
-            // "Give it [Temporary]" has no duration, so it lasts (CR 816: the
-            // token is killed at its controller's next Beginning Phase).
-            // giveTemporaryKeyword is the "this turn" grant: it tags
-            // temp_keywords and the keyword is revoked in the expiration step,
-            // before that Beginning Phase. Set it after the copy, which
-            // overwrites the token's keywords (as Deceiver does).
-            ctx.state.getObject(token).keywords.set(Keyword::Temporary);
-            ctx.events.logTrace("MIRROR IMAGE: spawned Reflection copy of " +
-                                 ctx.state.getObject(targets[0]).name +
-                                 " (Temporary)");
+        // "Then do this: It becomes a copy of that unit. Give it
+        // [Temporary]." — a reflexive trigger (CR 388): with the token played
+        // it goes on the chain as an item of its own.
+        if (token != kInvalidId && ctx.state.objectExists(token))
+            ctx.executor.queueReflexiveTrigger(
+                ctx.source, ctx.controller, 0,
+                {static_cast<int32_t>(token), static_cast<int32_t>(targets[0])});
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data` = {the Reflection token, the chosen unit}.
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (finalizingChoices(ctx)) return;   // nothing to choose
+        if (data.size() < 2) return;
+        const auto token = static_cast<GameObjectId>(data[0]);
+        const auto model = static_cast<GameObjectId>(data[1]);
+        auto in_play = [&](GameObjectId id) {
+            return ctx.state.objectExists(id) && ctx.state.getObject(id).location.has_value();
+        };
+        if (!in_play(token)) return;          // the token left in response
+        if (in_play(model)) {
+            ctx.executor.copyUnit(token, model);
+            ctx.events.logTrace("MIRROR IMAGE: Reflection became a copy of " +
+                                 ctx.state.getObject(model).name);
         }
+        // "Give it [Temporary]" has no duration, so it lasts (CR 816: the
+        // token is killed at its controller's next Beginning Phase) — set on
+        // the keywords, after the copy, which overwrites them.
+        ctx.state.getObject(token).keywords.set(Keyword::Temporary);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};

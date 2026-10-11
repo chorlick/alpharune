@@ -588,7 +588,20 @@ TEST_F(RulesCardsTest, RulesCards_CR355_14_AlphaStrike_ControllerMayPutAllDamage
     auto spell = addToHand(P1, kAlphaStrike);
     Seen seen;
 
-    driveSpell(kAlphaStrike, P1, spell, {striker}, yesThen(e1, &seen), exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    {
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = spell;
+        play.targets = {striker};
+        const auto& def = card_db.get(state.getObject(spell).card_def_id);
+        state.player(P1).rune_pool.energy += def.energy_cost;
+        state.player(P1).rune_pool.universal_power += def.power_cost;
+        EnginePathAgent engine_agent(yesThen(e1, &seen));
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &engine_agent);
+    }
 
     // One target, then "No more targets": a single target takes everything, so
     // there is no division to ask about. (4 prompts, one per point, before
@@ -934,7 +947,20 @@ TEST_F(RulesCardsTest, RulesCards_CR816_MirrorImage_TokenInControllersBaseWithLa
     auto original = addUnit(P2, kIcevaleArcher, 0, /*at_bf=*/0);
     auto spell = addToHand(P1, kMirrorImage);
 
-    invokeOnResolve(spell, kMirrorImage, P1, {original}, exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    {
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = spell;
+        play.targets = {original};
+        const auto& def = card_db.get(state.getObject(spell).card_def_id);
+        state.player(P1).rune_pool.energy += def.energy_cost;
+        state.player(P1).rune_pool.universal_power += def.power_cost;
+        EnginePathAgent engine_agent(EnginePathAgent::Picker{});
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &engine_agent);
+    }
 
     const GameObject* token = nullptr;
     for (const auto& [id, obj] : state.objects)

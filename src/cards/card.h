@@ -836,6 +836,13 @@ public:
     /// created it are carried over.
     virtual void onReflexiveTrigger(CardContext& /*ctx*/, int /*index*/,
                                     const std::vector<int32_t>& /*data*/) {}
+    /// True for a card that implements onReflexiveTrigger. A card whose text
+    /// has one of the phrases ("do this", "do the following", "do one of the
+    /// following") and whose phrase is NOT a reflexive trigger says why in
+    /// notReflexiveBecause() instead. A test over the registry requires one
+    /// of the two for every such card, so a new one cannot be missed.
+    virtual bool hasReflexiveTrigger() const { return false; }
+    virtual const char* notReflexiveBecause() const { return nullptr; }
 
     /// Called when the equipped unit's trigger fires. Gear handles its own
     /// logic. `targets` is always empty, as for onTrigger.

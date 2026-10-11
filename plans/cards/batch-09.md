@@ -66,7 +66,7 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: "play me" / "play a unit from your trash" / "play a ... token"
   - Code: `playIgnoringCost` / `playPayingCost` called with no location or a hard-coded base. CR 355.2.a lets the controller choose base or a battlefield they control; Wild Claw 876:138-151 shows the prompt.
   - Scenario: you control a battlefield and revive a unit with Soulgorger -> it can only go to base, never to the battlefield to hold/defend.
-  - c4: 6 Flame Chompers, 37 Immortal Phoenix, 196 Soulgorger, 194 Nocturne — FIXED: the controller chooses base or a battlefield they control through new `pickEffectPlayLocation` / `effectPlayLocation` in `card_helpers.h` (`shared:` commit `1b7c181`; other streams can use it); test: C4Test.FlameChompers_PaysAndChoosesItsLandingPlace, C4Test.Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses, C4Test.Nocturne_*, C4Test.ImmortalPhoenix_*
+  - c4: 6 Flame Chompers, 37 Immortal Phoenix, 196 Soulgorger, 194 Nocturne — FIXED: the controller chooses base or a battlefield they control through new `pickEffectPlayLocation` / `effectPlayLocation` in `card_helpers.h` (`shared:` commit `56f226f`; other streams can use it); test: C4Test.FlameChompers_PaysAndChoosesItsLandingPlace, C4Test.Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses, C4Test.Nocturne_*, C4Test.ImmortalPhoenix_*
 - [ ] **704 Heedless Resurrection** - `spells/0704_heedless_resurrection.cpp:75-80` [documented] low
   - Text: "As an additional cost to play this, kill a friendly unit."
   - Code: the kill happens in `onResolve` (no `kFinalizeResolve`, no cost hook).

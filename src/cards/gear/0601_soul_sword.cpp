@@ -27,10 +27,14 @@ public:
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller) continue;
-            if (!obj.attached_to.has_value()) continue;
+            // On the board and attached to a unit that is on the board: a
+            // Soul Sword (or bearer) that left play gives nothing, whether or
+            // not `attached_to` was cleared on the way out.
+            if (!obj.location.has_value() || !obj.attached_to.has_value()) continue;
             auto unit_id = *obj.attached_to;
             auto uit = state.objects.find(unit_id);
             if (uit == state.objects.end()) continue;
+            if (!uit->second.isUnit() || !uit->second.location.has_value()) continue;
             uit->second.aura_effects.push_back(
                 GameObject::AuraEffect{.source = id, .might_bonus = 1});
         }

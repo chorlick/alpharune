@@ -397,6 +397,8 @@ TEST_F(VendettaA, Vendetta_AkaliDeadlyWeapon_MoveDamageScalesWithEmpowered) {
         return pickValue(legal, 1);  // "yes" on the may-prompt
     };
 
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     driveResumableTrigger(kAkaliDeadlyWeapon, P1, akali, target_enemy, exec, TriggerType::WhenIMove);
     EXPECT_EQ(state.getObject(enemy).damage_marked, 1);
 
@@ -422,16 +424,20 @@ TEST_F(VendettaA, Vendetta_AkaliDeadlyWeapon_MayHitTheBattlefieldSheMovedFrom) {
         return pickValue(legal, 1);  // "yes" on the may-prompt
     };
 
-    // Moved from a base (-1): nothing at battlefield 1 can be chosen.
-    state.getObject(akali).card_counters["__moved_from_bf"] = -1;
-    driveResumableTrigger(kAkaliDeadlyWeapon, P1, akali, pick_left_behind, exec,
-                          TriggerType::WhenIMove);
+    // Moved from a base: nothing at battlefield 1 can be chosen.
+    {
+        AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
+        driveResumableTrigger(kAkaliDeadlyWeapon, P1, akali, pick_left_behind, exec,
+                              TriggerType::WhenIMove);
+    }
     EXPECT_EQ(state.getObject(left_behind).damage_marked, 0);
 
     // Moved from battlefield 1 to battlefield 0: units at 1 are legal too.
-    state.getObject(akali).card_counters["__moved_from_bf"] = 1;
-    driveResumableTrigger(kAkaliDeadlyWeapon, P1, akali, pick_left_behind, exec,
-                          TriggerType::WhenIMove);
+    {
+        AnnouncedMove moved(state, LocationId{BattlefieldLocation{1}}, LocationId{BattlefieldLocation{0}});
+        driveResumableTrigger(kAkaliDeadlyWeapon, P1, akali, pick_left_behind, exec,
+                              TriggerType::WhenIMove);
+    }
     EXPECT_EQ(state.getObject(left_behind).damage_marked, 1);
 }
 

@@ -795,6 +795,8 @@ TEST_F(VerifyCardsTest, Guards_WithoutOrderPowerTheMayIsNotOffered) {
 // seen from the opponent's first priority, before anything resolves.
 TEST_F(VerifyCardsTest, FaePorter_ThePowerIsGoneBeforeTheOpponentCanRespond) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
     EnginePathAgent agent(EnginePathAgent::choosing(ally));
@@ -2733,6 +2735,8 @@ TEST_F(VerifyCardsTest, WildClaw_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTh
 // Porter as the ability resolves.
 TEST_F(VerifyCardsTest, FaePorter_MovedOnInResponse_TheUnitGoesToTheBattlefieldOfTheTrigger) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
     EnginePathAgent agent(EnginePathAgent::choosing(ally));
@@ -2748,6 +2752,8 @@ TEST_F(VerifyCardsTest, FaePorter_MovedOnInResponse_TheUnitGoesToTheBattlefieldO
 
 TEST_F(VerifyCardsTest, FaePorter_BackAtBaseInResponse_TheUnitStillGoesToTheBattlefieldOfTheTrigger) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
     EnginePathAgent agent(EnginePathAgent::choosing(ally));
@@ -2764,6 +2770,8 @@ TEST_F(VerifyCardsTest, FaePorter_BackAtBaseInResponse_TheUnitStillGoesToTheBatt
 // affect where the Sprite token will be played". Same here.
 TEST_F(VerifyCardsTest, FaePorter_GoneBeforeResolution_TheUnitStillGoesToTheBattlefieldOfTheTrigger) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
     EnginePathAgent agent(EnginePathAgent::choosing(ally));
@@ -2781,6 +2789,8 @@ TEST_F(VerifyCardsTest, FaePorter_GoneBeforeResolution_TheUnitStillGoesToTheBatt
 // "a unit to move there": a mistarget, and it is not moved anywhere else.
 TEST_F(VerifyCardsTest, FaePorter_TheChosenUnitAlreadyAtThatBattlefieldIsNotMovedToThePortersNewOne) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
     EnginePathAgent agent(EnginePathAgent::choosing(ally));

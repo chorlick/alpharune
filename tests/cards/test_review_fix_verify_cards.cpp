@@ -235,6 +235,44 @@ constexpr CardDefId kWildClaw = 876;
 constexpr CardDefId kMatriarchOfWar = 940;
 constexpr CardDefId kShadowClone = 955;
 
+// ─── A test card for the shared selectSeveral helper (plans/09 item 9.HH5) ───
+// "When I conquer, choose up to three other friendly units." It names them at
+// finalization and, as it resolves, writes down exactly what selectSeveral
+// handed back (on its own object, in card_counters), so a test can read the
+// helper's result without going through any real card's guards or trace text.
+constexpr CardDefId kSelectSeveralProbe = 1060;   // reserved range, test-only
+
+class SelectSeveralProbeCard : public UnitCard {
+public:
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> others;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value()) others.push_back(id);
+        const auto chosen = selectSeveral(ctx, "Probe: choose a friendly unit", others,
+                                          /*max_picks=*/3);
+        if (!chosen.has_value()) return;        // waiting for the agent
+        if (finalizingChoices(ctx)) return;     // choices end here
+        auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        counters["__probe_count"] = static_cast<int>(chosen->size());
+        for (size_t k = 0; k < chosen->size(); ++k)
+            counters["__probe_" + std::to_string(k)] = static_cast<int>((*chosen)[k]);
+    }
+private:
+    const CardDef def_ = [] {
+        CardDef d;
+        d.id = kSelectSeveralProbe;
+        d.name = "SelectSeveral Probe";
+        d.card_type = CardType::Unit;
+        d.might = 1;
+        d.ability_text = "When I conquer, choose up to three other friendly units.";
+        return d;
+    }();
+};
+
 class VerifyCardsTest : public CardTestFixture {
 protected:
     GameObject& o(GameObjectId id) { return state.getObject(id); }
@@ -8137,6 +8175,47 @@ TEST_F(VerifyCardsTest, Pin_MischievousMarai_MovedToBaseInResponse_HereIsGoneAnd
     });
     EXPECT_EQ(moved.prompts.size(), 1u) << "nothing is asked as it resolves";
     EXPECT_EQ(o(foe).damage_marked, 2) << "no further damage: a mistarget";
+}
+
+// ═══ Tranche 14: 9.HH5 — selectSeveral itself, through a test card ═══════════
+// Stored picks from the finalize pass; one of them is no longer in the list
+// when the ability resolves. The helper must hand back only the others and
+// ask nothing again. (The six card-level pins read this off trace lines.)
+TEST_F(VerifyCardsTest, SelectSeveral_AStoredPickNoLongerInTheListIsDroppedAndNothingIsAskedAgain) {
+    card_registry.registerCard(kSelectSeveralProbe, std::make_unique<SelectSeveralProbeCard>());
+    card_db.buildFromClasses(card_registry);
+    auto probe = addUnit(P1, kSelectSeveralProbe, 1, 0);
+    auto a = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto b = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto c = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto late = kInvalidId;
+    size_t prompts_at_priority = 0;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(a), static_cast<int>(b), static_cast<int>(c)}));
+    fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        prompts_at_priority = agent.prompts.size();
+        EXPECT_EQ(live.getObject(probe).card_counters.count("__probe_count"), 0u)
+            << "nothing has resolved yet";
+        removeFromBoard(live, b);               // a stored pick leaves the list
+        // ...and a new candidate appears: it must not be asked about either.
+        late = live.createObject();
+        auto& u = live.getObject(late);
+        u.owner = u.controller = P1;
+        u.card_type = CardType::Unit;
+        u.name = "Latecomer";
+        u.base_might = u.current_might = 1;
+        u.zone = ZoneType::BattlefieldZone;
+        u.location = BattlefieldLocation{0};
+    });
+    EXPECT_EQ(prompts_at_priority, 3u) << "all three picks were made at finalization";
+    EXPECT_EQ(agent.prompts.size(), 3u) << "nothing is asked again as it resolves";
+    const auto& counters = o(probe).card_counters;
+    ASSERT_EQ(counters.count("__probe_count"), 1u) << "the ability resolved";
+    EXPECT_EQ(counters.at("__probe_count"), 2) << "the stale pick is dropped, not kept";
+    ASSERT_EQ(counters.count("__probe_1"), 1u);
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(a));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(c)) << "pick order kept, no gap";
+    EXPECT_EQ(counters.count("__probe_2"), 0u);
 }
 
 }  // namespace

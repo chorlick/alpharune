@@ -78,7 +78,7 @@ iteration must apply these.
 | 2 | cards-c1 | running | | | based on `1640e81` |
 | 2 | cards-c2 | returned | `2fe1205` (merged, gate running) | 1851 passed, 0 failed (clean namespaced build, on its branch) | 41 of 42 batch-02 boxes + 3 batch-08; Wallop 146 / Call to Glory 207 BLOCKED (spell alternative-cost path); 3 `shared:` commits with engine state and trigger additions |
 | 2 | cards-c3 | running | | | based on `1640e81` |
-| 2 | cards-c4 | running | | | based on `1640e81` |
+| 2 | cards-c4 | returned | `fd00d2c` (merged in batch with c2, gate running) | 1833 passed, 0 failed (clean namespaced build, on its branch) | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
 | 2 | cards-c5 | running | | | based on `1640e81` |
 | 2 | cards-c6 | running | | | based on integration with cards-c0 merged |
 | 2 | cards-c7 | pending | | | |
@@ -108,6 +108,17 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c4 | BLOCKED batch-04: Brazen Buccaneer 2 (`canAfford` ignores the optional discard discount; `executePlayCard` must force the discard when full cost is unaffordable) and Kraken Hunter 150 (variable additional cost needs a prompt before payment) — same pre-payment code path | sweep | open |
+| cards-c4 | BLOCKED batch-04: Leona, Zealot 79 victory score — `entersReadyOnPlay` cannot see the effective Victory Score; Find Your Center 47, Poppy 678, Corrupted Dragon 878 read `mode.victory_score` directly too. Needs a state-visible effective Victory Score (c2 added `TurnState::victory_score_bonus` — use it) | sweep | open |
+| cards-c4 | BLOCKED batch-04: Rebuttal 939 "[4] or less" half — `hasLegalTargets` sees only `GameState`, printed cost is in `CardDB` (same limit as Defy 45) | sweep (with the `hasLegalTargets` CardDB row) | open |
+| cards-c4 | reprints outside its range: Sett 543, Ahri 539, Vayne 537 need what 164, 119, 35 got (per-instance gate with the buff paid at activation; can't-be-chosen filter; on-board `still_legal`) | cards-c6 | open |
+| cards-c4 | 16, 20, 217, 218 still override `requiresLegion()` because `ChainTestFixture.LegionParsesAsConditionGate` reads Duo's — delete with the virtual | sweep | open |
+| cards-c4 | `shared:` changes to review: `PlayerState::units_enter_ready_by` (read in `resolvePermanent`, `createToken`, `playIgnoringCost`); `BattlefieldState::opp_hidden_unrevealable` now per player; `GrantedAbilityRef::exhaust_cost_only`; helpers `pickEffectPlayLocation` / `effectPlayLocation` (other streams' batch-09 "lands in base" cards should use them) | sweep (review), card streams | open |
+| cards-c4 | bisect note: commits `b475300` up to the batch-04 card commit do not build on their own | final report | open |
+| cards-c4 | 8 unused-`targets` warnings left in untouched files in its range: 66, 73, 75, 87, 96, 137, 190, 216 | cleanup | open |
+| cards-c4 | NEW: `EffectExecutor::playIgnoringCost` never asks `entersReadyOnPlay`, so an effect-played unit is always exhausted unless Magma Wurm is out | sweep | open |
+| cards-c4 | NEW: Vision look in `TriggerManager::onCardPlayed` never asks the player; it recycles the top card automatically when it is a spell | sweep | open |
+| cards-c4 | NEW: Darius, Trifarian 27 does not see himself as "your second card" (play-a-card triggers skip the played unit); Cruel Patron 208 kill is a trigger after entering, not an additional cost to play (needs an engine hook) | sweep | open |
 | cards-c2 | BLOCKED: Wallop 146 / Call to Glory 207 "spend a buff to ignore this spell's cost" need an alternative cost on the spell play path (`Card::alternativePlayCost` is read only for permanents; `generateSpellActions` drops an unaffordable spell; `executePlaySpell` always charges printed cost) | sweep | open |
 | cards-c2 | `shared:` engine changes to review: `PlayerState::units_enter_ready_this_turn`, `unit_died_this_turn`, `buff_might_bonus_this_turn`, `hide_ignoring_costs_this_turn`; `TurnState::victory_score_bonus`; `TriggerType::WhenAUnitTakesDamage` + `TriggerManager::onDamageDealt`; `DelayedAbility::every_time`; delayed-ability chain items carry `triggering_subject`; `onScore` fires `WhenIConquer` for spells in the conquerer's trash; helpers `pickMoveDest`, `tokenPlayDests`, `destLocation`, `pickTokenDest` | sweep (review), checkpoint (new state fields → feature layout?) | open |
 | cards-c2 | partial by design: Defy 45 cost caps checked at resolution only (`hasLegalTargets` has no CardDB, so it can be offered and do nothing); Defender of Tomorrow 936 keeps two printed abilities as one activation (splitting renumbers the Empower vocab slot) | sweep (45), checkpoint (936) | open |
@@ -236,3 +247,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c0 returned and merged; it found the shared-ccache launcher restoring a foreign PCH. All running streams told to use a private cache namespace and clean-build before their final run; integration reconfigured the same way and rebuilt from clean. 9 rows to carry-over.
 - 2026-10-10 cards-c0 verified on a clean private-cache build (gate-c0-clean, 4.5 min cold): all checks green. Worktree and branch removed. Spawned cards-c6.
 - 2026-10-10 cards-c2 (`2fe1205`) returned and merged, gate running. 10 rows to carry-over.
+- 2026-10-10 cards-c4 (`fd00d2c`) merged into the batch with c2; two-line engine conflict resolved by keeping both conditions (see merge commit `12c4935`). 11 rows to carry-over. Decision: mechanical both-sides conflicts (appended helpers, appended plan sub-bullets, independent conditions) are resolved by the orchestrator and verified by the gate; anything else goes back to the stream.

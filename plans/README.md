@@ -333,10 +333,10 @@ that returned early) are not blockers: diagnose and continue.
 
 All of:
 
-- [ ] No `- [ ]` remains in any file under `plans/` except this list (`plans/remaining/` holds no item).
-- [ ] Every stream in `STATUS.md` is `merged`; every gate row has evidence.
+- [x] No `- [ ]` remains in any file under `plans/` except this list (`plans/remaining/` holds no item).
+- [x] Every stream in `STATUS.md` is `merged`; every gate row has evidence.
 - [ ] `master` contains the final integration commit.
-- [ ] Full test suite and smoke pass on that commit.
+- [x] Full test suite and smoke pass on that commit.
 - [ ] No `fix/*` branch and no worktree remains; `.worktrees/` is gone.
 - [ ] The user has the final report (section 7 step 6).
 

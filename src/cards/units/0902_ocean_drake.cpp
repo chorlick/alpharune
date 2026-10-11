@@ -15,10 +15,10 @@ namespace {
 class OceanDrake : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "You may play me to an open battlefield."
+    unsigned extraPlayLocations() const override { return kPlayToOpenBattlefield; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // ── behaviour (Vendetta batch C) ──
-    // "You may play me to an open battlefield." — engine-handled: the unit
-    // play generator matches "play me to an open battlefield" in ability_text.
     // "When you play me, you may return a non-Dragon unit to its owner's hand."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     std::vector<GameObjectId> nonDragons(CardContext& ctx) const {

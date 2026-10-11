@@ -51,6 +51,7 @@ public:
             ctx.state.chain.resuming->resume_point == 7)
             return;   // waiting for the agent
         // The payment covers this play only.
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         counters.erase("__akshan_paid");
         if (target_gear == kInvalidId) return;
 

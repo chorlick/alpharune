@@ -22,36 +22,20 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer};
     }
 
-    // "a battlefield that was uncontrolled": nothing tells a conquer trigger
-    // who held the battlefield before, so while Yone stands at a battlefield
-    // her controller does not control she notes whether anyone does. The note
-    // is what the battlefield was when she conquered it.
-    static constexpr const char* kSeenBf = "__yone_seen_bf";
-    static constexpr const char* kSeenOpen = "__yone_seen_uncontrolled";
-    void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, self] : state.objects) {
-            if (self.card_def_id != cardDefId() || self.controller != controller) continue;
-            const auto here = self.battlefieldId();
-            if (!here.has_value()) continue;
-            for (const auto& bf : state.battlefields) {
-                if (bf.id != *here) continue;
-                if (bf.controller.has_value() && *bf.controller == controller) continue;
-                self.card_counters[kSeenBf] = static_cast<int>(bf.id);
-                self.card_counters[kSeenOpen] = bf.controller.has_value() ? 0 : 1;
-            }
-        }
-    }
-    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+    // "a battlefield that was uncontrolled": the scoring step records who
+    // controlled a battlefield before it was conquered
+    // (BattlefieldState::conquered_from, nullopt = nobody).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
                           TriggerType trigger, GameObjectId /*subject*/) const override {
         if (trigger != TriggerType::WhenIConquer) return true;
         if (!state.objectExists(source)) return false;
-        const auto& self = state.getObject(source);
-        const auto here = self.battlefieldId();
+        const auto here = state.getObject(source).battlefieldId();
         if (!here.has_value()) return false;
-        const auto bf = self.card_counters.find(kSeenBf);
-        const auto open = self.card_counters.find(kSeenOpen);
-        return bf != self.card_counters.end() && bf->second == static_cast<int>(*here) &&
-               open != self.card_counters.end() && open->second == 1;
+        for (const auto& bf : state.battlefields)
+            if (bf.id == *here)
+                return bf.conquered_on_turn == state.turn.turn_number &&
+                       bf.conquered_by_player == controller && !bf.conquered_from.has_value();
+        return false;
     }
 
     void onTrigger(CardContext& ctx,
@@ -69,7 +53,8 @@ public:
             [&](const GameObject& u) { return u.controller != ctx.controller && u.isAtBase(); });
         const GameObjectId t = pickTarget(ctx, "Yone: deal my Might to an enemy unit in a base",
                                           legal);
-        if (t == kInvalidId) return;   // none / waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;   // none / mistarget
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
         if (!self.location.has_value()) return;   // "my Might": I must still be here

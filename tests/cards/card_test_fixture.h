@@ -44,7 +44,9 @@
 ///   ScriptedChoiceAgent    — pre-loaded queue of choice-pickers
 ///   PickByPredicateAgent   — picks the first Intent matching a predicate
 ///   EnginePathAgent        — for the engine-driven helpers: passes priority,
-///                            answers MakeChoice prompts, records them
+///                            answers MakeChoice prompts, records them.
+///                            DECLINES every "may" unless given a picker.
+///   AcceptingEnginePathAgent — the same, accepting every "may"
 ///
 /// THE REAL ENGINE PATH (use this for anything a card does when it is played
 /// or when one of its triggers fires):
@@ -151,6 +153,12 @@ public:
 /// priority or focus it passes; a MakeChoice prompt (a "may", a mode, an X, a
 /// target) is recorded in `prompts` and answered by `pick` (first option when
 /// `pick` is null). Anything else gets the first legal action.
+///
+/// THE DEFAULT DECLINES EVERY "MAY": Card::confirmOptional lists "No" first,
+/// so with no picker a "you may" / "[cost] to [effect]" prompt is answered No
+/// and the test exercises the decline path. A test of what the card does when
+/// the player accepts must use `AcceptingEnginePathAgent` (below) or a picker
+/// (`EnginePathAgent::accepting()`, `choosing(id)`, `script({1, ...})`).
 class EnginePathAgent : public AgentInterface {
 public:
     using Picker = std::function<Intent(const std::vector<Intent>&)>;
@@ -193,6 +201,16 @@ public:
             return legal.front();
         };
     }
+    /// Say yes to every yes/no (Card::confirmOptional labels its options
+    /// "Yes — ..." / "No — ..."); first option of any other prompt, so a mode
+    /// or X prompt is not mistaken for a "may".
+    static Picker accepting() {
+        return [](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (i.choice_label.rfind("Yes", 0) == 0) return i;
+            return legal.front();
+        };
+    }
     /// Answer the n-th MakeChoice prompt with the option whose chosen_value is
     /// values[n] (a yes/no: 1/0; a mode or an X: its number), or — for a
     /// prompt of objects — whose object id is values[n]. First option once the
@@ -210,6 +228,13 @@ public:
             return legal.front();
         };
     }
+};
+
+/// An EnginePathAgent that accepts every "may" (see the warning on
+/// EnginePathAgent: the default one declines them all).
+class AcceptingEnginePathAgent : public EnginePathAgent {
+public:
+    AcceptingEnginePathAgent() : EnginePathAgent(EnginePathAgent::accepting()) {}
 };
 
 // ─── Fixture base ───────────────────────────────────────────────────────────
@@ -247,6 +272,19 @@ protected:
 
     // ── Object construction (mostly thin GameObject wrappers) ──
 
+    /// The printed numbers GameEngine::instantiateCard copies from the def.
+    /// Every helper below that builds an object from a def calls this, so a
+    /// fixture object has the Might and the Assault / Shield / Deflect values
+    /// the same card has in a real game.
+    static void copyPrintedStats(GameObject& obj, const CardDef& def) {
+        obj.base_might = def.might;
+        obj.current_might = def.might;
+        obj.assault_value = def.assault_value;
+        obj.shield_value = def.shield_value;
+        obj.deflect_value = def.deflect_value;
+        obj.might_bonus = def.might_bonus;
+    }
+
     /// Add a card-by-id to the given player's hand. If def_id is valid in
     /// CardDB, populates name/type/keywords/domains from the def.
     GameObjectId addToHand(PlayerId owner, CardDefId def_id) {
@@ -263,6 +301,7 @@ protected:
             obj.keywords = def.keywords;
             obj.domains = def.domains;
             obj.tags = def.tags;
+            copyPrintedStats(obj, def);
         }
         obj.zone = ZoneType::Hand;
         state.player(owner).hand.push_back(id);
@@ -284,6 +323,7 @@ protected:
             obj.keywords = def.keywords;
             obj.domains = def.domains;
             obj.tags = def.tags;
+            copyPrintedStats(obj, def);
         }
         obj.zone = ZoneType::MainDeck;
         state.player(owner).main_deck.push_back(id);
@@ -313,7 +353,8 @@ protected:
             obj.keywords = def.keywords;
             obj.domains = def.domains;
             obj.tags = def.tags;
-            obj.base_might = (might > 0) ? might : def.might;
+            copyPrintedStats(obj, def);
+            if (might > 0) obj.base_might = might;
         } else {
             obj.name = "TestUnit";
             obj.base_might = (might > 0) ? might : 1;

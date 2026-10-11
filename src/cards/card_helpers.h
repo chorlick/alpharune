@@ -21,8 +21,7 @@ namespace riftbound {
 // The engine-known Gold gear token's card_def_id.
 constexpr CardDefId kGoldGearCardDefId = 326;
 
-// ── Equip: pay one power (of `domain`, or any rune if nullopt), then attach ──
-// Complements the energy+Domain `standardEquip` overload in gear/equip_base.h.
+// ── Paying one Power from a card effect ──
 // One Power of `domain` (any domain if nullopt), the way CR 164.2 lets it be
 // paid: floating Power of that domain, then universal Power, then recycling a
 // matching rune — ready or exhausted (an exhausted one first, since a ready
@@ -132,24 +131,6 @@ inline void attachEquipped(CardContext& ctx, GameObjectId gear_id, GameObjectId 
     unit.recomputeMight();
     ctx.events.emit(ObjectStateChangedEvent{gear_id, "attached"});
     ctx.events.emit(ObjectStateChangedEvent{unit_id, "equipped"});
-}
-
-// ── Equip: pay [energy] + one power (of `domain`, or [A] if nullopt), attach ──
-// All-or-nothing: nothing is paid unless the whole cost can be.
-inline bool standardEquip(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id,
-                          int energy_cost, std::optional<Domain> domain) {
-    if (!equipEndsOnBoard(ctx.state, gear_id, unit_id)) return false;
-    if (payableEnergy(ctx.state, ctx.controller) < energy_cost) return false;
-    if (!payableOnePower(ctx.state, ctx.controller, domain)) return false;
-    // Energy first: a rune exhausted for it can still be recycled for the Power.
-    if (!payEnergy(ctx, ctx.controller, energy_cost)) return false;
-    if (!payOnePower(ctx, ctx.controller, domain)) return false;
-    attachEquipped(ctx, gear_id, unit_id);
-    return true;
-}
-inline bool standardEquip(CardContext& ctx, GameObjectId gear_id,
-                          GameObjectId unit_id, std::optional<Domain> domain) {
-    return standardEquip(ctx, gear_id, unit_id, 0, domain);
 }
 
 // Attach a gear directly (no cost) to a unit (e.g. Edge of Night's
@@ -769,8 +750,8 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             if (n <= 0 || !ctx.state.objectExists(id)) continue;
             const auto& o = ctx.state.getObject(id);
             // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
-            if (o.isUnit() && o.location.has_value() && o.controller != ctx.controller)
-                ctx.state.player(ctx.controller).chose_enemy_unit_this_turn = true;
+            ctx.state.noteChosen(ctx.controller, id,
+                ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr);
             ctx.events.logTrace("SPLIT: " + label + " -> " + std::to_string(n) +
                                 " to " + o.name);
             ctx.executor.dealDamage(id, n, damage_source);
@@ -873,10 +854,14 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
     return true;
 }
 
-/// "Units can't move from here to base" (Vilemaw's Lair): true when `u` is at
-/// a battlefield that says so. Only a move is stopped; a recall is not a move
-/// (CR 458).
+/// True when `u` may not MOVE to base: it is at a battlefield that says
+/// "Units can't move from here to base" (Vilemaw's Lair), or the unit itself
+/// can't ("I can't move to base" — Determined Sentry; "Units can't move to
+/// base" — Minotaur Reckoner's aura). The same three conditions the Standard
+/// Move generator reads (GameEngine::standardMoveDestinations). Only a move
+/// is stopped; a recall is not a move (CR 458).
 inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
+    if (u.cant_move_to_base || u.aura_cant_move_to_base) return true;
     const auto here = u.battlefieldId();
     if (!here.has_value()) return false;
     for (const auto& bf : state.battlefields)

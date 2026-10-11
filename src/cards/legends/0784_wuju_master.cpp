@@ -15,7 +15,7 @@ class WujuMaster : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
     // "[Level 6] Your units have +1 [M]."   (inline xp>=6 gate)
-    // "[Level 11] Your units enter ready."  (inline xp>=11 gate — see note)
+    // "[Level 11] Your units enter ready."  (inline xp>=11 gate)
     //
     // Legends broadcast from the Legend Zone: recalculateAuras calls this hook
     // for LegendZone objects as well as on-board ones.
@@ -40,13 +40,11 @@ public:
                 u.aura_effects.push_back(ae);
             }
         }
-        // [Level 11]: "Your units enter ready."
-        // ENGINE GAP: whether a unit enters ready is decided per-Card via
-        // Card::entersReadyOnPlay (consulted in GameEngine::resolvePermanent).
-        // There is no per-player "your units enter ready" flag a legend can
-        // raise, so this tier can't be granted from the legend's file alone.
-        // Left unimplemented (xp>=11 gate would go here once a player-level
-        // enter-ready hook exists).
+        // [Level 11]: "Your units enter ready." The legend is a source every
+        // unit differs from, so each unit this player plays enters ready
+        // (PlayerState::otherUnitsEnterReady, read by resolvePermanent,
+        // createToken and playIgnoringCost).
+        if (xp >= 11) state.player(controller).units_enter_ready_by.push_back(self_id);
     }
 private:
     const CardDef def_ = [] {

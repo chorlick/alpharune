@@ -19,9 +19,11 @@ namespace riftbound {
 /// choose a card you control with the Equipment tag. ... Pay the cost of its
 /// Equip ability, reduced by [A], to attach it to this unit."
 ///
-/// The "may" and the Equipment are the controller's choices. The choices are
-/// made as the trigger resolves (derived cards do not opt the base into
-/// choices-at-finalization).
+/// The "may" and the Equipment are the controller's choices, made when the
+/// ability is finalized (CR 383.3, kFinalizeTrigger); the cost is paid and the
+/// Equipment attached as it resolves. A derived card with further triggers
+/// marks the end of the choices in each of its own branches
+/// (finalizingChoices).
 /// The Equip cost is the gear's own declaration (Card::equipCost), charged
 /// through Card::payEquipAndAttach with one Power taken off (a cost with no
 /// Power is not reduced — CR 821.1.c.3) and "even if it's already attached".
@@ -32,6 +34,7 @@ class WeaponmasterUnit : public UnitCard {
 public:
     // Abstract: concrete weaponmaster cards supply their data via def().
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
 
     /// The terms Weaponmaster pays an Equip cost on.
     static EquipTerms weaponmasterTerms() {
@@ -92,21 +95,26 @@ public:
                    ctx.state.getObject(ctx.source).isUnit() &&
                    ctx.state.getObject(ctx.source).location.has_value();
         };
-        if (!self_on_board()) return;
-
         // Equipment the controller has on the board, attached or not ("even
         // if it's already attached") — other than what this unit already
         // carries — whose reduced Equip cost can be paid.
-        const std::vector<GameObjectId> equipment = weaponmasterChoices(ctx, ctx.source);
+        const std::vector<GameObjectId> equipment =
+            self_on_board() ? weaponmasterChoices(ctx, ctx.source) : std::vector<GameObjectId>{};
         auto still_legal = [&]() { return self_on_board() && !equipment.empty(); };
-        if (!still_legal()) return;
 
-        // "you may" — optional.
-        int conf = confirmOptional(ctx, "Weaponmaster: equip an Equipment to me?", still_legal);
+        // "you may" — optional; then which Equipment.
+        const int conf = still_legal()
+            ? confirmOptional(ctx, "Weaponmaster: equip an Equipment to me?", still_legal) : 0;
+        GameObjectId best_gear = kInvalidId;
+        if (conf == 1)
+            best_gear = pickTarget(ctx, "Weaponmaster: choose an Equipment", equipment);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (conf < 1) return;
-        GameObjectId best_gear = pickTarget(ctx, "Weaponmaster: choose an Equipment", equipment);
         if (best_gear == kInvalidId || !ctx.state.objectExists(best_gear)) return;
         if (!self_on_board()) return;
+        // Paid and attached as the ability resolves; an Equipment already on
+        // another unit is taken off it by the executor (unattachGear, inside
+        // Card::payEquipAndAttach).
         weaponmasterEquip(ctx, best_gear, ctx.source);
     }
 };

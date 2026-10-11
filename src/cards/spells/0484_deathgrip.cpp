@@ -35,17 +35,11 @@ public:
         return sets;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // `targets` holds only the targets that are still legal, so which is
-        // which is read from the chain item: the unit to kill first, the unit
-        // to pump second.
-        const auto& chosen = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->targets : targets;
-        auto still_legal = [&](GameObjectId id) {
-            return id != kInvalidId &&
-                   std::find(targets.begin(), targets.end(), id) != targets.end();
-        };
-        const GameObjectId kill = chosen.empty() ? kInvalidId : chosen[0];
-        const GameObjectId pump = chosen.size() >= 2 ? chosen[1] : kInvalidId;
+        // Roles, not positions (Card::chosenTarget): the unit to kill is slot
+        // 0, the unit to pump slot 1; either is kInvalidId once illegal.
+        const GameObjectId kill = chosenTarget(ctx, targets, 0);
+        const GameObjectId pump = chosenTarget(ctx, targets, 1);
+        auto still_legal = [](GameObjectId id) { return id != kInvalidId; };
         if (still_legal(kill)) {
             const int might = ctx.state.getObject(kill).current_might;
             ctx.executor.killObject(kill);

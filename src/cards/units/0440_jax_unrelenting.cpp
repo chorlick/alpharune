@@ -13,7 +13,7 @@
 namespace riftbound {
 namespace {
 
-class JaxUnrelenting : public UnitCard {
+class JaxUnrelenting : public WeaponmasterUnit {
 public:
     const CardDef& def() const override { return def_; }
 
@@ -27,84 +27,27 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenEquipmentAttachedToMe};
     }
 
-    // Resume points of the Weaponmaster choice (clear of the helper ranges).
-    static constexpr int kAwaitGear = 20;
-    static constexpr int kDone = 21;
-
-    // [Weaponmaster] (CR 821): the Equipment's declared Equip cost
-    // (Card::equipCost), one Power less, through the shared Weaponmaster
-    // terms — any Equipment, whatever its cost is made of.
-    std::vector<GameObjectId> equippable(CardContext& ctx) const {
-        return WeaponmasterUnit::weaponmasterChoices(ctx, ctx.source);
-    }
-    void equip(CardContext& ctx, GameObjectId gear_id) {
-        if (WeaponmasterUnit::weaponmasterEquip(ctx, gear_id, ctx.source))
-            ctx.events.logTrace("JAX, UNRELENTING: [Weaponmaster] equipped " +
-                                ctx.state.getObject(gear_id).name);
-    }
-
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        if (ctx.firing_trigger == TriggerType::WhenEquipmentAttachedToMe) {
-            // "you may pay [1] to draw 1". CR 445.2 / 164.2.a: the [1] may come
-            // from floating Energy or from exhausting a ready rune.
-            auto still_legal = [&ctx]() {
-                return payableEnergy(ctx.state, ctx.controller) >= 1;
-            };
-            int conf = confirmOptional(ctx, "Jax, Unrelenting: pay [1] to draw 1?",
-                                       still_legal);
-            if (conf != 1) return;       // waiting, declined, or can't pay
-            if (!payEnergy(ctx, ctx.controller, 1)) return;
-            ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("JAX, UNRELENTING: paid [1] -> draw 1");
+    // Both abilities' choices are made when they are finalized (CR 383.3).
+    // [Weaponmaster] is the shared one (WeaponmasterUnit): the may, the
+    // Equipment, and the Equipment's declared Equip cost one Power less.
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        if (ctx.firing_trigger != TriggerType::WhenEquipmentAttachedToMe) {
+            WeaponmasterUnit::onTrigger(ctx, targets);
             return;
         }
-
-        // ── [Weaponmaster] (when you play me) ──
-        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
-        auto& ri_opt = ctx.state.chain.resuming;
-        if (!ri_opt.has_value()) {
-            // Direct invocation (no chain item to resume): no agent can be
-            // asked, so take the first Equipment, as the choice helpers do.
-            auto cands = equippable(ctx);
-            if (!cands.empty()) equip(ctx, cands.front());
-            return;
-        }
-        auto& ri = *ri_opt;
-        if (ri.resume_point == kDone) return;
-        if (ri.resume_point == kAwaitGear) {
-            ri.resume_point = kDone;
-            auto choice = ctx.executor.takeChoice();
-            auto cands = equippable(ctx);
-            GameObjectId picked = kInvalidId;
-            if (choice && !choice->chosen_objects.empty()) picked = choice->chosen_objects[0];
-            if (std::find(cands.begin(), cands.end(), picked) == cands.end()) {
-                ctx.events.logTrace("JAX, UNRELENTING: [Weaponmaster] declined");
-                return;
-            }
-            equip(ctx, picked);
-            return;
-        }
-        // Which Equipment — or none ("you may") — is the controller's choice.
-        auto cands = equippable(ctx);
-        if (cands.empty()) { ri.resume_point = kDone; return; }
-        std::vector<Intent> opts;
-        for (auto id : cands) {
-            Intent c;
-            c.type = IntentType::MakeChoice;
-            c.player = ctx.controller;
-            c.chosen_objects = {id};
-            opts.push_back(std::move(c));
-        }
-        Intent none;
-        none.type = IntentType::MakeChoice;
-        none.player = ctx.controller;
-        none.chosen_value = 0;
-        none.choice_label = "No — Jax, Unrelenting: [Weaponmaster]";
-        opts.push_back(std::move(none));
-        ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                   "Jax, Unrelenting: [Weaponmaster] equip which Equipment?");
-        ri.resume_point = kAwaitGear;
+        // "you may pay [1] to draw 1". CR 445.2 / 164.2.a: the [1] may come
+        // from floating Energy or from exhausting a ready rune. The payment
+        // is part of putting the ability on the chain.
+        auto still_legal = [&ctx]() {
+            return costAlreadyPaid(ctx) || payableEnergy(ctx.state, ctx.controller) >= 1;
+        };
+        const int conf = ctx.state.objectExists(ctx.source)
+            ? confirmOptional(ctx, "Jax, Unrelenting: pay [1] to draw 1?", still_legal) : 0;
+        if (conf == 1 && costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1) return;                // declined, or can't pay
+        ctx.executor.drawCards(ctx.controller, 1);
+        ctx.events.logTrace("JAX, UNRELENTING: paid [1] -> draw 1");
     }
 private:
     const CardDef def_ = [] {

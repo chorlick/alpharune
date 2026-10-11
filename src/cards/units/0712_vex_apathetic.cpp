@@ -18,9 +18,9 @@ public:
     // [Stun] it." [Deflect] is engine-handled. The played-unit id is captured
     // by TriggerManager into card_counters["__opp_played_unit_id"].
     // ("It doesn't deal combat damage this turn" is the stun itself.)
-    // ENGINE-GAP: "They can't move it this turn" needs a per-unit
-    // can't-move-this-turn flag read by the move generator; there is none, so
-    // a unit that entered ready (or is readied later) can still be moved.
+    // "They can't move it this turn": GameObject::cant_move_this_turn, read
+    // by the Standard Move generator and by the executor's effect moves, and
+    // cleared in the Expiration Step.
     TriggerType triggerType() const override { return TriggerType::WhenOpponentPlaysAUnit; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
@@ -34,6 +34,7 @@ public:
         const auto& v = ctx.state.getObject(victim);
         if (!v.isUnit() || !v.location.has_value() || v.controller == ctx.controller) return;
         ctx.executor.stunUnitBy(victim, ctx.source);
+        ctx.state.getObject(victim).cant_move_this_turn = true;
         ctx.events.logTrace("VEX APATHETIC: opponent played a unit -> stun it");
     }
 private:

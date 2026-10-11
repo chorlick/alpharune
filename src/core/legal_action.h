@@ -11,14 +11,18 @@
 /// Rules of this interface:
 ///   1. An action's id is its index in the legal list of the decision it
 ///      belongs to. Ids mean nothing across decisions.
-///   2. `describe(intent)` is injective over one legal list: two intents that
-///      compare unequal give descriptions that compare unequal. A test
-///      enforces this (tests/test_action_encoding.cpp).
+///   2. The conversion from `Intent` must be injective over one legal list:
+///      two intents that compare unequal give descriptions that compare
+///      unequal. NOT enforced yet: the conversion is not written (see below),
+///      so there is no test of it.
 ///   3. Object ids here are runtime `GameObjectId`s. Mapping them to
 ///      observation tokens is the observation's job (ml/token_layout.h), which
 ///      is also where hidden identities stay hidden.
 ///
-/// Types only; the conversion from `Intent` lives in openspiel/action_vocab.*.
+/// Types only. Nothing in the engine builds a `LegalActionDesc` from an
+/// `Intent` yet; `ActionKind`, `ActionDestKind` and `ActionPlaySource` are
+/// used by `ml/token_layout.h` (`ActionTokens`). openspiel/action_vocab.* is
+/// the fixed-vocabulary encoding this interface is meant to replace.
 
 #include "types.h"
 

@@ -10,17 +10,13 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "play me to an open battlefield" matched by generateMainPhaseActions
 
 class SaiScout : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // [Vision] is engine-handled.
     // "You may play me to an open battlefield."
-    // ENGINE-HANDLED: GameEngine::generateMainPhaseActions matches the substring
-    // "play me to an open battlefield" in ability_text (registry.json) and emits
-    // PlayCard intents to open battlefields. getPlayLocations() is never
-    // consulted, so no per-card override is needed.
+    unsigned extraPlayLocations() const override { return kPlayToOpenBattlefield; }
+    // [Vision] is engine-handled.
 private:
     const CardDef def_ = [] {
         CardDef d;

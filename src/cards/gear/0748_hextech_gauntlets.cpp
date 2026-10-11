@@ -19,8 +19,8 @@ public:
     bool hasEquipAbility() const override { return true; }
 
     // "[Equip] [3][A]. This ability's Energy cost is reduced by the Might of
-    // the unit you choose." Paid through standardEquip: all-or-nothing, with
-    // the engine's Power accounting ([A] = floating Power or any rune).
+    // the unit you choose." Declared as the Equip cost for that unit; the
+    // engine charges it (Card::payEquipAndAttach).
     EquipCost equipCost(const GameState& state, PlayerId, GameObjectId,
                         GameObjectId unit) const override {
         // CR 818.1.c.4: text that alters the Equip cost by the unit chosen.

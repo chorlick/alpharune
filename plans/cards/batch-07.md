@@ -54,21 +54,19 @@ Engine facts traced for this batch (apply to several cards below):
   - Code: same resolve-time scan as Loyal Poro (inverse condition).
   - Scenario: Lonely Poro and another friendly unit die together in combat -> the other unit is already gone at resolution -> draws 1 although it did not die alone. Conversely, it dies alone at base, a token is created there before the trigger resolves -> no draw.
   - BLOCKED: as Loyal Poro 718 above (last-known "other friendly units here" for a batch of deaths).
-- [ ] **712 Vex, Apathetic** - `units/0712_vex_apathetic.cpp:20` [documented] medium
+- [x] **712 Vex, Apathetic** - `units/0712_vex_apathetic.cpp:20` [documented] medium — FIXED: sets `GameObject::cant_move_this_turn` on the played unit: `GameEngine::standardMoveDestinations` offers it no Standard Move, `EffectExecutor::moveToBase` / `moveToBattlefield` refuse a move by its controller's effects, and the Expiration Step clears it; test: SweepFlowTest.Vex_ThePlayedUnitCannotBeMovedThisTurn
   - Text: "[Stun] it. They can't move it this turn."
   - Code: only stuns (TODO comment: can't-move flag not modelled).
   - Scenario: opponent plays a unit with a ready/[Accelerate] entry to base while Vex is at a battlefield -> it is stunned but can still be moved to a battlefield this turn (to contest / conquer an empty one).
-  - BLOCKED: needs a per-unit "can't move this turn" flag read by `generateMainPhaseActions` (only `cant_move_to_base` / `aura_cant_move_to_base` exist) and cleared at end of turn. The card now documents the gap.
 - [ ] **740 Poppy, Defender of the Meek** - `units/0740_poppy_defender_of_the_meek.cpp:24` [documented] medium
   - Text: "You may spend 3 XP as an additional cost to play me. If you do, I cost [3] less."
   - Code: `selfCostReduction` returns 3 whenever XP >= 3 and the WhenYouPlayMe trigger then deducts 3 XP - no choice. The deduction also runs when Poppy is played by an effect that ignores her cost.
   - Scenario: player with exactly 3 XP and plenty of Energy wants to keep the XP for a [Level 3] effect -> forced to spend it. Poppy put into play free by an effect with 3+ XP -> loses 3 XP for no discount.
   - BLOCKED: `Card::OptionalAdditionalCost` has no XP cost, and its `reduce_energy` is only honoured for the discard variant decided before payment in `executePlayCard`. Needs an XP optional cost with a pre-payment reduction (same code path as the Brazen Buccaneer / Kraken Hunter carry-over row); the card then drops `selfCostReduction` and its trigger.
-- [ ] **725 Mageseeker Investigator** - `units/0725_mageseeker_investigator.cpp:25` [documented] medium
+- [x] **725 Mageseeker Investigator** - `units/0725_mageseeker_investigator.cpp:25` [documented] medium — FIXED: a Standard Move can take several units (CR 144.3): after the first unit `executeStandardMove` asks, one unit at a time, which others join; the card sets `BattlefieldState::multi_move_tax[opponent]` and each unit beyond the first costs that [A], paid as it is added (a unit that cannot be paid for is not offered); test: SweepFlowTest.MageseekerInvestigator_TaxesEachUnitBeyondTheFirst, .StandardMove_SeveralUnitsMoveAsOneAction, .StandardMove_DecliningToAddUnitsMovesOne
   - Text: "Opponents must pay [A] for each unit beyond the first to move multiple units to my battlefield at the same time."
   - Code: sets `BattlefieldState::surcharge_enemy_multi_move`, which nothing reads (only the reset at `game_engine.cpp:4445`).
   - Scenario: opponent moves three units to the Investigator's battlefield in one turn -> pays nothing; the card is a vanilla 4/4.
-  - BLOCKED: the engine moves one unit per Standard Move action (`generateMainPhaseActions` emits `{unit_id}` moves only), so "multiple units at the same time" never happens. Needs multi-unit moves and a move-cost payment that reads `BattlefieldState::surcharge_enemy_multi_move`.
 - [x] **734 LeBlanc, Fragmented** - `units/0734_leblanc_fragmented.cpp:20` [confirmed] low — FIXED: 2 only during her controller's own Awaken / Beginning / Scoring step; test: C7Test.LeBlancFragmented_DrawsTwoOnlyInHerControllersBeginningPhase
   - Text: "[Deathknell][>] Draw 1. If it's your Beginning Phase, draw 2 instead."
   - Code: `phase == TurnPhase::BeginningStep` only - no turn-player check, and Awaken / Scoring steps (which the engine itself treats as the Beginning Phase, `effect_executor.cpp:255`) are excluded.

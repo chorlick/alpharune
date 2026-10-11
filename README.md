@@ -5,9 +5,9 @@ end-to-end. Drop-in compatible with [OpenSpiel](https://github.com/google-deepmi
 so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
 
 > **Disclaimer.** Released **as-is** for research and hobby use.
-> Expect rough edges in: card coverage (~240 of 787 cards manually implemented;
-> rest are auto-generated stubs of varying fidelity), edge-case rules
-> interactions, performance on stress workloads, and corners of the OpenSpiel
+> Expect rough edges in: card coverage (955 hand-authored cards; a few are
+> still stubs or carry a known engine gap, see `scripts/card_coverage.py`),
+> edge-case rules interactions, performance on stress workloads, and corners of the OpenSpiel
 > wrapper. PRs welcome; production deployment at your own risk.
 
 > The training / ML side — neural agents, self-play loops, model checkpoints —
@@ -19,10 +19,10 @@ so any tree-search algorithm (MCTS, ISMCTS, CFR, …) can plug straight in.
 - **Full rules engine.** Awaken → channel → draw → main → end turn loop,
   FEPR chain resolution, combat with damage assignment, scoring, mulligans,
   battlefields, gear/equip, 23 keyword mechanics, replacement effects.
-- **787 cards**, each a hand-authored C++ class owning its own data + behavior. ~240 manually implemented
-  with full behavior (champions, legends, key spells in test decks); the
-  rest have auto-generated stubs that cover simple effects. Implementation
-  fidelity per card is tracked in [`docs/card-implementation-audit.md`](docs/card-implementation-audit.md).
+- **955 cards**, each a hand-authored C++ class owning its own data + behavior.
+  `python3 scripts/card_coverage.py` classifies every card file (implemented /
+  stub / vanilla, plus in-code gap comments); its work lists are under
+  [`docs/card-coverage/`](docs/card-coverage/).
 - **Deterministic.** Given a seed, the same game replays identically.
 - **OpenSpiel integration.** `RiftboundGame` / `RiftboundState` implement
   the OpenSpiel `Game` / `State` interfaces. MCTS, ISMCTS, and random
@@ -204,8 +204,9 @@ python3 scripts/fetch_cards.py
 | Script | Purpose |
 |---|---|
 | `scripts/fetch_cards.py` | Scrape Riftbound's official gallery into `cards/raw/gallery_raw.json`. Reference data for authoring new cards; not consumed by the engine. |
-| `scripts/generate_replays.py` | Bulk-generate HTML replays of every deck pair under `decks/`. Useful for visual V&V after card changes. |
-| `scripts/audit_deck_cards.py` | Per-deck audit of card-implementation status (FULL / PARTIAL / STUB / MISSING). |
+| `scripts/card_coverage.py` | Classify every `src/cards/<type>/<id>_<slug>.cpp` (implemented / metadata-only / stub / vanilla) and its in-code gap comments; exits non-zero while any card is a stub. `--write-lists` refreshes `docs/card-coverage/`. |
+| `scripts/generate_replays.py` | Run `build/riftbound --render-html on` once per deck pair under `decks/` (the binary plays one pair per run) and file the HTML replays per pair. Visual V&V after card changes. |
+| `scripts/rules_to_md.py` | Regenerate `rules/core-rules.md` from the rules PDF. |
 
 ## Repository layout
 
@@ -218,7 +219,7 @@ src/cards/       Card subclasses — one TU per card under units/ spells/ gear/
                  owning its CardDef data + behavior. Per-type bases live in
                  their type dir (gear/equip_base.h, units/weaponmaster_base.h);
                  cross-cutting helpers in card_helpers.h; cards_init.cpp is the
-                 generated registration aggregator.
+                 checked-in registration aggregator (one line per card).
 src/agents/      AgentInterface + RandomAgent + HumanAgent
 src/io/          HTML replay writer, ASCII state renderer, play server
                  (web UI) and its god-mode state editor
@@ -235,12 +236,13 @@ cards/           raw/gallery_raw.json (reference art/metadata for authoring)
 decks/           Sample decks (.txt deck lists, Piltover Archive format)
 rules/           core-rules.md, tournament-rules.md, core-rules.pdf
 errata/          Official errata documents
-scripts/         Card-data pipeline + replay generation
+scripts/         Card gallery fetch, card coverage report, batch replay
+                 generation, rules PDF -> Markdown
 ```
 
 ## Reference
 
-- `rules/core-rules.md` — full game rules (sections 000–826)
+- `rules/core-rules.md` — full game rules (2026-10-09 edition, sections 000–832)
 - `rules/tournament-rules.md` — deck construction + tournament policies
 - `CLAUDE.md` — coding standards + architecture conventions for contributors
 
@@ -248,7 +250,7 @@ scripts/         Card-data pipeline + replay generation
 
 This is a working development snapshot. The engine, OpenSpiel wrapper, and
 test suite are stable. Card coverage is improving steadily — see
-`scripts/audit_deck_cards.py` output for per-deck implementation status.
+`scripts/card_coverage.py` output for per-card implementation status.
 
 ## License
 

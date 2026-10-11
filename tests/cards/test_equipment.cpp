@@ -121,7 +121,7 @@ protected:
     }
 
     /// Add enough ready runes of `domain` (and a few generic) to pay any
-    /// reasonable equip cost. The standardEquip helper exhausts ready runes
+    /// reasonable equip cost. The Equip payment exhausts ready runes
     /// for energy and recycles a matching-domain rune for power.
     void giveRunesForEquip(PlayerId owner, Domain domain, int extra_energy = 0) {
         // Always have at least one matching-domain rune for the recycle cost.
@@ -797,16 +797,19 @@ protected:
         return id;
     }
 
-    /// Drive a Weaponmaster's WhenYouPlayMe trigger.
+    /// Fire a Weaponmaster's WhenYouPlayMe trigger through the engine (chain,
+    /// finalization, resolution), accepting its "you may". `exec` is unused:
+    /// the engine uses its own executor. This used to call Card::onTrigger
+    /// directly, which skipped finalization.
     void fireWeaponmasterTrigger(GameObjectId weapon_master,
                                   CardDefId def_id,
-                                  EffectExecutor& exec) {
+                                  EffectExecutor& /*exec*/) {
         Card* c = card_registry.get(def_id);
         ASSERT_NE(c, nullptr);
         EXPECT_EQ(c->triggerType(), TriggerType::WhenYouPlayMe);
-        CardContext ctx{state, events, exec, P1, weapon_master};
-        ctx.registry = &card_registry;   // as the engine sets it: the Equip cost is the gear's
-        c->onTrigger(ctx, {});
+        AcceptingEnginePathAgent agent;
+        fireTriggerThroughEngine(weapon_master, TriggerType::WhenYouPlayMe, &agent,
+                                 kInvalidId, &agent);
     }
 };
 

@@ -4,12 +4,15 @@
 /// The play-server tests run a real game (GameEngine::runGame on its own
 /// thread, a HumanAgent in seat 1) behind a real PlayServer on an ephemeral
 /// loopback port, and talk to it over a WebSocket exactly as the browser
-/// does. play_server.cpp and play_index_html.cpp are linked only into the
-/// `riftbound` executable, so they are compiled into this file.
+/// does.
 
-#include "src/io/play_index_html.cpp"
-#include "src/io/play_server.cpp"
+#include "io/play_index_html.h"
+#include "io/play_server.h"
+#include "io/replay_writer.h"
+#include "io/state_editor.h"
+#include "io/state_renderer.h"
 
+#include "agents/human_agent.h"
 #include "agents/random_agent.h"
 #include "cards/card_registry.h"
 #include "engine/batch_runner.h"
@@ -18,14 +21,33 @@
 #include <gtest/gtest.h>
 
 #include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/websocket.hpp>
+#include <nlohmann/json.hpp>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <optional>
 #include <sstream>
+#include <thread>
 
-using namespace riftbound;
+// Unity builds merge file scopes: everything here lives in this file's namespace.
+namespace riftbound::test::review_fix_io_cli {
+
 using namespace std::chrono_literals;
+namespace beast = boost::beast;
+namespace http  = beast::http;
+namespace ws    = beast::websocket;
+namespace net   = boost::asio;
+using tcp       = net::ip::tcp;
+using json      = nlohmann::json;
 
 namespace {
 
@@ -929,3 +951,168 @@ TEST(GameRunnerReviewFix, DebugLogIsPrinted) {
     EXPECT_NE(out.find("[TRC] "), std::string::npos);
     EXPECT_NE(out.find("Game 1 [seed=20261010] log"), std::string::npos);
 }
+
+// ─── Carry-over (io-cli) — the first Ctrl-C ends a game with no human seat ───
+
+namespace {
+
+/// A random agent that counts how often the engine really consulted it.
+class CountingAgent : public AgentInterface {
+public:
+    CountingAgent(uint64_t seed, std::atomic<int>& asked) : inner_(seed), asked_(asked) {}
+    Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
+        asked_.fetch_add(1);
+        return inner_.selectAction(state, legal);
+    }
+private:
+    RandomAgent inner_;
+    std::atomic<int>& asked_;
+};
+
+} // namespace
+
+TEST(PlayServerShutdown, FirstShutdownEndsASpectatorGameAtTheNextDecision) {
+    EventBus events;
+    GameEngine engine{cards().db, events, cards().registry};
+    StateRenderer renderer{cards().db};
+    PlayServerConfig cfg;
+    cfg.port = 0;
+    cfg.spectator = true;        // no human seat: nothing for on_shutdown_signal to abort
+    cfg.reveal_hidden = true;
+    PlayServer server(engine, renderer, cards().db, std::move(cfg));
+    server.start();
+
+    std::atomic<int> asked{0};
+    CountingAgent ai1{31, asked}, ai2{32, asked};
+    ServedAiSeat seat1{ai1, server}, seat2{ai2, server};   // as main.cpp wraps AI seats
+    engine.on_decision = [&](const GameState&, const std::vector<Intent>& legal,
+                             const Intent& chosen) {
+        server.awaitSpectatorStep(legal, chosen);
+        server.notifyDecisionMade();
+    };
+    GameResult result;
+    std::atomic<bool> done{false};
+    std::thread game_thread([&] {
+        result = engine.runGame(cards().deck1, cards().deck2, seat1, seat2, 20261011);
+        done.store(true);
+    });
+
+    // Autoplay is off: the engine parks at the spectator gate after the
+    // first decision it reports through on_decision and stays there. Wait
+    // until the number of decisions asked has stopped moving.
+    auto deadline = std::chrono::steady_clock::now() + 5s;
+    int parked_at = -1;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const int seen = asked.load();
+        std::this_thread::sleep_for(300ms);
+        if (seen > 0 && asked.load() == seen) { parked_at = seen; break; }
+    }
+    // (No ASSERT while game_thread is joinable.)
+    EXPECT_GT(parked_at, 0) << "the engine never parked at the spectator gate";
+    EXPECT_FALSE(done.load());
+
+    EXPECT_FALSE(server.shutdownRequested());
+    server.requestShutdown();    // what the first SIGINT / SIGTERM does
+    EXPECT_TRUE(server.shutdownRequested());
+
+    deadline = std::chrono::steady_clock::now() + 5s;
+    while (!done.load() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(5ms);
+    const bool finished = done.load();
+    if (!finished) {
+        // Do not hang the suite: without the fix the game plays on by itself.
+        ADD_FAILURE() << "the game was still running 5 s after requestShutdown()";
+    }
+    game_thread.join();
+    server.notifyGameFinished();
+    server.stop();
+
+    // It used to run the whole AI game (hundreds of decisions) to its
+    // natural end. Now no agent is consulted again: the next seat asked
+    // concedes.
+    EXPECT_EQ(asked.load(), parked_at);
+    EXPECT_NE(result.termination_reason.find("conceded"), std::string::npos)
+        << result.termination_reason;
+}
+
+// ─── Carry-over (io-cli) — a god-mode edit refreshes the pending decision ────
+
+TEST(PlayServerGodMode, EditRecomputesThePendingMainPhaseDecision) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    auto typeHas = [](const json& action, const char* word) {
+        return action["type"].get<std::string>().find(word) != std::string::npos;
+    };
+    // P1's main-phase decision with a card it could play.
+    json f = playUntil(c, [&](const json& m) {
+        bool end_turn = false, play = false;
+        for (const auto& a : m["legal"]) {
+            end_turn |= typeHas(a, "EndTurn");
+            play |= typeHas(a, "PlayCard") && a.contains("card_object_id");
+        }
+        return end_turn && play;
+    });
+    ASSERT_FALSE(f.is_null());
+    const uint64_t id0 = f["decision_id"].get<uint64_t>();
+    int card = -1;
+    for (const auto& a : f["legal"])
+        if (typeHas(a, "PlayCard") && a.contains("card_object_id"))
+            card = a["card_object_id"].get<int>();
+    ASSERT_GE(card, 0);
+
+    // Take that card out of P1's hand while the engine waits.
+    c.send({{"type", "edit_move"}, {"object_id", card}, {"to_player", "P1"}, {"to_zone", "Trash"}});
+    json reply = c.nextReply();
+    ASSERT_EQ(reply["type"], "edit_ok") << reply.dump();
+    EXPECT_TRUE(reply["legal_recomputed"].get<bool>());
+
+    // The decision is offered again, as a new one, without the plays of the
+    // card that is no longer in hand (they used to stay clickable).
+    json g = c.nextDecision("P1", id0);
+    ASSERT_FALSE(g.is_null());
+    const uint64_t id1 = g["decision_id"].get<uint64_t>();
+    int end_turn_index = -1;
+    for (const auto& a : g["legal"]) {
+        EXPECT_NE(a.value("card_object_id", -1), card) << a.dump();
+        if (typeHas(a, "EndTurn")) end_turn_index = a["index"].get<int>();
+    }
+    ASSERT_GE(end_turn_index, 0);
+
+    // A click made on the pre-edit list is refused, not applied.
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id0}});
+    reply = c.nextReply();
+    EXPECT_EQ(reply["type"], "err");
+    EXPECT_NE(reply.value("msg", "").find("stale"), std::string::npos) << reply.dump();
+
+    // An answer from the new list is what the engine applies: the turn ends.
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", end_turn_index}, {"decision_id", id1}});
+    json next = c.readUntil([&](const json& m) {
+        return (m["type"] == "decision" || m["type"] == "state") &&
+               m["turn"].value("turn_player", "") == "P2";
+    });
+    EXPECT_FALSE(next.is_null());
+}
+
+TEST(PlayServerGodMode, EditAtANestedDecisionSaysTheListWasKept) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    // The first decision of a game is not the main-phase one (no EndTurn).
+    json first = c.nextDecision("P1");
+    ASSERT_FALSE(first.is_null());
+    for (const auto& a : first["legal"])
+        ASSERT_EQ(a["type"].get<std::string>().find("EndTurn"), std::string::npos);
+    const uint64_t id0 = first["decision_id"].get<uint64_t>();
+
+    c.send({{"type", "edit_player"}, {"player", "P1"}, {"field", "score"}, {"value", 1}});
+    json reply = c.nextReply();
+    ASSERT_EQ(reply["type"], "edit_ok") << reply.dump();
+    EXPECT_FALSE(reply["legal_recomputed"].get<bool>());
+    // Same decision, same id: an answer to it is still accepted.
+    json again = c.nextDecision("P1");
+    EXPECT_EQ(again["decision_id"].get<uint64_t>(), id0);
+    EXPECT_EQ(again["legal"], first["legal"]);
+}
+
+} // namespace riftbound::test::review_fix_io_cli

@@ -520,23 +520,14 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         bf.card_object_id = obj_id;
         bf.contributed_by = contributor;
 
-        // Parse static battlefield restrictions from ability text. These
-        // flags are consulted by the action generators (move + play)
-        // without needing per-BF Card dispatch on every legal-action
-        // check.
-        if (def_id != kInvalidId) {
-            const auto& def = card_db_.get(def_id);
-            std::string t = def.ability_text;
-            std::transform(t.begin(), t.end(), t.begin(), ::tolower);
-            if (t.find("can't move from here to base") != std::string::npos)
-                bf.blocks_move_to_base = true;
-            if (t.find("can't be played here") != std::string::npos)
-                bf.blocks_unit_play = true;
-        }
-        // Turn-gated scoring is a structured property the BF card decides
-        // (Forgotten Monument). Engine asks; card answers.
+        // Static restrictions and turn-gated scoring are structured
+        // properties the battlefield card declares (Vilemaw's Lair, Rockfall
+        // Path, Forgotten Monument). Engine asks; card answers. The flags are
+        // consulted by the action generators (move + play).
         if (auto* bfc = dynamic_cast<const BattlefieldCard*>(
                 card_registry_.get(def_id))) {
+            bf.blocks_move_to_base = bfc->blocksMoveToBase();
+            bf.blocks_unit_play = bfc->blocksUnitPlay();
             bf.min_turn_to_score = bfc->minTurnToScore();
         }
         state_.battlefields.push_back(bf);
@@ -996,36 +987,68 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
         return adv;
     }
 
-    // Check for staged showdowns/combats after cleanup
-    processContestedBattlefields();
-    if (state_.game_over) {
-        adv.kind = MainPhaseAdvance::Kind::Done;
-        return adv;
-    }
+    // Everything that is pending is settled before the turn player is asked:
+    // staged showdowns and combats run, and whatever they (or the action
+    // before) left on the chain resolves — a "When I conquer" from a showdown,
+    // a death trigger from a combat. The main-phase decision is never reached
+    // with an item on the chain or a Closed State. Running a combat can stage
+    // another (CR 468.3.d.1), so this repeats until nothing is left.
+    constexpr int kMaxSettlePasses = 64;
+    for (int pass = 0; ; ++pass) {
+        if (pass >= kMaxSettlePasses)
+            throw std::logic_error("GameEngine::advanceMainPhase: staged showdowns, "
+                                   "combats and the chain did not settle");
+        bool progressed = false;
 
-    // If in showdown, run it. Sub-calls still use the recursive path
-    // until C-1 commit 6 converts the chain / combat subsystems.
-    // By index, and re-fetched by id after each showdown / combat: what
-    // resolves in them may add a battlefield, which reallocates the vector.
-    for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
-        const BattlefieldId bf_id = state_.battlefields[bi].id;
-        if (const auto& bf = state_.battlefields[bi];
-            bf.showdown_staged && !bf.showdown_in_progress && !bf.combat_staged) {
-            runShowdown(bf_id);
-            if (state_.game_over) {
-                adv.kind = MainPhaseAdvance::Kind::Done;
-                return adv;
-            }
-            getBattlefield(bf_id).showdown_staged = false;
+        // Check for staged showdowns/combats after cleanup
+        processContestedBattlefields();
+        if (state_.game_over) {
+            adv.kind = MainPhaseAdvance::Kind::Done;
+            return adv;
         }
-        if (const auto& bf = state_.battlefields[bi];
-            bf.combat_staged && !bf.combat_in_progress) {
-            runCombat(bf_id);
-            if (state_.game_over) {
-                adv.kind = MainPhaseAdvance::Kind::Done;
-                return adv;
+
+        // If in showdown, run it. Sub-calls still use the recursive path
+        // until C-1 commit 6 converts the chain / combat subsystems.
+        // By index, and re-fetched by id after each showdown / combat: what
+        // resolves in them may add a battlefield, which reallocates the vector.
+        for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
+            const BattlefieldId bf_id = state_.battlefields[bi].id;
+            if (const auto& bf = state_.battlefields[bi];
+                bf.showdown_staged && !bf.showdown_in_progress && !bf.combat_staged) {
+                runShowdown(bf_id);
+                progressed = true;
+                if (state_.game_over) {
+                    adv.kind = MainPhaseAdvance::Kind::Done;
+                    return adv;
+                }
+                getBattlefield(bf_id).showdown_staged = false;
             }
-            getBattlefield(bf_id).combat_staged = false;
+            if (const auto& bf = state_.battlefields[bi];
+                bf.combat_staged && !bf.combat_in_progress) {
+                runCombat(bf_id);
+                progressed = true;
+                if (state_.game_over) {
+                    adv.kind = MainPhaseAdvance::Kind::Done;
+                    return adv;
+                }
+                // Cleared unless the combat ended in "No Result" with both
+                // players still here, which keeps the battlefield Contested
+                // and stages the next combat (CR 468.3.d.1): the next pass of
+                // this loop runs it.
+                if (!getBattlefield(bf_id).is_contested)
+                    getBattlefield(bf_id).combat_staged = false;
+            }
+        }
+
+        if (chain_manager_->chainExists()) {
+            runChain();
+            progressed = true;
+        }
+        if (!progressed) break;
+        cleanup();
+        if (state_.game_over) {
+            adv.kind = MainPhaseAdvance::Kind::Done;
+            return adv;
         }
     }
 
@@ -1181,6 +1204,7 @@ void GameEngine::doExpirationBody() {
         obj.prevent_damage_remaining = 0;   // Ki Barrier
         obj.damage_taken_this_turn = 0;
         obj.untargetable_by_enemy_this_turn = false;   // Twilight Shroud
+        obj.cant_move_this_turn = false;               // Vex, Apathetic
         obj.temp_granted_abilities.clear();            // Dominus
 
         // "Empower it. Disempower it at end of turn" and the reverse (Sanction,
@@ -1413,9 +1437,8 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     if (tobj.isUnit() && tobj.location.has_value()) {
         if (tobj.controller == chooser)
             events_.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
-        else
-            state_.player(chooser).chose_enemy_unit_this_turn = true;
     }
+    state_.noteChosen(chooser, t, it);
 }
 
 Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options,
@@ -1503,10 +1526,21 @@ void GameEngine::runFinalizePass(ChainItem& item) {
     state_.chain.resuming = item;
     state_.chain.resuming->finalizing = true;
 
-    constexpr int kMaxChoices = 16;
-    for (int iter = 0; iter < kMaxChoices; ++iter) {
+    // A card may ask as many questions as its text needs (one per unit on a
+    // crowded board). The bound only stops a card that never stops asking,
+    // and reaching it is an engine error, not a quiet end of the choices.
+    constexpr int kMaxChoices = 1024;
+    for (int iter = 0; ; ++iter) {
         resolveSpell(*state_.chain.resuming);
         if (!effect_executor_->hasPendingChoice()) break;
+        if (iter >= kMaxChoices) {
+            const GameObjectId src = state_.chain.resuming->source;
+            throw std::logic_error(
+                "GameEngine::runFinalizePass: " +
+                (state_.objectExists(src) ? state_.getObject(src).name : std::string("?")) +
+                " asked more than " + std::to_string(kMaxChoices) +
+                " choices at finalization");
+        }
         auto pending = effect_executor_->consumePendingChoice();
         events_.logTrace(std::string("CHOICE-REQUEST (finalize): ") +
                          (pending.label.empty() ? "MakeChoice" : pending.label) + " [" +
@@ -1776,7 +1810,11 @@ void GameEngine::executeIntent(const Intent& intent) {
         case IntentType::ActivateAbility:
         case IntentType::ActivateActionAbility:
         case IntentType::ActivateReactionAbility: {
-            if (payAndQueueAbility(intent)) runChain();
+            // An Equip adds no chain item, but paying for it can trigger
+            // abilities (a rune recycled for its Power): whatever is on the
+            // chain afterwards is run, not left for a later action.
+            const bool queued = payAndQueueAbility(intent);
+            if (queued || chain_manager_->chainExists()) runChain();
             break;
         }
         case IntentType::StandardMove:
@@ -2312,6 +2350,12 @@ void GameEngine::runChain() {
 }
 
 void GameEngine::resolveSpell(const ChainItem& item) {
+    // A cost the card asked for in an earlier run of this callback
+    // (Card::costDueNow, at finalization or while resolving) is paid: it is
+    // not due again when the card is re-entered after a prompt.
+    if (auto& r = state_.chain.resuming; r.has_value() && (r->finalize_checked & 16)) {
+        r->finalize_checked = static_cast<uint8_t>((r->finalize_checked & ~16) | 8);
+    }
     {
         std::string name = state_.objectExists(item.source) ? state_.getObject(item.source).name : "?";
         events_.logTrace(std::string(item.finalizing ? "FINALIZE-CHOICES: " : "RESOLVE: ") +
@@ -2339,7 +2383,12 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     //
     // We pass the filtered list into onResolve/onActivate/onTrigger
     // via a local copy. The chain item itself is left untouched
-    // (avoids interfering with chain resume / multi-resolve paths).
+    // (avoids interfering with chain resume / multi-resolve paths), and
+    // that is the contract for target ROLES: the filtered list keeps the
+    // chosen order but closes the gaps, so a card whose slots differ
+    // ("kill this one, pump that one") reads each slot off the item
+    // through Card::chosenTarget, which answers kInvalidId for a slot
+    // whose target was dropped here.
     //
     // Cards that defer target choice to resolve time via
     // pickTarget/pickTargetPair (Phase 6q opt-in) are unaffected —
@@ -2620,7 +2669,16 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
 Intent GameEngine::queryAgentForChain(PlayerId player,
                                        const std::vector<Intent>& actions) {
     state_.decision_index++;
+    // A priority decision (it offers PassPriority) can be rebuilt from the
+    // state; a card's prompt asked through this path cannot.
+    const bool is_priority = std::any_of(actions.begin(), actions.end(),
+        [](const Intent& i) { return i.type == IntentType::PassPriority; });
+    if (is_priority) {
+        pending_query_ = PendingQuery::ChainPriority;
+        pending_query_player_ = player;
+    }
     auto chosen = getAgent(player).selectAction(state_, actions);
+    pending_query_ = PendingQuery::None;
     recordAppliedIntent(chosen);
     // Surface the chain-priority decision in the trace so V&V can
     // confirm priority is being passed correctly between players in
@@ -2643,7 +2701,61 @@ void GameEngine::executeStandardMove(const Intent& intent) {
     if (!intent.move_destination.has_value()) return;
     auto dest = *intent.move_destination;
 
-    for (auto unit_id : intent.units_to_move) {
+    // CR 144.3: "Players may perform multiple Units' standard move
+    // simultaneously" — one action, one destination, any origins. The intent
+    // names the first unit; the player then adds the others one at a time
+    // (or stops), which keeps the action list linear in the number of units.
+    // A battlefield may charge for each unit beyond the first
+    // (BattlefieldState::multi_move_tax): that [A] is paid as the unit is
+    // added, and a unit the player cannot pay for is not offered.
+    std::vector<GameObjectId> moving = intent.units_to_move;
+    if (moving.size() == 1) {
+        int tax = 0;
+        if (std::holds_alternative<BattlefieldLocation>(dest))
+            tax = getBattlefield(std::get<BattlefieldLocation>(dest).id)
+                      .multi_move_tax[playerIndex(intent.player)];
+        while (true) {
+            std::vector<GameObjectId> can_join;
+            if (tax <= 0 || payableAnyPower(state_, intent.player) >= tax) {
+                for (auto uid : state_.allUnitsControlledBy(intent.player)) {
+                    if (std::find(moving.begin(), moving.end(), uid) != moving.end()) continue;
+                    const auto dests = standardMoveDestinations(state_.getObject(uid),
+                                                                intent.player);
+                    if (std::find(dests.begin(), dests.end(), dest) != dests.end())
+                        can_join.push_back(uid);
+                }
+            }
+            if (can_join.empty()) break;
+            std::vector<Intent> options;
+            Intent stop;
+            stop.type = IntentType::MakeChoice;
+            stop.player = intent.player;
+            stop.chosen_value = 0;
+            stop.choice_label = "Move no more units";
+            options.push_back(stop);
+            for (auto uid : can_join) {
+                Intent join;
+                join.type = IntentType::MakeChoice;
+                join.player = intent.player;
+                join.chosen_objects = {uid};
+                options.push_back(std::move(join));
+            }
+            const Intent chosen = decideNow(intent.player, options,
+                tax > 0 ? "move another unit with this move (pay " + std::to_string(tax) + " [A])"
+                        : std::string("move another unit with this move"));
+            if (chosen.chosen_objects.empty() ||
+                std::find(can_join.begin(), can_join.end(), chosen.chosen_objects.front()) ==
+                    can_join.end()) break;
+            if (tax > 0) {
+                effect_executor_->payAnyPower(intent.player, tax);
+                events_.logTrace("MOVE_TAX: " + std::string(toString(intent.player)) + " pays " +
+                                 std::to_string(tax) + " [A] to move another unit there");
+            }
+            moving.push_back(chosen.chosen_objects.front());
+        }
+    }
+
+    for (auto unit_id : moving) {
         auto& unit_obj = state_.getObject(unit_id);
         std::string dest_str = std::holds_alternative<BattlefieldLocation>(dest)
             ? "BF#" + std::to_string(std::get<BattlefieldLocation>(dest).id)
@@ -2676,7 +2788,7 @@ void GameEngine::executeStandardMove(const Intent& intent) {
         // previously the unit sat with combat_designation = None and
         // didn't contribute to damage assignment / step resolution.
         if (bf.combat_in_progress) {
-            for (auto unit_id : intent.units_to_move) {
+            for (auto unit_id : moving) {
                 auto& unit_obj = state_.getObject(unit_id);
                 if (bf.attacker.has_value() && unit_obj.controller == *bf.attacker) {
                     unit_obj.combat_designation = CombatDesignation::Attacker;
@@ -2947,9 +3059,10 @@ void GameEngine::executeHideCard(const Intent& intent) {
             payAdditionalCost(intent.player, 0, hide_cost.power, Domain::Count, SpendFor::Other);
     }
 
-    // Remove from hand
+    // Remove from hand — or from the Champion Zone (CR 811.1.b).
     auto it = std::find(ps.hand.begin(), ps.hand.end(), intent.card);
     if (it != ps.hand.end()) ps.hand.erase(it);
+    else if (ps.champion_zone == intent.card) ps.champion_zone = kInvalidId;
 
     // Place facedown at the chosen battlefield
     auto bf_id = intent.chosen_battlefield;
@@ -3021,6 +3134,16 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
 // Legal action generation
 // ═══════════════════════════════════════════════════════════════════════════════
 
+std::optional<std::vector<Intent>> GameEngine::recomputePendingLegalActions() const {
+    switch (pending_query_) {
+        case PendingQuery::MainPhase:     return generateMainPhaseActions(pending_query_player_);
+        case PendingQuery::Showdown:      return generateShowdownActions(pending_query_player_);
+        case PendingQuery::ChainPriority: return generateClosedStateActions(pending_query_player_);
+        case PendingQuery::None:          break;
+    }
+    return std::nullopt;
+}
+
 std::vector<Intent> GameEngine::generateLegalActions() const {
     auto player = state_.turn.turn_player;
 
@@ -3051,63 +3174,98 @@ std::vector<Intent> GameEngine::generateLegalActions() const {
     return {};
 }
 
+std::vector<LocationId> GameEngine::standardMoveDestinations(const GameObject& unit,
+                                                             PlayerId player) const {
+    std::vector<LocationId> dests;
+    if (unit.is_exhausted) return dests;          // exhausting it is the cost (CR 144.2)
+    if (unit.cant_move_this_turn) return dests;   // "They can't move it this turn."
+
+    if (unit.isAtBase()) {
+        // Can move from base to any battlefield (CR 144.4.a).
+        // Rockfall Path's "can't be PLAYED here" does NOT restrict
+        // movement — only the play-from-hand action generators
+        // consult blocks_unit_play.
+        for (auto& bf : state_.battlefields) {
+            // Can't move to BF with units from 2 other players (CR 144.4.a.1)
+            // In 1v1, this is never an issue
+            dests.push_back(BattlefieldLocation{bf.id});
+        }
+    } else if (unit.isAtBattlefield()) {
+        // Can normally move back to base (CR 144.4.b). Vilemaw's Lair
+        // and similar locking BFs set `blocks_move_to_base` to deny
+        // this leg.
+        auto unit_bf = unit.battlefieldId();
+        bool allow_to_base = true;
+        if (unit_bf) {
+            const auto& src_bf = getBattlefield(*unit_bf);
+            if (src_bf.blocks_move_to_base) allow_to_base = false;
+        }
+        if (unit.cant_move_to_base) allow_to_base = false;  // Determined Sentry
+        if (unit.aura_cant_move_to_base) allow_to_base = false;  // Minotaur Reckoner
+        if (allow_to_base) dests.push_back(BaseLocation{player});
+
+        // BF→BF moves allowed when EITHER:
+        //   - unit has Ganking (CR 144.4.c), OR
+        //   - destination BF has `accepts_any_inbound` (Baron Pit's
+        //     "Units can move here from anywhere" rule).
+        // Either route emits one move per legal destination.
+        // Rockfall Path's "can't be played here" does NOT restrict
+        // BF→BF moves; only play-from-hand checks blocks_unit_play.
+        const bool has_ganking = unit.hasKeyword(Keyword::Ganking);
+        for (auto& bf : state_.battlefields) {
+            if (!unit_bf || *unit_bf == bf.id) continue;
+            const bool can_move = has_ganking || bf.accepts_any_inbound;
+            if (!can_move) continue;
+            dests.push_back(BattlefieldLocation{bf.id});
+        }
+    }
+    return dests;
+}
+
+bool GameEngine::enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const {
+    int units = 0, enemies = 0;
+    for (const auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit() || obj.battlefieldId() != bf) continue;
+        ++units;
+        if (obj.controller != player) ++enemies;
+    }
+    return units == 1 && enemies == 1;
+}
+
+bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
+                                const BattlefieldState& bf) const {
+    const auto& ps = state_.player(player);
+    if (bf.blocks_unit_play) return false;  // Rockfall Path
+    // Play-to-location permissions the card prints (CR 355.2), and the ones
+    // another card grants every unit this player plays.
+    const unsigned extra = card_obj ? card_obj->extraPlayLocations() : 0u;
+    const bool controlled = bf.controller.has_value() && *bf.controller == player;
+    const bool open = !bf.controller.has_value();
+    const bool enemy_occupied = bf.controller.has_value() && *bf.controller != player &&
+                                bf.hasUnitsFrom(opponent(player), state_.objects);
+    if (controlled) return true;  // default: controlled BFs
+    if (open && ((extra & Card::kPlayToOpenBattlefield) ||
+                 ps.grant_friendly_units_open_bf)) return true;   // Miss Fortune, Buccaneer
+    if (enemy_occupied && (extra & Card::kPlayToOccupiedEnemyBattlefield)) return true;
+    if (extra & Card::kPlayToAnyBattlefield) return true;
+    if (((extra & Card::kPlayToLoneEnemyBattlefield) || ps.grant_units_lone_enemy_bf) &&
+        enemyUnitAloneAt(player, bf.id)) return true;             // Arachnoid Horror
+    return false;
+}
+
 std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const {
     std::vector<Intent> actions;
 
     // Always can end turn
     actions.push_back(Intent::endTurn(player));
 
-    // Standard Move: exhaust ready units to move them
+    // Standard Move: exhaust ready units to move them. One intent per unit
+    // and destination; further units join the same move as it is declared
+    // (CR 144.3, executeStandardMove).
     auto all_units = state_.allUnitsControlledBy(player);
     for (auto unit_id : all_units) {
-        auto& unit = state_.getObject(unit_id);
-        if (unit.is_exhausted) continue; // must be ready
-
-        if (unit.isAtBase()) {
-            // Can move from base to any battlefield (CR 144.4.a).
-            // Rockfall Path's "can't be PLAYED here" does NOT restrict
-            // movement — only the play-from-hand action generators
-            // consult blocks_unit_play.
-            for (auto& bf : state_.battlefields) {
-                // Can't move to BF with units from 2 other players (CR 144.4.a.1)
-                // In 1v1, this is never an issue
-                LocationId dest = BattlefieldLocation{bf.id};
-                actions.push_back(Intent::standardMove(
-                    player, {unit_id}, dest));
-            }
-        } else if (unit.isAtBattlefield()) {
-            // Can normally move back to base (CR 144.4.b). Vilemaw's Lair
-            // and similar locking BFs set `blocks_move_to_base` to deny
-            // this leg.
-            auto unit_bf = unit.battlefieldId();
-            bool allow_to_base = true;
-            if (unit_bf) {
-                const auto& src_bf = getBattlefield(*unit_bf);
-                if (src_bf.blocks_move_to_base) allow_to_base = false;
-            }
-            if (unit.cant_move_to_base) allow_to_base = false;  // Determined Sentry
-            if (unit.aura_cant_move_to_base) allow_to_base = false;  // Minotaur Reckoner
-            if (allow_to_base) {
-                actions.push_back(Intent::standardMove(
-                    player, {unit_id}, BaseLocation{player}));
-            }
-
-            // BF→BF moves allowed when EITHER:
-            //   - unit has Ganking (CR 144.4.c), OR
-            //   - destination BF has `accepts_any_inbound` (Baron Pit's
-            //     "Units can move here from anywhere" rule).
-            // Either route emits one move per legal destination.
-            // Rockfall Path's "can't be played here" does NOT restrict
-            // BF→BF moves; only play-from-hand checks blocks_unit_play.
-            const bool has_ganking = unit.hasKeyword(Keyword::Ganking);
-            for (auto& bf : state_.battlefields) {
-                if (!unit_bf || *unit_bf == bf.id) continue;
-                const bool can_move = has_ganking || bf.accepts_any_inbound;
-                if (!can_move) continue;
-                actions.push_back(Intent::standardMove(
-                    player, {unit_id}, BattlefieldLocation{bf.id}));
-            }
-        }
+        for (const auto& dest : standardMoveDestinations(state_.getObject(unit_id), player))
+            actions.push_back(Intent::standardMove(player, {unit_id}, dest));
     }
 
     // Play units from hand — must be able to afford the cost.
@@ -3127,16 +3285,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         if (card.card_def_id == kInvalidId) continue;  // tokens have no CardDef
         if (!canAfford(player, card_id)) continue;
 
-        // Check play-to-location abilities from ability_text
-        const auto& def = card_db_.get(card.card_def_id);
-        auto& text = def.ability_text;
-        bool can_play_open_bf = (text.find("play me to an open battlefield") != std::string::npos);
-        bool can_play_enemy_bf = (text.find("play me to an occupied enemy battlefield") != std::string::npos);
-        bool can_play_any_bf = (text.find("play me to a battlefield") != std::string::npos ||
-                                text.find("play me at a battlefield") != std::string::npos);
-        // Board-wide grant: a friendly unit (e.g. Miss Fortune, Buccaneer) lets
-        // ALL of this player's units be played to open battlefields.
-        if (ps.grant_friendly_units_open_bf) can_play_open_bf = true;
+        const Card* card_obj = card_registry_.get(card.card_def_id);
 
         Intent play_intent;
         play_intent.type = IntentType::PlayCard;
@@ -3145,7 +3294,6 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
 
         // NARROWING hook (Perched Grimwyrm): the card dictates its own legal
         // play locations and suppresses the default base + BF plays entirely.
-        const Card* card_obj = card_registry_.get(card.card_def_id);
         if (card_obj && card_obj->restrictsPlayLocations()) {
             for (const auto& loc : card_obj->getPlayLocations(state_, player)) {
                 Intent restricted = play_intent;
@@ -3165,15 +3313,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
 
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
-            bool controlled = bf.controller.has_value() && *bf.controller == player;
-            bool open = !bf.controller.has_value();
-            bool enemy_occupied = bf.controller.has_value() && *bf.controller != player &&
-                                  bf.hasUnitsFrom(opponent(player), state_.objects);
-
-            bool can_play_here = controlled; // default: controlled BFs
-            if (can_play_open_bf && open) can_play_here = true;
-            if (can_play_enemy_bf && enemy_occupied) can_play_here = true;
-            if (can_play_any_bf) can_play_here = true;
+            const bool can_play_here = unitPlayableAt(card_obj, player, bf);
 
             if (can_play_here) {
                 Intent bf_play = play_intent;
@@ -3293,8 +3433,13 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         }
     }
 
-    // Hide cards with [Hidden] keyword facedown at controlled battlefields (CR 811)
-    for (auto card_id : ps.hand) {
+    // Hide cards with [Hidden] keyword facedown at controlled battlefields
+    // (CR 811.1.b: "While this card is in your hand or in your Champion Zone").
+    std::vector<GameObjectId> hide_sources = ps.hand;
+    if (ps.champion_zone != kInvalidId && state_.objectExists(ps.champion_zone) &&
+        state_.getObject(ps.champion_zone).zone == ZoneType::ChampionZone)
+        hide_sources.push_back(ps.champion_zone);
+    for (auto card_id : hide_sources) {
         auto& card = state_.getObject(card_id);
         if (!card.keywords.has(Keyword::Hidden)) continue;
 
@@ -3413,70 +3558,14 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
     // [Reaction] permanents: Reaction includes Action's permissions (CR 813.1.b).
     generateReactionPermanentActions(player, IntentType::PlayActionCard, actions);
 
-    // Can activate [E]: abilities with [Action] timing during showdowns (CR 806)
-    for (auto& [id, obj] : state_.objects) {
-        if (obj.controller != player) continue;
-        if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
-        if (obj.card_def_id == kInvalidId) continue;
+    // Hidden cards have [Reaction] from the turn after they were hidden
+    // (CR 811.1.b), and [Reaction] includes [Action] timing (CR 813.1.b).
+    generateHiddenPlayActions(player, IntentType::PlayActionCard, actions);
 
-        Card* card = card_registry_.get(obj.card_def_id);
-        if (!card) continue;
-        // Same gates as the main-phase generator (generateActivateAbilityActions).
-        if (!card->canActivateAbility(state_, player)) continue;
-        auto abilities = card->activatedAbilities();
-        for (size_t ai = 0; ai < abilities.size(); ++ai) {
-            const auto& ab = abilities[ai];
-            if (!ab.is_action) continue;
-            if (!card->canActivateAbilityAt(state_, player, id, (int)ai)) continue;
-            if (ab.cost.exhaust && obj.is_exhausted) continue;
-            if (!canPayActivation(player, *card, id, (int)ai, ab.cost)) continue;
-            if (ab.cost.discard && ab.cost.discard_count > 0) {
-                int matching = 0;
-                for (auto hid : state_.player(player).hand) {
-                    if (ab.cost.discard_type_filter == 0 ||
-                        static_cast<int>(state_.getObject(hid).card_type) + 1 ==
-                            ab.cost.discard_type_filter) ++matching;
-                }
-                if (matching < ab.cost.discard_count) continue;
-            }
-            if (ab.cost.xp_cost > 0 &&
-                state_.player(player).xp < ab.cost.xp_cost) continue;
-
-            auto legal_targets = card->enumerateLegalTargets(
-                state_, player, static_cast<int>(ai), id);
-            if (ab.targets.count > 0 && legal_targets.empty() &&
-                !ab.targets.optional) continue;
-
-            if (ab.needs_activation_time_target) {
-                Intent activate;
-                activate.type = IntentType::ActivateActionAbility;
-                activate.player = player;
-                activate.ability_source = id;
-                activate.ability_index = static_cast<int>(ai);
-                actions.push_back(activate);
-                continue;
-            }
-
-            if (ab.targets.count == 0) {
-                Intent activate;
-                activate.type = IntentType::ActivateActionAbility;
-                activate.player = player;
-                activate.ability_source = id;
-                activate.ability_index = static_cast<int>(ai);
-                actions.push_back(activate);
-            } else {
-                for (auto target : legal_targets) {
-                    Intent activate;
-                    activate.type = IntentType::ActivateActionAbility;
-                    activate.player = player;
-                    activate.ability_source = id;
-                    activate.ability_index = static_cast<int>(ai);
-                    activate.targets = {target};
-                    actions.push_back(activate);
-                }
-            }
-        }
-    }
+    // Activated abilities with [Action] or [Reaction] timing (CR 806,
+    // 813.1.b), a unit's own and those an aura grants it.
+    generateActivateAbilityActions(player, actions, AbilityTiming::Action,
+                                   IntentType::ActivateActionAbility);
 
     return actions;
 }
@@ -3531,8 +3620,7 @@ void GameEngine::generateReactionPermanentActions(PlayerId player, IntentType in
             actions.push_back(play);
             if (ps.units_play_base_only) continue;  // Mageseeker Warden
             for (const auto& bf : state_.battlefields) {
-                if (bf.blocks_unit_play) continue;  // Rockfall Path
-                if (!bf.controller.has_value() || *bf.controller != player) continue;
+                if (!unitPlayableAt(card_obj, player, bf)) continue;
                 Intent bf_play = play;
                 bf_play.play_location = BattlefieldLocation{bf.id};
                 actions.push_back(bf_play);
@@ -3611,140 +3699,14 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
         }
     }
 
-    // Can play hidden cards (they gain Reaction on next turn after hiding)
-    // CR 811.1.d.2 — hidden spell targets must come from the SAME BF where
-    // the card was hidden. Phase 6q+ fix: enumerate targets per-BF and emit
-    // one intent per (hidden card × valid target).
-    for (auto& bf : state_.battlefields) {
-        // "Your opponents' [Hidden] cards can't be revealed here."
-        if (bf.opp_hidden_unrevealable[playerIndex(player)]) continue;
-        for (auto card_id : bf.facedown) {
-            if (!state_.objectExists(card_id)) continue;
-            auto& card = state_.getObject(card_id);
-            if (card.controller != player) continue;
-            // Must be hidden on a previous turn to gain Reaction
-            if (card.hidden_on_turn >= state_.turn.turn_number) continue;
+    // Hidden cards (they gain [Reaction] the turn after they were hidden).
+    generateHiddenPlayActions(player, IntentType::PlayReaction, actions);
 
-            // For spells with target requirements: filter legal targets
-            // to objects at the hidden-at BF only (CR 811.1.d.2).
-            if (card.card_def_id != kInvalidId && card.isSpell()) {
-                Card* card_obj = card_registry_.get(card.card_def_id);
-                if (card_obj) {
-                    auto req = card_obj->getTargetRequirements();
-                    if (req.count > 0) {
-                        auto all_targets = card_obj->enumerateLegalTargets(
-                            state_, player);
-                        std::vector<GameObjectId> bf_targets;
-                        for (auto t : all_targets) {
-                            if (!state_.objectExists(t)) continue;
-                            const auto& tgt = state_.getObject(t);
-                            auto tgt_bf = tgt.battlefieldId();
-                            if (tgt_bf && *tgt_bf == bf.id) {
-                                bf_targets.push_back(t);
-                            }
-                        }
-                        // If no BF-restricted targets exist, CR 811.1.d:
-                        // "A card cannot be played from Hidden if it is a
-                        // spell with no valid targets under these
-                        // restrictions." Skip this hidden play entirely.
-                        if (bf_targets.empty()) continue;
-                        // Every chosen target must be at that battlefield, for
-                        // a multi-target spell as well.
-                        for (auto& tset : spellTargetSets(card_obj, state_, player, req,
-                                                          bf_targets)) {
-                            bool all_here = true;
-                            for (auto t : tset)
-                                if (std::find(bf_targets.begin(), bf_targets.end(), t) ==
-                                        bf_targets.end()) { all_here = false; break; }
-                            if (!all_here) continue;
-                            Intent play;
-                            play.type = IntentType::PlayReaction;
-                            play.player = player;
-                            play.card = card_id;
-                            play.targets = std::move(tset);
-                            actions.push_back(play);
-                        }
-                        continue;
-                    }
-                }
-            }
-
-            // No-target hidden play (or permanent — its location is set
-            // to the hidden-at BF by executePlayFromHidden).
-            Intent play;
-            play.type = IntentType::PlayReaction;
-            play.player = player;
-            play.card = card_id;
-            actions.push_back(play);
-        }
-    }
-
-    // CR 376 / 398-406 — activated abilities with [Reaction] timing
-    // (e.g. Shadow [752]: "[Action] [1][A], [E]: stun attacker") can be
-    // activated during Closed State. Phase 6q+ fix: pre-fix this re-tagged
-    // ALL activated abilities as Reaction, leaking non-Reaction abilities
-    // (Bounty Hunter [E]) into the closed-state action set. Now filtered
-    // via Card::isReactionAbility() — opt-in per card. Tag the emitted
-    // intents as ActivateReactionAbility so the dispatcher handles
-    // priority correctly.
-    if (!locked_out) {
-        for (auto& [id, obj] : state_.objects) {
-            if (obj.controller != player) continue;
-            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
-            if (obj.card_def_id == kInvalidId) continue;
-            Card* card_obj = card_registry_.get(obj.card_def_id);
-            if (!card_obj) continue;
-            // Same gates as the main-phase generator (generateActivateAbilityActions).
-            if (!card_obj->canActivateAbility(state_, player)) continue;
-            auto abilities = card_obj->activatedAbilities();
-            for (size_t ai = 0; ai < abilities.size(); ++ai) {
-                const auto& ab = abilities[ai];
-                if (!ab.is_reaction) continue;
-                if (!card_obj->canActivateAbilityAt(state_, player, id, (int)ai)) continue;
-                if (ab.cost.exhaust && obj.is_exhausted) continue;
-                if (!canPayActivation(player, *card_obj, id, (int)ai, ab.cost)) continue;
-                if (ab.cost.discard && ab.cost.discard_count > 0 &&
-                    static_cast<int>(state_.player(player).hand.size()) <
-                        ab.cost.discard_count) continue;
-                if (ab.cost.xp_cost > 0 &&
-                    state_.player(player).xp < ab.cost.xp_cost) continue;
-
-                auto legal_targets = card_obj->enumerateLegalTargets(
-                    state_, player, static_cast<int>(ai), id);
-                if (ab.targets.count > 0 && legal_targets.empty() &&
-                    !ab.targets.optional) continue;
-
-                if (ab.needs_activation_time_target) {
-                    Intent a;
-                    a.type = IntentType::ActivateReactionAbility;
-                    a.player = player;
-                    a.ability_source = id;
-                    a.ability_index = static_cast<int>(ai);
-                    actions.push_back(a);
-                    continue;
-                }
-
-                if (ab.targets.count == 0) {
-                    Intent a;
-                    a.type = IntentType::ActivateReactionAbility;
-                    a.player = player;
-                    a.ability_source = id;
-                    a.ability_index = static_cast<int>(ai);
-                    actions.push_back(a);
-                } else {
-                    for (auto t : legal_targets) {
-                        Intent a;
-                        a.type = IntentType::ActivateReactionAbility;
-                        a.player = player;
-                        a.ability_source = id;
-                        a.ability_index = static_cast<int>(ai);
-                        a.targets = {t};
-                        actions.push_back(a);
-                    }
-                }
-            }
-        }
-    }
+    // CR 813.1.c.2 — activated abilities with [Reaction] timing, a unit's
+    // own and those an aura grants it. "Can't play cards" (Brynhir
+    // Thundersong) does not stop abilities: an ability is not a card.
+    generateActivateAbilityActions(player, actions, AbilityTiming::Reaction,
+                                   IntentType::ActivateReactionAbility);
 
     return actions;
 }
@@ -3791,6 +3753,72 @@ std::vector<std::vector<GameObjectId>> spellTargetSets(
 }
 }  // namespace
 
+// CR 811: `player`'s facedown cards. A permanent goes to the battlefield it
+// was hidden at (executePlayFromHidden / ChainManager); a spell's targets are
+// tied to that battlefield, target by target (CR 811.1.d.2, .4).
+void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_type,
+                                           std::vector<Intent>& actions) const {
+    const auto& ps = state_.player(player);
+    if (ps.cant_play_cards_this_turn) return;   // playing it is playing a card
+    for (auto& bf : state_.battlefields) {
+        // "Your opponents' [Hidden] cards can't be revealed here."
+        if (bf.opp_hidden_unrevealable[playerIndex(player)]) continue;
+        for (auto card_id : bf.facedown) {
+            if (!state_.objectExists(card_id)) continue;
+            auto& card = state_.getObject(card_id);
+            if (card.controller != player) continue;
+            // Must be hidden on a previous turn to gain Reaction
+            if (card.hidden_on_turn >= state_.turn.turn_number) continue;
+            if (card.isSpell() && ps.cant_play_spells_this_turn) continue;
+
+            if (card.card_def_id != kInvalidId && card.isSpell()) {
+                Card* card_obj = card_registry_.get(card.card_def_id);
+                if (card_obj) {
+                    auto req = card_obj->getTargetRequirements();
+                    if (req.count > 0) {
+                        // CR 811.1.d.2: each target is chosen from the options
+                        // at this battlefield, unless the card's own
+                        // restriction on THAT target rules the battlefield out
+                        // (811.1.d.4: each target is judged on its own). With
+                        // no choice left under that rule the card cannot be
+                        // played from facedown (811.1.d).
+                        auto here = [&](GameObjectId t) {
+                            if (!state_.objectExists(t)) return false;
+                            auto tgt_bf = state_.getObject(t).battlefieldId();
+                            return tgt_bf && *tgt_bf == bf.id;
+                        };
+                        auto all_targets = card_obj->enumerateLegalTargets(state_, player);
+                        for (auto& tset : spellTargetSets(card_obj, state_, player, req,
+                                                          all_targets)) {
+                            bool ok = true;
+                            for (size_t slot = 0; slot < tset.size(); ++slot)
+                                if (!here(tset[slot]) &&
+                                    !card_obj->hiddenTargetFreeOfBattlefield(
+                                        static_cast<int>(slot))) { ok = false; break; }
+                            if (!ok) continue;
+                            Intent play;
+                            play.type = intent_type;
+                            play.player = player;
+                            play.card = card_id;
+                            play.targets = std::move(tset);
+                            actions.push_back(play);
+                        }
+                        continue;
+                    }
+                }
+            }
+
+            // No-target hidden play (or permanent — its location is set
+            // to the hidden-at BF by executePlayFromHidden).
+            Intent play;
+            play.type = intent_type;
+            play.player = player;
+            play.card = card_id;
+            actions.push_back(play);
+        }
+    }
+}
+
 void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
                                        bool reaction_ok,
                                        std::vector<Intent>& actions) const {
@@ -3835,7 +3863,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
         // historical "needs target but none exist" behavior; counter spells
         // with no chain target override this so they're not offered as legal
         // moves when they'd silently no-op.
-        if (spell_card && !spell_card->hasLegalTargets(state_, player)) {
+        if (spell_card && !spell_card->hasLegalTargets(state_, player, card_db_)) {
             continue;
         }
 
@@ -4058,7 +4086,7 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
         if (!allowed) continue;
 
         Card* spell_card = card_registry_.get(card.card_def_id);
-        if (spell_card && !spell_card->hasLegalTargets(state_, player)) continue;
+        if (spell_card && !spell_card->hasLegalTargets(state_, player, card_db_)) continue;
         auto legal_targets = spell_card
             ? spell_card->enumerateLegalTargets(state_, player)
             : std::vector<GameObjectId>{};
@@ -4087,7 +4115,18 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
 }
 
 void GameEngine::generateActivateAbilityActions(PlayerId player,
-                                                  std::vector<Intent>& actions) const {
+                                                  std::vector<Intent>& actions,
+                                                  AbilityTiming timing,
+                                                  IntentType intent_type) const {
+    // [Reaction] grants every permission of [Action] (CR 813.1.b).
+    auto timing_ok = [timing](const ActivatedAbility& ab) {
+        switch (timing) {
+            case AbilityTiming::Any:      return true;
+            case AbilityTiming::Action:   return ab.is_action || ab.is_reaction;
+            case AbilityTiming::Reaction: return ab.is_reaction;
+        }
+        return false;
+    };
     // Phase 6r — multi-ability per Card. Loop over each ability descriptor
     // on the card; each gets its own affordability check and target loop.
     // Single-ability cards use the default Card::activatedAbilities() impl
@@ -4109,6 +4148,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
         for (size_t ai = 0; ai < abilities.size(); ++ai) {
             const auto& ab = abilities[ai];
             const auto& act_cost = ab.cost;
+            if (!timing_ok(ab)) continue;
 
             // Per-ability gate ([Empower]: only if not Empowered; "Disempower
             // this" costs need an Empowered status).
@@ -4144,7 +4184,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
                                                           static_cast<int>(ai), id);
                 if (legal.empty()) continue;
             } else if (abilities.size() == 1 &&
-                        !card->hasLegalTargets(state_, player)) {
+                        !card->hasLegalTargets(state_, player, card_db_)) {
                 continue;
             }
 
@@ -4153,7 +4193,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
             // emit ONE intent with empty targets regardless of count.
             if (ab.needs_activation_time_target) {
                 Intent activate;
-                activate.type = IntentType::ActivateAbility;
+                activate.type = intent_type;
                 activate.player = player;
                 activate.ability_source = id;
                 activate.ability_index = static_cast<int>(ai);
@@ -4163,7 +4203,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
 
             if (ab.targets.count == 0) {
                 Intent activate;
-                activate.type = IntentType::ActivateAbility;
+                activate.type = intent_type;
                 activate.player = player;
                 activate.ability_source = id;
                 activate.ability_index = static_cast<int>(ai);
@@ -4173,7 +4213,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
                     state_, player, static_cast<int>(ai), id);
                 for (auto target : legal_targets) {
                     Intent activate;
-                    activate.type = IntentType::ActivateAbility;
+                    activate.type = intent_type;
                     activate.player = player;
                     activate.ability_source = id;
                     activate.ability_index = static_cast<int>(ai);
@@ -4193,6 +4233,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
             if (ref.ability_index < 0 ||
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
             const auto& gab = gabs[ref.ability_index];
+            if (!timing_ok(gab)) continue;
             const auto& gcost = gab.cost;
             if (ref.exhaust_cost_only && !gcost.exhaust) continue;     // not an [E] ability
             // The same gates as an own ability above, asked of the granting
@@ -4216,11 +4257,11 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
             if (gab.targets.count > 0 && !gab.targets.optional) {
                 if (gcard->enumerateLegalTargets(state_, player, ref.ability_index, id).empty())
                     continue;
-            } else if (gabs.size() == 1 && !gcard->hasLegalTargets(state_, player)) {
+            } else if (gabs.size() == 1 && !gcard->hasLegalTargets(state_, player, card_db_)) {
                 continue;
             }
             Intent activate;
-            activate.type = IntentType::ActivateAbility;
+            activate.type = intent_type;
             activate.player = player;
             activate.ability_source = id;
             activate.ability_index = ref.ability_index;
@@ -4326,7 +4367,7 @@ void GameEngine::runShowdown(BattlefieldId bf_id) {
         // CR 468.5 / 471.1: a player Establishes Control (and so Conquers) only
         // "if they didn't already control this Battlefield".
         if (!old_controller.has_value() || *old_controller != sole_player)
-            scoreConquer(sole_player, bf_id);
+            scoreConquer(sole_player, bf_id, old_controller);
     }
 }
 
@@ -4434,7 +4475,10 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
         if (adv.kind == ShowdownAdvance::Kind::Done) return;
 
         state_.decision_index++;
+        pending_query_ = PendingQuery::Showdown;
+        pending_query_player_ = current_focus;
         auto chosen = getAgent(current_focus).selectAction(state_, adv.legal);
+        pending_query_ = PendingQuery::None;
         recordAppliedIntent(chosen);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
@@ -4790,7 +4834,11 @@ void GameEngine::resolveCombatDamageDecision(const Intent& chosen) {
 }
 
 void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
-    auto& bf = getBattlefield(bf_id);
+    // The sides by value, and the battlefield fetched again by id wherever it
+    // is needed: chain items resolve in this step, and one that adds a
+    // battlefield reallocates the vector.
+    const PlayerId attacker = *getBattlefield(bf_id).attacker;
+    const PlayerId defender = *getBattlefield(bf_id).defender;
 
     // Combat Cleanup: heal all units, kill lethally damaged (CR 461.1.a)
     processLethalDamage();
@@ -4806,8 +4854,8 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     }
 
     // Recall attackers if defenders still present (CR 461.1.a.2)
-    auto att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
-    auto def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
+    auto att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+    auto def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
 
     bool recalled = false;
     if (!att_remaining.empty() && !def_remaining.empty()) {
@@ -4815,37 +4863,46 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         // Both still have units = a tie. Normally only attackers recall
         // (CR 461.1.a.2). Symbol of the Solari (227): if the attacker controls
         // it, recall ALL units (attackers AND defenders) instead.
-        const bool recall_all = state_.player(*bf.attacker).recall_all_on_attacker_tie;
+        const bool recall_all = state_.player(attacker).recall_all_on_attacker_tie;
         for (auto uid : att_remaining) {
-            moveUnit(uid, BaseLocation{*bf.attacker});
-            events_.emit(UnitMovedEvent{uid, *bf.attacker,
-                BattlefieldLocation{bf_id}, BaseLocation{*bf.attacker}, false});
+            moveUnit(uid, BaseLocation{attacker});
+            events_.emit(UnitMovedEvent{uid, attacker,
+                BattlefieldLocation{bf_id}, BaseLocation{attacker}, false});
         }
         if (recall_all) {
             for (auto uid : def_remaining) {
-                moveUnit(uid, BaseLocation{*bf.defender});
-                events_.emit(UnitMovedEvent{uid, *bf.defender,
-                    BattlefieldLocation{bf_id}, BaseLocation{*bf.defender}, false});
+                moveUnit(uid, BaseLocation{defender});
+                events_.emit(UnitMovedEvent{uid, defender,
+                    BattlefieldLocation{bf_id}, BaseLocation{defender}, false});
             }
             events_.logTrace("SYMBOL OF THE SOLARI: attacker tie -> recall ALL units");
         }
     }
 
-    // Determine combat result (CR 461.3)
-    att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.attacker);
-    def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, *bf.defender);
+    // CR 468.2: "Resolve any items on the chain from dealing combat damage and
+    // the Combat Cleanup and associated FEPR before performing this step" —
+    // death and recall triggers resolve before the result is determined, and
+    // may change who is here (a Deathknell that plays a unit here).
+    constexpr int kMaxCleanupChains = 16;
+    for (int i = 0; i < kMaxCleanupChains && chain_manager_->chainExists() &&
+                    !state_.game_over; ++i) {
+        runChain();
+        processLethalDamage();
+    }
 
-    // The only player with units left here. They take or keep control below
-    // (CR 468.5) whether or not they won.
+    // Determine combat result (CR 461.3)
+    att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+    def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
+
+    // CR 468.3.d: "No Result" if units were recalled in the Combat Cleanup (a
+    // tie), if both players have units here, or if neither has. Only
+    // otherwise has the one player still here won (468.3.a).
     PlayerId sole_remaining = PlayerId::None;
     if (!att_remaining.empty() && def_remaining.empty()) {
-        sole_remaining = *bf.attacker;
+        sole_remaining = attacker;
     } else if (att_remaining.empty() && !def_remaining.empty()) {
-        sole_remaining = *bf.defender;
+        sole_remaining = defender;
     }
-    // CR 468.3.d: "No Result" if units were recalled in the Combat Cleanup (a
-    // tie), or if neither player has units left. Only otherwise has the one
-    // player still here won (468.3.a).
     const std::optional<PlayerId> combat_winner =
         (recalled || sole_remaining == PlayerId::None)
             ? std::nullopt : std::optional<PlayerId>(sole_remaining);
@@ -4859,13 +4916,44 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     }
 
     // End combat
-    bf.combat_in_progress = false;
-    bf.combat_phase = CombatPhase::None;
-    bf.is_contested = false;
-    bf.attacker = std::nullopt;
-    bf.defender = std::nullopt;
+    {
+        auto& bf = getBattlefield(bf_id);
+        bf.combat_in_progress = false;
+        bf.combat_phase = CombatPhase::None;
+        bf.attacker = std::nullopt;
+        bf.defender = std::nullopt;
+    }
+    state_.turn.ns_state = NeutralShowdownState::Neutral;
 
     events_.emit(CombatEndedEvent{bf_id, combat_winner});
+
+    // CR 468.4: what determining the result put on the chain resolves before
+    // control is established.
+    if (chain_manager_->chainExists() && !state_.game_over) runChain();
+
+    // CR 468.5: with no Showdown or Combat staged here, the player with units
+    // remaining establishes control. Who is here is read again: the chain
+    // above may have changed it.
+    att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+    def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
+    auto& bf = getBattlefield(bf_id);
+    if (!att_remaining.empty() && !def_remaining.empty()) {
+        // CR 468.3.d.1: "If No Result was reached, and both players have units
+        // remaining, stage a Showdown and a Combat at this battlefield." The
+        // battlefield stays Contested by the same player, so the next combat
+        // (with its showdown step) is staged for the same attacker and run
+        // before the turn player's next decision (advanceMainPhase).
+        bf.is_contested = true;
+        bf.contested_by = attacker;
+        bf.combat_staged = true;
+        events_.logTrace("COMBAT: no result at BF#" + std::to_string(bf_id) +
+                         " with both players present -> another combat is staged");
+        return;
+    }
+    bf.is_contested = false;
+    sole_remaining = PlayerId::None;
+    if (!att_remaining.empty()) sole_remaining = attacker;
+    else if (!def_remaining.empty()) sole_remaining = defender;
 
     // Establish control (CR 461.5)
     if (sole_remaining != PlayerId::None) {
@@ -4874,12 +4962,10 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         events_.emit(ControlChangedEvent{bf_id, old_controller, sole_remaining});
         // CR 468.5 / 471.1: a defender who wins already controlled it — no Conquer.
         if (!old_controller.has_value() || *old_controller != sole_remaining)
-            scoreConquer(sole_remaining, bf_id);
-    } else if (att_remaining.empty() && def_remaining.empty()) {
+            scoreConquer(sole_remaining, bf_id, old_controller);
+    } else {
         bf.controller = std::nullopt;
     }
-
-    state_.turn.ns_state = NeutralShowdownState::Neutral;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4892,7 +4978,8 @@ bool GameEngine::isScoreGatedByTurn(PlayerId player, BattlefieldId bf) const {
     return state_.player(player).turns_taken < b.min_turn_to_score;
 }
 
-void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
+void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
+                              std::optional<PlayerId> previous_controller) {
     auto& ps = state_.player(player);
 
     // Stamp the conquer for "battlefield you conquered this turn" consumers
@@ -4902,6 +4989,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
         auto& bfs = getBattlefield(bf);
         bfs.conquered_on_turn = state_.turn.turn_number;
         bfs.conquered_by_player = player;
+        bfs.conquered_from = previous_controller;
     }
 
     // Turn-gated scoring (Forgotten Monument): can't score here until the
@@ -4928,7 +5016,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
     if (ps.cannot_gain_points) {
         events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
                          " can't gain points (Tianna)");
-        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
+        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         return;
     }
 
@@ -4941,7 +5029,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
                          " draws 1 instead of scoring (turn " +
                          std::to_string(ps.turns_taken) + ")");
         drawCards(player, 1);
-        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
+        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         return;
     }
 
@@ -4950,20 +5038,20 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf) {
             ps.score++;
             events_.logTrace(std::string("SCORE: ") + toString(player) + " +1 via Conquer -> " +
                              std::to_string(ps.score));
-            events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
+            events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         } else {
             events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
                              " winning point blocked (not all BFs scored), draw 1 instead");
             // Draw a card instead (CR 473.1.b.1). The battlefield was still
             // scored, so its Conquer abilities trigger (CR 473.2).
             drawCards(player, 1);
-            events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
+            events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         }
     } else {
         ps.score++;
         events_.logTrace(std::string("SCORE: ") + toString(player) + " +1 via Conquer -> " +
                          std::to_string(ps.score));
-        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score});
+        events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
     }
 
     checkWinCondition();
@@ -5080,6 +5168,7 @@ void GameEngine::recalculateAuras() {
         ps.bonus_damage_dealt = 0;   // Annie, Fiery
         ps.cannot_gain_points = false; // Tianna Crownguard
         ps.grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer
+        ps.grant_units_lone_enemy_bf = false;    // Arachnoid Horror
         ps.units_play_base_only = false;         // Mageseeker Warden
         ps.tokens_enter_ready = false;           // Renata Glasc, Industrialist
         ps.units_enter_ready_by.clear();         // Magma Wurm
@@ -5107,7 +5196,7 @@ void GameEngine::recalculateAuras() {
     // Per-BF aura-derived flags (Mageseeker Investigator / Noxus Saboteur /
     // Altar of Blood). Reset here; re-asserted by unit/BF applyPassiveAura.
     for (auto& bf : state_.battlefields) {
-        bf.surcharge_enemy_multi_move = false;
+        bf.multi_move_tax[0] = bf.multi_move_tax[1] = 0;   // Mageseeker Investigator
         bf.opp_hidden_unrevealable[0] = bf.opp_hidden_unrevealable[1] = false;
         bf.ignore_tank[0] = bf.ignore_tank[1] = false;   // Dune Surfer
         bf.ignore_deflect_here = false;                  // Heisho
@@ -5174,6 +5263,9 @@ void GameEngine::recalculateAuras() {
     // therefore called ONCE per (card, controller) per pass — calling it per
     // instance applied every copy's effect once per copy (two Garens: +4).
     std::vector<std::pair<CardDefId, PlayerId>> aura_applied;
+    // Cards whose continuous effect is conditional on Might: they get a second
+    // hook after the fold below (Card::applyMightDependentAura).
+    std::vector<std::pair<const Card*, PlayerId>> might_dependent;
     // Reset first, in a pass of its own: a hook below may set the flag on
     // ANOTHER object ("Your units here ... can't be chosen by enemy spells and
     // abilities"), which a reset inside the hook loop would undo for every
@@ -5203,6 +5295,7 @@ void GameEngine::recalculateAuras() {
                 continue;
             aura_applied.push_back(key);
             card->applyPassiveAura(state_, obj.controller);
+            if (card->hasMightDependentAura()) might_dependent.emplace_back(card, obj.controller);
         }
     }
 
@@ -5245,34 +5338,49 @@ void GameEngine::recalculateAuras() {
     }
 
     // Step 4: Rebuild cached aura values on all objects
-    for (auto& [id, obj] : state_.objects) {
-        obj.aura_might_bonus = 0;
-        obj.aura_keywords.reset();
-        obj.aura_no_combat_damage = false;
-        obj.aura_bonus_damage_taken = 0;
-        for (auto& ae : obj.aura_effects) {
-            obj.aura_might_bonus += ae.might_bonus;
-            if (ae.keyword != Keyword::Count) {
-                obj.aura_keywords.set(ae.keyword);
+    auto foldAuras = [&]() {
+        for (auto& [id, obj] : state_.objects) {
+            obj.aura_might_bonus = 0;
+            obj.aura_keywords.reset();
+            obj.aura_no_combat_damage = false;
+            obj.aura_bonus_damage_taken = 0;
+            for (auto& ae : obj.aura_effects) {
+                obj.aura_might_bonus += ae.might_bonus;
+                if (ae.keyword != Keyword::Count) {
+                    obj.aura_keywords.set(ae.keyword);
+                }
+                // An aura-granted [Assault N] / [Shield N] is +N [M] while its
+                // bearer is an attacker / a defender (CR 807 / 814); a bare
+                // [Assault] / [Shield] is N = 1. recomputeMight only knows the
+                // object's own assault_value / shield_value, so the granted
+                // instances are folded in here.
+                if ((ae.keyword == Keyword::Assault &&
+                     obj.combat_designation == CombatDesignation::Attacker) ||
+                    (ae.keyword == Keyword::Shield &&
+                     obj.combat_designation == CombatDesignation::Defender)) {
+                    obj.aura_might_bonus += std::max(1, ae.keyword_value);
+                }
+                if (ae.suppress_combat_damage) obj.aura_no_combat_damage = true;
+                obj.aura_bonus_damage_taken += ae.bonus_damage_taken;
             }
-            // An aura-granted [Assault N] / [Shield N] is +N [M] while its
-            // bearer is an attacker / a defender (CR 807 / 814); a bare
-            // [Assault] / [Shield] is N = 1. recomputeMight only knows the
-            // object's own assault_value / shield_value, so the granted
-            // instances are folded in here.
-            if ((ae.keyword == Keyword::Assault &&
-                 obj.combat_designation == CombatDesignation::Attacker) ||
-                (ae.keyword == Keyword::Shield &&
-                 obj.combat_designation == CombatDesignation::Defender)) {
-                obj.aura_might_bonus += std::max(1, ae.keyword_value);
+            // Recompute might with new aura values
+            if (obj.isUnit() && obj.location.has_value()) {
+                obj.recomputeMight();
             }
-            if (ae.suppress_combat_damage) obj.aura_no_combat_damage = true;
-            obj.aura_bonus_damage_taken += ae.bonus_damage_taken;
         }
-        // Recompute might with new aura values
-        if (obj.isUnit() && obj.location.has_value()) {
-            obj.recomputeMight();
-        }
+    };
+    foldAuras();
+
+    // Step 5: effects conditional on Might ("While I'm [Mighty], I have
+    // ..."). They are decided on THIS pass's Might, which the fold above just
+    // produced from every ordinary aura — not on what the previous pass left
+    // in current_might, so the answer does not depend on the order the hooks
+    // ran in, and such an effect never counts toward its own condition. What
+    // they add is folded in afterwards.
+    if (!might_dependent.empty()) {
+        for (const auto& [card, controller] : might_dependent)
+            card->applyMightDependentAura(state_, controller);
+        foldAuras();
     }
 
     // Risen Altar: battlefield-scoped [Empower] discount lands on the units there.
@@ -6667,8 +6775,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     }
 
     // Structured replacement effects (Card::hasReplacementEffect /
-    // applyReplacement). Preferred over the legacy ability_text scan below:
-    // a card decides whether it replaces THIS unit's death (e.g. Guardian
+    // applyReplacement): a card decides whether it replaces THIS unit's death (e.g. Guardian
     // Angel only protects the unit it's attached to). If applyReplacement
     // returns true the unit does not die.
     for (auto& [id, obj] : state_.objects) {
@@ -6763,7 +6870,10 @@ Intent GameEngine::queryAgent(PlayerId player) {
                      " (" + toString(player) + "): " +
                      std::to_string(actions.size()) + " legal actions");
 
+    pending_query_ = PendingQuery::MainPhase;
+    pending_query_player_ = player;
     auto chosen = getAgent(player).selectAction(state_, actions);
+    pending_query_ = PendingQuery::None;
     recordAppliedIntent(chosen);
 
     {

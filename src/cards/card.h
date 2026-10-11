@@ -70,7 +70,9 @@ public:
     CardDefId cardDefId() const { return def().id; }
 
     // ── Spell resolution (spells only) ──
-    /// Called when this spell resolves from the chain.
+    /// Called when this spell resolves from the chain. `targets` holds the
+    /// play-time targets that are still legal, in chosen order with the
+    /// illegal ones removed: positions are not roles (see chosenTarget).
     virtual void onResolve(CardContext& ctx,
                            const std::vector<GameObjectId>& targets) {}
 
@@ -515,6 +517,32 @@ public:
     virtual bool hasLegalTargets(const GameState& state,
                                   PlayerId controller) const;
 
+    /// What the engine calls: also given the card table, for a requirement on
+    /// a target's PRINTED values ("a spell that costs no more than [4]") —
+    /// those live in the CardDef, not on the GameObject or the chain item.
+    /// Default: the two-argument version. A card whose requirement is on a
+    /// printed value overrides this one, and the two-argument one with the
+    /// part of the requirement the state alone shows.
+    virtual bool hasLegalTargets(const GameState& state, PlayerId controller,
+                                  const CardDB& /*db*/) const {
+        return hasLegalTargets(state, controller);
+    }
+
+    /// The object chosen for target slot `role` when a spell or ability with
+    /// several play-time targets was put on the chain, or kInvalidId when that
+    /// slot was not filled or its target is no longer legal.
+    ///
+    /// THE CONTRACT for multi-target cards: `targets`, as handed to onResolve
+    /// / onActivate, holds only the targets that are STILL LEGAL at resolution
+    /// (CR 359.3.e.5), in their chosen order but with the illegal ones
+    /// removed — so its positions are not roles. A card whose slots mean
+    /// different things ("kill this one, pump that one") reads each slot
+    /// through this helper; a card that treats its targets alike iterates
+    /// `targets`.
+    static GameObjectId chosenTarget(const CardContext& ctx,
+                                     const std::vector<GameObjectId>& targets,
+                                     size_t role);
+
     /// Whether THIS card defers play-time target selection to
     /// resolve-time via pickTarget. When true, generateSpellActions
     /// emits ONE Play intent per card (no per-target variants), and
@@ -556,6 +584,29 @@ public:
     /// this turn".)
     virtual bool restrictsPlayLocations() const { return false; }
 
+    /// Battlefields this unit may be played to beyond the ones its controller
+    /// controls (CR 355.2), as printed on the card: "You may play me to an
+    /// open battlefield" / "... to an occupied enemy battlefield". A bit set
+    /// of the values below; the unit-play generator adds those battlefields
+    /// to the default locations. (A grant to OTHER units is a PlayerState
+    /// flag set from applyPassiveAura, e.g. grant_friendly_units_open_bf.)
+    enum : unsigned {
+        kPlayToOpenBattlefield = 1,           // no controller
+        kPlayToOccupiedEnemyBattlefield = 2,  // enemy-controlled, enemy units there
+        kPlayToAnyBattlefield = 4,
+        kPlayToLoneEnemyBattlefield = 8,      // exactly one unit there, an enemy
+    };
+    virtual unsigned extraPlayLocations() const { return 0; }
+
+    /// CR 811.1.d.2 / .4: a spell played from facedown chooses each target at
+    /// the battlefield it was hidden at, "unless it explicitly restricts
+    /// targeting in such a way that makes this impossible" — judged target by
+    /// target. Return true for a target slot whose own printed restriction
+    /// rules that battlefield out ("another unit ... at a different
+    /// location": slot 1 of Smoke and Mirrors); that slot is then chosen
+    /// freely. Slots are positions in the play-time target list.
+    virtual bool hiddenTargetFreeOfBattlefield(int /*slot*/) const { return false; }
+
     /// When true, this unit's [Ambush] may be played to a battlefield that has
     /// ENEMY units even if the controller has no units there (the base Ambush
     /// keyword restricts placement to BFs where you already have units). The
@@ -585,6 +636,20 @@ public:
     /// knows about (e.g., deathknell_double_count) before calling
     /// `applyPassiveAura` on each on-board card.
     virtual void applyPassiveAura(GameState& state, PlayerId controller) const {}
+
+    /// A continuous effect whose CONDITION is a unit's Might ("While I'm
+    /// [Mighty], I have ..."). Might is only known once every card's
+    /// applyPassiveAura has run and been folded, so such an effect cannot be
+    /// decided in that hook without reading the previous pass's numbers.
+    /// A card that returns true from hasMightDependentAura() gets this second
+    /// hook in the same pass, after the fold: every object's current_might is
+    /// then this pass's Might from all ordinary auras, and none of the effects
+    /// applied by this hook (by this or any other card) are in it yet — so an
+    /// effect never counts toward the Might test that grants it. The engine
+    /// folds again afterwards. Same calling contract as applyPassiveAura (once
+    /// per (card, controller), every instance).
+    virtual bool hasMightDependentAura() const { return false; }
+    virtual void applyMightDependentAura(GameState& /*state*/, PlayerId /*controller*/) const {}
 
     /// "Any amount of your damage is enough to kill enemy units." (CR
     /// 142.4.c, Elder Dragon). While a unit that says so is on its
@@ -844,14 +909,9 @@ public:
     virtual bool suppressesTemporaryTriggersHere() const { return false; }
 
     // ── Condition gates ──
-    /// Whether this card's effects require Legion (cards_played >= 2).
-    virtual bool requiresLegion() const { return false; }
-
-    /// Whether this card's effects require Level (xp >= threshold).
-    virtual bool requiresLevel() const { return false; }
-
-    /// XP threshold for Level requirement.
-    virtual int levelThreshold() const { return 0; }
+    // [Legion] / [Level N] are conditions a card checks itself, where its
+    // text applies them (onTrigger / onActivate / applyPassiveAura /
+    // selfCostReduction): the engine has no gate to ask.
 
     // ── Self-cost reduction (e.g., Noxus Hopeful "Legion: I cost 2 less") ──
     /// Returns the amount by which this card's own energy cost should be
@@ -986,6 +1046,15 @@ public:
     /// 0 (default) = no restriction. Read once by GameEngine::setupBattlefields
     /// into BattlefieldState::min_turn_to_score.
     virtual int minTurnToScore() const { return 0; }
+
+    /// "Units can't move from here to base." Read by GameEngine (at setup and
+    /// whenever the card in a battlefield slot changes) into
+    /// BattlefieldState::blocks_move_to_base.
+    virtual bool blocksMoveToBase() const { return false; }
+
+    /// "Units can't be played here." Read the same way into
+    /// BattlefieldState::blocks_unit_play.
+    virtual bool blocksUnitPlay() const { return false; }
 };
 
 class RuneCard : public Card {};

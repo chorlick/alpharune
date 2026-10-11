@@ -20,7 +20,6 @@ public:
     // (CR 812: another card played this turn) there is nothing to choose.
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    bool requiresLegion() const override { return true; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> units;
         if (ctx.state.player(ctx.controller).cards_played_this_turn >= 2)

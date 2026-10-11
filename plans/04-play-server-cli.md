@@ -2,7 +2,7 @@
 
 ## Play server
 
-- [x] **4.1 Server threads read and write `GameState` while the engine thread runs** [confirmed race, crash plausible] — FIXED: server threads read/edit GameState only while the engine is parked (human decision not yet answered, spectator gate, or after notifyGameFinished) and hold state_mutex_ throughout; `choose` and the gate exit go through the same mutex; otherwise the last snapshot is re-sent (`engine_busy`) and edits are refused; watcher bookkeeping moved under the mutex and no longer reads `game_over`. Not fixed here: `HumanAgent::atDecision()` is still an unsynchronised bool read (search stream, 1.10); test: PlayServerProtocol.EditsAndSnapshotsWaitForTheEngineToPark (no TSAN run)
+- [x] **4.1 Server threads read and write `GameState` while the engine thread runs** [confirmed race, crash plausible] — FIXED: server threads read/edit GameState only while the engine is parked (human decision not yet answered, spectator gate, or after notifyGameFinished) and hold state_mutex_ throughout; `choose` and the gate exit go through the same mutex; otherwise the last snapshot is re-sent (`engine_busy`) and edits are refused; watcher bookkeeping moved under the mutex and no longer reads `game_over`. `HumanAgent::atDecision()` takes the agent mutex since search's 1.10; test: PlayServerProtocol.EditsAndSnapshotsWaitForTheEngineToPark (no TSAN run)
   - Where: `src/io/play_server.cpp:585-683` (`broadcastDecisionFrame`), `:685-712` (`runWatcher`), `:239-320` (edit handlers); contract in `play_server.h:17-23`.
   - `state_mutex_` is only taken by server threads; the engine never takes it. Nothing checks a human is parked before reading or editing.
   - The watcher broadcasts on the "at-decision to engine-busy" transition (`:705`), iterating `state.objects` while the engine resolves the click. `request_state` and `onAccept` do the same at any time. `edit_*` handlers check only `godModeEnabled()`.
@@ -12,14 +12,15 @@
   - Where: `play_server.cpp:200-216`, `:241-312`, `:747-752`. Only `json::parse` is guarded; `m.value("index", -1)`, `m.value("type", "")`, `v.get<int>()` (`:312`) throw `json::type_error`.
   - The exception leaves `ioc.run()`; SIGINT/SIGTERM are still owned by the asio `signal_set` on the dead `io_context` (`:760-774`).
 
-- [x] **4.3 A stale `choose` is applied to a later decision** [confirmed] — FIXED (server side): `choose` must carry `decision_id`; refused with `err` unless that seat is parked on exactly that decision and the index is in range; an answered decision is recorded so a second click is refused; UI sends the id; test: PlayServerProtocol.StaleOrInvalidChooseIsRefused
+- [x] **4.3 A stale `choose` is applied to a later decision** [confirmed] — FIXED: `choose` must carry `decision_id` and is answered through `HumanAgent::setChosenAction(index, decision_id)`; refused with `err` unless that seat is parked on exactly that decision and the index is in range; an answered decision is recorded so a second click is refused; UI sends the id; test: PlayServerProtocol.StaleOrInvalidChooseIsRefused
   - Where: `play_server.cpp:213-229`, `src/agents/human_agent.h:74-112`. No `decision_id`, `atDecision()` or upper-bound check.
   - `docs/play-api.md:98-100`, `:172-175` say the second click is "never observed".
 
 - [x] **4.4 No Origin check on the WebSocket upgrade, no auth** [confirmed; cross-site WebSocket hijacking class] — FIXED: upgrade only on `/ws`, Origin (when present) must be `http://<Host>`, Host must be an IP literal or `localhost` (DNS rebinding), and a non-loopback `--bind` generates an access token required on `/` and `/ws`; tests: PlayServerProtocol.UpgradeChecksOriginHostAndPath, .AccessTokenIsRequiredWhenConfigured
   - Where: `play_server.cpp:377-386`. Default bind is loopback (`play_server.h:50`), but any page in the user's browser can connect to `ws://127.0.0.1:8080`, read full state, send `choose` / `edit_*`, or trigger 4.2. `--bind 0.0.0.0` exposes it to the LAN.
 
-- [x] **4.5 Opponent hidden information is always sent** [confirmed] — FIXED: frames and `render_text` withhold the opponent's hand and both decks' order unless god mode is on, no seat is human, or `--show-hand` (`PlayServerConfig::reveal_hidden`, `RenderVisibility`). Still leaking: the trace `log` stream names drawn/mulliganed cards (needs per-line visibility on LogEvent, src/core); tests: PlayServerProtocol.FairPlayFramesWithholdOpponentHandAndDeckOrder, .RevealHiddenFramesCarryEverything, StateRendererReviewFix.HiddenHandShowsOnlyItsSize
+- [x] **4.5 Opponent hidden information is always sent** [confirmed] — FIXED: frames and `render_text` withhold the opponent's hand and both decks' order unless god mode is on, no seat is human, or `--show-hand` (`PlayServerConfig::reveal_hidden`, `RenderVisibility`). The engine `log` stream names cards (draws, mulligans, hides) with no visibility marker, so while hidden information is withheld the server forwards no `log` message at all (`PlayServer::broadcastLog`); tests: PlayServerProtocol.FairPlayFramesWithholdOpponentHandAndDeckOrder, .RevealHiddenFramesCarryEverything, StateRendererReviewFix.HiddenHandShowsOnlyItsSize
+  - Future work (not a leak): a per-event visibility tag on `LogEvent` (`src/core/events.h`, every trace call site) would let the server forward the public lines to a fair-play client instead of none.
   - Where: `state_renderer.cpp:480`, `:318-345`; `play_server.cpp:536-540`; `main.cpp:596`.
   - Both hands are rendered unconditionally; `show_hand` gates only facedown names and is forced on when a seat is human. Every frame carries both `hand`s and ordered `main_deck` / `rune_deck`, independent of `god_mode`.
 
@@ -68,7 +69,7 @@
 
 ## Batch / game runner
 
-- [x] **4.18** `runner.run()` is posted to the thread pool with no try/catch (`batch_runner.cpp:44-51`); an exception terminates the process. The single-thread path propagates normally. [confirmed] — FIXED: pool tasks catch, later games are skipped, the first exception is rethrown from runBatch; main reports it and exits 1; test: BatchRunnerReviewFix.ExceptionInAWorkerIsRethrownNotFatal
+- [x] **4.18** `runner.run()` is posted to the thread pool with no try/catch (`batch_runner.cpp:44-51`); an exception terminates the process. The single-thread path propagates normally. [confirmed] — FIXED: pool tasks catch, later games are skipped, the first exception is rethrown from runBatch, prefixed by GameRunner with the game number and seed; main reports it and exits 1; test: BatchRunnerReviewFix.ExceptionInAWorkerIsRethrownNotFatal
 - [x] **4.19** In debug mode every log line is appended to `log_buffer`, which is never printed or read (`game_runner.cpp:57-67`). [confirmed] — FIXED: the per-game buffer is printed under the console mutex when the game ends; test: GameRunnerReviewFix.DebugLogIsPrinted
 
 ## Progress bar

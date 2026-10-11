@@ -183,12 +183,13 @@ struct LiveGame {
     EventBus events;
     GameEngine engine{cards().db, events, cards().registry};
     StateRenderer renderer{cards().db};
-    HumanAgent human;                 // seat 1 (unless spectating)
+    HumanAgent human{PlayerId::Player1};   // seat 1 (unless spectating)
     RandomAgent random1{11};          // seat 1 when spectating
     GatedAgent ai{22};                // seat 2
     std::unique_ptr<PlayServer> server;
     std::thread game_thread;
     bool spectating = false;
+    std::atomic<int> trace_lines{0};   // engine log lines handed to the server
 
     /// `tweak` adjusts the config before the server starts.
     explicit LiveGame(std::function<void(PlayServerConfig&)> tweak = {},
@@ -205,6 +206,11 @@ struct LiveGame {
         if (tweak) tweak(cfg);
         server = std::make_unique<PlayServer>(engine, renderer, cards().db, std::move(cfg));
         server->start();
+        // As main.cpp does with a human seat: the whole trace goes to the server.
+        events.on_log.connect([this](const LogEvent& e) {
+            trace_lines.fetch_add(1);
+            server->broadcastLog(e.level == LogLevel::Trace ? "TRC" : "DBG", e.message);
+        });
         engine.on_decision = [this](const GameState&, const std::vector<Intent>& legal,
                                     const Intent& chosen) {
             server->awaitSpectatorStep(legal, chosen);
@@ -506,6 +512,15 @@ TEST(PlayServerProtocol, FairPlayFramesWithholdOpponentHandAndDeckOrder) {
         const std::string& name = st.getObject(id).name;
         EXPECT_EQ(p2_section.find(" Hand:  " + name), std::string::npos) << name;
     }
+    // By now cards were drawn and mulligans taken, and the engine logged
+    // every one by name. None of it may have reached this client.
+    c.send({{"type", "request_state"}});
+    int log_lines = 0;
+    while (auto m = c.read(300ms)) {
+        if ((*m)["type"] == "log") ++log_lines;
+    }
+    EXPECT_EQ(log_lines, 0);
+    EXPECT_GT(game.trace_lines.load(), 0) << "the engine did log during this game";
     // God-mode edits stay off.
     c.send({{"type", "edit_player"}, {"player", "P1"}, {"field", "score"}, {"value", 7}});
     EXPECT_EQ(c.nextReply()["type"], "edit_err");
@@ -523,6 +538,11 @@ TEST(PlayServerProtocol, RevealHiddenFramesCarryEverything) {
     EXPECT_EQ(static_cast<int>(p2["hand"].size()), p2["hand_count"].get<int>());
     EXPECT_EQ(static_cast<int>(p2["main_deck"].size()), p2["main_deck_count"].get<int>());
     EXPECT_EQ(f["render_text"].get<std::string>().find("hidden)"), std::string::npos);
+    // With everything revealed the log stream is on: answering the
+    // decision makes the engine log what it does next.
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0},
+            {"decision_id", f["decision_id"]}});
+    EXPECT_FALSE(c.readUntil([](const json& m) { return m["type"] == "log"; }).is_null());
 }
 
 // ─── 4.6 — spectator stepping, and the terminal frame ────────────────────────
@@ -578,7 +598,8 @@ TEST(PlayServerProtocol, TerminalFrameIsDeliveredBeforeTheServerStops) {
     EXPECT_TRUE(last["game_over"].get<bool>());
     EXPECT_EQ(last["type"], "state");
     EXPECT_TRUE(last["legal"].empty());
-    EXPECT_TRUE(last.contains("winner"));
+    // The aborted seat is the one that concedes, whoever's turn it was.
+    EXPECT_EQ(last.value("winner", ""), "P2");
 }
 
 // ─── 4.7 — a prompt heads the decision it was asked for, and only that one ───
@@ -867,7 +888,11 @@ TEST(BatchRunnerReviewFix, ExceptionInAWorkerIsRethrownNotFatal) {
         batch.runBatch(cards().deck1, cards().deck2, 6, cfg, results);
         FAIL() << "expected the worker's exception";
     } catch (const std::runtime_error& e) {
-        EXPECT_STREQ(e.what(), "agent factory failed");
+        // Names the game and its seed, then the cause.
+        const std::string what = e.what();
+        EXPECT_NE(what.find("game "), std::string::npos) << what;
+        EXPECT_NE(what.find("[seed="), std::string::npos) << what;
+        EXPECT_NE(what.find("agent factory failed"), std::string::npos) << what;
     }
     EXPECT_EQ(results.games_completed.load(), 0);
 }

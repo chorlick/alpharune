@@ -312,6 +312,13 @@ public:
 
 private:
     void onAccept() {
+        // Only now may frames be written to this socket: a log line or frame
+        // broadcast while the upgrade response was still being sent would
+        // be written into the middle of the handshake.
+        {
+            std::lock_guard<std::mutex> lock(impl_.sessions_mu);
+            impl_.sessions.push_back(weak_from_this());
+        }
         // Push the current frame so a client that connects mid-game has a
         // board to show straight away.
         impl_.broadcast();
@@ -408,9 +415,15 @@ private:
             impl_.broadcastLocked(false);
             return;
         }
+        // The agent makes the same checks atomically with accepting the
+        // answer; it has the last word.
+        if (!agent->setChosenAction(static_cast<int>(*idx), park.decision_id)) {
+            sendErr("stale choose: the decision is no longer pending");
+            impl_.broadcastLocked(false);
+            return;
+        }
         (pid == PlayerId::Player1 ? impl_.answered_p1 : impl_.answered_p2) = park.decision_id;
         impl_.clearPrompt();
-        agent->setChosenAction(static_cast<int>(*idx));
         // The engine is running from here on: tell clients right away so
         // the answered decision's buttons go.
         impl_.broadcastLocked(false);
@@ -592,11 +605,8 @@ private:
                                "Forbidden: cross-origin WebSocket");
             }
             // Hand off to a WsSession that owns the socket.
+            // It joins the broadcast list once the handshake is done.
             auto session = std::make_shared<WsSession>(std::move(socket_), impl_, server_);
-            {
-                std::lock_guard<std::mutex> lock(impl_.sessions_mu);
-                impl_.sessions.push_back(session);
-            }
             session->run(std::move(req_));
             return;
         }
@@ -1234,6 +1244,8 @@ void PlayServer::broadcastLog(const std::string& level, const std::string& messa
     // uses: "MAY_PROMPT: <text>", "X_PROMPT: <text>", "MODE_PROMPT:
     // <text> [...]", "TGT_PROMPT: <text> [...]". We strip the prefix
     // for display and keep the question.
+    // (Captured even when the stream itself is withheld, below: a prompt
+    // only ever heads the decision of the seat it was asked of.)
     auto pos = message.find("_PROMPT:");
     if (pos != std::string::npos) {
         // Trim past the "_PROMPT: " marker (9 chars).
@@ -1245,6 +1257,13 @@ void PlayServer::broadcastLog(const std::string& level, const std::string& messa
         std::lock_guard<std::mutex> lock(impl_->prompt_mu);
         impl_->last_prompt = std::move(prompt);
     }
+
+    // Engine log lines name cards as they are drawn, mulliganed, hidden or
+    // looked at, whoever they belong to, and carry nothing that says who
+    // may see them. When frames withhold hidden information the stream is
+    // withheld with it — all of it, rather than a guess at which lines
+    // are public.
+    if (!config_.reveal_hidden) return;
 
     json frame = {
         {"type", "log"},

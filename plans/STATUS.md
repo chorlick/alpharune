@@ -191,6 +191,13 @@ iteration must apply these.
   target, when the user asks for it: one model, Yi vs Fiora, then the same
   model continues on Fiora, then a third deck — continued training of one
   checkpoint, no weight merging, no distillation (trainer `plans/README.md`).
+- **Trainer scripts and vast.ai (user, 2026-10-11):** when tooling work starts,
+  review the trainer's `scripts/` and drop what v6 does not use (expected: all
+  of the old ones, old vast.ai scripts included). Build v6 vast.ai tooling in
+  their place — one-command setup and start, resume on interruptible
+  instances, rsync both ways — proven end to end locally first, because
+  vast.ai time is expensive and the user wants to go straight into training
+  with as little friction as possible. Details in trainer `plans/README.md`.
 - **Stage 5 and v6 (user, 2026-10-11):** the trainer plan does not run until
   the engine fixes are merged, and every finding is required first. If stage 5
   is reached unattended, follow README stage 5: check whether v6 has replaced

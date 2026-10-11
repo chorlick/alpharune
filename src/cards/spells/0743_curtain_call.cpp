@@ -31,6 +31,11 @@ public:
                 RepeatCost{.energy = 1, .power = 1, .power_domain = Domain::Count}};
     }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     static constexpr const char* kMaskKey = "curtain_call_used_mask";
     static constexpr const char* kPlayKey = "curtain_call_play";
 

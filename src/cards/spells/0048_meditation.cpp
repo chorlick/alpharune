@@ -20,6 +20,12 @@ public:
     // The "may", the unit and the exhaust belong to playing the spell: they
     // are decided and paid when it is finalized, not as it resolves.
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
         auto ready_friendly = [&]() {

@@ -313,14 +313,21 @@ public:
     static uint64_t costStateFingerprint(const GameState& state);
 
     /// For the play gate of a spell that chooses in its finalize pass
-    /// (kFinalizeResolve): whether it could choose `object`. Such a spell is
-    /// paid for after those choices (CR 355 -> 356), so one that is too dear
-    /// on its own is still offered when choosing `object` makes it payable
-    /// ("your spells that choose me cost [1] or [A] less"). Default: `object`
-    /// is one of enumerateLegalTargets(); a card that builds its own pick
-    /// list overrides this to match it.
-    virtual bool mayChooseAtFinalization(const GameState& state, PlayerId controller,
-                                         GameObjectId object) const;
+    /// (kFinalizeResolve): whether it could choose `object`, a unit its
+    /// controller has on the board. Such a spell is paid for after those
+    /// choices (CR 355 -> 356), so one that is too dear on its own is still
+    /// offered when choosing `object` makes it payable ("your spells that
+    /// choose me cost [1] or [A] less"). The engine cannot know a card's pick
+    /// list, so every finalize-pass spell declares this (card_helpers.h has
+    /// friendlyUnitChoice for the common shapes); a registry test fails for
+    /// one that leaves it Undeclared. Must cope with an `object` that does
+    /// not exist (the registry test asks with kInvalidId).
+    enum class FinalizeChoice { Undeclared, No, Yes };
+    virtual FinalizeChoice mayChooseAtFinalization(const GameState& /*state*/,
+                                                   PlayerId /*controller*/,
+                                                   GameObjectId /*object*/) const {
+        return FinalizeChoice::Undeclared;
+    }
 
     /// Whether this spell, played from facedown at `battlefield`, has the
     /// choices it needs there (CR 811.1.d: a hidden card's choices are made

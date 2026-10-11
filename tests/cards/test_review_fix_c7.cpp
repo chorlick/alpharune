@@ -689,7 +689,7 @@ TEST_F(C7Test, TailCloakedMatriarch_PlaysTheUnitToBaseAndOutOfTheTrash) {
     auto matriarch = addUnit(P1, kTailCloakedMatriarch, 0, 0);
     state.battlefields[0].controller = P1;
     auto corpse = inTrashOf(P1, kLoyalPoro);
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     fireTriggerThroughEngine(matriarch, TriggerType::WhenIBecomeEmpowered, &agent);
     EXPECT_TRUE(o(corpse).isAtBase()) << "\"Play it to your base\"";
     EXPECT_FALSE(inTrash(P1, corpse));

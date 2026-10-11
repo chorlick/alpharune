@@ -76,6 +76,23 @@ inline bool payEnergy(CardContext& ctx, PlayerId player, int amount) {
     return resource::pay(ctx.state, ctx.events, player, amount, 0, Domain::Count);
 }
 
+// ── Card::mayChooseAtFinalization, the common shapes ──
+/// Yes if `object` is a unit `controller` controls on the board and `also`
+/// holds for it; No otherwise (an object that does not exist included).
+template <typename Pred>
+inline Card::FinalizeChoice friendlyUnitChoice(const GameState& state, PlayerId controller,
+                                               GameObjectId object, Pred&& also) {
+    if (object == kInvalidId || !state.objectExists(object)) return Card::FinalizeChoice::No;
+    const auto& u = state.getObject(object);
+    if (!u.isUnit() || u.controller != controller || !u.location.has_value())
+        return Card::FinalizeChoice::No;
+    return also(u) ? Card::FinalizeChoice::Yes : Card::FinalizeChoice::No;
+}
+inline Card::FinalizeChoice friendlyUnitChoice(const GameState& state, PlayerId controller,
+                                               GameObjectId object) {
+    return friendlyUnitChoice(state, controller, object, [](const GameObject&) { return true; });
+}
+
 // ── Battlefields and combat ──
 /// The battlefield whose card object is `card_object` (a battlefield card's
 /// own ctx.source, or a conquer / hold trigger's subject on a legend).

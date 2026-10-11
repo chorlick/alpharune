@@ -24,6 +24,14 @@ public:
     // (CR 355), and again when the Repeat executes ("may make different
     // choices"). Each mode offers only the objects it can affect.
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // "A unit in a base."
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+            [&](const GameObject& u) {
+                return u.isAtBase();
+            });
+    }
     static std::vector<GameObjectId> unitsInBases(const GameState& state, PlayerId me) {
         return chooseableUnits(state, me, [](const GameObject& o) { return o.isAtBase(); });
     }

@@ -20,6 +20,11 @@ public:
     // The mode, then a unit that mode can affect, are chosen as the spell is
     // played (CR 355) — never a unit first and a mode that cannot use it.
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         return !chooseableUnits(state, controller,
                                 [](const GameObject&) { return true; }).empty();

@@ -19,6 +19,14 @@ class StrikeDown : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // An equipped friendly unit.
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+            [&](const GameObject& u) {
+                return !u.attachments.empty();
+            });
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true};
     }

@@ -713,7 +713,6 @@ TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_UnattachingEndsTheCopy
 
 TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_UnattachingEndsTheCopy_Card) {
     EffectExecutor exec(state, events, card_db, &card_registry);
-    Card* card = card_registry.get(kShadySpectacles);
     auto bearer = addUnit(P1, kLegionRearguard, 0, /*at_bf=*/0);
     const GameObject before = state.getObject(bearer);
     addUnit(P1, kArachnoidHorror, 0, /*at_bf=*/0);
@@ -739,7 +738,6 @@ TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_UnattachingEndsTheCopy
 
 TEST_F(RulesCards2Test, RulesCards2_CR446_ShadySpectacles_StaleCopyEndsWhenReEquipped) {
     EffectExecutor exec(state, events, card_db, &card_registry);
-    Card* card = card_registry.get(kShadySpectacles);
     auto first = addUnit(P1, kInvalidId, 5, /*at_bf=*/0);
     auto second = addUnit(P1, kLegionRearguard, 0, /*at_bf=*/0);
     auto gear = addGear(P1, kShadySpectacles);

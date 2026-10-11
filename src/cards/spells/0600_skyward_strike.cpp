@@ -21,6 +21,12 @@ public:
     // the unit to move, where it moves, and — with 6+ XP — the unit to stun,
     // which may be the same unit or another. All chosen as the spell is played.
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
     static std::vector<GameObjectId> enemies(const GameState& state, PlayerId me) {
         return chooseableUnits(state, me,
                                [me](const GameObject& o) { return o.controller != me; });

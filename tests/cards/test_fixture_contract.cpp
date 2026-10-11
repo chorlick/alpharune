@@ -111,6 +111,34 @@ std::vector<Intent> objectPrompt(std::initializer_list<GameObjectId> ids) {
 }
 } // namespace
 
+// script(): an entry answers its own prompt or the test fails (9.AA4).
+TEST(FixtureContractPickers, ScriptAnswersByValueThenByObject) {
+    auto pick = EnginePathAgent::script({1, 9});
+    EXPECT_EQ(pick(mayPrompt()).chosen_value.value_or(-1), 1);
+    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 9u);
+}
+
+TEST(FixtureContractPickers, ScriptFailsTheTestWhenAnEntryMatchesNothing) {
+    auto pick = EnginePathAgent::script({8});
+    Intent answer;
+    EXPECT_NONFATAL_FAILURE(answer = pick(objectPrompt({3, 7, 9})), "matches no option");
+    EXPECT_EQ(answer.chosen_objects.front(), 3u);
+}
+
+TEST(FixtureContractPickers, ScriptFailsTheTestAtAPromptAfterItRanOut) {
+    auto pick = EnginePathAgent::script({7});
+    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 7u);
+    EXPECT_NONFATAL_FAILURE(pick(mayPrompt()), "after the script ran out");
+}
+
+TEST(FixtureContractPickers, ScriptTakesTheFirstOptionOnlyWhenToldTo) {
+    auto pick = EnginePathAgent::script({EnginePathAgent::kFirst, 7, EnginePathAgent::kRest});
+    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 3u) << "kFirst";
+    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 7u);
+    EXPECT_EQ(pick(objectPrompt({5, 6})).chosen_objects.front(), 5u) << "kRest";
+    EXPECT_EQ(pick(mayPrompt()).chosen_value.value_or(-1), 0) << "kRest goes on";
+}
+
 TEST(FixtureContractPickers, ChoosingPicksTheObjectWhenOffered) {
     auto pick = EnginePathAgent::choosing(7);
     EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 7u);

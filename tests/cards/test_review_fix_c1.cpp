@@ -250,7 +250,7 @@ TEST_F(ReviewFixC1Test, ZeroDrive_BearerDiesAndItsOwnDeathTriggersFire) {
     attach(drive, unit);
     addToDeck(P1, kInvalidId);
 
-    EnginePathAgent yes(EnginePathAgent::script({1}));
+    EnginePathAgent yes(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &yes);
 
     EXPECT_TRUE(state.getObject(altar).is_exhausted) << "a friendly unit died";
@@ -450,14 +450,14 @@ TEST_F(ReviewFixC1Test, AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst) {
     for (int i = 0; i < 4; ++i) addToDeck(P1, kInvalidId);
     addToHand(P1, kInvalidId);
 
-    EnginePathAgent yes1(EnginePathAgent::script({1}));
+    EnginePathAgent yes1(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(first); }, &yes1);
     EXPECT_TRUE(state.getObject(altar).is_exhausted);
     EXPECT_EQ(handSize(P1), 1) << "drew 1, put 1 back";
     EXPECT_EQ(deckSize(P1), 4);
 
     state.getObject(altar).is_exhausted = false;   // a later turn
-    EnginePathAgent yes2(EnginePathAgent::script({1}));
+    EnginePathAgent yes2(EnginePathAgent::script({1, EnginePathAgent::kRest}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(second); }, &yes2);
     EXPECT_EQ(yes2.prompts.size(), 3u) << "the may, the hand card, top/bottom";
     EXPECT_TRUE(state.getObject(altar).is_exhausted) << "exhausted again";

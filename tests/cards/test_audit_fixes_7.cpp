@@ -487,7 +487,6 @@ TEST_F(AuditFix7Test, HextechGauntlets_EquipReducedByMight) {
     addRune(P1, Domain::Body, false);
     addRune(P1, Domain::Body, false);
 
-    Card* card = card_registry.get(748);
     bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
@@ -508,7 +507,6 @@ TEST_F(AuditFix7Test, HextechGauntlets_HighMightZerosEnergyCost) {
     auto gear = addGear(P1, 748, /*might_bonus=*/3);
     addRune(P1, Domain::Body, false);  // only need 1 rune for [A]
 
-    Card* card = card_registry.get(748);
     bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_TRUE(ok);
@@ -522,7 +520,6 @@ TEST_F(AuditFix7Test, HextechGauntlets_FailsWhenCannotPay) {
     auto gear = addGear(P1, 748, /*might_bonus=*/3);
     addRune(P1, Domain::Body, false);  // only 1 ready rune, need 3 energy + 1 [A]
 
-    Card* card = card_registry.get(748);
     bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);

@@ -16,6 +16,11 @@ class Challenge : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     TargetRequirements getTargetRequirements() const override {
         // Two targets — generic count=2 unit; actual side filters
         // applied per-pick in pickTargetPair's legal_a/legal_b_fn

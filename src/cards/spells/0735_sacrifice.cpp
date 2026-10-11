@@ -21,6 +21,12 @@ public:
     // additional cost is paid then, so it stays paid if the spell is
     // countered, and the effect no longer depends on the unit).
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
     static std::vector<GameObjectId> mightyUnits(const GameState& state, PlayerId controller) {
         std::vector<GameObjectId> out;
         for (const auto& [id, obj] : state.objects) {

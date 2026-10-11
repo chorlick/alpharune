@@ -221,7 +221,6 @@ TEST_F(AuditFix5Test, Svellsongur_EquipFailsNoDomainRune) {
     addRune(P1, Domain::Fury);
     addRune(P1, Domain::Fury);
 
-    Card* card = card_registry.get(kSvellsongur);
     bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
@@ -237,7 +236,6 @@ TEST_F(AuditFix5Test, Svellsongur_EquipFailsInsufficientEnergy) {
     // A single exhausted Calm rune: domain present but 0 ready -> energy fail.
     addRune(P1, Domain::Calm, /*exhausted=*/true);
 
-    Card* card = card_registry.get(kSvellsongur);
     bool ok = equipThroughEngine(gear, unit);
 
     EXPECT_FALSE(ok);
@@ -269,7 +267,6 @@ TEST_F(AuditFix5Test, EdgeOfNight_EquipFailsNoChaos) {
     auto gear = addGear(P1, kEdgeOfNight, 2);
     addRune(P1, Domain::Calm);
 
-    Card* card = card_registry.get(kEdgeOfNight);
     EXPECT_FALSE(equipThroughEngine(gear, unit));
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
 }

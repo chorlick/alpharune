@@ -37,6 +37,11 @@ class PublicExecution : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     // [vendetta-E]
     // "Choose a friendly unit. Kill an enemy unit with less Might than it."
     bool needsPlayTimeTargetPair() const override { return true; }

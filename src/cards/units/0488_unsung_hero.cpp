@@ -21,7 +21,7 @@ public:
         const auto& self = ctx.state.getObject(ctx.source);
         // "If I WAS [Mighty]": my Might just before I died (CR 383.2.c.3.b) —
         // gear is shed and "this turn" Might is not kept once I'm in the trash.
-        const bool was_mighty = self.last_known.valid ? self.last_known.might >= 5
+        const bool was_mighty = asItLeft(ctx, ctx.source).valid ? asItLeft(ctx, ctx.source).might >= 5
                                                       : isMighty(self);
         if (!was_mighty) {
             RIFT_TRACE(ctx.events, "UNSUNG HERO: died not Mighty — no draw");

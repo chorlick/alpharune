@@ -30,9 +30,20 @@ class EffectExecutor;
 /// all of them are still on the board, so abilities that look back at the
 /// death see the others ("if I didn't die alone") — as the engine does for
 /// lethal damage found in one cleanup. Put it in a block of its own with the
-/// loop, so it ends with the kills. Listing a unit that then survives is
-/// harmless: if it is changed and dies later while the batch is still open,
-/// its last-known information is taken afresh.
+/// loop, so it ends with the kills.
+///
+/// The batch has to know WHO dies before the first kill, because whatever
+/// replaces any of the deaths is applied first, with all of them still on the
+/// board (CR 373.1.a: the replacements' actions "are performed before any
+/// simultaneous unmodified events"; CR 370.4: Soraka, Wanderer saves the
+/// units that die with her). So:
+///   - `DeathBatch(executor, units)`: every listed unit is about to be killed
+///     ("kill all units here").
+///   - `DeathBatch(executor, units, DeathBatch::LethalOnly)`: the units were
+///     dealt damage and the loop kills those with lethal damage; the batch
+///     keeps the ones that have it now.
+/// A unit whose death was replaced is not killed by the loop's killObject
+/// (the call does nothing for it while the batch is open).
 /// (EffectExecutor::beginDeathBatch / endDeathBatch.)
 /// What EffectExecutor::beginDeathBatch hands to endDeathBatch.
 struct DeathBatchMark {
@@ -43,7 +54,9 @@ struct DeathBatchMark {
 
 class DeathBatch {
 public:
-    DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units);
+    enum Members { Everyone, LethalOnly };
+    DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units,
+               Members members = Everyone);
     ~DeathBatch();
     DeathBatch(const DeathBatch&) = delete;
     DeathBatch& operator=(const DeathBatch&) = delete;
@@ -190,9 +203,13 @@ public:
 
     // ── Units that die at the same time ──
     /// Call with every unit about to die together (lethal damage found in one
-    /// cleanup, "kill all units here"), before the first kill: takes each
-    /// one's last-known information while all of them are still on the board.
-    /// Follow the kills with endDeathBatch(same ids).
+    /// cleanup, "kill all units here"), before the first kill. With all of
+    /// them still on the board it applies what replaces any of the deaths
+    /// (CR 373.1.a; the turn player's units first, CR 373.1; each unit's own
+    /// replacements in the order its controller chooses, CR 372), then takes
+    /// the last-known information of the ones that still die. `units` must be
+    /// exactly the units the kills that follow would kill. Follow the kills
+    /// with endDeathBatch(same ids, the mark).
     ///
     /// Units that leave together do not see each other leave (CR 383.2.c.2:
     /// Viktor, Leader "does not trigger if Viktor and another non-Recruit unit
@@ -202,6 +219,12 @@ public:
     /// ones: endDeathBatch takes those back. Pass it what beginDeathBatch
     /// returned.
     DeathBatchMark beginDeathBatch(const std::vector<GameObjectId>& units);
+    /// Drop from `units` what a "kill what has lethal damage" loop would not
+    /// kill: units no longer on the board or without lethal damage.
+    void keepLethallyDamaged(std::vector<GameObjectId>& units) const;
+    /// True while `unit` is a member of an open death batch whose replacements
+    /// were applied as the batch began (GameEngine::killUnit asks).
+    bool deathReplacementsSettled(GameObjectId unit) const;
     void endDeathBatch(const std::vector<GameObjectId>& units, const DeathBatchMark& mark);
 
     /// Announce that `card` was recycled into its owner's Main Deck by a path

@@ -27,7 +27,7 @@ public:
                 ctx.executor.dealDamage(id, 1, ctx.source);
         }
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, to_damage);   // they die at the same time
+            DeathBatch together(ctx.executor, to_damage, DeathBatch::LethalOnly);   // they die at the same time
             for (auto id : to_damage) {
                 if (ctx.state.objectExists(id) &&
                     ctx.state.getObject(id).hasLethalDamage()) {

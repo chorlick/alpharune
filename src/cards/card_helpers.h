@@ -49,6 +49,27 @@ inline PlayerId controllerWhenItLeft(const GameState& state, GameObjectId id) {
     if (obj.location.has_value() || !obj.last_known.valid) return obj.controller;
     return obj.last_known.controller;
 }
+/// `id` as it left the board, for an ability that is resolving (or being
+/// finalized): the snapshot that travelled with the ability's chain item if
+/// `id` is the object whose leaving triggered it (ChainItem::
+/// subject_as_it_left — each death of a card that died twice has its own),
+/// otherwise the object's latest (GameObject::last_known). Check `.valid`.
+inline const GameObject::LastKnown& asItLeft(const CardContext& ctx, GameObjectId id) {
+    const auto& item = ctx.state.chain.resuming;
+    if (item.has_value() && item->triggering_subject == id &&
+        item->subject_as_it_left.has_value())
+        return *item->subject_as_it_left;
+    return ctx.state.getObject(id).last_known;
+}
+/// controllerWhenItLeft for an ability on the chain: see asItLeft.
+inline PlayerId controllerWhenItLeft(const CardContext& ctx, GameObjectId id) {
+    if (!ctx.state.objectExists(id)) return PlayerId::None;
+    const auto& item = ctx.state.chain.resuming;
+    if (item.has_value() && item->triggering_subject == id &&
+        item->subject_as_it_left.has_value())
+        return item->subject_as_it_left->controller;
+    return controllerWhenItLeft(ctx.state, id);
+}
 inline bool payOnePower(CardContext& ctx, PlayerId player,
                         std::optional<Domain> domain) {
     // The engine's own payment (engine/resource_payment.h): floating Power,

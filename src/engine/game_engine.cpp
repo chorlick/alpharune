@@ -7510,13 +7510,16 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
                          (rune.is_exhausted ? "exhausted" : "ready") +
                          ") for power [agent choice]");
         auto base_loc = BaseLocation{cur.player};
+        // Snapshot, move, announce, then the new object (CR 124.1) — the
+        // order of every other way off the board.
+        snapshotAsItLeaves(rune);
         rune.location = std::nullopt;
         rune.zone = ZoneType::RuneDeck;
-        forgetBoardState(rune, nullptr);   // CR 124.1 (a rune carries no attachments)
         state_.player(cur.player).rune_deck.insert(
             state_.player(cur.player).rune_deck.begin(), rune_id);
         events_.emit(LeftBoardEvent{rune_id, cur.player, CardType::Rune,
             base_loc, ZoneType::RuneDeck, false});
+        forgetBoardState(state_.getObject(rune_id), nullptr);
         cur.power_remaining--;
         state_.player(cur.player).power_spent_this_turn++;  // Sivir, Mercenary
     }
@@ -7703,7 +7706,11 @@ void GameEngine::moveUnit(GameObjectId unit_id, LocationId destination) {
 
 void GameEngine::killUnit(GameObjectId unit_id) {
     auto& unit = state_.getObject(unit_id);
+    // Its death was replaced when the batch it dies in began (CR 373.1.a,
+    // EffectExecutor::beginDeathBatch): nothing to kill.
+    if (unit.last_known.batch_replaced) return;
     auto controller = unit.controller;
+    const bool replacements_settled = effect_executor_->deathReplacementsSettled(unit_id);
     // Last-known information for "When I die" (CR 383.2.c.3.b): captured now,
     // before gear is shed and the designation and statuses are cleared.
     effect_executor_->snapshotLastKnown(unit_id);
@@ -7716,7 +7723,8 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     // chooses (CR 372): EffectExecutor::applyDeathReplacements, shared with
     // EffectExecutor::killObject. A replaced unit keeps its gear on a recall
     // (CR 458, 719.3.a).
-    if (effect_executor_->applyDeathReplacements(unit_id)) return;
+    // (Already done for a unit of a death batch, before any of them died.)
+    if (!replacements_settled && effect_executor_->applyDeathReplacements(unit_id)) return;
 
     // No replacement — unit dies normally. Its gear is shed (CR 719.5) after
     // the death is announced below, so abilities that trigger on it see the

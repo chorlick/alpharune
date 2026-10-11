@@ -52,7 +52,7 @@ public:
         // per unit this kills.
         int kills = 0;
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, damaged);   // they die at the same time
+            DeathBatch together(ctx.executor, damaged, DeathBatch::LethalOnly);   // they die at the same time
             for (auto id : damaged) {
                 if (!ctx.state.objectExists(id)) continue;
                 if (ctx.state.getObject(id).hasLethalDamage()) {

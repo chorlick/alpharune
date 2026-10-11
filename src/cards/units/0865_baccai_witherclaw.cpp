@@ -33,7 +33,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        const bool died_empowered = self.last_known.valid ? self.last_known.empowered > 0
+        const bool died_empowered = asItLeft(ctx, ctx.source).valid ? asItLeft(ctx, ctx.source).empowered > 0
                                                           : self.isEmpowered();
         if (!died_empowered) return;
         ctx.executor.channelRunes(ctx.controller, 2, /*enter_exhausted=*/true);

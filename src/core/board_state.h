@@ -38,6 +38,27 @@
 
 namespace riftbound {
 
+/// The part of GameObject::last_known that the object itself holds, taken as
+/// it is about to leave the board by a path that has no executor (a rune
+/// recycled for Power). EffectExecutor::snapshotLastKnown is the full one: it
+/// adds what only the state knows (who killed it, the units beside it).
+inline void snapshotAsItLeaves(GameObject& obj) {
+    auto& lk = obj.last_known;
+    lk = GameObject::LastKnown{};
+    lk.valid = true;
+    lk.controller = obj.controller;
+    lk.died = false;
+    lk.stunned = obj.is_stunned;
+    lk.exhausted = obj.is_exhausted;
+    lk.location = obj.location;
+    lk.might = obj.current_might;
+    lk.empowered = obj.empowered;
+    lk.buff_count = obj.buff_count;
+    lk.combat_designation = obj.combat_designation;
+    lk.attachments = obj.attachments;
+    lk.keywords = obj.keywords | obj.aura_keywords;
+}
+
 /// The object has just left the board: it is a new object (CR 124.1).
 /// `def` is its card (nullptr for an object with no card behind it, e.g. a
 /// plain token): the printed keywords and values are what it has again.

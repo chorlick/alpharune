@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,7 +21,7 @@ public:
     // die at the same time is taken for all of them before the first leaves.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& lk = ctx.state.getObject(ctx.source).last_known;
+        const auto& lk = asItLeft(ctx, ctx.source);
         if (!lk.valid) return;
         if (!lk.other_friendly_units_here.empty()) {
             RIFT_TRACE(ctx.events, "LONELY PORO: did not die alone -> no draw");

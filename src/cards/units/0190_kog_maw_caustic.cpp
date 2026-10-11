@@ -25,7 +25,7 @@ public:
         // resolves (played again from the trash in response) is a new object
         // somewhere else, and the ability is the old one's.
         const std::optional<LocationId> where =
-            self.last_known.valid && self.last_known.died ? self.last_known.location
+            asItLeft(ctx, ctx.source).valid && asItLeft(ctx, ctx.source).died ? asItLeft(ctx, ctx.source).location
             : self.location.has_value() ? self.location.get() : self.last_location;
         if (!where.has_value() || !std::holds_alternative<BattlefieldLocation>(*where)) return;
         const LocationId my_bf = *where;
@@ -39,7 +39,7 @@ public:
             for (auto id : to_damage)
                 ctx.executor.dealDamage(id, 4, ctx.source);
             {   // the batch is for these kills only
-                DeathBatch together(ctx.executor, to_damage);   // they die at the same time
+                DeathBatch together(ctx.executor, to_damage, DeathBatch::LethalOnly);   // they die at the same time
                 for (auto id : to_damage) {
                     if (ctx.state.objectExists(id) &&
                         ctx.state.getObject(id).hasLethalDamage()) {

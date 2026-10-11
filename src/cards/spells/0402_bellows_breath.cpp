@@ -95,7 +95,7 @@ public:
             if (ctx.state.objectExists(t)) ctx.executor.dealDamage(t, 1, ctx.source);
         }
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, hit);   // they die at the same time
+            DeathBatch together(ctx.executor, hit, DeathBatch::LethalOnly);   // they die at the same time
             for (auto t : hit) {
                 if (ctx.state.objectExists(t) &&
                     ctx.state.getObject(t).hasLethalDamage()) {

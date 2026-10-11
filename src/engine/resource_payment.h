@@ -160,13 +160,17 @@ inline bool payIn(GameState& state, EventBus& events, PlayerId player, int energ
         if (p_need <= 0) break;
         auto& rune = state.getObject(rid);
         if (!runePays(rune, mask)) continue;
+        // The same order as every other way off the board: the rune as it
+        // was (last_known), the move, its announcement, and only then the
+        // new object (CR 124.1; a rune carries no attachments).
+        snapshotAsItLeaves(rune);
         rune.location = std::nullopt;
         rune.zone = ZoneType::RuneDeck;
-        forgetBoardState(rune, nullptr);   // CR 124.1 (a rune carries no attachments)
         ps.rune_deck.insert(ps.rune_deck.begin(), rid);
         ps.power_spent_this_turn++;
         events.emit(LeftBoardEvent{rid, player, CardType::Rune,
             base_loc, ZoneType::RuneDeck, false});
+        forgetBoardState(state.getObject(rid), nullptr);
         --p_need;
         ++paid_p;
     }

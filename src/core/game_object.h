@@ -134,6 +134,7 @@ struct GameObject {
         std::vector<GameObjectId> attachments;  // gear attached at death
         KeywordSet keywords;                    // printed + aura + "this turn"
         bool stunned = false;
+        bool exhausted = false;
         // Where it was, and the other units its controller had there. For
         // units that die at the same time (EffectExecutor::beginDeathBatch)
         // this is taken for all of them before the first one leaves, so each
@@ -152,6 +153,9 @@ struct GameObject {
         // Set by beginDeathBatch: the kill that follows keeps this snapshot
         // instead of taking a new one. Cleared by endDeathBatch.
         bool batch_pending = false;
+        // Set by beginDeathBatch on a listed unit whose death was replaced
+        // there: the kill that follows does nothing. Cleared by endDeathBatch.
+        bool batch_replaced = false;
         // What the unit looked like when that snapshot was taken. A unit that
         // was listed in a batch, survived it and has changed since is
         // snapshotted afresh when it does die (EffectExecutor::snapshotLastKnown).

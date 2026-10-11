@@ -21,6 +21,8 @@
 #include "engine/knowledge_tracker.h"
 #include "engine/resource_payment.h"
 #include "io/state_editor.h"
+#include "ml/cfr_util.h"
+#include "ml/feature_extractor.h"
 #include "rules/deck_validator.h"
 
 #include <algorithm>
@@ -1553,21 +1555,23 @@ struct Saw {
     bool listed_with_me = false;                 // in MY last_known.other_friendly_units_here
     bool on_board_now = false;
 };
-static Saw look(const GameState& state, GameObjectId id) {
+static Saw lookWith(const GameObject::LastKnown& lk, const GameObject& u) {
     Saw s;
-    const GameObject& u = state.getObject(id);
-    s.valid = u.last_known.valid;
-    s.died = u.last_known.died;
-    s.controller_then = u.last_known.controller;
+    s.valid = lk.valid;
+    s.died = lk.died;
+    s.controller_then = lk.controller;
     s.controller_now = u.controller;
-    s.might_then = u.last_known.might;
+    s.might_then = lk.might;
     s.might_now = u.current_might;
-    s.stunned_then = u.last_known.stunned;
-    s.buffs_then = u.last_known.buff_count;
-    s.gear_then = u.last_known.attachments.size();
-    s.at_then = u.last_known.location;
+    s.stunned_then = lk.stunned;
+    s.buffs_then = lk.buff_count;
+    s.gear_then = lk.attachments.size();
+    s.at_then = lk.location;
     s.on_board_now = u.location.has_value();
     return s;
+}
+static Saw look(const GameState& state, GameObjectId id) {
+    return lookWith(state.getObject(id).last_known, state.getObject(id));
 }
 
 /// "When I die": writes down what it reads of itself and of `other[me]`.
@@ -1582,9 +1586,12 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        Saw me = look(ctx.state, ctx.source);
+        // Itself as THIS death left it: the snapshot that came with the ability.
+        Saw me = lookWith(asItLeft(ctx, ctx.source), ctx.state.getObject(ctx.source));
         me.ability_controller = ctx.controller;
         myself[ctx.source] = me;
+        in_order.push_back(me);
+        controllers_in_order.push_back(controllerWhenItLeft(ctx, ctx.source));
         auto it = other.find(ctx.source);
         if (it == other.end() || !ctx.state.objectExists(it->second)) return;
         Saw them = look(ctx.state, it->second);
@@ -1595,6 +1602,8 @@ public:
     }
     static inline std::map<GameObjectId, GameObjectId> other;
     static inline std::map<GameObjectId, Saw> myself, the_other;
+    static inline std::vector<Saw> in_order;                    // every resolution, in order
+    static inline std::vector<PlayerId> controllers_in_order;
 private:
     CardDef def_;
 };
@@ -1691,6 +1700,8 @@ protected:
         TWitness::other.clear();
         TWitness::myself.clear();
         TWitness::the_other.clear();
+        TWitness::in_order.clear();
+        TWitness::controllers_in_order.clear();
         TWatcher::resolved.clear();
         TLookBack::saw = Saw{};
         TLookBack::its_controller = PlayerId::None;
@@ -2115,6 +2126,433 @@ TEST_F(PerfEngineLookBack, KeepersVerdict_TheUnitOnTheDeckIsANewObject) {
     expectGearLeftBehind(gear);
     EXPECT_EQ(state.player(P2).main_deck.back(), u) << "its owner's deck";
     EXPECT_EQ(o(u).last_known.controller, P1) << "who had it as it left";
+}
+
+
+// ─── 9.NN1: what replaces a death in a batch is applied before any of them ──
+// CR 373.1.a: the replacements' actions "are performed before any
+// simultaneous unmodified events"; CR 370.4: "Soraka, Wanderer ... can be
+// applied to any qualifying events that occur simultaneously with it leaving".
+// Soraka 550 ("If another unit you control here would die, if it has less
+// Might than me, instead heal it, exhaust it, and recall it") and a smaller
+// friendly unit die together: the unit is recalled, whichever of the two the
+// engine kills first. Before, replacements ran as each unit was killed, so
+// with Soraka killed first she was in the trash and the unit died.
+class PerfEngineDeathBatch : public PerfEngineLookBack {
+protected:
+    static constexpr CardDefId kSoraka = 550;
+    void expectRecalled(GameObjectId unit) {
+        ASSERT_TRUE(onBoard(unit)) << "its death was replaced";
+        EXPECT_TRUE(o(unit).isAtBase());
+        EXPECT_EQ(o(unit).damage_marked, 0);
+        EXPECT_TRUE(o(unit).is_exhausted);
+        EXPECT_FALSE(o(unit).last_known.batch_replaced) << "the batch is closed";
+        EXPECT_FALSE(o(unit).last_known.batch_pending);
+    }
+};
+
+TEST_F(PerfEngineDeathBatch, ACleanupAppliesSorakaBeforeAnyoneDies_InBothKillOrders) {
+    for (bool soraka_first : {true, false}) {
+        SCOPED_TRACE(soraka_first ? "Soraka is killed first" : "Soraka is killed second");
+        GameObjectId soraka, small;
+        if (soraka_first) { soraka = addUnit(P1, kSoraka, 0, 0); small = addUnit(P1, kShipyardSkulker, 0, 0); }
+        else              { small = addUnit(P1, kShipyardSkulker, 0, 0); soraka = addUnit(P1, kSoraka, 0, 0); }
+        withEngine([&](GameEngine& e) {
+            e.testHook_recalculateAuras();
+            e.mutableState().getObject(soraka).damage_marked = 99;
+            e.mutableState().getObject(small).damage_marked = 99;
+            e.testHook_processLethalDamage();
+            settleLikeTheEngine(e);
+        });
+        EXPECT_EQ(o(soraka).zone, ZoneType::Trash) << "nothing replaces her own death";
+        expectRecalled(small);
+    }
+}
+
+TEST_F(PerfEngineDeathBatch, ACardsBatchAppliesSorakaBeforeAnyoneDies) {
+    // "Kill all of them" (DeathBatch, every listed unit) with Soraka first.
+    const GameObjectId soraka = addUnit(P1, kSoraka, 0, 0);
+    const GameObjectId small = addUnit(P1, kShipyardSkulker, 0, 0);
+    withEngine([&](GameEngine& e) {
+        e.testHook_recalculateAuras();
+        {
+            DeathBatch together(e.testHook_executor(), {soraka, small});
+            e.testHook_executor().killObject(soraka);
+            e.testHook_executor().killObject(small);    // the replaced kill: does nothing
+        }
+        settleLikeTheEngine(e);
+    });
+    EXPECT_EQ(o(soraka).zone, ZoneType::Trash);
+    expectRecalled(small);
+    EXPECT_EQ(o(small).damage_marked, 0);
+}
+
+// "Deal damage to each, then kill what has lethal damage": the batch is told
+// the units that were damaged and keeps the ones that die (LethalOnly). A
+// listed unit that survives the damage is not a member: a "the next time it
+// would die this turn" on it is not used up, and it keeps what it saw.
+TEST_F(PerfEngineDeathBatch, ALethalOnlyBatchLeavesTheUnitsThatDoNotDieAlone) {
+    const GameObjectId soraka = addUnit(P1, kSoraka, 0, 0);
+    const GameObjectId small = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId sturdy = addUnit(P1, kShipyardSkulker, 9, 0);
+    o(sturdy).death_replacement_recall_pending = true;       // Tactical Retreat on it
+    withEngine([&](GameEngine& e) {
+        e.testHook_recalculateAuras();
+        auto& x = e.testHook_executor();
+        const std::vector<GameObjectId> hit = {soraka, small, sturdy};
+        for (auto id : hit) x.dealDamage(id, 4, kInvalidId);
+        {
+            DeathBatch together(x, hit, DeathBatch::LethalOnly);
+            for (auto id : hit)
+                if (e.mutableState().getObject(id).location.has_value() &&
+                    e.mutableState().getObject(id).hasLethalDamage())
+                    x.killObject(id);
+        }
+        settleLikeTheEngine(e);
+    });
+    EXPECT_EQ(o(soraka).zone, ZoneType::Trash);
+    expectRecalled(small);
+    ASSERT_TRUE(onBoard(sturdy));
+    EXPECT_EQ(o(sturdy).battlefieldId(), std::optional<BattlefieldId>{0}) << "it was not about to die";
+    EXPECT_TRUE(o(sturdy).death_replacement_recall_pending) << "its replacement was not used up";
+    EXPECT_EQ(o(sturdy).damage_marked, 4);
+}
+
+TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
+    // Source scan: a DeathBatch in card code is followed by a loop that kills
+    // every listed unit, or it is LethalOnly and the loop tests
+    // hasLethalDamage. (28 batches in 27 files; 21 are LethalOnly.)
+    namespace fs = std::filesystem;
+    const char* root = std::getenv("RIFTBOUND_ROOT");
+    ASSERT_NE(root, nullptr);
+    int lethal = 0, everyone = 0;
+    for (const auto& entry : fs::recursive_directory_iterator(fs::path(root) / "src" / "cards")) {
+        if (entry.path().extension() != ".cpp") continue;
+        std::ifstream in(entry.path());
+        std::vector<std::string> lines;
+        for (std::string l; std::getline(in, l);) lines.push_back(l);
+        for (size_t i = 0; i < lines.size(); ++i) {
+            if (lines[i].find("DeathBatch together(") == std::string::npos) continue;
+            bool loop_tests_lethal = false;
+            for (size_t j = i + 1; j < std::min(lines.size(), i + 7); ++j)
+                if (lines[j].find("hasLethalDamage") != std::string::npos) loop_tests_lethal = true;
+            const bool lethal_only = lines[i].find("DeathBatch::LethalOnly") != std::string::npos;
+            EXPECT_EQ(lethal_only, loop_tests_lethal)
+                << entry.path().filename().string() << ":" << (i + 1);
+            (lethal_only ? lethal : everyone)++;
+        }
+    }
+    EXPECT_EQ(lethal, 21);
+    EXPECT_EQ(everyone, 7);
+}
+
+// ─── 9.NN2: the snapshot travels with the chain item ────────────────────────
+// A card dies (its "When I die" goes on the chain), is played again in
+// response, and dies a second time (a second "When I die" above the first).
+// The object has one last_known — the second death's. Each ability reads ITS
+// death from the snapshot on its chain item (asItLeft). Before, both read the
+// second death.
+TEST_F(PerfEngineLookBack, ACardThatDiesTwice_EachDeathAbilityReadsItsOwnDeath) {
+    const GameObjectId w = taken(kTWitness);                 // P2's card, P1 controls it, at #0
+    o(w).buff_count = 1;
+    o(w).recomputeMight();
+    const int might_first = o(w).current_might;
+    ASSERT_EQ(might_first, 3);
+    withEngine([&](GameEngine& e) {
+        auto& x = e.testHook_executor();
+        auto& st = e.mutableState();
+        x.killObject(w);                                     // first death: P1's, buffed, at #0
+        ASSERT_EQ(st.chain.items.size(), 1u);
+        ASSERT_TRUE(st.chain.items[0].subject_as_it_left.has_value());
+        // In response it is played again by its owner, at battlefield 1 ...
+        x.playIgnoringCost(P2, w, LocationId{BattlefieldLocation{1}});
+        ASSERT_TRUE(st.getObject(w).location.has_value());
+        // ... and killed again, stunned this time.
+        st.getObject(w).is_stunned = true;
+        x.killObject(w);
+        size_t deaths = 0;
+        for (const auto& ci : st.chain.items)
+            if (ci.source == w && ci.fired_trigger == TriggerType::WhenIDie) ++deaths;
+        ASSERT_EQ(deaths, 2u) << "both abilities are on the chain";
+        settleLikeTheEngine(e);
+    });
+    ASSERT_EQ(TWitness::in_order.size(), 2u);
+    // The chain is last in, first out: the second death's ability resolves first.
+    const Saw& second = TWitness::in_order[0];
+    const Saw& first = TWitness::in_order[1];
+    EXPECT_EQ(second.controller_then, P2);
+    EXPECT_TRUE(second.stunned_then);
+    EXPECT_EQ(second.buffs_then, 0);
+    EXPECT_EQ(second.might_then, 2);
+    EXPECT_EQ(second.at_then, std::optional<LocationId>{LocationId{BattlefieldLocation{1}}});
+    EXPECT_EQ(TWitness::controllers_in_order[0], P2);
+
+    EXPECT_EQ(first.controller_then, P1) << "the first death: P1 had it";
+    EXPECT_FALSE(first.stunned_then);
+    EXPECT_EQ(first.buffs_then, 1);
+    EXPECT_EQ(first.might_then, might_first);
+    EXPECT_EQ(first.at_then, std::optional<LocationId>{LocationId{BattlefieldLocation{0}}});
+    EXPECT_EQ(TWitness::controllers_in_order[1], P1) << "controllerWhenItLeft(ctx, ...)";
+    EXPECT_EQ(first.ability_controller, P1);
+    EXPECT_EQ(second.ability_controller, P2);
+}
+
+// The same for a real reader: Kog'Maw, Caustic 190 dies at battlefield 0, is
+// played again and dies at battlefield 1 — each Deathknell deals its 4 at the
+// battlefield of its own death.
+TEST_F(PerfEngineLookBack, KogMaw_DiesTwice_EachDeathknellDealsWhereThatDeathWas) {
+    const GameObjectId kog = addUnit(P1, kKogMaw, 0, 0);
+    const GameObjectId at_first = addUnit(P2, kShipyardSkulker, 20, 0);
+    const GameObjectId at_second = addUnit(P2, kShipyardSkulker, 20, 1);
+    withEngine([&](GameEngine& e) {
+        auto& x = e.testHook_executor();
+        x.killObject(kog);
+        x.playIgnoringCost(P1, kog, LocationId{BattlefieldLocation{1}});
+        x.killObject(kog);
+        settleLikeTheEngine(e);
+    });
+    EXPECT_EQ(o(at_first).damage_marked, 4);
+    EXPECT_EQ(o(at_second).damage_marked, 4);
+}
+
+// ─── 9.NN3: a rune recycled for Power leaves like everything else ───────────
+// Snapshot, move, announcement, then the new object. A listener to the
+// rune's departure ("When you recycle a rune") is handed the rune as it left
+// (exhausted, and with whatever else was on it); before, the three sites
+// reset it first — and the effect-play cost announced nothing at all.
+constexpr CardDefId kTRuneWatcher = 1045;   // unit: "When you recycle a rune", writes it down
+
+class TRuneWatcher : public UnitCard {
+public:
+    TRuneWatcher() {
+        def_.id = kTRuneWatcher;
+        def_.name = "Test Rune Watcher";
+        def_.card_type = CardType::Unit;
+        def_.might = 1;
+    }
+    const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::WhenYouRecycleARune; }
+    // Evaluated as the event is announced: the rune itself, live.
+    bool triggerCondition(const GameState& state, GameObjectId, PlayerId, TriggerType,
+                          GameObjectId subject) const override {
+        if (subject != kInvalidId && state.objectExists(subject)) {
+            ++announced;
+            exhausted_when_announced = state.getObject(subject).is_exhausted;
+            stunned_when_announced = state.getObject(subject).is_stunned;
+        }
+        return true;
+    }
+    // Resolved later: the rune is a new object by now; the ability reads it
+    // as it left.
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const auto& item = ctx.state.chain.resuming;
+        if (!item.has_value() || item->triggering_subject == kInvalidId) return;
+        const GameObjectId rune = item->triggering_subject;
+        const auto& left = asItLeft(ctx, rune);
+        ++resolved;
+        valid_then = left.valid;
+        exhausted_then = left.exhausted;
+        controller_then = left.controller;
+        exhausted_now = ctx.state.getObject(rune).is_exhausted;
+    }
+    static void reset() {
+        announced = resolved = 0;
+        exhausted_when_announced = stunned_when_announced = false;
+        valid_then = exhausted_then = false;
+        exhausted_now = true;
+        controller_then = PlayerId::None;
+    }
+    static inline int announced = 0, resolved = 0;
+    static inline bool exhausted_when_announced = false, stunned_when_announced = false;
+    static inline bool valid_then = false, exhausted_then = false, exhausted_now = true;
+    static inline PlayerId controller_then = PlayerId::None;
+private:
+    CardDef def_;
+};
+
+class PerfEngineRuneLeaves : public PerfEngineLookBack {
+protected:
+    void SetUp() override {
+        PerfEngineLookBack::SetUp();
+        card_registry.registerCard(kTRuneWatcher, std::make_unique<TRuneWatcher>());
+        card_db.buildFromClasses(card_registry);
+        TRuneWatcher::reset();
+    }
+    GameObjectId dirtyRune() {
+        const GameObjectId rune = addRune(P1, Domain::Calm, /*exhausted=*/true);
+        o(rune).is_stunned = true;
+        return rune;
+    }
+    void expectHeardAsItLeft(GameObjectId rune, const char* site) {
+        SCOPED_TRACE(site);
+        EXPECT_EQ(TRuneWatcher::announced, 1);
+        EXPECT_TRUE(TRuneWatcher::exhausted_when_announced) << "the rune as it left";
+        EXPECT_TRUE(TRuneWatcher::stunned_when_announced);
+        EXPECT_EQ(o(rune).zone, ZoneType::RuneDeck);
+        EXPECT_FALSE(carriesBoardState(o(rune))) << "a new object afterwards";
+        EXPECT_FALSE(o(rune).is_exhausted);
+        EXPECT_TRUE(o(rune).last_known.valid);
+        EXPECT_TRUE(o(rune).last_known.exhausted);
+        EXPECT_FALSE(o(rune).last_known.died);
+        EXPECT_EQ(o(rune).last_known.controller, P1);
+    }
+};
+
+TEST_F(PerfEngineRuneLeaves, PaidThroughTheEnginesCostPayment) {       // advanceCostPayment
+    addUnit(P1, kTRuneWatcher, 0, -1);
+    const GameObjectId rune = dirtyRune();
+    const GameObjectId card = addToHand(P1, kTPowerUnit);
+    playThroughEngine(card, nullptr, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_TRUE(onBoard(card));
+    expectHeardAsItLeft(rune, "GameEngine::advanceCostPayment");
+    EXPECT_EQ(TRuneWatcher::resolved, 1);
+    EXPECT_TRUE(TRuneWatcher::valid_then);
+    EXPECT_TRUE(TRuneWatcher::exhausted_then) << "the ability reads the rune as it left";
+    EXPECT_FALSE(TRuneWatcher::exhausted_now) << "in the Rune Deck it is a new object";
+    EXPECT_EQ(TRuneWatcher::controller_then, P1);
+}
+
+TEST_F(PerfEngineRuneLeaves, PaidThroughResourcePay) {                 // resource::payIn
+    addUnit(P1, kTRuneWatcher, 0, -1);
+    const GameObjectId rune = dirtyRune();
+    withEngine([&](GameEngine& e) {
+        EXPECT_TRUE(e.testHook_payAdditionalCost(P1, 0, 1, Domain::Calm));
+        settleLikeTheEngine(e);
+    });
+    expectHeardAsItLeft(rune, "resource::payIn");
+    EXPECT_EQ(TRuneWatcher::resolved, 1);
+    EXPECT_TRUE(TRuneWatcher::exhausted_then);
+}
+
+TEST_F(PerfEngineRuneLeaves, PaidByAnEffectPlayWithoutAnEngine) {      // plainPay
+    const GameObjectId rune = dirtyRune();
+    const GameObjectId card = addToHand(P1, kTPowerUnit);
+    int heard = 0;
+    bool exhausted_when_heard = false, stunned_when_heard = false;
+    boost::signals2::scoped_connection c = events.on_left_board.connect(
+        [&](const LeftBoardEvent& e) {
+            if (e.object != rune) return;
+            ++heard;
+            EXPECT_EQ(e.destination, ZoneType::RuneDeck);
+            EXPECT_EQ(e.controller, P1);
+            exhausted_when_heard = state.getObject(rune).is_exhausted;
+            stunned_when_heard = state.getObject(rune).is_stunned;
+        });
+    EffectExecutor exec(state, events, card_db, &card_registry);
+    ASSERT_TRUE(exec.playPayingCost(P1, card, LocationId{BaseLocation{P1}}));
+    EXPECT_EQ(heard, 1) << "this site announced nothing before";
+    EXPECT_TRUE(exhausted_when_heard);
+    EXPECT_TRUE(stunned_when_heard);
+    EXPECT_FALSE(carriesBoardState(o(rune)));
+    EXPECT_TRUE(o(rune).last_known.valid);
+    EXPECT_TRUE(o(rune).last_known.exhausted);
+}
+
+// ─── 9.NN4: what is known about a Rune Deck reaches no observer ─────────────
+// After the Void Hatchling ruling a player can know the top rune of their
+// Rune Deck, and Twisted Fate's revealed rune goes to the bottom known to
+// both. Nothing records that, and nothing can show it: these tests pin the
+// three places that guarantee it (the comment at
+// EffectExecutor::lookBeforeReveal names them).
+class PerfEngineRuneDeck : public PerfEngineLookBack {
+protected:
+    static constexpr CardDefId kVoidHatchling = 341;
+    GameObjectId runeInDeck(PlayerId p, Domain d, const char* name) {
+        const GameObjectId rune = addRune(p, d);
+        o(rune).location = std::nullopt;
+        o(rune).zone = ZoneType::RuneDeck;
+        o(rune).name = name;
+        state.player(p).rune_deck.push_back(rune);
+        return rune;
+    }
+};
+
+// The state features (ObservationTensor) and the info-set id hashed from them
+// are the same for every order of a Rune Deck, for both perspectives: the
+// vector holds the deck's size and nothing else about it.
+TEST_F(PerfEngineRuneDeck, TheOrderOfARuneDeckIsInNoObservationOrInfoSetId) {
+    for (PlayerId p : {P1, P2}) {
+        runeInDeck(p, Domain::Fury, "Fury Rune");
+        runeInDeck(p, Domain::Mind, "Mind Rune");
+        runeInDeck(p, Domain::Order, "Order Rune");
+        runeInDeck(p, Domain::Calm, "Calm Rune");
+    }
+    GameState other = state;
+    for (auto& ps : other.players) std::reverse(ps.rune_deck.begin(), ps.rune_deck.end());
+    std::swap(other.players[0].rune_deck[1], other.players[0].rune_deck[2]);
+    ASSERT_NE(other.players[0].rune_deck, state.players[0].rune_deck);
+    for (PlayerId observer : {P1, P2}) {
+        const auto a = ml::extractStateFeatures(state, observer, card_db);
+        const auto b = ml::extractStateFeatures(other, observer, card_db);
+        EXPECT_EQ(a, b) << "perspective " << toString(observer);
+        const int seat = observer == P1 ? 0 : 1;
+        EXPECT_EQ(ml::computeInfoSetId(a, seat), ml::computeInfoSetId(b, seat));
+    }
+    // One rune fewer does show: the size is there.
+    GameState fewer = state;
+    fewer.objects.erase(fewer.players[0].rune_deck.back());
+    fewer.players[0].rune_deck.pop_back();
+    EXPECT_NE(ml::extractStateFeatures(state, P1, card_db),
+              ml::extractStateFeatures(fewer, P1, card_db));
+}
+
+// The Hatchling look and Twisted Fate's reveal, through the engine: the rune
+// is named on one line only, readable by the player who looked; no public
+// line names the rune that was looked at and recycled; and afterwards the
+// knowledge view says "unknown" about every rune in the deck, for both
+// players (a look and a reveal are not recorded for a Rune Deck).
+TEST_F(PerfEngineRuneDeck, TheLookIsPrivateAndNothingAboutTheRuneDeckIsRecorded) {
+    addUnit(P1, kVoidHatchling, 0, -1);
+    const GameObjectId tf = addUnit(P1, 200 /* Twisted Fate, Gambler */, 0, 0);
+    addToDeck(P1, kShipyardSkulker);
+    const GameObjectId calm = runeInDeck(P1, Domain::Calm, "Calm Rune");
+    const GameObjectId below = runeInDeck(P1, Domain::Mind, "Mind Rune");
+    const GameObjectId top = runeInDeck(P1, Domain::Order, "Order Rune");
+    struct Line { std::string text; LogAudience audience; };
+    std::vector<Line> lines;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        lines.push_back({e.message, e.audience});
+    });
+    std::vector<std::vector<std::string>> labels;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        labels.emplace_back();
+        for (const auto& i : legal) labels.back().push_back(i.choice_label);
+        for (const auto& i : legal) if (i.chosen_value == std::optional<int>{1}) return i;   // recycle
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();                                  // the Hatchling's permission
+        ASSERT_TRUE(e.mutableState().player(P1).has_reveal_peek);
+        e.testHook_executor().queueTriggeredAbility(tf, P1, TriggerType::WhenIAttack, kInvalidId);
+        settleLikeTheEngine(e);
+    }, &agent);
+    conn.disconnect();
+
+    ASSERT_FALSE(labels.empty());
+    for (const auto& l : labels[0])
+        EXPECT_EQ(l.find("Order"), std::string::npos) << "the option does not name the rune: " << l;
+    int private_lines = 0;
+    for (const auto& line : lines) {
+        if (line.text.find("Order Rune") == std::string::npos) continue;
+        EXPECT_TRUE(line.audience.includes(P1)) << line.text;
+        EXPECT_FALSE(line.audience.includes(P2))
+            << "the rune looked at and recycled is named to the other player: " << line.text;
+        ++private_lines;
+    }
+    EXPECT_EQ(private_lines, 1) << "the look: one private line";
+    // top was recycled at the look; `below` was revealed (public) and recycled.
+    ASSERT_EQ(state.player(P1).rune_deck.size(), 3u);
+    EXPECT_EQ(state.player(P1).rune_deck.front(), below);
+    for (PlayerId observer : {P1, P2}) {
+        knowledge::GameKnowledgeView view(state, observer);
+        for (GameObjectId rune : {calm, below, top}) {
+            const CardKnowledge k = view.about(rune);
+            EXPECT_FALSE(k.identity_known) << toString(observer) << " / " << o(rune).name;
+            EXPECT_EQ(k.last_known_zone, ZoneType::RuneDeck);
+        }
+        EXPECT_TRUE(view.knownDeckTop(P1).empty());
+        EXPECT_TRUE(view.knownDeckBottom(P1).empty());
+    }
 }
 
 }  // namespace test_review_fix_perf_engine

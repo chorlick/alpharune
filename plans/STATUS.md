@@ -6,6 +6,77 @@ in the main checkout lags until integration is merged to master.
 
 States: `pending` → `running` → `returned` → `merged` (or `blocked`).
 
+## Resume notes (read this first after a context reset)
+
+Written 2026-10-11 so a fresh orchestrator context can continue with nothing
+but this file, `README.md` and `AGENT_BRIEF.md`. "Run decisions" below
+override the README where they differ.
+
+**Where we are:** stages 0, 1, 2 done and on `master` (`6a3e52b`). Stage 3
+running. 378 of 514 findings ticked. All state is committed on
+`fix/integration` (`.worktrees/integration`).
+
+**Stage 3 streams in flight** (spawned from `0ca1b19`; each has a worktree
+`.worktrees/<stream>` and branch `fix/<stream>`; each was told to ALSO write
+its final report to `.worktrees/reports/<stream>.md`, so a report survives a
+reset — read that file if no notification text is available):
+
+| Stream | Agent id (SendMessage `to`) | Owns | Work |
+|---|---|---|---|
+| sweep-costs | `aa15db95705fa7490` | cost and payment in `game_engine` (canAfford, payCardCost, pay*Cost, payActivationResources, payment half of executePlayCard / executePlaySpell / payAndQueueAbility, parseRepeatCost, executeHideCard, trash-replay payment), cost virtuals on `Card`, RunePool | 1 equip-cost descriptor (7.7, Weaponmaster cost, Piltovan Forge 948, re-equip); 2 alternative cost for spells (146, 207) and pre-payment additional costs (2, 150, 740, 470, 462, 540, 231, 732, 847, 208, 367, 481); 3 restricted resource pools (294, 506, 786, 312); 4 card-declared Repeat cost (8.9: 579, 743) and Power on granted Repeat (401, 772); 5 play from trash (587, 809), trash-replay gates and discounts, Death Mark 931 Flow; 6 hide-cost hook (259); 7 2.11 root cause; 8 payAnyPower dup, payEnergy base runes, "minimum of [N]", Risen Altar 950, Aphelios 372, Undying Loyalty 730 |
+| sweep-flow | `a93a6600e6be2513e` | rest of `game_engine` (generators, turn flow, showdown, combat, scoring, moves, setupBattlefields, resolvePermanent / resolveSpell, runFinalizePass, recalculateAuras, killUnit), `Card::hasLegalTargets`, `intent.h` | 1 5.4 remainder (text matches); 2 target legality with CardDB (45, 939); 3 stable target roles in resolveSpell; 4 hidden plays and showdown reactions (645, CR 811, 813.1.b); 5 mainPhaseLoop stale priority and stranded triggers; 6 finalize / resolve caps; 7 moves (712, 725, 679); 8 CR 468.3.d.1 and effective Victory Score (79, 47, 678, 878, 556); 9 delete requiresLegion, Svellsongur 382, Prodigal Explorer 514, Wuju Master 784, Fiora 232 aura order, Crowd Favorite 664, Defy 45, Yone 544, engine call to recompute legal actions after a god-mode edit |
+| sweep-triggers | `a271d0153b7cb6527` | `trigger_manager`, `chain_manager`, `effect_executor`, `effect_types.h`, `events.h`, DelayedAbility / ChainItem | 1 recall primitive (290, 272, 337, 550, 264); 2 extra score triggers (649, 591); 3 tokens announce a play, token-created trigger, Zilean, Weaponmaster for tokens (8.4, 512, 620, 648, 908); 4 spend-a-buff primitive (423); 5 batch deaths / last-known info (517, 718, 777, 72, 23); 6 trigger plumbing (onUnitStunned, WhenOpponentPlaysAUnit, is_rules_text_inactive, Vision, Might threshold 879); 7 delayed abilities (dup flag, expiry, iterator); 8 chain (ignoresDeflect, PlayReaction branch, replay-while-resolving 582 / 747, resolve cap, Astral Heron 831); 9 executor (recycleCards on board, playIgnoringCost ready, recycled_main, attach guard 8.14, draws by hand 443 / 626, gainXp callers, temp Deflect field, Scuttle Crab 615); 10 LogEvent visibility tag |
+| cleanup | `a9d4705861a0e9c28` | `src/io`, `main.cpp`, `src/openspiel`, agents, ml, rules, core except game_state / events / intent, card_registry, runners, step_driver, scripts, docs, README, CMake, CLAUDE.md, tests | 5.13, 5.14; generate_replays.py; unsafe ccache launcher in CLAUDE.md; stale CLAUDE.md; warnings in its files; play_server into riftbound_core; fixture fixes (addToHand, addUnit, accepting agent); spectator Ctrl-C; server side of god-mode recompute |
+| perf-search | `a31718d94b8fa3aa6` | `src/openspiel`, agents, ml, step_driver, step API in `game_engine` | 06: 6.4, 6.7, 6.8, 6.9, each measured before and after |
+
+**What comes next, in order:**
+1. As streams return: merge procedure below. sweep-costs and sweep-flow share
+   `game_engine.cpp`; expect conflicts between them and send the later one
+   back to rebase if a conflict is more than mechanical.
+2. When sweep-costs, sweep-flow, sweep-triggers and cleanup are merged: spawn
+   **sweep-verify** (alone among sweep parts; perf-search may still run). Its
+   job: for every open box in 03, 07, 08, and the batch files, verify each
+   named card in the code and tick; close every Carry-over row still open
+   (including the two `orchestrator` rows: RETROFIT of not-a-defect closures,
+   and the REOPENED residuals); unify duplicates (`selectAnyNumber` /
+   `pickSeveral`, local location pickers in 226 / 349); 8.8 keyword data
+   (`Keyword::Reaction` on ~25 permanents and on Ambush units, `Temporary` /
+   `Assault` on spell defs); `card.h` and card-file warnings; review every
+   `shared:` engine change listed in the table; audit stage 2 tests that pass
+   no agent to a "may"; update CLAUDE.md for what the sweep changed; tick 8.16.
+   It will likely need splitting or continuing — it is large.
+3. Then **perf-engine** (06: 6.1, 6.2, 6.3, 6.5, 6.6, 6.10, 6.11), alone.
+4. Stage 3 gate → fast-forward master → email.
+5. Stage 4 strong-ids (5.5), alone. Stage 5 checkpoint (1.9, 1.12, 7.33, plus
+   anything marked "needs stage 5": Defender of Tomorrow 936; new state fields
+   added in stages 2 and 3 that should enter the feature layout). Final gate.
+
+**Merge procedure as practised** (README section 5 plus what this run learned):
+- `git merge --no-ff fix/<stream>` in `.worktrees/integration`. Mechanical
+  both-sides conflicts are resolved here: plan files with
+  `python3 .worktrees/resolve_plans.py <files>`; appended helper blocks and
+  enum values by keeping both — then READ the joined region and compile before
+  committing (a keep-both join dropped a closing brace once). Anything needing
+  judgement about a stream's code goes back to the stream.
+- Verify: `flock .worktrees/.build.lock bash .worktrees/gate.sh <label>`
+  (builds four targets, runs the suite, openspiel tests, clone-equiv, 200-game
+  smoke, MCTS batch, fault injection; aborts on a failed build; summary in
+  `.worktrees/logs/gate-<label>/summary.txt`). For a stage gate use
+  `.worktrees/fixcache.sh <label>` instead: reconfigures, cleans, then gates.
+- Check: ticked-box count against the report, files changed against ownership
+  (`git diff --name-only HEAD~1 HEAD`), no card names or `ability_text` in the
+  engine diff, then record the report's "Needs another stream" and "New
+  defects" as Carry-over rows and mark the rows it closed `done`.
+- Then `git worktree remove ../<stream> --force` and `git branch -d`.
+- `.worktrees/progress.sh` is the user's `watch` view. Agents sometimes leave
+  background wait loops that keep them showing as active after they finish:
+  `pgrep -af 'until |sleep'` and kill the stray shell.
+
+**Open questions for the user (not blocking):** WSL sees 8 of 24 hardware
+threads (raising it needs `wsl --shutdown`); Karma, Channeler 235 tag changed
+Vi → Karma against the gallery data, printed card unchecked; smoke win split
+drifted 128 / 72 → 138 / 62 and has not been examined.
+
 ## Run
 
 | Field | Value |
@@ -346,3 +417,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 carry-over reconciled against the stage 1 and stage 2 stream reports: 41 rows marked done, 3 annotated; the rest are open and assigned to stage 3 streams, the final report, or the user.
 - 2026-10-11 user: nothing may be left optional (see Run decisions). Relabelled 10 rows, reopened the documented residuals, messaged the five running stage 3 streams.
 - 2026-10-11 user: a not-a-defect closure still needs a pinning test and a clarification at the code site (see Run decisions). Brief updated, running sweep streams messaged, retrofit of earlier closures assigned to sweep-verify.
+- 2026-10-11 wrote "Resume notes" at the top of this file ahead of a context reset; stage 3 streams told to write their final reports to `.worktrees/reports/<stream>.md`.

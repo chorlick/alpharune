@@ -246,6 +246,7 @@ public:
     void testHook_scoringStep() { scoringStep(); }
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
+    void testHook_channelPhase() { channelPhase(); }
     void testHook_endingStep() { endingStep(); }
     void testHook_expirationStep() { expirationStep(); }
     // Phase 6q+ engine-audit CRITICAL #2 + #3 — exposed so tests can
@@ -732,8 +733,16 @@ private:
     bool anyDamageIsLethalFor(PlayerId damager) const;
     int activationEnergyReduction(const Card& card, PlayerId player,
                                   GameObjectId source, int index) const;
-    /// Make the choices the rules place at finalization for `item` (targets).
+    /// Make the choices the rules place at finalization for `item`: those of
+    /// its (first) execution and, for a spell with Repeat paid, those of each
+    /// additional execution (CR 820.2).
     void chooseTargetsAtFinalize(ChainItem& item);
+    void chooseFirstExecution(ChainItem& item);
+    // Items whose choices were made as an effect put them on the chain; the
+    // chain's Finalize step does not ask again. And the guard against the
+    // repeat choices choosing repeats. Call-stack bookkeeping, not game state.
+    std::vector<ChainItemId> finalized_early_;
+    bool choosing_repeat_ = false;
     void runFinalizePass(ChainItem& item);
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);

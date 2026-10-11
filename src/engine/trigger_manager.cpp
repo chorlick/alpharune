@@ -1591,7 +1591,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     }
 
     // "When you attach an Equipment to me" — fires on the equipped unit itself
-    // (attachGearToUnit / attachFree emit "equipped"). (Aphelios, Exalted 372.)
+    // (EffectExecutor::attachGear emits "equipped"). (Aphelios, Exalted 372.)
     if (e.what_changed == "equipped") {
         if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
                         TriggerType::WhenEquipmentAttachedToMe))

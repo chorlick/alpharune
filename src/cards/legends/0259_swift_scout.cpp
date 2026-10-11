@@ -16,8 +16,10 @@ class SwiftScout : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
     // "You may pay [1] to hide a card with [Hidden] instead of [A]."
-    //   ENGINE GAP: hide-cost is an alternative-cost modifier with no card-side
-    //   hook; left unmodeled.
+    void adjustHideCost(const GameState&, PlayerId, HideCost& cost) const override {
+        cost.energy_instead = true;
+        cost.energy = 1;
+    }
     // "[1], [E]: Put a Teemo unit you own into your hand from your Champion Zone
     //   or the board."
     bool hasActivatedAbility() const override { return true; }

@@ -1368,19 +1368,28 @@ TEST_F(RulesCards2Test, RulesCards2_Jax_WeaponmasterStillChargesThePrintedEnergy
     EXPECT_TRUE(onBoard(rune)) << "no rune recycled: the Power was the discount";
 }
 
-TEST_F(RulesCards2Test, RulesCards2_Jax_WeaponmasterDoesNotOfferAnEquipCostItCannotCharge) {
+// Corrected (sweep-costs, 7.7): the Equip cost is the gear's declaration
+// (Card::equipCost), so a non-resource cost is charged too — the Equipment is
+// offered while that cost can be paid and never attached for free.
+TEST_F(RulesCards2Test, RulesCards2_Jax_WeaponmasterChargesANonResourceEquipCost) {
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto jax = addUnit(P1, kJaxUnrelenting, 0, /*at_bf=*/0);
     auto heirloom = addGear(P1, kShepherdsHeirloom);  // "[Equip] — Spend 1 XP"
-    setXp(P1, 5);
     Seen seen;
 
+    // No XP: the cost cannot be paid, so it is not offered (CR 821.1.c.5).
+    setXp(P1, 0);
     driveTrigger(kJaxUnrelenting, P1, jax, TriggerType::WhenYouPlayMe,
                  pickObj(heirloom, &seen), exec);
-
     EXPECT_FALSE(seen.wasOffered(heirloom)) << "never attached for free";
     EXPECT_FALSE(state.getObject(heirloom).attached_to.has_value());
-    EXPECT_EQ(state.player(P1).xp, 5);
+
+    setXp(P1, 5);
+    driveTrigger(kJaxUnrelenting, P1, jax, TriggerType::WhenYouPlayMe,
+                 pickObj(heirloom, &seen), exec);
+    EXPECT_TRUE(seen.wasOffered(heirloom));
+    EXPECT_TRUE(state.getObject(heirloom).attached_to == std::optional<GameObjectId>(jax));
+    EXPECT_EQ(state.player(P1).xp, 4) << "the XP is the Equip cost: no Power in it to reduce";
 }
 
 TEST_F(RulesCards2Test, RulesCards2_CR383_Jax_AttachTriggerIsItsOwnAbility) {

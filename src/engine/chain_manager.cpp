@@ -1,3 +1,4 @@
+#include "engine/trash_replacement.h"
 #include "chain_manager.h"
 
 #include "effect_executor.h"
@@ -506,7 +507,10 @@ void ChainManager::abandonChain(const std::string& why) {
         obj.zone = ZoneType::Trash;
         obj.location = std::nullopt;
         const PlayerId home = obj.owner != PlayerId::None ? obj.owner : item.controller;
-        if (!obj.isToken()) state_.player(home).trash.push_back(item.source);
+        if (!obj.isToken()) {
+            state_.player(home).trash.push_back(item.source);
+            settleInTrash(state_, events_, item.source);
+        }
     }
     state_.chain.items.clear();
     state_.chain.resuming.reset();
@@ -614,6 +618,7 @@ void ChainManager::stepResolve(
                 state_.player(home).cards_banished_this_turn++;
             } else {
                 state_.player(home).trash.push_back(resolved.source);
+                settleInTrash(state_, events_, resolved.source);
             }
 
             events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});

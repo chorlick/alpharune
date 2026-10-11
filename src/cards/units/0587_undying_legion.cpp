@@ -14,12 +14,14 @@ namespace {
 class UndyingLegion : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "[Legion][>] You may play me from your trash for [3][R]."
-    // ENGINE-GAP: not implemented. The only play-from-trash path
-    // (PlayerState::TrashReplayGrant, read by the trash-replay generator and
-    // payment) is for spells; a unit needs a generator entry that offers it
-    // from the trash at its alternative cost ([3][R]) to the usual unit play
-    // locations, gated by the card (cards_played_this_turn >= 1).
+    // "[Legion][>] You may play me from your trash for [3][R]." — a standing
+    // play-from-trash permission (Card::trashPlayCost) while I am in my
+    // owner's trash and they have played another card this turn.
+    TrashPlayCost trashPlayCost(const GameState& state, PlayerId owner,
+                                GameObjectId /*self*/) const override {
+        if (state.player(owner).cards_played_this_turn < 1) return {};
+        return {.valid = true, .energy = 3, .power = 1, .power_domain = Domain::Fury};
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -351,12 +351,17 @@ TEST_F(C7Test, StalkingWolf_NeedsABirdCatDogOrPoroAndKillsTheChosenOne) {
 
     auto card = addToHand(P1, kStalkingWolf);
     EnginePathAgent agent(EnginePathAgent::choosing(poro));
-    // The kill is a cost: done before the opponent can respond.
+    // Corrected (sweep-costs, 7.6): the kill is a cost of the play itself
+    // (Card::payAdditionalPlayCost), paid before the Wolf enters the board —
+    // no ability of the Wolf goes on the chain for it, so there is nothing
+    // for the opponent to respond to. If they are asked at all, it is dead.
     SnoopAgent them([&](const GameState& s) {
         EXPECT_FALSE(s.getObject(poro).location.has_value());
     });
     playThroughEngine(card, &agent, std::nullopt, &them);
-    EXPECT_GE(them.asked, 1) << "the opponent never got priority: the probe did not run";
+    EXPECT_TRUE(agent.wasOffered(cat)) << "which one dies is the player's choice";
+    EXPECT_FALSE(agent.wasOffered(card)) << "chosen before the Wolf is on the board";
+    EXPECT_FALSE(state.chain.exists());
     EXPECT_FALSE(o(poro).location.has_value());
     EXPECT_TRUE(o(cat).location.has_value());
     EXPECT_TRUE(o(card).location.has_value());

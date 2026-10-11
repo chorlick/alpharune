@@ -14,6 +14,12 @@ namespace {
 class EzrealProdigy : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Optional additional costs you pay cost [1] or [A] less." — while I am
+    // on the board; the engine applies it to Accelerate, Repeat and "you may
+    // pay ... as an additional cost" (GameEngine::payOptionalCost).
+    int optionalCostDiscount(const GameState& state, GameObjectId self) const override {
+        return state.objectExists(self) && state.getObject(self).location.has_value() ? 1 : 0;
+    }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "discard 1, then draw 2" — resumable discard via the executor's

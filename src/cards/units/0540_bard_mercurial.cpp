@@ -43,24 +43,45 @@ public:
         return out;
     }
 
+    // "You may exhaust your legend as an additional cost to play me." An
+    // optional additional cost (CR 356.2.b): chosen and paid as I am played,
+    // before my cost is paid. kPaid records it for the play trigger.
+    static constexpr const char* kPaid = "__bard_mercurial_paid";
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.payable = readyLegend(state, player) != kInvalidId;
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        (void)affordable;
+        auto& me = ctx.state.getObject(ctx.source);
+        me.card_counters[kPaid] = 0;
+        const GameObjectId legend = readyLegend(ctx.state, ctx.controller);
+        if (legend == kInvalidId ||
+            !ctx.executor.confirmNow(ctx.controller,
+                "Bard, Mercurial: exhaust your legend as an additional cost"))
+            return {};
+        ctx.executor.exhaustObject(legend);
+        me.card_counters[kPaid] = 1;
+        ctx.events.logTrace("BARD, MERCURIAL: exhausted the legend (additional cost)");
+        return {};
+    }
+    // "When you play me, if you paid the additional cost, ..."
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId, TriggerType,
+                          GameObjectId) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find(kPaid);
+        return it != c.end() && it->second == 1;
+    }
+
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // The additional cost: offered while the legend is ready, paid as the
-        // ability is finalized.
-        auto still_legal = [&]() {
-            return costAlreadyPaid(ctx) || readyLegend(ctx.state, ctx.controller) != kInvalidId;
-        };
-        int conf = confirmOptional(ctx,
-            "Bard, Mercurial: exhaust your legend as an additional cost?", still_legal);
-        bool paid = costAlreadyPaid(ctx);
-        if (conf == 1 && costDueNow(ctx)) {
-            const GameObjectId legend = readyLegend(ctx.state, ctx.controller);
-            if (legend != kInvalidId) {
-                ctx.executor.exhaustObject(legend);
-                paid = true;
-            }
-        }
-        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
-        if (conf != 1 || !paid) return;
+        if (finalizingChoices(ctx)) return;   // the choices below are made as this resolves
 
         // "move any number of your units to an open battlefield": the
         // controller picks the battlefield, then the units, as this resolves.

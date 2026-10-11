@@ -15,43 +15,43 @@ namespace {
 class LegionQuartermaster : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
 
     // "As an additional cost to play me, return a friendly gear to its
-    // owner's hand." Mandatory additional cost.
-    // The engine has no structured "return a gear" cost, so (1) the card can't
-    // be played without a friendly gear on the board (canBePlayed — the gate
-    // the engine asks for a unit play), and (2) the gear is chosen and
-    // returned when the play trigger is finalized (CR 383.3), before anyone
-    // can respond — the nearest point to "as you play me".
-    static bool hasFriendlyGear(const GameState& state, PlayerId controller) {
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isGear() || obj.controller != controller) continue;
-            if (!obj.location.has_value()) continue;
-            return true;
-        }
-        return false;
+    // owner's hand." A mandatory additional cost (CR 356.2.a): without a
+    // friendly gear I cannot be played, and the gear — the player's choice —
+    // goes back as I am played, before my cost is paid and before I enter.
+    static std::vector<GameObjectId> friendlyGear(const GameState& state, PlayerId controller) {
+        std::vector<GameObjectId> out;
+        for (auto& [id, obj] : state.objects)
+            if (obj.isGear() && obj.controller == controller && obj.location.has_value())
+                out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
     }
     bool canBePlayed(const GameState& state, PlayerId player) const override {
-        return hasFriendlyGear(state, player);
+        return !friendlyGear(state, player).empty();
     }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        std::vector<GameObjectId> gears;
-        if (!costAlreadyPaid(ctx))
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isGear() || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                gears.push_back(id);
-            }
-        GameObjectId gear = pickTarget(ctx,
-            "Legion Quartermaster: return a friendly gear to hand", gears);
-        if (gear != kInvalidId && costDueNow(ctx)) {
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.mandatory = true;
+        c.payable = !friendlyGear(state, player).empty();
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        (void)affordable;
+        const GameObjectId gear = ctx.executor.chooseObjectNow(
+            ctx.controller, friendlyGear(ctx.state, ctx.controller));
+        if (gear != kInvalidId) {
             ctx.executor.bounceToHand(gear);
             ctx.events.logTrace("LEGION QUARTERMASTER: returned a friendly gear to hand "
                                 "(additional cost)");
         }
-        if (finalizingChoices(ctx)) return;   // the cost ends here (CR 383.3)
+        return {};
     }
 private:
     const CardDef def_ = [] {

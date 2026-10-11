@@ -123,7 +123,7 @@ protected:
     }
 
     /// Add enough ready runes of `domain` (and a few generic) to pay any
-    /// reasonable equip cost. The standardEquip helper exhausts ready runes
+    /// reasonable equip cost. The Equip payment exhausts ready runes
     /// for energy and recycles a matching-domain rune for power.
     void giveRunesForEquip(PlayerId owner, Domain domain, int extra_energy = 0) {
         // Always have at least one matching-domain rune for the recycle cost.

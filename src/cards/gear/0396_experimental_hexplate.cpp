@@ -22,10 +22,8 @@ public:
     // that do not go through onEquip (Weaponmaster, Grandmaster at Arms), and
     // taken off again in onUnattached — only if this gear is what added it:
     // card_counters[kGaveMech] on the gear holds that bearer's id + 1.
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        if (!SimpleEquipGear::onEquip(ctx, unit)) return false;
+    void onEquipped(CardContext& ctx, GameObjectId /*unit*/) override {
         grantMech(ctx.state, ctx.source);
-        return true;
     }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (auto& [gid, gear] : state.objects) {

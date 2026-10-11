@@ -211,7 +211,7 @@ protected:
         r.is_exhausted = exhausted;
         return id;
     }
-    /// Attach `gear` to `unit` the way EffectExecutor::attachGearToUnit leaves them.
+    /// Attach `gear` to `unit` the way EffectExecutor::attachGear leaves them.
     void attach(GameObjectId gear, GameObjectId unit) {
         auto& g = s().getObject(gear);
         auto& u = s().getObject(unit);

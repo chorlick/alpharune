@@ -348,19 +348,19 @@ TEST_F(AuditFix5Test, FireBelowMtn_AbilityMetadata) {
     EXPECT_TRUE(card->getActivationCost().exhaust);
 }
 
-// onActivate adds one floating [A] (universal power) to the controller's pool.
-TEST_F(AuditFix5Test, FireBelowMtn_ActivateAddsUniversalPower) {
+// Corrected (sweep-costs): onActivate adds one [A] to the gear-only pool.
+TEST_F(AuditFix5Test, FireBelowMtn_ActivateAddsGearOnlyPower) {
     EffectExecutor exec(state, events, card_db);
     auto src = addUnit(P1, kInvalidId, 1);  // stand-in source for the legend
-    int before = state.player(P1).rune_pool.universal_power;
+    int before = state.player(P1).rune_pool.gear_power;
 
     Card* card = card_registry.get(kFireBelowMtn);
     CardContext ctx{state, events, exec, P1, src};
     card->onActivate(ctx, {});
 
-    EXPECT_EQ(state.player(P1).rune_pool.universal_power, before + 1);
-    // NOTE: the "use only to play gear / use gear abilities" earmark is NOT
-    // engine-enforced (documented limitation) — the [A] is spendable anywhere.
+    EXPECT_EQ(state.player(P1).rune_pool.gear_power, before + 1);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0)
+        << "the [A] is earmarked: gear and gear abilities only";
 }
 
 // ─── [544] Yone, Blademaster ─────────────────────────────────────────────────

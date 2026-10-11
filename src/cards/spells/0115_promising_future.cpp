@@ -43,7 +43,6 @@ public:
                 const auto& obj = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{cid, obj.card_def_id, obj.owner,
                                                   false, p, ZoneType::MainDeck});
-                knowledge::seenInDeck(ctx.state, cid, knowledge::only(p), DeckEnd::Top, i);
                 Intent c; c.type = IntentType::MakeChoice; c.player = p;
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }

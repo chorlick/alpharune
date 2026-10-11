@@ -33,8 +33,8 @@ public:
             if (ri.resume_data.empty()) { ri.resume_point = 2; return; }
             // A private look at the top three.
             for (size_t i = 0; i < ri.resume_data.size(); ++i) {
-                knowledge::seenInDeck(ctx.state, GameObjectId::fromRaw(ri.resume_data[i]),
-                                      knowledge::only(ctx.controller), DeckEnd::Top, static_cast<int>(i));
+                knowledge::shown(ctx.state, GameObjectId::fromRaw(ri.resume_data[i]),
+                                 knowledge::only(ctx.controller));
             }
             std::vector<Intent> opts;
             for (auto v : ri.resume_data)

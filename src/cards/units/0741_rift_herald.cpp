@@ -51,11 +51,8 @@ private:
         const auto& ri = ctx.state.chain.resuming;
         if (!ri.has_value() || ri->resume_point == 0) {
             // "Look at": private to the controller, once.
-            int depth = 0;
             for (auto cid : topThree(ctx)) {
                 const auto& obj = ctx.state.getObject(cid);
-                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller),
-                                      DeckEnd::Top, depth++);
                 ctx.events.emit(CardRevealedEvent{
                     cid, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller,

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "engine/deck_ops.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -89,9 +90,7 @@ public:
             auto& c = ctx.state.getObject(cid);
             ps.banishment.erase(std::remove(ps.banishment.begin(), ps.banishment.end(), cid),
                                 ps.banishment.end());
-            c.zone = ZoneType::Hand;
-            c.location = std::nullopt;
-            ps.hand.push_back(cid);
+            deck::putInHand(ctx.state, cid);
             RIFT_TRACE(ctx.events, "ASHE FOCUSED: they held -> " + c.name + " returns to hand");
         }
     }

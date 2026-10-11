@@ -31,11 +31,11 @@
 
 namespace riftbound::ml {
 
-inline constexpr int kLayoutVersion = 1;
+inline constexpr int kLayoutVersion = 2;   // 2: card ids 1..1150 (was 1..1100)
 
-/// Size of the card embedding table: index 0 is "none / unknown", 1..1100 are
+/// Size of the card embedding table: index 0 is "none / unknown", 1..1150 are
 /// card ids (must equal feature_extractor.h's kCardVocabSize + 1).
-inline constexpr int kCardEmbeddingRows = 1101;
+inline constexpr int kCardEmbeddingRows = 1151;
 static_assert(kCardEmbeddingRows == kCardVocabSize + 1,
               "card embedding table must cover every card id plus the 'none' row");
 

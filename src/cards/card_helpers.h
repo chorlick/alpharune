@@ -273,9 +273,11 @@ inline void disposeCounteredCard(CardContext& ctx, GameObjectId id,
         ctx.events.emit(ObjectStateChangedEvent{id, "banished_owned"});
         return;
     }
-    obj.zone = dest;
-    if (dest == ZoneType::Hand) ctx.state.player(obj.owner).hand.push_back(id);
-    else {
+    if (dest == ZoneType::Hand) {
+        // From the chain: both players know which card went back.
+        deck::putInHand(ctx.state, id, knowledge::nobody(), deck::Place::Public);
+    } else {
+        obj.zone = dest;
         ctx.state.player(obj.owner).trash.push_back(id);
         settleInTrash(ctx.state, ctx.events, id);
     }

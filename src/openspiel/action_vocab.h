@@ -49,9 +49,10 @@
 namespace riftbound::openspiel {
 
 /// Card def ids are 1-indexed in the registry. Registered ids run 1..955
-/// (through Vendetta); 956..1100 is reserved for Radiance. Must equal
-/// ml::kCardVocabSize (static_assert in riftbound_state.cpp).
-constexpr int kNumCardDefIds = 1100;
+/// (through Vendetta); 956..1150 is reserved for Radiance (see
+/// ml::kCardVocabSize for the count). Must equal ml::kCardVocabSize
+/// (static_assert in riftbound_state.cpp).
+constexpr int kNumCardDefIds = 1150;
 
 /// Width of a range keyed by a card: key 0 is "an object with no card id" (a
 /// token that has no card class) and keys 1..kNumCardDefIds are the card ids.
@@ -166,7 +167,7 @@ constexpr int kNumSlots = verbOffset(ActionVerb::Count);
 /// Legal intents of one decision that may share a slot. More than this many
 /// and the ones beyond have no id (see `actionIds`; RiftboundState then
 /// throws rather than leave options out). The most the walk of
-/// tests/test_action_ids.cpp meets is 64 (a spell offered once per pair of
+/// tests/test_action_ids.cpp has met is 64 (a spell offered once per pair of
 /// targets); the bound is a constant so that the id range is.
 constexpr int kTwinPlanes = 1024;
 

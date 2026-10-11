@@ -32,7 +32,7 @@ namespace riftbound::test {
 namespace test_review_fix_sweep_flow {  // file-unique: test sources are unity-built
 namespace {
 
-// ─── Test-only cards (ids in the reserved 956..1100 range) ──────────────────
+// ─── Test-only cards (ids in the reserved 956..1150 range) ──────────────────
 
 constexpr CardDefId kTVanilla = 1060;          // unit, free, 2 [M]
 constexpr CardDefId kTConquerWatcher = 1061;   // unit: "When I conquer" counter

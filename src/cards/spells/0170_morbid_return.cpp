@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "engine/deck_ops.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -37,9 +38,7 @@ public:
         if (it == ps.trash.end()) return;
         ps.trash.erase(it);
         auto& obj = ctx.state.getObject(picked);
-        obj.zone = ZoneType::Hand;
-        obj.location = std::nullopt;
-        ps.hand.push_back(picked);
+        deck::putInHand(ctx.state, picked);
         RIFT_TRACE(ctx.events, "MORBID RETURN: returned " + obj.name +
                              " from trash to hand");
     }

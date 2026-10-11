@@ -41,7 +41,8 @@ public:
         auto it = std::find(hand.begin(), hand.end(), picked);
         if (it == hand.end()) return;
         hand.erase(it);
-        ctx.executor.recycleCards(opp, {picked});
+        // Chosen from the revealed hand: both players know which card it is.
+        ctx.executor.recycleCards(opp, {picked}, knowledge::everyone());
     }
 private:
     const CardDef def_ = [] {

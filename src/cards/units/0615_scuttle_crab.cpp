@@ -28,16 +28,15 @@ public:
             // [Deathknell] — choose an opponent (only one in 1v1): they reveal
             // their hand, and I may look at their facedown cards this turn.
             auto opp = opponent(ctx.controller);
-            auto show = [&](GameObjectId card_id, ZoneType zone, deck::Place place) {
+            auto show = [&](GameObjectId card_id, ZoneType zone) {
                 if (!ctx.state.objectExists(card_id)) return;
                 auto& obj = ctx.state.getObject(card_id);
                 ctx.events.emit(CardRevealedEvent{
                     card_id, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller, zone});
-                knowledge::seen(ctx.state, card_id, place, knowledge::only(ctx.controller));
             };
             for (auto card_id : ctx.state.player(opp).hand)
-                show(card_id, ZoneType::Hand, deck::Place::Hand);
+                show(card_id, ZoneType::Hand);
             // "this turn": the cards facedown now, and — through the standing
             // permission — any the opponent hides later this turn
             // (TriggerManager::onCardHidden shows them).
@@ -47,7 +46,7 @@ public:
                 for (auto card_id : bf.facedown)
                     if (ctx.state.objectExists(card_id) &&
                         ctx.state.getObject(card_id).controller == opp)
-                        show(card_id, ZoneType::FacedownZone, deck::Place::Facedown);
+                        show(card_id, ZoneType::FacedownZone);
             gainXp(ctx, ctx.controller, 1);
             RIFT_TRACE(ctx.events, "SCUTTLE CRAB: [Deathknell] reveal opp hand + facedown cards, +1 XP");
         }

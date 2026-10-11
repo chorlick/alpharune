@@ -62,11 +62,7 @@ public:
                               bf.facedown.end());
         obj.is_hidden = false;
         obj.hidden_at = kInvalidId;
-        obj.zone = ZoneType::Hand;
-        obj.location = std::nullopt;
-        ctx.state.player(obj.owner).hand.push_back(picked);
-        knowledge::moved(ctx.state, picked, deck::Place::Facedown, deck::Place::Hand,
-                         knowledge::nobody());
+        deck::putInHand(ctx.state, picked, knowledge::nobody(), deck::Place::Facedown);
         RIFT_TRACE(ctx.events, "PACK OF WONDERS: returned a facedown card to hand");
     }
 private:

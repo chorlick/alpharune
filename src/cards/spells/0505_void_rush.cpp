@@ -36,10 +36,8 @@ public:
         const auto top = topTwo(ctx.state, ctx.controller);
         if (top.empty()) return;
         if (first_pass) {
-            int rank = 0;
             for (auto cid : top) {
                 const auto& c = ctx.state.getObject(cid);
-                knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top, rank++);
                 ctx.events.emit(CardRevealedEvent{cid, c.card_def_id, c.owner,
                                                   /*revealed_to_all=*/true, PlayerId::None,
                                                   ZoneType::MainDeck});

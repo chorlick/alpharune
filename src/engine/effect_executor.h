@@ -10,6 +10,7 @@
 #include "core/events.h"
 #include "core/game_state.h"
 #include "core/intent.h"
+#include "engine/knowledge_tracker.h"
 
 #include <functional>
 #include <optional>
@@ -322,7 +323,14 @@ public:
     /// from hand → trash, sets `has_discarded_this_turn`, emits
     /// CardsDiscardedEvent. No-op if `card_id` isn't in player's hand.
     void applyDiscard(PlayerId player, GameObjectId card_id);
-    void recycleCards(PlayerId player, const std::vector<GameObjectId>& cards);
+    /// `shown`: the players who can tell which cards these are as they go
+    /// down, beyond what the knowledge tracker works out from where each card
+    /// was (a card from the board or a trash is seen by both, one from a hand
+    /// by its owner only). Pass it when the effect itself identifies a card
+    /// from a hidden zone: "They reveal their hand. Choose a card from it,
+    /// and recycle that card" (Sabotage) is `knowledge::everyone()`.
+    void recycleCards(PlayerId player, const std::vector<GameObjectId>& cards,
+                      knowledge::Seers shown = knowledge::nobody());
     void banishObject(GameObjectId target);
 
     // ── Vendetta game actions ──

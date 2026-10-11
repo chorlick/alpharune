@@ -149,6 +149,8 @@ struct Census {
     int highest_twin = 0;    // highest twin number any intent got
     long twin_intents = 0;   // intents that are not the first of their slot
     long without_id = 0;
+    long tracker_problems = 0;
+    std::string first_tracker_problem;
     // Intents whose keyed object has no card id (a token without a card
     // class), per verb: they used to land on the first slot of the verb's
     // range, which is another card's — or, in a prompt, "no object".
@@ -248,25 +250,18 @@ protected:
 
         // ... nor on anything the deciding player cannot know: re-deal the
         // opponent's hand, deck and facedown cards the player has not been
-        // shown (the tracker's record, and the cards this very prompt puts in
-        // front of the player), and the order of both decks.
+        // shown, by the knowledge tracker's record alone (plans/09 item 9.SS1:
+        // it hears every reveal and every move), and the order of both decks.
+        // An option that named a card the player had not been shown would
+        // fail here.
         const PlayerId me = step.perspective;
         const PlayerId opp = opponent(me);
         GameState redealt = state;
         const knowledge::GameKnowledgeView knows(state, me);
-        std::set<GameObjectId> offered;
-        for (const auto& item : state.chain.items) {   // announced: public
-            offered.insert(item.source);
-            offered.insert(item.targets.begin(), item.targets.end());
-        }
-        for (const auto& i : legal) {
-            offered.insert(i.chosen_objects.begin(), i.chosen_objects.end());
-            offered.insert(i.targets.begin(), i.targets.end());
-        }
         auto& ops = redealt.player(opp);
         std::vector<GameObjectId> hidden;
         auto consider = [&](GameObjectId id) {
-            if (!knows.about(id).identity_known && !offered.count(id)) hidden.push_back(id);
+            if (!knows.about(id).identity_known) hidden.push_back(id);
         };
         for (auto id : ops.hand) consider(id);
         for (auto id : ops.main_deck) consider(id);
@@ -282,6 +277,29 @@ protected:
         std::shuffle(redealt.player(me).main_deck.begin(),
                      redealt.player(me).main_deck.end(), rng);
         if (openspiel::actionIds(legal, redealt) != ids) ++c.hidden_dependent;
+
+        // The tracker's own record agrees with the state (9.SS1): no card it
+        // says is in a zone is elsewhere, no known deck slot holds another card.
+        const auto problems = knowledge::check(state);
+        if (!problems.empty()) {
+            ++c.tracker_problems;
+            if (c.first_tracker_problem.empty()) {
+                for (int o = 0; o < 2; ++o) for (const auto& [id, f] : state.knowledge.facts[o]) {
+                    const auto& ob = state.getObject(id);
+                    std::cout << "DBG obs" << o << " obj " << id << " " << ob.name.get() << " owner " << toString(ob.owner)
+                              << " zone " << (int)ob.zone.get() << " fzone " << (int)f.zone << " conf " << f.zone_confirmed
+                              << " held " << f.held << " end " << (int)f.end << " anchor " << f.anchor << " group " << f.group << "\n";
+                }
+                for (int o = 0; o < 2; ++o) std::cout << "DBG deck" << o << " size " << state.players[o].main_deck.size()
+                    << " top_seq " << state.knowledge.deck[o].top_seq << " bottom_seq " << state.knowledge.deck[o].bottom_seq << "\n";
+                for (const auto& [gid, g] : state.knowledge.groups) std::cout << "DBG group " << gid << " owner " << toString(g.owner) << " end " << (int)g.end << " anchor " << g.anchor << " n " << g.members.size() << "\n";
+            }
+            if (c.first_tracker_problem.empty())
+                c.first_tracker_problem = where + ": " + problems.front() +
+                    (state.chain.resuming && state.objectExists(state.chain.resuming->source)
+                         ? " (resolving " + state.getObject(state.chain.resuming->source).name.get() + ")"
+                         : std::string());
+        }
     }
 
     static void playGame(const DeckSubmission& d1, const DeckSubmission& d2,
@@ -339,6 +357,7 @@ protected:
             << "the walk comes close to the bound: raise kTwinPlanes";
         EXPECT_EQ(c.order_dependent, 0) << "decisions whose ids depend on the generator's order";
         EXPECT_EQ(c.hidden_dependent, 0) << "decisions whose ids depend on hidden cards";
+        EXPECT_EQ(c.tracker_problems, 0) << "first: " << c.first_tracker_problem;
         EXPECT_TRUE(c.engine_failures.empty());
     }
 

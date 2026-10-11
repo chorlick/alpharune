@@ -83,9 +83,7 @@ public:
         if (ri.resume_point == 0) {
             auto top = topFive(ctx.state, ctx.controller);
             if (top.empty()) return;
-            int rank = 0;
             for (auto cid : top) {
-                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller), DeckEnd::Top, rank++);
                 if (!ctx.state.objectExists(cid)) continue;
                 const auto& o = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{

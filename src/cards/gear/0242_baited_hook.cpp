@@ -72,10 +72,7 @@ public:
         }
         // A private look: the controller now knows these five and their order.
         const auto looker = knowledge::only(ctx.controller);
-        for (size_t i = 0; i < top5.size(); ++i) {
-            knowledge::seenInDeck(ctx.state, top5[i], looker, DeckEnd::Top,
-                                  static_cast<int>(i));
-        }
+        for (auto id : top5) knowledge::shown(ctx.state, id, looker);
         // Eligible: units with Might up to killed_might + 1.
         std::vector<GameObjectId> eligible;
         for (auto cid : top5) {

@@ -11,6 +11,7 @@
 #include "engine/knowledge_tracker.h"
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace riftbound::deck {
@@ -36,6 +37,34 @@ GameObjectId takeTop(GameState& state, PlayerId owner, Place to,
 /// Returns false if it was not in the deck.
 bool take(GameState& state, GameObjectId object, Place to,
           Seers seers = knowledge::nobody(), bool slot_public = true);
+
+/// Draw: move the top card of `owner`'s Main Deck into their hand and return
+/// it (kInvalidId if the deck is empty). `seers` are the players shown the
+/// card as it is drawn (nobody for a plain draw; the owner always knows).
+GameObjectId drawTop(GameState& state, PlayerId owner,
+                     Seers seers = knowledge::nobody());
+
+/// Put `object` into its owner's hand. The only function that may add a card
+/// to a hand (with `drawTop`): it makes the edit and tells the knowledge
+/// tracker, so a card that both players could see (it comes from the board,
+/// a trash, banishment, the chain or the Champion Zone) is known to be in
+/// that hand, and one that comes from a facedown pile or a look is followed
+/// by whoever knew it. The caller has already removed it from where it was.
+/// `seers` are the players shown the card as it moves, beyond those who can
+/// see it anyway. `from` is where it was; left out, it is read from the
+/// state (`whereIs`), which is right unless the caller has already changed
+/// the object's zone.
+/// `no_owner_hand`: whose hand takes an object that has no owner (only in
+/// hand-built test states).
+void putInHand(GameState& state, GameObjectId object,
+               Seers seers = knowledge::nobody(),
+               std::optional<Place> from = std::nullopt,
+               PlayerId no_owner_hand = PlayerId::None);
+
+/// Put `object` facedown at battlefield `at` (Hide). The only function that
+/// may add a card to a facedown pile. It comes from its owner's hand, which
+/// the other player cannot follow, or from the Champion Zone, which they can.
+void putFacedown(GameState& state, GameObjectId object, BattlefieldId at);
 
 /// Put `object` on the top / bottom of `owner`'s Main Deck. `from` is where
 /// it was; the caller has already removed it from there.

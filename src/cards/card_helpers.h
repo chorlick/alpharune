@@ -3,11 +3,13 @@
 /// Cross-cutting card helpers used across multiple card types. Type-specific
 /// bases live in their type dirs (gear/equip_base.h, units/weaponmaster_base.h).
 #include "engine/deck_ops.h"
+#include "engine/trash_replacement.h"
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "engine/resource_payment.h"
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -20,8 +22,7 @@ namespace riftbound {
 // The engine-known Gold gear token's card_def_id.
 constexpr CardDefId kGoldGearCardDefId = 326;
 
-// ── Equip: pay one power (of `domain`, or any rune if nullopt), then attach ──
-// Complements the energy+Domain `standardEquip` overload in gear/equip_base.h.
+// ── Paying one Power from a card effect ──
 // One Power of `domain` (any domain if nullopt), the way CR 164.2 lets it be
 // paid: floating Power of that domain, then universal Power, then recycling a
 // matching rune — ready or exhausted (an exhausted one first, since a ready
@@ -33,15 +34,7 @@ inline bool runeMatchesDomain(const GameObject& rune, std::optional<Domain> doma
 }
 inline bool payableOnePower(const GameState& state, PlayerId player,
                             std::optional<Domain> domain) {
-    const auto& pool = state.player(player).rune_pool;
-    if (pool.universal_power > 0) return true;
-    if (domain.has_value()) { if (pool.power[static_cast<int>(*domain)] > 0) return true; }
-    else if (pool.totalPower() > 0) return true;
-    const LocationId base{BaseLocation{player}};
-    for (const auto& [id, obj] : state.objects)
-        if (obj.isRune() && obj.controller == player && obj.location.has_value() &&
-            *obj.location == base && runeMatchesDomain(obj, domain)) return true;
-    return false;
+    return resource::payablePower(state, player, domain.value_or(Domain::Count)) >= 1;
 }
 /// Recycle `rune` (in `player`'s base) to pay one Power, with the engine's
 /// bookkeeping for a rune spent that way (EffectExecutor::payAnyPower): it
@@ -63,58 +56,24 @@ inline void recycleRuneForPower(CardContext& ctx, PlayerId player, GameObjectId 
 }
 inline bool payOnePower(CardContext& ctx, PlayerId player,
                         std::optional<Domain> domain) {
-    auto& state = ctx.state;
-    // [A]: the engine's own payment (floating power, then a recycled rune).
-    if (!domain.has_value()) return ctx.executor.payAnyPower(player, 1);
-    auto& pool = state.player(player).rune_pool;
-    int& own = pool.power[static_cast<int>(*domain)];
-    if (own > 0) { --own; return true; }
-    if (pool.universal_power > 0) { --pool.universal_power; return true; }
-    const LocationId base_loc{BaseLocation{player}};
-    GameObjectId rune = kInvalidId;
-    for (auto& [id, obj] : state.objects) {
-        if (!obj.isRune() || obj.controller != player) continue;
-        if (!obj.location.has_value() || *obj.location != base_loc) continue;
-        if (!runeMatchesDomain(obj, domain)) continue;
-        // An exhausted rune first (a ready one can still give Energy), then
-        // the lowest id so the pick does not depend on map order.
-        if (rune == kInvalidId) { rune = id; continue; }
-        const bool cur_ex = state.getObject(rune).is_exhausted;
-        if (obj.is_exhausted != cur_ex ? obj.is_exhausted : id < rune) rune = id;
-    }
-    if (rune == kInvalidId) return false;
-    recycleRuneForPower(ctx, player, rune);
-    return true;
+    // The engine's own payment (engine/resource_payment.h): floating Power,
+    // then a recycled rune from the player's base, an exhausted one first.
+    return resource::pay(ctx.state, ctx.events, player, 0, 1, domain.value_or(Domain::Count));
 }
 
 // ── Paying Energy inside an effect ("you may pay [N] to ...") ───────────────
-/// Energy `player` could pay right now: floating pool + ready runes in base.
+/// Energy `player` could pay right now: floating pool + ready runes in their
+/// base.
 inline int payableEnergy(const GameState& state, PlayerId player) {
-    int n = state.player(player).rune_pool.energy;
-    for (const auto& [id, obj] : state.objects)
-        if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
-            obj.location.has_value()) ++n;
-    return n;
+    return resource::payableEnergy(state, player);
 }
 
-/// Pay `amount` Energy: floating pool first, then exhaust ready runes. Returns
-/// false (paying nothing) if it can't be covered.
+/// Pay `amount` Energy: floating pool first, then exhaust ready runes in the
+/// player's base (lowest id first). Returns false (paying nothing) if it can't
+/// be covered.
 inline bool payEnergy(CardContext& ctx, PlayerId player, int amount) {
     if (amount <= 0) return true;
-    if (payableEnergy(ctx.state, player) < amount) return false;
-    auto& pool = ctx.state.player(player).rune_pool;
-    int from_pool = std::min(pool.energy, amount);
-    pool.energy -= from_pool;
-    amount -= from_pool;
-    for (auto& [id, obj] : ctx.state.objects) {
-        if (amount <= 0) break;
-        if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
-        if (!obj.location.has_value()) continue;
-        obj.is_exhausted = true;
-        ctx.events.emit(ObjectStateChangedEvent{id, "exhausted"});
-        --amount;
-    }
-    return true;
+    return resource::pay(ctx.state, ctx.events, player, amount, 0, Domain::Count);
 }
 
 // ── Battlefields and combat ──
@@ -150,24 +109,6 @@ inline bool equipEndsOnBoard(const GameState& state, GameObjectId gear_id, GameO
 /// bearer, rules text Inactive (CR 718.2).
 inline void attachEquipped(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id) {
     ctx.executor.attachGear(gear_id, unit_id);
-}
-
-// ── Equip: pay [energy] + one power (of `domain`, or [A] if nullopt), attach ──
-// All-or-nothing: nothing is paid unless the whole cost can be.
-inline bool standardEquip(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id,
-                          int energy_cost, std::optional<Domain> domain) {
-    if (!equipEndsOnBoard(ctx.state, gear_id, unit_id)) return false;
-    if (payableEnergy(ctx.state, ctx.controller) < energy_cost) return false;
-    if (!payableOnePower(ctx.state, ctx.controller, domain)) return false;
-    // Energy first: a rune exhausted for it can still be recycled for the Power.
-    if (!payEnergy(ctx, ctx.controller, energy_cost)) return false;
-    if (!payOnePower(ctx, ctx.controller, domain)) return false;
-    attachEquipped(ctx, gear_id, unit_id);
-    return true;
-}
-inline bool standardEquip(CardContext& ctx, GameObjectId gear_id,
-                          GameObjectId unit_id, std::optional<Domain> domain) {
-    return standardEquip(ctx, gear_id, unit_id, 0, domain);
 }
 
 // Attach a gear directly (no cost) to a unit (e.g. Edge of Night's
@@ -273,7 +214,10 @@ inline void disposeCounteredCard(CardContext& ctx, GameObjectId id,
     }
     obj.zone = dest;
     if (dest == ZoneType::Hand) ctx.state.player(obj.owner).hand.push_back(id);
-    else ctx.state.player(obj.owner).trash.push_back(id);
+    else {
+        ctx.state.player(obj.owner).trash.push_back(id);
+        settleInTrash(ctx.state, ctx.events, id);
+    }
 }
 
 // "This can't be countered" (the spell's own card) or "Your spells and

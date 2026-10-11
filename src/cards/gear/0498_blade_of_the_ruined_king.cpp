@@ -18,34 +18,32 @@ public:
     bool hasEquipAbility() const override { return true; }
 
     // "[Equip] — [Y], Kill a friendly unit". All-or-nothing: both parts of
-    // the cost are checked before either is paid. Equip resolves outside the
-    // chain, so which unit dies is a direct agent decision
-    // (EffectExecutor::chooseObjectNow), not a default first pick.
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        auto& state = ctx.state;
-        const PlayerId player = ctx.controller;
-        if (!equipEndsOnBoard(state, ctx.source, unit)) return false;
-        if (!payableOnePower(state, player, Domain::Order)) return false;
-
-        std::vector<GameObjectId> killable;
+    // the cost are checked before either is paid. Which unit dies is a direct
+    // agent decision (EffectExecutor::chooseObjectNow), not a default pick.
+    static std::vector<GameObjectId> killable(const GameState& state, PlayerId player,
+                                              GameObjectId unit) {
+        std::vector<GameObjectId> out;
         for (auto& [id, obj] : state.objects) {
             if (!obj.isUnit() || obj.controller != player) continue;
             if (!obj.location.has_value()) continue;
             if (id == unit) continue;  // can't kill the unit we're equipping
-            killable.push_back(id);
+            out.push_back(id);
         }
-        if (killable.empty()) return false;
-        std::sort(killable.begin(), killable.end());
-
-        const GameObjectId victim = ctx.executor.chooseObjectNow(player, killable);
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .power = 1, .power_domain = Domain::Order};
+    }
+    bool canPayEquipExtraCost(const GameState& state, PlayerId controller, GameObjectId,
+                              GameObjectId unit) const override {
+        return !killable(state, controller, unit).empty();
+    }
+    bool payEquipExtraCost(CardContext& ctx, GameObjectId unit) override {
+        const GameObjectId victim =
+            ctx.executor.chooseObjectNow(ctx.controller, killable(ctx.state, ctx.controller, unit));
         if (victim == kInvalidId) return false;
-        // Pay: [Y] (floating Power or a recycled Order rune), then the kill.
-        if (!payOnePower(ctx, player, Domain::Order)) return false;
         ctx.executor.killObject(victim);
-
-        // The kill can have consequences; attach only if both ends are still here.
-        if (!equipEndsOnBoard(state, ctx.source, unit)) return false;
-        attachEquipped(ctx, ctx.source, unit);
         return true;
     }
 private:

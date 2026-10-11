@@ -1755,50 +1755,39 @@ TEST_F(JhinDeckTest, ProductionSurge_MechToken_AlsoTriggersCostReduction) {
 // Action-side Repeat-choice generation (CR 820)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Repeat is an optional additional cost: a spell can be played with
-// `repeats_paid` ∈ [0, max_R] extra tranches of the Repeat cost. The
-// action generator must surface every R as a distinct PlayCard intent
-// (chosen_value = R) so the agent can choose how aggressive to be —
-// otherwise MCTS / training never explores the Repeat axis.
-//
-// Wiring:
-//   parseRepeatCost() in game_engine.cpp parses ability_text.
-//   generateSpellActions emits one Intent per (target × R) pair.
-//   executePlaySpell reads intent.chosen_value, pays the extra tranches,
-//   and sets chain_item.repeats_paid + total_energy_spent.
+// Repeat (CR 820) is an optional additional cost, asked yes/no per printed
+// Repeat cost once the base cost is paid (executePlaySpell); each payment
+// sets one more ChainItem::repeats_paid and adds to total_energy_spent.
 
-TEST_F(JhinDeckTest, ParseRepeatCost_EnergyOnly) {
-    auto rc = GameEngine::parseRepeatCost(
-        "[Repeat] [2] Give a unit -2 [M] this turn.");
-    EXPECT_TRUE(rc.valid);
-    EXPECT_EQ(rc.energy, 2);
-    EXPECT_EQ(rc.power, 0);
+// Corrected for plan 08 item 8.9: a Repeat cost is the card's own declaration
+// (Card::repeatCosts), not parsed out of ability_text — these pin the same
+// four shapes on the cards that print them.
+TEST_F(JhinDeckTest, RepeatCost_EnergyOnly) {
+    auto rc = card_registry.get(389)->repeatCosts();      // Frigid Touch: [Repeat] [2]
+    ASSERT_EQ(rc.size(), 1u);
+    EXPECT_EQ(rc[0].energy, 2);
+    EXPECT_EQ(rc[0].power, 0);
 }
 
-TEST_F(JhinDeckTest, ParseRepeatCost_EnergyPlusDomain) {
-    auto rc = GameEngine::parseRepeatCost(
-        "[Reaction] [Repeat] [4][B] Deal 4 to a unit ...");
-    EXPECT_TRUE(rc.valid);
-    EXPECT_EQ(rc.energy, 4);
-    EXPECT_EQ(rc.power, 1);
-    // CR 134.2: B = Mind (Blue). Pre-2026-05-19 the engine mapped
-    // B→Body, silently misrouting Rocket Barrage / Bellows Breath
-    // payments to the wrong rune pool. Engine-audit CRITICAL #4 fix.
-    EXPECT_EQ(rc.power_domain, Domain::Mind);
+TEST_F(JhinDeckTest, RepeatCost_EnergyPlusDomain) {
+    auto rc = card_registry.get(400)->repeatCosts();      // Rocket Barrage: [Repeat] [4][B]
+    ASSERT_EQ(rc.size(), 1u);
+    EXPECT_EQ(rc[0].energy, 4);
+    EXPECT_EQ(rc[0].power, 1);
+    // CR 134.2: B = Mind (Blue).
+    EXPECT_EQ(rc[0].power_domain, Domain::Mind);
 }
 
-TEST_F(JhinDeckTest, ParseRepeatCost_NoRepeat_ReturnsInvalid) {
-    auto rc = GameEngine::parseRepeatCost(
-        "Deal 4 to a unit. Repeat sounds nice but isn't here.");
-    EXPECT_FALSE(rc.valid);
+TEST_F(JhinDeckTest, RepeatCost_NoRepeat_IsEmpty) {
+    EXPECT_TRUE(card_registry.get(146)->repeatCosts().empty());   // Wallop prints no Repeat
 }
 
-TEST_F(JhinDeckTest, ParseRepeatCost_UniversalA) {
-    auto rc = GameEngine::parseRepeatCost("[Repeat] [A] Heal 1.");
-    EXPECT_TRUE(rc.valid);
-    EXPECT_EQ(rc.energy, 0);
-    EXPECT_EQ(rc.power, 1);
-    EXPECT_EQ(rc.power_domain, Domain::Count);  // universal
+TEST_F(JhinDeckTest, RepeatCost_UniversalA) {
+    auto rc = card_registry.get(501)->repeatCosts();      // Danger Zone: [Repeat] [1][A]
+    ASSERT_EQ(rc.size(), 1u);
+    EXPECT_EQ(rc[0].energy, 1);
+    EXPECT_EQ(rc[0].power, 1);
+    EXPECT_EQ(rc[0].power_domain, Domain::Count);  // universal
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

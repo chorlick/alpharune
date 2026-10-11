@@ -3,6 +3,7 @@
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "engine/deck_ops.h"
+#include "engine/trash_replacement.h"
 #include "cards/card_helpers.h"
 
 #include <algorithm>
@@ -332,6 +333,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         obj.combat_designation = CombatDesignation::None;
         if (!is_token) {
             state_.player(obj.owner).trash.push_back(target);
+            settleInTrash(state_, events_, target);
         } else {
             events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
                              " (id=" + std::to_string(target) + ")");
@@ -370,6 +372,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         obj.location = std::nullopt;
         if (!is_token) {
             state_.player(obj.owner).trash.push_back(target);
+            settleInTrash(state_, events_, target);
         } else {
             events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + obj.name +
                              " (id=" + std::to_string(target) + ")");
@@ -490,38 +493,9 @@ int EffectExecutor::payableAnyPower(PlayerId player) const {
 
 bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
     if (amount <= 0) return true;
-    if (payableAnyPower(player) < amount) return false;
-    auto& ps = state_.player(player);
-    auto take = [&amount](int& from) {
-        int n = std::min(from, amount);
-        from -= n;
-        amount -= n;
-    };
-    take(ps.rune_pool.universal_power);
-    for (int di = 0; di < static_cast<int>(Domain::Count); ++di) take(ps.rune_pool.power[di]);
-    if (amount <= 0) return true;
-    // Recycle runes, exhausted ones first (they have nothing else to give).
-    LocationId base{BaseLocation{player}};
-    std::vector<GameObjectId> runes;
-    for (auto& [id, obj] : state_.objects)
-        if (obj.isRune() && obj.controller == player &&
-            obj.location.has_value() && *obj.location == base) runes.push_back(id);
-    std::stable_sort(runes.begin(), runes.end(), [&](GameObjectId a, GameObjectId b) {
-        return state_.getObject(a).is_exhausted > state_.getObject(b).is_exhausted;
-    });
-    for (auto rid : runes) {
-        if (amount <= 0) break;
-        auto& rune = state_.getObject(rid);
-        rune.location = std::nullopt;
-        rune.zone = ZoneType::RuneDeck;
-        rune.is_exhausted = false;
-        ps.rune_deck.insert(ps.rune_deck.begin(), rid);
-        ps.power_spent_this_turn++;
-        events_.emit(LeftBoardEvent{rid, player, CardType::Rune, base,
-                                    ZoneType::RuneDeck, false});
-        --amount;
-    }
-    return amount <= 0;
+    // The one payment rule (engine/resource_payment.h): floating Power, then
+    // runes recycled from the base, exhausted ones first.
+    return resource::pay(state_, events_, player, 0, amount, Domain::Count);
 }
 
 bool EffectExecutor::burnOut(PlayerId player) {
@@ -1168,6 +1142,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
             ps.hand.erase(it);
             state_.getObject(to_discard).zone = ZoneType::Trash;
             ps.trash.push_back(to_discard);
+            settleInTrash(state_, events_, to_discard);
             discarded.push_back(to_discard);
         }
     }
@@ -1196,6 +1171,7 @@ void EffectExecutor::applyDiscard(PlayerId player, GameObjectId card_id) {
     ps.hand.erase(it);
     obj.zone = ZoneType::Trash;
     ps.trash.push_back(card_id);
+    settleInTrash(state_, events_, card_id);
     ps.has_discarded_this_turn = true;
     events_.emit(CardsDiscardedEvent{player, {card_id}});
     events_.emit(ObjectStateChangedEvent{card_id, "discarded"});

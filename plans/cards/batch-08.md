@@ -42,7 +42,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Code: not implemented (the trace line says "Gold-add bonus passive not modeled"; nothing in `gear/0326_gold.cpp` reads the score).
   - Scenario: at 5+ points, killing a Gold adds only [A], never the extra [1].
   - c0: 326 Gold — the Gold half is done: `gear/0326_gold.cpp` adds floating Energy equal to `card_counters["__gold_add_bonus_energy"]` on its controller's legend object (absent / 0 = none). Chem-Baroness 556 (c1) only has to set that counter on itself from `applyPassiveAura` while the score condition holds; test: C0Test.Gold_AddsTheLegendsBonusEnergy
-- [ ] **259 Swift Scout** - `legends/0259_swift_scout.cpp:18-20` [documented] medium
+- [x] **259 Swift Scout** - `legends/0259_swift_scout.cpp:18-20` [documented] medium — FIXED (sweep-costs): `Card::adjustHideCost` (`GameEngine::hideCostFor` / `canPayHideCost`); test: SweepCostsTest.SwiftScout_HidesForOneEnergyInsteadOfThePower
   - Text: "You may pay [1] to hide a card with [Hidden] instead of [A]."
   - Code: not implemented ("ENGINE GAP" comment); the hide cost path (`game_engine.cpp:2505`) always recycles a rune.
   - Scenario: Teemo player with one ready rune and no rune to spare for Power cannot hide a card for [1].

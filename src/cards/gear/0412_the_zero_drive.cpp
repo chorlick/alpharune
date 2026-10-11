@@ -18,8 +18,8 @@ public:
 
     // ── Equip [1][B] ──
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return standardEquip(ctx, ctx.source, unit, /*energy_cost=*/1, Domain::Mind);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 1, .power = 1, .power_domain = Domain::Mind};
     }
 
     // ── Equipped: "[Deathknell] — Banish me." ──

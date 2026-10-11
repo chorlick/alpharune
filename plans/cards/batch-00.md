@@ -145,13 +145,13 @@ Files read in full: 83 of 83.
   - Code: `readyObject` emits `UnitReadiedEvent` for any object type (effect_executor.cpp:704-706) and `onUnitReadied` does not filter the subject to units; the card does not check either.
   - Scenario: Targon's Peak readies two runes -> two Pirate's Haven abilities go on the chain and "buff" the runes.
 
-- [ ] **948 Piltovan Forge** - `battlefields/0948_piltovan_forge.cpp:22` [confirmed] low
+- [x] **948 Piltovan Forge** - `battlefields/0948_piltovan_forge.cpp:22` [confirmed] low — FIXED (sweep-costs): Equip is paid through `Card::payEquipAndAttach` with `GameEngine::equipTerms` (first-gear-ability discount and per-turn counter); test: SweepCostsTest.Equip_FirstGearAbilityDiscountAppliesToTheEquipCost, SweepCostsTest.Equip_IsOfferedOnlyWhenItsCostCanBePaid
   - Text: "…the first friendly gear activated ability played each turn costs [1] less."
   - Code: the discount lives in `activationEnergyReduction`, which the Equip path bypasses (`payAndQueueAbility` returns from the equip branch at game_engine.cpp:1407-1423 before costs or the `gear_abilities_activated_this_turn` counter).
   - Scenario: Equip [1][R] on Skyfall of Areion as the first gear ability of the turn -> full price, and the next gear ability still gets the discount.
   - BLOCKED: engine. The Equip branch of `payAndQueueAbility` returns before `activationEnergyReduction` and before `gear_abilities_activated_this_turn` is counted, and an Equip cost is paid inside the gear's `onEquip`, out of the engine's sight. Same root as the Equip-cost item above: needs the equip-cost descriptor (sweep).
 
-- [ ] **950 Risen Altar** - `battlefields/0950_risen_altar.cpp:26` [documented] low
+- [x] **950 Risen Altar** - `battlefields/0950_risen_altar.cpp:26` [documented] low — FIXED (sweep-costs): `Card::activationPowerReductionFor` takes one Power off where the [1] found no Energy (`netActivationCost`); test: SweepCostsTest.EmpowerDiscount_TakesAPowerWhereThereIsNoEnergy
   - Text: "[Empower] costs of your units here cost [1] or [A] less."
   - Code: only the [1] Energy reduction is modeled.
   - Scenario: an Empower cost of [A] only (no Energy) gets no reduction.

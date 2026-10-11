@@ -95,7 +95,7 @@ Files read in full: 91 of 91.
   - Code: the class derives from `UnitCard`, sets the keyword bit, and `onTrigger` returns immediately unless the [O][O] additional cost was paid. Nothing in the engine reads `Keyword::Weaponmaster`, so the Weaponmaster equip never happens. (The gear steal also takes the first enemy gear - S5.)
   - Scenario: Akshan played with a friendly Equipment in base -> no equip offered.
 
-- [ ] **324 Armed Assailant / 414 Combat Chef / 421 Veteran Poro / 448 Master Bingwen / 407 Ornn, Forge God / 435 Lucian, Merciless** - `units/weaponmaster_base.h:26`, `units/0407_ornn_forge_god.cpp:19`, `units/0435_lucian_merciless.cpp:32` [documented] medium
+- [x] **324 Armed Assailant / 414 Combat Chef / 421 Veteran Poro / 448 Master Bingwen / 407 Ornn, Forge God / 435 Lucian, Merciless** - `units/weaponmaster_base.h:26`, `units/0407_ornn_forge_god.cpp:19`, `units/0435_lucian_merciless.cpp:32` [documented] medium — FIXED (sweep-costs): Weaponmaster pays the gear's declared Equip cost one Power less (`weaponmasterChoices` / `weaponmasterEquip`), unaffordable Equipment is not offered, attached Equipment can be taken; test: SweepCostsTest.Weaponmaster_ChargesTheEquipCostLessOnePower, SweepCostsTest.Weaponmaster_MovesAnAttachedEquipmentAndPaysANonResourceCost
   - Text: "[Weaponmaster] (When you play me, you may [Equip] one of your Equipment to me for [A] less, even if it's already attached.)"
   - Code: mandatory, first Equipment in map order, attached for free whatever its Equip cost (CR 821.1.c: pay the Equip cost reduced by [A]; 821.1.c.4/5: can't if no cost / unpayable). No on-board check on the Weaponmaster unit.
   - Scenario: only Equipment is on your best unit and has Equip [2][A] -> it is ripped off that unit and attached to a 2-Might Veteran Poro at no cost, with no option to decline. If the unit was killed in response, the gear is attached to an off-board object and its location becomes nullopt (gear disappears).
@@ -124,7 +124,7 @@ Files read in full: 91 of 91.
   - Code: only the energy half; the comment says no power hook exists, but `Card::selfPowerCostReduction` is wired (game_engine.cpp:5598).
   - Scenario: 2 hold points -> should cost [6][G]; costs [6][G][G][G].
 
-- [ ] **231 Commander Ledros** - `units/0231_commander_ledros.cpp:17` [documented] medium
+- [x] **231 Commander Ledros** - `units/0231_commander_ledros.cpp:17` [documented] medium — FIXED (sweep-costs): units are killed one at a time, of the player's choice, before payment; test: SweepCostsTest.Ledros_KillsUnitsOfThePlayersChoiceForPowerOff
   - Text: "As you play me, you may kill any number of friendly units as an additional cost. Reduce my cost by [Y] for each killed this way."
   - Code: not implemented (no hook in card or engine).
   - Scenario: cannot sacrifice units to reduce the [Y][Y][Y][Y] cost.
@@ -182,7 +182,7 @@ Files read in full: 91 of 91.
   - Code: reads the newest spell in the controller's trash rather than the trigger's subject (`triggering_subject`).
   - Scenario: a 5+ spell that is banished (Flow) or recycled on resolution is not in the trash -> an older spell's cost is tested (missed buff, or a buff for a cheap spell).
 
-- [ ] **312 Lux, Crownguard** - `units/0312_lux_crownguard.cpp:29` [documented] low
+- [x] **312 Lux, Crownguard** - `units/0312_lux_crownguard.cpp:29` [documented] low — FIXED (sweep-costs): `RunePool::spell_energy`; test: SweepCostsTest.RestrictedEnergy_SpellOnlyPaysForSpellsOnly
   - Text: "[Add] [2]. Use only to play spells."
   - Code: plain floating energy, spendable on anything. Also `Keyword::Reaction` is set on the unit (as on 377 Jax) although only the ability is a Reaction - harmless today only because unit Reaction is not implemented.
   - Scenario: exhaust Lux to pay for a unit.

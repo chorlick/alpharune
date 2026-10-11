@@ -22,46 +22,67 @@ class ZaunPunk : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto friendly_gear = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (!obj.isGear() || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                out.push_back(id);
-            }
-            return out;
-        };
-        int conf = confirmOptional(ctx, "Zaun Punk: kill a friendly gear (cost) to kill a gear?",
-                                   [&]() { return costAlreadyPaid(ctx) || !friendly_gear().empty(); });
-        // Two sequential picks: A = friendly gear to kill (cost), B = any gear
-        // to kill (effect, B excludes A since A is gone).
-        auto any_gear_fn = [&](GameObjectId a) {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == a) continue;
-                if (!obj.isGear() || !obj.location.has_value()) continue;
-                out.push_back(id);
-            }
-            return out;
-        };
-        std::pair<GameObjectId, GameObjectId> picks{kInvalidId, kInvalidId};
-        if (conf == 1) picks = pickTargetPair(ctx, "Zaun Punk", friendly_gear(), any_gear_fn);
-        // The additional cost — killing the chosen friendly gear — is paid as
-        // the trigger is finalized (CR 383.3), the nearest point to "as you
-        // play me"; nobody can respond before it is paid.
-        bool paid = costAlreadyPaid(ctx);
-        if (!paid && conf == 1 && picks.first != kInvalidId && costDueNow(ctx)) {
-            ctx.executor.killObject(picks.first);
-            paid = true;
+    // "You may kill a friendly gear as an additional cost to play me." An
+    // optional additional cost (CR 356.2.b): chosen and paid as I am played,
+    // before my cost and before I enter the board. kPaid records it for the
+    // play trigger ("if you paid the additional cost").
+    static constexpr const char* kPaid = "__zaun_punk_paid";
+    static std::vector<GameObjectId> gearOnBoard(const GameState& state, PlayerId controller,
+                                                 bool friendly_only) {
+        std::vector<GameObjectId> out;
+        for (auto& [id, obj] : state.objects) {
+            if (!obj.isGear() || !obj.location.has_value()) continue;
+            if (friendly_only && obj.controller != controller) continue;
+            out.push_back(id);
         }
-        if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
-        if (!paid) return;   // waiting / declined / no friendly gear
-        // Effect: kill the chosen gear (kInvalidId if it left the board since).
-        if (picks.second != kInvalidId) ctx.executor.killObject(picks.second);
-        ctx.events.logTrace("ZAUN PUNK: killed a friendly gear (cost) -> killed a gear");
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.payable = !gearOnBoard(state, player, true).empty();
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        (void)affordable;
+        auto& me = ctx.state.getObject(ctx.source);
+        me.card_counters[kPaid] = 0;
+        const auto mine = gearOnBoard(ctx.state, ctx.controller, true);
+        if (mine.empty() ||
+            !ctx.executor.confirmNow(ctx.controller,
+                                     "Zaun Punk: kill a friendly gear as an additional cost"))
+            return {};
+        const GameObjectId gear = ctx.executor.chooseObjectNow(ctx.controller, mine);
+        if (gear == kInvalidId) return {};
+        ctx.executor.killObject(gear);
+        me.card_counters[kPaid] = 1;
+        ctx.events.logTrace("ZAUN PUNK: killed a friendly gear (additional cost)");
+        return {};
+    }
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "When you play me, if you paid the additional cost, kill a gear."
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId, TriggerType,
+                          GameObjectId) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find(kPaid);
+        return it != c.end() && it->second == 1;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId gear = pickTarget(ctx, "Zaun Punk: kill a gear",
+                                             gearOnBoard(ctx.state, ctx.controller, false));
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (ctx.state.objectExists(ctx.source))
+            ctx.state.getObject(ctx.source).card_counters[kPaid] = 0;
+        if (gear == kInvalidId || !ctx.state.objectExists(gear)) return;
+        if (!ctx.state.getObject(gear).location.has_value()) return;
+        ctx.executor.killObject(gear);
+        ctx.events.logTrace("ZAUN PUNK: paid the additional cost -> killed a gear");
     }
 private:
     const CardDef def_ = [] {

@@ -15,7 +15,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "Hidden (Hide now for [A] to react with later for .)"
   - Code: `d.keywords` never sets `Keyword::Hidden` (the text is stored without brackets). The hide generator requires the bit (`engine/game_engine.cpp:2860`).
   - Scenario: Windsinger in hand with a controlled battlefield and a spare rune -> no Hide action is ever offered; the card can only be played face up at normal timing. Compare 562, 703, 886, 922, which set the keyword.
-- [ ] **470 Ezreal, Prodigy** - `units/0470_ezreal_prodigy.cpp:74-75` [confirmed] high
+- [x] **470 Ezreal, Prodigy** - `units/0470_ezreal_prodigy.cpp:74-75` [confirmed] high — FIXED (sweep-costs): `Card::optionalCostDiscount`, applied to Accelerate, Repeat and "you may pay" costs (`payOptionalCost`); test: SweepCostsTest.Ezreal_OptionalAdditionalCostsCostOneLess
   - Text: "Optional additional costs you pay cost [1] or [A] less."
   - Code: not implemented. The class has only the `WhenYouPlayMe` discard/draw; nothing in `src/engine` or `src/core` reduces an optional additional cost (`maybePayOptionalAdditionalCost`, `game_engine.cpp:5520-5560`, charges `cost.energy` / `cost.power` unmodified; same for Accelerate / Repeat).
   - Scenario: Ezreal on board, play Frostcoat Cub and accept "[B] as an additional cost" -> the full [B] is charged; should be free. Same for every Accelerate / Repeat / "you may pay" card. (07 lists 0470 as clean; that pass only checked resume handling.)
@@ -76,7 +76,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "You may [Ambush] me to its battlefield, even if you don't have other units there."
   - Code: not modelled (in-file comment): the sacrifice is chosen after the Wolf has landed, so the Ambush location is only the standard "battlefield where you have units"; and if the sacrificed unit was the only friendly unit there the standard Ambush was only legal because of it.
   - Scenario: lone Poro at a battlefield; Ambush the Wolf there killing the Poro -> allowed only by accident of ordering; killing a Poro at battlefield A cannot place the Wolf at A if another unit elsewhere is what made the play legal.
-- [ ] **440 Jax, Unrelenting** - `units/0440_jax_unrelenting.cpp:33-83` [documented] low
+- [x] **440 Jax, Unrelenting** - `units/0440_jax_unrelenting.cpp:33-83` [documented] low — FIXED (sweep-costs): derives from `WeaponmasterUnit`: any Equipment's declared Equip cost one Power less, non-resource costs included, no text parsing; both abilities choose at finalization; test: RulesCards2Test.RulesCards2_Jax_WeaponmasterChargesANonResourceEquipCost, RulesCards2Test.RulesCards2_Jax_WeaponmasterStillChargesThePrintedEnergy, SweepCostsTest.Equip_ATriggerItCausesResolvesWithTheEquip
   - Text: "[Equip] one of your Equipment to me for [A] less"
   - Code: the Equip cost is re-parsed from the gear's `ability_text`; Equipment whose Equip cost has more than one Power or any non-rune part is never offered to Weaponmaster (in-file ENGINE-GAP), and `attachFree` bypasses the gear's own `onEquip`.
   - Scenario: Equipment with "[Equip] [1][O][O]" on board when Jax is played -> not offered, though Weaponmaster should allow it for [1][O].

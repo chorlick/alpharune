@@ -20,11 +20,16 @@ public:
     //  battlefield -4 [M] this turn."
     // The mode and then that mode's target are chosen as the spell is played.
     //
-    // ENGINE-GAP: "[Repeat] — [1] / [A] / [1][A]" (three separate Repeat
-    // costs) is a shape GameEngine::parseRepeatCost cannot express, so no
-    // Repeat is offered and one mode is chosen per play. The "haven't already
-    // chosen" memory below is ready for it: it belongs to ONE play of the
-    // card (keyed by the chain item), so a later cast starts fresh.
+    // "[Repeat] — [1] / [A] / [1][A]": three separate Repeat costs, each
+    // payable once (CR 820.1.c.2-3), so the spell runs up to four times and
+    // each run picks a mode not yet chosen. The "haven't already chosen"
+    // memory belongs to ONE play of the card (keyed by the chain item), so a
+    // later cast starts fresh.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 1},
+                RepeatCost{.power = 1, .power_domain = Domain::Count},
+                RepeatCost{.energy = 1, .power = 1, .power_domain = Domain::Count}};
+    }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     static constexpr const char* kMaskKey = "curtain_call_used_mask";
     static constexpr const char* kPlayKey = "curtain_call_play";

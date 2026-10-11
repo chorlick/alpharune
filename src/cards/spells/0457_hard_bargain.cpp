@@ -15,6 +15,10 @@ namespace {
 class HardBargain : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [2]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 2}};
+    }
     // "Counter a spell unless its controller pays [2]."
     // Peek-and-pop: the spell answered is the top of the chain, so that is
     // also what makes this playable — a spell further down, under an ability,

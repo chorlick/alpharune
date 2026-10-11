@@ -19,14 +19,65 @@ public:
     //
     // "You may kill a friendly unit as an additional cost to play me. If you
     //  do, I cost [1] less for each Energy it costs and [Y] less for each Power
-    //  it costs."
-    // ENGINE GAP: this is an OPTIONAL non-resource additional cost (kill a
-    // friendly unit) whose payment REDUCES Atakhan's own play cost by the
-    // killed unit's printed Energy/Power. The only play-cost-reduction hook is
-    // selfCostReduction, which is const/read-only — it cannot make the
-    // play-time kill choice nor remove the chosen unit. There is no optional
-    // additional-cost path that both sacrifices a unit AND feeds its cost back
-    // as a reduction. Left unimplemented; would require engine support.
+    //  it costs." An additional cost chosen before payment (CR 356.2.b); the
+    //  killed unit's printed cost comes from the CardDB (a token costs nothing).
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId player) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == player && obj.location.has_value())
+                out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    static PlayCostAdjust worth(const GameState& state, const CardDB& db, GameObjectId unit) {
+        PlayCostAdjust adj;
+        const auto& obj = state.getObject(unit);
+        if (obj.card_def_id == kInvalidId || obj.isToken()) return adj;
+        const auto& d = db.get(obj.card_def_id);
+        adj.energy_reduction = d.energy_cost;
+        adj.power_reduction = d.power_cost;
+        return adj;
+    }
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)self;
+        const auto units = friendlyUnits(state, player);
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.payable = !units.empty();
+        // Energy matters most for a [10] card; ties go to the Power.
+        for (auto id : units) {
+            const auto w = worth(state, db, id);
+            if (w.energy_reduction > c.best.energy_reduction ||
+                (w.energy_reduction == c.best.energy_reduction &&
+                 w.power_reduction > c.best.power_reduction)) c.best = w;
+        }
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        // Only units whose cost leaves me payable can be chosen when the
+        // full cost is out of reach.
+        const bool may_decline = affordable(PlayCostAdjust{});
+        std::vector<GameObjectId> units;
+        for (auto id : friendlyUnits(ctx.state, ctx.controller))
+            if (may_decline || affordable(worth(ctx.state, ctx.executor.cardDB(), id)))
+                units.push_back(id);
+        if (units.empty()) return {};
+        if (may_decline &&
+            !ctx.executor.confirmNow(ctx.controller,
+                                     "Atakhan: kill a friendly unit to reduce my cost by its cost"))
+            return {};
+        const GameObjectId unit = ctx.executor.chooseObjectNow(ctx.controller, units);
+        if (unit == kInvalidId) return {};
+        const PlayCostAdjust adj = worth(ctx.state, ctx.executor.cardDB(), unit);
+        ctx.executor.killObject(unit);
+        ctx.events.logTrace("ATAKHAN: killed a friendly unit -> costs [" +
+                            std::to_string(adj.energy_reduction) + "] and " +
+                            std::to_string(adj.power_reduction) + " Power less");
+        return adj;
+    }
     //
     // "When I attack, the defender must kill one of their units here." The
     // defender chooses which (nothing is targeted, CR 355.10.e).

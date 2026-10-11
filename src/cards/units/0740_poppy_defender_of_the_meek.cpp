@@ -15,22 +15,33 @@ class PoppyDefenderOfTheMeek : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "You may spend 3 XP as an additional cost to play me. If you do, I cost
-    //  [3] less." ([Ambush]/[Tank] engine-handled.)
-    // The optional XP-for-discount is modeled via selfCostReduction (the only
-    // play-cost-reduction hook) + an XP deduction at play. APPROXIMATION: the
-    // discount is taken automatically whenever the player has >=3 XP (the
-    // optional "you may" is not surfaced as a separate yes/no, since the engine
-    // has no optional XP additional-cost path that also reduces base cost).
-    int selfCostReduction(const GameState& state, PlayerId player) const override {
-        return state.player(player).xp >= 3 ? 3 : 0;
+    //  [3] less." ([Ambush]/[Tank] engine-handled.) An additional cost chosen
+    //  before payment (CR 356.2.b): the player is asked, unless only the
+    //  discount makes me affordable. Nothing is spent when an effect puts me
+    //  into play without paying.
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.payable = state.player(player).xp >= 3;
+        c.best.energy_reduction = 3;
+        return c;
     }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
         auto& ps = ctx.state.player(ctx.controller);
-        if (ps.xp >= 3) {
-            ps.xp -= 3;
-            ctx.events.logTrace("POPPY, DEFENDER: spent 3 XP (cost [3] less)");
-        }
+        if (ps.xp < 3) return {};
+        if (affordable(PlayCostAdjust{}) &&
+            !ctx.executor.confirmNow(ctx.controller,
+                                     "Poppy, Defender of the Meek: spend 3 XP to cost [3] less"))
+            return {};
+        ps.xp -= 3;
+        ctx.events.logTrace("POPPY, DEFENDER: spent 3 XP (cost [3] less)");
+        PlayCostAdjust adj;
+        adj.energy_reduction = 3;
+        return adj;
     }
 private:
     const CardDef def_ = [] {

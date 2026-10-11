@@ -777,7 +777,10 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
 // chain item. Zero in the default case.
 void TriggerManager::queueOwnDeathTrigger(GameObjectId object, PlayerId controller) {
     const auto& obj = state_.getObject(object);
-    const int extra = state_.player(controller).deathknell_double_count;
+    // Only a [Deathknell] ability is repeated: a plain "When I die ..." (Draven,
+    // Audacious "When I die in combat") is not a Deathknell effect.
+    const int extra = obj.hasKeyword(Keyword::Deathknell)
+        ? state_.player(controller).deathknell_double_count : 0;
     const int fires = 1 + std::max(0, extra);
     for (int i = 0; i < fires; ++i) {
         const ChainItemId item_id = chain_.addAbility(object, controller, obj.card_def_id);

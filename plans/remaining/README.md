@@ -1,10 +1,11 @@
 # What is still open
 
-One item, in one file. Everything else is in `plans/completed/`.
+Two items, in one file. Everything else is in `plans/completed/`.
 
 | Item | What | File | When |
 |---|---|---|---|
 | 9.UU1 | Size the card id space for Radiance (210) and Legacy (about 400): user decision | `09-found-during-fix-run.md` | Stage 5 follow-up (checkpoint), then the final gate again |
+| 9.VV1 | A real game ends as `engine_error` (Switcheroo left unpayable); found with the new deck lists | `09-found-during-fix-run.md` | Stage 5 follow-up (checkpoint) |
 
 Not plan items, kept elsewhere:
 - Play-UI follow-ups deferred by the user: `docs/play-ui-followups.md`.

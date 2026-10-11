@@ -35,7 +35,9 @@ public:
                 return bf.has_value() && *bf == *my_bf;
             });
         std::vector<GameObjectId> damaged;
-        if (!splitDamageAmong(ctx, "Volibear, Furious", 5, ctx.source, legal, damaged)) return;
+        // "any number of": none is a legal choice (CR 355.13).
+        if (!splitDamageAmong(ctx, "Volibear, Furious", 5, ctx.source, legal, damaged,
+                              /*may_choose_none=*/true)) return;
         // Kill only after all of the damage is marked.
         {   // the batch is for these kills only
             DeathBatch together(ctx.executor, damaged);   // they die at the same time

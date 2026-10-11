@@ -40,6 +40,12 @@ bool Card::costDueNow(CardContext& ctx) {
     if (!r.has_value()) return true;
     if (r->finalizing) {
         if (r->finalize_costs_paid) return false;   // paid earlier in this pass
+        if (!(r->finalize_checked & 32)) {
+            // First "due" of this run: remember the state, so the engine can
+            // tell whether the card went on to pay before asking a question.
+            r->finalize_checked |= 32;
+            r->cost_due_fingerprint = costStateFingerprint(ctx.state);
+        }
         r->finalize_checked |= 4;
         return true;
     }
@@ -47,6 +53,37 @@ bool Card::costDueNow(CardContext& ctx) {
     if (r->finalize_checked & 8) return false;
     r->finalize_checked |= 16;
     return true;
+}
+
+uint64_t Card::costStateFingerprint(const GameState& state) {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    for (const auto& ps : state.players) {
+        mix(ps.hand.size()); mix(ps.trash.size()); mix(ps.banishment.size());
+        mix(ps.main_deck.size()); mix(ps.rune_deck.size());
+        mix(static_cast<uint64_t>(ps.xp)); mix(static_cast<uint64_t>(ps.score));
+        mix(static_cast<uint64_t>(ps.rune_pool.energy));
+        mix(static_cast<uint64_t>(ps.rune_pool.totalPower()));
+        mix(static_cast<uint64_t>(ps.rune_pool.unit_energy + ps.rune_pool.spell_energy +
+                                  ps.rune_pool.showdown_energy));
+    }
+    // Order-independent over the object map.
+    uint64_t objects = 0;
+    for (const auto& [id, obj] : state.objects) {
+        uint64_t o = 1469598103934665603ull;
+        auto omix = [&o](uint64_t v) { o = (o ^ v) * 1099511628211ull; };
+        omix(static_cast<uint64_t>(id));
+        omix(static_cast<uint64_t>(obj.zone));
+        omix(obj.location.has_value() ? 1u : 0u);
+        omix(obj.is_exhausted ? 1u : 0u);
+        omix(static_cast<uint64_t>(obj.buff_count));
+        omix(static_cast<uint64_t>(obj.damage_marked));
+        omix(static_cast<uint64_t>(obj.empowered));
+        omix(obj.attached_to.has_value() ? static_cast<uint64_t>(*obj.attached_to) + 1 : 0u);
+        objects += o;
+    }
+    mix(objects);
+    return h;
 }
 
 bool Card::costAlreadyPaid(const CardContext& ctx) {

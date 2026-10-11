@@ -173,8 +173,12 @@ iteration must apply these.
   test, done later with the user, is basic checkpoints that beat random or
   MCTS. libtorch: PyTorch 2.5.1 (CUDA 12.1) is already installed in the conda
   env `riftbound` (`~/miniconda3/envs/riftbound/lib/python3.12/site-packages/torch`,
-  with `share/cmake/Torch/TorchConfig.cmake`); try that before downloading
-  anything. Every design call made on the user's behalf is listed for review.
+  with `share/cmake/Torch/TorchConfig.cmake`). The engine's `CMakeLists.txt`
+  already has the opt-in wiring: `-DRIFTBOUND_BUILD_LIBTORCH=ON`, which uses
+  `LIBTORCH_DIR` if set and otherwise downloads libtorch 2.5.1
+  (`RIFTBOUND_LIBTORCH_VARIANT` = `cpu` ~200 MB, or `cu121` ~2.5 GB). No
+  downloaded copy is on disk now. Use that switch; point `LIBTORCH_DIR` at the
+  conda copy first, download only if that does not link. Every design call made on the user's behalf is listed for review.
 - **Stage 5 and v6 (user, 2026-10-11):** the trainer plan does not run until
   the engine fixes are merged, and every finding is required first. If stage 5
   is reached unattended, follow README stage 5: check whether v6 has replaced

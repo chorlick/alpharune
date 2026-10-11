@@ -140,7 +140,7 @@ protected:
         play.player = player;
         play.card = card;
         play.targets = std::move(targets);
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); },
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); },
                    p1_agent, p2_agent, player);
     }
 
@@ -612,7 +612,7 @@ TEST_F(ReviewFixC2Test, GuerillaWarfare_ChoosesTheCardsAndHidingIsFreeThisTurn) 
     hide.player = P1;
     hide.card = h1;
     hide.chosen_battlefield = 0;
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(hide); });
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(hide); settleLikeTheEngine(e); });
     EXPECT_TRUE(state.getObject(h1).is_hidden);
 
     state.player(P1).resetTurnTracking();
@@ -990,7 +990,7 @@ TEST_F(ReviewFixC2Test, Shakedown_TheUnitsControllerMayHaveTheCasterDrawTwoInste
 
     EnginePathAgent refuses(script({V(0)}));
     playWithTargets(addToHand(P1, kShakedown), {champion}, nullptr, &refuses);
-    EXPECT_EQ(state.getObject(champion).damage_marked, 6);
+    EXPECT_TRUE(inTrash(P2, champion)) << "6 to a 5-Might unit: dead after the cleanup";
     EXPECT_EQ(handSize(P1), 2);
 }
 
@@ -1346,7 +1346,7 @@ TEST_F(ReviewFixC2Test, DefenderOfTomorrow_TheGearToReadyIsChosen) {
     act.ability_source = legend;
     act.ability_index = 0;
     EnginePathAgent agent(script({O(g2)}));
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, &agent);
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); }, &agent);
     EXPECT_FALSE(state.getObject(g2).is_exhausted);
     EXPECT_TRUE(state.getObject(g1).is_exhausted);
     EXPECT_TRUE(state.getObject(g3).is_exhausted);
@@ -1358,7 +1358,7 @@ TEST_F(ReviewFixC2Test, DefenderOfTomorrow_TheGearToReadyIsChosen) {
     state.player(P1).rune_pool.energy = 1;
     // While Empowered the printed first ability is still on offer: mode 1 = "Ready 2 gear".
     EnginePathAgent two(script({V(1), O(g3), O(g1)}));
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, &two);
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); }, &two);
     EXPECT_FALSE(state.getObject(g3).is_exhausted);
     EXPECT_FALSE(state.getObject(g1).is_exhausted);
 }

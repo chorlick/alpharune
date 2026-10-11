@@ -17,6 +17,9 @@
 #include "openspiel/action_vocab.h"
 #include "rules/deck_validator.h"
 
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -322,6 +325,92 @@ TEST(StrongIds, HistoryTokensAndSlotsAreTheNumbersOfTheBinaryBeforeIdsWereTypes)
 
     EXPECT_EQ(openspiel::historyToken(Intent::endTurn(PlayerId::Player1), state),
               3408968969468510209LL);
+}
+
+// Plan item 9.RR1. The compiler cannot see an integer slot written as one id
+// kind and read as another, or read with the wrong "none". Every place that
+// makes an object id out of a slot (`GameObjectId::fromRaw`) was paired by
+// hand with the write that fills the slot (the table is in
+// plans/reports/strong-ids-followup-1.md): same kind, same encoding (plain,
+// id + 1 with 0 for none, or kInvalidId.raw()), a "none" test that matches.
+// This is the audited list. A new reader, or one more in a listed file, fails
+// here until it has been paired too and the count is updated.
+TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
+    const std::map<std::string, int> audited = {
+        {"src/cards/card.cpp", 7},
+        {"src/cards/card_helpers.h", 9},
+        {"src/cards/gear/0412_the_zero_drive.cpp", 1},
+        {"src/cards/gear/0698_scryer_s_bloom.cpp", 1},
+        {"src/cards/gear/0854_bottled_constellation.cpp", 1},
+        {"src/cards/gear/0924_shady_spectacles.cpp", 1},
+        {"src/cards/legends/0553_void_burrower.cpp", 3},
+        {"src/cards/legends/0756_deceiver.cpp", 1},
+        {"src/cards/spells/0062_reinforce.cpp", 3},
+        {"src/cards/spells/0115_promising_future.cpp", 2},
+        {"src/cards/spells/0153_overt_operation.cpp", 2},
+        {"src/cards/spells/0183_stacked_deck.cpp", 4},
+        {"src/cards/spells/0209_cull_the_weak.cpp", 1},
+        {"src/cards/spells/0247_icathian_rain.cpp", 1},
+        {"src/cards/spells/0253_fox_fire.cpp", 2},
+        {"src/cards/spells/0255_dragon_s_rage.cpp", 1},
+        {"src/cards/spells/0309_flash.cpp", 1},
+        {"src/cards/spells/0457_hard_bargain.cpp", 1},
+        {"src/cards/spells/0475_guards.cpp", 2},
+        {"src/cards/spells/0513_arise.cpp", 2},
+        {"src/cards/spells/0516_hostile_takeover.cpp", 1},
+        {"src/cards/spells/0616_tricksy_tentacles.cpp", 2},
+        {"src/cards/spells/0665_disposal_order.cpp", 1},
+        {"src/cards/spells/0693_abandon.cpp", 1},
+        {"src/cards/spells/0701_bone_skewer.cpp", 1},
+        {"src/cards/spells/0704_heedless_resurrection.cpp", 2},
+        {"src/cards/spells/0730_undying_loyalty.cpp", 1},
+        {"src/cards/spells/0757_mirror_image.cpp", 2},
+        {"src/cards/spells/0876_wild_claw.cpp", 3},
+        {"src/cards/spells/0894_decree_of_discord.cpp", 2},
+        {"src/cards/spells/0927_shuriken_flip.cpp", 1},
+        {"src/cards/spells/0943_lightning_rush.cpp", 3},
+        {"src/cards/units/0109_dr_mundo_expert.cpp", 1},
+        {"src/cards/units/0141_kinkou_monk.cpp", 2},
+        {"src/cards/units/0347_rell_magnetic.cpp", 1},
+        {"src/cards/units/0449_overzealous_fan.cpp", 1},
+        {"src/cards/units/0491_rek_sai_swarm_queen.cpp", 2},
+        {"src/cards/units/0643_keeper_of_masks.cpp", 1},
+        {"src/core/game_state.h", 2},
+        {"src/io/play_server.cpp", 3},
+    };
+    const char* root_env = std::getenv("RIFTBOUND_ROOT");
+    const std::filesystem::path src = std::filesystem::path(root_env ? root_env : "..") / "src";
+    ASSERT_TRUE(std::filesystem::is_directory(src)) << src;
+    const std::string needle = "GameObjectId::fromRaw(";
+    std::map<std::string, int> found;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(src)) {
+        if (!entry.is_regular_file()) continue;
+        const auto ext = entry.path().extension();
+        if (ext != ".cpp" && ext != ".h") continue;
+        const std::string rel =
+            "src/" + std::filesystem::relative(entry.path(), src).generic_string();
+        if (rel == "src/core/types.h") continue;   // the definition and its comment
+        std::ifstream in(entry.path());
+        std::string line;
+        int n = 0;
+        while (std::getline(in, line))
+            for (auto at = line.find(needle); at != std::string::npos;
+                 at = line.find(needle, at + needle.size()))
+                ++n;
+        if (n > 0) found[rel] = n;
+    }
+    for (const auto& [file, n] : found) {
+        const auto it = audited.find(file);
+        EXPECT_TRUE(it != audited.end())
+            << file << " reads an object id from an integer slot and is not on the audited list:"
+            << " pair the reader with the slot's writer (kind, encoding, none) and add it";
+        if (it != audited.end()) {
+            EXPECT_EQ(n, it->second) << file << ": the number of slot readers changed;"
+                                     << " pair the new one with its writer and update the count";
+        }
+    }
+    for (const auto& [file, n] : audited)
+        EXPECT_TRUE(found.count(file)) << file << " no longer reads a slot: take it off the list";
 }
 
 }  // namespace riftbound::test::strong_ids

@@ -58,6 +58,11 @@ public:
             }
             if (drawn != kInvalidId && ctx.state.objectExists(drawn)) {
                 auto& obj = ctx.state.getObject(drawn);
+                // No EffectExecutor::lookBeforeReveal (Void Hatchling 341) here: the
+                // card revealed was picked from cards already looked at, so a look at
+                // the top card shows nothing new, and recycling it first changes no
+                // zone — "Recycle the rest" puts it on the bottom anyway, and if it is
+                // the picked card it is drawn anyway.
                 ctx.events.emit(CardRevealedEvent{
                     drawn, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,

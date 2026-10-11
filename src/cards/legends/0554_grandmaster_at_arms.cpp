@@ -46,13 +46,13 @@ public:
             [&](GameObjectId g) { return unitsFor(ctx.state, me, g); });
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (gear == kInvalidId || unit == kInvalidId) return;
-        // attachFree has no board check of its own: both ends must be there,
-        // and still mine.
+        // Both ends must still be on the board (EffectExecutor::attachGear
+        // checks that too, but only after the unattach below) and still mine.
         if (!equipEndsOnBoard(ctx.state, gear, unit)) return;
         if (ctx.state.getObject(gear).controller != me ||
             ctx.state.getObject(unit).controller != me) return;
-        // Through unattachGear first, so the old bearer's "for as long as this
-        // is attached" effects end (attachFree alone would skip the hook).
+        // Taken off the old bearer first (attachGear would do the same for
+        // an Equipment that is still attached, CR 718.5.d).
         ctx.executor.unattachGear(gear);
         attachFree(ctx, gear, unit);
         ctx.events.logTrace("GRANDMASTER AT ARMS: attached " + ctx.state.getObject(gear).name +

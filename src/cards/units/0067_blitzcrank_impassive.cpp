@@ -33,13 +33,15 @@ public:
         // (my base, a battlefield my controller controls — CR 355.2) and so
         // declare no extraPlayLocations(). Pull an enemy unit to here. My
         // controller chooses which (CR 383.3); units that can't be chosen by
-        // enemy spells and abilities are not offered.
+        // enemy spells and abilities are not offered, nor are units they
+        // can't move (the executor would leave it where it is).
         auto elsewhere = [&]() {
             std::vector<GameObjectId> out;
             const auto here = ctx.state.getObject(ctx.source).battlefieldId();
             if (!here) return out;   // not at a battlefield: nothing to move "to here"
             out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                return o.controller != ctx.controller && o.battlefieldId() != here;
+                return o.controller != ctx.controller && o.battlefieldId() != here &&
+                       !o.cant_be_moved_by_enemy;
             });
             std::sort(out.begin(), out.end());
             return out;

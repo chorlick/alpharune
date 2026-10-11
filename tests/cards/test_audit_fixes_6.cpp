@@ -554,7 +554,8 @@ TEST_F(AuditFix6Test, SmokeMirrors_SameLocationNoSwapStillDraws) {
 
 // Fewer than two targets → no swap, but "Draw 1." is its own sentence and
 // still happens (CR 359.3.e.5: only the missing target's part is lost).
-TEST_F(AuditFix6Test, SmokeMirrors_FewerThanTwoTargetsNoOp) {
+// Was: SmokeMirrors_FewerThanTwoTargetsNoOp.
+TEST_F(AuditFix6Test, SmokeMirrors_FewerThanTwoTargetsNoSwapButStillDraws) {
     auto a = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
     addToDeck(P1, kInvalidId);
 

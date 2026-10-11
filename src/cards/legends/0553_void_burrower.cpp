@@ -24,7 +24,8 @@ namespace {
 //     one" is decided then (CR 383.3.a.3): we snapshot the top-2 ids into
 //     resume_data[1]/[2], and publish a banish choice (a "skip" slot plus
 //     each revealed card). Phase tracked in resume_data[3]: -1 nothing done,
-//     0 cost paid, 1 waiting for the banish choice.
+//     0 cost paid, 1 waiting for the banish choice, 2 waiting for where a
+//     banished unit is played (CR 355.2.a; resume_data[0] is that unit).
 //   - On re-entry: banish + play the chosen card (or none), recycle whatever
 //     of the top-2 wasn't banished.
 class VoidBurrower : public LegendCard {
@@ -50,7 +51,7 @@ public:
         if (conf == -1) return;  // waiting for agent
 
         // Ensure our private resume_data slots exist: [1]/[2]= the revealed
-        // ids, [3]=phase.
+        // ids, [3]=phase, [0]= the unit whose location is being asked.
         while (ri.resume_data.size() < 4) ri.resume_data.push_back(-1);
         if (conf == 1 && costDueNow(ctx) && ri.resume_data[3] < 0) {
             ctx.executor.exhaustObject(ctx.source);   // the cost, paid once
@@ -63,6 +64,9 @@ public:
 
         if (phase == 0) {
             // First pass of the effect: reveal top 2.
+            // Void Hatchling: "If you would reveal cards from a deck, look at
+            // the top card first." — once, before the two are revealed.
+            ctx.executor.lookBeforeReveal(ctx.controller);
             auto& ps = ctx.state.player(ctx.controller);
             GameObjectId a = kInvalidId, b = kInvalidId;
             int n = static_cast<int>(ps.main_deck.size());
@@ -106,9 +110,49 @@ public:
         GameObjectId a = static_cast<GameObjectId>(ri.resume_data[1]);
         GameObjectId b = static_cast<GameObjectId>(ri.resume_data[2]);
         GameObjectId banished = kInvalidId;
-        auto choice = ctx.executor.takeChoice();
-        if (choice && !choice->chosen_objects.empty())
-            banished = choice->chosen_objects[0];
+        // CR 355.2.a: no location is printed, so a unit goes to its
+        // controller's base or to a battlefield they control (and may be
+        // played to), their choice. Gear goes to base.
+        const auto& bfs = ctx.state.battlefields;
+        auto unitPlayableAt = [&](const BattlefieldState& bf) {
+            return bf.controller.has_value() && *bf.controller == ctx.controller &&
+                   !bf.blocks_unit_play &&
+                   !ctx.state.player(ctx.controller).units_play_base_only;
+        };
+        std::optional<LocationId> where_to;
+        if (phase == 2) {
+            // Re-entered with the location (0 = base, 1 + i = battlefield slot i).
+            banished = static_cast<GameObjectId>(ri.resume_data[0]);
+            const int v = takenValue(ctx, 0);
+            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
+                where_to = LocationId{BattlefieldLocation{bfs[v - 1].id}};
+        } else {
+            auto choice = ctx.executor.takeChoice();
+            if (choice && !choice->chosen_objects.empty())
+                banished = choice->chosen_objects[0];
+            // Asked while both cards are still revealed on the deck, and only
+            // for a unit that can be paid for (unpaid, it is not played).
+            if ((banished == a || banished == b) && banished != kInvalidId &&
+                ctx.state.objectExists(banished) &&
+                ctx.state.getObject(banished).isUnit() &&
+                ctx.state.getObject(banished).zone == ZoneType::MainDeck &&
+                ctx.executor.canPlayPayingCost(ctx.controller, banished)) {
+                std::vector<Intent> where;
+                for (size_t i = 0; i < bfs.size(); ++i)
+                    if (unitPlayableAt(bfs[i]))
+                        where.push_back(valChoice(ctx.controller, static_cast<int>(i) + 1,
+                            "Void Burrower: play to battlefield " + std::to_string(i)));
+                if (!where.empty()) {
+                    where.insert(where.begin(),
+                                 valChoice(ctx.controller, 0, "Void Burrower: play to base"));
+                    ri.resume_data[0] = static_cast<int32_t>(banished);
+                    ri.resume_data[3] = 2;   // phase = awaiting the location
+                    ctx.executor.requestChoice(ctx.controller, std::move(where),
+                                               "Void Burrower: where to play it");
+                    return;
+                }
+            }
+        }
 
         // Remove the top-2 from the deck (those we revealed).
         std::vector<GameObjectId> top;
@@ -133,7 +177,7 @@ public:
             // "then play it". The text does not waive the cost (CR 356.1.b.2):
             // playPayingCost takes the card out of banishment once it is paid
             // for; otherwise it simply stays banished.
-            ctx.executor.playPayingCost(ctx.controller, banished);
+            ctx.executor.playPayingCost(ctx.controller, banished, where_to);
         }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);

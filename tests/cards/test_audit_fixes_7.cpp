@@ -135,24 +135,43 @@ TEST_F(AuditFix7Test, ArenasGreatest_PerPlayerGate) {
 // ─── [407] Ornn, Forge God ─────────────────────────────────────────────────────
 // "+1 [M] for each friendly gear" (passive aura) + Weaponmaster on-play equip.
 
+// Through the engine (plans/09 item 9.N6): the aura tests run the engine's own
+// aura pass (GameEngine::recalculateAuras, which calls the card's hook) instead
+// of calling applyPassiveAura themselves, and the Weaponmaster tests queue the
+// play trigger through TriggerManager with an agent that accepts the "may".
+
 TEST_F(AuditFix7Test, Ornn_PassiveAuraPerFriendlyGear) {
     auto ornn = addUnit(P1, 407, /*might=*/0, /*at_bf=*/0);  // def might = 4
     addGear(P1, kInvalidId, 0, /*at_bf=*/0);
     addGear(P1, kInvalidId, 0, /*at_bf=*/0);
 
-    Card* card = card_registry.get(407);
-    card->applyPassiveAura(state, P1);
+    withEngine([](GameEngine& e) { e.testHook_recalculateAuras(); });
 
     int bonus = 0;
-    for (auto& ae : state.getObject(ornn).aura_effects) bonus += ae.might_bonus;
+    for (auto& ae : state.getObject(ornn).aura_effects)
+        if (ae.source == ornn) bonus += ae.might_bonus;
     EXPECT_EQ(bonus, 2);  // +1 per friendly gear, 2 gear
 }
 
 TEST_F(AuditFix7Test, Ornn_NoAuraWithoutGear) {
     auto ornn = addUnit(P1, 407, 0, /*at_bf=*/0);
-    Card* card = card_registry.get(407);
-    card->applyPassiveAura(state, P1);
-    EXPECT_TRUE(state.getObject(ornn).aura_effects.empty());  // no gear -> no buff
+    // Control for the pass itself: with a gear the engine does apply the aura.
+    auto gear = addGear(P1, kInvalidId, 0, /*at_bf=*/0);
+    withEngine([](GameEngine& e) { e.testHook_recalculateAuras(); });
+    int with_gear = 0;
+    for (auto& ae : state.getObject(ornn).aura_effects)
+        if (ae.source == ornn) with_gear += ae.might_bonus;
+    ASSERT_EQ(with_gear, 1);
+
+    // The gear leaves the board: the next pass gives Ornn nothing.
+    state.getObject(gear).location = std::nullopt;
+    state.getObject(gear).zone = ZoneType::Trash;
+    state.player(P1).trash.push_back(gear);
+    withEngine([](GameEngine& e) { e.testHook_recalculateAuras(); });
+    int bonus = 0;
+    for (auto& ae : state.getObject(ornn).aura_effects)
+        if (ae.source == ornn) bonus += ae.might_bonus;
+    EXPECT_EQ(bonus, 0);  // no gear -> no buff
 }
 
 TEST_F(AuditFix7Test, Ornn_OnlyCountsFriendlyGear) {
@@ -160,39 +179,46 @@ TEST_F(AuditFix7Test, Ornn_OnlyCountsFriendlyGear) {
     addGear(P1, kInvalidId, 0, /*at_bf=*/0);  // friendly
     addGear(P2, kInvalidId, 0, /*at_bf=*/0);  // enemy — should not count
 
-    Card* card = card_registry.get(407);
-    card->applyPassiveAura(state, P1);
+    withEngine([](GameEngine& e) { e.testHook_recalculateAuras(); });
 
     int bonus = 0;
-    for (auto& ae : state.getObject(ornn).aura_effects) bonus += ae.might_bonus;
+    for (auto& ae : state.getObject(ornn).aura_effects)
+        if (ae.source == ornn) bonus += ae.might_bonus;
     EXPECT_EQ(bonus, 1);  // only the one friendly gear
 }
 
 TEST_F(AuditFix7Test, Ornn_WeaponmasterEquipsEquipmentGear) {
-    EffectExecutor exec(state, events, card_db);
-    exec.setCardRegistry(&card_registry);
     auto ornn = addUnit(P1, 407, 0, /*at_bf=*/0);
-    // A friendly gear tagged "Equipment" with a might bonus.
+    // A friendly gear tagged "Equipment" with a might bonus. It has no card
+    // behind it, so there is no Equip cost to fund.
     auto gear = addGear(P1, kInvalidId, /*might_bonus=*/3, /*at_bf=*/0);
     state.getObject(gear).tags = {"Equipment"};
     withEquipmentCard(gear);   // CR 821.1.c.4: see the fixture
 
-    fireTriggerAs(407, P1, ornn, TriggerType::WhenYouPlayMe, exec);
+    // [Weaponmaster] is a "may": the default agent would decline it.
+    EnginePathAgent yes(EnginePathAgent::choosing(gear));
+    fireTriggerThroughEngine(ornn, TriggerType::WhenYouPlayMe, &yes);
 
-    EXPECT_TRUE(state.getObject(gear).attached_to.has_value());
+    ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";
+    ASSERT_TRUE(state.getObject(gear).attached_to.has_value());
     EXPECT_EQ(*state.getObject(gear).attached_to, ornn);
     EXPECT_EQ(state.getObject(ornn).attachment_might_bonus, 3);
+    EXPECT_FALSE(state.chain.exists());
 }
 
 TEST_F(AuditFix7Test, Ornn_WeaponmasterNoOpWithoutEquipment) {
-    EffectExecutor exec(state, events, card_db);
-    exec.setCardRegistry(&card_registry);
     auto ornn = addUnit(P1, 407, 0, /*at_bf=*/0);
-    addGear(P1, kInvalidId, 3, /*at_bf=*/0);  // not tagged Equipment
+    auto gear = addGear(P1, kInvalidId, 3, /*at_bf=*/0);  // not tagged Equipment
 
-    fireTriggerAs(407, P1, ornn, TriggerType::WhenYouPlayMe, exec);
+    // An agent that would accept and take this gear: it is never asked.
+    EnginePathAgent yes(EnginePathAgent::choosing(gear));
+    fireTriggerThroughEngine(ornn, TriggerType::WhenYouPlayMe, &yes);
 
+    EXPECT_TRUE(yes.prompts.empty()) << "no Equipment: nothing to offer";
+    EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
+    EXPECT_TRUE(state.getObject(ornn).attachments.empty());
     EXPECT_EQ(state.getObject(ornn).attachment_might_bonus, 0);
+    EXPECT_FALSE(state.chain.exists());
 }
 
 // ─── [466] Switcheroo (Spell) ──────────────────────────────────────────────────

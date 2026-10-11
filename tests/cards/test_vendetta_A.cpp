@@ -745,8 +745,10 @@ TEST_F(VendettaA, Vendetta_AkaliSilent_MightOnMoveToBattlefield) {
 
 // ── 828 Riven, Shattered ─────────────────────────────────────────────────
 
+// Through the engine (plans/09 item 9.N6; these were direct fireTriggerAs
+// calls): "When I attack, choose an enemy unit here. Deal 2 to it for each
+// Equipment attached to me." The enemy unit is chosen at finalization.
 TEST_F(VendettaA, Vendetta_Riven_AttackDamagePerAttachedEquipment) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
     const Card* c = card_registry.get(kRiven);
     ASSERT_NE(c, nullptr);
     EXPECT_TRUE(c->firesOn(TriggerType::WhenYouPlayMe)) << "[Weaponmaster]";
@@ -756,30 +758,43 @@ TEST_F(VendettaA, Vendetta_Riven_AttackDamagePerAttachedEquipment) {
     auto enemy = addUnit(P2, kInvalidId, 9, 0);
     auto far_enemy = addUnit(P2, kInvalidId, 9, 1);
 
-    fireTriggerAs(kRiven, P1, riven, TriggerType::WhenIAttack, exec);
+    EnginePathAgent bare(EnginePathAgent::choosing(enemy));
+    fireTriggerThroughEngine(riven, TriggerType::WhenIAttack, &bare);
     EXPECT_EQ(state.getObject(enemy).damage_marked, 0) << "no Equipment attached";
+    EXPECT_FALSE(state.chain.exists());
 
     auto sword = addGear(P1, /*equipment=*/true);
     auto shield = addGear(P1, /*equipment=*/true);
     auto trinket = addGear(P1, /*equipment=*/false);
     for (auto g : {sword, shield, trinket}) {
         state.getObject(g).attached_to = riven;
+        state.getObject(g).location = state.getObject(riven).location;   // CR 719.3
+        state.getObject(g).zone = state.getObject(riven).zone;
         state.getObject(riven).attachments.push_back(g);
     }
-    fireTriggerAs(kRiven, P1, riven, TriggerType::WhenIAttack, exec);
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    fireTriggerThroughEngine(riven, TriggerType::WhenIAttack, &agent);
+    EXPECT_FALSE(agent.wasOffered(far_enemy)) << "only an enemy unit here";
     EXPECT_EQ(state.getObject(enemy).damage_marked, 4) << "2 per Equipment (2 of 3 gear)";
     EXPECT_EQ(state.getObject(far_enemy).damage_marked, 0) << "only an enemy unit here";
+    EXPECT_FALSE(state.chain.exists());
 }
 
+// The play trigger through the engine: [Weaponmaster] is a "may", so the
+// agent accepts it and chooses the Equipment (the default agent declines).
+// The test Equipment has no card behind it, so there is no Equip cost to fund.
 TEST_F(VendettaA, Vendetta_Riven_WeaponmasterEquipsOnPlay) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
     auto riven = addUnit(P1, kRiven, 0, 0);
     auto sword = addGear(P1, /*equipment=*/true);
     auto enemy = addUnit(P2, kInvalidId, 9, 0);
-    fireTriggerAs(kRiven, P1, riven, TriggerType::WhenYouPlayMe, exec);
+    EnginePathAgent yes(EnginePathAgent::choosing(sword));
+    fireTriggerThroughEngine(riven, TriggerType::WhenYouPlayMe, &yes);
+    ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";
     ASSERT_TRUE(state.getObject(sword).attached_to.has_value());
     EXPECT_EQ(*state.getObject(sword).attached_to, riven);
+    EXPECT_EQ(state.getObject(riven).attachments.size(), 1u);
     EXPECT_EQ(state.getObject(enemy).damage_marked, 0) << "play trigger is not the attack trigger";
+    EXPECT_FALSE(state.chain.exists());
 }
 
 // ── 829 Shen, Scourge of Shadows ─────────────────────────────────────────

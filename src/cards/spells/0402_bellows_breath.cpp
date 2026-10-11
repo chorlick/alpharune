@@ -50,23 +50,45 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty()) return;
-        // "at the same location" — anchor on the first chosen target's
-        // location; only damage targets sharing it. Collect first, kill
-        // lethal after (AoE iterator-safety per CLAUDE.md).
-        std::optional<LocationId> anchor;
-        if (ctx.state.objectExists(targets[0]))
-            anchor = ctx.state.getObject(targets[0]).location;
-        if (!anchor.has_value()) return;
-
-        std::vector<GameObjectId> hit;
+        // "at the same location" is a requirement on the targets as a group
+        // (CR 355.11). The targets still legal are grouped by where they are
+        // NOW: if they no longer share a location, the controller chooses
+        // which legal subset is affected — all of the chosen units at one
+        // location, never part of them (CR 355.11.b, 355.11.b.1, whose
+        // example is this card). Units that moved together are still a group.
+        std::vector<std::pair<LocationId, std::vector<GameObjectId>>> groups;
         for (auto t : targets) {
             if (!ctx.state.objectExists(t)) continue;
-            auto& obj = ctx.state.getObject(t);
-            if (obj.location != anchor) continue;
+            const auto& obj = ctx.state.getObject(t);
+            if (!obj.isUnit() || !obj.location.has_value()) continue;
+            const LocationId loc = *obj.location;
+            auto it = std::find_if(groups.begin(), groups.end(),
+                                   [&](const auto& g) { return g.first == loc; });
+            if (it == groups.end()) { groups.push_back({loc, {t}}); continue; }
             // de-dup (action gen may repeat in degenerate cases)
-            if (std::find(hit.begin(), hit.end(), t) != hit.end()) continue;
-            hit.push_back(t);
+            if (std::find(it->second.begin(), it->second.end(), t) == it->second.end())
+                it->second.push_back(t);
         }
+        if (groups.empty()) return;
+        size_t use = 0;
+        if (groups.size() > 1) {
+            std::vector<std::string> labels;
+            for (const auto& g : groups) {
+                std::string names;
+                for (auto t : g.second) {
+                    if (!names.empty()) names += ", ";
+                    names += ctx.state.getObject(t).name;
+                }
+                labels.push_back("Deal 1 to " + names);
+            }
+            const int which = pickMode(ctx, "Bellows Breath: units at the same location",
+                                       static_cast<int>(groups.size()), labels);
+            if (which == -1) return;   // waiting on the controller
+            if (which >= 0 && which < static_cast<int>(groups.size()))
+                use = static_cast<size_t>(which);
+        }
+        // Collect first, kill lethal after (AoE iterator-safety per CLAUDE.md).
+        const std::vector<GameObjectId> hit = groups[use].second;
         for (auto t : hit) {
             if (ctx.state.objectExists(t)) ctx.executor.dealDamage(t, 1, ctx.source);
         }

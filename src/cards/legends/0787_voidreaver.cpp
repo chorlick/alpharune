@@ -73,7 +73,7 @@ public:
         } else {
             auto legal = enumerateLegalTargets(ctx.state, ctx.controller, ability_index);
             picked = pickTarget(ctx,
-                ability_index == 0 ? "Voidreaver: buff" : "Voidreaver: recall",
+                ability_index == 0 ? "Voidreaver: buff" : "Voidreaver: move to base",
                 legal);
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
@@ -84,7 +84,7 @@ public:
                                  ctx.state.getObject(picked).name);
         } else {
             ctx.executor.moveToBase(picked);
-            ctx.events.logTrace("VOIDREAVER: spent 2 XP to recall " +
+            ctx.events.logTrace("VOIDREAVER: spent 2 XP to move " +
                                  ctx.state.getObject(picked).name + " to base");
         }
     }

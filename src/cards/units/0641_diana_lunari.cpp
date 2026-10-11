@@ -37,6 +37,10 @@ public:
         // [Predict] — look at top card, agent may recycle it.
         ctx.executor.predict(ctx.controller, 1);
 
+        // "then reveal the top card of your Main Deck" is a reveal of its own:
+        // Void Hatchling's look ("If you would reveal cards from a deck, look
+        // at the top card first") comes after the Predict, before the reveal.
+        ctx.executor.lookBeforeReveal(ctx.controller);
         // Reveal the (possibly new) top card of the main deck.
         if (ps.main_deck.empty()) return;
         GameObjectId top = ps.main_deck.back();

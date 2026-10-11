@@ -38,9 +38,12 @@ public:
         auto eligible = [&]() {
             const PlayerId me = ctx.controller;
             const BattlefieldId here = *bf;
-            auto out = chooseableUnits(ctx.state, me, [me, here](const GameObject& obj) {
+            auto out = chooseableUnits(ctx.state, me, [&, me, here](const GameObject& obj) {
                 auto obf = obj.battlefieldId();
-                return obj.controller != me && obf && *obf == here && obj.current_might <= 5;
+                // Not a unit enemy abilities can't move, and not one that
+                // can't move to base (the executor would leave it here).
+                return obj.controller != me && obf && *obf == here && obj.current_might <= 5 &&
+                       !obj.cant_be_moved_by_enemy && !moveToBaseBlocked(ctx.state, obj);
             });
             return offerableChoices(ctx, out);
         };

@@ -17,6 +17,9 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouDefendHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
+        // Void Hatchling: "If you would reveal cards from a deck, look at the
+        // top card first." — the defender reveals from their own Main Deck.
+        ctx.executor.lookBeforeReveal(ctx.controller);
         if (ps.main_deck.empty()) return;
 
         // Top of deck = back of vector.

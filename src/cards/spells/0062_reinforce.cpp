@@ -19,15 +19,38 @@ public:
     //  among them, then play it, reducing its cost by [5]. Recycle the
     //  remaining cards."
     // Progress lives on the resolving item: resume_point kAwait while the
-    // prompt is out, resume_data = the cards looked at.
+    // prompt is out, resume_data = the cards looked at. kAwaitWhere while the
+    // chosen unit's location is asked (CR 355.2.a): that unit's id is then
+    // appended to resume_data.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
         if (ri.resume_point == kDone) return;
         auto& ps = ctx.state.player(ctx.controller);
+        const auto& bfs = ctx.state.battlefields;
+        const EffectExecutor::EffectPlayCost reduced{.energy_reduction = 5};
+        // A battlefield the controller may play a unit to (as Wild Claw 876):
+        // one they control, not one where units can't be played, and none
+        // while they may only play units to base.
+        auto unitPlayableAt = [&](const BattlefieldState& bf) {
+            return bf.controller.has_value() && *bf.controller == ctx.controller &&
+                   !bf.blocks_unit_play && !ps.units_play_base_only;
+        };
+
+        // Re-entered with the location: take the chosen unit back off the end.
+        GameObjectId chosen = kInvalidId;
+        std::optional<LocationId> where_to;
+        const bool placing = ri.resume_point == kAwaitWhere;
+        if (placing && !ri.resume_data.empty()) {
+            chosen = static_cast<GameObjectId>(ri.resume_data.back());
+            ri.resume_data.pop_back();
+            const int v = takenValue(ctx, 0);
+            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
+                where_to = LocationId{BattlefieldLocation{bfs[v - 1].id}};
+        }
 
         // First entry: look at up to 5 from the top.
-        if (ri.resume_point != kAwait) {
+        if (ri.resume_point != kAwait && !placing) {
             ri.resume_data.clear();
             int n = std::min(5, static_cast<int>(ps.main_deck.size()));
             for (int i = 0; i < n; ++i) {
@@ -50,11 +73,33 @@ public:
                 units.push_back(cid);
         }
 
-        GameObjectId chosen = kInvalidId;
-        if (ri.resume_point == kAwait) {
+        if (placing) {
+            if (std::find(units.begin(), units.end(), chosen) == units.end())
+                chosen = kInvalidId;
+        } else if (ri.resume_point == kAwait) {
             chosen = takenObject(ctx);
             if (std::find(units.begin(), units.end(), chosen) == units.end())
                 chosen = kInvalidId;   // "Banish none"
+            // CR 355.2.a: no location is printed, so the unit goes to its
+            // controller's base or to a battlefield they control, their
+            // choice. Asked before anything leaves the deck, and only for a
+            // unit that can be paid for (unpaid, it is not played).
+            if (chosen != kInvalidId &&
+                ctx.executor.canPlayPayingCost(ctx.controller, chosen, reduced)) {
+                std::vector<Intent> where;
+                for (size_t i = 0; i < bfs.size(); ++i)
+                    if (unitPlayableAt(bfs[i]))
+                        where.push_back(valChoice(ctx.controller, static_cast<int>(i) + 1,
+                                                  "Reinforce: play to battlefield " + std::to_string(i)));
+                if (!where.empty()) {
+                    where.insert(where.begin(), valChoice(ctx.controller, 0, "Reinforce: play to base"));
+                    ri.resume_data.push_back(static_cast<int32_t>(chosen));
+                    ctx.executor.requestChoice(ctx.controller, std::move(where),
+                                               "Reinforce: where to play it");
+                    ri.resume_point = kAwaitWhere;
+                    return;
+                }
+            }
         } else if (!units.empty()) {
             // "You may": banishing none is always an option.
             std::vector<Intent> options;
@@ -82,9 +127,8 @@ public:
             // Banished, then played for its cost less [5]. Paying is optional
             // (CR 445.2): unpaid, it stays banished.
             ctx.executor.banishObject(chosen);
-            const EffectExecutor::EffectPlayCost reduced{.energy_reduction = 5};
             const bool played =
-                ctx.executor.playPayingCost(ctx.controller, chosen, std::nullopt, reduced);
+                ctx.executor.playPayingCost(ctx.controller, chosen, where_to, reduced);
             ctx.events.logTrace("REINFORCE: banished " + ctx.state.getObject(chosen).name +
                                 (played ? " and played it (cost reduced)" : "; not played"));
         } else {
@@ -92,7 +136,7 @@ public:
         }
     }
 private:
-    enum : int { kAwait = 21, kDone = 22 };
+    enum : int { kAwait = 21, kDone = 22, kAwaitWhere = 23 };
 private:
     const CardDef def_ = [] {
         CardDef d;

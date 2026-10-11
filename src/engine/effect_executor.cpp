@@ -880,6 +880,13 @@ void EffectExecutor::moveToBase(GameObjectId target) {
         events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
         return;
     }
+    // "They can't move it this turn" (GameObject::cant_move_this_turn): its
+    // controller's spells and abilities don't move it either.
+    if (obj.cant_move_this_turn && state_.chain.resuming.has_value() &&
+        state_.chain.resuming->controller == obj.controller) {
+        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
+        return;
+    }
     auto old_loc = obj.location;
 
     LocationId dest = BaseLocation{obj.controller};
@@ -904,6 +911,13 @@ void EffectExecutor::moveToBattlefield(GameObjectId target, BattlefieldId bf) {
     if (obj.cant_be_moved_by_enemy && state_.chain.resuming.has_value() &&
         state_.chain.resuming->controller != obj.controller) {
         events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
+        return;
+    }
+    // "They can't move it this turn" (GameObject::cant_move_this_turn): its
+    // controller's spells and abilities don't move it either.
+    if (obj.cant_move_this_turn && state_.chain.resuming.has_value() &&
+        state_.chain.resuming->controller == obj.controller) {
+        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
         return;
     }
     auto old_loc = obj.location;

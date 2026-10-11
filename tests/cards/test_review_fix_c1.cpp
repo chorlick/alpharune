@@ -1056,7 +1056,12 @@ TEST_F(ReviewFixC1Test, ProdigalExplorer_IsAReactionWithAGate) {
     auto ezreal = addLegend(P1, kProdigalExplorer);
     addToDeck(P1, kInvalidId);
     EXPECT_FALSE(offered(ezreal, 0)) << "has chosen nothing this turn";
-    state.player(P1).chose_enemy_unit_this_turn = true;
+    // The printed gate is "twice" (PlayerState::enemy_choices_this_turn; the
+    // count itself is tested through the engine in
+    // SweepFlowTest.ProdigalExplorer_NeedsTwoEnemyChoicesBySpellsOrUnitAbilities).
+    state.player(P1).enemy_choices_this_turn = 1;
+    EXPECT_FALSE(offered(ezreal, 0)) << "once is not twice";
+    state.player(P1).enemy_choices_this_turn = 2;
     EXPECT_TRUE(offered(ezreal, 0));
 }
 

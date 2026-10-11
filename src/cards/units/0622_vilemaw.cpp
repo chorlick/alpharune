@@ -22,8 +22,10 @@ public:
     // "Enemy units here with less Might than me don't deal combat damage."
     // Continuous conditional → an aura recomputed each cleanup: for each
     // on-board Vilemaw, suppress combat damage on enemy units at its
-    // battlefield whose current Might is below Vilemaw's.
-    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+    // battlefield whose current Might is below Vilemaw's. It compares Might,
+    // so it is decided in the Might-dependent hook, on this pass's Might.
+    bool hasMightDependentAura() const override { return true; }
+    void applyMightDependentAura(GameState& state, PlayerId controller) const override {
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             auto my_bf = self.battlefieldId();

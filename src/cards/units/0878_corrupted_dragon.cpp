@@ -17,10 +17,9 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "If your score is not within 3 points of the Victory Score, I enter ready."
-    // The Victory Score in effect: the mode's score plus what battlefields in
-    // play add to it (TurnState::victory_score_bonus, set every aura pass).
+    // The Victory Score in effect (GameState::effectiveVictoryScore).
     bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
-        const int victory = state.mode.victory_score + state.turn.victory_score_bonus;
+        const int victory = state.effectiveVictoryScore();
         return victory - state.player(controller).score > 3;
     }
     // "When I attack, you may move any number of enemy units here each with

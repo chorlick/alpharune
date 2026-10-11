@@ -23,6 +23,11 @@ public:
     // "Spend 2 XP: [Buff] me. (Give me a +1 [M] buff if I don't have one.)"
     // The XP is the activation cost: the engine checks and charges it as the
     // ability is activated (ActivationCost::xp_cost).
+    // Activating it while I already have a buff is LEGAL and is offered: the
+    // text has no "use only if", and CR 427.1.c says a unit with a Buff "can
+    // still be chosen for actions that Buff units, but will not be Buffed as
+    // part of the execution" (427.1.b.1). The 2 XP is spent for no effect; the
+    // engine does not hide a legal action because it is a poor one.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
         ActivationCost cost;

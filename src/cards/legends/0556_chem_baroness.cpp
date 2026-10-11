@@ -43,7 +43,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject& self) {
             const bool close =
-                state.player(controller).score + 3 >= state.mode.victory_score;
+                state.player(controller).score + 3 >= state.effectiveVictoryScore();
             self.card_counters["__gold_add_bonus_energy"] = close ? 1 : 0;
         });
     }

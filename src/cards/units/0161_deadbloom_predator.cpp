@@ -10,17 +10,13 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "play me to an occupied enemy battlefield" matched by generateMainPhaseActions
 
 class DeadbloomPredator : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // [Deflect] is engine-handled.
     // "You may play me to an occupied enemy battlefield."
-    // ENGINE-HANDLED: GameEngine::generateMainPhaseActions matches the substring
-    // "play me to an occupied enemy battlefield" in ability_text (registry.json)
-    // and emits PlayCard intents to enemy-occupied battlefields.
-    // getPlayLocations() is never consulted, so no per-card override is needed.
+    unsigned extraPlayLocations() const override { return kPlayToOccupiedEnemyBattlefield; }
+    // [Deflect] is engine-handled.
 private:
     const CardDef def_ = [] {
         CardDef d;

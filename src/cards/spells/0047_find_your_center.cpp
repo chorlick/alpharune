@@ -18,7 +18,7 @@ public:
         // "If an opponent's score is within 3 points of the Victory Score,
         // this costs [2] less." — the Victory Score in effect, battlefields
         // that raise it included.
-        int vs = state.mode.victory_score + state.turn.victory_score_bonus;
+        int vs = state.effectiveVictoryScore();
         if (state.player(opponent(player)).score >= vs - 3) return 2;
         return 0;
     }

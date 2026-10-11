@@ -18,12 +18,11 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: `drawCards(ctx.controller, 1)` unconditionally; no hand-size check and no triggerCondition.
   - Scenario: Jinx player with 5 cards in hand draws an extra card every turn.
 
-- [ ] **514 Prodigal Explorer** - `legends/0514_prodigal_explorer.cpp:17` [confirmed] high
+- [x] **514 Prodigal Explorer** - `legends/0514_prodigal_explorer.cpp:17` [confirmed] high — FIXED: the gate is `PlayerState::enemy_choices_this_turn >= 2`: every site that locks in a choice calls `GameState::noteChosen`, which counts enemy units and gear chosen by a spell or a unit's ability; test: SweepFlowTest.ProdigalExplorer_NeedsTwoEnemyChoicesBySpellsOrUnitAbilities
   - Text: "[E]: [Reaction] - Draw 1. Use only if you've chosen enemy units and/or gear twice this turn with spells or unit abilities."
   - Code: no `canActivateAbility` gate at all; also `isActionAbility()` = true and `isReactionAbility()` not overridden, so it is Action-timed, not Reaction-timed.
   - Scenario: Ezreal player exhausts the legend for a free card every turn having chosen nothing; conversely it can never be used in a closed state as a Reaction.
   - c1: timing FIXED (`isReactionAbility`, no longer an Action ability) and an interim gate added (`chose_enemy_unit_this_turn`); test: ReviewFixC1Test.ProdigalExplorer_IsAReactionWithAGate
-  - BLOCKED: the printed gate needs a per-turn COUNT of enemy units and gear chosen by spells or unit abilities. The engine keeps only the bool `PlayerState::chose_enemy_unit_this_turn`, set at five engine sites (`card.cpp` commitChoice, `chain_manager.cpp` x2, `game_engine.cpp` chooseTargetsAtFinalize, `card_helpers.h` splitDamageAmong); it must become a counter that also counts gear.
 
 - [x] **296 Hand of Noxus** - `legends/0296_hand_of_noxus.cpp:21` [confirmed] high — FIXED: `onActivate` does nothing unless a card was played this turn; test: ReviewFixC1Test.HandOfNoxus_NoEnergyWithoutLegion
   - Text: "[E]: [Reaction], [Legion] - [Add] [1]. (Get the effect if you've played a card this turn.)"
@@ -183,11 +182,10 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: the tag is the most common tag among enemy units on board; the player never chooses, and if the opponent has no units no tag is ever named.
   - Scenario: played on an empty enemy board -> the gear can never do anything; the ability is still offered (broad gate, line 60) and exhausts for nothing.
 
-- [ ] **784 Wuju Master** - `legends/0784_wuju_master.cpp:48` [documented] medium
+- [x] **784 Wuju Master** - `legends/0784_wuju_master.cpp:48` [documented] medium — FIXED: [Level 11] lists the legend in `PlayerState::units_enter_ready_by`, so every unit its controller plays enters ready; test: SweepFlowTest.WujuMaster_LevelElevenUnitsEnterReady
   - Text: "[Level 11][>] Your units enter ready."
   - Code: not implemented.
   - Scenario: at 11 XP units still enter exhausted.
-  - BLOCKED: needs a player-level "your units enter ready" flag read by `resolvePermanent`. Stream c4 adds `PlayerState::units_enter_ready` for Magma Wurm on its branch; once that is merged this is `if (xp >= 11) state.player(controller).units_enter_ready = true;` in `applyPassiveAura`.
 
 - [x] **319 Lady of Luminosity - Starter** - `legends/0319_lady_of_luminosity_starter.cpp:23` [plausible] low — FIXED: confirmed — reads the played spell from the trigger's subject instead of the newest spell in the trash; test: ReviewFixC1Test.LadyOfLuminosity_LooksAtTheSpellThatWasPlayed
   - Text: "When you play a spell that costs [5] or more, draw 1."

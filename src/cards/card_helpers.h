@@ -797,8 +797,8 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             if (n <= 0 || !ctx.state.objectExists(id)) continue;
             const auto& o = ctx.state.getObject(id);
             // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
-            if (o.isUnit() && o.location.has_value() && o.controller != ctx.controller)
-                ctx.state.player(ctx.controller).chose_enemy_unit_this_turn = true;
+            ctx.state.noteChosen(ctx.controller, id,
+                ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr);
             ctx.events.logTrace("SPLIT: " + label + " -> " + std::to_string(n) +
                                 " to " + o.name);
             ctx.executor.dealDamage(id, n, damage_source);
@@ -901,10 +901,14 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
     return true;
 }
 
-/// "Units can't move from here to base" (Vilemaw's Lair): true when `u` is at
-/// a battlefield that says so. Only a move is stopped; a recall is not a move
-/// (CR 458).
+/// True when `u` may not MOVE to base: it is at a battlefield that says
+/// "Units can't move from here to base" (Vilemaw's Lair), or the unit itself
+/// can't ("I can't move to base" — Determined Sentry; "Units can't move to
+/// base" — Minotaur Reckoner's aura). The same three conditions the Standard
+/// Move generator reads (GameEngine::standardMoveDestinations). Only a move
+/// is stopped; a recall is not a move (CR 458).
 inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
+    if (u.cant_move_to_base || u.aura_cant_move_to_base) return true;
     const auto here = u.battlefieldId();
     if (!here.has_value()) return false;
     for (const auto& bf : state.battlefields)

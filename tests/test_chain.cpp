@@ -1048,7 +1048,9 @@ TEST_F(ChainTestFixture, LegionParsesAsConditionGate) {
 
     Card* card = card_registry.get(kDangerousDuoId);
     ASSERT_NE(card, nullptr);
-    EXPECT_TRUE(card->requiresLegion());
+    // [Legion] is a condition the card checks as its trigger resolves (there
+    // is no engine-side gate to ask, plans/08 item 8.7): the card is a play
+    // trigger whose effect depends on cards_played_this_turn.
     EXPECT_EQ(card->triggerType(), TriggerType::WhenYouPlayMe);
 }
 

@@ -19,12 +19,11 @@ Engine facts traced for this batch (referenced below):
   - Text: "Kill a friendly unit. If you do, give +[M] equal to its Might to another friendly unit this turn. Draw 1."
   - Code: `count = 2, must_be_friendly`, no `needsPlayTimeTargetPair`. The generator's count-2 branch pairs friendly targets with ENEMY targets; the enemy list is always empty, so zero Play intents are emitted.
   - Scenario: Deathgrip in hand with two friendly units and enough runes -> the card is never offered as a legal action.
-- [ ] **645 Smoke and Mirrors** - `spells/0645_smoke_and_mirrors.cpp:18,23` [confirmed] high
+- [x] **645 Smoke and Mirrors** - `spells/0645_smoke_and_mirrors.cpp:18,23` [confirmed] high — FIXED: played from facedown it is offered with the first unit at the hidden battlefield and the second anywhere else — the hidden-play generator (`GameEngine::generateHiddenPlayActions`) judges each target slot on its own and asks the card which slots its text frees (`Card::hiddenTargetFreeOfBattlefield`, CR 811.1.d.4); the card reads its two units through `Card::chosenTarget`; test: SweepFlowTest.HiddenPlay_SmokeAndMirrors_SecondTargetIsFreeOfTheBattlefield, .HiddenPlay_AnOrdinaryTwoTargetSpellNeedsBothTargetsHere
   - Text: "Choose a unit you control and another unit you control at a different location. If at least one of them has [Temporary], move each to the other's location. Draw 1."
   - Code: same `count = 2, must_be_friendly` shape -> never offered from hand. From facedown the hidden-play generator (game_engine.cpp:3154) passes ONE target, and `onResolve` returns at `targets.size() < 2` before the draw.
   - Scenario: from hand the card is unplayable; hidden then played -> no swap and no "Draw 1".
   - c3: FIXED from hand: `enumerateLegalTargetSets` lists ordered pairs at different locations, and Draw 1 no longer depends on the two units; test: C3Test.SmokeAndMirrors_IsOfferedForUnitsAtDifferentLocationsOnly, AuditFix6Test.SmokeMirrors_FewerThanTwoTargetsNoOp (corrected)
-  - BLOCKED: played from facedown it is still never offered — the hidden-play generator (`game_engine.cpp`, `all_here` filter) requires EVERY target at the hidden battlefield, but CR 811.1.d.4 frees a target whose own restriction makes that impossible (the rule's example is this card). Needs an engine change: per-target treatment in the hidden generator.
 - [x] **501 Danger Zone** - `spells/0501_danger_zone.cpp:17-23` [confirmed] high — FIXED: no target; every Mech unit you control gets +1 [M]; test: C3Test.DangerZone_GivesEveryMechAndOnlyMechsPlusOne, C3Test.DangerZone_IsPlayableWithNoUnits
   - Text: "Give your Mechs +1 [M] this turn."
   - Code: takes one friendly-unit target (any unit, no Mech check) and gives that one unit +1.

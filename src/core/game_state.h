@@ -119,6 +119,10 @@ struct PlayerState {
     bool cannot_gain_points = false; // Tianna Crownguard ("opponents can't gain points")
     int bonus_damage_dealt = 0;      // Annie, Fiery ("your spells/abilities deal +N")
     bool grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer ("friendly units may be played to open battlefields")
+    // "Friendly units can be played to an occupied battlefield if an enemy unit
+    // is alone there" (Arachnoid Horror): read by the unit-play generator for
+    // every unit this player plays.
+    bool grant_units_lone_enemy_bf = false;
     bool units_play_base_only = false;         // set on the RESTRICTED player — Mageseeker Warden ("opponents can only play units to their base")
     bool tokens_enter_ready = false;           // Renata Glasc, Industrialist ("your tokens enter ready")
     // Magma Wurm ("Other friendly units enter ready"): the on-board units of
@@ -254,6 +258,10 @@ struct PlayerState {
     int cards_burned_this_turn = 0;       // cards this player Burned this turn (CR 441)
     int cards_banished_this_turn = 0;     // owned cards banished this turn
     bool chose_enemy_unit_this_turn = false;   // Hungry Wolf
+    // How many times this turn this player chose an enemy unit or gear with a
+    // spell or a unit's ability (Prodigal Explorer). Counted with the flag
+    // above by GameState::noteChosen.
+    int enemy_choices_this_turn = 0;
 
     // This player's most recent combat this turn: where it was, whether they
     // attacked, and how much combat damage they assigned beyond what was
@@ -288,6 +296,7 @@ struct PlayerState {
         cards_burned_this_turn = 0;
         cards_banished_this_turn = 0;
         chose_enemy_unit_this_turn = false;
+        enemy_choices_this_turn = 0;
         last_combat_bf = kInvalidId;
         last_combat_attacker = false;
         excess_combat_damage = 0;
@@ -404,10 +413,18 @@ struct BattlefieldState {
     // against the live turn so the marker auto-expires next turn (no reset).
     int conquered_on_turn = -1;
     PlayerId conquered_by_player = PlayerId::None;
+    // Who controlled the battlefield just before that conquer; nullopt = it
+    // was uncontrolled ("When I conquer a battlefield that was uncontrolled").
+    // Valid together with conquered_on_turn / conquered_by_player.
+    std::optional<PlayerId> conquered_from;
 
     // Aura-derived per-BF flags (reset + recomputed each recalculateAuras by the
     // BF/unit cards' applyPassiveAura):
-    bool surcharge_enemy_multi_move = false; // Mageseeker Investigator (725): enemy multi-unit moves here cost [A]/extra unit
+    // Mageseeker Investigator: "Opponents must pay [A] for each unit beyond
+    // the first to move multiple units to my battlefield at the same time."
+    // [p] = the [A] player p owes per unit beyond the first of one Standard
+    // Move to this battlefield (CR 144.3).
+    int multi_move_tax[2] = {0, 0};
     // Noxus Saboteur (018): "Your opponents' [Hidden] cards can't be revealed
     // here." [p] is set for the player whose facedown cards here can't be
     // turned face up, i.e. can't be played from facedown (CR 811).
@@ -754,6 +771,28 @@ struct GameState {
 
     const PlayerState& player(PlayerId id) const {
         return players[playerIndex(id)];
+    }
+
+    /// The points needed to win right now: the mode's Victory Score plus what
+    /// battlefields in play add to it (TurnState::victory_score_bonus, rebuilt
+    /// every aura pass from Card::victoryScoreModifier). What a card means by
+    /// "the Victory Score" — never read mode.victory_score for that.
+    int effectiveVictoryScore() const { return mode.victory_score + turn.victory_score_bonus; }
+
+    /// Bookkeeping for `chooser` having chosen `chosen` with the spell or
+    /// ability `by` (nullptr when it is on no chain item): "if you've chosen
+    /// an enemy unit this turn" and the count of enemy units / gear chosen
+    /// with spells or unit abilities. Every site that locks in a choice calls
+    /// this once per chosen object. A unit / gear is one on the board.
+    void noteChosen(PlayerId chooser, GameObjectId chosen, const ChainItem* by) {
+        if (!objectExists(chosen)) return;
+        const auto& o = getObject(chosen);
+        if (!o.location.has_value() || o.controller == chooser) return;
+        if (o.isUnit()) player(chooser).chose_enemy_unit_this_turn = true;
+        if (!o.isUnit() && !o.isGear()) return;
+        const bool spell_or_unit_ability = by && (by->is_spell ||
+            (by->is_ability && objectExists(by->source) && getObject(by->source).isUnit()));
+        if (spell_or_unit_ability) player(chooser).enemy_choices_this_turn++;
     }
 
     // ── Observation tracking ──────────────────────────────────────────

@@ -10,8 +10,9 @@
 ///   - All main deck + sideboard cards match legend's domain identity
 ///   - All runes match legend's domain identity
 ///   - Max 3 copies of any named card across main deck + sideboard
-///   - Max 3 total signature cards, all matching legend's champion tag
-///   - Chosen champion must be a champion unit with matching tag
+///   - Main deck + sideboard hold only units, gear and spells; no token cards
+///   - Max 3 total signature cards, all carrying the legend's champion tag
+///   - Chosen champion must be a champion unit carrying the legend's champion tag
 ///   - No banned cards (future: ban list support)
 
 #include "core/card_db.h"
@@ -84,6 +85,7 @@ private:
     void checkChampion(const DeckSubmission& deck, ValidationResult& result,
                        const CardDef& legend) const;
     void checkMainDeckSize(const DeckSubmission& deck, ValidationResult& result) const;
+    void checkMainDeckCardTypes(const DeckSubmission& deck, ValidationResult& result) const;
     void checkRuneDeckSize(const DeckSubmission& deck, ValidationResult& result) const;
     void checkBattlefields(const DeckSubmission& deck, ValidationResult& result) const;
     void checkSideboardSize(const DeckSubmission& deck, ValidationResult& result) const;

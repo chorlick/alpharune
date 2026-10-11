@@ -1,9 +1,11 @@
 #include "deck_validator.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 
 namespace riftbound {
@@ -18,6 +20,7 @@ ValidationResult DeckValidator::validate(const DeckSubmission& deck) const {
 
     checkChampion(deck, result, legend);
     checkMainDeckSize(deck, result);
+    checkMainDeckCardTypes(deck, result);
     checkRuneDeckSize(deck, result);
     checkBattlefields(deck, result);
     checkSideboardSize(deck, result);
@@ -59,22 +62,39 @@ void DeckValidator::checkChampion(const DeckSubmission& deck,
         return;
     }
 
-    // Champion must share a tag with the legend (CR 103.2.a.2)
-    bool has_matching_tag = false;
-    for (auto& champ_tag : champ.tags) {
-        for (auto& legend_tag : legend.tags) {
-            if (champ_tag == legend_tag) {
-                has_matching_tag = true;
-                break;
-            }
-        }
-        if (has_matching_tag) break;
+    // The champion must carry the legend's champion tag (CR 103.3.a.2). Any
+    // other tag the two share (Yordle, a region) does not count.
+    const std::string& champion_tag = legend.legendChampionTag();
+    if (champion_tag.empty()) {
+        result.addError("Legend '" + legend.name + "' has no single champion tag");
+        return;
     }
-    if (!has_matching_tag) {
+    if (!champ.hasTag(champion_tag)) {
         result.addError("Chosen champion '" + champ.name +
                         "' doesn't share a champion tag with legend '" +
                         legend.name + "'");
     }
+}
+
+void DeckValidator::checkMainDeckCardTypes(const DeckSubmission& deck,
+                                            ValidationResult& result) const {
+    // The Main Deck holds units, gear and spells (CR 103.3); a sideboard holds
+    // only valid Main Deck cards (Tournament Rules 601.1.c.2). Token reference
+    // cards are not deck cards at all.
+    auto checkCard = [&](CardDefId id, const char* source) {
+        const auto& card = db_.get(id);
+        const bool main_deck_type = card.card_type == CardType::Unit ||
+                                    card.card_type == CardType::Spell ||
+                                    card.card_type == CardType::Gear;
+        if (card.isTokenCard()) {
+            result.addError(std::string(source) + " contains token card: " + card.name);
+        } else if (!main_deck_type) {
+            result.addError(std::string(source) + " contains " +
+                            toString(card.card_type) + " card: " + card.name);
+        }
+    };
+    for (auto id : deck.main_deck) checkCard(id, "Main deck");
+    for (auto id : deck.sideboard) checkCard(id, "Sideboard");
 }
 
 void DeckValidator::checkMainDeckSize(const DeckSubmission& deck,
@@ -109,6 +129,8 @@ void DeckValidator::checkBattlefields(const DeckSubmission& deck,
         const auto& bf = db_.get(id);
         if (bf.card_type != CardType::Battlefield) {
             result.addError("Battlefield slot contains non-battlefield: " + bf.name);
+        } else if (bf.isTokenCard()) {
+            result.addError("Battlefield slot contains token battlefield: " + bf.name);
         }
         if (!bf_names.insert(bf.name).second) {
             result.addError("Duplicate battlefield name: " + bf.name);
@@ -209,22 +231,17 @@ void DeckValidator::checkCopyLimits(const DeckSubmission& deck,
 void DeckValidator::checkSignatureLimits(const DeckSubmission& deck,
                                           ValidationResult& result,
                                           const CardDef& legend) const {
-    // Max 3 total signature cards, all must share legend's champion tag (CR 103.2.d)
+    // Max 3 total signature cards, all must carry the legend's champion tag
+    // (CR 103.3.d.2) — not merely share some tag with it.
     int sig_count = 0;
+    const std::string& champion_tag = legend.legendChampionTag();
 
     auto checkSig = [&](CardDefId id) {
         const auto& card = db_.get(id);
         if (card.super_type != SuperType::Signature) return;
         sig_count++;
 
-        bool tag_match = false;
-        for (auto& ct : card.tags) {
-            for (auto& lt : legend.tags) {
-                if (ct == lt) { tag_match = true; break; }
-            }
-            if (tag_match) break;
-        }
-        if (!tag_match) {
+        if (champion_tag.empty() || !card.hasTag(champion_tag)) {
             result.addError("Signature card '" + card.name +
                             "' doesn't match legend's champion tag");
         }
@@ -253,7 +270,8 @@ DeckSubmission DeckValidator::loadFromDeckList(const std::string& path,
         return (a == std::string::npos) ? std::string{} : s.substr(a, b - a + 1);
     };
     auto lower = [](std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return s;
     };
 
@@ -286,7 +304,11 @@ DeckSubmission DeckValidator::loadFromDeckList(const std::string& path,
         std::istringstream iss(line);
         int count = 0;
         if (!(iss >> count) || count <= 0) fail("expected '<count> <card name>'");
-        std::string name = trim(iss.str().substr(iss.tellg()));
+        // The rest of the line is the name. (Not substr(tellg()): on a line
+        // that is only a count the stream is at EOF and tellg() is -1.)
+        std::string name;
+        std::getline(iss, name);
+        name = trim(name);
         if (name.empty()) fail("missing card name");
         CardDefId id = resolve(name);
 

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,18 +15,27 @@ namespace {
 class CrackshotCorsair : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 1, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-    }
+    // "When I attack, deal 1 to an enemy unit here." "Here" is my
+    // battlefield; the unit is chosen as the ability goes on the chain
+    // (CR 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .must_be_at_battlefield = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> enemies;
+        const auto& self = ctx.state.getObject(ctx.source);
+        if (const auto here = self.battlefieldId())
+            enemies = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller && o.battlefieldId() == here;
+            });
+        std::sort(enemies.begin(), enemies.end());
+        const GameObjectId t = pickTarget(ctx, "Crackshot Corsair: deal 1 to an enemy unit here",
+                                          enemies);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.dealDamage(t, 1, ctx.source);
+        if (ctx.state.getObject(t).location.has_value() &&
+            ctx.state.getObject(t).hasLethalDamage())
+            ctx.executor.killObject(t);
     }
 private:
     const CardDef def_ = [] {

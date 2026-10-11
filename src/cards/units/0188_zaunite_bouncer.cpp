@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,21 @@ namespace {
 class ZauniteBouncer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.bounceToHand(targets[0]);
-    }
+    // "When you play me, return another unit at a battlefield to its owner's
+    // hand." Chosen as the ability goes on the chain (CR 383.3); "another"
+    // excludes me.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_at_battlefield = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+            return o.id != ctx.source && o.isAtBattlefield();
+        });
+        std::sort(units.begin(), units.end());
+        const GameObjectId t = pickTarget(ctx, "Zaunite Bouncer: return another unit to hand",
+                                          units);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.bounceToHand(t);
     }
 private:
     const CardDef def_ = [] {

@@ -60,23 +60,89 @@ public:
         return gear.location.has_value() && !gear.attached_to.has_value() &&
                !banishedWithThis(state, gear).empty();
     }
+    // No location is printed, so each unit goes to its controller's base or to
+    // a battlefield they control, chosen unit by unit (CR 355.2.a). The
+    // callback is re-entered after every answer, and by then the Drive is
+    // banished, so progress lives on the resolving item: resume_point kPlaying
+    // once the cost is paid (kAwaitWhere while a location is being asked) and
+    // resume_data = [units played so far, the units to play...].
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& gear = ctx.state.getObject(ctx.source);
-        // Left the board or was attached in response: the cost can't be paid.
-        if (!gear.location.has_value() || gear.attached_to.has_value()) return;
-        const std::vector<GameObjectId> to_play = banishedWithThis(ctx.state, gear);
-        gear.tracked_objects.clear();
-        // "Banish this" (cost), then the effect.
-        ctx.executor.banishObject(ctx.source);
-        for (auto uid : to_play) {
+        auto& ri = ctx.state.chain.resuming;
+        const auto& bfs = ctx.state.battlefields;
+        // A battlefield the controller may play a unit to (as Wild Claw 876):
+        // one they control, not one where units can't be played, and none
+        // while they may only play units to base.
+        auto unitPlayableAt = [&](const BattlefieldState& bf) {
+            return bf.controller.has_value() && *bf.controller == ctx.controller &&
+                   !bf.blocks_unit_play &&
+                   !ctx.state.player(ctx.controller).units_play_base_only;
+        };
+        auto play = [&](GameObjectId uid, std::optional<LocationId> where) {
             // playIgnoringCost takes the card out of the banishment zone itself.
-            ctx.executor.playIgnoringCost(ctx.controller, uid);
+            ctx.executor.playIgnoringCost(ctx.controller, uid, where);
             ctx.events.logTrace("THE ZERO DRIVE: replayed banished unit " +
                                 ctx.state.getObject(uid).name);
+        };
+
+        std::vector<GameObjectId> to_play;
+        size_t next = 0;
+        const bool resumed = ri.has_value() && !ri->resume_data.empty() &&
+                             (ri->resume_point == kPlaying || ri->resume_point == kAwaitWhere);
+        if (resumed) {
+            next = static_cast<size_t>(ri->resume_data[0]);
+            for (size_t i = 1; i < ri->resume_data.size(); ++i)
+                to_play.push_back(static_cast<GameObjectId>(ri->resume_data[i]));
+            if (ri->resume_point == kAwaitWhere && next < to_play.size()) {
+                // The answer: 0 = base, 1 + i = battlefield slot i.
+                std::optional<LocationId> where;
+                const int v = takenValue(ctx, 0);
+                if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
+                    where = LocationId{BattlefieldLocation{bfs[v - 1].id}};
+                ri->resume_point = kPlaying;
+                play(to_play[next], where);
+                ri->resume_data[0] = static_cast<int32_t>(++next);
+            }
+        } else {
+            auto& gear = ctx.state.getObject(ctx.source);
+            // Left the board or was attached in response: the cost can't be paid.
+            if (!gear.location.has_value() || gear.attached_to.has_value()) return;
+            to_play = banishedWithThis(ctx.state, gear);
+            gear.tracked_objects.clear();
+            // "Banish this" (cost), then the effect.
+            ctx.executor.banishObject(ctx.source);
+            if (ri.has_value()) {
+                ri->resume_data.assign(1, 0);
+                for (auto uid : to_play) ri->resume_data.push_back(static_cast<int32_t>(uid));
+                ri->resume_point = kPlaying;
+            }
+        }
+        for (; next < to_play.size(); ++next) {
+            const GameObjectId uid = to_play[next];
+            // Ask where, when there is a chain item to resume and a
+            // battlefield to offer.
+            if (ri.has_value() && ctx.state.objectExists(uid)) {
+                std::vector<Intent> where;
+                for (size_t i = 0; i < bfs.size(); ++i)
+                    if (unitPlayableAt(bfs[i]))
+                        where.push_back(valChoice(ctx.controller, static_cast<int>(i) + 1,
+                            "The Zero Drive: play to battlefield " + std::to_string(i)));
+                if (!where.empty()) {
+                    where.insert(where.begin(),
+                                 valChoice(ctx.controller, 0, "The Zero Drive: play to base"));
+                    ri->resume_data[0] = static_cast<int32_t>(next);
+                    ctx.executor.requestChoice(ctx.controller, std::move(where),
+                        "The Zero Drive: where to play " + ctx.state.getObject(uid).name);
+                    ri->resume_point = kAwaitWhere;
+                    return;
+                }
+            }
+            play(uid, std::nullopt);
+            if (ri.has_value()) ri->resume_data[0] = static_cast<int32_t>(next + 1);
         }
     }
 private:
+    enum : int { kPlaying = 31, kAwaitWhere = 32 };
     /// The units this Drive banished that are still in banishment.
     static std::vector<GameObjectId> banishedWithThis(const GameState& state,
                                                       const GameObject& gear) {

@@ -54,6 +54,11 @@ public:
         const std::vector<GameObjectId> original_top = topFour(ctx);
         if (drafted != kInvalidId) {
             auto& drafted_obj = ctx.state.getObject(drafted);
+            // No EffectExecutor::lookBeforeReveal (Void Hatchling 341) here: the
+            // card revealed was picked from cards already looked at, so a look at
+            // the top card shows nothing new, and recycling it first changes no
+            // zone — "Recycle the rest" puts it on the bottom anyway, and if it is
+            // the picked card it is drawn anyway.
             // Revealed, then drawn: the opponent sees it and knows it is in hand.
             ctx.events.emit(CardRevealedEvent{
                 /*card=*/drafted,

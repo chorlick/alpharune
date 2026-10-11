@@ -24,6 +24,9 @@ public:
     // controller's banish + recycle rest, prompt opponent; rp2 apply opponent's
     // banish + recycle rest, then both players play their banished card
     // (next player = opponent first). Banished ids stashed in resume_data[0/1].
+    // A unit has no printed location, so the player playing it chooses their
+    // base or a battlefield they control (CR 355.2.a): rp3 while the opponent
+    // is asked where, rp4 while the controller is.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
         PlayerId opp = opponent(ctx.controller);
@@ -86,21 +89,68 @@ public:
             return banished;
         };
 
-        auto play_banished = [&](PlayerId p, GameObjectId banished) {
+        // "ignoring Energy costs": Power is still owed, and paying is
+        // optional (CR 445.2) — unpaid, the card stays banished.
+        const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
+        auto play_banished = [&](PlayerId p, GameObjectId banished,
+                                 std::optional<LocationId> where) {
             if (banished == kInvalidId || !ctx.state.objectExists(banished)) return;
-            // "ignoring Energy costs": Power is still owed, and paying is
-            // optional (CR 445.2) — unpaid, the card stays banished.
-            const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
             // The play takes the card out of banishment once its Power is paid.
-            ctx.executor.playPayingCost(p, banished, std::nullopt, power_only);
+            ctx.executor.playPayingCost(p, banished, where, power_only);
         };
 
-        // Finish: play both banished cards (next player = opponent first).
+        // A battlefield `p` may play a unit to (as Wild Claw 876): one they
+        // control, not one where units can't be played, and none while they
+        // may only play units to base.
+        const auto& bfs = ctx.state.battlefields;
+        auto unitPlayableAt = [&](PlayerId p, const BattlefieldState& bf) {
+            return bf.controller.has_value() && *bf.controller == p &&
+                   !bf.blocks_unit_play && !ctx.state.player(p).units_play_base_only;
+        };
+        // CR 355.2.a: ask `p` where their banished unit goes. Only for a unit
+        // they can pay for, and only with a battlefield to offer. Returns
+        // whether a prompt went out. 0 = base, 1 + i = battlefield slot i.
+        auto prompt_where = [&](PlayerId p, GameObjectId banished) -> bool {
+            if (banished == kInvalidId || !ctx.state.objectExists(banished)) return false;
+            if (!ctx.state.getObject(banished).isUnit()) return false;
+            if (!ctx.executor.canPlayPayingCost(p, banished, power_only)) return false;
+            std::vector<Intent> where;
+            for (size_t i = 0; i < bfs.size(); ++i)
+                if (unitPlayableAt(p, bfs[i]))
+                    where.push_back(valChoice(p, static_cast<int>(i) + 1,
+                        "Promising Future: play to battlefield " + std::to_string(i)));
+            if (where.empty()) return false;
+            where.insert(where.begin(), valChoice(p, 0, "Promising Future: play to base"));
+            ctx.executor.requestChoice(p, std::move(where),
+                                       "Promising Future: where to play it");
+            return true;
+        };
+        auto taken_where = [&](PlayerId p) -> std::optional<LocationId> {
+            const int v = takenValue(ctx, 0);
+            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(p, bfs[v - 1]))
+                return LocationId{BattlefieldLocation{bfs[v - 1].id}};
+            return std::nullopt;   // base
+        };
+
+        // Finish: play both banished cards (next player = opponent first),
+        // each after its player said where. Re-entered at rp3 / rp4 with the
+        // answer to the prompt that went out.
         auto finish = [&]() {
             GameObjectId ctrl_b = static_cast<GameObjectId>(ri.resume_data[0]);
             GameObjectId opp_b   = static_cast<GameObjectId>(ri.resume_data[1]);
-            play_banished(opp, opp_b);
-            play_banished(ctx.controller, ctrl_b);
+            if (ri.resume_point < 3) {
+                if (prompt_where(opp, opp_b)) { ri.resume_point = 3; return; }
+                play_banished(opp, opp_b, std::nullopt);
+            } else if (ri.resume_point == 3) {
+                play_banished(opp, opp_b, taken_where(opp));
+            }
+            if (ri.resume_point != 4) {
+                if (prompt_where(ctx.controller, ctrl_b)) { ri.resume_point = 4; return; }
+                play_banished(ctx.controller, ctrl_b, std::nullopt);
+            } else {
+                play_banished(ctx.controller, ctrl_b, taken_where(ctx.controller));
+            }
+            ri.resume_point = 5;   // done
             ctx.events.logTrace("PROMISING FUTURE: each player banished 1 of top 5, "
                                 "recycled the rest, then played the banished card");
         };
@@ -121,6 +171,10 @@ public:
         }
         if (ri.resume_point == 2) {
             ri.resume_data[1] = static_cast<int32_t>(apply_banish(opp));
+            finish();
+            return;
+        }
+        if (ri.resume_point == 3 || ri.resume_point == 4) {
             finish();
             return;
         }

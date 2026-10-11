@@ -36,6 +36,9 @@ public:
         // needs the missing unit is skipped).
         // Reveal the top 5 of own Main Deck (top = back of vector).
         auto& ps = ctx.state.player(ctx.controller);
+        // Void Hatchling: "If you would reveal cards from a deck, look at the
+        // top card first." — once, before the five are taken.
+        ctx.executor.lookBeforeReveal(ctx.controller);
         int n = std::min(5, static_cast<int>(ps.main_deck.size()));
         std::vector<GameObjectId> revealed;
         for (int i = 0; i < n; ++i) {

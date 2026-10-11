@@ -417,6 +417,7 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
     champ_obj.zone = ZoneType::ChampionZone;
     // Champion zone has no board location — it's a non-board zone
     ps.champion_zone = champ_id;
+    ps.chosen_champion = champ_id;
 
     // Main Deck → shuffled
     for (auto card_def_id : deck.main_deck) {
@@ -1989,11 +1990,14 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     //   while she's in a showdown). Academy's one-shot grant takes precedence.
     if (card.isSpell() && !repeat_cost.valid) {
         if (ps.grant_repeat_base_to_next_spell && card.card_def_id != kInvalidId) {
-            repeat_cost.energy = card_db_.get(card.card_def_id).energy_cost;
-            repeat_cost.power = 0;
-            repeat_cost.power_domain = Domain::Count;  // universal [A]
-            repeat_cost.valid = repeat_cost.energy > 0;
-            ps.grant_repeat_base_to_next_spell = false;  // consume
+            // "[Repeat] equal to its base cost": Energy and Power both. (A
+            // multi-domain spell's Power is charged in its first domain.)
+            const auto& base = card_db_.get(card.card_def_id);
+            repeat_cost.energy = base.energy_cost;
+            repeat_cost.power = base.power_cost;
+            repeat_cost.power_domain = (base.power_cost > 0 && !base.domains.empty())
+                ? base.domains.front() : Domain::Count;
+            repeat_cost.valid = repeat_cost.energy > 0 || repeat_cost.power > 0;
         } else if (ps.spells_have_repeat_energy > 0 || ps.spells_have_repeat_power > 0) {
             repeat_cost.energy = ps.spells_have_repeat_energy;
             repeat_cost.power = ps.spells_have_repeat_power;
@@ -2001,6 +2005,10 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             repeat_cost.valid = true;
         }
     }
+    // The Academy's grant is for "your next spell this turn": this spell uses
+    // it up whether or not the grant could be applied (a spell with a printed
+    // [Repeat] keeps its own; a second, granted instance is not modeled).
+    if (card.isSpell()) ps.grant_repeat_base_to_next_spell = false;
     // Marai Spire (525): "friendly [Repeat] costs cost [1] less."
     if (repeat_cost.valid && ps.repeat_cost_reduction > 0) {
         repeat_cost.energy = std::max(0, repeat_cost.energy - ps.repeat_cost_reduction);
@@ -4831,6 +4839,52 @@ void GameEngine::recalculateAuras() {
         bf.empower_cost_reduction[0] = bf.empower_cost_reduction[1] = 0;  // Risen Altar
     }
 
+    // Step 1a': Equipment-granted keywords and stats. Before the card hooks,
+    // so a hook whose effect depends on a keyword ("Units here with [Tank]
+    // have +1 [M]") sees the ones an Equipment gives (hasKeywordInAuraPass).
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit() || !obj.location.has_value()) continue;
+        for (auto gear_id : obj.attachments) {
+            if (!state_.objectExists(gear_id)) continue;
+            Card* gear_card = card_registry_.get(state_.getObject(gear_id).card_def_id);
+            if (!gear_card) continue;
+
+            // Keywords from effect_text. [Assault N] / [Shield N] are pushed
+            // once, with their value, below — not also as a bare keyword,
+            // which would count as a second instance of 1.
+            int ea = gear_card->equippedAssault();
+            int es = gear_card->equippedShield();
+            auto ekw = gear_card->equippedKeywords();
+            if (ekw.bits != 0) {
+                for (int k = 0; k < static_cast<int>(Keyword::Count); ++k) {
+                    if (ea > 0 && static_cast<Keyword>(k) == Keyword::Assault) continue;
+                    if (es > 0 && static_cast<Keyword>(k) == Keyword::Shield) continue;
+                    if (ekw.has(static_cast<Keyword>(k))) {
+                        GameObject::AuraEffect ae;
+                        ae.source = gear_id;
+                        ae.keyword = static_cast<Keyword>(k);
+                        obj.aura_effects.push_back(ae);
+                    }
+                }
+            }
+            // Assault/Shield/Deflect from effect_text
+            if (ea > 0) {
+                GameObject::AuraEffect ae;
+                ae.source = gear_id;
+                ae.keyword = Keyword::Assault;
+                ae.keyword_value = ea;
+                obj.aura_effects.push_back(ae);
+            }
+            if (es > 0) {
+                GameObject::AuraEffect ae;
+                ae.source = gear_id;
+                ae.keyword = Keyword::Shield;
+                ae.keyword_value = es;
+                obj.aura_effects.push_back(ae);
+            }
+        }
+    }
+
     // Step 1b: Refresh per-object targeting-protection flags from each
     // card's canBeChosenByEnemy() override. Cards on board need their
     // flag set; off-board cards stay default-false. Cheap O(n) pass over
@@ -4892,51 +4946,8 @@ void GameEngine::recalculateAuras() {
     }
 
     // (Steps 2, 3 and 3b parsed ability_text for aura wording. Every aura is
-    // now the card's own Card::applyPassiveAura, applied in Step 1b / 1c.)
-
-    // Step 3c: Equipment-granted keywords and stats
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isUnit() || !obj.location.has_value()) continue;
-        for (auto gear_id : obj.attachments) {
-            if (!state_.objectExists(gear_id)) continue;
-            Card* gear_card = card_registry_.get(state_.getObject(gear_id).card_def_id);
-            if (!gear_card) continue;
-
-            // Keywords from effect_text. [Assault N] / [Shield N] are pushed
-            // once, with their value, below — not also as a bare keyword,
-            // which would count as a second instance of 1.
-            int ea = gear_card->equippedAssault();
-            int es = gear_card->equippedShield();
-            auto ekw = gear_card->equippedKeywords();
-            if (ekw.bits != 0) {
-                for (int k = 0; k < static_cast<int>(Keyword::Count); ++k) {
-                    if (ea > 0 && static_cast<Keyword>(k) == Keyword::Assault) continue;
-                    if (es > 0 && static_cast<Keyword>(k) == Keyword::Shield) continue;
-                    if (ekw.has(static_cast<Keyword>(k))) {
-                        GameObject::AuraEffect ae;
-                        ae.source = gear_id;
-                        ae.keyword = static_cast<Keyword>(k);
-                        obj.aura_effects.push_back(ae);
-                    }
-                }
-            }
-            // Assault/Shield/Deflect from effect_text
-            if (ea > 0) {
-                GameObject::AuraEffect ae;
-                ae.source = gear_id;
-                ae.keyword = Keyword::Assault;
-                ae.keyword_value = ea;
-                obj.aura_effects.push_back(ae);
-            }
-            if (es > 0) {
-                GameObject::AuraEffect ae;
-                ae.source = gear_id;
-                ae.keyword = Keyword::Shield;
-                ae.keyword_value = es;
-                obj.aura_effects.push_back(ae);
-            }
-        }
-    }
+    // now the card's own Card::applyPassiveAura, applied in Step 1b / 1c.
+    // Step 3c, Equipment keywords, moved up to Step 1a'.)
 
     // Step 4: Rebuild cached aura values on all objects
     for (auto& [id, obj] : state_.objects) {

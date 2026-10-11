@@ -82,6 +82,9 @@ struct PlayerState {
     // Special zones (single card or empty)
     GameObjectId champion_zone = kInvalidId;
     GameObjectId legend_zone = kInvalidId;
+    // The object that is this player's Chosen Champion, wherever it is now;
+    // champion_zone only says what currently sits in the zone.
+    GameObjectId chosen_champion = kInvalidId;
 
     // Per-turn tracking
     int cards_played_this_turn = 0;

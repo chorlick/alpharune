@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -11,16 +12,22 @@
 namespace riftbound {
 namespace {
 
+// "When I conquer, give a friendly unit +8 [M] this turn."
 class InviolusVox : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 8);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> friendly;   // "a friendly unit": any of mine on board
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
+                friendly.push_back(id);
+        const GameObjectId t = pickTarget(ctx, "Inviolus Vox: give a friendly unit +8 [M]",
+                                          friendly);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.giveTemporaryMight(t, 8);
     }
 private:
     const CardDef def_ = [] {

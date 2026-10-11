@@ -46,13 +46,26 @@ std::shared_ptr<const ::open_spiel::Game> MakeRiftboundGame(
     return std::shared_ptr<const ::open_spiel::Game>(new RiftboundGame(params));
 }
 
+const SharedCards& sharedCards() {
+    // Card data — including ban status — is owned by the C++ classes, so
+    // there is exactly one table to build. A function-local static is
+    // initialised once, under the compiler's lock.
+    static const SharedCards* const cards = [] {
+        auto* built = new SharedCards();
+        built->registry.loadAll();
+        built->db.buildFromClasses(built->registry);
+        return built;
+    }();
+    return *cards;
+}
+
 RiftboundGame::RiftboundGame(const ::open_spiel::GameParameters& params)
     : Game(kRiftboundGameType, params),
+      card_db_(sharedCards().db),
+      registry_(sharedCards().registry),
       seed_(static_cast<uint64_t>(ParameterValue<int>("seed"))) {
-    // Card data — including ban status — is owned by the C++ classes. The
-    // "registry" GameParameter is accepted but never read.
-    registry_.loadAll();
-    card_db_.buildFromClasses(registry_);
+    // The "registry" GameParameter is accepted but never read. The decks are
+    // read per game: a deck file may change between two LoadGame calls.
     deck1_ = ::riftbound::DeckValidator::loadFromDeckList(
         ParameterValue<std::string>("deck1"), card_db_);
     deck2_ = ::riftbound::DeckValidator::loadFromDeckList(

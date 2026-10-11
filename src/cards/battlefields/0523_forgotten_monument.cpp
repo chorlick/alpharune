@@ -14,6 +14,11 @@ namespace {
 class ForgottenMonument : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Players can't score here until their third turn." While a player is
+    // gated there is no score at all — no point, no ScoreEvent, nothing marked
+    // scored and no conquer / hold trigger (GameEngine::isScoreGatedByTurn).
+    // That differs from "can't gain points", where the battlefield is still
+    // scored (CR 470.1).
     int minTurnToScore() const override { return 3; }
 private:
     const CardDef def_ = [] {

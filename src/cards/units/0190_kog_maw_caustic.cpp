@@ -14,7 +14,7 @@ namespace {
 class KogMawCaustic : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "Deal 4 to all units at MY battlefield": the battlefield I died at
         // (last-known location, CR 383.2.c.3.b). Dying anywhere else (base)
         // there is no such battlefield and nothing is dealt.

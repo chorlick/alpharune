@@ -21,6 +21,8 @@ public:
                     const std::vector<GameObjectId>& /*targets*/) override {
         // "[E]: [Reaction] — [Add] [O]." Resolves immediately (CR 429.2),
         // not via the chain — adds 1 Body power to the controller's pool.
+        // [O] is the Body symbol, this card's own Domain (reprint 542 adds the
+        // same; it once added Order, which is what 03 item 3.17 was about).
         ctx.executor.addFloatingPower(ctx.controller, Domain::Body, 1);
         ctx.events.logTrace("ACTIVATE: Seal of Strength adds [O] (Body power)");
     }

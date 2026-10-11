@@ -1122,7 +1122,8 @@ TEST_F(C5Test, RekSaiRevealIsAMayAndTheBanishIsCounted) {
     EXPECT_EQ(no.prompts.size(), 1u);
 
     state.player(P1).rune_pool.energy = 3;
-    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit)}));
+    // "you may play it here": where it goes is asked (mode 1 = battlefield #0, here).
+    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &yes);
     EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{0})
         << "If it is a unit, you may play it here.";

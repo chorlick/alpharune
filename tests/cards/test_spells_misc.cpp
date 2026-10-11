@@ -453,7 +453,11 @@ TEST_F(BulletTimeTest, OnlyEnemiesAtTargetedBF_AreHit) {
     EffectExecutor exec(state, events, card_db);
     driveSpellWithTargets(state, events, exec, card_registry, src,
         kBulletTime, P1, {e_bf0_a},
-        [](const std::vector<Intent>& legal) { return pickXSlot(legal, 1); });
+        // Bullet Time names a battlefield (pickMode), then asks X: battlefield
+        // #0 first, then X = 1 (the card text chooses no unit).
+        [n = 0](const std::vector<Intent>& legal) mutable {
+            return pickXSlot(legal, n++ == 0 ? 0 : 1);
+        });
 
     EXPECT_EQ(state.getObject(e_bf0_a).damage_marked, 1);
     EXPECT_EQ(state.getObject(e_bf0_b).damage_marked, 1);
@@ -488,7 +492,7 @@ TEST_F(BulletTimeTest, ElderDragonSynergy_X1_WipesAllEnemiesAtBF) {
     // GameEngine::processLethalDamage scans card.ability_text for the
     // phrase. Placing the dragon with card_def_id=680 is sufficient;
     // there's no per-object flag to set.
-    auto dragon = addUnit(P1, 680, /*might=*/0, /*at_bf=*/-1);  // base
+    addUnit(P1, 680, /*might=*/0, /*at_bf=*/-1);  // base
 
     auto big1 = addUnit(P2, kInvalidId, /*might=*/10, /*at_bf=*/0);
     auto big2 = addUnit(P2, kInvalidId, /*might=*/10, /*at_bf=*/0);
@@ -513,9 +517,11 @@ TEST_F(BulletTimeTest, ElderDragonSynergy_X1_WipesAllEnemiesAtBF) {
     Card* card = card_registry.get(kBulletTime);
     CardContext ctx{state, events, exec, P1, src};
     card->onResolve(ctx, {big1});  // anchor — uses BF#0
+    // Bullet Time names a battlefield first (#0), then asks X (1).
+    int prompt = 0;
     while (exec.hasPendingChoice()) {
         auto pending = exec.consumePendingChoice();
-        exec.recordChoice(pickXSlot(pending.legal, 1));
+        exec.recordChoice(pickXSlot(pending.legal, prompt++ == 0 ? 0 : 1));
         card->onResolve(ctx, {big1});
     }
     state.chain.resuming.reset();

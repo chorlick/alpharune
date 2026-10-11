@@ -48,12 +48,18 @@ public:
             ctx.state.player(ctx.controller).played_nontoken_gear_this_turn)
             ctx.state.getObject(ctx.source).card_counters[kFirstGearTurn] =
                 ctx.state.turn.turn_number + 1;   // +1 so 0 = never
+        // "something besides me that's exhausted": the text is not limited to
+        // my controller's objects (as Miss Fortune, Captain 162) — units, gear
+        // and runes on the board and legends in their Legend Zone, either
+        // player's; enemy ones that can't be chosen by enemy abilities are
+        // left out.
         auto find_targets = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source || obj.controller != ctx.controller) continue;
-                if (!obj.is_exhausted) continue;
-                if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+                if (id == ctx.source || !obj.is_exhausted) continue;
+                const bool legend = obj.isLegend() && obj.zone == ZoneType::LegendZone;
+                if (!obj.location.has_value() && !legend) continue;
+                if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
                 out.push_back(id);
             }
             std::sort(out.begin(), out.end());

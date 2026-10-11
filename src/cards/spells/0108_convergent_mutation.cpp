@@ -26,6 +26,7 @@ public:
             if (!obj.location.has_value()) continue;
             others.push_back(id);
         }
+        std::sort(others.begin(), others.end());   // a stable option order, not hash order
         GameObjectId other = pickTarget(ctx, "Convergent Mutation (copy Might from)", others);
         if (other == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7) {

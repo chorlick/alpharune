@@ -31,18 +31,25 @@ public:
 
         // "choose up to one enemy unit at each location": one prompt per
         // location that has a choice, each with a "None".
+        // [Deflect] (CR 809) is paid for every unit chosen, and all of it
+        // once the last pick is in: a unit is offered only if its cost can
+        // be paid on top of what the picks so far already owe.
         std::vector<GameObjectId> chosen;
+        const int payable = ctx.executor.payableAnyPower(ctx.controller);
+        int owed = 0;
         size_t slot = 7;
         for (const auto& loc : locations) {
-            const auto here = offerableChoices(ctx,
-                chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
-                    return u.controller == opp && *u.location == loc;
-                }));
+            const auto here = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                return u.controller == opp && *u.location == loc &&
+                       ctx.executor.deflectCostFor(ctx.controller, u.id) <= payable - owed;
+            });
             const auto pick = selectObject(ctx, "Elder Dragon: choose up to one enemy unit here",
                                            here, slot, /*may_decline=*/true);
             slot += 2;
             if (!pick.has_value()) return;     // waiting for the agent
-            if (*pick != kInvalidId) chosen.push_back(*pick);
+            if (*pick == kInvalidId) continue;
+            chosen.push_back(*pick);
+            owed += ctx.executor.deflectCostFor(ctx.controller, *pick);
         }
         // Choosing is what [Deflect] taxes and what "chosen" abilities see:
         // done once, with the choices (CR 355).

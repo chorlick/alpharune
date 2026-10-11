@@ -36,6 +36,11 @@ public:
                (hasTag(obj, "Bird") || hasTag(obj, "Cat") ||
                 hasTag(obj, "Dog") || hasTag(obj, "Poro"));
     }
+    // "You may [Ambush] me to its battlefield, even if you don't have other
+    // units there." needs no code of its own: the unit that will be killed is
+    // still at its battlefield while the engine offers [Ambush] locations
+    // (battlefields where you have units, CR 822.1.b), so its battlefield is
+    // always among them, and no battlefield without a unit of yours is.
     bool canBePlayed(const GameState& state, PlayerId player) const override {
         for (const auto& [id, obj] : state.objects)
             if (isFodder(obj, player)) return true;

@@ -23,6 +23,7 @@ public:
         const PlayerId me = ctx.controller;
         auto enemies = chooseableUnits(ctx.state, me,
             [me](const GameObject& o) { return o.controller != me; });
+        std::sort(enemies.begin(), enemies.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Harnessed Dragon: kill an enemy unit", enemies);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (t == kInvalidId) return;          // none / mistarget / waiting

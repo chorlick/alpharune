@@ -26,6 +26,7 @@ public:
             units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
                 return u.battlefieldId() == here;
             });
+        std::sort(units.begin(), units.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Navori Fighting Pit: buff a unit here", units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (t == kInvalidId) return;          // none / mistarget / waiting

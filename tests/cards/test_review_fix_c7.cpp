@@ -356,6 +356,7 @@ TEST_F(C7Test, StalkingWolf_NeedsABirdCatDogOrPoroAndKillsTheChosenOne) {
         EXPECT_FALSE(s.getObject(poro).location.has_value());
     });
     playThroughEngine(card, &agent, std::nullopt, &them);
+    EXPECT_GE(them.asked, 1) << "the opponent never got priority: the probe did not run";
     EXPECT_FALSE(o(poro).location.has_value());
     EXPECT_TRUE(o(cat).location.has_value());
     EXPECT_TRUE(o(card).location.has_value());

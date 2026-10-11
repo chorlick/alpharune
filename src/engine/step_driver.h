@@ -83,9 +83,15 @@ public:
     /// runGame() returns.
     void markDone();
 
-    /// Snapshot of the engine's pause-point state. Valid between a
-    /// fiber yield (selectAction) and the next provideChoice().
-    std::vector<Intent> legalActionsSnapshot() const { return paused_legal_; }
+    /// The engine's pause-point state. Valid between a fiber yield
+    /// (selectAction) and the next provideChoice(): the legal list is the
+    /// engine's own vector, alive on the parked fiber's stack — a reference,
+    /// not a copy. Copy it before resuming the engine if it must outlive
+    /// the decision.
+    const std::vector<Intent>& legalActionsSnapshot() const {
+        static const std::vector<Intent> kNone;
+        return paused_legal_ ? *paused_legal_ : kNone;
+    }
     PlayerId currentPlayerSnapshot() const { return paused_player_; }
 
     /// Lock-free check.
@@ -125,8 +131,10 @@ private:
     boost::context::fiber engine_fiber_;
     boost::context::fiber yield_target_;
 
-    // Pause-point snapshot (set by selectAction before yielding).
-    std::vector<Intent> paused_legal_;
+    // Pause-point snapshot (set by selectAction before yielding). The legal
+    // list is not copied: it points at the list the engine passed in, which
+    // stays put while the fiber is parked. Null whenever the engine runs.
+    const std::vector<Intent>* paused_legal_ = nullptr;
     PlayerId            paused_player_ = PlayerId::None;
 
     // Caller's choice for the next selectAction return.

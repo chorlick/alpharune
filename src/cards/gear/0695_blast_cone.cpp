@@ -35,7 +35,9 @@ private:
     void moveOnPlay(CardContext& ctx) {
         auto enemies = [&]() {
             auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                return o.controller != ctx.controller;
+                // Not a unit enemy spells and abilities can't move (the
+                // executor would leave it where it is).
+                return o.controller != ctx.controller && !o.cant_be_moved_by_enemy;
             });
             std::sort(out.begin(), out.end());
             return out;

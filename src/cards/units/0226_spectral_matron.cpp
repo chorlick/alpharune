@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -47,21 +48,12 @@ public:
         if (conf < 1 || picked == kInvalidId) return;   // declined / none / waiting
 
         // CR 355.2.a: a played unit goes to its controller's base or to a
-        // battlefield they control — chosen as it is played.
-        std::vector<LocationId> where{LocationId{BaseLocation{ctx.controller}}};
-        std::vector<std::string> labels{"base"};
-        for (const auto& bf : ctx.state.battlefields) {
-            if (!bf.controller.has_value() || *bf.controller != ctx.controller) continue;
-            where.push_back(LocationId{BattlefieldLocation{bf.id}});
-            labels.push_back("battlefield " + std::to_string(bf.id));
-        }
-        int dest = 0;
-        if (where.size() > 1) {
-            dest = pickMode(ctx, "Spectral Matron: where to play it",
-                            static_cast<int>(where.size()), labels);
-            if (dest < 0) return;   // waiting for the agent
-        }
-        ctx.executor.playIgnoringCost(ctx.controller, picked, where[dest]);
+        // battlefield they control (and may be played to) — chosen as it is
+        // played, through the shared helper every effect play uses.
+        const int where = pickEffectPlayLocation(*this, ctx, "Spectral Matron: play it to");
+        if (where == -1) return;   // waiting for the agent
+        ctx.executor.playIgnoringCost(ctx.controller, picked,
+                                      effectPlayLocation(ctx.state, ctx.controller, where));
         ctx.events.logTrace("SPECTRAL MATRON: played a unit from trash for free");
     }
 private:

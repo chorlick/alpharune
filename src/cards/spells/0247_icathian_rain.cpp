@@ -61,8 +61,13 @@ public:
         } else if (ri.resume_point != kPicking) {
             // The first unit was chosen as the spell was played (the engine
             // asks for a needsPlayTimeTarget spell's target then).
+            // If that unit is no longer a legal choice the engine has dropped
+            // it from `targets`: that "Deal 2" is lost (CR 359.3.e.5), it is
+            // not chosen again. kLost keeps its place in the count of six.
             ri.resume_data.clear();
-            if (!targets.empty()) ri.resume_data.push_back(static_cast<int32_t>(targets[0]));
+            if (const auto locked = lockedPlayTarget(ctx, targets))
+                ri.resume_data.push_back(*locked == kInvalidId ? kLost
+                                                               : static_cast<int32_t>(*locked));
             ri.resume_point = kPicking;
         }
         if (ri.resume_point == kPicking && ri.resume_data.size() < kInstances) {
@@ -80,9 +85,10 @@ public:
         ri.resume_point = kDone;
         // The executor skips a unit that has left the board (CR 359.3.e.5).
         for (auto id : ri.resume_data)
-            ctx.executor.dealDamage(static_cast<GameObjectId>(id), 2, ctx.source);
+            if (id != kLost) ctx.executor.dealDamage(static_cast<GameObjectId>(id), 2, ctx.source);
         DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
         for (auto id : ri.resume_data) {
+            if (id == kLost) continue;
             const auto& unit = ctx.state.getObject(static_cast<GameObjectId>(id));
             if (unit.location.has_value() && unit.hasLethalDamage())
                 ctx.executor.killObject(static_cast<GameObjectId>(id));
@@ -91,6 +97,8 @@ public:
 private:
     static constexpr size_t kInstances = 6;
     enum : int { kPicking = 20, kAwait = 21, kDone = 22 };
+    // resume_data entry for an instance whose play-time unit became illegal.
+    static constexpr int32_t kLost = static_cast<int32_t>(kInvalidId);
 private:
     const CardDef def_ = [] {
         CardDef d;

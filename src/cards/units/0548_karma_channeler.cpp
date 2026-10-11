@@ -50,6 +50,8 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Order};
+        // Tags as printed on SFD-237 (cards/raw/gallery_raw.json): the Spiritforged
+        // reprint is not a copy of the Origins def — OGN-235 (card 235) also carries Ionia.
         d.tags = {R"RB(Karma)RB"};
         d.energy_cost = 6;
         d.power_cost = 1;

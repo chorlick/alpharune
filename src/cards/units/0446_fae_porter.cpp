@@ -23,6 +23,11 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+        // "the same battlefield" is read off me: once I have left the board
+        // (or gone back to base) after [P] was paid, where I am is no longer
+        // available and the instruction based on it is ignored (CR
+        // 359.3.e.12; the CR 811.1.d example: an effect that can't reference
+        // where its unit was "will mistarget"). The [P] stays spent.
         if (!my_bf) return;
         auto movable = [&]() {
             std::vector<GameObjectId> out;

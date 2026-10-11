@@ -24,6 +24,7 @@ public:
         auto small_enemies = chooseableUnits(ctx.state, me, [me](const GameObject& o) {
             return o.controller != me && o.current_might <= 3;
         });
+        std::sort(small_enemies.begin(), small_enemies.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Sandshifter: kill an enemy unit with 3 [M] or less",
                                           small_enemies);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

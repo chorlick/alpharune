@@ -168,6 +168,7 @@ protected:
         obj.controller = owner;
         obj.card_def_id = def_id;
         obj.card_type = CardType::Legend;
+        obj.zone = ZoneType::LegendZone;   // where a legend is (it was left in the default zone)
         obj.name = card_db.get(def_id).name;
         obj.is_exhausted = exhausted;
         state.player(owner).legend_zone = id;

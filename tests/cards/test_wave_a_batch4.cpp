@@ -165,6 +165,7 @@ TEST_F(CardTestFixture, GarenCommander_InactiveWhileAtBase) {
 TEST_F(CardTestFixture, MightOfDemacia_DrawsTwoOnConquerWith4Units) {
     auto legend = addUnit(P1, kMightOfDemacia, 0, /*at_bf=*/-1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     for (int i = 0; i < 4; ++i) addUnit(P1, kInvalidId, 2, /*at_bf=*/0);
     for (int i = 0; i < 3; ++i) addToDeck(P1, kInvalidId);
     state.player(P1).battlefields_scored_this_turn.insert(0);
@@ -182,6 +183,7 @@ TEST_F(CardTestFixture, MightOfDemacia_DrawsTwoOnConquerWith4Units) {
 TEST_F(CardTestFixture, MightOfDemacia_NoDrawUnderFourUnits) {
     auto legend = addUnit(P1, kMightOfDemacia, 0, /*at_bf=*/-1);
     state.getObject(legend).card_type = CardType::Legend;
+    state.getObject(legend).zone = ZoneType::LegendZone;
     for (int i = 0; i < 3; ++i) addUnit(P1, kInvalidId, 2, /*at_bf=*/0);  // only 3
     for (int i = 0; i < 3; ++i) addToDeck(P1, kInvalidId);
     state.player(P1).battlefields_scored_this_turn.insert(0);

@@ -23,8 +23,7 @@ public:
         // Confirm an on-board (LegendZone) instance of this legend.
         bool present = false;
         GameObjectId self_id = kInvalidId;
-        // (Every object: finds its own legend object by card id, in whatever zone.)
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.inPlay()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             present = true; self_id = sid; break;
         }

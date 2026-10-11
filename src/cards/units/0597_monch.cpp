@@ -17,8 +17,11 @@ public:
     const CardDef& def() const override { return def_; }
     static bool oppHasStunned(const GameState& state, PlayerId controller) {
         PlayerId opp = opponent(controller);
-        // (Every object: a unit keeps Stunned in whatever zone it is until the Ending Step.)
-        for (auto& [id, obj] : state.objects) {
+        // "An opponent controls a stunned unit": a unit is a unit on the board
+        // (CR 141.1.a, 424.1), so the walk is over the board. A card that was
+        // stunned and has left it is a new object without the status (CR
+        // 124.1; the engine clears it in recalculateAuras).
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.controller != opp) continue;
             if (!obj.isUnit()) continue;
             if (obj.is_stunned) return true;

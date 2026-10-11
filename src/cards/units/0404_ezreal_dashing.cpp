@@ -25,12 +25,16 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
+        // Not at a battlefield: no unit is "here". No return ahead of
+        // pickTarget — it stores "no target" on the chain item, so the
+        // resolution asks nothing if I am at a battlefield again by then.
         std::vector<GameObjectId> here;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            if (obj.battlefieldId() != my_bf || obj.untargetable_by_enemy) continue;
-            here.push_back(id);
+        if (my_bf) {
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+                if (obj.battlefieldId() != my_bf || obj.untargetable_by_enemy) continue;
+                here.push_back(id);
+            }
         }
         GameObjectId tgt = pickTarget(ctx, "Ezreal: deal Might damage to an enemy here", here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

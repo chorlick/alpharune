@@ -34,7 +34,9 @@ public:
             std::vector<Intent> choices;
             // Decline option first.
             Intent decline; decline.type = IntentType::MakeChoice; decline.player = p;
-            decline.choice_label = "Decline"; choices.push_back(decline);
+            decline.choice_label = "Decline";
+            decline.chosen_value = 0;   // nameable by value, not only by position
+            choices.push_back(decline);
             for (auto uid : units_for(p)) choices.push_back(objChoice(p, uid));
             ctx.executor.requestChoice(p, std::move(choices),
                                         "Whirlwind: you may return a unit to its owner's hand");

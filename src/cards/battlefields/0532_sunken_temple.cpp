@@ -36,7 +36,9 @@ public:
         auto still_legal = [&]() {
             return payableEnergy(ctx.state, ctx.controller) >= 1;
         };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may": with [1] unpayable confirmOptional
+        // stores the "no" on the chain item, so the resolution asks nothing
+        // if the [1] has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Sunken Temple: pay [1] to draw 1?",
                                    still_legal);
         if (conf < 1) return;

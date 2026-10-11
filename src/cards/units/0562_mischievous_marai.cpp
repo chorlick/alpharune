@@ -23,17 +23,28 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "to a battlefield" is part of the trigger condition (CR 383.2.a.1):
+    // asked as she is played, so no ability goes on the chain for a Marai
+    // played to a base — moving her to a battlefield afterwards changes nothing.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isAtBattlefield();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;  // not played to a battlefield
         PlayerId opp = opponent(ctx.controller);
+        // Not at a battlefield: no unit is "here". No return ahead of
+        // pickTarget — it stores "no target" on the chain item, so the
+        // resolution asks nothing wherever she is by then.
         std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (obj.untargetable_by_enemy) continue;
-            auto bf = obj.battlefieldId();
-            if (bf && *bf == *my_bf) legal.push_back(id);
+        if (my_bf) {
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isUnit() || obj.controller != opp) continue;
+                if (obj.untargetable_by_enemy) continue;
+                auto bf = obj.battlefieldId();
+                if (bf && *bf == *my_bf) legal.push_back(id);
+            }
         }
         GameObjectId picked = pickTarget(ctx, "Mischievous Marai: deal 2 to enemy unit here",
                                          legal);

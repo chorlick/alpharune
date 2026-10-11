@@ -55,6 +55,8 @@ public:
             Intent done;
             done.type = IntentType::MakeChoice;
             done.player = ctx.controller;
+            done.chosen_value = 0;   // nameable by value, not only by position
+            done.choice_label = "Corrupted Dragon: stop";
             out.push_back(std::move(done));
             ctx.executor.requestChoice(ctx.controller, std::move(out),
                 "Corrupted Dragon: move an enemy unit (5 [M] or less) to its base, or stop");

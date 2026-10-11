@@ -36,7 +36,9 @@ public:
                    ctx.state.getObject(ctx.source).location.has_value() &&
                    !trashed_units().empty();
         };
-        if (!still_legal()) return;
+        // No return ahead of the "may": with no unit in the trash
+        // confirmOptional stores the "no" on the chain item, so the resolution
+        // asks nothing if a unit has died since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Shadow Clone: banish a unit from your trash?",
                                    still_legal);
         if (conf < 1) return;

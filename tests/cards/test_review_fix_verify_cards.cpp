@@ -153,6 +153,30 @@ constexpr CardDefId kForgeOfTheFuture = 212;
 constexpr CardDefId kTargonsPeak = 284;
 constexpr CardDefId kGentleGemdragon = 666;
 constexpr CardDefId kCuratorOfTheSands = 932;
+constexpr CardDefId kFlameChompers = 6;
+constexpr CardDefId kSolariShrine = 72;
+constexpr CardDefId kMistfall = 152;
+constexpr CardDefId kCemeteryAttendant = 165;
+constexpr CardDefId kSolariChief = 225;
+constexpr CardDefId kVanguardHelm = 228;
+constexpr CardDefId kMonasteryOfHirana = 277;
+constexpr CardDefId kAnnieStubborn = 308;
+constexpr CardDefId kLucianGunslinger = 351;
+constexpr CardDefId kSpiritWheel = 465;
+constexpr CardDefId kSunkenTemple = 532;
+constexpr CardDefId kTreasureHoard = 534;
+constexpr CardDefId kBladeDancer = 555;
+constexpr CardDefId kMischievousMarai = 562;
+constexpr CardDefId kFreshBeans = 573;
+constexpr CardDefId kStarhound = 729;
+constexpr CardDefId kRippersBay = 770;
+constexpr CardDefId kValleyOfIdols = 774;
+constexpr CardDefId kPiltoverEnforcer = 783;
+constexpr CardDefId kTombRaiderBarbara = 824;
+constexpr CardDefId kDameTheDespoiler = 866;
+constexpr CardDefId kJayceHammerInHand = 875;
+constexpr CardDefId kAmbessaRespectedAndFeared = 923;
+constexpr CardDefId kProtectiveSands = 949;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kBackAlleyBar = 272;
 constexpr CardDefId kSoraka = 550;
@@ -607,6 +631,45 @@ protected:
             live = nullptr;
         }, p1_agent, &p2);
         EXPECT_TRUE(probed) << "the opponent never got priority";
+    }
+
+    /// fireAndProbe for a trigger whose condition may keep it off the chain
+    /// (Card::triggerCondition): returns whether the opponent got priority,
+    /// i.e. whether an ability was queued at all, instead of failing when not.
+    bool fireAndProbeIfQueued(GameObjectId source, TriggerType trigger, AgentInterface* p1_agent,
+                              const std::function<void(GameState&)>& probe,
+                              GameObjectId subject = kInvalidId) {
+        GameState* live = nullptr;
+        bool probed = false;
+        PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+            if (!probed && live) { probed = true; probe(*live); }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) return i;
+            return legal.front();
+        });
+        withEngine([&](GameEngine& e) {
+            live = &e.mutableState();
+            e.testHook_executor().queueTriggeredAbility(source, P1, trigger, subject);
+            e.testHook_runChain();
+            live = nullptr;
+        }, p1_agent, &p2);
+        return probed;
+    }
+    /// Put an object onto the board in response — a unit moved, or a card
+    /// taken out of its owner's hand or trash: at battlefield slot `at_bf`, or
+    /// in its controller's base (-1).
+    static void putOnBoard(GameState& live, GameObjectId id, int at_bf = -1) {
+        auto& x = live.getObject(id);
+        auto& p = live.player(x.owner);
+        p.hand.erase(std::remove(p.hand.begin(), p.hand.end(), id), p.hand.end());
+        p.trash.erase(std::remove(p.trash.begin(), p.trash.end(), id), p.trash.end());
+        if (at_bf >= 0) {
+            x.zone = ZoneType::BattlefieldZone;
+            x.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+        } else {
+            x.zone = ZoneType::Base;
+            x.location = BaseLocation{x.controller};
+        }
     }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
@@ -2278,10 +2341,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_IsExhaustedBeforeTheOpponentCanRespondAndRe
     });
     EnginePathAgent agent(EnginePathAgent::script({
         1,                         // "may exhaust me to reveal 2": yes
-        // "You may banish one": banish none. That is the prompt's first option,
-        // on purpose: it carries no value and no object, so kFirst is the only
-        // way a script can name it (the two revealed cards follow it).
-        EnginePathAgent::kFirst,
+        0,                         // "You may banish one": banish none (value 0; the cards are objects)
     }));
     fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 1u) << "the may was decided at finalization";
@@ -2369,11 +2429,10 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheRevealIsDecidedBeforeTheOpponentCanR
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent&) { ++shown; });
     EnginePathAgent agent(EnginePathAgent::script({
         1,                       // "may reveal the top 2 cards": yes
-        // "You may banish one" (the two cards, then a decline option): the top
-        // card. The decline carries no value and no object and is not first,
-        // so a script cannot name it; this test is about the reveal, not the
-        // pick. Meditation is a [2] spell P1 has nothing to pay for, so it
-        // stays banished and nothing more is asked.
+        // "You may banish one" (the two cards, then "banish none" = value 0):
+        // the top card. Meditation is a [2] spell P1 has nothing to pay for,
+        // so it stays banished and nothing more is asked. (Declining:
+        // RekSaiSwarmQueen_BanishNoneRecyclesBothRevealedCards.)
         static_cast<int>(top),
     }));
     fireAndProbe(reksai, TriggerType::WhenIAttack, &agent, [&](GameState&) {
@@ -4741,10 +4800,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_VoidHatchlingLooksBeforeTheReveal) {
     EnginePathAgent agent(EnginePathAgent::script({
         1,                         // "may exhaust me to reveal 2": yes
         1,                         // Void Hatchling's look at the top card: 1 = recycle it (0 = keep)
-        // "You may banish one": banish none. That is the prompt's first option,
-        // on purpose: it carries no value and no object, so kFirst is the only
-        // way a script can name it (the two revealed cards follow it).
-        EnginePathAgent::kFirst,
+        0,                         // "You may banish one": banish none (value 0; the cards are objects)
     }));
     fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
     conn.disconnect();
@@ -7142,6 +7198,654 @@ TEST_F(VerifyCardsTest, Pin_AccelerationGate_OffersAnOpponentsExhaustedRuneUnitA
     EXPECT_TRUE(o(my_rune).is_exhausted);
     EXPECT_TRUE(o(their_unit).is_exhausted);
     EXPECT_TRUE(o(their_gear).is_exhausted);
+}
+
+
+// ═══ Tranche 11 (T11A): 9.EE1 nameable options, 9.EE2 nothing asked at resolution ═══
+// Snippet T11A (9.EE1, 9.EE3) — paste into tests/cards/test_review_fix_verify_cards.cpp.
+// No new constants, no new fixture helper (kRekSaiSwarmQueen, kVoidBurrower,
+// kMeditation, kShipyardSkulker and promptOffersValue are already in the file).
+
+// ─── 9.EE1: a decline option an agent can name ──────────────────────────────
+// "You may banish one": the option that banishes none carries chosen_value 0
+// (it used to carry neither a value nor an object, so only its position told
+// it apart). Both tests fail on the old code: the script's 0 matched no
+// option of the prompt (a strict-script failure), the first option was taken
+// instead — for Rek'Sai that is the top card, which was banished and played.
+
+TEST_F(VerifyCardsTest, RekSaiSwarmQueen_BanishNoneRecyclesBothRevealedCards) {
+    auto reksai = addUnit(P1, kRekSaiSwarmQueen, 0, 0);
+    auto below = addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kShipyardSkulker);
+    // The unit could be paid for: it is the answer, not the cost, that keeps it unplayed.
+    const int energy = card_db.get(kShipyardSkulker).energy_cost;
+    ps(P1).rune_pool.energy = energy;
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,     // "may reveal the top 2 cards": yes
+        0,     // "You may banish one": banish none
+    }));
+    fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, the banish; nothing is played, so no location";
+    const auto& banish = agent.prompts[1];
+    ASSERT_EQ(banish.size(), 3u) << "the two revealed cards, then \"banish none\"";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0));
+    EXPECT_EQ(banish[0].chosen_objects, (std::vector<GameObjectId>{top}));
+    EXPECT_EQ(banish[1].chosen_objects, (std::vector<GameObjectId>{below}));
+    EXPECT_TRUE(banish[2].chosen_objects.empty()) << "the decline stays the last option";
+    EXPECT_EQ(banish[2].chosen_value, std::optional<int>{0});
+    EXPECT_FALSE(banish[0].chosen_value.has_value()) << "a card is named by its object only";
+    EXPECT_FALSE(banish[1].chosen_value.has_value());
+    EXPECT_FALSE(onBoard(top));
+    EXPECT_FALSE(inBanishment(P1, top));
+    EXPECT_EQ(ps(P1).cards_banished_this_turn, 0) << "\"You MAY banish one\"";
+    EXPECT_EQ(ps(P1).rune_pool.energy, energy) << "nothing was played";
+    EXPECT_EQ(deckSize(P1), 2) << "\"Recycle the rest\": both";
+    EXPECT_TRUE(inDeck(P1, top));
+    EXPECT_TRUE(inDeck(P1, below));
+}
+
+TEST_F(VerifyCardsTest, VoidBurrower_BanishNoneIsNamedByValueAndStaysTheFirstOption) {
+    auto legend = addLegend(P1, kVoidBurrower);
+    auto below = addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kShipyardSkulker);
+    const int energy = card_db.get(kShipyardSkulker).energy_cost;
+    ps(P1).rune_pool.energy = energy;
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,     // "may exhaust me to reveal 2": yes
+        0,     // "You may banish one": banish none
+    }));
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, the banish";
+    const auto& banish = agent.prompts[1];
+    ASSERT_EQ(banish.size(), 3u) << "\"banish none\", then the two revealed cards";
+    EXPECT_TRUE(banish[0].chosen_objects.empty()) << "the decline stays the first option";
+    EXPECT_EQ(banish[0].chosen_value, std::optional<int>{0});
+    EXPECT_EQ(banish[1].chosen_objects, (std::vector<GameObjectId>{top}));
+    EXPECT_EQ(banish[2].chosen_objects, (std::vector<GameObjectId>{below}));
+    EXPECT_FALSE(banish[1].chosen_value.has_value()) << "a card is named by its object only";
+    EXPECT_FALSE(banish[2].chosen_value.has_value());
+    EXPECT_TRUE(o(legend).is_exhausted) << "the cost was paid all the same";
+    EXPECT_FALSE(onBoard(top));
+    EXPECT_FALSE(inBanishment(P1, top));
+    EXPECT_EQ(ps(P1).cards_banished_this_turn, 0);
+    EXPECT_EQ(ps(P1).rune_pool.energy, energy) << "nothing was played";
+    EXPECT_EQ(deckSize(P1), 2) << "\"Recycle the rest\": both";
+    EXPECT_TRUE(inDeck(P1, top));
+    EXPECT_TRUE(inDeck(P1, below));
+}
+
+// 9.EE3 (the readiable() re-check after selectSeveral removed in 315, 284, 666,
+// 932, 73): no behaviour change, so no new test. Pinned by the existing
+//   DarkChild315_ / TargonsPeak_ / GentleGemdragon_ / Sona_ /
+//   CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped
+//   DarkChild315_TheFirstOfTwoNamedRunesGone_TheSecondIsStillReadied
+// (and the other 9.BB1 tests after it).
+
+
+// ═══ Tranche 11 (T11B): 9.EE1 nameable options, 9.EE2 nothing asked at resolution ═══
+// tests_T11B.cpp — item 9.EE2 (the Sona shape): a callback opted into choices at
+// finalization that returned before its end-of-choices marker with nothing
+// stored, so the resolution asked (and paid) when the condition had changed.
+// One test per fixed card: at finalization the condition is false, the probe at
+// the opponent's first priority makes it true, and nothing is asked or paid as
+// the ability resolves. Each fails on the old code at the strict script (a
+// prompt arrives after the script ran out) and at the prompt count.
+
+
+
+
+
+// ─── 9.EE2: a "may" skipped at finalization is not asked at resolution ──────
+
+// 534 Treasure Hoard: [1] unpayable as the ability is finalized, payable by
+// the time it resolves.
+TEST_F(VerifyCardsTest, TreasureHoard_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto hoard = battlefieldCard(0, kTreasureHoard);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(hoard, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty()) << "the \"may\" is decided at finalization (CR 383.3.a)";
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1) << "nothing is paid as it resolves";
+    EXPECT_EQ(countNamed(P1, "Gold"), 0);
+}
+
+// 277 Monastery of Hirana: no buff to spend at finalization, one by resolution.
+TEST_F(VerifyCardsTest, MonasteryOfHirana_NoBuffAtFinalization_NothingAskedOrSpentAtResolution) {
+    auto monastery = battlefieldCard(0, kMonasteryOfHirana);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(monastery, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        live.getObject(unit).buff_count = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(unit).buff_count, 1) << "no buff is spent as it resolves";
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 770 Ripper's Bay.
+TEST_F(VerifyCardsTest, RippersBay_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto bay = battlefieldCard(0, kRippersBay);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(bay, TriggerType::WhenAUnitReturnsToHandHere, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+}
+
+// 765 Dusk Rose Lab: no unit here at finalization; one arrives in response.
+TEST_F(VerifyCardsTest, DuskRoseLab_NoUnitHereAtFinalization_NothingAskedOrKilledAtResolution) {
+    auto lab = battlefieldCard(0, kDuskRoseLab);
+    auto unit = addUnit(P1, kInvalidId, 2);   // in the base
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(lab, TriggerType::AtStartOfBeginning, &agent, [&](GameState& live) {
+        live.battlefields[0].controller = P1;
+        putOnBoard(live, unit, 0);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(onBoard(unit)) << "the cost is not paid as it resolves";
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 532 Sunken Temple.
+TEST_F(VerifyCardsTest, SunkenTemple_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto temple = battlefieldCard(0, kSunkenTemple);
+    addUnit(P1, kInvalidId, 5, 0);            // conquered with a [Mighty] unit
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 949 Protective Sands.
+TEST_F(VerifyCardsTest, ProtectiveSands_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto sands = battlefieldCard(0, kProtectiveSands);
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(sands, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 774 Valley of Idols: the played unit is off the board at finalization and
+// back on it by resolution.
+TEST_F(VerifyCardsTest, ValleyOfIdols_UnitGoneAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto valley = battlefieldCard(0, kValleyOfIdols);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    sendToTrash(unit);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(valley, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
+        putOnBoard(live, unit, 0);
+    }, unit);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_EQ(o(unit).buff_count, 0);
+}
+
+// 72 Solari Shrine: exhausted at finalization, readied in response.
+TEST_F(VerifyCardsTest, SolariShrine_ExhaustedAtFinalization_NothingAskedOrExhaustedAtResolution) {
+    auto shrine = addGear(P1, kSolariShrine);
+    o(shrine).is_exhausted = true;
+    addToDeck(P1, kRecruit);
+    auto dead = addUnit(P2, kInvalidId, 2, 0);
+    sendToTrash(dead);
+    o(dead).last_known.valid = true;          // a stunned enemy unit P1 killed
+    o(dead).last_known.stunned = true;
+    o(dead).last_known.killed_by = P1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(shrine, TriggerType::WhenAnEnemyUnitDies, &agent, [&](GameState& live) {
+        live.getObject(shrine).is_exhausted = false;
+    }, dead);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_FALSE(o(shrine).is_exhausted) << "the cost is not paid as it resolves";
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 152 Mistfall.
+TEST_F(VerifyCardsTest, Mistfall_ExhaustedAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto mistfall = addGear(P1, kMistfall);
+    o(mistfall).is_exhausted = true;
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    o(unit).is_exhausted = true;
+    power(P1, Domain::Body) = 1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(mistfall, TriggerType::WhenYouBuffAFriendlyUnit, &agent, [&](GameState& live) {
+        live.getObject(mistfall).is_exhausted = false;
+    }, unit);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(power(P1, Domain::Body), 1);
+    EXPECT_FALSE(o(mistfall).is_exhausted);
+    EXPECT_TRUE(o(unit).is_exhausted);
+}
+
+// 465 Spirit Wheel.
+TEST_F(VerifyCardsTest, SpiritWheel_ExhaustedAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto wheel = addGear(P1, kSpiritWheel);
+    o(wheel).is_exhausted = true;
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    addToDeck(P1, kRecruit);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(wheel, TriggerType::WhenYouChooseAFriendlyUnit, &agent, [&](GameState& live) {
+        live.getObject(wheel).is_exhausted = false;
+    }, unit);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_FALSE(o(wheel).is_exhausted);
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 671 Blood Rose.
+TEST_F(VerifyCardsTest, BloodRose_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto rose = addGear(P1, kBloodRose);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(rose, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    }, unit);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_EQ(ps(P1).xp, 0);
+}
+
+// 555 Blade Dancer, "When you conquer, you may pay [1] to ready me": ready at
+// finalization, exhausted in response.
+TEST_F(VerifyCardsTest, BladeDancer_ReadyAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto legend = addLegend(P1, kBladeDancer);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        live.getObject(legend).is_exhausted = true;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_TRUE(o(legend).is_exhausted);
+}
+
+// 783 Piltover Enforcer: exhausted at finalization, readied in response.
+TEST_F(VerifyCardsTest, PiltoverEnforcer_ExhaustedAtFinalization_NothingAskedOrExhaustedAtResolution) {
+    auto legend = addLegend(P1, kPiltoverEnforcer);
+    o(legend).is_exhausted = true;
+    auto conquered = battlefieldCard(0, kDuskRoseLab);
+    ps(P1).last_combat_bf = state.battlefields[0].id;
+    ps(P1).excess_combat_damage = 3;
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    o(unit).is_exhausted = true;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        live.getObject(legend).is_exhausted = false;
+    }, conquered);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_FALSE(o(legend).is_exhausted) << "the cost is not paid as it resolves";
+    EXPECT_TRUE(o(unit).is_exhausted);
+}
+
+// 6 Flame Chompers!: [R] unpayable at finalization.
+TEST_F(VerifyCardsTest, FlameChompers_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto chompers = addToTrash(P1, kFlameChompers);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(chompers, TriggerType::WhenIAmDiscarded, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(power(P1, Domain::Fury), 1);
+    EXPECT_TRUE(inTrash(P1, chompers));
+}
+
+// 37 Immortal Phoenix: the [R] of [1][R] unpayable at finalization.
+TEST_F(VerifyCardsTest, ImmortalPhoenix_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto phoenix = addToTrash(P1, kImmortalPhoenix);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(phoenix, TriggerType::WhenYouKillAUnitWithASpell, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_EQ(power(P1, Domain::Fury), 1);
+    EXPECT_TRUE(inTrash(P1, phoenix));
+}
+
+// 35 Vayne, Hunter (the reprint 537 never had the early return).
+TEST_F(VerifyCardsTest, Vayne035_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto vayne = addUnit(P1, kVayne035, 0, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(vayne, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_TRUE(onBoard(vayne));
+}
+
+// 194 Nocturne, Horrifying: not in the Main Deck at finalization, back in it
+// by resolution.
+TEST_F(VerifyCardsTest, Nocturne_OffTheDeckAtFinalization_NothingAskedAtResolution) {
+    auto nocturne = addToHand(P1, kNocturneHorrifying);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(nocturne, TriggerType::WhenIRevealedFromTop, &agent, [&](GameState& live) {
+        auto& p = live.player(P1);
+        p.hand.erase(std::remove(p.hand.begin(), p.hand.end(), nocturne), p.hand.end());
+        live.getObject(nocturne).zone = ZoneType::MainDeck;
+        p.main_deck.push_back(nocturne);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inDeck(P1, nocturne));
+    EXPECT_FALSE(inBanishment(P1, nocturne));
+}
+
+// 641 Diana, Lunari.
+TEST_F(VerifyCardsTest, DianaLunari_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
+    auto diana = addUnit(P1, kDianaLunari, 0, 0);
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(diana, TriggerType::WhenAShowdownBeginsHere, &agent, [&](GameState& live) {
+        live.player(P1).rune_pool.energy = 1;
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 955 Shadow Clone: no unit in the trash at finalization; one dies in response.
+TEST_F(VerifyCardsTest, ShadowClone_NoUnitInTrashAtFinalization_NothingAskedOrBanishedAtResolution) {
+    auto clone = addUnit(P1, kShadowClone, 0, 0);
+    auto other = addUnit(P1, kInvalidId, 2);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(clone, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+        removeFromBoard(live, other);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, other));
+    EXPECT_FALSE(inBanishment(P1, other));
+}
+
+// 617 Vex, Mocking: already at that battlefield at finalization, moved away
+// in response.
+TEST_F(VerifyCardsTest, VexMocking_AlreadyThereAtFinalization_NothingAskedOrMovedAtResolution) {
+    auto vex = addUnit(P1, kVexMocking, 0, 0);
+    auto stunned = addUnit(P2, kInvalidId, 2, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(vex, TriggerType::WhenYouStun, &agent, [&](GameState& live) {
+        putOnBoard(live, vex, -1);
+    }, stunned);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(o(vex).isAtBase()) << "she is not moved back";
+}
+
+// ─── 9.EE2: nothing to choose at finalization is not asked at resolution ────
+
+// 228 Vanguard Helm: no other friendly unit at finalization.
+TEST_F(VerifyCardsTest, VanguardHelm_NoUnitAtFinalization_NothingAskedOrBuffedAtResolution) {
+    auto helm = addGear(P1, kVanguardHelm);
+    auto dead = addUnit(P1, kInvalidId, 2);
+    o(dead).buff_count = 1;                   // "a buffed friendly unit dies"
+    sendToTrash(dead);
+    auto late = addUnit(P1, kInvalidId, 2);
+    sendToTrash(late);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(helm, TriggerType::WhenAFriendlyUnitDies, &agent, [&](GameState& live) {
+        putOnBoard(live, late);
+    }, dead);
+    EXPECT_TRUE(agent.prompts.empty()) << "targets are chosen at finalization (CR 383.3)";
+    EXPECT_EQ(o(late).buff_count, 0);
+}
+
+// 165 Cemetery Attendant: no unit in the trash at finalization.
+TEST_F(VerifyCardsTest, CemeteryAttendant_EmptyTrashAtFinalization_NothingAskedOrReturnedAtResolution) {
+    auto attendant = addUnit(P1, kCemeteryAttendant, 0, 0);
+    auto other = addUnit(P1, kInvalidId, 2);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(attendant, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        removeFromBoard(live, other);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, other));
+    EXPECT_FALSE(inHand(P1, other));
+}
+
+// 308 Annie, Stubborn: no spell in the trash at finalization.
+TEST_F(VerifyCardsTest, AnnieStubborn_NoSpellInTrashAtFinalization_NothingAskedOrReturnedAtResolution) {
+    auto annie = addUnit(P1, kAnnieStubborn, 0, 0);
+    auto spell = addToHand(P1, kFallingStar);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(annie, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        auto& p = live.player(P1);            // the spell is discarded in response
+        p.hand.erase(std::remove(p.hand.begin(), p.hand.end(), spell), p.hand.end());
+        live.getObject(spell).zone = ZoneType::Trash;
+        p.trash.push_back(spell);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, spell));
+    EXPECT_FALSE(inHand(P1, spell));
+}
+
+// 225 Solari Chief: no enemy unit at finalization.
+TEST_F(VerifyCardsTest, SolariChief_NoEnemyAtFinalization_NothingAskedOrStunnedAtResolution) {
+    auto chief = addUnit(P1, kSolariChief, 0, 0);
+    auto enemy = addUnit(P2, kInvalidId, 2);
+    sendToTrash(enemy);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(chief, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        putOnBoard(live, enemy);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(onBoard(enemy));
+    EXPECT_FALSE(o(enemy).is_stunned);
+}
+
+// 729 Starhound: no Bird, Cat, Dog or Poro in the trash at finalization.
+TEST_F(VerifyCardsTest, Starhound_NoneInTrashAtFinalization_NothingAskedOrReturnedAtResolution) {
+    auto hound = addUnit(P1, kStarhound, 0, 0);
+    auto poro = addUnit(P1, kInvalidId, 1);
+    o(poro).tags = {"Poro"};
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(hound, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        removeFromBoard(live, poro);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, poro));
+    EXPECT_FALSE(inHand(P1, poro));
+}
+
+// ─── 9.EE2: "here" with the source not at a battlefield at finalization ─────
+
+// 41 Volibear, Furious.
+TEST_F(VerifyCardsTest, Volibear_NotAtABattlefieldAtFinalization_NothingAskedOrDealtAtResolution) {
+    auto volibear = addUnit(P1, kVolibearFurious);       // in the base
+    auto foe = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(volibear, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+        putOnBoard(live, volibear, 0);
+    });
+    EXPECT_TRUE(agent.prompts.empty()) << "split-damage targets are chosen at finalization";
+    EXPECT_EQ(o(foe).damage_marked, 0);
+}
+
+// 351 Lucian, Gunslinger.
+TEST_F(VerifyCardsTest, LucianGunslinger_NotAtABattlefieldAtFinalization_NothingAskedOrDealtAtResolution) {
+    auto lucian = addUnit(P1, kLucianGunslinger);        // in the base
+    ASSERT_GE(o(lucian).assault_value, 1) << "the printed [Assault]";
+    auto foe = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(lucian, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+        putOnBoard(live, lucian, 0);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(foe).damage_marked, 0);
+}
+
+// 404 Ezreal, Dashing.
+TEST_F(VerifyCardsTest, EzrealDashing_NotAtABattlefieldAtFinalization_NothingAskedOrDealtAtResolution) {
+    auto ezreal = addUnit(P1, kEzrealDashing);           // in the base
+    auto foe = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(ezreal, TriggerType::WhenIAttackOrDefend, &agent, [&](GameState& live) {
+        putOnBoard(live, ezreal, 0);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(foe).damage_marked, 0);
+}
+
+// 674 Irresistible Faefolk.
+TEST_F(VerifyCardsTest, Faefolk_NotAtABattlefieldAtFinalization_NothingAskedOrMovedAtResolution) {
+    auto faefolk = addUnit(P1, kFaefolk);                // in the base
+    auto foe = addUnit(P2, kInvalidId, 2);               // in its base
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(faefolk, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+        putOnBoard(live, faefolk, 0);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(o(foe).isAtBase());
+}
+
+// 828 Riven, Shattered ("When I attack").
+TEST_F(VerifyCardsTest, RivenShattered_NotAtABattlefieldAtFinalization_NothingAskedAtResolution) {
+    auto riven = addUnit(P1, kRivenShattered);           // in the base
+    auto foe = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(riven, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+        putOnBoard(live, riven, 0);
+    });
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(foe).damage_marked, 0);
+}
+
+// 875 Jayce, Hammer in Hand: off the board at finalization, back on it by
+// resolution.
+TEST_F(VerifyCardsTest, JayceHammerInHand_OffTheBoardAtFinalization_NothingAskedAtResolution) {
+    auto jayce = addUnit(P1, kJayceHammerInHand, 0, 0);
+    sendToTrash(jayce);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireAndProbe(jayce, TriggerType::WhenIBecomeReady, &agent, [&](GameState& live) {
+        putOnBoard(live, jayce);
+    });
+    EXPECT_TRUE(agent.prompts.empty()) << "the keyword is chosen at finalization or not at all";
+}
+
+// ─── 9.EE2: a trigger condition is asked when the event happens ─────────────
+// (CR 383.2.a.1). On the new code no ability goes on the chain, so the probe
+// never runs; on the old code it went on the chain, returned early in its
+// finalize pass and asked as it resolved.
+
+// 573 Fresh Beans: "When you play a unit during a showdown".
+TEST_F(VerifyCardsTest, FreshBeans_NoShowdownWhenTheUnitIsPlayed_NoAbilityAndNothingAsked) {
+    auto beans = addGear(P1, kFreshBeans);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    const bool queued = fireAndProbeIfQueued(beans, TriggerType::WhenYouPlayAUnit, &agent,
+        [&](GameState& live) { live.battlefields[0].showdown_in_progress = true; }, unit);
+    EXPECT_FALSE(queued) << "\"during a showdown\" is part of the trigger condition";
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_FALSE(o(beans).is_exhausted);
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+// 562 Mischievous Marai: "When you play me to a battlefield".
+TEST_F(VerifyCardsTest, MischievousMarai_PlayedToBase_NoAbilityAndNothingAsked) {
+    auto marai = addUnit(P1, kMischievousMarai);         // in the base
+    auto foe = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    const bool queued = fireAndProbeIfQueued(marai, TriggerType::WhenYouPlayMe, &agent,
+        [&](GameState& live) { putOnBoard(live, marai, 0); });
+    EXPECT_FALSE(queued) << "\"to a battlefield\" is part of the trigger condition";
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(foe).damage_marked, 0);
+}
+
+// 824 Tomb-Raider Barbara: "if you control 7 or more runes".
+TEST_F(VerifyCardsTest, TombRaiderBarbara_SixRunesWhenPlayed_NoAbilityAndNothingAsked) {
+    auto barbara = addUnit(P1, kTombRaiderBarbara, 0, 0);
+    for (int i = 0; i < 6; ++i) addRune(P1, Domain::Fury);
+    auto seventh = addRune(P2, Domain::Fury);
+    auto gear = addGear(P2, kInvalidId);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    const bool queued = fireAndProbeIfQueued(barbara, TriggerType::WhenYouPlayMe, &agent,
+        [&](GameState& live) { live.getObject(seventh).controller = P1; });
+    EXPECT_FALSE(queued) << "the intervening \"if\" is part of the trigger condition";
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(onBoard(gear));
+}
+
+// 923 Ambessa: "[Empowered][>] When I attack" — not Empowered as she attacks.
+TEST_F(VerifyCardsTest, Ambessa_NotEmpoweredWhenSheAttacks_NoAbilityAndNothingAsked) {
+    auto ambessa = addUnit(P1, kAmbessaRespectedAndFeared, 0, 0);
+    auto foe = addUnit(P2, kInvalidId, 1, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    const bool queued = fireAndProbeIfQueued(ambessa, TriggerType::WhenIAttack, &agent,
+        [&](GameState& live) { live.getObject(ambessa).empowered = 1; });
+    EXPECT_FALSE(queued) << "she has the ability only while Empowered (CR 828.1.b.1)";
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(onBoard(foe));
+}
+
+// 866 Dame the Despoiler: "[Empowered][>] When I attack or defend".
+TEST_F(VerifyCardsTest, DameTheDespoiler_NotEmpoweredWhenSheAttacks_NoAbilityAndNothingAsked) {
+    auto dame = addUnit(P1, kDameTheDespoiler, 0, 0);
+    addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    const bool queued = fireAndProbeIfQueued(dame, TriggerType::WhenIAttackOrDefend, &agent,
+        [&](GameState& live) { live.getObject(dame).empowered = 1; });
+    EXPECT_FALSE(queued) << "she has the ability only while Empowered (CR 828.1.b.1)";
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(dame).temp_might_bonus, 0);
+}
+
+// ─── 9.EE2, branch form: the helper asked is fixed at finalization ──────────
+
+// 936 Defender of Tomorrow: not Empowered when the ability is activated (one
+// gear is chosen), Empowered in response. Fails on the old code: as it
+// resolved it took the Empowered branch and asked "which ability" then.
+TEST_F(VerifyCardsTest, DefenderOfTomorrow_EmpoweredInResponse_AsksNothingMoreAtResolution) {
+    auto legend = addLegend(P1, kDefenderOfTomorrow);
+    auto g1 = addGear(P1, kInvalidId);
+    auto g2 = addGear(P1, kInvalidId);
+    o(g1).is_exhausted = true;
+    o(g2).is_exhausted = true;
+    ps(P1).rune_pool.energy = 1;
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = legend;
+    act.ability_index = 0;
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(g2)}));
+    size_t asked_at_response = 99;
+    executeAndProbe(act, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        live.getObject(legend).empowered = 1;
+    });
+    EXPECT_EQ(asked_at_response, 1u) << "the gear is chosen as the ability is activated";
+    EXPECT_EQ(agent.prompts.size(), 1u) << "nothing is asked as it resolves";
+    EXPECT_FALSE(o(g2).is_exhausted) << "the gear chosen at activation is readied";
+    EXPECT_TRUE(o(g1).is_exhausted);
+}
+
+// 372 Aphelios, Exalted: "Buff a friendly unit" chosen with no friendly unit
+// on the board; one arrives in response. Fails on the old code: the unit was
+// asked for as the ability resolved.
+TEST_F(VerifyCardsTest, Aphelios_BuffModeWithNoUnitAtFinalization_NothingAskedOrBuffedAtResolution) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 0, 0);
+    sendToTrash(aphelios);                    // he died before the ability was finalized
+    auto late = addUnit(P1, kInvalidId, 2);
+    sendToTrash(late);
+    EnginePathAgent agent(EnginePathAgent::script({2}));   // "Buff a friendly unit"
+    fireAndProbe(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
+        putOnBoard(live, late);
+    });
+    EXPECT_EQ(agent.prompts.size(), 1u) << "the mode only; no unit could be chosen";
+    EXPECT_EQ(o(late).buff_count, 0);
 }
 
 }  // namespace

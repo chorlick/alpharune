@@ -30,7 +30,9 @@ public:
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto eligible = trashSpells(ctx);
-        if (eligible.empty()) return;
+        // No return on an empty list: pickTarget stores "no target" on the
+        // chain item, so the resolution asks nothing if a spell has reached
+        // the trash since.
         GameObjectId picked = pickTarget(ctx, "Annie, Stubborn (spell from trash)",
                                           eligible);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

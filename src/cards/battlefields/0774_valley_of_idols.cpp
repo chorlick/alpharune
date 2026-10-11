@@ -30,13 +30,16 @@ public:
             const auto& u = ctx.state.getObject(played);
             return u.isUnit() && u.location.has_value();
         };
-        if (!still_there()) return;
+        // No return ahead of the "may": with the unit gone confirmOptional
+        // stores the "no" on the chain item, so the resolution asks nothing
+        // if the unit is on the board again by then.
         int decision = confirmOptional(ctx, "Valley of Idols: pay [1] to [Buff] the unit?",
             [&]() { return still_there() && payableEnergy(ctx.state, ctx.controller) >= 1; });
         if (decision < 1) return;   // waiting on the agent, declined or not legal
 
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (!still_there()) return;           // paid, but the unit left in response
         // buffUnit gives the +1 [M] buff only to a unit without one (CR 427.1.b).
         if (ctx.executor.buffUnit(played))
             ctx.events.logTrace("VALLEY OF IDOLS: paid [1] -> [Buff] the played unit");

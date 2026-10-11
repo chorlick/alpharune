@@ -39,7 +39,9 @@ public:
                    payableOnePower(ctx.state, ctx.controller, Domain::Body) &&
                    subject_on_board();
         };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may": when the cost can't be paid
+        // confirmOptional stores the "no" on the chain item, so the resolution
+        // asks nothing if it has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx,
             "Mistfall: pay [O] + exhaust to ready the buffed unit?", still_legal);
         if (conf < 1) return;

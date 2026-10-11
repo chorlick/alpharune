@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -61,9 +62,9 @@ public:
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }
             if (choices.empty()) { ri.resume_data[kStepSlot] = 2; return; }
-            // "you may banish one" — add a decline option (empty chosen_objects).
-            { Intent decline; decline.type = IntentType::MakeChoice;
-              decline.player = ctx.controller; choices.push_back(std::move(decline)); }
+            // "you may banish one" — add a decline option: no object, value 0,
+            // so an agent can name it (the cards are told apart by object).
+            choices.push_back(valChoice(ctx.controller, 0, "Rek'Sai: banish none"));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "Rek'Sai: banish & play one of top 2 (or decline)");
             ri.resume_data[kStepSlot] = 1;

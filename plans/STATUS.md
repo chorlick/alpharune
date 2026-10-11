@@ -54,6 +54,14 @@ iteration must apply these.
   needs `wsl --shutdown`, which ends the session; the stage 1 gate is the clean
   point. If the user does it, raise `RIFTBOUND_BUILD_JOBS` and `-j` to match.
 
+- **ccache (2026-10-10):** the cross-worktree launcher from integrity
+  (`CCACHE_BASEDIR` + `CCACHE_NOHASHDIR`) is NOT safe while worktrees edit
+  headers in parallel: cards-c0 had a `.gch` from cards-c2 restored into its
+  build. Every worktree, integration included, now uses a private cache
+  (`CCACHE_NAMESPACE=<name>`, plain sloppiness) and does a clean build before
+  its final suite run. `CLAUDE.md` still documents the shared launcher — fix or
+  caveat it in the sweep.
+
 ## Streams
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
@@ -66,7 +74,7 @@ iteration must apply these.
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
 | 1 | io-cli | merged | `f3e2208` | gate: 1726 run, 1726 passed | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
 | 1 | integrity | merged | `fc1f7cb` (merge `b0d329b`) | gate: 1726 run, 1726 passed | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
-| 2 | cards-c0 | running | | | based on `1640e81` |
+| 2 | cards-c0 | returned | `0c82974` (merged, clean-build gate in progress) | 1783 passed, 0 failed (on its branch) | 31 boxes ticked; 6 batch-00 items BLOCKED on engine work (in carry-over); 3 `shared:` commits incl. engine changes |
 | 2 | cards-c1 | running | | | based on `1640e81` |
 | 2 | cards-c2 | running | | | based on `1640e81` |
 | 2 | cards-c3 | running | | | based on `1640e81` |
@@ -100,6 +108,15 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c0 | BUILD: the shared-ccache launcher documented in `CLAUDE.md` (integrity) restores PCHs across worktrees with different header contents — find the cause (direct-mode manifest? `-fmacro-prefix-map`?) or remove the launcher from `CLAUDE.md` | sweep | open |
+| cards-c0 | BLOCKED batch-00 items needing engine work: Svellsongur 382 (dispatch bearer's abilities through the gear); Vilemaw's Lair 290 and Back-Alley Bar 272 (need a recall primitive distinct from `moveToBase`); Equip generator offers an unaffordable Equip, and Piltovan Forge 948 Equip branch bypasses discount and per-turn counter (need an equip-cost descriptor); Risen Altar 950 (needs a Power-side activation reduction) | sweep | open |
+| cards-c0 | `shared:` engine changes to review in the sweep: `predict` asks an extra ordering prompt per kept card beyond the first (all Predict users: 834, 624, 843); `recalculateAuras` grants Equipment keywords before card hooks; `killObject` asks the dying unit's battlefield for a replacement; Academy's granted Repeat charges Power; new `TriggerType::WhenILeaveTheBoard`; `PlayerState::chosen_champion` | sweep (review), checkpoint (new state field → feature layout?) | open |
+| cards-c0 | for cards-c1: Chem-Baroness 556 sets `card_counters["__gold_add_bonus_energy"]` on the legend from `applyPassiveAura`; Gold 564 needs the token flag; Seal of Strength 542 wrong domain | cards-c1 (messaged) | open |
+| cards-c0 | for cards-c6: Nami 614 can use the new `WhenYouPlayAUnit` subject (7.12) | cards-c6 | open |
+| cards-c0 | NEW: `EffectExecutor::killObject` `death_replacement_recall_pending` block detaches gear on a recall (same CR 719.3.a issue as `killUnit`) | sweep | open |
+| cards-c0 | NEW: Equip generator and `payAndQueueAbility` skip a gear that is already attached, so attached Equipment can never be re-equipped to another unit — check against the CR | sweep | open |
+| cards-c0 | NEW: `Card::confirmOptional` lists "No" first, so the fixture's default `EnginePathAgent` declines every "may"; a test that passes no agent silently tests the decline path | sweep (audit stage 2 tests for this) | open |
+| cards-c0 | approximations left documented: Solari Shrine 72 (killer not tracked), Unlicensed Armory 23 (rescue needs an Armory still in play); Baited Hook 242 `[C]` is Order, not Chaos as the earlier carry-over row said | sweep (confirm) | open |
 | integrity | 5.12 warnings carry-over (`-Wall -Wextra`): 120 sites — `card.h` 18 unused parameters (fix first, ~400 lines of noise), units 31, gear 18, spells 10, legends 3, battlefields 1, engine 3, io 3, `openspiel_tests.cpp` 1, tests 30, libstdc++ 2 | card streams fix warnings in card files they touch; cleanup takes `card.h`, engine, io, tests | open |
 | integrity | NEW: Karma, Channeler 235 has tags `{Vi, Ionia}`; reprint 548 has `{Karma}` — 235 would be a legal Chosen Champion for a Vi legend | cards-c5 | open |
 | integrity | NEW: token reference cards without `SuperType::Token`: Gold 326 / 564, Reflection 566, Bird 559, Sprite 569, token battlefields Brush 561 and Baron Pit 558 (only Recruit 954 and Shadow Clone 955 carry it); `affects_non_token_only` cost checks read `super_type` | cards-c0 (326, 558, 561), cards-c1 (564), cards-c6 (559, 566, 569) — verify ranges by path | open |
@@ -206,3 +223,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 integrity (`fc1f7cb`) merged; integration reconfigured with the shared-ccache launcher; stage 1 gate run started. AGENT_BRIEF.md updated (launcher, job cap, unity-test rule, shell rule). 7 rows to carry-over.
 - 2026-10-10 STAGE 1 GATE PASSED at `b0d329b`. integrity and io-cli marked merged; their worktrees and branches removed.
 - 2026-10-10 master fast-forwarded to `1640e81`. Stage 2: spawned cards-c0..c5 (6 running); c6 and c7 wait for a slot.
+- 2026-10-10 cards-c0 returned and merged; it found the shared-ccache launcher restoring a foreign PCH. All running streams told to use a private cache namespace and clean-build before their final run; integration reconfigured the same way and rebuilt from clean. 9 rows to carry-over.

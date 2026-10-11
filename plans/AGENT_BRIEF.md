@@ -85,11 +85,11 @@ through a shared lock so only one runs at once:
 ```bash
 REPO=/home/pirateporkchop/code/riftbound-engine
 cd "$REPO/.worktrees/<stream>"
-# configure once, from the worktree root (reuses the downloaded dependency sources;
-# the launcher makes ccache share results with the integration worktree, so a
-# first build of unchanged sources is nearly all cache hits)
+# configure once (reuses the downloaded dependency sources). The ccache
+# namespace keeps your cache private to your stream: a cache shared between
+# worktrees restored precompiled headers built against another stream's headers.
 flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_BASEDIR=$PWD;CCACHE_NOHASHDIR=1;CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime;ccache" \
+  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_NAMESPACE=<stream>;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache" \
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
 # build + test
@@ -104,6 +104,12 @@ flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_test
   `game_state.h` and friends rebuild everything.
 - Use `--gtest_filter=` while iterating; run the full suite before you finish.
 - Never build in the main checkout's `build/`.
+- Do not use `CCACHE_BASEDIR` / `CCACHE_NOHASHDIR` (the cross-worktree launcher
+  in `CLAUDE.md`): it is unsafe while several worktrees edit headers. Before
+  your final full-suite run, do `cmake --build build --target clean` once so
+  nothing stale is linked, and say so in your report.
+- The session scratchpad directory is shared by every stream: keep your scripts
+  and logs in a subdirectory named after your stream.
 - CMake caps concurrent jobs at 6 (`RIFTBOUND_BUILD_JOBS`); do not raise it.
 - Test files are unity-built (`RIFTBOUND_UNITY_TESTS`, see `CLAUDE.md`): a new
   test file must not define file-scope names that clash with other test files.

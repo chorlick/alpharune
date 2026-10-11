@@ -2213,18 +2213,41 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
 GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, const ChainItem& pre,
                                                      const std::vector<int>& script,
                                                      bool stop_after_script) {
-    ScriptedPass out;
     // The record of decisions made so far belongs to the game, not to the
     // state a run starts from.
     auto history = std::move(state_.action_history);
     const int decisions = state_.decision_index;
     state_ = from;
+    ++pre_play_state_copies_;
     state_.action_history = std::move(history);
     state_.decision_index = decisions;
+    return runScriptedPassHere(pre, script, stop_after_script);
+}
+
+GameEngine::ScriptedPass GameEngine::runScriptedPassHere(const ChainItem& pre,
+                                                         const std::vector<int>& script,
+                                                         bool stop_after_script,
+                                                         bool note_discounts) {
+    ScriptedPass out;
     bool dead = false;
     FinalizeAnswerer answer = [&](size_t k, PlayerId p,
                                   const std::vector<Intent>& legal) -> std::optional<Intent> {
         out.option_counts.push_back(static_cast<int>(legal.size()));
+        if (note_discounts) {
+            std::vector<int> pays;
+            for (size_t i = 0; i < legal.size(); ++i)
+                for (auto t : legal[i].chosen_objects) {
+                    if (!state_.objectExists(t) || !state_.getObject(t).location.has_value())
+                        continue;
+                    // The pre-play choice filter is the test: with what is
+                    // chosen so far, choosing `t` leaves the spell payable.
+                    if (effect_executor_->choiceAllowed(t)) {
+                        pays.push_back(static_cast<int>(i));
+                        break;
+                    }
+                }
+            out.discount_options.push_back(std::move(pays));
+        }
         if (k < script.size()) {
             if (script[k] < 0 || script[k] >= static_cast<int>(legal.size())) {
                 dead = true;
@@ -2257,48 +2280,61 @@ GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, cons
     return out;
 }
 
-bool GameEngine::prePlaySequenceExists(const GameState& from, const ChainItem& pre,
-                                       const std::vector<int>& script,
+bool GameEngine::prePlaySequenceExists(const ToPassStart& to_start, bool at_start,
+                                       const ChainItem& pre, const std::vector<int>& script,
                                        const PrePlayPayable& payable) {
-    const auto quiet = events_.beginQuiet();
-    // Leave the state as it was handed in (the decision record kept).
-    auto restore = [&] {
-        auto history = std::move(state_.action_history);
-        const int decisions = state_.decision_index;
-        state_ = from;
-        state_.action_history = std::move(history);
-        state_.decision_index = decisions;
-        events_.endQuiet(quiet);
+    // A run that throws must not leave the bus quiet.
+    struct QuietSearch {
+        EventBus& bus;
+        EventBus::Quiet q;
+        explicit QuietSearch(EventBus& b) : bus(b), q(b.beginQuiet()) {}
+        ~QuietSearch() { bus.endQuiet(q); }
     };
+    const QuietSearch quiet(events_);
     bool found = false;
     int runs = 0;
     std::vector<std::vector<int>> todo{script};
-    try {
-        while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
-            const std::vector<int> prefix = std::move(todo.back());
-            todo.pop_back();
-            ++runs;
-            const ScriptedPass run =
-                runScriptedPass(from, pre, prefix, /*stop_after_script=*/false);
-            if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
-            // Every other answer to each prompt this run met past its prefix.
-            for (size_t k = run.option_counts.size(); k-- > prefix.size();)
+    while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
+        const std::vector<int> prefix = std::move(todo.back());
+        todo.pop_back();
+        // Every run starts from the start of the pass. The first one of a
+        // search that was handed the state there needs no reset.
+        if (runs > 0 || !at_start) to_start();
+        ++runs;
+        ++pre_play_runs_total_;
+        pre_play_runs_last_ = runs;
+        pre_play_runs_max_ = std::max(pre_play_runs_max_, runs);
+        const ScriptedPass run = runScriptedPassHere(pre, prefix, /*stop_after_script=*/false,
+                                                     /*note_discounts=*/true);
+        if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
+        // Every other answer to each prompt this run met past its prefix: all
+        // of them are walked, so "none is payable" is an answer and not a
+        // guess. The order is what keeps a search short when one is: an
+        // answer naming an object with which the spell is payable there and
+        // then is tried before the others (it goes on the stack last). A
+        // spell that offers
+        // every unit on the board at a prompt (Flash) is then decided in two
+        // or three runs instead of one per unit (plans/09 item 9.II1).
+        for (int pass = 0; pass < 2; ++pass)
+            for (size_t k = run.option_counts.size(); k-- > prefix.size();) {
+                const auto& pays = run.discount_options[k];
                 for (int alt = run.option_counts[k] - 1; alt >= 1; --alt) {
+                    const bool discount =
+                        std::find(pays.begin(), pays.end(), alt) != pays.end();
+                    if (discount != (pass == 1)) continue;
                     std::vector<int> next = prefix;
                     next.resize(k, 0);
                     next.push_back(alt);
                     todo.push_back(std::move(next));
                 }
-        }
-    } catch (...) {
-        restore();
-        throw;
+            }
     }
-    restore();
     // The bound was reached with sequences still unwalked and none found: the
     // answer is not known. Saying "none" would withhold a play that may be
     // legal, so it is an error naming the card, as the engine's other bounds
     // are; the remedy is a card whose pass asks less, or a larger bound.
+    // (No registered spell comes near it: SweepCostsTest.
+    // FinalizePassSpell_NoRegisteredSpellComesNearTheProbeBound.)
     if (!found && !todo.empty())
         throw std::logic_error("GameEngine::prePlaySequenceExists: " +
                                state_.getObject(pre.source).name + " has more than " +
@@ -2317,6 +2353,7 @@ bool GameEngine::prePlaySequenceExists(const GameState& from, const ChainItem& p
 // clock) breaks that, and one of the three throws below names it.
 ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPayable& payable) {
     const GameState pass_start = state_;
+    ++pre_play_state_copies_;
     std::vector<int> script;
     // A run that throws must not leave the bus quiet.
     struct QuietRun {
@@ -2324,6 +2361,15 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
         EventBus::Quiet q;
         explicit QuietRun(EventBus& b) : bus(b), q(b.beginQuiet()) {}
         ~QuietRun() { bus.endQuiet(q); }
+    };
+    // Back to the start of the pass, the record of decisions kept.
+    const ToPassStart to_start = [&] {
+        auto history = std::move(state_.action_history);
+        const int decisions = state_.decision_index;
+        state_ = pass_start;
+        ++pre_play_state_copies_;
+        state_.action_history = std::move(history);
+        state_.decision_index = decisions;
     };
     for (;;) {
         // Where the choices so far lead: the next prompt, or the end.
@@ -2333,26 +2379,39 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
             at = runScriptedPass(pass_start, pre, script, /*stop_after_script=*/true);
         }
         if (at.completed) break;
-        if (at.next_options.empty())
-            throw std::logic_error("GameEngine::choosePrePlayViable: " +
-                                   state_.getObject(pre.source).name +
+        if (at.next_options.empty()) {
+            const std::string name = state_.getObject(pre.source).name;
+            to_start();
+            throw std::logic_error("GameEngine::choosePrePlayViable: " + name +
                                    " reached a prompt with no options (or its finalize pass "
                                    "is not repeatable)");
-        // Only the options a payable completion can still follow.
+        }
+        // Only the options a payable completion can still follow. (Each
+        // search leaves the state where its last run ended: the next one, and
+        // the run that asks, start from pass_start themselves.)
         std::vector<int> viable;
         const std::vector<Intent> options = at.next_options;
         const PlayerId asked_player = at.next_player;
         for (int i = 0; i < static_cast<int>(options.size()); ++i) {
             std::vector<int> with = script;
             with.push_back(i);
-            if (prePlaySequenceExists(pass_start, pre, with, payable)) viable.push_back(i);
+            bool exists = false;
+            try {
+                exists = prePlaySequenceExists(to_start, /*at_start=*/false, pre, with, payable);
+            } catch (...) {
+                to_start();
+                throw;
+            }
+            if (exists) viable.push_back(i);
         }
-        if (viable.empty())
-            throw std::logic_error("GameEngine::choosePrePlayViable: " +
-                                   state_.getObject(pre.source).name +
+        if (viable.empty()) {
+            const std::string name = state_.getObject(pre.source).name;
+            to_start();
+            throw std::logic_error("GameEngine::choosePrePlayViable: " + name +
                                    " was offered with no payable sequence of choices (or "
                                    "its finalize pass is not repeatable: the same answers must "
                                    "meet the same prompts)");
+        }
         // Ask with the state as the choices so far left it.
         {
             const QuietRun quiet(events_);
@@ -2387,17 +2446,33 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
 bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
                               const PlayerState::TrashReplayGrant* grant) {
     if (state_.chain.resuming.has_value() || !state_.objectExists(card_id)) return false;
-    const GameState saved = state_;
-    const auto quiet = events_.beginQuiet();
+    // The game is set aside whole — moved, not copied: its objects stay where
+    // every reference held up the call stack points — and the probe plays on
+    // a copy, which is thrown away when the game is moved back. One copy of
+    // the GameState per probe that finds its answer in one run (it was five:
+    // a saved state, a pass-start state, one per run, and two restores), one
+    // more for each further run (plans/09 item 9.HH4).
+    struct Parked {
+        GameState& live;
+        GameState game;
+        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
+        ~Parked() { live = std::move(game); }
+    };
+    Parked parked(state_);
+    ++pre_play_probes_;
     // As the play would begin: the card leaves its zone.
-    {
+    ChainItem pre;
+    const ToPassStart to_start = [&] {
+        state_ = parked.game;
+        ++pre_play_state_copies_;
         auto& ps = state_.player(player);
         ps.hand.erase(std::remove(ps.hand.begin(), ps.hand.end(), card_id), ps.hand.end());
         ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), card_id), ps.trash.end());
-    }
-    forgetPlayPayments(player, card_id);
-    ChainItem pre;
-    pre.id = state_.chain.allocateId();
+        forgetPlayPayments(player, card_id);
+        // The same id every time: the counter is part of the copied state.
+        pre.id = state_.chain.allocateId();
+    };
+    to_start();
     pre.status = ChainItemStatus::Pending;
     pre.source = card_id;
     pre.card_def_id = state_.getObject(card_id).card_def_id;
@@ -2405,8 +2480,12 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
     pre.is_spell = true;
     pre.pre_play_choices = true;
     // The grant, if any, is looked up again in each run: the pointer handed in
-    // points into the state that the runs replace.
+    // points into the game that is set aside.
     const bool via_grant = grant != nullptr;
+    struct FilterSet {
+        EffectExecutor& ex;
+        ~FilterSet() { ex.setChoiceFilter(nullptr); }
+    };
     effect_executor_->setChoiceFilter([this, player, card_id, via_grant](GameObjectId t) {
         std::vector<GameObjectId> all;
         if (state_.chain.resuming.has_value()) all = state_.chain.resuming->chosen_objects;
@@ -2415,6 +2494,7 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
         return g ? canPayTrashGrant(player, card_id, *g, all, {t})
                  : (!via_grant && canAffordChoosing(player, card_id, all, {t}));
     });
+    const FilterSet filter_set{*effect_executor_};
     const PrePlayPayable payable = [this, player, card_id, via_grant](
                                        const std::vector<GameObjectId>& chosen) {
         const auto* g = via_grant ? trashGrantFor(player, card_id) : nullptr;
@@ -2422,21 +2502,9 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
         return chosen.empty() ? canAfford(player, card_id)
                               : canAffordChoosing(player, card_id, chosen, {});
     };
-    const GameState pass_start = state_;
-    bool found = false;
-    try {
-        found = prePlaySequenceExists(pass_start, pre, {}, payable);
-    } catch (...) {
-        // A card-contract error: the probe still leaves nothing behind.
-        effect_executor_->setChoiceFilter(nullptr);
-        state_ = saved;
-        events_.endQuiet(quiet);
-        throw;
-    }
-    effect_executor_->setChoiceFilter(nullptr);
-    state_ = saved;
-    events_.endQuiet(quiet);
-    return found;
+    // (A card-contract error thrown by the search leaves through the guards
+    // above: the filter is cleared, the bus is as it was, the game is back.)
+    return prePlaySequenceExists(to_start, /*at_start=*/true, pre, {}, payable);
 }
 
 void GameEngine::executePlayCard(const Intent& intent) {

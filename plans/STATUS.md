@@ -90,6 +90,17 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| search | GATE: also build and run `riftbound_openspiel_tests` (`build/src/openspiel/riftbound_openspiel_tests`, `RIFTBOUND_ROOT=.`) — not part of `riftbound_tests`. 1.7 check: `RIFTBOUND_STEP_FAULT_AT=40 ./build/riftbound --deck1 decks/yi_rebuild.txt --deck2 decks/fiora.txt --agent1 mcts:sims=8 --agent2 random --games 4 --seed 7` must abort with the injected-fault message (exit 134), and exit 0 without the variable | orchestrator (every gate) | open |
+| search | `game_runner` / `batch_runner` do not catch exceptions: any engine or agent exception aborts the whole batch; should become a per-game error count | io-cli (owns the runners) | open |
+| search | HumanAgent interface for io-cli (4.3): `bool setChosenAction(int legal_index, uint64_t decision_id)` refuses a stale decision id; `explicit HumanAgent(PlayerId seat)`; server should send the rendered decision id, `main.cpp` should pass the seat | io-cli | open |
+| search | 7.40 remainder: `openspiel_match.cpp` deck defaults, root `README.md` | io-cli | open |
+| search | `CLAUDE.md` still describes the old replay model; add history tokens and `riftbound_openspiel_tests` | sweep | open |
+| search | 6.7: `~StepDriver` still drains by playing the game out; a clone at a non-resumable decision with no resumable ancestor replays from game start (~1.5 ms vs ~0.11 ms) | perf-search | open |
+| search | behaviour changes for other streams: `GameEngine::applyChoice` throws `std::out_of_range` on a bad index; `RiftboundState::ApplyAction` throws `std::invalid_argument` on an illegal action id (both used to apply action 0); `actionHistory()` returns by value; `makeFromSnapshot` gained `rng_seed`; `InfoSetId` / `ObservationString` values changed (1.13), feature layout unchanged | trainer note in the final report | open |
+| search | NEW: `mainPhaseLoop` can reach its decision with an item on the chain and state Closed; `generateLegalActions` then builds the stale `priority_holder`'s options (seen as a lone "P1: PassPriority") while the engine asks the turn player. Repro: yi_rebuild vs fiora, seed 1, move 217 | sweep | open |
+| search | NEW: `Intent::operator==` ignores `use_alt_play_cost` and `granted_ability_def` | sweep | open |
+| search | NEW (by design, note only): MCTS agents fall back to a uniformly random legal action at non-main-phase decisions when the live game cannot be reproduced from history (wrong seed, god-mode edit) | final report | open |
+| search | 1.3: `ResumedEngineKeepsTheMainPhaseActionCount` not confirmed to fail without the fix | sweep (confirm) | open |
 | engine-auras-costs | 5.4 remainder: three text matches left in the engine, each needs a `Card` virtual plus card edits — `setupBattlefields` ("can't move from here to base" / "can't be played here"), `generateMainPhaseActions` ("play me to an open battlefield" and variants), `parseRepeatCost` | sweep (ticks 5.4) | open |
 | engine-auras-costs | 8.4 remainder: Weaponmaster for Sand Soldier tokens — keyword exists only as a card base class and tokens have no card class; needs a keyword-level "when you play me" handler with a real choice and payment | sweep (ticks 8.4) | open |
 | engine-auras-costs | card files it already edited — card streams must re-read, not overwrite: battlefields 762, 775; legends 551, 784; units 15, 19, 28, 79, 84, 140, 232, 236, 243, 299, 349, 388, 411, 452, 467, 547, 609, 639, 675, 680, 709. Batch findings resolved by it: Farron (b04), Warmonger (b05), Rumble Hotheaded (b09), Eager Apprentice and Herald of Scales (b04), Vex (b05), Vaults of Helia (b00), Ornn's Forge 527 (engine). Fiora Victorious 232 def change NOT checked against her batch-05 entry | card streams (each in its range) | open |
@@ -161,3 +172,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 helpers returned; sent back for two regressions before merge.
 - 2026-10-10 recorded carry-over from the engine-auras-costs and helpers reports ahead of their merge verification (12 and 9 rows).
 - 2026-10-10 merged engine-auras-costs (`a8af2ef`), suite 1628/1631 with only the 2 baseline failures; 10 boxes ticked and verified. Worktree and branch removed.
+- 2026-10-10 helpers (`2e0f181`) and search (`44a7541`) merged as one batch; verification build queued. 11 search rows to carry-over.

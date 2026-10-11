@@ -3,6 +3,7 @@
 #include "cards/card_registry.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <fstream>
 #include <stdexcept>
@@ -16,6 +17,8 @@ void CardDB::buildFromClasses(const CardRegistry& registry) {
         const CardDef* cd = registry.classDef(id);
         if (!cd) continue;  // legacy id-only card (none expected post-bake)
         CardDef def = *cd;  // copy the class-owned authored data
+        // registerCard guarantees this; the table below is keyed by def.id.
+        assert(def.id == id && "registry key differs from the card's def().id");
         name_index_[toLower(def.name)].push_back(def.id);
         // Legends: index the "<ChampionTag>, <PrintedName>" alias too (e.g.,
         // legend "Gloomist" with tag "Vex" -> "Vex, Gloomist"). Decks and humans

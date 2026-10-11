@@ -64,16 +64,18 @@ public:
         DelayedAbility da;
         da.source = ctx.source;
         da.card_def_id = cardDefId();
-        da.controller = opp;                  // fires on THEIR hold
+        da.controller = ctx.controller;       // my controller's ability (CR 391-392)
+        da.watched_player = opp;              // ... that waits for THEIR hold
         da.trigger = TriggerType::WhenIHold;
-        da.expires_on_turn = std::numeric_limits<int>::max();
+        da.expires_on_turn = DelayedAbility::kUntilFired;
         ctx.state.delayed_abilities.push_back(da);
         ctx.events.logTrace("ASHE FOCUSED: banished a card from opponent's hand "
                             "until they hold");
     }
-    // The delayed half: ctx.controller is the player who held.
+    // The delayed half: my controller's ability; the player who held is the
+    // opponent it was waiting on.
     void returnBanished(CardContext& ctx) {
-        auto& ps = ctx.state.player(ctx.controller);
+        auto& ps = ctx.state.player(opponent(ctx.controller));
         std::vector<GameObjectId> back;
         for (auto cid : ps.banishment) {
             if (!ctx.state.objectExists(cid)) continue;

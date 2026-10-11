@@ -26,8 +26,8 @@
 ///     rebuilt from the nearest resumable ancestor snapshot (or from
 ///     `beginGame`) by replaying the exact choices made since —
 ///     `GameState::action_history` holds one history token per decision
-///     (action_vocab.h), which identifies the chosen Intent, not just its
-///     lossy vocab slot.
+///     (action_vocab.h), which identifies the chosen Intent by every one of
+///     its fields.
 ///
 /// Either way the rebuilt engine is checked against the snapshot's pending
 /// decision; a mismatch throws instead of silently playing a different game.
@@ -35,9 +35,10 @@
 /// MCTS produces many clones that are never advanced (search-tree leaves,
 /// rollout heads that terminate early). Those cost a pointer copy.
 ///
-/// Action IDs are dense vocab slots in [0, kVocabSize) (see action_vocab.h)
-/// keyed by CardDefId — stable across clones, sized for AlphaZero policy
-/// heads.
+/// Action ids are in [0, openspiel::kNumActions) (see action_vocab.h): a
+/// slot that says what the action is made of, plus a twin number that tells
+/// apart the legal Intents with one description. One id per distinct legal
+/// Intent; the same in a state and its clones.
 
 #include "open_spiel/spiel.h"
 
@@ -165,8 +166,11 @@ public:
     /// FNV-1a on uniform-ish inputs.
     uint64_t InfoSetId(::open_spiel::Player player) const;
 
-    /// Sequence of action ids (vocab slots) applied so far, in order, one
-    /// per decision; -1 for a decision whose Intent had no slot. Derived
+    /// The slot (openspiel::actionSlot: what the action was made of) of
+    /// every Intent applied so far, in order, one per decision. Not the
+    /// action ids: an id also holds a twin number, which the engine does not
+    /// record (action_vocab.h, "History tokens"); the ids of a game driven
+    /// through ApplyAction are OpenSpiel's History(). Derived
     /// from the engine's `GameState::action_history` tokens.
     std::vector<int64_t> actionHistory() const;
 
@@ -198,9 +202,10 @@ public:
     /// LegalActions() returns the bit-packed int64 ActionID variant for
     /// OpenSpiel's tree algorithms; this method returns the matching
     /// Intent objects so an Intent-aware agent can score them directly.
-    /// In the engine's order, not LegalActions()' (which is deduplicated
-    /// by slot and sorted) — so use this for scoring, then map the chosen
-    /// Intent's encoded id back to LegalActions() to apply.
+    /// In the engine's order, not LegalActions()' (which is sorted) — so
+    /// use this for scoring, then apply the chosen Intent by its id
+    /// (`openspiel::actionIds(legalIntents(), engineState())`, parallel to
+    /// this list).
     ///
     /// A view, not a copy: valid until this state is next advanced (or
     /// destroyed). Copy it to keep it across an ApplyAction.

@@ -128,9 +128,8 @@ struct PlayerState {
     // until selection). Used during setup to offer a `ChooseBattlefield`
     // decision per CR 480.5 / 481.5, and consumed afterwards. The
     // renderer reads this to label the candidates by their printed
-    // card name in the legal-action UI; the action-vocab encoder
-    // uses the Intent's `chosen_battlefield` field (carrying the
-    // index into this vector) for slot encoding.
+    // card name in the legal-action UI; Intent::battlefield_pool_index
+    // is an index into this vector.
     std::vector<CardDefId> battlefield_pool;
 
     // Special zones (single card or empty)
@@ -886,8 +885,8 @@ struct GameState {
     int decision_index = 0;
 
     // One history token per decision applied to this game, in order
-    // (openspiel/action_vocab.h: the vocab slot plus a fingerprint that
-    // identifies the chosen Intent). Written only by
+    // (openspiel/action_vocab.h: the Intent's slot plus a fingerprint of
+    // every field, which identifies the chosen Intent). Written only by
     // GameEngine::recordAppliedIntent, in runGame and step-machine games
     // alike. Replaying the tokens from the same decks and seed rebuilds the
     // game exactly; lives here so a state copy carries its own history.

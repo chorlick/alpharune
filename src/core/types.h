@@ -113,12 +113,17 @@ struct GameObjectIdTag { static constexpr bool kNamedByLiteral = false; };
 struct BattlefieldIdTag { static constexpr bool kNamedByLiteral = false; };
 struct AbilityIdTag { static constexpr bool kNamedByLiteral = false; };
 struct ChainItemIdTag { static constexpr bool kNamedByLiteral = false; };
+struct BattlefieldPoolIndexTag { static constexpr bool kNamedByLiteral = false; };
 
 using CardDefId   = StrongId<CardDefIdTag>;  // Index into CardDB (the card class's def().id)
 using GameObjectId = StrongId<GameObjectIdTag>; // Runtime game object instance
 using AbilityId   = StrongId<AbilityIdTag>;    // Ability instance (Intent::ability)
 using ChainItemId = StrongId<ChainItemIdTag>;  // Chain item instance
 using BattlefieldId = StrongId<BattlefieldIdTag>; // Battlefield slot (an index into GameState::battlefields)
+// A position in a player's battlefield list (PlayerState::battlefield_pool):
+// what the setup decision ChooseBattlefield picks, before any battlefield
+// exists. Not a battlefield slot, and not convertible to one.
+using BattlefieldPoolIndex = StrongId<BattlefieldPoolIndexTag>;
 
 // ─── Player ──────────────────────────────────────────────────────────────────
 

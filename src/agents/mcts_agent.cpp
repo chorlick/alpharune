@@ -155,21 +155,17 @@ public:
         }
         if (rb->IsTerminal()) return out;   // LegalActions() is empty
 
-        // One encode per Intent. The legal action ids are the Intents' vocab
-        // slots, deduplicated and ascending (RiftboundState::LegalActions);
-        // a slot shared by several Intents takes the weight of the first
-        // one in the engine's order — hence the stable sort. (This used to
-        // call LegalActions() and then re-encode every Intent for every
-        // action to match them up: L + L*L/2 encodes per expanded node.)
+        // One id per distinct Intent (openspiel::actionIds), in ascending
+        // order as RiftboundState::LegalActions gives them. An Intent the
+        // engine listed twice has one id: it is counted once.
         const auto& intents = rb->legalIntents();
         const auto& engine_state = rb->engineState();
+        const std::vector<int> ids = openspiel::actionIds(intents, engine_state);
         std::vector<std::pair<::open_spiel::Action, double>> weighted;
         weighted.reserve(intents.size());
-        for (const auto& it : intents) {
-            weighted.emplace_back(
-                static_cast<::open_spiel::Action>(
-                    openspiel::encodeAction(it, engine_state)),
-                intentWeight(it));
+        for (size_t i = 0; i < intents.size(); ++i) {
+            weighted.emplace_back(static_cast<::open_spiel::Action>(ids[i]),
+                                  intentWeight(intents[i]));
         }
         std::stable_sort(weighted.begin(), weighted.end(),
                          [](const auto& a, const auto& b) {
@@ -423,12 +419,12 @@ Intent MctsAgent::selectAction(const GameState& state,
                       << "action " << chosen_action
                       << " not in live legal set of size "
                       << legal_actions.size() << ")";
-            // Encode every live Intent to a slot so we can see what
-            // slots the live engine had available vs what MCTS picked.
-            std::cerr << " live_slots={";
-            for (size_t i = 0; i < legal_actions.size(); ++i) {
+            // The ids the live engine had on offer vs what MCTS picked.
+            std::cerr << " live_ids={";
+            const std::vector<int> live_ids = openspiel::actionIds(legal_actions, state);
+            for (size_t i = 0; i < live_ids.size(); ++i) {
                 if (i > 0) std::cerr << ",";
-                std::cerr << openspiel::encodeAction(legal_actions[i], state);
+                std::cerr << live_ids[i];
             }
             std::cerr << "}\n";
         }

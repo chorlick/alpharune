@@ -468,6 +468,58 @@ TEST_F(StepApiTest, ApplyChoiceRejectsAnIndexOutsideTheLegalList) {
     EXPECT_NO_THROW(g->engine.applyChoice(0));
 }
 
+// plans/09 item 9.RR2 — the setup choice of a battlefield has a field of its
+// own type (a position in the player's battlefield list); `chosen_battlefield`
+// means one thing, the slot a card is hidden at.
+TEST_F(StepApiTest, TheSetupBattlefieldChoiceIsNotABattlefieldSlot) {
+    int setup_choices = 0, hides = 0;
+    for (uint64_t seed = 1; seed <= 12; ++seed) {
+        auto g = begin(seed);
+        std::mt19937_64 rng(seed * 13);
+        CardDefId picked[2];
+        for (int n = 0; n < kMaxDecisions && !g->engine.isStepDone(); ++n) {
+            const auto step = g->engine.currentStep();
+            const auto& gs = g->engine.state();
+            int choice = pick(rng, step);
+            for (size_t i = 0; i < step.legal.size(); ++i) {
+                const Intent& intent = step.legal[i];
+                if (intent.type == IntentType::ChooseBattlefield) {
+                    const auto& pool = gs.player(intent.player).battlefield_pool;
+                    ASSERT_EQ(step.legal.size(), pool.size());
+                    EXPECT_EQ(intent.chosen_battlefield, kInvalidId) << "no slot exists yet";
+                    EXPECT_EQ(intent.battlefield_pool_index.raw(), i);
+                    EXPECT_TRUE(gs.battlefields.empty());
+                } else {
+                    EXPECT_EQ(intent.battlefield_pool_index, kInvalidId) << intent.describe();
+                }
+                if (intent.type == IntentType::HideCard) {
+                    ++hides;
+                    ASSERT_LT(intent.chosen_battlefield.raw(), gs.battlefields.size());
+                    EXPECT_EQ(gs.battlefields[intent.chosen_battlefield].controller,
+                              std::optional<PlayerId>(intent.player));
+                }
+            }
+            if (step.legal.front().type == IntentType::ChooseBattlefield) {
+                ++setup_choices;
+                // Take the last card of the list: slot != position for Player1.
+                choice = static_cast<int>(step.legal.size()) - 1;
+                const Intent& intent = step.legal[choice];
+                picked[intent.player == PlayerId::Player1 ? 0 : 1] =
+                    gs.player(intent.player).battlefield_pool[choice];
+            }
+            g->engine.applyChoice(choice);
+            if (g->engine.state().battlefields.size() == 2 && n < 4) {
+                const auto& s2 = g->engine.state();
+                for (int p = 0; p < 2; ++p)
+                    EXPECT_EQ(s2.getObject(s2.battlefields[p].card_object_id).card_def_id,
+                              picked[p]) << "seed " << seed << " player " << p;
+            }
+        }
+    }
+    EXPECT_EQ(setup_choices, 24);
+    EXPECT_GT(hides, 0) << "no HideCard intent was offered in 12 games";
+}
+
 // 1.14 — the feature vector is exactly kStateFeatureDim long on real states,
 // from both seats (ObservationTensor used to pad or truncate a mismatch).
 TEST_F(StepApiTest, StateFeaturesAreExactlyStateFeatureDimOnRealStates) {

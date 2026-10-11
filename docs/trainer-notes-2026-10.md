@@ -15,6 +15,12 @@ and friends become distinct types — mostly a recompile, with explicit casts
 where the trainer mixes them with integers) and stage 5 (feature layout and
 action vocabulary). Stage 5 writes its own note.
 
+**Stage 5 has happened: read `docs/checkpoint-breaking-2026-10.md` first.** It
+supersedes what this document says about `kStateFeatureDim` (now 6192), the
+feature layout, the action vocabulary (`encodeAction` is gone; ids are
+`actionIds`), `LegalActions()` ("deduplicated by slot" is no longer true: one
+id per distinct legal intent) and `actionHistory()` (slots, not ids).
+
 ## 1. Build and link
 
 | Change | What to do |

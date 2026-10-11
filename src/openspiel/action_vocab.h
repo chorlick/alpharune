@@ -1,33 +1,44 @@
 #pragma once
 /// @file action_vocab.h
-/// Fixed dense [0, kVocabSize) action vocabulary for the OpenSpiel wrapper.
+/// Action ids for the OpenSpiel wrapper: a fixed range [0, kNumActions) in
+/// which no two distinct legal intents of one decision share an id, and every
+/// legal intent has one.
 ///
-/// Phase B used a 52-bit structural bit-packing — the action ID was sparse
-/// and could be any value in [0, 2^52). That worked for MCTS (which only
-/// needs to compare IDs), but breaks AlphaZero — the policy head emits a
-/// softmax over a fixed-size dense vector, so we need a small, contiguous
-/// action space.
+/// An id is made of two parts:
 ///
-/// This vocab collapses semantic variants:
-///   PlayCard / PlayReaction / PlayActionCard  → Play
-///   ActivateAbility / *ReactionAbility / *ActionAbility → ActivateAbility
+///     id = slot + kNumSlots * twin
 ///
-/// And maps each remaining bucket to a primary key:
-///   Play / HideCard / ActivateAbility   → card_def_id (1..787)
-///   MakeChoice                          → first chosen def_id (0 = none)
-///   StandardMove / ChooseBattlefield    → battlefield slot (0..7)
-///   AssignCombatDamage                  → distribution kind (0..3)
-///   MulliganDecision                    → mulligan count (0..2)
-///   PlayFirstDecision                   → bool
-///   EndTurn / PassPriority / etc.       → singleton
-///   PlaceOptionalTrigger / Pay / Decline → source card_def_id
-///   SideboardSwap                        → out card_def_id
+///   * `slot` in [0, kNumSlots) says WHAT THE ACTION IS MADE OF: its verb and
+///     the verb's key (which card is played and where, which unit moves where,
+///     which of the player's or the opponent's cards a prompt picks, which
+///     number it answers). `actionSlot(intent, state)`; it needs no legal list
+///     and means the same in every position.
+///   * `twin` in [0, kTwinPlanes) tells apart the legal intents of one
+///     decision that have the same slot: the two copies of one card in hand,
+///     a spell offered once per target, a prompt offered once per rune. The
+///     intents of a decision that share a slot are put in a canonical order
+///     and numbered 0, 1, 2, ...; the first keeps the plain slot as its id.
 ///
-/// Decoding searches the current legal-action list for the first Intent whose
-/// vocab slot matches the requested ID. Collisions are accepted: two Plays of
-/// the same card targeting different units alias to one slot, and decode
-/// picks the first one encountered. AZ-style policy heads handle this
-/// gracefully — the model learns a coarser policy at aliased slots.
+/// The canonical order compares the intents field by field (objects by their
+/// id, places and numbers by value): it depends only on the intents
+/// themselves, not on the order the generator listed them in, and it reads
+/// nothing from the state. An intent names only what the deciding player is
+/// shown, so the ids of a decision are the same in every deal of the hidden
+/// cards that player cannot tell apart; the slot reads one more thing, the
+/// card id of an object the intent names. What a twin number means beyond
+/// "another action with this description" is fixed for a given set of
+/// objects, not across positions: two units of one card that swap places
+/// swap twin numbers.
+///
+/// Verbs collapse timing variants (PlayCard / PlayReaction / PlayActionCard
+/// are Play; the three Activate types are one): the timing is part of the
+/// state, not of the choice. Verb names follow core/legal_action.h's
+/// `ActionKind` where both exist.
+///
+/// Before the 2026-10 checkpoint break an id was the slot alone, slots were
+/// coarser, and of the intents sharing one only the first could be chosen
+/// (plans/01 item 1.12: 39% of the decisions of random games lost an option
+/// that way). docs/checkpoint-breaking-2026-10.md lists every range.
 
 #include "core/intent.h"
 #include "core/game_state.h"
@@ -42,113 +53,100 @@ namespace riftbound::openspiel {
 /// ml::kCardVocabSize (static_assert in riftbound_state.cpp).
 constexpr int kNumCardDefIds = 1100;
 
-/// Reserved slot count for integer-coded MakeChoice answers
-/// (Intent::chosen_value). Used by card.cpp helpers — confirmOptional
-/// (yes/no = 0/1), pickMode (mode index), pickXAmount (X value). Sized
-/// large enough for any modal spell + small-N X pickers; 16 covers every
-/// current card. Bump if a future card has > 15 modes or X > 15.
-///
-/// Important for the AlphaZero policy head: each integer-coded answer
-/// gets a DISTINCT slot, so the model can learn preferences across modes
-/// (e.g. Curtain Call "Draw 1 vs Deal 2 vs -4M") and yes/no triggers
-/// (e.g. Virtuoso "may banish 4-cost spell"). Previously the codebase
-/// stuffed the integer into chosen_objects as a fake GameObjectId, which
-/// collided in the encoder — confirmOptional yes_choice and no_choice
-/// both mapped to slot 0 and the agent never saw the yes option.
+/// Width of a range keyed by a card: key 0 is "an object with no card id" (a
+/// token that has no card class) and keys 1..kNumCardDefIds are the card ids.
+/// No verb falls back to another card's key for such an object.
+constexpr int kCardKeys = kNumCardDefIds + 1;
+
+/// Integer answers of a prompt (Intent::chosen_value: yes / no, a mode, an X)
+/// that have a slot of their own: 0..kNumIntChoices-1. Any other value shares
+/// one more slot (and is told apart by its twin number).
 constexpr int kNumIntChoices = 16;
 
-/// Phase 6r — multi-ability per Card. ActivateAbility slots are keyed by
-/// (card_def_id, ability_index). Most cards have 0 or 1 activated abilities;
-/// the maximum observed in the registry is 2 (Voidreaver, Grandmaster at
-/// Arms, Honeyfruit). We reserve 4 slots per card for headroom — cards
-/// with fewer abilities just leave the higher indices unused. Bump if a
-/// future card ever has > 4 activated abilities.
+/// Activated abilities of one card that have a slot of their own, by
+/// `Intent::ability_index`; a higher index shares the last one.
 constexpr int kMaxAbilitiesPerCard = 4;
 
-/// Verb categories. Each verb owns a contiguous range of slot ids.
-///
-/// Phase 6t — Slot 0 is reserved (Reserved verb, arity 1, never
-/// emitted by encodeAction). This removes the structural bias where
-/// any source of "low-index slot preference" (initialization noise,
-/// regularization, position-implicit biases) would privilege the
-/// action at slot 0. Prior layout had EndTurn at slot 0; the model
-/// learned to over-predict EndTurn (68-80% of all model decisions in
-/// iter_6 of the rengar bootstrap). Reserving slot 0 means no real
-/// action sits there — any slot-0 bias is absorbed by an action that
-/// the legal-action mask never selects.
-enum class ActionVerb : uint8_t {
-    Reserved = 0,                   // arity 1, NEVER emitted
-    EndTurn,
-    PassPriority,
-    PassFocus,
-    Concede,
-    PlayFirstDecision,         // arity 2 (false/true)
-    MulliganDecision,          // arity 3 (count 0/1/2)
-    ChooseBattlefield,         // arity 8 (bf id, 0..7)
-    AssignCombatDamage,        // arity 128 (distribution hash bucket 0..127)
-                               // Phase 6t — bumped from 16 to 128 to
-                               // cut collision rate on combat-damage
-                               // distributions. With 2-5 attackers vs
-                               // 2-5 defenders distributing 5-20
-                               // damage, the realistic distribution
-                               // space is hundreds of distinct
-                               // patterns; 16 buckets had high
-                               // collision rate (lossy training signal
-                               // for combat decisions). 128 covers
-                               // most realistic distributions with
-                               // <10% collision rate. Slots 0..3
-                               // remain reserved for the named
-                               // distribution kinds (greedy-lethal /
-                               // spread-even / focus-all /
-                               // lethal-first) at natural hash points.
-    StandardMove,              // arity 8 (destination bf slot)
-    Play,                      // arity kNumCardDefIds
-    HideCard,                  // arity kNumCardDefIds
-    ActivateAbility,           // arity kNumCardDefIds * kMaxAbilitiesPerCard
-                               // Phase 6r — multi-ability per Card. Slot =
-                               // verbBase + (def_id - 1) * kMaxAbilitiesPerCard
-                               //   + intent.ability_index. Single-ability
-                               // cards default to ability_index=0, identical
-                               // to the pre-6r layout's first card_def_id
-                               // slot. Vocab grew by
-                               // kNumCardDefIds * (kMaxAbilitiesPerCard - 1).
-    MakeChoice,                // arity kNumCardDefIds + 1 + kNumIntChoices
-                               //   slot 0                                 → no object
-                               //   slots 1..kNumCardDefIds                → card by def id
-                               //   slots kNumCardDefIds+1..+kNumIntChoices → int answer 0..15
-    PlaceOptionalTrigger,      // arity kNumCardDefIds
-    DeclineOptionalTrigger,    // arity kNumCardDefIds
-    PayTriggeredCost,          // arity kNumCardDefIds
-    DeclineTriggeredCost,      // arity kNumCardDefIds
-    SideboardSwap,             // arity kNumCardDefIds (out def id)
+/// Places an action can name: 0 = none or a base, 1..7 = battlefield slot + 1.
+constexpr int kPlaceKeys = 8;
+
+/// Hand positions a mulligan slot can name.
+constexpr int kMulliganHand = 8;
+
+/// How a card is played, where it changes what the play is.
+enum class PlayVariant : uint8_t {
+    Normal = 0,       // from hand, or the Chosen Champion from its zone
+    AlternativeCost,  // Intent::use_alt_play_cost
+    LocationCost,     // Intent::pay_location_cost
+    FromElsewhere,    // from the trash, banishment, facedown or the chain
     Count,
 };
 
-/// Total number of vocab slots (computed at compile time below).
-constexpr int verbArity(ActionVerb v);
-constexpr int verbOffset(ActionVerb v);
+/// Verb categories. Each verb owns a contiguous range of slots.
+/// Slot 0 is reserved and never an action.
+enum class ActionVerb : uint8_t {
+    Reserved = 0,              // 1, never emitted
+    EndTurn,                   // 1
+    PassPriority,              // 1
+    PassFocus,                 // 1
+    Concede,                   // 1
+    PlayFirstDecision,         // 2: second, first
+    MulliganDecision,          // 38: which hand positions are set aside —
+                               //   keep (1), one position (8), a pair (28),
+                               //   anything else (1)
+    ChooseBattlefield,         // 8: position in the player's battlefield list
+    AssignCombatDamage,        // 16: number of units given damage (15 = 15+)
+    StandardMove,              // kCardKeys * kPlaceKeys: (unit card, destination)
+    Play,                      // kCardKeys * kPlaceKeys * PlayVariant::Count:
+                               //   (card, where it lands, how it is played)
+    HideCard,                  // kCardKeys * kPlaceKeys: (card, battlefield)
+    ActivateAbility,           // kCardKeys * kMaxAbilitiesPerCard:
+                               //   (source card, ability index), the source's
+                               //   own ability with no target in the intent
+    ActivateAtTarget,          // kCardKeys: (source card), an ability whose
+                               //   intent names its target — Equip
+    ActivateGranted,           // kCardKeys: (card that grants the ability)
+    ChooseOwnObject,           // kCardKeys: a prompt answered with an object
+                               //   the deciding player controls (first object)
+    ChooseOpposingObject,      // kCardKeys: ... the opponent controls
+    ChooseNamedCard,           // kCardKeys: a prompt answered by naming a card
+    ChooseValue,               // kNumIntChoices + 1: an integer answer
+    PlaceOptionalTrigger,      // kCardKeys (source card)
+    DeclineOptionalTrigger,    // kCardKeys
+    PayTriggeredCost,          // kCardKeys
+    DeclineTriggeredCost,      // kCardKeys
+    SideboardSwap,             // kCardKeys (card taken out)
+    Count,
+};
 
 constexpr int verbArity(ActionVerb v) {
     switch (v) {
-        case ActionVerb::Reserved:                return 1;  // slot 0, never used
+        case ActionVerb::Reserved:                return 1;
         case ActionVerb::EndTurn:                 return 1;
         case ActionVerb::PassPriority:            return 1;
         case ActionVerb::PassFocus:               return 1;
         case ActionVerb::Concede:                 return 1;
         case ActionVerb::PlayFirstDecision:       return 2;
-        case ActionVerb::MulliganDecision:        return 3;
+        case ActionVerb::MulliganDecision:
+            return 1 + kMulliganHand + kMulliganHand * (kMulliganHand - 1) / 2 + 1;
         case ActionVerb::ChooseBattlefield:       return 8;
-        case ActionVerb::AssignCombatDamage:      return 128;
-        case ActionVerb::StandardMove:            return 8;
-        case ActionVerb::Play:                    return kNumCardDefIds;
-        case ActionVerb::HideCard:                return kNumCardDefIds;
-        case ActionVerb::ActivateAbility:         return kNumCardDefIds * kMaxAbilitiesPerCard;
-        case ActionVerb::MakeChoice:              return kNumCardDefIds + 1 + kNumIntChoices;
-        case ActionVerb::PlaceOptionalTrigger:    return kNumCardDefIds;
-        case ActionVerb::DeclineOptionalTrigger:  return kNumCardDefIds;
-        case ActionVerb::PayTriggeredCost:        return kNumCardDefIds;
-        case ActionVerb::DeclineTriggeredCost:    return kNumCardDefIds;
-        case ActionVerb::SideboardSwap:           return kNumCardDefIds;
+        case ActionVerb::AssignCombatDamage:      return 16;
+        case ActionVerb::StandardMove:            return kCardKeys * kPlaceKeys;
+        case ActionVerb::Play:
+            return kCardKeys * kPlaceKeys * static_cast<int>(PlayVariant::Count);
+        case ActionVerb::HideCard:                return kCardKeys * kPlaceKeys;
+        case ActionVerb::ActivateAbility:         return kCardKeys * kMaxAbilitiesPerCard;
+        case ActionVerb::ActivateAtTarget:        return kCardKeys;
+        case ActionVerb::ActivateGranted:         return kCardKeys;
+        case ActionVerb::ChooseOwnObject:         return kCardKeys;
+        case ActionVerb::ChooseOpposingObject:    return kCardKeys;
+        case ActionVerb::ChooseNamedCard:         return kCardKeys;
+        case ActionVerb::ChooseValue:             return kNumIntChoices + 1;
+        case ActionVerb::PlaceOptionalTrigger:    return kCardKeys;
+        case ActionVerb::DeclineOptionalTrigger:  return kCardKeys;
+        case ActionVerb::PayTriggeredCost:        return kCardKeys;
+        case ActionVerb::DeclineTriggeredCost:    return kCardKeys;
+        case ActionVerb::SideboardSwap:           return kCardKeys;
         case ActionVerb::Count:                   return 0;
     }
     return 0;
@@ -162,47 +160,100 @@ constexpr int verbOffset(ActionVerb v) {
     return sum;
 }
 
-constexpr int kVocabSize = verbOffset(ActionVerb::Count);
+/// Number of slots (descriptions).
+constexpr int kNumSlots = verbOffset(ActionVerb::Count);
+
+/// Legal intents of one decision that may share a slot. More than this many
+/// and the ones beyond have no id (see `actionIds`; RiftboundState then
+/// throws rather than leave options out). The most the walk of
+/// tests/test_action_ids.cpp meets is 64 (a spell offered once per pair of
+/// targets); the bound is a constant so that the id range is.
+constexpr int kTwinPlanes = 1024;
+
+/// Number of distinct action ids: RiftboundGame::NumDistinctActions().
+constexpr int kNumActions = kNumSlots * kTwinPlanes;
+
+/// The two parts of an id.
+constexpr int actionIdSlot(int id) { return id % kNumSlots; }
+constexpr int actionIdTwin(int id) { return id / kNumSlots; }
+constexpr int makeActionId(int slot, int twin) { return slot + kNumSlots * twin; }
+
+/// The verb whose range `slot` is in.
+constexpr ActionVerb slotVerb(int slot) {
+    int v = 0;
+    while (v + 1 < static_cast<int>(ActionVerb::Count) &&
+           slot >= verbOffset(static_cast<ActionVerb>(v + 1))) {
+        ++v;
+    }
+    return static_cast<ActionVerb>(v);
+}
 
 // ─── Encoding ───────────────────────────────────────────────────────────────
 
-/// Compute the dense vocab slot for an Intent. Returns -1 if the Intent is
-/// unknown / cannot be represented (should not happen for legal actions).
-int encodeAction(const Intent& intent, const GameState& state);
+/// "This intent has no id": its slot already has kTwinPlanes legal intents
+/// before it.
+constexpr int kNoActionId = -1;
 
-/// Find the first Intent in `legal_actions` whose dense slot equals `slot`.
-/// Returns nullptr if none match.
-const Intent* decodeAction(int slot,
+/// What the intent is made of: its slot, in [0, kNumSlots). Total: every
+/// intent has one. `state` is read only for the card id and the controller of
+/// the objects the intent names (and, for a mulligan, the player's hand).
+int actionSlot(const Intent& intent, const GameState& state);
+
+/// The action id of every intent of one legal list, parallel to it. Distinct
+/// intents get distinct ids; an intent listed twice gets its id twice. An
+/// intent past the twin planes gets kNoActionId.
+std::vector<int> actionIds(const std::vector<Intent>& legal_actions,
+                           const GameState& state);
+
+/// The id `intent` has in `legal_actions` (which need not list it: a concede
+/// is accepted at any decision), or kNoActionId.
+int actionIdOf(const Intent& intent,
+               const std::vector<Intent>& legal_actions,
+               const GameState& state);
+
+/// The intent of `legal_actions` whose id is `action_id`, or nullptr.
+const Intent* decodeAction(int action_id,
                             const std::vector<Intent>& legal_actions,
                             const GameState& state);
 
+/// The canonical order of intents that breaks ties within a slot: negative,
+/// zero or positive as `a` comes before, is, or comes after `b`. Zero exactly
+/// when `a == b`.
+int compareIntents(const Intent& a, const Intent& b);
+
 // ─── History tokens ─────────────────────────────────────────────────────────
 //
-// `GameState::action_history` holds one token per applied decision. A vocab
-// slot alone cannot be replayed: slots are lossy by design (a mulligan slot
-// says how many cards, not which), so "the first legal Intent with this slot"
-// can be a different action. A token is the slot plus a fingerprint of the
-// whole Intent (every field that changes what it does), which identifies
-// the chosen Intent within its legal list. Replaying tokens from the same
-// decks and seed reproduces the game exactly.
+// `GameState::action_history` holds one token per applied decision: the slot
+// of the chosen intent and a fingerprint of the whole intent (every field
+// `Intent::operator==` compares, object ids included). The fingerprint is
+// what identifies the intent within its legal list, so replaying tokens from
+// the same decks and seed reproduces the game exactly; and because it names
+// the objects, a replay on the wrong game (another seed deals other cards and
+// offers the same ids) is noticed at the first decision whose objects differ.
 //
-//   bits  0..19  vocab slot (kHistorySlotMask when the Intent has no slot)
-//   bits 20..62  Intent fingerprint
+// A token does not hold the action id. The twin number of an id depends on
+// the other options of the decision, and the engine records a token for
+// every decision of every game, also when nobody uses the vocabulary: working
+// the twin out there cost 4% of random play. The id of a recorded choice is
+// `actionIdOf(intent, legal, state)` at the decision, or OpenSpiel's own
+// `State::History()`.
+//
+//   bits  0..19  slot
+//   bits 20..62  intent fingerprint (43 bits)
 
 constexpr int     kHistorySlotBits = 20;
 constexpr int64_t kHistorySlotMask = (int64_t{1} << kHistorySlotBits) - 1;
-static_assert(kVocabSize < kHistorySlotMask, "vocab slot must fit a token");
+static_assert(kNumSlots < kHistorySlotMask, "a slot must fit a token");
 
 /// The token for applying `intent` in `state`.
 int64_t historyToken(const Intent& intent, const GameState& state);
 
-/// The vocab slot a token was made from, or -1 if the Intent had none.
+/// The slot of the intent a token was made from.
 constexpr int historyTokenSlot(int64_t token) {
-    const int64_t slot = token & kHistorySlotMask;
-    return slot == kHistorySlotMask ? -1 : static_cast<int>(slot);
+    return static_cast<int>(token & kHistorySlotMask);
 }
 
-/// Index of the Intent in `legal_actions` that `token` was made from, or -1.
+/// Index of the intent in `legal_actions` that `token` was made from, or -1.
 int findHistoryToken(int64_t token,
                      const std::vector<Intent>& legal_actions,
                      const GameState& state);

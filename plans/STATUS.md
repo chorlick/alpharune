@@ -48,13 +48,13 @@ iteration must apply these.
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
 |---|---|---|---|---|---|
-| 1 | search | running | | | |
-| 1 | helpers | returned | `f22d2a4` | 1576 passed, 2 baseline failures (on its branch) | sent back: fix double execution in Thrill of the Hunt 745 and Zenith Blade 258 caused by 3.1, list other cards with that shape; then merge. 3.1, 3.24, 7.30 stay open for card streams |
+| 1 | search | returned | `44a7541` (merged in batch, pending verification) | 1659 passed, 0 failed (on its branch) | all 16 items closed; both baseline failures fixed; clone-equiv 10/10; new binary `riftbound_openspiel_tests` |
+| 1 | helpers | returned | `2e0f181` (merged in batch, pending verification) | 1649 passed, 2 baseline failures (on its branch) | 4 items closed; Thrill of the Hunt 745 and Zenith Blade 258 fixed with red-then-green tests; 3.1, 3.24, 7.30 open for card streams |
 | 1 | executor | merged | `ac49a38` (merge `e1eb9b8`) | 1560 run, 1557 passed, 2 baseline failures | all 8 items closed; 2 existing tests corrected (CR 427.1.b.1; temp Deflect) |
 | 1 | chain-triggers | merged | `6d4dd76` (merge `c9ad6b4`) | 1583 run, 1580 passed, 2 baseline failures | 12 items closed; 7.1 decision recorded (cards use `pickTarget` + `kFinalizeTrigger`); 8.9 has one bullet left, in carry-over |
 | 1 | engine-auras-costs | merged | `3ba5256` (merge `a8af2ef`) | 1631 run, 1628 passed, 2 baseline failures | 10 items closed; 5.4 and 8.4 partly done, remainder in carry-over; edited 25 card files (listed in carry-over) |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
-| 1 | io-cli | running | | | gate open at spawn (main checkout clean); based on `bbc995d` |
+| 1 | io-cli | returned | `ae7961b` (merged in batch, pending verification) | 1655 passed, 2 baseline failures (on its branch) | all 21 items of 04 ticked; sent back for: decision-id `handleChoose` + seat (4.3/1.10), close the trace-log hidden-card leak (4.5), confirm batch exit on engine exception, CLAUDE.md / `scripts/generate_replays.py` references to the deleted OpenSpiel CLI |
 | 1 | integrity | running | | | based on `ec13e47`; also carries two build tasks: ccache across worktrees, unity-built tests |
 | 2 | cards-c0 | pending | | | |
 | 2 | cards-c1 | pending | | | |
@@ -90,6 +90,12 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| io-cli | NEW: `LogEvent` (`src/core/events.h`) has no player / visibility tag — finer fix for the 4.5 trace leak than withholding the stream | sweep | open |
+| io-cli | NEW: god-mode edits do not recompute the pending decision's legal actions (stale intent can be applied); documented, not fixed | sweep | open |
+| io-cli | NEW: spectator mode first Ctrl-C runs the AI game to completion before exit | sweep (low) | open |
+| io-cli | optional: move `play_server.cpp` / `play_index_html.cpp` into `riftbound_core` so tests need not `#include` the .cpp files | sweep (optional) | open |
+| io-cli | deleted `src/openspiel/openspiel_match.cpp` (in no target) and `src/io/progress_bar.h`; 4.16, 4.17, 4.20 closed as obsolete — check nothing else referenced them | orchestrator (stage 1 gate) | open |
+| io-cli | not verified in a browser: page JS for `decision_id`, token query on the WebSocket, per-unit owner/controller on moves, hidden-zone counts; no TSAN run | final report | open |
 | search | GATE: also build and run `riftbound_openspiel_tests` (`build/src/openspiel/riftbound_openspiel_tests`, `RIFTBOUND_ROOT=.`) — not part of `riftbound_tests`. 1.7 check: `RIFTBOUND_STEP_FAULT_AT=40 ./build/riftbound --deck1 decks/yi_rebuild.txt --deck2 decks/fiora.txt --agent1 mcts:sims=8 --agent2 random --games 4 --seed 7` must abort with the injected-fault message (exit 134), and exit 0 without the variable | orchestrator (every gate) | open |
 | search | `game_runner` / `batch_runner` do not catch exceptions: any engine or agent exception aborts the whole batch; should become a per-game error count | io-cli (owns the runners) | open |
 | search | HumanAgent interface for io-cli (4.3): `bool setChosenAction(int legal_index, uint64_t decision_id)` refuses a stale decision id; `explicit HumanAgent(PlayerId seat)`; server should send the rendered decision id, `main.cpp` should pass the seat | io-cli | open |
@@ -173,3 +179,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 recorded carry-over from the engine-auras-costs and helpers reports ahead of their merge verification (12 and 9 rows).
 - 2026-10-10 merged engine-auras-costs (`a8af2ef`), suite 1628/1631 with only the 2 baseline failures; 10 boxes ticked and verified. Worktree and branch removed.
 - 2026-10-10 helpers (`2e0f181`) and search (`44a7541`) merged as one batch; verification build queued. 11 search rows to carry-over.
+- 2026-10-10 io-cli (`ae7961b`) merged into the same batch; io-cli sent back for four follow-ups. 6 rows to carry-over.

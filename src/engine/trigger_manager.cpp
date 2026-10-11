@@ -801,6 +801,21 @@ void TriggerManager::onScore(const ScoreEvent& e) {
     }
     fireLegendTrigger(TriggerType::WhenIConquerOrHold, e.player, 0, scored_bf_card);
 
+    // "When you conquer, ... return this from your trash to your hand": a
+    // spell whose ability works from the trash (Super Mega Death Rocket!)
+    // declares WhenIConquer; it triggers for its owner's conquers while it is
+    // in their trash.
+    if (e.method == ScoreMethod::Conquer) {
+        const auto trash = state_.player(e.player).trash;   // copy: fireTrigger may edit zones
+        for (auto cid : trash) {
+            if (!state_.objectExists(cid)) continue;
+            const auto& c = state_.getObject(cid);
+            if (!c.isSpell() || c.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, c.card_def_id, TriggerType::WhenIConquer))
+                fireTrigger(cid, e.player, 0, TriggerType::WhenIConquer, scored_bf_card);
+        }
+    }
+
     for (auto uid : units) {
         if (!state_.objectExists(uid)) continue;
         auto& obj = state_.getObject(uid);

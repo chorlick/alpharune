@@ -4796,6 +4796,8 @@ void GameEngine::recalculateAuras() {
         }
     }
     state_.turn.channel_phase_cap = 0;                  // Sandstone Chimera
+    state_.turn.victory_score_bonus =
+        effect_executor_->effectiveVictoryScore() - state_.mode.victory_score;
     state_.turn.early_score_draws_instead = false;      // Otterpus
 
     // Step 1a: Reset per-player passive counters derived from on-board

@@ -428,6 +428,12 @@ struct TurnState {
     // Read by cards like Towering Pairofant ("if a unit died this turn, ...").
     bool any_unit_died_this_turn = false;
 
+    // Points needed to win beyond the mode's Victory Score, from battlefields
+    // in play (Card::victoryScoreModifier). Recomputed each recalculateAuras,
+    // for code that has only the state to read ("within 3 points of the
+    // Victory Score" in a cost reduction): mode.victory_score + this.
+    int victory_score_bonus = 0;
+
     // Sandstone Chimera: "players only channel 1 rune at the start of their
     // Channel Phase." 0 = no cap. Recomputed each recalculateAuras.
     int channel_phase_cap = 0;

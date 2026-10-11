@@ -6624,12 +6624,9 @@ void GameEngine::updateBattlefieldControl() {
         // owner's Trash." (CR 323.6.a; CR 107.3.d). EVERY hidden card, with no
         // split by card type — a hidden unit or gear goes to the trash like a
         // hidden spell.
-        // UNDER JUDGE REVIEW (docs/judge-questions-2026-10.md, question 6;
-        // plans/09 9.PP3 b): the user's reading is that an unplayed hidden
-        // unit or gear goes to its owner's BASE and only spells to the trash.
-        // If the judges rule that way, this loop is the one place to change
-        // (PerfEngineHiddenHourglass.NotPlayed_TheFacedownCardGoesToItsOwnersTrash
-        // pins the current reading).
+        // (Pinned by PerfEngineHiddenHourglass.NotPlayed_TheFacedownCardGoesToItsOwnersTrash;
+        // a card that WAS played from facedown is a permanent on the board
+        // and is recalled instead, CR 149.3 / 323.6 — recallMisplacedObjects.)
         std::vector<GameObjectId> to_remove;
         for (auto card_id : bf.facedown) {
             if (!state_.objectExists(card_id)) continue;

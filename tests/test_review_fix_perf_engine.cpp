@@ -2907,6 +2907,12 @@ TEST_F(PerfEngineHiddenHourglass, PlayedInResponse_NothingDies_ItIsRecalledToBas
     EXPECT_FALSE(facedownAt(hourglass, 0));
     EXPECT_FALSE(inTrashOf(P1, hourglass));
     EXPECT_EQ(g.controller, P1);
+    // Control of the battlefield went in the SAME cleanup that recalled it:
+    // losing the battlefield does not discard a faceup gear (CR 323.6.a is
+    // about Hidden cards), it is recalled like any unattached gear there.
+    EXPECT_EQ(g.zone, ZoneType::Base);
+    EXPECT_FALSE(g.attached_to.has_value());
+    EXPECT_FALSE(g.is_exhausted) << "unused";
 
     // A later death, anywhere: it is replaced from the base.
     const GameObjectId later = addUnit(P1, kShipyardSkulker, 0, 1);

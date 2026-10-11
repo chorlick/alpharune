@@ -84,7 +84,7 @@ constexpr int kMaxDecisions = 4000;
 // to be the turn player, wrong for the second mulligan, chain priority,
 // showdown focus, combat damage and an opponent's trigger choices.
 TEST_F(StepApiTest, PerspectiveIsTheDecidingPlayerNotTheTurnPlayer) {
-    int decisions = 0, off_turn_decisions = 0, stale_closed = 0;
+    int decisions = 0, off_turn_decisions = 0, stale_closed = 0, nested_prompts = 0;
     for (uint64_t seed = 1; seed <= 6; ++seed) {
         auto g = begin(seed);
         std::mt19937_64 rng(seed * 7919);
@@ -109,6 +109,26 @@ TEST_F(StepApiTest, PerspectiveIsTheDecidingPlayerNotTheTurnPlayer) {
                 step.legal.begin(), step.legal.end(),
                 [](const Intent& i) { return i.type == IntentType::EndTurn; });
             if (main_phase_decision && gs.chain.exists()) ++stale_closed;
+            // The condition this test used to count ("Closed state, a chain,
+            // the turn player asked, the other player holding priority") is
+            // still met, about 50 times in these six games, by decisions that
+            // are fine: a card's or a cost's prompt (MakeChoice options only)
+            // put to the turn player while an item is finalized or resolves;
+            // priority_holder is simply not touched for those. What must
+            // never be put to the turn player in that condition is a list of
+            // game actions.
+            if (gs.turn.isClosedState() && gs.chain.exists() &&
+                step.perspective == gs.turn.turn_player &&
+                gs.turn.priority_holder.has_value() &&
+                *gs.turn.priority_holder != gs.turn.turn_player) {
+                ++nested_prompts;
+                for (const auto& intent : step.legal) {
+                    ASSERT_EQ(intent.type, IntentType::MakeChoice)
+                        << "seed " << seed << " decision " << n
+                        << ": a game action offered to the turn player while the other "
+                           "player holds priority: " << intent.describe();
+                }
+            }
             ++decisions;
             if (step.perspective != gs.turn.turn_player) {
                 ++off_turn_decisions;
@@ -123,6 +143,7 @@ TEST_F(StepApiTest, PerspectiveIsTheDecidingPlayerNotTheTurnPlayer) {
         << "no decision was ever made by the non-turn player";
     EXPECT_EQ(stale_closed, 0)
         << "a main-phase decision was reached with an unsettled chain";
+    RecordProperty("nested_prompts_to_the_turn_player", nested_prompts);
 }
 
 // 1.5 — exactly one history entry per decision, written by the engine, and it

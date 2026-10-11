@@ -10,7 +10,9 @@
 ///   human             — block on browser input through HumanAgent
 ///   mcts:sims=N       — OpenSpiel MCTSBot over a mirror of the live game,
 ///                       leaves scored by RiftboundHeuristicEvaluator (no rollout)
-///   ismcts:sims=N     — OpenSpiel ISMCTSBot, same mirror and evaluator
+///   ismcts:sims=N     — information-set MCTS: our IsMctsSearch (the ISMCTSBot
+///                       algorithm, reproducible for a seed), same mirror
+///                       and evaluator
 /// (agents/mcts_agent.{h,cpp}; keep this and the --help text below in step
 /// with that file.)
 ///
@@ -305,10 +307,12 @@ int main(int argc, char* argv[]) {
         "                    onto it only the choices made since its last\n"
         "                    one, so the cost per decision does not grow\n"
         "                    with the length of the game.\n"
-        "  ismcts:sims=N     OpenSpiel ISMCTSBot (information-set search),\n"
-        "                    same N, mirror and evaluator. It does not yet\n"
-        "                    sample the opponent's hidden cards: each\n"
-        "                    simulation runs on a copy of the real state.\n"
+        "  ismcts:sims=N     Information-set MCTS: the engine's own search\n"
+        "                    (the algorithm of OpenSpiel's ISMCTSBot, made\n"
+        "                    reproducible for a fixed seed), same N, mirror\n"
+        "                    and evaluator. It does not yet sample the\n"
+        "                    opponent's hidden cards: each simulation runs\n"
+        "                    on a copy of the real state.\n"
         "                    Caveat for both: a god-mode edit bypasses the\n"
         "                    history the mirror is built from. After one the\n"
         "                    agent searches from a copy of the live state at\n"

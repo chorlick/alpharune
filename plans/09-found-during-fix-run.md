@@ -366,3 +366,8 @@ Work that was recorded only as carry-over rows in `STATUS.md` (reports of stage 
 ## II. From the sweep-costs sixth follow-up report (2026-10-11)
 
 - [ ] **9.II1** The 9.DD1 probe's 256-run bound is now an engine error (9.HH3 a), so a registered spell on a legal board with more than 256 unpayable choice sequences would end a real game as `engine_error`. With 9.HH4: either show from the 34 declared spells that no legal board reaches the bound (state the largest possible count per spell and assert it in the walk test), or make the search not enumerate (only choices that change the cost matter) so there is no bound to reach. — **owner: perf-engine**
+
+## JJ. From the perf-engine first interim report (2026-10-11)
+
+- [ ] **9.JJ1** `knowledge::prune` (`src/engine/knowledge_tracker.cpp`) builds a `std::map` of every card in both hands and decks at every decision: about 8% of an `mcts:sims=50` batch with `ownerOf` and the tree operations. Measure, reduce, values unchanged. — **owner: perf-engine**
+- [ ] **9.JJ2** `RiftboundState::ToString` is called 2.5 million times in a five-game `mcts:sims=50` batch (about 4%). Find the caller; if it is ours, stop it; if it is OpenSpiel's, make the call cheap or say why it cannot be avoided, with numbers. — **owner: perf-engine**

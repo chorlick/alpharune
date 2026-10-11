@@ -368,11 +368,14 @@ numbers are as of `b05e51d` and will drift.
 7. [07-cards-second-pass.md](07-cards-second-pass.md) — second pass over the card files that closed the first pass's coverage gaps: verified list of target-less triggers, complete late-cost list, hand-rolled resume cards, benchmarks, deleted decks.
 8. [08-cards-full-review.md](08-cards-full-review.md) — full review of all 955 card files against their text: 335 findings (114 high), root causes first, per-card lists in [cards/batch-00.md](cards/batch-00.md) … [cards/batch-10.md](cards/batch-10.md).
 
+9. [09-found-during-fix-run.md](09-found-during-fix-run.md) — defects that were in no plan at the start: found by streams during the fix run, recorded as checkboxes and required like the rest. Appended to by the orchestrator at each merge.
+
 Run files:
 
 - [AGENT_BRIEF.md](AGENT_BRIEF.md) — rules and context every stream agent reads first.
 - [STATUS.md](STATUS.md) — stream states, gates, carry-over and log; the orchestrator's resume point.
 - [cards/INDEX.md](cards/INDEX.md) — per card stream, every card file with a finding and where each finding is.
+- [reports/](reports/) — each stream's final report, copied in at merge time so it survives the cleanup of `.worktrees/`.
 
 **The plans are older than the code.** They were written against `b05e51d`.
 Since then `master` has gained `12c5064` (spectator stepping in the play

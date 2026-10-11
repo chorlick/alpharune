@@ -78,6 +78,14 @@ std::vector<float> extractStateFeatures(const GameState& state,
                                         PlayerId perspective,
                                         const CardDB& card_db);
 
+/// The same vector written into `out`, which is cleared first and keeps its
+/// capacity: a caller that extracts repeatedly (search keys a node on every
+/// visit) passes the same buffer and pays no allocation.
+void extractStateFeatures(const GameState& state,
+                          PlayerId perspective,
+                          const CardDB& card_db,
+                          std::vector<float>& out);
+
 /// Build a 25-dim feature vector describing a single legal action.
 /// The chosen intent vs the legal-action slot share the same featurization.
 std::vector<float> featurizeAction(const Intent& intent,

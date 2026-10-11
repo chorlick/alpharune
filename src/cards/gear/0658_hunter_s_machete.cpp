@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -19,7 +20,7 @@ public:
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquerOrHold; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
                             const std::vector<GameObjectId>& targets) override {
-        ctx.state.player(ctx.controller).xp += 1;
+        gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("EQUIP_TRIGGER: Hunter's Machete +1 XP");
     }
 private:

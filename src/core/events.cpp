@@ -28,6 +28,7 @@ void EventBus::emit(const CombatEndedEvent& e) { on_combat_ended(e); }
 void EventBus::emit(const ShowdownStartedEvent& e) { on_showdown_started(e); }
 void EventBus::emit(const ShowdownEndedEvent& e) { on_showdown_ended(e); }
 void EventBus::emit(const CleanupNeededEvent& e) { on_cleanup_needed(e); }
+void EventBus::emit(const StateSettledEvent& e) { on_state_settled(e); }
 void EventBus::emit(const ObjectStateChangedEvent& e) { on_object_state_changed(e); }
 void EventBus::emit(const UnitStunnedEvent& e) { on_unit_stunned(e); }
 void EventBus::emit(const UnitReadiedEvent& e) { on_unit_readied(e); }
@@ -48,6 +49,15 @@ void EventBus::logTrace(const std::string& msg) { emit(LogEvent{LogLevel::Trace,
 void EventBus::logDebug(const std::string& msg) { emit(LogEvent{LogLevel::Debug, tagWithDecision(msg)}); }
 void EventBus::logInfo(const std::string& msg) { emit(LogEvent{LogLevel::Info, tagWithDecision(msg)}); }
 void EventBus::logWarn(const std::string& msg) { emit(LogEvent{LogLevel::Warning, tagWithDecision(msg)}); }
+void EventBus::logTracePrivate(PlayerId visible_to, const std::string& msg) {
+    emit(LogEvent{LogLevel::Trace, tagWithDecision(msg), LogAudience::only(visible_to)});
+}
+void EventBus::logTraceFor(LogAudience audience, const std::string& msg) {
+    logFor(LogLevel::Trace, audience, msg);
+}
+void EventBus::logFor(LogLevel level, LogAudience audience, const std::string& msg) {
+    emit(LogEvent{level, tagWithDecision(msg), audience});
+}
 
 void EventBus::disconnectAll() {
     on_unit_moved.disconnect_all_slots();
@@ -71,6 +81,7 @@ void EventBus::disconnectAll() {
     on_showdown_started.disconnect_all_slots();
     on_showdown_ended.disconnect_all_slots();
     on_cleanup_needed.disconnect_all_slots();
+    on_state_settled.disconnect_all_slots();
     on_object_state_changed.disconnect_all_slots();
     on_unit_stunned.disconnect_all_slots();
     on_unit_readied.disconnect_all_slots();

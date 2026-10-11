@@ -15,34 +15,19 @@ class LonelyPoro_777 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    // "If I died alone": no other friendly unit was here as I died — judged
+    // from the last-known information (CR 383.2.c.3.b), which for units that
+    // die at the same time is taken for all of them before the first leaves.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        // Where did I die? Prefer last_location (set at death), else location.
-        std::optional<LocationId> died_at = self.last_location;
-        if (!died_at.has_value()) died_at = self.location;
-        if (!died_at.has_value()) {
-            // No known death location — can't evaluate "alone" reliably; treat
-            // as alone (documented approximation) and draw.
-            ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("LONELY PORO: death location unknown -> draw 1 (approx alone)");
+        const auto& lk = ctx.state.getObject(ctx.source).last_known;
+        if (!lk.valid) return;
+        if (!lk.other_friendly_units_here.empty()) {
+            ctx.events.logTrace("LONELY PORO: did not die alone -> no draw");
             return;
         }
-        // "alone" = no OTHER friendly units still at that location.
-        bool other_friendly_here = false;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || *obj.location != *died_at) continue;
-            other_friendly_here = true;
-            break;
-        }
-        if (!other_friendly_here) {
-            ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("LONELY PORO: died alone -> draw 1");
-        } else {
-            ctx.events.logTrace("LONELY PORO: did not die alone -> no draw");
-        }
+        ctx.executor.drawCards(ctx.controller, 1);
+        ctx.events.logTrace("LONELY PORO: died alone -> draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -876,6 +876,11 @@ TEST_F(C0Test, SolariShrine_OnlyAStunnedEnemyUnitsDeathTriggers) {
     auto plain = addUnit(P2, kInvalidId, 2, 0);
     auto stunned = addUnit(P2, kInvalidId, 2, 0);
     o(stunned).is_stunned = true;
+    // "When YOU kill": P1's damage is what is lethal to both.
+    for (auto id : {plain, stunned}) {
+        o(id).damage_marked = 2;
+        o(id).damage_marked_by[0] = 2;
+    }
 
     EnginePathAgent a1(EnginePathAgent::script({1}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(plain); }, &a1);

@@ -30,7 +30,8 @@ public:
                                  // CR 187.10: 1 Might and the Bilgewater tag only.
                                  {"Bilgewater"}, KeywordSet{},
                                  destLocation(ctx.controller, std::max(0, dest)),
-                                 /*enter_ready=*/false);
+                                 /*enter_ready=*/false,
+                                 tokenPlayLocations(ctx.state, ctx.controller));
         ctx.events.logTrace("ILLAOI, PROPHET: 1[M] Tentacle token");
     }
     // "I have +1 [M] for each token unit you control."

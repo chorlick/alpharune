@@ -49,7 +49,7 @@ public:
             }
         }
         if (kills > 0) {
-            ctx.state.player(ctx.controller).xp += kills;
+            gainXp(ctx, ctx.controller, kills);
             ctx.events.logTrace("ALPHA STRIKE: " + std::to_string(kills) +
                                 " kill(s) -> gain " + std::to_string(kills) +
                                 " XP (now " +

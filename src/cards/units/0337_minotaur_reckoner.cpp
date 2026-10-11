@@ -19,9 +19,8 @@ public:
     // players) while I'm on the board: GameObject::aura_cant_move_to_base is
     // cleared at the start of every aura pass and re-asserted here, so it ends
     // when I leave. (cant_move_to_base is the lasting flag effects set.)
-    // ENGINE-GAP: only moves the player makes are stopped. An effect that
-    // moves a unit to base goes through EffectExecutor::moveToBase, which is
-    // also the engine's recall (not a move, CR 458) and cannot tell them apart.
+    // Both the standard-move generator and EffectExecutor::moveToBase refuse
+    // ; a recall is not a move and still happens (CR 458.3).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         bool present = false;
         for (auto& [id, obj] : state.objects) {

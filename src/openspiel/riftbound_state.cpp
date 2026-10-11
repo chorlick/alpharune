@@ -50,6 +50,14 @@ std::vector<::open_spiel::Action> encodeLegal(
 // last few: the nearest one is all a clone needs.
 constexpr size_t kBaseRefreshWindow = 8;
 
+// A clone that must replay more than kFarReplay decisions to reach its
+// position looks for a nearer starting point on the way (see ensureLive):
+// the last resumable decision among the final kFarRefreshWindow. Each
+// candidate costs a GameState copy (~10 us), so the search is bounded; a
+// turn's top-level decisions come round far more often than every 64.
+constexpr size_t kFarReplay = kBaseRefreshWindow;
+constexpr size_t kFarRefreshWindow = 64;
+
 } // namespace
 
 RiftboundState::RiftboundState(std::shared_ptr<const ::open_spiel::Game> game)
@@ -87,15 +95,16 @@ RiftboundState::RiftboundState(std::shared_ptr<const ::open_spiel::Game> game,
 
 void RiftboundState::replayTokens(::riftbound::GameEngine& engine,
                                    const std::vector<int64_t>& tokens,
-                                   size_t from, bool refresh_base) const {
+                                   size_t from, size_t refresh_window,
+                                   std::shared_ptr<const Snapshot>& newest_base) const {
     for (size_t i = from; i < tokens.size(); ++i) {
         if (engine.isStepDone()) {
             throw std::runtime_error(
                 "RiftboundState: replay ended the game " +
                 std::to_string(tokens.size() - i) + " decisions early.");
         }
-        const auto step = engine.currentStep();
-        if (refresh_base && tokens.size() - i <= kBaseRefreshWindow &&
+        const auto& step = engine.currentStep();
+        if (tokens.size() - i <= refresh_window &&
             ::riftbound::GameEngine::isResumableDecision(engine.state(),
                                                          step.legal)) {
             auto snap = std::make_shared<Snapshot>();
@@ -103,7 +112,7 @@ void RiftboundState::replayTokens(::riftbound::GameEngine& engine,
             snap->step      = step;
             snap->rng       = engine.rngState();
             snap->resumable = true;
-            base_ = std::move(snap);
+            newest_base = std::move(snap);
         }
         const int legal_index =
             findHistoryToken(tokens[i], step.legal, engine.state());
@@ -139,7 +148,11 @@ void RiftboundState::ensureLive() const {
         // prompt) or after the game ended. Start from the nearest position
         // an engine CAN be started from and replay the exact choices made
         // since, then check we arrived where the snapshot is.
-        const std::shared_ptr<const Snapshot> base = base_;
+        //
+        // The nearest such position is `base_`, unless a sibling clone has
+        // already found a nearer one for this snapshot.
+        const std::shared_ptr<const Snapshot> base =
+            laterBase(base_, snap.nearerBase());
         size_t from = 0;
         if (base) {
             engine->resumeFromSnapshot(::riftbound::GameState(base->state),
@@ -153,7 +166,15 @@ void RiftboundState::ensureLive() const {
             throw std::runtime_error(
                 "RiftboundState: snapshot history is shorter than its base.");
         }
-        replayTokens(*engine, tokens, from, /*refresh_base=*/false);
+        // A state walked a long way by ApplyAction since its last resumable
+        // clone (or never cloned at one: base == null, the start of the
+        // game) hands every clone that whole stretch to replay: ~1.5 ms at
+        // decision 100, per clone, where a search makes one per simulation.
+        // So the first clone to make a long replay keeps the last resumable
+        // decision it passes and leaves it on the shared snapshot.
+        const bool far = tokens.size() - from > kFarReplay;
+        std::shared_ptr<const Snapshot> found;
+        replayTokens(*engine, tokens, from, far ? kFarRefreshWindow : 0, found);
 
         const char* mismatch = nullptr;
         if (engine->state().action_history != tokens) {
@@ -163,7 +184,7 @@ void RiftboundState::ensureLive() const {
         } else if (engine->isStepDone()) {
             mismatch = "the replayed game is over";
         } else {
-            const auto step = engine->currentStep();
+            const auto& step = engine->currentStep();
             if (step.perspective != snap.step.perspective) {
                 mismatch = "a different player is deciding";
             } else if (step.legal != snap.step.legal) {
@@ -179,6 +200,13 @@ void RiftboundState::ensureLive() const {
                 (base ? "a resumed snapshot" : "the start of the game") +
                 "). Wrong seed, or a state that was not produced by its own "
                 "action history.");
+        }
+        replayed_to_build_ = tokens.size() - from;
+        if (found) {
+            snap.offerNearerBase(found);
+            base_ = std::move(found);
+        } else {
+            base_ = base;
         }
     }
 
@@ -196,9 +224,7 @@ void RiftboundState::ensureLive() const {
 std::vector<::open_spiel::Action> RiftboundState::LegalActions() const {
     if (IsTerminal()) return {};
     if (lazy_) return encodeLegal(lazy_->step.legal, lazy_->state);
-    // currentStep() returns by value; keep it alive for the encode.
-    const auto step = engine_->currentStep();
-    return encodeLegal(step.legal, engine_->state());
+    return encodeLegal(engine_->currentStep().legal, engine_->state());
 }
 
 std::string RiftboundState::ActionToString(::open_spiel::Player,
@@ -212,7 +238,7 @@ std::string RiftboundState::ActionToString(::open_spiel::Player,
         return "<unknown action_id>";
     }
     if (engine_->isStepDone()) return "<terminal>";
-    auto step = engine_->currentStep();
+    const auto& step = engine_->currentStep();
     if (const auto* intent = decodeAction(static_cast<int>(a), step.legal,
                                           engine_->state())) {
         return intent->describe();
@@ -278,8 +304,11 @@ uint64_t RiftboundState::InfoSetId(::open_spiel::Player player) const {
         ? ::riftbound::PlayerId::Player1
         : ::riftbound::PlayerId::Player2;
     const ::riftbound::GameState& gs = engineState();
-    auto feats = ::riftbound::ml::extractStateFeatures(
-        gs, rb_player, rb_game_.cardDb());
+    // Search asks for this key on every node visit: reuse one buffer per
+    // thread instead of allocating the 6188-float vector each time.
+    thread_local std::vector<float> feats;
+    ::riftbound::ml::extractStateFeatures(
+        gs, rb_player, rb_game_.cardDb(), feats);
     // The features describe the board, not the question being asked. Two
     // decisions in a row can leave the board untouched (a card's mode prompt
     // followed by its target prompt, two "you may" prompts) yet offer
@@ -320,8 +349,9 @@ void RiftboundState::ObservationTensor(::open_spiel::Player player,
     ::riftbound::PlayerId rb_player = (player == 0)
         ? ::riftbound::PlayerId::Player1
         : ::riftbound::PlayerId::Player2;
-    auto feats = ::riftbound::ml::extractStateFeatures(
-        engineState(), rb_player, rb_game_.cardDb());
+    thread_local std::vector<float> feats;
+    ::riftbound::ml::extractStateFeatures(
+        engineState(), rb_player, rb_game_.cardDb(), feats);
     // The tensor shape the Game advertises is kStateFeatureDim; a mismatch
     // on either side is a layout bug, not something to pad over.
     SPIEL_CHECK_EQ(feats.size(),
@@ -379,6 +409,11 @@ std::unique_ptr<::open_spiel::State> RiftboundState::Clone() const {
 }
 
 void RiftboundState::applyLegalIndex(int legal_index) {
+    // A clone of this position may have found a nearer place to restart
+    // from than we knew of; positions after this one descend from it too.
+    if (live_snapshot_) {
+        base_ = laterBase(std::move(base_), live_snapshot_->nearerBase());
+    }
     live_snapshot_.reset();
     engine_->applyChoice(legal_index);
 }
@@ -394,7 +429,7 @@ void RiftboundState::DoApplyAction(::open_spiel::Action action) {
     // Translate the vocab slot into the engine-side legal-list index: the
     // first legal Intent that encodes to it (slots can alias several
     // Intents; see action_vocab.h).
-    const auto step = engine_->currentStep();
+    const auto& step = engine_->currentStep();
     const auto& state = engine_->state();
     int legal_index = -1;
     for (size_t i = 0; i < step.legal.size(); ++i) {
@@ -424,7 +459,7 @@ bool RiftboundState::syncToHistory(const ::riftbound::GameState& live_state,
     }
     live_snapshot_.reset();
     try {
-        replayTokens(*engine_, tokens, mine.size(), /*refresh_base=*/true);
+        replayTokens(*engine_, tokens, mine.size(), kBaseRefreshWindow, base_);
     } catch (const std::runtime_error&) {
         // Divergence. (An engine failure is rethrown by the calls below.)
         engine_->rethrowIfStepFailed();
@@ -436,7 +471,7 @@ bool RiftboundState::syncToHistory(const ::riftbound::GameState& live_state,
     // The history alone can match a different game (another seed deals other
     // cards but offers the same first choices). Compare what the choices
     // were made on: the pending decision and every hidden-order zone.
-    const auto step = engine_->currentStep();
+    const auto& step = engine_->currentStep();
     const auto& replayed = engine_->state();
     if ((live_step.perspective != ::riftbound::PlayerId::None &&
          step.perspective != live_step.perspective) ||

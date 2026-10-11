@@ -101,38 +101,12 @@ public:
 private:
     enum : int { kChoosing = 20, kAwait = 21, kDone = 22 };
 
-    // Recycle `cards` (on `p`'s board or in their hand). A permanent leaves
-    // the board properly: gear comes off first (CR 719.5), a token ceases to
-    // exist instead of entering a deck (CR 183.1), and the departure is
-    // announced.
+    // Recycle `cards` (on `p`'s board or in their hand). recycleCards takes a
+    // permanent off the board properly: gear comes off first (CR 719.5), a
+    // token ceases to exist instead of entering a deck (CR 183.1), and the
+    // departure is announced.
     static void recycleAll(CardContext& ctx, PlayerId p, const std::vector<GameObjectId>& cards) {
-        struct Left { GameObjectId id; PlayerId controller; CardType type; LocationId was_at; };
-        std::vector<Left> left;
-        std::vector<GameObjectId> to_deck;
-        auto& hand = ctx.state.player(p).hand;
-        for (auto id : cards) {
-            if (!ctx.state.objectExists(id)) continue;
-            if (!ctx.state.getObject(id).location.has_value()) {
-                hand.erase(std::remove(hand.begin(), hand.end(), id), hand.end());
-                to_deck.push_back(id);
-                continue;
-            }
-            const auto attached = ctx.state.getObject(id).attachments;   // copy
-            for (auto gear : attached) ctx.executor.unattachGear(gear);
-            if (ctx.state.getObject(id).attached_to.has_value()) ctx.executor.unattachGear(id);
-            const auto& obj = ctx.state.getObject(id);
-            if (obj.isToken()) {
-                ctx.executor.banishObject(id);   // ceases to exist
-                continue;
-            }
-            left.push_back({id, obj.controller, obj.card_type, *obj.location});
-            to_deck.push_back(id);
-        }
-        if (to_deck.empty()) return;
-        ctx.executor.recycleCards(p, to_deck);
-        for (const auto& l : left)
-            ctx.events.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
-                l.type == CardType::Rune ? ZoneType::RuneDeck : ZoneType::MainDeck, false});
+        if (!cards.empty()) ctx.executor.recycleCards(p, cards);
     }
 private:
     const CardDef def_ = [] {

@@ -57,8 +57,7 @@ public:
         // The cost, once: my buff, and this mode is used up for the turn.
         if (costDueNow(ctx)) {
             if (!self.location.has_value() || self.buff_count <= 0) return;
-            self.buff_count -= 1;
-            self.recomputeMight();
+            ctx.executor.spendBuff(ctx.source, ctx.controller);   // CR 427.2; "When you spend a buff"
             self.card_counters["__udyr_modes_turn"] = ctx.state.turn.turn_number;
             self.card_counters["__udyr_modes_mask"] =
                 static_cast<int>(chosen_mask | (1u << mode));

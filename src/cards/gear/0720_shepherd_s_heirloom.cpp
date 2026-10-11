@@ -18,7 +18,7 @@ public:
 
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 1;
+        gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("SHEPHERD'S HEIRLOOM: play -> gain 1 XP");
     }
 

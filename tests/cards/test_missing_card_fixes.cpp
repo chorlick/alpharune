@@ -241,7 +241,9 @@ TEST_F(MissingFixTest, GutterPalace_ActivatedMakesBirdToken) {
 TEST_F(MissingFixTest, BlightedBattleaxe_TriggerType) {
     Card* c = card_registry.get(kBlightedBattleaxe);
     ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->triggerType(), TriggerType::AtEndOfTurn);
+    // Effect text: it speaks for the bearer while attached (CR 718.2), so it
+    // is an equipped trigger, not the gear's own.
+    EXPECT_EQ(c->equippedTriggerType(), TriggerType::AtEndOfTurn);
 }
 
 TEST_F(MissingFixTest, BlightedBattleaxe_UnattachesAndDamagesIfNoConquer) {
@@ -249,8 +251,7 @@ TEST_F(MissingFixTest, BlightedBattleaxe_UnattachesAndDamagesIfNoConquer) {
     auto gear = addGear(P1, kBlightedBattleaxe, /*at_bf=*/0);
     attach(gear, unit);
     // No __conquered_turn marker → didn't conquer.
-    EffectExecutor exec(state, events, card_db);
-    fireTrigger(kBlightedBattleaxe, gear, P1, exec);
+    withEngine([&](GameEngine& e) { e.testHook_endingStep(); e.testHook_runChain(); });
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value())
         << "gear should unattach";
     EXPECT_EQ(state.getObject(unit).damage_marked, 4) << "deal 4 to bearer";

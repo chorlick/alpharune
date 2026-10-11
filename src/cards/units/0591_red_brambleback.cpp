@@ -19,11 +19,16 @@ class RedBrambleback : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
-    // ENGINE-GAP: "Your conquer effects for conquering here trigger an
-    // additional time" is not implemented. It needs TriggerManager::onScore
-    // to queue every conquer trigger for this battlefield (units, their gear,
-    // the legend, the battlefield card) once more per such unit there, the
-    // way queueOwnDeathTrigger reads deathknell_double_count.
+    // "Your conquer effects for conquering here trigger an additional time.":
+    // TriggerManager::onScore asks extraScoreTriggers and queues every conquer
+    // ability of this conquer once more — this card's own "When I conquer"
+    // included, with its own choice of unit.
+    int extraScoreTriggers(const GameState& state, GameObjectId self, PlayerId scorer,
+                           BattlefieldId bf, bool hold) const override {
+        const auto& me = state.getObject(self);
+        const auto here = me.battlefieldId();
+        return !hold && me.controller == scorer && here.has_value() && *here == bf ? 1 : 0;
+    }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "[Buff] a friendly unit." Pick a friendly unit on the board.
@@ -37,8 +42,7 @@ public:
         if (picked == kInvalidId) return;
         if (!ctx.state.objectExists(picked)) return;
         ctx.executor.buffUnit(picked);
-        ctx.events.logTrace("RED BRAMBLEBACK: conquer -> buffed a friendly unit "
-                            "(additional-conquer-trigger doubling not engine-wired)");
+        ctx.events.logTrace("RED BRAMBLEBACK: conquer -> buffed a friendly unit");
     }
 private:
     const CardDef def_ = [] {

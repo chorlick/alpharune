@@ -32,6 +32,7 @@
 /// Wire protocol — see docs/play-api.md.
 
 #include "agents/agent_interface.h"
+#include "core/events.h"
 #include "core/types.h"
 
 #include <atomic>
@@ -67,8 +68,8 @@ struct PlayServerConfig {
     /// When true, frames carry every hand and both decks in order. When
     /// false a frame shows only what a seated human may see: their own
     /// hand (in hot-seat play, the hand of whoever is deciding), sizes for
-    /// everything else, and `broadcastLog` sends nothing (log lines name
-    /// hidden cards). `main.cpp` sets it when god mode is on (the editor
+    /// everything else, and `broadcastLog` sends only the log lines every
+    /// human seat may read (LogEvent::audience). `main.cpp` sets it when god mode is on (the editor
     /// lists every zone) or no seat is human.
     bool reveal_hidden = false;
 
@@ -147,6 +148,13 @@ public:
     /// Safe to call from any thread (engine, game runner, etc.).
     /// `level` is the engine LogLevel as a short tag — "TRC", "DBG",
     /// "INF", "WRN". The UI's log panel filters and styles by level.
+    /// `audience` is the line's LogEvent::audience. With `reveal_hidden` off
+    /// the line is sent only if every human seat may read it (clients are not
+    /// told apart by seat: in hot-seat play both humans watch one screen).
+    void broadcastLog(const std::string& level, const std::string& message,
+                      LogAudience audience);
+    /// As above for a line with no audience tag: withheld unless
+    /// `reveal_hidden` is on.
     void broadcastLog(const std::string& level, const std::string& message);
 
     /// Spectator gate. Called on the engine thread from the engine's

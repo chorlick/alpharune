@@ -35,8 +35,7 @@ public:
         for (auto id : chosen) {
             auto& obj = ctx.state.getObject(id);
             if (!obj.location.has_value() || obj.buff_count <= 0) continue;
-            obj.buff_count -= 1;
-            obj.recomputeMight();
+            ctx.executor.spendBuff(id, ctx.controller);   // CR 427.2; "When you spend a buff"
             ++spent;
         }
         if (spent <= 0) return;

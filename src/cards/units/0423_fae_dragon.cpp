@@ -21,12 +21,17 @@ public:
     // units without a buff are offered: buffing one that has a buff does
     // nothing (CR 427.1.b).
     //
-    // ENGINE GAP: "When you spend a buff, play a Gold gear token exhausted."
-    // There is no "spend a buff" event: the nine cards that spend buffs each
-    // decrement buff_count by hand. It needs a shared spend-a-buff primitive
-    // that announces the spend, plus a trigger type for it.
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "When you spend a buff, play a Gold gear token exhausted." Every spend
+    // goes through EffectExecutor::spendBuff, which announces it.
+    std::vector<TriggerType> triggerTypes() const override {
+        return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouSpendABuff};
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (ctx.firing_trigger == TriggerType::WhenYouSpendABuff) {
+            createGoldExhausted(ctx);
+            ctx.events.logTrace("FAE DRAGON: a buff was spent -> Gold token (exhausted)");
+            return;
+        }
         std::vector<GameObjectId> unbuffed;
         for (auto& [id, obj] : ctx.state.objects) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;

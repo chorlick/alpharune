@@ -36,25 +36,15 @@ public:
             return obj.isRune() && obj.is_exhausted && obj.location.has_value();
         };
         const std::string label = "Dark Child: ready a rune (up to 2)";
-        const auto& item = ctx.state.chain.resuming;
-        std::vector<GameObjectId> picks;
-        if (item.has_value() && item->choices_finalized && !item->finalizing) {
-            // Resolving: the runes named at finalization, as selectSeveral
-            // kept them on the item (two slots per pick from slot 7). Nothing
-            // is offered, so nothing is asked and nothing new can be named.
-            for (size_t k = 0; k < 2; ++k) {
-                const auto one = selectObject(ctx, label, {}, 7 + 2 * k, /*may_decline=*/true);
-                if (!one.has_value() || *one == kInvalidId) break;
-                picks.push_back(*one);
-            }
-        } else {
-            std::vector<GameObjectId> exhausted;
-            for (const auto& [id, obj] : ctx.state.objects)
-                if (readiable(id)) exhausted.push_back(id);
-            const auto chosen = selectSeveral(ctx, label, exhausted, 2);
-            if (!chosen.has_value()) return;   // waiting on the agent
-            picks = *chosen;
-        }
+        // Asked as the ability is finalized. At resolution selectSeveral asks
+        // nothing: it returns the runes named then, without any that has been
+        // readied or has left the board since, and no other in its place.
+        std::vector<GameObjectId> exhausted;
+        for (const auto& [id, obj] : ctx.state.objects)
+            if (readiable(id)) exhausted.push_back(id);
+        const auto chosen = selectSeveral(ctx, label, exhausted, 2);
+        if (!chosen.has_value()) return;   // waiting on the agent
+        const std::vector<GameObjectId>& picks = *chosen;
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         int readied = 0;
         for (auto id : picks) {

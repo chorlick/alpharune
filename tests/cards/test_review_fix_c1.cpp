@@ -248,9 +248,15 @@ TEST_F(ReviewFixC1Test, ZeroDrive_BearerDiesAndItsOwnDeathTriggersFire) {
     auto unit = addUnit(P1, kInvalidId, 3, 0);
     auto drive = addGear(P1, kZeroDrive);
     attach(drive, unit);
-    addToDeck(P1, kInvalidId);
+    auto top_card = addToDeck(P1, kInvalidId);
 
-    EnginePathAgent yes(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    // The Altar's prompts (the Drive's Deathknell asks nothing).
+    EnginePathAgent yes(EnginePathAgent::script({
+        1,                            // Altar: "may exhaust me to draw 1": yes
+        static_cast<int>(top_card),   // which hand card goes back: the card just drawn
+                                      // (the hand was empty, it is the only one)
+        0,                            // top or bottom: mode 0 = top
+    }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &yes);
 
     EXPECT_TRUE(state.getObject(altar).is_exhausted) << "a friendly unit died";
@@ -448,16 +454,26 @@ TEST_F(ReviewFixC1Test, AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst) {
     auto first = addUnit(P1, kInvalidId, 1);
     auto second = addUnit(P1, kInvalidId, 1);
     for (int i = 0; i < 4; ++i) addToDeck(P1, kInvalidId);
-    addToHand(P1, kInvalidId);
+    auto held = addToHand(P1, kInvalidId);
 
-    EnginePathAgent yes1(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    EnginePathAgent yes1(EnginePathAgent::script({
+        1,                        // "may exhaust me to draw 1": yes
+        static_cast<int>(held),   // which hand card goes back: the one held before the draw
+        0,                        // top or bottom: mode 0 = top
+    }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(first); }, &yes1);
     EXPECT_TRUE(state.getObject(altar).is_exhausted);
     EXPECT_EQ(handSize(P1), 1) << "drew 1, put 1 back";
     EXPECT_EQ(deckSize(P1), 4);
 
     state.getObject(altar).is_exhausted = false;   // a later turn
-    EnginePathAgent yes2(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    // `held` went on top of the deck above, so this draw brings it back to
+    // the hand and it can be named again.
+    EnginePathAgent yes2(EnginePathAgent::script({
+        1,                        // "may exhaust me to draw 1": yes
+        static_cast<int>(held),   // which hand card goes back: `held`, drawn again just now
+        0,                        // top or bottom: mode 0 = top
+    }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(second); }, &yes2);
     EXPECT_EQ(yes2.prompts.size(), 3u) << "the may, the hand card, top/bottom";
     EXPECT_TRUE(state.getObject(altar).is_exhausted) << "exhausted again";

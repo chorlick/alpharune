@@ -186,5 +186,84 @@ inline bool pay(GameState& state, EventBus& events, PlayerId player, int energy,
     return payIn(state, events, player, energy, power, maskOf(domain), f);
 }
 
+/// Pay `power` Power of any Domain AHEAD of a cost that is still to be paid
+/// and whose own Power must be of a Domain in `cost_domains`: the Deflect of
+/// a unit a spell chooses before its cost (CR 809; the spell's choices come
+/// before its payment, CR 355 -> 356, and this engine pays a choice's Deflect
+/// as the choice is made). The cost's affordability was judged with the two
+/// paid together (GameEngine::canAffordWith: a ready rune gives its Energy and
+/// is then recycled; a rune of another Domain pays the "[A] more"). So that
+/// what is left can still pay the cost, this payment
+///   * takes what the cost cannot use first — floating Power and runes of
+///     other Domains — and only then what it can; and
+///   * exhausts a ready rune for its Energy before recycling it: the Energy
+///     stays in the pool for the cost that follows (CR 164.2.b: a rune may be
+///     exhausted for Energy and recycled for Power).
+/// `payIn` does neither (it recycles the first rune, ready or not), which is
+/// right when nothing is paid after it and left a spell unpayable here
+/// (plans/09 item 9.VV1). All or nothing.
+inline bool payAnyPowerAheadOfCost(GameState& state, EventBus& events, PlayerId player,
+                                   int power, DomainMask cost_domains) {
+    if (power <= 0) return true;
+    if (payablePowerIn(state, player, kAnyDomain) < power) return false;
+    auto& ps = state.player(player);
+    int need = power;
+    auto take = [&](int& from) {
+        const int n = std::min(from, need);
+        from -= n;
+        need -= n;
+    };
+    // Floating Power the cost cannot use.
+    for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
+        if (!(cost_domains & (1u << di))) take(ps.rune_pool.power[di]);
+
+    const LocationId base_loc{BaseLocation{player}};
+    int exhausted_first = 0, recycled = 0;
+    auto recycle = [&](GameObjectId rid) {
+        auto& rune = state.getObject(rid);
+        if (!rune.is_exhausted) {
+            rune.is_exhausted = true;
+            events.emit(ObjectStateChangedEvent{rid, "exhausted"});
+            ++ps.rune_pool.energy;
+            ++exhausted_first;
+        }
+        snapshotAsItLeaves(rune);
+        rune.location = std::nullopt;
+        rune.zone = ZoneType::RuneDeck;
+        ps.rune_deck.insert(ps.rune_deck.begin(), rid);
+        ps.power_spent_this_turn++;
+        events.emit(LeftBoardEvent{rid, player, CardType::Rune,
+            base_loc, ZoneType::RuneDeck, false});
+        forgetBoardState(state.getObject(rid), nullptr);
+        --need;
+        ++recycled;
+    };
+    // Runes the cost's Power cannot use, exhausted ones first; then floating
+    // Power it can use; then the runes it can use.
+    const auto runes = runesInBase(state, player);
+    for (int pass = 0; pass < 2 && need > 0; ++pass)
+        for (auto rid : runes) {
+            if (need <= 0) break;
+            const auto& rune = state.getObject(rid);
+            if (!rune.location.has_value() || runePays(rune, cost_domains)) continue;
+            if (rune.is_exhausted == (pass == 0)) recycle(rid);
+        }
+    for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
+        if (cost_domains & (1u << di)) take(ps.rune_pool.power[di]);
+    take(ps.rune_pool.universal_power);
+    for (int pass = 0; pass < 2 && need > 0; ++pass)
+        for (auto rid : runes) {
+            if (need <= 0) break;
+            const auto& rune = state.getObject(rid);
+            if (!rune.location.has_value() || !runePays(rune, cost_domains)) continue;
+            if (rune.is_exhausted == (pass == 0)) recycle(rid);
+        }
+    RIFT_TRACE(events, "PAY_ADD: " + std::string(toString(player)) + " pays [0] + " +
+                    std::to_string(power) + " power (any), ahead of a cost: recycled " +
+                    std::to_string(recycled) + " (" + std::to_string(exhausted_first) +
+                    " exhausted for Energy first)");
+    return need <= 0;
+}
+
 }  // namespace resource
 }  // namespace riftbound

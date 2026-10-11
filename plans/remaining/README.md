@@ -1,10 +1,6 @@
 # What is still open
 
-One item, in one file. Everything else is in `plans/completed/`.
-
-| Item | What | File | When |
-|---|---|---|---|
-| 9.VV1 | A real game ends as `engine_error` (Switcheroo left unpayable); found with the new deck lists | `09-found-during-fix-run.md` | Stage 5 follow-up (checkpoint) |
+Nothing. Every item of the review and of the fix run is closed and is in `plans/completed/`.
 
 Not plan items, kept elsewhere:
 - Play-UI follow-ups deferred by the user: `docs/play-ui-followups.md`.

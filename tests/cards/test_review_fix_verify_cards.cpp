@@ -41,6 +41,12 @@ constexpr CardDefId kAlphaStrike = 751;
 constexpr CardDefId kRavenbloomPrefect = 889;
 constexpr CardDefId kRecruit = 954;
 constexpr CardDefId kVayne035 = 35;
+constexpr CardDefId kAssemblyRig = 342;
+constexpr CardDefId kStarSpring = 771;
+constexpr CardDefId kAkshan = 431;
+constexpr CardDefId kLongSword = 345;         // gear, Equipment
+constexpr CardDefId kPurifier = 502;          // legend
+constexpr CardDefId kForgeOfTheFluft = 522;
 constexpr CardDefId kMeditation = 48;          // spell, [2]
 constexpr CardDefId kBlitzcrank = 67;
 constexpr CardDefId kMegaMech = 88;            // unit, [7], Mech, 8 [M]
@@ -1348,6 +1354,128 @@ TEST_F(VerifyCardsTest, BloodRose_PayingOneForAnXpWhenAUnitIsPlayed) {
     EXPECT_EQ(no.prompts.size(), 1u);
     EXPECT_EQ(ps(P1).xp, 1) << "declined: no XP";
     EXPECT_EQ(ps(P1).rune_pool.energy, 1) << "and nothing paid";
+}
+
+// 07 item 7.34: Forge of the Fluft — the Equipment and the unit are chosen as
+// the ability is activated (kFinalizeActivate), so they are on the chain item
+// before anyone can respond.
+TEST_F(VerifyCardsTest, ForgeOfTheFluft_TheEquipmentAndUnitAreChosenAtActivation) {
+    battlefieldCard(0, kForgeOfTheFluft);
+    addUnit(P1, kInvalidId, 1, 0);                    // holds the battlefield
+    auto lg = addLegend(P1, kPurifier);               // any legend
+    auto a = addUnit(P1, kInvalidId, 2);
+    auto b = addUnit(P1, kInvalidId, 2);
+    auto sword = addGear(P1, kLongSword);
+    attach(sword, a);
+    cleanup();
+    ASSERT_EQ(o(lg).granted_abilities.size(), 1u);
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = lg;
+    act.granted_ability_def = kForgeOfTheFluft;
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword), static_cast<int>(b)}));
+    executeAndProbe(act, &agent, [&](GameState& live) {
+        ASSERT_FALSE(live.chain.items.empty());
+        const auto& chosen = live.chain.items.back().chosen_objects;
+        EXPECT_NE(std::find(chosen.begin(), chosen.end(), sword), chosen.end());
+        EXPECT_NE(std::find(chosen.begin(), chosen.end(), b), chosen.end());
+        EXPECT_EQ(live.getObject(sword).attached_to, std::optional<GameObjectId>{a})
+            << "not moved until it resolves";
+    });
+    EXPECT_EQ(o(sword).attached_to, std::optional<GameObjectId>{b});
+}
+
+// 08 S2 / 07 item 7.26: units whose own ability acts on themselves ("give me
+// +N [M]", "buff me", "ready me", "move me") do nothing once they have left
+// the board — whichever of their triggers is on the chain, and even when the
+// controller says yes to everything.
+TEST_F(VerifyCardsTest, S2_ASourceThatLeftTheBoardDoesNothingToItself) {
+    const CardDefId ids[] = {27, 36, 56, 59, 103, 131, 167, 177, 197, 202, 304, 343,
+                             380, 398, 434, 458, 590, 681};
+    for (CardDefId def_id : ids) {
+        SCOPED_TRACE("card " + std::to_string(def_id) + " " + card_db.get(def_id).name);
+        Card* card = card_registry.get(def_id);
+        ASSERT_NE(card, nullptr);
+        for (TriggerType t : card->triggerTypes()) {
+            if (t == TriggerType::None || t == TriggerType::Activated) continue;
+            // A fresh board each time: the source in the trash, things around
+            // for it to act on, and the means to pay for anything.
+            auto source = addUnit(P1, def_id, 0, 0);
+            auto ally = addUnit(P1, kShipyardSkulker, 0, 0);
+            auto enemy = addUnit(P2, kShipyardSkulker, 9, 0);
+            sendToTrash(source);
+            ps(P1).rune_pool.energy = 5;
+            ps(P1).rune_pool.universal_power = 5;
+            ps(P1).xp = 5;
+            const KeywordSet before = o(source).keywords;
+            EnginePathAgent yes([](const std::vector<Intent>& legal) {
+                for (const auto& i : legal)
+                    if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+                return legal.front();
+            });
+            fireTriggerThroughEngine(source, t, &yes, ally);
+            EXPECT_FALSE(onBoard(source)) << "not moved back onto the board";
+            EXPECT_EQ(o(source).zone, ZoneType::Trash);
+            EXPECT_EQ(o(source).temp_might_bonus, 0);
+            EXPECT_EQ(o(source).buff_count, 0);
+            EXPECT_TRUE(o(source).keywords == before);
+            EXPECT_TRUE(o(source).attachments.empty());
+            EXPECT_EQ(o(enemy).damage_marked, 0) << "its Might is not used from the trash";
+            EXPECT_TRUE(onBoard(enemy));
+            // Clear the board for the next round.
+            for (auto id : {source, ally, enemy}) {
+                o(id).location = std::nullopt;
+                o(id).zone = ZoneType::Banishment;
+            }
+            ps(P1).trash.clear();
+        }
+    }
+}
+
+// 08 S2: Akshan, Mischievous — once he has left the board nothing is taken,
+// and the enemy Equipment is not stripped from its bearer either.
+TEST_F(VerifyCardsTest, Akshan_OffTheBoardLeavesTheEnemyEquipmentWhereItIs) {
+    auto akshan = addUnit(P1, kAkshan, 0, 0);
+    auto bearer = addUnit(P2, kShipyardSkulker, 0, 1);
+    auto sword = addGear(P2, kLongSword);
+    attach(sword, bearer);
+    o(akshan).card_counters["__akshan_paid"] = 1;
+    sendToTrash(akshan);
+    EnginePathAgent agent(EnginePathAgent::choosing(sword));
+    fireTriggerThroughEngine(akshan, TriggerType::AsYouPlayMe, &agent);
+    EXPECT_EQ(o(sword).controller, P2);
+    EXPECT_EQ(o(sword).attached_to, std::optional<GameObjectId>{bearer})
+        << "not detached for a move that does not happen";
+    EXPECT_EQ(o(bearer).attachments.size(), 1u);
+}
+
+// 08 S5: the pick is not the first option, so a first-match card fails.
+TEST_F(VerifyCardsTest, StarSpring_MovesTheLaterOfTwoOtherUnits) {
+    auto spring = battlefieldCard(0, kStarSpring);
+    auto played = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto first = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto later = addUnit(P1, kShipyardSkulker, 0, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(later));
+    fireTriggerThroughEngine(spring, TriggerType::WhenYouPlayAUnit, &agent, played);
+    EXPECT_TRUE(agent.wasOffered(first));
+    EXPECT_TRUE(o(later).isAtBase());
+    EXPECT_TRUE(o(first).isAtBattlefield());
+    EXPECT_TRUE(o(played).isAtBattlefield());
+}
+
+TEST_F(VerifyCardsTest, AssemblyRig_RecyclesTheSecondUnitWhenThatIsThePick) {
+    auto rig = addGear(P1, kAssemblyRig);
+    ps(P1).rune_pool.energy = 1;
+    power(P1, Domain::Fury) = 1;
+    auto u1 = addToTrash(P1, kShipyardSkulker);
+    auto u2 = addToTrash(P1, kShipyardSkulker);
+    EnginePathAgent agent(EnginePathAgent::choosing(u2));
+    activate(rig, &agent);
+    EXPECT_TRUE(agent.wasOffered(u1));
+    EXPECT_TRUE(inDeck(P1, u2));
+    EXPECT_TRUE(inTrash(P1, u1));
+    EXPECT_EQ(countNamed(P1, "Mech"), 1);
 }
 
 }  // namespace

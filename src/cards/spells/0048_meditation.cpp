@@ -53,13 +53,15 @@ public:
             if (costAlreadyPaid(ctx)) {
                 paid = true;
             } else {
-                const GameObjectId unit =
-                    pickTarget(ctx, "Meditation: unit to exhaust", ready_friendly());
-                if (unit == kInvalidId) {
-                    if (ctx.state.chain.resuming.has_value() &&
-                        ctx.state.chain.resuming->resume_point == 7) return;  // waiting
-                } else if (costDueNow(ctx)) {
-                    ctx.executor.exhaustObject(unit);
+                // Which unit pays is a cost, not a choice of the spell's (CR
+                // 356.2): asked with selectObject, so the unit is not
+                // "chosen" — no Deflect, no "when you choose a friendly unit",
+                // no "spells that choose me cost less".
+                const auto unit = selectObject(ctx, "Meditation: unit to exhaust",
+                                               ready_friendly());
+                if (!unit.has_value()) return;   // waiting for the agent
+                if (*unit != kInvalidId && costDueNow(ctx)) {
+                    ctx.executor.exhaustObject(*unit);
                     paid = true;
                 }
             }

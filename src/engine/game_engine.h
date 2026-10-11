@@ -268,6 +268,7 @@ public:
     // Card::canActivateAbility / canActivateAbilityAt first — an activation
     // "from" a trash, a hand, or of another player's card does nothing.
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
+    void testHook_executePlaySpell(const Intent& i) { executePlaySpell(i); }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
     // The top-level main-phase decision, asked of `p`'s agent.

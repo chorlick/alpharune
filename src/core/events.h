@@ -438,6 +438,17 @@ public:
     void emit(const SpellResolvedEvent& e);
     void emit(const CardRevealedEvent& e);
 
+    // ── Holding ──
+    // While held, nothing emitted (log lines included) reaches a subscriber:
+    // it is kept, in order. release() delivers it all; discardHeld() drops it.
+    // For an action whose outcome is not known until it has run and that must
+    // leave no trace if it turns out not to happen (GameEngine::
+    // executePlaySpell: a spell whose choices did not make it payable).
+    void hold();
+    void release();
+    void discardHeld();
+    bool holding() const { return holding_; }
+
     // Convenience logging. Every line is prefixed with [D:NNN.NN]
     // where NNN is a per-EventBus decision counter (bumped + reset
     // sub-counter whenever a "DECISION #" line is emitted) and NN is
@@ -459,6 +470,8 @@ public:
     void disconnectAll();
 
 private:
+    bool holding_ = false;
+    std::vector<std::function<void()>> held_;
     int log_decision_counter_ = 0;
     int log_sub_counter_      = 0;
 

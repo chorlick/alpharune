@@ -80,6 +80,7 @@ public:
             // 355.13), as this trigger is finalized (CR 388.4). "runes", with
             // no "friendly" or "your": any rune on the board (CR 133.3.a,
             // 355.9.a.1), an opponent's exhausted rune included.
+            // (judge ruling 2026-10-11: confirmed — an opponent's exhausted rune may be chosen; plans/09 9.BB4 (a).)
             auto readiable = [&](GameObjectId id) {
                 if (!ctx.state.objectExists(id)) return false;
                 const auto& obj = ctx.state.getObject(id);

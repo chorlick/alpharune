@@ -82,6 +82,7 @@ public:
         // not "up to 2": with two or more exhausted runes exactly two are
         // readied (no "None" on the prompts), with fewer every one there is
         // (CR 055) — and with two or fewer there is nothing to ask.
+        // (judge ruling 2026-10-11: confirmed — an opponent's exhausted rune may be chosen; plans/09 9.BB4 (a).)
         auto readiable = [&ctx](GameObjectId id) {
             if (id == kInvalidId || !ctx.state.objectExists(id)) return false;
             const auto& obj = ctx.state.getObject(id);

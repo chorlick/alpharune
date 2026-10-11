@@ -34,6 +34,13 @@ class EffectExecutor;
 /// harmless: if it is changed and dies later while the batch is still open,
 /// its last-known information is taken afresh.
 /// (EffectExecutor::beginDeathBatch / endDeathBatch.)
+/// What EffectExecutor::beginDeathBatch hands to endDeathBatch.
+struct DeathBatchMark {
+    ChainItemId first_item = 0;                 // chain ids from here on are the batch's
+    OpenClosedState oc_state = OpenClosedState::Open;
+    bool chain_was_empty = true;
+};
+
 class DeathBatch {
 public:
     DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units);
@@ -43,6 +50,7 @@ public:
 private:
     EffectExecutor& executor_;
     std::vector<GameObjectId> units_;
+    DeathBatchMark mark_;
 };
 
 /// Which parts of a card's cost an effect-driven play still charges
@@ -113,9 +121,13 @@ public:
     // legend or a battlefield. `objectExists` alone is not that check.
     void dealDamage(GameObjectId target, int amount, GameObjectId source);
     void killObject(GameObjectId target);
-    /// Fill GameObject::last_known from the object's current state (called by
-    /// the kill paths just before it dies).
-    void snapshotLastKnown(GameObjectId id);
+    /// Fill GameObject::last_known from the object's current state. Every
+    /// path that takes an object off the board calls it first, while the
+    /// object is still as it was there (its controller, Might, statuses,
+    /// attachments, where it was): what reads the object after the move reads
+    /// this (CR 359.3.e.13, 383.2.c.3). `dying`: it is leaving by dying, so
+    /// who killed it is recorded too.
+    void snapshotLastKnown(GameObjectId id, bool dying = true);
     void drawCards(PlayerId player, int count);
     void bounceToHand(GameObjectId target);
     void giveTemporaryMight(GameObjectId target, int amount, int minimum = 0);
@@ -181,8 +193,16 @@ public:
     /// cleanup, "kill all units here"), before the first kill: takes each
     /// one's last-known information while all of them are still on the board.
     /// Follow the kills with endDeathBatch(same ids).
-    void beginDeathBatch(const std::vector<GameObjectId>& units);
-    void endDeathBatch(const std::vector<GameObjectId>& units);
+    ///
+    /// Units that leave together do not see each other leave (CR 383.2.c.2:
+    /// Viktor, Leader "does not trigger if Viktor and another non-Recruit unit
+    /// you control die during the same game action"). The kills are still made
+    /// one after the other, so a unit killed later in the batch has already
+    /// put its "when another unit dies" ability on the chain for the earlier
+    /// ones: endDeathBatch takes those back. Pass it what beginDeathBatch
+    /// returned.
+    DeathBatchMark beginDeathBatch(const std::vector<GameObjectId>& units);
+    void endDeathBatch(const std::vector<GameObjectId>& units, const DeathBatchMark& mark);
 
     /// Announce that `card` was recycled into its owner's Main Deck by a path
     /// that placed it itself (a recycle-self cost, the mulligan): fires "When
@@ -395,7 +415,9 @@ public:
     /// by revealUntil / revealAndChoose; a card that reveals from `player`'s
     /// deck by hand calls it once, before it takes the cards. Does nothing
     /// without the effect.
-    void lookBeforeReveal(PlayerId player);
+    /// `deck`: the deck the reveal is from — the Main Deck, or the Rune Deck
+    /// (Twisted Fate, Gambler: "reveal the top rune of your rune deck").
+    void lookBeforeReveal(PlayerId player, ZoneType deck = ZoneType::MainDeck);
     std::pair<GameObjectId, std::vector<GameObjectId>>
         revealUntil(PlayerId player, CardType condition);
     /// Play `card` from its current zone onto the board without paying

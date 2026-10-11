@@ -39,8 +39,10 @@ public:
                                  "battlefield — fizzle (CR 463)");
             return;
         }
-        PlayerId target_controller = obj.controller;
         ctx.executor.killObject(picked);
+        // "Its controller": who controlled it as it died (a unit taken from
+        // its owner is in its OWNER's trash now, and its owner's again).
+        const PlayerId target_controller = controllerWhenItLeft(ctx.state, picked);
         if (target_controller != PlayerId::None) {
             RIFT_TRACE(ctx.events, "HIDDEN BLADE: its controller (" +
                                  std::string(toString(target_controller)) +

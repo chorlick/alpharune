@@ -822,6 +822,34 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_TheCardInTheDeckIsANewObject) {
     EXPECT_FALSE(g.keywords.has(Keyword::Ganking));
 }
 
+// 9.MM1: the recycle is announced ("When you recycle ...") while the card is
+// still as it left; it is the new object after that.
+TEST_F(PlayCombatFixTest, RecycleSelfCost_IsAnnouncedBeforeTheCardIsANewObject) {
+    makeEngine();
+    auto gear = onBoard(P1, kTRecycleGear);
+    s().getObject(gear).is_stunned = true;
+    int announced = 0;
+    bool stunned_when_announced = false;
+    conns_.emplace_back(events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent& e) {
+            if (e.what_changed == "recycled_main" && e.object == gear) {
+                ++announced;
+                stunned_when_announced = s().getObject(gear).is_stunned;
+            }
+        }));
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = gear;
+    act.ability_index = 0;
+    engine_->testHook_executeIntent(act);
+    EXPECT_EQ(announced, 1);
+    EXPECT_TRUE(stunned_when_announced);
+    EXPECT_FALSE(carriesBoardState(s().getObject(gear)));
+    EXPECT_TRUE(s().getObject(gear).last_known.valid);
+    EXPECT_FALSE(s().getObject(gear).last_known.died);
+}
+
 TEST_F(PlayCombatFixTest, RecycleSelfCost_TokenCeasesToExistInstead) {
     makeEngine();
     auto gear = onBoard(P1, kTRecycleGear);

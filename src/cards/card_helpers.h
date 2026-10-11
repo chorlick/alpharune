@@ -36,23 +36,18 @@ inline bool payableOnePower(const GameState& state, PlayerId player,
                             std::optional<Domain> domain) {
     return resource::payablePower(state, player, domain.value_or(Domain::Count)) >= 1;
 }
-/// Recycle `rune` (in `player`'s base) to pay one Power, with the engine's
-/// bookkeeping for a rune spent that way (EffectExecutor::payAnyPower): it
-/// goes to the bottom of the Rune Deck ready, counts toward
-/// `power_spent_this_turn` (Sivir, Mercenary) and leaves the board with an
-/// event. Every card effect that recycles a rune for Power goes through here.
-inline void recycleRuneForPower(CardContext& ctx, PlayerId player, GameObjectId rune) {
-    auto& ps = ctx.state.player(player);
-    auto& dr = ctx.state.getObject(rune);
-    const LocationId was_at = dr.location.value_or(LocationId{BaseLocation{player}});
-    dr.location = std::nullopt;
-    dr.zone = ZoneType::RuneDeck;
-    forgetBoardState(dr, nullptr);   // CR 124.1 (a rune carries no attachments)
-    ps.rune_deck.insert(ps.rune_deck.begin(), rune);
-    ps.power_spent_this_turn++;
-    RIFT_TRACE(ctx.events, "  ADDL_COST: recycled " + dr.name + " for power");
-    ctx.events.emit(LeftBoardEvent{rune, player, CardType::Rune, was_at,
-                                   ZoneType::RuneDeck, false});
+/// "Its controller", said of a card that an effect has taken off the board
+/// (killed, returned to hand, banished, recycled): the player who controlled
+/// it when it left. Off the board the object is its owner's again (CR 124.1,
+/// forgetBoardState), so the live `controller` of a unit that was taken and
+/// then died names the wrong player; the move recorded who it was
+/// (GameObject::LastKnown::controller, CR 359.3.e.13 "look back"). For a card
+/// still on the board this is its controller now.
+inline PlayerId controllerWhenItLeft(const GameState& state, GameObjectId id) {
+    if (!state.objectExists(id)) return PlayerId::None;
+    const auto& obj = state.getObject(id);
+    if (obj.location.has_value() || !obj.last_known.valid) return obj.controller;
+    return obj.last_known.controller;
 }
 inline bool payOnePower(CardContext& ctx, PlayerId player,
                         std::optional<Domain> domain) {

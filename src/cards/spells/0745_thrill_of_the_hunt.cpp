@@ -34,18 +34,10 @@ public:
         // choice (one option per battlefield on the board, not just
         // controlled ones).
         // Step 1: banish the friendly unit (its gear is shed). It comes back
-        // as a new object: no damage, buffs, statuses or combat role.
-        auto banish = [&]() {
-            ctx.executor.banishObject(unit_id);
-            auto& unit = ctx.state.getObject(unit_id);
-            unit.damage_marked = 0;
-            unit.buff_count = 0;
-            unit.temp_might_bonus = 0;
-            unit.is_stunned = false;
-            unit.empowered = 0;
-            unit.empower_flip_eot = 0;
-            unit.combat_designation = CombatDesignation::None;
-        };
+        // as a new object, with no damage, buffs, statuses or combat role:
+        // banishObject made it one as it left (CR 124.1,
+        // EffectExecutor::leftBoard), so nothing is reset here.
+        auto banish = [&]() { ctx.executor.banishObject(unit_id); };
         // CR 183.1: a banished token ceases to exist — nothing to play back.
         if (token) {
             banish();

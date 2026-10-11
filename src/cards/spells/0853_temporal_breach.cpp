@@ -41,15 +41,9 @@ public:
         // CR 183.1: a banished token ceases to exist — nothing to play back.
         if (token) return;
 
-        // It comes back as a new object: no damage, buffs, statuses or roles.
-        auto& unit = ctx.state.getObject(picked);
-        unit.damage_marked = 0;
-        unit.buff_count = 0;
-        unit.temp_might_bonus = 0;
-        unit.is_stunned = false;
-        unit.empowered = 0;
-        unit.empower_flip_eot = 0;
-        unit.combat_designation = CombatDesignation::None;
+        // It comes back as a new object, with no damage, buffs, statuses or
+        // roles: banishObject made it one as it left (CR 124.1,
+        // EffectExecutor::leftBoard), so nothing is reset here.
         ctx.executor.playIgnoringCost(owner, picked, *where);
     }
 private:

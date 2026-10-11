@@ -20,8 +20,10 @@ public:
     // move is then asked unit by unit, "done" on every prompt. "Any number"
     // includes zero (CR 355.13), so the requirement is optional: from hand the
     // spell is playable with no friendly unit at a battlefield (and then does
-    // nothing). From facedown it still needs one at its battlefield (CR
-    // 811.1.d: the hidden generator offers one play per target there).
+    // nothing). From facedown too: with no friendly unit at its battlefield it
+    // is played choosing none (judge ruling 2026-10-11, plans/09 9.Z4: CR
+    // 355.13 wins over 811.1.d's "no valid targets"); with units there the
+    // hidden generator offers one play per target there (CR 811.1.d.2).
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_friendly = true,

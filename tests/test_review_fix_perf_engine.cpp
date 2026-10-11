@@ -13,8 +13,10 @@
 #include "cards/card_registry.h"
 #include "cards/card_test_fixture.h"
 #include "core/board_state.h"
+#include "cards/card_helpers.h"
 #include "core/card_db.h"
 #include "core/events.h"
+#include "engine/effect_executor.h"
 #include "engine/game_engine.h"
 #include "engine/knowledge_tracker.h"
 #include "engine/resource_payment.h"
@@ -42,6 +44,7 @@ namespace test_review_fix_perf_engine {
 
 using namespace riftbound;
 using riftbound::test::CardTestFixture;
+using riftbound::test::EnginePathAgent;
 
 // ─── 6.1: a log line nobody reads is not built ──────────────────────────────
 
@@ -1518,6 +1521,600 @@ TEST_F(PerfEngineLeaveBoard, ACleanupFindsNothingLeftToClear) {
     EXPECT_EQ(after.keywords.bits, before.keywords.bits);
     EXPECT_EQ(after.current_might, before.current_might);
     EXPECT_FALSE(carriesBoardState(after));
+}
+
+
+// ─── 9.MM1: what reads an object after it has left the board ────────────────
+//
+// Off the board an object is a new one (CR 124.1): its owner's again, with
+// its printed Might and no statuses. What an effect or a "When I die" ability
+// says about the card AS IT LEFT is read from the snapshot every leave path
+// takes first (GameObject::last_known; CR 359.3.e.13 "can look back at its
+// characteristics before it changes zones", CR 383.2.c.3 for the abilities of
+// the object that left).
+
+constexpr CardDefId kTWitness = 1041;     // unit: "When I die", writes down itself and another unit
+constexpr CardDefId kTLookBack = 1042;    // spell: moves a unit off the board, then reads it
+constexpr CardDefId kTPowerUnit = 1043;   // unit costing one Calm Power
+constexpr CardDefId kTWatcher = 1044;     // unit: "When another friendly unit dies", counts
+
+struct Saw {
+    PlayerId ability_controller = PlayerId::None;
+    bool valid = false;
+    bool died = false;
+    PlayerId controller_then = PlayerId::None;   // last_known.controller
+    PlayerId controller_now = PlayerId::None;    // the object in its new zone
+    int might_then = 0;
+    int might_now = 0;
+    bool stunned_then = false;
+    int buffs_then = 0;
+    size_t gear_then = 0;
+    std::optional<LocationId> at_then;
+    bool listed_with_me = false;                 // in MY last_known.other_friendly_units_here
+    bool on_board_now = false;
+};
+static Saw look(const GameState& state, GameObjectId id) {
+    Saw s;
+    const GameObject& u = state.getObject(id);
+    s.valid = u.last_known.valid;
+    s.died = u.last_known.died;
+    s.controller_then = u.last_known.controller;
+    s.controller_now = u.controller;
+    s.might_then = u.last_known.might;
+    s.might_now = u.current_might;
+    s.stunned_then = u.last_known.stunned;
+    s.buffs_then = u.last_known.buff_count;
+    s.gear_then = u.last_known.attachments.size();
+    s.at_then = u.last_known.location;
+    s.on_board_now = u.location.has_value();
+    return s;
+}
+
+/// "When I die": writes down what it reads of itself and of `other[me]`.
+class TWitness : public UnitCard {
+public:
+    TWitness() {
+        def_.id = kTWitness;
+        def_.name = "Test Witness";
+        def_.card_type = CardType::Unit;
+        def_.might = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        Saw me = look(ctx.state, ctx.source);
+        me.ability_controller = ctx.controller;
+        myself[ctx.source] = me;
+        auto it = other.find(ctx.source);
+        if (it == other.end() || !ctx.state.objectExists(it->second)) return;
+        Saw them = look(ctx.state, it->second);
+        const auto& with_me = ctx.state.getObject(ctx.source).last_known.other_friendly_units_here;
+        them.listed_with_me =
+            std::find(with_me.begin(), with_me.end(), it->second) != with_me.end();
+        the_other[ctx.source] = them;
+    }
+    static inline std::map<GameObjectId, GameObjectId> other;
+    static inline std::map<GameObjectId, Saw> myself, the_other;
+private:
+    CardDef def_;
+};
+
+/// "When another friendly unit dies": counts, per watcher.
+class TWatcher : public UnitCard {
+public:
+    TWatcher() {
+        def_.id = kTWatcher;
+        def_.name = "Test Watcher";
+        def_.card_type = CardType::Unit;
+        def_.might = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::WhenAFriendlyUnitDies; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ++resolved[ctx.source];
+    }
+    static inline std::map<GameObjectId, int> resolved;
+private:
+    CardDef def_;
+};
+
+/// "[Move] a unit [off the board]. Then ...": makes the move, then reads the
+/// unit and deals 1 to each unit where it was.
+class TLookBack : public SpellCard {
+public:
+    enum class Move { Kill, ReturnToHand, Banish, Recycle, PutOnDeck };
+    TLookBack() {
+        def_.id = kTLookBack;
+        def_.name = "Test Look Back";
+        def_.card_type = CardType::Spell;
+    }
+    const CardDef& def() const override { return def_; }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 1, .must_be_unit = true};
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        const GameObjectId unit = targets[0];
+        switch (move) {
+            case Move::Kill:         ctx.executor.killObject(unit); break;
+            case Move::ReturnToHand: ctx.executor.bounceToHand(unit); break;
+            case Move::Banish:       ctx.executor.banishObject(unit); break;
+            case Move::Recycle:      ctx.executor.recycleCards(ctx.controller, {unit}); break;
+            case Move::PutOnDeck:    ctx.executor.putIntoDeckFromBoard(unit, true); break;
+        }
+        saw = look(ctx.state, unit);
+        its_controller = controllerWhenItLeft(ctx.state, unit);
+        // "... deal 1 to each unit there."
+        if (!saw.at_then.has_value()) return;
+        std::vector<GameObjectId> there;
+        for (const auto& [id, obj] : ctx.state.objects.atLocation(*saw.at_then))
+            if (obj.isUnit()) there.push_back(id);
+        for (auto id : there) ctx.executor.dealDamage(id, 1, ctx.source);
+    }
+    static inline Move move = Move::Kill;
+    static inline Saw saw;
+    static inline PlayerId its_controller = PlayerId::None;
+private:
+    CardDef def_;
+};
+
+class TPowerUnit : public UnitCard {
+public:
+    TPowerUnit() {
+        def_.id = kTPowerUnit;
+        def_.name = "Test Power Unit";
+        def_.card_type = CardType::Unit;
+        def_.might = 1;
+        def_.domains = {Domain::Calm};
+        def_.power_cost = 1;
+    }
+    const CardDef& def() const override { return def_; }
+private:
+    CardDef def_;
+};
+
+class PerfEngineLookBack : public PerfEngineLeaveBoard {
+protected:
+    static constexpr CardDefId kViktorLeader = 246;
+    static constexpr CardDefId kImmortalPhoenix = 37;
+    static constexpr CardDefId kKogMaw = 190;
+    static constexpr CardDefId kHiddenBlade = 213;
+    static constexpr CardDefId kKeepersVerdict = 760;
+
+    void SetUp() override {
+        PerfEngineLeaveBoard::SetUp();
+        card_registry.registerCard(kTWitness, std::make_unique<TWitness>());
+        card_registry.registerCard(kTLookBack, std::make_unique<TLookBack>());
+        card_registry.registerCard(kTPowerUnit, std::make_unique<TPowerUnit>());
+        card_registry.registerCard(kTWatcher, std::make_unique<TWatcher>());
+        card_db.buildFromClasses(card_registry);
+        TWitness::other.clear();
+        TWitness::myself.clear();
+        TWitness::the_other.clear();
+        TWatcher::resolved.clear();
+        TLookBack::saw = Saw{};
+        TLookBack::its_controller = PlayerId::None;
+    }
+    /// P2's unit that P1 has taken, at battlefield 0.
+    GameObjectId taken(CardDefId def) {
+        const GameObjectId id = addUnit(P2, def, 0, 0);
+        o(id).controller = P1;
+        return id;
+    }
+    /// P1's unit at battlefield 0: buffed, stunned, carrying a Long Sword.
+    GameObjectId buffedStunnedArmed(CardDefId def, GameObjectId* gear_out = nullptr) {
+        const GameObjectId id = addUnit(P1, def, 0, 0);
+        const GameObjectId sword = addEquipment(P1, kLongSword);
+        o(sword).location = o(id).location;
+        o(sword).zone = ZoneType::BattlefieldZone;
+        withEngine([&](GameEngine& e) {
+            ASSERT_TRUE(e.testHook_executor().attachGear(sword, id));
+            e.mutableState().getObject(id).buff_count = 1;
+            e.mutableState().getObject(id).is_stunned = true;
+            e.testHook_recalculateAuras();
+        });
+        if (gear_out) *gear_out = sword;
+        return id;
+    }
+    /// Play the look-back spell on `unit` as `caster`, through the engine.
+    void lookBack(TLookBack::Move move, GameObjectId unit, PlayerId caster = P1) {
+        TLookBack::move = move;
+        const GameObjectId spell = addToHand(caster, kTLookBack);
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = caster;
+        play.card = spell;
+        play.targets = {unit};
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(play);
+            settleLikeTheEngine(e);
+        }, nullptr, nullptr, caster);
+    }
+    int recruits(PlayerId p) {
+        int n = 0;
+        for (const auto& [id, obj] : state.objects.onBoard())
+            if (obj.controller == p && obj.isUnit() && obj.name == "Recruit") ++n;
+        return n;
+    }
+};
+
+// "Its controller", of a unit taken from its owner and then killed, is the
+// player who controlled it as it died. The dead card is in its OWNER's trash
+// and is its owner's again; the snapshot says who had it.
+TEST_F(PerfEngineLookBack, ATakenUnitThatIsKilled_ItsControllerIsWhoHadItThen) {
+    const GameObjectId u = taken(kShipyardSkulker);
+    lookBack(TLookBack::Move::Kill, u, P2);
+    ASSERT_EQ(o(u).zone, ZoneType::Trash);
+    EXPECT_EQ(o(u).controller, P2) << "the card in the trash is its owner's";
+    EXPECT_TRUE(TLookBack::saw.valid);
+    EXPECT_TRUE(TLookBack::saw.died);
+    EXPECT_EQ(TLookBack::saw.controller_then, P1);
+    EXPECT_EQ(TLookBack::saw.controller_now, P2);
+    EXPECT_EQ(TLookBack::its_controller, P1) << "controllerWhenItLeft";
+}
+
+// Hidden Blade 213, "Kill a unit at a battlefield. Its controller draws 2
+// cards.": on a unit P1 took from P2, P1 draws.
+TEST_F(PerfEngineLookBack, HiddenBlade_TheControllerOfATakenUnitDraws) {
+    const GameObjectId u = taken(kShipyardSkulker);
+    for (int i = 0; i < 3; ++i) { addToDeck(P1, kShipyardSkulker); addToDeck(P2, kShipyardSkulker); }
+    const GameObjectId blade = addToHand(P2, kHiddenBlade);
+    const size_t p1_hand = state.player(P1).hand.size();
+    const size_t p2_hand = state.player(P2).hand.size();
+    EnginePathAgent picker(EnginePathAgent::choosing(u));
+    playThroughEngine(blade, nullptr, std::nullopt, &picker);
+    ASSERT_EQ(o(u).zone, ZoneType::Trash);
+    EXPECT_EQ(state.player(P1).hand.size(), p1_hand + 2) << "its controller as it died";
+    EXPECT_EQ(state.player(P2).hand.size(), p2_hand - 1) << "its owner only played the spell";
+}
+
+// Every other way off the board takes the same snapshot: a unit that was
+// buffed and then returned to its owner's hand is a 3 [M] card there, and
+// "its Might" as it left is what an effect that counts it afterwards reads.
+// Before, only a kill took one — so after a return the snapshot was missing,
+// or was the one from the last time the unit had died.
+TEST_F(PerfEngineLookBack, EveryWayOffTheBoardRecordsTheUnitAsItLeft) {
+    using Move = TLookBack::Move;
+    for (Move move : {Move::ReturnToHand, Move::Banish, Move::Recycle, Move::PutOnDeck}) {
+        SCOPED_TRACE(static_cast<int>(move));
+        const GameObjectId u = dirtyUnit();           // P2's, taken by P1, buffed, stunned, armed
+        // It has died before (and come back): that snapshot is not this leave's.
+        o(u).last_known.valid = true;
+        o(u).last_known.died = true;
+        o(u).last_known.might = 99;
+        o(u).last_known.controller = P2;
+        o(u).last_known.stunned = false;
+        const int might_on_board = o(u).current_might;
+        const auto was_at = o(u).location;
+        ASSERT_GT(might_on_board, o(u).base_might);
+        lookBack(move, u, P2);
+        ASSERT_FALSE(o(u).location.has_value());
+        const Saw& saw = TLookBack::saw;
+        EXPECT_TRUE(saw.valid);
+        EXPECT_FALSE(saw.died) << "it left, it did not die";
+        EXPECT_EQ(saw.might_then, might_on_board) << "its Might as it left";
+        EXPECT_EQ(saw.might_now, o(u).base_might) << "the card where it is now";
+        EXPECT_EQ(saw.controller_then, P1);
+        EXPECT_EQ(saw.controller_now, P2);
+        EXPECT_TRUE(saw.stunned_then);
+        EXPECT_EQ(saw.buffs_then, 1);
+        EXPECT_EQ(saw.gear_then, 1u);
+        EXPECT_EQ(saw.at_then, was_at);
+        EXPECT_EQ(TLookBack::its_controller, P1);
+        EXPECT_EQ(o(u).last_known.killed_by, PlayerId::None);
+    }
+}
+
+// "Kill a unit at a battlefield, then deal 1 to each unit THERE": where it
+// was, read after the kill.
+TEST_F(PerfEngineLookBack, AUnitKilledAtABattlefield_ThereIsWhereItWas) {
+    const GameObjectId victim = addUnit(P2, kShipyardSkulker, 0, 1);
+    const GameObjectId beside = addUnit(P2, kShipyardSkulker, 0, 1);
+    const GameObjectId elsewhere = addUnit(P2, kShipyardSkulker, 0, 0);
+    const GameObjectId at_base = addUnit(P2, kShipyardSkulker, 0, -1);
+    lookBack(TLookBack::Move::Kill, victim);
+    ASSERT_EQ(o(victim).zone, ZoneType::Trash);
+    ASSERT_TRUE(TLookBack::saw.at_then.has_value());
+    EXPECT_EQ(*TLookBack::saw.at_then, LocationId{BattlefieldLocation{1}});
+    EXPECT_EQ(o(beside).damage_marked, 1);
+    EXPECT_EQ(o(elsewhere).damage_marked, 0);
+    EXPECT_EQ(o(at_base).damage_marked, 0);
+}
+
+// Kog'Maw, Caustic 190, "[Deathknell] — Deal 4 to all units at my
+// battlefield": the battlefield it died at. If the card is back on the board
+// somewhere else when the ability resolves (played from the trash in
+// response), it is a new object; the ability read where THAT one is.
+TEST_F(PerfEngineLookBack, KogMaw_BackOnTheBoardElsewhere_StillDealsWhereItDied) {
+    const GameObjectId kog = addUnit(P1, kKogMaw, 0, 0);
+    const GameObjectId where_it_died = addUnit(P2, kShipyardSkulker, 9, 0);
+    const GameObjectId where_it_is_now = addUnit(P2, kShipyardSkulker, 9, 1);
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().killObject(kog);          // its Deathknell is on the chain
+        ASSERT_EQ(e.mutableState().getObject(kog).zone, ZoneType::Trash);
+        e.testHook_executor().playIgnoringCost(P1, kog, LocationId{BattlefieldLocation{1}});
+        ASSERT_TRUE(e.mutableState().getObject(kog).location.has_value());
+        settleLikeTheEngine(e);
+    });
+    EXPECT_EQ(o(where_it_died).damage_marked, 4);
+    EXPECT_EQ(o(where_it_is_now).damage_marked, 0);
+}
+
+// Units that die together (one cleanup, CR 370.1.a.2): every snapshot is
+// taken before the first of them leaves (EffectExecutor::beginDeathBatch), so
+// each one's "When I die" reads itself and the others as they were on the
+// board — whichever was killed first. One is P2's unit that P1 had taken; the
+// other is buffed, stunned and carries an Equipment.
+TEST_F(PerfEngineLookBack, UnitsThatDieTogether_EachDeathAbilityReadsBothAsTheyWere) {
+    for (bool through_a_card : {false, true}) {
+        SCOPED_TRACE(through_a_card ? "DeathBatch + killObject (a card's kills)"
+                                    : "processLethalDamage (a cleanup)");
+        TWitness::myself.clear();
+        TWitness::the_other.clear();
+        const GameObjectId stolen = taken(kTWitness);
+        GameObjectId sword;
+        const GameObjectId armed = buffedStunnedArmed(kTWitness, &sword);
+        TWitness::other[stolen] = armed;
+        TWitness::other[armed] = stolen;
+        const int armed_might = o(armed).current_might;
+        ASSERT_EQ(armed_might, 2 + 1 + 2) << "printed 2, a buff, Long Sword +2";
+        withEngine([&](GameEngine& e) {
+            if (through_a_card) {
+                {
+                    DeathBatch together(e.testHook_executor(), {stolen, armed});
+                    e.testHook_executor().killObject(stolen);
+                    e.testHook_executor().killObject(armed);
+                }
+            } else {
+                e.mutableState().getObject(stolen).damage_marked = 99;
+                e.mutableState().getObject(armed).damage_marked = 99;
+                e.testHook_processLethalDamage();
+            }
+            // Both are gone before either ability resolves.
+            ASSERT_FALSE(e.mutableState().getObject(stolen).location.has_value());
+            ASSERT_FALSE(e.mutableState().getObject(armed).location.has_value());
+            settleLikeTheEngine(e);
+        });
+        ASSERT_EQ(TWitness::myself.count(stolen), 1u);
+        ASSERT_EQ(TWitness::myself.count(armed), 1u);
+        EXPECT_EQ(o(stolen).zone, ZoneType::Trash);
+        EXPECT_NE(std::find(state.player(P2).trash.begin(), state.player(P2).trash.end(), stolen),
+                  state.player(P2).trash.end()) << "its owner's trash";
+        expectGearLeftBehind(sword);
+
+        // The taken unit's ability: P1 controls it (CR 383: the controller as
+        // it died), though the card is P2's again.
+        const Saw& s_me = TWitness::myself[stolen];
+        EXPECT_EQ(s_me.ability_controller, P1);
+        EXPECT_EQ(s_me.controller_then, P1);
+        EXPECT_EQ(s_me.controller_now, P2);
+        EXPECT_EQ(s_me.might_then, 2);
+        EXPECT_FALSE(s_me.stunned_then);
+        EXPECT_TRUE(s_me.died);
+        // ... and what it read of the unit that died with it.
+        const Saw& s_them = TWitness::the_other[stolen];
+        EXPECT_TRUE(s_them.valid);
+        EXPECT_FALSE(s_them.on_board_now);
+        EXPECT_EQ(s_them.controller_then, P1);
+        EXPECT_EQ(s_them.might_then, armed_might);
+        EXPECT_EQ(s_them.might_now, 2) << "the card in the trash";
+        EXPECT_TRUE(s_them.stunned_then);
+        EXPECT_EQ(s_them.buffs_then, 1);
+        EXPECT_EQ(s_them.gear_then, 1u);
+        EXPECT_TRUE(s_them.listed_with_me) << "it did not die alone";
+
+        // The armed unit's ability: itself as it died ...
+        const Saw& a_me = TWitness::myself[armed];
+        EXPECT_EQ(a_me.ability_controller, P1);
+        EXPECT_EQ(a_me.might_then, armed_might);
+        EXPECT_EQ(a_me.might_now, 2);
+        EXPECT_TRUE(a_me.stunned_then);
+        EXPECT_EQ(a_me.buffs_then, 1);
+        EXPECT_EQ(a_me.gear_then, 1u);
+        // ... and the taken unit: P1's as it died, P2's card now.
+        const Saw& a_them = TWitness::the_other[armed];
+        EXPECT_TRUE(a_them.valid);
+        EXPECT_EQ(a_them.controller_then, P1);
+        EXPECT_EQ(a_them.controller_now, P2);
+        EXPECT_EQ(a_them.might_then, 2);
+        EXPECT_TRUE(a_them.listed_with_me) << "a friendly unit there as they died";
+    }
+}
+
+// CR 383.2.c.2: "A Game Object will not be able to successfully evaluate its
+// Trigger Condition ... if it leaves the zone that its Trigger is active from
+// at the same time that its Trigger is satisfied." Two watchers ("When
+// another friendly unit dies") that die together saw nothing; before, the one
+// killed second had already triggered for the first (table order decided).
+// A watcher that lives sees both.
+TEST_F(PerfEngineLookBack, UnitsThatDieTogetherDoNotSeeEachOtherDie) {
+    const GameObjectId first = addUnit(P1, kTWatcher, 0, 0);
+    const GameObjectId second = addUnit(P1, kTWatcher, 0, 0);
+    const GameObjectId survivor = addUnit(P1, kTWatcher, 0, 1);
+    withEngine([&](GameEngine& e) {
+        e.mutableState().getObject(first).damage_marked = 99;
+        e.mutableState().getObject(second).damage_marked = 99;
+        e.testHook_processLethalDamage();
+        settleLikeTheEngine(e);
+        EXPECT_EQ(e.mutableState().turn.oc_state, OpenClosedState::Open);
+        EXPECT_TRUE(e.mutableState().chain.items.empty());
+    });
+    EXPECT_EQ(TWatcher::resolved[first], 0);
+    EXPECT_EQ(TWatcher::resolved[second], 0) << "it left with the unit it watched";
+    EXPECT_EQ(TWatcher::resolved[survivor], 2) << "on the board after both deaths";
+}
+
+// The same with nobody left to see it: the abilities taken back were the only
+// things on the chain, so there is no chain and the state is Open again.
+TEST_F(PerfEngineLookBack, UnitsThatDieTogether_NothingIsLeftOnTheChain) {
+    const GameObjectId first = addUnit(P1, kTWatcher, 0, 0);
+    const GameObjectId second = addUnit(P1, kTWatcher, 0, 0);
+    withEngine([&](GameEngine& e) {
+        e.mutableState().getObject(first).damage_marked = 99;
+        e.mutableState().getObject(second).damage_marked = 99;
+        e.testHook_processLethalDamage();
+        EXPECT_TRUE(e.mutableState().chain.items.empty());
+        EXPECT_EQ(e.mutableState().turn.oc_state, OpenClosedState::Open);
+    });
+    EXPECT_EQ(TWatcher::resolved[first] + TWatcher::resolved[second], 0);
+}
+
+// The rule's own example: "Viktor, Leader ... does not trigger if Viktor and
+// another non-Recruit unit you control die during the same game action". In
+// both table orders; and a Viktor that lives plays a Recruit for each.
+TEST_F(PerfEngineLookBack, Viktor_DyingWithAnotherUnitPlaysNoRecruit) {
+    for (bool viktor_first : {true, false}) {
+        SCOPED_TRACE(viktor_first ? "Viktor is killed first" : "Viktor is killed second");
+        GameObjectId viktor, other;
+        if (viktor_first) { viktor = addUnit(P1, kViktorLeader, 0, 0); other = addUnit(P1, kShipyardSkulker, 0, 0); }
+        else              { other = addUnit(P1, kShipyardSkulker, 0, 0); viktor = addUnit(P1, kViktorLeader, 0, 0); }
+        const int before = recruits(P1);
+        withEngine([&](GameEngine& e) {
+            e.mutableState().getObject(viktor).damage_marked = 99;
+            e.mutableState().getObject(other).damage_marked = 99;
+            e.testHook_processLethalDamage();
+            settleLikeTheEngine(e);
+        });
+        ASSERT_EQ(o(viktor).zone, ZoneType::Trash);
+        ASSERT_EQ(o(other).zone, ZoneType::Trash);
+        EXPECT_EQ(recruits(P1), before);
+    }
+    const GameObjectId viktor = addUnit(P1, kViktorLeader, 0, 0);
+    const GameObjectId a = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId b = addUnit(P1, kShipyardSkulker, 0, 0);
+    const int before = recruits(P1);
+    withEngine([&](GameEngine& e) {
+        e.mutableState().getObject(a).damage_marked = 99;
+        e.mutableState().getObject(b).damage_marked = 99;
+        e.testHook_processLethalDamage();
+        settleLikeTheEngine(e);
+    });
+    ASSERT_TRUE(onBoard(viktor));
+    EXPECT_EQ(recruits(P1), before + 2);
+}
+
+// CR 383.2.c.1's example: Immortal Phoenix "triggers if Immortal Phoenix is
+// in your trash immediately after you kill a unit with a spell, even if the
+// unit you killed with a spell was that Immortal Phoenix."
+TEST_F(PerfEngineLookBack, ImmortalPhoenix_KilledByItsOwnersSpellTriggersFromTheTrash) {
+    const GameObjectId phoenix = addUnit(P1, kImmortalPhoenix, 0, 0);
+    const GameObjectId spell = addToHand(P1, kTLookBack);     // a P1 spell as the damage source
+    int queued = 0;
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().dealDamage(phoenix, 99, spell);
+        e.testHook_processLethalDamage();
+        ASSERT_EQ(e.mutableState().getObject(phoenix).zone, ZoneType::Trash);
+        for (const auto& ci : e.mutableState().chain.items)
+            if (ci.source == phoenix &&
+                ci.fired_trigger == TriggerType::WhenYouKillAUnitWithASpell) ++queued;
+        e.mutableState().chain.items.clear();
+        e.mutableState().turn.oc_state = OpenClosedState::Open;
+    });
+    EXPECT_EQ(queued, 1);
+}
+
+// Every announcement of a leave is made while the object is still as it left;
+// it becomes the new object after the last of them. (A return to hand and a
+// banish used to forget the board first and announce afterwards, so a
+// listener to UnitReturnedToHandEvent / "banished_owned" / "recycled_main"
+// was handed the new object.)
+TEST_F(PerfEngineLookBack, ALeaveIsAnnouncedBeforeTheObjectIsANewOne) {
+    struct Heard { std::string what; PlayerId controller; bool stunned; };
+    std::vector<Heard> heard;
+    GameObjectId watched = kInvalidId;
+    // (withEngine works on the engine's own copy of the state: read that one.)
+    GameEngine* live = nullptr;
+    auto note_live = [&](const std::string& what, GameObjectId id) {
+        if (id != watched || !live) return;
+        const auto& obj = live->mutableState().getObject(id);
+        heard.push_back({what, obj.controller, obj.is_stunned});
+    };
+    boost::signals2::scoped_connection c1 = events.on_unit_returned_to_hand.connect(
+        [&](const UnitReturnedToHandEvent& e) { note_live("returned", e.object); });
+    boost::signals2::scoped_connection c2 = events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent& e) {
+            if (e.what_changed == "banished_owned") note_live("banished_owned", e.object);
+            if (e.what_changed == "recycled_main") note_live("recycled_main", e.object);
+        });
+    boost::signals2::scoped_connection c3 = events.on_left_board.connect(
+        [&](const LeftBoardEvent& e) { note_live("left", e.object); });
+    auto run = [&](const std::function<void(EffectExecutor&, GameObjectId)>& move) {
+        heard.clear();
+        watched = dirtyUnit();
+        withEngine([&](GameEngine& e) { live = &e; move(e.testHook_executor(), watched); live = nullptr; });
+        return heard;
+    };
+    auto expectAsItLeft = [&](const std::vector<Heard>& h, std::vector<std::string> want) {
+        ASSERT_EQ(h.size(), want.size());
+        for (size_t i = 0; i < h.size(); ++i) {
+            EXPECT_EQ(h[i].what, want[i]);
+            EXPECT_EQ(h[i].controller, P1) << want[i] << ": who controlled it as it left";
+            EXPECT_TRUE(h[i].stunned) << want[i] << ": as it left";
+        }
+        EXPECT_FALSE(carriesBoardState(o(watched))) << "and a new object afterwards";
+        EXPECT_EQ(o(watched).controller, P2);
+    };
+    expectAsItLeft(run([](EffectExecutor& x, GameObjectId u) { x.bounceToHand(u); }),
+                   {"left", "returned"});
+    expectAsItLeft(run([](EffectExecutor& x, GameObjectId u) { x.banishObject(u); }),
+                   {"left", "banished_owned"});
+    expectAsItLeft(run([](EffectExecutor& x, GameObjectId u) { x.recycleCards(P1, {u}); }),
+                   {"left", "recycled_main"});
+    expectAsItLeft(run([](EffectExecutor& x, GameObjectId u) { x.killObject(u); }), {"left"});
+    expectAsItLeft(run([](EffectExecutor& x, GameObjectId u) { x.putIntoDeckFromBoard(u, true); }),
+                   {"left"});
+}
+
+// ─── 9.MM2: the rune-recycle sites and Keeper's Verdict, each on its own ────
+
+// GameEngine::advanceCostPayment: a card's Power cost paid with a rune the
+// agent picks, when the card is played.
+TEST_F(PerfEngineLookBack, ARuneRecycledToPlayACardIsANewObject) {
+    const GameObjectId rune = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    o(rune).is_stunned = true;
+    o(rune).damage_marked = 1;
+    const GameObjectId card = addToHand(P1, kTPowerUnit);
+    playThroughEngine(card, nullptr, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_TRUE(onBoard(card)) << "the play went through";
+    ASSERT_EQ(o(rune).zone, ZoneType::RuneDeck);
+    EXPECT_FALSE(o(rune).location.has_value());
+    EXPECT_FALSE(carriesBoardState(o(rune)));
+    EXPECT_FALSE(o(rune).is_stunned);
+    EXPECT_EQ(o(rune).damage_marked, 0);
+}
+
+// The effect-play cost in effect_executor.cpp (plainPay): what
+// EffectExecutor::playPayingCost charges when no engine has handed the
+// executor its own payment — an executor on its own, as here. (On an engine
+// the same call pays through GameEngine::payCardCost, the test above.)
+TEST_F(PerfEngineLookBack, ARuneRecycledByAnEffectPlayWithoutAnEngineIsANewObject) {
+    const GameObjectId rune = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    o(rune).is_stunned = true;
+    o(rune).damage_marked = 1;
+    const GameObjectId card = addToHand(P1, kTPowerUnit);
+    EffectExecutor exec(state, events, card_db, &card_registry);
+    ASSERT_TRUE(exec.playPayingCost(P1, card, LocationId{BaseLocation{P1}}));
+    ASSERT_TRUE(onBoard(card));
+    ASSERT_EQ(o(rune).zone, ZoneType::RuneDeck);
+    EXPECT_FALSE(carriesBoardState(o(rune)));
+    EXPECT_FALSE(o(rune).is_stunned);
+    EXPECT_EQ(o(rune).damage_marked, 0);
+}
+
+// Keeper's Verdict 760 played through the engine: the unit its owner puts on
+// their deck is a new object there.
+TEST_F(PerfEngineLookBack, KeepersVerdict_TheUnitOnTheDeckIsANewObject) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);          // P2's, controlled by P1, at a battlefield
+    o(u).untargetable_by_enemy_this_turn = false;
+    const GameObjectId verdict = addToHand(P2, kKeepersVerdict);
+    EnginePathAgent p2(EnginePathAgent::script({EnginePathAgent::kRest}));
+    playThroughEngine(verdict, nullptr, std::nullopt, &p2);
+    ASSERT_EQ(o(u).zone, ZoneType::MainDeck);
+    expectNewObject(u, "Keeper's Verdict");
+    expectGearLeftBehind(gear);
+    EXPECT_EQ(state.player(P2).main_deck.back(), u) << "its owner's deck";
+    EXPECT_EQ(o(u).last_known.controller, P1) << "who had it as it left";
 }
 
 }  // namespace test_review_fix_perf_engine

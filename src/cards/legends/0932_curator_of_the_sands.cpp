@@ -40,6 +40,7 @@ public:
         // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
         // printed restriction narrows a choice (CR 355.9.b), so an opponent's
         // exhausted rune may be named too.
+        // (judge ruling 2026-10-11: confirmed — an opponent's exhausted rune may be chosen; plans/09 9.BB4 (a).)
         auto readiable = [&ctx](GameObjectId id) {
             if (!ctx.state.objectExists(id)) return false;
             const auto& obj = ctx.state.getObject(id);
@@ -54,6 +55,7 @@ public:
         };
         // The cost is all the "may" needs: "up to 2" includes none (CR
         // 355.13), so it is offered with no exhausted rune too.
+        // (judge ruling 2026-10-11: confirmed — she may exhaust to ready zero runes; plans/09 9.Z4.)
         auto still_legal = [&]() {
             return applies && ctx.state.objectExists(ctx.source) &&
                    !ctx.state.getObject(ctx.source).is_exhausted;

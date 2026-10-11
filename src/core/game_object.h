@@ -117,6 +117,15 @@ struct GameObject {
     // paths fill it; it stays valid while the death trigger resolves.
     struct LastKnown {
         bool valid = false;
+        // Who controlled it when it left. Off the board a card is its owner's
+        // again (forgetBoardState), so "its controller" of a unit that was
+        // taken and then died, was returned or was banished is read here
+        // (CR 359.3.e.13: an effect that moves something "can look back at
+        // its characteristics before it changes zones").
+        PlayerId controller = PlayerId::None;
+        // It left by dying (a kill, lethal damage). False for a return to
+        // hand, a banish or a recycle: `killed_by` says nothing then.
+        bool died = false;
         int might = 0;
         int empowered = 0;
         int buff_count = 0;

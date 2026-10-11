@@ -57,15 +57,9 @@ public:
             const PlayerId owner = ctx.state.getObject(unit).owner;
             ctx.executor.banishObject(unit);   // sheds its gear
             if (replay) {
-                // It comes back as a new object: no damage, buffs or statuses.
-                auto& u = ctx.state.getObject(unit);
-                u.damage_marked = 0;
-                u.buff_count = 0;
-                u.temp_might_bonus = 0;
-                u.is_stunned = false;
-                u.empowered = 0;
-                u.empower_flip_eot = 0;
-                u.combat_designation = CombatDesignation::None;
+                // It comes back as a new object, with no damage, buffs or
+                // statuses: banishObject made it one as it left (CR 124.1,
+                // EffectExecutor::leftBoard), so nothing is reset here.
                 ctx.executor.playIgnoringCost(owner, unit, back_to);
             }
             RIFT_TRACE(ctx.events, "ARCANE SHIFT: banished + replayed a friendly unit");

@@ -750,10 +750,6 @@ static std::string formatActionShort(const GameState& state,
         if (obj.card_def_id == kInvalidId) return obj.name;  // tokens
         return obj.name + " #" + std::to_string(obj.card_def_id);
     };
-    auto nameOfId = [&](GameObjectId id) -> std::string {
-        if (id == kInvalidId || !state.objectExists(id)) return "???";
-        return nameWithDefId(state.getObject(id));
-    };
 
     auto cardLabel = [&](GameObjectId id) -> std::string {
         if (id == kInvalidId || !state.objectExists(id)) return "???";

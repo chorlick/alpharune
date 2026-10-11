@@ -15,7 +15,7 @@ void CardDB::buildFromClasses(const CardRegistry& registry) {
     name_index_.clear();
     for (CardDefId id : registry.classDefIds()) {
         const CardDef* cd = registry.classDef(id);
-        if (!cd) continue;  // legacy id-only card (none expected post-bake)
+        if (!cd) continue;  // unreachable: classDefIds() lists registered ids only
         CardDef def = *cd;  // copy the class-owned authored data
         // registerCard guarantees this; the table below is keyed by def.id.
         assert(def.id == id && "registry key differs from the card's def().id");

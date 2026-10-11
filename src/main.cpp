@@ -262,26 +262,6 @@ bool resolveTriState(const std::string& flag, const std::string& value, bool aut
     throw std::runtime_error("--" + flag + " must be one of: auto | on | off (got '" + value + "')");
 }
 
-/// An AI seat as the web UI sees it. Before the wrapped agent starts
-/// choosing — which for a search agent can take a long time — the engine
-/// thread publishes the board as it now stands, so the browser shows the
-/// result of the last action instead of the position before it.
-class PublishingAgent : public AgentInterface {
-public:
-    PublishingAgent(AgentInterface& inner, PlayServer& server)
-        : inner_(inner), server_(server) {}
-
-    Intent selectAction(const GameState& state,
-                        const std::vector<Intent>& legal_actions) override {
-        server_.publishEngineState();
-        return inner_.selectAction(state, legal_actions);
-    }
-
-private:
-    AgentInterface& inner_;
-    PlayServer& server_;
-};
-
 std::string randomToken() {
     std::random_device rd;
     std::ostringstream s;
@@ -764,7 +744,7 @@ int main(int argc, char* argv[]) {
 
     // ── Web server (optional) ─────────────────────────────────────────────
     std::unique_ptr<PlayServer> server;
-    // AI seats are wrapped once the server exists (see PublishingAgent).
+    // AI seats are wrapped once the server exists (see ServedAiSeat).
     std::unique_ptr<AgentInterface> published1, published2;
     AgentInterface* seat1 = agent1.get();
     AgentInterface* seat2 = agent2.get();
@@ -825,11 +805,11 @@ int main(int argc, char* argv[]) {
         };
 
         if (!p1_human) {
-            published1 = std::make_unique<PublishingAgent>(*agent1, *server);
+            published1 = std::make_unique<ServedAiSeat>(*agent1, *server);
             seat1 = published1.get();
         }
         if (!p2_human) {
-            published2 = std::make_unique<PublishingAgent>(*agent2, *server);
+            published2 = std::make_unique<ServedAiSeat>(*agent2, *server);
             seat2 = published2.get();
         }
 

@@ -2,7 +2,7 @@
 /// @file game_object.h
 /// Runtime representation of a card/token on the board or in a zone.
 ///
-/// CardDef is the static template (from registry.json).
+/// CardDef is the static template (authored in the card's class, Card::def()).
 /// GameObject is the mutable instance that tracks current state
 /// (damage, exhaustion, temporary mods, location, attachments, etc).
 

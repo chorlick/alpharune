@@ -15,12 +15,11 @@
 //
 // Returns 0 if all games pass equivalence, 1 if any diverge.
 //
-// Build:  cmake --build build-release --target riftbound_clone_equiv_test
-// Run:    ./build-release/src/openspiel/riftbound_clone_equiv_test
+// Build:  cmake --build build --target riftbound_clone_equiv_test
+// Run:    ./build/src/openspiel/riftbound_clone_equiv_test
 //
 // Environment variables:
 //   RIFTBOUND_DECK1, RIFTBOUND_DECK2 : deck paths
-//   RIFTBOUND_REGISTRY               : registry.json path
 //   RIFTBOUND_NUM_GAMES              : games to play (default 10)
 //   RIFTBOUND_CHECKPOINT             : decisions before cloning (default 50)
 //   RIFTBOUND_MAX_POST_CLONE         : safety cap on continuation steps (default 1500)
@@ -52,16 +51,14 @@ int getenvInt(const char* name, int fallback) {
 } // namespace
 
 int main() {
-    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/leblanc_test.txt");
-    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/leblanc_test.txt");
-    const std::string registry = getenvOr("RIFTBOUND_REGISTRY", "cards/ban-list.csv");
+    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/yi_rebuild.txt");
+    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/yi_rebuild.txt");
     const int num_games        = std::max(1, getenvInt("RIFTBOUND_NUM_GAMES", 10));
     const int checkpoint       = std::max(1, getenvInt("RIFTBOUND_CHECKPOINT", 50));
     const int max_post_clone   = std::max(1, getenvInt("RIFTBOUND_MAX_POST_CLONE", 1500));
 
     const std::string game_str = "riftbound(deck1=" + deck1 +
                                   ",deck2=" + deck2 +
-                                  ",registry=" + registry +
                                   ",seed=0)";
 
     std::cout << "Loading: " << game_str << "\n";

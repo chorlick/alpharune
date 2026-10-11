@@ -37,14 +37,13 @@ int getenvInt(const char* name, int fallback) {
 }
 
 int main() {
-    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/leblanc_test.txt");
-    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/leblanc_test.txt");
-    const std::string registry = getenvOr("RIFTBOUND_REGISTRY", "cards/ban-list.csv");
+    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/yi_rebuild.txt");
+    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/yi_rebuild.txt");
     const int num_games        = std::max(1, getenvInt("RIFTBOUND_NUM_GAMES", 1));
     const int num_threads      = std::max(1, getenvInt("RIFTBOUND_THREADS",   1));
 
     const std::string game_str = "riftbound(deck1=" + deck1 + ",deck2=" + deck2 +
-                                  ",registry=" + registry + ",seed=0)";
+                                  ",seed=0)";
 
     // We use RiftboundGame just as a resource container — CardDB, decks.
     auto game_base = ::open_spiel::LoadGame(game_str);

@@ -3,12 +3,15 @@
 // that get cloned but never descended into). Reports min / median /
 // p95 / max wall time per Clone() call.
 //
-// Build:  cmake --build build-release --target riftbound_clone_microbench
-// Run:    ./build-release/src/openspiel/riftbound_clone_microbench
+// Clones of an un-advanced state share one immutable snapshot: the first
+// Clone() copies the GameState (that is the max below), later ones copy a
+// pointer.
+//
+// Build:  cmake --build build --target riftbound_clone_microbench
+// Run:    ./build/src/openspiel/riftbound_clone_microbench
 //
 // Environment variables:
 //   RIFTBOUND_DECK1, RIFTBOUND_DECK2 : deck paths
-//   RIFTBOUND_REGISTRY               : registry.json path
 //   RIFTBOUND_CHECKPOINT             : decisions before cloning (default 100)
 //   RIFTBOUND_NUM_CLONES             : clones to make (default 100)
 //   RIFTBOUND_SEED                   : game seed (default 42)
@@ -19,6 +22,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -40,16 +44,14 @@ int getenvInt(const char* name, int fallback) {
 } // namespace
 
 int main() {
-    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/leblanc_test.txt");
-    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/leblanc_test.txt");
-    const std::string registry = getenvOr("RIFTBOUND_REGISTRY", "cards/ban-list.csv");
+    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/yi_rebuild.txt");
+    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/yi_rebuild.txt");
     const int checkpoint       = std::max(1, getenvInt("RIFTBOUND_CHECKPOINT", 100));
     const int num_clones       = std::max(1, getenvInt("RIFTBOUND_NUM_CLONES", 100));
     const int seed             = getenvInt("RIFTBOUND_SEED", 42);
 
     const std::string game_str = "riftbound(deck1=" + deck1 +
                                   ",deck2=" + deck2 +
-                                  ",registry=" + registry +
                                   ",seed=" + std::to_string(seed) + ")";
 
     std::cout << "Loading: " << game_str << "\n";

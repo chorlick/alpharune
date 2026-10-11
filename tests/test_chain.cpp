@@ -708,15 +708,16 @@ TEST_F(ChainTestFixture, ClosedStateActionsOnlyAllowReactions) {
 
 TEST_F(ChainTestFixture, FullGameRunsWithSpellsInDecks) {
     // Just verify that a full game completes without crashes
-    // when decks contain spells (which they do -- leblanc has Hextech Ray etc.)
+    // when decks contain spells (which they do -- Yi runs Charm / Defy, Fiora
+    // runs Challenge / Riposte).
     GameEngine engine(card_db, events, card_registry);
     PassAgent agent1, agent2;
 
     DeckSubmission deck1, deck2;
     std::string root = findRegistryPath().substr(
         0, findRegistryPath().rfind('/')) + "/..";
-    deck1 = DeckValidator::loadFromDeckList(root + "/decks/leblanc_test.txt", card_db);
-    deck2 = DeckValidator::loadFromDeckList(root + "/decks/vex_test_deck.txt", card_db);
+    deck1 = DeckValidator::loadFromDeckList(root + "/decks/yi_rebuild.txt", card_db);
+    deck2 = DeckValidator::loadFromDeckList(root + "/decks/fiora.txt", card_db);
 
     auto result = engine.runGame(deck1, deck2, agent1, agent2, 42);
 

@@ -33,9 +33,11 @@ const ::open_spiel::GameType kRiftboundGameType{
     /*provides_observation_string=*/true,
     /*provides_observation_tensor=*/true,
     /*parameter_specification=*/
-    { {"deck1",    ::open_spiel::GameParameter(std::string("decks/leblanc_test.txt"))},
-      {"deck2",    ::open_spiel::GameParameter(std::string("decks/leblanc_test.txt"))},
-      {"registry", ::open_spiel::GameParameter(std::string("cards/ban-list.csv"))},
+    { {"deck1",    ::open_spiel::GameParameter(std::string("decks/yi_rebuild.txt"))},
+      {"deck2",    ::open_spiel::GameParameter(std::string("decks/yi_rebuild.txt"))},
+      // Ignored. Accepted only so game strings written before card data
+      // moved into the C++ classes still parse.
+      {"registry", ::open_spiel::GameParameter(std::string(""))},
       {"seed",     ::open_spiel::GameParameter(0)} }
 };
 
@@ -48,7 +50,7 @@ RiftboundGame::RiftboundGame(const ::open_spiel::GameParameters& params)
     : Game(kRiftboundGameType, params),
       seed_(static_cast<uint64_t>(ParameterValue<int>("seed"))) {
     // Card data — including ban status — is owned by the C++ classes. The
-    // "registry" GameParameter is retained for back-compat but ignored.
+    // "registry" GameParameter is accepted but never read.
     registry_.loadAll();
     card_db_.buildFromClasses(registry_);
     deck1_ = ::riftbound::DeckValidator::loadFromDeckList(

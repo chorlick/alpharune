@@ -1038,30 +1038,27 @@ void PlayServer::Impl::setSpectatorAutoplay(bool on, int delay_ms) {
 }
 
 bool PlayServer::Impl::recomputeLegalForParkedHuman(HumanAgent& agent) {
-    // The engine asks for a decision from many call sites, each with a list
-    // it built itself, and only one of them can be rebuilt from GameState
-    // alone: the top-level main-phase decision (GameEngine::queryAgent), whose
-    // list is generateLegalActions(). An EndTurn option identifies it
-    // (GameEngine::isResumableDecision). Every other pending decision — a
-    // mulligan, chain priority, a showdown, combat damage, a cost payment, a
-    // card's prompt — keeps its list; the reply says so (`legal_recomputed`).
+    // The engine knows which decision it is parked on and can rebuild the
+    // list of the three whose options are a function of the state alone: the
+    // main-phase decision, a showdown's focus decision and a chain priority
+    // decision (GameEngine::recomputePendingLegalActions). For every other
+    // one — a mulligan, combat damage, a cost payment, a card's prompt — it
+    // returns nullopt and the list stays; the reply says so
+    // (`legal_recomputed`).
     //
-    // CONNECTION POINT: once the engine can rebuild the list of whatever
-    // decision it is parked on (GameEngine::recomputePendingLegalActions,
-    // returning nullopt when it cannot), this function should call that
-    // instead of the two checks below.
-    const GameState& st = parent.engine_.state();
+    // This matters beyond tidiness: the engine checks the answer to those
+    // three against the list rebuilt from the edited state and throws on one
+    // that is no longer legal. A human left looking at the pre-edit list could
+    // click such an option and end the game.
+    std::optional<std::vector<Intent>> fresh = parent.engine_.recomputePendingLegalActions();
+    if (!fresh.has_value() || fresh->empty()) return false;
     const std::vector<Intent> pending = agent.pendingLegal();
-    const bool top_level = std::any_of(pending.begin(), pending.end(),
-        [](const Intent& i) { return i.type == IntentType::EndTurn; });
-    if (!top_level) return false;
-    std::vector<Intent> fresh = parent.engine_.generateLegalActions();
-    // The edit may have left a state that is no longer that decision (the
-    // phase or the turn player was edited): leave the list alone then.
-    if (!GameEngine::isResumableDecision(st, fresh)) return false;
-    if (decidingPlayer(st, fresh) != agent.pendingPlayer()) return false;
-    if (fresh == pending) return false;
-    return agent.replacePendingLegal(std::move(fresh));
+    // Every option of one decision names the player being asked. If the edit
+    // changed who that is (the turn player or the phase was edited), this
+    // parked agent is not the one to hand the new list to.
+    if (fresh->front().player != agent.pendingPlayer()) return false;
+    if (*fresh == pending) return false;
+    return agent.replacePendingLegal(std::move(*fresh));
 }
 
 void PlayServer::Impl::releaseSpectator() {

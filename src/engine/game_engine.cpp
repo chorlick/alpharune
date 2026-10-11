@@ -87,10 +87,10 @@ GameEngine::~GameEngine() {
     // Without this, a successor engine on the same EventBus would
     // emit reveals into a dangling `this`.
     if (card_revealed_conn_.connected()) card_revealed_conn_.disconnect();
-    // Fiber refactor: StepDriver's destructor drains the fiber by
-    // feeding choice=0 until done. No separate thread to join — the
-    // fiber lives in the same call stack as this destructor.
-    // step_driver_'s unique_ptr destruction handles it.
+    // A step-machine game still in progress is abandoned: StepDriver's
+    // destructor unwinds the engine fiber (it does not play the game out).
+    // Do that first, while everything the parked frames refer to is intact.
+    step_driver_.reset();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

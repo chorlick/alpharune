@@ -31,15 +31,24 @@ long stepFaultAt() {
 }
 
 StepDriver::~StepDriver() {
-    // If the fiber is still alive (engine paused at a decision, caller
-    // abandoned the engine), drain it by repeatedly providing a "first
-    // legal" choice until it terminates. Mirrors the old thread-based
-    // drain logic in GameEngine::~GameEngine, but the drain happens at
-    // fiber switch time, not on a separate thread.
-    while (engine_fiber_ && !done_.load(std::memory_order_acquire)) {
-        pending_choice_ = 0;
-        engine_fiber_ = std::move(engine_fiber_).resume();
-    }
+    // A fiber still parked at a decision belongs to a game nobody is going
+    // to finish (a discarded search clone, an abandoned session). Destroying
+    // a suspended boost.context fiber unwinds its stack: boost throws
+    // `forced_unwind` inside the fiber, the engine frames parked there run
+    // their destructors, and the stack is freed. Nothing of the game runs.
+    //
+    // Do it here rather than leaving it to member destruction, so every
+    // member the fiber could refer to is still alive while it unwinds.
+    //
+    // (This used to drain the fiber by answering 0 to every decision until
+    // the game ended — a whole rest-of-game, events and triggers included,
+    // per abandoned engine. Measured per discarded search clone: ~445 us
+    // of teardown then, ~36 us now; plans/06-performance.md item 6.7.)
+    //
+    // Requirement on engine code: a `catch (...)` that does not rethrow
+    // would swallow `forced_unwind` and leave the fiber running with no one
+    // to yield to. There is none; keep it that way (catch std::exception).
+    boost::context::fiber abandoned = std::move(engine_fiber_);
 }
 
 void StepDriver::runInFiber(std::function<void()> game_fn) {

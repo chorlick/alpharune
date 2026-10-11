@@ -23,6 +23,10 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouRecycleARune, TriggerType::WhenAnEnemyUnitDies};
     }
+    // "When ONE OR MORE enemy units die": once for units that die together.
+    bool triggersOncePerBatch(TriggerType trigger) const override {
+        return trigger == TriggerType::WhenAnEnemyUnitDies;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenYouRecycleARune) {
             auto still_legal = [&]() {

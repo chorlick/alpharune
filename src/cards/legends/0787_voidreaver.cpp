@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIWinCombat; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 1;
+        gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("VOIDREAVER: win combat -> +1 XP");
     }
     std::vector<ActivatedAbility> activatedAbilities() const override {

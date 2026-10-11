@@ -207,6 +207,18 @@ enum class TriggerType : uint8_t {
                                  // ability you control moved it; triggering_subject = the unit
     WhenYouRecycleARune,         // "When you recycle a rune," (Battle Mistress) — a rune you
                                  // control went from the board to your Rune Deck
+    WhenYouPlayATokenUnit,       // "When you play a token unit," (Lillia, Protector of Dreams)
+                                 // — fires on the token controller's cards and legend from
+                                 // TokenCreatedEvent; triggering_subject = the token
+    WhenYouSpendABuff,           // "When you spend a buff," (Fae Dragon) — a buff was removed
+                                 // by EffectExecutor::spendBuff; fires on the spender's cards
+                                 // and legend; triggering_subject = the unit that had it
+    WhenMyMightReachesThreshold, // "When my Might becomes N or more," (Renekton, Brute) — N is
+                                 // Card::mightThreshold(); fires on the unit itself on the
+                                 // below-N -> N-or-more edge, checked whenever the state
+                                 // settles (StateSettledEvent)
+    WhenAnOpponentHidesACard,    // delayed abilities only: the other player hid a card;
+                                 // triggering_subject = the hidden card
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

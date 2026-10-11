@@ -798,7 +798,9 @@ TEST_F(C6Test, KeeperOfMasks_ZileansExtraReflectionBecomesACopyToo) {
     addUnit(P1, kZilean, 0, 0);
     cleanup();                       // zilean_present
     auto keeper = addToHand(P1, kKeeperOfMasks);
-    playThroughEngine(keeper);
+    // Zilean 648: "you MAY play that token and an additional copy" — say yes.
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    playThroughEngine(keeper, &yes);
     int reflections = 0;
     for (auto& [id, obj] : state.objects) {
         if (!obj.isToken() || !obj.isUnit() || !obj.location.has_value()) continue;
@@ -829,7 +831,9 @@ TEST_F(C6Test, BlueSentinel_AddsThePowerAtTheNextMainPhaseNotAtTheHold) {
     state.battlefields[0].controller = P1;
     hold(0);
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
-    ASSERT_EQ(state.delayed_abilities.size(), 1u);
+    // Card text: "Your hold effects for holding here trigger an additional
+    // time." — its own "When I hold" is one, so it is scheduled twice.
+    ASSERT_EQ(state.delayed_abilities.size(), 2u);
     EXPECT_EQ(state.delayed_abilities[0].trigger, TriggerType::AtStartOfMain);
     fireTriggerThroughEngine(blue, TriggerType::AtStartOfMain);
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 1);

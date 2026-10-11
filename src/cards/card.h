@@ -696,6 +696,27 @@ public:
     /// friendly [Temporary] unit sharing this card's battlefield + controller.
     virtual bool suppressesTemporaryTriggersHere() const { return false; }
 
+    /// "Your hold effects for holding here trigger an additional time." (Blue
+    /// Sentinel; Red Brambleback for conquers.) Asked of every card `scorer`
+    /// has on the board when they score battlefield `bf` (`hold`: by holding,
+    /// else by conquering); `self` is the instance asked. Each +1 makes
+    /// TriggerManager::onScore queue every hold / conquer ability of that
+    /// player for this score once more.
+    virtual int extraScoreTriggers(const GameState& /*state*/, GameObjectId /*self*/,
+                                   PlayerId /*scorer*/, BattlefieldId /*bf*/,
+                                   bool /*hold*/) const { return 0; }
+
+    /// "When ONE OR MORE enemy units die, ..." (Battle Mistress): true makes
+    /// `trigger` fire once for a set of events that happen together instead of
+    /// once per event — while an ability of this source for that trigger is
+    /// still waiting to be finalized, a further event does not trigger it.
+    virtual bool triggersOncePerBatch(TriggerType /*trigger*/) const { return false; }
+
+    /// "When my Might becomes N or more, ..." (Renekton, Brute): N. The engine
+    /// fires TriggerType::WhenMyMightReachesThreshold on the unit each time
+    /// its Might goes from below N to N or more. 0 = no such ability.
+    virtual int mightThreshold() const { return 0; }
+
     // ── Condition gates ──
     /// Whether this card's effects require Legion (cards_played >= 2).
     virtual bool requiresLegion() const { return false; }

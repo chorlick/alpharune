@@ -28,38 +28,19 @@ public:
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 1);
         ctx.events.logTrace("RENEKTON, BRUTE: [1] -> +1 [M] this turn");
-        empowerAtTen(ctx);
     }
-    // "When my Might becomes 10 or more, empower me."
-    // ENGINE-GAP: the engine announces a unit crossing 5 [M] ("became_mighty")
-    // but no other Might threshold, so there is no event for "becomes 10 or
-    // more". Until there is one, his Might is checked where it usually
-    // changes: after his own ability (above), after a spell his controller
-    // played has resolved, when he is buffed, when an Equipment is attached to
-    // him and when he attacks or defends. A change from any other source
-    // (another card's aura, an opponent's effect) is only noticed at the next
-    // of those points.
-    std::vector<TriggerType> triggerTypes() const override {
-        return {TriggerType::WhenYouPlayASpell, TriggerType::WhenIAmBuffed,
-                TriggerType::WhenEquipmentAttachedToMe, TriggerType::WhenIAttackOrDefend};
-    }
-    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
-                          TriggerType trigger, GameObjectId /*subject*/) const override {
-        if (!state.objectExists(source)) return false;
-        const auto& self = state.getObject(source);
-        if (!self.location.has_value() || self.isEmpowered()) return false;
-        // Spells are played all the time: only put the ability on the chain
-        // when the spell left him at 10 or more.
-        if (trigger == TriggerType::WhenYouPlayASpell) return self.current_might >= 10;
-        return true;
+    // "When my Might becomes 10 or more, empower me." The engine fires
+    // WhenMyMightReachesThreshold each time his Might goes from below
+    // mightThreshold() to that or more, whatever changed it.
+    int mightThreshold() const override { return 10; }
+    TriggerType triggerType() const override {
+        return TriggerType::WhenMyMightReachesThreshold;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        empowerAtTen(ctx);
-    }
-    static void empowerAtTen(CardContext& ctx) {
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        if (!self.location.has_value() || self.isEmpowered() || self.current_might < 10) return;
+        // "(I become Empowered if I'm not already.)"
+        if (!self.location.has_value() || self.isEmpowered()) return;
         if (ctx.executor.empower(ctx.source))
             ctx.events.logTrace("RENEKTON, BRUTE: Might 10 or more -> Empowered");
     }

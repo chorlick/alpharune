@@ -24,19 +24,6 @@ namespace {
 // facedown zone has no location.
 bool onBoard(const GameObject& obj) { return obj.location.has_value(); }
 
-// Deflect granted "this turn" (giveTemporaryKeyword). Kept apart from the
-// printed `deflect_value` and stamped with the turn it was given on, so it
-// stops counting when that turn ends.
-constexpr const char* kTempDeflect = "__temp_deflect";
-constexpr const char* kTempDeflectTurn = "__temp_deflect_turn";
-
-int temporaryDeflect(const GameState& state, const GameObject& obj) {
-    auto turn = obj.card_counters.find(kTempDeflectTurn);
-    if (turn == obj.card_counters.end() || turn->second != state.turn.turn_number) return 0;
-    auto value = obj.card_counters.find(kTempDeflect);
-    return value == obj.card_counters.end() ? 0 : value->second;
-}
-
 // CR 719.3: a Top-Most card and everything attached to it are at the same
 // location, so attached gear goes wherever its unit goes.
 void carryAttachments(GameState& state, const GameObject& unit) {
@@ -185,11 +172,50 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
     events_.emit(DamageDealtEvent{target, dealt, source, false});
 }
 
+// Who is killing `obj` right now: the controller of the spell or ability that
+// is resolving, else the player whose damage is lethal (the larger share of
+// what is marked; the other player's on a tie).
+static PlayerId killerOf(const GameState& state, const GameObject& obj) {
+    if (state.chain.resuming.has_value()) return state.chain.resuming->controller;
+    if (obj.damage_marked <= 0 || obj.controller == PlayerId::None) return PlayerId::None;
+    const PlayerId other = opponent(obj.controller);
+    const int theirs = obj.damage_marked_by[playerIndex(other)];
+    const int own = obj.damage_marked_by[playerIndex(obj.controller)];
+    if (theirs <= 0 && own <= 0) return PlayerId::None;
+    return theirs >= own ? other : obj.controller;
+}
+
+void EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
+    for (auto id : units) {
+        if (!state_.objectExists(id) || !state_.getObject(id).location.has_value()) continue;
+        state_.getObject(id).last_known.batch_pending = false;
+        snapshotLastKnown(id);
+        state_.getObject(id).last_known.batch_pending = true;
+    }
+}
+
+void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units) {
+    for (auto id : units)
+        if (state_.objectExists(id)) state_.getObject(id).last_known.batch_pending = false;
+}
+
 void EffectExecutor::snapshotLastKnown(GameObjectId id) {
     if (!state_.objectExists(id)) return;
     auto& obj = state_.getObject(id);
     auto& lk = obj.last_known;
+    // Taken with the rest of its batch while they were all on the board
+    // (beginDeathBatch): that is the state "as it died" for every one of them.
+    if (lk.batch_pending && lk.valid) return;
     lk.valid = true;
+    lk.stunned = obj.is_stunned;
+    lk.location = obj.location;
+    lk.other_friendly_units_here.clear();
+    if (obj.location.has_value())
+        for (const auto& [oid, other] : state_.objects)
+            if (oid != id && other.isUnit() && other.controller == obj.controller &&
+                other.location.has_value() && *other.location == *obj.location)
+                lk.other_friendly_units_here.push_back(oid);
+    lk.killed_by = killerOf(state_, obj);
     lk.might = obj.current_might;
     lk.empowered = obj.empowered;
     lk.buff_count = obj.buff_count;
@@ -223,29 +249,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         // Deferred one-shot death replacement on the unit itself (Tactical
         // Retreat 737) — applies to effect/ability kills too, not just combat
         // lethal (GameEngine::killUnit has the parallel check).
-        if (obj.death_replacement_recall_pending) {
-            obj.death_replacement_recall_pending = false;
-            for (auto gear_id : obj.attachments) {
-                if (state_.objectExists(gear_id)) {
-                    state_.getObject(gear_id).attached_to = std::nullopt;
-                }
-            }
-            obj.attachments.clear();
-            obj.attachment_might_bonus = 0;
-            auto old_loc = obj.location;
-            obj.damage_marked = 0;
-            obj.is_exhausted = true;
-            obj.combat_designation = CombatDesignation::None;
-            obj.location = BaseLocation{controller};
-            obj.zone = ZoneType::Base;
-            events_.logTrace("  REPLACEMENT (self): " + obj.name +
-                             " heals/exhausts/recalls instead of dying");
-            events_.emit(ObjectStateChangedEvent{target, "healed"});
-            events_.emit(UnitMovedEvent{target, controller,
-                old_loc.value_or(BaseLocation{controller}),
-                BaseLocation{controller}, false});
-            return;
-        }
+        if (applyOwnDeathReplacement(target)) return;
 
         // "If it would die this turn, banish it instead." (Smite) — as in
         // GameEngine::killUnit.
@@ -338,7 +342,7 @@ void EffectExecutor::killObject(GameObjectId target) {
                 state_.player(controller).unit_died_in_beginning_this_turn = true;
         }
         events_.emit(UnitDiedEvent{target, controller,
-            was_at.value_or(BaseLocation{controller}), might});
+            was_at.value_or(BaseLocation{controller}), might, obj.last_known.killed_by});
         events_.emit(LeftBoardEvent{target, controller, CardType::Unit,
             was_at.value_or(BaseLocation{controller}),
             is_token ? ZoneType::Banishment : ZoneType::Trash, true});
@@ -385,8 +389,9 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
         auto card_id = deck::takeTop(state_, player, deck::Place::Hand);
         ps.hand.push_back(card_id);
         state_.getObject(card_id).zone = ZoneType::Hand;
-        events_.logTrace("  DREW: " + state_.getObject(card_id).name +
-                         " (id=" + std::to_string(card_id) + ")");
+        // Only the drawing player knows which card it is.
+        events_.logTracePrivate(player, "  DREW: " + state_.getObject(card_id).name +
+                                        " (id=" + std::to_string(card_id) + ")");
         drawn++;
     }
     if (drawn > 0) {
@@ -443,7 +448,9 @@ int deflectCostFor(const GameState& state, PlayerId chooser, GameObjectId target
     if (auto bf = obj.battlefieldId())
         for (const auto& b : state.battlefields)
             if (b.id == *bf && b.ignore_deflect_here) return 0;
-    int value = obj.deflect_value + temporaryDeflect(state, obj);
+    // Printed value plus what was given "this turn" (temp_deflect_value,
+    // zeroed at the expiration step).
+    int value = obj.deflect_value + obj.temp_deflect_value;
     for (const auto& ae : obj.aura_effects)
         if (ae.keyword == Keyword::Deflect) value += std::max(1, ae.keyword_value);
     return std::max(1, value);
@@ -458,6 +465,24 @@ int payableAnyPower(const GameState& state, PlayerId player) {
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == base) ++n;
     return n;
+}
+
+// True when `u` may not MOVE to its base: an effect says it can't (Determined
+// Sentry, Minotaur Reckoner), or it is at a battlefield whose units can't move
+// to base (Vilemaw's Lair) — what the Standard Move generator refuses too. A
+// recall is not a move and is never stopped (CR 458.3).
+static bool cannotMoveToBase(const GameState& state, const GameObject& u) {
+    if (u.cant_move_to_base || u.aura_cant_move_to_base) return true;
+    const auto here = u.battlefieldId();
+    if (!here.has_value()) return false;
+    for (const auto& bf : state.battlefields)
+        if (bf.id == *here) return bf.blocks_move_to_base;
+    return false;
+}
+
+Card* EffectExecutor::cardFor(CardDefId def) const {
+    if (!card_registry_ || def == kInvalidId) return nullptr;
+    return card_registry_->get(def);
 }
 
 int EffectExecutor::deflectCostFor(PlayerId chooser, GameObjectId target) const {
@@ -764,16 +789,9 @@ void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
     obj.temp_keywords.set(kw);
     if (kw == Keyword::Assault) { obj.assault_value += value; obj.temp_assault_value += value; }
     else if (kw == Keyword::Shield) { obj.shield_value += value; obj.temp_shield_value += value; }
-    else if (kw == Keyword::Deflect) {
-        // No temp_* field to expire, so the grant is stamped with this turn
-        // (see temporaryDeflect); two grants in one turn add up.
-        const int turn = state_.turn.turn_number;
-        auto& stamp = obj.card_counters[kTempDeflectTurn];
-        auto& granted = obj.card_counters[kTempDeflect];
-        if (stamp != turn) granted = 0;
-        stamp = turn;
-        granted += value;
-    }
+    // Kept apart from the printed deflect_value (deflectCostFor adds the two);
+    // two grants in one turn add up.
+    else if (kw == Keyword::Deflect) obj.temp_deflect_value += value;
     obj.recomputeMight();
     // Not "buffed": a keyword given this turn is not a Buff counter (CR 427.1).
     events_.emit(ObjectStateChangedEvent{target, "keyword_granted"});
@@ -880,6 +898,12 @@ void EffectExecutor::moveToBase(GameObjectId target) {
         events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
         return;
     }
+    // "Units can't move from here to base." / "Units can't move to base." An
+    // effect's move is a move like any other (a recall is not: recallToBase).
+    if (obj.isUnit() && cannotMoveToBase(state_, obj)) {
+        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't move to base");
+        return;
+    }
     auto old_loc = obj.location;
 
     LocationId dest = BaseLocation{obj.controller};
@@ -892,6 +916,125 @@ void EffectExecutor::moveToBase(GameObjectId target) {
 
     events_.emit(UnitMovedEvent{target, obj.controller,
         old_loc.value_or(BaseLocation{obj.controller}), dest, false});
+}
+
+void EffectExecutor::recallToBase(GameObjectId target) {
+    if (!state_.objectExists(target)) return;
+    auto& obj = state_.getObject(target);
+    if (!onBoard(obj) || obj.controller == PlayerId::None) return;
+    const LocationId home{BaseLocation{obj.controller}};
+    if (*obj.location == home) return;
+    events_.logTrace("RECALL: " + obj.name + " (id=" + std::to_string(target) + ") to base");
+    obj.location = home;
+    obj.zone = ZoneType::Base;
+    // It has left the battlefield its combat was at (CR 323.2.c).
+    obj.combat_designation = CombatDesignation::None;
+    carryAttachments(state_, obj);                 // CR 719.3.a
+    events_.emit(ObjectStateChangedEvent{target, "recalled"});
+}
+
+void EffectExecutor::healExhaustRecall(GameObjectId unit) {
+    if (!state_.objectExists(unit)) return;
+    healObject(unit);
+    exhaustObject(unit);
+    recallToBase(unit);
+}
+
+bool EffectExecutor::applyOwnDeathReplacement(GameObjectId unit_id) {
+    if (!state_.objectExists(unit_id)) return false;
+    auto& unit = state_.getObject(unit_id);
+    if (!unit.isUnit() || !onBoard(unit)) return false;
+    // "The next time it would die this turn, heal it, exhaust it, and recall
+    // it instead." (Tactical Retreat, Highlander)
+    if (unit.death_replacement_recall_pending) {
+        unit.death_replacement_recall_pending = false;
+        events_.logDebug("REPLACEMENT (self): " + unit.name +
+                         " heals/exhausts/recalls instead of dying");
+        healExhaustRecall(unit_id);
+        return true;
+    }
+    // Replacements an effect put on this unit. "The next time it would die":
+    // this death uses each one up, applied or not.
+    if (unit.pending_death_replacements.empty()) return false;
+    const auto pending = std::move(unit.pending_death_replacements);
+    unit.pending_death_replacements.clear();
+    for (const auto& r : pending) {
+        if (r.turn != state_.turn.turn_number) continue;      // its turn is over
+        Card* card = cardFor(r.card);
+        if (!card) continue;
+        CardContext rctx{state_, events_, *this, r.controller, r.source};
+        if (card->applyReplacement(rctx, unit_id)) {
+            events_.logDebug("REPLACEMENT (self): " + state_.getObject(unit_id).name +
+                             " does not die");
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EffectExecutor::attachGear(GameObjectId gear_id, GameObjectId unit_id) {
+    if (!state_.objectExists(gear_id) || !state_.objectExists(unit_id)) return false;
+    // Both ends are on the board (CR 716): a unit that died or was returned
+    // to hand in response cannot be equipped, and a gear that left cannot attach.
+    if (!state_.getObject(gear_id).isGear() || !onBoard(state_.getObject(gear_id))) return false;
+    if (!state_.getObject(unit_id).isUnit() || !onBoard(state_.getObject(unit_id))) return false;
+    if (state_.getObject(gear_id).attached_to == std::optional<GameObjectId>{unit_id}) return true;
+    // CR 718.5.d: attached to one card at a time — it comes off the old one.
+    if (state_.getObject(gear_id).attached_to.has_value()) unattachGear(gear_id);
+    auto& gear = state_.getObject(gear_id);
+    auto& unit = state_.getObject(unit_id);
+    events_.logTrace("ATTACH: " + gear.name + " (id=" + std::to_string(gear_id) + ") -> " +
+                     unit.name + " (id=" + std::to_string(unit_id) + ", might_bonus=" +
+                     std::to_string(gear.might_bonus) + ")");
+    gear.attached_to = unit_id;
+    gear.is_rules_text_inactive = true;            // CR 718.2
+    unit.attachments.push_back(gear_id);
+    gear.location = unit.location;                 // CR 719.3
+    gear.zone = unit.zone;
+    unit.attachment_might_bonus += gear.might_bonus;
+    unit.recomputeMight();
+    events_.emit(ObjectStateChangedEvent{gear_id, "attached"});
+    events_.emit(ObjectStateChangedEvent{unit_id, "equipped"});
+    return true;
+}
+
+bool EffectExecutor::spendBuff(GameObjectId unit_id, PlayerId spender) {
+    if (!state_.objectExists(unit_id)) return false;
+    auto& unit = state_.getObject(unit_id);
+    if (!onBoard(unit) || unit.buff_count <= 0) return false;
+    unit.buff_count -= 1;
+    unit.recomputeMight();
+    events_.logTrace(std::string("EFFECT: ") + toString(spender) + " spends a buff from " +
+                     unit.name + " -> " + std::to_string(unit.current_might) + "M");
+    // The spender rides in a counter on the unit for the dispatch (the event
+    // carries only the object); read at once by TriggerManager.
+    unit.card_counters["__buff_spent_by"] = static_cast<int>(spender);
+    events_.emit(ObjectStateChangedEvent{unit_id, "buff_spent"});
+    return true;
+}
+
+void EffectExecutor::announceRecycledToMainDeck(GameObjectId card) {
+    if (!state_.objectExists(card)) return;
+    if (state_.getObject(card).zone != ZoneType::MainDeck) return;
+    events_.emit(ObjectStateChangedEvent{card, "recycled_main"});
+}
+
+void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_by_all) {
+    if (!state_.objectExists(card)) return;
+    auto& obj = state_.getObject(card);
+    auto& ps = state_.player(player);
+    obj.zone = ZoneType::Hand;
+    obj.location = std::nullopt;
+    ps.hand.push_back(card);
+    knowledge::moved(state_, card, deck::Place::Held, deck::Place::Hand,
+                     seen_by_all ? knowledge::everyone() : knowledge::only(player));
+    if (seen_by_all)
+        events_.logTrace("  DREW: " + obj.name + " (id=" + std::to_string(card) + ")");
+    else
+        events_.logTracePrivate(player, "  DREW: " + obj.name + " (id=" +
+                                        std::to_string(card) + ")");
+    ps.draws_this_turn += 1;
+    events_.emit(CardsDrawnEvent{player, 1});
 }
 
 void EffectExecutor::moveToBattlefield(GameObjectId target, BattlefieldId bf) {
@@ -945,6 +1088,10 @@ void EffectExecutor::stunUnitBy(GameObjectId target, GameObjectId stunner_source
     PlayerId stunner_ctrl = obj.controller;
     if (stunner_source != target && state_.objectExists(stunner_source)) {
         stunner_ctrl = state_.getObject(stunner_source).controller;
+    } else if (state_.chain.resuming.has_value()) {
+        // No source named: the stun is the effect of the spell or ability
+        // that is resolving, so its controller is who stunned the unit.
+        stunner_ctrl = state_.chain.resuming->controller;
     }
     events_.emit(UnitStunnedEvent{target, stunner_ctrl, obj.controller});
 }
@@ -1038,7 +1185,55 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     // CR 416.5 — Main Deck multi-recycle is RANDOM order.
     // CR 416.5.a — Rune Deck multi-recycle is OWNER'S CHOICE; we use
     // input order as the choice (caller decides; no shuffle).
-    auto to_recycle = cards;
+    // A permanent recycled from the board leaves it like any other departure:
+    // what is attached comes off first (CR 719.5), a token ceases to exist
+    // instead of entering a deck (CR 183.1), and the departure is announced
+    // once the card is in its deck.
+    struct Left { GameObjectId id; PlayerId controller; CardType type; LocationId was_at; };
+    std::vector<Left> left_board;
+    std::vector<GameObjectId> to_recycle;
+    std::vector<std::pair<GameObjectId, deck::Place>> came_from;
+    for (auto cid : cards) {
+        if (!state_.objectExists(cid)) continue;
+        if (std::find(to_recycle.begin(), to_recycle.end(), cid) != to_recycle.end()) continue;
+        if (onBoard(state_.getObject(cid))) {
+            shedAttachments(state_, *this, cid);
+            auto& obj = state_.getObject(cid);
+            const LocationId was_at = *obj.location;
+            if (obj.isToken()) {
+                events_.logTrace("EFFECT: recycle " + obj.name + " (id=" + std::to_string(cid) +
+                                 ") — token ceases to exist (CR 183.1)");
+                const PlayerId controller = obj.controller;
+                obj.zone = ZoneType::Banishment;
+                obj.location = std::nullopt;
+                obj.damage_marked = 0;
+                obj.combat_designation = CombatDesignation::None;
+                events_.emit(LeftBoardEvent{cid, controller, obj.card_type, was_at,
+                                            ZoneType::Banishment, false});
+                continue;
+            }
+            obj.damage_marked = 0;
+            obj.combat_designation = CombatDesignation::None;
+            obj.is_exhausted = false;
+            left_board.push_back({cid, obj.controller, obj.card_type, was_at});
+        }
+        // Where it is for the knowledge tracker, read before it is taken out
+        // of its zone's list (a caller that already removed it loses nothing).
+        came_from.push_back({cid, deck::whereIs(state_, cid)});
+        for (auto& zps : state_.players) {
+            auto drop = [&](std::vector<GameObjectId>& v) {
+                v.erase(std::remove(v.begin(), v.end(), cid), v.end());
+            };
+            drop(zps.hand);
+            drop(zps.trash);
+            drop(zps.banishment);
+        }
+        to_recycle.push_back(cid);
+    }
+    auto placeOf = [&](GameObjectId cid) {
+        for (const auto& [id, place] : came_from) if (id == cid) return place;
+        return deck::Place::Public;
+    };
     // Partition: shuffle only the non-rune subset (per CR 416.5).
     std::vector<GameObjectId> shuffleable;
     std::vector<GameObjectId> rune_ordered;
@@ -1064,7 +1259,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
             PlayerId to = state_.getObject(cid).owner;
             if (to == PlayerId::None) to = effect_controller;
             if (to != owner) continue;
-            group.push_back({cid, deck::whereIs(state_, cid), knowledge::nobody()});
+            group.push_back({cid, placeOf(cid), knowledge::nobody()});
         }
         deck::putOnBottomTogether(state_, owner, group);
     }
@@ -1075,6 +1270,9 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
         state_.player(obj.owner).rune_deck.insert(
             state_.player(obj.owner).rune_deck.begin(), cid);
     }
+    for (const auto& l : left_board)
+        events_.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
+            l.type == CardType::Rune ? ZoneType::RuneDeck : ZoneType::MainDeck, false});
 
     // "When you recycle one or more cards to your Main Deck" (Karma, Channeler
     // 235). Fires once per OWNER who had >=1 non-rune card land in their Main
@@ -1200,6 +1398,29 @@ GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
         std::find(objects.begin(), objects.end(), chosen.chosen_objects.front()) != objects.end())
         return chosen.chosen_objects.front();
     return objects.front();
+}
+
+LocationId EffectExecutor::chooseLocationNow(PlayerId player,
+                                             const std::vector<LocationId>& locations,
+                                             const std::string& label) {
+    assert(!locations.empty());
+    if (!agent_query_ || locations.size() == 1) return locations.front();
+    std::vector<Intent> options;
+    options.reserve(locations.size());
+    for (size_t i = 0; i < locations.size(); ++i) {
+        Intent o;
+        o.type = IntentType::MakeChoice;
+        o.player = player;
+        o.chosen_value = static_cast<int>(i);
+        const auto& loc = locations[i];
+        o.choice_label = label + (std::holds_alternative<BaseLocation>(loc)
+            ? std::string(" base")
+            : " battlefield #" + std::to_string(std::get<BattlefieldLocation>(loc).id));
+        options.push_back(std::move(o));
+    }
+    const int pick = agent_query_(player, options).chosen_value.value_or(0);
+    if (pick < 0 || pick >= static_cast<int>(locations.size())) return locations.front();
+    return locations[static_cast<size_t>(pick)];
 }
 
 void EffectExecutor::addUnitOnlyEnergy(PlayerId player, int amount) {
@@ -1348,8 +1569,12 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
                                           const std::string& name, int might,
                                           const std::vector<std::string>& tags,
                                           KeywordSet keywords, LocationId location,
-                                          bool enter_ready) {
+                                          bool enter_ready,
+                                          const std::vector<LocationId>& location_choices) {
+    if (token_depth_ == 0) last_tokens_.clear();
+    const bool asked_enter_ready = enter_ready;
     auto id = state_.createObject();
+    last_tokens_.push_back(id);
     auto& obj = state_.getObject(id);
     obj.owner = controller;
     obj.controller = controller;
@@ -1388,18 +1613,33 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     events_.emit(TokenCreatedEvent{id, controller, type, name, location});
     events_.emit(EnteredBoardEvent{id, controller, type, location, false});
 
-    // Zilean, Time Mage (648): "Once each turn, if you would play a token unit
-    // while I'm at a battlefield, you may play that token and an additional copy
-    // instead." Approximated as automatic (token creation isn't an agent
-    // decision point). Stamp the turn BEFORE the recursive call to bound it to
-    // once per turn and to stop the recursion (the copy sees the stamp set).
-    if (type == CardType::Unit) {
+    // "Once each turn, if you would play a token unit ..., you may play that
+    // token and an additional copy of it instead." (Zilean, Time Mage; the
+    // card sets PlayerState::zilean_present while its condition holds.) A
+    // "may": the controller is asked. The copy is played by the same
+    // instruction, so it goes where that instruction allows: the named
+    // location, or — when the controller chose among several — a location
+    // chosen again for the copy. Using the effect stamps the turn first, which
+    // also keeps the copy from being doubled in turn.
+    if (type == CardType::Unit && token_depth_ == 0) {
         auto& ps = state_.player(controller);
-        if (ps.zilean_present &&
-            ps.zilean_double_token_turn != state_.turn.turn_number) {
+        // With no agent attached (an executor driven on its own) the "may" is
+        // taken, as Card::confirmOptional does outside the chain.
+        if (ps.zilean_present && ps.zilean_double_token_turn != state_.turn.turn_number &&
+            (!agent_query_ ||
+             confirmNow(controller, "play an additional copy of " + name + "?"))) {
             ps.zilean_double_token_turn = state_.turn.turn_number;
-            events_.logTrace("ZILEAN: play an additional copy of the token unit");
-            createToken(controller, type, name, might, tags, keywords, location, enter_ready);
+            const std::vector<LocationId>& choices =
+                location_choices.empty() ? token_location_choices_ : location_choices;
+            LocationId copy_at = location;
+            if (choices.size() > 1)
+                copy_at = chooseLocationNow(controller, choices,
+                                            "play the additional " + name + " to");
+            events_.logTrace("TOKEN: an additional copy of " + name + " is played");
+            ++token_depth_;
+            createToken(controller, type, name, might, tags, keywords, copy_at,
+                        asked_enter_ready, location_choices);
+            --token_depth_;
         }
     }
 
@@ -1581,9 +1821,9 @@ void EffectExecutor::predict(PlayerId player, int count) {
     for (auto card_id : peeked) {
         if (!state_.objectExists(card_id)) continue;
         auto& obj = state_.getObject(card_id);
-        events_.logTrace("  PEEKED: " + obj.name + " (id=" +
-                         std::to_string(card_id) +
-                         ") — PRIVATE to " + toString(player));
+        events_.logTracePrivate(player, "  PEEKED: " + obj.name + " (id=" +
+                                        std::to_string(card_id) +
+                                        ") — PRIVATE to " + toString(player));
         events_.emit(CardRevealedEvent{
             /*card=*/card_id,
             /*card_def_id=*/obj.card_def_id,
@@ -1619,7 +1859,8 @@ void EffectExecutor::predict(PlayerId player, int count) {
             if (!chosen.chosen_objects.empty()) {
                 // Recycle: put on bottom
                 deck::putOnBottom(state_, player, card_id, deck::Place::Held, looker);
-                events_.logTrace("PREDICT: recycled " + state_.getObject(card_id).name);
+                events_.logTracePrivate(player, "PREDICT: recycled " +
+                                                state_.getObject(card_id).name);
                 recycled = card_id;
             } else {
                 kept.push_back(card_id);
@@ -1948,8 +2189,15 @@ void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
 
     if (obj.isUnit()) {
         // Units enter exhausted (CR 143.4) unless a continuous effect on the
-        // board says otherwise ("Other friendly units enter ready.").
-        obj.is_exhausted = !state_.player(player).otherUnitsEnterReady(card);
+        // board says otherwise ("Other friendly units enter ready.", "Units you
+        // play this turn enter ready.") or the unit's own text does ("I enter
+        // ready", Card::entersReadyOnPlay) — as GameEngine::resolvePermanent
+        // decides it for a unit played from hand.
+        bool ready = state_.player(player).otherUnitsEnterReady(card) ||
+                     state_.player(player).units_enter_ready_this_turn;
+        if (const Card* self_card = cardFor(obj.card_def_id))
+            ready = ready || self_card->entersReadyOnPlay(state_, player, obj);
+        obj.is_exhausted = !ready;
         // A unit (re-)entering play is a fresh presence — clear any marked
         // damage carried from a prior life (e.g. banished-then-replayed by
         // Thrill of the Hunt). New plays from hand are already at 0, so this

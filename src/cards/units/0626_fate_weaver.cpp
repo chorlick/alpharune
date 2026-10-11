@@ -57,16 +57,15 @@ public:
                 return;  // suspended for the choice
             }
             if (drawn != kInvalidId && ctx.state.objectExists(drawn)) {
-                auto& ps = ctx.state.player(ctx.controller);
                 auto& obj = ctx.state.getObject(drawn);
                 ctx.events.emit(CardRevealedEvent{
                     drawn, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
                     ZoneType::MainDeck});
                 // Revealed, then drawn: the opponent knows it is in the hand.
+                // "draw it": a draw (draws_this_turn, "When you draw").
                 deck::take(ctx.state, drawn, deck::Place::Held, knowledge::everyone(), /*slot_public=*/false);
-                obj.zone = ZoneType::Hand;
-                ps.hand.push_back(drawn);
+                ctx.executor.drawHeldCard(ctx.controller, drawn, /*seen_by_all=*/true);
                 ctx.events.logTrace("FATE WEAVER: revealed spell " + obj.name + " -> drew it");
             }
         }

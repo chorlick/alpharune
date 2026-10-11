@@ -11,7 +11,9 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "can't move from here to base" -> BattlefieldState::blocks_move_to_base (game_engine.cpp:416,1989)
+// COVERAGE-OK: engine-handled: "can't move from here to base" -> BattlefieldState::blocks_move_to_base,
+// refused by the standard-move generator and by EffectExecutor::moveToBase.
+// A recall is not a move (CR 458.3) and is not stopped.
 
 class VilemawSLair : public BattlefieldCard {
 public:

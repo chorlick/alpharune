@@ -44,7 +44,7 @@ public:
     // won a combat), gain 2 XP.
     TriggerType triggerType() const override { return TriggerType::WhenIWinCombat; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 2;
+        gainXp(ctx, ctx.controller, 2);
         ctx.events.logTrace("GRIM RESOLVE: buffed unit won combat -> gain 2 XP");
     }
 private:

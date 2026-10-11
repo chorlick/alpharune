@@ -78,6 +78,11 @@ struct UnitDiedEvent {
     PlayerId controller;
     LocationId was_at;
     int might_at_death;
+    // Who killed it ("When you kill ..."): the controller of the spell or
+    // ability that killed it, else the player whose damage was lethal
+    // (GameObject::LastKnown::killed_by). None when nobody did (a rule killed
+    // it: its own [Temporary]).
+    PlayerId killer = PlayerId::None;
 };
 
 /// A player drew one or more cards.
@@ -180,6 +185,12 @@ struct ShowdownEndedEvent {
 /// Game state change requiring cleanup (CR 319).
 struct CleanupNeededEvent {};
 
+/// A cleanup has run to its fixed point: continuous effects, Might and
+/// control are final for the current state. Emitted by GameEngine::cleanup.
+/// Drives triggers that watch a computed value cross a line
+/// (WhenMyMightReachesThreshold).
+struct StateSettledEvent {};
+
 /// A game object's state changed (exhausted, readied, buffed, etc).
 struct ObjectStateChangedEvent {
     GameObjectId object;
@@ -237,9 +248,36 @@ struct GameOverEvent {
 
 enum class LogLevel : uint8_t { Trace, Debug, Info, Warning };
 
+/// Which players may read a log line: both (the default — the line says only
+/// what both players can see happen), exactly one (it names a card only that
+/// player has seen: a draw, a mulligan, a private look at a deck), or neither
+/// (it states something no player knows, e.g. the order a shuffle produced;
+/// for a debugging trace or an omniscient replay only).
+struct LogAudience {
+    bool player1 = true;
+    bool player2 = true;
+
+    static LogAudience both() { return {true, true}; }
+    static LogAudience neither() { return {false, false}; }
+    static LogAudience only(PlayerId p) {
+        return {p == PlayerId::Player1, p == PlayerId::Player2};
+    }
+    bool includes(PlayerId p) const {
+        return p == PlayerId::Player1 ? player1 : p == PlayerId::Player2 ? player2 : false;
+    }
+    bool isBoth() const { return player1 && player2; }
+    bool isNeither() const { return !player1 && !player2; }
+};
+
 struct LogEvent {
     LogLevel level;
     std::string message;
+    // Who may read the line. A consumer showing the log to one seat (the play
+    // server in fair-play mode) or building a per-observer history forwards a
+    // line to a player only if `audience.includes(player)`.
+    LogAudience audience = LogAudience::both();
+    bool visibleTo(PlayerId p) const { return audience.includes(p); }
+    bool isPublic() const { return audience.isBoth(); }
 };
 
 // ─── Chain events ───────────────────────────────────────────────────────────
@@ -339,6 +377,7 @@ public:
     boost::signals2::signal<void(const ShowdownStartedEvent&)>    on_showdown_started;
     boost::signals2::signal<void(const ShowdownEndedEvent&)>      on_showdown_ended;
     boost::signals2::signal<void(const CleanupNeededEvent&)>      on_cleanup_needed;
+    boost::signals2::signal<void(const StateSettledEvent&)>       on_state_settled;
     boost::signals2::signal<void(const ObjectStateChangedEvent&)> on_object_state_changed;
     boost::signals2::signal<void(const UnitStunnedEvent&)>        on_unit_stunned;
     boost::signals2::signal<void(const UnitReadiedEvent&)>        on_unit_readied;
@@ -379,6 +418,7 @@ public:
     void emit(const CombatEndedEvent& e);
     void emit(const ShowdownStartedEvent& e);
     void emit(const ShowdownEndedEvent& e);
+    void emit(const StateSettledEvent& e);
     void emit(const CleanupNeededEvent& e);
     void emit(const ObjectStateChangedEvent& e);
     void emit(const UnitStunnedEvent& e);
@@ -404,6 +444,13 @@ public:
     void logDebug(const std::string& msg);
     void logInfo(const std::string& msg);
     void logWarn(const std::string& msg);
+    /// A trace line only `visible_to` may read (LogAudience::only): it names
+    /// a card the other player has not seen.
+    void logTracePrivate(PlayerId visible_to, const std::string& msg);
+    /// A trace line for an explicit audience (LogAudience::neither() for what
+    /// no player knows).
+    void logTraceFor(LogAudience audience, const std::string& msg);
+    void logFor(LogLevel level, LogAudience audience, const std::string& msg);
 
     /// Disconnect all subscribers (useful between games).
     void disconnectAll();

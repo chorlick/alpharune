@@ -150,9 +150,9 @@ TEST_F(TriggerEventTest, OpponentPlaysAUnit_FiresVex) {
     size_t before = chainSize();
     events.emit(CardPlayedEvent{played, P2, CardType::Unit, /*count=*/1, /*energy=*/0});
     EXPECT_GT(chainSize(), before);
-    // The played-unit id is captured for Vex's onTrigger.
-    EXPECT_EQ(state.getObject(vex).card_counters["__opp_played_unit_id"],
-              static_cast<int>(played));
+    // The played unit is the trigger's subject.
+    EXPECT_EQ(state.chain.items.back().triggering_subject, played);
+    (void)vex;
 }
 
 TEST_F(TriggerEventTest, OwnPlayDoesNotFireVex) {

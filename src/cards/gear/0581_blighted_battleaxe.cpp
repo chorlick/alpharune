@@ -16,14 +16,19 @@ class BlightedBattleaxe : public SimpleEquipGear {
 public:
     BlightedBattleaxe() : SimpleEquipGear(Domain::Fury, 1) {}
     const CardDef& def() const override { return def_; }
-    TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& gear = ctx.state.getObject(ctx.source);
-        if (!gear.attached_to.has_value()) return;
-        GameObjectId unit_id = *gear.attached_to;
-        if (!ctx.state.objectExists(unit_id)) return;
+    // Effect text, so it speaks for the unit this is attached to and applies
+    // exactly while attached (the gear's printed text is Inactive then, CR
+    // 718.2): an equipped trigger, fired by TriggerManager at the end of the
+    // bearer's controller's turn.
+    TriggerType equippedTriggerType() const override { return TriggerType::AtEndOfTurn; }
+    void onEquippedTrigger(CardContext& ctx, GameObjectId unit_id,
+                           const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(ctx.source) || !ctx.state.objectExists(unit_id)) return;
+        const auto& gear = ctx.state.getObject(ctx.source);
+        // Still attached to that unit, which is still on the board.
+        if (!gear.attached_to.has_value() || *gear.attached_to != unit_id) return;
         const auto& unit = ctx.state.getObject(unit_id);
+        if (!unit.location.has_value()) return;
         auto it = unit.card_counters.find("__conquered_turn");
         bool conquered_this_turn = (it != unit.card_counters.end() &&
                                     it->second == ctx.state.turn.turn_number);

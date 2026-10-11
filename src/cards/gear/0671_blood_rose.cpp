@@ -35,7 +35,7 @@ public:
         if (conf < 1) return;
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
-        ps.xp += 1;
+        gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("BLOOD ROSE: paid [1] -> +1 XP (now " +
                              std::to_string(ps.xp) + ")");
     }

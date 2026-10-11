@@ -89,6 +89,16 @@ public:
     using ActivateAbility = std::function<bool(const Intent&)>;
     void setActivateAbility(ActivateAbility fn) { activate_ability_ = std::move(fn); }
 
+    /// Playing a card while the chain is open (a [Reaction] spell, an
+    /// [Ambush] / hidden permanent): the engine's own play path, so a card
+    /// played in response is played exactly like one played in an Open State
+    /// (Card::onPlay, additional costs, Repeat, per-turn counters,
+    /// "played from somewhere other than your hand"). That path ends by
+    /// running the chain; while this callback runs, a nested processFEPR
+    /// returns at once and the loop already in progress carries on.
+    using PlayCard = std::function<void(const Intent&)>;
+    void setPlayCard(PlayCard fn) { play_card_ = std::move(fn); }
+
     /// Inject the EffectExecutor so stepResolve can detect mid-resolution
     /// pending choices published by Card::onResolve / onTrigger via
     /// `requestChoice`. Required before processFEPR runs.
@@ -104,6 +114,8 @@ private:
     AffordCheck can_afford_;
     PayCost pay_cost_;
     ActivateAbility activate_ability_;
+    PlayCard play_card_;
+    bool playing_card_ = false;   // inside play_card_: nested processFEPR is a no-op
     FinalizeChoices finalize_choices_;
     EffectExecutor* executor_ = nullptr;
 

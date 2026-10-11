@@ -25,7 +25,7 @@ public:
         da.controller = ctx.controller;
         da.trigger = TriggerType::WhenAUnitTakesDamage;
         da.expires_on_turn = ctx.state.turn.turn_number;
-        da.every_time = true;
+        da.repeats = true;
         ctx.state.delayed_abilities.push_back(da);
         ctx.events.logTrace("IMPERIAL DECREE: units that take damage this turn are killed");
     }

@@ -405,6 +405,7 @@ add_library(riftbound_core
     src/engine/chain_manager.cpp
     src/engine/effect_executor.cpp
     src/engine/trigger_manager.cpp
+    src/engine/keyword_abilities.cpp
     src/engine/knowledge_tracker.cpp
     src/engine/deck_ops.cpp
     src/io/state_renderer.cpp

@@ -21,6 +21,7 @@
 namespace riftbound {
 
 class CardRegistry;
+class Card;
 
 /// Which parts of a card's cost an effect-driven play still charges
 /// (EffectExecutor::playPayingCost).
@@ -55,6 +56,8 @@ public:
     /// card data (e.g. Virtuoso needs to read a chain item's energy_cost
     /// from the def). Returned reference is valid for the executor's life.
     const CardDB& cardDB() const { return card_db_; }
+    /// The Card class behind `def`, or null (no registry attached, a token).
+    Card* cardFor(CardDefId def) const;
 
     /// Set the RNG for effects that need randomness (reveal, recycle).
     void setRng(std::mt19937_64* rng) { rng_ = rng; }
@@ -101,7 +104,57 @@ public:
     /// "if it was buffed this way" (CR 427.1.c).
     bool buffUnit(GameObjectId target);
     void readyObject(GameObjectId target);
+    /// MOVE a unit to its controller's base (CR 421): counts toward "moved N
+    /// times this turn", emits UnitMovedEvent ("When I move", "When a unit
+    /// moves from here") and is refused when the move is blocked
+    /// (moveToBaseBlocked, "can't be moved by enemy spells and abilities").
+    /// For "recall it" use recallToBase.
     void moveToBase(GameObjectId target);
+    /// RECALL a permanent to its controller's base (CR 457-460): "Send it to
+    /// base. This isn't a move." It changes location with everything attached
+    /// to it (CR 719.3.a), keeps its damage and statuses (CR 460), triggers no
+    /// move abilities (CR 458.1), does not count as a move and cannot be
+    /// stopped by anything that restricts movement (CR 458.3). Emits
+    /// ObjectStateChangedEvent "recalled". No-op off the board or already in
+    /// its controller's base.
+    void recallToBase(GameObjectId target);
+    /// The whole of "heal it, exhaust it, and recall it" for a unit whose
+    /// death is being replaced.
+    void healExhaustRecall(GameObjectId unit);
+    /// Death replacements carried by the dying unit itself: the one-shot
+    /// "next time it would die this turn, heal it, exhaust it, and recall it
+    /// instead" flag and GameObject::pending_death_replacements. Both kill
+    /// paths call this first; true = the death was replaced.
+    bool applyOwnDeathReplacement(GameObjectId unit);
+    /// Attach `gear` to `unit` (the cost, if any, is already paid): both must
+    /// be on the board (CR 716); a gear attached elsewhere comes off first
+    /// (its onUnattached runs); its printed rules text goes Inactive (CR
+    /// 718.2). Emits "attached" / "equipped". Every attach goes through here.
+    /// Returns false, and does nothing, when it is not possible.
+    bool attachGear(GameObjectId gear, GameObjectId unit);
+    /// Spend a buff (CR 427.2): remove one Buff counter from `unit` as a cost
+    /// or effect of `spender`. Returns false (nothing spent) if it has none.
+    /// Emits ObjectStateChangedEvent "buff_spent" -> WhenYouSpendABuff.
+    bool spendBuff(GameObjectId unit, PlayerId spender);
+
+    // ── Units that die at the same time ──
+    /// Call with every unit about to die together (lethal damage found in one
+    /// cleanup, "kill all units here"), before the first kill: takes each
+    /// one's last-known information while all of them are still on the board.
+    /// Follow the kills with endDeathBatch(same ids).
+    void beginDeathBatch(const std::vector<GameObjectId>& units);
+    void endDeathBatch(const std::vector<GameObjectId>& units);
+
+    /// Announce that `card` was recycled into its owner's Main Deck by a path
+    /// that placed it itself (a recycle-self cost, the mulligan): fires "When
+    /// you recycle one or more cards". recycleCards announces its own.
+    void announceRecycledToMainDeck(GameObjectId card);
+    /// "Draw" a card an effect is holding — already taken out of the deck
+    /// with deck::take / takeTop(..., Place::Held) — ("look at the top two,
+    /// draw one"): it goes to `player`'s hand and counts as a draw
+    /// (draws_this_turn, CardsDrawnEvent -> "When you draw"). `seen_by_all`:
+    /// it was revealed, so the other player knows which card it is.
+    void drawHeldCard(PlayerId player, GameObjectId card, bool seen_by_all);
     /// Unattach a single gear from the unit it's equipped to. Removes it from
     /// the unit's attachment list, refunds the unit's might bonus, and clears
     /// the gear's attachment state. Per CR 719.5 the detached gear stays at
@@ -220,11 +273,35 @@ public:
 
     // ── Token creation ──
     /// Create a token game object and place it on the board.
+    /// A token is PLAYED (CR 350.2): TokenCreatedEvent drives "When you play
+    /// a unit / a gear / a token unit" and the token's own keyword abilities.
+    /// `location_choices`: when the instruction let the controller choose
+    /// where the token goes, every place it could have gone — an additional
+    /// copy (Card::... "play that token and an additional copy of it") then
+    /// has the same choice; empty = the instruction named `location`, and a
+    /// copy goes there too. Returns the token asked for; lastTokensCreated()
+    /// also lists any additional copies.
     GameObjectId createToken(PlayerId controller, CardType type,
                              const std::string& name, int might,
                              const std::vector<std::string>& tags,
                              KeywordSet keywords, LocationId location,
-                             bool enter_ready = false);
+                             bool enter_ready = false,
+                             const std::vector<LocationId>& location_choices = {});
+    /// Every token the most recent createToken call put on the board: the one
+    /// asked for first, then additional copies.
+    const std::vector<GameObjectId>& lastTokensCreated() const { return last_tokens_; }
+    /// For a helper that asks where a token goes and then hands the answer to
+    /// a card's own createToken call (playTokensChoosingLocations): the
+    /// places the controller was choosing among, used as `location_choices`
+    /// by createToken calls that pass none, until cleared.
+    void setTokenLocationChoices(std::vector<LocationId> choices) {
+        token_location_choices_ = std::move(choices);
+    }
+    void clearTokenLocationChoices() { token_location_choices_.clear(); }
+    /// Ask `player` to choose one of `locations` right now (see
+    /// chooseObjectNow). Returns the first when there is no agent to ask.
+    LocationId chooseLocationNow(PlayerId player, const std::vector<LocationId>& locations,
+                                 const std::string& label);
 
     /// Add a battlefield-token slot to the board. Creates a fresh
     /// GameObject for the BF card (card_type=Battlefield, super_type=Token,
@@ -386,6 +463,11 @@ private:
     AgentChoiceQuery agent_query_;
     PendingChoice pending_;
     std::optional<Intent> last_applied_choice_;
+    // Scratch result of the createToken call in progress / just finished; not
+    // game state (nothing reads it across a decision).
+    std::vector<GameObjectId> last_tokens_;
+    std::vector<LocationId> token_location_choices_;
+    int token_depth_ = 0;
 };
 
 } // namespace riftbound

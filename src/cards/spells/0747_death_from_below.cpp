@@ -21,9 +21,8 @@ public:
     // for the rest of the turn, and whatever the timing: paying [A] plays the
     // spell again right away (EffectExecutor::playIgnoringCost puts it back on
     // the chain, where its new target is chosen).
-    // ENGINE-GAP: the card object reaches its owner's trash when this
-    // resolution ends, while the new play is already on the chain; the engine
-    // has no "a spell replayed while it resolves" state.
+    // The card is on the chain for the new play: ChainManager does not file a
+    // spell that was played again while it resolved; the new play files it.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_at_battlefield = true};

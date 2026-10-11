@@ -1,5 +1,8 @@
 #include "action_vocab.h"
 
+#include <optional>
+#include <variant>
+
 namespace riftbound::openspiel {
 
 namespace {
@@ -38,6 +41,29 @@ int playLocBfSlot(const std::optional<LocationId>& loc) {
 }
 
 int verbBase(ActionVerb v) { return verbOffset(v); }
+
+/// FNV-1a over 64-bit words.
+struct Fingerprint {
+    uint64_t h = 14695981039346656037ull;
+    void add(uint64_t v) {
+        for (int i = 0; i < 8; ++i) {
+            h ^= (v >> (i * 8)) & 0xFFu;
+            h *= 1099511628211ull;
+        }
+    }
+    void addLocation(const std::optional<LocationId>& loc) {
+        if (!loc.has_value()) { add(0); return; }
+        if (auto* base = std::get_if<BaseLocation>(&*loc)) {
+            add(1); add(static_cast<uint64_t>(base->player));
+        } else if (auto* bf = std::get_if<BattlefieldLocation>(&*loc)) {
+            add(2); add(static_cast<uint64_t>(bf->id));
+        }
+    }
+    void addIds(const std::vector<GameObjectId>& ids) {
+        add(ids.size());
+        for (auto id : ids) add(static_cast<uint64_t>(id));
+    }
+};
 
 } // namespace
 
@@ -221,6 +247,61 @@ int encodeAction(const Intent& intent, const GameState& state) {
             int s = cardDefSlot(out_def);
             if (s < 0) return verbBase(ActionVerb::SideboardSwap);
             return verbBase(ActionVerb::SideboardSwap) + s;
+        }
+    }
+    return -1;
+}
+
+int64_t historyToken(const Intent& intent, const GameState& state) {
+    // Every field Intent::operator== compares, in the same order, plus the
+    // two it leaves out that still change what the Intent does.
+    Fingerprint fp;
+    fp.add(static_cast<uint64_t>(intent.type));
+    fp.add(static_cast<uint64_t>(intent.player));
+    fp.add(static_cast<uint64_t>(intent.card));
+    fp.addLocation(intent.play_location);
+    fp.addIds(intent.units_to_move);
+    fp.addLocation(intent.move_destination);
+    fp.add(static_cast<uint64_t>(intent.ability));
+    fp.add(static_cast<uint64_t>(intent.ability_source));
+    fp.add(static_cast<uint64_t>(intent.ability_index));
+    fp.add(static_cast<uint64_t>(intent.play_source));
+    fp.addIds(intent.targets);
+    fp.add(intent.damage_assignments.size());
+    for (const auto& da : intent.damage_assignments) {
+        fp.add(static_cast<uint64_t>(da.target_unit));
+        fp.add(static_cast<uint64_t>(da.damage));
+    }
+    fp.addIds(intent.cards_to_mulligan);
+    fp.add(static_cast<uint64_t>(intent.chosen_battlefield));
+    fp.add(intent.choose_first ? 1 : 0);
+    fp.add(intent.sideboard_swaps.size());
+    for (const auto& [out, in] : intent.sideboard_swaps) {
+        fp.add(static_cast<uint64_t>(out));
+        fp.add(static_cast<uint64_t>(in));
+    }
+    fp.addIds(intent.chosen_objects);
+    fp.add(intent.chosen_value.has_value() ? 1 : 0);
+    fp.add(static_cast<uint64_t>(intent.chosen_value.value_or(0)));
+    fp.add(static_cast<uint64_t>(intent.chosen_card_def));
+    fp.add(intent.pay_location_cost ? 1 : 0);
+    fp.add(intent.use_alt_play_cost ? 1 : 0);
+    fp.add(static_cast<uint64_t>(intent.granted_ability_def));
+
+    const int slot = encodeAction(intent, state);
+    const int64_t slot_bits =
+        slot < 0 ? kHistorySlotMask : static_cast<int64_t>(slot);
+    const int64_t fp_bits = static_cast<int64_t>(
+        fp.h >> (kHistorySlotBits + 1));  // 43 bits, keeps the token positive
+    return (fp_bits << kHistorySlotBits) | slot_bits;
+}
+
+int findHistoryToken(int64_t token,
+                     const std::vector<Intent>& legal_actions,
+                     const GameState& state) {
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+        if (historyToken(legal_actions[i], state) == token) {
+            return static_cast<int>(i);
         }
     }
     return -1;

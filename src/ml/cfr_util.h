@@ -47,6 +47,14 @@ namespace riftbound::ml {
 /// Test coverage: see tests/test_cfr_util.cpp.
 uint64_t computeInfoSetId(const std::vector<float>& features, int player);
 
+/// Fold the pending decision into an info-set id: who is deciding, and (for
+/// the decider) the action ids on offer, in ascending order. The feature
+/// vector describes the board, not the question; two different questions
+/// asked on an unchanged board must not share a regret-table row or a search
+/// node. Pass an empty `offered_actions` for a player who is not deciding.
+uint64_t mixDecisionIntoInfoSetId(uint64_t info_set_id, int deciding_player,
+                                  const std::vector<int64_t>& offered_actions);
+
 /// Apply regret matching to cumulative regrets to derive an action
 /// distribution.
 ///

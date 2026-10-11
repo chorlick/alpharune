@@ -14,6 +14,20 @@
 
 namespace riftbound {
 
+/// The player a decision belongs to. Every Intent the engine offers carries
+/// the deciding player, and that is not always the turn player: the opponent
+/// decides the second mulligan, chain priority, showdown focus, combat damage
+/// and their own triggers' choices. Falls back to the turn player only for an
+/// empty list.
+inline PlayerId decidingPlayer(const GameState& state,
+                               const std::vector<Intent>& legal_actions) {
+    if (!legal_actions.empty() &&
+        legal_actions.front().player != PlayerId::None) {
+        return legal_actions.front().player;
+    }
+    return state.turn.turn_player;
+}
+
 class AgentInterface {
 public:
     virtual ~AgentInterface() = default;

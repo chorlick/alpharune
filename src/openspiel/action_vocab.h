@@ -176,4 +176,35 @@ const Intent* decodeAction(int slot,
                             const std::vector<Intent>& legal_actions,
                             const GameState& state);
 
+// ─── History tokens ─────────────────────────────────────────────────────────
+//
+// `GameState::action_history` holds one token per applied decision. A vocab
+// slot alone cannot be replayed: slots are lossy by design (a mulligan slot
+// says how many cards, not which), so "the first legal Intent with this slot"
+// can be a different action. A token is the slot plus a fingerprint of the
+// whole Intent (every field that changes what it does), which identifies
+// the chosen Intent within its legal list. Replaying tokens from the same
+// decks and seed reproduces the game exactly.
+//
+//   bits  0..19  vocab slot (kHistorySlotMask when the Intent has no slot)
+//   bits 20..62  Intent fingerprint
+
+constexpr int     kHistorySlotBits = 20;
+constexpr int64_t kHistorySlotMask = (int64_t{1} << kHistorySlotBits) - 1;
+static_assert(kVocabSize < kHistorySlotMask, "vocab slot must fit a token");
+
+/// The token for applying `intent` in `state`.
+int64_t historyToken(const Intent& intent, const GameState& state);
+
+/// The vocab slot a token was made from, or -1 if the Intent had none.
+constexpr int historyTokenSlot(int64_t token) {
+    const int64_t slot = token & kHistorySlotMask;
+    return slot == kHistorySlotMask ? -1 : static_cast<int>(slot);
+}
+
+/// Index of the Intent in `legal_actions` that `token` was made from, or -1.
+int findHistoryToken(int64_t token,
+                     const std::vector<Intent>& legal_actions,
+                     const GameState& state);
+
 } // namespace riftbound::openspiel

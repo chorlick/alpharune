@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 
@@ -178,41 +179,95 @@ namespace {
 
 std::string buildGameStr(const std::string& deck1,
                         const std::string& deck2,
-                        const std::string& registry,
                         uint64_t seed) {
     // RiftboundGame's `seed` GameParameter is registered as int, so
     // any uint64 that doesn't fit (e.g. nondeterministic seeds from
     // std::random_device) hits OpenSpiel's CHECK_TRUE in the param
-    // parser. Squash to a positive 31-bit value — still gives 2^31
-    // distinct seeds, enough for batch runs.
+    // parser. Squash to a positive 31-bit value. Only the Game's default
+    // seed is affected: the states this agent builds are given the full
+    // engine seed directly.
     int seed_int = static_cast<int>(seed & 0x7FFFFFFFu);
     std::ostringstream s;
     s << "riftbound(deck1=" << deck1
       << ",deck2=" << deck2
-      << ",registry=" << registry
       << ",seed=" << seed_int
       << ")";
     return s.str();
 }
 
-/// Replay `action_history` onto a fresh OpenSpiel state. Each Apply
-/// runs the engine inside the state through whatever sequence of
-/// decisions the engine driver applied externally. Returns nullptr
-/// if the replay reaches a terminal state before consuming the
-/// history (would indicate engine divergence — should not happen
-/// when MCTS is the only consumer of action_history).
-std::unique_ptr<::open_spiel::State> buildOpenSpielStateAt(
-    const ::open_spiel::Game& game,
-    const std::vector<int64_t>& action_history) {
-    auto state = game.NewInitialState();
-    for (auto a : action_history) {
-        if (state->IsTerminal()) return nullptr;
-        // RiftboundState declines actions outside the legal set with
-        // assertions; assume the engine fed us a clean history.
-        state->ApplyAction(static_cast<::open_spiel::Action>(a));
+/// Keeps an OpenSpiel state in step with the live game the agent is playing
+/// in, and hands out the root to search from at each decision.
+///
+/// The mirror is a second engine fed the live game's exact choices
+/// (`GameState::action_history`) from the same decks and seed, so it is in
+/// the live position down to the RNG stream, at any kind of decision —
+/// including the ones a GameState copy cannot be resumed from (chain
+/// priority, showdown, combat, cost payment, prompts). It only ever replays
+/// the choices made since the agent's previous decision.
+class LiveMirror {
+public:
+    LiveMirror(std::shared_ptr<const ::open_spiel::Game> game,
+               uint64_t engine_seed, uint64_t rng_seed)
+        : game_(std::move(game)), engine_seed_(engine_seed), rng_(rng_seed) {}
+
+    /// The state to search from, or nullptr if this decision cannot be
+    /// searched. Valid until the next call.
+    const openspiel::RiftboundState* rootFor(
+        const GameState& state, const std::vector<Intent>& legal_actions) {
+        // An agent is not told which seat it is being asked for. The mirror
+        // knows (its engine asks a seat), so leave the decider open here and
+        // let the mirror supply it.
+        ::riftbound::StepResult step;
+        step.kind        = ::riftbound::StepKind::NeedDecision;
+        step.legal       = legal_actions;
+        step.perspective = PlayerId::None;
+
+        if (!unreproducible_) {
+            if (mirror_ && mirror_->syncToHistory(state, step)) {
+                return mirror_.get();
+            }
+            mirror_ = openspiel::RiftboundState::rebuildFromHistory(
+                game_, engine_seed_, state, step);
+            if (mirror_) return mirror_.get();
+            // The history does not reproduce the live game: the seed we were
+            // given is not the engine's, or the state was edited outside the
+            // engine (the play UI's god mode). That does not heal; stop
+            // paying for a full replay at every decision.
+            unreproducible_ = true;
+        }
+
+        // No exact copy. A snapshot can still be resumed at a top-level
+        // main-phase decision — the board is right, only the future
+        // shuffles are the agent's guess rather than the live game's.
+        if (GameEngine::isResumableDecision(state, legal_actions)) {
+            // At this decision the decider is the turn player, whom every
+            // offered Intent names.
+            step.perspective = decidingPlayer(state, legal_actions);
+            approx_ = openspiel::RiftboundState::makeFromSnapshot(
+                game_, engine_seed_, state, std::move(step),
+                ::riftbound::GameResult{}, rng_());
+            return approx_.get();
+        }
+        return nullptr;
     }
-    return state;
-}
+
+    /// For a decision that could not be searched: any legal action, chosen
+    /// uniformly. (Always taking the first would be "always pass".)
+    const Intent& unsearched(const std::vector<Intent>& legal_actions) {
+        std::uniform_int_distribution<size_t> pick(0, legal_actions.size() - 1);
+        return legal_actions[pick(rng_)];
+    }
+
+    bool exact() const { return !unreproducible_; }
+
+private:
+    std::shared_ptr<const ::open_spiel::Game> game_;
+    uint64_t engine_seed_;
+    std::mt19937_64 rng_;
+    std::unique_ptr<openspiel::RiftboundState> mirror_;
+    std::unique_ptr<openspiel::RiftboundState> approx_;
+    bool unreproducible_ = false;
+};
 
 } // namespace
 
@@ -222,22 +277,21 @@ struct MctsAgent::Impl {
     std::shared_ptr<const ::open_spiel::Game> game;
     std::unique_ptr<::open_spiel::algorithms::MCTSBot> bot;
     int sims;
-    uint64_t engine_seed;
+    std::unique_ptr<LiveMirror> mirror;
 
-    Impl(std::string d1, std::string d2, std::string reg,
-         uint64_t eng_seed, uint64_t mcts_seed, int sim_count)
-        : sims(sim_count), engine_seed(eng_seed) {
-        const uint64_t engine_seed = eng_seed;  // alias for the body below
-        // OpenSpiel's RiftboundGame uses this seed to seed the engine
-        // inside the cloned RiftboundState — MUST equal the live
-        // engine's runGame seed or the replayed action_history lands
-        // in a different state.
-        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, reg, engine_seed));
+    Impl(std::string d1, std::string d2,
+         uint64_t engine_seed, uint64_t mcts_seed, int sim_count)
+        : sims(sim_count) {
+        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed));
         if (!game) {
             throw std::runtime_error(
                 "MctsAgent: LoadGame('riftbound') returned null — "
-                "check deck/registry paths and OpenSpiel registration.");
+                "check deck paths and OpenSpiel registration.");
         }
+        // `engine_seed` MUST equal the live engine's runGame seed: the
+        // mirror replays the live game's choices on it.
+        mirror = std::make_unique<LiveMirror>(game, engine_seed,
+                                              mcts_seed ^ 0xA5A5A5A5u);
         // Empirical results (30-game samples vs random, miss_fortune deck,
         // uct_c=2.0):
         //   RandomRollout, n_rollouts=1, uct_c=2.0:  37%
@@ -250,7 +304,6 @@ struct MctsAgent::Impl {
         // the variance of rollouts swamps inter-action differences;
         // a deterministic, slightly-correlated signal beats a noisy
         // strong one.
-        (void)mcts_seed;  // unused for heuristic; bot keeps its own seed below
         auto evaluator = std::make_shared<RiftboundHeuristicEvaluator>();
         bot = std::make_unique<::open_spiel::algorithms::MCTSBot>(
             *game, evaluator,
@@ -274,55 +327,35 @@ struct MctsAgent::Impl {
 
 MctsAgent::MctsAgent(std::string deck1_path,
                      std::string deck2_path,
-                     std::string registry_path,
+                     std::string /*registry_path*/,
                      uint64_t    engine_seed,
                      uint64_t    mcts_seed,
                      int         sims)
     : impl_(std::make_unique<Impl>(std::move(deck1_path),
                                    std::move(deck2_path),
-                                   std::move(registry_path),
                                    engine_seed, mcts_seed, sims)) {}
 
 MctsAgent::~MctsAgent() = default;
 
-/// Pick the player who actually has to act at this state. The engine's
-/// `turn_player` reports the player whose TURN it is, but on chain
-/// priority (closed state) the deciding player is `priority_holder`;
-/// during showdowns, it's `focus_holder`. MCTSBot uses the perspective
-/// to know whose value to maximize, so getting this wrong flips the
-/// search target.
-PlayerId actingPlayer(const GameState& state) {
-    if (state.turn.priority_holder.has_value()) return *state.turn.priority_holder;
-    if (state.turn.focus_holder.has_value())    return *state.turn.focus_holder;
-    return state.turn.turn_player;
-}
-
 Intent MctsAgent::selectAction(const GameState& state,
                                const std::vector<Intent>& legal_actions) {
     if (legal_actions.empty()) {
-        return Intent::concede(state.turn.turn_player);
+        return Intent::concede(decidingPlayer(state, legal_actions));
     }
 
-    // Build a snapshot-based clone of the live engine — bypasses
-    // RiftboundState's action_history replay path entirely. The cloned
-    // engine starts from a memcpy of GameState rather than rebuilding
-    // it via the lossy slot-replay (which collapses N distinct Intents
-    // to the same slot and lands on the wrong one).
-    ::riftbound::StepResult snap_step;
-    snap_step.kind        = ::riftbound::StepKind::NeedDecision;
-    snap_step.legal       = legal_actions;
-    snap_step.perspective = actingPlayer(state);
-    auto os_state = openspiel::RiftboundState::makeFromSnapshot(
-        impl_->game, impl_->engine_seed,
-        state,            // GameState — deep-copied by value
-        snap_step,
-        ::riftbound::GameResult{});
+    // The search root: a state in the live game's position whose
+    // CurrentPlayer() is the player deciding here (not the turn player on
+    // chain priority, showdown focus, combat damage, a second mulligan).
+    const openspiel::RiftboundState* os_state =
+        impl_->mirror->rootFor(state, legal_actions);
 
     static const bool dbg = std::getenv("RIFTBOUND_MCTS_DEBUG") != nullptr;
     if (dbg) {
         std::cerr << "[MCTS] decision_idx=" << state.decision_index
                   << " turn_player=" << static_cast<int>(state.turn.turn_player)
-                  << " acting=" << static_cast<int>(snap_step.perspective)
+                  << " acting="
+                  << static_cast<int>(decidingPlayer(state, legal_actions))
+                  << " exact=" << impl_->mirror->exact()
                   << " legal=" << legal_actions.size();
         if (os_state && !os_state->IsTerminal()) {
             std::cerr << " clone_cur=" << os_state->CurrentPlayer()
@@ -332,13 +365,13 @@ Intent MctsAgent::selectAction(const GameState& state,
     }
 
     if (!os_state || os_state->IsTerminal()) {
-        if (dbg) std::cerr << "[MCTS] -> fallback (clone null/terminal)\n";
-        return legal_actions[0];
+        if (dbg) std::cerr << "[MCTS] -> unsearched (no root for this decision)\n";
+        return impl_->mirror->unsearched(legal_actions);
     }
     auto root = impl_->bot->MCTSearch(*os_state);
     if (!root) {
-        if (dbg) std::cerr << "[MCTS] -> fallback (MCTSearch null)\n";
-        return legal_actions[0];
+        if (dbg) std::cerr << "[MCTS] -> unsearched (MCTSearch null)\n";
+        return impl_->mirror->unsearched(legal_actions);
     }
     ::open_spiel::Action chosen_action = root->BestChild().action;
     if (dbg) {
@@ -365,7 +398,7 @@ Intent MctsAgent::selectAction(const GameState& state,
             }
             std::cerr << "}\n";
         }
-        return legal_actions[0];
+        return impl_->mirror->unsearched(legal_actions);
     }
     if (dbg) {
         std::cerr << "[MCTS] -> decoded to: " << intent->describe() << "\n";
@@ -379,19 +412,19 @@ struct IsMctsAgent::Impl {
     std::shared_ptr<const ::open_spiel::Game> game;
     std::unique_ptr<::open_spiel::algorithms::ISMCTSBot> bot;
     int sims;
-    uint64_t engine_seed;
+    std::unique_ptr<LiveMirror> mirror;
 
-    Impl(std::string d1, std::string d2, std::string reg,
-         uint64_t eng_seed, uint64_t mcts_seed, int sim_count)
-        : sims(sim_count), engine_seed(eng_seed) {
-        const uint64_t engine_seed = eng_seed;  // alias for the body below
-        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, reg, engine_seed));
+    Impl(std::string d1, std::string d2,
+         uint64_t engine_seed, uint64_t mcts_seed, int sim_count)
+        : sims(sim_count) {
+        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed));
         if (!game) {
             throw std::runtime_error(
                 "IsMctsAgent: LoadGame('riftbound') returned null — "
-                "check deck/registry paths and OpenSpiel registration.");
+                "check deck paths and OpenSpiel registration.");
         }
-        (void)mcts_seed;  // unused for evaluator; bot still uses its own seed below
+        mirror = std::make_unique<LiveMirror>(game, engine_seed,
+                                              mcts_seed ^ 0xC3C3C3C3u);
         auto evaluator = std::make_shared<RiftboundHeuristicEvaluator>();
         bot = std::make_unique<::open_spiel::algorithms::ISMCTSBot>(
             /*seed=*/static_cast<int>(mcts_seed ^ 0x3C3C3C3C),
@@ -419,13 +452,12 @@ struct IsMctsAgent::Impl {
 
 IsMctsAgent::IsMctsAgent(std::string deck1_path,
                          std::string deck2_path,
-                         std::string registry_path,
+                         std::string /*registry_path*/,
                          uint64_t    engine_seed,
                          uint64_t    mcts_seed,
                          int         sims)
     : impl_(std::make_unique<Impl>(std::move(deck1_path),
                                    std::move(deck2_path),
-                                   std::move(registry_path),
                                    engine_seed, mcts_seed, sims)) {}
 
 IsMctsAgent::~IsMctsAgent() = default;
@@ -433,21 +465,18 @@ IsMctsAgent::~IsMctsAgent() = default;
 Intent IsMctsAgent::selectAction(const GameState& state,
                                  const std::vector<Intent>& legal_actions) {
     if (legal_actions.empty()) {
-        return Intent::concede(state.turn.turn_player);
+        return Intent::concede(decidingPlayer(state, legal_actions));
     }
-    ::riftbound::StepResult snap_step;
-    snap_step.kind        = ::riftbound::StepKind::NeedDecision;
-    snap_step.legal       = legal_actions;
-    snap_step.perspective = actingPlayer(state);
-    auto os_state = openspiel::RiftboundState::makeFromSnapshot(
-        impl_->game, impl_->engine_seed,
-        state, snap_step, ::riftbound::GameResult{});
+    const openspiel::RiftboundState* os_state =
+        impl_->mirror->rootFor(state, legal_actions);
 
-    if (!os_state || os_state->IsTerminal()) return legal_actions[0];
+    if (!os_state || os_state->IsTerminal()) {
+        return impl_->mirror->unsearched(legal_actions);
+    }
     ::open_spiel::Action chosen_action = impl_->bot->Step(*os_state);
     const Intent* intent = openspiel::decodeAction(
         static_cast<int>(chosen_action), legal_actions, state);
-    if (!intent) return legal_actions[0];
+    if (!intent) return impl_->mirror->unsearched(legal_actions);
     return *intent;
 }
 

@@ -21,12 +21,20 @@
 /// reaches a decision (calls selectAction), it yields back to the
 /// caller via fiber switch. When the caller calls provideChoice, the
 /// fiber resumes and selectAction returns the chosen action.
+///
+/// The engine asks a specific seat for each decision (`getAgent(player)`),
+/// so the driver is installed as two per-seat agents (`seat(player)`): that
+/// is how it learns WHO is deciding. The deciding player is not the turn
+/// player on a second mulligan, chain priority, showdown focus, combat
+/// damage or an opponent's trigger choice.
 
 #include "agents/agent_interface.h"
 
 #include <boost/context/fiber.hpp>
 
 #include <atomic>
+#include <exception>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -43,6 +51,14 @@ public:
     StepDriver(StepDriver&&) = delete;
     StepDriver& operator=(StepDriver&&) = delete;
 
+    /// The agent to install for `player`'s seat. Decisions routed through it
+    /// are published with `player` as the decider.
+    AgentInterface& seat(PlayerId player) {
+        return player == PlayerId::Player2 ? seat2_ : seat1_;
+    }
+
+    /// Seat-less entry point (the driver installed directly as an agent).
+    /// The decider is read off the legal list — see `decidingPlayer`.
     Intent selectAction(
         const GameState& state,
         const std::vector<Intent>& legal_actions
@@ -75,7 +91,31 @@ public:
     /// Lock-free check.
     bool isDone() const { return done_.load(std::memory_order_acquire); }
 
+    /// The exception that ended the engine fiber, if one did. A fiber that
+    /// ends this way is "done" but the game it was running has NO result:
+    /// callers must treat it as a failure, never as a finished game.
+    std::exception_ptr failure() const { return failure_; }
+
 private:
+    class SeatAgent : public AgentInterface {
+    public:
+        SeatAgent(StepDriver& driver, PlayerId player)
+            : driver_(driver), player_(player) {}
+        Intent selectAction(const GameState& state,
+                            const std::vector<Intent>& legal_actions) override {
+            return driver_.selectActionFor(player_, state, legal_actions);
+        }
+    private:
+        StepDriver& driver_;
+        PlayerId player_;
+    };
+
+    Intent selectActionFor(PlayerId decider, const GameState& state,
+                           const std::vector<Intent>& legal_actions);
+
+    SeatAgent seat1_{*this, PlayerId::Player1};
+    SeatAgent seat2_{*this, PlayerId::Player2};
+
     // The engine fiber runs runGame(). engine_fiber_ holds the
     // suspended engine context when control is in the caller's flow.
     // yield_target_ holds the caller's suspended context when control
@@ -100,6 +140,12 @@ private:
     // returned). Atomic because external code may poll while the
     // fiber is suspended.
     std::atomic<bool>   done_{false};
+
+    // Set when the fiber ended by exception instead of by finishing the game.
+    std::exception_ptr  failure_;
+
+    // Decisions served so far (RIFTBOUND_STEP_FAULT_AT fault injection).
+    long                decisions_served_ = 0;
 };
 
 } // namespace riftbound

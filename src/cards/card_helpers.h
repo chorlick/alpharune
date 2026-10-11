@@ -362,10 +362,11 @@ inline Card::FlowCost flow(int energy, int power = 0,
 }
 
 // ── Passive-aura plumbing ───────────────────────────────────────────────────
-// Card::applyPassiveAura is invoked once per on-board instance of the card but
-// is not told WHICH instance, so implementations loop over every instance. A
-// marker effect makes each instance get its effect once per aura pass no
-// matter how many copies are in play.
+// Card::applyPassiveAura is invoked once per (card, controller) with an
+// instance in play and is not told WHICH instance, so implementations loop
+// over every instance. A marker effect makes each instance get its effect once
+// per aura pass no matter how many copies are in play (or how often the hook
+// is called).
 constexpr int kAuraOnceMarker = -777;
 
 template <typename Fn>
@@ -402,18 +403,15 @@ inline void auraMight(GameObject& obj, GameObjectId source, int amount) {
     obj.aura_effects.push_back(ae);
 }
 
-/// A keyword from a continuous effect. [Assault N] / [Shield N] also carry
-/// their conditional Might (while attacking / defending), as the engine's
-/// aura fold only sums might_bonus.
+/// A keyword from a continuous effect. For [Assault N] / [Shield N] pass N
+/// (0 = the bare keyword, which is N = 1): the engine's aura fold adds the
+/// +N [M] while the bearer is an attacker / a defender, so the effect itself
+/// carries no might_bonus.
 inline void auraKeyword(GameObject& obj, GameObjectId source, Keyword kw, int value = 0) {
     GameObject::AuraEffect ae;
     ae.source = source;
     ae.keyword = kw;
     ae.keyword_value = value;
-    if (kw == Keyword::Assault && obj.combat_designation == CombatDesignation::Attacker)
-        ae.might_bonus = value > 0 ? value : 1;
-    if (kw == Keyword::Shield && obj.combat_designation == CombatDesignation::Defender)
-        ae.might_bonus = value > 0 ? value : 1;
     obj.aura_effects.push_back(ae);
 }
 

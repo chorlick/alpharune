@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,25 +17,16 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "Your Mechs have +1 [M] (including me)."
+    // Each Rumble on board gives its own +1, so copies stack.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        GameObjectId self_id = kInvalidId;
-        for (auto& [sid, self] : state.objects) {
-            if (self.card_def_id != cardDefId()) continue;
-            if (self.controller != controller || !self.location.has_value()) continue;
-            self_id = sid;
-            break;
-        }
-        if (self_id == kInvalidId) return;
-        for (auto& [uid, u] : state.objects) {
-            if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
-            bool is_mech = false;
-            for (auto& tag : u.tags) if (tag == "Mech") { is_mech = true; break; }
-            if (!is_mech) continue;  // self is also a Mech, so "including me" holds
-            GameObject::AuraEffect ae;
-            ae.source = self_id;
-            ae.might_bonus = 1;
-            u.aura_effects.push_back(ae);
-        }
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (!self.location.has_value()) return;
+            for (auto& [uid, u] : state.objects) {
+                if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
+                if (!hasTag(u, "Mech")) continue;  // I'm a Mech too: "including me"
+                auraMight(u, sid, 1);
+            }
+        });
     }
 
     // "When I hold, play a 3 [M] Mech unit token to your base."

@@ -15,6 +15,8 @@ namespace {
 class ElderDragon : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Any amount of your damage is enough to kill enemy units." (CR 142.4.c)
+    bool anyDamageIsLethal() const override { return true; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto opp = opponent(ctx.controller);

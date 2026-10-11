@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,6 +21,20 @@ public:
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     bool requiresLegion() const override { return true; }
+    // "Other friendly units have +1 [M] here." — every OTHER friendly unit at
+    // the battlefield I'm at.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            auto my_bf = self.battlefieldId();
+            if (!my_bf) return;  // "here" — only while I'm at a battlefield
+            for (auto& [uid, u] : state.objects) {
+                if (uid == sid) continue;  // "other"
+                if (!u.isUnit() || u.controller != controller) continue;
+                if (u.battlefieldId() != my_bf) continue;
+                auraMight(u, sid, 1);
+            }
+        });
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

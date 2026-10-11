@@ -16,6 +16,18 @@ class BaronNashor : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     bool canBeChosenByEnemy() const override { return false; }
+    // "Other friendly units have +2 [M]." — wherever they are on the board.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (!self.location.has_value()) return;
+            for (auto& [uid, u] : state.objects) {
+                if (uid == sid) continue;  // "other"
+                if (!u.isUnit() || u.controller != controller) continue;
+                if (!u.location.has_value()) continue;
+                auraMight(u, sid, 2);
+            }
+        });
+    }
 
     // CR 135.2.b.3 / CR 355.1: "As you play me" runs DURING the play
     // action, not as a triggered ability. Implementing this via

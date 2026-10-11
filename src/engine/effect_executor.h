@@ -69,6 +69,12 @@ public:
     /// kInvalidId when `objects` is empty.
     GameObjectId chooseObjectNow(PlayerId player, const std::vector<GameObjectId>& objects);
 
+    /// Ask `player` a yes/no question right now, for a "may" that is not
+    /// resolving from the chain and so cannot suspend (a replacement effect:
+    /// "its controller may pay ... instead"). Returns false when there is no
+    /// agent to ask.
+    bool confirmNow(PlayerId player, const std::string& label);
+
     /// "You may make new choices for it" (CR 750-755): the item's controller
     /// re-chooses its targets. Costs already paid are unaffected (755.1).
     using RechooseFn = std::function<void(ChainItemId)>;

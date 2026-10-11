@@ -11,11 +11,17 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "My Might is increased by your points" applied in recalculateAuras (game_engine.cpp ~3869)
-
 class DravenShowboat : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "My Might is increased by your points."
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        const int points = state.player(controller).score;
+        if (points <= 0) return;
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (self.location.has_value()) auraMight(self, sid, points);
+        });
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

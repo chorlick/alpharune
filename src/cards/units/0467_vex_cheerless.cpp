@@ -15,21 +15,20 @@ namespace {
 class VexCheerless : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "While I'm in combat, friendly spells cost [1][A] less to a minimum of
+    // [1], and enemy spells cost [1][A] more." Continuous spell discount / tax
+    // (reset every aura pass), on while this Vex is an attacker or a defender.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        PlayerState::CostModifier friendly_mod;
-        friendly_mod.energy_reduction = 1;
-        friendly_mod.min_cost = 1;            // "to a minimum of [1]"
-        friendly_mod.this_turn_only = false;
-        friendly_mod.combat_active_only = true;
-        friendly_mod.affects_friendly_only = true;
-        state.player(controller).cost_modifiers.push_back(friendly_mod);
-
-        PlayerState::CostModifier enemy_mod;
-        enemy_mod.energy_increase = 1;
-        enemy_mod.this_turn_only = false;
-        enemy_mod.combat_active_only = true;
-        enemy_mod.affects_enemy_only = true;
-        state.player(controller).cost_modifiers.push_back(enemy_mod);
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject& self) {
+            if (!self.location.has_value()) return;
+            if (self.combat_designation == CombatDesignation::None) return;
+            auto& mine = state.player(controller);
+            mine.spell_discount_energy += 1;
+            mine.spell_discount_power += 1;
+            auto& theirs = state.player(opponent(controller));
+            theirs.spell_tax_energy += 1;
+            theirs.spell_tax_power += 1;
+        });
     }
 private:
     const CardDef def_ = [] {

@@ -2532,14 +2532,13 @@ std::vector<DamageAssignment> lethalCascade(const GameState& state,
 }  // namespace
 
 bool GameEngine::anyDamageIsLethalFor(PlayerId damager) const {
-    // Elder Dragon: "Any amount of your damage is enough to kill." (CR 142.4.c)
+    // "Any amount of your damage is enough to kill." (CR 142.4.c) — a unit
+    // `damager` has in play says so through Card::anyDamageIsLethal().
     for (const auto& [id, obj] : state_.objects) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
-        const auto& text = card_db_.get(obj.card_def_id).ability_text;
-        if (text.find("Any amount of your damage is enough to kill") != std::string::npos ||
-            text.find("any amount of your damage is enough to kill") != std::string::npos)
-            return true;
+        const Card* card = card_registry_.get(obj.card_def_id);
+        if (card && card->anyDamageIsLethal()) return true;
     }
     return false;
 }
@@ -2592,25 +2591,17 @@ void GameEngine::executeHideCard(const Intent& intent) {
                      std::to_string(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
+    // Pay the Hide cost, [A] (CR 811.1.b) — one Power of any domain, through
+    // the shared additional-cost path: floating Power first, else a recycled
+    // rune (exhausted before ready). Unpaid, the card is not hidden.
+    if (!payAdditionalCost(intent.player, 0, 1, Domain::Count)) {
+        events_.logTrace("HIDE: " + card.name + " not hidden — [A] could not be paid");
+        return;
+    }
+
     // Remove from hand
     auto it = std::find(ps.hand.begin(), ps.hand.end(), intent.card);
     if (it != ps.hand.end()) ps.hand.erase(it);
-
-    // Pay [A] cost — recycle a ready rune (universal power cost)
-    auto base_loc = BaseLocation{intent.player};
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isRune() || obj.controller != intent.player || obj.is_exhausted) continue;
-        if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-        // Recycle the rune for [A]
-        events_.logTrace("HIDE_COST: recycled " + obj.name + " (id=" +
-                         std::to_string(id) + ") to pay [A]");
-        obj.location = std::nullopt;
-        obj.zone = ZoneType::RuneDeck;
-        ps.rune_deck.insert(ps.rune_deck.begin(), id);
-        events_.emit(LeftBoardEvent{id, intent.player, CardType::Rune,
-            base_loc, ZoneType::RuneDeck, false});
-        break;
-    }
 
     // Place facedown at the chosen battlefield
     auto bf_id = intent.chosen_battlefield;
@@ -2959,17 +2950,9 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         auto& card = state_.getObject(card_id);
         if (!card.keywords.has(Keyword::Hidden)) continue;
 
-        // Need at least one rune to pay [A] cost
-        bool has_rune = false;
-        auto base_loc = BaseLocation{player};
-        for (auto& [id, obj] : state_.objects) {
-            if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
-                obj.location.has_value() && *obj.location == LocationId{base_loc}) {
-                has_rune = true;
-                break;
-            }
-        }
-        if (!has_rune) continue;
+        // The Hide cost is [A] (CR 811.1.b): floating Power or any rune in
+        // base, ready or exhausted — the same test executeHideCard pays by.
+        if (!canPayAdditionalCost(player, 0, 1, Domain::Count)) continue;
 
         // Can hide at any controlled BF with available facedown slot
         for (auto& bf : state_.battlefields) {
@@ -3601,6 +3584,10 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
 
 // Defined with the cost code further down.
 static int extraAnyPowerCost(const GameState& state, PlayerId player, const GameObject& card);
+static bool costModifierApplies(const GameState& state, const PlayerState::CostModifier& mod,
+                                bool own, PlayerId payer, const GameObject& card,
+                                bool combat_active);
+static bool anyCombatInProgress(const GameState& state);
 
 namespace {
 // A trash-replay / Flow grant replaces the spell's base cost (CR 356.1.a);
@@ -3608,22 +3595,16 @@ namespace {
 // those increases: Helm of Suppression's tax and "cost [N] more" modifiers.
 // (The [A] part is extraAnyPowerCost.)
 int trashReplayEnergyTax(const GameState& state, PlayerId player, const GameObject& card) {
-    bool combat_active = false;
-    for (const auto& bf : state.battlefields)
-        if (bf.combat_in_progress) { combat_active = true; break; }
+    // The same modifier filter the base-cost path uses (costModifierApplies),
+    // so the two cannot disagree about which modifiers reach a card.
+    const bool combat_active = anyCombatInProgress(state);
     int tax = card.isSpell() ? state.player(player).spell_tax_energy : 0;
-    auto applies = [&](const auto& mod) {
-        if (mod.next_spell_only && !card.isSpell()) return false;
-        if (mod.next_unit_only && !card.isUnit()) return false;
-        if (mod.gear_only && !card.isGear()) return false;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) return false;
-        if (mod.combat_active_only && !combat_active) return false;
-        return true;
-    };
     for (const auto& mod : state.player(player).cost_modifiers)
-        if (!mod.affects_enemy_only && applies(mod)) tax += mod.energy_increase;
+        if (costModifierApplies(state, mod, /*own=*/true, player, card, combat_active))
+            tax += mod.energy_increase;
     for (const auto& mod : state.player(opponent(player)).cost_modifiers)
-        if (mod.affects_enemy_only && applies(mod)) tax += mod.energy_increase;
+        if (costModifierApplies(state, mod, /*own=*/false, player, card, combat_active))
+            tax += mod.energy_increase;
     return std::max(0, tax);
 }
 }  // namespace
@@ -3836,11 +3817,35 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
             auto gabs = gcard->activatedAbilities();
             if (ref.ability_index < 0 ||
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
-            const auto& gcost = gabs[ref.ability_index].cost;
+            const auto& gab = gabs[ref.ability_index];
+            const auto& gcost = gab.cost;
+            // The same gates as an own ability above, asked of the granting
+            // card for the bearer: "Use only if ...", the per-ability gate,
+            // the state-aware Energy reduction payAndQueueAbility applies, the
+            // discard cost and the ability's targets.
+            if (!gcard->canActivateAbility(state_, player)) continue;
+            if (!gcard->canActivateAbilityAt(state_, player, id, ref.ability_index)) continue;
             if (gcost.exhaust && obj.is_exhausted) continue;           // bearer must be ready
-            if (gcost.energy > 0 && availableEnergy(player, obj.isUnit()) < gcost.energy) continue;
-            if (gcost.power > 0 && !canPayActivationResources(player, gcost.energy, gcost, obj.isUnit())) continue;
+            const int gnet_energy = std::max(0, gcost.energy -
+                activationEnergyReduction(*gcard, player, id, ref.ability_index));
+            if (gnet_energy > 0 && availableEnergy(player, obj.isUnit()) < gnet_energy) continue;
+            if (gcost.power > 0 && !canPayActivationResources(player, gnet_energy, gcost, obj.isUnit())) continue;
+            if (gcost.discard && gcost.discard_count > 0) {
+                int matching = 0;
+                for (auto hid : state_.player(player).hand) {
+                    if (gcost.discard_type_filter == 0 ||
+                        static_cast<int>(state_.getObject(hid).card_type) + 1 ==
+                            gcost.discard_type_filter) ++matching;
+                }
+                if (matching < gcost.discard_count) continue;
+            }
             if (gcost.xp_cost > 0 && state_.player(player).xp < gcost.xp_cost) continue;
+            if (gab.targets.count > 0 && !gab.targets.optional) {
+                if (gcard->enumerateLegalTargets(state_, player, ref.ability_index, id).empty())
+                    continue;
+            } else if (gabs.size() == 1 && !gcard->hasLegalTargets(state_, player)) {
+                continue;
+            }
             Intent activate;
             activate.type = IntentType::ActivateAbility;
             activate.player = player;
@@ -4655,6 +4660,21 @@ bool GameEngine::canGainWinningPointViaConquer(PlayerId player) const {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void GameEngine::recalculateAuras() {
+    // Step 0: Drop the cost modifiers the previous aura pass produced. A
+    // CostModifier pushed from Card::applyPassiveAura is a continuous effect:
+    // like aura_effects it is rebuilt from scratch on every pass (Ornn's Forge,
+    // Eager Apprentice, Herald of Scales, Vex). Modifiers pushed by resolved
+    // effects ("this turn", "your next spell") are not tagged and stay.
+    for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
+        auto& mods = state_.player(pid).cost_modifiers;
+        mods.erase(std::remove_if(mods.begin(), mods.end(),
+                       [](const PlayerState::CostModifier& m) { return m.from_aura; }),
+                   mods.end());
+    }
+    const size_t standing_mods[2] = {
+        state_.player(PlayerId::Player1).cost_modifiers.size(),
+        state_.player(PlayerId::Player2).cost_modifiers.size()};
+
     // Step 1: Clear all aura effects from all objects
     for (auto& [id, obj] : state_.objects) {
         obj.aura_effects.clear();
@@ -4712,7 +4732,6 @@ void GameEngine::recalculateAuras() {
     for (auto& bf : state_.battlefields) {
         bf.surcharge_enemy_multi_move = false;
         bf.opp_hidden_unrevealable = false;
-        bf.death_recall_for_pay = false;
         bf.ignore_tank[0] = bf.ignore_tank[1] = false;   // Dune Surfer
         bf.ignore_deflect_here = false;                  // Heisho
         bf.reaction_tax_power = 0;                       // Mystic Vortex
@@ -4727,6 +4746,11 @@ void GameEngine::recalculateAuras() {
     // flag set; off-board cards stay default-false. Cheap O(n) pass over
     // GameState::objects; collocated with aura recalc so all "static
     // attributes of on-board cards" get refreshed in one place.
+    // applyPassiveAura is not told which instance it is called for, so a
+    // card's hook covers every instance `controller` has in play. It is
+    // therefore called ONCE per (card, controller) per pass — calling it per
+    // instance applied every copy's effect once per copy (two Garens: +4).
+    std::vector<std::pair<CardDefId, PlayerId>> aura_applied;
     for (auto& [id, obj] : state_.objects) {
         obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
         // On-board cards AND legends (LegendZone, no location) broadcast their
@@ -4741,10 +4765,15 @@ void GameEngine::recalculateAuras() {
             obj.untargetable_by_enemy = true;
         }
 
-        // Card-defined passive auras — each on-board card (or legend) gets a
-        // chance to broadcast its passive effect (Karthus bumps the
-        // controller's deathknell_double_count, future cards add their own).
+        // Card-defined passive auras — each card with an on-board instance
+        // (or legend) gets a chance to broadcast its passive effect (Karthus
+        // bumps the controller's deathknell_double_count, future cards add
+        // their own).
         if (card) {
+            const std::pair<CardDefId, PlayerId> key{obj.card_def_id, obj.controller};
+            if (std::find(aura_applied.begin(), aura_applied.end(), key) != aura_applied.end())
+                continue;
+            aura_applied.push_back(key);
             card->applyPassiveAura(state_, obj.controller);
         }
     }
@@ -4764,303 +4793,16 @@ void GameEngine::recalculateAuras() {
         }
     }
 
-    // Step 2: Scan all objects on board for aura abilities
-    for (auto& [src_id, src] : state_.objects) {
-        if (!src.location.has_value() && src.zone != ZoneType::LegendZone) continue;
-        if (src.card_def_id == kInvalidId) continue; // skip tokens without CardDef
-        // Battlefields give their auras through Card::applyPassiveAura (the
-        // loop above). A token battlefield's card object has a location, so
-        // without this its text would also be read as a unit's "here" aura.
-        if (src.card_type == CardType::Battlefield) continue;
-
-        const auto& def = card_db_.get(src.card_def_id);
-        auto& text = def.ability_text;
-        if (text.empty()) continue;
-
-        // Parse aura from ability_text (lowercase matching)
-        std::string lower;
-        lower.reserve(text.size());
-        for (char c : text) lower += std::tolower(c);
-
-        // Strip parenthetical for matching
-        std::string clean;
-        int depth = 0;
-        for (char c : lower) {
-            if (c == '(') depth++;
-            else if (c == ')') { if (depth > 0) depth--; }
-            else if (depth == 0) clean += c;
-        }
-
-        // Determine aura scope and effect
-        struct AuraDef {
-            bool is_keyword = false;
-            Keyword keyword = Keyword::Count;
-            int keyword_value = 0;
-            int might_mod = 0;
-            int might_min = 0;
-            bool friendly = false;
-            bool enemy = false;
-            bool here_only = false;    // "here" = same battlefield as source
-            bool other_only = false;   // "other" = excludes self
-            bool all_friendly = false; // all friendly units anywhere
-            bool tag_filter = false;
-            std::string required_tag;
-            bool stunned_only = false;
-        };
-
-        std::vector<AuraDef> auras;
-
-        // "Other friendly units here have [Assault]"
-        auto findAura = [&](const std::string& pattern, AuraDef base) -> bool {
-            auto pos = clean.find(pattern);
-            if (pos == std::string::npos) return false;
-            auto clause = clean.substr(pos, 80);
-
-            // Determine keyword or might
-            if (clause.find("[assault]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Assault; base.keyword_value = 1;
-            } else if (clause.find("[shield]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Shield; base.keyword_value = 1;
-            } else if (clause.find("[ganking]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Ganking;
-            } else if (clause.find("[vision]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Vision;
-            } else if (clause.find("[deflect]") != std::string::npos) {
-                base.is_keyword = true; base.keyword = Keyword::Deflect; base.keyword_value = 1;
-            } else if (clause.find("+") != std::string::npos && clause.find("[m]") != std::string::npos) {
-                // Extract +N
-                auto plus = clause.find('+');
-                int val = 0;
-                for (size_t i = plus + 1; i < clause.size() && std::isdigit(clause[i]); ++i)
-                    val = val * 10 + (clause[i] - '0');
-                if (val == 0) val = 1;
-                base.might_mod = val;
-            } else if (clause.find("-") != std::string::npos && clause.find("[m]") != std::string::npos) {
-                auto minus = clause.find('-');
-                int val = 0;
-                for (size_t i = minus + 1; i < clause.size() && std::isdigit(clause[i]); ++i)
-                    val = val * 10 + (clause[i] - '0');
-                if (val == 0) val = 1;
-                base.might_mod = -val;
-                // Check for minimum
-                auto min_pos = clause.find("minimum of");
-                if (min_pos != std::string::npos) {
-                    int m = 0;
-                    for (size_t i = min_pos + 10; i < clause.size() && std::isdigit(clause[i]); ++i)
-                        m = m * 10 + (clause[i] - '0');
-                    if (m == 0) m = 1;
-                    base.might_min = m;
-                }
-            } else {
-                return false; // unrecognized aura effect
-            }
-
-            auras.push_back(base);
-            return true;
-        };
-
-        // Match patterns (most specific first)
-        AuraDef d;
-
-        // "Other friendly units here have ..."
-        d = {}; d.friendly = true; d.here_only = true; d.other_only = true;
-        findAura("other friendly units here have", d);
-
-        // "Other friendly units have ..."
-        d = {}; d.friendly = true; d.all_friendly = true; d.other_only = true;
-        findAura("other friendly units have", d);
-
-        // "Your units have ..."
-        d = {}; d.friendly = true; d.all_friendly = true;
-        findAura("your units have", d);
-
-        // "Units here have ..."
-        d = {}; d.here_only = true;
-        findAura("units here have", d);
-
-        // "Stunned enemy units here have ..."
-        d = {}; d.enemy = true; d.here_only = true; d.stunned_only = true;
-        if (clean.find("stunned enemy units here have") != std::string::npos) {
-            findAura("stunned enemy units here have", d);
-        }
-
-        // "Your Mechs each have [Assault]"
-        if (clean.find("your mechs each have") != std::string::npos) {
-            d = {}; d.friendly = true; d.all_friendly = true; d.tag_filter = true;
-            d.required_tag = "Mech";
-            findAura("your mechs each have", d);
-        }
-
-        // Step 3: Apply each aura to matching targets
-        for (auto& aura : auras) {
-            for (auto& [tgt_id, tgt] : state_.objects) {
-                if (!tgt.isUnit()) continue;
-                if (!tgt.location.has_value()) continue;
-
-                // Self-exclusion
-                if (aura.other_only && tgt_id == src_id) continue;
-
-                // Ownership filter
-                if (aura.friendly && tgt.controller != src.controller) continue;
-                if (aura.enemy && tgt.controller == src.controller) continue;
-
-                // Location filter
-                if (aura.here_only) {
-                    auto src_bf = src.battlefieldId();
-                    auto tgt_bf = tgt.battlefieldId();
-                    // Source must be at a battlefield, and target at the same one
-                    if (!src_bf || !tgt_bf || *src_bf != *tgt_bf) {
-                        // Also check if source IS the battlefield card
-                        bool src_is_bf = src.isBattlefield();
-                        if (src_is_bf) {
-                            // Find which BF this card belongs to
-                            bool match = false;
-                            for (auto& bf : state_.battlefields) {
-                                if (bf.card_object_id == src_id) {
-                                    auto tbf = tgt.battlefieldId();
-                                    if (tbf && *tbf == bf.id) match = true;
-                                    break;
-                                }
-                            }
-                            if (!match) continue;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-
-                // Tag filter
-                if (aura.tag_filter) {
-                    bool has_tag = false;
-                    for (auto& tag : tgt.tags) {
-                        if (tag == aura.required_tag) { has_tag = true; break; }
-                    }
-                    if (!has_tag) continue;
-                }
-
-                // Stunned filter
-                if (aura.stunned_only && !tgt.is_stunned) continue;
-
-                // Apply the aura effect
-                GameObject::AuraEffect ae;
-                ae.source = src_id;
-                ae.might_bonus = aura.might_mod;
-                ae.might_minimum = aura.might_min;
-                if (aura.is_keyword) {
-                    ae.keyword = aura.keyword;
-                    ae.keyword_value = aura.keyword_value;
-                }
-                tgt.aura_effects.push_back(ae);
-            }
-        }
+    // Cost modifiers appended by the hooks above are aura-sourced: tag them so
+    // the next pass (Step 0) rebuilds them instead of stacking another copy.
+    for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
+        auto& mods = state_.player(pid).cost_modifiers;
+        for (size_t i = standing_mods[playerIndex(pid)]; i < mods.size(); ++i)
+            mods[i].from_aura = true;
     }
 
-    // Step 3b: Conditional self-effects ("If X, I have [Keyword]")
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isUnit() || !obj.location.has_value()) continue;
-        if (obj.card_def_id == kInvalidId) continue; // skip tokens
-        const auto& def = card_db_.get(obj.card_def_id);
-        auto& text = def.ability_text;
-        if (text.empty()) continue;
-
-        std::string clean;
-        { int d = 0;
-          for (char c : text) {
-              if (c == '(') d++;
-              else if (c == ')') { if (d > 0) d--; }
-              else if (d == 0) clean += std::tolower(c);
-          }
-        }
-
-        // "If you've discarded a card this turn, I have [Assault] and [Ganking]"
-        if (clean.find("if you've discarded") != std::string::npos ||
-            clean.find("if you\xe2\x80\x99ve discarded") != std::string::npos) {
-            if (state_.player(obj.controller).has_discarded_this_turn) {
-                if (clean.find("[assault]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Assault; ae.keyword_value = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-                if (clean.find("[ganking]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Ganking;
-                    obj.aura_effects.push_back(ae);
-                }
-            }
-        }
-
-        // "While I'm buffed, I have [Ganking]"
-        if (clean.find("while i'm buffed") != std::string::npos ||
-            clean.find("while i\xe2\x80\x99m buffed") != std::string::npos) {
-            if (obj.buff_count > 0) {
-                if (clean.find("[ganking]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Ganking;
-                    obj.aura_effects.push_back(ae);
-                }
-                // "While I'm buffed, I have an additional +1 [M]"
-                if (clean.find("additional +1 [m]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id; ae.might_bonus = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-            }
-        }
-
-        // "While you have another unit here, I have +1 [M]" (Trusty Ramhound).
-        // Only fires when this unit is at a location AND there's another
-        // friendly unit at the same location (units at base count separately
-        // from units at battlefields, per the card's "here" wording).
-        if (clean.find("while you have another unit here") != std::string::npos &&
-            clean.find("+1 [m]") != std::string::npos &&
-            obj.location.has_value()) {
-            for (const auto& [other_id, other] : state_.objects) {
-                if (other_id == id) continue;
-                if (!other.isUnit()) continue;
-                if (other.controller != obj.controller) continue;
-                if (!other.location.has_value()) continue;
-                if (*other.location != *obj.location) continue;
-                GameObject::AuraEffect ae;
-                ae.source = id;
-                ae.might_bonus = 1;
-                obj.aura_effects.push_back(ae);
-                break;
-            }
-        }
-
-        // "My Might is increased by your points" (Draven, Showboat)
-        if (clean.find("my might is increased by your points") != std::string::npos) {
-            int pts = state_.player(obj.controller).score;
-            if (pts > 0) {
-                GameObject::AuraEffect ae; ae.source = id; ae.might_bonus = pts;
-                obj.aura_effects.push_back(ae);
-            }
-        }
-
-        // "While I'm [Mighty], I have [Deflect], [Ganking], and [Shield]"
-        if (clean.find("while i'm [mighty]") != std::string::npos ||
-            clean.find("while i\xe2\x80\x99m [mighty]") != std::string::npos) {
-            // Mighty = 5+ might (check base + buffs + temp, before this aura)
-            int pre_aura_might = obj.base_might + obj.buff_count +
-                                 obj.temp_might_bonus + obj.attachment_might_bonus;
-            if (pre_aura_might >= 5) {
-                if (clean.find("[deflect]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Deflect; ae.keyword_value = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-                if (clean.find("[ganking]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Ganking;
-                    obj.aura_effects.push_back(ae);
-                }
-                if (clean.find("[shield]") != std::string::npos) {
-                    GameObject::AuraEffect ae; ae.source = id;
-                    ae.keyword = Keyword::Shield; ae.keyword_value = 1;
-                    obj.aura_effects.push_back(ae);
-                }
-            }
-        }
-    }
+    // (Steps 2, 3 and 3b parsed ability_text for aura wording. Every aura is
+    // now the card's own Card::applyPassiveAura, applied in Step 1b / 1c.)
 
     // Step 3c: Equipment-granted keywords and stats
     for (auto& [id, obj] : state_.objects) {
@@ -5070,10 +4812,16 @@ void GameEngine::recalculateAuras() {
             Card* gear_card = card_registry_.get(state_.getObject(gear_id).card_def_id);
             if (!gear_card) continue;
 
-            // Keywords from effect_text
+            // Keywords from effect_text. [Assault N] / [Shield N] are pushed
+            // once, with their value, below — not also as a bare keyword,
+            // which would count as a second instance of 1.
+            int ea = gear_card->equippedAssault();
+            int es = gear_card->equippedShield();
             auto ekw = gear_card->equippedKeywords();
             if (ekw.bits != 0) {
                 for (int k = 0; k < static_cast<int>(Keyword::Count); ++k) {
+                    if (ea > 0 && static_cast<Keyword>(k) == Keyword::Assault) continue;
+                    if (es > 0 && static_cast<Keyword>(k) == Keyword::Shield) continue;
                     if (ekw.has(static_cast<Keyword>(k))) {
                         GameObject::AuraEffect ae;
                         ae.source = gear_id;
@@ -5083,7 +4831,6 @@ void GameEngine::recalculateAuras() {
                 }
             }
             // Assault/Shield/Deflect from effect_text
-            int ea = gear_card->equippedAssault();
             if (ea > 0) {
                 GameObject::AuraEffect ae;
                 ae.source = gear_id;
@@ -5091,7 +4838,6 @@ void GameEngine::recalculateAuras() {
                 ae.keyword_value = ea;
                 obj.aura_effects.push_back(ae);
             }
-            int es = gear_card->equippedShield();
             if (es > 0) {
                 GameObject::AuraEffect ae;
                 ae.source = gear_id;
@@ -5112,6 +4858,17 @@ void GameEngine::recalculateAuras() {
             obj.aura_might_bonus += ae.might_bonus;
             if (ae.keyword != Keyword::Count) {
                 obj.aura_keywords.set(ae.keyword);
+            }
+            // An aura-granted [Assault N] / [Shield N] is +N [M] while its
+            // bearer is an attacker / a defender (CR 807 / 814); a bare
+            // [Assault] / [Shield] is N = 1. recomputeMight only knows the
+            // object's own assault_value / shield_value, so the granted
+            // instances are folded in here.
+            if ((ae.keyword == Keyword::Assault &&
+                 obj.combat_designation == CombatDesignation::Attacker) ||
+                (ae.keyword == Keyword::Shield &&
+                 obj.combat_designation == CombatDesignation::Defender)) {
+                obj.aura_might_bonus += std::max(1, ae.keyword_value);
             }
             if (ae.suppress_combat_damage) obj.aura_no_combat_damage = true;
             obj.aura_bonus_damage_taken += ae.bonus_damage_taken;
@@ -5711,52 +5468,18 @@ GameEngine::RepeatCost GameEngine::parseRepeatCost(const std::string& text) {
     return rc;
 }
 
-// Pay one additional Repeat tranche (R is the per-tranche cost). Iterates
-// the same primitives canAfford / payCardCost use, but for ONE extra
-// (energy, domain_power) charge — called by executePlaySpell after the
-// base cost has already been paid.
+// Pay one additional Repeat tranche (R is the per-tranche cost) — ONE extra
+// (energy, domain_power) charge, called by executePlaySpell after the base
+// cost has already been paid. RepeatCost::power_domain == Domain::Count is
+// [A], which is also what payAdditionalCost takes for "any domain".
 bool GameEngine::payRepeatCost(PlayerId player, const RepeatCost& cost) {
     if (!cost.valid) return true;
-    auto base_loc = BaseLocation{player};
-
-    // Energy: exhaust ready runes
-    int need_energy = cost.energy;
-    if (need_energy > 0) {
-        for (auto& [id, obj] : state_.objects) {
-            if (need_energy == 0) break;
-            if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
-            if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-            obj.is_exhausted = true;
-            --need_energy;
-        }
-        if (need_energy > 0) return false;
-    }
-
-    // Power: recycle exhausted matching-domain rune to deck
-    int need_power = cost.power;
-    if (need_power > 0) {
-        auto& ps = state_.player(player);
-        bool universal = (cost.power_domain == Domain::Count);
-        for (auto& [id, obj] : state_.objects) {
-            if (need_power == 0) break;
-            if (!obj.isRune() || obj.controller != player) continue;
-            if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-            if (!obj.is_exhausted) continue;
-            bool match = universal;
-            if (!match) {
-                for (auto d : obj.domains) if (d == cost.power_domain) { match = true; break; }
-            }
-            if (!match) continue;
-            // A recycled rune goes to the bottom of the Rune Deck (CR 416.1).
-            obj.zone = ZoneType::RuneDeck;
-            obj.location = std::nullopt;
-            obj.is_exhausted = false;
-            ps.rune_deck.insert(ps.rune_deck.begin(), id);
-            --need_power;
-        }
-        if (need_power > 0) return false;
-    }
-    return true;
+    // The shared additional-cost path: the same one the affordability gate
+    // (canPayAdditionalCost) describes, so the gate and the payment agree.
+    // It spends floating Energy / Power first, recycles a rune to the Rune
+    // Deck (CR 416.1) whether it is ready or exhausted (CR 164.2.b), and pays
+    // all of the tranche or none of it.
+    return payAdditionalCost(player, cost.energy, cost.power, cost.power_domain);
 }
 
 void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id) {
@@ -5858,22 +5581,113 @@ static int extraAnyPowerCost(const GameState& state, PlayerId player, const Game
     return std::max(0, extra);
 }
 
+// Whether one CostModifier applies to `payer` playing `card`. `own` says the
+// modifier sits in the payer's own list (false: in the opponent's, where only
+// "enemy" modifiers reach across). The single filter used for the Energy part,
+// the Power part and the one-shot consume, so the three cannot drift.
+static bool costModifierApplies(const GameState& state, const PlayerState::CostModifier& mod,
+                                bool own, PlayerId payer, const GameObject& card,
+                                bool combat_active) {
+    if (mod.affects_enemy_only == own) return false;
+    if (mod.next_spell_only && !card.isSpell()) return false;
+    if (mod.next_unit_only && !card.isUnit()) return false;
+    if (mod.units_only && !card.isUnit()) return false;
+    if (mod.gear_only && !card.isGear()) return false;
+    if (mod.first_gear_per_turn && state.player(payer).gears_played_this_turn > 0) return false;
+    if (mod.affects_non_token_only && card.super_type == SuperType::Token) return false;
+    if (mod.combat_active_only && !combat_active) return false;
+    if (!mod.required_tag.empty() &&
+        std::find(card.tags.begin(), card.tags.end(), mod.required_tag) == card.tags.end())
+        return false;
+    return true;
+}
+
+static bool anyCombatInProgress(const GameState& state) {
+    for (const auto& bf : state.battlefields)
+        if (bf.combat_in_progress) return true;
+    return false;
+}
+
 static int powerCostDelta(const GameState& state, PlayerId player, const GameObject& card,
                           const Card* card_class) {
     const auto& ps = state.player(player);
     int delta = 0;
     if (card.isSpell()) delta -= ps.spell_discount_power;
     delta -= ps.transient_power_discount;
+    const bool combat_active = anyCombatInProgress(state);
     for (const auto& mod : ps.cost_modifiers) {
-        if (mod.power_reduction == 0 || mod.affects_enemy_only) continue;
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.gear_only && !card.isGear()) continue;
+        if (mod.power_reduction == 0) continue;
+        if (!costModifierApplies(state, mod, /*own=*/true, player, card, combat_active)) continue;
+        delta -= mod.power_reduction;
+    }
+    for (const auto& mod : state.player(opponent(player)).cost_modifiers) {
+        if (mod.power_reduction == 0) continue;
+        if (!costModifierApplies(state, mod, /*own=*/false, player, card, combat_active)) continue;
         delta -= mod.power_reduction;
     }
     if (card_class) delta -= card_class->selfPowerCostReduction(state, player);
     return delta;
 }
+
+// What `card` costs `player` to play right now: its printed cost after every
+// cost modifier and continuous effect. canAfford asks it to gate the play and
+// beginCostPayment to charge it, so the two always agree.
+namespace {
+struct EffectiveCardCost {
+    int energy = 0;
+    int power = 0;
+};
+EffectiveCardCost effectiveCardCost(const GameState& state, const CardDef& def,
+                                    const Card* card_class, PlayerId player,
+                                    const GameObject& card) {
+    const auto& ps = state.player(player);
+    int energy_needed = def.energy_cost;
+    int increases = 0;   // "costs [N] more" — raise the cost a minimum protects
+    int min_cost = 0;
+    // Combat-active scope: a CostModifier with combat_active_only=true is
+    // only consulted while combat is in progress on any battlefield.
+    const bool combat_active = anyCombatInProgress(state);
+    // The payer's own modifiers, then the OPPONENT's "enemy" modifiers, which
+    // reach across to this player's plays.
+    for (int side = 0; side < 2; ++side) {
+        const bool own = side == 0;
+        const auto& mods = own ? ps.cost_modifiers
+                               : state.player(opponent(player)).cost_modifiers;
+        for (const auto& mod : mods) {
+            if (!costModifierApplies(state, mod, own, player, card, combat_active)) continue;
+            energy_needed -= mod.energy_reduction;
+            increases += mod.energy_increase;
+            if (mod.min_cost > min_cost) min_cost = mod.min_cost;
+        }
+    }
+    // Self-cost reduction hook (e.g., Noxus Hopeful "[Legion] I cost [2] less").
+    if (card_class) energy_needed -= card_class->selfCostReduction(state, player);
+    // Vendetta continuous spell-cost effects (set by cards' applyPassiveAura):
+    // Helm of Suppression taxes the opponent's spells; Applied Researchers
+    // discounts your own "to a minimum of [1]". Energy component only.
+    if (card.isSpell()) {
+        increases += ps.spell_tax_energy;
+        if (ps.spell_discount_energy > 0) {
+            energy_needed -= ps.spell_discount_energy;
+            if (min_cost < 1) min_cost = 1;
+        }
+    }
+    // Irelia, Graceful (462): per-target discount staged in executePlaySpell when
+    // this spell chose her ("your spells that choose me cost [1]/[A] less").
+    energy_needed -= ps.transient_play_discount;
+    energy_needed += increases;
+    // "to a minimum of [N]" limits the reductions; it never raises a card that
+    // already cost less than N.
+    energy_needed = std::max(std::min(min_cost, def.energy_cost + increases), energy_needed);
+    energy_needed = std::max(0, energy_needed);
+    // Effect-driven play that ignores part of the cost (EffectExecutor::playPayingCost).
+    if (ps.transient_ignore_energy) energy_needed = 0;
+    int power_needed =
+        std::max(0, def.power_cost + powerCostDelta(state, player, card, card_class));
+    if (ps.transient_ignore_power) power_needed = 0;
+    return {energy_needed, power_needed};
+}
+}  // namespace
 
 bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj, int extra_any_power) const {
     // Play-legality gates that sit in front of every play generator.
@@ -5893,72 +5707,10 @@ bool GameEngine::canAfford(PlayerId player, GameObjectId card_obj, int extra_any
     if (card.card_def_id == kInvalidId) return false;  // tokens have no cost
     const auto& def = card_db_.get(card.card_def_id);
 
-    int energy_needed = def.energy_cost;
-    int power_needed = def.power_cost;
-
-    // Apply cost reductions
-    auto& ps_const = state_.player(player);
-    int min_cost = 0;
-    // Combat-active scope: a CostModifier with combat_active_only=true is
-    // only consulted while combat is in progress on any battlefield.
-    // Used by Vex Cheerless ("While I'm in combat, friendly spells cost
-    // [1] less, enemy spells cost [1] more").
-    bool combat_active = false;
-    for (const auto& bf : state_.battlefields) {
-        if (bf.combat_in_progress) { combat_active = true; break; }
-    }
-    // Same controller of card_obj as the cost-payer in normal play
-    // (the player paying for their own play). Cross-player consult
-    // (enemy cost increase) requires the modifier's source player to
-    // be tracked separately — see opponent modifier sweep below.
-    for (auto& mod : ps_const.cost_modifiers) {
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.gear_only && !card.isGear()) continue;
-        if (mod.first_gear_per_turn && ps_const.gears_played_this_turn > 0) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        if (mod.affects_enemy_only) continue;  // friendly's own list, skip enemy-only
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Cross-player modifiers: the OPPONENT's cost_modifiers list may
-    // contain affects_enemy_only entries that target THIS player. Vex
-    // Cheerless (controlled by P2) wants to make P1's spells cost more.
-    for (auto& mod : state_.player(opponent(player)).cost_modifiers) {
-        if (!mod.affects_enemy_only) continue;
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Self-cost reduction hook (e.g., Noxus Hopeful "[Legion] I cost [2] less").
-    if (auto* self_card = card_registry_.get(card.card_def_id)) {
-        energy_needed -= self_card->selfCostReduction(state_, player);
-    }
-    // Vendetta continuous spell-cost effects (set by cards' applyPassiveAura):
-    // Helm of Suppression taxes the opponent's spells; Applied Researchers
-    // discounts your own "to a minimum of [1]". Energy component only.
-    if (card.isSpell()) {
-        energy_needed += ps_const.spell_tax_energy;
-        if (ps_const.spell_discount_energy > 0) {
-            energy_needed -= ps_const.spell_discount_energy;
-            if (min_cost < 1) min_cost = 1;
-        }
-    }
-    // Irelia, Graceful (462): per-target discount staged in executePlaySpell when
-    // this spell chose her ("your spells that choose me cost [1]/[A] less").
-    energy_needed -= ps_const.transient_play_discount;
-    energy_needed = std::max(min_cost, energy_needed);
-    energy_needed = std::max(0, energy_needed);
-    // Effect-driven play that ignores part of the cost (EffectExecutor::playPayingCost).
-    if (ps_const.transient_ignore_energy) energy_needed = 0;
-    power_needed = std::max(0, power_needed + powerCostDelta(state_, player, card, card_registry_.get(card.card_def_id)));
-    if (state_.player(player).transient_ignore_power) power_needed = 0;
+    const auto cost = effectiveCardCost(state_, def, card_registry_.get(card.card_def_id),
+                                        player, card);
+    const int energy_needed = cost.energy;
+    const int power_needed = cost.power;
 
     // Count available runes in base, partitioned by ready/exhausted
     // and matching/non-matching-domain. The CR cost-payment ordering
@@ -6080,43 +5832,12 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     }
     const auto& def = card_db_.get(card.card_def_id);
 
-    int energy_needed = def.energy_cost;
-    int power_needed = def.power_cost;
-
-    // Apply cost reductions
     auto& ps = state_.player(player);
-    int min_cost = 0;
-    bool combat_active = false;
-    for (const auto& bf : state_.battlefields) {
-        if (bf.combat_in_progress) { combat_active = true; break; }
-    }
-    for (auto& mod : ps.cost_modifiers) {
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.gear_only && !card.isGear()) continue;
-        if (mod.first_gear_per_turn && ps.gears_played_this_turn > 0) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        if (mod.affects_enemy_only) continue;
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Cross-player modifiers (Vex Cheerless makes opponent's spells cost more).
-    for (auto& mod : state_.player(opponent(player)).cost_modifiers) {
-        if (!mod.affects_enemy_only) continue;
-        if (mod.next_spell_only && !card.isSpell()) continue;
-        if (mod.next_unit_only && !card.isUnit()) continue;
-        if (mod.affects_non_token_only && card.super_type == SuperType::Token) continue;
-        if (mod.combat_active_only && !combat_active) continue;
-        energy_needed -= mod.energy_reduction;
-        energy_needed += mod.energy_increase;
-        if (mod.min_cost > min_cost) min_cost = mod.min_cost;
-    }
-    // Self-cost reduction hook (e.g., Noxus Hopeful Legion discount).
-    if (auto* self_card = card_registry_.get(card.card_def_id)) {
-        energy_needed -= self_card->selfCostReduction(state_, player);
-    }
+    const auto cost = effectiveCardCost(state_, def, card_registry_.get(card.card_def_id),
+                                        player, card);
+    int energy_needed = cost.energy;
+    int power_needed = cost.power;
+
     // A card on the player's board may give the unit being played [Accelerate]
     // (Card::grantsAccelerateTo). Mark it so resolvePermanent offers the usual
     // optional [1][C] (CR 805.1.b — a "may pay", never a mandatory surcharge).
@@ -6133,32 +5854,26 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
             break;
         }
     }
-    // Vendetta continuous spell-cost effects (mirrors canAfford).
-    if (card.isSpell()) {
-        energy_needed += ps.spell_tax_energy;
-        if (ps.spell_discount_energy > 0) {
-            energy_needed -= ps.spell_discount_energy;
-            if (min_cost < 1) min_cost = 1;
+    // Consume the one-shot modifiers that applied to this card ("your next
+    // spell / unit / card costs ...") — from this player's list and, for the
+    // ones that reach across, the opponent's. A one-shot that did not apply
+    // (wrong card type, not in combat, ...) stays for the card it is meant for.
+    {
+        const bool combat_active = anyCombatInProgress(state_);
+        for (int side = 0; side < 2; ++side) {
+            const bool own = side == 0;
+            auto& mods = own ? ps.cost_modifiers
+                             : state_.player(opponent(player)).cost_modifiers;
+            mods.erase(
+                std::remove_if(mods.begin(), mods.end(),
+                    [&](const PlayerState::CostModifier& m) {
+                        if (!m.next_spell_only && !m.next_unit_only && !m.next_card_only)
+                            return false;
+                        return costModifierApplies(state_, m, own, player, card, combat_active);
+                    }),
+                mods.end());
         }
     }
-    // Irelia, Graceful (462): per-target discount staged in executePlaySpell.
-    energy_needed -= ps.transient_play_discount;
-    energy_needed = std::max(min_cost, energy_needed);
-    energy_needed = std::max(0, energy_needed);
-    if (ps.transient_ignore_energy) energy_needed = 0;
-    power_needed = std::max(0, power_needed + powerCostDelta(state_, player, card, card_registry_.get(card.card_def_id)));
-    if (state_.player(player).transient_ignore_power) power_needed = 0;
-
-    // Consume one-shot modifiers that applied
-    ps.cost_modifiers.erase(
-        std::remove_if(ps.cost_modifiers.begin(), ps.cost_modifiers.end(),
-            [&](const PlayerState::CostModifier& m) {
-                if (m.next_spell_only && card.isSpell()) return true;
-                if (m.next_unit_only && card.isUnit()) return true;
-                if (m.next_card_only) return true;
-                return false;
-            }),
-        ps.cost_modifiers.end());
 
     events_.logTrace("PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
                      " P=" + std::to_string(power_needed));
@@ -6593,55 +6308,23 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         return;  // replacement consumed — unit does NOT die
     }
 
-    // Altar of Blood (762): "If a unit here would die during combat, its
-    // controller may pay [A][A][A] to heal it, exhaust it, and recall it
-    // instead." Gated on the dying unit's battlefield carrying the flag (set by
-    // Altar's applyPassiveAura) AND that BF being in combat. [A][A][A] = 3 power
-    // of any domain → recycle 3 ready runes. Agent decides (only offered when
-    // affordable).
-    if (unit.location.has_value() &&
-        std::holds_alternative<BattlefieldLocation>(*unit.location)) {
-        auto bfid = std::get<BattlefieldLocation>(*unit.location).id;
-        auto& abf = getBattlefield(bfid);
-        if (abf.death_recall_for_pay && abf.combat_in_progress) {
-            LocationId base{BaseLocation{controller}};
-            std::vector<GameObjectId> ready;
-            for (auto& [id, obj] : state_.objects)
-                if (obj.isRune() && obj.controller == controller && !obj.is_exhausted &&
-                    obj.location.has_value() && *obj.location == base)
-                    ready.push_back(id);
-            if (static_cast<int>(ready.size()) >= 3) {
-                Intent decline; decline.type = IntentType::MakeChoice;
-                decline.player = controller; decline.chosen_value = 0;
-                Intent accept; accept.type = IntentType::MakeChoice;
-                accept.player = controller; accept.chosen_value = 1;
-                std::vector<Intent> opts = {decline, accept};
-                state_.decision_index++;
-                auto chosen = getAgent(controller).selectAction(state_, opts);
-                recordAppliedIntent(chosen);
-                if (on_decision) on_decision(state_, opts, chosen);
-                if (chosen.chosen_value.value_or(0) == 1) {
-                    for (int i = 0; i < 3; ++i) {  // pay [A][A][A]: recycle 3 runes
-                        auto& r = state_.getObject(ready[i]);
-                        r.location = std::nullopt;
-                        r.zone = ZoneType::RuneDeck;
-                        state_.player(controller).rune_deck.insert(
-                            state_.player(controller).rune_deck.begin(), ready[i]);
-                    }
-                    events_.logDebug("REPLACEMENT (Altar of Blood): " + unit.name +
-                                     " pays [A][A][A] -> heal/exhaust/recall");
-                    detachAllGear(unit_id);
-                    auto old_loc = unit.location;
-                    unit.damage_marked = 0;
-                    unit.is_exhausted = true;
-                    unit.combat_designation = CombatDesignation::None;
-                    unit.location = BaseLocation{controller};
-                    unit.zone = ZoneType::Base;
-                    events_.emit(ObjectStateChangedEvent{unit_id, "healed"});
-                    events_.emit(UnitMovedEvent{unit_id, controller,
-                        old_loc.value_or(BaseLocation{controller}),
-                        BaseLocation{controller}, false});
-                    return;  // survived
+    // "If a unit here would die ..." on the battlefield the unit is at (Altar
+    // of Blood). A battlefield's card is not on its controller's board, so the
+    // sweep below never reaches it; it gets the same Card::applyReplacement
+    // call, made for the dying unit's controller — the card decides whether
+    // it applies, asks its "may" and takes its payment.
+    if (auto dying_bf = unit.battlefieldId()) {
+        const GameObjectId bf_card_id = getBattlefield(*dying_bf).card_object_id;
+        if (state_.objectExists(bf_card_id)) {
+            const auto& bf_obj = state_.getObject(bf_card_id);
+            Card* bf_card = bf_obj.card_def_id != kInvalidId
+                ? card_registry_.get(bf_obj.card_def_id) : nullptr;
+            if (bf_card && bf_card->hasReplacementEffect()) {
+                CardContext ctx{state_, events_, *effect_executor_, controller, bf_card_id};
+                if (bf_card->applyReplacement(ctx, unit_id)) {
+                    events_.logDebug(std::string("REPLACEMENT: ") + bf_obj.name +
+                                     " prevents " + unit.name + " from dying");
+                    return;  // replacement consumed — unit does NOT die
                 }
             }
         }

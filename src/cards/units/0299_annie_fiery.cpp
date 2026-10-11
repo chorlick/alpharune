@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,10 +17,13 @@ public:
     const CardDef& def() const override { return def_; }
     // "Your spells and abilities deal 1 Bonus Damage." While Annie is on board,
     // raise her controller's bonus_damage_dealt; dealDamage adds it to each
-    // instance of spell/ability damage from that controller. (Reset + summed in
-    // recalculateAuras, so multiple Annies stack.)
+    // instance of spell/ability damage from that controller. (Reset in
+    // recalculateAuras; the hook is called once for all her copies, and each
+    // one on board adds 1, so multiple Annies stack.)
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        state.player(controller).bonus_damage_dealt += 1;
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject& self) {
+            if (self.location.has_value()) state.player(controller).bonus_damage_dealt += 1;
+        });
     }
 private:
     const CardDef def_ = [] {

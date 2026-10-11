@@ -134,9 +134,16 @@ TEST_F(RagingSoulTest, AssaultAddsMightWhileAttacking) {
 
     card_registry.get(kRagingSoul)->applyPassiveAura(state, P1);
 
-    int aura_might = 0;
-    for (const auto& ae : state.getObject(soul).aura_effects) aura_might += ae.might_bonus;
-    EXPECT_EQ(aura_might, 1) << "Assault confers +1 [M] while attacking";
+    // The card grants Assault 1; the +1 [M] while attacking is the engine's
+    // aura fold of keyword_value (CR 807) —
+    // AurasCostsTest.AuraAssault_RumbleFarronWarmongerRagingSoul.
+    int aura_might = 0, assault = 0;
+    for (const auto& ae : state.getObject(soul).aura_effects) {
+        aura_might += ae.might_bonus;
+        if (ae.keyword == Keyword::Assault) assault += ae.keyword_value;
+    }
+    EXPECT_EQ(assault, 1);
+    EXPECT_EQ(aura_might, 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

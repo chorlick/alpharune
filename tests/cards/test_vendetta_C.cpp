@@ -572,7 +572,10 @@ TEST_F(VendettaCTest, Vendetta_DiscipleOfShen_ShieldWithExactlyOneOtherFriendly)
     clearAuras();
     state.getObject(disciple).combat_designation = CombatDesignation::Defender;
     c->applyPassiveAura(state, P1);
-    EXPECT_EQ(auraMightSum(state.getObject(disciple)), 3);
+    // The +3 [M] while defending is the engine's aura fold of keyword_value
+    // (CR 814) — AurasCostsTest.AuraKeywordHelper_*; the effect carries none.
+    EXPECT_TRUE(hasAuraKeyword(state.getObject(disciple), Keyword::Shield, 3));
+    EXPECT_EQ(auraMightSum(state.getObject(disciple)), 0);
 
     clearAuras();
     addUnit(P1, kInvalidId, 2, 0);
@@ -1047,7 +1050,9 @@ TEST_F(VendettaCTest, Vendetta_Ambessa_EmpoweredAssault) {
     state.getObject(ambessa).combat_designation = CombatDesignation::Attacker;
     c->applyPassiveAura(state, P1);
     EXPECT_TRUE(hasAuraKeyword(state.getObject(ambessa), Keyword::Assault, 2));
-    EXPECT_EQ(auraMightSum(state.getObject(ambessa)), 2) << "+2 [M] while attacking";
+    // The +2 [M] while attacking is the engine's aura fold of keyword_value
+    // (CR 807) — AurasCostsTest.AuraKeywordHelper_*; the effect carries none.
+    EXPECT_EQ(auraMightSum(state.getObject(ambessa)), 0);
 }
 
 TEST_F(VendettaCTest, Vendetta_Ambessa_AttackKillsWeakerEnemyHereOnlyWhileEmpowered) {

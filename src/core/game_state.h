@@ -173,6 +173,12 @@ struct PlayerState {
         bool affects_friendly_only = false; // restricts to plays by the modifier's controller
         bool affects_enemy_only = false;    // restricts to plays by the opponent
         bool gear_only = false;             // applies only to gear plays (Ornn's Forge)
+        bool units_only = false;            // applies only to unit plays (Vaults of Helia)
+        std::string required_tag;           // applies only to cards with this tag (Herald of Scales: "Dragon")
+        // Pushed by a Card::applyPassiveAura hook, i.e. a continuous effect.
+        // Set by GameEngine::recalculateAuras (cards do not set it), which
+        // drops and rebuilds these on every aura pass.
+        bool from_aura = false;
         bool first_gear_per_turn = false;   // applies only to the FIRST gear played this
                                             // turn (consult gears_played_this_turn == 0)
     };
@@ -379,7 +385,6 @@ struct BattlefieldState {
     // BF/unit cards' applyPassiveAura):
     bool surcharge_enemy_multi_move = false; // Mageseeker Investigator (725): enemy multi-unit moves here cost [A]/extra unit
     bool opp_hidden_unrevealable = false;    // Noxus Saboteur (018): opponent [Hidden] cards can't be revealed here
-    bool death_recall_for_pay = false;       // Altar of Blood (762): a unit dying here in combat may pay [A][A][A] to heal+exhaust+recall instead
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

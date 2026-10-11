@@ -12,9 +12,9 @@
 namespace riftbound {
 namespace {
 
-// "Your Mechs have [Shield]." The engine's generic aura text-matcher only
-// catches "your mechs EACH have", not "your mechs have", so grant Shield to
-// friendly Mech units here.
+// "Your Mechs have [Shield]." Grant Shield to friendly Mech units; a bare
+// aura [Shield] is Shield 1, and the engine's aura fold adds the +1 [M] while
+// they're defenders.
 
 class MechanizedMenace : public LegendCard {
 public:

@@ -32,11 +32,9 @@ public:
                 GameObject::AuraEffect ae;
                 ae.source = sid;
                 ae.keyword = Keyword::Assault;
-                // Aura Assault grants +1 [M] while attacking (recomputeMight
-                // only sums the dedicated assault_value, not keyword presence,
-                // so model the +1 directly while the unit is an attacker).
-                if (u.combat_designation == CombatDesignation::Attacker)
-                    ae.might_bonus = 1;
+                // [Assault] = Assault 1: the engine's aura fold adds the
+                // +1 [M] while the unit is an attacker.
+                ae.keyword_value = 1;
                 u.aura_effects.push_back(ae);
             }
         }
@@ -59,8 +57,6 @@ private:
         d.power_cost = 1;
         d.might = 5;
         d.rarity = Rarity::Uncommon;
-        d.assault_value = 1;
-        d.keywords.set(Keyword::Assault);
         d.ability_text = R"RB(Other friendly units here have [Assault]. (+1 [M] while they're attackers.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4c65e2cae6748590f589ad8b26bc5a20c0d770c2-744x1039.png?accountingTag=RB)RB";
         return d;

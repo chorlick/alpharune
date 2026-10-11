@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -17,28 +18,20 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
 
     // ── Part 1: "Your Mechs each have [Assault]." ──
+    // Each Rumble on board grants one instance (CR 807.2: they sum); a bare
+    // aura [Assault] is Assault 1, and the engine's aura fold adds the +1 [M]
+    // while the Mech is an attacker. Rumble is a Mech, so this is also where
+    // his own Assault comes from (it is not a printed keyword of his).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        GameObjectId self_id = kInvalidId;
-        for (auto& [sid, self] : state.objects) {
-            if (self.card_def_id != cardDefId()) continue;
-            if (self.controller != controller || !self.location.has_value()) continue;
-            self_id = sid;
-            break;
-        }
-        if (self_id == kInvalidId) return;
-        for (auto& [uid, u] : state.objects) {
-            if (!u.isUnit() || u.controller != controller) continue;
-            bool is_mech = false;
-            for (auto& tag : u.tags)
-                if (tag == "Mech") { is_mech = true; break; }
-            if (!is_mech) continue;
-            GameObject::AuraEffect ae;
-            ae.source = self_id;
-            ae.keyword = Keyword::Assault;
-            u.aura_effects.push_back(ae);
-        }
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (!self.location.has_value()) return;
+            for (auto& [uid, u] : state.objects) {
+                if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
+                if (!hasTag(u, "Mech")) continue;
+                auraKeyword(u, sid, Keyword::Assault, 1);
+            }
+        });
     }
-
     // ── Part 2: conquer -> recur a Mech ──
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx,
@@ -112,8 +105,6 @@ private:
         d.energy_cost = 4;
         d.might = 4;
         d.rarity = Rarity::Rare;
-        d.assault_value = 1;
-        d.keywords.set(Keyword::Assault);
         d.ability_text = R"RB(Your Mechs each have [Assault]. (+1 [M] while we're attackers.)
 When I conquer, you may recycle another friendly unit to play a Mech from your trash. Reduce its Energy cost by the Might of the unit you recycled.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e211311ecb1475e87d3d94eba4a6774b4e900091-744x1039.png)RB";

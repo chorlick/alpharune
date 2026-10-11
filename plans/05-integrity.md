@@ -13,6 +13,8 @@
 ## Card-specific logic in the engine
 
 - [ ] **5.4 `ability_text` matching beyond the documented `killUnit` exception** [confirmed]
+  - Done by engine-auras-costs (the sites in its functions): aura parsing in `recalculateAuras` deleted (2.1 / 8.1), with the `std::tolower` on UTF-8 bytes; `anyDamageIsLethalFor` asks `Card::anyDamageIsLethal()` (Elder Dragon 680), test: AurasCostsTest.ElderDragon_AnyOfYourDamageKills; the Altar of Blood block is the card's `applyReplacement` (2.26).
+  - BLOCKED: the three remaining sites are in engine-play-combat's functions and each needs a new `Card` virtual plus edits to the cards that print the text — `setupBattlefields` ("can't move from here to base" / "can't be played here": Rockfall Path 530, Vilemaw's Lair 290), `generateMainPhaseActions` ("play me to an open battlefield" and variants: Ocean Drake 902, Sneaky Deckhand 176, Miss Fortune 193, Sai Scout 174, Bard 540), `executePlaySpell` → `parseRepeatCost` (also 8.9).
   - `game_engine.cpp:4508-4624` and `:4691-4795` — aura parsing in `recalculateAuras` ("your mechs each have", "my might is increased by your points", "while you have another unit here", …). Root cause of 2.1.
   - `:2439-2441` / `:5056` — `anyDamageIsLethalFor` matches Elder Dragon's sentence.
   - `:6309` — Altar of Blood block.
@@ -35,11 +37,11 @@
 
 ## Duplicated logic
 
-- [ ] **5.9 `canAfford` and `beginCostPayment` are copy-pasted with drifting filters** [confirmed]
+- [x] **5.9 `canAfford` and `beginCostPayment` are copy-pasted with drifting filters** [confirmed] — FIXED: both call one `effectiveCardCost()`; one `costModifierApplies()` filter serves Energy, Power (`powerCostDelta`) and the one-shot consume, which now removes only modifiers that applied and reaches the opponent's list; "to a minimum of [N]" no longer raises a cheaper card; aura-granted abilities get the own-ability gates (separate `shared:` commit in `generateActivateAbilityActions`); test: AurasCostsTest.OneShotModifier_KeptUntilACardItAppliesTo, .EnemyOneShotModifier_ConsumedFromTheOpponentsList, .PowerDiscount_HonoursTheSameFiltersAsEnergy, .MinimumCost_LimitsTheReductionOnly, .GrantedAbility_HonoursTheGrantingCardsGates
   - Where: `game_engine.cpp:5602-5752` vs `:5793-5932`. `powerCostDelta` (`:5585`) omits `first_gear_per_turn`, `affects_non_token_only`, `combat_active_only`.
   - The one-shot consume at `:5877-5885` removes any `next_spell_only` modifier even when it was skipped, and never consumes from the opponent's list the cross-player loop reads.
   - Aura-granted abilities (`:3597-3615`) skip `canActivateAbilityAt`, `activationEnergyReduction`, and the discard and target checks.
-- [ ] **5.10 Four separate power-payment paths** — shared `payAdditionalCost` (`:6089+`), `payRepeatCost` (2.3), `executeHideCard` (2.25), Altar of Blood (2.26), plus `payOnePower` in cards (3.23). Collapse onto the shared path.
+- [x] **5.10 Four separate power-payment paths** — shared `payAdditionalCost` (`:6089+`), `payRepeatCost` (2.3), `executeHideCard` (2.25), Altar of Blood (2.26), plus `payOnePower` in cards (3.23). Collapse onto the shared path. — FIXED: `payRepeatCost` and `executeHideCard` call `payAdditionalCost`; Altar of Blood pays from its card through `EffectExecutor::payAnyPower`. Left as they are, outside this stream: `EffectExecutor::payAnyPower` itself (the executor's copy of the same rule, used by card effects, which cannot reach `GameEngine`) and `payOnePower` (3.23); test: the 2.3 / 2.25 / 2.26 tests
 
 ## Registration
 

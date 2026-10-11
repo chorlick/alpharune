@@ -67,13 +67,14 @@ struct Intent {
     // MulliganDecision — cards to set aside
     std::vector<GameObjectId> cards_to_mulligan;
 
-    // HideCard: the battlefield slot. ChooseBattlefield (setup): NOT a slot
-    // but the position of the chosen card in the player's battlefield list
-    // (GameEngine::setupBattlefields makes it with fromRaw and reads it back
-    // with raw(); no battlefield exists yet). One field for both because the
-    // action slot and the history token encode it as one number (plans/05
-    // item 5.5: a field of its own would change both).
+    // HideCard — the battlefield slot the card is hidden at.
     BattlefieldId chosen_battlefield = kInvalidId;
+
+    // ChooseBattlefield (setup, CR 480.5 / 481.5) — which card of the
+    // player's battlefield list (PlayerState::battlefield_pool) they bring.
+    // No battlefield exists yet, so this is not a slot and has a type of its
+    // own (plans/09 item 9.RR2: it used to travel in `chosen_battlefield`).
+    BattlefieldPoolIndex battlefield_pool_index = kInvalidId;
 
     // PlayFirstDecision — true = go first, false = go second
     bool choose_first = true;
@@ -161,11 +162,11 @@ struct Intent {
         return i;
     }
 
-    static Intent chooseBattlefield(PlayerId p, BattlefieldId bf) {
+    static Intent chooseBattlefield(PlayerId p, BattlefieldPoolIndex pick) {
         Intent i;
         i.type = IntentType::ChooseBattlefield;
         i.player = p;
-        i.chosen_battlefield = bf;
+        i.battlefield_pool_index = pick;
         return i;
     }
 
@@ -209,6 +210,7 @@ struct Intent {
             && damage_assignments == o.damage_assignments
             && cards_to_mulligan == o.cards_to_mulligan
             && chosen_battlefield == o.chosen_battlefield
+            && battlefield_pool_index == o.battlefield_pool_index
             && choose_first == o.choose_first
             && sideboard_swaps == o.sideboard_swaps
             && chosen_objects == o.chosen_objects

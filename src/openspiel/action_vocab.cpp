@@ -90,9 +90,13 @@ int encodeAction(const Intent& intent, const GameState& state) {
         }
 
         // ── ChooseBattlefield ────────────────────────────────────────────
-        case T::ChooseBattlefield:
+        // The setup choice: the position in the player's battlefield list.
+        case T::ChooseBattlefield: {
+            const uint32_t pick = intent.battlefield_pool_index.raw();
             return verbBase(ActionVerb::ChooseBattlefield)
-                   + bfSlot(intent.chosen_battlefield);
+                   + (intent.battlefield_pool_index.valid() && pick < 8
+                          ? static_cast<int>(pick) : 0);
+        }
 
         // ── AssignCombatDamage ───────────────────────────────────────────
         case T::AssignCombatDamage: {
@@ -274,6 +278,7 @@ int64_t historyToken(const Intent& intent, const GameState& state) {
     }
     fp.addIds(intent.cards_to_mulligan);
     fp.add(static_cast<uint64_t>(intent.chosen_battlefield.raw()));
+    fp.add(static_cast<uint64_t>(intent.battlefield_pool_index.raw()));
     fp.add(intent.choose_first ? 1 : 0);
     fp.add(intent.sideboard_swaps.size());
     for (const auto& [out, in] : intent.sideboard_swaps) {

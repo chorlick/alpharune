@@ -755,7 +755,7 @@ json buildLegalActionJson(const CardDB& db,
         // the renderer's regular path handles those.)
         if (a.type == IntentType::ChooseBattlefield) {
             const auto& pool = state.player(a.player).battlefield_pool;
-            auto idx = static_cast<size_t>(a.chosen_battlefield.raw());
+            auto idx = static_cast<size_t>(a.battlefield_pool_index.raw());
             if (idx < pool.size()) {
                 const auto& def = db.get(pool[idx]);
                 label = "Choose battlefield: " + def.name;

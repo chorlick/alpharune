@@ -108,8 +108,8 @@ TEST(ActionVocab, MulliganDecision) {
 
 TEST(ActionVocab, ChooseBattlefield) {
     MiniState ms;
-    auto bf = ms.addBattlefield();
-    expectRoundTrip(Intent::chooseBattlefield(PlayerId::Player1, bf), ms.state);
+    expectRoundTrip(Intent::chooseBattlefield(PlayerId::Player1,
+                                              BattlefieldPoolIndex::fromRaw(1)), ms.state);
 }
 
 TEST(ActionVocab, AssignCombatDamage) {

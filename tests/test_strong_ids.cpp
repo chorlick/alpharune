@@ -110,6 +110,15 @@ static_assert(TakesNoNumber<AbilityId>);
 static_assert(DoNotMix<CardDefId, ChainItemId>);
 static_assert(DoNotMix<CardDefId, AbilityId>);
 static_assert(DoNotMix<BattlefieldId, ChainItemId>);
+// The setup choice is a position in a battlefield list, not a slot (9.RR2).
+static_assert(StrongIdShape<BattlefieldPoolIndex>);
+static_assert(TakesNoNumber<BattlefieldPoolIndex>);
+static_assert(DoNotMix<BattlefieldId, BattlefieldPoolIndex>);
+static_assert(DoNotMix<GameObjectId, BattlefieldPoolIndex>);
+static_assert(DoNotMix<CardDefId, BattlefieldPoolIndex>);
+static_assert(!std::is_convertible_v<BattlefieldPoolIndex, BattlefieldLocation>);
+static_assert(std::is_same_v<decltype(Intent::battlefield_pool_index), BattlefieldPoolIndex>);
+static_assert(std::is_same_v<decltype(Intent::chosen_battlefield), BattlefieldId>);
 static_assert(DoNotMix<BattlefieldId, AbilityId>);
 static_assert(DoNotMix<ChainItemId, AbilityId>);
 // A location is not an id, and takes a slot number only as a literal spelled
@@ -293,38 +302,41 @@ TEST(StrongIds, TheHistoryTokenOfAnOwnAbilityKeptItsNumber) {
         << "none must be fed to the token as the 0 it used to be";
 }
 
-TEST(StrongIds, HistoryTokensAndSlotsAreTheNumbersOfTheBinaryBeforeIdsWereTypes) {
-    // Recorded from a build of fcfa93b (ids still plain integers) with the same
-    // intents on a default GameState. A trainer replay or a saved game holds
-    // these numbers.
+TEST(StrongIds, HistoryTokensAndSlotsArePinned) {
+    // The numbers of five intents on a default GameState. Until the 2026-10
+    // checkpoint break (stage 5) these were the numbers of a build of fcfa93b,
+    // from before ids were types; the tokens changed when Intent gained
+    // `battlefield_pool_index` (plans/09 item 9.RR2), which every token
+    // fingerprints. A trainer replay or a saved game holds these numbers: a
+    // change here is a break that docs/checkpoint-breaking-2026-10.md lists.
     GameState state;
     Intent own;
     own.type = IntentType::ActivateAbility;
     own.player = PlayerId::Player1;
     own.ability_source = GameObjectId::fromRaw(9);
-    EXPECT_EQ(openspiel::historyToken(own, state), 3611872453840603442LL);
+    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697567026LL);
     EXPECT_EQ(openspiel::encodeAction(own, state), 2354);
 
     Intent granted = own;
     granted.granted_ability_def = 506;
-    EXPECT_EQ(openspiel::historyToken(granted, state), 9183008626965481778LL);
+    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613558578LL);
 
     Intent named;  // "name a card": a MakeChoice that carries a card id
     named.type = IntentType::MakeChoice;
     named.player = PlayerId::Player2;
     named.chosen_card_def = 235;
-    EXPECT_EQ(openspiel::historyToken(named, state), 7576281683122461517LL);
+    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666257229LL);
     EXPECT_EQ(openspiel::encodeAction(named, state), 6989);
 
     Intent bf;
     bf.type = IntentType::ChooseBattlefield;
     bf.player = PlayerId::Player1;
-    bf.chosen_battlefield = BattlefieldId::fromRaw(1);
-    EXPECT_EQ(openspiel::historyToken(bf, state), 4557704407380131852LL);
-    EXPECT_EQ(openspiel::encodeAction(bf, state), 12);
+    bf.battlefield_pool_index = BattlefieldPoolIndex::fromRaw(1);
+    EXPECT_EQ(openspiel::historyToken(bf, state), 9050218172478652427LL);
+    EXPECT_EQ(openspiel::encodeAction(bf, state), 11);
 
     EXPECT_EQ(openspiel::historyToken(Intent::endTurn(PlayerId::Player1), state),
-              3408968969468510209LL);
+              2124341512652193793LL);
 }
 
 // Plan item 9.RR1. The compiler cannot see an integer slot written as one id

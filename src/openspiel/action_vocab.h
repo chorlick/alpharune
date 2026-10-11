@@ -84,7 +84,7 @@ enum class ActionVerb : uint8_t {
     Concede,
     PlayFirstDecision,         // arity 2 (false/true)
     MulliganDecision,          // arity 3 (count 0/1/2)
-    ChooseBattlefield,         // arity 8 (bf id, 0..7)
+    ChooseBattlefield,         // arity 8 (position in the player's battlefield list, 0..7)
     AssignCombatDamage,        // arity 128 (distribution hash bucket 0..127)
                                // Phase 6t — bumped from 16 to 128 to
                                // cut collision rate on combat-damage

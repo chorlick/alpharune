@@ -833,8 +833,14 @@ std::vector<float> featurizeAction(const Intent& intent,
     }
     features.push_back(chosen_obj);
 
-    // Chosen battlefield ID
-    features.push_back(safeBfId(intent.chosen_battlefield));
+    // Chosen battlefield: the slot a card is hidden at, or for the setup
+    // choice the position in the player's battlefield list (-1 = neither).
+    if (intent.battlefield_pool_index.valid() &&
+        intent.battlefield_pool_index.raw() <= 15) {
+        features.push_back(static_cast<float>(intent.battlefield_pool_index.raw()));
+    } else {
+        features.push_back(safeBfId(intent.chosen_battlefield));
+    }
 
     while (static_cast<int>(features.size()) < kActionFeatureDim)
         features.push_back(0.0f);

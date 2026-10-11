@@ -478,10 +478,9 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
     // picks uniformly which satisfies CR 480.5; HumanAgent / MCTS get
     // to actually choose, which CR 481.5 requires for match play.
     //
-    // The Intent::chosen_battlefield field carries the INDEX into the
-    // deck's battlefield list (0..N-1) here, NOT a runtime BattlefieldId
-    // — no live BFs exist on the board yet at this point. Action-vocab
-    // encoding via bfSlot handles 0..2 (well within its 0..7 range).
+    // The choice is Intent::battlefield_pool_index: the position of the
+    // card in the deck's battlefield list (0..N-1). It is not a
+    // BattlefieldId — no battlefield exists on the board yet.
     auto pickFromDeck = [&](PlayerId player,
                              const std::vector<CardDefId>& bfs) -> CardDefId {
         if (bfs.empty()) return kInvalidId;
@@ -501,11 +500,8 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         std::vector<Intent> choices;
         choices.reserve(bfs.size());
         for (size_t i = 0; i < bfs.size(); ++i) {
-            Intent c;
-            c.type = IntentType::ChooseBattlefield;
-            c.player = player;
-            c.chosen_battlefield = BattlefieldId::fromRaw(i);  // deck index
-            choices.push_back(c);
+            choices.push_back(Intent::chooseBattlefield(
+                player, BattlefieldPoolIndex::fromRaw(i)));
         }
 
         // Briefly mark this player as the decision-maker so HumanAgent's
@@ -521,8 +517,10 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         auto chosen = askAgent(player, choices);
         state_.turn.turn_player = saved_turn;
 
-        size_t idx = static_cast<size_t>(chosen.chosen_battlefield.raw());
-        if (idx >= bfs.size()) idx = 0;  // defensive — fall back to first
+        // askAgent accepts only an offered option, so the index is in range
+        // unless the player conceded (no index): the first card then.
+        size_t idx = static_cast<size_t>(chosen.battlefield_pool_index.raw());
+        if (idx >= bfs.size()) idx = 0;
         RIFT_TRACE(events_, "  CHOSE BF #" + std::to_string(idx) + " (" +
                           card_db_.get(bfs[idx]).name + ")");
         return bfs[idx];

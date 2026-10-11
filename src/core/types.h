@@ -60,6 +60,11 @@ public:
 
     /// The id a plain integer names. The integer is taken as stored: -1 in a
     /// signed slot is kInvalidId.
+    /// Nothing checks that the integer was written as THIS kind, or that the
+    /// slot's "none" is the one the reader tests: read a slot back the way it
+    /// was written (plain, or `- 1` for an `id + 1` slot whose 0 is "none").
+    /// The readers of object ids are listed, each paired with its writer, in
+    /// StrongIds.EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList.
     template <std::integral I>
     static constexpr StrongId fromRaw(I raw) noexcept {
         StrongId s;

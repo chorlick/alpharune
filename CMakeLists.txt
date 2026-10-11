@@ -94,6 +94,23 @@ if(RIFTBOUND_CHECK_BOARD_INDEX)
     add_compile_definitions(RIFTBOUND_CHECK_BOARD_INDEX)
 endif()
 
+# Optimisation level for every target (engine, cards, tests, third-party),
+# whatever the build type says. Empty keeps the build type's own level (-O3 for
+# Release). "0" is for development: a full rebuild is mostly the optimiser's
+# time, and the test suite does not need optimised code to be right. Timings,
+# search agents and anything that ships are built with the default.
+set(RIFTBOUND_OPT_LEVEL "" CACHE STRING
+    "Optimisation level for all targets: 0, 1, 2, 3, g or s; empty = the build type's default")
+set_property(CACHE RIFTBOUND_OPT_LEVEL PROPERTY STRINGS "" 0 1 2 3 g s)
+if(NOT RIFTBOUND_OPT_LEVEL STREQUAL "")
+    if(NOT RIFTBOUND_OPT_LEVEL MATCHES "^[0123gs]$")
+        message(FATAL_ERROR "RIFTBOUND_OPT_LEVEL must be 0, 1, 2, 3, g or s (got '${RIFTBOUND_OPT_LEVEL}')")
+    endif()
+    # Appended after the build type's flags; the last -O on a command line wins.
+    add_compile_options(-O${RIFTBOUND_OPT_LEVEL})
+    message(STATUS "riftbound: every target is compiled with -O${RIFTBOUND_OPT_LEVEL}")
+endif()
+
 option(RIFTBOUND_WARNINGS "Compile engine targets with -Wall -Wextra" ON)
 function(riftbound_enable_warnings)
     if(RIFTBOUND_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -594,6 +611,20 @@ target_link_libraries(riftbound_tests PRIVATE
 # The tests parse the same engine headers plus GoogleTest and the shared card
 # fixture; they get their own PCH (different include paths and definitions
 # from riftbound_core, so the library's cannot be reused).
+# The test sources alone, engine and cards left at the build type's level:
+# measured 2026-10-11, test code is half of a full rebuild at -O3 and its
+# optimisation buys nothing (the suite's time is spent in the engine).
+set(RIFTBOUND_TEST_OPT_LEVEL "" CACHE STRING
+    "Optimisation level for the riftbound_tests sources only: 0, 1, 2, 3, g or s; empty = as the rest")
+set_property(CACHE RIFTBOUND_TEST_OPT_LEVEL PROPERTY STRINGS "" 0 1 2 3 g s)
+if(NOT RIFTBOUND_TEST_OPT_LEVEL STREQUAL "")
+    if(NOT RIFTBOUND_TEST_OPT_LEVEL MATCHES "^[0123gs]$")
+        message(FATAL_ERROR "RIFTBOUND_TEST_OPT_LEVEL must be 0, 1, 2, 3, g or s (got '${RIFTBOUND_TEST_OPT_LEVEL}')")
+    endif()
+    target_compile_options(riftbound_tests PRIVATE -O${RIFTBOUND_TEST_OPT_LEVEL})
+    message(STATUS "riftbound: riftbound_tests sources are compiled with -O${RIFTBOUND_TEST_OPT_LEVEL}")
+endif()
+
 if(RIFTBOUND_USE_PCH)
     target_precompile_headers(riftbound_tests PRIVATE
         <gtest/gtest.h>

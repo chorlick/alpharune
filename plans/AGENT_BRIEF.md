@@ -103,6 +103,7 @@ cd "$REPO/.worktrees/<stream>"
 # namespace keeps your cache private to your stream: a cache shared between
 # worktrees restored precompiled headers built against another stream's headers.
 flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DRIFTBOUND_TEST_OPT_LEVEL=0 \
   -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_NAMESPACE=<stream>;CCACHE_SLOPPINESS=pch_defines,time_macros;$REPO/.worktrees/<stream>/scripts/ccache_pch_safe.sh" \
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
@@ -110,6 +111,13 @@ flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=
 flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j3
 flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_tests --gtest_brief=1
 ```
+
+`-DRIFTBOUND_TEST_OPT_LEVEL=0` compiles the test sources without optimisation
+and leaves the engine and cards at `-O3` (user decision, 2026-10-11: test code
+is half of a full rebuild and its optimisation buys nothing). The engine binary
+is the optimised one, so timings taken with it are valid. Do not configure with
+`-DRIFTBOUND_OPT_LEVEL=0` (everything unoptimised): the suite then runs three
+times slower and timings mean nothing.
 
 - If the `FETCHCONTENT_SOURCE_DIR_*` overrides fail to configure, drop them
   and configure plainly (it will clone the dependencies, about a minute).

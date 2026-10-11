@@ -1,25 +1,73 @@
 #include "ml/cfr_util.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 
 namespace riftbound::ml {
 
+namespace {
+
+constexpr uint64_t kFnvPrime = 1099511628211ULL;
+
+// kZeroFloats[n] = kFnvPrime^(4n) mod 2^64: what FNV-1a does to the hash over
+// n all-zero floats (a zero byte xors nothing in, so each is one multiply).
+constexpr int kZeroRunTable = 256;
+constexpr std::array<uint64_t, kZeroRunTable> makeZeroFloatPowers() {
+    std::array<uint64_t, kZeroRunTable> t{};
+    uint64_t p = 1;
+    for (int n = 0; n < kZeroRunTable; ++n) {
+        t[n] = p;
+        p *= kFnvPrime * kFnvPrime * kFnvPrime * kFnvPrime;
+    }
+    return t;
+}
+constexpr auto kZeroFloats = makeZeroFloatPowers();
+
+} // namespace
+
 uint64_t computeInfoSetId(const std::vector<float>& features, int player) {
-    // FNV-1a 64-bit. Seed: standard offset basis, mixed with (player+1)
-    // so perspective P1 vs P2 produces distinct ids for identical feats.
+    // FNV-1a 64-bit over the bytes of every float, low byte first. Seed:
+    // standard offset basis, mixed with (player+1) so perspective P1 vs P2
+    // produces distinct ids for identical feats.
+    //
+    // The value is exactly the byte-at-a-time hash. The observation vector
+    // is ~95% zeros (five card-vocabulary multi-hots), and a run of zero
+    // floats is a single multiply by a power of the prime, so runs are
+    // skipped instead of walked: 27.5 us -> 2.2 us per call
+    // (plans/06-performance.md item 6.9).
     uint64_t h = 14695981039346656037ULL;
     h ^= static_cast<uint64_t>(player + 1);
-    h *= 1099511628211ULL;
-    for (float v : features) {
-        // Bit-cast float→uint32 so identical floats hash identically.
-        // memcpy is the standards-compliant type-pun.
+    h *= kFnvPrime;
+    const float* data = features.data();
+    const size_t n = features.size();
+    size_t i = 0;
+    while (i < n) {
+        // Bit-cast float→uint32 so identical floats hash identically
+        // (-0.0f is not a zero here). memcpy is the standards-compliant
+        // type-pun.
         uint32_t bits;
-        std::memcpy(&bits, &v, sizeof(bits));
+        std::memcpy(&bits, data + i, sizeof(bits));
+        if (bits == 0) {
+            size_t run = 1;
+            while (i + run < n) {
+                std::memcpy(&bits, data + i + run, sizeof(bits));
+                if (bits != 0) break;
+                ++run;
+            }
+            i += run;
+            while (run >= kZeroRunTable) {
+                h *= kZeroFloats[kZeroRunTable - 1];
+                run -= kZeroRunTable - 1;
+            }
+            h *= kZeroFloats[run];
+            continue;
+        }
         for (int b = 0; b < 4; ++b) {
             h ^= static_cast<uint64_t>((bits >> (b * 8)) & 0xFF);
-            h *= 1099511628211ULL;
+            h *= kFnvPrime;
         }
+        ++i;
     }
     return h;
 }

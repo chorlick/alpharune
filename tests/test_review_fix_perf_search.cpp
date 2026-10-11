@@ -1,7 +1,8 @@
 /// Regression tests for the performance-review fixes in the search path
-/// (plans/06-performance.md items 6.4 and 6.7): the step API hands out its
-/// pending decision by reference, and an engine abandoned mid-game is torn
-/// down instead of being played to the end.
+/// (plans/06-performance.md items 6.4, 6.7 and 6.9): the step API hands out
+/// its pending decision by reference, an engine abandoned mid-game is torn
+/// down instead of being played to the end, and the observation features and
+/// their hash are computed without the repeated scans — to the same values.
 ///
 /// The OpenSpiel-side tests for 6.8 / 6.9 are in
 /// src/openspiel/openspiel_tests.cpp (they need the Game).
@@ -13,9 +14,13 @@
 #include "core/events.h"
 #include "engine/game_engine.h"
 #include "engine/step_driver.h"
+#include "ml/cfr_util.h"
+#include "ml/feature_extractor.h"
 #include "rules/deck_validator.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <random>
 #include <stdexcept>
@@ -250,6 +255,170 @@ TEST_F(PerfSearchTest, CurrentStepIsAViewOfThePendingDecision) {
     ASSERT_TRUE(g->engine->isStepDone());
     EXPECT_EQ(g->engine->currentStep().kind, StepKind::Done);
     EXPECT_TRUE(g->engine->currentStep().legal.empty());
+}
+
+// ─── 6.9: observation features and their hash ───────────────────────────────
+
+/// FNV-1a over every byte of every float, one byte at a time: the definition
+/// `ml::computeInfoSetId` must keep producing (trainer-side tables are keyed
+/// on it).
+uint64_t byteWiseInfoSetId(const std::vector<float>& features, int player) {
+    uint64_t h = 14695981039346656037ULL;
+    h ^= static_cast<uint64_t>(player + 1);
+    h *= 1099511628211ULL;
+    for (float v : features) {
+        uint32_t bits;
+        std::memcpy(&bits, &v, sizeof(bits));
+        for (int b = 0; b < 4; ++b) {
+            h ^= static_cast<uint64_t>((bits >> (b * 8)) & 0xFF);
+            h *= 1099511628211ULL;
+        }
+    }
+    return h;
+}
+
+// 6.9 — the hash skips runs of zero floats; the value is unchanged for every
+// run length (including runs longer than its power table, at either end, and
+// the whole vector) and -0.0f is not treated as a zero.
+TEST(PerfSearchHash, SkippingZeroRunsDoesNotChangeTheInfoSetId) {
+    for (int player = 0; player < 2; ++player) {
+        EXPECT_EQ(ml::computeInfoSetId({}, player), byteWiseInfoSetId({}, player));
+        for (size_t run : {1u, 2u, 3u, 254u, 255u, 256u, 257u, 510u, 511u,
+                           1100u, 6188u}) {
+            std::vector<float> zeros(run, 0.0f);
+            EXPECT_EQ(ml::computeInfoSetId(zeros, player),
+                      byteWiseInfoSetId(zeros, player)) << "all zeros, " << run;
+            std::vector<float> framed(run + 2, 0.0f);
+            framed.front() = 3.0f;
+            framed.back() = -1.0f;
+            EXPECT_EQ(ml::computeInfoSetId(framed, player),
+                      byteWiseInfoSetId(framed, player)) << "framed run " << run;
+            framed.back() = 0.0f;
+            EXPECT_EQ(ml::computeInfoSetId(framed, player),
+                      byteWiseInfoSetId(framed, player)) << "trailing run " << run;
+            framed[run / 2 + 1] = -0.0f;
+            EXPECT_EQ(ml::computeInfoSetId(framed, player),
+                      byteWiseInfoSetId(framed, player)) << "-0.0f in run " << run;
+        }
+    }
+    // Sparse and dense random vectors of the real size.
+    std::mt19937_64 rng(69);
+    for (int trial = 0; trial < 200; ++trial) {
+        std::vector<float> v(ml::kStateFeatureDim, 0.0f);
+        const uint64_t density = 1 + rng() % 400;   // 1 in `density` non-zero
+        for (auto& f : v) {
+            if (rng() % density == 0) {
+                f = static_cast<float>(static_cast<int>(rng() % 1200)) - 1.0f;
+            }
+        }
+        ASSERT_EQ(ml::computeInfoSetId(v, trial & 1),
+                  byteWiseInfoSetId(v, trial & 1)) << "trial " << trial;
+    }
+    // A run's length is part of the hash.
+    EXPECT_NE(ml::computeInfoSetId(std::vector<float>(300, 0.0f), 0),
+              ml::computeInfoSetId(std::vector<float>(301, 0.0f), 0));
+}
+
+// 6.9 — the features are gathered in one pass over the objects. The numbers
+// that used to come from per-battlefield / per-player queries of the state
+// still equal those queries, at every decision of real games, from both seats.
+TEST_F(PerfSearchTest, FeaturesStillMatchTheStateQueriesTheyReplaced) {
+    // Layout (feature_extractor.cpp): 10 globals, 8 chain, then 70 per
+    // player (self, opponent), then 49 per battlefield slot.
+    constexpr int kSelf = 18, kOpp = 88, kBf = 158, kPerBf = 49;
+    constexpr int kRunesReady = 39, kRunesExhausted = 40;
+    constexpr int kBaseUnits = 53, kBaseMight = 54, kBaseExhausted = 56;
+    constexpr int kBaseGear = 60;
+    constexpr int kSideP1 = 9, kSideP2 = 29;        // count, then total might
+    constexpr int kSideTopMight = 14;               // highest might on the side
+    constexpr int kReadyBase = ml::kStateFeatureDim - 24;   // self, opp
+
+    long units_seen = 0, checked = 0;
+    for (uint64_t seed : {3u, 11u, 29u}) {
+        auto g = begin(seed);
+        std::mt19937_64 rng(seed);
+        while (!g->engine->isStepDone()) {
+            const GameState& st = g->engine->state();
+            for (PlayerId me : {PlayerId::Player1, PlayerId::Player2}) {
+                const auto f = ml::extractStateFeatures(st, me, *db_);
+                ASSERT_EQ(f.size(), static_cast<size_t>(ml::kStateFeatureDim));
+                const std::string where = "seed " + std::to_string(seed) +
+                    " decision " + std::to_string(st.action_history.size());
+                int side = 0;
+                for (PlayerId p : {me, opponent(me)}) {
+                    const int base = side++ == 0 ? kSelf : kOpp;
+                    int ready = 0, exhausted = 0;
+                    for (auto rid : st.runesInBase(p)) {
+                        (st.getObject(rid).is_exhausted ? exhausted : ready)++;
+                    }
+                    int units = 0, might = 0, units_exhausted = 0, gear = 0;
+                    for (const auto& [id, obj] : st.objects) {
+                        if (obj.controller != p || !obj.isAtBase()) continue;
+                        if (obj.isGear()) ++gear;
+                        if (!obj.isUnit()) continue;
+                        ++units;
+                        might += obj.current_might;
+                        if (obj.is_exhausted) ++units_exhausted;
+                    }
+                    ASSERT_EQ(f[base + kRunesReady], ready) << where;
+                    ASSERT_EQ(f[base + kRunesExhausted], exhausted) << where;
+                    ASSERT_EQ(f[base + kBaseUnits], units) << where;
+                    ASSERT_EQ(f[base + kBaseMight], might) << where;
+                    ASSERT_EQ(f[base + kBaseExhausted], units_exhausted) << where;
+                    ASSERT_EQ(f[base + kBaseGear], gear) << where;
+                    ASSERT_EQ(f[kReadyBase + (base == kSelf ? 0 : 1)],
+                              units - units_exhausted) << where;
+                }
+                for (int i = 0; i < 4; ++i) {
+                    const int bf = kBf + i * kPerBf;
+                    if (i >= static_cast<int>(st.battlefields.size())) {
+                        ASSERT_EQ(f[bf + kSideP1], 0) << where;
+                        continue;
+                    }
+                    const LocationId loc = BattlefieldLocation{st.battlefields[i].id};
+                    int col = kSideP1;
+                    for (PlayerId p : {PlayerId::Player1, PlayerId::Player2}) {
+                        int might = 0, top = 0;
+                        const auto here = st.unitsAt(loc, p);
+                        for (auto uid : here) {
+                            const int m = st.getObject(uid).current_might;
+                            might += m;
+                            top = std::max(top, m);
+                        }
+                        ASSERT_EQ(f[bf + col], static_cast<int>(here.size())) << where;
+                        ASSERT_EQ(f[bf + col + 1], might) << where;
+                        if (!here.empty()) {
+                            ASSERT_EQ(f[bf + col + kSideTopMight], top) << where;
+                        }
+                        units_seen += static_cast<long>(here.size());
+                        col = kSideP2;
+                    }
+                }
+                ++checked;
+            }
+            advance(*g, rng, 1);
+        }
+    }
+    EXPECT_GT(checked, 300);
+    EXPECT_GT(units_seen, 100) << "the games never put units on a battlefield";
+}
+
+// 6.9 — the buffer-reusing overload yields the same vector whatever the
+// buffer held before, and reuses its storage.
+TEST_F(PerfSearchTest, ExtractingIntoAReusedBufferMatchesAFreshExtraction) {
+    auto g = begin(5);
+    std::mt19937_64 rng(5);
+    std::vector<float> buffer(3 * ml::kStateFeatureDim, 42.0f);   // stale, too long
+    const float* storage = buffer.data();
+    for (int step = 0; step < 120 && !g->engine->isStepDone(); ++step) {
+        for (PlayerId me : {PlayerId::Player1, PlayerId::Player2}) {
+            ml::extractStateFeatures(g->engine->state(), me, *db_, buffer);
+            ASSERT_EQ(buffer, ml::extractStateFeatures(g->engine->state(), me, *db_))
+                << "decision " << step;
+            ASSERT_EQ(buffer.data(), storage) << "the buffer was reallocated";
+        }
+        advance(*g, rng, 1);
+    }
 }
 
 } // namespace test_review_fix_perf_search

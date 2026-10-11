@@ -7804,9 +7804,9 @@ void GameEngine::emptyRunePools() {
 
 void GameEngine::recordAppliedIntent(const Intent& chosen) {
     // One token per decision, always: a replay consumes exactly one token at
-    // each decision, so skipping one (an Intent with no vocab slot) would
-    // shift every later decision. The token identifies the Intent exactly,
-    // not just its lossy vocab slot — see action_vocab.h.
+    // each decision, so skipping one would shift every later decision. The
+    // token identifies the Intent exactly (its slot plus a fingerprint of
+    // every field) — see action_vocab.h.
     state_.action_history.push_back(
         ::riftbound::openspiel::historyToken(chosen, state_));
 }

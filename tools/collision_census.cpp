@@ -2,9 +2,12 @@
 /// Action-slot collision census (v6 task P2.1).
 ///
 /// Plays random games and, at every decision, compares the engine's legal
-/// intents with the dense vocabulary slots they encode to. Two distinct
-/// intents sharing a slot is a collision: only the first is reachable through
-/// the OpenSpiel wrapper. Also reports how many decisions offer one option.
+/// intents with the action ids they get (openspiel::actionIds). Two distinct
+/// intents sharing an id is a collision; an intent with no id (more than
+/// kTwinPlanes legal intents with one description) is counted as unreachable.
+/// Since the 2026-10 checkpoint break both counts are zero by construction and
+/// tests/test_action_ids.cpp guards them; the tool remains for other decks.
+/// Also reports how many decisions offer one option.
 ///
 ///   collision_census --deck1 A.txt --deck2 B.txt [--games 100] [--seed 1] [--json out.json]
 
@@ -125,12 +128,16 @@ int main(int argc, char* argv[]) {
                 if (!seen) distinct.push_back(&intent);
             }
 
+            std::vector<Intent> distinct_list;
+            for (const Intent* intent : distinct) distinct_list.push_back(*intent);
+            const std::vector<int> ids = openspiel::actionIds(distinct_list, state);
             std::unordered_map<int, int> slot_uses;
             int lost = 0;
-            for (const Intent* intent : distinct) {
+            for (size_t k = 0; k < distinct.size(); ++k) {
+                const Intent* intent = distinct[k];
                 auto& counts = c.by_type[intentName(intent->type)];
                 ++counts[0];
-                const int slot = openspiel::encodeAction(*intent, state);
+                const int slot = ids[k];
                 if (slot < 0) {
                     ++c.unencodable;
                     ++counts[1];

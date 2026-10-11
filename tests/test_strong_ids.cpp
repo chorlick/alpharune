@@ -303,37 +303,38 @@ TEST(StrongIds, TheHistoryTokenOfAnOwnAbilityKeptItsNumber) {
 }
 
 TEST(StrongIds, HistoryTokensAndSlotsArePinned) {
-    // The numbers of five intents on a default GameState. Until the 2026-10
-    // checkpoint break (stage 5) these were the numbers of a build of fcfa93b,
-    // from before ids were types; the tokens changed when Intent gained
-    // `battlefield_pool_index` (plans/09 item 9.RR2), which every token
-    // fingerprints. A trainer replay or a saved game holds these numbers: a
+    // The numbers of five intents on a default GameState, each alone in its
+    // legal list. Until the 2026-10 checkpoint break (stage 5) these were the
+    // numbers of a build of fcfa93b, from before ids were types. They changed
+    // twice in that stage: Intent gained `battlefield_pool_index` (plans/09
+    // item 9.RR2), which every token fingerprints, and the action vocabulary
+    // was replaced (plans/01 item 1.12: new slot ranges). A trainer replay or a saved game holds these numbers: a
     // change here is a break that docs/checkpoint-breaking-2026-10.md lists.
     GameState state;
     Intent own;
     own.type = IntentType::ActivateAbility;
     own.player = PlayerId::Player1;
     own.ability_source = GameObjectId::fromRaw(9);
-    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697567026LL);
-    EXPECT_EQ(openspiel::encodeAction(own, state), 2354);
+    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697617589LL);
+    EXPECT_EQ(openspiel::actionSlot(own, state), 52917);
 
     Intent granted = own;
     granted.granted_ability_def = 506;
-    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613558578LL);
+    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613615152LL);
 
     Intent named;  // "name a card": a MakeChoice that carries a card id
     named.type = IntentType::MakeChoice;
     named.player = PlayerId::Player2;
     named.chosen_card_def = 235;
-    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666257229LL);
-    EXPECT_EQ(openspiel::encodeAction(named, state), 6989);
+    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666312200LL);
+    EXPECT_EQ(openspiel::actionSlot(named, state), 61960);
 
     Intent bf;
     bf.type = IntentType::ChooseBattlefield;
     bf.player = PlayerId::Player1;
     bf.battlefield_pool_index = BattlefieldPoolIndex::fromRaw(1);
-    EXPECT_EQ(openspiel::historyToken(bf, state), 9050218172478652427LL);
-    EXPECT_EQ(openspiel::encodeAction(bf, state), 11);
+    EXPECT_EQ(openspiel::historyToken(bf, state), 9050218172478652462LL);
+    EXPECT_EQ(openspiel::actionSlot(bf, state), 46);
 
     EXPECT_EQ(openspiel::historyToken(Intent::endTurn(PlayerId::Player1), state),
               2124341512652193793LL);

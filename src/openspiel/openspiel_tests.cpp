@@ -152,7 +152,9 @@ TEST(RiftboundGameTest, EveryGameSharesOneCardTable) {
 
 TEST(RiftboundGameTest, AdvertisedShapesMatchTheEngine) {
     auto game = loadGame(7);
-    EXPECT_EQ(game->NumDistinctActions(), ::riftbound::openspiel::kVocabSize);
+    EXPECT_EQ(game->NumDistinctActions(), ::riftbound::openspiel::kNumActions);
+    EXPECT_EQ(game->NumDistinctActions(),
+              ::riftbound::openspiel::kNumSlots * ::riftbound::openspiel::kTwinPlanes);
     EXPECT_EQ(game->ObservationTensorShape(),
               std::vector<int>{::riftbound::ml::kStateFeatureDim});
     EXPECT_EQ(game->MaxGameLength(), ::riftbound::openspiel::kMaxGameLength);
@@ -164,7 +166,8 @@ TEST(RiftboundGameTest, AdvertisedShapesMatchTheEngine) {
 // ─── CurrentPlayer / LegalActions ───────────────────────────────────────────
 
 // 1.1 — CurrentPlayer() is whoever the engine is asking. 1.11 — LegalActions()
-// is ascending and duplicate-free, and every id is a slot of a legal Intent.
+// is ascending and duplicate-free. 1.12 — it holds one id per distinct legal
+// Intent: nothing the engine offers is dropped.
 TEST(RiftboundStateTest, CurrentPlayerIsTheDeciderAndLegalActionsAreSorted) {
     int off_turn = 0, decisions = 0, stale_closed = 0;
     for (int seed = 1; seed <= 4; ++seed) {
@@ -204,11 +207,20 @@ TEST(RiftboundStateTest, CurrentPlayerIsTheDeciderAndLegalActionsAreSorted) {
             ASSERT_TRUE(std::is_sorted(legal.begin(), legal.end()));
             ASSERT_TRUE(std::adjacent_find(legal.begin(), legal.end()) == legal.end());
             std::set<::open_spiel::Action> slots;
-            for (const auto& intent : intents) {
-                slots.insert(::riftbound::openspiel::encodeAction(intent, gs));
+            for (int id : ::riftbound::openspiel::actionIds(intents, gs)) {
+                ASSERT_GE(id, 0);
+                ASSERT_LT(id, game->NumDistinctActions());
+                slots.insert(id);
             }
             ASSERT_EQ(std::vector<::open_spiel::Action>(slots.begin(), slots.end()),
                       legal);
+            std::vector<Intent> distinct;
+            for (const auto& intent : intents)
+                if (std::find(distinct.begin(), distinct.end(), intent) == distinct.end())
+                    distinct.push_back(intent);
+            ASSERT_EQ(legal.size(), distinct.size())
+                << "seed " << seed << " move " << state->MoveNumber()
+                << ": a legal Intent has no action of its own";
             state->ApplyAction(pickAction(rng, legal));
         }
     }
@@ -264,7 +276,7 @@ TEST(ActionVocabTest, TheAnswersOfOneMakeChoiceDecisionGetDistinctActionIds) {
                 value_prompts.push_back(legal);
                 slots.emplace_back();
                 for (const auto& i : legal)
-                    slots.back().push_back(::riftbound::openspiel::encodeAction(i, state));
+                    slots.back().push_back(::riftbound::openspiel::actionSlot(i, state));
             }
             for (const auto& i : legal)
                 if (i.type == IntentType::PassPriority) return i;
@@ -289,9 +301,74 @@ TEST(ActionVocabTest, TheAnswersOfOneMakeChoiceDecisionGetDistinctActionIds) {
     for (int v = 0; v < ::riftbound::openspiel::kNumIntChoices; ++v) {
         Intent i = prompt[0];
         i.chosen_value = v;
-        ids.insert(::riftbound::openspiel::encodeAction(i, engine.state()));
+        ids.insert(::riftbound::openspiel::actionSlot(i, engine.state()));
     }
     EXPECT_EQ(static_cast<int>(ids.size()), ::riftbound::openspiel::kNumIntChoices);
+}
+
+// plans/01 item 1.12 — every legal Intent can be chosen through OpenSpiel,
+// and choosing an action applies exactly the Intent that action stands for.
+// At every decision of whole games, every legal action is applied to a clone;
+// the clone's engine must record the token of that action's Intent (a token
+// is unique within a legal list: it fingerprints every field). Before
+// the 2026-10 vocabulary only the first Intent of a slot could be applied.
+TEST(RiftboundStateTest, EveryLegalIntentIsSelectableAndAppliesItself) {
+    namespace os = ::riftbound::openspiel;
+    long decisions = 0, applied = 0, twins_applied = 0, most_options = 0;
+    for (int seed = 1; seed <= 3; ++seed) {
+        for (bool mirror : {false, true}) {
+            auto game = mirror
+                ? ::open_spiel::LoadGame("riftbound(deck1=" + deckFile("fiora.txt") +
+                                         ",deck2=" + deckFile("fiora.txt") +
+                                         ",seed=" + std::to_string(seed) + ")")
+                : loadGame(seed);
+            auto state = game->NewInitialState();
+            std::mt19937_64 rng(seed * 53 + (mirror ? 7 : 0));
+            while (!state->IsTerminal()) {
+                const std::vector<Intent> intents = rb(*state).legalIntents();
+                const GameState& gs = rb(*state).engineState();
+                const std::vector<int> ids = os::actionIds(intents, gs);
+                const auto legal = state->LegalActions();
+                most_options = std::max<long>(most_options, static_cast<long>(legal.size()));
+                // Every Intent's id is on offer, and leads back to it.
+                for (size_t i = 0; i < intents.size(); ++i) {
+                    ASSERT_TRUE(std::binary_search(legal.begin(), legal.end(),
+                                                   static_cast<::open_spiel::Action>(ids[i])))
+                        << intents[i].describe();
+                    const Intent* back = os::decodeAction(ids[i], intents, gs);
+                    ASSERT_NE(back, nullptr);
+                    ASSERT_TRUE(*back == intents[i]);
+                }
+                // Apply every one of them (a sample of the decisions with
+                // many options, to bound the run).
+                if (legal.size() <= 12 || decisions % 5 == 0) {
+                    for (size_t i = 0; i < intents.size(); ++i) {
+                        auto clone = state->Clone();
+                        clone->ApplyAction(ids[i]);
+                        const auto& history = rb(*clone).engineState().action_history;
+                        ASSERT_EQ(history.size(), gs.action_history.size() + 1);
+                        ASSERT_EQ(history.back(), os::historyToken(intents[i], gs))
+                            << "seed " << seed << " move " << state->MoveNumber()
+                            << ": action " << ids[i] << " applied something other than "
+                            << intents[i].describe();
+                        ASSERT_EQ(rb(*clone).actionHistory().back(), os::actionIdSlot(ids[i]));
+                        ASSERT_EQ(clone->History().back(), ids[i]);
+                        ++applied;
+                        if (os::actionIdTwin(ids[i]) > 0) ++twins_applied;
+                    }
+                }
+                ++decisions;
+                state->ApplyAction(pickAction(rng, legal));
+            }
+        }
+    }
+    std::cout << "[ info     ] " << decisions << " decisions, " << applied
+              << " actions applied to a clone (" << twins_applied
+              << " of them twins: not the first Intent of their slot); most options at one "
+              << "decision: " << most_options << "\n";
+    EXPECT_GT(decisions, 1000);
+    EXPECT_GT(applied, 3000);
+    EXPECT_GT(twins_applied, 300);
 }
 
 TEST(RiftboundStateTest, ApplyingAnActionThatIsNotLegalThrows) {
@@ -301,12 +378,21 @@ TEST(RiftboundStateTest, ApplyingAnActionThatIsNotLegalThrows) {
     ::open_spiel::Action bogus = 0;   // slot 0 is reserved, never legal
     ASSERT_TRUE(std::find(legal.begin(), legal.end(), bogus) == legal.end());
     EXPECT_THROW(state->ApplyAction(bogus), std::invalid_argument);
+    // Nor is an id past the range, or a twin of a legal action that no
+    // second Intent stands behind.
+    EXPECT_THROW(state->ApplyAction(game->NumDistinctActions()), std::invalid_argument);
+    EXPECT_THROW(state->ApplyAction(::riftbound::openspiel::makeActionId(
+                     ::riftbound::openspiel::actionIdSlot(static_cast<int>(legal.front())),
+                     ::riftbound::openspiel::kTwinPlanes - 1)),
+                 std::invalid_argument);
     // Nothing was applied.
     EXPECT_EQ(state->LegalActions(), legal);
     EXPECT_EQ(state->MoveNumber(), 0);
 }
 
-// 1.5 — one history entry per applied action.
+// 1.5 — one history entry per applied action: the slot of the Intent that was
+// applied. (Until the 2026-10 vocabulary an action id was a slot; it now also
+// holds a twin number, which OpenSpiel's own History() keeps.)
 TEST(RiftboundStateTest, ActionHistoryIsOneSlotPerAppliedAction) {
     auto game = loadGame(5);
     auto state = game->NewInitialState();
@@ -317,7 +403,11 @@ TEST(RiftboundStateTest, ActionHistoryIsOneSlotPerAppliedAction) {
         state->ApplyAction(a);
         applied.push_back(a);
     }
-    EXPECT_EQ(rb(*state).actionHistory(), applied);
+    std::vector<int64_t> applied_slots;
+    for (int64_t a : applied)
+        applied_slots.push_back(::riftbound::openspiel::actionIdSlot(static_cast<int>(a)));
+    EXPECT_EQ(rb(*state).actionHistory(), applied_slots);
+    EXPECT_EQ(state->History(), std::vector<::open_spiel::Action>(applied.begin(), applied.end()));
     EXPECT_EQ(rb(*state).engineState().action_history.size(), applied.size());
     EXPECT_EQ(state->MoveNumber(), static_cast<int>(applied.size()));
 }
@@ -605,6 +695,15 @@ TEST(RiftboundStateTest, InfoSetKeyIsAFunctionOfWhatThePlayerKnows) {
                         offered_cards.insert(i.targets.begin(), i.targets.end());
                     }
                 }
+                // The source and the targets of an item on the chain are
+                // public, wherever the card has gone since: a unit returned
+                // to its owner's hand with its ability still on the chain is
+                // a card both players have seen (the tracker does not record
+                // a return to hand either).
+                for (const auto& item : gs.chain.items) {
+                    offered_cards.insert(item.source);
+                    offered_cards.insert(item.targets.begin(), item.targets.end());
+                }
                 auto consider = [&](GameObjectId id) {
                     if (knows.about(id).identity_known || offered_cards.count(id))
                         ++shown_cards_kept;
@@ -653,6 +752,14 @@ TEST(RiftboundStateTest, InfoSetKeyIsAFunctionOfWhatThePlayerKnows) {
                     if (gs.chain.resuming && gs.objectExists(gs.chain.resuming->source))
                         offered += "\n  resolving: " +
                                    gs.getObject(gs.chain.resuming->source).name.get();
+                    for (const auto& item : gs.chain.items) {
+                        if (!gs.objectExists(item.source)) continue;
+                        const auto& src = gs.getObject(item.source);
+                        offered += "\n  on the chain: " + src.name.get() + ", zone " +
+                                   std::to_string(static_cast<int>(src.zone.get())) +
+                                   ", owner " + toString(src.owner) +
+                                   (item.is_ability ? " (ability)" : " (card)");
+                    }
                     ADD_FAILURE() << why << "; offered:" << offered;
                 }
                 ASSERT_EQ(other->InfoSetId(p), rb(*state).InfoSetId(p))

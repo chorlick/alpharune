@@ -2,7 +2,7 @@
 #include "riftbound_state.h"
 
 #include "ml/feature_extractor.h"  // kStateFeatureDim
-#include "action_vocab.h"          // kVocabSize
+#include "action_vocab.h"          // kNumActions
 
 namespace riftbound::openspiel {
 
@@ -77,11 +77,10 @@ std::unique_ptr<::open_spiel::State> RiftboundGame::NewInitialState() const {
 }
 
 int RiftboundGame::NumDistinctActions() const {
-    // Dense vocab: contiguous [0, kVocabSize) slots. AlphaZero-style
-    // policy heads emit a softmax of this size. Each verb bucket lives
-    // in its own slot range; semantic variants (PlayCard / PlayReaction)
-    // intentionally collapse to one slot. See action_vocab.h.
-    return kVocabSize;
+    // A fixed number: kNumSlots descriptions times kTwinPlanes. An id says
+    // what the action is made of (its slot) and which of the legal intents
+    // with that description it is. See action_vocab.h.
+    return kNumActions;
 }
 
 std::vector<int> RiftboundGame::ObservationTensorShape() const {

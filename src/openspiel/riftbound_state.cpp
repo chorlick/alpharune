@@ -29,17 +29,27 @@ namespace {
     return ::open_spiel::kTerminalPlayerId;
 }
 
-/// The engine's legal Intents as OpenSpiel action ids: vocab slots,
-/// deduplicated (several Intents can share a slot) and in ascending order,
-/// which is what OpenSpiel's LegalActions() contract asks for.
+/// The engine's legal Intents as OpenSpiel action ids, in ascending order,
+/// which is what OpenSpiel's LegalActions() contract asks for. One id per
+/// distinct Intent (action_vocab.h): the only ids dropped here are those of
+/// an Intent the engine listed twice.
 std::vector<::open_spiel::Action> encodeLegal(
     const std::vector<::riftbound::Intent>& legal,
     const ::riftbound::GameState& state) {
+    const std::vector<int> ids = actionIds(legal, state);
     std::vector<::open_spiel::Action> out;
-    out.reserve(legal.size());
-    for (const auto& intent : legal) {
-        out.push_back(static_cast<::open_spiel::Action>(
-            encodeAction(intent, state)));
+    out.reserve(ids.size());
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (ids[i] == kNoActionId) {
+            // More than kTwinPlanes different legal intents with one
+            // description. Leaving the rest out would withhold legal options
+            // without a word.
+            throw std::logic_error(
+                "RiftboundState: more than " + std::to_string(kTwinPlanes) +
+                " legal intents share one action slot (" + legal[i].describe() +
+                "); raise openspiel::kTwinPlanes.");
+        }
+        out.push_back(static_cast<::open_spiel::Action>(ids[i]));
     }
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
@@ -431,16 +441,18 @@ void RiftboundState::DoApplyAction(::open_spiel::Action action) {
             "RiftboundState: ApplyAction on a finished game.");
     }
 
-    // Translate the vocab slot into the engine-side legal-list index: the
-    // first legal Intent that encodes to it (slots can alias several
-    // Intents; see action_vocab.h).
+    // Translate the action id into the engine-side legal-list index: the
+    // legal Intent with that id (one id, one Intent; see action_vocab.h).
     const auto& step = engine_->currentStep();
     const auto& state = engine_->state();
     int legal_index = -1;
-    for (size_t i = 0; i < step.legal.size(); ++i) {
-        if (encodeAction(step.legal[i], state) == action) {
-            legal_index = static_cast<int>(i);
-            break;
+    if (action >= 0 && action < kNumActions) {
+        const std::vector<int> ids = actionIds(step.legal, state);
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (ids[i] == static_cast<int>(action)) {
+                legal_index = static_cast<int>(i);
+                break;
+            }
         }
     }
     if (legal_index < 0) {

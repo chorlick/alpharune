@@ -16,7 +16,7 @@ public:
     const CardDef& def() const override { return def_; }
     // "I can have any number of buffs." (CR 427.1.b.2)
     bool canHaveAnyNumberOfBuffs() const override { return true; }
-    void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.buffUnit(ctx.source);
     }
     TriggerType triggerType() const override { return TriggerType::Activated; }

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,16 +21,36 @@ public:
     // don't have a buff, I get a +1 [M] buff.)" Optional: on yes, ensure I have
     // a buff (gain +1 if unbuffed per the parenthetical), then ready me.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto still_legal = [&]() { return ctx.state.objectExists(ctx.source); };
-        int conf = confirmOptional(ctx, "Wildclaw Shaman: buff & ready me?",
-                                   still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;  // waiting for agent
-        if (conf < 1) return;    // declined
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        if (self.buff_count <= 0) ctx.executor.buffUnit(ctx.source);
+        // "Spend a buff" is the cost of the "may": a buff comes off a unit my
+        // controller chooses among their buffed units, as the ability goes on
+        // the chain (CR 383.3). No buffed unit, no offer.
+        auto buffed = [&]() {
+            std::vector<GameObjectId> out;
+            for (const auto& [id, obj] : ctx.state.objects)
+                if (obj.isUnit() && obj.controller == ctx.controller &&
+                    obj.location.has_value() && obj.buff_count > 0)
+                    out.push_back(id);
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        int conf = confirmOptional(ctx, "Wildclaw Shaman: spend a buff to buff & ready me?",
+                                   [&]() { return !buffed().empty(); });
+        if (conf < 1) return;    // waiting / declined / no buff to spend
+        if (!costAlreadyPaid(ctx)) {
+            const GameObjectId from = pickTarget(ctx, "Wildclaw Shaman: spend which unit's buff",
+                                                 buffed());
+            if (from == kInvalidId) return;   // waiting / no buff left to spend
+            if (costDueNow(ctx)) {
+                auto& unit = ctx.state.getObject(from);
+                unit.buff_count -= 1;
+                unit.recomputeMight();
+                ctx.events.logTrace("WILDCLAW SHAMAN: spent " + unit.name + "'s buff");
+            }
+        }
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        // "buff me and ready me": only a Shaman still on the board (the
+        // executor does nothing for one that left).
+        ctx.executor.buffUnit(ctx.source);
         ctx.executor.readyObject(ctx.source);
         ctx.events.logTrace("WILDCLAW SHAMAN: buffed & readied me");
     }

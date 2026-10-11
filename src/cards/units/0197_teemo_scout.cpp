@@ -16,7 +16,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 3);
         ctx.events.logTrace("TEEMO, SCOUT: +3M this turn");
     }

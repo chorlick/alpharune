@@ -5,35 +5,35 @@
 Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - includes, def_id, set/collector codes, artist, rarity, image URL - were filtered out of the view; every line of class code, comments, and gameplay def data was read.)
 
 ## Findings
-- [ ] **84 Eager Apprentice** - `units/0084_eager_apprentice.cpp:30-38` [confirmed] high
+- [x] **84 Eager Apprentice** - `units/0084_eager_apprentice.cpp:30-38` [confirmed] high — ALREADY FIXED: engine-auras-costs (08 item 8.2, merge `a8af2ef`) — the card uses the continuous `spell_discount_energy`, spells only, only while at a battlefield; test: AurasCostsTest.EagerApprentice_SpellsOnly
   - Text: "While I'm at a battlefield, the Energy costs for spells you play is reduced by [1], to a minimum of [1]."
   - Code: `applyPassiveAura` pushes a `CostModifier{energy_reduction=1, min_cost=1, this_turn_only=false}` onto `cost_modifiers` on every aura pass. Nothing ever removes a non-`this_turn_only`, non-`next_*` modifier (the only erases are `game_state.h:295` for `this_turn_only` and `game_engine.cpp:5877` for `next_*`; `recalculateAuras` does not reset the list). The modifier also has no spell filter (documented in the file), and one is pushed per on-board copy even if that copy is in base.
   - Scenario: Apprentice sits at a battlefield for one turn; every cleanup adds another -1. After a handful of cleanups every card the controller plays (units and gear too) costs [1] Energy, and it stays that way for the rest of the game after the Apprentice dies.
-- [ ] **140 Herald of Scales** - `units/0140_herald_of_scales.cpp:29-37` [confirmed] high
+- [x] **140 Herald of Scales** - `units/0140_herald_of_scales.cpp:29-37` [confirmed] high — ALREADY FIXED: engine-auras-costs (08 item 8.2, merge `a8af2ef`) — one `from_aura` modifier per Herald with `required_tag = "Dragon"`; test: AurasCostsTest.HeraldOfScales_DragonsOnly_NoStacking
   - Text: "Your Dragons' Energy costs are reduced by [2], to a minimum of [1]."
   - Code: same never-removed `CostModifier` pushed every aura pass (-2 each time), and with no tag filter (documented in the file) it applies to every card, not only Dragons.
   - Scenario: Herald in play for a turn -> all of the controller's cards cost [1] Energy permanently, including after Herald leaves the board.
-- [ ] **106 Sprite Mother** - `units/0106_sprite_mother.cpp:43` [confirmed] high
+- [x] **106 Sprite Mother** - `units/0106_sprite_mother.cpp:43` [confirmed] high — FIXED: `Keyword::Temporary` removed from the def (the token keeps it); test: C4Test.SpriteMother_SurvivesHerBeginningPhase_TheSpriteDoesNot, C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions
   - Text: "When you play me, play a ready 3 [M] Sprite unit token with [Temporary] here."
   - Code: the def sets `Keyword::Temporary` on Sprite Mother herself; `GameEngine::beginningStep` (`game_engine.cpp:761`) kills every on-board permanent of the turn player whose `obj.keywords` has Temporary.
   - Scenario: play Sprite Mother; at the start of your next Beginning Phase she is killed along with her token.
-- [ ] **218 Vanguard Captain** - `units/0218_vanguard_captain.cpp:18-28` [confirmed] high
+- [x] **218 Vanguard Captain** - `units/0218_vanguard_captain.cpp:18-28` [confirmed] high — FIXED: `onTrigger` gates on `cards_played_this_turn >= 2` (recipe under 08 item 8.7); test: C4Test.VanguardCaptain_NeedsLegion
   - Text: "[Legion] — When you play me, play two 1 [M] Recruit unit tokens here. (Get the effect if you've played another card this turn.)"
   - Code: relies on `requiresLegion()`, which no engine code reads (only declared in `card.h:639`); `onTrigger` has no `cards_played_this_turn` check (unlike 20 Scrapyard Champion and 217 Trifarian Gloryseeker, which check it themselves).
   - Scenario: Vanguard Captain played as the first card of the turn still makes two Recruits.
-- [ ] **148 Anivia, Primal** - `units/0148_anivia_primal.cpp:21-27` [confirmed] high
+- [x] **148 Anivia, Primal** - `units/0148_anivia_primal.cpp:21-27` [confirmed] high — FIXED: only enemy units at Anivia's own battlefield; nothing if she is no longer at one; test: C4Test.AniviaPrimal_DamagesOnlyEnemyUnitsHere
   - Text: "When I attack, deal 3 to all enemy units here."
   - Code: collects every enemy unit with `isAtBattlefield()`; never compares against Anivia's own battlefield.
   - Scenario: Anivia attacks battlefield A; enemy units holding battlefield B also take 3 and die.
-- [ ] **79 Leona, Zealot** - `units/0079_leona_zealot.cpp:17-18` (aura left to `game_engine.cpp:4609-4617`) [confirmed] high
+- [x] **79 Leona, Zealot** - `units/0079_leona_zealot.cpp:17-18` (aura left to `game_engine.cpp:4609-4617`) [confirmed] high — ALREADY FIXED: engine-auras-costs (08 item 8.1, merge `a8af2ef`) — the text parser is gone and Leona has her own `applyPassiveAura` (stunned enemy units at her battlefield only); test: see 02 item 2.1
   - Text: "Stunned enemy units here have -8 [M], to a minimum of 1 [M]."
   - Code: the card defers to the engine's text parser. Her text also contains the substring "units here have", so the unconditional generic pattern at `game_engine.cpp:4610-4611` (`here_only`, no friendly/enemy/stunned filter, not `other_only`) registers a second -8/min-1 aura in addition to the stunned-enemy one.
   - Scenario: Leona at a battlefield -> every unit there, including Leona herself, her allies and unstunned enemies, drops to max(1, Might-8); Leona fights at 1 Might.
-- [ ] **65 Wizened Elder** - `units/0065_wizened_elder.cpp:20-30` [confirmed] high
+- [x] **65 Wizened Elder** - `units/0065_wizened_elder.cpp:20-30` [confirmed] high — ALREADY FIXED: the engine's text-parsed aura is deleted (08 item 8.1), leaving the card's single +1; test: C4Test.TwoWizenedElders_EachGetTheirOwnPlusOneOnce
   - Text: "While I'm buffed, I have an additional +1 [M]."
   - Code: `applyPassiveAura` adds a +1 aura, and the engine's text parser (`game_engine.cpp:4725-4737`, "while i'm buffed" + "additional +1 [m]") adds another +1 for the same text.
   - Scenario: a buffed Wizened Elder is 4 + 1 (buff) + 2 = 7 Might instead of 6.
-- [ ] **11 Magma Wurm** - `units/0011_magma_wurm.cpp:17-21` [documented] high
+- [x] **11 Magma Wurm** - `units/0011_magma_wurm.cpp:17-21` [documented] high — FIXED: `applyPassiveAura` lists each on-board Wurm in new `PlayerState::units_enter_ready_by`; `resolvePermanent`, `createToken` (unit tokens) and `playIgnoringCost` make a unit enter ready when a source other than itself is listed (`shared:` commits `8f4acfb`, `151a8f5`); test: C4Test.MagmaWurm_OtherFriendlyUnitsEnterReady
   - Text: "Other friendly units enter ready."
   - Code: no implementation (the file notes the engine gap; no engine hook exists).
   - Scenario: units played while Magma Wurm is on board still enter exhausted; the card is a vanilla 8-Might unit.
@@ -41,31 +41,32 @@ Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - i
   - Text: "As you play me, you may discard 1 as an additional cost. If you do, reduce my cost by [2]."
   - Code: the discount is only staged inside `executePlayCard` (`game_engine.cpp:1606-1637`); the play generator gates on `canAfford` (`game_engine.cpp:2676`), which uses the full printed cost.
   - Scenario: with 4 or 5 Energy available and a card to discard, the Buccaneer is never offered as a play; the discount only works when the player could already pay 6.
-- [ ] **74 Taric, Protector** - `units/0074_taric_protector.cpp:28-32` [confirmed] medium
+  - BLOCKED: engine, not the card (the card's `OptionalAdditionalCost` is right). `GameEngine::canAfford` must count the discount when the discard can be paid (a card other than the Buccaneer in hand), and `executePlayCard` must then make the discard mandatory when the full cost is not affordable. Reported under "Needs another stream".
+- [x] **74 Taric, Protector** - `units/0074_taric_protector.cpp:28-32` [confirmed] medium — ALREADY FIXED: the engine's aura fold adds the Might of an aura-granted [Shield] while defending (08 item 8.3); test: AurasCostsTest.AuraShield_TaricAndMechanizedMenace
   - Text: "Other friendly units here have [Shield]."
   - Code: the aura sets `keyword = Shield, keyword_value = 1` but no `might_bonus`. Aura keywords only feed `aura_keywords`; `recomputeMight` adds `shield_value` only (`game_object.h:329-331`), which auras do not change. Compare Captain Farron, which sets `might_bonus` while attacking, and the `auraKeyword` helper, which does it for Shield while defending.
   - Scenario: an ally defending beside Taric gets no +1 Might from the granted Shield.
-- [ ] **110 Ekko, Recurrent** - `units/0110_ekko_recurrent.cpp:19-33` [confirmed] medium
+- [x] **110 Ekko, Recurrent** - `units/0110_ekko_recurrent.cpp:19-33` [confirmed] medium — FIXED: Ekko is recycled from the trash (erase + `recycleCards`) and the runes ready only if he was — not for a banished Ekko or a token copy; test: C4Test.EkkoRecurrent_IsRecycledToReadyTheRunes, C4Test.EkkoRecurrent_ThatCantBeRecycledReadiesNothing
   - Text: "[Deathknell] — Recycle me to ready your runes."
   - Code: readies all runes but never recycles Ekko; he stays in the trash, and the effect is not gated on being able to recycle him.
   - Scenario: Ekko dies -> runes ready and Ekko remains in trash (available to trash-recursion, counted by Dr. Mundo / Rhasa) instead of going to the bottom of the deck; a banished or token-copy Ekko still readies runes.
-- [ ] **100 Gemcraft Seer** - `units/0100_gemcraft_seer.cpp:20-25` [documented] medium
+- [x] **100 Gemcraft Seer** - `units/0100_gemcraft_seer.cpp:20-25` [documented] medium — ALREADY FIXED: engine-auras-costs (08 item 8.4) — the play-time Vision look refreshes continuous effects and asks `hasKeyword`; the card's stale comment is corrected; test: C4Test.GemcraftSeer_UnitsPlayedBesideItGetTheirVisionLook
   - Text: "Other friendly units have [Vision]."
   - Code: grants Vision as an aura keyword, but the on-play Vision peek reads `obj.keywords.has(Keyword::Vision)` (`trigger_manager.cpp:317`), not aura keywords.
   - Scenario: a unit played while Gemcraft Seer is on board never gets its Vision look; the second sentence has no effect.
-- [ ] **111 Heimerdinger, Inventor** - `units/0111_heimerdinger_inventor.cpp:35-43` [confirmed, index-0 limit documented] medium
+- [x] **111 Heimerdinger, Inventor** - `units/0111_heimerdinger_inventor.cpp:35-43` [confirmed, index-0 limit documented] medium — FIXED: grants every ability index of each friendly card name once, marked `exhaust_cost_only` (new field on `GrantedAbilityRef`, `shared:` commit `5f3057d`: the granted-ability generator skips an ability whose cost has no [E]); the granter's `canActivateAbility` / `canActivateAbilityAt` were already asked (engine-auras-costs); test: C4Test.Heimerdinger_HasOnlyTheExhaustAbilities
   - Text: "I have all [E] abilities of all friendly legends, units, and gear."
   - Code: grants ability index 0 of every friendly card regardless of whether its cost includes exhaust, and never index 1+. The granted-ability generator (`game_engine.cpp:3597-3615`) checks neither `cost.exhaust` being present nor the granter's `canActivateAbility`.
   - Scenario: with Sett, Brawler on board a buffed Heimerdinger can use "Spend my buff: +4 [M]" (also Vi's "Recycle 1 from your trash", Udyr's modes) though none is an [E] ability; a multi-ability card's second [E] ability is not granted.
-- [ ] **157 Udyr, Wildman** - `units/0157_udyr_wildman.cpp:110` [confirmed] medium
+- [x] **157 Udyr, Wildman** - `units/0157_udyr_wildman.cpp:110` [confirmed] medium — FIXED: `Keyword::Ganking` removed from the def; test: C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions, C4Test.UdyrWildman_SpendsItsBuffAndHonoursCantBeChosen
   - Text: "... Give me [Ganking] this turn." (the only Ganking on the card is the fourth mode)
   - Code: the def sets `Keyword::Ganking` as a printed keyword.
   - Scenario: Udyr can always move battlefield to battlefield without spending a buff; mode 4 is meaningless.
-- [ ] **15 Captain Farron** - `units/0015_captain_farron.cpp:62-63` [confirmed] medium
+- [x] **15 Captain Farron** - `units/0015_captain_farron.cpp:62-63` [confirmed] medium — ALREADY FIXED: engine-auras-costs (08 item 8.3, merge `a8af2ef`) — the def no longer gives Farron [Assault]; the aura grants Assault 1 to other friendly units here; test: AurasCostsTest.AuraAssault_RumbleFarronWarmongerRagingSoul
   - Text: "Other friendly units here have [Assault]."
   - Code: the def gives Farron himself `Keyword::Assault` with `assault_value = 1`.
   - Scenario: Farron attacks at 6 Might instead of 5.
-- [ ] **189 Kayn, Unleashed** - `units/0189_kayn_unleashed.cpp:27` [confirmed] medium
+- [x] **189 Kayn, Unleashed** - `units/0189_kayn_unleashed.cpp:27` [confirmed] medium — ALREADY FIXED: executor (02 item 2.22) — `moveToBase` / `moveToBattlefield` count the move; test: C4Test.KaynUnleashed_MovedTwiceByEffectsTakesNoDamage
   - Text: "If I have moved twice this turn, I don't take damage."
   - Code: reads `moves_this_turn`, which is incremented only in `GameEngine::moveUnit` (`game_engine.cpp:6251`). `EffectExecutor::moveToBattlefield` / `moveToBase` (`effect_executor.cpp:735-770`) set the location directly and do not count.
   - Scenario: Kayn makes one standard move and is moved once by a spell or ability -> not immune.
@@ -73,27 +74,28 @@ Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - i
   - Text: "As you play me, you may spend any number of buffs as an additional cost. Reduce my cost by [O] for each buff you spend."
   - Code: not implemented.
   - Scenario: buffs can never be spent; the full [O][O] is always charged.
-- [ ] **18 Noxus Saboteur** - `units/0018_noxus_saboteur.cpp:32,52` [confirmed data error; inert flag documented] medium
+  - BLOCKED: needs an engine hook for a variable optional additional cost decided before payment ("spend any number of buffs", each reducing the Power cost by one): `OptionalAdditionalCost` only expresses a fixed discard, and `selfPowerCostReduction` has no decision point, so a card-side version would force the spend. Same code path as Brazen Buccaneer (`executePlayCard`'s pre-payment prompt). Reported under "Needs another stream".
+- [x] **18 Noxus Saboteur** - `units/0018_noxus_saboteur.cpp:32,52` [confirmed data error; inert flag documented] medium — FIXED: (a) `Keyword::Hidden` removed from the def; (b) `BattlefieldState::opp_hidden_unrevealable` is now per player, set for the Saboteur's opponents and read by the facedown play generator, so they can't play (reveal) their hidden cards at its battlefield (`shared:` commit `b475300`); test: C4Test.NoxusSaboteur_OpponentsCantPlayTheirHiddenCardsHere, C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions, NoxusTest.SetsUnrevealableFlagOnItsBattlefield
   - Text: "Your opponents' [Hidden] cards can't be revealed here."
   - Code: (a) the def sets `Keyword::Hidden`, so the hide generator (`game_engine.cpp:2860`) lets the Saboteur itself be hidden face down; (b) `opp_hidden_unrevealable` is only reset (`game_engine.cpp:4446`), never read.
   - Scenario: the opponent plays a card from Hidden at the Saboteur's battlefield unhindered, and the Saboteur can be hidden for [A].
-- [ ] **167 Ember Monk** - `units/0167_ember_monk.cpp:40` [confirmed] low
+- [x] **167 Ember Monk** - `units/0167_ember_monk.cpp:40` [confirmed] low — FIXED: `Keyword::Hidden` removed from the def; test: C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions
   - Text: "When you play a card from [Hidden], give me +2 [M] this turn." (no Hidden keyword of its own)
   - Code: the def sets `Keyword::Hidden`.
   - Scenario: Ember Monk can be hidden face down at a battlefield and played later as a Reaction.
-- [ ] **68 Caitlyn, Patrolling** - `units/0068_caitlyn_patrolling.cpp:33-41,63-71` [confirmed] low
+- [x] **68 Caitlyn, Patrolling** - `units/0068_caitlyn_patrolling.cpp:33-41,63-71` [confirmed] low — FIXED: the gate is per instance (`canActivateAbilityAt`: the activating Caitlyn must be at a battlefield); no damage once she has left the board; test: C4Test.CaitlynPatrolling_OnlyTheCopyAtABattlefieldMayShoot, AurasCostsTest.GrantedAbility_HonoursTheGrantingCardsGates (corrected: the gate is asked of the bearer)
   - Text: "Use this ability only while I'm at a battlefield."
   - Code: `canActivateAbility` is true if any friendly Caitlyn is at a battlefield; `onActivate` does not re-check the source's location.
   - Scenario: two copies (or a token copy), one at a battlefield and one in base -> the one in base can exhaust to deal its Might.
-- [ ] **157 Udyr, Wildman / 164 Sett, Brawler** - `units/0157_udyr_wildman.cpp:23-31`, `units/0164_sett_brawler.cpp:32-38` [confirmed] low
+- [x] **157 Udyr, Wildman / 164 Sett, Brawler** - `units/0157_udyr_wildman.cpp:23-31`, `units/0164_sett_brawler.cpp:32-38` [confirmed] low — FIXED: both gate per instance (`canActivateAbilityAt`: the activating unit needs the buff) and pay the buff as the ability is activated (`kFinalizeActivate` + `costDueNow`); reprint Sett 543 is outside this range (cards-c6); test: C4Test.SettBrawler_OnlyABuffedSettSpendsItsBuff, C4Test.UdyrWildman_SpendsItsBuffAndHonoursCantBeChosen
   - Text: "Spend my buff: ..."
   - Code: `canActivateAbility` passes if any friendly copy has a buff, and the buff is spent at resolution, not as an activation cost.
   - Scenario: with two copies, the unbuffed one is offered the ability and the activation fizzles in `onActivate`.
-- [ ] **157 Udyr, Wildman** - `units/0157_udyr_wildman.cpp:61-66` [confirmed] low
+- [x] **157 Udyr, Wildman** - `units/0157_udyr_wildman.cpp:61-66` [confirmed] low — FIXED: targets come from `chooseableUnits` (no enemy unit that can't be chosen by enemy abilities); test: C4Test.UdyrWildman_SpendsItsBuffAndHonoursCantBeChosen
   - Text: "Deal 2 to a unit at a battlefield. / Stun a unit at a battlefield."
   - Code: `bf_units()` does not filter `untargetable_by_enemy`.
   - Scenario: Udyr can deal 2 to or stun an enemy unit that can't be chosen by enemy abilities.
-- [ ] **27 Darius, Trifarian** - `units/0027_darius_trifarian.cpp:26` [plausible] low
+- [x] **27 Darius, Trifarian** - `units/0027_darius_trifarian.cpp:26` [plausible] low — FIXED: confirmed (the count was read at resolution, so a third card played in response made it 3); "second card" is now `triggerCondition`, judged when the card is played; test: C4Test.DariusTrifarian_SecondCardIsJudgedWhenItIsPlayed, AuditFix1Test.Darius_* (now through TriggerManager)
   - Text: "When you play your second card in a turn, give me +2 [M] this turn and ready me."
   - Code: the "second card" test (`cards_played_this_turn != 2`) runs when the trigger resolves, not when it fires.
   - Scenario: play the second card, then a third in response before the trigger resolves -> the count is 3 and Darius gets nothing.
@@ -101,16 +103,22 @@ Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - i
   - Text: "If an opponent's score is within 3 points of the Victory Score, I enter ready."
   - Code: uses `state.mode.victory_score`, ignoring victory-score modifiers (`Card::victoryScoreModifier` / `EffectExecutor::effectiveVictoryScore`).
   - Scenario: with a +1 "points needed to win" battlefield in play and the opponent at 5, Leona enters ready though they are 4 away.
+  - BLOCKED: `entersReadyOnPlay(state, controller[, self])` has no registry or executor, and the Victory Score in effect (`EffectExecutor::effectiveVictoryScore`) needs the registry to ask each battlefield card. Needs a state-visible value (e.g. a per-battlefield bonus set by Aspirant's Climb 271's hook, or an `effectiveVictoryScore(state)` the cards can call). Same defect in Find Your Center 47, Poppy 678, Corrupted Dragon 878. Reported under "Needs another stream".
 - [ ] **939 Rebuttal** - `spells/0939_rebuttal.cpp:24-28` [confirmed] low
   - Text: "Choose a spell with Energy cost no more than [4]."
   - Code: `hasLegalTargets` accepts any spell anywhere on the chain; `onResolve` needs the top item to be a spell costing 4 or less.
   - Scenario: Rebuttal is offered against a 5-cost spell, or when an ability sits above the spell, and resolves doing nothing.
+  - PARTLY FIXED: `hasLegalTargets` now requires the top chain item to be a spell (no offer when an ability sits above the spell); test: C4Test.Rebuttal_IsNotPlayableAgainstAnAbilityOnTopOfASpell. BLOCKED for the "[4] or less" half: `hasLegalTargets` sees only the `GameState`, and a card's printed Energy cost is in the `CardDB` (same limit as Defy 45) — needs a `CardDB`-aware overload or the printed cost on `GameObject`.
 
 ## Systemic
 - S2: 27 Darius Trifarian, 36 Vi Destructive, 59 Eclipse Herald, 61 Poro Herder, 78 Lee Sin Ascetic, 91 Pit Crew (no guard at all), 103 Ravenbloom Student, 131 Dune Drake, 139 Cithria of Cloudfield, 157 Udyr Wildman, 164 Sett Brawler, 167 Ember Monk, 197 Teemo Scout, 202 Jinx Rebel, 217 Trifarian Gloryseeker
+  - c4: FIXED — on-board guard (`location.has_value()`) before a self-buff/ready in 27, 36, 59, 91, 103, 131, 139, 157, 164, 167, 197, 202; 61, 78, 217 only call `buffUnit`, which the executor now refuses for an off-board unit (02 item 2.28).
 - S3: 15 Captain Farron, 19 Raging Soul, 55 Wielder of Water, 65 Wizened Elder, 109 Dr. Mundo Expert, 151 Lee Sin Centered, 111 Heimerdinger Inventor (duplicate granted refs); keyword-only duplicates with no numeric effect: 68 Caitlyn Patrolling, 74 Taric Protector, 125 Bilgewater Bully
+  - c4: ALREADY FIXED by the once-per-(card, controller) aura contract (02 item 2.2): each hook loops over its own instances (15, 19, 55, 65, 109, 151; keyword-only 68, 74, 125); Heimerdinger 111 now grants each card name once; test: AurasCostsTest.TwoDrMundos_EachCountsTheTrashOnce, C4Test.TwoWizenedElders_EachGetTheirOwnPlusOneOnce, C4Test.Heimerdinger_HasOnlyTheExhaustAbilities.
 - S4: 61 Poro Herder, 136 Pit Rookie, 217 Trifarian Gloryseeker (78 Lee Sin Ascetic calls buffUnit unguarded on purpose: "I can have any number of buffs" - keep it exempt when S4 is fixed)
+  - c4: ALREADY FIXED by `EffectExecutor::buffUnit` (02 item 2.14: one Buff per unit; Lee Sin, Ascetic 78 exempt through `canHaveAnyNumberOfBuffs`). None of these cards prints "if it was buffed this way".
 - S5: 136 Pit Rookie (which unit to buff), 36 Vi Destructive (which trash card to recycle), 109 Dr. Mundo Expert (which 3 trash cards to recycle)
+  - c4: FIXED — Pit Rookie 136 picks the unit (`pickTarget` + `kFinalizeTrigger`), Vi 36 picks the trash card (paid at activation), Dr. Mundo 109 picks which three; test: C4Test.PitRookie_BuffsTheFriendlyUnitItsControllerChooses, C4Test.ViDestructive_RecyclesTheTrashCardItsControllerChooses, C4Test.DrMundoExpert_ChoosesWhichThreeCardsToRecycle.
 
 ## Not read
 None

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -15,15 +16,17 @@ class HeimerdingerInventor : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "I have all [E] abilities of all friendly legends, units, and gear."
-    // Wired via the aura-granted-ability pipeline: applyPassiveAura appends a
-    // GrantedAbilityRef{friendly_def, 0} for every friendly legend/unit/gear onto
-    // each Heimerdinger. The action generator skips refs whose granter has no
-    // ability at that index, so granting index 0 of every friendly card is safe;
-    // activation routes to the granting card's onActivate with Heimer as the
-    // bearer (ctx.source).
-    // APPROX: proxies ability index 0 of each friendly card (multi-ability cards'
-    // additional abilities are not copied); abilities that deeply reference their
-    // own source object act as Heimer's.
+    // Wired via the aura-granted-ability pipeline: applyPassiveAura appends
+    // GrantedAbilityRefs naming each friendly legend/unit/gear card onto each
+    // Heimerdinger, once per card name however many copies are in play. Every
+    // ability index is named (the action generator skips an index the granter
+    // doesn't have) and each ref is marked exhaust_cost_only, so only the
+    // abilities whose cost includes [E] are granted. Activation routes to the
+    // granting card's onActivate with Heimer as the bearer (ctx.source), and
+    // that card's own gates are asked of Heimer.
+    // APPROX: abilities that deeply reference their own source object act as
+    // Heimer's.
+    static constexpr int kMaxGrantedAbilityIndex = 4;   // no card prints more abilities
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> heimers;
         for (auto& [id, obj] : state.objects)
@@ -31,7 +34,7 @@ public:
                 obj.location.has_value())
                 heimers.push_back(id);
         if (heimers.empty()) return;
-        std::vector<GameObject::GrantedAbilityRef> refs;
+        std::vector<CardDefId> granters;
         for (auto& [id, obj] : state.objects) {
             if (obj.controller != controller || obj.card_def_id == kInvalidId) continue;
             if (obj.card_def_id == cardDefId()) continue;  // not myself / other Heimers
@@ -39,11 +42,15 @@ public:
             const bool legend = obj.zone == ZoneType::LegendZone;
             if (!on_board && !legend) continue;
             if (!(obj.isUnit() || obj.isGear() || obj.isLegend())) continue;
-            refs.push_back({obj.card_def_id, 0});
+            if (std::find(granters.begin(), granters.end(), obj.card_def_id) == granters.end())
+                granters.push_back(obj.card_def_id);
         }
+        std::sort(granters.begin(), granters.end());
         for (auto hid : heimers) {
             auto& h = state.getObject(hid);
-            for (const auto& r : refs) h.granted_abilities.push_back(r);
+            for (auto def_id : granters)
+                for (int idx = 0; idx < kMaxGrantedAbilityIndex; ++idx)
+                    h.granted_abilities.push_back({def_id, idx, /*exhaust_cost_only=*/true});
         }
     }
 private:

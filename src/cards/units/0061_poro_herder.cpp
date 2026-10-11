@@ -17,7 +17,6 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you play me, if you control a Poro, buff me and draw 1."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         bool controls_poro = false;
         for (auto& [id, obj] : ctx.state.objects) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
@@ -25,6 +24,8 @@ public:
             if (hasTag(obj, "Poro")) { controls_poro = true; break; }
         }
         if (!controls_poro) return;
+        // "buff me": nothing happens to a Herder that already left the board
+        // (EffectExecutor::buffUnit); the draw does not depend on it.
         ctx.executor.buffUnit(ctx.source);  // +1 [M] buff if it has none
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("PORO HERDER: control a Poro -> buff me + draw 1");

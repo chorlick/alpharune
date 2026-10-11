@@ -827,6 +827,45 @@ inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
     return false;
 }
 
+// ── Where an effect plays a unit (CR 355.2.a) ───────────────────────────────
+// A unit played by an effect goes where a unit played from hand may go: its
+// controller's base or a battlefield they control. pickEffectPlayLocation
+// asks through Card::pickMode (mode 0 = base, mode 1 + i =
+// state.battlefields[i]), so it composes with confirmOptional / pickTarget
+// and can be asked at finalization — but a card that calls it must not use
+// pickMode for anything else in the same callback. With no battlefield to
+// offer there is nothing to choose and nothing is asked.
+
+/// Returns -1 while waiting for the agent, else the mode to hand to
+/// effectPlayLocation.
+inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::string& label) {
+    const auto& bfs = ctx.state.battlefields;
+    const bool base_only = ctx.state.player(ctx.controller).units_play_base_only;
+    uint32_t mask = 1u;
+    std::vector<std::string> labels{"Base"};
+    for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
+        labels.push_back("Battlefield #" + std::to_string(bfs[i].id));
+        if (!base_only && !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
+            *bfs[i].controller == ctx.controller)
+            mask |= 1u << (i + 1);
+    }
+    if (mask == 1u) return 0;
+    const int m = card.pickMode(ctx, label, static_cast<int>(labels.size()), labels, mask);
+    return m == -1 ? -1 : std::max(0, m);
+}
+/// The location a pickEffectPlayLocation mode stands for; the base if that
+/// battlefield is no longer the player's to play to.
+inline LocationId effectPlayLocation(const GameState& state, PlayerId player, int mode) {
+    const auto& bfs = state.battlefields;
+    if (mode >= 1 && static_cast<size_t>(mode) <= bfs.size() &&
+        !state.player(player).units_play_base_only) {
+        const auto& bf = bfs[mode - 1];
+        if (!bf.blocks_unit_play && bf.controller.has_value() && *bf.controller == player)
+            return BattlefieldLocation{bf.id};
+    }
+    return BaseLocation{player};
+}
+
 /// Destinations a card effect may move `u` to, int-coded for valChoice:
 /// 0 = its controller's base, 1 + i = battlefield i. Excludes where it is now.
 inline std::vector<int> moveDests(const GameState& state, const GameObject& u) {

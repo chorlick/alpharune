@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,21 @@ namespace {
 class MaddenedMarauder : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.moveToBase(targets[0]);
-    }
+    // "When you play me, move a unit from a battlefield to its base." Chosen
+    // as the ability goes on the chain (CR 383.3); only a unit at a
+    // battlefield can be moved from one.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto units = chooseableUnits(ctx.state, ctx.controller, [](const GameObject& o) {
+            return o.isAtBattlefield();
+        });
+        std::sort(units.begin(), units.end());
+        const GameObjectId t = pickTarget(ctx, "Maddened Marauder: move a unit to its base",
+                                          units);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.moveToBase(t);
     }
 private:
     const CardDef def_ = [] {

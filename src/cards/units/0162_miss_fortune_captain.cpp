@@ -17,49 +17,39 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
+    // "The first time I move each turn": judged when the move happens. Every
+    // move bumps GameObject::moves_this_turn before its event is announced, so
+    // the first move of the turn is the one that leaves it at 1. No flag is
+    // written, so nothing has to be undone if the trigger is re-chosen.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.getObject(source).moves_this_turn == 1;
+    }
+    // "... you may ready something else that's exhausted."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& captain = ctx.state.getObject(ctx.source);
-
-        // "First time I move each turn" — store turn_id (+1 so 0 = never).
-        // We only set the sentinel on FIRST entry; subsequent re-entries
-        // during the same chain resolution carry the resume_point state
-        // forward, so the "already fired this turn" guard mustn't reject
-        // them.
-        int turn_id = ctx.state.turn.turn_number + 1;
-        bool first_entry = !ctx.state.chain.resuming.has_value()
-                        || ctx.state.chain.resuming->resume_point == 0;
-        int& last_fired = captain.card_counters["mf_captain_move_turn"];
-        if (first_entry && last_fired == turn_id) return;  // not the first move
-        if (first_entry) last_fired = turn_id;
-
-        // Targets: friendly things other than Captain that are exhausted and
-        // on board (skip in-deck/banished/etc.).
+        // Anything exhausted other than me: units, gear and runes on the
+        // board, and legends (exhausted in their Legend Zone, which is not a
+        // location). The text is not limited to my controller's objects;
+        // enemy ones that can't be chosen by enemy abilities are left out.
         auto find_targets = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (obj.controller != ctx.controller) continue;
-                if (!obj.is_exhausted) continue;
-                if (!obj.location.has_value()) continue;
+                if (id == ctx.source || !obj.is_exhausted) continue;
+                const bool legend = obj.isLegend() && obj.zone == ZoneType::LegendZone;
+                if (!obj.location.has_value() && !legend) continue;
+                if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
                 out.push_back(id);
             }
+            std::sort(out.begin(), out.end());
             return out;
         };
-
         int answer = confirmOptional(ctx, "Miss Fortune ready another",
                                      [&]() { return !find_targets().empty(); });
-        if (answer == -1) return;     // yielded for agent input
-        if (answer == 0) {
-            ctx.events.logTrace("MISS FORTUNE: declined to ready another");
-            return;
-        }
-
-        auto target = pickTarget(ctx, "Miss Fortune ready an exhausted friendly",
+        if (answer < 1) return;       // waiting / declined / nothing exhausted
+        auto target = pickTarget(ctx, "Miss Fortune ready something exhausted",
                                   find_targets());
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (target == kInvalidId) return;  // yielded for agent input
-
+        if (target == kInvalidId) return;     // none / mistarget / waiting
         ctx.executor.readyObject(target);
         ctx.events.logTrace("MISS FORTUNE: readied " +
                              ctx.state.getObject(target).name);

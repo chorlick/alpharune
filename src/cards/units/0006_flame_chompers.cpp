@@ -19,7 +19,6 @@ public:
     // "When you discard me, you may pay [R] to play me." Fires from the trash.
     TriggerType triggerType() const override { return TriggerType::WhenIAmDiscarded; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         auto in_trash = [&]() { return ctx.state.getObject(ctx.source).zone == ZoneType::Trash; };
         auto can_pay = [&]() {
             return in_trash() && payableOnePower(ctx.state, ctx.controller, Domain::Fury);
@@ -27,12 +26,14 @@ public:
         if (!costAlreadyPaid(ctx) && !can_pay()) return;
         int conf = confirmOptional(ctx, "Flame Chompers: pay [R] to play me?", can_pay);
         if (conf < 1) return;
+        // To my base or a battlefield I control (CR 355.2.a).
+        const int where = pickEffectPlayLocation(*this, ctx, "Flame Chompers: play me to");
+        if (where == -1) return;              // waiting for the agent
         if (costDueNow(ctx) && !payOnePower(ctx, ctx.controller, Domain::Fury)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (!in_trash()) return;              // left the trash in response
-        auto& trash = ctx.state.player(ctx.state.getObject(ctx.source).owner).trash;
-        trash.erase(std::remove(trash.begin(), trash.end(), ctx.source), trash.end());
-        ctx.executor.playIgnoringCost(ctx.controller, ctx.source);
+        ctx.executor.playIgnoringCost(ctx.controller, ctx.source,
+                                      effectPlayLocation(ctx.state, ctx.controller, where));
         ctx.events.logTrace("FLAME CHOMPERS: paid [R] -> play from trash");
     }
 private:

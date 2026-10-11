@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,11 +15,18 @@ namespace {
 class MagmaWurm : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Other friendly units enter ready."
-    // ENGINE GAP: the engine consults only the ENTERING card's own
-    // entersReadyOnPlay() (resolvePermanent), so a passive that makes OTHER
-    // units enter ready cannot be expressed per-card — it needs an engine-side
-    // check (e.g. "any friendly Magma Wurm in play?") at unit-resolution time.
+    // "Other friendly units enter ready." A continuous effect: each Magma
+    // Wurm on my controller's board is listed in
+    // PlayerState::units_enter_ready_by (rebuilt every aura pass), and a unit
+    // they play enters ready if a Wurm other than itself is listed — so a
+    // lone Wurm enters exhausted and a second Wurm enters ready.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (const auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
+            if (!obj.location.has_value()) continue;
+            state.player(controller).units_enter_ready_by.push_back(id);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

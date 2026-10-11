@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,76 +15,71 @@ namespace {
 class UdyrWildman : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-
     // "Spend my buff: Choose one you've not chosen this turn — Deal 2 to a unit
     // at a battlefield / Stun a unit at a battlefield / Ready me / Give me
-    // [Ganking] this turn." Cost = spend a buff (gated below).
+    // [Ganking] this turn." Spending the buff is the activation cost: the
+    // mode, its unit and the payment are settled as the ability is activated
+    // (CR 355), by the Udyr that activates it.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {}; }
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        // Need a buff to spend.
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
-                obj.location.has_value() && obj.buff_count > 0)
-                return true;
-        }
-        return false;
+    // Modes this Udyr has already chosen this turn (a per-turn bitmask).
+    static uint32_t chosenModes(const GameState& state, const GameObject& self) {
+        auto turn = self.card_counters.find("__udyr_modes_turn");
+        auto mask = self.card_counters.find("__udyr_modes_mask");
+        if (turn == self.card_counters.end() || mask == self.card_counters.end()) return 0;
+        return turn->second == state.turn.turn_number ? static_cast<uint32_t>(mask->second) : 0;
     }
-
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!Card::canActivateAbilityAt(state, controller, source, ability_index)) return false;
+        const auto& self = state.getObject(source);
+        // A buff to spend, and a mode not yet chosen this turn.
+        return self.buff_count > 0 && (chosenModes(state, self) & 0xF) != 0xF;
+    }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        // Modes already chosen this turn live in a per-turn bitmask.
-        int turn = ctx.state.turn.turn_number;
-        if (self.card_counters["__udyr_modes_turn"] != turn) {
-            self.card_counters["__udyr_modes_turn"] = turn;
-            self.card_counters["__udyr_modes_mask"] = 0;
-        }
-        uint32_t chosen_mask =
-            static_cast<uint32_t>(self.card_counters["__udyr_modes_mask"]);
-        uint32_t legal = (~chosen_mask) & 0xF;  // 4 modes
+        const uint32_t chosen_mask = chosenModes(ctx.state, self);
         int mode = pickMode(ctx, "Udyr (spend buff)", 4,
-                            {"Deal 2", "Stun", "Ready me", "Give Ganking"}, legal);
-        if (mode == -1) return;   // suspended
-        if (mode == -2) return;   // no legal mode
-        // Spend the buff (the cost) once per activation. On re-entry (after a
-        // pickTarget suspend) this mode's bit is already set, so don't double-
-        // spend.
-        bool first_commit = !(chosen_mask & (1u << mode));
-        if (first_commit) {
-            if (self.buff_count <= 0) return;
+                            {"Deal 2", "Stun", "Ready me", "Give Ganking"},
+                            (~chosen_mask) & 0xF);
+        if (mode < 0) return;   // waiting / no mode left this turn
+        // "a unit at a battlefield", minus enemy units that can't be chosen
+        // by enemy spells and abilities.
+        GameObjectId t = kInvalidId;
+        if (mode == 0 || mode == 1) {
+            auto bf_units = chooseableUnits(ctx.state, ctx.controller,
+                                            [](const GameObject& o) { return o.isAtBattlefield(); });
+            std::sort(bf_units.begin(), bf_units.end());
+            t = pickTarget(ctx, mode == 0 ? "Udyr deal 2" : "Udyr stun", bf_units);
+            if (t == kInvalidId) return;   // waiting / no unit / mistarget
+        }
+        // The cost, once: my buff, and this mode is used up for the turn.
+        if (costDueNow(ctx)) {
+            if (!self.location.has_value() || self.buff_count <= 0) return;
             self.buff_count -= 1;
             self.recomputeMight();
+            self.card_counters["__udyr_modes_turn"] = ctx.state.turn.turn_number;
             self.card_counters["__udyr_modes_mask"] =
                 static_cast<int>(chosen_mask | (1u << mode));
         }
-
-        auto bf_units = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isUnit() && obj.isAtBattlefield()) out.push_back(id);
-            return out;
-        };
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 355)
         switch (mode) {
-        case 0: {  // Deal 2 to a unit at a battlefield
-            GameObjectId t = pickTarget(ctx, "Udyr deal 2", bf_units());
-            if (t == kInvalidId) return;
+        case 0:  // Deal 2 to a unit at a battlefield
             ctx.executor.dealDamage(t, 2, ctx.source);
-            if (ctx.state.objectExists(t) && ctx.state.getObject(t).hasLethalDamage())
+            if (ctx.state.getObject(t).location.has_value() &&
+                ctx.state.getObject(t).hasLethalDamage())
                 ctx.executor.killObject(t);
             break;
-        }
-        case 1: {  // Stun a unit at a battlefield
-            GameObjectId t = pickTarget(ctx, "Udyr stun", bf_units());
-            if (t == kInvalidId) return;
+        case 1:  // Stun a unit at a battlefield
             ctx.executor.stunUnitBy(t, ctx.source);
             break;
-        }
         case 2:  // Ready me
             ctx.executor.readyObject(ctx.source);
             break;
         case 3:  // Give me Ganking this turn
-            ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Ganking, 1);
+            if (self.location.has_value())
+                ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Ganking, 1);
             break;
         }
         ctx.events.logTrace("UDYR: spent a buff, mode=" + std::to_string(mode));
@@ -107,7 +103,7 @@ private:
         d.power_cost = 1;
         d.might = 6;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Ganking);
+        // No printed [Ganking]: it is only what the fourth mode gives this turn.
         d.ability_text = R"RB(Spend my buff: Choose one you've not chosen this turn —
 Deal 2 to a unit at a battlefield.Stun a unit at a battlefield.Ready me.Give me [Ganking] this turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2e461e5d05b5ee86e47a425c42c6f3b3c12bc4cf-744x1039.png)RB";

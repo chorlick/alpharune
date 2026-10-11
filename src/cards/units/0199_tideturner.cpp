@@ -15,42 +15,37 @@ namespace {
 class Tideturner : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you play me, you may choose a unit you control at another
+    // location. Move me to its location and it to my original location."
+    // The "may" and the unit are decided as the ability goes on the chain
+    // (CR 383.3).
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_friendly = true};
-    }
-    std::vector<GameObjectId> enumerateLegalTargets(
-        const GameState& state, PlayerId controller) const override {
-        std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller != controller) continue;
-            if (!obj.location.has_value()) continue;
-            out.push_back(id);
-        }
-        return out;
-    }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty()) return;
-        if (!ctx.state.objectExists(ctx.source)) return;
-        if (!ctx.state.objectExists(targets[0])) return;
-        // "you may" — wrap in confirmOptional.
-        auto still_legal = [&ctx, &targets]() {
-            return ctx.state.objectExists(ctx.source) &&
-                   ctx.state.objectExists(targets[0]) &&
-                   ctx.state.getObject(ctx.source).location.has_value() &&
-                   ctx.state.getObject(targets[0]).location.has_value();
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // Units I control somewhere other than where I am. Empty once I've
+        // left the board.
+        auto elsewhere = [&]() {
+            std::vector<GameObjectId> out;
+            const auto& self = ctx.state.getObject(ctx.source);
+            if (!self.location.has_value()) return out;
+            for (const auto& [id, obj] : ctx.state.objects) {
+                if (id == ctx.source || !obj.isUnit() || obj.controller != ctx.controller) continue;
+                if (!obj.location.has_value() || *obj.location == *self.location) continue;
+                out.push_back(id);
+            }
+            std::sort(out.begin(), out.end());
+            return out;
         };
-        if (!still_legal()) return;
-        auto conf = confirmOptional(ctx,
-            "Tideturner: swap locations with target?", still_legal);
+        const int go = confirmOptional(ctx, "Tideturner: swap locations with a unit you control?",
+                                       [&]() { return !elsewhere().empty(); });
+        if (go < 1) return;                   // declined / nothing to choose / waiting
+        const GameObjectId t = pickTarget(ctx, "Tideturner: swap with which unit", elsewhere());
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf < 1) return;
-        auto my_loc  = ctx.state.getObject(ctx.source).location;
-        auto tgt_loc = ctx.state.getObject(targets[0]).location;
-        moveToLocation(ctx.executor, ctx.source,   tgt_loc);
-        moveToLocation(ctx.executor, targets[0],   my_loc);
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        const auto my_loc = ctx.state.getObject(ctx.source).location;
+        const auto its_loc = ctx.state.getObject(t).location;
+        moveToLocation(ctx.executor, ctx.source, its_loc);
+        moveToLocation(ctx.executor, t, my_loc);
         ctx.events.logTrace("TIDETURNER: swapped locations");
     }
 private:

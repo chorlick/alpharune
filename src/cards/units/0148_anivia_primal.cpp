@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,25 +15,24 @@ namespace {
 class AniviaPrimal : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // AoE: deal 3 to all matching
-        {
-            std::vector<GameObjectId> to_damage;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.location.has_value()) continue;
-                if (!obj.isUnit()) continue;
-                if (obj.controller == ctx.controller) continue;
-                if (!obj.isAtBattlefield()) continue;
-                to_damage.push_back(id);
-            }
-            for (auto id : to_damage)
-                ctx.executor.dealDamage(id, 3, ctx.source);
-            for (auto id : to_damage) {
-                if (ctx.state.objectExists(id) &&
-                    ctx.state.getObject(id).hasLethalDamage()) {
-                    ctx.executor.killObject(id);
-                }
-            }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "Deal 3 to all enemy units here": the battlefield I'm attacking,
+        // not every battlefield. Damage everything first, then kill.
+        const auto here = ctx.state.getObject(ctx.source).battlefieldId();
+        if (!here) return;   // no longer at a battlefield
+        std::vector<GameObjectId> to_damage;
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+            if (obj.battlefieldId() != here) continue;
+            to_damage.push_back(id);
+        }
+        std::sort(to_damage.begin(), to_damage.end());
+        for (auto id : to_damage)
+            ctx.executor.dealDamage(id, 3, ctx.source);
+        for (auto id : to_damage) {
+            const auto& o = ctx.state.getObject(id);
+            if (o.location.has_value() && o.hasLethalDamage())
+                ctx.executor.killObject(id);
         }
     }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }

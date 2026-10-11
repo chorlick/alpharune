@@ -12,12 +12,11 @@ namespace riftbound {
 namespace {
 
 // "Your opponents' [Hidden] cards can't be revealed here."
-// [Hidden] (the printed keyword) is engine-handled. The restriction is
-// represented via BattlefieldState::opp_hidden_unrevealable, set in
-// applyPassiveAura on this unit's battlefield. NOTE: the engine has no
-// "reveal an opponent's Hidden card" action/event today, so the flag is
-// currently INERT — it is the faithful state representation, ready for the
-// reveal-Hidden mechanic to consult when one is added. (Documented, not silent.)
+// A facedown card is revealed by being played from facedown (CR 811), so
+// while I'm at a battlefield my opponents can't play their hidden cards there.
+// Set per opponent in BattlefieldState::opp_hidden_unrevealable from
+// applyPassiveAura (reset every aura pass); the facedown play generator reads
+// it. The Saboteur itself has no [Hidden].
 
 class NoxusSaboteur : public UnitCard {
 public:
@@ -29,7 +28,7 @@ public:
             auto bf = obj.battlefieldId();
             if (!bf) continue;
             for (auto& b : state.battlefields)
-                if (b.id == *bf) b.opp_hidden_unrevealable = true;
+                if (b.id == *bf) b.opp_hidden_unrevealable[playerIndex(opponent(controller))] = true;
         }
     }
 private:
@@ -49,7 +48,7 @@ private:
         d.energy_cost = 3;
         d.might = 3;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Hidden);
+        // No printed [Hidden]: the text only refers to the opponents' Hidden cards.
         d.ability_text = R"RB(Your opponents' [Hidden] cards can't be revealed here.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b78f0c822cb984db24ac3f1956cc8c10f8f88b22-744x1039.png)RB";
         return d;

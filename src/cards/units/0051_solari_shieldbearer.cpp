@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,19 @@ namespace {
 class SolariShieldbearer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.stunUnit(targets[0]);
-    }
+    // "When you play me, stun a unit." Chosen as the ability goes on the
+    // chain (CR 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto units = chooseableUnits(ctx.state, ctx.controller,
+                                     [](const GameObject&) { return true; });
+        std::sort(units.begin(), units.end());
+        const GameObjectId t = pickTarget(ctx, "Solari Shieldbearer: stun a unit", units);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        // My controller is the one stunning ("when you stun" watchers).
+        ctx.executor.stunUnitBy(t, ctx.source);
     }
 private:
     const CardDef def_ = [] {

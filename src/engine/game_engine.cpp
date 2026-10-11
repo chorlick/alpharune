@@ -2345,6 +2345,9 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
         }
         // "Units you play this turn enter ready." (a resolved spell's effect)
         if (state_.player(item.controller).units_enter_ready_this_turn) enters_ready = true;
+        // A continuous effect of another unit on the board ("Other friendly
+        // units enter ready." — its applyPassiveAura lists it as a source).
+        if (state_.player(card.controller).otherUnitsEnterReady(card.id)) enters_ready = true;
         card.is_exhausted = !enters_ready;
     }
     // Gear enters ready (CR 149.1) unless it says "This enters exhausted."
@@ -3374,6 +3377,8 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
     // the card was hidden. Phase 6q+ fix: enumerate targets per-BF and emit
     // one intent per (hidden card × valid target).
     for (auto& bf : state_.battlefields) {
+        // "Your opponents' [Hidden] cards can't be revealed here."
+        if (bf.opp_hidden_unrevealable[playerIndex(player)]) continue;
         for (auto card_id : bf.facedown) {
             if (!state_.objectExists(card_id)) continue;
             auto& card = state_.getObject(card_id);
@@ -3921,6 +3926,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
             const auto& gab = gabs[ref.ability_index];
             const auto& gcost = gab.cost;
+            if (ref.exhaust_cost_only && !gcost.exhaust) continue;     // not an [E] ability
             // The same gates as an own ability above, asked of the granting
             // card for the bearer: "Use only if ...", the per-ability gate,
             // the state-aware Energy reduction payAndQueueAbility applies, the
@@ -4810,6 +4816,7 @@ void GameEngine::recalculateAuras() {
         ps.grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer
         ps.units_play_base_only = false;         // Mageseeker Warden
         ps.tokens_enter_ready = false;           // Renata Glasc, Industrialist
+        ps.units_enter_ready_by.clear();         // Magma Wurm
         ps.recall_all_on_attacker_tie = false;   // Symbol of the Solari
         ps.effects_cant_ready_my_units = false;  // Mageseeker Warden cl2
         ps.spells_have_repeat_energy = 0;        // Syndra, Transcendent
@@ -4835,7 +4842,7 @@ void GameEngine::recalculateAuras() {
     // Altar of Blood). Reset here; re-asserted by unit/BF applyPassiveAura.
     for (auto& bf : state_.battlefields) {
         bf.surcharge_enemy_multi_move = false;
-        bf.opp_hidden_unrevealable = false;
+        bf.opp_hidden_unrevealable[0] = bf.opp_hidden_unrevealable[1] = false;
         bf.ignore_tank[0] = bf.ignore_tank[1] = false;   // Dune Surfer
         bf.ignore_deflect_here = false;                  // Heisho
         bf.reaction_tax_power = 0;                       // Mystic Vortex

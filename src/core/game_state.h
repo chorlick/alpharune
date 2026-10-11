@@ -121,6 +121,14 @@ struct PlayerState {
     bool grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer ("friendly units may be played to open battlefields")
     bool units_play_base_only = false;         // set on the RESTRICTED player — Mageseeker Warden ("opponents can only play units to their base")
     bool tokens_enter_ready = false;           // Renata Glasc, Industrialist ("your tokens enter ready")
+    // Magma Wurm ("Other friendly units enter ready"): the on-board units of
+    // this player that say so. A unit this player plays enters ready if any
+    // of them is another object (otherUnitsEnterReady).
+    std::vector<GameObjectId> units_enter_ready_by;
+    bool otherUnitsEnterReady(GameObjectId entering) const {
+        for (auto src : units_enter_ready_by) if (src != entering) return true;
+        return false;
+    }
     bool recall_all_on_attacker_tie = false;   // Symbol of the Solari (227): attacker-side combat tie recalls ALL units
     bool effects_cant_ready_my_units = false;  // set on the RESTRICTED player — Mageseeker Warden cl2 ("spells/abilities can't ready enemy units/gear")
     int  spells_have_repeat_energy = 0;        // Syndra, Transcendent (708): granted [Repeat] tranche cost (energy)
@@ -396,7 +404,10 @@ struct BattlefieldState {
     // Aura-derived per-BF flags (reset + recomputed each recalculateAuras by the
     // BF/unit cards' applyPassiveAura):
     bool surcharge_enemy_multi_move = false; // Mageseeker Investigator (725): enemy multi-unit moves here cost [A]/extra unit
-    bool opp_hidden_unrevealable = false;    // Noxus Saboteur (018): opponent [Hidden] cards can't be revealed here
+    // Noxus Saboteur (018): "Your opponents' [Hidden] cards can't be revealed
+    // here." [p] is set for the player whose facedown cards here can't be
+    // turned face up, i.e. can't be played from facedown (CR 811).
+    bool opp_hidden_unrevealable[2] = {false, false};
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

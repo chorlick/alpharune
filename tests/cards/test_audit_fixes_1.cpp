@@ -100,9 +100,10 @@ TEST_F(AuditFix1Test, Darius_FirstCardDoesNothing) {
     auto darius = addUnit(P1, kDarius, 5, 0);
     state.getObject(darius).is_exhausted = true;
     state.player(P1).cards_played_this_turn = 1;           // only the first play
-    EffectExecutor exec(state, events, card_db);
 
-    fireTriggerAs(kDarius, P1, darius, TriggerType::WhenYouPlayAUnit, exec);
+    // "Your second card" is a trigger condition, judged when the card is
+    // played: go through TriggerManager, which is what asks it.
+    fireTriggerThroughEngine(darius, TriggerType::WhenYouPlayAUnit);
 
     EXPECT_EQ(state.getObject(darius).current_might, 5);    // no buff
     EXPECT_TRUE(state.getObject(darius).is_exhausted);      // not readied
@@ -112,9 +113,8 @@ TEST_F(AuditFix1Test, Darius_ThirdCardDoesNothing) {
     auto darius = addUnit(P1, kDarius, 5, 0);
     state.getObject(darius).is_exhausted = true;
     state.player(P1).cards_played_this_turn = 3;           // third play
-    EffectExecutor exec(state, events, card_db);
 
-    fireTriggerAs(kDarius, P1, darius, TriggerType::WhenYouPlayASpell, exec);
+    fireTriggerThroughEngine(darius, TriggerType::WhenYouPlayASpell);
 
     EXPECT_EQ(state.getObject(darius).current_might, 5);
     EXPECT_TRUE(state.getObject(darius).is_exhausted);

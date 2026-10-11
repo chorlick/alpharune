@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,19 +15,30 @@ namespace {
 class YasuoRemorseful : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty() && ctx.state.objectExists(ctx.source)) {
-            int dmg = ctx.state.getObject(ctx.source).current_might;
-            ctx.executor.dealDamage(targets[0], dmg, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-    }
+    // "When I attack, deal damage equal to my Might to an enemy unit here."
+    // "Here" is my battlefield; the unit is chosen as the ability goes on the
+    // chain (CR 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .must_be_at_battlefield = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> enemies;
+        const auto& self = ctx.state.getObject(ctx.source);
+        if (const auto here = self.battlefieldId())
+            enemies = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller && o.battlefieldId() == here;
+            });
+        std::sort(enemies.begin(), enemies.end());
+        const GameObjectId t = pickTarget(ctx, "Yasuo: deal my Might to an enemy unit here",
+                                          enemies);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        // I'm the source of the damage: nothing is dealt once I've left the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
+        const int dmg = ctx.state.getObject(ctx.source).current_might;
+        ctx.executor.dealDamage(t, dmg, ctx.source);
+        if (ctx.state.getObject(t).location.has_value() &&
+            ctx.state.getObject(t).hasLethalDamage())
+            ctx.executor.killObject(t);
     }
 private:
     const CardDef def_ = [] {

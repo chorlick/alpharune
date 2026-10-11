@@ -15,16 +15,24 @@ namespace {
 class PitRookie : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you play me, buff another friendly unit." My controller chooses
+    // which, as the ability goes on the chain (CR 383.3). A unit that already
+    // has a buff can be chosen and simply isn't buffed (CR 427.1.c).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // Buff another friendly unit
-        for (auto& [id, obj] : ctx.state.objects) {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> others;
+        for (const auto& [id, obj] : ctx.state.objects) {
             if (id == ctx.source) continue;
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
-            ctx.executor.buffUnit(id);
-            break;
+            others.push_back(id);
         }
+        std::sort(others.begin(), others.end());
+        const GameObjectId t = pickTarget(ctx, "Pit Rookie: buff another friendly unit", others);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.buffUnit(t);
     }
 private:
     const CardDef def_ = [] {

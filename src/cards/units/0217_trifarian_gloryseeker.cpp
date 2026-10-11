@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,7 +15,9 @@ namespace {
 class TrifarianGloryseeker : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    // "[Legion] — When you play me, buff me." Legion (CR 812): only if
+    // another card was played this turn (the count includes me).
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;
         ctx.executor.buffUnit(ctx.source);
     }

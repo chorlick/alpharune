@@ -24,48 +24,28 @@ public:
         return TriggerType::WhenYouKillAUnitWithASpell;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        if (ctx.state.getObject(ctx.source).zone != ZoneType::Trash) return;
-        LocationId base{BaseLocation{ctx.controller}};
-        auto readyRunes = [&](std::optional<Domain> dom) {
-            int n = 0;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isRune() || obj.controller != ctx.controller) continue;
-                if (obj.is_exhausted || !obj.location.has_value()) continue;
-                if (*obj.location != base) continue;
-                if (dom) { bool m = false; for (auto d : obj.domains) if (d == *dom) m = true;
-                           if (!m) continue; }
-                ++n;
-            }
-            return n;
+        auto in_trash = [&]() { return ctx.state.getObject(ctx.source).zone == ZoneType::Trash; };
+        // [1][R]: Energy from the pool or a ready rune, one Fury Power from the
+        // pool or a recycled Fury rune (CR 164.2). One ready Fury rune covers
+        // both: exhausted for the Energy, then recycled for the Power.
+        auto can_pay = [&]() {
+            return in_trash() && payableEnergy(ctx.state, ctx.controller) >= 1 &&
+                   payableOnePower(ctx.state, ctx.controller, Domain::Fury);
         };
-        // Affordable: 1 ready Fury rune (recycled for [R]) + >=2 ready runes
-        // total (one of those exhausted for the [1] energy).
-        auto still_legal = [&]() {
-            return ctx.state.objectExists(ctx.source) &&
-                   ctx.state.getObject(ctx.source).zone == ZoneType::Trash &&
-                   readyRunes(Domain::Fury) >= 1 && readyRunes(std::nullopt) >= 2;
-        };
+        if (!costAlreadyPaid(ctx) && !can_pay()) return;
         int conf = confirmOptional(ctx, "Immortal Phoenix: pay [1][R] to play from trash?",
-                                   still_legal);
-        if (conf == -1) return;   // waiting for agent
-        if (conf < 1) return;     // declined / unaffordable
-        // Pay [R] (recycle a Fury rune), then [1] (exhaust a remaining ready rune).
-        if (costDueNow(ctx)) {
-            if (!payOnePower(ctx, ctx.controller, Domain::Fury)) return;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isRune() || obj.controller != ctx.controller) continue;
-                if (obj.is_exhausted || !obj.location.has_value() || *obj.location != base) continue;
-                obj.is_exhausted = true;  // [1] energy
-                break;
-            }
-        }
+                                   can_pay);
+        if (conf < 1) return;     // waiting / declined / unaffordable
+        // To my base or a battlefield I control (CR 355.2.a).
+        const int where = pickEffectPlayLocation(*this, ctx, "Immortal Phoenix: play me to");
+        if (where == -1) return;  // waiting for the agent
+        // Energy first: the rune exhausted for it can still be recycled for [R].
+        if (costDueNow(ctx) && !(payEnergy(ctx, ctx.controller, 1) &&
+                                 payOnePower(ctx, ctx.controller, Domain::Fury))) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
-        if (ctx.state.getObject(ctx.source).zone != ZoneType::Trash) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), ctx.source);
-        if (it != ps.trash.end()) ps.trash.erase(it);
-        ctx.executor.playIgnoringCost(ctx.controller, ctx.source, std::nullopt);
+        if (!in_trash()) return;              // left the trash in response
+        ctx.executor.playIgnoringCost(ctx.controller, ctx.source,
+                                      effectPlayLocation(ctx.state, ctx.controller, where));
         ctx.events.logTrace("IMMORTAL PHOENIX: paid [1][R] -> played from trash");
     }
 private:

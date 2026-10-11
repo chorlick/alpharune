@@ -30,14 +30,12 @@ public:
 
     // "[E]: Deal damage equal to my Might to a unit at a battlefield. Use this
     //  ability only while I'm at a battlefield."
-    bool canActivateAbility(const GameState& state,
-                            PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId()) continue;
-            if (obj.controller != controller) continue;
-            if (obj.isAtBattlefield()) return true;
-        }
-        return false;
+    //  The restriction is about the Caitlyn that activates it, not about any
+    //  copy her controller has.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        return Card::canActivateAbilityAt(state, controller, source, ability_index) &&
+               state.getObject(source).isAtBattlefield();
     }
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {{
@@ -62,15 +60,16 @@ public:
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
                     const std::vector<GameObjectId>& targets) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         GameObjectId picked = kInvalidId;
         if (!targets.empty()) picked = targets[0];
         else picked = pickTarget(ctx, "Caitlyn: deal Might damage to a unit",
                                  enumerateLegalTargets(ctx.state, ctx.controller, 0));
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (picked == kInvalidId) return;
+        // I'm the source of the damage: none is dealt once I've left the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         int dmg = ctx.state.getObject(ctx.source).current_might;
         ctx.executor.dealDamage(picked, dmg, ctx.source);
-        if (ctx.state.objectExists(picked) &&
+        if (ctx.state.getObject(picked).location.has_value() &&
             ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
         ctx.events.logTrace("CAITLYN: deal " + std::to_string(dmg) +

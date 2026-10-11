@@ -773,17 +773,6 @@ TEST_P(DISABLED_TargetedTriggerTest, TheControllerIsAskedToChoose) {
 INSTANTIATE_TEST_SUITE_P(
     Plan07Item71, DISABLED_TargetedTriggerTest,
     ::testing::Values(
-        TargetedTrigger{16, TriggerType::WhenYouPlayMe, CardType::Unit, "Dangerous Duo"},
-        TargetedTrigger{51, TriggerType::WhenYouPlayMe, CardType::Unit, "Solari Shieldbearer"},
-        TargetedTrigger{76, TriggerType::WhenIAttack, CardType::Unit, "Yasuo, Remorseful"},
-        TargetedTrigger{82, TriggerType::WhenYouPlayMe, CardType::Unit, "Whiteflame Protector"},
-        TargetedTrigger{92, TriggerType::WhenYouPlayMe, CardType::Unit, "Riptide Rex"},
-        TargetedTrigger{97, TriggerType::WhenYouPlayMe, CardType::Unit, "Blastcone Fae"},
-        TargetedTrigger{130, TriggerType::WhenIAttack, CardType::Unit, "Crackshot Corsair"},
-        TargetedTrigger{132, TriggerType::WhenYouPlayMe, CardType::Unit, "First Mate"},
-        TargetedTrigger{188, TriggerType::WhenYouPlayMe, CardType::Unit, "Zaunite Bouncer"},
-        TargetedTrigger{191, TriggerType::WhenYouPlayMe, CardType::Unit, "Maddened Marauder"},
-        TargetedTrigger{199, TriggerType::WhenYouPlayMe, CardType::Unit, "Tideturner"},
         TargetedTrigger{234, TriggerType::WhenYouPlayMe, CardType::Unit, "Harnessed Dragon"},
         TargetedTrigger{238, TriggerType::WhenIAttack, CardType::Unit, "Leona, Determined"},
         TargetedTrigger{330, TriggerType::WhenYouPlayMe, CardType::Unit, "Gem Jammer"},

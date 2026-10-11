@@ -172,16 +172,15 @@ TEST_F(CardTestFixture, Daisy_OnAttackStunsEnemyOnlyWhenAllFourTagsPresent) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/0);
     ASSERT_FALSE(state.getObject(enemy).is_stunned);
 
-    auto* card = card_registry.get(kDaisy);
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, daisy_id};
-    card->onTrigger(ctx, {});
+    // Through the engine: "while your units have all 4 tags" is the trigger's
+    // condition, and the stun is on a unit Daisy's controller chooses.
+    fireTriggerThroughEngine(daisy_id, TriggerType::WhenIAttack);
     EXPECT_FALSE(state.getObject(enemy).is_stunned)
         << "Union incomplete — Daisy must NOT stun.";
 
     // Now satisfy the Poro tag.
     state.getObject(addUnit(P1, kInvalidId, 1, 0)).tags = {"Poro"};
-    card->onTrigger(ctx, {});
+    fireTriggerThroughEngine(daisy_id, TriggerType::WhenIAttack);
     EXPECT_TRUE(state.getObject(enemy).is_stunned)
         << "All 4 tags present — Daisy must stun the enemy at her location.";
 }

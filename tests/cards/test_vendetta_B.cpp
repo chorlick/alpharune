@@ -390,36 +390,37 @@ TEST_F(VendettaB, Vendetta_JayceInventor_FirstNonTokenGearEachTurn) {
     EXPECT_TRUE(c->firesOn(TriggerType::WhenYouPlayACard));
     auto jayce = addUnit(P1, kJayceInventor);
     auto other = addUnit(P1, kInvalidId, 2);
-    auto yes = [](const std::vector<Intent>& legal) { return legal.back(); };
+    // "the first time ... each turn" is the trigger's condition, so each
+    // play is announced to Jayce through the engine; the agent says yes.
+    (void)exec;
+    auto playsCard = [&](GameObjectId played) {
+        EnginePathAgent agent(EnginePathAgent::choosing(other));
+        fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayACard, &agent, played);
+    };
     state.turn.turn_number = 3;
 
     // A token gear and a unit don't count.
     auto token_gear = addGear(P1);
     state.getObject(token_gear).super_type = SuperType::Token;
     state.getObject(other).is_exhausted = true;
-    driveTriggerWithSubject(kJayceInventor, P1, jayce, TriggerType::WhenYouPlayACard,
-                            token_gear, yes, exec);
-    driveTriggerWithSubject(kJayceInventor, P1, jayce, TriggerType::WhenYouPlayACard,
-                            other, yes, exec);
+    playsCard(token_gear);
+    playsCard(other);
     EXPECT_TRUE(state.getObject(other).is_exhausted);
 
     // First non-token gear this turn readies.
     auto gear1 = addGear(P1, kIronBallista);
-    driveTriggerWithSubject(kJayceInventor, P1, jayce, TriggerType::WhenYouPlayACard,
-                            gear1, yes, exec);
+    playsCard(gear1);
     EXPECT_FALSE(state.getObject(other).is_exhausted);
 
     // Second one the same turn does not.
     state.getObject(other).is_exhausted = true;
     auto gear2 = addGear(P1, kRageAmplifier);
-    driveTriggerWithSubject(kJayceInventor, P1, jayce, TriggerType::WhenYouPlayACard,
-                            gear2, yes, exec);
+    playsCard(gear2);
     EXPECT_TRUE(state.getObject(other).is_exhausted) << "only the first each turn";
 
     // Next turn it works again.
     state.turn.turn_number = 5;
-    driveTriggerWithSubject(kJayceInventor, P1, jayce, TriggerType::WhenYouPlayACard,
-                            gear2, yes, exec);
+    playsCard(gear2);
     EXPECT_FALSE(state.getObject(other).is_exhausted);
 }
 
@@ -715,13 +716,14 @@ TEST_F(VendettaB, Vendetta_Profiteer_MovesEmpowerFromOneThingToAnother) {
     auto legend    = addLegend(P1);
     exec.empower(donor);
 
-    // yes, then donor as the cost, then the legend as the recipient.
+    // yes, then the legend as the recipient (the donor is the only possible cost).
     int step = 0;
     driveResumableTrigger(kProfiteer, P1, profiteer,
         [&](const std::vector<Intent>& legal) {
             ++step;
             if (step == 1) return legal.at(1);                 // yes
-            const GameObjectId want = (step == 2) ? donor : legend;
+            // The only Empowered thing is the cost without a prompt.
+            const GameObjectId want = legend;
             for (const auto& i : legal)
                 if (!i.chosen_objects.empty() && i.chosen_objects[0] == want) return i;
             ADD_FAILURE() << "wanted object not offered at step " << step;

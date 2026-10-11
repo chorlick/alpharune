@@ -101,6 +101,7 @@ cross-referenced.
   - c4: 106 Sprite Mother (`Temporary`), 107 Ava Achiever (`Hidden`) — FIXED, with 18 Noxus Saboteur and 167 Ember Monk (`Hidden`) and 157 Udyr (`Ganking`) from batch-04; test: C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions, C4Test.SpriteMother_SurvivesHerBeginningPhase_TheSpriteDoesNot
   - c5: 330 Gem Jammer (`Ganking`) — FIXED. Same class, also removed in range: `Reaction` on 312 Lux, Crownguard and 377 Jax, Unmatched (+ his `QuickDraw`), `Deathknell` on 236 Karthus, `Ganking` on 464 Sivir, Mercenary, `Deflect` / `Ganking` on 394 Breakneck Mech, `Equip` on the Weaponmaster units; 459 Windsinger gained `Hidden`; test: C5Test.KeywordsTheTextOnlyMentionsAreNotOnTheDef
   - c6: 610, 638, 644, 646, 652 (`Temporary`), 618, 620 (`Tank`) — FIXED: removed from the defs (also 574 Assault, 595 / 609 / 675 Deflect, 633 Shield, 637 / 675 / 688 Ganking, 580 / 655 / 707 Reaction, 708 Repeat — cards/batch-06.md); test: C6Test.Defs_KeywordsThatBelongToSomethingElseAreGone, .Trevor_SurvivesHisControllersBeginningPhase
+  - c7: 715 Carrion Dredger, 722 Ultrasoft Poro — FIXED (no [Deflect] on the def); 865 Baccai Witherclaw, 915 Noxian Emissary — FIXED (`Keyword::Deathknell`); test: C7Test.DeflectBelongsToTheBirdTokensOnly, C7Test.EmpoweredDeathknellCardsCarryTheDeathknellKeyword, C7Test.Karthus_RepeatsAnEmpoweredDeathknell
 
 - [ ] **8.9 Repeat** (extends 02 item 2.4 and 07 item 7.4)
   - Repeat spells that request a choice lose the repeat and leave a stale pending choice: Frigid Touch 389, Upstage Comedy 571, Existential Dread 696, Rocket Barrage 400 — with Called Shot 443, Hard Bargain 457, Marching Orders 436, Temptation 450 and Bonds of Strength 472 that is nine cards. A granted Repeat (The Academy, Syndra) on any choice-requesting spell hits the same gap [plausible].
@@ -125,6 +126,7 @@ cross-referenced.
   - Rell, Magnetic 347 (Equipment on board and still in hand), Rift Herald 741. Fix in the executor rather than per card.
   - c0: 160 Dazzling Aurora — FIXED: the manual erase from banishment before `playIgnoringCost` is dropped (the unit stays banished while the location is picked); 242 Baited Hook banishes with `banishObject` and plays from there; test: DazzlingAurora tests (unchanged, green), C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
   - c2: manual erases dropped in Blind Fury 25, Reinforce 62, Portal Rescue 102, Promising Future 115, The Harrowing 198; test: ReviewFixC2Test.PortalRescueAndTheHarrowing_PlayFromTheirZoneOnce, ReviewFixC2Test.Reinforce_PlaysTheChosenUnitForItsReducedCost
+  - c7: 741 Rift Herald — plays through `playPayingCost`; 891 Tail-Cloaked Matriarch, 901 Kharox — FIXED: manual trash erase dropped (Kharox's unit also goes where its new controller chooses, `pickEffectPlayLocation`); test: C7Test.Kharox_PlaysTheUnitWhereItsNewControllerChooses, C7Test.TailCloakedMatriarch_PlaysTheUnitToBaseAndOutOfTheTrash
 
 - [x] **8.14 Off-board source or target** (extends 02 item 2.28, 07 §E) — FIXED: executor guard, see 02 item 2.28; test: ExecutorReviewFixTest.OffBoard_DeadUnitIsNotMovedBouncedBuffedOrStunned
   - Not covered by the guard, still card work (S2): attaching gear to an off-board unit (`attachFree` / hand-rolled attach), and effects the cards apply themselves without the executor. `giveTemporaryMight`, `giveTemporaryKeyword`, `exhaustObject` and `healObject` are left unguarded.
@@ -151,6 +153,7 @@ cross-referenced.
   - c1: 508 Rabadon's Deathcrown — FIXED (card hook sets `bonus_damage_dealt`; test: ReviewFixC1Test.RabadonsDeathcrown_GivesThreeBonusDamageWhileAttached); 517 Battle Mistress — ALREADY FIXED by 02 item 2.13; 809 Endless Riches — BLOCKED: engine work (play-from-trash for every card type, trash-to-banish replacement), see cards/batch-01.md
   - c3: 515 Arcane Shift — FIXED (`banish_on_leave_chain`; C3Test.ArcaneShift_ReplaysTheUnitOnceAndBanishesItself); 466 Switcheroo — FIXED (`chooseableUnits`; C3Test.Switcheroo_DoesNotOfferAUnitThatCannotBeChosenByEnemySpells); 635 Deadly Flourish, 933 Siphoning Strike — FIXED (`expires_on_turn`; C3Test.SiphoningStrike_DeathWatchExpiresWithTheTurn); 931 Death Mark — NOT DONE, engine ([A][A] from two domains)
   - c6: 670 Wily Newtfish — FIXED for XP gained from units 495–709 (shared `gainXp` in card_helpers.h keeps `xp_gained_this_turn`); XP sources in other ranges still write `xp +=` and must switch to `gainXp`: gear 658, 671, 698, 720; legends 759, 787; spells 657, 669, 751; battlefield 769; units 719, 724; test: C6Test.WilyNewtfish_SeesXpGainedThisTurn
+  - c7: 875 Jayce, Hammer in Hand — ALREADY FIXED by 02 item 2.31; no card change
 
 ## B. Cards with a missing or unimplemented effect
 
@@ -161,12 +164,14 @@ Each has a full entry in its batch file. Listed here so the scale is visible;
   - c0: 382 Svellsongur — BLOCKED: needs engine dispatch of the bearer's own abilities through the gear (cards/batch-00.md); the card documents it
   - c4: 11 Magma Wurm — FIXED: see batch-04; test: C4Test.MagmaWurm_OtherFriendlyUnitsEnterReady
   - c6: 619 Alpha Wildclaw, 706 Maduli the Gatekeeper — FIXED; 679 Arachnoid Horror — own play permission FIXED, the grant to friendly units BLOCKED; 587 Undying Legion — BLOCKED (cards/batch-06.md)
+  - c7: 884 Spiderling — FIXED; 732 Atakhan — additional cost BLOCKED on an engine hook, defender's choice FIXED (see cards/batch-07.md)
 - **A whole sentence missing:** Last Breath 257 (damage), Detonate 328 (draw 2), Eclipse 625 (Predict), Confront 129, Rally the Troops 487, Renekton, Brute 879 (empower at 10 Might), Ezreal, Prodigy 470, Red Brambleback 591, Blue Sentinel 649, Herald of Spring 596, Ashe, Focused 731, Sivir, Ambitious 441, Yeti Brawler 580, Karma, Channeler 548, Chem-Baroness 556, Swift Scout 259, Crescent Strike 634 (splash), Lillia, Protector of Dreams 620, Noxian Guillotine 251, Imperial Decree 221, Bushwhack 327, Relentless Pursuit 503.
   - c2: FIXED in the c2 range (see batch-02): Last Breath 257, Detonate 328, Confront 129, Noxian Guillotine 251, Imperial Decree 221, Bushwhack 327.
   - c1: 252 Nine-Tailed Fox, 401 Temporal Portal — FIXED, see cards/batch-01.md
   - c1: 556 Chem-Baroness — FIXED (Gold bonus, see cards/batch-08.md); 259 Swift Scout — BLOCKED: the hide cost is paid by `GameEngine::executeHideCard`, which has no card hook
   - c5: 441 Sivir, Ambitious — FIXED (batch-05). 470 Ezreal, Prodigy — BLOCKED on the engine (batch-10).
   - c6: 596 Herald of Spring, 580 Yeti Brawler, 548 Karma, Channeler — FIXED; 649 Blue Sentinel — the delayed [Add] FIXED, "trigger an additional time" BLOCKED; 591 Red Brambleback — BLOCKED (same engine change: `TriggerManager::onScore` must queue conquer / hold triggers an extra time); 620 Lillia, Protector of Dreams — BLOCKED (needs a "when you play a token unit" trigger)
+  - c7: 731 Ashe, Focused — FIXED; 879 Renekton, Brute — PARTLY FIXED, exact Might edge BLOCKED on an engine event (see cards/batch-07.md)
 - **Multi-target or "all" effect coded as one target:** Back to Back 206, Grand Strategem 233, Decisive Strike 322, Danger Zone 501, On the Hunt 518, Icathian Rain 247, Tricksy Tentacles 616, Against the Odds 323 (flat +2).
   - c2: FIXED in the c2 range (see batch-02): Back to Back 206, Grand Strategem 233, Decisive Strike 322, Icathian Rain 247, Against the Odds 323.
 - **Wrong scope or zone:** Anivia, Primal 148 (every battlefield), Tibbers 316 (hits bases), Cannon Barrage 127 (not combat-only), Fox-Fire 253 (kills the caster's own units first), Ride the Wind 173 (base only), Unforgiven 256, Harpoon Squad 458, Gentle Gemdragon 666, Viktor, Leader 246, Right of Conquest 577, Overzealous Fan 449 (bounces instead of moving to base).
@@ -192,12 +197,14 @@ section.
   - c2: 247 Icathian Rain — FIXED (rewritten; damage goes through the executor guard, no kill calls); 108 Convergent Mutation — ALREADY FIXED (resolve-time target re-validation + executor guard).
   - c4: 91 Pit Crew and the batch-04 S2 list (27, 36, 59, 61, 78, 103, 131, 139, 157, 164, 167, 197, 202, 217) — FIXED: on-board guards, see batch-04 Systemic S2.
   - c5: units/0219..0494 — done, per card in batch-05 "Systemic" (Weaponmaster cards on the shared base; self-buff / self-ready cards guarded by the executor or by the card).
+  - c7: 711 Diana, 712 Vex, 955 Shadow Clone — FIXED (on-board checks); 724 Enthralling Protector — ALREADY FIXED by the executor guard; see cards/batch-07.md and batch-10.md
 - [ ] **S3 Aura multiplies with copies** (02 item 2.2) — about 45 more cards, including Captain Farron 15, Raging Soul 19, Wielder of Water 55, Wizened Elder 65, Dr. Mundo 109, Lee Sin, Centered 151, Fiora, Victorious 232, Sett, Kingpin 240, Yi, Meditative 302, Garen 311, Gearhead 391, Ornn 407, Ancient Warmonger 452, Sivir, Mercenary 464, Trusty Ramhound 480, Soraka 550, Vilemaw 622, Master Yi, Tempered 675, Crimson Pigeons 716, Brutalizer 365, Soul Sword 601.
   - Battlefields have the same problem when both players bring the same battlefield: Trifarian War Camp 289, Void Gate 291, Kinkou Temple 946, Forbidding Waste 766, Black Flame Altar 764, Ornn's Forge 527, Gardens of Becoming 769, Risen Altar 950.
   - c0: 365 Brutalizer — FIXED (each instance gives its own bearer +2 once); battlefields 289, 291, 946, 766, 764, 527, 769, 950 (and 292) — FIXED card-side with a per-slot guard; test: C0Test.SameBattlefieldTwice_EachCopyAppliesOnce, .SameBattlefieldTwice_VoidGateWasteAltarAndGardens, .SameBattlefieldTwice_ControllerScopedDiscounts, .Brutalizer_BonusAppliesHoweverItWasAttached
   - c4: 15, 19, 55, 65, 109, 151 (and 111's duplicate refs) — ALREADY FIXED by the 2.2 aura contract, verified per card; test: C4Test.TwoWizenedElders_EachGetTheirOwnPlusOneOnce, AurasCostsTest.TwoDrMundos_EachCountsTheTrashOnce
   - c5: 232, 240, 302, 311, 391, 407, 452, 464, 480 — ALREADY FIXED by the once-per-(card, controller) contract (`1ae4c88`); each hook visits every instance of its own.
   - c6: 550 Soraka, 563 Prepared Neophyte, 603 Allay, 609 Mosstomper, 622 Vilemaw, 637 Gustwalker, 638 Petal Pixie, 656 Gemhand Hunter, 660 Targonian Visionary, 670 Wily Newtfish, 675 Master Yi, Tempered — verified ALREADY FIXED by 02 item 2.2 (one hook call per (card, controller); each hook loops over its instances)
+  - c7: 716 Crimson Pigeons — ALREADY FIXED by the 2.2 aura contract; test: C7Test.TwoCrimsonPigeonsAttackingTogether_EachGetPlusTwoOnce
 - [ ] **S4 Unlimited buff** (02 item 2.14) — Arena Bar 124, Stand United 53, Overt Operation 153, Adaptatron 56, Karma 235, Poro Herder 61, Pit Rookie 136, Trifarian Gloryseeker 217, Warmog's Armor 430, Blind Monk 254, Radiant Dawn 297, Aphelios 372, Red Brambleback 591, Ivern 613, Nami 614, Enthralling Protector 724, Voidreaver 787, Navori Fighting Pit 278, Spirit's Refuge 63.
   - Exempt when fixing: Lee Sin, Ascetic 78 ("I can have any number of buffs").
   - c0: 124 Arena Bar, 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by 02 item 2.14 (`buffUnit` gives a Buff only to a unit without one); the cards call `buffUnit`
@@ -207,6 +214,7 @@ section.
   - c1: 430 Warmog's Armor, 254 Blind Monk, 297 Radiant Dawn, 787 Voidreaver — ALREADY FIXED by 02 item 2.14 (`buffUnit` places a Buff only on a unit without one); none prints "if it was buffed this way"
   - c5: 235 Karma, 372 Aphelios — ALREADY FIXED by `buffUnit` (`99d179e`).
   - c6: 591 Red Brambleback, 613 Ivern, 614 Nami — ALREADY FIXED by 02 item 2.14 (`buffUnit` gives a Buff only to a unit without one); the cards call `buffUnit`
+  - c7: 724 Enthralling Protector — ALREADY FIXED by 02 item 2.14; test: C7Test.EnthrallingProtector_ASecondActivationAddsNoSecondBuff
 - [ ] **S5 First match taken where the player (or opponent) should choose** — about 70 more cards. Each batch file lists them with what should be chosen.
   - c0: 282 Sigil of the Storm, 276 Hallowed Tomb, 771 Star Spring, 339 Recurve Bow, 99 Garbage Grabber, 342 Assembly Rig, 284 Targon's Peak — FIXED: each asks its controller (cards/batch-00.md Systemic S5)
   - c4: 136 Pit Rookie, 36 Vi, Destructive, 109 Dr. Mundo, Expert — FIXED: see batch-04 Systemic S5.

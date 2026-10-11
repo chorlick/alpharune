@@ -28,12 +28,14 @@ namespace {
 
 constexpr CardDefId kPoutyPoro = 13;          // a unit with [Deflect]
 constexpr CardDefId kSealOfStrength = 163;    // a non-token gear, [0][O]
+constexpr CardDefId kKarthusEternal = 236;
 constexpr CardDefId kIncinerate = 301;        // a spell
 constexpr CardDefId kDiana = 711;
 constexpr CardDefId kVexApathetic = 712;
 constexpr CardDefId kCarrionDredger = 715;
 constexpr CardDefId kCrimsonPigeons = 716;
 constexpr CardDefId kLoyalPoro = 718;         // a 3-cost Poro with no Power cost
+constexpr CardDefId kScrutinizingSergeant = 719;
 constexpr CardDefId kUltrasoftPoro = 722;
 constexpr CardDefId kEnthrallingProtector = 724;
 constexpr CardDefId kSafetyInspector = 726;
@@ -209,6 +211,31 @@ TEST_F(C7Test, DeflectBelongsToTheBirdTokensOnly) {
 TEST_F(C7Test, EmpoweredDeathknellCardsCarryTheDeathknellKeyword) {
     EXPECT_TRUE(card_db.get(kBaccaiWitherclaw).keywords.has(Keyword::Deathknell));
     EXPECT_TRUE(card_db.get(kNoxianEmissary).keywords.has(Keyword::Deathknell));
+}
+
+// Karthus repeats only abilities of objects that carry [Deathknell].
+TEST_F(C7Test, Karthus_RepeatsAnEmpoweredDeathknell) {
+    addUnit(P1, kKarthusEternal, 0, 0);
+    auto emissary = addUnit(P1, kNoxianEmissary);
+    o(emissary).empowered = 1;
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();   // Karthus's aura
+        e.testHook_executor().killObject(emissary);
+        e.testHook_runChain();
+    });
+    EXPECT_EQ(tokensNamed(P1, "Recruit").size(), 4u) << "two Recruits, twice";
+}
+
+// XP is gained through gainXp, which keeps "XP gained this turn".
+TEST_F(C7Test, HuntAndScrutinizingSergeant_CountAsXpGainedThisTurn) {
+    auto fae = addUnit(P1, kEnthrallingProtector, 0, 0);
+    fireTriggerThroughEngine(fae, TriggerType::WhenIConquerOrHold);
+    EXPECT_EQ(state.player(P1).xp, 1);
+    EXPECT_EQ(state.player(P1).xp_gained_this_turn, 1);
+    auto sergeant = addUnit(P1, kScrutinizingSergeant);
+    fireTriggerThroughEngine(sergeant, TriggerType::WhenYouPlayMe);
+    EXPECT_EQ(state.player(P1).xp, 3) << "1 XP for each friendly unit";
+    EXPECT_EQ(state.player(P1).xp_gained_this_turn, 3);
 }
 
 // ─── batch-07: Ultrasoft Poro ───────────────────────────────────────────────

@@ -126,24 +126,27 @@ TEST_F(VendettaA, Vendetta_BladeTwirler_FirstMoveBurnsChosenPlayerOncePerTurn) {
     auto unit = addUnit(P1, kBladeTwirler, 0, 0);
     for (int i = 0; i < 3; ++i) { addToDeck(P1, kDredgeUp); addToDeck(P2, kDredgeUp); }
 
+    // "The first time I move each turn" is the trigger's condition (the move
+    // count the engine keeps), so the moves go through the engine.
+    (void)exec;
     // Mode 0 = the opponent.
-    driveResumableTrigger(kBladeTwirler, P1, unit,
-        [](const std::vector<Intent>& legal) { return pickValue(legal, 0); },
-        exec, TriggerType::WhenIMove);
+    state.getObject(unit).moves_this_turn = 1;
+    EnginePathAgent them(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(unit, TriggerType::WhenIMove, &them);
     EXPECT_EQ(trashSize(P2), 1);
     EXPECT_EQ(trashSize(P1), 0);
 
     // Second move the same turn: not "the first time".
-    driveResumableTrigger(kBladeTwirler, P1, unit,
-        [](const std::vector<Intent>& legal) { return pickValue(legal, 0); },
-        exec, TriggerType::WhenIMove);
+    state.getObject(unit).moves_this_turn = 2;
+    EnginePathAgent again(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(unit, TriggerType::WhenIMove, &again);
     EXPECT_EQ(trashSize(P2), 1);
 
     // Next turn it works again, and the controller may choose themself.
     state.turn.turn_number++;
-    driveResumableTrigger(kBladeTwirler, P1, unit,
-        [](const std::vector<Intent>& legal) { return pickValue(legal, 1); },
-        exec, TriggerType::WhenIMove);
+    state.getObject(unit).moves_this_turn = 1;
+    EnginePathAgent me(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(unit, TriggerType::WhenIMove, &me);
     EXPECT_EQ(trashSize(P1), 1);
     EXPECT_EQ(trashSize(P2), 1);
 }
@@ -821,6 +824,9 @@ TEST_F(VendettaA, Vendetta_AstralHeron_FirstCardAtBattlefieldDiscountsNextCard) 
     fireTriggerAs(kAstralHeron, P1, heron, TriggerType::WhenYouPlayACard, exec);
     EXPECT_TRUE(mods.empty());
 
+    // A new turn (the Heron counts the plays it has seen each turn, so the
+    // first card is told apart from a response that resolved before it).
+    state.turn.turn_number++;
     state.player(P1).cards_played_this_turn = 1;
     fireTriggerAs(kAstralHeron, P1, heron, TriggerType::WhenYouPlayACard, exec);
     ASSERT_EQ(mods.size(), 1u);

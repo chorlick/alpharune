@@ -1,6 +1,8 @@
 #include "ml/feature_extractor.h"
 
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 
 namespace riftbound::ml {
 
@@ -25,6 +27,18 @@ inline float safeBfId(BattlefieldId id) {
     if (id == kInvalidId) return -1.0f;
     if (id.raw() > 15) return -1.0f;
     return static_cast<float>(id.raw());
+}
+
+// Every block starts where `layout` says it does: a block that grows or moves
+// without its offset is a layout bug, caught on the first extraction.
+inline void blockStartsAt(const std::vector<float>& features, int offset,
+                          const char* block) {
+    if (static_cast<int>(features.size()) != offset) [[unlikely]] {
+        throw std::logic_error(
+            std::string("extractStateFeatures: block ") + block + " starts at " +
+            std::to_string(features.size()) + ", layout says " +
+            std::to_string(offset));
+    }
 }
 
 // Where the extractor's board queries land, gathered in ONE pass over
@@ -362,6 +376,7 @@ void extractStateFeatures(const GameState& state,
     const int opp_seat  = BoardIndex::seat(opp);
 
     // Global features (10)
+    blockStartsAt(features, layout::kGlobals, "kGlobals");
     features.push_back(static_cast<float>(state.turn.turn_number));
     int phase_val = 0;
     switch (state.turn.phase) {
@@ -388,6 +403,7 @@ void extractStateFeatures(const GameState& state,
     features.push_back(static_cast<float>(state.delayed_abilities.size()));
 
     // Chain items (kMaxChainItems x 2 = 8)
+    blockStartsAt(features, layout::kChainItems, "kChainItems");
     for (int i = 0; i < kMaxChainItems; ++i) {
         if (i < static_cast<int>(state.chain.items.size())) {
             auto& item = state.chain.items[i];
@@ -403,16 +419,19 @@ void extractStateFeatures(const GameState& state,
     }
 
     // Self player features (70)
+    blockStartsAt(features, layout::kSelfPlayer, "kSelfPlayer");
     extractPlayerFeatures(state, perspective, true, perspective, card_db,
                           board, features);
 
     // Opponent player features (70)
+    blockStartsAt(features, layout::kOppPlayer, "kOppPlayer");
     extractPlayerFeatures(state, opp, false, perspective, card_db,
                           board, features);
 
-    // Battlefield features (49 each × 4 = 196). Also collects per-side
+    // Battlefield features (49 each × 4 = 196), slot by slot. Also collects per-side
     // extended features (12 floats per side) into ext_per_side for later
     // appending — kept here so the top-3 sort order matches extractSideFeatures.
+    blockStartsAt(features, layout::kBattlefields, "kBattlefields");
     constexpr int kExtPerSide = kMaxBfUnitsPerSide * kPerUnitExtFields; // 12
     float ext_per_side[8 /* 4 BFs × 2 sides */][kExtPerSide] = {};
     int ext_slot = 0;
@@ -423,9 +442,11 @@ void extractStateFeatures(const GameState& state,
             features.push_back(state.objectExists(bf.card_object_id)
                 ? safeCardId(state.getObject(bf.card_object_id).card_def_id) : 0.0f);
 
+            // 0 nobody, 1 the perspective player, 2 the opponent (it was
+            // 1 = Player1, 2 = Player2 before the 2026-10 layout).
             float ctrl = 0;
             if (bf.controller.has_value())
-                ctrl = (*bf.controller == PlayerId::Player1) ? 1.0f : 2.0f;
+                ctrl = (*bf.controller == perspective) ? 1.0f : 2.0f;
             features.push_back(ctrl);
 
             features.push_back(bf.is_contested ? 1.0f : 0.0f);
@@ -455,11 +476,13 @@ void extractStateFeatures(const GameState& state,
 
             features.push_back(bf.is_token ? 1.0f : 0.0f);
 
-            // Per-side features (20 each × 2 = 40) + extended per-side (12 each).
-            const auto& p1u = board.bf_units[i][0];
-            const auto& p2u = board.bf_units[i][1];
-            extractSideFeatures(state, p1u, features, ext_per_side[ext_slot++]);
-            extractSideFeatures(state, p2u, features, ext_per_side[ext_slot++]);
+            // Per-side features (20 each × 2 = 40) + extended per-side (12
+            // each): the perspective player's side, then the opponent's — the
+            // order of every per-side block of the vector.
+            extractSideFeatures(state, board.bf_units[i][self_seat], features,
+                                ext_per_side[ext_slot++]);
+            extractSideFeatures(state, board.bf_units[i][opp_seat], features,
+                                ext_per_side[ext_slot++]);
         } else {
             for (int j = 0; j < 49; ++j) features.push_back(0.0f);
             // Leave both ext_per_side slots at zero for this BF.
@@ -467,7 +490,8 @@ void extractStateFeatures(const GameState& state,
         }
     }
 
-    // ── Tier 1 expansion (positions 354..469) ───────────────────────────────
+    // ── Tier 1 expansion ────────────────────────────────────────────────────
+    blockStartsAt(features, layout::kChainTargets, "kChainTargets");
 
     // Chain item targets: top-2 per slot, 4 slots = 8 floats.
     for (int slot = 0; slot < kMaxChainItems; ++slot) {
@@ -487,6 +511,7 @@ void extractStateFeatures(const GameState& state,
     }
 
     // Cost modifier types: 2 per player × 2 players = 4 floats.
+    blockStartsAt(features, layout::kCostModTypes, "kCostModTypes");
     auto emit_cost_mod_types = [&](PlayerId p) {
         bool next_spell = false, next_unit = false;
         for (auto& mod : state.player(p).cost_modifiers) {
@@ -500,6 +525,7 @@ void extractStateFeatures(const GameState& state,
     emit_cost_mod_types(opp);
 
     // Per-BF scored flags: 2 per BF × 4 BFs = 8 floats.
+    blockStartsAt(features, layout::kScoredFlags, "kScoredFlags");
     for (int i = 0; i < 4; ++i) {
         if (i < static_cast<int>(state.battlefields.size())) {
             BattlefieldId bf_id = state.battlefields[i].id;
@@ -514,19 +540,19 @@ void extractStateFeatures(const GameState& state,
     }
 
     // Per-unit extended features: 12 per side × 2 sides × 4 BFs = 96 floats.
-    // Slot order is identical to the order they were collected during the BF
-    // loop: bf0/p1, bf0/p2, bf1/p1, ..., bf3/p2.
+    // Slot order is the order they were collected in during the BF loop:
+    // bf0/self, bf0/opp, bf1/self, ..., bf3/opp.
+    blockStartsAt(features, layout::kUnitExt, "kUnitExt");
     for (int s = 0; s < 8; ++s)
         for (int j = 0; j < kExtPerSide; ++j)
             features.push_back(ext_per_side[s][j]);
 
-    // ── Zone multi-hot encoding (positions 470..4404) ────────────────────────
-    // 5 zones × kCardVocabSize (787) = 3935 floats. Each vector contains the
-    // count of each card_def_id present in that zone. card_def_id values are
-    // 1..787, encoded at position (id - 1) in the vector. Perfect-information
-    // encoding: a player knows their own deck/trash/banishment and the
-    // opponent's public zones (trash, banishment). Opponent's deck stays
-    // hidden — never serialized.
+    // ── Zone multi-hot encoding ──────────────────────────────────────────────
+    // 5 zones × kCardVocabSize floats. Each vector contains the count of each
+    // card_def_id present in that zone, card id i at position (i - 1). A
+    // player knows the composition of their own deck and both players' public
+    // trash and banishment. The opponent's deck is never written.
+    blockStartsAt(features, layout::kZones, "kZones");
     auto emit_zone_multihot = [&](const std::vector<GameObjectId>& zone_ids) {
         const size_t start = features.size();
         features.resize(start + kCardVocabSize, 0.0f);
@@ -541,17 +567,18 @@ void extractStateFeatures(const GameState& state,
     const auto& self_ps = state.player(perspective);
     const auto& opp_ps  = state.player(opp);
 
-    emit_zone_multihot(self_ps.main_deck);      // self deck (787)
-    emit_zone_multihot(self_ps.trash);          // self trash (787)
-    emit_zone_multihot(self_ps.banishment);     // self banishment (787)
-    emit_zone_multihot(opp_ps.trash);           // opponent trash (787, public)
-    emit_zone_multihot(opp_ps.banishment);      // opponent banishment (787, public)
+    emit_zone_multihot(self_ps.main_deck);      // self deck
+    emit_zone_multihot(self_ps.trash);          // self trash
+    emit_zone_multihot(self_ps.banishment);     // self banishment
+    emit_zone_multihot(opp_ps.trash);           // opponent trash (public)
+    emit_zone_multihot(opp_ps.banishment);      // opponent banishment (public)
 
-    // Per-player turn flags affecting playable-actions (positions 4405..4406).
+    // Per-player turn flags affecting playable-actions: self, opp.
+    blockStartsAt(features, layout::kPlayLockout, "kPlayLockout");
     features.push_back(self_ps.cant_play_cards_this_turn ? 1.0f : 0.0f);
     features.push_back(opp_ps.cant_play_cards_this_turn  ? 1.0f : 0.0f);
 
-    // ── Tier 2/3 expansion (positions 4407..4622) ───────────────────────────
+    // ── Tier 2/3 expansion ──────────────────────────────────────────────────
     //
     // For each BF (4) × side (self, opp) × top-3 unit (by current_might desc)
     // emit 8 fields:
@@ -563,8 +590,9 @@ void extractStateFeatures(const GameState& state,
     //   5: has Tank keyword (0/1)
     //   6: has Backline keyword (0/1)
     //   7: has Ganking keyword (0/1)
-    // Missing units zero-padded. Sort order must match the existing extended
-    // block so positions align with the same unit identity.
+    // Missing units zero-padded. Same sides in the same order (self, opp) and
+    // the same sort as the base side block and the extended block, so one
+    // (battlefield, side, unit) slot is the same unit in all three.
     auto emit_unit_t2 = [&](const std::vector<GameObjectId>& units) {
         struct U {
             int assault, shield, deflect;
@@ -604,6 +632,7 @@ void extractStateFeatures(const GameState& state,
             }
         }
     };
+    blockStartsAt(features, layout::kUnitT2, "kUnitT2");
     for (int i = 0; i < 4; ++i) {
         if (i < static_cast<int>(state.battlefields.size())) {
             // perspective ordering: self side first, then opp side
@@ -615,8 +644,9 @@ void extractStateFeatures(const GameState& state,
         }
     }
 
-    // Extended globals (positions 4599..4622, 24 floats).
-    // 4599..4600: ready base unit count (self, opp).
+    // Extended globals (24 floats).
+    // Ready base unit count (self, opp).
+    blockStartsAt(features, layout::kExtGlobals, "kExtGlobals");
     auto count_ready_base = [&](int seat) {
         int n = 0;
         for (auto uid : board.base_units[seat]) {
@@ -627,7 +657,7 @@ void extractStateFeatures(const GameState& state,
     features.push_back(static_cast<float>(count_ready_base(self_seat)));
     features.push_back(static_cast<float>(count_ready_base(opp_seat)));
 
-    // 4601..4602: cost modifier magnitude sum (self, opp).
+    // Cost modifier magnitude sum (self, opp).
     auto cost_mod_sum = [](const auto& mods) {
         int s = 0;
         for (auto& m : mods) s += m.energy_reduction;
@@ -636,11 +666,11 @@ void extractStateFeatures(const GameState& state,
     features.push_back(static_cast<float>(cost_mod_sum(self_ps.cost_modifiers)));
     features.push_back(static_cast<float>(cost_mod_sum(opp_ps.cost_modifiers)));
 
-    // 4603..4604: additional turn queue depth (self, opp).
+    // Additional turn queue depth (self, opp).
     features.push_back(static_cast<float>(self_ps.additional_turns.size()));
     features.push_back(static_cast<float>(opp_ps.additional_turns.size()));
 
-    // 4605..4608: contested-by-self per BF (×4).
+    // Contested-by-self per BF (×4).
     for (int i = 0; i < 4; ++i) {
         if (i < static_cast<int>(state.battlefields.size())) {
             const auto& bf = state.battlefields[i];
@@ -650,7 +680,7 @@ void extractStateFeatures(const GameState& state,
         }
     }
 
-    // 4609..4612: combat_staged per BF (×4).
+    // combat_staged per BF (×4).
     for (int i = 0; i < 4; ++i) {
         if (i < static_cast<int>(state.battlefields.size())) {
             features.push_back(state.battlefields[i].combat_staged ? 1.0f : 0.0f);
@@ -659,7 +689,7 @@ void extractStateFeatures(const GameState& state,
         }
     }
 
-    // 4613..4616: showdown_staged per BF (×4).
+    // showdown_staged per BF (×4).
     for (int i = 0; i < 4; ++i) {
         if (i < static_cast<int>(state.battlefields.size())) {
             features.push_back(state.battlefields[i].showdown_staged ? 1.0f : 0.0f);
@@ -668,7 +698,7 @@ void extractStateFeatures(const GameState& state,
         }
     }
 
-    // 4617..4620: facedown age (max turns_since_hidden across facedown cards) per BF (×4).
+    // Facedown age (max turns_since_hidden across facedown cards) per BF (×4).
     // 0 = no facedown or only hidden this turn (no Reaction yet);
     // 1+ = at least one facedown card is reaction-ready.
     for (int i = 0; i < 4; ++i) {
@@ -689,15 +719,31 @@ void extractStateFeatures(const GameState& state,
         }
     }
 
-    // 4621: focus_holder (1=self, 0=opp, -1=no showdown / no focus assigned).
+    // focus_holder (1=self, 0=opp, -1=no showdown / no focus assigned).
     if (state.turn.focus_holder.has_value()) {
         features.push_back(*state.turn.focus_holder == perspective ? 1.0f : 0.0f);
     } else {
         features.push_back(-1.0f);
     }
 
-    // 4622: total battlefield count.
+    // Total battlefield count.
     features.push_back(static_cast<float>(state.battlefields.size()));
+
+    // Who brought each battlefield slot to the game: 0 nobody (a token
+    // battlefield, or no battlefield in the slot), 1 self, 2 opponent. Slot
+    // order is setup order (Player1's battlefield, then Player2's), the one
+    // thing in this vector that would otherwise depend on the seat.
+    blockStartsAt(features, layout::kBfContributedBy, "kBfContributedBy");
+    for (int i = 0; i < layout::kBfSlots; ++i) {
+        float who = 0.0f;
+        if (i < static_cast<int>(state.battlefields.size())) {
+            const PlayerId by = state.battlefields[i].contributed_by;
+            if (by == perspective) who = 1.0f;
+            else if (by == opp) who = 2.0f;
+        }
+        features.push_back(who);
+    }
+    blockStartsAt(features, layout::kEnd, "the end");
 }
 
 int actionTypeIndex(IntentType type) {

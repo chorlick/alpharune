@@ -2,15 +2,6 @@
 
 Open items only. Closed items of this plan are in `plans/completed/01-openspiel-search.md`.
 
-## Bugs
-
-- [ ] **1.9 State features mix absolute and perspective-relative ordering** [confirmed]
-  - Where: `src/ml/feature_extractor.cpp:355-358`, `:389-392` versus `:541-542`.
-  - Battlefield controller is encoded P1=1 / P2=2; the per-side base block and the 96-float extended block are P1-then-P2; the Tier-2 block is self-then-opp. No feature gives the absolute seat.
-  - Failure: for `perspective = Player2`, "bf0 side0 unit0" is the opponent's unit in the base block and P2's own in Tier-2. The comment at `:496-497` says these line up.
-  - `tests/test_observation_tensor.cpp` checks only hand and deck masking.
-  - Changing the layout invalidates trainer checkpoints.
-
 ## Integrity
 
 - [ ] **1.12 Slot collisions remove legal options** [confirmed; documented as "accepted" in `action_vocab.h:26-30`]

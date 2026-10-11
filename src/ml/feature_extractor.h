@@ -19,39 +19,61 @@
 
 namespace riftbound::ml {
 
-/// State-feature layout (kStateFeatureDim = 6188 dims total):
-///   0..353       : base features (unchanged historical layout — see source).
-///   354..361     : chain item targets (4 slots × 2 target def_ids).
-///   362..365     : cost-modifier types (2 players × {next_spell_only, next_unit_only}).
-///   366..373     : per-BF scored flags (4 BFs × 2 players).
-///   374..469     : per-unit extended features (4 BFs × 2 sides × top-3 ×
-///                  {combat_designation, attachment_def_id, might_delta,
-///                   temp_might_bonus}).
-///   Z = kZoneVectorOffset (470), V = kCardVocabSize (1100); card_def_id i → pos i-1.
-///   Z      .. Z+V-1   : self main_deck multi-hot counts.
-///   Z+V    .. Z+2V-1  : self trash multi-hot counts.
-///   Z+2V   .. Z+3V-1  : self banishment multi-hot counts.
-///   Z+3V   .. Z+4V-1  : opponent trash multi-hot counts.
-///   Z+4V   .. Z+5V-1  : opponent banishment multi-hot counts.
-///   T = Z+5V (5970):
-///   T                 : self.cant_play_cards_this_turn (Brynhir lockout).
-///   T+1               : opp.cant_play_cards_this_turn.
-///   T+2 .. T+193      : Tier 2/3 extended per-unit features (4 BFs × 2 sides × top-3 ×
-///                  {assault, shield, deflect, buff_count, temp_buff_count, tank_kw,
-///                   backline_kw, ganking_kw}). 8 fields × 6 unit slots × 4 BFs = 192 floats.
-///                  Layout: BF i (i=0..3), then side j (j=self,opp), then unit k (k=0..2),
-///                  then field f (f=0..7). Position = T+2 + ((i*2 + j)*3 + k)*8 + f.
-///   T+194 .. T+217    : extended globals (24 floats), in order:
-///                    ready base units (self, opp); cost modifier magnitude sum (self, opp);
-///                    additional turn queue depth (self, opp); contested-by-self per BF (×4);
-///                    combat_staged per BF (×4); showdown_staged per BF (×4);
-///                    facedown age (oldest hidden card) per BF (×4);
-///                    focus_holder (1=self, 0=opp, -1=no showdown); total battlefield count.
+/// State-feature layout (kStateFeatureDim dims). Every block has a named
+/// offset in `namespace layout` below; `extractStateFeatures` checks each
+/// offset as it writes.
 ///
-/// Multi-hot zones encode perfect-information state per the game rules: each
-/// player has full knowledge of their own deck/trash/banishment and the
-/// opponent's public zones (trash, banishment). Opponent's deck and hand
-/// remain hidden as per CR.
+/// ONE ORDERING CONVENTION: everything is relative to the perspective player.
+/// Wherever a block holds one entry per player, the perspective player
+/// ("self") comes first and the opponent second; a field that names a player
+/// is 1 = self, 2 = opponent, 0 = nobody (or the yes/no "is it self"). No
+/// field says Player1 or Player2, so the vector of a position seen by one seat
+/// equals the vector of the seat-swapped position seen by the other
+/// (FeaturePerspective.SeatSwapGivesTheSameVector*). Who goes first is the
+/// global `kGlobalSelfStarts`; the seat itself has no rules meaning and is not
+/// a feature. Battlefield slots are not reordered (slot i is battlefield i for
+/// both players, as in the action vocabulary); which player brought each slot
+/// to the game is the `kBfContributedBy` block.
+///
+///   kGlobals (10)        turn number, phase, self is turn player, self is the
+///                        starting player, score difference (self - opp), chain
+///                        size, showdown, closed state, additional turn,
+///                        delayed-ability count.
+///   kChainItems (8)      4 chain slots x {source card id, controlled by self}.
+///   kSelfPlayer (70)     the perspective player's block (see the source).
+///   kOppPlayer (70)      the opponent's block, hand identities masked.
+///   kBattlefields (196)  4 slots x 49: 9 header fields {card id, controller
+///                        (0 none / 1 self / 2 opp), contested, combat, showdown,
+///                        facedown count, self is attacker (-1 outside combat),
+///                        combat phase, token} then the SELF side (20) then the
+///                        OPPONENT side (20): 11 counts, top-3 unit card ids,
+///                        top-3 Might, top-3 damage (top-3 by Might, descending).
+///   kChainTargets (8)    4 chain slots x 2 target card ids.
+///   kCostModTypes (4)    {next spell only, next unit only} for self, then opp.
+///   kScoredFlags (8)     4 slots x {scored by self, scored by opp} this turn.
+///   kUnitExt (96)        4 slots x {self side, opp side} x top-3 units x
+///                        {combat designation, attachment card id, Might delta,
+///                        temporary Might}; same units, same order as kBattlefields.
+///   kZones (5 x V)       V = kCardVocabSize; card id i at position i-1; counts:
+///                        self Main Deck, self trash, self banishment, opponent
+///                        trash, opponent banishment.
+///   kPlayLockout (2)     can't play cards this turn: self, opp.
+///   kUnitT2 (192)        4 slots x {self side, opp side} x top-3 units x
+///                        {assault, shield, deflect, buffs, temporary buffs, Tank,
+///                        Backline, Ganking}.
+///   kExtGlobals (24)     ready base units (self, opp); cost-modifier sum (self,
+///                        opp); additional turns queued (self, opp); contested by
+///                        self x4; combat staged x4; showdown staged x4; facedown
+///                        age x4; focus holder (1 self / 0 opp / -1 none);
+///                        battlefield count.
+///   kBfContributedBy (4) per slot: who brought the battlefield (0 none / token,
+///                        1 self, 2 opp).
+///
+/// The multi-hot zones are what a player knows by the rules: the composition
+/// (never the order) of their own Main Deck, and both players' public trash
+/// and banishment. The opponent's deck and hand identities are never written.
+/// docs/checkpoint-breaking-2026-10.md lists what changed from the 6188-dim
+/// layout.
 
 inline constexpr int kActionFeatureDim    = 25;
 inline constexpr int kMaxLegalActions     = 64;
@@ -67,13 +89,68 @@ inline constexpr int kPerUnitExtFieldsT2  = 8;   // T2/3 per-unit: assault, shie
 inline constexpr int kCardVocabSize       = 1100;
 inline constexpr int kZoneVectorOffset    = 470;  // first multi-hot zone starts here
 inline constexpr int kNumZoneVectors      = 5;    // self deck/trash/banish, opp trash/banish
-// 470 base+extended dims, 5 zone multi-hots, 2 play-lockout flags, 192 Tier-2/3
-// per-unit dims, 24 extended globals.  = 6188 with kCardVocabSize = 1100.
-inline constexpr int kStateFeatureDim     =
-    kZoneVectorOffset + kNumZoneVectors * kCardVocabSize + 2 + 192 + 24;
 
-/// Build the state feature vector (kStateFeatureDim = 6188 dims; the first 354
-/// are the historical base layout) from `perspective`'s point of view.
+/// Where each block of the state vector starts. Side 0 is the perspective
+/// player, side 1 the opponent, in every helper.
+namespace layout {
+inline constexpr int kBfSlots         = 4;     // battlefield slots in the vector
+inline constexpr int kPlayerDim       = 70;
+inline constexpr int kBfHeaderDim     = 9;
+inline constexpr int kBfSideDim       = 20;
+inline constexpr int kBfDim           = kBfHeaderDim + 2 * kBfSideDim;        // 49
+inline constexpr int kUnitExtSideDim  = kMaxBfUnitsPerSide * kPerUnitExtFields;    // 12
+inline constexpr int kUnitT2SideDim   = kMaxBfUnitsPerSide * kPerUnitExtFieldsT2;  // 24
+
+inline constexpr int kGlobals         = 0;
+inline constexpr int kGlobalSelfIsTurnPlayer = kGlobals + 2;
+inline constexpr int kGlobalSelfStarts       = kGlobals + 3;
+inline constexpr int kGlobalScoreDiff        = kGlobals + 4;
+inline constexpr int kChainItems      = kGlobals + 10;
+inline constexpr int kSelfPlayer      = kChainItems + 2 * kMaxChainItems;      // 18
+inline constexpr int kOppPlayer       = kSelfPlayer + kPlayerDim;              // 88
+inline constexpr int kBattlefields    = kOppPlayer + kPlayerDim;               // 158
+inline constexpr int kChainTargets    = kBattlefields + kBfSlots * kBfDim;     // 354
+inline constexpr int kCostModTypes    = kChainTargets + 2 * kMaxChainItems;    // 362
+inline constexpr int kScoredFlags     = kCostModTypes + 4;                     // 366
+inline constexpr int kUnitExt         = kScoredFlags + 2 * kBfSlots;           // 374
+inline constexpr int kZones           = kUnitExt + kBfSlots * 2 * kUnitExtSideDim;  // 470
+inline constexpr int kPlayLockout     = kZones + kNumZoneVectors * kCardVocabSize;  // 5970
+inline constexpr int kUnitT2          = kPlayLockout + 2;
+inline constexpr int kExtGlobals      = kUnitT2 + kBfSlots * 2 * kUnitT2SideDim;
+inline constexpr int kExtGlobalsDim   = 24;
+inline constexpr int kExtFocusHolder  = kExtGlobals + 22;
+inline constexpr int kBfContributedBy = kExtGlobals + kExtGlobalsDim;
+inline constexpr int kEnd             = kBfContributedBy + kBfSlots;
+
+static_assert(kZones == kZoneVectorOffset);
+
+/// Header of battlefield slot `bf` (field 1 = controller, 6 = self is attacker).
+constexpr int bf(int bf) { return kBattlefields + bf * kBfDim; }
+/// The 20-float block of one side of battlefield slot `bf`.
+constexpr int bfSide(int bf, int side) {
+    return kBattlefields + bf * kBfDim + kBfHeaderDim + side * kBfSideDim;
+}
+/// Within a side block: 11 counts, then 3 card ids, 3 Might, 3 damage.
+inline constexpr int kSideUnitIds = 11, kSideUnitMight = 14, kSideUnitDamage = 17;
+constexpr int unitExt(int bf, int side, int unit) {
+    return kUnitExt + (bf * 2 + side) * kUnitExtSideDim + unit * kPerUnitExtFields;
+}
+constexpr int unitT2(int bf, int side, int unit) {
+    return kUnitT2 + (bf * 2 + side) * kUnitT2SideDim + unit * kPerUnitExtFieldsT2;
+}
+/// Zone multi-hot `zone` (0 self deck, 1 self trash, 2 self banishment,
+/// 3 opp trash, 4 opp banishment).
+constexpr int zone(int zone) { return kZones + zone * kCardVocabSize; }
+} // namespace layout
+
+// 6192 with kCardVocabSize = 1100 (6188 before the 2026-10 checkpoint break:
+// + the 4 kBfContributedBy dims).
+inline constexpr int kStateFeatureDim     = layout::kEnd;
+static_assert(kStateFeatureDim ==
+              kZoneVectorOffset + kNumZoneVectors * kCardVocabSize + 2 + 192 + 24 + 4);
+
+/// Build the state feature vector (kStateFeatureDim dims, layout above) from
+/// `perspective`'s point of view.
 /// Opponent-private information (hand, hidden cards) is masked.
 std::vector<float> extractStateFeatures(const GameState& state,
                                         PlayerId perspective,

@@ -310,7 +310,7 @@ uint64_t RiftboundState::InfoSetId(::open_spiel::Player player) const {
         : ::riftbound::PlayerId::Player2;
     const ::riftbound::GameState& gs = engineState();
     // Search asks for this key on every node visit: reuse one buffer per
-    // thread instead of allocating the 6188-float vector each time.
+    // thread instead of allocating the kStateFeatureDim-float vector each time.
     thread_local std::vector<float> feats;
     ::riftbound::ml::extractStateFeatures(
         gs, rb_player, rb_game_.cardDb(), feats);

@@ -28,9 +28,6 @@
 
 ## Types and invariants
 
-- [ ] **5.5 Id types are plain aliases; `CardDefId` has two "none" values** [confirmed]
-  - Where: `src/core/types.h:18-25`. All six ids are `using X = uint32_t`, so the documented `cardDefId()` / `ctx.source` mix-up compiles silently.
-  - `GameObject::card_def_id` and `ChainItem::card_def_id` use `kInvalidId`; `CardDef::id`, `DeckSubmission`, `granted_ability_def`, `GrantedAbilityRef` use 0. `recordReveal` (`game_state.h:710`) only filters `kInvalidId`.
 - [x] **5.6 Invalid ids are UB in Release** [code confirmed, no concrete trigger] — FIXED: `getObject` and `playerIndex` (hence `player()`) throw `std::logic_error` in every build type, `opponent(None)` is `None`; 21,000 random games ran without a throw; test: IntegrityFixIds.GetObjectThrowsOnUnknownId, IntegrityFixIds.PlayerNoneIsNotIndexable, IntegrityFixIds.OpponentOfNoneIsNone
   - Where: `game_state.h:672-682`, `types.h:39-41`. `getObject` is assert-only; `playerIndex(PlayerId::None)` returns -1 and `player()` indexes `players[-1]`; `opponent(PlayerId::None)` returns `Player1`.
 - [x] **5.7 `Intent::operator==` omits `use_alt_play_cost` and `granted_ability_def`** [confirmed in code, impact plausible] — FIXED: `operator==` compares both fields; test: IntegrityFixIntent.EqualityDistinguishesAltCostAndGrantedAbilityTwins

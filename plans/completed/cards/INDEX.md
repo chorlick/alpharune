@@ -1,0 +1,598 @@
+# Card index — every plan reference per card file
+
+Generated from the plan files. For each card stream (see ../README.md), every card
+file in the stream that any plan mentions, with `plan-file:line` pointers. Path
+mentions are exact; name+id mentions are matched heuristically, so a pointer may
+occasionally be a different card with the same number in a list - check the line.
+Cards not listed here have no finding. Systemic lists in `08-cards-full-review.md`
+section C point here too.
+
+## Stream c0 — battlefields/0270_altar_to_unity.cpp .. gear/0387_cloth_armor.cpp (111 files, 62 with findings)
+
+- `battlefields/0271_aspirant_s_climb.cpp` (Aspirant's Climb): 02-engine-rules.md:94; completed/cards/batch-00.md:78
+- `battlefields/0272_back_alley_bar.cpp` (Back-Alley Bar): 03-cards.md:64; completed/cards/batch-00.md:133,164
+- `battlefields/0274_fortified_position.cpp` (Fortified Position): completed/cards/batch-08.md:58
+- `battlefields/0276_hallowed_tomb.cpp` (Hallowed Tomb): completed/cards/batch-00.md:108,167
+- `battlefields/0277_monastery_of_hirana.cpp` (Monastery of Hirana): 07-cards-second-pass.md:85
+- `battlefields/0278_navori_fighting_pit.cpp` (Navori Fighting Pit): 03-cards.md:29; 07-cards-second-pass.md:54; 08-cards-full-review.md:140; completed/cards/batch-08.md:86
+- `battlefields/0282_sigil_of_the_storm.cpp` (Sigil of the Storm): completed/cards/batch-00.md:167
+- `battlefields/0284_targon_s_peak.cpp` (Targon's Peak): completed/cards/batch-00.md:167
+- `battlefields/0286_the_candlelit_sanctum.cpp` (The Candlelit Sanctum): completed/cards/batch-00.md:153
+- `battlefields/0287_the_dreaming_tree.cpp` (The Dreaming Tree): 02-engine-rules.md:44; completed/cards/batch-00.md:103
+- `battlefields/0289_trifarian_war_camp.cpp` (Trifarian War Camp): 08-cards-full-review.md:139; completed/cards/batch-00.md:165
+- `battlefields/0290_vilemaw_s_lair.cpp` (Vilemaw's Lair): completed/cards/batch-00.md:83
+- `battlefields/0291_void_gate.cpp` (Void Gate): 08-cards-full-review.md:139; completed/cards/batch-00.md:165
+- `battlefields/0292_windswept_hillock.cpp` (Windswept Hillock): completed/cards/batch-00.md:165
+- `battlefields/0522_forge_of_the_fluft.cpp` (Forge of the Fluft): 07-cards-second-pass.md:165; completed/cards/batch-00.md:125; completed/cards/batch-08.md:26
+- `battlefields/0527_ornn_s_forge.cpp` (Ornn's Forge): 08-cards-full-review.md:50,139; completed/cards/batch-00.md:8,165
+- `battlefields/0532_sunken_temple.cpp` (Sunken Temple): 07-cards-second-pass.md:104
+- `battlefields/0535_veiled_temple.cpp` (Veiled Temple): 03-cards.md:29; 07-cards-second-pass.md:55
+- `battlefields/0762_altar_of_blood.cpp` (Altar of Blood): completed/cards/batch-00.md:88
+- `battlefields/0763_amateur_recital.cpp` (Amateur Recital): 03-cards.md:29; 07-cards-second-pass.md:56
+- `battlefields/0764_black_flame_altar.cpp` (Black Flame Altar): 08-cards-full-review.md:56,139; completed/cards/batch-00.md:38,165
+- `battlefields/0765_dusk_rose_lab.cpp` (Dusk Rose Lab): 07-cards-second-pass.md:86
+- `battlefields/0766_forbidding_waste.cpp` (Forbidding Waste): 08-cards-full-review.md:139; completed/cards/batch-00.md:165
+- `battlefields/0769_gardens_of_becoming.cpp` (Gardens of Becoming): 08-cards-full-review.md:139; completed/cards/batch-00.md:165
+- `battlefields/0771_star_spring.cpp` (Star Spring): 02-engine-rules.md:69; completed/cards/batch-00.md:58,167
+- `battlefields/0772_the_academy.cpp` (The Academy): completed/cards/batch-00.md:93; completed/cards/batch-02.md:188
+- `battlefields/0774_valley_of_idols.cpp` (Valley of Idols): 02-engine-rules.md:69; 07-cards-second-pass.md:131
+- `battlefields/0775_vaults_of_helia.cpp` (Vaults of Helia): 08-cards-full-review.md:51; completed/cards/batch-00.md:53
+- `battlefields/0946_kinkou_temple.cpp` (Kinkou Temple): 08-cards-full-review.md:139; completed/cards/batch-00.md:118,165
+- `battlefields/0948_piltovan_forge.cpp` (Piltovan Forge): completed/cards/batch-00.md:143
+- `battlefields/0950_risen_altar.cpp` (Risen Altar): completed/cards/batch-00.md:148,165
+- `gear/0017_iron_ballista.cpp` (Iron Ballista): 08-cards-full-review.md:110; completed/cards/batch-00.md:13
+- `gear/0021_sun_disc.cpp` (Sun Disc): 07-cards-second-pass.md:112; 08-cards-full-review.md:74; completed/cards/batch-08.md:18,66
+- `gear/0023_unlicensed_armory.cpp` (Unlicensed Armory): completed/cards/batch-00.md:113
+- `gear/0060_mask_of_foresight.cpp` (Mask of Foresight): 03-cards.md:64; completed/cards/batch-00.md:164
+- `gear/0063_spirit_s_refuge.cpp` (Spirit's Refuge): 03-cards.md:29; 07-cards-second-pass.md:60; completed/cards/batch-08.md:34,85,86
+- `gear/0072_solari_shrine.cpp` (Solari Shrine): 07-cards-second-pass.md:170
+- `gear/0099_garbage_grabber.cpp` (Garbage Grabber): completed/cards/batch-00.md:158,167
+- `gear/0101_mushroom_pouch.cpp` (Mushroom Pouch): completed/cards/batch-00.md:28
+- `gear/0124_arena_bar.cpp` (Arena Bar): 08-cards-full-review.md:140; completed/cards/batch-00.md:68,166
+- `gear/0143_pirate_s_haven.cpp` (Pirate's Haven): 03-cards.md:64; completed/cards/batch-00.md:138,164
+- `gear/0152_mistfall.cpp` (Mistfall): 07-cards-second-pass.md:168; completed/cards/batch-08.md:84
+- `gear/0163_seal_of_strength.cpp` (Seal of Strength): 03-cards.md:69
+- `gear/0181_pack_of_wonders.cpp` (Pack of Wonders): completed/cards/batch-00.md:128
+- `gear/0182_scrapheap.cpp` (Scrapheap): 08-cards-full-review.md:65; completed/cards/batch-00.md:63
+- `gear/0184_the_syren.cpp` (The Syren): completed/cards/batch-00.md:86
+- `gear/0186_treasure_trove.cpp` (Treasure Trove): 08-cards-full-review.md:65,137; completed/cards/batch-00.md:23,164
+- `gear/0212_forge_of_the_future.cpp` (Forge of the Future): 03-cards.md:29; 07-cards-second-pass.md:57
+- `gear/0242_baited_hook.cpp` (Baited Hook): 02-engine-rules.md:122; 03-cards.md:39; 08-cards-full-review.md:128,137; completed/cards/batch-08.md:10,54,84
+- `gear/0326_gold.cpp` (Gold): 05-integrity.md:9; completed/cards/batch-08.md:40
+- `gear/0332_serrated_dirk.cpp` (Serrated Dirk): 08-cards-full-review.md:56; completed/cards/batch-00.md:33
+- `gear/0339_recurve_bow.cpp` (Recurve Bow): completed/cards/batch-00.md:167
+- `gear/0342_assembly_rig.cpp` (Assembly Rig): completed/cards/batch-00.md:158,167
+- `gear/0345_long_sword.cpp` (Long Sword): 08-cards-full-review.md:94; completed/cards/batch-00.md:43
+- `gear/0356_doran_s_shield.cpp` (Doran's Shield): completed/cards/batch-00.md:121
+- `gear/0365_brutalizer.cpp` (Brutalizer): 08-cards-full-review.md:138; completed/cards/batch-00.md:123,165
+- `gear/0369_poro_snax.cpp` (Poro Snax): 02-engine-rules.md:122; completed/cards/batch-00.md:73
+- `gear/0375_heart_of_dark_ice.cpp` (Heart of Dark Ice): completed/cards/batch-00.md:18
+- `gear/0379_sterak_s_gage.cpp` (Sterak's Gage): 08-cards-full-review.md:94; completed/cards/batch-00.md:43
+- `gear/0382_svellsongur.cpp` (Svellsongur): 08-cards-full-review.md:124; completed/cards/batch-00.md:48
+- `gear/0387_cloth_armor.cpp` (Cloth Armor): 08-cards-full-review.md:56; completed/cards/batch-00.md:33,43
+
+## Stream c1 — gear/0396_experimental_hexplate.cpp .. legends/0928_butcher_of_the_sands.cpp (111 files, 71 with findings)
+
+- `gear/0396_experimental_hexplate.cpp` (Experimental Hexplate): completed/cards/batch-01.md:156
+- `gear/0401_temporal_portal.cpp` (Temporal Portal): 08-cards-full-review.md:124; completed/cards/batch-01.md:106
+- `gear/0405_hextech_anomaly.cpp` (Hextech Anomaly): completed/cards/batch-01.md:146
+- `gear/0408_world_atlas.cpp` (World Atlas): 07-cards-second-pass.md:181
+- `gear/0412_the_zero_drive.cpp` (The Zero Drive): completed/cards/batch-01.md:141
+- `gear/0426_petricite_monument.cpp` (Petricite Monument): completed/cards/batch-01.md:201
+- `gear/0430_warmog_s_armor.cpp` (Warmog's Armor): 08-cards-full-review.md:140; completed/cards/batch-01.md:214
+- `gear/0455_cull.cpp` (Cull): 07-cards-second-pass.md:181
+- `gear/0460_edge_of_night.cpp` (Edge of Night): completed/cards/batch-01.md:215
+- `gear/0465_spirit_wheel.cpp` (Spirit Wheel): 02-engine-rules.md:44
+- `gear/0471_last_rites.cpp` (Last Rites): 08-cards-full-review.md:103; completed/cards/batch-01.md:101,215
+- `gear/0474_eye_of_the_herald.cpp` (Eye of the Herald): 02-engine-rules.md:85; 07-cards-second-pass.md:181; completed/cards/batch-01.md:116
+- `gear/0482_b_f_sword.cpp` (B.F. Sword): completed/cards/batch-01.md:131
+- `gear/0489_vanguard_armory.cpp` (Vanguard Armory): completed/cards/batch-01.md:196
+- `gear/0490_altar_of_memories.cpp` (Altar of Memories): 03-cards.md:17,40; 08-cards-full-review.md:128,143; completed/cards/batch-01.md:11,212,216
+- `gear/0498_blade_of_the_ruined_king.cpp` (Blade of the Ruined King): completed/cards/batch-01.md:151
+- `gear/0504_spinning_axe.cpp` (Spinning Axe): completed/cards/batch-01.md:121,126
+- `gear/0508_rabadon_s_deathcrown.cpp` (Rabadon's Deathcrown): completed/cards/batch-01.md:81
+- `gear/0509_shurelya_s_requiem.cpp` (Shurelya's Requiem): 02-engine-rules.md:19; completed/cards/batch-01.md:206
+- `gear/0542_seal_of_strength.cpp` (Seal of Strength): 03-cards.md:69; 08-cards-full-review.md:128; completed/cards/batch-01.md:76
+- `gear/0601_soul_sword.cpp` (Soul Sword): completed/cards/batch-01.md:213
+- `gear/0607_forgotten_signpost.cpp` (Forgotten Signpost): 03-cards.md:19; 08-cards-full-review.md:128,143; completed/cards/batch-01.md:96
+- `gear/0611_honeyfruit.cpp` (Honeyfruit): completed/cards/batch-01.md:111
+- `gear/0636_frigid_jewel.cpp` (Frigid Jewel): completed/cards/batch-01.md:215
+- `gear/0640_sprite_fountain.cpp` (Sprite Fountain): 08-cards-full-review.md:65; completed/cards/batch-01.md:91
+- `gear/0650_gutter_palace.cpp` (Gutter Palace): completed/cards/batch-01.md:201
+- `gear/0671_blood_rose.cpp` (Blood Rose): completed/cards/batch-08.md:58
+- `gear/0695_blast_cone.cpp` (Blast Cone): 03-cards.md:18; 07-cards-second-pass.md:61; 08-cards-full-review.md:143; completed/cards/batch-08.md:22
+- `gear/0698_scryer_s_bloom.cpp` (Scryer's Bloom): 07-cards-second-pass.md:133; completed/cards/batch-08.md:62
+- `gear/0700_the_list.cpp` (The List): completed/cards/batch-01.md:176
+- `gear/0710_cursed_sarcophagus.cpp` (Cursed Sarcophagus): completed/cards/batch-08.md:91
+- `gear/0736_shard_of_undoing.cpp` (Shard of Undoing): completed/cards/batch-01.md:191
+- `gear/0805_rage_amplifier.cpp` (Rage Amplifier): 02-engine-rules.md:11; 08-cards-full-review.md:45; completed/cards/batch-01.md:46
+- `gear/0809_endless_riches.cpp` (Endless Riches): completed/cards/batch-01.md:86
+- `gear/0864_tools_of_empire.cpp` (Tools of Empire): completed/cards/batch-01.md:212
+- `gear/0895_forgotten_relic.cpp` (Forgotten Relic): 07-cards-second-pass.md:171
+- `legends/0249_loose_cannon.cpp` (Loose Cannon): 08-cards-full-review.md:128; completed/cards/batch-01.md:16
+- `legends/0252_nine_tailed_fox.cpp` (Nine-Tailed Fox): 08-cards-full-review.md:124; completed/cards/batch-01.md:71
+- `legends/0254_blind_monk.cpp` (Blind Monk): 08-cards-full-review.md:140; completed/cards/batch-01.md:212,214
+- `legends/0256_unforgiven.cpp` (Unforgiven): 08-cards-full-review.md:127; completed/cards/batch-01.md:66,212
+- `legends/0259_swift_scout.cpp` (Swift Scout): 08-cards-full-review.md:125; completed/cards/batch-08.md:42
+- `legends/0264_the_boss.cpp` (The Boss): completed/cards/batch-01.md:166
+- `legends/0294_daughter_of_the_void.cpp` (Daughter of the Void): completed/cards/batch-01.md:161
+- `legends/0295_relentless_storm.cpp` (Relentless Storm): 07-cards-second-pass.md:105,113
+- `legends/0296_hand_of_noxus.cpp` (Hand of Noxus): 08-cards-full-review.md:74; completed/cards/batch-01.md:26
+- `legends/0297_radiant_dawn.cpp` (Radiant Dawn): 08-cards-full-review.md:140; completed/cards/batch-01.md:214,215; completed/cards/batch-02.md:102
+- `legends/0315_dark_child_starter.cpp` (Dark Child - Starter): completed/cards/batch-01.md:215
+- `legends/0319_lady_of_luminosity_starter.cpp` (Lady of Luminosity - Starter): completed/cards/batch-01.md:186
+- `legends/0321_might_of_demacia_starter.cpp` (Might of Demacia - Starter): completed/cards/batch-01.md:171
+- `legends/0502_purifier.cpp` (Purifier): 08-cards-full-review.md:56; completed/cards/batch-01.md:51
+- `legends/0506_fire_below_the_mountain.cpp` (Fire Below the Mountain): completed/cards/batch-01.md:161
+- `legends/0512_emperor_of_the_sands.cpp` (Emperor of the Sands): completed/cards/batch-01.md:61
+- `legends/0514_prodigal_explorer.cpp` (Prodigal Explorer): 08-cards-full-review.md:128; completed/cards/batch-01.md:21
+- `legends/0517_battle_mistress.cpp` (Battle Mistress): 08-cards-full-review.md:115; completed/cards/batch-01.md:36
+- `legends/0551_mechanized_menace.cpp` (Mechanized Menace): 08-cards-full-review.md:56; completed/cards/batch-01.md:56
+- `legends/0553_void_burrower.cpp` (Void Burrower): 07-cards-second-pass.md:160
+- `legends/0554_grandmaster_at_arms.cpp` (Grandmaster at Arms): 08-cards-full-review.md:128; completed/cards/batch-01.md:31,215
+- `legends/0555_blade_dancer.cpp` (Blade Dancer): 02-engine-rules.md:44; completed/cards/batch-08.md:84
+- `legends/0556_chem_baroness.cpp` (Chem-Baroness): 03-cards.md:44; 08-cards-full-review.md:125; completed/cards/batch-08.md:14,38
+- `legends/0744_pridestalker.cpp` (Pridestalker): 07-cards-second-pass.md:62
+- `legends/0746_bloodharbor_ripper.cpp` (Bloodharbor Ripper): completed/cards/batch-01.md:212
+- `legends/0753_green_father.cpp` (Green Father): 07-cards-second-pass.md:114
+- `legends/0756_deceiver.cpp` (Deceiver): 07-cards-second-pass.md:171
+- `legends/0759_keeper_of_the_hammer.cpp` (Keeper of the Hammer): completed/cards/batch-01.md:136
+- `legends/0782_virtuoso.cpp` (Virtuoso): 07-cards-second-pass.md:129; completed/cards/batch-08.md:70
+- `legends/0783_piltover_enforcer.cpp` (Piltover Enforcer): completed/cards/batch-08.md:58
+- `legends/0784_wuju_master.cpp` (Wuju Master): 02-engine-rules.md:10; 08-cards-full-review.md:45; completed/cards/batch-01.md:41,181
+- `legends/0785_gloomist.cpp` (Gloomist): completed/cards/batch-08.md:16
+- `legends/0786_scorn_of_the_moon.cpp` (Scorn of the Moon): completed/cards/batch-01.md:161
+- `legends/0787_voidreaver.cpp` (Voidreaver): 08-cards-full-review.md:140; completed/cards/batch-08.md:86
+
+## Stream c2 — legends/0930_master_of_shadows.cpp .. spells/0363_thwonk.cpp (116 files, 80 with findings)
+
+- `legends/0932_curator_of_the_sands.cpp` (Curator of the Sands): completed/cards/batch-02.md:193
+- `legends/0936_defender_of_tomorrow.cpp` (Defender of Tomorrow): completed/cards/batch-02.md:167,193
+- `legends/0940_matriarch_of_war.cpp` (Matriarch of War): completed/cards/batch-08.md:60
+- `legends/0942_heart_of_the_tempest.cpp` (Heart of the Tempest): 05-integrity.md:7
+- `spells/0008_get_excited.cpp` (Get Excited!): 07-cards-second-pass.md:67,97; 08-cards-full-review.md:45; completed/cards/batch-01.md:98; completed/cards/batch-02.md:188; completed/cards/batch-09.md:96
+- `spells/0022_thermo_beam.cpp` (Thermo Beam): completed/cards/batch-02.md:13
+- `spells/0025_blind_fury.cpp` (Blind Fury): completed/cards/batch-02.md:85
+- `spells/0029_falling_star.cpp` (Falling Star): 07-cards-second-pass.md:151; 08-cards-full-review.md:113; completed/cards/batch-08.md:30
+- `spells/0033_shakedown.cpp` (Shakedown): completed/cards/batch-02.md:131
+- `spells/0043_charm.cpp` (Charm): completed/cards/batch-02.md:90,188
+- `spells/0045_defy.cpp` (Defy): completed/cards/batch-02.md:12,155
+- `spells/0046_en_garde.cpp` (En Garde): 03-cards.md:36; 07-cards-second-pass.md:114,132,168
+- `spells/0047_find_your_center.cpp` (Find Your Center): completed/cards/batch-02.md:179
+- `spells/0048_meditation.cpp` (Meditation): completed/cards/batch-02.md:163,188,193
+- `spells/0050_rune_prison.cpp` (Rune Prison): completed/cards/batch-02.md:99
+- `spells/0053_stand_united.cpp` (Stand United): 08-cards-full-review.md:140; completed/cards/batch-02.md:135,192
+- `spells/0062_reinforce.cpp` (Reinforce): completed/cards/batch-02.md:89,119,188
+- `spells/0064_wind_wall.cpp` (Wind Wall): completed/cards/batch-02.md:12
+- `spells/0069_last_stand.cpp` (Last Stand): completed/cards/batch-08.md:22
+- `spells/0071_party_favors.cpp` (Party Favors): 01-openspiel-search.md:77; 07-cards-second-pass.md:163
+- `spells/0080_mystic_reversal.cpp` (Mystic Reversal): completed/cards/batch-02.md:12,159
+- `spells/0094_sprite_call.cpp` (Sprite Call): completed/cards/batch-02.md:177
+- `spells/0102_portal_rescue.cpp` (Portal Rescue): completed/cards/batch-02.md:89
+- `spells/0105_singularity.cpp` (Singularity): 08-cards-full-review.md:69; completed/cards/batch-02.md:17
+- `spells/0108_convergent_mutation.cpp` (Convergent Mutation): completed/cards/batch-08.md:84
+- `spells/0115_promising_future.cpp` (Promising Future): 07-cards-second-pass.md:160
+- `spells/0122_time_warp.cpp` (Time Warp): 08-cards-full-review.md:109; completed/cards/batch-02.md:81
+- `spells/0123_unchecked_power.cpp` (Unchecked Power): completed/cards/batch-02.md:13
+- `spells/0127_cannon_barrage.cpp` (Cannon Barrage): 08-cards-full-review.md:127; completed/cards/batch-02.md:13,57
+- `spells/0128_challenge.cpp` (Challenge): completed/cards/batch-08.md:32
+- `spells/0129_confront.cpp` (Confront): 08-cards-full-review.md:125; completed/cards/batch-02.md:69
+- `spells/0133_flurry_of_blades.cpp` (Flurry of Blades): completed/cards/batch-02.md:13
+- `spells/0144_spoils_of_war.cpp` (Spoils of War): completed/cards/batch-02.md:151
+- `spells/0145_unyielding_spirit.cpp` (Unyielding Spirit): completed/cards/batch-02.md:183
+- `spells/0146_wallop.cpp` (Wallop): completed/cards/batch-02.md:139
+- `spells/0153_overt_operation.cpp` (Overt Operation): 08-cards-full-review.md:140; completed/cards/batch-02.md:111,188,192
+- `spells/0168_fight_or_flight.cpp` (Fight or Flight): completed/cards/batch-02.md:171
+- `spells/0169_gust.cpp` (Gust): completed/cards/batch-02.md:188
+- `spells/0172_rebuke.cpp` (Rebuke): completed/cards/batch-02.md:188
+- `spells/0173_ride_the_wind.cpp` (Ride the Wind): 08-cards-full-review.md:127; completed/cards/batch-02.md:77,188
+- `spells/0179_acceptable_losses.cpp` (Acceptable Losses): 07-cards-second-pass.md:118
+- `spells/0180_fading_memories.cpp` (Fading Memories): completed/cards/batch-02.md:188
+- `spells/0187_whirlwind.cpp` (Whirlwind): completed/cards/batch-08.md:30
+- `spells/0206_back_to_back.cpp` (Back to Back): 08-cards-full-review.md:126; completed/cards/batch-02.md:41
+- `spells/0207_call_to_glory.cpp` (Call to Glory): completed/cards/batch-02.md:139
+- `spells/0209_cull_the_weak.cpp` (Cull the Weak): 07-cards-second-pass.md:118
+- `spells/0213_hidden_blade.cpp` (Hidden Blade): completed/cards/batch-02.md:56,188
+- `spells/0220_facebreaker.cpp` (Facebreaker): completed/cards/batch-08.md:32
+- `spells/0221_imperial_decree.cpp` (Imperial Decree): 08-cards-full-review.md:125; completed/cards/batch-02.md:13,29
+- `spells/0224_salvage.cpp` (Salvage): completed/cards/batch-02.md:107
+- `spells/0233_grand_strategem.cpp` (Grand Strategem): 08-cards-full-review.md:126; completed/cards/batch-02.md:45
+- `spells/0237_king_s_edict.cpp` (King's Edict): completed/cards/batch-02.md:123
+- `spells/0244_divine_judgment.cpp` (Divine Judgment): completed/cards/batch-02.md:115,193
+- `spells/0247_icathian_rain.cpp` (Icathian Rain): 08-cards-full-review.md:126,137; completed/cards/batch-02.md:61,191
+- `spells/0248_stormbringer.cpp` (Stormbringer): 07-cards-second-pass.md:121; completed/cards/batch-08.md:78
+- `spells/0250_super_mega_death_rocket.cpp` (Super Mega Death Rocket!): completed/cards/batch-02.md:143
+- `spells/0251_noxian_guillotine.cpp` (Noxian Guillotine): 03-cards.md:74; 08-cards-full-review.md:125; completed/cards/batch-02.md:73
+- `spells/0253_fox_fire.cpp` (Fox-Fire): 08-cards-full-review.md:127; completed/cards/batch-02.md:25,188,193
+- `spells/0255_dragon_s_rage.cpp` (Dragon's Rage): completed/cards/batch-02.md:127,188,193
+- `spells/0257_last_breath.cpp` (Last Breath): 08-cards-full-review.md:125; completed/cards/batch-02.md:33
+- `spells/0258_zenith_blade.cpp` (Zenith Blade): 03-cards.md:16; 07-cards-second-pass.md:127,174; 08-cards-full-review.md:143
+- `spells/0260_guerilla_warfare.cpp` (Guerilla Warfare): completed/cards/batch-02.md:147,193
+- `spells/0261_siphon_power.cpp` (Siphon Power): completed/cards/batch-02.md:188
+- `spells/0263_bullet_time.cpp` (Bullet Time): 03-cards.md:19; 07-cards-second-pass.md:116
+- `spells/0265_showstopper.cpp` (Showstopper): completed/cards/batch-02.md:103,193
+- `spells/0300_firestorm.cpp` (Firestorm): completed/cards/batch-02.md:13,188
+- `spells/0306_gentlemen_s_duel.cpp` (Gentlemen's Duel): completed/cards/batch-08.md:50
+- `spells/0309_flash.cpp` (Flash): 07-cards-second-pass.md:162; completed/cards/batch-08.md:46
+- `spells/0313_recruit_the_vanguard.cpp` (Recruit the Vanguard): completed/cards/batch-02.md:175
+- `spells/0322_decisive_strike.cpp` (Decisive Strike): 08-cards-full-review.md:126; completed/cards/batch-02.md:49
+- `spells/0323_against_the_odds.cpp` (Against the Odds): 08-cards-full-review.md:126; completed/cards/batch-02.md:37
+- `spells/0325_blood_rush.cpp` (Blood Rush): completed/cards/batch-02.md:11
+- `spells/0327_bushwhack.cpp` (Bushwhack): 08-cards-full-review.md:125; completed/cards/batch-02.md:65
+- `spells/0328_detonate.cpp` (Detonate): 08-cards-full-review.md:125; completed/cards/batch-02.md:53
+- `spells/0334_angle_shot.cpp` (Angle Shot): 08-cards-full-review.md:113; completed/cards/batch-08.md:30
+- `spells/0346_piercing_light.cpp` (Piercing Light): 08-cards-full-review.md:69; completed/cards/batch-02.md:11,21
+- `spells/0354_desert_s_call.cpp` (Desert's Call): completed/cards/batch-02.md:11,177
+- `spells/0357_feral_strength.cpp` (Feral Strength): completed/cards/batch-02.md:11
+- `spells/0363_thwonk.cpp` (Thwonk!): completed/cards/batch-02.md:11,94,99
+
+## Stream c3 — spells/0366_emperor_s_divide.cpp .. spells/0933_siphoning_strike.cpp (125 files, 78 with findings)
+
+- `spells/0368_not_so_fast.cpp` (Not So Fast): completed/cards/batch-03.md:146
+- `spells/0389_frigid_touch.cpp` (Frigid Touch): 02-engine-rules.md:36; 08-cards-full-review.md:83; completed/cards/batch-03.md:14
+- `spells/0400_rocket_barrage.cpp` (Rocket Barrage): 08-cards-full-review.md:83; completed/cards/batch-03.md:14,134
+- `spells/0402_bellows_breath.cpp` (Bellows Breath): 08-cards-full-review.md:71; completed/cards/batch-03.md:42
+- `spells/0429_strike_down.cpp` (Strike Down): 07-cards-second-pass.md:127,180; completed/cards/batch-08.md:32
+- `spells/0433_here_to_help.cpp` (Here to Help): 07-cards-second-pass.md:119
+- `spells/0436_marching_orders.cpp` (Marching Orders): 02-engine-rules.md:36; 07-cards-second-pass.md:72; 08-cards-full-review.md:83
+- `spells/0443_called_shot.cpp` (Called Shot): 02-engine-rules.md:35; 07-cards-second-pass.md:73; 08-cards-full-review.md:83
+- `spells/0450_temptation.cpp` (Temptation): 02-engine-rules.md:36; 07-cards-second-pass.md:72,135; 08-cards-full-review.md:83; completed/cards/batch-08.md:25
+- `spells/0457_hard_bargain.cpp` (Hard Bargain): 02-engine-rules.md:36; 07-cards-second-pass.md:73,134; 08-cards-full-review.md:83; completed/cards/batch-08.md:74
+- `spells/0466_switcheroo.cpp` (Switcheroo): 08-cards-full-review.md:113; completed/cards/batch-08.md:30
+- `spells/0472_bonds_of_strength.cpp` (Bonds of Strength): 02-engine-rules.md:36; 07-cards-second-pass.md:72; 08-cards-full-review.md:83
+- `spells/0475_guards.cpp` (Guards!): 03-cards.md:40; completed/cards/batch-03.md:130
+- `spells/0484_deathgrip.cpp` (Deathgrip): 08-cards-full-review.md:70; completed/cards/batch-03.md:18
+- `spells/0485_drag_under.cpp` (Drag Under): completed/cards/batch-03.md:154
+- `spells/0487_rally_the_troops.cpp` (Rally the Troops): 08-cards-full-review.md:125; completed/cards/batch-03.md:62
+- `spells/0501_danger_zone.cpp` (Danger Zone): 08-cards-full-review.md:126; completed/cards/batch-03.md:26
+- `spells/0503_relentless_pursuit.cpp` (Relentless Pursuit): completed/cards/batch-03.md:66,172
+- `spells/0505_void_rush.cpp` (Void Rush): completed/cards/batch-03.md:102,172
+- `spells/0511_defiant_dance.cpp` (Defiant Dance): 07-cards-second-pass.md:122; completed/cards/batch-09.md:58
+- `spells/0513_arise.cpp` (Arise!): completed/cards/batch-09.md:62
+- `spells/0515_arcane_shift.cpp` (Arcane Shift): 03-cards.md:37; 08-cards-full-review.md:109; completed/cards/batch-09.md:10,62
+- `spells/0516_hostile_takeover.cpp` (Hostile Takeover): completed/cards/batch-09.md:48
+- `spells/0518_on_the_hunt.cpp` (On the Hunt): 08-cards-full-review.md:126; completed/cards/batch-03.md:30
+- `spells/0520_riposte.cpp` (Riposte): completed/cards/batch-03.md:74,142
+- `spells/0568_smite.cpp` (Smite): completed/cards/batch-03.md:118
+- `spells/0571_upstage_comedy.cpp` (Upstage Comedy): 08-cards-full-review.md:83; completed/cards/batch-03.md:14
+- `spells/0575_lotus_trap.cpp` (Lotus Trap): completed/cards/batch-03.md:138
+- `spells/0577_right_of_conquest.cpp` (Right of Conquest): 08-cards-full-review.md:127; completed/cards/batch-03.md:34
+- `spells/0579_square_up.cpp` (Square Up): 08-cards-full-review.md:84; completed/cards/batch-03.md:50
+- `spells/0582_dancing_grenade.cpp` (Dancing Grenade): completed/cards/batch-03.md:122
+- `spells/0594_double_trouble.cpp` (Double Trouble): completed/cards/batch-03.md:166,172
+- `spells/0600_skyward_strike.cpp` (Skyward Strike): completed/cards/batch-03.md:90
+- `spells/0604_back_off.cpp` (Back Off): 07-cards-second-pass.md:120; completed/cards/batch-09.md:50
+- `spells/0616_tricksy_tentacles.cpp` (Tricksy Tentacles): 08-cards-full-review.md:126; completed/cards/batch-03.md:46
+- `spells/0625_eclipse.cpp` (Eclipse): 08-cards-full-review.md:125; completed/cards/batch-03.md:58
+- `spells/0632_turn_to_dust.cpp` (Turn to Dust): 07-cards-second-pass.md:109; 08-cards-full-review.md:144,155; completed/cards/batch-03.md:174
+- `spells/0634_crescent_strike.cpp` (Crescent Strike): 08-cards-full-review.md:125; completed/cards/batch-03.md:38
+- `spells/0635_deadly_flourish.cpp` (Deadly Flourish): 08-cards-full-review.md:117; completed/cards/batch-03.md:82
+- `spells/0645_smoke_and_mirrors.cpp` (Smoke and Mirrors): 08-cards-full-review.md:70; completed/cards/batch-03.md:22
+- `spells/0663_call_to_battle.cpp` (Call to Battle): completed/cards/batch-03.md:126,172
+- `spells/0665_disposal_order.cpp` (Disposal Order): completed/cards/batch-03.md:172
+- `spells/0668_repulse.cpp` (Repulse): completed/cards/batch-03.md:146
+- `spells/0669_stare_down.cpp` (Stare Down): completed/cards/batch-03.md:172
+- `spells/0693_abandon.cpp` (Abandon): completed/cards/batch-09.md:29,70
+- `spells/0696_existential_dread.cpp` (Existential Dread): 08-cards-full-review.md:83; completed/cards/batch-03.md:14,110
+- `spells/0701_bone_skewer.cpp` (Bone Skewer): 07-cards-second-pass.md:156; completed/cards/batch-09.md:53,74
+- `spells/0702_conscription.cpp` (Conscription): 07-cards-second-pass.md:117; completed/cards/batch-09.md:46
+- `spells/0704_heedless_resurrection.cpp` (Heedless Resurrection): completed/cards/batch-09.md:62,66
+- `spells/0717_heroic_charge.cpp` (Heroic Charge): completed/cards/batch-09.md:53
+- `spells/0727_shadow_s_call.cpp` (Shadow's Call): 07-cards-second-pass.md:109; 08-cards-full-review.md:144; completed/cards/batch-09.md:29,93
+- `spells/0730_undying_loyalty.cpp` (Undying Loyalty): completed/cards/batch-09.md:42,62
+- `spells/0735_sacrifice.cpp` (Sacrifice): completed/cards/batch-03.md:78
+- `spells/0743_curtain_call.cpp` (Curtain Call): 08-cards-full-review.md:84; completed/cards/batch-03.md:54
+- `spells/0745_thrill_of_the_hunt.cpp` (Thrill of the Hunt): 03-cards.md:15; 08-cards-full-review.md:143; completed/cards/batch-03.md:98,173
+- `spells/0747_death_from_below.cpp` (Death from Below): completed/cards/batch-03.md:150
+- `spells/0750_lilting_lullaby.cpp` (Lilting Lullaby): completed/cards/batch-03.md:142
+- `spells/0751_alpha_strike.cpp` (Alpha Strike): 03-cards.md:81
+- `spells/0755_moonfall.cpp` (Moonfall): completed/cards/batch-03.md:172
+- `spells/0758_void_assault.cpp` (Void Assault): completed/cards/batch-03.md:114
+- `spells/0760_keeper_s_verdict.cpp` (Keeper's Verdict): 03-cards.md:19; 08-cards-full-review.md:143; completed/cards/batch-03.md:94,173
+- `spells/0795_ruthless_strike.cpp` (Ruthless Strike): completed/cards/batch-09.md:32
+- `spells/0821_resonating_strike.cpp` (Resonating Strike): completed/cards/batch-03.md:106,138
+- `spells/0822_sanction.cpp` (Sanction): completed/cards/batch-03.md:106
+- `spells/0826_crumbling_sands.cpp` (Crumbling Sands): completed/cards/batch-03.md:142
+- `spells/0838_iterative_design.cpp` (Iterative Design): completed/cards/batch-03.md:164
+- `spells/0839_mesmerize.cpp` (Mesmerize): completed/cards/batch-03.md:106
+- `spells/0853_temporal_breach.cpp` (Temporal Breach): completed/cards/batch-03.md:138
+- `spells/0870_rampage.cpp` (Rampage): completed/cards/batch-09.md:32
+- `spells/0872_decree_of_strength.cpp` (Decree of Strength): 07-cards-second-pass.md:156
+- `spells/0876_wild_claw.cpp` (Wild Claw): completed/cards/batch-09.md:64,82
+- `spells/0887_up_from_the_deep.cpp` (Up from the Deep): completed/cards/batch-03.md:162
+- `spells/0890_shadows_of_the_past.cpp` (Shadows of the Past): completed/cards/batch-09.md:84
+- `spells/0892_twilight_step.cpp` (Twilight Step): 07-cards-second-pass.md:111
+- `spells/0894_decree_of_discord.cpp` (Decree of Discord): 07-cards-second-pass.md:158
+- `spells/0927_shuriken_flip.cpp` (Shuriken Flip): 07-cards-second-pass.md:158
+- `spells/0931_death_mark.cpp` (Death Mark): completed/cards/batch-03.md:158
+- `spells/0933_siphoning_strike.cpp` (Siphoning Strike): completed/cards/batch-03.md:86
+
+## Stream c4 — spells/0935_shadow_dash.cpp .. units/0218_vanguard_captain.cpp (126 files, 73 with findings)
+
+- `spells/0935_shadow_dash.cpp` (Shadow Dash): 07-cards-second-pass.md:111
+- `spells/0937_acceleration_gate.cpp` (Acceleration Gate): 07-cards-second-pass.md:158
+- `spells/0939_rebuttal.cpp` (Rebuttal): 07-cards-second-pass.md:162; completed/cards/batch-04.md:104
+- `units/0002_brazen_buccaneer.cpp` (Brazen Buccaneer): completed/cards/batch-04.md:40
+- `units/0006_flame_chompers.cpp` (Flame Chompers): completed/cards/batch-09.md:62
+- `units/0011_magma_wurm.cpp` (Magma Wurm): 08-cards-full-review.md:124; completed/cards/batch-04.md:36
+- `units/0015_captain_farron.cpp` (Captain Farron): 02-engine-rules.md:12,19; 08-cards-full-review.md:138; completed/cards/batch-04.md:64,111
+- `units/0016_dangerous_duo.cpp` (Dangerous Duo): 03-cards.md:28; 07-cards-second-pass.md:32
+- `units/0018_noxus_saboteur.cpp` (Noxus Saboteur): completed/cards/batch-04.md:76
+- `units/0019_raging_soul.cpp` (Raging Soul): 08-cards-full-review.md:138; completed/cards/batch-04.md:111
+- `units/0020_scrapyard_champion.cpp` (Scrapyard Champion): 08-cards-full-review.md:74; completed/cards/batch-04.md:22
+- `units/0027_darius_trifarian.cpp` (Darius, Trifarian): completed/cards/batch-04.md:96,110
+- `units/0035_vayne_hunter.cpp` (Vayne, Hunter): 03-cards.md:73; 07-cards-second-pass.md:146
+- `units/0036_vi_destructive.cpp` (Vi, Destructive): completed/cards/batch-04.md:110,113; completed/cards/batch-10.md:66
+- `units/0037_immortal_phoenix.cpp` (Immortal Phoenix): 07-cards-second-pass.md:168; completed/cards/batch-09.md:62
+- `units/0041_volibear_furious.cpp` (Volibear, Furious): 03-cards.md:81
+- `units/0051_solari_shieldbearer.cpp` (Solari Shieldbearer): 07-cards-second-pass.md:33; completed/cards/batch-09.md:53
+- `units/0055_wielder_of_water.cpp` (Wielder of Water): 08-cards-full-review.md:138; completed/cards/batch-04.md:111
+- `units/0056_adaptatron.cpp` (Adaptatron): 07-cards-second-pass.md:148; 08-cards-full-review.md:140; completed/cards/batch-09.md:91
+- `units/0059_eclipse_herald.cpp` (Eclipse Herald): completed/cards/batch-02.md:102; completed/cards/batch-04.md:110
+- `units/0061_poro_herder.cpp` (Poro Herder): 08-cards-full-review.md:140; completed/cards/batch-04.md:110,112
+- `units/0065_wizened_elder.cpp` (Wizened Elder): 02-engine-rules.md:19; 08-cards-full-review.md:45,138; completed/cards/batch-04.md:32,111
+- `units/0067_blitzcrank_impassive.cpp` (Blitzcrank, Impassive): 03-cards.md:61; 07-cards-second-pass.md:125,149; completed/cards/batch-09.md:58
+- `units/0068_caitlyn_patrolling.cpp` (Caitlyn, Patrolling): completed/cards/batch-04.md:84,111
+- `units/0074_taric_protector.cpp` (Taric, Protector): completed/cards/batch-04.md:44,111
+- `units/0076_yasuo_remorseful.cpp` (Yasuo, Remorseful): 07-cards-second-pass.md:34; completed/cards/batch-09.md:54
+- `units/0078_lee_sin_ascetic.cpp` (Lee Sin, Ascetic): 08-cards-full-review.md:141; completed/cards/batch-04.md:110,112
+- `units/0079_leona_zealot.cpp` (Leona, Zealot): 08-cards-full-review.md:45,46; completed/cards/batch-04.md:28,100
+- `units/0082_whiteflame_protector.cpp` (Whiteflame Protector): 07-cards-second-pass.md:35
+- `units/0084_eager_apprentice.cpp` (Eager Apprentice): 08-cards-full-review.md:50; completed/cards/batch-04.md:8
+- `units/0091_pit_crew.cpp` (Pit Crew): 08-cards-full-review.md:137; completed/cards/batch-04.md:110
+- `units/0092_riptide_rex.cpp` (Riptide Rex): 03-cards.md:27; 07-cards-second-pass.md:36
+- `units/0097_blastcone_fae.cpp` (Blastcone Fae): 07-cards-second-pass.md:37
+- `units/0100_gemcraft_seer.cpp` (Gemcraft Seer): completed/cards/batch-04.md:52
+- `units/0103_ravenbloom_student.cpp` (Ravenbloom Student): completed/cards/batch-04.md:110
+- `units/0106_sprite_mother.cpp` (Sprite Mother): 08-cards-full-review.md:77; completed/cards/batch-04.md:16
+- `units/0107_ava_achiever.cpp` (Ava Achiever): 07-cards-second-pass.md:84,110; 08-cards-full-review.md:78; completed/cards/batch-09.md:16,22
+- `units/0109_dr_mundo_expert.cpp` (Dr. Mundo, Expert): 02-engine-rules.md:19; 08-cards-full-review.md:138; completed/cards/batch-04.md:111,113
+- `units/0110_ekko_recurrent.cpp` (Ekko, Recurrent): completed/cards/batch-04.md:48
+- `units/0111_heimerdinger_inventor.cpp` (Heimerdinger, Inventor): completed/cards/batch-04.md:56,111
+- `units/0112_kai_sa_evolutionary.cpp` (Kai'Sa, Evolutionary): 02-engine-rules.md:40; 07-cards-second-pass.md:126; completed/cards/batch-09.md:82
+- `units/0119_ahri_inquisitive.cpp` (Ahri, Inquisitive): completed/cards/batch-09.md:58,98
+- `units/0121_teemo_strategist.cpp` (Teemo, Strategist): 05-integrity.md:7; 07-cards-second-pass.md:169; completed/cards/batch-09.md:58
+- `units/0125_bilgewater_bully.cpp` (Bilgewater Bully): completed/cards/batch-04.md:111
+- `units/0130_crackshot_corsair.cpp` (Crackshot Corsair): 07-cards-second-pass.md:38; completed/cards/batch-09.md:54
+- `units/0131_dune_drake.cpp` (Dune Drake): completed/cards/batch-04.md:110
+- `units/0132_first_mate.cpp` (First Mate): 07-cards-second-pass.md:39,67; completed/cards/batch-09.md:54
+- `units/0136_pit_rookie.cpp` (Pit Rookie): 08-cards-full-review.md:140; completed/cards/batch-04.md:112,113
+- `units/0139_cithria_of_cloudfield.cpp` (Cithria of Cloudfield): completed/cards/batch-04.md:110
+- `units/0140_herald_of_scales.cpp` (Herald of Scales): 08-cards-full-review.md:50; completed/cards/batch-04.md:12
+- `units/0147_wildclaw_shaman.cpp` (Wildclaw Shaman): 03-cards.md:45; completed/cards/batch-09.md:89
+- `units/0148_anivia_primal.cpp` (Anivia, Primal): 08-cards-full-review.md:127; completed/cards/batch-04.md:24
+- `units/0149_carnivorous_snapvine.cpp` (Carnivorous Snapvine): 07-cards-second-pass.md:150; completed/cards/batch-09.md:58
+- `units/0150_kraken_hunter.cpp` (Kraken Hunter): completed/cards/batch-04.md:72
+- `units/0151_lee_sin_centered.cpp` (Lee Sin, Centered): 08-cards-full-review.md:138; completed/cards/batch-04.md:111
+- `units/0157_udyr_wildman.cpp` (Udyr, Wildman): completed/cards/batch-04.md:60,88,92,110
+- `units/0162_miss_fortune_captain.cpp` (Miss Fortune, Captain): 03-cards.md:53; completed/cards/batch-09.md:38
+- `units/0164_sett_brawler.cpp` (Sett, Brawler): 03-cards.md:72,73; completed/cards/batch-04.md:88,110; completed/cards/batch-06.md:169,209
+- `units/0167_ember_monk.cpp` (Ember Monk): completed/cards/batch-04.md:80,110
+- `units/0177_stealthy_pursuer.cpp` (Stealthy Pursuer): 07-cards-second-pass.md:145
+- `units/0188_zaunite_bouncer.cpp` (Zaunite Bouncer): 07-cards-second-pass.md:40; completed/cards/batch-09.md:54
+- `units/0189_kayn_unleashed.cpp` (Kayn, Unleashed): completed/cards/batch-04.md:68
+- `units/0191_maddened_marauder.cpp` (Maddened Marauder): 07-cards-second-pass.md:41; completed/cards/batch-09.md:54
+- `units/0194_nocturne_horrifying.cpp` (Nocturne, Horrifying): 07-cards-second-pass.md:100; completed/cards/batch-09.md:62
+- `units/0196_soulgorger.cpp` (Soulgorger): 07-cards-second-pass.md:102; completed/cards/batch-09.md:62,82
+- `units/0197_teemo_scout.cpp` (Teemo, Scout): completed/cards/batch-04.md:110
+- `units/0199_tideturner.cpp` (Tideturner): 03-cards.md:28; 07-cards-second-pass.md:42; completed/cards/batch-09.md:54,56
+- `units/0200_twisted_fate_gambler.cpp` (Twisted Fate, Gambler): 03-cards.md:36; completed/cards/batch-09.md:58
+- `units/0202_jinx_rebel.cpp` (Jinx, Rebel): completed/cards/batch-04.md:110
+- `units/0205_yasuo_windrider.cpp` (Yasuo, Windrider): 03-cards.md:73; completed/cards/batch-06.md:209
+- `units/0208_cruel_patron.cpp` (Cruel Patron): 07-cards-second-pass.md:98; completed/cards/batch-09.md:37
+- `units/0217_trifarian_gloryseeker.cpp` (Trifarian Gloryseeker): 08-cards-full-review.md:74,140; completed/cards/batch-04.md:22,110,112
+- `units/0218_vanguard_captain.cpp` (Vanguard Captain): 08-cards-full-review.md:74; completed/cards/batch-04.md:20
+
+## Stream c5 — units/0219_vanguard_sergeant.cpp .. units/0494_trove_golem.cpp (131 files, 90 with findings)
+
+- `units/0223_peak_guardian.cpp` (Peak Guardian): completed/cards/batch-05.md:204
+- `units/0226_spectral_matron.cpp` (Spectral Matron): 07-cards-second-pass.md:115; completed/cards/batch-09.md:62
+- `units/0230_albus_ferros.cpp` (Albus Ferros): 03-cards.md:47; 07-cards-second-pass.md:94; completed/cards/batch-09.md:78,92
+- `units/0231_commander_ledros.cpp` (Commander Ledros): completed/cards/batch-05.md:123
+- `units/0232_fiora_victorious.cpp` (Fiora, Victorious): 08-cards-full-review.md:138; completed/cards/batch-05.md:68,205
+- `units/0234_harnessed_dragon.cpp` (Harnessed Dragon): 07-cards-second-pass.md:43
+- `units/0235_karma_channeler.cpp` (Karma, Channeler): 03-cards.md:71; 08-cards-full-review.md:140,163; completed/cards/batch-06.md:62,66; completed/cards/batch-09.md:91
+- `units/0236_karthus_eternal.cpp` (Karthus, Eternal): completed/cards/batch-05.md:153
+- `units/0238_leona_determined.cpp` (Leona, Determined): 03-cards.md:28; 07-cards-second-pass.md:44; completed/cards/batch-09.md:53,54
+- `units/0240_sett_kingpin.cpp` (Sett, Kingpin): 08-cards-full-review.md:138; completed/cards/batch-05.md:108,205
+- `units/0241_shen_kinkou.cpp` (Shen, Kinkou): 08-cards-full-review.md:88; completed/cards/batch-05.md:58
+- `units/0243_darius_executioner.cpp` (Darius, Executioner): 08-cards-full-review.md:45,46; completed/cards/batch-05.md:18,204; completed/cards/batch-06.md:71
+- `units/0246_viktor_leader.cpp` (Viktor, Leader): 08-cards-full-review.md:127; completed/cards/batch-05.md:48
+- `units/0302_yi_meditative.cpp` (Yi, Meditative): 08-cards-full-review.md:138; completed/cards/batch-05.md:205
+- `units/0304_lux_illuminated.cpp` (Lux, Illuminated): completed/cards/batch-05.md:173,204
+- `units/0311_garen_commander.cpp` (Garen, Commander): 02-engine-rules.md:9; 08-cards-full-review.md:45,138; completed/cards/batch-05.md:13,205
+- `units/0312_lux_crownguard.cpp` (Lux, Crownguard): completed/cards/batch-05.md:178
+- `units/0316_tibbers.cpp` (Tibbers): 08-cards-full-review.md:127; completed/cards/batch-05.md:43
+- `units/0324_armed_assailant.cpp` (Armed Assailant): 08-cards-full-review.md:137; completed/cards/batch-05.md:98,204,206
+- `units/0330_gem_jammer.cpp` (Gem Jammer): 07-cards-second-pass.md:45; 08-cards-full-review.md:78; completed/cards/batch-09.md:26
+- `units/0331_sentinel_adept.cpp` (Sentinel Adept): 07-cards-second-pass.md:101,147; completed/cards/batch-09.md:29
+- `units/0336_blast_corps_cadet.cpp` (Blast Corps Cadet): completed/cards/batch-09.md:30
+- `units/0337_minotaur_reckoner.cpp` (Minotaur Reckoner): completed/cards/batch-05.md:113
+- `units/0341_void_hatchling.cpp` (Void Hatchling): completed/cards/batch-05.md:193
+- `units/0343_draven_vanquisher.cpp` (Draven, Vanquisher): 07-cards-second-pass.md:168; completed/cards/batch-09.md:89
+- `units/0347_rell_magnetic.cpp` (Rell, Magnetic): 07-cards-second-pass.md:147; 08-cards-full-review.md:97; completed/cards/batch-00.md:125; completed/cards/batch-09.md:14
+- `units/0348_rengar_pouncing.cpp` (Rengar, Pouncing): 02-engine-rules.md:49; 08-cards-full-review.md:88; completed/cards/batch-05.md:58
+- `units/0349_rumble_hotheaded.cpp` (Rumble, Hotheaded): 07-cards-second-pass.md:92,127; 08-cards-full-review.md:56; completed/cards/batch-09.md:18,62,82,90
+- `units/0361_ribbon_dancer.cpp` (Ribbon Dancer): 07-cards-second-pass.md:46; completed/cards/batch-09.md:54
+- `units/0364_apprentice_smith.cpp` (Apprentice Smith): completed/cards/batch-05.md:195
+- `units/0367_legion_quartermaster.cpp` (Legion Quartermaster): 07-cards-second-pass.md:98; 08-cards-full-review.md:153; completed/cards/batch-09.md:34
+- `units/0370_simian_ancestor.cpp` (Simian Ancestor): completed/cards/batch-05.md:204
+- `units/0372_aphelios_exalted.cpp` (Aphelios, Exalted): 03-cards.md:53; 08-cards-full-review.md:140; completed/cards/batch-10.md:83
+- `units/0373_azir_ascendant.cpp` (Azir, Ascendant): 03-cards.md:61; 07-cards-second-pass.md:162; completed/cards/batch-10.md:50,54,58
+- `units/0376_janna_savior.cpp` (Janna, Savior): 08-cards-full-review.md:88; completed/cards/batch-05.md:58,158
+- `units/0377_jax_unmatched.cpp` (Jax, Unmatched): completed/cards/batch-05.md:103,180
+- `units/0378_needlessly_large_yordle.cpp` (Needlessly Large Yordle): completed/cards/batch-05.md:118
+- `units/0380_irelia_fervent.cpp` (Irelia, Fervent): 02-engine-rules.md:44; 08-cards-full-review.md:91; completed/cards/batch-05.md:23,204
+- `units/0381_ornn_blacksmith.cpp` (Ornn, Blacksmith): completed/cards/batch-05.md:183,206
+- `units/0384_aspiring_engineer.cpp` (Aspiring Engineer): 07-cards-second-pass.md:47; completed/cards/batch-10.md:80
+- `units/0385_bubble_bot.cpp` (Bubble Bot): completed/cards/batch-05.md:206
+- `units/0388_forecaster.cpp` (Forecaster): 08-cards-full-review.md:60; completed/cards/batch-05.md:38
+- `units/0391_gearhead.cpp` (Gearhead): 08-cards-full-review.md:138; completed/cards/batch-05.md:205
+- `units/0392_plundering_poro.cpp` (Plundering Poro): 03-cards.md:70
+- `units/0394_breakneck_mech.cpp` (Breakneck Mech): completed/cards/batch-05.md:138
+- `units/0395_dropboarder.cpp` (Dropboarder): completed/cards/batch-05.md:204
+- `units/0397_pickpocket.cpp` (Pickpocket): 07-cards-second-pass.md:167
+- `units/0398_prize_of_progress.cpp` (Prize of Progress): completed/cards/batch-05.md:204
+- `units/0403_card_sharp.cpp` (Card Sharp): completed/cards/batch-05.md:133
+- `units/0404_ezreal_dashing.cpp` (Ezreal, Dashing): 03-cards.md:61; 07-cards-second-pass.md:149; completed/cards/batch-10.md:81,82
+- `units/0406_jayce_man_of_progress.cpp` (Jayce, Man of Progress): 03-cards.md:38; 07-cards-second-pass.md:102,110; completed/cards/batch-10.md:46,84
+- `units/0407_ornn_forge_god.cpp` (Ornn, Forge God): 08-cards-full-review.md:137,138; completed/cards/batch-05.md:98,204,205,206
+- `units/0410_renata_glasc_mastermind.cpp` (Renata Glasc, Mastermind): completed/cards/batch-05.md:168
+- `units/0413_buhru_captain.cpp` (Buhru Captain): completed/cards/batch-05.md:88
+- `units/0414_combat_chef.cpp` (Combat Chef): 08-cards-full-review.md:137; completed/cards/batch-05.md:98,204,206
+- `units/0416_direwing.cpp` (Direwing): 03-cards.md:65; completed/cards/batch-05.md:143
+- `units/0421_veteran_poro.cpp` (Veteran Poro): 03-cards.md:73; 08-cards-full-review.md:137; completed/cards/batch-05.md:98,204,206
+- `units/0422_yordle_explorer.cpp` (Yordle Explorer): 08-cards-full-review.md:128; completed/cards/batch-05.md:33
+- `units/0423_fae_dragon.cpp` (Fae Dragon): completed/cards/batch-05.md:128,206
+- `units/0431_akshan_mischievous.cpp` (Akshan, Mischievous): completed/cards/batch-05.md:93,204,206
+- `units/0432_fiora_peerless.cpp` (Fiora, Peerless): completed/cards/batch-05.md:198
+- `units/0434_kato_the_arm.cpp` (Kato the Arm): 07-cards-second-pass.md:148
+- `units/0435_lucian_merciless.cpp` (Lucian, Merciless): 08-cards-full-review.md:137; completed/cards/batch-05.md:98,204,206
+- `units/0440_jax_unrelenting.cpp` (Jax, Unrelenting): completed/cards/batch-00.md:125; completed/cards/batch-10.md:74
+- `units/0441_sivir_ambitious.cpp` (Sivir, Ambitious): 08-cards-full-review.md:125; completed/cards/batch-05.md:63
+- `units/0444_corrupt_enforcer.cpp` (Corrupt Enforcer): 03-cards.md:82
+- `units/0446_fae_porter.cpp` (Fae Porter): 03-cards.md:50; 07-cards-second-pass.md:82
+- `units/0447_loyal_pup.cpp` (Loyal Pup): 07-cards-second-pass.md:145
+- `units/0448_master_bingwen.cpp` (Master Bingwen): 08-cards-full-review.md:137; completed/cards/batch-05.md:98,204,206
+- `units/0449_overzealous_fan.cpp` (Overzealous Fan): 03-cards.md:46; 07-cards-second-pass.md:93; 08-cards-full-review.md:127,154; completed/cards/batch-10.md:10,84
+- `units/0451_treasure_hunter.cpp` (Treasure Hunter): completed/cards/batch-05.md:83
+- `units/0452_ancient_warmonger.cpp` (Ancient Warmonger): 08-cards-full-review.md:138; completed/cards/batch-05.md:78,205
+- `units/0453_beast_below.cpp` (Beast Below): 07-cards-second-pass.md:48; completed/cards/batch-10.md:80
+- `units/0458_harpoon_squad.cpp` (Harpoon Squad): 08-cards-full-review.md:127; completed/cards/batch-05.md:53,204
+- `units/0459_windsinger.cpp` (Windsinger): 08-cards-full-review.md:79; completed/cards/batch-10.md:14,66
+- `units/0461_fizz_trickster.cpp` (Fizz, Trickster): 02-engine-rules.md:40; 07-cards-second-pass.md:126
+- `units/0462_irelia_graceful.cpp` (Irelia, Graceful): completed/cards/batch-05.md:188
+- `units/0463_jae_medarda.cpp` (Jae Medarda): 02-engine-rules.md:44; 08-cards-full-review.md:91; completed/cards/batch-05.md:28
+- `units/0464_sivir_mercenary.cpp` (Sivir, Mercenary): 03-cards.md:79; 08-cards-full-review.md:138; completed/cards/batch-05.md:73,205
+- `units/0467_vex_cheerless.cpp` (Vex, Cheerless): 08-cards-full-review.md:50; completed/cards/batch-05.md:8
+- `units/0470_ezreal_prodigy.cpp` (Ezreal, Prodigy): 08-cards-full-review.md:125; completed/cards/batch-10.md:18,21
+- `units/0476_honest_broker.cpp` (Honest Broker): completed/cards/batch-05.md:83
+- `units/0479_sandshifter.cpp` (Sandshifter): 07-cards-second-pass.md:49; completed/cards/batch-10.md:80
+- `units/0480_trusty_ramhound.cpp` (Trusty Ramhound): 08-cards-full-review.md:138; completed/cards/batch-05.md:163,205
+- `units/0481_zaun_punk.cpp` (Zaun Punk): 07-cards-second-pass.md:98
+- `units/0486_glasc_mixologist.cpp` (Glasc Mixologist): 07-cards-second-pass.md:115
+- `units/0491_rek_sai_swarm_queen.cpp` (Rek'Sai, Swarm Queen): 07-cards-second-pass.md:132,160
+- `units/0492_renata_glasc_industrialist.cpp` (Renata Glasc, Industrialist): completed/cards/batch-05.md:148
+
+## Stream c6 — units/0495_undertitan.cpp .. units/0709_baron_nashor.cpp (112 files, 78 with findings)
+
+- `units/0496_xin_zhao_vigilant.cpp` (Xin Zhao, Vigilant): completed/cards/batch-06.md:161
+- `units/0497_azir_sovereign.cpp` (Azir, Sovereign): completed/cards/batch-06.md:182
+- `units/0500_fiora_worthy.cpp` (Fiora, Worthy): 02-engine-rules.md:128; 03-cards.md:50; 07-cards-second-pass.md:81; completed/cards/batch-10.md:81
+- `units/0537_vayne_hunter.cpp` (Vayne, Hunter): 07-cards-second-pass.md:146
+- `units/0539_ahri_inquisitive.cpp` (Ahri, Inquisitive): 03-cards.md:28,73; 07-cards-second-pass.md:50; completed/cards/batch-10.md:80
+- `units/0540_bard_mercurial.cpp` (Bard, Mercurial): completed/cards/batch-06.md:7,149,214
+- `units/0543_sett_brawler.cpp` (Sett, Brawler): 03-cards.md:72; completed/cards/batch-06.md:169,209,212
+- `units/0544_yone_blademaster.cpp` (Yone, Blademaster): completed/cards/batch-06.md:7,153,214
+- `units/0546_yasuo_windrider.cpp` (Yasuo, Windrider): completed/cards/batch-06.md:209
+- `units/0547_darius_executioner.cpp` (Darius, Executioner): 03-cards.md:73; 08-cards-full-review.md:45; completed/cards/batch-06.md:71,209,212
+- `units/0548_karma_channeler.cpp` (Karma, Channeler): 03-cards.md:71; 08-cards-full-review.md:125; completed/cards/batch-06.md:62,66
+- `units/0550_soraka_wanderer.cpp` (Soraka, Wanderer): 08-cards-full-review.md:138; completed/cards/batch-06.md:7,186,213
+- `units/0557_arena_kingpin.cpp` (Arena Kingpin): completed/cards/batch-06.md:7
+- `units/0559_bird.cpp` (Bird): completed/cards/batch-06.md:7
+- `units/0560_inferna.cpp` (Inferna): completed/cards/batch-06.md:7
+- `units/0563_prepared_neophyte.cpp` (Prepared Neophyte): completed/cards/batch-06.md:145,213
+- `units/0565_revna_the_lorekeeper.cpp` (Revna the Lorekeeper): completed/cards/batch-06.md:194,212
+- `units/0569_sprite.cpp` (Sprite): completed/cards/batch-06.md:209
+- `units/0574_lord_broadmane.cpp` (Lord Broadmane): completed/cards/batch-06.md:125
+- `units/0578_scorchclaw.cpp` (Scorchclaw): completed/cards/batch-06.md:46,212
+- `units/0580_yeti_brawler.cpp` (Yeti Brawler): 08-cards-full-review.md:125; completed/cards/batch-06.md:80,206,207
+- `units/0583_grim_apothecary.cpp` (Grim Apothecary): 07-cards-second-pass.md:125
+- `units/0585_katarina_reckless.cpp` (Katarina, Reckless): completed/cards/batch-10.md:66,81
+- `units/0587_undying_legion.cpp` (Undying Legion): 08-cards-full-review.md:74,124; completed/cards/batch-06.md:50
+- `units/0588_xerath_freed.cpp` (Xerath, Freed): completed/cards/batch-06.md:165
+- `units/0589_inviolus_vox.cpp` (Inviolus Vox): 07-cards-second-pass.md:51; completed/cards/batch-10.md:80
+- `units/0590_pyke_dockside_butcher.cpp` (Pyke, Dockside Butcher): completed/cards/batch-06.md:190,212
+- `units/0591_red_brambleback.cpp` (Red Brambleback): 08-cards-full-review.md:125,140; completed/cards/batch-10.md:22,83
+- `units/0595_frisky_hunter.cpp` (Frisky Hunter): completed/cards/batch-06.md:133
+- `units/0596_herald_of_spring.cpp` (Herald of Spring): 08-cards-full-review.md:125; completed/cards/batch-06.md:101
+- `units/0602_wuju_apprentice.cpp` (Wuju Apprentice): completed/cards/batch-06.md:103
+- `units/0603_allay_eager_admirer.cpp` (Allay, Eager Admirer): 08-cards-full-review.md:45,163; completed/cards/batch-06.md:67,208,213
+- `units/0609_mosstomper.cpp` (Mosstomper): 02-engine-rules.md:19; completed/cards/batch-06.md:109,213
+- `units/0610_trevor_snoozebottom.cpp` (Trevor Snoozebottom): 08-cards-full-review.md:77; completed/cards/batch-06.md:22
+- `units/0612_iascylla.cpp` (Iascylla): completed/cards/batch-06.md:44,141
+- `units/0613_ivern_nurturer.cpp` (Ivern, Nurturer): 07-cards-second-pass.md:130; 08-cards-full-review.md:140; completed/cards/batch-10.md:83,84
+- `units/0614_nami_headstrong.cpp` (Nami, Headstrong): 07-cards-second-pass.md:112; 08-cards-full-review.md:140; completed/cards/batch-10.md:83
+- `units/0615_scuttle_crab.cpp` (Scuttle Crab): completed/cards/batch-06.md:198
+- `units/0617_vex_mocking.cpp` (Vex, Mocking): 07-cards-second-pass.md:145; completed/cards/batch-02.md:102
+- `units/0618_yuumi_magical_cat.cpp` (Yuumi, Magical Cat): 07-cards-second-pass.md:52; 08-cards-full-review.md:78,152; completed/cards/batch-10.md:30,80
+- `units/0619_alpha_wildclaw.cpp` (Alpha Wildclaw): 08-cards-full-review.md:124; completed/cards/batch-06.md:88
+- `units/0620_lillia_protector_of_dreams.cpp` (Lillia, Protector of Dreams): 08-cards-full-review.md:78,125; completed/cards/batch-06.md:97
+- `units/0621_master_yi_unstoppable.cpp` (Master Yi, Unstoppable): completed/cards/batch-06.md:105
+- `units/0622_vilemaw.cpp` (Vilemaw): 08-cards-full-review.md:138; completed/cards/batch-06.md:213
+- `units/0626_fate_weaver.cpp` (Fate Weaver): completed/cards/batch-10.md:44
+- `units/0629_ruined_rex.cpp` (Ruined Rex): completed/cards/batch-06.md:137,214
+- `units/0630_spectral_centaur.cpp` (Spectral Centaur): completed/cards/batch-06.md:212
+- `units/0633_chakram_dancer.cpp` (Chakram Dancer): completed/cards/batch-06.md:129
+- `units/0637_gustwalker.cpp` (Gustwalker): completed/cards/batch-06.md:117,213
+- `units/0638_petal_pixie.cpp` (Petal Pixie): 08-cards-full-review.md:77; completed/cards/batch-06.md:26,213
+- `units/0642_hwei_brooding_painter.cpp` (Hwei, Brooding Painter): completed/cards/batch-10.md:81
+- `units/0643_keeper_of_masks.cpp` (Keeper of Masks): completed/cards/batch-06.md:181
+- `units/0644_lillia_fae_fawn.cpp` (Lillia, Fae Fawn): 08-cards-full-review.md:77; completed/cards/batch-06.md:30,76,212
+- `units/0646_sprite_queen.cpp` (Sprite Queen): 08-cards-full-review.md:77; completed/cards/batch-06.md:34
+- `units/0648_zilean_time_mage.cpp` (Zilean, Time Mage): completed/cards/batch-06.md:178
+- `units/0649_blue_sentinel.cpp` (Blue Sentinel): 08-cards-full-review.md:125; completed/cards/batch-06.md:42
+- `units/0652_leblanc_everywhere_at_once.cpp` (LeBlanc, Everywhere at Once): completed/cards/batch-06.md:38
+- `units/0655_dragonsoul_sage.cpp` (Dragonsoul Sage): completed/cards/batch-06.md:207
+- `units/0656_gemhand_hunter.cpp` (Gemhand Hunter): completed/cards/batch-06.md:213
+- `units/0660_targonian_visionary.cpp` (Targonian Visionary): completed/cards/batch-06.md:213
+- `units/0664_crowd_favorite.cpp` (Crowd Favorite): completed/cards/batch-06.md:174
+- `units/0666_gentle_gemdragon.cpp` (Gentle Gemdragon): 08-cards-full-review.md:127; completed/cards/batch-06.md:84
+- `units/0667_imposing_challenger.cpp` (Imposing Challenger): completed/cards/batch-10.md:84
+- `units/0670_wily_newtfish.cpp` (Wily Newtfish): completed/cards/batch-06.md:58,213
+- `units/0674_irresistible_faefolk.cpp` (Irresistible Faefolk): 07-cards-second-pass.md:125; completed/cards/batch-10.md:66
+- `units/0675_master_yi_tempered.cpp` (Master Yi, Tempered): 08-cards-full-review.md:138; completed/cards/batch-06.md:113,213
+- `units/0678_poppy_paragon.cpp` (Poppy, Paragon): completed/cards/batch-06.md:202
+- `units/0679_arachnoid_horror.cpp` (Arachnoid Horror): completed/cards/batch-06.md:54
+- `units/0680_elder_dragon.cpp` (Elder Dragon): 07-cards-second-pass.md:127,179; 08-cards-full-review.md:161; completed/cards/batch-06.md:214
+- `units/0681_kha_zix_evolving_hunter.cpp` (Kha'Zix, Evolving Hunter): 07-cards-second-pass.md:87; completed/cards/batch-10.md:66,81
+- `units/0684_crescent_guardian.cpp` (Crescent Guardian): completed/cards/batch-06.md:157,190
+- `units/0688_megatusk.cpp` (Megatusk): completed/cards/batch-06.md:121
+- `units/0697_insightful_investigator.cpp` (Insightful Investigator): 07-cards-second-pass.md:156
+- `units/0706_maduli_the_gatekeeper.cpp` (Maduli the Gatekeeper): 08-cards-full-review.md:124; completed/cards/batch-06.md:92
+- `units/0707_pyke_returned.cpp` (Pyke, Returned): completed/cards/batch-06.md:207
+- `units/0708_syndra_transcendent.cpp` (Syndra, Transcendent): completed/cards/batch-02.md:188; completed/cards/batch-06.md:207
+
+## Stream c7 — units/0711_diana_no_longer_human.cpp .. units/0955_shadow_clone.cpp (123 files, 41 with findings)
+
+- `units/0711_diana_no_longer_human.cpp` (Diana, No Longer Human): completed/cards/batch-07.md:90
+- `units/0712_vex_apathetic.cpp` (Vex, Apathetic): 03-cards.md:64; 05-integrity.md:7; completed/cards/batch-07.md:52,80,90
+- `units/0715_carrion_dredger.cpp` (Carrion Dredger): 08-cards-full-review.md:78; completed/cards/batch-07.md:36
+- `units/0716_crimson_pigeons.cpp` (Crimson Pigeons): 08-cards-full-review.md:138; completed/cards/batch-07.md:91
+- `units/0718_loyal_poro.cpp` (Loyal Poro): completed/cards/batch-07.md:44
+- `units/0722_ultrasoft_poro.cpp` (Ultrasoft Poro): 08-cards-full-review.md:78; completed/cards/batch-07.md:40,68
+- `units/0724_enthralling_protector.cpp` (Enthralling Protector): 08-cards-full-review.md:140; completed/cards/batch-07.md:90,92
+- `units/0725_mageseeker_investigator.cpp` (Mageseeker Investigator): completed/cards/batch-07.md:60
+- `units/0726_safety_inspector.cpp` (Safety Inspector): completed/cards/batch-10.md:34,84
+- `units/0728_stalking_wolf.cpp` (Stalking Wolf): 07-cards-second-pass.md:98; completed/cards/batch-10.md:70
+- `units/0731_ashe_focused.cpp` (Ashe, Focused): 08-cards-full-review.md:125; completed/cards/batch-07.md:28
+- `units/0732_atakhan.cpp` (Atakhan): 08-cards-full-review.md:124; completed/cards/batch-07.md:24,93
+- `units/0734_leblanc_fragmented.cpp` (LeBlanc, Fragmented): completed/cards/batch-07.md:64
+- `units/0738_vi_peacekeeper.cpp` (Vi, Peacekeeper): 07-cards-second-pass.md:53; completed/cards/batch-10.md:80
+- `units/0740_poppy_defender_of_the_meek.cpp` (Poppy, Defender of the Meek): completed/cards/batch-07.md:56
+- `units/0741_rift_herald.cpp` (Rift Herald): 07-cards-second-pass.md:102,110; completed/cards/batch-10.md:42,84
+- `units/0754_daisy.cpp` (Daisy!): completed/cards/batch-07.md:84,93
+- `units/0777_lonely_poro.cpp` (Lonely Poro): completed/cards/batch-07.md:48
+- `units/0778_plundering_poro.cpp` (Plundering Poro): 03-cards.md:70; completed/cards/batch-07.md:32
+- `units/0779_veteran_poro.cpp` (Veteran Poro): 03-cards.md:73; completed/cards/batch-07.md:93
+- `units/0789_blade_twirler.cpp` (Blade Twirler): 03-cards.md:53
+- `units/0796_baccai_reaper.cpp` (Baccai Reaper): 03-cards.md:50; 07-cards-second-pass.md:83; completed/cards/batch-10.md:38
+- `units/0828_riven_shattered.cpp` (Riven, Shattered): 07-cards-second-pass.md:101,123
+- `units/0831_astral_heron.cpp` (Astral Heron): completed/cards/batch-07.md:72
+- `units/0847_sky_crusier.cpp` (Sky Crusier): completed/cards/batch-07.md:93
+- `units/0855_jayce_brilliant_inventor.cpp` (Jayce, Brilliant Inventor): 03-cards.md:53
+- `units/0865_baccai_witherclaw.cpp` (Baccai Witherclaw): 08-cards-full-review.md:79,155; completed/cards/batch-07.md:76
+- `units/0867_noxian_demolitionist.cpp` (Noxian Demolitionist): 07-cards-second-pass.md:167
+- `units/0869_profiteer.cpp` (Profiteer): 07-cards-second-pass.md:89
+- `units/0875_jayce_hammer_in_hand.cpp` (Jayce, Hammer in Hand): 08-cards-full-review.md:114; completed/cards/batch-10.md:26
+- `units/0878_corrupted_dragon.cpp` (Corrupted Dragon): 07-cards-second-pass.md:172; completed/cards/batch-10.md:62,66
+- `units/0879_renekton_brute.cpp` (Renekton, Brute): 08-cards-full-review.md:125; completed/cards/batch-07.md:16
+- `units/0882_shadow_order_disciple.cpp` (Shadow Order Disciple): 07-cards-second-pass.md:90
+- `units/0884_spiderling.cpp` (Spiderling): 08-cards-full-review.md:124; completed/cards/batch-07.md:20
+- `units/0888_gust_monk.cpp` (Gust Monk): 07-cards-second-pass.md:88
+- `units/0889_ravenbloom_prefect.cpp` (Ravenbloom Prefect): 07-cards-second-pass.md:91
+- `units/0901_kharox.cpp` (Kharox): 07-cards-second-pass.md:156
+- `units/0908_reluctant_leader.cpp` (Reluctant Leader): completed/cards/batch-07.md:80
+- `units/0915_noxian_emissary.cpp` (Noxian Emissary): 08-cards-full-review.md:79,155; completed/cards/batch-07.md:76
+- `units/0954_recruit.cpp` (Recruit): completed/cards/batch-07.md:13
+- `units/0955_shadow_clone.cpp` (Shadow Clone): completed/cards/batch-10.md:81

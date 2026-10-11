@@ -6,6 +6,22 @@ stage by stage, with nothing left behind. **You are the orchestrator.** This
 file is your standing instruction on every loop iteration. Subagents get
 [AGENT_BRIEF.md](AGENT_BRIEF.md), not this file.
 
+**Where the plan items are (since 2026-10-11).** Each plan file is split in two
+directories that mirror each other:
+
+- `plans/remaining/` — only the items still open. When this directory holds no
+  `- [ ]`, the plan work is done. `plans/remaining/README.md` lists them.
+- `plans/completed/` — every closed item, with the outcome written under it, in
+  the same files and sections as before (`completed/02-engine-rules.md`,
+  `completed/cards/batch-03.md`, `completed/cards/INDEX.md`, ...).
+
+To close an item: tick it, write the outcome under it, and move the whole item
+from the file in `remaining/` to the same section of the file in `completed/`
+(delete the `remaining/` file when it has no item left). A new finding goes in
+`remaining/09-found-during-fix-run.md`. Where this file or `STATUS.md` names a
+plan file without a directory (`02-engine-rules.md`, `cards/batch-00.md`), read
+it as "under `completed/` or `remaining/`".
+
 The run is not finished until the completion criteria in section 9 all hold.
 Do not end the loop before then. If you hit a deliberate hard blocker
 (section 8), stop and tell the user plainly instead of marking things done.
@@ -130,7 +146,7 @@ Every card file belongs to exactly one stream, by path range:
 | `cards-c6` | `units/0495`–`0709` | `cards/batch-06.md` |
 | `cards-c7` | `units/0710`–end | `cards/batch-07.md` |
 
-[cards/INDEX.md](cards/INDEX.md) lists, per stream, every card file any plan
+[cards/INDEX.md](completed/cards/INDEX.md) lists, per stream, every card file any plan
 mentions and the `plan-file:line` of each mention. A card stream's work list
 is: every card in its INDEX section, for every pointer.
 
@@ -317,7 +333,7 @@ that returned early) are not blockers: diagnose and continue.
 
 All of:
 
-- [ ] No `- [ ]` remains in any file under `plans/` except this list.
+- [ ] No `- [ ]` remains in any file under `plans/` except this list (`plans/remaining/` holds no item).
 - [ ] Every stream in `STATUS.md` is `merged`; every gate row has evidence.
 - [ ] `master` contains the final integration commit.
 - [ ] Full test suite and smoke pass on that commit.
@@ -359,22 +375,22 @@ numbers are as of `b05e51d` and will drift.
 
 ## Plan files
 
-1. [01-openspiel-search.md](01-openspiel-search.md) — search/training correctness. **Fix first**: these corrupt MCTS and training output regardless of rules correctness.
-2. [02-engine-rules.md](02-engine-rules.md) — rules bugs in the engine, executor, chain and trigger managers.
-3. [03-cards.md](03-cards.md) — card-file bugs and the choice-helper ordering bug.
-4. [04-play-server-cli.md](04-play-server-cli.md) — play server, HTML output, CLIs.
-5. [05-integrity.md](05-integrity.md) — consistency, type safety, build, dead code, deck validation.
-6. [06-performance.md](06-performance.md) — hot-path costs (none measured).
-7. [07-cards-second-pass.md](07-cards-second-pass.md) — second pass over the card files that closed the first pass's coverage gaps: verified list of target-less triggers, complete late-cost list, hand-rolled resume cards, benchmarks, deleted decks.
-8. [08-cards-full-review.md](08-cards-full-review.md) — full review of all 955 card files against their text: 335 findings (114 high), root causes first, per-card lists in [cards/batch-00.md](cards/batch-00.md) … [cards/batch-10.md](cards/batch-10.md).
+1. [01-openspiel-search.md](completed/01-openspiel-search.md) — search/training correctness. **Fix first**: these corrupt MCTS and training output regardless of rules correctness.
+2. [02-engine-rules.md](completed/02-engine-rules.md) — rules bugs in the engine, executor, chain and trigger managers.
+3. [03-cards.md](completed/03-cards.md) — card-file bugs and the choice-helper ordering bug.
+4. [04-play-server-cli.md](completed/04-play-server-cli.md) — play server, HTML output, CLIs.
+5. [05-integrity.md](completed/05-integrity.md) — consistency, type safety, build, dead code, deck validation.
+6. [06-performance.md](completed/06-performance.md) — hot-path costs (none measured).
+7. [07-cards-second-pass.md](completed/07-cards-second-pass.md) — second pass over the card files that closed the first pass's coverage gaps: verified list of target-less triggers, complete late-cost list, hand-rolled resume cards, benchmarks, deleted decks.
+8. [08-cards-full-review.md](completed/08-cards-full-review.md) — full review of all 955 card files against their text: 335 findings (114 high), root causes first, per-card lists in [cards/batch-00.md](completed/cards/batch-00.md) … [cards/batch-10.md](completed/cards/batch-10.md).
 
-9. [09-found-during-fix-run.md](09-found-during-fix-run.md) — defects that were in no plan at the start: found by streams during the fix run, recorded as checkboxes and required like the rest. Appended to by the orchestrator at each merge.
+9. [09-found-during-fix-run.md](completed/09-found-during-fix-run.md) — defects that were in no plan at the start: found by streams during the fix run, recorded as checkboxes and required like the rest. Appended to by the orchestrator at each merge.
 
 Run files:
 
 - [AGENT_BRIEF.md](AGENT_BRIEF.md) — rules and context every stream agent reads first.
 - [STATUS.md](STATUS.md) — stream states, gates, carry-over and log; the orchestrator's resume point.
-- [cards/INDEX.md](cards/INDEX.md) — per card stream, every card file with a finding and where each finding is.
+- [cards/INDEX.md](completed/cards/INDEX.md) — per card stream, every card file with a finding and where each finding is.
 - [reports/](reports/) — each stream's final report, copied in at merge time so it survives the cleanup of `.worktrees/`.
 
 **The plans are older than the code.** They were written against `b05e51d`.

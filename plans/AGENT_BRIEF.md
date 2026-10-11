@@ -13,6 +13,16 @@ rules text is `rules/core-rules.md` (grep by keyword or CR number). The core
 principle: **card behaviour lives in the card's class, the engine only
 dispatches**. Never add card-name or `ability_text` matching to the engine.
 
+## Where the plan items are
+
+Open items are in `plans/remaining/<file>`, closed ones in `plans/completed/<file>`
+(same file names and sections; card batches under `cards/`). When you close an
+item, tick it, write the outcome under it and MOVE the item from the
+`remaining/` file to the same section of the `completed/` file. A new finding
+is reported in your report, not written into a plan file, unless your task says
+otherwise. A plan file named anywhere without a directory means "under
+`completed/` or `remaining/`".
+
 ## Where you work
 
 - Your worktree and branch are given in your task (`.worktrees/<stream>`,

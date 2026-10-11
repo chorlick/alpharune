@@ -50,12 +50,6 @@ failure. Fix before trusting search or training output.
   - Failure: an original at move 600 is terminal, its clone is not. `clone_equivalence_test.cpp` would report "terminal mismatch" on long games.
   - Related: at the cap `IsTerminal()` is true while `LegalActions()` is non-empty and `CurrentPlayer()` is not terminal; `MaxGameLength()` returns 10000 (`riftbound_game.h:37`).
 
-- [ ] **1.9 State features mix absolute and perspective-relative ordering** [confirmed]
-  - Where: `src/ml/feature_extractor.cpp:355-358`, `:389-392` versus `:541-542`.
-  - Battlefield controller is encoded P1=1 / P2=2; the per-side base block and the 96-float extended block are P1-then-P2; the Tier-2 block is self-then-opp. No feature gives the absolute seat.
-  - Failure: for `perspective = Player2`, "bf0 side0 unit0" is the opponent's unit in the base block and P2's own in Tier-2. The comment at `:496-497` says these line up.
-  - `tests/test_observation_tensor.cpp` checks only hand and deck masking.
-  - Changing the layout invalidates trainer checkpoints.
 
 - [x] **1.10 `HumanAgent` consumes stale clicks and has a data race** [confirmed] — FIXED: `setChosenAction` returns bool and refuses a choice when the engine is not waiting, the index is out of range or the decision already has an answer; `setChosenAction(index, decision_id)` also checks the id; `selectAction` clears a leftover choice; `atDecision()` locks; concede / `pendingPlayer()` use the deciding seat (optional `HumanAgent(PlayerId seat)`). io-cli still has to send the decision id (4.3); test: HumanAgent.OutOfRangeIndexIsRefused, ChoiceSentBetweenDecisionsIsDropped, ChoiceForAnotherDecisionIdIsRefused, PendingPlayerAndAbortUseTheDecidingSeat, ConfiguredSeatIsThePendingPlayerAndTheConceder
   - Where: `src/agents/human_agent.h:71-88`, `:109-115`, `:148-150`.
@@ -67,16 +61,6 @@ failure. Fix before trusting search or training output.
 - [x] **1.11 `LegalActions()` is not sorted** [confirmed; downstream impact plausible] — FIXED: sorted and deduplicated in one helper (`encodeLegal`); test: RiftboundStateTest.CurrentPlayerIsTheDeciderAndLegalActionsAreSorted
   - Where: `riftbound_state.cpp:183-205`. OpenSpiel's contract is ascending order. The bots used here tolerate it.
 
-- [ ] **1.12 Slot collisions remove legal options** [confirmed; documented as "accepted" in `action_vocab.h:26-30`]
-  - Where: `action_vocab.cpp:59-64`, `:96-98`, `:181-190`; dedup at `riftbound_state.cpp:189`.
-  - Mulligan encodes the count only (cannot choose which card).
-  - `StandardMove` encodes the destination only ("move A" = "move A+B").
-  - `MakeChoice` encodes the first object's def id; in a mirror match "target my X" and "target their X" are one slot.
-  - An object with an invalid def id encodes to slot 0, same as skip/decline (reach not confirmed).
-  - Champion play and its alt-cost play share a slot (`action_vocab.cpp:101-107`).
-  - `MakeChoice` options that differ only in `ability_index` collide: Party Favors (71) — the opponent can never choose Runes under OpenSpiel (07 item 7.33).
-    - c2: 71 Party Favors — FIXED on the card side (07 item 7.33): its options now carry distinct `chosen_value`s; test: ReviewFixC2Test.PartyFavors_TheTwoAnswersAreDistinctValues
-  - Gear-target hash overwrites `ability_index` (`:143-152`). Comment at `:73-83` says 16 buckets; code uses 128.
 
 - [x] **1.13 ISMCTS node key ignores the pending decision** [plausible, not reproduced] — FIXED: defect proven (94 same-key / different-action-set pairs in 8 random games with the board-only key). `InfoSetId` now folds in who decides and, for the decider, the legal action set (`ml::mixDecisionIntoInfoSetId`); test: RiftboundStateTest.SameObservationKeyMeansSameLegalActions, CfrUtil.DecisionIsPartOfTheInfoSetId
   - Where: `riftbound_state.cpp:271-292`, `mcts_agent.cpp:405-406`.

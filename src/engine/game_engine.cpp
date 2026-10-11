@@ -827,6 +827,9 @@ void GameEngine::awakenPhase() {
     auto player = state_.turn.turn_player;
     for (auto& [id, obj] : state_.objects) {
         if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
+            const Card* card = obj.card_def_id != kInvalidId
+                ? card_registry_.get(obj.card_def_id) : nullptr;
+            if (card && !card->canBeReadied()) continue;   // "I can't be readied."
             obj.is_exhausted = false;
             events_.emit(ObjectStateChangedEvent{id, "readied"});
             events_.emit(ObjectStateChangedEvent{id, "became_ready"});
@@ -4918,8 +4921,13 @@ void GameEngine::recalculateAuras() {
     // therefore called ONCE per (card, controller) per pass — calling it per
     // instance applied every copy's effect once per copy (two Garens: +4).
     std::vector<std::pair<CardDefId, PlayerId>> aura_applied;
-    for (auto& [id, obj] : state_.objects) {
+    // Reset first, in a pass of its own: a hook below may set the flag on
+    // ANOTHER object ("Your units here ... can't be chosen by enemy spells and
+    // abilities"), which a reset inside the hook loop would undo for every
+    // object the loop reaches after the hook ran.
+    for (auto& [id, obj] : state_.objects)
         obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
+    for (auto& [id, obj] : state_.objects) {
         // On-board cards AND legends (LegendZone, no location) broadcast their
         // passive auras. Without including legends, legend-sourced passives
         // (Purifier's [Assault], Wuju Master's +1 [M], etc.) never fired.
@@ -5623,7 +5631,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     if (card.card_def_id == kInvalidId) return;
     const Card* cdef = card_registry_.get(card.card_def_id);
     if (!cdef) return;
-    auto cost = cdef->optionalAdditionalCost();
+    auto cost = cdef->optionalAdditionalCost(state_, player);
     if (!cost.valid) return;
     // Discard-as-additional-cost-to-reduce (Brazen Buccaneer) is decided BEFORE
     // payment in executePlayCard (the discount must precede the base cost), so

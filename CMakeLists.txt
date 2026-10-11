@@ -335,13 +335,16 @@ set(RIFTBOUND_CORE_LIBS
 # rather than `ccache` itself:
 #   -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;<checkout>/scripts/ccache_pch_safe.sh"
 # The script never sends a PCH compile to ccache: a PCH is always compiled,
-# never cached. Only the units that use it are cached. Plain ccache gets a
-# cached PCH wrong in two ways (the script's comments have the mechanisms):
+# never cached. It writes a checksum of what the PCH was made from next to it
+# (<pch>.gch.sum) and the units that use the PCH are cached keyed on that
+# (ccache's pch_external_checksum). Plain ccache gets a cached PCH wrong in
+# two ways (the script's comments have the mechanisms; both reproduced):
 #  - a PCH *rebuild* is keyed on the stale .gch still in the build directory,
 #    not on the headers, so it can return a .gch built from other headers;
-#  - a hit on the preprocessed text (which ignores comments) returns a .gch
-#    whose `#pragma once` records (file size and time) no longer match a header
-#    that had a comment-only edit, and that header is then included twice.
+#  - from a clean build directory, a hit on the preprocessed text (which has
+#    no comments) returns the previous .gch after a comment was reworded in
+#    place; its `#pragma once` records no longer match the header, which is
+#    then included twice ("redefinition of ...").
 option(RIFTBOUND_USE_PCH "Precompile the common engine headers (src/pch.h)" ON)
 set(RIFTBOUND_PCH_CCACHE_FLAG "")
 if(RIFTBOUND_USE_PCH AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache"
@@ -355,8 +358,9 @@ if(RIFTBOUND_USE_PCH AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache"
             "contents, or (after a comment-only edit) one whose `#pragma once` "
             "records no longer match, which fails with redefinition errors. A "
             "clean build does not avoid this. Use scripts/ccache_pch_safe.sh as "
-            "the launcher: it always compiles a PCH and caches only the units "
-            "that use it (see CLAUDE.md, \"ccache\").")
+            "the launcher: it always compiles a PCH and caches the units that "
+            "use it, keyed on a checksum of the PCH's inputs (see CLAUDE.md, "
+            "\"ccache\").")
     endif()
 endif()
 if(RIFTBOUND_USE_PCH)

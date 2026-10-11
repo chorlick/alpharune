@@ -17,6 +17,7 @@
 #include "agents/random_agent.h"
 #include "core/events.h"
 #include "engine/game_engine.h"
+#include "engine/knowledge_tracker.h"
 #include "ml/cfr_util.h"
 #include "ml/feature_extractor.h"
 
@@ -558,6 +559,125 @@ TEST(RiftboundStateTest, ObservationKeyHidesWhatTheNonDeciderCannotSee) {
     EXPECT_NE(state->ObservationString(0), state->ObservationString(1));
     EXPECT_EQ(state->ObservationString(0), state->Clone()->ObservationString(0));
     EXPECT_EQ(state->ObservationString(0).size(), 16u);
+}
+
+// plans/01 item 1.9 — what the key does with the perspective. InfoSetId(p) is
+// the hash of p's own masked feature vector, mixed with p's seat (so the two
+// players' keys never coincide), with who is deciding and, for the decider
+// only, with the action ids on offer. ISMCTS keys a node on
+// (decider, ObservationString(decider)), so the key must be a function of what
+// that player knows: re-deal everything the player cannot know — the
+// identities of the opponent's hand, deck and facedown cards that the player
+// has not been shown (by the knowledge tracker, or as an option of the prompt
+// it is answering), and the order of both decks — and neither player's key
+// of the re-dealt position may differ from its key of the real one.
+TEST(RiftboundStateTest, InfoSetKeyIsAFunctionOfWhatThePlayerKnows) {
+    using ::riftbound::CardDefId;
+    using ::riftbound::GameObjectId;
+    long checked = 0, redealt_cards = 0, shown_cards_kept = 0, decider_keys = 0;
+    for (int seed = 1; seed <= 6; ++seed) {
+        auto game = loadGame(seed);
+        auto state = game->NewInitialState();
+        std::mt19937_64 rng(seed * 101);
+        while (!state->IsTerminal()) {
+            const GameState& gs = rb(*state).engineState();
+            ::riftbound::StepResult step;
+            step.kind = ::riftbound::StepKind::NeedDecision;
+            step.legal = rb(*state).legalIntents();
+            step.perspective = state->CurrentPlayer() == 0 ? PlayerId::Player1
+                                                           : PlayerId::Player2;
+            for (::open_spiel::Player p : {0, 1}) {
+                const PlayerId me = p == 0 ? PlayerId::Player1 : PlayerId::Player2;
+                const PlayerId opp = ::riftbound::opponent(me);
+                GameState redealt = gs;
+                const ::riftbound::knowledge::GameKnowledgeView knows(gs, me);
+                auto& ops = redealt.player(opp);
+                std::vector<GameObjectId> hidden;
+                // A card the player is being asked about has been shown to it:
+                // every option of a prompt is put in front of the player who
+                // answers (Sabotage 156, "They reveal their hand. Choose a
+                // non-unit card from it"). The knowledge tracker is not told of
+                // such a reveal, so those cards are named here.
+                std::set<GameObjectId> offered_cards;
+                if (p == state->CurrentPlayer()) {
+                    for (const auto& i : step.legal) {
+                        offered_cards.insert(i.chosen_objects.begin(), i.chosen_objects.end());
+                        offered_cards.insert(i.targets.begin(), i.targets.end());
+                    }
+                }
+                auto consider = [&](GameObjectId id) {
+                    if (knows.about(id).identity_known || offered_cards.count(id))
+                        ++shown_cards_kept;
+                    else
+                        hidden.push_back(id);
+                };
+                for (auto id : ops.hand) consider(id);
+                for (auto id : ops.main_deck) consider(id);
+                for (const auto& bf : redealt.battlefields)
+                    for (auto id : bf.facedown)
+                        if (redealt.getObject(id).controller == opp) consider(id);
+                std::vector<CardDefId> defs;
+                for (auto id : hidden) defs.push_back(redealt.getObject(id).card_def_id);
+                std::shuffle(defs.begin(), defs.end(), rng);
+                for (size_t i = 0; i < hidden.size(); ++i)
+                    redealt.getObject(hidden[i]).card_def_id = defs[i];
+                redealt_cards += static_cast<long>(hidden.size());
+                std::shuffle(ops.main_deck.begin(), ops.main_deck.end(), rng);
+                std::shuffle(redealt.player(me).main_deck.begin(),
+                             redealt.player(me).main_deck.end(), rng);
+
+                auto other = RiftboundState::makeFromSnapshot(
+                    game, static_cast<uint64_t>(seed), redealt, step,
+                    ::riftbound::GameResult{}, /*rng_seed=*/1);
+                if (other->InfoSetId(p) != rb(*state).InfoSetId(p)) {
+                    // Say which half of the key moved.
+                    const auto f0 = state->ObservationTensor(p);
+                    const auto f1 =
+                        static_cast<const ::open_spiel::State&>(*other).ObservationTensor(p);
+                    std::string why;
+                    for (size_t i = 0; i < f0.size() && why.empty(); ++i)
+                        if (f0[i] != f1[i])
+                            why = "feature " + std::to_string(i) + ": " +
+                                  std::to_string(f0[i]) + " / " + std::to_string(f1[i]);
+                    if (why.empty()) why = "the features are equal";
+                    std::string offered;
+                    for (const auto& i : step.legal) {
+                        offered += "\n  " + i.describe();
+                        for (auto o : i.chosen_objects) {
+                            const auto& obj = gs.getObject(o);
+                            offered += " [" + obj.name.get() + ", zone " +
+                                       std::to_string(static_cast<int>(obj.zone.get())) +
+                                       ", owner " + toString(obj.owner) + "]";
+                        }
+                    }
+                    if (gs.chain.resuming && gs.objectExists(gs.chain.resuming->source))
+                        offered += "\n  resolving: " +
+                                   gs.getObject(gs.chain.resuming->source).name.get();
+                    ADD_FAILURE() << why << "; offered:" << offered;
+                }
+                ASSERT_EQ(other->InfoSetId(p), rb(*state).InfoSetId(p))
+                    << "seed " << seed << " move " << state->MoveNumber() << ": "
+                    << toString(me) << "'s key changed with a re-deal of what it "
+                    << "cannot know (it " << (p == state->CurrentPlayer() ? "is" : "is not")
+                    << " the decider)";
+                ASSERT_EQ(other->ObservationString(p), state->ObservationString(p));
+                ++checked;
+                if (p == state->CurrentPlayer()) {
+                    ++decider_keys;
+                    ASSERT_EQ(other->LegalActions(), state->LegalActions())
+                        << "the action ids on offer depend on hidden cards";
+                }
+            }
+            // Per seat: the two players' keys of one position differ.
+            ASSERT_NE(rb(*state).InfoSetId(0), rb(*state).InfoSetId(1));
+            state->ApplyAction(pickAction(rng, state->LegalActions()));
+        }
+    }
+    std::cout << "[ info     ] " << checked << " keys compared (" << decider_keys
+              << " of the decider), " << redealt_cards << " hidden cards re-dealt, "
+              << shown_cards_kept << " left as they are because the player has seen them\n";
+    EXPECT_GT(checked, 1500);
+    EXPECT_GT(redealt_cards, 20000);
 }
 
 // 6.9 — the key and the tensor come from per-thread scratch buffers and a

@@ -284,7 +284,7 @@ TEST(PerfSearchHash, SkippingZeroRunsDoesNotChangeTheInfoSetId) {
     for (int player = 0; player < 2; ++player) {
         EXPECT_EQ(ml::computeInfoSetId({}, player), byteWiseInfoSetId({}, player));
         for (size_t run : {1u, 2u, 3u, 254u, 255u, 256u, 257u, 510u, 511u,
-                           1100u, 6188u}) {
+                           1100u, 6188u, 6192u}) {
             std::vector<float> zeros(run, 0.0f);
             EXPECT_EQ(ml::computeInfoSetId(zeros, player),
                       byteWiseInfoSetId(zeros, player)) << "all zeros, " << run;
@@ -323,15 +323,17 @@ TEST(PerfSearchHash, SkippingZeroRunsDoesNotChangeTheInfoSetId) {
 // that used to come from per-battlefield / per-player queries of the state
 // still equal those queries, at every decision of real games, from both seats.
 TEST_F(PerfSearchTest, FeaturesStillMatchTheStateQueriesTheyReplaced) {
-    // Layout (feature_extractor.cpp): 10 globals, 8 chain, then 70 per
-    // player (self, opponent), then 49 per battlefield slot.
+    // Layout (feature_extractor.h): 10 globals, 8 chain, then 70 per
+    // player (self, opponent), then 49 per battlefield slot, whose two side
+    // blocks are self then opponent as well since the 2026-10 layout (they
+    // were Player1 then Player2: plans/01 item 1.9).
     constexpr int kSelf = 18, kOpp = 88, kBf = 158, kPerBf = 49;
     constexpr int kRunesReady = 39, kRunesExhausted = 40;
     constexpr int kBaseUnits = 53, kBaseMight = 54, kBaseExhausted = 56;
     constexpr int kBaseGear = 60;
-    constexpr int kSideP1 = 9, kSideP2 = 29;        // count, then total might
+    constexpr int kSideSelf = 9, kSideOpp = 29;     // count, then total might
     constexpr int kSideTopMight = 14;               // highest might on the side
-    constexpr int kReadyBase = ml::kStateFeatureDim - 24;   // self, opp
+    constexpr int kReadyBase = ml::layout::kExtGlobals;     // self, opp
 
     long units_seen = 0, checked = 0;
     for (uint64_t seed : {3u, 11u, 29u}) {
@@ -372,12 +374,12 @@ TEST_F(PerfSearchTest, FeaturesStillMatchTheStateQueriesTheyReplaced) {
                 for (int i = 0; i < 4; ++i) {
                     const int bf = kBf + i * kPerBf;
                     if (i >= static_cast<int>(st.battlefields.size())) {
-                        ASSERT_EQ(f[bf + kSideP1], 0) << where;
+                        ASSERT_EQ(f[bf + kSideSelf], 0) << where;
                         continue;
                     }
                     const LocationId loc = BattlefieldLocation{st.battlefields[i].id};
-                    int col = kSideP1;
-                    for (PlayerId p : {PlayerId::Player1, PlayerId::Player2}) {
+                    int col = kSideSelf;
+                    for (PlayerId p : {me, opponent(me)}) {
                         int might = 0, top = 0;
                         const auto here = st.unitsAt(loc, p);
                         for (auto uid : here) {
@@ -391,7 +393,7 @@ TEST_F(PerfSearchTest, FeaturesStillMatchTheStateQueriesTheyReplaced) {
                             ASSERT_EQ(f[bf + col + kSideTopMight], top) << where;
                         }
                         units_seen += static_cast<long>(here.size());
-                        col = kSideP2;
+                        col = kSideOpp;
                     }
                 }
                 ++checked;

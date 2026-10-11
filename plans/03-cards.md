@@ -62,7 +62,7 @@ The callback re-runs from the top after a choice, so anything before the helper 
 
 ## D. Choices at finalization
 
-- [ ] **3.8** `legends/0556_chem_baroness.cpp:23-27` — `still_legal` is `return true` and the exhaust cost has no ready check; two holds make two Gold. [confirmed]
+- [x] **3.8** `legends/0556_chem_baroness.cpp:23-27` — `still_legal` is `return true` and the exhaust cost has no ready check; two holds make two Gold. [confirmed] — FIXED: verified in the code by sweep-verify-cards after sweep-flow merged (`still_legal` needs a ready legend; `exhaustObject` under `costDueNow` before the marker); test: ReviewFixC1Test.ChemBaroness_OnlyAReadyLegendCanPay
   - c1: 556 Chem-Baroness — FIXED: `still_legal` requires a ready legend and the exhaust goes through `exhaustObject` under `costDueNow`; test: ReviewFixC1Test.ChemBaroness_OnlyAReadyLegendCanPay
   - verify-cards: needs sweep-verify: Chem-Baroness 556 is being edited by sweep-flow (effective Victory Score); not read. Verify `still_legal` and the exhaust cost after it merges, then tick.
 - [x] **3.9** `units/0147_wildclaw_shaman.cpp:24-33` — "spend a buff" never spends one; free buff and ready. [confirmed] — FIXED: verified in the code by sweep-verify-cards; test: C4Test.WildclawShaman_SpendsABuffToBuffAndReadyItself, C4Test.WildclawShaman_WithNoBuffToSpendIsNotOffered
@@ -100,6 +100,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - c0: 143 Pirate's Haven, 272 Back-Alley Bar, 60 Mask of Foresight — FIXED: the subject must still be a unit on the board; test: C0Test.PiratesHaven_ReadyingARuneDoesNotTrigger, .BackAlleyBar_OnlyAUnitStillOnTheBoardGetsTheMight, .MaskOfForesight_IgnoresAUnitThatLeftTheBoard
   - c7: 712 Vex, Apathetic — FIXED: the played unit must still be an enemy unit on the board; test: C7Test.VexApathetic_StunsTheUnitAnOpponentPlays
   - verify-cards: 143 and 60 verified in the code by sweep-verify-cards; 143 had no test of the subject leaving the board — added (VerifyCardsTest.PiratesHaven_AUnitThatLeftTheBoardGetsNoMight). needs sweep-verify: Vex 712 (sweep-flow) and Back-Alley Bar 272 (sweep-triggers) after they merge, then tick.
+  - verify-cards (after sweep-flow merged): 712 Vex, Apathetic verified (the played unit must still be an enemy unit on the board; C7Test.VexApathetic_StunsTheUnitAnOpponentPlays covers the unit that left). Only 272 Back-Alley Bar (sweep-triggers) is left for sweep-verify.
 - [x] **3.16** `units/0416_direwing.cpp:21` — "Another Dragon" skips every Direwing by def id; a second Direwing does not enter ready. Use the three-argument `entersReadyOnPlay(..., self)`. [confirmed] — FIXED: 416 and 394 verified in the code by sweep-verify-cards; the stage 2 tests called `entersReadyOnPlay` directly — engine-path tests added; test: VerifyCardsTest.Direwing_ThroughTheEngine_EntersReadyOnlyNextToAnotherDragon, VerifyCardsTest.BreakneckMech_ThroughTheEngine_EntersReadyOnlyNextToAnotherMech
   - c5: 416 Direwing — FIXED: three-argument `entersReadyOnPlay`, skips only this instance (same in 394 Breakneck Mech); test: C5Test.DirewingEntersReadyNextToAnotherDirewing
 

@@ -1689,7 +1689,10 @@ void GameEngine::runFinalizePass(ChainItem& item) {
 
 // The pass itself. `item` need not be on the chain (a spell choosing before
 // its cost is paid — executePlaySpell).
-ChainItem GameEngine::collectFinalizeChoices(ChainItem item) {
+ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswerer* answer,
+                                             bool* completed) {
+    if (completed) *completed = true;
+    size_t asked = 0;
     std::optional<ChainItem> outer;
     if (state_.chain.resuming.has_value()) outer = std::move(*state_.chain.resuming);
     state_.chain.resuming = std::move(item);
@@ -1734,6 +1737,19 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item) {
         // exception; the chain is still left as it was before this pass —
         // no item "resolving", no prompt pending — so the state a caller
         // inspects afterwards is a consistent one.
+        if (answer) {
+            auto given = (*answer)(asked++, pending.player, pending.legal);
+            if (!given.has_value()) {
+                // Stopped here: the item as far as it got.
+                ChainItem partial = std::move(*state_.chain.resuming);
+                state_.chain.resuming.reset();
+                if (outer.has_value()) state_.chain.resuming = std::move(*outer);
+                if (completed) *completed = false;
+                return partial;
+            }
+            effect_executor_->recordChoice(std::move(*given));
+            continue;
+        }
         try {
             Intent choice = queryAgentForChain(pending.player, pending.legal);
             effect_executor_->recordChoice(std::move(choice));
@@ -1746,6 +1762,31 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item) {
     ChainItem done = std::move(*state_.chain.resuming);
     state_.chain.resuming.reset();
     if (outer.has_value()) state_.chain.resuming = std::move(*outer);
+    // The pass of a card that opted its callback into choices at finalization
+    // ends at the card's end-of-choices marker (Card::finalizingChoices). One
+    // that returned before it stored nothing the resolution can rely on: the
+    // card would be entered again as it resolves and its helpers would ask
+    // then, after everyone had the chance to respond. That is a card bug,
+    // reported here. (A reflexive trigger's pass is the engine's doing, not
+    // an opt-in, and has no marker to reach.)
+    if (!(done.finalize_checked & 64) && done.reflexive_index < 0 &&
+        done.card_def_id != kInvalidId) {
+        const Card* owner = (done.is_ability && done.granted_ability_def != 0)
+            ? card_registry_.get(done.granted_ability_def)
+            : card_registry_.get(done.card_def_id);
+        const unsigned bit = done.is_spell ? Card::kFinalizeResolve
+                           : (done.is_ability && !done.is_activated_ability)
+                               ? Card::kFinalizeTrigger : Card::kFinalizeActivate;
+        if (owner && (owner->choicesAtFinalization() & bit)) {
+            const GameObjectId src = done.source;
+            cardContractViolation(
+                "GameEngine::runFinalizePass: " +
+                (state_.objectExists(src) ? state_.getObject(src).name : std::string("?")) +
+                " returned from its finalize pass before its end-of-choices marker"
+                " (every path of a callback opted into choices at finalization ends at"
+                " finalizingChoices)");
+        }
+    }
     return done;
 }
 
@@ -2159,6 +2200,205 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
     return false;
 }
 
+// A card's finalize pass ended before its end-of-choices marker. Strict: an
+// error naming the card, as the cost contract and an unnameable prompt option
+// are. Otherwise a warning in the log — and on stderr under
+// RIFTBOUND_REPORT_CARD_CONTRACTS, for listing every card a test run trips.
+// Strict is off by default only until the cards that list names are fixed
+// (plans/reports/sweep-costs-followup-5.md has the list).
+void GameEngine::cardContractViolation(const std::string& what) {
+    if (strict_card_contracts_) throw std::logic_error(what);
+    events_.logWarn("CARD-CONTRACT: " + what);
+    static const bool report = std::getenv("RIFTBOUND_REPORT_CARD_CONTRACTS") != nullptr;
+    if (report) std::fprintf(stderr, "CARD-CONTRACT: %s\n", what.c_str());
+}
+
+// ── A spell's choices before its cost: probing and the viable pass ──────────
+
+GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, const ChainItem& pre,
+                                                     const std::vector<int>& script,
+                                                     bool stop_after_script) {
+    ScriptedPass out;
+    // The record of decisions made so far belongs to the game, not to the
+    // state a run starts from.
+    auto history = std::move(state_.action_history);
+    const int decisions = state_.decision_index;
+    state_ = from;
+    state_.action_history = std::move(history);
+    state_.decision_index = decisions;
+    bool dead = false;
+    FinalizeAnswerer answer = [&](size_t k, PlayerId p,
+                                  const std::vector<Intent>& legal) -> std::optional<Intent> {
+        out.option_counts.push_back(static_cast<int>(legal.size()));
+        if (k < script.size()) {
+            if (script[k] < 0 || script[k] >= static_cast<int>(legal.size())) {
+                dead = true;
+                return std::nullopt;
+            }
+            return legal[static_cast<size_t>(script[k])];
+        }
+        if (stop_after_script) {
+            out.next_options = legal;
+            out.next_player = p;
+            return std::nullopt;
+        }
+        if (legal.empty()) { dead = true; return std::nullopt; }
+        return legal.front();
+    };
+    bool completed = false;
+    try {
+        out.done = collectFinalizeChoices(pre, &answer, &completed);
+    } catch (const std::exception&) {
+        // A sequence the card itself cannot go through is not one to offer.
+        completed = false;
+        dead = true;
+        state_.chain.resuming.reset();
+        if (effect_executor_->hasPendingChoice()) effect_executor_->consumePendingChoice();
+    }
+    out.completed = completed && !dead;
+    if (dead) out.next_options.clear();
+    return out;
+}
+
+bool GameEngine::prePlaySequenceExists(const GameState& from, const ChainItem& pre,
+                                       const std::vector<int>& script,
+                                       const PrePlayPayable& payable) {
+    const auto quiet = events_.beginQuiet();
+    bool found = false;
+    int runs = 0;
+    std::vector<std::vector<int>> todo{script};
+    while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
+        const std::vector<int> prefix = std::move(todo.back());
+        todo.pop_back();
+        ++runs;
+        const ScriptedPass run = runScriptedPass(from, pre, prefix, /*stop_after_script=*/false);
+        if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
+        // Every other answer to each prompt this run met past its prefix.
+        for (size_t k = run.option_counts.size(); k-- > prefix.size();)
+            for (int alt = run.option_counts[k] - 1; alt >= 1; --alt) {
+                std::vector<int> next = prefix;
+                next.resize(k, 0);
+                next.push_back(alt);
+                todo.push_back(std::move(next));
+            }
+    }
+    {   // leave the state as it was handed in (the decision record kept)
+        auto history = std::move(state_.action_history);
+        const int decisions = state_.decision_index;
+        state_ = from;
+        state_.action_history = std::move(history);
+        state_.decision_index = decisions;
+    }
+    events_.endQuiet(quiet);
+    return found;
+}
+
+ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPayable& payable) {
+    const GameState pass_start = state_;
+    std::vector<int> script;
+    for (;;) {
+        // Where the choices so far lead: the next prompt, or the end.
+        ScriptedPass at;
+        {
+            const auto quiet = events_.beginQuiet();
+            at = runScriptedPass(pass_start, pre, script, /*stop_after_script=*/true);
+            events_.endQuiet(quiet);
+        }
+        if (at.completed) break;
+        if (at.next_options.empty())
+            throw std::logic_error("GameEngine::choosePrePlayViable: " +
+                                   state_.getObject(pre.source).name +
+                                   " reached a prompt with no options");
+        // Only the options a payable completion can still follow.
+        std::vector<int> viable;
+        const std::vector<Intent> options = at.next_options;
+        const PlayerId asked_player = at.next_player;
+        for (int i = 0; i < static_cast<int>(options.size()); ++i) {
+            std::vector<int> with = script;
+            with.push_back(i);
+            if (prePlaySequenceExists(pass_start, pre, with, payable)) viable.push_back(i);
+        }
+        if (viable.empty())
+            throw std::logic_error("GameEngine::choosePrePlayViable: " +
+                                   state_.getObject(pre.source).name +
+                                   " was offered with no payable sequence of choices");
+        // Ask with the state as the choices so far left it.
+        {
+            const auto quiet = events_.beginQuiet();
+            (void)runScriptedPass(pass_start, pre, script, /*stop_after_script=*/true);
+            events_.endQuiet(quiet);
+        }
+        std::vector<Intent> offered;
+        offered.reserve(viable.size());
+        for (int i : viable) offered.push_back(options[static_cast<size_t>(i)]);
+        events_.logTrace(std::string("CHOICE-REQUEST (before payment): [") +
+                         std::to_string(offered.size()) + " of " +
+                         std::to_string(options.size()) + " options keep the spell payable] (" +
+                         toString(asked_player) + ")");
+        const Intent chosen = queryAgentForChain(asked_player, offered);
+        int picked = viable.front();
+        for (size_t v = 0; v < offered.size(); ++v)
+            if (offered[v] == chosen && offered[v].choice_label == chosen.choice_label) {
+                picked = viable[v];
+                break;
+            }
+        script.push_back(picked);
+    }
+    // The choices are made: run the pass for real, seen by everyone.
+    ScriptedPass final_run = runScriptedPass(pass_start, pre, script, /*stop_after_script=*/false);
+    if (!final_run.completed)
+        throw std::logic_error("GameEngine::choosePrePlayViable: " +
+                               state_.getObject(pre.source).name +
+                               " did not complete the choices it had just made");
+    return final_run.done;
+}
+
+bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
+                              const PlayerState::TrashReplayGrant* grant) {
+    if (state_.chain.resuming.has_value() || !state_.objectExists(card_id)) return false;
+    const GameState saved = state_;
+    const auto quiet = events_.beginQuiet();
+    // As the play would begin: the card leaves its zone.
+    {
+        auto& ps = state_.player(player);
+        ps.hand.erase(std::remove(ps.hand.begin(), ps.hand.end(), card_id), ps.hand.end());
+        ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), card_id), ps.trash.end());
+    }
+    forgetPlayPayments(player, card_id);
+    ChainItem pre;
+    pre.id = state_.chain.allocateId();
+    pre.status = ChainItemStatus::Pending;
+    pre.source = card_id;
+    pre.card_def_id = state_.getObject(card_id).card_def_id;
+    pre.controller = player;
+    pre.is_spell = true;
+    pre.pre_play_choices = true;
+    // The grant, if any, is looked up again in each run: the pointer handed in
+    // points into the state that the runs replace.
+    const bool via_grant = grant != nullptr;
+    effect_executor_->setChoiceFilter([this, player, card_id, via_grant](GameObjectId t) {
+        std::vector<GameObjectId> all;
+        if (state_.chain.resuming.has_value()) all = state_.chain.resuming->chosen_objects;
+        all.push_back(t);
+        const auto* g = via_grant ? trashGrantFor(player, card_id) : nullptr;
+        return g ? canPayTrashGrant(player, card_id, *g, all, {t})
+                 : (!via_grant && canAffordChoosing(player, card_id, all, {t}));
+    });
+    const PrePlayPayable payable = [this, player, card_id, via_grant](
+                                       const std::vector<GameObjectId>& chosen) {
+        const auto* g = via_grant ? trashGrantFor(player, card_id) : nullptr;
+        if (via_grant) return g && canPayTrashGrant(player, card_id, *g, chosen, {});
+        return chosen.empty() ? canAfford(player, card_id)
+                              : canAffordChoosing(player, card_id, chosen, {});
+    };
+    const GameState pass_start = state_;
+    const bool found = prePlaySequenceExists(pass_start, pre, {}, payable);
+    effect_executor_->setChoiceFilter(nullptr);
+    state_ = saved;
+    events_.endQuiet(quiet);
+    return found;
+}
+
 void GameEngine::executePlayCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
@@ -2286,39 +2526,6 @@ void GameEngine::executePlayCard(const Intent& intent) {
 }
 
 void GameEngine::executePlaySpell(const Intent& intent) {
-    // A spell that chooses in its finalize pass and is too dear on its own
-    // was offered on the strength of a choice (payableThroughAFinalizeChoice).
-    // If the choices then made do not earn it, the play does not happen and
-    // must leave nothing behind: the state is kept to go back to, and nothing
-    // this attempt emits — events, log lines — reaches a subscriber until it
-    // is known to go through.
-    std::optional<GameState> before_attempt;
-    struct HeldEvents {
-        EventBus& bus;
-        bool active = false;
-        void start() { bus.hold(); active = true; }
-        void deliver() { if (active) { active = false; bus.release(); } }
-        void drop() { if (active) { active = false; bus.discardHeld(); } }
-        ~HeldEvents() { deliver(); }
-    } held{events_};
-    if (intent.targets.empty() && !state_.chain.resuming.has_value() &&
-        state_.objectExists(intent.card)) {
-        const auto& c0 = state_.getObject(intent.card);
-        const Card* sc0 = c0.card_def_id != kInvalidId ? card_registry_.get(c0.card_def_id)
-                                                       : nullptr;
-        if (sc0 && !sc0->needsPlayTimeTarget() &&
-            (sc0->choicesAtFinalization() & Card::kFinalizeResolve)) {
-            const PlayerState::TrashReplayGrant* g0 =
-                intent.play_source == Intent::PlaySource::Trash
-                    ? trashGrantFor(intent.player, intent.card) : nullptr;
-            const bool too_dear = g0 ? !canPayTrashGrant(intent.player, intent.card, *g0, {})
-                                     : !canAfford(intent.player, intent.card);
-            if (too_dear && !events_.holding()) {
-                before_attempt = state_;
-                held.start();
-            }
-        }
-    }
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
@@ -2334,7 +2541,6 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     }
 
     // Remove from the source zone.
-    const ZoneType played_from = card.zone;
     if (card.zone == ZoneType::Hand) {
         auto it = std::find(ps.hand.begin(), ps.hand.end(), intent.card);
         if (it != ps.hand.end()) ps.hand.erase(it);
@@ -2403,7 +2609,6 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     // of the play, and a unit is on offer only while the spell's cost and
     // that Deflect can be paid together.
     std::vector<GameObjectId> cost_targets = play_targets;
-    const std::vector<GameObjectId> deflect_targets = play_targets;
     prefinalized_spell_.reset();
     if (play_targets.empty() && card.card_def_id != kInvalidId &&
         !state_.chain.resuming.has_value()) {
@@ -2413,6 +2618,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             const PlayerState::TrashReplayGrant* grant =
                 intent.play_source == Intent::PlaySource::Trash
                     ? trashGrantFor(intent.player, intent.card) : nullptr;
+            const bool via_grant = grant != nullptr;
             ChainItem pre;
             pre.id = state_.chain.allocateId();
             pre.status = ChainItemStatus::Pending;
@@ -2423,19 +2629,39 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             pre.pre_play_choices = true;
             const PlayerId who = intent.player;
             const GameObjectId what = intent.card;
-            effect_executor_->setChoiceFilter([this, who, what, grant](GameObjectId t) {
+            // (The grant is looked up afresh each time: the viable pass
+            // replaces the state its pointer points into.)
+            effect_executor_->setChoiceFilter([this, who, what, via_grant](GameObjectId t) {
                 // Discounts from everything chosen so far and `t`; the
                 // Deflect of the earlier choices is already paid. The same
                 // for a play through a trash-replay grant.
                 std::vector<GameObjectId> all;
                 if (state_.chain.resuming.has_value()) all = state_.chain.resuming->chosen_objects;
                 all.push_back(t);
-                return grant ? canPayTrashGrant(who, what, *grant, all, {t})
-                             : canAffordChoosing(who, what, all, {t});
+                const auto* g = via_grant ? trashGrantFor(who, what) : nullptr;
+                return g ? canPayTrashGrant(who, what, *g, all, {t})
+                         : (!via_grant && canAffordChoosing(who, what, all, {t}));
             });
+            // (Deflect for these choices is paid as each is made: none is
+            // owed when the spell's own cost is judged.)
+            const PrePlayPayable payable = [this, who, what, via_grant](
+                                               const std::vector<GameObjectId>& chosen) {
+                const auto* g = via_grant ? trashGrantFor(who, what) : nullptr;
+                if (via_grant) return g && canPayTrashGrant(who, what, *g, chosen, {});
+                return chosen.empty() ? canAfford(who, what)
+                                      : canAffordChoosing(who, what, chosen, {});
+            };
+            // Too dear on its own, the spell was offered because some
+            // sequence of its choices makes it payable
+            // (payableThroughAFinalizeChoice). Then only choices such a
+            // sequence can still follow are put to the player, so the play
+            // cannot end unpaid; otherwise the pass runs as it is.
+            const bool too_dear = grant ? !canPayTrashGrant(who, what, *grant, {})
+                                        : !canAfford(who, what);
             ChainItem done;
             try {
-                done = collectFinalizeChoices(std::move(pre));
+                done = too_dear ? choosePrePlayViable(pre, payable)
+                                : collectFinalizeChoices(std::move(pre));
             } catch (...) {
                 effect_executor_->setChoiceFilter(nullptr);
                 throw;
@@ -2443,42 +2669,27 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             effect_executor_->setChoiceFilter(nullptr);
             done.pre_play_choices = false;
             cost_targets = done.chosen_objects;
-            // Not payable with what was chosen (it was offered on the strength
-            // of a discount no choice then earned): the play does not happen.
-            // (Deflect for these choices is paid already: none is owed here.)
-            const bool payable = grant
-                ? canPayTrashGrant(intent.player, intent.card, *grant, cost_targets, {})
-                : (cost_targets.empty() ? canAfford(intent.player, intent.card)
-                                        : canAffordChoosing(intent.player, intent.card,
-                                                            cost_targets, {}));
-            if (!payable) {
-                // Not played, and nothing of the attempt is left: the state
-                // goes back to what it was (the card to its zone, whatever
-                // the choices paid or recorded), and what the attempt emitted
-                // is dropped unseen. Only the record of the decisions made
-                // stays, so a replay of this game asks the same questions —
-                // and a note of the attempt, so the play is not offered again
-                // while nothing has changed.
-                held.drop();
-                if (before_attempt.has_value()) {
-                    auto history = std::move(state_.action_history);
-                    const int decisions = state_.decision_index;
-                    state_ = std::move(*before_attempt);
-                    state_.action_history = std::move(history);
-                    state_.decision_index = decisions;
-                } else {
-                    auto& back = state_.player(intent.player);
-                    if (played_from == ZoneType::Hand) back.hand.push_back(intent.card);
-                    else if (played_from == ZoneType::Trash) back.trash.push_back(intent.card);
-                }
-                state_.player(intent.player).undone_play_attempts.emplace_back(
-                    intent.card, Card::costStateFingerprint(state_));
-                return;
-            }
-            held.deliver();   // it goes through: what was held is seen now
+            if (!payable(cost_targets))
+                throw std::logic_error("GameEngine::executePlaySpell: " +
+                                       state_.getObject(what).name +
+                                       " made choices it cannot be paid for with");
             prefinalized_spell_ = std::move(done);
         }
     }
+
+    // The viable pass re-runs the choices from copies of the state, so the
+    // references taken above may no longer point into it: the rest of the
+    // play takes its own.
+    finishPlaySpell(intent, std::move(play_targets), target_chosen_at_play,
+                    std::move(cost_targets));
+}
+
+void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId> play_targets,
+                                 bool target_chosen_at_play,
+                                 std::vector<GameObjectId> cost_targets) {
+    auto& ps = state_.player(intent.player);
+    auto& card = state_.getObject(intent.card);
+    const std::vector<GameObjectId> deflect_targets = play_targets;
 
     // Pay cost. A trash-replay grant overrides the printed cost (and its own
     // additional costs); otherwise the normal play_source-aware path runs.
@@ -4400,21 +4611,21 @@ bool GameEngine::payableThroughAFinalizeChoice(
                                                     : nullptr;
     if (!cc || cc->needsPlayTimeTarget() ||
         !(cc->choicesAtFinalization() & Card::kFinalizeResolve)) return false;
-    // Attempted in this very state and undone: not again until it changes.
-    const auto& undone = state_.player(player).undone_play_attempts;
-    if (!undone.empty()) {
-        const uint64_t now = Card::costStateFingerprint(state_);
-        for (const auto& [attempted, in_state] : undone)
-            if (attempted == card_id && in_state == now) return false;
-    }
     // Only an object that takes something off the cost can change the answer.
     for (const auto& [id, obj] : state_.objects) {
         if (!obj.location.has_value()) continue;
         if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction <= 0 &&
             targetCostDiscount(player, {id}, true, nullptr).power_reduction <= 0) continue;
         if (cc->mayChooseAtFinalization(state_, player, id) != Card::FinalizeChoice::Yes) continue;
-        if (grant ? canPayTrashGrant(player, card_id, *grant, {id})
-                  : canAffordChoosing(player, card_id, {id})) return true;
+        if (!(grant ? canPayTrashGrant(player, card_id, *grant, {id})
+                    : canAffordChoosing(player, card_id, {id}))) continue;
+        // An object that could pay for it, by the card's own declaration.
+        // Whether the card's choices can actually be made that way — a mode
+        // or a battlefield chosen first may rule the object out — is found by
+        // making them: the play is offered only if a complete payable
+        // sequence exists. (Nothing of the probe is kept or seen; `this` is
+        // const to its callers in every way they can observe.)
+        return const_cast<GameEngine*>(this)->prePlayProbe(player, card_id, grant);
     }
     return false;
 }
@@ -7416,6 +7627,45 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
             e.pending_query_ = PendingQuery::None;
         }
     } unpark{*this};
+
+    // A card's prompt (every option a MakeChoice) is answered by value, by
+    // object or by a named card (Intent::chosen_card_def): that is all an
+    // agent, a recorded game or a policy head has to tell the options apart.
+    // An option that carries none of them, or two that carry the same, can
+    // only be told apart by position — a card bug.
+    if (legal.size() > 1 &&
+        std::all_of(legal.begin(), legal.end(),
+                    [](const Intent& i) { return i.type == IntentType::MakeChoice; })) {
+        for (size_t a = 0; a < legal.size(); ++a) {
+            const bool unnamed = !legal[a].chosen_value.has_value() &&
+                                 legal[a].chosen_objects.empty() &&
+                                 legal[a].chosen_card_def == kInvalidId;
+            bool twin = false;
+            for (size_t b = a + 1; b < legal.size() && !twin; ++b)
+                twin = legal[a].chosen_value == legal[b].chosen_value &&
+                       legal[a].chosen_objects == legal[b].chosen_objects &&
+                       legal[a].chosen_card_def == legal[b].chosen_card_def;
+            if (!unnamed && !twin) continue;
+            std::string options;
+            for (const auto& i : legal) {
+                options += " [" + i.choice_label;
+                if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
+                for (auto o : i.chosen_objects) {
+                    options += " object=" + std::to_string(o);
+                    if (state_.objectExists(o)) options += "(" + state_.getObject(o).name + ")";
+                }
+                options += "]";
+            }
+            const std::string source = state_.chain.resuming.has_value() &&
+                                       state_.objectExists(state_.chain.resuming->source)
+                ? state_.getObject(state_.chain.resuming->source).name : std::string("?");
+            throw std::logic_error(
+                "GameEngine::askAgent: a prompt (resolving: " + source + ") has an option that " +
+                (unnamed ? "carries neither a value nor an object"
+                         : "is the same as another by value and object") +
+                ". Options:" + options);
+        }
+    }
 
     Intent chosen = getAgent(player).selectAction(state_, legal);
     parked_legal_ = nullptr;

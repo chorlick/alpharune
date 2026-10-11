@@ -194,7 +194,7 @@ public:
     int predict_kept_by_default = 0;
 
     /// The prompt EffectExecutor::predict makes for one looked-at card: two
-    /// options, [0] names the card (recycle it), [1] names nothing (keep it),
+    /// options, [0] names the card (recycle it), [1] is "Keep it" (value 0),
     /// and the card is the looked-at one: a Main Deck card that is at that
     /// moment held out of its owner's deck.
     static bool isPredictRecycleOrKeep(const GameState& state, const std::vector<Intent>& legal) {
@@ -202,8 +202,8 @@ public:
         const Intent& recycle = legal[0];
         const Intent& keep = legal[1];
         if (recycle.chosen_objects.size() != 1 || recycle.chosen_value.has_value()) return false;
-        if (!keep.chosen_objects.empty() || keep.chosen_value.has_value() ||
-            !keep.choice_label.empty()) return false;
+        if (!keep.chosen_objects.empty() || keep.chosen_value != std::optional<int>{0} ||
+            keep.choice_label != "Keep it") return false;
         const GameObjectId card = recycle.chosen_objects.front();
         if (!state.objectExists(card)) return false;
         const auto& obj = state.getObject(card);
@@ -362,6 +362,12 @@ public:
             for (const auto& i : legal)
                 if (!i.chosen_objects.empty() &&
                     i.chosen_objects.front() == static_cast<GameObjectId>(want)) return i;
+            // An option named only by a card of the card table ("name a
+            // spell": Intent::chosen_card_def).
+            for (const auto& i : legal)
+                if (!i.chosen_value.has_value() && i.chosen_objects.empty() &&
+                    i.chosen_card_def != kInvalidId &&
+                    i.chosen_card_def == static_cast<CardDefId>(want)) return i;
             ADD_FAILURE() << "EnginePathAgent::script: entry #" << *n << " (" << want
                           << ") matches no option of its prompt (kFirst takes the first"
                           << " option on purpose). Options:" << describe();

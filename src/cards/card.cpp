@@ -31,6 +31,7 @@ bool Card::finalizingChoices(const CardContext& ctx) {
         if (r->finalize_checked & 16) r->finalize_checked |= 8;
         return false;
     }
+    r->finalize_checked |= 64;   // the end-of-choices marker was reached in this pass
     if (r->finalize_checked & 4) r->finalize_costs_paid = true;
     return true;
 }
@@ -74,14 +75,43 @@ void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId playe
 uint64_t Card::costStateFingerprint(const GameState& state) {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    // What a cost can change, field by field.
+    //   PlayerState — digested: the sizes of hand, trash, banishment, Main
+    //   Deck and Rune Deck (discard, recycle, banish, draw); XP; score; every
+    //   resource pool, each on its own; the Champion Zone. Not digested: the
+    //   per-turn tallies (cards_played_this_turn, power_spent_this_turn, ...)
+    //   and the continuous-effect flags — they record or follow a change that
+    //   is already digested, and are never themselves what is paid.
+    //   BattlefieldState — digested: who controls it and how many cards are
+    //   facedown there. Not digested: combat / showdown progress and the aura
+    //   fields, which no cost pays with.
+    //   GameObject — digested: zone, location (which base or battlefield),
+    //   controller, exhausted, stunned, buffs, damage, Empowered, what it is
+    //   attached to. Not digested: card_counters — cards and the choice
+    //   helpers write progress there while choices are being made, and a
+    //   digest that moved with them would call bookkeeping a payment; no
+    //   printed cost is paid by setting one. Might, keywords and aura fields
+    //   are derived from what is digested.
     for (const auto& ps : state.players) {
         mix(ps.hand.size()); mix(ps.trash.size()); mix(ps.banishment.size());
         mix(ps.main_deck.size()); mix(ps.rune_deck.size());
         mix(static_cast<uint64_t>(ps.xp)); mix(static_cast<uint64_t>(ps.score));
-        mix(static_cast<uint64_t>(ps.rune_pool.energy));
-        mix(static_cast<uint64_t>(ps.rune_pool.totalPower()));
-        mix(static_cast<uint64_t>(ps.rune_pool.unit_energy + ps.rune_pool.spell_energy +
-                                  ps.rune_pool.showdown_energy));
+        mix(static_cast<uint64_t>(ps.champion_zone));
+        const auto& pool = ps.rune_pool;
+        mix(static_cast<uint64_t>(pool.energy));
+        mix(static_cast<uint64_t>(pool.universal_power));
+        for (int d = 0; d < static_cast<int>(Domain::Count); ++d)
+            mix(static_cast<uint64_t>(pool.power[d]));
+        mix(static_cast<uint64_t>(pool.unit_energy));
+        mix(static_cast<uint64_t>(pool.spell_energy));
+        mix(static_cast<uint64_t>(pool.showdown_energy));
+        mix(static_cast<uint64_t>(pool.spell_power));
+        mix(static_cast<uint64_t>(pool.gear_power));
+    }
+    for (const auto& bf : state.battlefields) {
+        mix(static_cast<uint64_t>(bf.id));
+        mix(bf.controller.has_value() ? static_cast<uint64_t>(*bf.controller) + 1 : 0u);
+        mix(bf.facedown.size());
     }
     // Order-independent over the object map.
     uint64_t objects = 0;
@@ -90,7 +120,13 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         auto omix = [&o](uint64_t v) { o = (o ^ v) * 1099511628211ull; };
         omix(static_cast<uint64_t>(id));
         omix(static_cast<uint64_t>(obj.zone));
-        omix(obj.location.has_value() ? 1u : 0u);
+        if (!obj.location.has_value()) omix(0u);
+        else if (const auto* base = std::get_if<BaseLocation>(&*obj.location))
+            omix(1u + static_cast<uint64_t>(base->player));
+        else
+            omix(1000u + static_cast<uint64_t>(std::get<BattlefieldLocation>(*obj.location).id));
+        omix(static_cast<uint64_t>(obj.controller));
+        omix(obj.is_stunned ? 1u : 0u);
         omix(obj.is_exhausted ? 1u : 0u);
         omix(static_cast<uint64_t>(obj.buff_count));
         omix(static_cast<uint64_t>(obj.damage_marked));
@@ -359,6 +395,16 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
                          std::to_string(x));
     store(x);
     return x;
+}
+
+void Card::settleMode(CardContext& ctx, int mode) {
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) return;
+    auto& ri = *ri_opt;
+    if (choiceState(ri) & (kModeAwait | kModeDone)) return;
+    while (ri.resume_data.size() < 2) ri.resume_data.push_back(0);
+    ri.resume_data[1] = mode;
+    setChoiceState(ri, kModeAwait, kModeDone);
 }
 
 int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,

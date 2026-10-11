@@ -161,6 +161,15 @@ void EventBus::discardHeld() {
     holding_ = false;
     held_.clear();
 }
+EventBus::Quiet EventBus::beginQuiet() {
+    Quiet q{holding_, held_.size()};
+    holding_ = true;
+    return q;
+}
+void EventBus::endQuiet(const Quiet& q) {
+    if (held_.size() > q.held_before) held_.resize(q.held_before);
+    holding_ = q.was_holding;
+}
 
 // ── logging ──────────────────────────────────────────────────────────────────
 void EventBus::logTrace(const std::string& msg) { emit(LogEvent{LogLevel::Trace, tagWithDecision(msg)}); }

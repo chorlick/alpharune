@@ -54,6 +54,8 @@ public:
             Intent keep;
             keep.type = IntentType::MakeChoice;
             keep.player = ctx.controller;
+            keep.chosen_value = 0;         // as EffectExecutor::predict names it
+            keep.choice_label = "Keep it";
             choices.push_back(keep);                                    // keep it
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "predict 2: recycle or keep (Scryer's Bloom)");

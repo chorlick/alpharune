@@ -41,7 +41,7 @@ constexpr CardDefId kTQuickDraw = 1089;     // [Quick-Draw] Equipment, +2 [M]
 constexpr CardDefId kTClimbBf = 1090;       // battlefield: +1 point needed to win
 constexpr CardDefId kTUnplayable = 1091;    // spell whose canBePlayed is false
 constexpr CardDefId kTNoopSpell = 1092;     // spell, free, [Reaction], no effect
-constexpr CardDefId kTAbilityOnlyReaction = 1093;  // unit with Keyword::Reaction for an ability
+constexpr CardDefId kTAbilityOnlyReaction = 1093;  // unit whose def has Keyword::Reaction but is not a [Reaction] card
 constexpr CardDefId kTBfAdder = 1094;       // unit: "when I attack", adds a battlefield
 constexpr CardDefId kTMighty = 1095;        // unit, free, 5 [M]
 
@@ -97,8 +97,12 @@ public:
     bool hasReactionTiming() const override { return true; }
 };
 
-// Keyword::Reaction on the def because an ABILITY has it (the Seals, Gold):
-// the card itself is not a [Reaction] card.
+// A def that carries Keyword::Reaction although the card is not a [Reaction]
+// card (no hasReactionTiming). No real card has this shape any more: since
+// plans/08 item 8.8 a permanent's def has the keyword only when the card
+// itself does (LedgerTest.Defs_APermanentHasReactionOnlyWhenTheCardItselfDoes);
+// a [Reaction] ABILITY is ActivatedAbility::is_reaction. Kept as the guard
+// that the generators ask the card, not the keyword.
 class TAbilityOnlyReaction : public UnitCard {
 public:
     TEST_CARD_DEF([] { auto d = makeDef(kTAbilityOnlyReaction, "Test Ability-Only Reaction",

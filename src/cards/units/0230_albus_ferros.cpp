@@ -28,12 +28,11 @@ public:
                 continue;
             for (int i = 0; i < obj.buff_count; ++i) buffs.push_back(id);
         }
-        std::vector<GameObjectId> chosen;
         // "any number": as many as there are buffs.
-        if (!pickSeveral(ctx, "Albus Ferros: spend a buff from", static_cast<int>(buffs.size()),
-                         buffs, chosen)) return;   // waiting for the agent
+        const auto chosen = selectSeveral(ctx, "Albus Ferros: spend a buff from", buffs);
+        if (!chosen.has_value()) return;   // waiting for the agent
         int spent = 0;
-        for (auto id : chosen) {
+        for (auto id : *chosen) {
             auto& obj = ctx.state.getObject(id);
             if (!obj.location.has_value() || obj.buff_count <= 0) continue;
             ctx.executor.spendBuff(id, ctx.controller);   // CR 427.2; "When you spend a buff"

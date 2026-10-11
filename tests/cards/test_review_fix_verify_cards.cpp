@@ -5045,7 +5045,7 @@ TEST_F(VerifyCardsTest, MysticVortex_TaxesDuringTheCombatShowdownStepOfACombatHe
 //     (bf.combat_in_progress && bf.combat_phase != CombatPhase::DamageStep &&
 //                               bf.combat_phase != CombatPhase::ResolutionStep)
 // instead of `bf.showdown_in_progress || bf.combat_in_progress`.
-TEST_F(VerifyCardsTest, DISABLED_MysticVortex_NoTaxOnceTheCombatShowdownHasClosed) {
+TEST_F(VerifyCardsTest, MysticVortex_NoTaxOnceTheCombatShowdownHasClosed) {
     auto inferna = vortexScenario();
     for (CombatPhase phase : {CombatPhase::DamageStep, CombatPhase::ResolutionStep}) {
         auto open = [&](GameState& st) {

@@ -52,16 +52,12 @@ public:
         return false;
     }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
-        if (!ctx.state.objectExists(ctx.source)) return false;
-        if (!ctx.state.objectExists(dying_unit)) return false;
+        // Only a BUFFED unit I control that is on the board, only while I'm
+        // ready (must "exhaust me" to pay) and [C] can be paid
+        // (replacementApplies).
+        if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
         auto& self = ctx.state.getObject(ctx.source);
         auto& victim = ctx.state.getObject(dying_unit);
-        // Only a BUFFED unit I control that is on the board, and only while
-        // I'm ready (must "exhaust me" to pay).
-        if (!victim.isUnit() || !victim.location.has_value()) return false;
-        if (victim.controller != self.controller) return false;
-        if (victim.buff_count <= 0) return false;
-        if (self.is_exhausted) return false;
         const PlayerId me = self.controller;
         std::optional<Domain> pay_with;
         for (Domain d : def().domains)

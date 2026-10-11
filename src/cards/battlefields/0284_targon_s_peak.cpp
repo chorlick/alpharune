@@ -35,9 +35,9 @@ public:
             return;
         }
         // AtEndOfTurn fire: ready up to 2 of the controller's exhausted runes.
-        // With more than two exhausted the player says which (a ready rune of
-        // one domain is not the same as a ready rune of another once Power
-        // has to be paid).
+        // The player says which (a ready rune of one domain is not the same
+        // as a ready rune of another once Power has to be paid) and how many:
+        // one prompt per rune, "None" on each (CR 355.13).
         auto exhausted = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects)
@@ -45,21 +45,10 @@ public:
                     obj.location.has_value()) out.push_back(id);
             return out;
         };
-        std::vector<GameObjectId> to_ready = exhausted();
-        if (to_ready.size() > 2) {
-            const auto all = to_ready;
-            const auto first = selectObject(ctx, "Targon's Peak: ready which rune (1 of 2)",
-                                            all, 7);
-            if (!first.has_value()) return;   // waiting on the agent
-            std::vector<GameObjectId> rest;
-            for (auto id : all) if (id != *first) rest.push_back(id);
-            const auto second = selectObject(ctx, "Targon's Peak: ready which rune (2 of 2)",
-                                             rest, 9);
-            if (!second.has_value()) return;  // waiting on the agent
-            to_ready.clear();
-            for (auto id : {*first, *second})
-                if (std::find(all.begin(), all.end(), id) != all.end()) to_ready.push_back(id);
-        }
+        const auto picks = selectSeveral(ctx, "Targon's Peak: ready a rune (up to 2)",
+                                         exhausted(), 2);
+        if (!picks.has_value()) return;       // waiting on the agent
+        const std::vector<GameObjectId>& to_ready = *picks;
         for (auto id : to_ready) ctx.executor.readyObject(id);
         ctx.events.logTrace("TARGON'S PEAK: readied " + std::to_string(to_ready.size()) +
                              " runes at end of turn");

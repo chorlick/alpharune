@@ -18,39 +18,81 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
 
-    // "Buff up to two OTHER friendly units." Triggers receive empty targets;
-    // pick the (up to) two units at resolution. buffUnit is a +1 [M] persistent
-    // buff; "each one that doesn't have a buff gets a +1 buff" — buffUnit only
-    // bumps unbuffed units in our model? No: apply buff only if buff_count==0.
+    // "Buff up to two OTHER friendly units." The units are targets, chosen as
+    // the ability is finalized (CR 383.3), one prompt each. "Up to two"
+    // includes none and one (CR 355.13): "Done" is on both prompts (listed
+    // last), and with no other friendly unit nothing is asked. A unit that
+    // already has a buff may be chosen and gets nothing: "each one that
+    // doesn't have a buff gets a +1 [M] buff".
+    //
+    // Progress is in resume_data[kStage] (0 new / 1 first asked / 2 second
+    // asked / 3 chosen) with the picks in [kFirst] and [kSecond]; slots 0..6
+    // belong to the Card::pick* helpers, which this callback does not use.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> others;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;                 // "other"
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            others.push_back(id);
-        }
-        auto second_fn = [&](GameObjectId picked_a) {
-            std::vector<GameObjectId> out;
-            for (auto id : others) if (id != picked_a) out.push_back(id);
-            return out;
+        auto others = [&](GameObjectId except) {
+            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.id != ctx.source && o.id != except &&      // "other"
+                       o.controller == ctx.controller;
+            });
         };
-        auto [a, b] = pickTargetPair(ctx, "Kinkou Monk (buff up to 2)",
-                                     others, second_fn);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        bool suspending = (a == kInvalidId || b == kInvalidId) &&
-                          ctx.state.chain.resuming.has_value() &&
-                          (ctx.state.chain.resuming->resume_point == 10 ||
-                           ctx.state.chain.resuming->resume_point == 12);
-        if (suspending) return;
         auto buff_if_unbuffed = [&](GameObjectId id) {
             if (id == kInvalidId || !ctx.state.objectExists(id)) return;
             if (ctx.state.getObject(id).buff_count > 0) return;  // already has a buff
             ctx.executor.buffUnit(id);
         };
-        buff_if_unbuffed(a);
-        buff_if_unbuffed(b);
+        auto& ri_opt = ctx.state.chain.resuming;
+        if (!ri_opt.has_value()) {
+            // Direct invocation: nobody to ask, the first two are taken.
+            const auto units = others(kInvalidId);
+            for (size_t i = 0; i < units.size() && i < 2; ++i) buff_if_unbuffed(units[i]);
+            return;
+        }
+        auto& ri = *ri_opt;
+        if (ri.resume_data.size() <= kSecond) {
+            ri.resume_data.resize(kSecond + 1, 0);
+            ri.resume_data[kFirst] = static_cast<int32_t>(kInvalidId);
+            ri.resume_data[kSecond] = static_cast<int32_t>(kInvalidId);
+        }
+        // Publishes one prompt over `units`; false when there is none to offer.
+        auto ask = [&](const std::vector<GameObjectId>& units, int stage) {
+            if (units.empty()) return false;
+            std::vector<Intent> options;
+            options.reserve(units.size() + 1);
+            for (auto id : units) options.push_back(objChoice(ctx.controller, id));
+            options.push_back(valChoice(ctx.controller, 0, "Done"));
+            ctx.executor.requestChoice(ctx.controller, std::move(options),
+                                       "Kinkou Monk: buff another friendly unit (up to two)");
+            ri.resume_data[kStage] = stage;
+            return true;
+        };
+        if (ri.resume_data[kStage] == 0) {
+            if (ask(offerableChoices(ctx, others(kInvalidId)), 1)) return;
+            ri.resume_data[kStage] = 3;
+        } else if (ri.resume_data[kStage] == 1 || ri.resume_data[kStage] == 2) {
+            const bool first = ri.resume_data[kStage] == 1;
+            const auto prior = static_cast<GameObjectId>(ri.resume_data[kFirst]);
+            const auto units = offerableChoices(ctx, others(first ? kInvalidId : prior));
+            const GameObjectId picked = takenObject(ctx);
+            ri.resume_data[kStage] = 3;
+            if (std::find(units.begin(), units.end(), picked) != units.end()) {
+                commitChosenObject(ctx, picked);
+                ri.resume_data[first ? kFirst : kSecond] = static_cast<int32_t>(picked);
+                if (first && ask(offerableChoices(ctx, others(picked)), 2)) return;
+            }   // else "Done"
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // A unit that is no longer another friendly unit on the board when
+        // this resolves is not buffed (CR 359.3.e.5).
+        const auto still = others(kInvalidId);
+        for (size_t slot : {kFirst, kSecond}) {
+            const auto id = static_cast<GameObjectId>(ri.resume_data[slot]);
+            if (std::find(still.begin(), still.end(), id) != still.end()) buff_if_unbuffed(id);
+        }
     }
+private:
+    static constexpr size_t kStage = 7;
+    static constexpr size_t kFirst = 8;
+    static constexpr size_t kSecond = 9;
 private:
     const CardDef def_ = [] {
         CardDef d;

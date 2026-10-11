@@ -61,6 +61,24 @@ for arg in "$@"; do
 done
 
 if [ "$is_pch" != 1 ]; then
+    # A .gch.sum that is older than its .gch was not written for that .gch:
+    # something other than this version of the launcher rebuilt the PCH (an
+    # older launcher, plain ccache, the bare compiler) and left the checksum of
+    # the previous headers beside it. Keyed on that, a unit would be handed an
+    # object built against the previous headers. Seen on 2026-10-11 when this
+    # script was merged, reverted and merged again under worktrees that point
+    # at it by path. Without a .sum ccache hashes the .gch itself (correct,
+    # only slow), so drop the stale one.
+    prev=""
+    for arg in "$@"; do
+        if [ "$prev" = "-include" ]; then
+            gch="$arg.gch"
+            if [ -f "$gch" ] && [ -f "$gch.sum" ] && [ "$gch" -nt "$gch.sum" ]; then
+                rm -f -- "$gch.sum"
+            fi
+        fi
+        prev=$arg
+    done
     export CCACHE_PCH_EXTSUM=1
     exec ccache "$@"
 fi

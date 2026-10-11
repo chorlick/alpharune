@@ -696,7 +696,11 @@ TEST_F(C0Test, TheAcademy_GrantedRepeatCostsTheWholeBaseCost) {
         pool.power[static_cast<int>(Domain::Body)] = 2;
         EnginePathAgent agent(EnginePathAgent::script({1}));
         playAt(spell, unit, &agent);
-        EXPECT_EQ(agent.prompts.size(), 1u);
+        // The Repeat yes/no, then the additional execution's own target: its
+        // choices are made as the spell is finalized and need not be the first
+        // execution's (CR 820.2, 820.2.a; plans/09 item 9.T4 — it reused the
+        // play-time target before).
+        EXPECT_EQ(agent.prompts.size(), 2u);
         EXPECT_EQ(o(unit).temp_might_bonus, 14);
         EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
         EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Body)], 0);

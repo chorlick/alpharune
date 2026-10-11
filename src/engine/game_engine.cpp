@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "engine/resource_payment.h"
+#include "core/board_state.h"
 #include "engine/deck_ops.h"
 #include "engine/trash_replacement.h"
 #include "game_engine.h"
@@ -658,6 +659,7 @@ void GameEngine::runMulligans() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void GameEngine::runTurnLoop() {
+    playing_a_game_ = true;
     // Safety limit to prevent infinite games
     constexpr int kMaxTurns = 200;
 
@@ -1950,9 +1952,6 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         if (source.attached_to.has_value())
             effect_executor_->unattachGear(intent.ability_source);
         detachAllGear(intent.ability_source);
-        source.damage_marked = 0;
-        source.combat_designation = CombatDesignation::None;
-        source.is_exhausted = false;
         const bool is_token = source.isToken();
         if (is_token) {
             source.zone = ZoneType::Banishment;
@@ -1963,6 +1962,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         }
         events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
             was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
+        effect_executor_->leftBoard(intent.ability_source);   // a new object (CR 124.1)
         effect_executor_->announceRecycledToMainDeck(intent.ability_source);
     }
     // "Banish this" as a cost: the source is gone before anyone can respond
@@ -5920,21 +5920,28 @@ void GameEngine::recalculateAuras() {
         // Nothing between here and there writes either.
         obj.aura_no_combat_damage = false;
         obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
-        // Empowered is a board status (CR 442.2): it doesn't survive leaving.
-        // Nor does Stunned (CR 424.1 stuns "Units on the Board"; CR 124.1: an
-        // object that changes zones to a Non-Board Zone is a new object and
-        // every temporary modification stops being tracked on it). The paths
-        // that take an object off the board each reset what they know of;
-        // this is the one place every such object passes before anything
-        // looks at it again, so statuses that do not survive leaving are
-        // dropped here, for whatever route it left by (plans/09 item 9.LL1: a
-        // stunned unit returned to hand stayed "a stunned unit" until the
-        // Ending Step).
-        if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) {
-            obj.is_stunned = false;
-            obj.empowered = 0;
-            obj.empower_flip_eot = 0;
-        }
+        // Statuses that do not survive leaving the board (Empowered, CR 442.2;
+        // Stunned, CR 424.1) used to be dropped here for every object off the
+        // board, at the next cleanup after it left. They are dropped at the
+        // move now, with everything else a new object does not carry (CR
+        // 124.1): every path off the board ends in EffectExecutor::leftBoard /
+        // forgetBoardState. Nothing is left for this pass to mop up; the
+        // checked build verifies that instead, in every game the engine
+        // plays (the suite's whole games, the smoke and search batches —
+        // plans/09 item 9.LL4). A position a test built by hand and handed to
+        // a test hook is not checked: several tests put an exhausted rune or
+        // an attached Equipment in a trash on purpose.
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+        if (playing_a_game_ &&
+            !obj.location.has_value() && obj.zone != ZoneType::LegendZone &&
+            obj.zone != ZoneType::BattlefieldZone && carriesBoardState(obj))
+            throw std::logic_error("GameEngine::recalculateAuras: " + obj.name + " (id=" +
+                                   std::to_string(id) + ", zone " +
+                                   std::to_string(static_cast<int>(obj.zone.get())) +
+                                   ") is off the board and still carries board state: it "
+                                   "left the board by a path that does not call "
+                                   "EffectExecutor::leftBoard");
+#endif
     }
     state_.turn.channel_phase_cap = 0;                  // Sandstone Chimera
     state_.turn.victory_score_bonus =
@@ -7482,7 +7489,7 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
         auto base_loc = BaseLocation{cur.player};
         rune.location = std::nullopt;
         rune.zone = ZoneType::RuneDeck;
-        rune.is_exhausted = false;
+        forgetBoardState(rune, nullptr);   // CR 124.1 (a rune carries no attachments)
         state_.player(cur.player).rune_deck.insert(
             state_.player(cur.player).rune_deck.begin(), rune_id);
         events_.emit(LeftBoardEvent{rune_id, cur.player, CardType::Rune,
@@ -7733,6 +7740,10 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         was_at.value_or(BaseLocation{controller}),
         is_token ? ZoneType::Banishment : ZoneType::Trash, true});
     detachAllGear(unit_id);
+    // The death is announced and its triggers are queued (they read the unit
+    // as it died from last_known): what is in the trash is a new object
+    // (CR 124.1) — the same call EffectExecutor::killObject ends with.
+    effect_executor_->leftBoard(unit_id);
 }
 
 void GameEngine::healAllUnits() {

@@ -47,7 +47,7 @@ inline void recycleRuneForPower(CardContext& ctx, PlayerId player, GameObjectId 
     const LocationId was_at = dr.location.value_or(LocationId{BaseLocation{player}});
     dr.location = std::nullopt;
     dr.zone = ZoneType::RuneDeck;
-    dr.is_exhausted = false;
+    forgetBoardState(dr, nullptr);   // CR 124.1 (a rune carries no attachments)
     ps.rune_deck.insert(ps.rune_deck.begin(), rune);
     ps.power_spent_this_turn++;
     RIFT_TRACE(ctx.events, "  ADDL_COST: recycled " + dr.name + " for power");

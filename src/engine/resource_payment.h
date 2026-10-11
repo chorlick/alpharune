@@ -12,6 +12,7 @@
 ///
 /// State-only: usable with a bare EffectExecutor (no engine).
 
+#include "core/board_state.h"
 #include "core/events.h"
 #include "core/game_state.h"
 
@@ -161,7 +162,7 @@ inline bool payIn(GameState& state, EventBus& events, PlayerId player, int energ
         if (!runePays(rune, mask)) continue;
         rune.location = std::nullopt;
         rune.zone = ZoneType::RuneDeck;
-        rune.is_exhausted = false;
+        forgetBoardState(rune, nullptr);   // CR 124.1 (a rune carries no attachments)
         ps.rune_deck.insert(ps.rune_deck.begin(), rid);
         ps.power_spent_this_turn++;
         events.emit(LeftBoardEvent{rid, player, CardType::Rune,

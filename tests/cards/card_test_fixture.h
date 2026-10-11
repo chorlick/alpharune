@@ -565,8 +565,18 @@ protected:
         if (where.has_value()) play.play_location = where;
         else if (!state.getObject(card).isSpell())
             play.play_location = LocationId{BaseLocation{player}};
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); },
-                   p1_agent, p2_agent, player);
+        // The same sequence the main-phase loop runs for a decision
+        // (GameEngine::resolveMainPhaseDecision): execute, resolve the
+        // triggers that queued, cleanup (which kills lethally damaged units,
+        // CR 319), resolve the triggers the cleanup queued. Without the
+        // cleanup a damage spell left its victims on the board with
+        // damage_marked >= might.
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(play);
+            e.testHook_runChain();
+            e.testHook_cleanup();
+            e.testHook_runChain();
+        }, p1_agent, p2_agent, player);
     }
 
     /// Put `source`'s triggered ability for `trigger` on the chain as if its

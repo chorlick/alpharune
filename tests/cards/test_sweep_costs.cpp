@@ -1671,6 +1671,22 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ASecondSpellIsOfferedThroughADiscount) 
     EXPECT_EQ(o(enemy).damage_marked, 3) << "it was played and resolved";
 }
 
+TEST_F(SweepCostsTest, FinalizePassSpell_ASpellWithNoDeclaredTargetsIsOfferedThroughItsDeclaration) {
+    // Curtain Call ([4]) declares no play-time targets; the generator knows
+    // it could choose Irelia only from Card::mayChooseAtFinalization.
+    auto irelia = addUnit(P1, kIreliaGraceful, 9);          // in base
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kCurtainCall);
+    setPool(P1, 3, 0);
+    ASSERT_TRUE(playOffered(spell)) << "[4] - [1] for choosing Irelia";
+    // Mode 2: "Deal 3 to a unit at a base"; then Irelia.
+    EnginePathAgent agent(EnginePathAgent::script(
+        {2, static_cast<int>(irelia), EnginePathAgent::kRest}));
+    play(spell, &agent);
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(o(irelia).damage_marked, 3);
+}
+
 TEST_F(SweepCostsTest, TargetDiscount_BelongsToTheControllerOfTheChosenUnit) {
     // "YOUR spells that choose me cost [1] or [A] less": the opponent's
     // Irelia takes nothing off my spell.

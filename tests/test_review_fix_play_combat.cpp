@@ -28,23 +28,23 @@ namespace riftbound::test {
 namespace test_review_fix_play_combat {  // file-unique: test sources are unity-built
 namespace {
 
-// ─── Test-only cards (ids in the reserved 956..1150 range) ──────────────────
+// ─── Test-only cards (ids in the spare 1566..2048 range) ──────────────────
 
-constexpr CardDefId kTVanilla = 1081;       // unit, free, 2 [M]
-constexpr CardDefId kTPlayHereBf = 1082;    // battlefield: "when you play a unit here"
-constexpr CardDefId kTReactionUnit = 1083;  // unit that is itself a [Reaction] card
-constexpr CardDefId kTActionUnit = 1084;    // unit with two [Action] abilities
-constexpr CardDefId kTRecycleGear = 1085;   // gear with a recycle-self cost
-constexpr CardDefId kTChosenWatcher = 1086; // unit: "when you choose a friendly unit"
-constexpr CardDefId kTTwoFriendly = 1087;   // spell: two friendly units, in order
-constexpr CardDefId kTUpToThree = 1088;     // spell: up to three units
-constexpr CardDefId kTQuickDraw = 1089;     // [Quick-Draw] Equipment, +2 [M]
-constexpr CardDefId kTClimbBf = 1090;       // battlefield: +1 point needed to win
-constexpr CardDefId kTUnplayable = 1091;    // spell whose canBePlayed is false
-constexpr CardDefId kTNoopSpell = 1092;     // spell, free, [Reaction], no effect
-constexpr CardDefId kTAbilityOnlyReaction = 1093;  // unit whose def has Keyword::Reaction but is not a [Reaction] card
-constexpr CardDefId kTBfAdder = 1094;       // unit: "when I attack", adds a battlefield
-constexpr CardDefId kTMighty = 1095;        // unit, free, 5 [M]
+constexpr CardDefId kTVanilla = 1881;       // unit, free, 2 [M]
+constexpr CardDefId kTPlayHereBf = 1882;    // battlefield: "when you play a unit here"
+constexpr CardDefId kTReactionUnit = 1883;  // unit that is itself a [Reaction] card
+constexpr CardDefId kTActionUnit = 1884;    // unit with two [Action] abilities
+constexpr CardDefId kTRecycleGear = 1885;   // gear with a recycle-self cost
+constexpr CardDefId kTChosenWatcher = 1886; // unit: "when you choose a friendly unit"
+constexpr CardDefId kTTwoFriendly = 1887;   // spell: two friendly units, in order
+constexpr CardDefId kTUpToThree = 1888;     // spell: up to three units
+constexpr CardDefId kTQuickDraw = 1889;     // [Quick-Draw] Equipment, +2 [M]
+constexpr CardDefId kTClimbBf = 1890;       // battlefield: +1 point needed to win
+constexpr CardDefId kTUnplayable = 1891;    // spell whose canBePlayed is false
+constexpr CardDefId kTNoopSpell = 1892;     // spell, free, [Reaction], no effect
+constexpr CardDefId kTAbilityOnlyReaction = 1893;  // unit whose def has Keyword::Reaction but is not a [Reaction] card
+constexpr CardDefId kTBfAdder = 1894;       // unit: "when I attack", adds a battlefield
+constexpr CardDefId kTMighty = 1895;        // unit, free, 5 [M]
 
 constexpr CardDefId kPunchFirst = 419;      // spell, [1] + 2 Body: +5 [M] to a unit
 constexpr CardDefId kVoidAssault = 758;     // "Move a friendly unit, then move an enemy unit."

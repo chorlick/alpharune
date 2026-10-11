@@ -1,10 +1,6 @@
 # What is still open
 
-One item, in one file. Everything else is in `plans/completed/`.
-
-| Item | What | File | When |
-|---|---|---|---|
-| 9.UU1 | Size the card id space for Radiance (210) and Legacy (about 400): user decision | `09-found-during-fix-run.md` | Stage 5 follow-up (checkpoint), then the final gate again |
+Nothing. Every item of the review and of the fix run is closed and is in `plans/completed/`.
 
 Not plan items, kept elsewhere:
 - Play-UI follow-ups deferred by the user: `docs/play-ui-followups.md`.

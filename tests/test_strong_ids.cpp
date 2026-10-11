@@ -308,28 +308,28 @@ TEST(StrongIds, HistoryTokensAndSlotsArePinned) {
     // numbers of a build of fcfa93b, from before ids were types. They changed
     // twice in that stage: Intent gained `battlefield_pool_index` (plans/09
     // item 9.RR2), which every token fingerprints, and the action vocabulary
-    // was replaced (plans/01 item 1.12: new slot ranges), and once more when
-    // the card id space grew to 1150 (plans/09 item 9.SS2: the card-keyed
-    // ranges are wider). A trainer replay or a saved game holds these numbers: a
+    // was replaced (plans/01 item 1.12: new slot ranges), and with the card id
+    // space, which grew to 1150 (plans/09 item 9.SS2) and then to 2048
+    // (9.UU1): the card-keyed ranges are wider. A trainer replay or a saved game holds these numbers: a
     // change here is a break that docs/checkpoint-breaking-2026-10.md lists.
     GameState state;
     Intent own;
     own.type = IntentType::ActivateAbility;
     own.player = PlayerId::Player1;
     own.ability_source = GameObjectId::fromRaw(9);
-    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697619989LL);
-    EXPECT_EQ(openspiel::actionSlot(own, state), 55317);
+    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697663093LL);
+    EXPECT_EQ(openspiel::actionSlot(own, state), 98421);
 
     Intent granted = own;
     granted.granted_ability_def = 506;
-    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613617802LL);
+    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613665396LL);
 
     Intent named;  // "name a card": a MakeChoice that carries a card id
     named.type = IntentType::MakeChoice;
     named.player = PlayerId::Player2;
     named.chosen_card_def = 235;
-    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666315000LL);
-    EXPECT_EQ(openspiel::actionSlot(named, state), 64760);
+    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666365288LL);
+    EXPECT_EQ(openspiel::actionSlot(named, state), 115048);
 
     Intent bf;
     bf.type = IntentType::ChooseBattlefield;

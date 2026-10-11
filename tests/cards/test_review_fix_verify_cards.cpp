@@ -240,7 +240,7 @@ constexpr CardDefId kShadowClone = 955;
 // finalization and, as it resolves, writes down exactly what selectSeveral
 // handed back (on its own object, in card_counters), so a test can read the
 // helper's result without going through any real card's guards or trace text.
-constexpr CardDefId kSelectSeveralProbe = 1060;   // reserved range, test-only
+constexpr CardDefId kSelectSeveralProbe = 1860;   // reserved range, test-only
 
 class SelectSeveralProbeCard : public UnitCard {
 public:
@@ -276,7 +276,7 @@ private:
 // The same probe for a list that names one object several times (plans/09
 // item 9.HH6): "choose up to three buffs on other friendly units" — a unit is
 // listed once per buff, as Albus Ferros 230 lists them.
-constexpr CardDefId kSelectSeveralDupProbe = 1061;   // reserved range, test-only
+constexpr CardDefId kSelectSeveralDupProbe = 1861;   // reserved range, test-only
 
 class SelectSeveralDupProbeCard : public UnitCard {
 public:

@@ -30,23 +30,23 @@ namespace riftbound::test {
 namespace test_review_fix_verify_engine {  // file-unique: test sources are unity-built
 namespace {
 
-// ─── Test-only cards (ids in the reserved 956..1150 range) ──────────────────
+// ─── Test-only cards (ids in the spare 1566..2048 range) ──────────────────
 
-constexpr CardDefId kTVanilla = 1080;        // unit, free, 2 [M]
-constexpr CardDefId kTTargetReader = 1081;   // unit: trigger that records targets.size()
-constexpr CardDefId kTGearReader = 1082;     // Equipment: equipped trigger, same
-constexpr CardDefId kTSplitSpell = 1083;     // spell: deal 20 split among enemy units
-constexpr CardDefId kTManySpell = 1084;      // spell: selectSeveral of friendly units
-constexpr CardDefId kTAbilityUnit = 1085;    // unit with "[E]: draw 1"
-constexpr CardDefId kTChooserUnit = 1086;    // unit: "choose an enemy unit" trigger
-constexpr CardDefId kTChooserGear = 1087;    // gear: the same
-constexpr CardDefId kTChooserLegend = 1088;  // legend: the same
-constexpr CardDefId kTFinalSpell = 1089;     // spell: "choose an enemy unit" at finalization, marks it
-constexpr CardDefId kTFinalRepeat = 1090;    // the same with [Repeat] [1]
-constexpr CardDefId kTPlayerSpell = 1091;    // spell: plays a kTFinalSpell from hand, then marks itself
-constexpr CardDefId kTRechooser = 1092;      // [Reaction] spell: the spell below makes new choices
-constexpr CardDefId kTPokeSpell = 1093;      // spell: target one enemy unit, chosen with the play
-constexpr CardDefId kTRepeatUnit = 1094;     // a UNIT that declares repeatCosts (never registered)
+constexpr CardDefId kTVanilla = 1880;        // unit, free, 2 [M]
+constexpr CardDefId kTTargetReader = 1881;   // unit: trigger that records targets.size()
+constexpr CardDefId kTGearReader = 1882;     // Equipment: equipped trigger, same
+constexpr CardDefId kTSplitSpell = 1883;     // spell: deal 20 split among enemy units
+constexpr CardDefId kTManySpell = 1884;      // spell: selectSeveral of friendly units
+constexpr CardDefId kTAbilityUnit = 1885;    // unit with "[E]: draw 1"
+constexpr CardDefId kTChooserUnit = 1886;    // unit: "choose an enemy unit" trigger
+constexpr CardDefId kTChooserGear = 1887;    // gear: the same
+constexpr CardDefId kTChooserLegend = 1888;  // legend: the same
+constexpr CardDefId kTFinalSpell = 1889;     // spell: "choose an enemy unit" at finalization, marks it
+constexpr CardDefId kTFinalRepeat = 1890;    // the same with [Repeat] [1]
+constexpr CardDefId kTPlayerSpell = 1891;    // spell: plays a kTFinalSpell from hand, then marks itself
+constexpr CardDefId kTRechooser = 1892;      // [Reaction] spell: the spell below makes new choices
+constexpr CardDefId kTPokeSpell = 1893;      // spell: target one enemy unit, chosen with the play
+constexpr CardDefId kTRepeatUnit = 1894;     // a UNIT that declares repeatCosts (never registered)
 constexpr CardDefId kTurnToDust = 632;
 constexpr CardDefId kSpinningAxe = 504;      // Equipment that prints [Temporary]
 constexpr CardDefId kPerchedGrimwyrm = 338;  // "play me only to a battlefield you conquered this turn"

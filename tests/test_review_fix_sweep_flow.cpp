@@ -32,27 +32,27 @@ namespace riftbound::test {
 namespace test_review_fix_sweep_flow {  // file-unique: test sources are unity-built
 namespace {
 
-// ─── Test-only cards (ids in the reserved 956..1150 range) ──────────────────
+// ─── Test-only cards (ids in the spare 1566..2048 range) ──────────────────
 
-constexpr CardDefId kTVanilla = 1060;          // unit, free, 2 [M]
-constexpr CardDefId kTConquerWatcher = 1061;   // unit: "When I conquer" counter
-constexpr CardDefId kTRecycleWatcher = 1062;   // unit: "When you recycle a rune" counter
-constexpr CardDefId kTEquipGear = 1063;        // Equipment, Equip [A]
-constexpr CardDefId kTRoleSpell = 1064;        // spell: unit A gets 1 damage, unit B gets a buff
-constexpr CardDefId kTReactionAbility = 1065;  // unit with a [Reaction] ability
-constexpr CardDefId kTHiddenSpell = 1066;      // [Hidden] spell, no targets
-constexpr CardDefId kTHiddenChampion = 1067;   // [Hidden] champion unit
-constexpr CardDefId kTFiveCost = 1068;         // spell costing [5]
-constexpr CardDefId kTTwoExact = 1069;         // spell: exactly two units
-constexpr CardDefId kTFinalizePrompts = 1070;  // trigger asking kPrompts prompts at finalization
-constexpr CardDefId kTResolvePrompts = 1071;   // spell asking kPrompts prompts as it resolves
-constexpr CardDefId kTEndlessPrompts = 1072;   // trigger that never stops asking
-constexpr CardDefId kTDeathSummoner = 1073;    // unit: "When I die, play a 1 [M] token here"
-constexpr CardDefId kTOpenBfUnit = 1074;       // unit: "You may play me to an open battlefield."
-constexpr CardDefId kTPoke = 1075;             // spell: choose a unit (no effect)
-constexpr CardDefId kTHiddenTwoHere = 1076;    // [Hidden] spell: exactly two units
-constexpr CardDefId kTAnthem = 1077;           // unit: other friendly units have +1 [M]
-constexpr CardDefId kTBigVanilla = 1078;       // unit, free, 4 [M]
+constexpr CardDefId kTVanilla = 1860;          // unit, free, 2 [M]
+constexpr CardDefId kTConquerWatcher = 1861;   // unit: "When I conquer" counter
+constexpr CardDefId kTRecycleWatcher = 1862;   // unit: "When you recycle a rune" counter
+constexpr CardDefId kTEquipGear = 1863;        // Equipment, Equip [A]
+constexpr CardDefId kTRoleSpell = 1864;        // spell: unit A gets 1 damage, unit B gets a buff
+constexpr CardDefId kTReactionAbility = 1865;  // unit with a [Reaction] ability
+constexpr CardDefId kTHiddenSpell = 1866;      // [Hidden] spell, no targets
+constexpr CardDefId kTHiddenChampion = 1867;   // [Hidden] champion unit
+constexpr CardDefId kTFiveCost = 1868;         // spell costing [5]
+constexpr CardDefId kTTwoExact = 1869;         // spell: exactly two units
+constexpr CardDefId kTFinalizePrompts = 1870;  // trigger asking kPrompts prompts at finalization
+constexpr CardDefId kTResolvePrompts = 1871;   // spell asking kPrompts prompts as it resolves
+constexpr CardDefId kTEndlessPrompts = 1872;   // trigger that never stops asking
+constexpr CardDefId kTDeathSummoner = 1873;    // unit: "When I die, play a 1 [M] token here"
+constexpr CardDefId kTOpenBfUnit = 1874;       // unit: "You may play me to an open battlefield."
+constexpr CardDefId kTPoke = 1875;             // spell: choose a unit (no effect)
+constexpr CardDefId kTHiddenTwoHere = 1876;    // [Hidden] spell: exactly two units
+constexpr CardDefId kTAnthem = 1877;           // unit: other friendly units have +1 [M]
+constexpr CardDefId kTBigVanilla = 1878;       // unit, free, 4 [M]
 
 constexpr CardDefId kDefy = 45;
 constexpr CardDefId kRebuttal = 939;

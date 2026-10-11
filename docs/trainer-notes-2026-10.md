@@ -569,3 +569,11 @@ copy, the optional additional cost declared as data, Equip payment choices).
 | 937 | spells | Acceleration Gate | requestChoice | offerableChoicesx2, requestChoice |
 
 210 card files changed their prompt surface.
+
+## Rune Deck knowledge (2026-10-11, for the v6 token layout)
+
+The judges ruled that Void Hatchling's look applies to the Rune Deck. A player can now know the top rune of
+their Rune Deck (looked at and left), and both players know the rune Twisted Fate, Gambler revealed and
+recycled to the bottom. The engine exposes only the Rune Deck's size to `ObservationTensor` / `InfoSetId`
+and tracks no rune knowledge (plans/09 9.NN4). Missing feature to add in the v6 layout, per observer: the
+known top and bottom runes of each Rune Deck.

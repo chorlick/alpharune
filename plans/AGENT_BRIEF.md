@@ -139,7 +139,17 @@ Rules:
   is ticked only when **every** one is resolved; note per-card outcomes in
   sub-bullets if they differ.
 - "NOT A DEFECT" needs evidence a reviewer can check. "Could not reproduce" is
-  not evidence.
+  not evidence. It also still changes the code: the finding was raised because
+  the code misled a careful reader. Add a test that pins the behaviour the
+  finding questioned, and fix what misled them (a comment at the code site
+  citing the card text or CR number, a rename, or removing the dead or
+  contradictory construct). Write the line as
+  `NOT A DEFECT: <evidence>; pinned by <Test.Name>; clarified in <file>`. The
+  only exception is a finding about code that no longer exists.
+- Nothing is optional. Do not close an item as "partial by design",
+  "documented approximation", "low priority" or "future work". The only
+  deferral allowed is a fix that needs a new action-vocabulary slot or a
+  feature-layout change, which goes to stage 5 by name.
 - If you cannot finish an item, leave it `- [ ]` and add an indented
   `- BLOCKED: <what is needed>` sub-bullet. Do not tick it.
 

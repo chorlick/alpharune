@@ -80,6 +80,16 @@ iteration must apply these.
   831, the fair-play log panel, Yone 544, Fiora 232 aura lag) are reopened and
   belong to the sweep.
 
+- **"Not a defect" still changes the code (user, 2026-10-11):** a finding that
+  turns out not to be a defect was still raised because the code misled a
+  careful reader. Closing one requires, as well as the evidence: (a) a test
+  that pins the behaviour the finding questioned, named so it can be found
+  from the plan line, and (b) a fix for whatever misled the reviewer — a
+  comment at the code site citing the card text or CR number, a rename, or
+  removal of the dead or contradictory construct. The plan line reads
+  `NOT A DEFECT: <evidence>; pinned by <Test.Name>; clarified in <file>`.
+  The only exception is a finding about code that no longer exists.
+
 ## Streams
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
@@ -129,6 +139,7 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| orchestrator | RETROFIT "not a defect still changes the code": every NOT A DEFECT closure made in stages 1 and 2 (about 20: ticked lines in batch-03, batch-06, batch-10 and sub-bullets under 02 2.20, 03 3.17, 3.18, 3.21, 07, 08 8.7, batch-01 Dark Child 315 and Shurelya's Requiem 509, batch-02, batch-08 Matriarch of War 940, Seal of Strength 163, reprint region tags, Stalking Wolf 728 Ambush half, Veteran Poro 779, Crowd Favorite 664 if closed that way) needs its pinning test and its code-site clarification; the three 04 items closed as obsolete (file deleted) are exempt | sweep-verify | open |
 | orchestrator | REOPENED under "nothing optional": residuals that earlier streams closed as partial or documented — Solari Shrine 72 (killer not tracked), Unlicensed Armory 23 (rescue needs an Armory still in play), Scuttle Crab 615 (shows only cards facedown now), Astral Heron 831 (a countered response hides the first spell), Yone 544 (previous-controller field on `ScoreEvent`), Renekton 879 exact threshold edge, Defender of Tomorrow 936 (two abilities as one activation → stage 5 if it needs a vocab slot) | sweep-verify (936 → checkpoint) | open |
 | cards-c7 | BLOCKED batch-07: Renekton, Brute 879 (engine event for Might crossing a threshold; only 5 is announced); Atakhan 732 (additional-cost hook that picks a unit to kill before payment and reads its printed cost); Loyal Poro 718 / Lonely Poro 777 (last-known "other friendly units here" snapshot for a batch of deaths — same work as Battle Mistress 517); Vex 712 (per-unit can't-move-this-turn flag read by the move generator); Poppy, Defender of the Meek 740 (XP optional additional cost with pre-payment reduction — Buccaneer path); Mageseeker Investigator 725 (multi-unit moves and a move cost); Reluctant Leader 908 / Vex 712 token plays (`createToken` does not announce a play, CR 350.2); Sky Crusier 847 (typed discard cost takes the first gear in hand; engine must ask) | sweep | open |
 | cards-c7 | `shared:` commit `e52e52a` to review: `selectObjectAs(ctx, chooser, ...)` helper; `TriggerManager::onScore` fires delayed abilities with trigger `WhenIHold` on their controller's hold (Ashe registers hers with the opponent as controller and a far-future `expires_on_turn`); 4 existing test files corrected | sweep (review) | open |
@@ -334,3 +345,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 master fast-forwarded to `6a3e52b`. Stage 3: spawned sweep-costs, sweep-flow, sweep-triggers, cleanup, perf-search (5 running).
 - 2026-10-11 carry-over reconciled against the stage 1 and stage 2 stream reports: 41 rows marked done, 3 annotated; the rest are open and assigned to stage 3 streams, the final report, or the user.
 - 2026-10-11 user: nothing may be left optional (see Run decisions). Relabelled 10 rows, reopened the documented residuals, messaged the five running stage 3 streams.
+- 2026-10-11 user: a not-a-defect closure still needs a pinning test and a clarification at the code site (see Run decisions). Brief updated, running sweep streams messaged, retrofit of earlier closures assigned to sweep-verify.

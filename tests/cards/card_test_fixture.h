@@ -225,14 +225,57 @@ public:
     static Picker first() {
         return [](const std::vector<Intent>& legal) { return legal.front(); };
     }
-    /// Choose object `id` when offered; say yes (1) to a yes/no; otherwise first.
-    static Picker choosing(GameObjectId id) {
-        return [id](const std::vector<Intent>& legal) {
+    /// What choosing(id) answers to a "may" (a Card::confirmOptional prompt,
+    /// options labelled "Yes ..." / "No ...").
+    enum class May { Unexpected, Yes, No };
+
+    /// Choose object `id` when a prompt offers it. What it does at any other
+    /// prompt is fixed, so nothing is answered by accident:
+    ///   a "may" (confirmOptional)   choosing(id) FAILS the test;
+    ///                               choosing(id, May::Yes) accepts it (the
+    ///                               "you may ..." that leads to the pick);
+    ///                               choosing(id, May::No) declines it
+    ///   one option only             taken (there is nothing to decide)
+    ///   objects, `id` not among them  the first one (a test that checks `id`
+    ///                               is NOT offered asserts on wasOffered)
+    ///   anything else (a mode, an X, an unlabelled yes/no)
+    ///                               FAILS the test: script() is the picker
+    ///                               for those
+    /// (This used to say yes to every yes/no and take value 1 of any other
+    /// prompt, so an unrelated "may" on another card was silently accepted.)
+    static Picker choosing(GameObjectId id, May may = May::Unexpected) {
+        return [id, may](const std::vector<Intent>& legal) {
             for (const auto& i : legal)
                 if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
-            for (const auto& i : legal)
-                if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
-            return legal.front();
+            const Intent* yes = nullptr;
+            const Intent* no = nullptr;
+            for (const auto& i : legal) {
+                if (i.choice_label.rfind("Yes", 0) == 0) yes = &i;
+                if (i.choice_label.rfind("No", 0) == 0) no = &i;
+            }
+            const bool is_may = yes != nullptr && no != nullptr && legal.size() == 2;
+            if (is_may && may == May::Yes) return *yes;
+            if (is_may && may == May::No) return *no;
+            if (!is_may) {
+                if (legal.size() == 1) return legal.front();
+                if (std::all_of(legal.begin(), legal.end(),
+                                [](const Intent& i) { return !i.chosen_objects.empty(); }))
+                    return legal.front();
+            }
+            std::string options;
+            for (const auto& i : legal) {
+                options += " [" + i.choice_label;
+                if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
+                if (!i.chosen_objects.empty())
+                    options += " object=" + std::to_string(i.chosen_objects.front());
+                options += "]";
+            }
+            ADD_FAILURE() << "EnginePathAgent::choosing(" << id << "): a prompt arrived that does "
+                          << "not offer that object and that the test did not announce"
+                          << (is_may ? " (a \"may\": use choosing(id, May::Yes) or May::No)"
+                                     : " (not a \"may\": use script())")
+                          << ". Options:" << options;
+            return is_may ? *no : legal.front();
         };
     }
     /// Say yes to every yes/no (Card::confirmOptional labels its options
@@ -388,6 +431,17 @@ protected:
     /// works. BattlefieldId is unsigned; -1 would underflow to UINT_MAX
     /// and compare >= 0, silently routing the unit to a non-existent
     /// battlefield. Subagent surfaced this bug 2026-05-15.
+    /// With `def_id == kInvalidId` the unit is a "TestUnit": an object with no
+    /// card class behind it. It is NOT a token (isToken() is false; killed, it
+    /// goes to its owner's trash), but the engine skips it wherever it needs a
+    /// CardDef: it has no cost, no abilities and no printed text. Use a real
+    /// card id when the test depends on any of those.
+    ///
+    /// Control: a battlefield whose `controller` a test sets by hand keeps it
+    /// through a cleanup only while that player has a unit there (the engine's
+    /// updateBattlefieldControl, CR 323). Every *ThroughEngine helper runs a
+    /// cleanup, so put a unit at the battlefield as well.
+    /// (tests/cards/test_fixture_contract.cpp pins both.)
     GameObjectId addUnit(PlayerId owner, CardDefId def_id, int might = 0,
                           int at_bf = -1) {
         auto id = state.createObject();

@@ -737,7 +737,7 @@ TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
     // the ability goes on the chain and the controller says yes. "(You still
     // pay its costs.)" — this unit card costs [0].
     state.battlefields[0].controller = P1;
-    EnginePathAgent yes(EnginePathAgent::choosing(trash_unit));
+    EnginePathAgent yes(EnginePathAgent::choosing(trash_unit, EnginePathAgent::May::Yes));
     withEngine([&](GameEngine& e) {
         e.testHook_scoreHold(P1, e.mutableState().battlefields[0].id);
         e.testHook_runChain();

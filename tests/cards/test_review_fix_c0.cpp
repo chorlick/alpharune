@@ -278,7 +278,7 @@ TEST_F(C0Test, MonasteryOfHirana_SpendsTheBuffThePlayerPicks) {
     auto a = addUnit(P1, kInvalidId, 2, 0);
     auto b = addUnit(P1, kInvalidId, 2, 0);
     o(a).buff_count = o(b).buff_count = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(b));
+    EnginePathAgent agent(EnginePathAgent::choosing(b, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(monastery, TriggerType::WhenYouConquerHere, &agent);
     EXPECT_TRUE(agent.wasOffered(a));
     EXPECT_EQ(o(b).buff_count, 0);
@@ -577,7 +577,7 @@ TEST_F(C0Test, AmateurRecital_MovesTheChosenUnitToItsBase) {
     auto enemy = addUnit(P2, kInvalidId, 2, 1);
     auto stuck = addUnit(P1, kInvalidId, 2, 0);
     state.battlefields[0].blocks_move_to_base = true;    // as Vilemaw's Lair sets it
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(recital, TriggerType::WhenYouHoldHere, &agent);
     EXPECT_FALSE(agent.wasOffered(stuck)) << "can't move from there to base";
     EXPECT_TRUE(o(enemy).isAtBase());
@@ -594,7 +594,7 @@ TEST_F(C0Test, DuskRoseLab_KillsThePickedUnitAsTheCost) {
     addToDeck(P1, kRecruit);
     auto keep = addUnit(P1, kInvalidId, 2, 0);
     auto kill = addUnit(P1, kInvalidId, 2, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(kill));
+    EnginePathAgent agent(EnginePathAgent::choosing(kill, EnginePathAgent::May::Yes));
     fireAndProbe(lab, TriggerType::AtStartOfBeginning, &agent, [&](GameState& st) {
         EXPECT_FALSE(st.getObject(kill).location.has_value())
             << "the unit is killed as the ability is finalized";
@@ -612,7 +612,7 @@ TEST_F(C0Test, StarSpring_MovesAnotherUnitNotTheOnePlayed) {
     // for the played unit and sent `played` home.
     auto played = addUnit(P1, kRecruit, 0, 0);
     auto other = addUnit(P1, kRecruit, 0, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(other));
+    EnginePathAgent agent(EnginePathAgent::choosing(other, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(spring, TriggerType::WhenYouPlayAUnit, &agent, played);
     EXPECT_FALSE(agent.wasOffered(played)) << "\"another unit\"";
     EXPECT_TRUE(o(other).isAtBase());

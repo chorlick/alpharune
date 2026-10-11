@@ -551,7 +551,7 @@ TEST_F(SweepTriggersTest, Forecaster_HasOneInstanceOfVision) {
 TEST_F(SweepTriggersTest, Weaponmaster_ASandSoldierTokenMayEquipAsItIsPlayed) {
     addLegend(P1, kEmperor);
     auto gear = addGear(P1, kInvalidId, /*equipment=*/true);
-    EnginePathAgent agent(EnginePathAgent::choosing(gear));   // yes, then the gear
+    EnginePathAgent agent(EnginePathAgent::choosing(gear, EnginePathAgent::May::Yes));   // yes, then the gear
     withEngine([&](GameEngine& e) {
         e.testHook_executor().createToken(P1, CardType::Unit, "Sand Soldier", 2, {"Shurima"},
                                           KeywordSet{}, base(P1));
@@ -829,7 +829,7 @@ TEST_F(SweepTriggersTest, RevealAndDrawIt_CountsAsADraw) {
         auto conn = events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
             if (e.player == P1) drawn_events += e.count;
         });
-        EnginePathAgent agent(EnginePathAgent::choosing(wanted));   // yes, and that card
+        EnginePathAgent agent(EnginePathAgent::choosing(wanted, EnginePathAgent::May::Yes));   // yes, and that card
         fireTriggerThroughEngine(source, c.trigger, &agent);
         conn.disconnect();
         EXPECT_TRUE(inHand(P1, wanted));
@@ -857,7 +857,7 @@ TEST_F(SweepTriggersTest, ReplayedSpell_StaysOnTheChainUntilTheNewPlayResolves) 
     auto b = addUnit(P2, kInvalidId, 1, 0);
     auto spell = addToHand(P1, kDeathFromBelow);
     state.player(P1).rune_pool.universal_power += 1;      // the [A] for the replay
-    EnginePathAgent p1(EnginePathAgent::choosing(a));     // a, then yes, then what is left
+    EnginePathAgent p1(EnginePathAgent::choosing(a, EnginePathAgent::May::Yes));     // a, then yes, then what is left
     TrashWatcher p2;
     p2.spell = spell;
     playThroughEngine(spell, &p1, std::nullopt, &p2);
@@ -1235,7 +1235,7 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
         if (e.message.find(name) == std::string::npos) return;
         if (e.visibleTo(P1) && !e.visibleTo(P2)) ++private_lines; else ++leaked;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(spell));
+    EnginePathAgent agent(EnginePathAgent::choosing(spell, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(weaver, TriggerType::WhenYouPlayMe, &agent);
     conn.disconnect();
     EXPECT_GE(private_lines, 1);
@@ -1468,7 +1468,7 @@ TEST_F(SweepTriggersTest, MoveTrigger_FaePorterUsesTheDestinationOfItsMove) {
     auto porter = addUnit(P1, kFaePorter, 2, -1);
     auto ally = addUnit(P1, kInvalidId, 2, -1);
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
         exec.moveToBattlefield(porter, state.battlefields[1].id);
@@ -1488,7 +1488,7 @@ TEST_F(SweepTriggersTest, MoveTrigger_AkaliChoosesAtTheEndsOfThatMove) {
     constexpr CardDefId kAkali = 808;
     auto akali = addUnit(P1, kAkali, 3, 0);
     auto left_behind = addUnit(P2, kInvalidId, 9, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(left_behind));
+    EnginePathAgent agent(EnginePathAgent::choosing(left_behind, EnginePathAgent::May::Yes));
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
         exec.moveToBase(akali);                    // 0 -> base: only battlefield 0 qualifies

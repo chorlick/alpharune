@@ -394,7 +394,7 @@ TEST_F(VendettaB, Vendetta_JayceInventor_FirstNonTokenGearEachTurn) {
     // play is announced to Jayce through the engine; the agent says yes.
     (void)exec;
     auto playsCard = [&](GameObjectId played) {
-        EnginePathAgent agent(EnginePathAgent::choosing(other));
+        EnginePathAgent agent(EnginePathAgent::choosing(other, EnginePathAgent::May::Yes));
         fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayACard, &agent, played);
     };
     state.turn.turn_number = 3;

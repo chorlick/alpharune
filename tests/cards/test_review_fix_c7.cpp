@@ -490,7 +490,7 @@ TEST_F(C7Test, RiftHerald_MayDrawTheUnitItsControllerChoosesFromTheTopThree) {
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
         if (e.revealed_to_all) ++shown_to_all;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(wanted));   // yes, then that unit
+    EnginePathAgent agent(EnginePathAgent::choosing(wanted, EnginePathAgent::May::Yes));   // yes, then that unit
     fireTriggerThroughEngine(herald, TriggerType::WhenIMoveToFB, &agent);
     conn.disconnect();
 
@@ -573,13 +573,13 @@ TEST_F(C7Test, JayceBrilliantInventor_OnlyTheFirstNonTokenGearOfTheTurn) {
     (void)jayce;
 
     auto first = addToHand(P1, kSealOfStrength);
-    EnginePathAgent agent(EnginePathAgent::choosing(tired));
+    EnginePathAgent agent(EnginePathAgent::choosing(tired, EnginePathAgent::May::Yes));
     playThroughEngine(first, &agent);
     EXPECT_FALSE(o(tired).is_exhausted) << "first non-token gear: may ready something";
 
     o(tired).is_exhausted = true;
     auto second = addToHand(P1, kSealOfStrength);
-    EnginePathAgent again(EnginePathAgent::choosing(tired));
+    EnginePathAgent again(EnginePathAgent::choosing(tired, EnginePathAgent::May::Yes));
     playThroughEngine(second, &again);
     EXPECT_TRUE(again.prompts.empty()) << "the second gear this turn does not trigger";
     EXPECT_TRUE(o(tired).is_exhausted);
@@ -648,7 +648,7 @@ TEST_F(C7Test, Profiteer_DisempowersUpFrontAndEmpowersTheChosenThing) {
     auto empowered = addUnit(P1, kInvalidId, 2);
     o(empowered).empowered = 1;
     auto target = addUnit(P1, kInvalidId, 2, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(target));   // yes, then the recipient
+    EnginePathAgent agent(EnginePathAgent::choosing(target, EnginePathAgent::May::Yes));   // yes, then the recipient
     SnoopAgent them([&](const GameState& s) {
         EXPECT_FALSE(s.getObject(empowered).isEmpowered()) << "disempowered before any response";
         EXPECT_FALSE(s.getObject(target).isEmpowered());

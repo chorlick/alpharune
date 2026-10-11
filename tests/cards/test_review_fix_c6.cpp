@@ -420,7 +420,7 @@ TEST_F(C6Test, Yone_WeaponmasterIsAMay) {
     o(sword2).owner = o(sword2).controller = P1;
     o(sword2).location = BaseLocation{P1};
     auto yone2 = addToHand(P1, kYone);
-    EnginePathAgent yes(EnginePathAgent::choosing(sword2));
+    EnginePathAgent yes(EnginePathAgent::choosing(sword2, EnginePathAgent::May::Yes));
     playThroughEngine(yone2, &yes);
     ASSERT_TRUE(o(sword2).attached_to.has_value());
     EXPECT_EQ(*o(sword2).attached_to, yone2);
@@ -526,7 +526,7 @@ TEST_F(C6Test, GrimApothecary_ReturnsTheUnitThePlayerPicks) {
     auto a = vanilla(P1, 2, 0);
     auto b = vanilla(P1, 2, 1);
     auto grim = addToHand(P1, kGrimApothecary);
-    EnginePathAgent agent(EnginePathAgent::choosing(b));
+    EnginePathAgent agent(EnginePathAgent::choosing(b, EnginePathAgent::May::Yes));
     playThroughEngine(grim, &agent);
     EXPECT_FALSE(o(b).location.has_value());
     EXPECT_TRUE(o(a).location.has_value());
@@ -623,7 +623,7 @@ TEST_F(C6Test, Iascylla_PullsAnEnemyOutOfItsBase) {
     state.battlefields[0].controller = P1;
     hold(0);
     ASSERT_EQ(state.delayed_abilities.size(), 1u);
-    EnginePathAgent agent(EnginePathAgent::choosing(in_base));
+    EnginePathAgent agent(EnginePathAgent::choosing(in_base, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(ia, TriggerType::AtStartOfMain, &agent);
     EXPECT_TRUE(atBf(in_base, 0));
 }
@@ -918,7 +918,7 @@ TEST_F(C6Test, Faefolk_PullsTheEnemyThePlayerPicks) {
     auto fae = addUnit(P1, kFaefolk, 0, 0);
     auto a = vanilla(P2, 2, 1);
     auto b = vanilla(P2, 2);
-    EnginePathAgent agent(EnginePathAgent::choosing(b));
+    EnginePathAgent agent(EnginePathAgent::choosing(b, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &agent);
     EXPECT_TRUE(atBf(b, 0));
     EXPECT_TRUE(atBf(a, 1));
@@ -993,7 +993,7 @@ TEST_F(C6Test, KhaZix_SpendsTheXpBeforeAnyoneCanRespond) {
     auto kha = addUnit(P1, kKhaZixHunter, 0, 0);
     auto enemy = vanilla(P2, 9, 0);
     setXp(P1, 3);
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes));
     fireAndProbe(kha, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
         EXPECT_EQ(live.player(P1).xp, 0);
         EXPECT_EQ(live.getObject(enemy).damage_marked, 0);

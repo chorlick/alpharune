@@ -339,7 +339,7 @@ TEST_F(ReviewFixC1Test, LastRites_ThePlayedUnitIsPaidFor) {
     auto in_trash = cardInTrash(P1, kShipyardSkulker);   // costs [3]
 
     // Can't pay: not even offered.
-    EnginePathAgent broke(EnginePathAgent::choosing(in_trash));
+    EnginePathAgent broke(EnginePathAgent::choosing(in_trash, EnginePathAgent::May::Yes));
     withEngine([&](GameEngine& e) {
         e.testHook_scoreHold(P1, e.mutableState().battlefields[0].id);
         e.testHook_runChain();
@@ -350,7 +350,7 @@ TEST_F(ReviewFixC1Test, LastRites_ThePlayedUnitIsPaidFor) {
     // Can pay: the Energy is spent.
     state.player(P1).battlefields_scored_this_turn.clear();
     state.player(P1).rune_pool.energy = 4;
-    EnginePathAgent rich(EnginePathAgent::choosing(in_trash));
+    EnginePathAgent rich(EnginePathAgent::choosing(in_trash, EnginePathAgent::May::Yes));
     withEngine([&](GameEngine& e) {
         e.testHook_scoreHold(P1, e.mutableState().battlefields[0].id);
         e.testHook_runChain();
@@ -676,7 +676,14 @@ TEST_F(ReviewFixC1Test, BlastCone_StunsAUnitMovedByAnotherOfYourAbilities) {
     state.getObject(played).is_exhausted = true;      // it cannot stun
     auto enemy = addUnit(P2, kInvalidId, 2, 0);
 
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));   // yes to every may
+    // Yes to the "may"s, the enemy unit as the unit, and its base as the
+    // destination (the destination prompt is a mode: stated here).
+    EnginePathAgent agent([inner = EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes)](
+                              const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Base") return i;
+        return inner(legal);
+    });
     fireTriggerThroughEngine(played, TriggerType::WhenYouPlayThis, &agent);
 
     EXPECT_TRUE(state.getObject(enemy).isAtBase());
@@ -1283,7 +1290,7 @@ TEST_F(ReviewFixC1Test, PiltoverEnforcer_CanReadyAnEnemyUnit) {
     auto enemy = addUnit(P2, kInvalidId, 2, 1);
     state.getObject(enemy).is_exhausted = true;
 
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(vi, TriggerType::WhenIConquer, &agent, conquered);
     EXPECT_TRUE(agent.wasOffered(mine));
     EXPECT_FALSE(state.getObject(enemy).is_exhausted);

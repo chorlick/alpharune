@@ -11,7 +11,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "[1][C], [E]: Kill a friendly unit. ..." ([C] = one Power of this card's Domain, CR 135.2.e.6.)
   - Code: the cost is `ActivationCost{.exhaust = true, .energy = 1, .recycle_self = true}`. `recycle_self` means "recycle this card": `game_engine.cpp:1463-1468` puts the source gear on the bottom of the Main Deck. No Power is charged (`power` is 0).
   - Scenario: activate Baited Hook once -> the gear leaves the board into the deck (a repeatable 3-cost engine becomes one-shot) and the Order Power is never paid. Should be `.power = 1, .power_domain = Domain::Order`.
-- [ ] **556 Chem-Baroness** - `legends/0556_chem_baroness.cpp:19` [confirmed] medium
+- [x] **556 Chem-Baroness** - `legends/0556_chem_baroness.cpp:19` [confirmed] medium — FIXED: `WhenIHold`; test: ReviewFixC1Test.ChemBaroness_DoesNotTriggerOnAConquer
   - Text: "When you or an ally hold, you may exhaust me to play a Gold gear token exhausted."
   - Code: `triggerType()` is `WhenIConquerOrHold`; `trigger_manager.cpp:731` fires that on every score, Conquer included. Gloomist (785), same wording, correctly uses `WhenIHold`.
   - Scenario: conquer a battlefield -> the Gold prompt is offered; a hold-only legend makes Gold on conquers too.
@@ -19,7 +19,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "[E]: [Legion] — The next unit you play this turn enters ready. (Get the effect if you've played another card this turn.)"
   - Code: the only Legion gate is `requiresLegion() { return true; }`, and nothing in `src/engine` reads `requiresLegion()` (only `card.h` declares it). `onActivate` arms unconditionally.
   - Scenario: first action of the turn: exhaust Sun Disc, then play a unit -> it is readied although no other card was played.
-- [ ] **695 Blast Cone** - `gear/0695_blast_cone.cpp:52,55-69` [confirmed] medium
+- [x] **695 Blast Cone** - `gear/0695_blast_cone.cpp:52,55-69` [confirmed] medium — FIXED: the stun is a standing trigger on new `TriggerType::WhenYouMoveAnEnemyUnit` (dispatched from `TriggerManager::onUnitMoved` when a spell or ability of another player moves the unit, `shared:` commit); the on-play move lets the controller choose the unit and its destination; test: ReviewFixC1Test.BlastCone_StunsAUnitMovedByAnotherOfYourAbilities, ReviewFixC1Test.BlastCone_TheControllerChoosesTheUnitAndWhereItGoes, ReviewFixC1Test.BlastCone_AUnitThatMovesItselfDoesNotTrigger
   - Text: "When you move an enemy unit, you may exhaust this to [Stun] it." (a standing trigger, separate from the on-play sentence) and "you may move an enemy unit" (no destination restriction).
   - Code: the stun exists only as a tail of the `WhenYouPlayThis` handler; there is no trigger type for "you moved an enemy unit" (`grep -i MoveAnEnemy src` is empty). The on-play move is always `moveToBase`.
   - Scenario: Blast Cone on board, later play Temptation (450) to move an enemy unit -> no stun offer. On play, an enemy unit can only be sent to its base, never to another battlefield.
@@ -35,7 +35,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "Friendly buffed units have [Deflect] if they didn't already."
   - Code: (a) every buffed unit gets a Deflect-1 aura with no "didn't already" check, and `deflectCostFor` (`effect_executor.cpp:368-370`) sums `deflect_value` plus each aura, so a unit with printed Deflect costs 2. (b) The hook is called once per on-board Refuge and each call adds another aura from the first instance (S3), so two Refuges give Deflect 2. (c) The def sets `d.keywords.set(Keyword::Deflect)` and `d.deflect_value = 1` on the gear itself (`game_engine.cpp:5250-5253` copies both), so the opponent pays [A] to choose the Refuge gear, which the card does not say.
   - Scenario: opponent targets your buffed Deflect unit -> charged 2 [A] instead of 1; opponent targets Spirit's Refuge with a gear-kill -> charged 1 [A].
-- [ ] **556 Chem-Baroness** - `legends/0556_chem_baroness.cpp:38-39,57` [documented] medium
+- [x] **556 Chem-Baroness** - `legends/0556_chem_baroness.cpp:38-39,57` [documented] medium — FIXED: the legend's aura hook raises the Gold bonus while its controller's score is within 3 of the Victory Score, and the Gold cards add the extra [1]; test: ReviewFixC1Test.ChemBaroness_GoldAddsAnExtraEnergyNearTheVictoryScore
   - Text: "While your score is within 3 points of the Victory Score, your Gold [ADD] an additional [1]."
   - Code: not implemented (the trace line says "Gold-add bonus passive not modeled"; nothing in `gear/0326_gold.cpp` reads the score).
   - Scenario: at 5+ points, killing a Gold adds only [A], never the extra [1].
@@ -44,6 +44,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "You may pay [1] to hide a card with [Hidden] instead of [A]."
   - Code: not implemented ("ENGINE GAP" comment); the hide cost path (`game_engine.cpp:2505`) always recycles a rune.
   - Scenario: Teemo player with one ready rune and no rune to spare for Power cannot hide a card for [1].
+  - BLOCKED: the Hide cost is charged by `GameEngine::executeHideCard` (`payAdditionalCost(player, 0, 1, Domain::Count)`) and gated by the hide generator, with no card hook; it needs a per-player alternative hide cost (e.g. `PlayerState::hide_cost_may_be_energy`, set from the legend's aura hook) read at both sites, with a choice when both can be paid.
 - [ ] **309 Flash** - `spells/0309_flash.cpp:30-44` [documented] low
   - Text: "Move up to 2 friendly units to base."
   - Code: `pickTargetPair` has no decline; with two or more friendly units at battlefields exactly two must be moved, and zero is impossible when one exists.
@@ -62,6 +63,8 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Scenario: an enemy unit can never be chosen (rarely wanted, but legal by the text).
   - c0: 274 Fortified Position — FIXED: offers every chooseable unit on the board, either player's; test: C0Test.FortifiedPosition_OffersEveryUnit
 - [ ] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low
+  - c1: 671 Blood Rose, 783 Piltover Enforcer — FIXED: any unit on the board can be chosen (Blood Rose also had no target list of its own, so its ability was never offered); test: ReviewFixC1Test.BloodRose_ReadiesAnyUnit, ReviewFixC1Test.PiltoverEnforcer_CanReadyAnEnemyUnit. 274 Fortified Position is not in c1's range.
+- [x] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low — FIXED: when both cards are kept the controller chooses which goes on top; test: ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
   - Text: "[Predict 2] ... Recycle any of them and put the rest back in any order."
   - Code: the two cards are popped top-first and each kept card is `push_back`ed in that order, so keeping both always reverses them; the player is never asked for an order.
   - Scenario: keep both -> the following "draw 1" draws the card that was second from the top, not the original top card, with no way to choose.
@@ -69,7 +72,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "The next unit you play this turn enters ready."
   - Code: when no friendly unit is exhausted the handler returns before erasing `__sundisc_arm_turn`.
   - Scenario: arm Sun Disc, play a unit with [Accelerate] (already ready, board otherwise ready) -> the arm survives and the second unit played that turn is readied instead.
-- [ ] **782 Virtuoso** - `legends/0782_virtuoso.cpp:63-65` [confirmed] low
+- [x] **782 Virtuoso** - `legends/0782_virtuoso.cpp:63-65` [confirmed] low — FIXED: banishes through `EffectExecutor::banishObject`; test: ReviewFixC1Test.Virtuoso_BanishesTheSpellThatWasPlayedAndCountsIt
   - Text: "you may banish it"
   - Code: banishes by direct zone write (erase from trash, set zone, push to `banishment`); skips `cards_banished_this_turn` and the `"banished_owned"` event. Same defect as 07 item 7.31, which does not list this card.
   - Scenario: a "when a card you own is banished" trigger never fires for Virtuoso's banish.
@@ -88,11 +91,16 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
 - S3: 63 Spirit's Refuge (see finding)
 - S4: 787 Voidreaver (ability 0), 278 Navori Fighting Pit, 63 Spirit's Refuge (the last two are also S1, already listed in 07)
   - c0: 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by the executor (`99d179e`: one Buff per unit); S3 for 63: FIXED, see the finding
+  - c1: 555 Blade Dancer — FIXED: readies the chosen unit only if it is still a unit on the board
+- S3: 63 Spirit's Refuge (see finding)
+- S4: 787 Voidreaver (ability 0), 278 Navori Fighting Pit, 63 Spirit's Refuge (the last two are also S1, already listed in 07)
+  - c1: 787 Voidreaver — ALREADY FIXED by 02 item 2.14 (`buffUnit`)
 - S1, S5, S6: nothing beyond the cards already listed in 03 / 07. S7: none in this batch.
 
 ## Corrections
 - 07 "Read in full and clean" lists spells 0187, 0334, 0466, battlefield 0274 and legend 0259. That holds only for the narrow classes that pass checked; against the full checklist each has a finding above (untargetable filter for 0187 / 0334 / 0466, friendly-only choice for 0274, unimplemented first sentence for 0259).
 - `gear/0710_cursed_sarcophagus.cpp:18-20` header comment says the replay is free; the code at `:82-88` does charge the full cost through `playPayingCost`. The code is right and the comment is stale, so 07's note on 0710 stands and no cost defect exists there.
+  - c1: stale header comment corrected
 - No entry in 03 or 07 for a card in this batch was found to be wrong.
 
 ## Not read

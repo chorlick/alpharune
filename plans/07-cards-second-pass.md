@@ -65,6 +65,7 @@ subject") describes something nothing implements.
   - `gear/0695_blast_cone.cpp:45-50` — moves `find_enemy()`, the first enemy in map order, with no choice; can be a unit already at base.
   - `legends/0744_pridestalker.cpp:23-32` — assumes the played unit arrives in `targets[0]`; the fallback buffs the first friendly unit at a battlefield in hash order, or nothing.
   - c0: 63 Spirit's Refuge — FIXED: `pickTarget` over friendly units + `kFinalizeTrigger`; test: C0Test.SpiritsRefuge_BuffsAChosenUnitWhenPlayed
+  - c1: 695 Blast Cone — FIXED: `kFinalizeTrigger`; the controller chooses whether, which enemy unit (`pickTarget`) and where it goes (`pickMode` over its base and the other battlefields); id removed from `kKnownOffenders` and its row from the disabled probe; 744 Pridestalker — FIXED: `pickTarget` over every unit on the board, `kFinalizeTrigger`; test: ReviewFixC1Test.BlastCone_TheControllerChoosesTheUnitAndWhereItGoes, ReviewFixC1Test.BlastCone_TheMoveCanBeDeclined, ReviewFixC1Test.Pridestalker_TheControllerChoosesAnyUnit
 - [x] **7.3 Tests never exercise this path** [confirmed] — FIXED: `card_test_fixture.h` has a real-engine entry point (`withEngine`, `playThroughEngine`, `fireTriggerThroughEngine`, `resolveThroughEngine`, `EnginePathAgent`) that runs a `GameEngine` on the fixture state (TriggerManager → chain → finalize → resolve); `fireTriggerAs` lost its `targets` parameter and its 6 hand-fed callers (Blast Cone ×3, Nami, Morgana ×2) were migrated and pass; test: `EnginePathTest.*` (9 tests), `Plan07Item71/DISABLED_TargetedTriggerTest` (one row per 7.1 card, red until the card is fixed: enable a row by fixing its card)
   - No test plays any BROKEN card through the real engine. `card_test_fixture.h:451-459` (`fireTriggerAs(..., {target})`) calls `onTrigger` with hand-fed targets, a path the engine never produces. Blast Cone's tests (`tests/cards/test_audit_fixes_6.cpp:577,590,613`) rely on it.
   - Fix direction: make the fixture queue the trigger through `TriggerManager` / the chain, or drop the `targets` argument from the helper.
@@ -137,6 +138,7 @@ subject") describes something nothing implements.
   - `battlefields/0532_sunken_temple.cpp:36` — `if (!has_mighty) return;` runs at resolution before the `costAlreadyPaid` guard; pay [1], lose the Mighty unit in response, no draw.
   - `legends/0295_relentless_storm.cpp:32` — legend exhausted at finalization, no rune channeled.
   - c0: 532 Sunken Temple — FIXED: "with one or more [Mighty] units" is the card's `triggerCondition`, checked when the conquer happens and not again at resolution; test: C0Test.SunkenTemple_NeedsAMightyUnitToTriggerNotToResolve
+  - c1: 295 Relentless Storm — FIXED: the Mighty check moved to `triggerCondition` (event time), so nothing after the exhaust can skip the channel; test: ReviewFixC1Test.RelentlessStorm_OnlyWhenTheUnitPlayedIsMighty
 
 ## D. Card does not match its text
 
@@ -146,7 +148,9 @@ subject") describes something nothing implements.
 - [ ] **7.12** `gear/0021_sun_disc.cpp:42-50`, `units/0614_nami_headstrong.cpp:74-83` — "next unit you play" readies any exhausted friendly unit; the trigger carries no subject (`trigger_manager.cpp:352`). [confirmed]
   - c0: 21 Sun Disc — FIXED: `WhenYouPlayAUnit` now carries the played unit as its subject (`shared:` 776a84b; Nami 614 can use the same) and Sun Disc readies exactly that unit, with no choice; test: C0Test.SunDisc_NeedsAnotherCardPlayedThisTurn, .SunDisc_ReadiesThePlayedUnitAndIsUsedUpByIt
 - [ ] **7.13** `legends/0295_relentless_storm.cpp:26-32` — fires on any unit play while any Mighty friendly unit is on board. [confirmed]
+  - c1: 295 Relentless Storm — FIXED: triggers only when the unit that was played (the trigger's subject; `WhenYouPlayAUnit` now carries it, `shared:` commit) is Mighty; test: ReviewFixC1Test.RelentlessStorm_OnlyWhenTheUnitPlayedIsMighty
 - [ ] **7.14** `legends/0753_green_father.cpp:23-33,46` — replaces the first controlled non-Brush battlefield, not "that battlefield"; recomputed at resolution. [confirmed]
+  - c1: 753 Green Father — FIXED: replaces the battlefield that was scored (the trigger's subject), exhaust paid under `costDueNow`; test: ReviewFixC1Test.GreenFather_ReplacesTheBattlefieldThatWasScored, CardTestFixture.GreenFather_OnConquerOrHoldReplacesABFWithBrush
 - [ ] **7.15** `units/0226_spectral_matron.cpp:22-45` vs `units/0486_glasc_mixologist.cpp:30-31` — same printed restriction ("no more than [3] and no more than [A]") implemented two different ways, neither matching. Glasc ignores Power cost; Matron compares Energy against available power. [confirmed they disagree]
 - [ ] **7.16** `spells/0263_bullet_time.cpp:50-57` — X is capped at already-exhausted runes; `payableAnyPower` is the right count. [confirmed]
 - [ ] **7.17** `spells/0702_conscription.cpp:19-36,54-57` — play-time target comes from any enemy unit; the 3-Might cap is applied only at resolution, so the spell can mistarget. `:45` — `ps.xp -= 5` sits unguarded between `confirmOptional` and `pickTarget` [latent double charge]. [confirmed]
@@ -170,6 +174,7 @@ subject") describes something nothing implements.
   - `spells/0457_hard_bargain.cpp:43-55,108-121` — ability to pay [2] judged by ready runes only; floating energy ignored.
   - `spells/0450_temptation.cpp:50-62` — second pick is only a destination anchor but is charged Deflect.
   - c0: 774 Valley of Idols — FIXED: "it" is `triggering_subject`; no token exclusion, no id guess; test: C0Test.ValleyOfIdols_BuffsTheUnitThatWasPlayed, .ValleyOfIdols_ARealPlayHandsTheTriggerItsUnit
+  - c1: 782 Virtuoso — FIXED (confirmed): banishes the trigger's subject, not the newest spell in the trash; 698 Scryer's Bloom — FIXED (confirmed): "Kill this" is paid in the finalize pass (`kFinalizeActivate` + `costDueNow`); test: ReviewFixC1Test.Virtuoso_BanishesTheSpellThatWasPlayedAndCountsIt, ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
 
 ## E. Source or target no longer on board
 
@@ -197,6 +202,7 @@ in those executor functions would close most of this section.
   - STILL OPEN, card streams — recipe for the 5 cards (927, 894, 937, 892, 935): prefer `pickTarget`; if the hand-built prompt stays, build the options from `offerableChoices(ctx, list)` and call `commitChosenObject(ctx, picked)` once, in the branch that consumes the answer (`takenObject`).
 - [ ] **7.31 Banish by direct zone write** [confirmed]
   - `spells/0115_promising_future.cpp:75-80`, `units/0491_rek_sai_swarm_queen.cpp:63-65`, `legends/0553_void_burrower.cpp:118-121` — skip `cards_banished_this_turn` and the `"banished_owned"` event.
+  - c1: 553 Void Burrower — FIXED: banishes through `EffectExecutor::banishObject` (counts the banish, emits `banished_owned`), then `playPayingCost`; existing Void Burrower tests still pass
 - [x] **7.32 `pickTargetPair` partial result treated as complete** [plausible, latent] — FIXED: confirmed in the helper; while waiting for the second pick `pickTargetPair` now returns `{kInvalidId, kInvalidId}` (as its doc always said), so Azir and Flash are correct without edits; `{a, kInvalidId}` only comes back finished (`resume_point` 13); test: `ChoiceHelperTest.PickTargetPairReturnsNothingWhileWaitingForTheSecondPick`, `.PickTargetPairWithNoSecondTargetIsAFinishedPartialPair`
   - `units/0373_azir_ascendant.cpp:95-118` and `spells/0309_flash.cpp:46-50` only check for both ids invalid; at `resume_point` 12 the helper returns `{a, kInvalidId}`, so the first half is acted on, then again on re-entry. Masked by the finalize pass; reachable when it is skipped (spell played by an effect, or after `makeNewChoicesFor`, e.g. Rebuttal 939). Kinkou Monk, Zaun Punk and Profiteer check 10/12 explicitly.
 - [ ] **7.33 `spells/0071_party_favors.cpp:29-32,40` — options differ only in `ability_index`** [confirmed]
@@ -214,6 +220,7 @@ in those executor functions would close most of this section.
   - `spells/0258_zenith_blade.cpp` — `stunUnitBy` runs before `confirmOptional` unguarded; fixing 3.1 will make the stun fire twice unless this is guarded first.
   - c0: 152 Mistfall — FIXED: offered only when [O] is payable (floating Power or a Body rune, `payableOnePower`) and Mistfall is ready; exhausts through the executor; test: C0Test.Mistfall_NotOfferedWithoutThePowerAndPaysFromThePool
   - c0: 72 Solari Shrine — FIXED for "stunned": `WhenAnEnemyUnitDies` now carries the dead unit as its subject (`shared:` 776a84b) and `triggerCondition` requires it to be stunned. Still an approximation, documented in the card: who killed it is not tracked; test: C0Test.SolariShrine_OnlyAStunnedEnemyUnitsDeathTriggers
+  - c1: 756 Deceiver, 895 Forgotten Relic — FIXED: progress moved to `resume_data` slots 7+ (no hand-rolled resume points inside the helpers' ranges); 553 Void Burrower, 710 Cursed Sarcophagus — FIXED: no manual erase, the card stays banished (and tracked) when `playPayingCost` is not paid; test: ReviewFixC1Test.CursedSarcophagus_AnUnpaidUnitStaysBanishedWithIt, existing Deceiver / Forgotten Relic tests
 
 ## G. Loop mutation and AoE
 
@@ -221,6 +228,7 @@ in those executor functions would close most of this section.
 - [ ] **7.36** `units/0680_elder_dragon.cpp:33-56` — kills each victim inside the per-location damage loop instead of in a second pass; the first death trigger queues before the others are damaged. No crash (iterates a local copy). [confirmed, low]
 - Fragile, safe as written: `spells/0429_strike_down.cpp:72` (range-for over `attachments` calling `unattachGear`, saved by the `break`); `units/0544`, `units/0629`, `spells/0209`, `spells/0258` (mutate inside a range-for over `objects`, then `break` / `return`).
 - Latent: `gear/0474_eye_of_the_herald.cpp:23`, Cull 455 and World Atlas 408 call `createToken` synchronously inside event dispatch. Any future range-for over `state.objects` that moves units and keeps iterating would rehash. Engine side, `trigger_manager.cpp:449` iterates `state_.objects` while calling `fireEquippedTriggers`; today's attack/defend gear only deals damage.
+  - c1: 474, 455, 408 — ALREADY FIXED: equipped triggers are chain items since 02 item 2.17, so their `createToken` runs at resolution, not inside event dispatch (`TriggerManager::queueEquippedTrigger`)
 
 ## H. Benchmarks and deleted decks
 

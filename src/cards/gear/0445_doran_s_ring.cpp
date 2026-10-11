@@ -18,7 +18,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquer; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
+                            const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.discardCards(ctx.controller, 1);
         ctx.executor.drawCards(ctx.controller, 1);
     }

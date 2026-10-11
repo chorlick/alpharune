@@ -19,7 +19,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquer; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
+                            const std::vector<GameObjectId>& /*targets*/) override {
         // CR 149.2: gear is played to its controller's Base unless an effect
         // says otherwise — not to the battlefield the equipped unit conquered.
         // createGoldExhausted: exhausted, in base, as the Gold card (CR 187.5).

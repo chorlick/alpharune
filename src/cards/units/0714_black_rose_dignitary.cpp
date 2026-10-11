@@ -16,7 +16,7 @@ class BlackRoseDignitary : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.channelRunes(ctx.controller, 1, true);
     }
 private:

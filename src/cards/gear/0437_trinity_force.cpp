@@ -18,7 +18,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIHold; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
+                            const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
         ctx.events.logTrace("EQUIP_TRIGGER: Trinity Force scores 1 point -> " +
                             std::to_string(ctx.state.player(ctx.controller).score));

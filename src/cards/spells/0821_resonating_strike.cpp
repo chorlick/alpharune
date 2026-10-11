@@ -54,6 +54,16 @@ public:
                 return true;
         return false;
     }
+    // Played from facedown, the battlefield is the one it was hidden at: I
+    // must control it and have a unit somewhere else.
+    bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller, const CardDB&,
+                                 BattlefieldId battlefield) const override {
+        for (const auto& bf : state.battlefields)
+            if (bf.id == battlefield)
+                return controls(bf, controller) &&
+                       !unitsElsewhere(state, controller, bf.id).empty();
+        return false;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const auto& bfs = ctx.state.battlefields;
         const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));

@@ -1983,6 +1983,12 @@ Card::PlayCostAdjust GameEngine::targetCostDiscount(PlayerId player,
 // of them adds, must be payable together.
 bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
                                    const std::vector<GameObjectId>& targets) const {
+    return canAffordChoosing(player, card_id, targets, targets);
+}
+
+bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
+                                   const std::vector<GameObjectId>& targets,
+                                   const std::vector<GameObjectId>& unpaid_deflect) const {
     if (targets.empty()) return canAfford(player, card_id);
     if (!passesPlayGates(player, card_id)) return false;
     const auto& card = state_.getObject(card_id);
@@ -1990,7 +1996,7 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
                                                     : nullptr;
     int deflect = 0;
     if (!cc || !cc->ignoresDeflect())
-        for (auto t : targets) deflect += deflectCostFor(state_, player, t);
+        for (auto t : unpaid_deflect) deflect += deflectCostFor(state_, player, t);
     Card::AdditionalPlayCost addl;
     if (cc) addl = cc->additionalPlayCost(state_, card_db_, player, card_id);
     if (addl.exists && addl.mandatory && !addl.payable) return false;
@@ -2216,9 +2222,9 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     // chain item, when the spell goes on the chain (chooseTargetsAtFinalize).
     // `cost_targets` is what the cost is judged on; Deflect for these choices
     // is paid by the choice helper as each is made.
-    // Done only while something in play would change the cost of a spell
-    // that chooses it: otherwise choosing first or paying first comes to the
-    // same thing, and the choices are made as the spell goes on the chain.
+    // Each choice's Deflect (CR 809) is paid as it is made, in this same step
+    // of the play, and a unit is on offer only while the spell's cost and
+    // that Deflect can be paid together.
     std::vector<GameObjectId> cost_targets = play_targets;
     const std::vector<GameObjectId> deflect_targets = play_targets;
     prefinalized_spell_.reset();
@@ -2226,8 +2232,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         !state_.chain.resuming.has_value()) {
         const Card* sc = card_registry_.get(card.card_def_id);
         if (sc && !sc->needsPlayTimeTarget() &&
-            (sc->choicesAtFinalization() & Card::kFinalizeResolve) &&
-            aChoiceCouldChangeTheCost(intent.player)) {
+            (sc->choicesAtFinalization() & Card::kFinalizeResolve)) {
             const PlayerState::TrashReplayGrant* grant =
                 intent.play_source == Intent::PlaySource::Trash
                     ? trashGrantFor(intent.player, intent.card) : nullptr;
@@ -2242,8 +2247,13 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             const PlayerId who = intent.player;
             const GameObjectId what = intent.card;
             effect_executor_->setChoiceFilter([this, who, what, grant](GameObjectId t) {
-                return grant ? canPayTrashGrant(who, what, *grant, {t})
-                             : canAffordChoosing(who, what, {t});
+                if (grant) return canPayTrashGrant(who, what, *grant, {t});
+                // Discounts from everything chosen so far and `t`; the
+                // Deflect of the earlier choices is already paid.
+                std::vector<GameObjectId> all;
+                if (state_.chain.resuming.has_value()) all = state_.chain.resuming->chosen_objects;
+                all.push_back(t);
+                return canAffordChoosing(who, what, all, {t});
             });
             ChainItem done;
             try {
@@ -2257,11 +2267,13 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             cost_targets = done.chosen_objects;
             // Not payable with what was chosen (it was offered on the strength
             // of a discount no choice then earned): the play does not happen.
+            // (Deflect for these choices is paid already: none is owed here.)
             const bool payable = grant
-                ? canPayTrashGrant(intent.player, intent.card, *grant, cost_targets)
+                ? canPayTrashGrant(intent.player, intent.card, *grant, {})
+                  || canPayTrashGrant(intent.player, intent.card, *grant, cost_targets)
                 : (cost_targets.empty() ? canAfford(intent.player, intent.card)
                                         : canAffordChoosing(intent.player, intent.card,
-                                                            cost_targets));
+                                                            cost_targets, {}));
             if (!payable) {
                 events_.logTrace("SPELL: " + card.name +
                                  " not played — its cost could not be paid with what it chose");
@@ -3969,6 +3981,14 @@ void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_ty
                 }
             }
 
+            // A spell that makes its choices in its finalize pass declares no
+            // targets here, but it is still tied to this battlefield (CR
+            // 811.1.d.2) and cannot be played from facedown with nothing to
+            // choose there (811.1.d).
+            if (card.card_def_id != kInvalidId && card.isSpell()) {
+                const Card* hc = card_registry_.get(card.card_def_id);
+                if (hc && !hc->hasLegalChoicesHiddenAt(state_, player, card_db_, bf.id)) continue;
+            }
             // No-target hidden play (or permanent — its location is set
             // to the hidden-at BF by executePlayFromHidden).
             Intent play;
@@ -4167,15 +4187,6 @@ const PlayerState::TrashReplayGrant* GameEngine::trashGrantFor(PlayerId player,
     for (const auto& g : state_.player(player).trash_replay_grants)
         if (g.card == card_id) return &g;
     return nullptr;
-}
-
-bool GameEngine::aChoiceCouldChangeTheCost(PlayerId player) const {
-    for (const auto& [id, obj] : state_.objects) {
-        if (!obj.location.has_value()) continue;
-        if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction > 0 ||
-            targetCostDiscount(player, {id}, true, nullptr).power_reduction > 0) return true;
-    }
-    return false;
 }
 
 bool GameEngine::payableThroughAFinalizeChoice(

@@ -55,6 +55,11 @@ bool Card::costDueNow(CardContext& ctx) {
     return true;
 }
 
+bool Card::hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller,
+                                   const CardDB& db, BattlefieldId /*battlefield*/) const {
+    return hasLegalTargets(state, controller, db);
+}
+
 void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId player,
                               GameObjectId object) {
     if (!state.objectExists(object)) return;

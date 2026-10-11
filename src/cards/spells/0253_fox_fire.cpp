@@ -29,6 +29,15 @@ public:
             return u.isAtBattlefield() && u.current_might <= kTotalMight;
         }).empty();
     }
+    // Played from facedown, every unit is chosen at the battlefield it was
+    // hidden at (the candidates() list below): it needs one there.
+    bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller, const CardDB&,
+                                 BattlefieldId battlefield) const override {
+        return !chooseableUnits(state, controller, [battlefield](const GameObject& u) {
+            return u.isAtBattlefield() && u.battlefieldId() == battlefield &&
+                   u.current_might <= kTotalMight;
+        }).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;

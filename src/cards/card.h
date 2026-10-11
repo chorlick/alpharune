@@ -321,6 +321,15 @@ public:
     /// list overrides this to match it.
     virtual bool mayChooseAtFinalization(const GameState& state, PlayerId controller,
                                          GameObjectId object) const;
+
+    /// Whether this spell, played from facedown at `battlefield`, has the
+    /// choices it needs there (CR 811.1.d: a hidden card's choices are made
+    /// from that battlefield, and with none it cannot be played). Asked for a
+    /// spell that declares no play-time targets and chooses in its finalize
+    /// pass. Default: hasLegalTargets(); a card whose pick list is tied to the
+    /// hidden battlefield (facedownPlayBattlefield) overrides this to match.
+    virtual bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller,
+                                         const CardDB& db, BattlefieldId battlefield) const;
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
     static bool costAlreadyPaid(const CardContext& ctx);

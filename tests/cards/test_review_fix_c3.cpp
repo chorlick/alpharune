@@ -121,7 +121,7 @@ public:
                 for (const auto& i : legal) {
                     if (s.object) {
                         if (!i.chosen_objects.empty() &&
-                            i.chosen_objects.front() == static_cast<GameObjectId>(s.value))
+                            i.chosen_objects.front() == GameObjectId::fromRaw(s.value))
                             return i;
                     } else if (i.chosen_objects.empty() && i.chosen_value.has_value() &&
                                *i.chosen_value == s.value) {
@@ -153,7 +153,7 @@ public:
 private:
     size_t next_ = 0;
 };
-StepAgent::Step O(GameObjectId id) { return {true, static_cast<int>(id)}; }
+StepAgent::Step O(GameObjectId id) { return {true, static_cast<int>(id.raw())}; }
 StepAgent::Step V(int v) { return {false, v}; }
 
 class C3Test : public CardTestFixture {
@@ -349,7 +349,7 @@ TEST_F(C3Test, SmokeAndMirrors_IsOfferedForUnitsAtDifferentLocationsOnly) {
     playAt(spell, {at_base, at_bf});
     EXPECT_TRUE(state.getObject(at_bf).isAtBase());
     ASSERT_TRUE(bfOf(at_base).has_value());
-    EXPECT_EQ(*bfOf(at_base), 0u);
+    EXPECT_EQ(*bfOf(at_base), BattlefieldId::fromRaw(0));
     EXPECT_TRUE(state.getObject(also_base).isAtBase());
     EXPECT_EQ(handSize(P1), 1) << "Draw 1";
 }
@@ -429,9 +429,9 @@ TEST_F(C3Test, TricksyTentacles_MovesSeveralUnitsWithinTheMightBudgetToOneLocati
     EXPECT_EQ(agent.missed, 0);
     ASSERT_TRUE(bfOf(a).has_value());
     ASSERT_TRUE(bfOf(b).has_value());
-    EXPECT_EQ(*bfOf(a), 1u);
-    EXPECT_EQ(*bfOf(b), 1u);
-    EXPECT_EQ(*bfOf(big), 0u) << "6 Might did not fit after the first pick";
+    EXPECT_EQ(*bfOf(a), BattlefieldId::fromRaw(1));
+    EXPECT_EQ(*bfOf(b), BattlefieldId::fromRaw(1));
+    EXPECT_EQ(*bfOf(big), BattlefieldId::fromRaw(0)) << "6 Might did not fit after the first pick";
     ASSERT_GE(agent.prompts.size(), 2u);
     for (const auto& i : agent.prompts[1])
         EXPECT_TRUE(i.chosen_objects.empty() || i.chosen_objects.front() != big);
@@ -554,7 +554,7 @@ TEST_F(C3Test, RelentlessPursuit_MovesALoneUnitWhereItsControllerChooses) {
     playAt(spell, {unit}, &agent);
     EXPECT_EQ(agent.missed, 0);
     ASSERT_TRUE(bfOf(unit).has_value());
-    EXPECT_EQ(*bfOf(unit), 1u);
+    EXPECT_EQ(*bfOf(unit), BattlefieldId::fromRaw(1));
     EXPECT_EQ(state.getObject(shield).attached_to, std::optional<GameObjectId>(unit));
     EXPECT_FALSE(state.getObject(sword).attached_to.has_value());
 }
@@ -575,7 +575,7 @@ TEST_F(C3Test, RelentlessPursuit_AttachingIsOptionalAndTheConquerRiderIsArmed) {
     // "When I conquer, you may move me to my base."
     StepAgent yes{V(1)};
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreConquer(P1, 0);
+        e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     }, &yes);
     EXPECT_TRUE(state.getObject(unit).isAtBase());
@@ -695,7 +695,7 @@ TEST_F(C3Test, SkywardStrike_MovesWhereChosenAndAtLevelSixAlsoStuns) {
     playThroughEngine(low, &a1);
     EXPECT_EQ(a1.missed, 0);
     ASSERT_TRUE(bfOf(mover).has_value());
-    EXPECT_EQ(*bfOf(mover), 1u);
+    EXPECT_EQ(*bfOf(mover), BattlefieldId::fromRaw(1));
     EXPECT_FALSE(state.getObject(other).is_stunned);
 
     setXp(P1, 6);
@@ -735,7 +735,7 @@ TEST_F(C3Test, ThrillOfTheHunt_TheUnitComesBackWithoutItsStatuses) {
     playThroughEngine(spell, &agent);
     const auto& back = state.getObject(unit);
     ASSERT_TRUE(back.battlefieldId().has_value());
-    EXPECT_EQ(*back.battlefieldId(), 1u);
+    EXPECT_EQ(*back.battlefieldId(), BattlefieldId::fromRaw(1));
     EXPECT_FALSE(back.is_stunned);
     EXPECT_EQ(back.buff_count, 0);
     EXPECT_EQ(back.temp_might_bonus, 0);
@@ -811,7 +811,7 @@ TEST_F(C3Test, ResonatingStrike_OffersOnlyUnitsThatAreNotAtTheChosenBattlefield)
     EXPECT_EQ(agent.missed, 0);
     EXPECT_FALSE(agent.offered(already_there));
     ASSERT_TRUE(bfOf(in_base).has_value());
-    EXPECT_EQ(*bfOf(in_base), 0u);
+    EXPECT_EQ(*bfOf(in_base), BattlefieldId::fromRaw(0));
     EXPECT_EQ(state.getObject(in_base).current_might, 5);
 }
 
@@ -842,7 +842,7 @@ TEST_F(C3Test, VoidAssault_EachUnitGetsItsOwnDestination) {
     playAt(spell, {mine, theirs}, &agent);
     EXPECT_EQ(agent.missed, 0);
     ASSERT_TRUE(bfOf(mine).has_value());
-    EXPECT_EQ(*bfOf(mine), 1u);
+    EXPECT_EQ(*bfOf(mine), BattlefieldId::fromRaw(1));
     EXPECT_TRUE(state.getObject(theirs).isAtBase());
 }
 
@@ -901,9 +901,9 @@ TEST_F(C3Test, CallToBattle_BothPlayersChoose) {
     EXPECT_EQ(p1.missed, 0);
     EXPECT_EQ(p2.missed, 0);
     ASSERT_TRUE(bfOf(mine).has_value());
-    EXPECT_EQ(*bfOf(mine), 1u);
+    EXPECT_EQ(*bfOf(mine), BattlefieldId::fromRaw(1));
     ASSERT_TRUE(bfOf(their_small).has_value());
-    EXPECT_EQ(*bfOf(their_small), 1u);
+    EXPECT_EQ(*bfOf(their_small), BattlefieldId::fromRaw(1));
     EXPECT_TRUE(state.getObject(their_big).isAtBase());
 }
 
@@ -933,7 +933,7 @@ TEST_F(C3Test, Guards_PlayedFromFacedownTheTokenGoesToThatBattlefield) {
         auto& card = state.getObject(spell);
         card.zone = ZoneType::BattlefieldZone;
         card.is_hidden = true;
-        card.hidden_at = 1;
+        card.hidden_at = BattlefieldId::fromRaw(1);
         card.hidden_on_turn = 2;
         state.battlefields[1].facedown.push_back(spell);
     }
@@ -947,7 +947,7 @@ TEST_F(C3Test, Guards_PlayedFromFacedownTheTokenGoesToThatBattlefield) {
         if (obj.name == "Sand Soldier" && obj.location.has_value()) token = id;
     ASSERT_NE(token, kInvalidId);
     ASSERT_TRUE(bfOf(token).has_value());
-    EXPECT_EQ(*bfOf(token), 1u);
+    EXPECT_EQ(*bfOf(token), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(C3Test, LotusTrap_PlayedFromFacedownKeepsTheTargetItWasPlayedWith) {
@@ -964,7 +964,7 @@ TEST_F(C3Test, LotusTrap_PlayedFromFacedownKeepsTheTargetItWasPlayedWith) {
         auto& card = state.getObject(spell);
         card.zone = ZoneType::BattlefieldZone;
         card.is_hidden = true;
-        card.hidden_at = 1;
+        card.hidden_at = BattlefieldId::fromRaw(1);
         card.hidden_on_turn = 2;
         state.battlefields[1].facedown.push_back(spell);
     }
@@ -1088,7 +1088,7 @@ TEST_F(C3Test, Moonfall_TheBattlefieldAndTheEnemyUnitAreChosen) {
     playThroughEngine(spell, &agent);
     EXPECT_EQ(agent.missed, 0);
     ASSERT_TRUE(bfOf(second).has_value());
-    EXPECT_EQ(*bfOf(second), 1u);
+    EXPECT_EQ(*bfOf(second), BattlefieldId::fromRaw(1));
     EXPECT_EQ(state.getObject(second).current_might, 3);
     EXPECT_TRUE(state.getObject(first).isAtBase());
     EXPECT_EQ(state.getObject(first).current_might, 5);
@@ -1152,7 +1152,7 @@ TEST_F(C3Test, HereToHelp_MayBeDeclinedAndNeverPlaysToBase) {
         playThroughEngine(spell, &agent);
         EXPECT_EQ(agent.missed, 0);
         ASSERT_TRUE(bfOf(unit).has_value());
-        EXPECT_EQ(*bfOf(unit), 1u);
+        EXPECT_EQ(*bfOf(unit), BattlefieldId::fromRaw(1));
     }
 }
 
@@ -1185,7 +1185,7 @@ TEST_F(C3Test, Temptation_TheDestinationIsAChoiceNotASecondTarget) {
     EXPECT_TRUE(agent.prompts[1].front().chosen_objects.empty())
         << "the destination is offered as a location, not as a unit to choose";
     ASSERT_TRUE(bfOf(moved).has_value());
-    EXPECT_EQ(*bfOf(moved), 1u);
+    EXPECT_EQ(*bfOf(moved), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(C3Test, HardBargain_FloatingEnergyCanPayTheTwo) {
@@ -1252,7 +1252,7 @@ TEST_F(C3Test, ArcaneShift_ReplaysTheUnitOnceAndBanishesItself) {
     EXPECT_LE(unit_plays, 1) << "banished and replayed once, not once per pass";
     EXPECT_EQ(state.player(P1).cards_banished_this_turn, 2) << "the unit, then the spell";
     ASSERT_TRUE(bfOf(unit).has_value());
-    EXPECT_EQ(*bfOf(unit), 1u);
+    EXPECT_EQ(*bfOf(unit), BattlefieldId::fromRaw(1));
     EXPECT_EQ(state.getObject(enemy).damage_marked, 3);
     EXPECT_TRUE(inBanishment(P1, spell));
     EXPECT_FALSE(inTrash(P1, spell));
@@ -1283,7 +1283,7 @@ TEST_F(C3Test, BackOff_StunsForItsControllerAndDrawsOnlyWhenPlayedFromHand) {
         auto& card = state.getObject(hidden);
         card.zone = ZoneType::BattlefieldZone;
         card.is_hidden = true;
-        card.hidden_at = 1;
+        card.hidden_at = BattlefieldId::fromRaw(1);
         card.hidden_on_turn = 2;
         state.battlefields[1].facedown.push_back(hidden);
     }
@@ -1325,7 +1325,7 @@ TEST_F(C3Test, BoneSkewer_ChoosingAUnitIsOptional) {
     playThroughEngine(spell, &yes);
     EXPECT_EQ(yes.missed, 0);
     ASSERT_TRUE(bfOf(their_unit).has_value());
-    EXPECT_EQ(*bfOf(their_unit), 1u);
+    EXPECT_EQ(*bfOf(their_unit), BattlefieldId::fromRaw(1));
     EXPECT_TRUE(state.getObject(their_unit).is_stunned);
 }
 
@@ -1432,7 +1432,7 @@ TEST_F(C3Test, TwilightStep_AsksForTheUnitOnceThenWhereItMoves) {
     EXPECT_EQ(agent.missed, 0);
     EXPECT_EQ(agent.prompts.size(), 2u) << "one unit prompt (at play), one destination";
     ASSERT_TRUE(bfOf(unit).has_value());
-    EXPECT_EQ(*bfOf(unit), 1u);
+    EXPECT_EQ(*bfOf(unit), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(C3Test, DecreeOfDiscord_PaysDeflectForAChosenUnit) {
@@ -1476,7 +1476,7 @@ TEST_F(C3Test, ShurikenFlip_PaysDeflectForTheEnemyUnitItChooses) {
     EXPECT_EQ(state.getObject(deflector).damage_marked, 2);
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "Deflect was paid";
     ASSERT_TRUE(bfOf(mine).has_value());
-    EXPECT_EQ(*bfOf(mine), 1u);
+    EXPECT_EQ(*bfOf(mine), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(C3Test, DeathMark_BurnsOnceAndTheCloneCanGoToAControlledBattlefield) {
@@ -1491,7 +1491,7 @@ TEST_F(C3Test, DeathMark_BurnsOnceAndTheCloneCanGoToAControlledBattlefield) {
         if (obj.name == "Shadow Clone" && obj.location.has_value()) clone = id;
     ASSERT_NE(clone, kInvalidId);
     ASSERT_TRUE(bfOf(clone).has_value());
-    EXPECT_EQ(*bfOf(clone), 1u);
+    EXPECT_EQ(*bfOf(clone), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(C3Test, Repeat_ATwoTargetSpellChoosesAgainForItsRepeat) {

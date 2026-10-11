@@ -32,7 +32,7 @@ struct MiniState {
     GameState state;
 
     GameObjectId addObject(CardDefId def_id, PlayerId owner = PlayerId::Player1) {
-        GameObjectId id = next_id_++;
+        const GameObjectId id = GameObjectId::fromRaw(next_id_++);
         state.objects[id] = GameObject{};
         auto& o = state.objects[id];
         o.id = id;
@@ -44,14 +44,14 @@ struct MiniState {
 
     BattlefieldId addBattlefield() {
         BattlefieldState bf;
-        bf.id = next_bf_++;
+        bf.id = BattlefieldId::fromRaw(next_bf_++);
         state.battlefields.push_back(bf);
         return state.battlefields.back().id;
     }
 
 private:
-    GameObjectId next_id_ = 1;
-    BattlefieldId next_bf_ = 0;
+    uint32_t next_id_ = 1;
+    uint32_t next_bf_ = 0;
 };
 
 void expectRoundTrip(const Intent& intent, const GameState& state) {
@@ -163,7 +163,7 @@ TEST(ActionVocab, ActivateAbility) {
     i.type = IntentType::ActivateAbility;
     i.player = PlayerId::Player1;
     i.ability_source = src;
-    i.ability = 7;
+    i.ability = AbilityId::fromRaw(7);
     i.targets = {tgt};
     expectRoundTrip(i, ms.state);
 }

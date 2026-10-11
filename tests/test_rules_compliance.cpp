@@ -28,7 +28,7 @@ protected:
         st.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(st.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(st.battlefields.size());
             st.battlefields.push_back(bf);
         }
         engine_->testHook_setAgents(&a1_, &a2_);
@@ -60,7 +60,7 @@ protected:
         u.base_might = u.current_might = might;
         if (at_bf >= 0) {
             u.zone = ZoneType::BattlefieldZone;
-            u.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            u.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             u.zone = ZoneType::Base;
             u.location = BaseLocation{p};
@@ -1114,7 +1114,7 @@ TEST_F(BattlefieldAbilityTest, WhenYouDefendHereTriggersForTheDefender) {
     makeEngine();
     setLegend(P1); setLegend(P2);
     auto bf = setBattlefieldCard(0, kRavenbloom, P2);
-    events.emit(CombatStartedEvent{0, /*attacker=*/P1, /*defender=*/P2});
+    events.emit(CombatStartedEvent{BattlefieldId::fromRaw(0), /*attacker=*/P1, /*defender=*/P2});
     EXPECT_EQ(abilitiesOnChainFrom(bf, P2), 1);
     EXPECT_EQ(abilitiesOnChainFrom(bf, P1), 0);
 }
@@ -1124,7 +1124,7 @@ TEST_F(BattlefieldAbilityTest, DefendHereDoesNotTriggerAtAnotherBattlefield) {
     makeEngine();
     setLegend(P1); setLegend(P2);
     auto bf = setBattlefieldCard(0, kRavenbloom, P2);
-    events.emit(CombatStartedEvent{1, P1, P2});
+    events.emit(CombatStartedEvent{BattlefieldId::fromRaw(1), P1, P2});
     EXPECT_EQ(abilitiesOnChainFrom(bf, P2), 0);
 }
 
@@ -1180,7 +1180,7 @@ TEST_F(RulesComplianceTest, ExcessCombatDamage_IsWhatWasAssignedBeyondLethal) {
     setLegend(P1); setLegend(P2);
     auto small = engineUnit(P2, 2, /*at_bf=*/0);
     auto big   = engineUnit(P2, 4, /*at_bf=*/0);
-    s().player(P1).last_combat_bf = 0;
+    s().player(P1).last_combat_bf = BattlefieldId::fromRaw(0);
 
     Intent assign;
     assign.type = IntentType::AssignCombatDamage;
@@ -1189,8 +1189,8 @@ TEST_F(RulesComplianceTest, ExcessCombatDamage_IsWhatWasAssignedBeyondLethal) {
     engine_->testHook_executeIntent(assign);
 
     EXPECT_EQ(s().player(P1).excess_combat_damage, 5);
-    EXPECT_EQ(excessCombatDamageAt(s(), P1, 0), 5);
-    EXPECT_EQ(excessCombatDamageAt(s(), P1, 1), 0) << "a combat elsewhere doesn't count";
+    EXPECT_EQ(excessCombatDamageAt(s(), P1, BattlefieldId::fromRaw(0)), 5);
+    EXPECT_EQ(excessCombatDamageAt(s(), P1, BattlefieldId::fromRaw(1)), 0) << "a combat elsewhere doesn't count";
     EXPECT_EQ(s().player(P2).excess_combat_damage, 0);
 }
 
@@ -1204,13 +1204,13 @@ TEST_F(RulesComplianceTest, ExcessCombatDamage_TryndamereNeedsFiveAfterAnAttackH
     };
     EXPECT_FALSE(fires()) << "no combat this turn";
     auto& ps = s().player(P1);
-    ps.last_combat_bf = 0; ps.last_combat_attacker = true; ps.excess_combat_damage = 4;
+    ps.last_combat_bf = BattlefieldId::fromRaw(0); ps.last_combat_attacker = true; ps.excess_combat_damage = 4;
     EXPECT_FALSE(fires()) << "4 excess is not enough";
     ps.excess_combat_damage = 5;
     EXPECT_TRUE(fires());
     ps.last_combat_attacker = false;
     EXPECT_FALSE(fires()) << "\"after an attack\": not when defending";
-    ps.last_combat_attacker = true; ps.last_combat_bf = 1;
+    ps.last_combat_attacker = true; ps.last_combat_bf = BattlefieldId::fromRaw(1);
     EXPECT_FALSE(fires()) << "the combat was at another battlefield";
 }
 
@@ -1353,7 +1353,7 @@ TEST_F(BattlefieldAbilityTest, BrushTokenBattlefieldIsTheBrushCard) {
     s().getObject(poro).tags = {"Poro"};
     s().getObject(away).tags = {"Poro"};
 
-    engine_->testHook_executor().replaceBattlefieldWithToken(0, "Brush", P1, kBrush);
+    engine_->testHook_executor().replaceBattlefieldWithToken(BattlefieldId::fromRaw(0), "Brush", P1, kBrush);
     EXPECT_EQ(s().getObject(s().battlefields[0].card_object_id).card_def_id, kBrush);
     engine_->testHook_cleanup();
     EXPECT_EQ(s().getObject(poro).current_might, 3);
@@ -1524,7 +1524,7 @@ TEST_F(VendettaLastCardsTest, DragonRoost_ADragonMayPayToBePlayedThere) {
     EXPECT_EQ(*offer->play_location, LocationId{BattlefieldLocation{0}});
 
     engine_->testHook_executeIntent(*offer); settleLikeTheEngine(*engine_);
-    EXPECT_EQ(s().getObject(dragon).battlefieldId().value_or(kInvalidId), 0u);
+    EXPECT_EQ(s().getObject(dragon).battlefieldId().value_or(kInvalidId), BattlefieldId::fromRaw(0));
     EXPECT_EQ(runesInBase(P1), 0) << "both runes recycled for the [A][A]";
     EXPECT_EQ(s().player(P1).rune_pool.energy, 0);
 }

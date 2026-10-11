@@ -32,7 +32,7 @@ public:
         const auto turn = counters.find(turnKey(player));
         if (turn == counters.end() || turn->second != state.turn.turn_number + 1) return true;
         const auto unit = counters.find(unitKey(player));
-        return unit != counters.end() && unit->second == static_cast<int>(played);
+        return unit != counters.end() && unit->second == static_cast<int>(played.raw());
     }
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
                           TriggerType /*trigger*/, GameObjectId subject) const override {
@@ -52,7 +52,7 @@ public:
         {
             auto& self = ctx.state.getObject(ctx.source);
             self.card_counters[turnKey(ctx.controller)] = ctx.state.turn.turn_number + 1;
-            self.card_counters[unitKey(ctx.controller)] = static_cast<int>(played);
+            self.card_counters[unitKey(ctx.controller)] = static_cast<int>(played.raw());
         }
         // "another unit they control here", able to move to its base.
         auto movable = [&]() {

@@ -128,7 +128,7 @@ EditResult StateEditor::moveObject(GameState& state,
                                    ZoneType target_zone,
                                    bool to_top) {
     if (state.objects.find(object_id) == state.objects.end()) {
-        return EditResult::fail("object not found: " + std::to_string(static_cast<int>(object_id)));
+        return EditResult::fail("object not found: " + std::to_string(static_cast<int>(object_id.raw())));
     }
     if (target_player != PlayerId::Player1 && target_player != PlayerId::Player2) {
         return EditResult::fail("target_player must be Player1 or Player2");
@@ -191,7 +191,7 @@ EditResult StateEditor::moveObjectToBattlefield(GameState& state,
         if (bf.id == battlefield_id) { bf_exists = true; break; }
     }
     if (!bf_exists) {
-        return EditResult::fail("battlefield not found: " + std::to_string(static_cast<int>(battlefield_id)));
+        return EditResult::fail("battlefield not found: " + std::to_string(static_cast<int>(battlefield_id.raw())));
     }
     if (isOnChain(state, object_id)) {
         return EditResult::fail("object is on the chain; let it resolve first");

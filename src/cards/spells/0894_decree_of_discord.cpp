@@ -32,7 +32,7 @@ public:
                     o.domains.end()) return false;
                 if (o.current_might > ri.resume_data[0]) return false;
                 for (size_t i = 1; i < ri.resume_data.size(); ++i)
-                    if (static_cast<GameObjectId>(ri.resume_data[i]) == o.id) return false;
+                    if (GameObjectId::fromRaw(ri.resume_data[i]) == o.id) return false;
                 return true;
             });
             std::sort(out.begin(), out.end());
@@ -56,7 +56,7 @@ public:
         auto finish = [&]() {
             ri.resume_point = 2;
             for (size_t i = 1; i < ri.resume_data.size(); ++i) {
-                auto id = static_cast<GameObjectId>(ri.resume_data[i]);
+                auto id = GameObjectId::fromRaw(ri.resume_data[i]);
                 if (!ctx.state.objectExists(id)) continue;
                 auto& unit = ctx.state.getObject(id);
                 if (!unit.location.has_value()) continue;
@@ -82,7 +82,7 @@ public:
         // Card::pickTarget would.
         commitChosenObject(ctx, picked);
         ri.resume_data[0] -= ctx.state.getObject(picked).current_might;
-        ri.resume_data.push_back(static_cast<int32_t>(picked));
+        ri.resume_data.push_back(static_cast<int32_t>(picked.raw()));
         if (!prompt()) finish();
     }
 private:

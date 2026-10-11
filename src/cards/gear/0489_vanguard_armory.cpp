@@ -30,14 +30,14 @@ public:
             std::vector<int> out{0};   // 0 = base, 1 + i = battlefield i (as destLabel)
             for (const auto& bf : ctx.state.battlefields)
                 if (bf.controller.has_value() && *bf.controller == ctx.controller)
-                    out.push_back(1 + static_cast<int>(bf.id));
+                    out.push_back(1 + static_cast<int>(bf.id.raw()));
             return out;
         };
         auto play_all = [&](const std::vector<int>& where) {
             for (int d : where) {
                 const LocationId loc = d <= 0
                     ? LocationId{BaseLocation{ctx.controller}}
-                    : LocationId{BattlefieldLocation{static_cast<BattlefieldId>(d - 1)}};
+                    : LocationId{BattlefieldLocation{BattlefieldId::fromRaw(d - 1)}};
                 ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                          /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
                                          loc, /*enter_ready=*/false);

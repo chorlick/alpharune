@@ -99,15 +99,15 @@ public:
             // Through the executor: it counts the banish and announces it
             // ("When you banish a card you own").
             ctx.executor.banishObject(picked);
-            ri.resume_data[kPickedSlot] = static_cast<int32_t>(picked);
-            ri.resume_data[kRestSlot] = static_cast<int32_t>(other);
+            ri.resume_data[kPickedSlot] = static_cast<int32_t>(picked.raw());
+            ri.resume_data[kRestSlot] = static_cast<int32_t>(other.raw());
             ri.resume_data[kStepSlot] = 3;
         }
 
         // "then play it". The cost is not waived (CR 356.1.b.2): unpaid, it
         // stays banished. playPayingCost takes it out of banishment itself.
-        const auto picked = static_cast<GameObjectId>(ri.resume_data[kPickedSlot]);
-        const auto other = static_cast<GameObjectId>(ri.resume_data[kRestSlot]);
+        const auto picked = GameObjectId::fromRaw(ri.resume_data[kPickedSlot]);
+        const auto other = GameObjectId::fromRaw(ri.resume_data[kRestSlot]);
         if (ctx.state.objectExists(picked) &&
             ctx.executor.canPlayPayingCost(ctx.controller, picked)) {
             std::optional<LocationId> loc;
@@ -126,7 +126,7 @@ public:
                 uint32_t mask = 1u;
                 std::vector<std::string> labels{"Base"};
                 for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
-                    labels.push_back("Battlefield #" + std::to_string(bfs[i].id));
+                    labels.push_back("Battlefield #" + toString(bfs[i].id));
                     if (ps.units_play_base_only || bfs[i].blocks_unit_play) continue;
                     const bool mine = bfs[i].controller.has_value() &&
                                       *bfs[i].controller == ctx.controller;

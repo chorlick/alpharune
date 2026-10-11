@@ -38,28 +38,28 @@ TEST_F(CardTestFixture, ForgottenMonument_GateBlocksUntilThirdTurn) {
     s.players[0].id = P1;
     s.players[1].id = P2;
     s.battlefields.push_back(BattlefieldState{});
-    s.battlefields.back().id = 0;
+    s.battlefields.back().id = BattlefieldId::fromRaw(0);
     s.battlefields.back().min_turn_to_score = 3;   // as Forgotten Monument sets
 
     // A second, unrestricted battlefield as a control.
     s.battlefields.push_back(BattlefieldState{});
-    s.battlefields.back().id = 1;
+    s.battlefields.back().id = BattlefieldId::fromRaw(1);
 
     // Turns 1 and 2: gated on the Monument; never gated on the normal BF.
     for (int t = 1; t <= 2; ++t) {
         s.players[0].turns_taken = t;
-        EXPECT_TRUE(engine.isScoreGatedByTurn(P1, 0))
+        EXPECT_TRUE(engine.isScoreGatedByTurn(P1, BattlefieldId::fromRaw(0)))
             << "P1 cannot score the Monument on their turn " << t;
-        EXPECT_FALSE(engine.isScoreGatedByTurn(P1, 1))
+        EXPECT_FALSE(engine.isScoreGatedByTurn(P1, BattlefieldId::fromRaw(1)))
             << "the unrestricted BF is never gated";
     }
 
     // Their third turn (and beyond): no longer gated.
     s.players[0].turns_taken = 3;
-    EXPECT_FALSE(engine.isScoreGatedByTurn(P1, 0))
+    EXPECT_FALSE(engine.isScoreGatedByTurn(P1, BattlefieldId::fromRaw(0)))
         << "P1 may score the Monument from their third turn on";
     s.players[0].turns_taken = 5;
-    EXPECT_FALSE(engine.isScoreGatedByTurn(P1, 0));
+    EXPECT_FALSE(engine.isScoreGatedByTurn(P1, BattlefieldId::fromRaw(0)));
 }
 
 TEST_F(CardTestFixture, ForgottenMonument_GateAppliesToBothPlayers) {
@@ -68,18 +68,18 @@ TEST_F(CardTestFixture, ForgottenMonument_GateAppliesToBothPlayers) {
     s.players[0].id = P1;
     s.players[1].id = P2;
     s.battlefields.push_back(BattlefieldState{});
-    s.battlefields.back().id = 0;
+    s.battlefields.back().id = BattlefieldId::fromRaw(0);
     s.battlefields.back().min_turn_to_score = 3;
 
     s.players[0].turns_taken = 2;
     s.players[1].turns_taken = 2;
-    EXPECT_TRUE(engine.isScoreGatedByTurn(P1, 0));
-    EXPECT_TRUE(engine.isScoreGatedByTurn(P2, 0)) << "rule binds both players";
+    EXPECT_TRUE(engine.isScoreGatedByTurn(P1, BattlefieldId::fromRaw(0)));
+    EXPECT_TRUE(engine.isScoreGatedByTurn(P2, BattlefieldId::fromRaw(0))) << "rule binds both players";
 
     // The counter is per-player: P2 reaching turn 3 frees only P2.
     s.players[1].turns_taken = 3;
-    EXPECT_TRUE(engine.isScoreGatedByTurn(P1, 0));
-    EXPECT_FALSE(engine.isScoreGatedByTurn(P2, 0));
+    EXPECT_TRUE(engine.isScoreGatedByTurn(P1, BattlefieldId::fromRaw(0)));
+    EXPECT_FALSE(engine.isScoreGatedByTurn(P2, BattlefieldId::fromRaw(0)));
 }
 
 }  // namespace

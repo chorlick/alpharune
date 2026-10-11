@@ -49,7 +49,7 @@ protected:
         if (is_equipment) obj.tags.push_back("Equipment");
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -223,9 +223,9 @@ TEST_F(AuditFix3Test, CullTheWeak_NoUnitsNoOp) {
 
 TEST_F(AuditFix3Test, EmperorsDivide_MovesChosenUnitToBase) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 0;
-    auto u1 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf));
-    auto u2 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf));
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto u1 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf.raw()));
+    auto u2 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf.raw()));
     auto src = pushSpellOnChain(P1, kEmperorsDivide);
 
     // Picker: always pick the first offered unit; the choice list shrinks
@@ -246,9 +246,9 @@ TEST_F(AuditFix3Test, EmperorsDivide_MovesChosenUnitToBase) {
 
 TEST_F(AuditFix3Test, EmperorsDivide_StopEarlyLeavesUnitAtBF) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 0;
-    auto u1 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf));
-    auto u2 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf));
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto u1 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf.raw()));
+    auto u2 = addUnit(P1, kInvalidId, 2, static_cast<int>(bf.raw()));
     auto src = pushSpellOnChain(P1, kEmperorsDivide);
 
     // Pick "done" (empty chosen_objects) on the FIRST prompt — no unit moves.
@@ -267,9 +267,9 @@ TEST_F(AuditFix3Test, EmperorsDivide_StopEarlyLeavesUnitAtBF) {
 
 TEST_F(AuditFix3Test, EmperorsDivide_DoesNotMoveEnemyUnits) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 0;
-    auto friendly = addUnit(P1, kInvalidId, 2, static_cast<int>(bf));
-    auto enemy = addUnit(P2, kInvalidId, 2, static_cast<int>(bf));
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto friendly = addUnit(P1, kInvalidId, 2, static_cast<int>(bf.raw()));
+    auto enemy = addUnit(P2, kInvalidId, 2, static_cast<int>(bf.raw()));
     auto src = pushSpellOnChain(P1, kEmperorsDivide);
 
     driveResumableWithTargets(kEmperorsDivide, P1, src, {friendly},

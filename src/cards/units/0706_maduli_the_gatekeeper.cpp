@@ -42,7 +42,7 @@ public:
         auto bfs = qualifyingBfs(ctx.state, ctx.controller, my_might, ctx.source);
         if (bfs.empty()) return;
         std::vector<std::string> labels;
-        for (auto bf : bfs) labels.push_back("BF#" + std::to_string(static_cast<int>(bf)));
+        for (auto bf : bfs) labels.push_back("BF#" + std::to_string(static_cast<int>(bf.raw())));
         uint32_t mask = (bfs.size() >= 32) ? 0xFFFFFFFFu : ((1u << bfs.size()) - 1);
         int chosen = pickMode(ctx, "Maduli: move to which enemy battlefield",
                               static_cast<int>(bfs.size()), labels, mask);

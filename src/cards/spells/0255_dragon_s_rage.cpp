@@ -41,7 +41,7 @@ public:
         ri.resume_point = kDone;
         RIFT_TRACE(ctx.events, "DRAGON'S RAGE: moved an enemy unit");
         ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
-                                           {static_cast<int32_t>(mover)});
+                                           {static_cast<int32_t>(mover.raw())});
     }
     bool hasReflexiveTrigger() const override { return true; }
     // `data[0]`: the unit that was moved. "Choose another enemy unit at its
@@ -49,7 +49,7 @@ public:
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& data) override {
         if (data.empty()) return;
-        const auto mover = static_cast<GameObjectId>(data[0]);
+        const auto mover = GameObjectId::fromRaw(data[0]);
         auto in_play = [&](GameObjectId id) {
             return ctx.state.objectExists(id) && ctx.state.getObject(id).isUnit() &&
                    ctx.state.getObject(id).location.has_value();

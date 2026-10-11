@@ -41,7 +41,7 @@ public:
         const bool can_pay = costAlreadyPaid(ctx) || ctx.executor.payableAnyPower(owner) >= 1;
         if (can_pay) legal |= 2u;
         for (size_t i = 0; i < bfs.size() && i < 30; ++i) {
-            labels.push_back("Play me for [A] to battlefield #" + std::to_string(bfs[i].id));
+            labels.push_back("Play me for [A] to battlefield #" + toString(bfs[i].id));
             if (can_pay && !ctx.state.player(owner).units_play_base_only &&
                 !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
                 *bfs[i].controller == owner)

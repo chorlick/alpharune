@@ -136,8 +136,8 @@ public:
         // each after its player said where. Re-entered at rp3 / rp4 with the
         // answer to the prompt that went out.
         auto finish = [&]() {
-            GameObjectId ctrl_b = static_cast<GameObjectId>(ri.resume_data[0]);
-            GameObjectId opp_b   = static_cast<GameObjectId>(ri.resume_data[1]);
+            GameObjectId ctrl_b = GameObjectId::fromRaw(ri.resume_data[0]);
+            GameObjectId opp_b   = GameObjectId::fromRaw(ri.resume_data[1]);
             if (ri.resume_point < 3) {
                 if (prompt_where(opp, opp_b)) { ri.resume_point = 3; return; }
                 play_banished(opp, opp_b, std::nullopt);
@@ -164,13 +164,13 @@ public:
             return;
         }
         if (ri.resume_point == 1) {
-            ri.resume_data[0] = static_cast<int32_t>(apply_banish(ctx.controller));
+            ri.resume_data[0] = static_cast<int32_t>((apply_banish(ctx.controller)).raw());
             if (prompt_banish(opp)) { ri.resume_point = 2; return; }
             finish();
             return;
         }
         if (ri.resume_point == 2) {
-            ri.resume_data[1] = static_cast<int32_t>(apply_banish(opp));
+            ri.resume_data[1] = static_cast<int32_t>((apply_banish(opp)).raw());
             finish();
             return;
         }

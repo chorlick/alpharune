@@ -62,7 +62,7 @@ public:
         if (ri.resume_point == kDone) return;
         auto picked_already = [&](GameObjectId id) {
             return std::find(ri.resume_data.begin(), ri.resume_data.end(),
-                             static_cast<int32_t>(id)) != ri.resume_data.end();
+                             static_cast<int32_t>(id.raw())) != ri.resume_data.end();
         };
         auto remaining = [&]() {
             std::vector<GameObjectId> out;
@@ -74,7 +74,7 @@ public:
             auto rest = remaining();
             if (std::find(rest.begin(), rest.end(), id) == rest.end())
                 id = rest.empty() ? kInvalidId : rest.front();
-            if (id != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(id));
+            if (id != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(id.raw()));
             ri.resume_point = 0;
         } else {
             ri.resume_data.clear();   // first entry: nothing picked yet
@@ -90,7 +90,7 @@ public:
             return;
         }
         std::vector<GameObjectId> chosen;
-        for (auto v : ri.resume_data) chosen.push_back(static_cast<GameObjectId>(v));
+        for (auto v : ri.resume_data) chosen.push_back(GameObjectId::fromRaw(v));
         ri.resume_point = kDone;
         recycle(chosen);
     }

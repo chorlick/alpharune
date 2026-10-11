@@ -282,7 +282,7 @@ TEST_F(SweepTriggersTest, MinotaurReckoner_StopsEffectMovesToBase) {
 TEST_F(SweepTriggersTest, BlueSentinel_HoldEffectsHereTriggerAnAdditionalTime) {
     auto sentinel = addUnit(P1, kBlueSentinel, 0, 0);
     state.battlefields[0].controller = P1;
-    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, 0); e.testHook_runChain(); });
+    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, BattlefieldId::fromRaw(0)); e.testHook_runChain(); });
     int scheduled = 0;
     for (const auto& da : state.delayed_abilities)
         if (da.source == sentinel && da.trigger == TriggerType::AtStartOfMain) ++scheduled;
@@ -295,7 +295,7 @@ TEST_F(SweepTriggersTest, BlueSentinel_DoesNotDoubleAHoldAtAnotherBattlefield) {
     auto other = addUnit(P1, kBlueSentinel, 0, 1);
     state.battlefields[1].controller = P1;
     // The Sentinel at battlefield 0 adds nothing to a hold at battlefield 1.
-    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, 1); e.testHook_runChain(); });
+    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, BattlefieldId::fromRaw(1)); e.testHook_runChain(); });
     int scheduled = 0;
     for (const auto& da : state.delayed_abilities)
         if (da.source == other) ++scheduled;
@@ -314,7 +314,7 @@ TEST_F(SweepTriggersTest, RedBrambleback_ConquerEffectsHereTriggerAnAdditionalTi
             if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
         return legal.front();
     });
-    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, 0); e.testHook_runChain(); },
+    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0)); e.testHook_runChain(); },
                &agent);
     EXPECT_EQ(obj(bramble).buff_count, 1);
     EXPECT_EQ(obj(other).buff_count, 1) << "the conquer effect triggered a second time";
@@ -1107,7 +1107,7 @@ TEST_F(SweepTriggersTest, Svellsongur_CountsAnAdditionalTimeEffectAgain) {
     state.battlefields[0].controller = P1;
     withEngine([&](GameEngine& e) {
         ASSERT_TRUE(e.testHook_executor().attachGear(sword, sentinel));
-        e.testHook_scoreHold(P1, 0);
+        e.testHook_scoreHold(P1, BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     });
     int scheduled = 0;
@@ -1317,7 +1317,7 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
         if (e.message.find("TGT_PROMPT") == std::string::npos) return;
         (e.isPublic() ? public_lines : hidden_lines)++;
     });
-    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, 0); e.testHook_runChain(); });
+    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0)); e.testHook_runChain(); });
     conn2.disconnect();
     (void)bramble;
     EXPECT_GE(public_lines, 1);
@@ -1731,7 +1731,7 @@ TEST_F(SweepTriggersTest, DelayedAbility_WatchedPlayerIsNotItsController) {
 
     // P1's own hold does not fire it.
     state.battlefields[0].controller = P1;
-    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, 0); e.testHook_runChain(); });
+    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, BattlefieldId::fromRaw(0)); e.testHook_runChain(); });
     EXPECT_EQ(obj(taken).zone, ZoneType::Banishment);
 
     // P2 holds a battlefield with a Blue Sentinel there.
@@ -1740,7 +1740,7 @@ TEST_F(SweepTriggersTest, DelayedAbility_WatchedPlayerIsNotItsController) {
     int ashe_items = 0;
     PlayerId item_controller = PlayerId::None;
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreHold(P2, 1);
+        e.testHook_scoreHold(P2, BattlefieldId::fromRaw(1));
         for (const auto& ci : e.mutableState().chain.items)
             if (ci.source == ashe) { ++ashe_items; item_controller = ci.controller; }
         e.testHook_runChain();
@@ -2170,7 +2170,7 @@ TEST_F(SweepTriggersTest, CombatParticipants_ARecalledAttackerOfARealTieWasInThe
         [&](const CombatEndedEvent& e) { results.push_back(e.winner); });
     int moved = 0;
     auto c2 = events.on_unit_moved.connect([&](const UnitMovedEvent& e) { if (e.object == attacker) ++moved; });
-    withEngine([&](GameEngine& e) { e.testHook_runCombat(0); e.testHook_runChain(); });
+    withEngine([&](GameEngine& e) { e.testHook_runCombat(BattlefieldId::fromRaw(0)); e.testHook_runChain(); });
     conn.disconnect(); c2.disconnect();
     ASSERT_EQ(results.size(), 1u);
     EXPECT_FALSE(results[0].has_value()) << "a tie";
@@ -2281,7 +2281,7 @@ TEST_F(SweepTriggersTest, KillWithASpell_HealedSpellDamageThenCombatDamageIsNotA
     withEngine([&](GameEngine& e) {
         e.testHook_executor().dealDamage(defender, 1, spell);      // P1's spell, not lethal
         e.mutableState().getObject(defender).damage_marked = 0;    // the damage is removed
-        e.testHook_runCombat(0);
+        e.testHook_runCombat(BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     });
     conn.disconnect();
@@ -2303,7 +2303,7 @@ TEST_F(SweepTriggersTest, KillWithASpell_SpellDamageStillMarkedCountsInCombat) {
     auto defender = addUnit(P2, kInvalidId, 3, 0);
     withEngine([&](GameEngine& e) {
         e.testHook_executor().dealDamage(defender, 1, spell);
-        e.testHook_runCombat(0);
+        e.testHook_runCombat(BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     });
     ASSERT_FALSE(obj(defender).location.has_value());
@@ -2540,7 +2540,7 @@ TEST_F(SweepTriggersTest, Reflexive_DeceiverTheCopyIsAChainItem) {
     auto asked = std::make_shared<int>(0);
     int asked_then = -1;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        const auto token = static_cast<GameObjectId>(ci.reflexive_data.at(0));
+        const auto token = GameObjectId::fromRaw(ci.reflexive_data.at(0));
         token_name_then = st.getObject(token).name;
         temporary_then = st.getObject(token).keywords.has(Keyword::Temporary);
         asked_then = *asked;
@@ -2720,7 +2720,7 @@ TEST_F(ReflexiveCardsTest, Guards) {
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Order)] = 1;
     bool exhausted_then = false; int power_then = -1;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        exhausted_then = st.getObject(static_cast<GameObjectId>(ci.reflexive_data.at(0))).is_exhausted;
+        exhausted_then = st.getObject(GameObjectId::fromRaw(ci.reflexive_data.at(0))).is_exhausted;
         power_then = st.player(P1).rune_pool.power[static_cast<int>(Domain::Order)];
     };
     cast(spell, {}, answers({}, {0}));
@@ -2738,7 +2738,7 @@ TEST_F(ReflexiveCardsTest, Arise) {
     bool exhausted_then = false;
     GameObjectId token = kInvalidId;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        token = static_cast<GameObjectId>(ci.reflexive_data.at(0));
+        token = GameObjectId::fromRaw(ci.reflexive_data.at(0));
         exhausted_then = st.getObject(token).is_exhausted;
     };
     // The one token is the first (lowest-id) object offered; answered by a
@@ -2834,7 +2834,7 @@ TEST_F(ReflexiveCardsTest, MirrorImage) {
     auto spell = addToHand(P1, 757);
     std::string name_then; bool temporary_then = true;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        const auto& t = st.getObject(static_cast<GameObjectId>(ci.reflexive_data.at(0)));
+        const auto& t = st.getObject(GameObjectId::fromRaw(ci.reflexive_data.at(0)));
         name_then = t.name;
         temporary_then = t.keywords.has(Keyword::Temporary);
     };
@@ -2902,7 +2902,7 @@ TEST_F(ReflexiveCardsTest, KeeperOfMasks) {
     int blank_then = 0;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
         for (auto v : ci.reflexive_data)
-            if (st.getObject(static_cast<GameObjectId>(v)).card_def_id != kKeeper) ++blank_then;
+            if (st.getObject(GameObjectId::fromRaw(v)).card_def_id != kKeeper) ++blank_then;
     };
     trigger(keeper, TriggerType::WhenYouPlayMe, answers({}));
     EXPECT_EQ(blank_then, 2) << "two Reflections, not yet copies";

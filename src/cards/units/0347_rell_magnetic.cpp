@@ -49,7 +49,7 @@ public:
                                       LocationId{BaseLocation{ctx.controller}});
         if (ctx.state.getObject(eq).location.has_value())
             ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
-                                               {static_cast<int32_t>(eq)});
+                                               {static_cast<int32_t>(eq.raw())});
         RIFT_TRACE(ctx.events, "RELL MAGNETIC: played an Equipment (free)");
     }
     bool hasReflexiveTrigger() const override { return true; }
@@ -58,7 +58,7 @@ public:
                             const std::vector<int32_t>& data) override {
         if (finalizingChoices(ctx)) return;   // nothing to choose
         if (data.empty()) return;
-        const auto eq = static_cast<GameObjectId>(data[0]);
+        const auto eq = GameObjectId::fromRaw(data[0]);
         // Only while both are still on the board: an Equipment can't follow a
         // unit that left it.
         if (ctx.state.objectExists(eq) && ctx.state.getObject(eq).location.has_value() &&

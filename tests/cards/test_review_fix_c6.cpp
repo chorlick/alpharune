@@ -147,13 +147,13 @@ protected:
     void conquer(int bf, AgentInterface* agent = nullptr,
                  std::optional<PlayerId> from = std::nullopt) {
         withEngine([&](GameEngine& e) {
-            e.testHook_scoreConquer(P1, static_cast<BattlefieldId>(bf), from);
+            e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(bf), from);
             e.testHook_runChain();
         }, agent);
     }
     void hold(int bf, AgentInterface* agent = nullptr) {
         withEngine([&](GameEngine& e) {
-            e.testHook_scoreHold(P1, static_cast<BattlefieldId>(bf));
+            e.testHook_scoreHold(P1, BattlefieldId::fromRaw(bf));
             e.testHook_runChain();
         }, agent);
     }
@@ -182,7 +182,7 @@ protected:
     int might(GameObjectId id) { return o(id).current_might; }
     bool atBf(GameObjectId id, int bf) {
         auto b = o(id).battlefieldId();
-        return b.has_value() && static_cast<int>(*b) == bf;
+        return b.has_value() && static_cast<int>((*b).raw()) == bf;
     }
     int goldTokens(PlayerId p) {
         int n = 0;
@@ -266,7 +266,7 @@ TEST_F(C6Test, AzirSovereign_MovesOnlyTheTokensThePlayerNames) {
     auto azir = addUnit(P1, kAzirSovereign, 0, 0);
     auto t1 = token(P1, 1);
     auto t2 = token(P1, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(t1), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(t1.raw()), 0}));
     fireTriggerThroughEngine(azir, TriggerType::WhenIAttack, &agent);
     EXPECT_TRUE(atBf(t1, 0));
     EXPECT_TRUE(atBf(t2, 1)) << "the token holding the other battlefield stays";
@@ -320,7 +320,7 @@ TEST_F(C6Test, Bard_MovesTheUnitsThePlayerNamesToTheOpenBattlefield) {
     auto u1 = vanilla(P1, 2);
     auto u2 = vanilla(P1, 2);
     auto bard = addToHand(P1, kBard);
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(u1), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(u1.raw()), 0}));
     playThroughEngine(bard, &agent);
     EXPECT_TRUE(o(leg).is_exhausted);
     EXPECT_TRUE(atBf(u1, 1));
@@ -512,7 +512,7 @@ TEST_F(C6Test, YetiBrawler_NeedsThreeExcessDamage) {
 TEST_F(C6Test, YetiBrawler_PlaysTwoExhaustedGoldWithThreeExcess) {
     addUnit(P1, kYetiBrawler, 0, 0);
     state.battlefields[0].controller = P1;
-    ps(P1).last_combat_bf = 0;
+    ps(P1).last_combat_bf = BattlefieldId::fromRaw(0);
     ps(P1).excess_combat_damage = 3;
     conquer(0);
     EXPECT_EQ(goldTokens(P1), 2);
@@ -637,7 +637,7 @@ TEST_F(C6Test, Ivern_DrawsTheUnitThePlayerPicksAndBuffsTheChosenUnit) {
     auto third = addToDeck(P1, kDiplomat);
     auto cat = addToDeck(P1, kMutatedMouser);
     auto top = addToDeck(P1, kDiplomat);       // the first unit seen
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(cat), static_cast<int>(ally)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(cat.raw()), static_cast<int>(ally.raw())}));
     fireTriggerThroughEngine(ivern, TriggerType::WhenIHold, &agent);
     EXPECT_TRUE(inHand(P1, cat));
     EXPECT_TRUE(inDeck(P1, top));
@@ -816,7 +816,7 @@ TEST_F(C6Test, KeeperOfMasks_ZileansExtraReflectionBecomesACopyToo) {
 
 TEST_F(C6Test, LilliaFawn_PlaysTheSpriteWhereSheMovedFromExhausted) {
     auto lillia = addUnit(P1, kLilliaFawn);
-    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(lillia, 0); });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(lillia, BattlefieldId::fromRaw(0)); });
     GameObjectId sprite = kInvalidId;
     for (auto& [id, obj] : state.objects)
         if (obj.isToken() && obj.isUnit() && obj.name == "Sprite") sprite = id;
@@ -894,7 +894,7 @@ TEST_F(C6Test, ImposingChallenger_ThePlayerPicksTheDestination) {
     auto imp = addUnit(P1, kImposingChallenger, 0, 0);
     auto enemy = vanilla(P2, 2, 0);
     // Yes; the enemy unit; then destination #2 (the second of {1, 2}).
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(enemy), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(enemy.raw()), 1}));
     fireTriggerThroughEngine(imp, TriggerType::WhenIMove, &agent);
     EXPECT_TRUE(atBf(enemy, 2));
 }
@@ -974,7 +974,7 @@ TEST_F(C6Test, ElderDragon_ChoosesUpToOnePerLocation) {
     auto base_b = vanilla(P2, 5);
     auto at_bf = vanilla(P2, 5, 0);
     // The base: base_b. Battlefield 0: nobody.
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(base_b), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(base_b.raw()), 0}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u);
     EXPECT_EQ(o(base_a).damage_marked, 0);

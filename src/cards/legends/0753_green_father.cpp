@@ -51,7 +51,7 @@ public:
         ctx.executor.replaceBattlefieldWithToken(target, "Brush", ctx.controller,
                                                   /*token_def=*/561);   // the Brush card
         RIFT_TRACE(ctx.events, "GREEN FATHER: exhausted to replace BF#" +
-                             std::to_string(target) + " with Brush token");
+                             toString(target) + " with Brush token");
     }
 private:
     const CardDef def_ = [] {

@@ -381,7 +381,7 @@ TEST_F(C7Test, AsheFocused_TheBanishedCardReturnsWhenTheyHold) {
     // A conquer is not a hold.
     addUnit(P2, kInvalidId, 2, 0);
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreConquer(P2, 0);
+        e.testHook_scoreConquer(P2, BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     });
     EXPECT_TRUE(banished(P2, taken));
@@ -390,7 +390,7 @@ TEST_F(C7Test, AsheFocused_TheBanishedCardReturnsWhenTheyHold) {
     resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(ashe); });
     state.battlefields[1].controller = P2;
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreHold(P2, 1);
+        e.testHook_scoreHold(P2, BattlefieldId::fromRaw(1));
         e.testHook_runChain();
     }, nullptr, nullptr, P2);
     EXPECT_TRUE(inHand(P2, taken)) << "when they hold, it returns to their hand";
@@ -556,11 +556,11 @@ TEST_F(C7Test, BladeTwirler_OnlyTheFirstMoveOfTheTurnBurns) {
     auto twirler = addUnit(P1, kBladeTwirler);
     for (int i = 0; i < 3; ++i) addToDeck(P2, kIncinerate);
     EnginePathAgent agent;   // mode 0: the opponent burns
-    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(twirler, 0); },
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(twirler, BattlefieldId::fromRaw(0)); },
                          &agent);
     EXPECT_EQ(agent.prompts.size(), 1u) << "choose a player";
     EXPECT_EQ(trashSize(P2), 1);
-    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(twirler, 1); });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(twirler, BattlefieldId::fromRaw(1)); });
     EXPECT_EQ(trashSize(P2), 1) << "the second move of the turn does not trigger";
 }
 
@@ -677,12 +677,12 @@ TEST_F(C7Test, Kharox_PlaysTheUnitWhereItsNewControllerChooses) {
     for (int i = 0; i < 3; ++i) addToDeck(P2, kIncinerate);
     auto corpse = inTrashOf(P2, kLoyalPoro);
     // yes; the unit; battlefield #0
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(corpse), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(corpse.raw()), 1}));
     fireTriggerThroughEngine(kharox, TriggerType::WhenIBecomeEmpowered, &agent);
     EXPECT_EQ(trashSize(P2), 3) << "burned 3 exactly once; the unit left the trash";
     EXPECT_FALSE(inTrash(P2, corpse));
     EXPECT_EQ(o(corpse).controller, P1);
-    EXPECT_EQ(o(corpse).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(corpse).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(C7Test, TailCloakedMatriarch_PlaysTheUnitToBaseAndOutOfTheTrash) {
@@ -694,7 +694,7 @@ TEST_F(C7Test, TailCloakedMatriarch_PlaysTheUnitToBaseAndOutOfTheTrash) {
     // prompt fails the strict script).
     EnginePathAgent agent(EnginePathAgent::script({
         1,                          // "may choose a unit in your trash": yes
-        static_cast<int>(corpse),   // which unit (Loyal Poro, the only one)
+        static_cast<int>(corpse.raw()),   // which unit (Loyal Poro, the only one)
     }));
     fireTriggerThroughEngine(matriarch, TriggerType::WhenIBecomeEmpowered, &agent);
     EXPECT_TRUE(o(corpse).isAtBase()) << "\"Play it to your base\"";
@@ -709,7 +709,7 @@ TEST_F(C7Test, ZedAndIllaoi_TheTokenGoesWhereItsControllerChooses) {
     fireTriggerThroughEngine(zed, TriggerType::WhenYouPlayMe, &to_bf);
     auto clones = tokensNamed(P1, "Shadow Clone");
     ASSERT_EQ(clones.size(), 1u);
-    EXPECT_EQ(o(clones[0]).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(clones[0]).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(o(clones[0]).card_def_id, kShadowClone);
 
     auto illaoi = addUnit(P1, kIllaoiProphet);
@@ -717,7 +717,7 @@ TEST_F(C7Test, ZedAndIllaoi_TheTokenGoesWhereItsControllerChooses) {
     fireTriggerThroughEngine(illaoi, TriggerType::WhenYouPlayMe, &to_bf2);
     auto tentacles = tokensNamed(P1, "Tentacle");
     ASSERT_EQ(tentacles.size(), 1u);
-    EXPECT_EQ(o(tentacles[0]).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(tentacles[0]).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // ─── batch-07: missing effects ──────────────────────────────────────────────

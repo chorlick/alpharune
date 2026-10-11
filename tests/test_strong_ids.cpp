@@ -6,12 +6,14 @@
 // run by the `riftbound_strong_id_*` ctests.
 #include <gtest/gtest.h>
 
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/card_db.h"
 #include "core/events.h"
 #include "core/game_state.h"
 #include "core/intent.h"
 #include "core/types.h"
+#include "engine/effect_executor.h"
 #include "openspiel/action_vocab.h"
 #include "rules/deck_validator.h"
 
@@ -75,7 +77,44 @@ concept DoNotMix =
     !requires(std::vector<A> v, B b) { v.push_back(b); } &&
     !requires(std::unordered_map<A, int> m, B b) { m.find(b); };
 
+// kInvalidId is "none" for an id and nothing else: not a number by itself.
+static_assert(!std::is_convertible_v<InvalidId, uint32_t>);
+static_assert(!std::is_convertible_v<InvalidId, int>);
+static_assert(!std::is_constructible_v<int, InvalidId>);
+template <class N>
+concept ComparesWithNone = requires(N n) { n == kInvalidId; };
+static_assert(!ComparesWithNone<int> && !ComparesWithNone<uint32_t>);
+static_assert(ComparesWithNone<GameObjectId> && ComparesWithNone<CardDefId>);
+static_assert(StrongIdShape<GameObjectId>);
+static_assert(TakesNoNumber<GameObjectId>);
+static_assert(DoNotMix<GameObjectId, CardDefId>);
+static_assert(DoNotMix<GameObjectId, BattlefieldId>);
+static_assert(DoNotMix<GameObjectId, ChainItemId>);
+static_assert(DoNotMix<GameObjectId, AbilityId>);
+// The mix-up CLAUDE.md warns about: Card::cardDefId() where ctx.source belongs.
+static_assert(!std::is_invocable_v<const GameObject& (GameState::*)(GameObjectId) const,
+                                   const GameState&, CardDefId>);
+static_assert(std::is_invocable_v<const GameObject& (GameState::*)(GameObjectId) const,
+                                  const GameState&, GameObjectId>);
 static_assert(StrongIdShape<CardDefId>);
+static_assert(StrongIdShape<BattlefieldId>);
+static_assert(TakesNoNumber<BattlefieldId>);
+static_assert(DoNotMix<CardDefId, BattlefieldId>);
+static_assert(StrongIdShape<ChainItemId>);
+static_assert(TakesNoNumber<ChainItemId>);
+static_assert(StrongIdShape<AbilityId>);
+static_assert(TakesNoNumber<AbilityId>);
+static_assert(DoNotMix<CardDefId, ChainItemId>);
+static_assert(DoNotMix<CardDefId, AbilityId>);
+static_assert(DoNotMix<BattlefieldId, ChainItemId>);
+static_assert(DoNotMix<BattlefieldId, AbilityId>);
+static_assert(DoNotMix<ChainItemId, AbilityId>);
+// A location is not an id, and takes a slot number only as a literal spelled
+// with its type (`BattlefieldLocation{0}`), never by itself.
+static_assert(!std::is_convertible_v<int, BattlefieldLocation>);
+static_assert(!std::is_convertible_v<int, LocationId>);
+static_assert(std::is_convertible_v<BattlefieldId, BattlefieldLocation>);
+static_assert(!std::is_constructible_v<BattlefieldLocation, CardDefId>);
 
 // ── Values ──────────────────────────────────────────────────────────────────
 
@@ -86,9 +125,9 @@ TEST(StrongIds, NoneIsTheDefaultAndIsUint32Max) {
     EXPECT_EQ(none.raw(), 4294967295u);
     EXPECT_EQ(CardDefId{kInvalidId}.raw(), 4294967295u);
     // The number a plain integer slot holds for "none", as before.
-    const uint32_t raw_none = kInvalidId;
+    const uint32_t raw_none = kInvalidId.raw();
     EXPECT_EQ(raw_none, 4294967295u);
-    EXPECT_EQ(static_cast<int32_t>(kInvalidId), -1);
+    EXPECT_EQ(static_cast<int32_t>(kInvalidId.raw()), -1);
     // -1 read back from a signed slot is none.
     EXPECT_EQ(CardDefId::fromRaw(int32_t{-1}), kInvalidId);
 }
@@ -129,6 +168,56 @@ TEST(StrongIds, OrderAndHashAreTheNumbers) {
     std::vector<uint32_t> got;
     for (auto id : ordered) got.push_back(id.raw());
     EXPECT_EQ(got, (std::vector<uint32_t>{2, 5, 9, 4294967295u}));
+}
+
+TEST(StrongIds, ABattlefieldIdIsItsSlot) {
+    GameState state;
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        BattlefieldState bf;
+        bf.id = BattlefieldId::fromRaw(slot);
+        state.battlefields.push_back(bf);
+    }
+    // The list is indexed by position and by id alike.
+    EXPECT_EQ(&state.battlefields[1], &state.battlefields[BattlefieldId::fromRaw(1)]);
+    EXPECT_EQ(state.battlefields[BattlefieldId::fromRaw(2)].id.raw(), 2u);
+    EXPECT_EQ(BattlefieldLocation{2}.id, BattlefieldId::fromRaw(2));
+    EXPECT_EQ(BattlefieldLocation{}.id, kInvalidId);
+    EXPECT_EQ(BattlefieldLocation{kInvalidId}.id, kInvalidId);
+    EXPECT_EQ(GameObject{}.hidden_at, kInvalidId);
+    EXPECT_EQ(Intent{}.chosen_battlefield, kInvalidId);
+    EXPECT_EQ(std::hash<BattlefieldId>{}(BattlefieldId::fromRaw(3)), std::hash<uint32_t>{}(3u));
+}
+
+TEST(StrongIds, ChainItemIdsCountUpFromOne) {
+    ChainState chain;
+    EXPECT_EQ(chain.allocateId().raw(), 1u);
+    EXPECT_EQ(chain.allocateId().raw(), 2u);
+    EXPECT_EQ(chain.next_id.raw(), 3u);
+    EXPECT_EQ(ChainItem{}.id, kInvalidId);
+    EXPECT_EQ(Intent{}.ability, kInvalidId);
+    // A death batch that was never begun takes every chain item as its own.
+    EXPECT_EQ(DeathBatchMark{}.first_item.raw(), 0u);
+}
+
+TEST(StrongIds, ObjectIdsCountUpFromOneAndKeyTheTableByNumber) {
+    GameState state;
+    const GameObjectId a = state.createObject();
+    const GameObjectId b = state.createObject();
+    EXPECT_EQ(a.raw(), 1u);
+    EXPECT_EQ(b.raw(), 2u);
+    EXPECT_EQ(state.getObject(b).id, b);
+    EXPECT_EQ(GameObject{}.id, kInvalidId);
+    EXPECT_EQ(Intent{}.card, kInvalidId);
+    EXPECT_FALSE(state.objectExists(kInvalidId));
+    EXPECT_FALSE(state.objectExists(GameObjectId{}));
+    // The slots cards keep ids in hold the number, -1 for none.
+    const std::vector<int32_t> slots = {static_cast<int32_t>(b.raw()),
+                                        static_cast<int32_t>(kInvalidId.raw()), 7};
+    const auto ids = objectIdsFromRaw(slots);
+    ASSERT_EQ(ids.size(), 3u);
+    EXPECT_EQ(ids[0], b);
+    EXPECT_EQ(ids[1], kInvalidId);
+    EXPECT_EQ(ids[2].raw(), 7u);
 }
 
 // ── One "none" per kind: the places that used 0 for "no card" ───────────────
@@ -199,6 +288,40 @@ TEST(StrongIds, TheHistoryTokenOfAnOwnAbilityKeptItsNumber) {
     as_zero.granted_ability_def = CardDefId::fromRaw(0);
     EXPECT_EQ(own_token, openspiel::historyToken(as_zero, state))
         << "none must be fed to the token as the 0 it used to be";
+}
+
+TEST(StrongIds, HistoryTokensAndSlotsAreTheNumbersOfTheBinaryBeforeIdsWereTypes) {
+    // Recorded from a build of fcfa93b (ids still plain integers) with the same
+    // intents on a default GameState. A trainer replay or a saved game holds
+    // these numbers.
+    GameState state;
+    Intent own;
+    own.type = IntentType::ActivateAbility;
+    own.player = PlayerId::Player1;
+    own.ability_source = GameObjectId::fromRaw(9);
+    EXPECT_EQ(openspiel::historyToken(own, state), 3611872453840603442LL);
+    EXPECT_EQ(openspiel::encodeAction(own, state), 2354);
+
+    Intent granted = own;
+    granted.granted_ability_def = 506;
+    EXPECT_EQ(openspiel::historyToken(granted, state), 9183008626965481778LL);
+
+    Intent named;  // "name a card": a MakeChoice that carries a card id
+    named.type = IntentType::MakeChoice;
+    named.player = PlayerId::Player2;
+    named.chosen_card_def = 235;
+    EXPECT_EQ(openspiel::historyToken(named, state), 7576281683122461517LL);
+    EXPECT_EQ(openspiel::encodeAction(named, state), 6989);
+
+    Intent bf;
+    bf.type = IntentType::ChooseBattlefield;
+    bf.player = PlayerId::Player1;
+    bf.chosen_battlefield = BattlefieldId::fromRaw(1);
+    EXPECT_EQ(openspiel::historyToken(bf, state), 4557704407380131852LL);
+    EXPECT_EQ(openspiel::encodeAction(bf, state), 12);
+
+    EXPECT_EQ(openspiel::historyToken(Intent::endTurn(PlayerId::Player1), state),
+              3408968969468510209LL);
 }
 
 }  // namespace riftbound::test::strong_ids

@@ -30,7 +30,7 @@ Scene buildScene(GameEngine& engine) {
     s.players[0].id = PlayerId::Player1;
     s.players[1].id = PlayerId::Player2;
     s.battlefields.push_back(BattlefieldState{});
-    s.battlefields.back().id = 0;
+    s.battlefields.back().id = BattlefieldId::fromRaw(0);
 
     // P1's controlling source (Akshan stand-in) at the battlefield.
     auto source = s.createObject();

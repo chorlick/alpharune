@@ -806,7 +806,7 @@ TEST_F(JhinDeckTest, LotusTrap_FacedownDiscardedOnBFControlLoss) {
     state.battlefields[0].facedown.push_back(trap);
     state.getObject(trap).zone = ZoneType::FacedownZone;
     state.getObject(trap).is_hidden = true;
-    state.getObject(trap).hidden_at = 0;
+    state.getObject(trap).hidden_at = BattlefieldId::fromRaw(0);
 
     // P1 loses control to P2 — engine's updateBattlefieldControl scrubs
     // mismatched facedown. We replicate that bounded logic here.
@@ -1421,10 +1421,10 @@ TEST_F(JhinDeckTest, UncheckedPower_IncludesTokenBattlefieldUnits) {
     auto u_main = addUnit(P2, kInvalidId, 15, /*at_bf=*/0);
     // Add a 3rd BF (token).
     BattlefieldState bf2;
-    bf2.id = static_cast<int>(state.battlefields.size());
+    bf2.id = BattlefieldId::fromRaw(state.battlefields.size());
     bf2.is_token = true;
     state.battlefields.push_back(bf2);
-    auto u_token = addUnit(P2, kInvalidId, 15, /*at_bf=*/bf2.id);
+    auto u_token = addUnit(P2, kInvalidId, 15, /*at_bf=*/static_cast<int>(bf2.id.raw()));
 
     auto src = addToHand(P1, 123);
     EffectExecutor exec(state, events, card_db);
@@ -1598,7 +1598,7 @@ TEST_F(JhinDeckTest, HextechAnomaly_VariableX_ZeroIsLegalNoOp) {
         Intent zero = pending.legal.front();
         for (const auto& it : pending.legal) {
             if (!it.chosen_objects.empty() &&
-                static_cast<int>(it.chosen_objects[0]) == 1) {
+                static_cast<int>(it.chosen_objects[0].raw()) == 1) {
                 zero = it; break;
             }
         }

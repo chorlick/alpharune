@@ -685,7 +685,7 @@ TEST_F(EnginePathTest, ThrillOfTheHuntBanishesItsUnitOnce) {
     EXPECT_EQ(banished_events, 1) << "banished once, not once per pass";
     EXPECT_EQ(state.player(P1).cards_banished_this_turn, 1);
     ASSERT_TRUE(state.getObject(unit).battlefieldId().has_value());
-    EXPECT_EQ(*state.getObject(unit).battlefieldId(), 1u) << "played to the chosen battlefield";
+    EXPECT_EQ(*state.getObject(unit).battlefieldId(), BattlefieldId::fromRaw(1)) << "played to the chosen battlefield";
     const auto& bz = state.player(P1).banishment;
     EXPECT_EQ(std::count(bz.begin(), bz.end(), unit), 0) << "it is on the board, not in banishment";
 }
@@ -715,7 +715,7 @@ TEST_F(EnginePathTest, ZenithBladeStunsOnce) {
     EXPECT_FALSE(state.getObject(gangplank).is_stunned) << "replaced";
     EXPECT_EQ(state.getObject(gangplank).temp_might_bonus, 3) << "the stun was attempted once";
     ASSERT_TRUE(state.getObject(friendly).battlefieldId().has_value());
-    EXPECT_EQ(*state.getObject(friendly).battlefieldId(), 0u) << "and the move still happens";
+    EXPECT_EQ(*state.getObject(friendly).battlefieldId(), BattlefieldId::fromRaw(0)) << "and the move still happens";
 }
 
 // ─── 7.1 — target-less triggers, seen from the engine ───────────────────────

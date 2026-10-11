@@ -48,7 +48,7 @@ public:
             // Predict 1: peek top, publish recycle/keep choice.
             if (ps.main_deck.empty()) { ri.resume_point = 2; return; }
             auto top_card = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
-            ri.resume_data = {static_cast<int32_t>(top_card)};
+            ri.resume_data = {static_cast<int32_t>(top_card.raw())};
 
             std::vector<Intent> choices;
             Intent recycle;
@@ -72,7 +72,7 @@ public:
             auto choice = ctx.executor.takeChoice();
             ri.resume_point = 2;
             if (ri.resume_data.empty()) return;
-            auto top_card = static_cast<GameObjectId>(ri.resume_data[0]);
+            auto top_card = GameObjectId::fromRaw(ri.resume_data[0]);
             if (!ctx.state.objectExists(top_card)) return;
 
             std::string n = ctx.state.getObject(top_card).name;

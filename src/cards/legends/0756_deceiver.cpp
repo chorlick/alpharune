@@ -106,7 +106,7 @@ public:
             // players may respond before it resolves.
             ctx.executor.queueReflexiveTrigger(
                 ctx.source, ctx.controller, kBecomeACopy,
-                {static_cast<int32_t>(token), bf.has_value() ? static_cast<int32_t>(*bf) + 1 : 0});
+                {static_cast<int32_t>(token.raw()), bf.has_value() ? static_cast<int32_t>((*bf).raw()) + 1 : 0});
         }
     }
 
@@ -116,7 +116,7 @@ public:
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& data) override {
         if (data.size() < 2) return;
-        const auto token = static_cast<GameObjectId>(data[0]);
+        const auto token = GameObjectId::fromRaw(data[0]);
         auto token_in_play = [&]() {
             return ctx.state.objectExists(token) &&
                    ctx.state.getObject(token).location.has_value();
@@ -126,7 +126,7 @@ public:
         // offered).
         std::vector<GameObjectId> models;
         if (data[1] != 0 && token_in_play()) {
-            const auto bf = static_cast<BattlefieldId>(data[1] - 1);
+            const auto bf = BattlefieldId::fromRaw(data[1] - 1);
             models = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
                 return o.id != token && o.battlefieldId() == bf;
             });

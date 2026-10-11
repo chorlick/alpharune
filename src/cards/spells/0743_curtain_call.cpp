@@ -44,7 +44,7 @@ public:
         // Modes used by earlier executions of THIS play (none unless
         // repeated). Direct invocations with no chain item count as one play.
         const int play = ctx.state.chain.resuming.has_value()
-            ? static_cast<int>(ctx.state.chain.resuming->id) + 1 : 0;
+            ? static_cast<int>(ctx.state.chain.resuming->id.raw()) + 1 : 0;
         const int used_mask = counters[kPlayKey] == play ? counters[kMaskKey] : 0;
 
         const auto at_bf = chooseableUnits(ctx.state, ctx.controller,

@@ -110,7 +110,7 @@ bool boolFieldOr(const json& m, const char* key, bool fallback) {
 uint32_t idField(const json& m, const char* key) {
     auto v = intField(m, key);
     if (!v || *v < 0 || *v > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-        return static_cast<uint32_t>(kInvalidId);
+        return static_cast<uint32_t>(kInvalidId.raw());
     }
     return static_cast<uint32_t>(*v);
 }
@@ -512,12 +512,12 @@ private:
 
     void handleEditMove(const json& m) {
         applyEdit([&](GameState& state) {
-            GameObjectId oid = static_cast<GameObjectId>(idField(m, "object_id"));
+            GameObjectId oid = GameObjectId::fromRaw(idField(m, "object_id"));
             std::string zone_str = strField(m, "to_zone");
             auto zone = strToZone(zone_str);
             if (!zone) return EditResult::fail("unknown to_zone: '" + zone_str + "'");
             if (*zone == ZoneType::BattlefieldZone) {
-                BattlefieldId bid = static_cast<BattlefieldId>(idField(m, "battlefield_id"));
+                BattlefieldId bid = BattlefieldId::fromRaw(idField(m, "battlefield_id"));
                 return impl_.editor.moveObjectToBattlefield(state, oid, bid);
             }
             return impl_.editor.moveObject(state, oid, strToPlayer(strField(m, "to_player")),
@@ -527,7 +527,7 @@ private:
 
     void handleEditObject(const json& m) {
         applyEdit([&](GameState& state) {
-            GameObjectId oid = static_cast<GameObjectId>(idField(m, "object_id"));
+            GameObjectId oid = GameObjectId::fromRaw(idField(m, "object_id"));
             std::string field = strField(m, "field");
             if (field == "exhausted") return impl_.editor.setObjectExhausted(state, oid, boolFieldOr(m, "value", false));
             if (field == "damage")    return impl_.editor.setObjectDamage(state, oid, intFieldOr(m, "value", 0));
@@ -573,7 +573,7 @@ private:
                 if (!v.is_number_integer()) {
                     return EditResult::fail("order must be an array of object ids");
                 }
-                order.push_back(static_cast<GameObjectId>(
+                order.push_back(GameObjectId::fromRaw(
                     idField(json{{"id", v}}, "id")));
             }
             return impl_.editor.reorderMainDeck(state, strToPlayer(strField(m, "player")), order);
@@ -755,7 +755,7 @@ json buildLegalActionJson(const CardDB& db,
         // the renderer's regular path handles those.)
         if (a.type == IntentType::ChooseBattlefield) {
             const auto& pool = state.player(a.player).battlefield_pool;
-            auto idx = static_cast<size_t>(a.chosen_battlefield);
+            auto idx = static_cast<size_t>(a.chosen_battlefield.raw());
             if (idx < pool.size()) {
                 const auto& def = db.get(pool[idx]);
                 label = "Choose battlefield: " + def.name;
@@ -777,8 +777,8 @@ json buildLegalActionJson(const CardDB& db,
             {"label", label.empty() ? a.describe() : label},
             {"type",  a.describe().substr(0, a.describe().find('('))},
         };
-        if (a.card != kInvalidId) item["card_object_id"] = static_cast<int>(a.card);
-        if (a.ability_source != kInvalidId) item["ability_source"] = static_cast<int>(a.ability_source);
+        if (a.card != kInvalidId) item["card_object_id"] = static_cast<int>(a.card.raw());
+        if (a.ability_source != kInvalidId) item["ability_source"] = static_cast<int>(a.ability_source.raw());
         arr.push_back(std::move(item));
     }
     return arr;
@@ -790,10 +790,10 @@ json objToJson(const CardDB& db, const GameState& state, GameObjectId oid) {
     if (obj.card_def_id != kInvalidId) {
         name = db.get(obj.card_def_id).name;
     } else {
-        name = obj.name.empty() ? "(token)" : obj.name;
+        name = obj.name.empty() ? "(token)" : obj.name.get();
     }
     return json{
-        {"id", static_cast<int>(oid)},
+        {"id", static_cast<int>(oid.raw())},
         {"name", name},
         {"exhausted", obj.is_exhausted},
         {"damage", obj.damage_marked},
@@ -871,7 +871,7 @@ json buildBattlefieldsJson(const CardDB& db, const GameState& state) {
         if (bf.contributed_by == PlayerId::Player1) contributor_str = "P1";
         else if (bf.contributed_by == PlayerId::Player2) contributor_str = "P2";
         arr.push_back(json{
-            {"id", static_cast<int>(bf.id)},
+            {"id", static_cast<int>(bf.id.raw())},
             {"name", std::move(name)},
             {"controller", controller_str},
             {"contributed_by", contributor_str},

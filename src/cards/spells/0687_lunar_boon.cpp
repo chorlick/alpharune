@@ -50,7 +50,7 @@ public:
             if (choice && !choice->chosen_objects.empty()) {
                 auto cid = choice->chosen_objects[0];
                 std::string n = ctx.state.objectExists(cid)
-                    ? ctx.state.getObject(cid).name : "card";
+                    ? ctx.state.getObject(cid).name.get() : "card";
                 RIFT_TRACE(ctx.events, "LUNAR BOON: discarded " + n);
                 ctx.executor.applyDiscard(ctx.controller, cid);
             }
@@ -63,7 +63,7 @@ public:
             for (size_t i = before; i < ps.hand.size(); ++i) {
                 auto did = ps.hand[i];
                 std::string dn = ctx.state.objectExists(did)
-                    ? ctx.state.getObject(did).name : "card";
+                    ? ctx.state.getObject(did).name.get() : "card";
                 RIFT_TRACE(ctx.events, "LUNAR BOON: drew " + dn +
                                      " — PRIVATE to " + toString(ctx.controller));
             }

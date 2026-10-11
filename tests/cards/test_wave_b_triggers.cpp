@@ -75,7 +75,7 @@ TEST_F(TriggerClusterTest, StealthyPursuer_FollowsTheMover) {
     state.chain.resuming.reset();
     auto bf = state.getObject(stealthy).battlefieldId();
     ASSERT_TRUE(bf.has_value());
-    EXPECT_EQ(*bf, 1u) << "Stealthy Pursuer follows the moved unit to bf 1";
+    EXPECT_EQ(*bf, BattlefieldId::fromRaw(1)) << "Stealthy Pursuer follows the moved unit to bf 1";
 }
 
 // ── Group A trigger-dispatch cards ─────────────────────────────────────────
@@ -205,7 +205,7 @@ TEST_F(TriggerClusterTest, MaskOfForesight_EnqueuesOnSoloCombat) {
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = state.chain.items.size();
-    events.emit(CombatStartedEvent{0, P1, P2});
+    events.emit(CombatStartedEvent{BattlefieldId::fromRaw(0), P1, P2});
     EXPECT_GT(state.chain.items.size(), before)
         << "a lone attacker should enqueue Mask of Foresight";
 }
@@ -219,7 +219,7 @@ TEST_F(TriggerClusterTest, LoyalPup_MovesToDefendedBattlefield) {
         [](const std::vector<Intent>& l){ return l.back(); });  // "yes"
     auto bf = state.getObject(pup).battlefieldId();
     ASSERT_TRUE(bf.has_value());
-    EXPECT_EQ(*bf, 1u);
+    EXPECT_EQ(*bf, BattlefieldId::fromRaw(1));
 }
 
 TEST_F(TriggerClusterTest, ApheliosExalted_EnqueuesOnEquip) {

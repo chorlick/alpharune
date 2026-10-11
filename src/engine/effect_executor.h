@@ -47,7 +47,7 @@ class EffectExecutor;
 /// (EffectExecutor::beginDeathBatch / endDeathBatch.)
 /// What EffectExecutor::beginDeathBatch hands to endDeathBatch.
 struct DeathBatchMark {
-    ChainItemId first_item = 0;                 // chain ids from here on are the batch's
+    ChainItemId first_item = ChainItemId::fromRaw(0);  // chain ids from here on are the batch's
     OpenClosedState oc_state = OpenClosedState::Open;
     bool chain_was_empty = true;
 };

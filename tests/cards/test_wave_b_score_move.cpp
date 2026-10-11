@@ -23,7 +23,7 @@ TEST_F(ScoreMoveTest, SumpworksMap_EnqueuesWhenOpponentScores) {
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = state.chain.items.size();
-    events.emit(ScoreEvent{P1, /*bf=*/0, ScoreMethod::Conquer, /*new_score=*/1});
+    events.emit(ScoreEvent{P1, /*bf=*/BattlefieldId::fromRaw(0), ScoreMethod::Conquer, /*new_score=*/1});
     EXPECT_GT(state.chain.items.size(), before)
         << "P1 scoring should enqueue P2's Sumpworks Map";
 }
@@ -34,7 +34,7 @@ TEST_F(ScoreMoveTest, SumpworksMap_NoFireOnOwnScore) {
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = state.chain.items.size();
-    events.emit(ScoreEvent{P1, 0, ScoreMethod::Conquer, 1});  // owner scores
+    events.emit(ScoreEvent{P1, BattlefieldId::fromRaw(0), ScoreMethod::Conquer, 1});  // owner scores
     EXPECT_EQ(state.chain.items.size(), before)
         << "Sumpworks Map must not fire when its OWNER scores";
 }

@@ -158,7 +158,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
 
     for (const auto& da : firing) {
         RIFT_TRACE(events_, "DELAYED_ABILITY: firing for " +
-                         (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
+                         (state_.objectExists(da.source) ? state_.getObject(da.source).name.get() : "?"));
         const ChainItemId item_id = chain_.addAbility(da.source, da.controller, da.card_def_id);
         // Stamp the originating trigger so the card's onTrigger can branch on
         // ctx.firing_trigger (e.g. Grim Resolve's WhenIWinCombat XP rider,
@@ -526,7 +526,7 @@ void TriggerManager::noteCombatParticipants() {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             auto here = obj.battlefieldId();
             if (here && *here == bf.id)
-                obj.card_counters[kCombatParticipantKey] = static_cast<int>(bf.id) + 1;
+                obj.card_counters[kCombatParticipantKey] = static_cast<int>(bf.id.raw()) + 1;
         }
     }
 }
@@ -697,7 +697,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         auto here = obj.battlefieldId();
         if (here && *here == e.battlefield)
-            obj.card_counters[kCombatParticipantKey] = static_cast<int>(e.battlefield) + 1;
+            obj.card_counters[kCombatParticipantKey] = static_cast<int>(e.battlefield.raw()) + 1;
     }
 
     // Battlefield cards: "When combat starts here," (Threshold of the Gray).
@@ -736,7 +736,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
                 if (att_obj.controller != e.attacker) continue;
                 if (att_obj.combat_designation != CombatDesignation::Attacker) continue;
                 obj.card_counters["__defend_attacker_id"] =
-                    static_cast<int>(att_id);
+                    static_cast<int>(att_id.raw());
                 break;
             }
             fireTrigger(id, obj.controller, 0, TriggerType::WhenIDefend);
@@ -824,7 +824,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
                             TriggerType::WhenYouDefendAtABattlefield)) {
-                obj.card_counters["__defend_bf"] = static_cast<int>(e.battlefield);
+                obj.card_counters["__defend_bf"] = static_cast<int>(e.battlefield.raw());
                 watchers.push_back(id);
             }
         }
@@ -840,7 +840,7 @@ void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
     // now: attackers recalled after a tie were in it too. A unit must still be
     // on the board to have the ability.
     {
-        const int mark = static_cast<int>(e.battlefield) + 1;
+        const int mark = static_cast<int>(e.battlefield.raw()) + 1;
         std::vector<GameObjectId> participants;
         // (Every object: the mark is also taken off a unit that has left the
         // board since the combat began. Once per combat.)

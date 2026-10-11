@@ -56,7 +56,7 @@ public:
                             " Sand Soldier token(s)");
         if (ri_opt.has_value()) ri_opt->resume_point = kDone;
         std::vector<int32_t> tokens;
-        for (auto tok : made) tokens.push_back(static_cast<int32_t>(tok));
+        for (auto tok : made) tokens.push_back(static_cast<int32_t>(tok.raw()));
         ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0, std::move(tokens));
     }
     bool hasReflexiveTrigger() const override { return true; }
@@ -70,7 +70,7 @@ public:
         };
         std::vector<GameObjectId> cands;
         for (auto v : data)
-            if (readyable(static_cast<GameObjectId>(v))) cands.push_back(static_cast<GameObjectId>(v));
+            if (readyable(GameObjectId::fromRaw(v))) cands.push_back(GameObjectId::fromRaw(v));
         const auto chosen = selectSeveral(ctx, "Arise!: ready a Sand Soldier (up to two)", cands,
                                           /*max_picks=*/2);
         if (!chosen.has_value()) return;          // waiting for the agent

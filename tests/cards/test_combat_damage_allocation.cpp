@@ -33,7 +33,7 @@ protected:
         s.mode = ModeOfPlay{};
         s.players[0].id = P1;
         s.players[1].id = P2;
-        BattlefieldState bf; bf.id = 0;
+        BattlefieldState bf; bf.id = BattlefieldId::fromRaw(0);
         s.battlefields.push_back(bf);
     }
 
@@ -317,7 +317,7 @@ TEST_F(DamageAllocationTest, DistinctOptionsHaveDistinctOutcomes) {
         std::sort(kv.begin(), kv.end());
         std::string key;
         for (auto& [t, d] : kv) {
-            key += std::to_string(t); key += ':'; key += std::to_string(d); key += ',';
+            key += toString(t); key += ':'; key += std::to_string(d); key += ',';
         }
         EXPECT_TRUE(seen.insert(key).second) << "duplicate outcome: " << key;
     }

@@ -153,7 +153,7 @@ protected:
         if (might_bonus != 0) obj.might_bonus = might_bonus;
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -1270,7 +1270,7 @@ TEST_F(RulesCards2Test, RulesCards2_Deceiver_ControllerChoosesTheUnitToCopy) {
         << "the controller's pick, not the highest-Might unit";
     EXPECT_TRUE(token->keywords.has(Keyword::Temporary)) << "\"Give it [Temporary]\"";
     EXPECT_FALSE(token->is_exhausted) << "\"a READY Reflection unit token\"";
-    EXPECT_EQ(token->battlefieldId().value_or(kInvalidId), 0u);
+    EXPECT_EQ(token->battlefieldId().value_or(kInvalidId), BattlefieldId::fromRaw(0));
 }
 
 TEST_F(RulesCards2Test, RulesCards2_CR383_3_Deceiver_YouMayDecline) {
@@ -1336,7 +1336,7 @@ TEST_F(RulesCards2Test, RulesCards2_Jax_WeaponmasterTakesAnEquipmentOffAnotherUn
         << "\"even if it's already attached\"";
     EXPECT_TRUE(state.getObject(other).attachments.empty());
     EXPECT_EQ(state.getObject(other).current_might, 3);
-    EXPECT_EQ(state.getObject(gear).battlefieldId().value_or(kInvalidId), 0u);
+    EXPECT_EQ(state.getObject(gear).battlefieldId().value_or(kInvalidId), BattlefieldId::fromRaw(0));
 }
 
 TEST_F(RulesCards2Test, RulesCards2_Jax_WeaponmasterEquipCostsOnePowerLess) {

@@ -541,7 +541,7 @@ TEST_F(RulesCardsTest, RulesCards_CR445_AvaAchiever_PaysPowerExactlyOnce) {
                           TriggerType::WhenIAttack);
 
     EXPECT_FALSE(inHand(P1, hidden));
-    EXPECT_EQ(state.getObject(hidden).battlefieldId().value_or(99), 0u)
+    EXPECT_EQ(state.getObject(hidden).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(0))
         << "\"If it's a unit, play it here.\"";
     EXPECT_EQ(runesInBase(P1), 1)
         << "CR 445.2: [C] is paid once — one Mind rune recycled, not two";
@@ -732,7 +732,7 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_DoesNotTriggerWhenPlayedFromHand) {
                           TriggerType::WhenYouPlayMe);
 
     EXPECT_EQ(seen.prompts, 0) << "\"from face down\": a play from hand does not qualify";
-    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(99), 1u);
+    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(RulesCardsTest, RulesCards_Evelynn_TriggersWhenPlayedFromFaceDownOnYourTurn) {
@@ -745,7 +745,7 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_TriggersWhenPlayedFromFaceDownOnYourTu
     driveResumableTrigger(kEvelynn, P1, eve, yesThen(enemy), exec,
                           TriggerType::WhenYouPlayMe);
 
-    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(99), 0u)
+    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(0))
         << "moved to Evelynn's battlefield";
     EXPECT_EQ(state.getObject(eve).card_counters["__played_from_facedown"], 0)
         << "the marker is consumed so a later play from hand doesn't reuse it";
@@ -763,7 +763,7 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_NotOnAnOpponentsTurn) {
                           TriggerType::WhenYouPlayMe);
 
     EXPECT_EQ(seen.prompts, 0) << "\"on your turn\"";
-    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(99), 1u);
+    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(RulesCardsTest, RulesCards_Evelynn_CantChooseUntargetableEnemy) {
@@ -779,7 +779,7 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_CantChooseUntargetableEnemy) {
                           TriggerType::WhenYouPlayMe);
 
     EXPECT_EQ(seen.prompts, 0) << "the only enemy can't be chosen by enemy abilities";
-    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(99), 1u);
+    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(1));
 }
 
 // ═══ F. Token characteristics (CR 187) ══════════════════════════════════════

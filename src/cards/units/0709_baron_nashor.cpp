@@ -59,7 +59,7 @@ public:
                 auto& baron = ctx.state.getObject(ctx.source);
                 baron.location = BattlefieldLocation{pit_id};
                 RIFT_TRACE(ctx.events, "BARON NASHOR: created Baron Pit (bf=" +
-                                     std::to_string(pit_id) +
+                                     toString(pit_id) +
                                      ") and will enter directly there");
             }
         } else {
@@ -69,7 +69,7 @@ public:
             // permanent-play resolution placed him (whatever location
             // the controller chose during step 2 of the play sequence).
             RIFT_TRACE(ctx.events, "BARON NASHOR: Baron Pit (bf=" +
-                                 std::to_string(pit_id) +
+                                 toString(pit_id) +
                                  ") already exists; staying at chosen location.");
         }
     }

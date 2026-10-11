@@ -49,7 +49,7 @@ public:
         auto& ri = ctx.state.chain.resuming;
         if (ri.has_value() && ri->resume_data.size() > kTokenSlot &&
             ri->resume_data[kTokenSlot] != 0) {
-            tok = static_cast<GameObjectId>(ri->resume_data[kTokenSlot] - 1);
+            tok = GameObjectId::fromRaw(ri->resume_data[kTokenSlot] - 1);
         } else {
             // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
             tok = ctx.executor.createToken(ctx.controller, CardType::Unit,
@@ -57,7 +57,7 @@ public:
                 where.locations[mode], /*enter_ready=*/false);
             if (ri.has_value()) {
                 while (ri->resume_data.size() <= kTokenSlot) ri->resume_data.push_back(0);
-                ri->resume_data[kTokenSlot] = static_cast<int32_t>(tok) + 1;
+                ri->resume_data[kTokenSlot] = static_cast<int32_t>(tok.raw()) + 1;
             }
             RIFT_TRACE(ctx.events, "GUARDS!: play 2[M] Sand Soldier token");
         }
@@ -73,7 +73,7 @@ public:
             ri->resume_data[kTokenSlot + 1] = 1;
         }
         ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
-                                           {static_cast<int32_t>(tok)});
+                                           {static_cast<int32_t>(tok.raw())});
     }
     bool hasReflexiveTrigger() const override { return true; }
     // `data[0]`: the Sand Soldier token. [C] = one Power of this card's
@@ -81,7 +81,7 @@ public:
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& data) override {
         if (data.empty()) return;
-        const auto tok = static_cast<GameObjectId>(data[0]);
+        const auto tok = GameObjectId::fromRaw(data[0]);
         auto can_ready = [&]() {
             if (!ctx.state.objectExists(tok)) return false;
             const auto& t = ctx.state.getObject(tok);

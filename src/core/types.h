@@ -32,12 +32,12 @@ namespace riftbound {
 // Every id kind has exactly ONE "none" value, kInvalidId, which is also what
 // a default-constructed id is. `id == kInvalidId` / `id.valid()` test for it.
 
-/// "No id", for every id kind (and UINT32_MAX in a plain integer slot that
-/// holds an id's raw value, e.g. `resume_data`).
+/// "No id", for every id kind: it converts to each of them and to nothing
+/// else. In a plain integer slot that holds an id's number (`resume_data`),
+/// none is `kInvalidId.raw()`, UINT32_MAX (-1 in a signed slot).
 struct InvalidId {
-    constexpr operator uint32_t() const noexcept {
-        return std::numeric_limits<uint32_t>::max();
-    }
+    /// UINT32_MAX: the number "none" has in a plain integer slot.
+    constexpr uint32_t raw() const noexcept { return std::numeric_limits<uint32_t>::max(); }
 };
 inline constexpr InvalidId kInvalidId{};
 
@@ -104,13 +104,16 @@ void from_json(const Json& j, StrongId<Tag>& id) {
 }
 
 struct CardDefIdTag { static constexpr bool kNamedByLiteral = true; };
+struct GameObjectIdTag { static constexpr bool kNamedByLiteral = false; };
+struct BattlefieldIdTag { static constexpr bool kNamedByLiteral = false; };
+struct AbilityIdTag { static constexpr bool kNamedByLiteral = false; };
+struct ChainItemIdTag { static constexpr bool kNamedByLiteral = false; };
 
 using CardDefId   = StrongId<CardDefIdTag>;  // Index into CardDB (the card class's def().id)
-using GameObjectId = uint32_t; // Runtime game object instance
-using AbilityId   = uint32_t;  // Ability instance
-using ChainItemId = uint32_t;  // Chain item instance
-using ZoneId      = uint32_t;  // Zone instance
-using BattlefieldId = uint32_t; // Battlefield slot
+using GameObjectId = StrongId<GameObjectIdTag>; // Runtime game object instance
+using AbilityId   = StrongId<AbilityIdTag>;    // Ability instance (Intent::ability)
+using ChainItemId = StrongId<ChainItemIdTag>;  // Chain item instance
+using BattlefieldId = StrongId<BattlefieldIdTag>; // Battlefield slot (an index into GameState::battlefields)
 
 // ─── Player ──────────────────────────────────────────────────────────────────
 
@@ -254,6 +257,16 @@ struct BaseLocation {
 
 struct BattlefieldLocation {
     BattlefieldId id;
+    constexpr BattlefieldLocation() noexcept = default;
+    constexpr BattlefieldLocation(BattlefieldId slot) noexcept : id(slot) {}
+    constexpr BattlefieldLocation(InvalidId) noexcept {}
+    /// `BattlefieldLocation{0}`: the slot named by its number, spelled out
+    /// with the type. A literal only (consteval), and only here: a
+    /// BattlefieldId itself takes no number (`BattlefieldId::fromRaw(n)`).
+    explicit consteval BattlefieldLocation(int slot_literal)
+        : id(BattlefieldId::fromRaw(slot_literal)) {
+        if (slot_literal < 0) throw "a battlefield slot is 0 or more";
+    }
     bool operator==(const BattlefieldLocation& o) const { return id == o.id; }
 };
 

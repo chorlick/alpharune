@@ -74,8 +74,8 @@ TEST_F(ScriptedAgentTest, PlaysTheMostExpensiveCardBeforeAnythingElse) {
 
 TEST_F(ScriptedAgentTest, MovesToTheWeakestHeldBattlefieldWithTheMostUnits) {
     GameState s;
-    BattlefieldState bf0; bf0.id = 0; s.battlefields.push_back(bf0);
-    BattlefieldState bf1; bf1.id = 1; s.battlefields.push_back(bf1);
+    BattlefieldState bf0; bf0.id = BattlefieldId::fromRaw(0); s.battlefields.push_back(bf0);
+    BattlefieldState bf1; bf1.id = BattlefieldId::fromRaw(1); s.battlefields.push_back(bf1);
     const auto mine_a = addCard(s, "Lonely Poro", PlayerId::Player1);
     const auto mine_b = addCard(s, "Lonely Poro", PlayerId::Player1);
     // The opponent holds battlefield 0 with 5 Might and battlefield 1 with 2.
@@ -87,8 +87,8 @@ TEST_F(ScriptedAgentTest, MovesToTheWeakestHeldBattlefieldWithTheMostUnits) {
         o.location = BattlefieldLocation{bf};
         o.current_might = might;
     };
-    place(0, 5);
-    place(1, 2);
+    place(BattlefieldId::fromRaw(0), 5);
+    place(BattlefieldId::fromRaw(1), 2);
 
     const std::vector<Intent> legal = {
         Intent::endTurn(PlayerId::Player1),

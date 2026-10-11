@@ -25,12 +25,12 @@ public:
             ri.resume_data.push_back(static_cast<int32_t>(actual));
             for (int i = 0; i < actual; ++i) {
                 auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
-                ri.resume_data.push_back(static_cast<int32_t>(cid));
+                ri.resume_data.push_back(static_cast<int32_t>(cid.raw()));
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);
                     RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
                                          "  PEEKED: " + obj.name + " (id=" +
-                                         std::to_string(cid) +
+                                         toString(cid) +
                                          ") — PRIVATE to " + toString(ctx.controller));
                     ctx.events.emit(CardRevealedEvent{
                         cid, obj.card_def_id, obj.owner,
@@ -49,11 +49,11 @@ public:
                 Intent c;
                 c.type = IntentType::MakeChoice;
                 c.player = ctx.controller;
-                c.chosen_objects = {static_cast<GameObjectId>(ri.resume_data[i])};
+                c.chosen_objects = {GameObjectId::fromRaw(ri.resume_data[i])};
                 choices.push_back(c);
                 if (i > 1) label += " | ";
-                if (ctx.state.objectExists(static_cast<GameObjectId>(ri.resume_data[i]))) {
-                    label += ctx.state.getObject(static_cast<GameObjectId>(ri.resume_data[i])).name;
+                if (ctx.state.objectExists(GameObjectId::fromRaw(ri.resume_data[i]))) {
+                    label += ctx.state.getObject(GameObjectId::fromRaw(ri.resume_data[i])).name;
                 }
             }
             label += "]";
@@ -73,7 +73,7 @@ public:
             // 416.5) and "When you recycle" abilities see it once.
             std::vector<GameObjectId> rest;
             for (int i = 1; i <= n; ++i) {
-                auto cid = static_cast<GameObjectId>(ri.resume_data[i]);
+                auto cid = GameObjectId::fromRaw(ri.resume_data[i]);
                 if (!ctx.state.objectExists(cid)) continue;
                 auto& obj = ctx.state.getObject(cid);
                 if (cid == keeper) {

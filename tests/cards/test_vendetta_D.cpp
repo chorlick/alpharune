@@ -280,7 +280,7 @@ TEST_F(VendettaD, Vendetta_ResonatingStrike_MovesUnitToControlledBattlefield) {
     resolve(kResonatingStrike, P1, exec, spell);
     const auto& moved = state.getObject(in_base);
     ASSERT_TRUE(moved.battlefieldId().has_value());
-    EXPECT_EQ(*moved.battlefieldId(), 1u);
+    EXPECT_EQ(*moved.battlefieldId(), BattlefieldId::fromRaw(1));
     EXPECT_EQ(moved.current_might, 4);
     EXPECT_EQ(state.getObject(already_there).current_might, 2)
         << "a unit already at that battlefield can't be the one chosen";
@@ -450,7 +450,7 @@ TEST_F(VendettaD, Vendetta_IterativeDesign_PlaysMechTokenToChosenLocation) {
     EXPECT_TRUE(mech->is_exhausted);
     EXPECT_EQ(mech->tags, std::vector<std::string>{"Mech"});
     ASSERT_TRUE(mech->battlefieldId().has_value());
-    EXPECT_EQ(*mech->battlefieldId(), 1u);
+    EXPECT_EQ(*mech->battlefieldId(), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(VendettaD, Vendetta_IterativeDesign_DefaultsToBaseAndFlowCost) {
@@ -592,7 +592,7 @@ TEST_F(VendettaD, Vendetta_TemporalBreach_OwnerReplaysUnitAtSameLocation) {
     resolve(kTemporalBreach, P1, exec, spell);
     const auto& u = state.getObject(unit);
     ASSERT_TRUE(u.battlefieldId().has_value());
-    EXPECT_EQ(*u.battlefieldId(), 1u) << "played back to the same location";
+    EXPECT_EQ(*u.battlefieldId(), BattlefieldId::fromRaw(1)) << "played back to the same location";
     EXPECT_EQ(u.controller, P2) << "its owner plays it";
     EXPECT_TRUE(u.is_exhausted) << "units enter exhausted";
     EXPECT_EQ(u.damage_marked, 0);
@@ -772,7 +772,7 @@ TEST_F(VendettaD, Vendetta_WildClaw_MayDeclineAndMayPlayToControlledBattlefield)
     }
     EXPECT_EQ(prompts, 3);
     ASSERT_TRUE(state.getObject(poro).battlefieldId().has_value());
-    EXPECT_EQ(*state.getObject(poro).battlefieldId(), 1u);
+    EXPECT_EQ(*state.getObject(poro).battlefieldId(), BattlefieldId::fromRaw(1));
     EXPECT_FALSE(state.getObject(poro).isEmpowered());
 }
 

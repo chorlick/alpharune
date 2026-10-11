@@ -43,8 +43,8 @@ struct ObsState {
         state.player(PlayerId::Player1).id = PlayerId::Player1;
         state.player(PlayerId::Player2).id = PlayerId::Player2;
         // Add two BFs so battlefield features aren't all zero.
-        BattlefieldState bf1; bf1.id = 0; state.battlefields.push_back(bf1);
-        BattlefieldState bf2; bf2.id = 1; state.battlefields.push_back(bf2);
+        BattlefieldState bf1; bf1.id = BattlefieldId::fromRaw(0); state.battlefields.push_back(bf1);
+        BattlefieldState bf2; bf2.id = BattlefieldId::fromRaw(1); state.battlefields.push_back(bf2);
     }
 
     GameObjectId addToHand(PlayerId player, CardDefId def_id) {
@@ -60,7 +60,7 @@ struct ObsState {
 private:
     GameObjectId addInZone(PlayerId player, CardDefId def_id, ZoneType zone,
                             std::vector<GameObjectId>& zone_vec) {
-        GameObjectId id = next_id_++;
+        const GameObjectId id = GameObjectId::fromRaw(next_id_++);
         state.objects[id] = GameObject{};
         auto& o = state.objects[id];
         o.id = id;
@@ -72,7 +72,7 @@ private:
         return id;
     }
 
-    GameObjectId next_id_ = 1;
+    uint32_t next_id_ = 1;
 };
 
 } // namespace

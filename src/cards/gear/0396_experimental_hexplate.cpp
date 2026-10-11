@@ -37,11 +37,12 @@ public:
         auto& gear = ctx.state.getObject(ctx.source);
         auto it = gear.card_counters.find(kGaveMech);
         if (it == gear.card_counters.end()) return;
-        const bool mine = it->second == static_cast<int>(unit) + 1;
+        const bool mine = it->second == static_cast<int>(unit.raw()) + 1;
         gear.card_counters.erase(it);
         if (!mine || !ctx.state.objectExists(unit)) return;
-        auto& tags = ctx.state.getObject(unit).tags;
-        tags.erase(std::remove(tags.begin(), tags.end(), std::string("Mech")), tags.end());
+        ctx.state.getObject(unit).tags.edit([](std::vector<std::string>& tags) {
+            tags.erase(std::remove(tags.begin(), tags.end(), std::string("Mech")), tags.end());
+        });
     }
 private:
     static constexpr const char* kGaveMech = "__hexplate_gave_mech";
@@ -52,7 +53,7 @@ private:
         if (!bearer.isUnit() || !bearer.location.has_value()) return;
         if (hasTag(bearer, "Mech")) return;   // already a Mech (printed, or another Hexplate)
         bearer.tags.push_back("Mech");
-        gear.card_counters[kGaveMech] = static_cast<int>(*gear.attached_to) + 1;
+        gear.card_counters[kGaveMech] = static_cast<int>((*gear.attached_to).raw()) + 1;
     }
     const CardDef def_ = [] {
         CardDef d;

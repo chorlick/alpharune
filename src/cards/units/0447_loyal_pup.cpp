@@ -30,7 +30,7 @@ public:
         // "no" on the item.
         auto it = me.card_counters.find("__defend_bf");
         const bool recorded = it != me.card_counters.end();
-        BattlefieldId bf = recorded ? static_cast<BattlefieldId>(it->second) : kInvalidId;
+        BattlefieldId bf = recorded ? BattlefieldId::fromRaw(it->second) : kInvalidId;
         auto already_here = [&]() {
             auto loc = ctx.state.getObject(ctx.source).battlefieldId();
             return loc && *loc == bf;

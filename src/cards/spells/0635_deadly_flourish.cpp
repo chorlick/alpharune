@@ -41,7 +41,7 @@ public:
         da.expires_on_turn = ctx.state.turn.turn_number;
         ctx.state.delayed_abilities.push_back(da);
         RIFT_TRACE(ctx.events, "DEADLY FLOURISH: armed death-watch on victim "
-                             "(id=" + std::to_string(victim) + ")");
+                             "(id=" + toString(victim) + ")");
 
         ctx.executor.dealDamage(victim, 3, ctx.source);
         // Engine's processLethalDamage (or combat resolution) will kill

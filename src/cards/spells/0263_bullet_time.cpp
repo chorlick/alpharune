@@ -35,7 +35,7 @@ public:
         for (int i = 0; i < n; ++i)
             labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
                 ? ctx.state.getObject(bfs[i].card_object_id).name
-                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
         const int mode = pickMode(ctx, "Bullet Time: battlefield", n, labels);
         if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield
         if (finalizingChoices(ctx)) return;  // choices end here (CR 355)
@@ -61,7 +61,7 @@ public:
         RIFT_TRACE(ctx.events, "BULLET TIME: paid " + std::to_string(x) +
                              " power → dealing " + std::to_string(x) +
                              " damage to all enemies at BF#" +
-                             std::to_string(bf_id));
+                             toString(bf_id));
 
         // Deal X damage to all enemy units at the chosen battlefield.
         // Snapshot first so kills don't invalidate iteration.

@@ -112,7 +112,7 @@ protected:
         st.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(st.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(st.battlefields.size());
             st.battlefields.push_back(bf);
         }
         engine_->testHook_setAgents(&p1_, &p2_);
@@ -176,7 +176,7 @@ protected:
         auto& c = s().getObject(id);
         if (at_bf >= 0) {
             c.zone = ZoneType::BattlefieldZone;
-            c.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            c.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             c.zone = ZoneType::Base;
             c.location = BaseLocation{p};
@@ -192,7 +192,7 @@ protected:
         u.base_might = u.current_might = might;
         if (at_bf >= 0) {
             u.zone = ZoneType::BattlefieldZone;
-            u.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            u.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             u.zone = ZoneType::Base;
             u.location = BaseLocation{p};

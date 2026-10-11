@@ -47,7 +47,7 @@ protected:
         s.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(s.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(s.battlefields.size());
             s.battlefields.push_back(bf);
         }
         s.turn.turn_player = P1;
@@ -137,7 +137,7 @@ TEST_F(CombatShowdownDispatchTest, ResolveShowdown_PassFocus_OneSided_PassesToOp
     pass.player = P1;
 
     int action_count = 0;
-    auto next = engine_->testHook_resolveShowdownDecision(0, pass, P1, action_count);
+    auto next = engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), pass, P1, action_count);
     EXPECT_TRUE(next.has_value());
     EXPECT_EQ(*next, P2);
     EXPECT_EQ(s.turn.players_passed_focus.count(P1), 1u);
@@ -157,7 +157,7 @@ TEST_F(CombatShowdownDispatchTest, ResolveShowdown_PassFocus_BothSidesClosesShow
     pass.player = P1;
 
     int action_count = 0;
-    auto next = engine_->testHook_resolveShowdownDecision(0, pass, P1, action_count);
+    auto next = engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), pass, P1, action_count);
     EXPECT_FALSE(next.has_value()) << "Both players passed — showdown closes";
 }
 
@@ -173,7 +173,7 @@ TEST_F(CombatShowdownDispatchTest, ResolveShowdown_UnknownIntent_HoldsFocus) {
     unk.player = P1;
 
     int action_count = 0;
-    auto next = engine_->testHook_resolveShowdownDecision(0, unk, P1, action_count);
+    auto next = engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), unk, P1, action_count);
     EXPECT_TRUE(next.has_value());
     EXPECT_EQ(*next, P1) << "Unknown intent type — focus unchanged for outer-loop retry";
     EXPECT_EQ(action_count, 1) << "Action count still increments (safety-cap budget)";

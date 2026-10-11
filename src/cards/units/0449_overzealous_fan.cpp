@@ -28,7 +28,7 @@ public:
             if (auto bf = self.battlefieldId()) return bf;
             auto it = self.card_counters.find("__defend_attacker_id");
             if (it == self.card_counters.end()) return std::nullopt;
-            const auto attacker = static_cast<GameObjectId>(it->second);
+            const auto attacker = GameObjectId::fromRaw(it->second);
             if (!ctx.state.objectExists(attacker)) return std::nullopt;
             return ctx.state.getObject(attacker).battlefieldId();
         };

@@ -94,7 +94,7 @@ protected:
         st.players[1].id = P2;
         for (int i = 0; i < 2; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(st.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(st.battlefields.size());
             st.battlefields.push_back(bf);
         }
         engine_->testHook_setAgents(&a1_, &a2_);
@@ -130,7 +130,7 @@ protected:
         auto& c = o(id);
         if (at_bf >= 0) {
             c.zone = ZoneType::BattlefieldZone;
-            c.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            c.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             c.zone = ZoneType::Base;
             c.location = BaseLocation{c.controller};
@@ -845,7 +845,7 @@ TEST_F(AurasCostsTest, Hide_NotOfferedWithoutAnyPower) {
     hide.type = IntentType::HideCard;
     hide.player = P1;
     hide.card = card;
-    hide.chosen_battlefield = 0;
+    hide.chosen_battlefield = BattlefieldId::fromRaw(0);
     engine_->testHook_executeIntent(hide); settleLikeTheEngine(*engine_);
     EXPECT_FALSE(o(card).is_hidden);
     EXPECT_EQ(o(card).zone, ZoneType::Hand);

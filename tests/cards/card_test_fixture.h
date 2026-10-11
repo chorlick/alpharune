@@ -286,7 +286,7 @@ public:
                 options += " [" + i.choice_label;
                 if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
                 if (!i.chosen_objects.empty())
-                    options += " object=" + std::to_string(i.chosen_objects.front());
+                    options += " object=" + toString(i.chosen_objects.front());
                 options += "]";
             }
             ADD_FAILURE() << "EnginePathAgent::choosing(" << id << "): a prompt arrived that does "
@@ -341,7 +341,7 @@ public:
                     if (i.chosen_value.has_value())
                         options += " value=" + std::to_string(*i.chosen_value);
                     if (!i.chosen_objects.empty())
-                        options += " object=" + std::to_string(i.chosen_objects.front());
+                        options += " object=" + toString(i.chosen_objects.front());
                     options += "]";
                 }
                 return options;
@@ -361,7 +361,7 @@ public:
                 if (i.chosen_value.has_value() && *i.chosen_value == want) return i;
             for (const auto& i : legal)
                 if (!i.chosen_objects.empty() &&
-                    i.chosen_objects.front() == static_cast<GameObjectId>(want)) return i;
+                    i.chosen_objects.front() == GameObjectId::fromRaw(want)) return i;
             // An option named only by a card of the card table ("name a
             // spell": Intent::chosen_card_def).
             for (const auto& i : legal)
@@ -427,7 +427,7 @@ protected:
 
     BattlefieldId addBattlefield() {
         BattlefieldState bf;
-        bf.id = static_cast<int>(state.battlefields.size());
+        bf.id = BattlefieldId::fromRaw(state.battlefields.size());
         state.battlefields.push_back(bf);
         return bf.id;
     }
@@ -535,7 +535,7 @@ protected:
         obj.current_might = obj.base_might;
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};

@@ -424,7 +424,7 @@ protected:
         st.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(st.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(st.battlefields.size());
             st.battlefields.push_back(bf);
         }
         engine_->testHook_setAgents(&a1_, &a2_);
@@ -481,7 +481,7 @@ protected:
         auto& c = s().getObject(id);
         if (at_bf >= 0) {
             c.zone = ZoneType::BattlefieldZone;
-            c.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            c.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             c.zone = ZoneType::Base;
             c.location = BaseLocation{p};
@@ -494,7 +494,7 @@ protected:
         auto& c = s().getObject(id);
         c.zone = ZoneType::FacedownZone;
         c.is_hidden = true;
-        c.hidden_at = static_cast<BattlefieldId>(bf);
+        c.hidden_at = BattlefieldId::fromRaw(bf);
         c.hidden_on_turn = s().turn.turn_number - 1;
         s().battlefields[bf].facedown.push_back(id);
         return id;
@@ -577,7 +577,7 @@ protected:
         auto id = makeCard(p, def_id);
         s().getObject(id).zone = ZoneType::Chain;
         ChainItem item;
-        item.id = s().chain.next_id++;
+        item.id = s().chain.allocateId();
         item.source = id;
         item.controller = p;
         item.card_def_id = def_id;
@@ -770,7 +770,7 @@ TEST_F(SweepFlowTest, Showdown_OffersAReactionAbility) {
     const auto acts = activationsOf(engine_->generateLegalActions(), unit);
     ASSERT_EQ(acts.size(), 1u);
     int count = 0;
-    engine_->testHook_resolveShowdownDecision(0, acts.front(), P1, count);
+    engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), acts.front(), P1, count);
     EXPECT_EQ(s().getObject(unit).card_counters["resolved"], 1);
 }
 
@@ -784,7 +784,7 @@ TEST_F(SweepFlowTest, Showdown_OffersAnAuraGrantedAbility) {
     ASSERT_EQ(acts.size(), 1u);
     EXPECT_EQ(acts.front().granted_ability_def, kTReactionAbility);
     int count = 0;
-    engine_->testHook_resolveShowdownDecision(0, acts.front(), P1, count);
+    engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), acts.front(), P1, count);
     EXPECT_EQ(s().getObject(bearer).card_counters["resolved"], 1);
 }
 
@@ -810,7 +810,7 @@ TEST_F(SweepFlowTest, Showdown_OffersAHiddenCard) {
     const auto plays = playsOf(engine_->generateLegalActions(), hidden);
     ASSERT_EQ(plays.size(), 1u);
     int count = 0;
-    engine_->testHook_resolveShowdownDecision(0, plays.front(), P1, count);
+    engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), plays.front(), P1, count);
     EXPECT_EQ(s().player(P1).xp, 1) << "the hidden spell resolved";
     EXPECT_TRUE(s().battlefields[0].facedown.empty());
 }
@@ -966,8 +966,8 @@ TEST_F(SweepFlowTest, StandardMove_SeveralUnitsMoveAsOneAction) {
     a1_.want = second;
     engine_->testHook_executeIntent(
         Intent::standardMove(P1, {first}, LocationId{BattlefieldLocation{0}}));
-    EXPECT_EQ(s().getObject(first).battlefieldId(), std::optional<BattlefieldId>(0));
-    EXPECT_EQ(s().getObject(second).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(s().getObject(first).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(s().getObject(second).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_TRUE(s().getObject(second).is_exhausted) << "each unit pays its own cost";
     EXPECT_TRUE(s().getObject(third).isAtBase())
         << "asked again after the second, the agent's want was gone: it stopped";
@@ -980,7 +980,7 @@ TEST_F(SweepFlowTest, StandardMove_DecliningToAddUnitsMovesOne) {
     auto second = onBoard(P1, kTVanilla);
     engine_->testHook_executeIntent(
         Intent::standardMove(P1, {first}, LocationId{BattlefieldLocation{0}}));
-    EXPECT_EQ(s().getObject(first).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(s().getObject(first).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_TRUE(s().getObject(second).isAtBase());
     EXPECT_FALSE(s().getObject(second).is_exhausted);
 }
@@ -1002,7 +1002,7 @@ TEST_F(SweepFlowTest, MageseekerInvestigator_TaxesEachUnitBeyondTheFirst) {
     a2_.want = second;
     engine_->testHook_executeIntent(
         Intent::standardMove(P2, {first}, LocationId{BattlefieldLocation{0}}));
-    EXPECT_EQ(s().getObject(second).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(s().getObject(second).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(s().player(P2).rune_pool.universal_power, 0) << "[A] paid for the second unit";
     EXPECT_TRUE(s().getObject(third).isAtBase());
     EXPECT_EQ(a2_.object_prompts, 1) << "a third unit could not be paid for: not offered";

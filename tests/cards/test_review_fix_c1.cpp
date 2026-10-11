@@ -89,7 +89,7 @@ protected:
         g.might_bonus = def.might_bonus;
         if (at_bf >= 0) {
             g.zone = ZoneType::BattlefieldZone;
-            g.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            g.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             g.zone = ZoneType::Base;
             g.location = BaseLocation{owner};
@@ -199,6 +199,29 @@ TEST_F(ReviewFixC1Test, ExperimentalHexplate_BearerIsAMechWhileItIsAttached) {
     EXPECT_FALSE(has(state.getObject(unit), "Mech")) << "only while it is attached";
 }
 
+TEST_F(ReviewFixC1Test, ExperimentalHexplate_OnlyTheBearerBecomesAMech) {
+    // 9.KK1: units with equal tags share one stored value. The tag an effect
+    // adds to one of them must not show on the other, nor on a copy of the
+    // state taken before.
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    auto other = addUnit(P1, kInvalidId, 2, 0);
+    ASSERT_EQ(&state.getObject(unit).tags.get(), &state.getObject(other).tags.get());
+    auto plate = addGear(P1, kExperimentalHexplate);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;
+    const GameState before = state;
+
+    activate(plate, 0, nullptr, {unit});   // Equip [B]
+    ASSERT_TRUE(has(state.getObject(unit), "Mech"));
+    EXPECT_FALSE(has(state.getObject(other), "Mech"));
+    EXPECT_FALSE(has(before.getObject(unit), "Mech"));
+
+    const GameState equipped = state;
+    withEngine([&](GameEngine& e) { e.testHook_executor().unattachGear(plate); });
+    EXPECT_FALSE(has(state.getObject(unit), "Mech"));
+    EXPECT_TRUE(has(equipped.getObject(unit), "Mech")) << "the copy keeps what it had";
+    EXPECT_EQ(&state.getObject(unit).tags.get(), &state.getObject(other).tags.get());
+}
+
 TEST_F(ReviewFixC1Test, ExperimentalHexplate_AttachedByAnotherEffectStillMakesAMech) {
     // Attached without going through onEquip (Weaponmaster, Grandmaster at
     // Arms): the aura pass puts the tag on.
@@ -253,7 +276,7 @@ TEST_F(ReviewFixC1Test, ZeroDrive_BearerDiesAndItsOwnDeathTriggersFire) {
     // The Altar's prompts (the Drive's Deathknell asks nothing).
     EnginePathAgent yes(EnginePathAgent::script({
         1,                            // Altar: "may exhaust me to draw 1": yes
-        static_cast<int>(top_card),   // which hand card goes back: the card just drawn
+        static_cast<int>(top_card.raw()),   // which hand card goes back: the card just drawn
                                       // (the hand was empty, it is the only one)
         0,                            // top or bottom: mode 0 = top
     }));
@@ -390,7 +413,7 @@ TEST_F(ReviewFixC1Test, LastRites_EquipRecyclesTheTwoCardsTheControllerChooses) 
         [&](const ObjectStateChangedEvent& e) {
             if (e.what_changed == "recycled_main") ++recycled_events;
         });
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1.raw()), static_cast<int>(r2.raw())}));
     activate(rites, 0, &agent, {unit});
     conn.disconnect();
 
@@ -408,14 +431,14 @@ TEST_F(ReviewFixC1Test, EyeOfTheHerald_TheRecruitEntersExhausted) {
     auto eye = addGear(P1, kEyeOfTheHerald);
     attach(eye, unit);
 
-    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.moveToBattlefield(unit, 1); });
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.moveToBattlefield(unit, BattlefieldId::fromRaw(1)); });
 
     GameObjectId recruit = kInvalidId;
     for (const auto& [id, obj] : state.objects)
         if (obj.name == "Recruit" && obj.location.has_value()) recruit = id;
     ASSERT_NE(recruit, kInvalidId);
     EXPECT_TRUE(state.getObject(recruit).is_exhausted);
-    EXPECT_EQ(state.getObject(recruit).battlefieldId(), std::optional<BattlefieldId>{1}) << "here";
+    EXPECT_EQ(state.getObject(recruit).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)}) << "here";
 }
 
 TEST_F(ReviewFixC1Test, VanguardArmory_TokensGoWhereTheControllerPutsThem) {
@@ -432,7 +455,7 @@ TEST_F(ReviewFixC1Test, VanguardArmory_TokensGoWhereTheControllerPutsThem) {
     for (const auto& [id, obj] : state.objects) {
         if (obj.name != "Recruit" || !obj.location.has_value()) continue;
         if (obj.isAtBase()) ++at_base;
-        else if (obj.battlefieldId() == std::optional<BattlefieldId>{1}) ++at_bf1;
+        else if (obj.battlefieldId() == std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)}) ++at_bf1;
     }
     EXPECT_EQ(at_base, 1);
     EXPECT_EQ(at_bf1, 2);
@@ -458,7 +481,7 @@ TEST_F(ReviewFixC1Test, AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst) {
 
     EnginePathAgent yes1(EnginePathAgent::script({
         1,                        // "may exhaust me to draw 1": yes
-        static_cast<int>(held),   // which hand card goes back: the one held before the draw
+        static_cast<int>(held.raw()),   // which hand card goes back: the one held before the draw
         0,                        // top or bottom: mode 0 = top
     }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(first); }, &yes1);
@@ -471,7 +494,7 @@ TEST_F(ReviewFixC1Test, AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst) {
     // the hand and it can be named again.
     EnginePathAgent yes2(EnginePathAgent::script({
         1,                        // "may exhaust me to draw 1": yes
-        static_cast<int>(held),   // which hand card goes back: `held`, drawn again just now
+        static_cast<int>(held.raw()),   // which hand card goes back: `held`, drawn again just now
         0,                        // top or bottom: mode 0 = top
     }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(second); }, &yes2);
@@ -596,17 +619,17 @@ TEST_F(ReviewFixC1Test, ForgottenSignpost_ExhaustsOneUnitAndMovesADifferentOne) 
     auto third = addUnit(P1, kInvalidId, 2, 0);
     auto post = addGear(P1, kForgottenSignpost);
 
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(anchor),
-                                                   static_cast<int>(mover)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(anchor.raw()),
+                                                   static_cast<int>(mover.raw())}));
     activate(post, 0, &agent);
 
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(state.getObject(post).is_exhausted);
     EXPECT_TRUE(state.getObject(anchor).is_exhausted) << "the unit exhausted as the cost";
     EXPECT_FALSE(state.getObject(mover).is_exhausted);
-    EXPECT_EQ(state.getObject(mover).battlefieldId(), std::optional<BattlefieldId>{1});
-    EXPECT_EQ(state.getObject(anchor).battlefieldId(), std::optional<BattlefieldId>{1});
-    EXPECT_EQ(state.getObject(third).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(state.getObject(mover).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+    EXPECT_EQ(state.getObject(anchor).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+    EXPECT_EQ(state.getObject(third).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     // The second prompt never offers the unit that was exhausted.
     for (const auto& i : agent.prompts[1])
         EXPECT_NE(i.chosen_objects.front(), anchor);
@@ -671,12 +694,12 @@ TEST_F(ReviewFixC1Test, BlastCone_TheControllerChoosesTheUnitAndWhereItGoes) {
     auto other = addUnit(P2, kInvalidId, 2, 0);
     auto enemy = addUnit(P2, kInvalidId, 2, 0);
     // May: yes. Unit: `enemy`. Destination: battlefield 1 (mode 2). Stun: no.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(enemy), 2, 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(enemy.raw()), 2, 0}));
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
 
     EXPECT_TRUE(agent.wasOffered(other));
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{1});
-    EXPECT_EQ(state.getObject(other).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+    EXPECT_EQ(state.getObject(other).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     ASSERT_EQ(agent.prompts.size(), 4u) << "moving it triggers the stun ability, with its own may";
     EXPECT_FALSE(state.getObject(cone).is_exhausted) << "declined";
     EXPECT_FALSE(state.getObject(enemy).is_stunned);
@@ -688,7 +711,7 @@ TEST_F(ReviewFixC1Test, BlastCone_TheMoveCanBeDeclined) {
     EnginePathAgent agent(EnginePathAgent::script({0}));
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
     EXPECT_EQ(agent.prompts.size(), 1u);
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(ReviewFixC1Test, BlastCone_StunsAUnitMovedByAnotherOfYourAbilities) {
@@ -920,7 +943,7 @@ TEST_F(ReviewFixC1Test, Unforgiven_MovesAUnitFromItsBaseToAChosenBattlefield) {
     state.player(P1).rune_pool.energy = 2;
     EnginePathAgent agent(EnginePathAgent::script({1}));   // battlefield 1
     activate(yasuo, 0, &agent, {unit});
-    EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(state.getObject(yasuo).is_exhausted);
 }
 
@@ -1072,7 +1095,7 @@ TEST_F(ReviewFixC1Test, MightOfDemacia_CountsUnitsAtTheConqueredBattlefield) {
     for (int i = 0; i < 4; ++i) addUnit(P1, kInvalidId, 2, 0);   // held earlier
     addUnit(P1, kInvalidId, 2, 1);                               // the conquest
     for (int i = 0; i < 4; ++i) addToDeck(P1, kInvalidId);
-    state.player(P1).battlefields_scored_this_turn.insert(0);
+    state.player(P1).battlefields_scored_this_turn.insert(BattlefieldId::fromRaw(0));
     auto held = bfCard(0);
     auto conquered = bfCard(1);
 
@@ -1145,8 +1168,8 @@ TEST_F(ReviewFixC1Test, GrandmasterAtArms_OnlyEquipmentOnTheBoardAndTheControlle
     auto blade = addGear(P1, kDoransBlade);
     auto sword = addGear(P1, kBFSword);
     ASSERT_TRUE(offered(jax, 0));
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword),
-                                                   static_cast<int>(unit)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword.raw()),
+                                                   static_cast<int>(unit.raw())}));
     activate(jax, 0, &agent);
 
     EXPECT_TRUE(agent.wasOffered(blade));
@@ -1163,15 +1186,15 @@ TEST_F(ReviewFixC1Test, GrandmasterAtArms_MovesAnAttachedEquipmentToAnotherUnit)
     auto to = addUnit(P1, kInvalidId, 2, 1);
     auto sword = addGear(P1, kBFSword);
     attach(sword, from);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword),
-                                                   static_cast<int>(to)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword.raw()),
+                                                   static_cast<int>(to.raw())}));
     activate(jax, 1, &agent);
 
     EXPECT_FALSE(agent.wasOffered(from)) << "not the unit it is already on";
     EXPECT_EQ(state.getObject(sword).attached_to, std::optional<GameObjectId>{to});
     EXPECT_EQ(state.getObject(from).attachment_might_bonus, 0);
     EXPECT_EQ(state.getObject(to).attachment_might_bonus, 3);
-    EXPECT_EQ(state.getObject(sword).battlefieldId(), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(state.getObject(sword).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(ReviewFixC1Test, ChemBaroness_DoesNotTriggerOnAConquer) {

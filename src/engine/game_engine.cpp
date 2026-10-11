@@ -504,7 +504,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
             Intent c;
             c.type = IntentType::ChooseBattlefield;
             c.player = player;
-            c.chosen_battlefield = static_cast<BattlefieldId>(i);  // deck index
+            c.chosen_battlefield = BattlefieldId::fromRaw(i);  // deck index
             choices.push_back(c);
         }
 
@@ -521,7 +521,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         auto chosen = askAgent(player, choices);
         state_.turn.turn_player = saved_turn;
 
-        size_t idx = static_cast<size_t>(chosen.chosen_battlefield);
+        size_t idx = static_cast<size_t>(chosen.chosen_battlefield.raw());
         if (idx >= bfs.size()) idx = 0;  // defensive — fall back to first
         RIFT_TRACE(events_, "  CHOSE BF #" + std::to_string(idx) + " (" +
                           card_db_.get(bfs[idx]).name + ")");
@@ -532,7 +532,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
     auto bf2_def = pickFromDeck(PlayerId::Player2, deck2.battlefields);
 
     // Create battlefield game objects and state
-    BattlefieldId next_bf_id = 0;
+    uint32_t next_bf_slot = 0;  // a battlefield's id is its slot
 
     auto addBF = [&](CardDefId def_id, PlayerId contributor) {
         auto obj_id = instantiateCard(def_id, contributor);
@@ -540,7 +540,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         obj.zone = ZoneType::BattlefieldZone;
 
         BattlefieldState bf;
-        bf.id = next_bf_id++;
+        bf.id = BattlefieldId::fromRaw(next_bf_slot++);
         bf.card_object_id = obj_id;
         bf.contributed_by = contributor;
 
@@ -1329,7 +1329,7 @@ void GameEngine::doExpirationBody() {
             auto restored = obj.original_controller_eot;
             if (restored != PlayerId::None && restored != obj.controller) {
                 RIFT_TRACE(events_, std::string("REVERT_CONTROL: ") + obj.name +
-                                 " (id=" + std::to_string(id) + ") " +
+                                 " (id=" + toString(id) + ") " +
                                  toString(obj.controller) + " -> " +
                                  toString(restored));
                 obj.controller = restored;
@@ -2538,7 +2538,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
     int trace_cost = (card.card_def_id != kInvalidId)
         ? card_db_.get(card.card_def_id).energy_cost : 0;
-    RIFT_TRACE(events_, "PLAY: " + card.name + " (id=" + std::to_string(intent.card) +
+    RIFT_TRACE(events_, "PLAY: " + card.name + " (id=" + toString(intent.card) +
                      ", " + toString(card.card_type) + ", cost=" +
                      std::to_string(trace_cost) + "E)");
 
@@ -2603,7 +2603,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
             effect_executor_->payAnyPower(intent.player, bf.paid_play_power);
             RIFT_TRACE(events_, "ADDITIONAL_COST: " + card.name + " pays " +
                              std::to_string(bf.paid_play_power) + " [A] to be played to BF#" +
-                             std::to_string(bf_id));
+                             toString(bf_id));
         }
     }
 
@@ -2668,10 +2668,10 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         std::string tgt_str;
         for (auto t : intent.targets) {
             if (!tgt_str.empty()) tgt_str += ",";
-            tgt_str += state_.objectExists(t) ? state_.getObject(t).name : "?";
-            tgt_str += "(id=" + std::to_string(t) + ")";
+            tgt_str += state_.objectExists(t) ? state_.getObject(t).name.get() : "?";
+            tgt_str += "(id=" + toString(t) + ")";
         }
-        RIFT_TRACE(events_, "SPELL: " + card.name + " (id=" + std::to_string(intent.card) +
+        RIFT_TRACE(events_, "SPELL: " + card.name + " (id=" + toString(intent.card) +
                          ") targets=[" + tgt_str + "]");
     }
 
@@ -3057,7 +3057,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
         RIFT_TRACE(events_, std::string(item.finalizing ? "FINALIZE-CHOICES: " : "RESOLVE: ") +
                          (state_.objectExists(item.source) ? state_.getObject(item.source).name
                                                            : std::string("?")) +
-                         " (chain_item=" + std::to_string(item.id) +
+                         " (chain_item=" + toString(item.id) +
                          ", ability=" + std::to_string(item.is_ability) +
                          ", spell=" + std::to_string(item.is_spell) + ")");
     }
@@ -3474,10 +3474,10 @@ void GameEngine::executeStandardMove(const Intent& intent) {
 
     for (auto unit_id : moving) {
         auto& unit_obj = state_.getObject(unit_id);
-        RIFT_TRACE(events_, "MOVE: " + unit_obj.name + " (id=" + std::to_string(unit_id) +
+        RIFT_TRACE(events_, "MOVE: " + unit_obj.name + " (id=" + toString(unit_id) +
                          ") -> " +
                          (std::holds_alternative<BattlefieldLocation>(dest)
-                              ? "BF#" + std::to_string(std::get<BattlefieldLocation>(dest).id)
+                              ? "BF#" + toString(std::get<BattlefieldLocation>(dest).id)
                               : "Base(" + std::string(toString(std::get<BaseLocation>(dest).player)) + ")"));
     }
     // CR 144.3: the units move as ONE action — the exhaust costs are paid
@@ -3560,7 +3560,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
             RIFT_TRACE_PRIVATE(events_, intent.player,
                              "  MULLIGAN: " + std::string(toString(intent.player)) +
                              " set aside " + state_.getObject(card_id).name +
-                             " (id=" + std::to_string(card_id) + ")");
+                             " (id=" + toString(card_id) + ")");
         }
     }
 
@@ -3575,7 +3575,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
         RIFT_TRACE_PRIVATE(events_, intent.player,
                          "  MULLIGAN: " + std::string(toString(intent.player)) +
                          " drew replacement " + state_.getObject(did).name +
-                         " (id=" + std::to_string(did) +
+                         " (id=" + toString(did) +
                          ") — PRIVATE to " + toString(intent.player));
     }
 
@@ -3737,9 +3737,9 @@ void GameEngine::executeHideCard(const Intent& intent) {
     // Which card it is, is the hiding player's to know (LogAudience); that a
     // card was hidden, and where, both players see.
     RIFT_TRACE(events_, std::string("HIDE: ") + toString(intent.player) + " hides a card at BF#" +
-                     std::to_string(intent.chosen_battlefield));
+                     toString(intent.chosen_battlefield));
     RIFT_TRACE_PRIVATE(events_, intent.player, "HIDE: " + card.name + " at BF#" +
-                     std::to_string(intent.chosen_battlefield) +
+                     toString(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
     // Pay the Hide cost, [A] (CR 811.1.b) — one Power of any domain, through
@@ -3792,7 +3792,7 @@ void GameEngine::executeHideCard(const Intent& intent) {
 
     RIFT_LOG_FOR(events_, LogLevel::Debug, LogAudience::only(intent.player),
                    std::string("HIDDEN: ") + card.name + " hidden at BF#" +
-                   std::to_string(bf_id) + " by " + toString(intent.player));
+                   toString(bf_id) + " by " + toString(intent.player));
 
     // "When you hide a card" (Katarina, Reckless).
     events_.emit(CardHiddenEvent{intent.card, intent.player});
@@ -3816,7 +3816,7 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
     // Where and when, for a hidden SPELL's own text (CR 811.1.d: its choices
     // are tied to that battlefield; "if you played this from your hand").
     // Turn-stamped, so a stale value never reads as this play.
-    card.card_counters["__facedown_play_bf"] = static_cast<int>(bf_id) + 1;
+    card.card_counters["__facedown_play_bf"] = static_cast<int>(bf_id.raw()) + 1;
     card.card_counters["__facedown_play_turn"] = state_.turn.turn_number;
 
     // "When you play a card from face down" (Katarina, Reckless).
@@ -5123,7 +5123,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
 
 void GameEngine::runShowdown(BattlefieldId bf_id) {
     auto& bf = getBattlefield(bf_id);
-    RIFT_TRACE(events_, "SHOWDOWN: BF#" + std::to_string(bf_id) +
+    RIFT_TRACE(events_, "SHOWDOWN: BF#" + toString(bf_id) +
                      (bf.combat_staged ? " (combat)" : " (non-combat)"));
 
     bf.showdown_in_progress = true;
@@ -5289,7 +5289,7 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     // Determine attacker/defender (CR 459.2.b)
     bf.attacker = bf.contested_by;
     bf.defender = opponent(bf.contested_by);
-    RIFT_TRACE(events_, "COMBAT: BF#" + std::to_string(bf_id) + " attacker=" +
+    RIFT_TRACE(events_, "COMBAT: BF#" + toString(bf_id) + " attacker=" +
                      toString(*bf.attacker) + " defender=" + toString(*bf.defender));
 
     // Assign combat designations to units
@@ -5408,7 +5408,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
             def_str += u.name + "(" + std::to_string(u.current_might) + "M" +
                        (u.is_stunned ? ",STUNNED" : "") + ")";
         }
-        RIFT_TRACE(events_, "DAMAGE_STEP: BF#" + std::to_string(bf_id) +
+        RIFT_TRACE(events_, "DAMAGE_STEP: BF#" + toString(bf_id) +
                          " ATK=[" + att_str + "] DEF=[" + def_str + "]");
     }
 
@@ -5727,7 +5727,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         bf.is_contested = true;
         bf.contested_by = attacker;
         bf.combat_staged = true;
-        RIFT_TRACE(events_, "COMBAT: no result at BF#" + std::to_string(bf_id) +
+        RIFT_TRACE(events_, "COMBAT: no result at BF#" + toString(bf_id) +
                          " with both players present -> another combat is staged");
         return;
     }
@@ -5783,7 +5783,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // player has taken `min_turn_to_score` of their own turns.
     if (isScoreGatedByTurn(player, bf)) {
         RIFT_TRACE(events_, std::string("SCORE_GATED: ") + toString(player) +
-                         " can't score BF#" + std::to_string(bf) + " until turn " +
+                         " can't score BF#" + toString(bf) + " until turn " +
                          std::to_string(getBattlefield(bf).min_turn_to_score) +
                          " (turns_taken=" + std::to_string(ps.turns_taken) + ")");
         return;
@@ -5810,7 +5810,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
 
     ps.battlefields_scored_this_turn.insert(bf);
     RIFT_TRACE(events_, std::string("CONQUER: ") + toString(player) + " conquers BF#" +
-                     std::to_string(bf) + " (score was " + std::to_string(ps.score) + ")");
+                     toString(bf) + " (score was " + std::to_string(ps.score) + ")");
 
     // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
     // Scoring is distinct from gaining points (CR 470.1): the battlefield is
@@ -5865,7 +5865,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
 
     if (isScoreGatedByTurn(player, bf)) {
         RIFT_TRACE(events_, std::string("SCORE_GATED: ") + toString(player) +
-                         " can't score BF#" + std::to_string(bf) + " until turn " +
+                         " can't score BF#" + toString(bf) + " until turn " +
                          std::to_string(getBattlefield(bf).min_turn_to_score) +
                          " (turns_taken=" + std::to_string(ps.turns_taken) + ")");
         return;
@@ -5901,7 +5901,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     ps.score++;
     ps.hold_points_this_turn++;
     RIFT_TRACE(events_, std::string("SCORE: ") + toString(player) + " +1 via Hold BF#" +
-                     std::to_string(bf) + " -> " + std::to_string(ps.score));
+                     toString(bf) + " -> " + std::to_string(ps.score));
     events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
 
     checkWinCondition();
@@ -5981,7 +5981,7 @@ void GameEngine::recalculateAuras() {
             !obj.location.has_value() && obj.zone != ZoneType::LegendZone &&
             obj.zone != ZoneType::BattlefieldZone && carriesBoardState(obj))
             throw std::logic_error("GameEngine::recalculateAuras: " + obj.name + " (id=" +
-                                   std::to_string(id) + ", zone " +
+                                   toString(id) + ", zone " +
                                    std::to_string(static_cast<int>(obj.zone.get())) +
                                    ") is off the board and still carries board state: it "
                                    "left the board by a path that does not call "
@@ -6434,7 +6434,7 @@ void GameEngine::revertLapsedControl() {
         if (source_in_play) continue;
         if (obj.controller != obj.control_revert_to) {
             RIFT_TRACE(events_, "CONTROL REVERTS: " + obj.name + " (id=" +
-                             std::to_string(id) + ") returns to " +
+                             toString(id) + ") returns to " +
                              toString(obj.control_revert_to) +
                              " (source left the board)");
             obj.controller = obj.control_revert_to;
@@ -6482,14 +6482,14 @@ void GameEngine::cleanup() {
                 (static_cast<uint64_t>(obj.controller) << 8) |
                 (obj.untargetable_by_enemy ? 1ULL << 16 : 0) |
                 (obj.is_exhausted ? 1ULL << 17 : 0);
-            mix(static_cast<uint64_t>(id) * 0x9E3779B97F4A7C15ULL ^
+            mix(static_cast<uint64_t>(id.raw()) * 0x9E3779B97F4A7C15ULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.damage_marked)) * 0xC2B2AE3D27D4EB4FULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
                 flags * 0xFF51AFD7ED558CCDULL);
         }
         for (auto& bf : state_.battlefields) {
-            mix(static_cast<uint64_t>(bf.id));
+            mix(static_cast<uint64_t>(bf.id.raw()));
             // bf.controller is std::optional<PlayerId> — encode the
             // has_value bit + the value (if any) into one mix.
             mix(bf.controller.has_value()
@@ -6677,7 +6677,7 @@ void GameEngine::recallMisplacedObjects() {
     std::sort(misplaced.begin(), misplaced.end());
     for (auto id : misplaced) {
         RIFT_TRACE(events_, "RECALL (CR 323.6): " + state_.getObject(id).name +
-                         " (id=" + std::to_string(id) + ")");
+                         " (id=" + toString(id) + ")");
         effect_executor_->recallToBase(id);
     }
 }
@@ -6726,7 +6726,7 @@ void GameEngine::processContestedBattlefields() {
             const bool contester_present = bf.contested_by != PlayerId::None
                 ? present(bf.contested_by) : (has_p1 || has_p2);
             if (!contester_present) {
-                RIFT_TRACE(events_, "CONTESTED_REMOVED: BF#" + std::to_string(bf.id) +
+                RIFT_TRACE(events_, "CONTESTED_REMOVED: BF#" + toString(bf.id) +
                                  " (contester has no units here)");
                 bf.is_contested = false;
                 bf.contested_by = PlayerId::None;
@@ -6812,7 +6812,7 @@ void GameEngine::channelRunes(PlayerId player, int count) {
         rune.location = BaseLocation{player};
 
         RIFT_TRACE(events_, "  CHANNELED: " + rune.name + " (id=" +
-                         std::to_string(rune_id) + ", ready)");
+                         toString(rune_id) + ", ready)");
         events_.emit(RuneChanneledEvent{rune_id, player});
         events_.emit(EnteredBoardEvent{
             rune_id, player, CardType::Rune, BaseLocation{player}, false});
@@ -7513,14 +7513,14 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
 
     if (cur.phase == Phase::PayingEnergy) {
         RIFT_TRACE(events_, "  EXHAUST_RUNE: " + rune.name + " (id=" +
-                         std::to_string(rune_id) +
+                         toString(rune_id) +
                          ") for energy [agent choice]");
         rune.is_exhausted = true;
         events_.emit(ObjectStateChangedEvent{rune_id, "exhausted"});
         cur.energy_remaining--;
     } else if (cur.phase == Phase::PayingPower) {
         RIFT_TRACE(events_, "  RECYCLE_RUNE: " + rune.name + " (id=" +
-                         std::to_string(rune_id) + ", " +
+                         toString(rune_id) + ", " +
                          (rune.is_exhausted ? "exhausted" : "ready") +
                          ") for power [agent choice]");
         auto base_loc = BaseLocation{cur.player};
@@ -7642,7 +7642,7 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
 
     if (ok) {
         RIFT_TRACE(events_, "TRASH_REPLAY: " + std::string(toString(player)) +
-                         " replayed card id=" + std::to_string(card_id) +
+                         " replayed card id=" + toString(card_id) +
                          " for [" + std::to_string(grant.energy) + "]+power");
     }
     return ok;
@@ -7728,7 +7728,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     // Last-known information for "When I die" (CR 383.2.c.3.b): captured now,
     // before gear is shed and the designation and statuses are cleared.
     effect_executor_->snapshotLastKnown(unit_id);
-    RIFT_TRACE(events_, "KILL: " + unit.name + " (id=" + std::to_string(unit_id) +
+    RIFT_TRACE(events_, "KILL: " + unit.name + " (id=" + toString(unit_id) +
                      ", " + std::to_string(unit.current_might) + "M, dmg=" +
                      std::to_string(unit.damage_marked) + ")");
 
@@ -7763,7 +7763,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         settleInTrash(state_, events_, unit_id);
     } else {
         RIFT_TRACE(events_, "  TOKEN CEASES TO EXIST (CR 183.1): " + unit.name +
-                         " (id=" + std::to_string(unit_id) + ")");
+                         " (id=" + toString(unit_id) + ")");
     }
 
     state_.turn.any_unit_died_this_turn = true;
@@ -7922,7 +7922,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
                 options += " [" + i.choice_label;
                 if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
                 for (auto o : i.chosen_objects) {
-                    options += " object=" + std::to_string(o);
+                    options += " object=" + toString(o);
                     if (state_.objectExists(o)) options += "(" + state_.getObject(o).name + ")";
                 }
                 options += "]";
@@ -8001,7 +8001,7 @@ Intent GameEngine::queryAgent(PlayerId player) {
                 if (state_.objectExists(chosen.targets[i]))
                     choice_str += state_.getObject(chosen.targets[i]).name;
                 else
-                    choice_str += "?" + std::to_string(chosen.targets[i]);
+                    choice_str += "?" + toString(chosen.targets[i]);
             }
             choice_str += "]";
         }
@@ -8025,14 +8025,14 @@ Intent GameEngine::queryAgent(PlayerId player) {
                 auto oid = chosen.chosen_objects[i];
                 if (state_.objectExists(oid))
                     choice_str += state_.getObject(oid).name +
-                                  "(id=" + std::to_string(oid) + ")";
+                                  "(id=" + toString(oid) + ")";
                 else
-                    choice_str += "?" + std::to_string(oid);
+                    choice_str += "?" + toString(oid);
             }
             choice_str += "]";
         }
         if (chosen.chosen_battlefield != kInvalidId) {
-            choice_str += " bf=" + std::to_string(chosen.chosen_battlefield);
+            choice_str += " bf=" + toString(chosen.chosen_battlefield);
         }
         // Player tag at the front so the line scans independently of
         // the surrounding DECISION # context.
@@ -8054,14 +8054,14 @@ BattlefieldState& GameEngine::getBattlefield(BattlefieldId id) {
     for (auto& bf : state_.battlefields) {
         if (bf.id == id) return bf;
     }
-    throw std::runtime_error("Battlefield not found: " + std::to_string(id));
+    throw std::runtime_error("Battlefield not found: " + toString(id));
 }
 
 const BattlefieldState& GameEngine::getBattlefield(BattlefieldId id) const {
     for (auto& bf : state_.battlefields) {
         if (bf.id == id) return bf;
     }
-    throw std::runtime_error("Battlefield not found: " + std::to_string(id));
+    throw std::runtime_error("Battlefield not found: " + toString(id));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

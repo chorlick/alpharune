@@ -445,7 +445,7 @@ TEST_F(ReviewFixC2Test, ImperialDecree_KillsAUnitThatSurvivesCombatDamage) {
 
     playThroughEngine(addToHand(P1, kImperialDecree));
     withEngine([&](GameEngine& e) {
-        e.testHook_runCombat(0);
+        e.testHook_runCombat(BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     });
     EXPECT_FALSE(onBoard(defender)) << "3 combat damage to a 5-Might unit, then the Decree";
@@ -611,7 +611,7 @@ TEST_F(ReviewFixC2Test, GuerillaWarfare_ChoosesTheCardsAndHidingIsFreeThisTurn) 
     hide.type = IntentType::HideCard;
     hide.player = P1;
     hide.card = h1;
-    hide.chosen_battlefield = 0;
+    hide.chosen_battlefield = BattlefieldId::fromRaw(0);
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(hide); settleLikeTheEngine(e); });
     EXPECT_TRUE(state.getObject(h1).is_hidden);
 
@@ -642,7 +642,7 @@ TEST_F(ReviewFixC2Test, SuperMegaDeathRocket_ReturnsFromTheTrashWhenYouConquer) 
 
     EnginePathAgent decline(script({V(0)}));
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreConquer(P1, 0);
+        e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));
         e.testHook_runChain();
     }, &decline);
     ASSERT_EQ(decline.prompts.size(), 1u) << "the may was offered";
@@ -651,7 +651,7 @@ TEST_F(ReviewFixC2Test, SuperMegaDeathRocket_ReturnsFromTheTrashWhenYouConquer) 
 
     EnginePathAgent accept(script({V(1), O(fodder)}));
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreConquer(P1, 1);
+        e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(1));
         e.testHook_runChain();
     }, &accept);
     EXPECT_TRUE(inHand(P1, rocket));
@@ -664,9 +664,9 @@ TEST_F(ReviewFixC2Test, SuperMegaDeathRocket_NotOnAHoldOrAnOpponentsConquer) {
     addToHand(P1, kPlayfulPhantom);
     EnginePathAgent agent;
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreHold(P1, 0);
+        e.testHook_scoreHold(P1, BattlefieldId::fromRaw(0));
         e.testHook_runChain();
-        e.testHook_scoreConquer(P2, 1);
+        e.testHook_scoreConquer(P2, BattlefieldId::fromRaw(1));
         e.testHook_runChain();
     }, &agent);
     EXPECT_TRUE(agent.prompts.empty());
@@ -682,7 +682,7 @@ TEST_F(ReviewFixC2Test, RideTheWind_MovesABaseUnitToAChosenBattlefieldAndReadies
 
     EnginePathAgent agent(script({O(unit), V(2)}));   // destination: battlefield 1
     playThroughEngine(addToHand(P1, kRideTheWind), &agent);
-    EXPECT_TRUE(atBf(unit, 1));
+    EXPECT_TRUE(atBf(unit, BattlefieldId::fromRaw(1)));
     EXPECT_FALSE(state.getObject(unit).is_exhausted);
 }
 
@@ -692,7 +692,7 @@ TEST_F(ReviewFixC2Test, Charm_MovesAnEnemyUnitWhereTheCasterChooses) {
 
     EnginePathAgent agent(script({O(enemy), V(1)}));   // destination: battlefield 0
     playThroughEngine(addToHand(P1, kCharm), &agent);
-    EXPECT_TRUE(atBf(enemy, 0));
+    EXPECT_TRUE(atBf(enemy, BattlefieldId::fromRaw(0)));
 
     EnginePathAgent home(script({O(enemy), V(0)}));    // back to its base
     playThroughEngine(addToHand(P1, kCharm), &home);
@@ -714,7 +714,7 @@ TEST_F(ReviewFixC2Test, Showstopper_OnlyABaseUnit_ToTheChosenBattlefield) {
     EnginePathAgent agent(script({V(2)}));   // battlefield 1
     playWithTargets(spell, {in_base}, &agent);
     EXPECT_EQ(state.getObject(in_base).buff_count, 1) << "buffed once";
-    EXPECT_TRUE(atBf(in_base, 1));
+    EXPECT_TRUE(atBf(in_base, BattlefieldId::fromRaw(1)));
 }
 
 TEST_F(ReviewFixC2Test, Stormbringer_TheBattlefieldIsChosen_AndTheUnitMovesEvenWithNoEnemies) {
@@ -730,14 +730,14 @@ TEST_F(ReviewFixC2Test, Stormbringer_TheBattlefieldIsChosen_AndTheUnitMovesEvenW
     EXPECT_EQ(state.getObject(e0).damage_marked, 0);
     EXPECT_EQ(state.getObject(e1a).damage_marked, 4);
     EXPECT_EQ(state.getObject(e1b).damage_marked, 4);
-    EXPECT_TRUE(atBf(mine, 1));
+    EXPECT_TRUE(atBf(mine, BattlefieldId::fromRaw(1)));
 }
 
 TEST_F(ReviewFixC2Test, Stormbringer_MovesToAnEmptyBattlefield) {
     auto mine = addUnit(P1, kInvalidId, 4);
     EnginePathAgent agent(script({O(mine), V(1)}));
     playThroughEngine(addToHand(P1, kStormbringer), &agent);
-    EXPECT_TRUE(atBf(mine, 0));
+    EXPECT_TRUE(atBf(mine, BattlefieldId::fromRaw(0)));
 }
 
 TEST_F(ReviewFixC2Test, DragonsRage_DestinationAndOpponentAreChosen) {
@@ -775,7 +775,7 @@ TEST_F(ReviewFixC2Test, ZenithBlade_TheFriendlyUnitToMoveIsChosen) {
     EnginePathAgent agent(script({O(enemy), V(1), O(second)}));
     playThroughEngine(addToHand(P1, kZenithBlade), &agent);
     EXPECT_TRUE(state.getObject(enemy).is_stunned);
-    EXPECT_TRUE(atBf(second, 0));
+    EXPECT_TRUE(atBf(second, BattlefieldId::fromRaw(0)));
     EXPECT_TRUE(state.getObject(first).isAtBase());
 }
 
@@ -787,7 +787,7 @@ TEST_F(ReviewFixC2Test, Flash_UpToTwo_OneUnitCanStayBehind) {
     EnginePathAgent agent(script({O(leaves), V(0)}));
     playThroughEngine(addToHand(P1, kFlash), &agent);
     EXPECT_TRUE(state.getObject(leaves).isAtBase());
-    EXPECT_TRUE(atBf(stays, 1));
+    EXPECT_TRUE(atBf(stays, BattlefieldId::fromRaw(1)));
 }
 
 TEST_F(ReviewFixC2Test, Flash_StillMovesTwo) {
@@ -1231,7 +1231,7 @@ TEST_F(ReviewFixC2Test, RecruitTheVanguard_TokensCanGoToAControlledBattlefield) 
     for (auto& [id, obj] : state.objects) {
         if (obj.name != "Recruit" || !obj.location.has_value()) continue;
         if (obj.isAtBase()) ++in_base;
-        else if (obj.battlefieldId() == BattlefieldId{0}) ++at_bf;
+        else if (obj.battlefieldId() == BattlefieldId::fromRaw(0)) ++at_bf;
         else ++elsewhere;
     }
     EXPECT_EQ(at_bf, 3);
@@ -1259,7 +1259,7 @@ TEST_F(ReviewFixC2Test, SpriteCallAndDesertsCall_TokenToAControlledBattlefield) 
     for (auto& [id, obj] : state.objects) {
         if (obj.name != "Sprite" && obj.name != "Sand Soldier") continue;
         ++found;
-        EXPECT_EQ(obj.battlefieldId(), BattlefieldId{1}) << obj.name;
+        EXPECT_EQ(obj.battlefieldId(), BattlefieldId::fromRaw(1)) << obj.name;
     }
     EXPECT_EQ(found, 2);
 }

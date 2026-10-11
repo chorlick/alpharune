@@ -30,6 +30,10 @@ inline void strongIdCase(GameState& state, const CardDB& db, GameObject& obj) {
     const uint32_t n = card.raw();              // to a number, by name
     card = CardDefId::fromRaw(n);               // and back, by name
     (void)db.get(card);
+    obj.location = BattlefieldLocation{1};      // slot 1, spelled with its type
+    obj.hidden_at = BattlefieldId::fromRaw(n);
+    (void)state.battlefields[obj.hidden_at];
+    (void)state.battlefields[0];
 #elif STRONG_ID_CASE == 1
     // A number only known at run time is not a card id.
     const uint32_t n = runtimeNumber();
@@ -62,6 +66,50 @@ inline void strongIdCase(GameState& state, const CardDB& db, GameObject& obj) {
     // A cast does not make a number an id either: only fromRaw does.
     const auto card = static_cast<CardDefId>(runtimeNumber());
     (void)card;
+#elif STRONG_ID_CASE == 10
+    // A battlefield id takes no number, literal or not.
+    BattlefieldId bf = 0;
+    (void)bf;
+#elif STRONG_ID_CASE == 11
+    obj.hidden_at = 1;
+#elif STRONG_ID_CASE == 12
+    // A slot number makes a location only as a literal.
+    const int slot = static_cast<int>(runtimeNumber());
+    obj.location = BattlefieldLocation{slot};
+#elif STRONG_ID_CASE == 13
+    // A card id is not a battlefield, nor the reverse.
+    obj.location = BattlefieldLocation{obj.card_def_id};
+#elif STRONG_ID_CASE == 14
+    (void)db.get(obj.hidden_at);
+#elif STRONG_ID_CASE == 15
+    (void)state.battlefields[obj.card_def_id];
+#elif STRONG_ID_CASE == 16
+    // THE mix-up: a card-template id where a runtime object id is expected.
+    (void)state.getObject(obj.card_def_id);
+#elif STRONG_ID_CASE == 17
+    // ... and the reverse.
+    (void)db.get(obj.id);
+#elif STRONG_ID_CASE == 18
+    obj.card_def_id = obj.id;
+#elif STRONG_ID_CASE == 19
+    if (obj.id == obj.card_def_id) return;
+#elif STRONG_ID_CASE == 20
+    // An object id takes no number, and is none only as kInvalidId.
+    (void)state.getObject(1);
+#elif STRONG_ID_CASE == 21
+    if (obj.id == 0) return;
+#elif STRONG_ID_CASE == 22
+    obj.attachments.push_back(runtimeNumber());
+#elif STRONG_ID_CASE == 23
+    // A battlefield slot is not an object.
+    (void)state.getObject(obj.hidden_at);
+#elif STRONG_ID_CASE == 24
+    // kInvalidId is not a number by itself (kInvalidId.raw() is).
+    const uint32_t n = kInvalidId;
+    (void)n;
+#elif STRONG_ID_CASE == 25
+    int slot = 3;
+    if (slot == kInvalidId) return;
 #else
 #error "unknown STRONG_ID_CASE"
 #endif

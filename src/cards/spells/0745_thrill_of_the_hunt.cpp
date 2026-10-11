@@ -48,7 +48,7 @@ public:
         std::vector<std::string> labels;
         for (const auto& bf : ctx.state.battlefields) {
             locations.push_back(LocationId{BattlefieldLocation{bf.id}});
-            std::string bf_name = "BF#" + std::to_string(static_cast<int>(bf.id));
+            std::string bf_name = "BF#" + std::to_string(static_cast<int>(bf.id.raw()));
             if (ctx.state.objectExists(bf.card_object_id)) {
                 bf_name = ctx.state.getObject(bf.card_object_id).name;
             }

@@ -84,7 +84,7 @@ public:
         me.card_counters[kChosen] = 0;
         const GameObjectId picked = ctx.executor.chooseObjectNow(ctx.controller, legal);
         if (picked == kInvalidId) return {};
-        me.card_counters[kChosen] = static_cast<int>(picked) + 1;
+        me.card_counters[kChosen] = static_cast<int>(picked.raw()) + 1;
         RIFT_TRACE(ctx.events, "UNDYING LOYALTY: chose " + ctx.state.getObject(picked).name);
         return discounts(ctx.state.getObject(picked)) ? discount : PlayCostAdjust{};
     }
@@ -103,7 +103,7 @@ public:
         const auto& counters = ctx.state.getObject(ctx.source).card_counters;
         const auto it = counters.find(kChosen);
         const GameObjectId picked = (it == counters.end() || it->second <= 0)
-            ? kInvalidId : static_cast<GameObjectId>(it->second - 1);
+            ? kInvalidId : GameObjectId::fromRaw(it->second - 1);
         const bool still_there = picked != kInvalidId && ctx.state.objectExists(picked) &&
             std::find(ps.trash.begin(), ps.trash.end(), picked) != ps.trash.end() &&
             eligible(ctx.state.getObject(picked), ctx.executor.cardDB());

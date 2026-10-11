@@ -29,16 +29,16 @@ public:
             // Top of the Main Deck is the back of the vector.
             for (auto it = ps.main_deck.rbegin();
                  it != ps.main_deck.rend() && ri.resume_data.size() < 3; ++it)
-                ri.resume_data.push_back(static_cast<int32_t>(*it));
+                ri.resume_data.push_back(static_cast<int32_t>((*it).raw()));
             if (ri.resume_data.empty()) { ri.resume_point = 2; return; }
             // A private look at the top three.
             for (size_t i = 0; i < ri.resume_data.size(); ++i) {
-                knowledge::seenInDeck(ctx.state, static_cast<GameObjectId>(ri.resume_data[i]),
+                knowledge::seenInDeck(ctx.state, GameObjectId::fromRaw(ri.resume_data[i]),
                                       knowledge::only(ctx.controller), DeckEnd::Top, static_cast<int>(i));
             }
             std::vector<Intent> opts;
             for (auto v : ri.resume_data)
-                opts.push_back(objChoice(ctx.controller, static_cast<GameObjectId>(v)));
+                opts.push_back(objChoice(ctx.controller, GameObjectId::fromRaw(v)));
             opts.push_back(valChoice(ctx.controller, 0, "Draw none"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                                        "Lightning Rush: draw one of the top 3 cards");
@@ -50,7 +50,7 @@ public:
         GameObjectId picked = takenObject(ctx);
         bool draw = false;
         for (auto v : ri.resume_data) {
-            auto id = static_cast<GameObjectId>(v);
+            auto id = GameObjectId::fromRaw(v);
             auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), id);
             if (it == ps.main_deck.end()) continue;   // no longer in the deck
             deck::take(ctx.state, id, id == picked ? deck::Place::Held : deck::Place::Public, knowledge::only(ctx.controller),

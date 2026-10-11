@@ -745,7 +745,7 @@ struct ChainItem {
 
 struct ChainState {
     std::vector<ChainItem> items;
-    ChainItemId next_id = 1;
+    ChainItemId next_id = ChainItemId::fromRaw(1);  // ids count up from 1
 
     // Phase C-1 commit 6 — the chain item currently being resolved.
     // Populated by ChainManager::stepResolve immediately after popping the
@@ -764,7 +764,11 @@ struct ChainState {
 
     bool exists() const { return !items.empty(); }
 
-    ChainItemId allocateId() { return next_id++; }
+    ChainItemId allocateId() {
+        const ChainItemId id = next_id;
+        next_id = ChainItemId::fromRaw(id.raw() + 1);
+        return id;
+    }
 
     /// Get the newest (top) item on the chain (last added = resolves first).
     ChainItem* newest() {
@@ -826,6 +830,19 @@ struct DelayedAbility {
 
 // ─── Complete Game State ─────────────────────────────────────────────────────
 
+/// GameState::battlefields: the vector it always was, which a slot's id also
+/// indexes (`state.battlefields[bf_id]`; an id is the slot's position).
+struct BattlefieldList : std::vector<BattlefieldState> {
+    using std::vector<BattlefieldState>::vector;
+    using std::vector<BattlefieldState>::operator[];
+    BattlefieldState& operator[](BattlefieldId id) {
+        return std::vector<BattlefieldState>::operator[](id.raw());
+    }
+    const BattlefieldState& operator[](BattlefieldId id) const {
+        return std::vector<BattlefieldState>::operator[](id.raw());
+    }
+};
+
 struct GameState {
     // Configuration
     ModeOfPlay mode;
@@ -834,7 +851,7 @@ struct GameState {
     PlayerState players[2];
 
     // Board
-    std::vector<BattlefieldState> battlefields;
+    BattlefieldList battlefields;
 
     // All game objects (the object pool). An ObjectTable: the unordered_map it
     // always was — same iteration order, stable references — plus an index of
@@ -842,7 +859,7 @@ struct GameState {
     // engine's hot loops read instead of walking every object
     // (core/object_table.h).
     ObjectTable objects;
-    GameObjectId next_object_id = 1;
+    GameObjectId next_object_id = GameObjectId::fromRaw(1);  // ids count up from 1
     // How many times cleanup has looked for units that became [Mighty]
     // (GameObject::mighty_seen is compared with it).
     uint32_t mighty_checks = 0;
@@ -898,7 +915,8 @@ struct GameState {
     // ── Object management ──
 
     GameObjectId createObject() {
-        GameObjectId id = next_object_id++;
+        const GameObjectId id = next_object_id;
+        next_object_id = GameObjectId::fromRaw(id.raw() + 1);
         objects[id] = GameObject{};
         objects[id].id = id;
         return id;

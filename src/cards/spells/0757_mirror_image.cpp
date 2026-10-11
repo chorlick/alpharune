@@ -33,7 +33,7 @@ public:
         if (token != kInvalidId && ctx.state.objectExists(token))
             ctx.executor.queueReflexiveTrigger(
                 ctx.source, ctx.controller, 0,
-                {static_cast<int32_t>(token), static_cast<int32_t>(targets[0])});
+                {static_cast<int32_t>(token.raw()), static_cast<int32_t>(targets[0].raw())});
     }
     bool hasReflexiveTrigger() const override { return true; }
     // `data` = {the Reflection token, the chosen unit}.
@@ -41,8 +41,8 @@ public:
                             const std::vector<int32_t>& data) override {
         if (finalizingChoices(ctx)) return;   // nothing to choose
         if (data.size() < 2) return;
-        const auto token = static_cast<GameObjectId>(data[0]);
-        const auto model = static_cast<GameObjectId>(data[1]);
+        const auto token = GameObjectId::fromRaw(data[0]);
+        const auto model = GameObjectId::fromRaw(data[1]);
         auto in_play = [&](GameObjectId id) {
             return ctx.state.objectExists(id) && ctx.state.getObject(id).location.has_value();
         };

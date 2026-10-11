@@ -291,7 +291,7 @@ TEST_F(C4Test, Tideturner_SwapsWithTheChosenUnitOrNotAtAll) {
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(beside)) << "\"at another location\"";
     EXPECT_FALSE(agent.wasOffered(card));
-    EXPECT_EQ(o(card).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(card).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_TRUE(o(away).isAtBase());
 
     auto second = addToHand(P1, kTideturner);
@@ -397,7 +397,7 @@ TEST_F(C4Test, NoxusSaboteur_OpponentsCantPlayTheirHiddenCardsHere) {
     h.erase(std::remove(h.begin(), h.end(), hidden), h.end());
     o(hidden).zone = ZoneType::FacedownZone;
     o(hidden).is_hidden = true;
-    o(hidden).hidden_at = 0;
+    o(hidden).hidden_at = BattlefieldId::fromRaw(0);
     o(hidden).hidden_on_turn = 1;
     state.battlefields[0].facedown.push_back(hidden);
     pushSpellOnChain(P1, kPunchFirst);
@@ -512,7 +512,7 @@ TEST_F(C4Test, UdyrWildman_SpendsItsBuffAndHonoursCantBeChosen) {
     EXPECT_TRUE(canActivate(legal, udyr));
     EXPECT_FALSE(canActivate(legal, plain)) << "the unbuffed copy has no buff to spend";
 
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(target)}));  // "Deal 2"
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(target.raw())}));  // "Deal 2"
     activate(udyr, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the mode, then the unit";
     EXPECT_TRUE(agent.wasOffered(target));
@@ -583,7 +583,7 @@ TEST_F(C4Test, DrMundoExpert_ChoosesWhichThreeCardsToRecycle) {
     for (int i = 0; i < 5; ++i) trash.push_back(inTrashOf(P1, kIncinerate));
     // Keep the two oldest: pick the three newest.
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(trash[4]), static_cast<int>(trash[3]), static_cast<int>(trash[2])}));
+        {static_cast<int>(trash[4].raw()), static_cast<int>(trash[3].raw()), static_cast<int>(trash[2].raw())}));
     fireTriggerThroughEngine(mundo, TriggerType::AtStartOfBeginning, &agent);
     EXPECT_EQ(agent.prompts.size(), 3u);
     EXPECT_TRUE(inTrash(P1, trash[0]));
@@ -622,7 +622,7 @@ TEST_F(C4Test, AvaAchiever_PaysAsTheAbilityGoesOnTheChain) {
     });
     fireTriggerThroughEngine(ava, TriggerType::WhenIAttack, &agent, kInvalidId, &opponent);
     EXPECT_GE(opponent.asked, 1) << "the opponent had a chance to respond";
-    EXPECT_EQ(o(hidden).battlefieldId(), std::optional<BattlefieldId>{0}) << "a unit: played here";
+    EXPECT_EQ(o(hidden).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)}) << "a unit: played here";
     EXPECT_FALSE(inHand(P1, hidden));
     EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)], 0) << "paid once";
 }
@@ -656,7 +656,7 @@ TEST_F(C4Test, MissFortuneCaptain_FirstMoveOnly_AndLegendsCount) {
     state.battlefields[0].controller = P1;
 
     EnginePathAgent agent(EnginePathAgent::choosing(mine, EnginePathAgent::May::Yes));
-    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.moveToBattlefield(mf, 0); },
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.moveToBattlefield(mf, BattlefieldId::fromRaw(0)); },
                          &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then what to ready";
     EXPECT_TRUE(agent.wasOffered(mine)) << "an exhausted legend is \"something else that's exhausted\"";
@@ -724,8 +724,8 @@ TEST_F(C4Test, Blitzcrank_PullsTheEnemyUnitItsControllerChooses) {
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_TRUE(agent.wasOffered(first));
     EXPECT_FALSE(agent.wasOffered(shrouded)) << "can't be chosen by enemy abilities";
-    EXPECT_EQ(o(chosen).battlefieldId(), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(o(first).battlefieldId(), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(o(chosen).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(o(first).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(C4Test, CantBeChosenUnitsAreNotOfferedToAhriTeemoOrSnapvine) {
@@ -818,15 +818,15 @@ TEST_F(C4Test, Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses) {
     // yes; the unit; battlefield 1 (mode 2).
     EnginePathAgent agent(EnginePathAgent::script({
         1,                        // Soulgorger: "may play a unit from your trash": yes
-        static_cast<int>(dead),   // which unit (First Mate, the only one)
+        static_cast<int>(dead.raw()),   // which unit (First Mate, the only one)
         2,                        // where: mode 2 = battlefield #1 (mode 0 = base)
-        static_cast<int>(card),   // the played First Mate's "ready another unit": Soulgorger,
+        static_cast<int>(card.raw()),   // the played First Mate's "ready another unit": Soulgorger,
                                   // the only other unit on the board
     }));
     playThroughEngine(card, &agent);
     // (A fourth prompt is the revived First Mate's own play trigger.)
     ASSERT_GE(agent.prompts.size(), 3u) << "the may, the unit, where";
-    EXPECT_EQ(o(dead).battlefieldId(), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(o(dead).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_FALSE(inTrash(P1, dead));
 }
 
@@ -836,7 +836,7 @@ TEST_F(C4Test, FlameChompers_PaysAndChoosesItsLandingPlace) {
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
     EnginePathAgent agent(EnginePathAgent::script({1, 1}));   // yes; battlefield 0 (mode 1)
     fireTriggerThroughEngine(chompers, TriggerType::WhenIAmDiscarded, &agent);
-    EXPECT_EQ(o(chompers).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(chompers).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_FALSE(inTrash(P1, chompers));
     EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)], 0);
 }
@@ -911,7 +911,7 @@ TEST_F(C4Test, ShadowDash_AsksForTheEnemyUnitOnceAndPaysItsDeflect) {
         << "the unit is chosen once, as the spell is played — not again as it resolves";
     EXPECT_TRUE(agent.wasOffered(other));
     EXPECT_TRUE(agent.prompts[1].front().chosen_objects.empty()) << "then only the battlefield";
-    EXPECT_EQ(o(enemy).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "Deflect was paid for the choice";
     EXPECT_TRUE(state.player(P1).chose_enemy_unit_this_turn);
 }
@@ -923,7 +923,7 @@ TEST_F(C4Test, ShadowDash_ExactlyTwoUnitsThereEachGetPlusOne) {
     auto spell = addToHand(P1, kShadowDash);
     EnginePathAgent agent(EnginePathAgent::choosing(enemy));
     playThroughEngine(spell, &agent);
-    EXPECT_EQ(o(enemy).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(o(a).temp_might_bonus, 1);
     EXPECT_EQ(o(b).temp_might_bonus, 1);
 }
@@ -993,7 +993,7 @@ TEST_F(C4Test, KaynUnleashed_MovedTwiceByEffectsTakesNoDamage) {
     auto kayn = addUnit(P1, kKaynUnleashed);
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
-        exec.moveToBattlefield(kayn, 0);
+        exec.moveToBattlefield(kayn, BattlefieldId::fromRaw(0));
         e.testHook_cleanup();
         exec.dealDamage(kayn, 1, kInvalidId);
         EXPECT_EQ(e.mutableState().getObject(kayn).damage_marked, 1) << "one move: not immune";

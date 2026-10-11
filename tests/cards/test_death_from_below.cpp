@@ -98,7 +98,7 @@ GameObjectId setupTrashedSpell(GameEngine& engine, CardDB& card_db) {
     s.turn.ns_state = NeutralShowdownState::Neutral;
     s.turn.oc_state = OpenClosedState::Open;
     s.battlefields.push_back(BattlefieldState{});
-    s.battlefields.back().id = 0;
+    s.battlefields.back().id = BattlefieldId::fromRaw(0);
 
     // Legend zones (mirror other GameEngine action-gen tests).
     for (int p = 0; p < 2; ++p) {

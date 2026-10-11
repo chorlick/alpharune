@@ -49,7 +49,7 @@ public:
         for (int i = 0; i < n; ++i)
             labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
                 ? ctx.state.getObject(bfs[i].card_object_id).name
-                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
         const int mode = pickMode(ctx, "Moonfall: battlefield", n, labels,
                                   battlefieldMask(ctx.state, ctx.controller));
         if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield with your units

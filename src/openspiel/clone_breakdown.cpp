@@ -30,6 +30,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <new>
+#include <unordered_map>
 #include <cstdlib>
 #include <iostream>
 #include <numeric>
@@ -37,7 +40,21 @@
 #include <string>
 #include <vector>
 
+// Every heap allocation of the process, counted (the (C) table below).
+static uint64_t g_allocs = 0;
+void* operator new(std::size_t n) {
+    ++g_allocs;
+    if (void* p = std::malloc(n ? n : 1)) return p;
+    throw std::bad_alloc();
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+
 namespace {
+
+/// Keeps a value alive as far as the optimiser is concerned.
+template <class T>
+inline void keep(T* p) { asm volatile("" : : "g"(p) : "memory"); }
 
 std::string getenvOr(const char* name, std::string fallback) {
     if (const char* v = std::getenv(name)) return v;
@@ -146,6 +163,83 @@ int main() {
     double pct = (overhead / s_clone.median) * 100.0;
     std::cout << "Wrapper overhead (Clone - GameState copy): "
               << overhead << " us median (" << pct << "% of Clone)\n";
+
+
+    // (C) What one GameState copy is made of (plans/09 item 9.KK1). Each row
+    // copies ONE member of every object of the state into a fresh value and
+    // destroys it, `reps` times in a row, so the allocator is in a steady
+    // state (a single timed copy bills the previous teardown's fastbin
+    // consolidation to whoever allocates next: plans/reports/perf-search.md
+    // section 2). Heap allocations are counted, not inferred.
+    {
+        const ::riftbound::GameState& gs = rb_state->engineState();
+        const int reps = std::max(1, getenvInt("RIFTBOUND_FIELD_REPS", 2000));
+        std::cout << "\n=== (C) per-member copy cost, " << gs.objects.size()
+                  << " objects, sizeof(GameObject)=" << sizeof(::riftbound::GameObject)
+                  << ", " << reps << " reps, median of 9 ===\n";
+        auto row = [&](const char* label, auto&& body) {
+            std::vector<double> ns(9);
+            uint64_t allocs = 0;
+            for (auto& sample : ns) {
+                const uint64_t a0 = g_allocs;
+                auto t0 = std::chrono::steady_clock::now();
+                for (int r = 0; r < reps; ++r) body();
+                auto t1 = std::chrono::steady_clock::now();
+                sample = std::chrono::duration<double, std::nano>(t1 - t0).count() / reps;
+                allocs = (g_allocs - a0) / reps;
+            }
+            std::sort(ns.begin(), ns.end());
+            std::printf("  %-34s %9.0f ns   %5llu allocations\n", label, ns[4],
+                        static_cast<unsigned long long>(allocs));
+        };
+        row("whole GameState", [&] { ::riftbound::GameState c = gs; keep(&c); });
+        row("  objects (the table)", [&] { auto c = gs.objects; keep(&c); });
+        row("  players[2]", [&] { auto a = gs.players[0]; auto b = gs.players[1]; keep(&a); keep(&b); });
+        row("  chain", [&] { auto c = gs.chain; keep(&c); });
+        row("  battlefields", [&] { auto c = gs.battlefields; keep(&c); });
+        row("  action_history", [&] { auto c = gs.action_history; keep(&c); });
+        row("  delayed_abilities", [&] { auto c = gs.delayed_abilities; keep(&c); });
+        row("  knowledge", [&] { auto c = gs.knowledge; keep(&c); });
+        row("  turn", [&] { auto c = gs.turn; keep(&c); });
+#define RIFT_FIELD_ROW(member) \
+        row("    object." #member, [&] { \
+            for (const auto& [id, o] : gs.objects) { auto c = o.member; keep(&c); } })
+        RIFT_FIELD_ROW(name);
+        RIFT_FIELD_ROW(tags);
+        RIFT_FIELD_ROW(domains);
+        RIFT_FIELD_ROW(card_counters);
+        RIFT_FIELD_ROW(string_state);
+        RIFT_FIELD_ROW(last_known);
+        RIFT_FIELD_ROW(attachments);
+        RIFT_FIELD_ROW(tracked_objects);
+        RIFT_FIELD_ROW(pending_death_replacements);
+        RIFT_FIELD_ROW(granted_abilities);
+        RIFT_FIELD_ROW(temp_granted_abilities);
+        RIFT_FIELD_ROW(aura_effects);
+#undef RIFT_FIELD_ROW
+        row("    one map node per object (empty)", [&] {
+            std::unordered_map<uint32_t, char> m;
+            m.reserve(gs.objects.size());
+            for (const auto& [id, o] : gs.objects) m.emplace(id.raw(), 0);
+            keep(&m); });
+        size_t long_names = 0, with_tags = 0, with_domains = 0, with_counters = 0,
+               with_strings = 0, with_attach = 0, with_auras = 0, tokens = 0;
+        for (const auto& [id, o] : gs.objects) {
+            long_names += o.name.size() > 15;
+            with_tags += !o.tags.empty();
+            with_domains += !o.domains.empty();
+            with_counters += !o.card_counters.empty();
+            with_strings += !o.string_state.empty();
+            with_attach += !o.attachments.empty();
+            with_auras += !o.aura_effects.empty();
+            tokens += o.isToken();
+        }
+        std::cout << "  objects with: a name over 15 chars " << long_names
+                  << ", tags " << with_tags << ", domains " << with_domains
+                  << ", counters " << with_counters << ", string_state " << with_strings
+                  << ", attachments " << with_attach << ", aura effects " << with_auras
+                  << "; tokens " << tokens << "\n";
+    }
 
     return 0;
 }

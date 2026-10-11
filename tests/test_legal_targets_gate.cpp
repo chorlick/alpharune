@@ -43,7 +43,7 @@ protected:
 
         state.players[0].id = PlayerId::Player1;
         state.players[1].id = PlayerId::Player2;
-        BattlefieldState bf0; bf0.id = 0; state.battlefields.push_back(bf0);
+        BattlefieldState bf0; bf0.id = BattlefieldId::fromRaw(0); state.battlefields.push_back(bf0);
     }
 
     /// Push a fake spell ChainItem onto the chain, optionally targeting a

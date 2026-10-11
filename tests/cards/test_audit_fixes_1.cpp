@@ -47,7 +47,7 @@ protected:
         if (equipment) obj.tags.push_back("Equipment");
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -615,7 +615,7 @@ TEST_F(AuditFix1Test, Deceiver_CreatesCopyTokenWithTemporary) {
         if (id == model) continue;
         if (!obj.isToken()) continue;
         if (!obj.isUnit()) continue;
-        if (obj.battlefieldId() == 0u) { token = id; break; }
+        if (obj.battlefieldId() == BattlefieldId::fromRaw(0)) { token = id; break; }
     }
     ASSERT_NE(token, kInvalidId);
     auto& tk = state.getObject(token);
@@ -701,7 +701,7 @@ TEST_F(AuditFix1Test, Deceiver_NoUnitToCopyStillMakesTemporaryToken) {
     GameObjectId token = kInvalidId;
     for (auto& [id, obj] : state.objects) {
         if (!obj.isToken() || !obj.isUnit()) continue;
-        if (obj.battlefieldId() == 0u) { token = id; break; }
+        if (obj.battlefieldId() == BattlefieldId::fromRaw(0)) { token = id; break; }
     }
     ASSERT_NE(token, kInvalidId);
     auto& tk = state.getObject(token);

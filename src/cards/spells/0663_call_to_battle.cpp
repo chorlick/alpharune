@@ -76,7 +76,7 @@ public:
             // "They move a unit they control to the same battlefield": the
             // opponent's pick.
             slot(kPhaseSlot) = 2;
-            const auto bf = static_cast<BattlefieldId>(slot(kBfSlot));
+            const auto bf = BattlefieldId::fromRaw(slot(kBfSlot));
             const auto theirs = unitsNotAt(ctx.state, opp, bf);
             GameObjectId mover = takenObject(ctx);
             if (theirs.empty()) return;
@@ -100,7 +100,7 @@ public:
         for (int i = 0; i < n; ++i)
             labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
                 ? ctx.state.getObject(bfs[i].card_object_id).name
-                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
         const int mode = pickMode(ctx, "Call to Battle: battlefield", n, labels,
                                   destinationMask(ctx.state, ctx.controller, unit));
         if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield to move to
@@ -117,7 +117,7 @@ public:
         std::vector<Intent> opts;
         for (auto id : theirs) opts.push_back(objChoice(opp, id));
         slot(kPhaseSlot) = 1;
-        slot(kBfSlot) = static_cast<int32_t>(dest);
+        slot(kBfSlot) = static_cast<int32_t>(dest.raw());
         ctx.executor.requestChoice(opp, std::move(opts),
                                    "Call to Battle: move a unit you control to that battlefield");
     }

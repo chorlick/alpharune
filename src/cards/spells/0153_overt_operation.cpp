@@ -60,17 +60,17 @@ public:
         auto& ri = *ctx.state.chain.resuming;
         if (ri.resume_point == kDone) return;
         if (ri.resume_point == kAwait) {
-            const GameObjectId id = static_cast<GameObjectId>(ri.resume_data[ri.resume_data[0]]);
+            const GameObjectId id = GameObjectId::fromRaw(ri.resume_data[ri.resume_data[0]]);
             if (takenValue(ctx, 0) == 1 && has_buff(id)) spend_to_ready(id);
         } else if (ri.resume_point != kAsking) {
             ri.resume_data.assign(1, 0);
             for (auto id : friendly_units())
-                if (has_buff(id)) ri.resume_data.push_back(static_cast<int32_t>(id));
+                if (has_buff(id)) ri.resume_data.push_back(static_cast<int32_t>(id.raw()));
         }
         ri.resume_point = kAsking;
         while (ri.resume_data[0] + 1 < static_cast<int32_t>(ri.resume_data.size())) {
             const GameObjectId id =
-                static_cast<GameObjectId>(ri.resume_data[++ri.resume_data[0]]);
+                GameObjectId::fromRaw(ri.resume_data[++ri.resume_data[0]]);
             if (!has_buff(id)) continue;
             ctx.executor.requestChoice(ctx.controller,
                 {valChoice(ctx.controller, 0, "Keep its buff"),

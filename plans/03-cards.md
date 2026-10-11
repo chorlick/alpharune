@@ -41,6 +41,7 @@ Two engine facts drive several findings:
   - Fix direction: either convert each to `pickTarget` + `kFinalizeTrigger`, or have the engine choose targets at finalization for any trigger with `getTargetRequirements().count > 0`. Add an engine-level test that plays the card rather than calling `onTrigger`.
   - c0: 278 Navori Fighting Pit, 535 Veiled Temple, 763 Amateur Recital, 63 Spirit's Refuge, 212 Forge of the Future — FIXED: see 07 item 7.1 / 7.2
   - c4: 16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 199 — FIXED: see 07 item 7.1.
+  - c5: 238 Leona, Determined — FIXED under 07 item 7.1.
 
 ## C. Non-idempotent work before a suspending helper
 
@@ -51,6 +52,7 @@ The callback re-runs from the top after a choice, so anything before the helper 
 - [ ] **3.4** `spells/0515_arcane_shift.cpp:25-31` — banishes and replays `targets[0]` before `pickTarget` (`:44`); play triggers fire twice. [confirmed]
   - c3: 515 Arcane Shift — FIXED: the enemy target and the replay location are chosen before the banish-and-replay, so it happens once; "Banish this" sets `banish_on_leave_chain`; test: C3Test.ArcaneShift_ReplaysTheUnitOnceAndBanishesItself
 - [ ] **3.5** `units/0406_jayce_man_of_progress.cpp:50-52` — `killObject(gear)` before `pickTarget` (`:59`); with two gears both die, with one the picked gear is never played. [confirmed]
+  - c5: 406 Jayce, Man of Progress — FIXED: nothing is killed before the choices; the gear is chosen with `pickTarget` at finalization and killed after the marker; test: C5Test.JayceKillsTheChosenGearAndGrantsAPlayThisTurn
 - [ ] **3.6** `gear/0242_baited_hook.cpp:33-36` — kills `targets[0]` then suspends (`:59`); on re-entry returns early, the chosen unit is never played. [confirmed]
   - c0: 242 Baited Hook — FIXED: the kill is recorded on the chain item (`resume_data[7]` = 1 + the killed unit's Might) so the re-entry after the pick neither kills again nor returns early; the picked unit is played; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
 - [ ] **3.7** `gear/0490_altar_of_memories.cpp:35-38` — once-guard `__altar_drew` is never erased; from the second friendly death "yes" neither exhausts nor draws but still forces a hand card onto the deck. `spells/0475_guards.cpp:25-33` has the same permanent guard (`__guards_token`) [plausible]. [confirmed]
@@ -64,14 +66,18 @@ The callback re-runs from the top after a choice, so anything before the helper 
 - [ ] **3.9** `units/0147_wildclaw_shaman.cpp:24-33` — "spend a buff" never spends one; free buff and ready. [confirmed]
   - c4: 147 Wildclaw Shaman — FIXED: offered only with a buffed friendly unit; the controller picks whose buff and it is spent at finalization (`costDueNow`); test: C4Test.WildclawShaman_SpendsABuffToBuffAndReadyItself, C4Test.WildclawShaman_WithNoBuffToSpendIsNotOffered
 - [ ] **3.10** `units/0449_overzealous_fan.cpp:40,51-52` — "kill me" cost paid after the marker and never verified; if the Fan was killed in response, the effect still happens. The effect itself is also wrong: the code bounces the attacker to hand, the text says move it to its base (08 §D). [confirmed]
+  - c5: 449 Overzealous Fan — FIXED: the kill is paid under `costDueNow` by a Fan still on the board (no effect otherwise); the attacker is moved to its base; test: C5Test.OverzealousFanMovesTheAttackerToItsBase
 - [ ] **3.11** `units/0230_albus_ferros.cpp:28-44` — X fixed at finalization, buffs spent at resolution, payout uses X. [confirmed]
+  - c5: 230 Albus Ferros — FIXED: no X at finalization; buffs are chosen and spent at resolution and the runes follow the count actually spent; test: C5Test.AlbusFerrosSpendsTheBuffsThePlayerChooses
 - [ ] **3.12 Costs paid after the marker without `costDueNow`: 14 cards** [confirmed pattern] — **complete named list in [07 §C](07-cards-second-pass.md)**.
   - Payment happens at resolution, so a player can say yes then spend the resource on a Reaction (CR 383.3).
   - Clearest: `units/0500_fiora_worthy.cpp:41`, `units/0446_fae_porter.cpp:49`, `units/0796_baccai_reaper.cpp:57`.
   - Rest: in each opted-in file, grep after the `finalizingChoices(ctx)` line for `payOnePower|payEnergy|xp -= |buff_count -= 1|burn\(|killObject\(ctx.source\)`.
+  - c5: 446 Fae Porter, 349 Rumble, 449 Overzealous Fan — FIXED (see 07 item 7.5); 230 Albus Ferros is not a cost (03 item 3.11).
 - [ ] **3.13 Counter writes before the marker: 4 cards** [confirmed violation, plausible harm]
   - `units/0162_miss_fortune_captain.cpp:34`, `units/0789_blade_twirler.cpp:31`, `units/0855_jayce_brilliant_inventor.cpp:42,47`, `units/0372_aphelios_exalted.cpp:33-44`. After `makeNewChoicesFor` resets `resume_point`, the "first time this turn" flag is already set.
   - c4: 162 Miss Fortune, Captain — FIXED: no counter at all; "the first time I move each turn" is `triggerCondition` (`moves_this_turn == 1`, bumped before every move event); test: C4Test.MissFortuneCaptain_FirstMoveOnly_AndLegendsCount
+  - c5: 372 Aphelios, Exalted — FIXED: the mode is still claimed when chosen (a second trigger must not take it), but the claim remembers its chain item, so the same item asked again (re-entry, `makeNewChoicesFor`) is not blocked by its own answer; test: C5Test.ApheliosModeCannotBeChosenTwiceInATurn
 
 Clean: opt-in bits match overridden callbacks; every effect branch of the 10 multi-trigger cards has a marker; no pre-check is missing `costAlreadyPaid`.
 
@@ -82,10 +88,12 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - `units/0404_ezreal_dashing.cpp:65-66`, `units/0067_blitzcrank_impassive.cpp:31` (card ends up in hand and trash), `units/0373_azir_ascendant.cpp:102-112`.
   - Rest: `grep -nE "(moveToBattlefield|moveToBase|bounceToHand|moveToLocation)\((ctx\.executor, *)?(ctx\.source|source)\b" src/cards/*/*.cpp`
   - c4: 67 Blitzcrank, Impassive — FIXED: the hold bounce checks `location.has_value()` (and `bounceToHand` now refuses an off-board unit, 02 item 2.28).
+  - c5: 404 Ezreal, Dashing — ALREADY FIXED by the executor (`99d179e`: `moveToBase` is a no-op off the board). 373 Azir, Ascendant — FIXED: both units must be on the board to trade places.
 - [ ] **3.15 Trigger subject used after only `objectExists`** [plausible, low impact]
   - `units/0712_vex_apathetic.cpp:30`, `gear/0143_pirate_s_haven.cpp:26`, `battlefields/0272_back_alley_bar.cpp:26`, `gear/0060_mask_of_foresight.cpp:27`.
   - c0: 143 Pirate's Haven, 272 Back-Alley Bar, 60 Mask of Foresight — FIXED: the subject must still be a unit on the board; test: C0Test.PiratesHaven_ReadyingARuneDoesNotTrigger, .BackAlleyBar_OnlyAUnitStillOnTheBoardGetsTheMight, .MaskOfForesight_IgnoresAUnitThatLeftTheBoard
 - [ ] **3.16** `units/0416_direwing.cpp:21` — "Another Dragon" skips every Direwing by def id; a second Direwing does not enter ready. Use the three-argument `entersReadyOnPlay(..., self)`. [confirmed]
+  - c5: 416 Direwing — FIXED: three-argument `entersReadyOnPlay`, skips only this instance (same in 394 Breakneck Mech); test: C5Test.DirewingEntersReadyNextToAnotherDirewing
 
 ## F. Data and reprint drift
 
@@ -93,10 +101,13 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - c0: 163 Seal of Strength — NOT A DEFECT: `gear/0163_seal_of_strength.cpp` adds `Domain::Body`, matching its text "[Add] [O]" and its Body domain; the wrong one is 542 (c1)
   - c1: 542 Seal of Strength — FIXED: adds `Domain::Body`, as reprint 163 does; test: ReviewFixC1Test.SealOfStrength_AddsBodyPower
 - [ ] **3.18** `units/0778_plundering_poro.cpp:18` — `createGoldToken` (ready); text says exhausted, reprint 392 uses `createGoldExhausted`. [confirmed]
+  - c5: 392 Plundering Poro — NOT A DEFECT: 392 already calls `createGoldExhausted` (`units/0392_plundering_poro.cpp`, `onTrigger`); the defect is in reprint 778 (stream c7).
 - [ ] **3.19** `units/0548_karma_channeler.cpp:15-30` — only a `WhenYouPlayMe` Vision (the engine already does Vision, `trigger_manager.cpp:317`, so it runs twice) and no recycle trigger. `units/0235_karma_channeler.cpp:57` has tags `{"Vi", "Ionia"}`. [confirmed]
+  - c5: 235 Karma, Channeler — FIXED: tags `{Karma, Ionia}`; test: C5Test.KarmaChanneler235IsAKarma. (The gallery data in `cards/raw/gallery_raw.json` carries "Vi" for OGN-235, which is where the error came from; the SFD reprint says Karma.) 548 is stream c6's.
 - [ ] **3.20** `units/0543_sett_brawler.cpp` lacks the `canActivateAbility` buff gate that `units/0164_sett_brawler.cpp:27` has. [confirmed]
 - [ ] **3.21** Region tags differ in 5 reprint pairs (Ahri 539/119, Darius 547/243, Sett 164/543, Yasuo 205/546, Vayne 35/537). `units/0421_veteran_poro.cpp` sets `Keyword::Equip`, 779 does not. [confirmed]
   - c4: 119, 164, 205, 35 — NOT A DEFECT on these ids: they are the copies that carry the region tag (Ionia / Demacia, as `cards/json/ogn_*.json`); the reprints missing it (539, 543, 546, 537) are outside this range.
+  - c5: 421 Veteran Poro — FIXED: `Keyword::Equip` removed (a Weaponmaster unit has no Equip ability; 779 was right), and from the other Weaponmaster units in range (324, 331, 407, 414, 435, 440, 448); test: C5Test.KeywordsTheTextOnlyMentionsAreNotOnTheDef. 243 Darius's region tags are unchanged (reprint 547 is c6's).
 - [ ] **3.22** `spells/0251_noxian_guillotine.cpp:35` — without Legion writes `__kill_on_next_damage_this_turn`, which nothing reads; the spell does nothing. [confirmed]
   - c2: 251 Noxian Guillotine — FIXED: a one-shot delayed ability (`TriggerType::WhenAUnitTakesDamage`, `shared:` commit) kills the chosen unit the next time it is dealt damage this turn; test: ReviewFixC2Test.NoxianGuillotine_WithoutLegion_KillsTheUnitTheNextTimeItIsDamaged
 
@@ -116,6 +127,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - c4: 41 Volibear, Furious — FIXED: local `splitDamage` and `kSplit*` deleted, calls `splitDamageAmong`; test: existing Volibear tests and ChoiceHelperTest.SplitDamageAmongLetsTheControllerDivideTheDamage
   - c1: 405 Hextech Anomaly, 412 The Zero Drive, 498 Blade of the Ruined King, 748 Hextech Gauntlets — FIXED: no hand-written rune recycle left (`payAnyPower` / `standardEquip` / `payOnePower`); test: ReviewFixC1Test.HextechAnomaly_IsAReactionAndReadyRunesCanPayX, AuditFix0Test.ZeroDrive_EquipPaysAndAttaches, ReviewFixC1Test.BladeOfTheRuinedKing_TheControllerChoosesWhichUnitDies, ReviewFixC1Test.HextechGauntlets_EquipIsPaidWithFloatingResources
   - c3: 751 Alpha Strike — FIXED: local `splitDamage` and `kSplit*` deleted, calls `splitDamageAmong`; test: existing Alpha Strike tests (full suite)
+  - c5: 444 Corrupt Enforcer — FIXED: private copy deleted, calls the shared `discardThenAct`; test: C5Test.CorruptEnforcerDiscardsTheChosenCard. (405 and 412 are gear files, stream c1.)
 
 ## See also
 

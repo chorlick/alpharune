@@ -33,7 +33,9 @@ public:
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 targets.push_back(id);
         }
-        if (targets.empty()) return;
+        // No return on an empty list: pickTarget stores "no target" on the
+        // chain item, so the resolution asks nothing if a friendly unit has
+        // arrived since.
         GameObjectId picked = pickTarget(ctx, "Vanguard Helm (buff a friendly unit)", targets);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&

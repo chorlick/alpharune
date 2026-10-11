@@ -55,7 +55,6 @@ public:
             return ctx.state.objectExists(ctx.source) &&
                    !ctx.state.getObject(ctx.source).is_exhausted;
         };
-        if (ctx.state.chain.resuming->may_answer == -1 && !still_legal()) return;
         int conf = confirmOptional(ctx, "Curator of the Sands: exhaust to ready up to 2 runes?",
                                    still_legal);
         if (conf < 1) return;
@@ -73,9 +72,11 @@ public:
         const std::vector<GameObjectId>& picks = *chosen;
         if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
-        // A rune readied or off the board since it was named is skipped.
-        for (auto id : picks)
-            if (readiable(id)) ctx.executor.readyObject(id);
+        // No second readiable() check: every id selectSeveral returns is in
+        // the list built for it in this entry, and the only state change
+        // since is the cost — exhausting me, a legend, which no rune's
+        // readiable() depends on. Readying one rune does not touch another.
+        for (auto id : picks) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

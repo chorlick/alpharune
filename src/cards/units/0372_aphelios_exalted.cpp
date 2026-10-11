@@ -66,12 +66,13 @@ public:
                 if (obj.isUnit() && obj.controller == ctx.controller &&
                     obj.location.has_value())
                     friendly.push_back(id);
-            if (!friendly.empty()) {
-                pick = pickTarget(ctx, "Aphelios (buff)", friendly);
-                if (pick == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                    ctx.state.chain.resuming->resume_point == 7)
-                    return;  // suspended on target choice
-            }
+            // Called with an empty list too: pickTarget then stores "no
+            // target" on the chain item, so the resolution asks nothing if a
+            // friendly unit has arrived since.
+            pick = pickTarget(ctx, "Aphelios (buff)", friendly);
+            if (pick == kInvalidId && ctx.state.chain.resuming.has_value() &&
+                ctx.state.chain.resuming->resume_point == 7)
+                return;  // suspended on target choice
         }
         // Mode 0's runes are chosen with the mode (CR 355.5, 383.3), so the
         // opponent responds knowing them.

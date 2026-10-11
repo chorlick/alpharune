@@ -75,6 +75,8 @@ public:
             Intent decline;
             decline.type = IntentType::MakeChoice;
             decline.player = target_controller;
+            decline.chosen_value = 0;   // nameable by value, not only by position
+            decline.choice_label = "Hard Bargain: don't pay";
             choices.push_back(decline);
             std::string spell_name = ctx.state.objectExists(target_source)
                 ? ctx.state.getObject(target_source).name : "spell";

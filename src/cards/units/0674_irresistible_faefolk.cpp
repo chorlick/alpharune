@@ -20,15 +20,19 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;  // not at a BF — nothing to move to
         // "an enemy unit": any the controller may choose that is not already
         // here (in a base or at another battlefield), and that enemy
         // abilities can move (the executor would leave the others in place).
-        const auto legal = chooseableUnits(ctx.state, ctx.controller,
-            [&](const GameObject& u) {
-                return u.controller != ctx.controller && u.battlefieldId() != my_bf &&
-                       !u.cant_be_moved_by_enemy;
-            });
+        // Not at a battlefield: nothing to move to, so none. No return ahead
+        // of the "may" — confirmOptional stores the "no" on the chain item,
+        // so the resolution asks nothing if I am at a battlefield by then.
+        std::vector<GameObjectId> legal;
+        if (my_bf)
+            legal = chooseableUnits(ctx.state, ctx.controller,
+                [&](const GameObject& u) {
+                    return u.controller != ctx.controller && u.battlefieldId() != my_bf &&
+                           !u.cant_be_moved_by_enemy;
+                });
         int conf = confirmOptional(ctx,
             "Irresistible Faefolk: move an enemy unit to my battlefield?",
             [&legal]() { return !legal.empty(); });
@@ -36,7 +40,7 @@ public:
         if (conf == 1)
             target = pickTarget(ctx, "Irresistible Faefolk: choose an enemy unit", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf != 1 || target == kInvalidId) return;
+        if (conf != 1 || target == kInvalidId || !my_bf) return;
         const std::string name = ctx.state.getObject(target).name;
         ctx.executor.moveToBattlefield(target, *my_bf);
         ctx.events.logTrace("IRRESISTIBLE FAEFOLK: pulled " + name +

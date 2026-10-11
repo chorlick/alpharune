@@ -24,7 +24,9 @@ public:
             return runesControlled(ctx.state, ctx.controller) <= 4 &&
                    payableEnergy(ctx.state, ctx.controller) >= 1;
         };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may": when it can't be offered
+        // confirmOptional stores the "no" on the chain item, so the resolution
+        // asks nothing if the [1] has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Protective Sands: pay [1] to draw 1?", still_legal);
         if (conf < 1) return;
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;

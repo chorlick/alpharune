@@ -38,7 +38,9 @@ public:
             if (ctx.state.getObject(ctx.source).is_exhausted) return false;  // need to exhaust me
             return !findTargets().empty();
         };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may": exhausted (or with no unit to ready)
+        // confirmOptional stores the "no" on the chain item, so the resolution
+        // asks nothing if I have been readied since (CR 383.3.a).
         int conf = confirmOptional(ctx,
             "Piltover Enforcer: exhaust me to ready a unit?", still_legal);
         if (conf == -1) return;  // waiting on agent

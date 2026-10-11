@@ -17,15 +17,24 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
+    static bool showdownInProgress(const GameState& state) {
+        for (const auto& bf : state.battlefields)
+            if (bf.showdown_in_progress) return true;
+        return false;
+    }
+    // "during a showdown" is part of the trigger condition (CR 383.2.a.1):
+    // asked when the unit is played, so no ability goes on the chain otherwise.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return showdownInProgress(state);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        bool in_showdown = false;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.showdown_in_progress) { in_showdown = true; break; }
-        }
-        if (!in_showdown) return;
+        // No return ahead of the "may": outside a showdown confirmOptional
+        // stores the "no" on the chain item, so the resolution asks nothing
+        // whatever has begun since.
         int conf = confirmOptional(ctx, "Fresh Beans: exhaust to draw 1",
             [&] {
-                return ctx.state.objectExists(ctx.source) &&
+                return showdownInProgress(ctx.state) && ctx.state.objectExists(ctx.source) &&
                        !ctx.state.getObject(ctx.source).is_exhausted;
             });
         if (conf != 1) return;

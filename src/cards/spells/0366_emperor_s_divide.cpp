@@ -52,6 +52,8 @@ public:
             Intent done;
             done.type = IntentType::MakeChoice;
             done.player = ctx.controller;
+            done.chosen_value = 0;   // nameable by value, not only by position
+            done.choice_label = "Emperor's Divide: move no more units";
             out.push_back(std::move(done));
             return out;
         };

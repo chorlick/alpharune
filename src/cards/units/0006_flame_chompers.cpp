@@ -23,7 +23,9 @@ public:
         auto can_pay = [&]() {
             return in_trash() && payableOnePower(ctx.state, ctx.controller, Domain::Fury);
         };
-        if (!costAlreadyPaid(ctx) && !can_pay()) return;
+        // No return ahead of the "may": with [R] unpayable confirmOptional
+        // stores the "no" on the chain item, so the resolution asks nothing
+        // if it has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Flame Chompers: pay [R] to play me?", can_pay);
         if (conf < 1) return;
         // To my base or a battlefield I control (CR 355.2.a).

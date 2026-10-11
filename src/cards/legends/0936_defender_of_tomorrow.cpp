@@ -46,8 +46,22 @@ public:
             std::sort(out.begin(), out.end());
             return out;
         };
+        // Whether the Empowered ability is on offer is fixed on the first
+        // entry (as the ability is activated) and kept on the chain item:
+        // resume_data[kEmpoweredSlot] is 1 = not Empowered, 2 = Empowered. A
+        // legend Empowered or disempowered before this resolves then reads its
+        // answers back from the helper that asked, instead of asking the
+        // other one as it resolves.
+        bool empowered = ctx.state.getObject(ctx.source).isEmpowered();
+        if (auto& ri = ctx.state.chain.resuming; ri.has_value()) {
+            constexpr size_t kEmpoweredSlot = Card::kChoiceStateSlot + 1;
+            auto& rd = ri->resume_data;
+            if (rd.size() <= kEmpoweredSlot) rd.resize(kEmpoweredSlot + 1, 0);
+            if (rd[kEmpoweredSlot] == 0) rd[kEmpoweredSlot] = empowered ? 2 : 1;
+            empowered = rd[kEmpoweredSlot] == 2;
+        }
         bool two = false;
-        if (ctx.state.getObject(ctx.source).isEmpowered()) {
+        if (empowered) {
             const int which = pickMode(ctx, "Defender of Tomorrow: which ability", 2,
                                        {"Ready a gear", "Ready 2 gear"});
             if (which == -1) return;          // waiting on the controller

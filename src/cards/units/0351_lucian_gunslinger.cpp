@@ -29,17 +29,20 @@ public:
         for (const auto& ae : self.aura_effects)
             if (ae.keyword == Keyword::Assault)
                 assault += (ae.keyword_value > 0 ? ae.keyword_value : 1);
-        if (assault <= 0) return;
 
+        // No [Assault], or not at a battlefield: nothing to choose. No return
+        // ahead of pickTarget — it stores "no target" on the chain item, so
+        // the resolution asks nothing if I am at a battlefield by then.
         auto self_bf = self.battlefieldId();
-        if (!self_bf) return;
         std::vector<GameObjectId> enemies;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            auto bf = obj.battlefieldId();
-            if (!bf || *bf != *self_bf) continue;
-            if (obj.untargetable_by_enemy) continue;
-            enemies.push_back(id);
+        if (assault > 0 && self_bf) {
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+                auto bf = obj.battlefieldId();
+                if (!bf || *bf != *self_bf) continue;
+                if (obj.untargetable_by_enemy) continue;
+                enemies.push_back(id);
+            }
         }
         GameObjectId tgt = pickTarget(ctx,
             "Lucian: deal " + std::to_string(assault) + " to an enemy unit here",

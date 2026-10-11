@@ -24,11 +24,15 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIBecomeReady; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
+        auto on_board = [&]() { return ctx.state.getObject(ctx.source).location.has_value(); };
         static const std::vector<std::string> kModes = {"Assault 2", "Deflect 2", "Ganking"};
-        int mode = pickMode(ctx, "Jayce, Hammer in Hand: choose a keyword", 3, kModes);
+        // Off the board there is no keyword to give: no legal mode. No return
+        // ahead of pickMode — it stores "no mode" on the chain item, so the
+        // resolution asks nothing if I am on the board again by then.
+        int mode = pickMode(ctx, "Jayce, Hammer in Hand: choose a keyword", 3, kModes,
+                            on_board() ? 0x7u : 0u);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (mode < 0) return;                         // waiting for the agent
+        if (mode < 0 || !on_board()) return;          // waiting / no mode / I left the board
         switch (mode) {
         case 0: ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Assault, 2); break;
         case 1: ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Deflect, 2); break;

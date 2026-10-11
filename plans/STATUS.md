@@ -12,6 +12,17 @@ Written 2026-10-11 so a fresh orchestrator context can continue with nothing
 but this file, `README.md` and `AGENT_BRIEF.md`. "Run decisions" below
 override the README where they differ.
 
+**Orchestrator handover (2026-10-11 00:40):** the orchestrator is now Claude
+session `riftbound-engine-d6` (pid 1238504). The earlier process (pid 2329,
+session `riftbound-engine-5e`) is still alive and hosts every stage 3 agent;
+it was told to stop its loop and only host and relay. Completion notices do
+not reach the orchestrator: a stream is finished when
+`.worktrees/reports/<stream>.md` exists and its worktree is clean. To send a
+stream back, message `riftbound-engine-5e` to relay; never message an agent id
+directly while pid 2329 lives (it would start a duplicate). Details in
+`.worktrees/agents.txt`. Before merging anything, check `git log` on
+integration for commits this session did not make.
+
 **Where we are:** stages 0, 1, 2 done and on `master` (`6a3e52b`). Stage 3
 running. 378 of 514 findings ticked. All state is committed on
 `fix/integration` (`.worktrees/integration`).
@@ -434,3 +445,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 wrote "Resume notes" at the top of this file ahead of a context reset; stage 3 streams told to write their final reports to `.worktrees/reports/<stream>.md`.
 - 2026-10-11 context reset survived: all five stage 3 streams still running, state resumed from this file. User: two build lanes at `-j3` (see Run decisions); the five streams messaged with their lane, brief updated.
 - 2026-10-11 user asked for remaining implementation to start early. Spawned sweep-verify-cards (card-only half of sweep-verify) in the sixth slot. perf-engine, strong-ids and checkpoint NOT started early: each rewrites files the running streams are editing (6.1 trace call sites, id types tree-wide, feature layout).
+- 2026-10-11 00:40 orchestrator handover to session riftbound-engine-d6 (see Resume notes); the old session keeps hosting the agents. Monitor armed on `.worktrees/reports/`.

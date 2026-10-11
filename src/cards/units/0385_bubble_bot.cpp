@@ -15,19 +15,20 @@ namespace {
 class BubbleBot : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "When you play me, ready another friendly Mech." — the controller's choice.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        GameObjectId pick = kInvalidId;
+        std::vector<GameObjectId> mechs;
         for (auto& [id, obj] : ctx.state.objects) {
             if (id == ctx.source) continue;                 // "another"
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
-            if (!hasTag(obj, "Mech")) continue;
-            if (obj.is_exhausted) { pick = id; break; }     // prefer exhausted
-            if (pick == kInvalidId) pick = id;
+            if (hasTag(obj, "Mech")) mechs.push_back(id);
         }
-        if (pick == kInvalidId) return;
+        const GameObjectId pick = pickTarget(ctx, "Bubble Bot: ready another friendly Mech", mechs);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (pick == kInvalidId) return;       // none / mistarget / waiting
         ctx.executor.readyObject(pick);
         ctx.events.logTrace("BUBBLE BOT: readied another friendly Mech");
     }

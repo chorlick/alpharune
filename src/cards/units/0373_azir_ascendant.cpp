@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -22,85 +23,91 @@ public:
         return ActivationCost{.power = 1, .power_domain = Domain::Calm};
     }
 
-    // Choose another friendly unit you control (target). Azir itself excluded.
+    // "Choose a unit you control" — any other unit of mine on the board; the
+    // activating Azir itself is excluded.
     static std::vector<GameObjectId> legalTargets(const GameState& state,
                                                   PlayerId controller,
-                                                  GameObjectId self_def_holder_excluded) {
+                                                  GameObjectId azir) {
         std::vector<GameObjectId> out;
         for (auto& [id, obj] : state.objects) {
             if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
-            if (id == self_def_holder_excluded) continue;
+            if (id == azir) continue;
             out.push_back(id);
         }
         return out;
     }
 
+    // The engine asks with the Azir whose ability it is; the source-less
+    // overloads (no particular Azir) offer nothing.
     std::vector<GameObjectId> enumerateLegalTargets(
-        const GameState& state, PlayerId controller) const override {
-        // Find Azir's on-board object id to exclude it from the candidate list.
-        GameObjectId azir = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
-                obj.location.has_value()) {
-                azir = id;
-                break;
-            }
-        }
-        return legalTargets(state, controller, azir);
+        const GameState& /*state*/, PlayerId /*controller*/) const override {
+        return {};
     }
-
-    // Once-per-turn legality gate. Find Azir's on-board instance, require it to
-    // be on board, ready (engine also gates), with at least one move target,
-    // and not already used this turn.
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller,
+        int /*ability_index*/, GameObjectId source) const override {
+        return legalTargets(state, controller, source);
+    }
+    // Card-wide gate: some Azir of mine has a unit to swap with. Which Azir
+    // may still activate this turn is canActivateAbilityAt.
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId()) continue;
-            if (obj.controller != controller) continue;
+            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
-            auto it = obj.card_counters.find("azir_used_turn");
-            if (it != obj.card_counters.end() &&
-                it->second == state.turn.turn_number + 1) {
-                return false;  // already used this turn
-            }
-            // Need at least one other friendly unit to swap with.
-            return !legalTargets(state, controller, id).empty();
+            if (!legalTargets(state, controller, id).empty()) return true;
         }
         return false;
     }
+    // "Use only once per turn." — per Azir, not per card name.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& azir = state.getObject(source);
+        if (!azir.location.has_value()) return false;
+        auto it = azir.card_counters.find("azir_used_turn");
+        if (it != azir.card_counters.end() && it->second == state.turn.turn_number + 1)
+            return false;  // already used this turn
+        if (legalTargets(state, controller, source).empty()) return false;
+        return UnitCard::canActivateAbilityAt(state, controller, source, ability_index);
+    }
 
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        GameObjectId source = ctx.source;
-
-        // Pair pick: (1) the friendly unit to swap with, (2) optionally one of
-        // its Equipment to attach to me (legal_b = gear on the chosen unit).
-        // GAP: the equipment move is printed "you may", but pickTargetPair has
-        // no decline path — if the chosen unit has gear, one is attached.
-        std::vector<GameObjectId> legal_a = enumerateLegalTargets(ctx.state, ctx.controller);
-        if (!targets.empty()) legal_a = {targets[0]};
-        auto legal_b_fn = [&ctx](GameObjectId picked_a) {
+        const GameObjectId source = ctx.source;
+        std::vector<GameObjectId> legal_a = legalTargets(ctx.state, ctx.controller, source);
+        if (!targets.empty() &&
+            std::find(legal_a.begin(), legal_a.end(), targets[0]) != legal_a.end())
+            legal_a = {targets[0]};
+        auto equipment_of = [&ctx](GameObjectId unit) {
             std::vector<GameObjectId> gear;
-            if (!ctx.state.objectExists(picked_a)) return gear;
-            for (auto gid : ctx.state.getObject(picked_a).attachments) {
-                if (ctx.state.objectExists(gid) && ctx.state.getObject(gid).isGear()) {
+            if (unit == kInvalidId || !ctx.state.objectExists(unit)) return gear;
+            for (auto gid : ctx.state.getObject(unit).attachments)
+                if (ctx.state.objectExists(gid) && isEquipment(ctx.state.getObject(gid)))
                     gear.push_back(gid);
-                }
-            }
             return gear;
         };
-        auto pair = pickTargetPair(ctx, "Azir: choose a unit to swap with",
-                                   legal_a, legal_b_fn);
+        // "If it's equipped, you may attach one of its Equipment to me." The
+        // "may" is asked first; a yes then picks the unit and one of its
+        // Equipment, a no picks the unit alone.
+        const int take = confirmOptional(ctx,
+            "Azir: also attach one of the chosen unit's Equipment to me?", [&]() {
+                for (auto u : legal_a) if (!equipment_of(u).empty()) return true;
+                return false;
+            });
+        std::pair<GameObjectId, GameObjectId> pair{kInvalidId, kInvalidId};
+        if (take == 1)
+            pair = pickTargetPair(ctx, "Azir: choose a unit to swap with", legal_a, equipment_of);
+        else if (take == 0)
+            pair.first = pickTarget(ctx, "Azir: choose a unit to swap with", legal_a);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        GameObjectId picked = pair.first;
-        if (picked == kInvalidId) {
-            // Either suspended (resume_point != 13) or fizzled (no targets).
-            return;
-        }
-        if (!ctx.state.objectExists(picked) || picked == source) return;
+        const GameObjectId picked = pair.first;
+        if (picked == kInvalidId || picked == source) return;   // waiting / none / mistarget
 
         auto& azir = ctx.state.getObject(source);
         auto& other = ctx.state.getObject(picked);
+        // Both must still be on the board to trade places: a unit that left
+        // is not moved back from wherever it went.
+        if (!azir.location.has_value() || !other.location.has_value()) return;
 
         // Mark once-per-turn used (store turn_number+1 so 0 = never).
         azir.card_counters["azir_used_turn"] = ctx.state.turn.turn_number + 1;
@@ -108,43 +115,15 @@ public:
         // Swap locations. Capture before moving.
         auto azir_loc = azir.location;
         auto other_loc = other.location;
-        moveToLoc(ctx.executor, source, other_loc);
-        moveToLoc(ctx.executor, picked, azir_loc);
+        moveToLocation(ctx.executor, source, other_loc);
+        moveToLocation(ctx.executor, picked, azir_loc);
         ctx.events.logTrace("AZIR ASCENDANT: swapped locations with " + other.name);
 
-        // Optional equipment transfer (pair.second).
-        if (pair.second != kInvalidId && ctx.state.objectExists(pair.second)) {
-            reattachGear(ctx, pair.second, picked, source);
-        }
-    }
-
-private:
-    static void moveToLoc(EffectExecutor& exec, GameObjectId obj,
-                          const std::optional<LocationId>& loc) {
-        if (!loc) return;
-        if (std::holds_alternative<BattlefieldLocation>(*loc)) {
-            exec.moveToBattlefield(obj, std::get<BattlefieldLocation>(*loc).id);
-        } else {
-            exec.moveToBase(obj);
-        }
-    }
-
-    // Detach `gear` from `from_unit` and attach to `to_unit`, transferring the
-    // gear's might bonus. Mirrors the engine's equip bookkeeping (might_bonus +
-    // attachment lists).
-    static void reattachGear(CardContext& ctx, GameObjectId gear,
-                             GameObjectId /*from_unit*/, GameObjectId to_unit) {
-        if (!ctx.state.objectExists(gear) || !ctx.state.objectExists(to_unit)) return;
-        // Detach from old unit (refunds might + clears attach state).
-        ctx.executor.unattachGear(gear);
-        if (!ctx.state.objectExists(gear)) return;
-        auto& g = ctx.state.getObject(gear);
-        auto& dest = ctx.state.getObject(to_unit);
-        g.attached_to = to_unit;
-        dest.attachments.push_back(gear);
-        dest.attachment_might_bonus += g.might_bonus;
-        dest.recomputeMight();
-        ctx.events.logTrace("AZIR ASCENDANT: attached " + g.name + " to me");
+        // Optional Equipment transfer (pair.second): attachFree detaches it
+        // from the chosen unit and announces the attach, so "when attached"
+        // abilities see it.
+        if (pair.second != kInvalidId && equipEndsOnBoard(ctx.state, pair.second, source))
+            attachFree(ctx, pair.second, source);
     }
 private:
     const CardDef def_ = [] {

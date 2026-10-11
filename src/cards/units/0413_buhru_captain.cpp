@@ -14,10 +14,15 @@ namespace {
 class BuhruCaptain : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        ctx.executor.drawCards(ctx.controller, 1);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "When you play me, you may draw 1 or buff me."
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const int mode = pickMode(ctx, "Buhru Captain", 3, {"Draw 1", "Buff me", "Neither"});
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (mode == 0) ctx.executor.drawCards(ctx.controller, 1);
+        else if (mode == 1) ctx.executor.buffUnit(ctx.source);   // no-op if I left the board
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

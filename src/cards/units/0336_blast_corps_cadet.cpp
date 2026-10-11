@@ -27,8 +27,9 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        if (self.card_counters["__blastcorps_paid"] != 1) return;
+        const auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        auto paid = counters.find("__blastcorps_paid");
+        if (paid == counters.end() || paid->second != 1) return;
         std::vector<GameObjectId> legal;
         for (auto& [id, obj] : ctx.state.objects) {
             if (!obj.isUnit() || !obj.battlefieldId().has_value()) continue;
@@ -39,6 +40,9 @@ public:
         GameObjectId tgt = pickTarget(ctx,
             "Blast Corps Cadet: deal 2 to a unit at a battlefield", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // The payment covers this play only: a Cadet that is returned to hand
+        // and played again without paying must not find the old flag.
+        ctx.state.getObject(ctx.source).card_counters.erase("__blastcorps_paid");
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         ctx.executor.dealDamage(tgt, 2, ctx.source);
         if (ctx.state.objectExists(tgt) &&

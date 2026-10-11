@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,36 +15,34 @@ namespace {
 class AlbusFerros : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "When you play me, spend any number of buffs. For each buff spent,
+    // channel 1 rune exhausted." Spending is what the ability does as it
+    // resolves (it is not a cost paid in advance), so the buffs are chosen
+    // then, one unit at a time, and the runes follow the buffs actually spent.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "spend any number of buffs. For each buff spent, channel 1 rune
-        // exhausted."
-        int total_buffs = 0;
+        // One entry per buff: a unit that holds several can be picked for each.
+        std::vector<GameObjectId> buffs;
         for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
-                total_buffs += obj.buff_count;
-        }
-        if (total_buffs <= 0) return;
-        int x = pickXAmount(ctx, "Albus Ferros (buffs to spend)", 0, total_buffs);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (x == -1) return;  // suspended for agent decision
-        if (x <= 0) return;
-        // Spend x buffs from friendly units (greedy).
-        int remaining = x;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (remaining <= 0) break;
             if (!obj.isUnit() || obj.controller != ctx.controller || !obj.location.has_value())
                 continue;
-            while (obj.buff_count > 0 && remaining > 0) {
-                obj.buff_count -= 1;
-                remaining--;
-            }
-            obj.recomputeMight();
+            for (int i = 0; i < obj.buff_count; ++i) buffs.push_back(id);
         }
-        ctx.executor.channelRunes(ctx.controller, x, /*enter_exhausted=*/true);
-        ctx.events.logTrace("ALBUS FERROS: spend " + std::to_string(x) +
-                            " buffs -> channel " + std::to_string(x) + " runes exhausted");
+        std::vector<GameObjectId> chosen;
+        if (!pickSeveral(ctx, "Albus Ferros: spend a buff from", kPickSeveralMaxPicks,
+                         buffs, chosen)) return;   // waiting for the agent
+        int spent = 0;
+        for (auto id : chosen) {
+            auto& obj = ctx.state.getObject(id);
+            if (!obj.location.has_value() || obj.buff_count <= 0) continue;
+            obj.buff_count -= 1;
+            obj.recomputeMight();
+            ++spent;
+        }
+        if (spent <= 0) return;
+        ctx.executor.channelRunes(ctx.controller, spent, /*enter_exhausted=*/true);
+        ctx.events.logTrace("ALBUS FERROS: spend " + std::to_string(spent) +
+                            " buffs -> channel " + std::to_string(spent) + " runes exhausted");
     }
 private:
     const CardDef def_ = [] {

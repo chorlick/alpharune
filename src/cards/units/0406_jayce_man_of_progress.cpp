@@ -17,56 +17,44 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
 
-    GameObjectId findFriendlyGear(CardContext& ctx) const {
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    std::vector<GameObjectId> friendlyGear(CardContext& ctx) const {
+        std::vector<GameObjectId> out;
         for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;
             if (!obj.isGear() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
-            return id;
-        }
-        return kInvalidId;
-    }
-
-    std::vector<GameObjectId> eligibleHandGears(CardContext& ctx) const {
-        std::vector<GameObjectId> out;
-        auto& ps = ctx.state.player(ctx.controller);
-        for (auto cid : ps.hand) {
-            if (!ctx.state.objectExists(cid)) continue;
-            auto& obj = ctx.state.getObject(cid);
-            if (!obj.isGear() || obj.card_def_id == kInvalidId) continue;
-            if (ctx.executor.cardDB().get(obj.card_def_id).energy_cost > 7) continue;
-            out.push_back(cid);
+            out.push_back(id);
         }
         return out;
     }
 
+    // "you may kill a friendly gear" — the controller chooses whether and
+    // which. "If you do, you may play a gear with Energy cost no more than [7]
+    // from hand this turn, ignoring its Energy cost. (You must still pay its
+    // Power cost.)" — a permission for the rest of the turn: the next gear
+    // played this turn costs up to [7] Energy less; its Power is paid as usual.
+    // (No gear costs more than [7] Energy less than its printed cost: the
+    // modifier has no "only if it costs [7] or less" test, so a dearer gear
+    // would pay the difference instead of being excluded.)
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto still_legal = [&]() { return findFriendlyGear(ctx) != kInvalidId; };
-        int conf = confirmOptional(ctx, "Jayce: kill a friendly gear?", still_legal);
-        if (conf == -1) return;  // waiting for agent
-        if (conf < 1) return;    // declined / nothing to kill
-
-        GameObjectId gear = findFriendlyGear(ctx);
-        if (gear == kInvalidId || !ctx.state.objectExists(gear)) return;
+        int conf = confirmOptional(ctx, "Jayce: kill a friendly gear?",
+                                   [&]() { return !friendlyGear(ctx).empty(); });
+        GameObjectId gear = kInvalidId;
+        if (conf == 1) gear = pickTarget(ctx, "Jayce: choose a friendly gear to kill",
+                                         friendlyGear(ctx));
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (conf < 1 || gear == kInvalidId) return;   // waiting / declined / mistarget
         ctx.executor.killObject(gear);
         ctx.events.logTrace("JAYCE: killed a friendly gear");
 
-        // "If you do, you may play a gear (cost <= 7) from hand ignoring its
-        // Energy cost." Pick a hand gear and play it free.
-        auto eligible = eligibleHandGears(ctx);
-        if (eligible.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "Jayce: play a gear from hand", eligible);
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.hand.begin(), ps.hand.end(), picked);
-        if (it != ps.hand.end()) ps.hand.erase(it);
-        ctx.executor.playIgnoringCost(ctx.controller, picked);
-        ctx.events.logTrace("JAYCE: played a gear from hand ignoring cost");
+        PlayerState::CostModifier mod;
+        mod.source = ctx.source;
+        mod.energy_reduction = 7;
+        mod.this_turn_only = true;
+        mod.gear_only = true;
+        mod.next_card_only = true;   // one gear: used up by the next gear played
+        ctx.state.player(ctx.controller).cost_modifiers.push_back(mod);
+        ctx.events.logTrace("JAYCE: the next gear played this turn ignores up to [7] of its Energy cost");
     }
 private:
     const CardDef def_ = [] {

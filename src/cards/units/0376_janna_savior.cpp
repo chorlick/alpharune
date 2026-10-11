@@ -20,36 +20,39 @@ public:
 
     // "When you play me, heal your units here, then move up to one enemy unit
     // from here to its base." "here" = the battlefield I was played to.
+    // "here" is wherever I was played — a battlefield or my base (CR 464.2.b).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto here = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!here) return;  // not at a battlefield -> nothing happens
+        const auto here = ctx.state.getObject(ctx.source).location;
+        const PlayerId me = ctx.controller;
+        auto enemies_here = [&]() {
+            if (!here.has_value()) return std::vector<GameObjectId>{};
+            return chooseableUnits(ctx.state, me, [&](const GameObject& o) {
+                return o.controller != me && *o.location == *here;
+            });
+        };
+        // "up to one": the controller may move none.
+        int conf = confirmOptional(ctx, "Janna: move an enemy unit from here to its base?",
+                                   [&]() { return !enemies_here().empty(); });
+        GameObjectId enemy = kInvalidId;
+        if (conf == 1)
+            enemy = pickTarget(ctx, "Janna: move up to one enemy unit from here to base",
+                               enemies_here());
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (conf == -1) return;               // waiting for the agent
+        if (!here.has_value()) return;        // I left the board: no "here"
 
         // Heal ALL friendly units here.
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            auto bf = obj.battlefieldId();
-            if (!bf || *bf != *here) continue;
-            ctx.executor.healObject(id);
-        }
-
+        std::vector<GameObjectId> mine;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller == me && obj.location.has_value() &&
+                *obj.location == *here)
+                mine.push_back(id);
+        for (auto id : mine) ctx.executor.healObject(id);
         // Then move up to one enemy unit from here to its base.
-        std::vector<GameObjectId> enemies;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            auto bf = obj.battlefieldId();
-            if (!bf || *bf != *here) continue;
-            if (obj.untargetable_by_enemy) continue;
-            enemies.push_back(id);
-        }
-        GameObjectId enemy = pickTarget(ctx,
-            "Janna: move up to one enemy unit from here to base", enemies);
-        if (enemy == kInvalidId) return;  // suspend, none, or declined
-        if (!ctx.state.objectExists(enemy)) return;
-        ctx.executor.moveToBase(enemy);
-        ctx.events.logTrace("JANNA SAVIOR: healed friendly units here + moved an "
-                            "enemy unit to base");
+        if (conf == 1 && enemy != kInvalidId) ctx.executor.moveToBase(enemy);
+        ctx.events.logTrace("JANNA SAVIOR: healed friendly units here");
     }
 private:
     const CardDef def_ = [] {

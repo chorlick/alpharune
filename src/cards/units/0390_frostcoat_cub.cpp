@@ -27,8 +27,9 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        if (self.card_counters["__frostcoat_paid"] != 1) return;
+        const auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        auto paid = counters.find("__frostcoat_paid");
+        if (paid == counters.end() || paid->second != 1) return;
         std::vector<GameObjectId> legal;
         for (auto& [id, obj] : ctx.state.objects) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
@@ -38,6 +39,9 @@ public:
         }
         GameObjectId tgt = pickTarget(ctx, "Frostcoat Cub: give a unit -2 [M]", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // The payment covers this play only: a Cub that is returned to hand
+        // and played again without paying must not find the old flag.
+        ctx.state.getObject(ctx.source).card_counters.erase("__frostcoat_paid");
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         ctx.executor.giveTemporaryMight(tgt, -2);
         ctx.events.logTrace("FROSTCOAT CUB: paid [B] -> gave a unit -2 [M] this turn");

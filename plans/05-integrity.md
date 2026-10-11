@@ -60,13 +60,25 @@
 
 - [ ] **5.13 Dead code** [confirmed]
   - `executePlayFromHidden` (`game_engine.cpp:2533-2574`) is never called; facedown plays go through `ChainManager::stepExecuteAndPass`. So `__played_from_facedown` (`:2546`) and `PlayedFromFacedownEvent` (`:2549`) never fire in real play. Cards 0886 and 0703 and `test_vendetta_C.cpp:148` reference the marker — **follow up: those cards may be broken**.
+  - cleanup: src/engine/game_engine.cpp — left for sweep-verify (file owned by a running sweep stream). Re-verified at 0ca1b19: `executePlayFromHidden` IS called now (`GameEngine::executeIntent`, the `card.is_hidden` branch of PlayCard), so this sub-point is stale.
   - `swapBackBattlefield` (`:6582`) has no callers, so a replaced battlefield can never be restored (CR 438).
+  - cleanup: src/engine/game_engine.{h,cpp} — left for sweep-verify (file owned by a running sweep stream). Still no caller (`git grep swapBackBattlefield -- src tests`: definition and declaration only).
   - `generateCombatDamageActions` (`:3619`), `advanceCleanup` (`:5031`), `activePlayer` (`:6528`) have no callers.
+  - cleanup: src/engine/game_engine.{h,cpp} — left for sweep-verify (file owned by a running sweep stream). Still no callers for all three (`git grep` finds only each definition and declaration).
   - `executeEndTurn` is empty; `channelPhase` `:819-823` is an always-false block; `had_temp_might` (`:1085`, `:1118`) is unused; the `emit` lambda at `:3324` has a vestigial argument.
+  - cleanup: src/engine/game_engine.{h,cpp} — left for sweep-verify (file owned by a running sweep stream). `executeEndTurn` is still an empty function called from `executeIntent`; `had_temp_might` is still set and `(void)`-ed.
   - `combatResolutionStep` clears `is_contested` but leaves `contested_by` and `combat_staged` for the next cleanup.
+  - cleanup: src/engine/game_engine.cpp — left for sweep-verify (file owned by a running sweep stream).
   - `CleanupNeededEvent` is never emitted; about 15 signals have no subscriber in `src/`.
+  - cleanup: src/core/events.h (and events.cpp, which only forwards to it) — left for sweep-verify (file owned by a running sweep stream). `CleanupNeededEvent` still has no emitter in `src/`.
+  - cleanup (in scope, done): dead code in files this stream owns — `zoneToStr` (src/io/play_server.cpp) and the `nameOfId` lambda (src/io/state_renderer.cpp) removed (no references: `git grep -w zoneToStr`, `git grep -w nameOfId`); `scripts/audit_deck_cards.py` removed (it globs `src/cards/manual/`, `src/cards/generated/` and `decks/*.json`, none of which exist; `scripts/card_coverage.py` replaces it); `scripts/generate_replays.py` rewritten against `build/riftbound`.
 - [ ] **5.14 Stale comments and headers** [confirmed]
   - `game_engine.h:48-58`, `:100-108` still say the step API is "stubbed (throws)" and uses a worker thread.
+  - cleanup: src/engine/game_engine.h — left for sweep-verify (file owned by a running sweep stream). Still says "stubbed (throws std::logic_error)" and "worker thread"; its comment "cleanup has no agent-query sites" (carry-over, engine-auras-costs) is in the same header.
   - `src/core/legal_action.h:14-21` and `knowledge_view.h:13-16` cite `tests/test_action_encoding.cpp`, a `describe(intent)` in `openspiel/action_vocab.*` and `engine/knowledge_tracker.*`; none exist. The "injective, enforced by a test" guarantee is unenforced and `KnowledgeView` has no implementation.
+  - cleanup: `legal_action.h` FIXED — the header now says the Intent -> `LegalActionDesc` conversion is not written, that rule 2 (injective) is a requirement with no test, and names the one user of its enums (`ml/token_layout.h`, `ActionTokens`). `knowledge_view.h` ALREADY FIXED by the code it describes: `engine/knowledge_tracker.{h,cpp}` exists now and implements the interface (`knowledge::GameKnowledgeView`), exercised by `tests/test_knowledge_tracker.cpp`; comment left as is.
   - `CostPaymentCursor` is labelled "Memcpy-clone safe (POD)" but holds a `std::vector<Domain>` (`game_state.h:649-657`).
+  - cleanup: src/core/game_state.h — left for sweep-verify (file owned by a running sweep stream). Still labelled "Memcpy-clone safe (POD)" with a `std::vector<Domain>` member.
   - `current_play_source` says it is reset in `resetTurnTracking` and is not (`game_state.h:222-224`).
+  - cleanup: src/core/game_state.h — left for sweep-verify (file owned by a running sweep stream).
+  - cleanup (in scope, done): `card_registry.{h,cpp}`, `card_db.cpp`, `game_object.h`, `types.h` no longer describe a legacy id-only constructor, registry.json as a data source, or a generated `cards_init.cpp`; `CMakeLists.txt` and `mcts_agent.cpp` no longer name the removed `riftbound_openspiel` binary / `openspiel_match`; README and CLAUDE.md brought up to date (see the stream report). `src/cards/cards_init.cpp` line 1 still says "Auto-generated aggregator" (there is no generator): not in this stream's file list — left for sweep-verify (file owned by a running sweep stream).

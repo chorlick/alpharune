@@ -30,16 +30,15 @@ public:
         PlayerId opp = opponent(ctx.controller);
         auto& ri_opt = ctx.state.chain.resuming;
         if (ri_opt.has_value() && ri_opt->resume_point == kDone) return;
-        bool opp_trash_has_cards = !ctx.state.player(opp).trash.empty();
-        // If the opponent's trash is empty, mode 0 is illegal; only mode 1.
-        uint32_t legal = opp_trash_has_cards ? 0b11u : 0b10u;
-
+        // Both modes are always legal: "up to 3 cards" includes none (CR
+        // 355.13), so the first can be chosen with an empty opposing trash
+        // (it then does nothing).
         static const std::vector<std::string> kModes = {
             "Recycle up to 3 from opponent's trash", "Draw 1"};
         int mode = pickMode(ctx, "Disposal Order: choose one", /*num_modes=*/2,
-                            kModes, legal);
+                            kModes, 0b11u);
         if (mode == -1) return;       // waiting on agent
-        if (mode != 0) {              // "Draw 1" (also when no mode was legal)
+        if (mode != 0) {              // "Draw 1"
             ctx.executor.drawCards(ctx.controller, 1);
             ctx.events.logTrace("DISPOSAL ORDER: draw 1");
             return;

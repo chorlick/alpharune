@@ -21,15 +21,20 @@ public:
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                   .must_be_friendly = true};
     }
+    // The units the damage is split among are targets chosen as the spell is
+    // finalized (CR 355.14.a-b); splitDamageAmong asks for them then and ends
+    // the finalize pass.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
         GameObjectId src = targets[0];
-        // "It deals damage equal to its Might": read as the spell resolves
-        // (splitDamageAmong latches it on the first entry).
+        // "It deals damage equal to its Might": its Might now — as the spell
+        // is finalized that caps the number of targets (CR 355.14.c), as it
+        // resolves it is the damage divided.
         int total = ctx.state.getObject(src).current_might;
 
         // "split among enemy units at battlefields" (CR 355.14): the
-        // controller picks the units and the division. Units that can't be
+        // controller picks the units, then the division. Units that can't be
         // chosen by enemy spells and abilities are not legal picks.
         auto legal = chooseableUnits(ctx.state, ctx.controller,
             [&](const GameObject& o) {

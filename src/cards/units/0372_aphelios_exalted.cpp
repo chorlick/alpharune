@@ -85,7 +85,7 @@ public:
             std::sort(exhausted.begin(), exhausted.end());
             std::vector<GameObjectId> to_ready = exhausted;
             if (exhausted.size() > 2) {
-                auto picked = selectAnyNumber(ctx, "Aphelios: ready a rune (2)", exhausted);
+                auto picked = selectSeveral(ctx, "Aphelios: ready a rune (2)", exhausted);
                 if (!picked.has_value()) return;   // waiting for the agent
                 to_ready.clear();
                 for (auto id : *picked)

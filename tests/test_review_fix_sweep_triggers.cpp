@@ -156,6 +156,23 @@ protected:
                 out.push_back(id);
         return out;
     }
+    /// This file's own picker, so its tests do not depend on what the shared
+    /// fixture's pickers do with a prompt they were not told about: choose
+    /// object `id` when it is offered, say yes (1) to a yes/no, else the
+    /// first option.
+    static EnginePathAgent::Picker objectOrYes(GameObjectId id) {
+        return [id](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+            for (const auto& i : legal)
+                if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+            return legal.front();
+        };
+    }
+    static Intent recycleIt(const std::vector<Intent>& legal) {      // a Predict prompt
+        for (const auto& i : legal) if (!i.chosen_objects.empty()) return i;
+        return legal.front();
+    }
     static Intent keepOnTop(const std::vector<Intent>& legal) {      // a Predict prompt
         for (const auto& i : legal) if (i.chosen_objects.empty() && !i.chosen_value) return i;
         return legal.front();
@@ -521,7 +538,7 @@ TEST_F(SweepTriggersTest, Vision_TheControllerChoosesWhetherToRecycle) {
     EXPECT_EQ(state.player(P1).main_deck.back(), top) << "kept on top";
 
     auto card2 = addToHand(P1, kLoyalPoro);
-    EnginePathAgent recycle;                        // first option: recycle it
+    EnginePathAgent recycle(&SweepTriggersTest::recycleIt);
     playThroughEngine(card2, &recycle);
     EXPECT_EQ(state.player(P1).main_deck.front(), top) << "recycled to the bottom";
 }
@@ -552,7 +569,7 @@ TEST_F(SweepTriggersTest, Forecaster_HasOneInstanceOfVision) {
 TEST_F(SweepTriggersTest, Weaponmaster_ASandSoldierTokenMayEquipAsItIsPlayed) {
     addLegend(P1, kEmperor);
     auto gear = addGear(P1, kInvalidId, /*equipment=*/true);
-    EnginePathAgent agent(EnginePathAgent::choosing(gear));   // yes, then the gear
+    EnginePathAgent agent(objectOrYes(gear));   // yes, then the gear
     withEngine([&](GameEngine& e) {
         e.testHook_executor().createToken(P1, CardType::Unit, "Sand Soldier", 2, {"Shurima"},
                                           KeywordSet{}, base(P1));
@@ -830,7 +847,7 @@ TEST_F(SweepTriggersTest, RevealAndDrawIt_CountsAsADraw) {
         auto conn = events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
             if (e.player == P1) drawn_events += e.count;
         });
-        EnginePathAgent agent(EnginePathAgent::choosing(wanted));   // yes, and that card
+        EnginePathAgent agent(objectOrYes(wanted));   // yes, and that card
         fireTriggerThroughEngine(source, c.trigger, &agent);
         conn.disconnect();
         EXPECT_TRUE(inHand(P1, wanted));
@@ -858,7 +875,7 @@ TEST_F(SweepTriggersTest, ReplayedSpell_StaysOnTheChainUntilTheNewPlayResolves) 
     auto b = addUnit(P2, kInvalidId, 1, 0);
     auto spell = addToHand(P1, kDeathFromBelow);
     state.player(P1).rune_pool.universal_power += 1;      // the [A] for the replay
-    EnginePathAgent p1(EnginePathAgent::choosing(a));     // a, then yes, then what is left
+    EnginePathAgent p1(objectOrYes(a));     // a, then yes, then what is left
     TrashWatcher p2;
     p2.spell = spell;
     playThroughEngine(spell, &p1, std::nullopt, &p2);
@@ -886,7 +903,7 @@ TEST_F(SweepTriggersTest, IgnoresDeflect_IsHonouredForATargetChosenAsTheSpellIsP
     play.player = P1;
     play.card = spell;
     play.targets = {enemy};
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    EnginePathAgent agent(objectOrYes(enemy));
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
     EXPECT_EQ(obj(enemy).temp_might_bonus, -5) << "no [A] was needed for its [Deflect]";
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1) << "[Deflect] was not charged";
@@ -1096,7 +1113,7 @@ TEST_F(SweepTriggersTest, Mulligan_AnnouncesTheRecycleOnce) {
     auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
         if (e.what_changed == "recycled_main") ++announced;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(karma));
+    EnginePathAgent agent(objectOrYes(karma));
     withEngine([&](GameEngine& e) {
         e.testHook_executeIntent(Intent::mulligan(P1, {a, b}));
         e.testHook_runChain();
@@ -1236,7 +1253,7 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
         if (e.message.find(name) == std::string::npos) return;
         if (e.visibleTo(P1) && !e.visibleTo(P2)) ++private_lines; else ++leaked;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(spell));
+    EnginePathAgent agent(objectOrYes(spell));
     fireTriggerThroughEngine(weaver, TriggerType::WhenYouPlayMe, &agent);
     conn.disconnect();
     EXPECT_GE(private_lines, 1);
@@ -1516,7 +1533,7 @@ TEST_F(SweepTriggersTest, MoveTrigger_FaePorterUsesTheDestinationOfItsMove) {
     auto porter = addUnit(P1, kFaePorter, 2, -1);
     auto ally = addUnit(P1, kInvalidId, 2, -1);
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(objectOrYes(ally));
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
         exec.moveToBattlefield(porter, state.battlefields[1].id);
@@ -1536,7 +1553,7 @@ TEST_F(SweepTriggersTest, MoveTrigger_AkaliChoosesAtTheEndsOfThatMove) {
     constexpr CardDefId kAkali = 808;
     auto akali = addUnit(P1, kAkali, 3, 0);
     auto left_behind = addUnit(P2, kInvalidId, 9, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(left_behind));
+    EnginePathAgent agent(objectOrYes(left_behind));
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
         exec.moveToBase(akali);                    // 0 -> base: only battlefield 0 qualifies
@@ -1655,7 +1672,7 @@ TEST_F(SweepTriggersTest, DelayedAbility_WatchedPlayerIsNotItsController) {
     constexpr CardDefId kAsheFocused = 731;
     auto taken = addToHand(P2, kLoyalPoro);
     auto ashe = addToHand(P1, kAsheFocused);
-    EnginePathAgent agent(EnginePathAgent::choosing(taken));
+    EnginePathAgent agent(objectOrYes(taken));
     playThroughEngine(ashe, &agent);
     ASSERT_EQ(obj(taken).zone, ZoneType::Banishment);
     ASSERT_EQ(state.delayed_abilities.size(), 1u);
@@ -1695,11 +1712,17 @@ TEST_F(SweepTriggersTest, Zilean_EachCopyIsOnceEachTurnOnItsOwn) {
         e.testHook_cleanup();
         EXPECT_EQ(e.mutableState().player(P1).additional_token_copy_sources, 2);
         auto& exec = e.testHook_executor();
-        for (int i = 0; i < 3; ++i)
+        // 9.Q2 (CR 370.2, 372): both Replacement Effects apply to the one
+        // play, each once — the token and two additional copies.
+        exec.createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{}, base(P1));
+        EXPECT_EQ(exec.lastTokensCreated().size(), 3u);
+        EXPECT_EQ(e.mutableState().player(P1).additional_token_copies_used, 2);
+        // Both are used up for the turn.
+        for (int i = 0; i < 2; ++i)
             exec.createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{}, base(P1));
     }, &yes);
-    EXPECT_EQ(tokenUnits(P1).size(), 5u) << "two of the three plays got an additional copy";
-    EXPECT_EQ(yes.prompts.size(), 2u) << "the third is not offered";
+    EXPECT_EQ(tokenUnits(P1).size(), 5u);
+    EXPECT_EQ(yes.prompts.size(), 2u) << "one \"may\" per Zilean, none once both are used";
 }
 
 // 9.M17: both Gold helpers make the same token — no tag (CR 187.5), the Gold
@@ -1941,7 +1964,7 @@ TEST_F(SweepTriggersTest, DeathReplacements_OrderIsStableWithoutAChoice) {
     auto angel = addAttachedGear(P1, unit, kGuardianAngel);
     auto zhonya = addGear(P1, kZhonyas);
     obj(unit).death_replacement_recall_pending = true;
-    EnginePathAgent dflt;
+    EnginePathAgent dflt(EnginePathAgent::script({0}));   // the first listed
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &dflt);
     ASSERT_EQ(dflt.prompts.size(), 1u);
     ASSERT_EQ(dflt.prompts[0].size(), 3u);
@@ -1976,6 +1999,122 @@ TEST_F(SweepTriggersTest, Soraka_LethalDamageRecallThenALaterKillEmitWhatTheySho
     EXPECT_FALSE(obj(unit).location.has_value());
     EXPECT_EQ(died, 1);
     EXPECT_EQ(recalled, 1);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 20. Fifth follow-up (plans/09 section Q)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.Q2: each Zilean's "may" is its own; one that is declined has not been
+// applied this turn (CR 371.2.b) and is offered again on the next play.
+TEST_F(SweepTriggersTest, Zilean_ADeclinedCopyIsStillAvailableLaterThatTurn) {
+    addUnit(P1, kZilean, 5, 0);
+    addUnit(P1, kZilean, 5, 1);
+    EnginePathAgent agent(EnginePathAgent::script({0, 1, 1}));
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        auto& exec = e.testHook_executor();
+        exec.createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{}, base(P1));
+        EXPECT_EQ(exec.lastTokensCreated().size(), 2u) << "declined one, took the other";
+        EXPECT_EQ(e.mutableState().player(P1).additional_token_copies_used, 1);
+        exec.createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{}, base(P1));
+        EXPECT_EQ(exec.lastTokensCreated().size(), 2u) << "the declined one, now";
+    }, &agent);
+    EXPECT_EQ(agent.prompts.size(), 3u);
+    EXPECT_EQ(tokenUnits(P1).size(), 4u);
+}
+
+// 9.Q1: every card with a replacement effect says when it applies — the
+// default applies to nothing — and the engine never lists one that does not.
+TEST_F(SweepTriggersTest, ReplacementEffects_EveryCardDefinesWhenItApplies) {
+    const std::vector<CardDefId> expected = {77, 264, 374, 550, 762};
+    std::vector<CardDefId> found;
+    for (CardDefId id = 1; id <= 1100; ++id) {
+        const Card* c = card_registry.get(id);
+        if (c && c->hasReplacementEffect()) found.push_back(id);
+    }
+    // A new replacement card must be added here together with a test that its
+    // replacementApplies is true where its text applies.
+    EXPECT_EQ(found, expected);
+
+    // None applies to a death it has nothing to do with: an enemy unit dying
+    // somewhere else, nothing attached, no combat.
+    auto stranger = addUnit(P2, kInvalidId, 2, 1);
+    for (CardDefId id : found) {
+        SCOPED_TRACE(card_db.get(id).name);
+        const auto& def = card_db.get(id);
+        GameObjectId self = def.card_type == CardType::Gear ? addGear(P1, id)
+                          : def.card_type == CardType::Legend ? addLegend(P1, id)
+                          : def.card_type == CardType::Battlefield ? setBattlefieldCard(0, id)
+                          : addUnit(P1, id, 4, 0);
+        EXPECT_FALSE(card_registry.get(id)->replacementApplies(state, self, P2, stranger));
+    }
+    // ... and the one that does is the only one used, with nobody asked.
+    auto mine = addUnit(P1, kInvalidId, 2, 1);
+    EnginePathAgent agent;
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(mine); }, &agent);
+    EXPECT_TRUE(atBase(mine)) << "Zhonya's Hourglass: any friendly unit";
+    EXPECT_TRUE(agent.prompts.empty()) << "only one replacement applied";
+}
+
+// 9.Q3: spell damage that was removed — here by a card zeroing the damage
+// itself — does not make a later, non-spell death a kill "with a spell".
+TEST_F(SweepTriggersTest, KillWithASpell_HealedSpellDamageIsForgotten) {
+    constexpr CardDefId kImmortalPhoenix = 37;
+    auto phoenix = addToHand(P1, kImmortalPhoenix);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), phoenix), h.end());
+        obj(phoenix).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(phoenix);
+    }
+    auto spell = addToHand(P1, kDredgeUp);
+    auto unit_source = addUnit(P1, kInvalidId, 3, 0);
+    auto victim = addUnit(P2, kInvalidId, 4, 0);
+    int queued = 0;
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        auto& live = e.mutableState();
+        exec.dealDamage(victim, 1, spell);                 // not lethal
+        live.getObject(victim).damage_marked = 0;          // as Thrill of the Hunt / Arcane Shift do
+        exec.dealDamage(victim, 5, unit_source);           // lethal, not a spell
+        e.testHook_processLethalDamage();
+        for (const auto& ci : live.chain.items) if (ci.source == phoenix) ++queued;
+        live.chain.items.clear();
+    });
+    EXPECT_FALSE(obj(victim).location.has_value());
+    EXPECT_EQ(queued, 0);
+    EXPECT_FALSE(obj(victim).last_known.killed_with_spell);
+}
+
+// 9.Q4: the real combat — a tie recalls the attackers, and the recalled
+// Mournful Witness 815 still gets "When a combat that I was in ends".
+TEST_F(SweepTriggersTest, CombatParticipants_ARecalledAttackerOfARealTieWasInTheCombat) {
+    constexpr CardDefId kMournfulWitness = 815;
+    state.battlefields[0].controller = P2;
+    state.battlefields[0].is_contested = true;
+    state.battlefields[0].contested_by = P1;
+    state.battlefields[0].combat_staged = true;
+    auto attacker = addUnit(P1, kMournfulWitness, 3, 0);
+    auto defender = addUnit(P2, kInvalidId, 3, 0);
+    auto bystander = addUnit(P1, kMournfulWitness, 3, 1);
+    obj(attacker).is_stunned = true;                       // nobody deals damage: a tie
+    obj(defender).is_stunned = true;
+    std::vector<std::optional<PlayerId>> results;
+    auto conn = events.on_combat_ended.connect(
+        [&](const CombatEndedEvent& e) { results.push_back(e.winner); });
+    int moved = 0;
+    auto c2 = events.on_unit_moved.connect([&](const UnitMovedEvent& e) { if (e.object == attacker) ++moved; });
+    withEngine([&](GameEngine& e) { e.testHook_runCombat(0); e.testHook_runChain(); });
+    conn.disconnect(); c2.disconnect();
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_FALSE(results[0].has_value()) << "a tie";
+    ASSERT_TRUE(atBase(attacker)) << "the attacker was recalled";
+    EXPECT_EQ(moved, 0) << "a recall is not a move";
+    EXPECT_TRUE(obj(attacker).isEmpowered()) << "it was in that combat";
+    EXPECT_FALSE(obj(bystander).isEmpowered());
+    EXPECT_TRUE(obj(defender).location.has_value());
 }
 
 }  // namespace

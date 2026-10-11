@@ -285,7 +285,7 @@ TEST_F(C3Test, BellowsBreath_TargetSetsAreUnitsAtOneLocation) {
     auto c = addUnit(P2, kInvalidId, 3, 1);
     bool pair_ab = false;
     for (const auto& play : offers(spell)) {
-        ASSERT_FALSE(play.targets.empty());
+        if (play.targets.empty()) continue;   // "up to three": none may be chosen (CR 355.13)
         const auto loc = state.getObject(play.targets[0]).location;
         for (auto t : play.targets)
             EXPECT_EQ(state.getObject(t).location, loc) << "targets at different locations";

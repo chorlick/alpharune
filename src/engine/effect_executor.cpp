@@ -169,7 +169,7 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
                      obj.name + " (id=" + std::to_string(target) + ", was " +
                      std::to_string(obj.damage_marked) + "/" +
                      std::to_string(obj.current_might) + "M)");
-    if (obj.damage_marked == 0) obj.damage_marked_by[0] = obj.damage_marked_by[1] = 0;
+    if (obj.damage_marked == 0) forgetDamageSources(obj);
     obj.damage_marked += dealt;
     obj.damage_taken_this_turn += dealt;
     // "Your damage" is the damage you marked: credit the source's controller.
@@ -1414,12 +1414,17 @@ void EffectExecutor::banishObject(GameObjectId target) {
     if (!is_token) events_.emit(ObjectStateChangedEvent{target, "banished_owned"});
 }
 
+void EffectExecutor::forgetDamageSources(GameObject& obj) {
+    obj.damage_marked_by[0] = obj.damage_marked_by[1] = 0;
+    obj.card_counters.erase(spellDamageKey(PlayerId::Player1));
+    obj.card_counters.erase(spellDamageKey(PlayerId::Player2));
+}
+
 void EffectExecutor::healObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
     obj.damage_marked = 0;
-    obj.card_counters.erase(spellDamageKey(PlayerId::Player1));
-    obj.card_counters.erase(spellDamageKey(PlayerId::Player2));
+    forgetDamageSources(obj);
     events_.emit(ObjectStateChangedEvent{target, "healed"});
 }
 
@@ -1726,10 +1731,19 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
             ps.additional_token_copies_turn = state_.turn.turn_number;
             ps.additional_token_copies_used = 0;
         }
-        if (ps.additional_token_copies_used < ps.additional_token_copy_sources &&
-            (!agent_query_ ||
-             confirmNow(controller, "play an additional copy of " + name + "?"))) {
-            ++ps.additional_token_copies_used;
+        // Each source is its own Replacement Effect: all of them can apply to
+        // this one play, each once (CR 370.2, 372), and each "may" is asked
+        // on its own — one that is declined has not been applied this turn
+        // (CR 371.2.b). A source applies once to the event or to what
+        // replaced it, so each adds one copy: two sources, three tokens.
+        const int available = ps.additional_token_copy_sources - ps.additional_token_copies_used;
+        for (int n = 0; n < available; ++n) {
+            // With no agent attached (an executor driven on its own) the
+            // "may" is taken, as Card::confirmOptional does outside the chain.
+            if (agent_query_ &&
+                !confirmNow(controller, "play an additional copy of " + name + "?"))
+                continue;
+            ++state_.player(controller).additional_token_copies_used;
             const std::vector<LocationId>& choices =
                 location_choices.empty() ? token_location_choices_ : location_choices;
             LocationId copy_at = location;

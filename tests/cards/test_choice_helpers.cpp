@@ -409,8 +409,10 @@ TEST_F(ChoiceHelperTest, SplitDamageAmongLetsTheControllerDivideTheDamage) {
     CardContext ctx{state, events, exec, P1, src};
 
     std::vector<GameObjectId> damaged;
-    // 3 damage: e2, e2, e1.
-    std::vector<GameObjectId> answers = {e2, e2, e1};
+    // The targets first (CR 355.14.b): e2, e1. Each gets 1; the third point
+    // goes to e2. (Before plans/09 item 9.M4 every point was its own pick and
+    // the units were not chosen as targets up front.)
+    std::vector<GameObjectId> answers = {e2, e1, e2};
     size_t n = 0;
     bool done = splitDamageAmong(ctx, "test", 3, src, {e1, e2}, damaged);
     while (!done) {

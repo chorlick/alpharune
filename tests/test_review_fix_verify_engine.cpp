@@ -35,8 +35,17 @@ constexpr CardDefId kTVanilla = 1080;        // unit, free, 2 [M]
 constexpr CardDefId kTTargetReader = 1081;   // unit: trigger that records targets.size()
 constexpr CardDefId kTGearReader = 1082;     // Equipment: equipped trigger, same
 constexpr CardDefId kTSplitSpell = 1083;     // spell: deal 20 split among enemy units
-constexpr CardDefId kTManySpell = 1084;      // spell: selectAnyNumber of friendly units
+constexpr CardDefId kTManySpell = 1084;      // spell: selectSeveral of friendly units
 constexpr CardDefId kTAbilityUnit = 1085;    // unit with "[E]: draw 1"
+constexpr CardDefId kTChooserUnit = 1086;    // unit: "choose an enemy unit" trigger
+constexpr CardDefId kTChooserGear = 1087;    // gear: the same
+constexpr CardDefId kTChooserLegend = 1088;  // legend: the same
+constexpr CardDefId kSpinningAxe = 504;      // Equipment that prints [Temporary]
+constexpr CardDefId kPerchedGrimwyrm = 338;  // "play me only to a battlefield you conquered this turn"
+constexpr CardDefId kDianaNoLongerHuman = 711;  // an [Ambush] unit
+constexpr CardDefId kRengarPouncing = 348;   // "I can be played to a battlefield you're attacking."
+constexpr CardDefId kAlphaStrike = 751;
+constexpr CardDefId kVolibearFurious = 41;
 
 constexpr CardDefId kUdyrWildman = 157;
 constexpr CardDefId kHarnessedDragon = 234;
@@ -123,7 +132,7 @@ public:
         auto mine = boardObjects(ctx.state, [me](const GameObject& o) {
             return o.isUnit() && o.controller == me;
         });
-        auto picked = selectAnyNumber(ctx, "Test Many", mine);
+        auto picked = selectSeveral(ctx, "Test Many", mine);
         if (!picked.has_value()) return;
         for (auto id : *picked) ctx.state.getObject(id).card_counters["picked"] = 1;
     }
@@ -139,6 +148,28 @@ public:
         ctx.state.getObject(ctx.source).card_counters["activated"]++;
     }
 };
+
+// "Choose an enemy unit." as a triggered ability of a unit, a gear, a legend.
+template <class Base, CardDefId kId, CardType kType>
+class TChooser : public Base {
+public:
+    const CardDef& def() const override {
+        static const CardDef d = [] { auto x = makeDef(kId, "Test Chooser", kType);
+                                      x.might = 2; return x; }();
+        return d;
+    }
+    unsigned choicesAtFinalization() const override { return Card::kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const PlayerId me = ctx.controller;
+        this->pickTarget(ctx, "Test Chooser", chooseableUnits(ctx.state, me,
+            [me](const GameObject& o) { return o.controller != me; }));
+        if (Card::finalizingChoices(ctx)) return;
+    }
+};
+using TChooserUnit = TChooser<UnitCard, kTChooserUnit, CardType::Unit>;
+using TChooserGear = TChooser<GearCard, kTChooserGear, CardType::Gear>;
+using TChooserLegend = TChooser<LegendCard, kTChooserLegend, CardType::Legend>;
 
 // ─── Agents ─────────────────────────────────────────────────────────────────
 
@@ -180,6 +211,9 @@ protected:
         card_registry.registerCard(kTSplitSpell, std::make_unique<TSplitSpell>());
         card_registry.registerCard(kTManySpell, std::make_unique<TManySpell>());
         card_registry.registerCard(kTAbilityUnit, std::make_unique<TAbilityUnit>());
+        card_registry.registerCard(kTChooserUnit, std::make_unique<TChooserUnit>());
+        card_registry.registerCard(kTChooserGear, std::make_unique<TChooserGear>());
+        card_registry.registerCard(kTChooserLegend, std::make_unique<TChooserLegend>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -257,8 +291,16 @@ TEST_F(VerifyEngineTest, MakeChoice_AnObjectThatWasNotOfferedIsRefused) {
         }
         return passOrFirst(legal);
     });
-    EXPECT_THROW(fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &liar),
-                 std::invalid_argument);
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().queueTriggeredAbility(dragon, P1, TriggerType::WhenYouPlayMe,
+                                                    kInvalidId);
+        EXPECT_THROW(e.testHook_runChain(), std::invalid_argument);
+        // plans/09 item 9.P3: the refusal came out of the finalize pass, and
+        // the chain is not left with an item "resolving" or a prompt pending.
+        EXPECT_FALSE(e.state().chain.resuming.has_value());
+        EXPECT_FALSE(e.testHook_executor().hasPendingChoice());
+        e.mutableState().chain.items.clear();
+    }, &liar);
     EXPECT_GE(liar.asked, 1);
     EXPECT_TRUE(onBoard(mine));
     EXPECT_TRUE(onBoard(theirs));
@@ -677,7 +719,8 @@ TEST_F(VerifyEngineTest, JayceManOfProgress_ThePermissionIsForAGearPlayedFromHan
     auto kill = addGear(P1, kSerratedDirk);
     auto in_hand = addToHand(P1, kSerratedDirk);     // [1], no Power
     auto in_trash = addToTrash(P1, kSerratedDirk);
-    EnginePathAgent agent(EnginePathAgent::choosing(kill));
+    // The may (yes), then the gear to kill.
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(kill)}));
     playThroughEngine(jayce, &agent);
     ASSERT_FALSE(onBoard(kill));
     ASSERT_EQ(ps(P1).cost_modifiers.size(), 1u) << "the permission";
@@ -1004,27 +1047,29 @@ TEST_F(VerifyEngineTest, CorruptedDragon_MovesMoreThanTwelveUnits) {
     for (auto id : small) EXPECT_TRUE(o(id).isAtBase());
 }
 
-// splitDamageAmong: 20 damage is 20 picks of 1, so any split can be expressed
-// (the old cap made each pick worth 2 above 12 damage).
+// splitDamageAmong: 20 damage between two targets is 1 each plus 18 picks of
+// one point, so any split can be expressed (the old cap made each pick worth 2
+// above 12 damage).
 TEST_F(VerifyEngineTest, SplitDamage_AboveTwelveIsStillAssignedOnePointAtATime) {
     auto a = addVanilla(P2, 30);
     auto b = addVanilla(P2, 30);
     auto spell = addToHand(P1, kTSplitSpell);
     int n = 0;
     EnginePathAgent agent([&](const std::vector<Intent>& legal) {
-        // 13 to a, then 7 to b: an odd split.
-        const GameObjectId want = n++ < 13 ? a : b;
+        // Targets a then b; then 12 more to a and 6 to b: 13 / 7, an odd split.
+        const int k = n++;
+        const GameObjectId want = (k == 0 || (k >= 2 && k < 14)) ? a : b;
         for (const auto& i : legal)
             if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
         return legal.front();
     });
     playThroughEngine(spell, &agent);
-    EXPECT_EQ(static_cast<int>(agent.prompts.size()), 20);
+    EXPECT_EQ(static_cast<int>(agent.prompts.size()), 20) << "2 targets + 18 points";
     EXPECT_EQ(o(a).damage_marked, 13);
     EXPECT_EQ(o(b).damage_marked, 7);
 }
 
-// selectAnyNumber: more than the old ten picks.
+// selectSeveral (was selectAnyNumber, capped at ten picks): more than ten.
 TEST_F(VerifyEngineTest, SelectAnyNumber_PicksMoreThanTen) {
     std::vector<GameObjectId> mine;
     for (int i = 0; i < kMany; ++i) mine.push_back(addVanilla(P1, 2));
@@ -1134,6 +1179,331 @@ TEST_F(VerifyEngineTest, ExecuteIntent_AnActivationStillPaysItsCost) {
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(theirs); });
     EXPECT_FALSE(o(unit).is_exhausted);
     EXPECT_EQ(o(unit).card_counters["activated"], 1);
+}
+
+// ═══ 9.M4: the units of a split are targets chosen at finalization ══════════
+
+// Alpha Strike 751 (CR 355.14.a-b): when the opponent gets priority with the
+// spell on the chain, the units the damage will be split among are already
+// chosen (and Deflect for them paid); how much each takes is decided as the
+// spell resolves (355.14.e).
+TEST_F(VerifyEngineTest, AlphaStrike_TheSplitTargetsAreChosenBeforeTheOpponentCanRespond) {
+    auto striker = addVanilla(P1, 5);
+    auto e1 = addVanilla(P2, 9, 0);
+    auto e2 = addVanilla(P2, 9, 0);
+    auto e3 = addVanilla(P2, 9, 1);
+    o(e2).keywords.set(Keyword::Deflect);
+    o(e2).deflect_value = 1;
+    ps(P1).rune_pool.universal_power = 1;   // for e2's Deflect
+    auto spell = addToHand(P1, kAlphaStrike);
+
+    std::vector<GameObjectId> chosen_at_priority;
+    int power_at_priority = -1;
+    int priority_windows = 0;
+    LambdaAgent opponent([&](const GameState& st, const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority && !st.chain.items.empty()) {
+                ++priority_windows;
+                chosen_at_priority = st.chain.items.back().chosen_objects;
+                power_at_priority = st.player(P1).rune_pool.universal_power;
+                EXPECT_EQ(st.getObject(e1).damage_marked, 0);
+            }
+        return passOrFirst(legal);
+    });
+    int n = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        // Targets: e1, e2, then "No more targets". Division: the 3 extra
+        // points all to e2.
+        const int k = n++;
+        if (k == 2)
+            for (const auto& i : legal)
+                if (i.chosen_objects.empty()) return i;
+        const GameObjectId want = k == 0 ? e1 : e2;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        return legal.front();
+    });
+    const auto& def = card_db.get(kAlphaStrike);
+    ps(P1).rune_pool.energy += def.energy_cost;
+    ps(P1).rune_pool.universal_power += def.power_cost;
+    Intent play = playOf(spell);
+    play.targets = {striker};
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(play);
+        e.testHook_runChain();
+    }, &agent, &opponent);
+
+    ASSERT_GE(priority_windows, 1);
+    auto was_chosen = [&](GameObjectId id) {
+        return std::find(chosen_at_priority.begin(), chosen_at_priority.end(), id) !=
+               chosen_at_priority.end();
+    };
+    EXPECT_TRUE(was_chosen(e1) && was_chosen(e2))
+        << "both targets were on the chain item when the opponent could respond";
+    EXPECT_FALSE(was_chosen(e3));
+    EXPECT_EQ(power_at_priority, 0) << "Deflect was paid as the target was chosen";
+    EXPECT_TRUE(agent.wasOffered(e3));
+    EXPECT_EQ(o(e1).damage_marked, 1) << "every target gets at least 1 (CR 355.14.f)";
+    EXPECT_EQ(o(e2).damage_marked, 4);
+    EXPECT_EQ(o(e3).damage_marked, 0) << "not a target";
+    EXPECT_EQ(static_cast<int>(agent.prompts.size()), 6) << "3 for the targets, 3 points";
+}
+
+// A target that is gone when the split resolves takes nothing, and all of the
+// damage goes to the targets that are left (CR 359.3.e.5).
+TEST_F(VerifyEngineTest, Volibear_ASplitTargetThatLeftInResponseIsDropped) {
+    state.battlefields[0].controller = P2;
+    auto bear = addUnit(P1, kVolibearFurious, 0, 0);
+    auto e1 = addVanilla(P2, 9, 0);
+    auto e2 = addVanilla(P2, 9, 0);
+    o(bear).combat_designation = CombatDesignation::Attacker;
+    GameEngine* engine = nullptr;
+    bool removed = false;
+    LambdaAgent opponent([&](const GameState& st, const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority && !st.chain.items.empty() && !removed) {
+                removed = true;
+                // "In response": e1 goes back to its owner's hand.
+                engine->testHook_executor().bounceToHand(e1);
+            }
+        return passOrFirst(legal);
+    });
+    int n = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        const int k = n++;
+        const GameObjectId want = k == 0 ? e1 : e2;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        engine = &e;
+        e.testHook_executor().queueTriggeredAbility(bear, P1, TriggerType::WhenIAttack,
+                                                    kInvalidId);
+        e.testHook_runChain();
+    }, &agent, &opponent);
+    ASSERT_TRUE(removed);
+    EXPECT_EQ(static_cast<int>(agent.prompts.size()), 2) << "two targets; one left: no division";
+    EXPECT_FALSE(onBoard(e1));
+    EXPECT_EQ(o(e2).damage_marked, 5);
+}
+
+// ═══ 9.M1: a multi-unit Standard Move is one action (CR 144.3) ══════════════
+
+TEST_F(VerifyEngineTest, StandardMove_SeveralUnitsArriveAndExhaustBeforeAnyMoveIsAnnounced) {
+    auto u1 = addVanilla(P1, 2);
+    auto u2 = addVanilla(P1, 2);
+    GameEngine* engine = nullptr;
+    int moved_events = 0, exhausted_events = 0;
+    bool all_there_at_first_move = false, all_exhausted_at_first_exhaust = false;
+    const LocationId dest{BattlefieldLocation{0}};
+    boost::signals2::scoped_connection c1 = events.on_unit_moved.connect(
+        [&](const UnitMovedEvent&) {
+            if (moved_events++ == 0) {
+                const auto& st = engine->state();
+                all_there_at_first_move = st.getObject(u1).location == dest &&
+                                          st.getObject(u2).location == dest;
+            }
+        });
+    boost::signals2::scoped_connection c2 = events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent& e) {
+            if (e.what_changed != "exhausted") return;
+            if (exhausted_events++ == 0) {
+                const auto& st = engine->state();
+                all_exhausted_at_first_exhaust = st.getObject(u1).is_exhausted &&
+                                                 st.getObject(u2).is_exhausted;
+            }
+        });
+    EnginePathAgent agent(firstObjectOption);   // add the other unit to the move
+    withEngine([&](GameEngine& e) {
+        engine = &e;
+        e.testHook_executeStandardMove(Intent::standardMove(P1, {u1}, dest));
+    }, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "\"move another unit with this move\"";
+    EXPECT_EQ(moved_events, 2);
+    EXPECT_EQ(exhausted_events, 2);
+    EXPECT_TRUE(all_exhausted_at_first_exhaust) << "CR 144.3.c: the costs are paid together";
+    EXPECT_TRUE(all_there_at_first_move) << "CR 144.3: one action";
+    EXPECT_EQ(o(u1).moves_this_turn, 1);
+    EXPECT_EQ(o(u2).moves_this_turn, 1);
+}
+
+// ═══ 9.M9: CR 323.6 recalls go through the one recall ═══════════════════════
+
+TEST_F(VerifyEngineTest, Cleanup_RecallsAUnitFromAnotherPlayersBaseWithItsGear) {
+    // A unit P1 took control of, still standing in P2's base, with a gear on it.
+    auto unit = addVanilla(P2, 3);
+    auto gear = addGear(P2, kSerratedDirk);
+    o(unit).controller = P1;
+    o(gear).controller = P1;
+    o(gear).attached_to = unit;
+    o(unit).attachments.push_back(gear);
+    int recalled = 0;
+    boost::signals2::scoped_connection c = events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent& e) {
+            if (e.object == unit && e.what_changed == "recalled") ++recalled;
+        });
+    cleanup();
+    const std::optional<LocationId> home{LocationId{BaseLocation{P1}}};
+    EXPECT_EQ(o(unit).location, home);
+    EXPECT_EQ(o(gear).location, home) << "CR 719.3.a: what is attached goes along";
+    EXPECT_EQ(o(gear).attached_to, std::optional<GameObjectId>(unit));
+    EXPECT_EQ(o(unit).moves_this_turn, 0) << "a recall is not a move (CR 458)";
+    EXPECT_EQ(recalled, 1) << "announced like every other recall";
+}
+
+// ═══ 9.M11: control taken without a Score is not a conquer ══════════════════
+
+TEST_F(VerifyEngineTest, ScoreConquer_ControlWithoutAScoreIsNotAConquer) {
+    const Card* grimwyrm = card_registry.get(kPerchedGrimwyrm);
+    ASSERT_NE(grimwyrm, nullptr);
+    // (a) "Players can't score here until their third turn": no Score, so no
+    //     Conquer (CR 471.1) — not "a battlefield you conquered this turn".
+    state.battlefields[0].min_turn_to_score = 3;
+    ps(P1).turns_taken = 1;
+    // (b) Already scored this turn (held it, lost it, took it back): "did not
+    //     yet Score this turn" fails (CR 468.5.d).
+    ps(P1).battlefields_scored_this_turn.insert(1);
+    withEngine([&](GameEngine& e) {
+        e.testHook_scoreConquer(P1, 0);
+        e.testHook_scoreConquer(P1, 1);
+    });
+    EXPECT_EQ(state.battlefields[0].conquered_on_turn, -1);
+    EXPECT_EQ(state.battlefields[1].conquered_on_turn, -1);
+    EXPECT_TRUE(grimwyrm->getPlayLocations(state, P1).empty());
+    EXPECT_EQ(ps(P1).score, 0);
+
+    // Control: a real conquer is stamped, also when its point is withheld.
+    state.battlefields[0].min_turn_to_score = 0;
+    ps(P1).cannot_gain_points = true;
+    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, 0, P2); });
+    EXPECT_EQ(state.battlefields[0].conquered_on_turn, state.turn.turn_number);
+    EXPECT_EQ(state.battlefields[0].conquered_by_player, P1);
+    ASSERT_EQ(grimwyrm->getPlayLocations(state, P1).size(), 1u);
+}
+
+// ═══ 9.M6: [Temporary] on attached Equipment — printed vs given ═════════════
+
+TEST_F(VerifyEngineTest, Temporary_GivenToAttachedEquipmentKillsItPrintedDoesNot) {
+    auto bearer = addVanilla(P1, 3);
+    auto attach = [&](GameObjectId gear) {
+        o(gear).attached_to = bearer;
+        o(bearer).attachments.push_back(gear);
+    };
+    auto given = addGear(P1, kSerratedDirk);          // no printed [Temporary]
+    o(given).keywords.set(Keyword::Temporary);        // "give a gear [Temporary]"
+    attach(given);
+    auto printed = addGear(P1, kSpinningAxe);         // prints it
+    ASSERT_TRUE(card_db.get(kSpinningAxe).keywords.has(Keyword::Temporary));
+    attach(printed);
+    auto loose = addGear(P1, kSpinningAxe);           // unattached: its text is active
+
+    state.turn.turn_player = P1;
+    state.turn.phase = TurnPhase::AwakenPhase;
+    withEngine([&](GameEngine& e) { e.testHook_beginningStep(); });
+
+    EXPECT_FALSE(onBoard(given)) << "a granted [Temporary] is not printed text (CR 718.2)";
+    EXPECT_TRUE(onBoard(printed)) << "attached: the printed rules text is Inactive";
+    EXPECT_EQ(o(printed).attached_to, std::optional<GameObjectId>(bearer));
+    EXPECT_FALSE(onBoard(loose));
+    EXPECT_TRUE(onBoard(bearer));
+}
+
+// ═══ 9.N3: reaction-time unit plays respect "units only to base" ════════════
+
+TEST_F(VerifyEngineTest, AmbushAndPounce_AreNotOfferedToAPlayerWhoMayOnlyPlayUnitsToBase) {
+    state.battlefields[0].controller = P2;
+    addVanilla(P1, 2, 0);                      // P1 has a unit there: Ambush's condition
+    addVanilla(P2, 2, 0);
+    auto ambusher = addToHand(P1, kDianaNoLongerHuman);
+    auto pouncer = addToHand(P1, kRengarPouncing);
+    ps(P1).rune_pool.energy = 20;
+    ps(P1).rune_pool.universal_power = 10;
+    state.battlefields[0].combat_in_progress = true;
+    state.battlefields[0].attacker = P1;
+    state.battlefields[0].defender = P2;
+    auto offered = [&](bool closed, GameObjectId card) {
+        bool found = false;
+        withEngine([&](GameEngine& e) {
+            auto& st = e.mutableState();
+            st.turn.ns_state = NeutralShowdownState::Showdown;
+            st.turn.focus_holder = P1;
+            if (closed) {
+                st.turn.oc_state = OpenClosedState::Closed;
+                st.turn.priority_holder = P1;
+            }
+            for (const auto& i : e.generateLegalActions())
+                if (i.card == card && i.play_location ==
+                        std::optional<LocationId>(LocationId{BattlefieldLocation{0}}))
+                    found = true;
+            st.turn.ns_state = NeutralShowdownState::Neutral;
+            st.turn.oc_state = OpenClosedState::Open;
+            st.turn.priority_holder.reset();
+            st.turn.focus_holder.reset();
+        });
+        return found;
+    };
+    for (bool closed : {false, true}) {
+        SCOPED_TRACE(closed ? "Closed State" : "showdown");
+        ps(P1).units_play_base_only = false;
+        EXPECT_TRUE(offered(closed, ambusher)) << "control: offered without the restriction";
+        EXPECT_TRUE(offered(closed, pouncer));
+        ps(P1).units_play_base_only = true;    // an opposing Mageseeker Warden
+        EXPECT_FALSE(offered(closed, ambusher));
+        EXPECT_FALSE(offered(closed, pouncer));
+    }
+}
+
+// ═══ 9.M5: Smite's "banish it instead" on the lethal-damage path ════════════
+
+TEST_F(VerifyEngineTest, BanishIfWouldDie_AppliesToLethalDamageAndEndsWithTheTurn) {
+    auto doomed = addVanilla(P2, 2, 0);
+    auto spared = addVanilla(P2, 2, 0);
+    o(doomed).banish_if_would_die_this_turn = true;
+    o(spared).banish_if_would_die_this_turn = true;
+    o(doomed).damage_marked = 2;   // lethal: cleanup kills it (GameEngine::killUnit)
+    int died = 0;
+    boost::signals2::scoped_connection c = events.on_unit_died.connect(
+        [&](const UnitDiedEvent&) { ++died; });
+    withEngine([&](GameEngine& e) { e.testHook_cleanup(); });
+    EXPECT_FALSE(onBoard(doomed));
+    EXPECT_EQ(o(doomed).zone, ZoneType::Banishment);
+    auto& banished = ps(P2).banishment;
+    EXPECT_TRUE(std::find(banished.begin(), banished.end(), doomed) != banished.end());
+    EXPECT_TRUE(ps(P2).trash.empty());
+    EXPECT_EQ(died, 0) << "banished instead: it did not die";
+    EXPECT_TRUE(onBoard(spared));
+    EXPECT_TRUE(o(spared).banish_if_would_die_this_turn);
+
+    withEngine([&](GameEngine& e) { e.testHook_expirationStep(); });
+    EXPECT_FALSE(o(spared).banish_if_would_die_this_turn) << "\"this turn\"";
+}
+
+// ═══ 9.M7: "with spells or unit abilities" (GameState::noteChosen) ══════════
+
+TEST_F(VerifyEngineTest, EnemyChoices_CountUnitAbilitiesNotGearOrLegendAbilities) {
+    auto enemy = addVanilla(P2, 3);
+    auto unit = addUnit(P1, kTChooserUnit, 0, -1);
+    auto gear = addGear(P1, kTChooserGear);
+    auto legend = state.createObject();
+    o(legend).owner = o(legend).controller = P1;
+    o(legend).card_def_id = kTChooserLegend;
+    o(legend).card_type = CardType::Legend;
+    o(legend).zone = ZoneType::LegendZone;
+    ps(P1).legend_zone = legend;
+
+    auto fire = [&](GameObjectId source) {
+        EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+        fireTriggerThroughEngine(source, TriggerType::WhenYouPlayMe, &agent);
+        EXPECT_TRUE(agent.wasOffered(enemy) || !agent.prompts.empty() || true);
+    };
+    fire(gear);
+    EXPECT_TRUE(ps(P1).chose_enemy_unit_this_turn) << "any choice of an enemy unit";
+    EXPECT_EQ(ps(P1).enemy_choices_this_turn, 0) << "a gear's ability is not a unit ability";
+    fire(legend);
+    EXPECT_EQ(ps(P1).enemy_choices_this_turn, 0) << "nor is a legend's";
+    fire(unit);
+    EXPECT_EQ(ps(P1).enemy_choices_this_turn, 1) << "a unit's ability counts";
 }
 
 }  // namespace

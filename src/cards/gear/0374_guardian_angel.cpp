@@ -24,12 +24,8 @@ public:
         return gear.attached_to.has_value() && *gear.attached_to == dying_unit;
     }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
-        if (!ctx.state.objectExists(ctx.source)) return false;
-        const auto& gear = ctx.state.getObject(ctx.source);
-        // Only intercept the death of the unit we're attached to.
-        if (!gear.attached_to.has_value() || *gear.attached_to != dying_unit) {
-            return false;
-        }
+        // Only the death of the unit this is attached to (replacementApplies).
+        if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
         ctx.events.logTrace("GUARDIAN ANGEL: kill self, heal/exhaust/recall bearer");
         ctx.executor.unattachGear(ctx.source);
         ctx.executor.killObject(ctx.source);       // kill Guardian Angel instead

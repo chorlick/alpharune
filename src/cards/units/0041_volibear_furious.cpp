@@ -17,11 +17,14 @@ namespace {
 class VolibearFurious : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // The units are targets chosen as the ability is finalized (CR 355.14.a-b):
+    // splitDamageAmong asks for them then and ends the finalize pass.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "When I attack, deal 5 damage split among any number of enemy
-        // units here." CR 355.14: my controller picks the units and the
-        // division; units that can't be chosen by enemy spells and abilities
-        // are not legal picks.
+        // units here." CR 355.14: my controller picks the units, then the
+        // division as it resolves; units that can't be chosen by enemy spells
+        // and abilities are not legal picks.
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;

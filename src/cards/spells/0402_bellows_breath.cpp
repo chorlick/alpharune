@@ -22,8 +22,9 @@ public:
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 3, .must_be_unit = true, .optional = true};
     }
-    // "up to three units at the same location": every set of one, two or three
-    // units that share a location.
+    // "up to three units at the same location": no unit at all (always a
+    // choice, CR 355.13), then every set of one, two or three units that share
+    // a location.
     std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
         const GameState& state, PlayerId controller) const override {
         std::vector<std::pair<LocationId, std::vector<GameObjectId>>> by_location;
@@ -35,6 +36,7 @@ public:
             else it->second.push_back(id);
         }
         std::vector<std::vector<GameObjectId>> sets;
+        sets.push_back({});
         for (const auto& group : by_location) {
             const auto& u = group.second;
             for (size_t a = 0; a < u.size(); ++a) {

@@ -23,7 +23,11 @@ public:
     // there that still fits the total, or stops. Progress lives on the item:
     // resume_point kAwait while a prompt is out, resume_data = the units
     // picked so far.
+    // "Any number" includes zero (CR 355.13): the spell is playable with no
+    // unit to choose (no hasLegalTargets gate), and every prompt, the first
+    // included, offers "Stop here".
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+<<<<<<< HEAD
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         return !chooseableUnits(state, controller, [](const GameObject& u) {
             return u.isAtBattlefield() && u.current_might <= kTotalMight;
@@ -38,6 +42,8 @@ public:
                    u.current_might <= kTotalMight;
         }).empty();
     }
+=======
+>>>>>>> fix/integration
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
@@ -82,9 +88,9 @@ public:
                 const auto can_pick = candidates();
                 if (!can_pick.empty()) {
                     std::vector<Intent> options;
-                    // "any number": after the first unit the controller may stop.
-                    if (!ri.resume_data.empty())
-                        options.push_back(valChoice(ctx.controller, 0, "Stop here"));
+                    // "any number": the controller may stop at any prompt, the
+                    // first too — no unit at all is a choice (CR 355.13).
+                    options.push_back(valChoice(ctx.controller, 0, "Stop here"));
                     for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
                     ctx.executor.requestChoice(ctx.controller, std::move(options),
                         "Fox-Fire: kill a unit at a battlefield (total Might 4 or less)");

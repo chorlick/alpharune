@@ -141,6 +141,18 @@ constexpr CardDefId kShadowsOfThePast = 890;
 constexpr CardDefId kDecreeOfDiscord = 894;
 constexpr CardDefId kShurikenFlip = 927;
 constexpr CardDefId kAccelerationGate = 937;
+constexpr CardDefId kSonaHarmonious = 73;
+constexpr CardDefId kKinkouMonk = 141;
+constexpr CardDefId kKrakenHunter = 150;
+constexpr CardDefId kAlbusFerros = 230;
+constexpr CardDefId kCommanderLedros = 231;
+constexpr CardDefId kJannaSavior = 376;
+constexpr CardDefId kFaeDragon = 423;
+constexpr CardDefId kAzirSovereign = 497;
+constexpr CardDefId kForgeOfTheFuture = 212;
+constexpr CardDefId kTargonsPeak = 284;
+constexpr CardDefId kGentleGemdragon = 666;
+constexpr CardDefId kCuratorOfTheSands = 932;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kBackAlleyBar = 272;
 constexpr CardDefId kSoraka = 550;
@@ -551,6 +563,28 @@ protected:
         }
         return false;
     }
+    /// A unit token of `p` with no card behind it.
+    GameObjectId addTokenUnit(PlayerId p, int might, int at_bf = -1) {
+        auto id = addUnit(p, kInvalidId, might, at_bf);
+        o(id).is_token = true;
+        o(id).super_type = SuperType::Token;
+        return id;
+    }
+    /// A rune of `p` in their rune deck (for "channel" effects).
+    GameObjectId addRuneToRuneDeck(PlayerId p, Domain d) {
+        auto rune = addRune(p, d);
+        o(rune).location = std::nullopt;
+        o(rune).zone = ZoneType::RuneDeck;
+        ps(p).rune_deck.push_back(rune);
+        return rune;
+    }
+    /// True if `agent` was asked a prompt with an option whose label contains `text`.
+    static bool askedLabel(const EnginePathAgent& agent, const std::string& text) {
+        for (const auto& p : agent.prompts)
+            for (const auto& i : p)
+                if (i.choice_label.find(text) != std::string::npos) return true;
+        return false;
+    }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
         for (const auto& [id, obj] : state.objects)
@@ -825,19 +859,23 @@ TEST_F(VerifyCardsTest, Pin_3_21_VeteranPoro779_HasWeaponmasterAndNoEquip) {
     EXPECT_FALSE(offered) << "nothing to activate on it";
 }
 
-// batch-01 Systemic S5: Dark Child 315 "ready up to 2 runes" asks nothing.
-TEST_F(VerifyCardsTest, Pin_Batch01_DarkChild315_ReadiesTwoRunesWithoutAsking) {
+// batch-01 Systemic S5: Dark Child 315 "ready up to 2 runes" — the controller
+// chooses which, and may ready fewer (CR 355.13; the earlier "asks nothing"
+// closure was wrong: which rune is ready matters when one is recycled for Power).
+TEST_F(VerifyCardsTest, Pin_Batch01_DarkChild315_ReadiesUpToTwoOfItsControllersRunes) {
     auto annie = addLegend(P1, kDarkChild);
-    addRune(P1, Domain::Fury, /*exhausted=*/true);
-    addRune(P1, Domain::Chaos, /*exhausted=*/true);
-    addRune(P1, Domain::Mind, /*exhausted=*/true);
-    addRune(P2, Domain::Fury, /*exhausted=*/true);
-    EnginePathAgent agent;
+    auto r1 = addRune(P1, Domain::Fury, true);
+    auto r2 = addRune(P1, Domain::Chaos, true);
+    auto r3 = addRune(P1, Domain::Mind, true);
+    auto theirs = addRune(P2, Domain::Fury, true);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
     fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
-    EXPECT_TRUE(agent.prompts.empty()) << "which two is not a decision worth asking";
-    EXPECT_EQ(readyRuneCount(P1), 2);
-    EXPECT_EQ(exhaustedRuneCount(P1), 1);
-    EXPECT_EQ(readyRuneCount(P2), 0) << "only its controller's runes";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "one prompt per rune, no third";
+    EXPECT_FALSE(agent.wasOffered(theirs)) << "only its controller's runes";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_FALSE(o(r2).is_exhausted);
+    EXPECT_TRUE(o(r3).is_exhausted);
+    EXPECT_EQ(readyRuneCount(P2), 0);
 }
 
 // Carry-over (engine-auras-costs): Shurelya's Requiem 509 grants [Ganking]
@@ -5681,6 +5719,683 @@ TEST_F(VerifyCardsTest, Pin_AccelerationGate_PlayableWithNoneAndMayChooseNone) {
     ASSERT_EQ(done.prompts.size(), 1u);
     EXPECT_TRUE(done.wasOffered(tired));
     EXPECT_TRUE(o(tired).is_exhausted);
+}
+
+
+// ═══ Tranche 8: 9.W1 zero objects for non-spell cards (CR 355.13), group T8A ═══
+// ═══ 9.W1: "any number of" / "up to N" on units (CR 355.13), part A ═════════
+
+// ─── Sona, Harmonious 73 (fixed) ────────────────────────────────────────────
+// "At the end of your turn, if I'm at a battlefield, ready up to 4 friendly
+// runes." Fails on the old code: no prompt at all — four exhausted runes were
+// readied in map order.
+TEST_F(VerifyCardsTest, Sona_TheControllerPicksWhichRunesAndMayStopBeforeFour) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, true);
+    auto r3 = addRune(P1, Domain::Fury, true);
+    auto r4 = addRune(P1, Domain::Calm, true);
+    auto r5 = addRune(P1, Domain::Fury, true);
+    auto theirs = addRune(P2, Domain::Calm, true);
+    EnginePathAgent agent(pickingInOrder({r5, r3, kInvalidId}));   // two, then "None"
+    fireTriggerThroughEngine(sona, TriggerType::AtEndOfTurn, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_FALSE(agent.wasOffered(theirs)) << "friendly runes";
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{r1, r2, r3, r4}))
+        << "a rune already named is not offered again";
+    EXPECT_FALSE(o(r5).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+    EXPECT_TRUE(o(r1).is_exhausted) << "up to 4: the controller stopped at two";
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_TRUE(o(r4).is_exhausted);
+    EXPECT_TRUE(o(theirs).is_exhausted);
+}
+
+// Fails on the old code: both runes were readied without asking.
+TEST_F(VerifyCardsTest, Sona_FirstPromptOffersReadyingNoRune) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, true);
+    auto r2 = addRune(P1, Domain::Calm, true);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "None"
+    fireTriggerThroughEngine(sona, TriggerType::AtEndOfTurn, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "zero of 'up to 4' (CR 355.13)";
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, Pin_Sona_AtMostFourRunes) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, true);
+    auto r2 = addRune(P1, Domain::Calm, true);
+    auto r3 = addRune(P1, Domain::Calm, true);
+    auto r4 = addRune(P1, Domain::Calm, true);
+    auto r5 = addRune(P1, Domain::Calm, true);
+    EnginePathAgent agent(pickingInOrder({r1, r2, r3, r4}));
+    fireTriggerThroughEngine(sona, TriggerType::AtEndOfTurn, &agent);
+    EXPECT_EQ(agent.prompts.size(), 4u) << "no fifth prompt";
+    for (auto r : {r1, r2, r3, r4}) EXPECT_FALSE(o(r).is_exhausted);
+    EXPECT_TRUE(o(r5).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, Pin_Sona_NoExhaustedRune_NothingAsked) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto ready = addRune(P1, Domain::Calm);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(sona, TriggerType::AtEndOfTurn, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_FALSE(o(ready).is_exhausted);
+}
+
+// ─── Hwei, Brooding Painter 642 (fixed) ─────────────────────────────────────
+// "Gear — Ready up to 2 runes." Fails on the old code: only the discard was
+// asked, and two exhausted runes were readied in map order.
+TEST_F(VerifyCardsTest, Hwei_DiscardingAGear_TheControllerPicksWhichRunesAreReadied) {
+    auto hwei = addUnit(P1, kHwei, 0, 0);
+    addToDeck(P1, kMeditation);                        // the card drawn
+    auto gear = addToHand(P1, kSealOfStrength163);
+    auto r1 = addRune(P1, Domain::Mind, true);
+    auto r2 = addRune(P1, Domain::Mind, true);
+    auto r3 = addRune(P1, Domain::Mind, true);
+    EnginePathAgent agent(pickingInOrder({gear, r3, r2}));   // the discard, then two runes
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u) << "the discard and two runes; no third rune";
+    EXPECT_TRUE(inTrash(P1, gear));
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "'None' on the first rune prompt";
+    EXPECT_EQ(promptObjects(agent, 2), (std::vector<GameObjectId>{r1, r2}));
+    EXPECT_TRUE(o(r1).is_exhausted) << "the controller, not map order, picks the runes";
+    EXPECT_FALSE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+// Fails on the old code: both runes were readied without asking.
+TEST_F(VerifyCardsTest, Hwei_DiscardingAGear_MayReadyNoRune) {
+    auto hwei = addUnit(P1, kHwei, 0, 0);
+    addToDeck(P1, kMeditation);
+    auto gear = addToHand(P1, kSealOfStrength163);
+    auto r1 = addRune(P1, Domain::Mind, true);
+    auto r2 = addRune(P1, Domain::Mind, true);
+    EnginePathAgent agent(pickingInOrder({gear, kInvalidId}));   // the discard, then "None"
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(inTrash(P1, gear));
+    EXPECT_TRUE(o(r1).is_exhausted) << "zero of 'up to 2' (CR 355.13)";
+    EXPECT_TRUE(o(r2).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, Pin_Hwei_DiscardingAGearWithNoExhaustedRune_AsksOnlyTheDiscard) {
+    auto hwei = addUnit(P1, kHwei, 0, 0);
+    addToDeck(P1, kMeditation);
+    auto gear = addToHand(P1, kSealOfStrength163);
+    auto ready = addRune(P1, Domain::Mind);
+    EnginePathAgent agent(pickingInOrder({gear}));
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(inTrash(P1, gear));
+    EXPECT_FALSE(o(ready).is_exhausted);
+}
+
+// ─── Kinkou Monk 141 (fixed) ────────────────────────────────────────────────
+// "When you play me, buff up to two other friendly units." Fails on the old
+// code: the prompt had no "Done", so the script's 0 matched nothing and both
+// units were buffed.
+TEST_F(VerifyCardsTest, KinkouMonk_FirstPromptOffersBuffingNoUnit) {
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    auto monk = addToHand(P1, kKinkouMonk);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "Done"
+    playThroughEngine(monk, &agent);
+    ASSERT_TRUE(onBoard(monk));
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "zero of 'up to two' (CR 355.13)";
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{u1, u2}));
+    EXPECT_EQ(o(u1).buff_count, 0);
+    EXPECT_EQ(o(u2).buff_count, 0);
+}
+
+// Fails on the old code: the second prompt had no "Done" either (the wanted
+// option is not offered, and the other unit is buffed).
+TEST_F(VerifyCardsTest, KinkouMonk_MayBuffOnlyOneUnit) {
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    auto monk = addToHand(P1, kKinkouMonk);
+    EnginePathAgent agent(pickingInOrder({u2, kInvalidId}));   // u2, then "Done"
+    playThroughEngine(monk, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{u1}))
+        << "the unit already chosen is not offered again";
+    EXPECT_EQ(o(u2).buff_count, 1);
+    EXPECT_EQ(o(u1).buff_count, 0) << "up to two: one was chosen";
+    EXPECT_EQ(o(monk).buff_count, 0) << "other friendly units";
+}
+
+TEST_F(VerifyCardsTest, Pin_KinkouMonk_BuffsTheTwoUnitsChosenAndAsksNoThird) {
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    auto u3 = addUnit(P1, kInvalidId, 2);
+    auto enemy = addUnit(P2, kInvalidId, 2);
+    auto monk = addToHand(P1, kKinkouMonk);
+    EnginePathAgent agent(pickingInOrder({u3, u1}));
+    playThroughEngine(monk, &agent);
+    EXPECT_EQ(agent.prompts.size(), 2u);
+    EXPECT_FALSE(agent.wasOffered(enemy));
+    EXPECT_FALSE(agent.wasOffered(monk));
+    EXPECT_EQ(o(u3).buff_count, 1);
+    EXPECT_EQ(o(u1).buff_count, 1);
+    EXPECT_EQ(o(u2).buff_count, 0);
+}
+
+TEST_F(VerifyCardsTest, Pin_KinkouMonk_NoOtherFriendlyUnit_NothingAsked) {
+    auto enemy = addUnit(P2, kInvalidId, 2);
+    auto monk = addToHand(P1, kKinkouMonk);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(monk, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(onBoard(monk));
+    EXPECT_EQ(o(monk).buff_count, 0);
+    EXPECT_EQ(o(enemy).buff_count, 0);
+}
+
+// ─── Volibear, Furious 41 (NOT DONE: needs splitDamageAmong) ────────────────
+// "When I attack, deal 5 damage split among any number of enemy units here."
+// Fails on the current code: splitDamageAmong offers "No more targets" only
+// from the second prompt on, so the first prompt forces a target. Enable once
+// the helper takes `may_choose_none` and Volibear passes it.
+TEST_F(VerifyCardsTest, DISABLED_VolibearFurious_FirstPromptOffersDamagingNoUnit) {
+    auto voli = addUnit(P1, kVolibearFurious, 0, 0);
+    auto enemy = addUnit(P2, kInvalidId, 6, 0);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "No more targets"
+    fireTriggerThroughEngine(voli, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "zero of 'any number' (CR 355.13)";
+    EXPECT_EQ(o(enemy).damage_marked, 0);
+}
+
+TEST_F(VerifyCardsTest, Pin_VolibearFurious_NoEnemyUnitHere_NothingAsked) {
+    auto voli = addUnit(P1, kVolibearFurious, 0, 0);
+    auto elsewhere = addUnit(P2, kInvalidId, 6, 1);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(voli, TriggerType::WhenIAttack, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(elsewhere).damage_marked, 0);
+}
+
+// ─── Not a defect: nothing to choose is fine, and "none" is on offer ────────
+
+// 230 Albus Ferros: "When you play me, spend any number of buffs. For each
+// buff spent, channel 1 rune exhausted."
+TEST_F(VerifyCardsTest, Pin_AlbusFerros_NoneOnTheFirstPrompt_SpendsNothingAndChannelsNothing) {
+    auto unit = addUnit(P1, kInvalidId, 2);
+    o(unit).buff_count = 1;
+    addRuneToRuneDeck(P1, Domain::Order);
+    auto albus = addToHand(P1, kAlbusFerros);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "None"
+    playThroughEngine(albus, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0));
+    EXPECT_TRUE(onBoard(albus));
+    EXPECT_EQ(o(unit).buff_count, 1);
+    EXPECT_EQ(ps(P1).rune_deck.size(), 1u);
+}
+
+TEST_F(VerifyCardsTest, Pin_AlbusFerros_NoBuffToSpend_NothingAsked) {
+    auto unit = addUnit(P1, kInvalidId, 2);
+    addRuneToRuneDeck(P1, Domain::Order);
+    auto albus = addToHand(P1, kAlbusFerros);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(albus, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(onBoard(albus));
+    EXPECT_EQ(o(unit).buff_count, 0);
+    EXPECT_EQ(ps(P1).rune_deck.size(), 1u);
+}
+
+// 376 Janna, Savior: "heal your units here, then move up to one enemy unit
+// from here to its base."
+TEST_F(VerifyCardsTest, Pin_JannaSavior_NoEnemyHere_NothingAskedAndStillHeals) {
+    auto hurt = addUnit(P1, kShipyardSkulker, 0);
+    o(hurt).damage_marked = 2;
+    auto elsewhere = addUnit(P2, kInvalidId, 2, 0);
+    auto janna = addToHand(P1, kJannaSavior);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(janna, &agent);                  // to my base
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(hurt).damage_marked, 0) << "the heal does not depend on the move";
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{0});
+}
+
+TEST_F(VerifyCardsTest, Pin_JannaSavior_MovingNoEnemyIsTheFirstPromptsNo_AndStillHeals) {
+    state.battlefields[0].controller = P1;
+    auto hurt = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(hurt).damage_marked = 2;
+    auto enemy = addUnit(P2, kInvalidId, 2, 0);
+    auto janna = addToHand(P1, kJannaSavior);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "No": zero of "up to one"
+    playThroughEngine(janna, &agent, LocationId{BattlefieldLocation{0}});
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0));
+    EXPECT_FALSE(agent.wasOffered(enemy)) << "no unit prompt after 'No'";
+    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(o(hurt).damage_marked, 0);
+}
+
+// 423 Fae Dragon: "When you play me, buff up to four friendly units."
+TEST_F(VerifyCardsTest, Pin_FaeDragon_NoneOnTheFirstPrompt_AndFewerThanFour) {
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    auto dragon = addToHand(P1, kFaeDragon);
+    EnginePathAgent none(EnginePathAgent::script({0}));    // "None"
+    playThroughEngine(dragon, &none);
+    ASSERT_EQ(none.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(none, 0, 0));
+    EXPECT_EQ(o(u1).buff_count, 0);
+    EXPECT_EQ(o(u2).buff_count, 0);
+    EXPECT_EQ(o(dragon).buff_count, 0);
+
+    EnginePathAgent one(pickingInOrder({u2, kInvalidId}));  // u2, then "None"
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &one);
+    EXPECT_EQ(one.prompts.size(), 2u);
+    EXPECT_EQ(o(u2).buff_count, 1);
+    EXPECT_EQ(o(u1).buff_count, 0);
+    EXPECT_EQ(o(dragon).buff_count, 0);
+}
+
+TEST_F(VerifyCardsTest, Pin_FaeDragon_NoUnbuffedFriendlyUnit_NothingAsked) {
+    auto dragon = addUnit(P1, kFaeDragon, 0);
+    o(dragon).buff_count = 1;
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(dragon).buff_count, 1);
+}
+
+// 497 Azir, Sovereign: "When I attack, you may move any number of your token
+// units to this battlefield."
+TEST_F(VerifyCardsTest, Pin_AzirSovereign_NoneOnTheFirstPromptMovesNoToken) {
+    auto azir = addUnit(P1, kAzirSovereign, 0, 0);
+    auto t1 = addTokenUnit(P1, 1);
+    auto t2 = addTokenUnit(P1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "None"
+    fireTriggerThroughEngine(azir, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0));
+    EXPECT_TRUE(o(t1).isAtBase());
+    EXPECT_TRUE(o(t2).isAtBase());
+}
+
+TEST_F(VerifyCardsTest, Pin_AzirSovereign_NoTokenUnit_NothingAsked) {
+    auto azir = addUnit(P1, kAzirSovereign, 0, 0);
+    auto not_a_token = addUnit(P1, kInvalidId, 1);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(azir, TriggerType::WhenIAttack, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(o(not_a_token).isAtBase());
+}
+
+// 540 Bard, Mercurial: "if you paid the additional cost, move any number of
+// your units to an open battlefield."
+TEST_F(VerifyCardsTest, Pin_BardMercurial_NoneOnTheFirstUnitPromptMovesNoUnit) {
+    auto legend = addLegend(P1, kPurifier);
+    addUnit(P2, kInvalidId, 2, 0);                     // battlefield 0 is occupied: only 1 is open
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto bard = addToHand(P1, kBardMercurial);
+    EnginePathAgent agent(EnginePathAgent::script({1, 0}));   // pay the cost; "None"
+    playThroughEngine(bard, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the cost, then the first unit prompt";
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0));
+    EXPECT_TRUE(agent.wasOffered(u1));
+    EXPECT_TRUE(o(u1).isAtBase());
+    EXPECT_TRUE(o(bard).isAtBase());
+}
+
+TEST_F(VerifyCardsTest, Pin_BardMercurial_NoOpenBattlefield_PaidCostMovesNothing) {
+    auto legend = addLegend(P1, kPurifier);
+    addUnit(P2, kInvalidId, 2, 0);
+    addUnit(P2, kInvalidId, 2, 1);
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto bard = addToHand(P1, kBardMercurial);
+    EnginePathAgent agent(EnginePathAgent::script({1}));   // pay the cost
+    playThroughEngine(bard, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "only the cost: there is nowhere to move to";
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_TRUE(onBoard(bard));
+    EXPECT_TRUE(o(u1).isAtBase());
+}
+
+// ─── CR 355.13 does not apply: "any number" is an additional COST ───────────
+// (CR 355.10.c: objects named only as part of a cost are not targets.) The
+// amount is still the player's: none may be paid while the card is affordable.
+
+// 150 Kraken Hunter: "you may spend any number of buffs as an additional cost."
+TEST_F(VerifyCardsTest, Pin_KrakenHunter_AffordableInFull_NoBuffHasToBeSpent) {
+    auto buffed = addUnit(P1, kInvalidId, 2);
+    o(buffed).buff_count = 2;
+    auto hunter = addToHand(P1, kKrakenHunter);
+    // "No" to every yes/no: the buff, and [Accelerate].
+    EnginePathAgent agent(EnginePathAgent::script({0, 0}));
+    playThroughEngine(hunter, &agent);                 // funded: [3] and both Power
+    ASSERT_TRUE(onBoard(hunter));
+    EXPECT_TRUE(askedLabel(agent, "Kraken Hunter: spend a buff"));
+    EXPECT_EQ(o(buffed).buff_count, 2) << "zero buffs spent";
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "the full Power cost was paid";
+}
+
+TEST_F(VerifyCardsTest, Pin_KrakenHunter_NoBuff_PlayableAtFullCostWithoutTheQuestion) {
+    auto hunter = addToHand(P1, kKrakenHunter);
+    ASSERT_FALSE(playsOffered(hunter).empty()) << "no buff: still playable at full cost";
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "No" to [Accelerate], if asked
+    playThroughEngine(hunter, &agent);
+    EXPECT_TRUE(onBoard(hunter));
+    EXPECT_FALSE(askedLabel(agent, "Kraken Hunter: spend a buff"));
+}
+
+// 231 Commander Ledros: "you may kill any number of friendly units as an
+// additional cost."
+TEST_F(VerifyCardsTest, Pin_CommanderLedros_AffordableInFull_NoUnitHasToBeKilled) {
+    auto unit = addUnit(P1, kInvalidId, 1);
+    auto ledros = addToHand(P1, kCommanderLedros);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "No"
+    playThroughEngine(ledros, &agent);                 // funded: [6] and all four Power
+    ASSERT_TRUE(onBoard(ledros));
+    EXPECT_TRUE(askedLabel(agent, "Commander Ledros: kill a friendly unit"));
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(onBoard(unit)) << "zero units killed";
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "the full Power cost was paid";
+}
+
+TEST_F(VerifyCardsTest, Pin_CommanderLedros_NoFriendlyUnit_PlayableAtFullCostWithoutTheQuestion) {
+    auto ledros = addToHand(P1, kCommanderLedros);
+    ASSERT_FALSE(playsOffered(ledros).empty()) << "no unit: still playable at full cost";
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(ledros, &agent);
+    EXPECT_TRUE(onBoard(ledros));
+    EXPECT_TRUE(agent.prompts.empty());
+}
+
+
+// ═══ Tranche 8: 9.W1 zero objects for non-spell cards (CR 355.13), group T8B ═══
+// Already in the file and used below: kElderDragon (680), kCorruptedDragon (878),
+// kDarkChild (315), kEmperorsDivide (366).
+
+
+
+// ═══ 9.W1: "any number of" / "up to N" on non-spell cards (CR 355.13) ═══════
+
+// ─── "ready up to 2 runes": 666, 315, 284, 932 (all fixed the same way) ─────
+// The controller names the runes one at a time; "None" (value 0) is on every
+// prompt. Which rune matters: one that will be recycled for its Power is
+// better left exhausted (CR 164.2.b works on an exhausted rune too).
+
+// Fails on the old code: the first two exhausted runes in map order were
+// readied without a prompt.
+TEST_F(VerifyCardsTest, GentleGemdragon_ThePlayerPicksTheRunesAndMayReadyFewer) {
+    auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
+    auto r1 = addRune(P1, Domain::Body, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Body, /*exhausted=*/true);
+    // The third rune, then "None".
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3), 0}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "\"None\" is on the first prompt";
+    EXPECT_FALSE(agent.wasOffered(theirs));
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+    EXPECT_TRUE(o(theirs).is_exhausted);
+}
+
+// No exhausted rune: the trigger resolves and asks nothing.
+TEST_F(VerifyCardsTest, Pin_GentleGemdragon_WithNoExhaustedRuneNothingIsAsked) {
+    auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
+    auto ready = addRune(P1, Domain::Body);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_FALSE(o(ready).is_exhausted);
+}
+
+// Fails on the old code: the two lowest-id exhausted runes were readied
+// without a prompt.
+TEST_F(VerifyCardsTest, DarkChild315_ThePlayerPicksTheRunesAndMayReadyFewer) {
+    auto annie = addLegend(P1, kDarkChild);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Fury, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3), 0}));
+    fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "\"None\" is on the first prompt";
+    EXPECT_FALSE(agent.wasOffered(theirs)) << "only its controller's runes";
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+    EXPECT_TRUE(o(theirs).is_exhausted);
+}
+
+// Fails on the old code (no prompt, both readied).
+TEST_F(VerifyCardsTest, DarkChild315_MayReadyNoRune) {
+    auto annie = addLegend(P1, kDarkChild);
+    addRune(P1, Domain::Fury, /*exhausted=*/true);
+    addRune(P1, Domain::Chaos, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(readyRuneCount(P1), 0);
+    EXPECT_EQ(exhaustedRuneCount(P1), 2);
+}
+
+// Fails on the old code: with two or fewer exhausted runes it readied them
+// all without asking.
+TEST_F(VerifyCardsTest, TargonsPeak_MayReadyFewerThanTwoRunes) {
+    auto peak = battlefieldCard(0, kTargonsPeak);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    // The second rune, then "None".
+    EnginePathAgent one(EnginePathAgent::script({static_cast<int>(r2), 0}));
+    fireTriggerThroughEngine(peak, TriggerType::AtEndOfTurn, &one);
+    ASSERT_EQ(one.prompts.size(), 2u);
+    EXPECT_TRUE(promptOffersValue(one, 0, 0)) << "\"None\" is on the first prompt";
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_FALSE(o(r2).is_exhausted);
+
+    // "None" at once: the last exhausted rune stays exhausted.
+    EnginePathAgent none(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(peak, TriggerType::AtEndOfTurn, &none);
+    EXPECT_EQ(none.prompts.size(), 1u);
+    EXPECT_TRUE(o(r1).is_exhausted);
+}
+
+// Fails on the old code: with two or more exhausted runes a second rune had
+// to be named.
+TEST_F(VerifyCardsTest, CuratorOfTheSands_MayReadyFewerThanTwoRunes) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto src = addUnit(P1, kInvalidId, 3);
+    // Yes; the second rune; "None".
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r2), 0}));
+    resolveThroughEngine([&](EffectExecutor&, GameState& st) {
+        st.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "\"None\" is on the first rune prompt";
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_FALSE(o(r2).is_exhausted);
+    EXPECT_TRUE(o(r3).is_exhausted);
+}
+
+// Fails on the old code: a single exhausted rune was readied unasked once the
+// "may" was accepted.
+TEST_F(VerifyCardsTest, CuratorOfTheSands_MayExhaustAndReadyNoRune) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto src = addUnit(P1, kInvalidId, 3);
+    // Yes; "None".
+    EnginePathAgent agent(EnginePathAgent::script({1, 0}));
+    resolveThroughEngine([&](EffectExecutor&, GameState& st) {
+        st.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent);
+    EXPECT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(o(legend).is_exhausted) << "the cost was paid";
+    EXPECT_TRUE(o(r1).is_exhausted);
+}
+
+// Fails on the old code: with no exhausted rune the "may" was not offered.
+// "up to 2" includes none, so the cost can be paid for nothing (CR 355.13).
+TEST_F(VerifyCardsTest, CuratorOfTheSands_OfferedWithNoExhaustedRune) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto ready = addRune(P1, Domain::Calm);
+    auto src = addUnit(P1, kInvalidId, 3);
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    resolveThroughEngine([&](EffectExecutor&, GameState& st) {
+        st.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "the yes/no only: there is no rune to name";
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_FALSE(o(ready).is_exhausted);
+}
+
+// ─── Elder Dragon 680 (not a defect) ────────────────────────────────────────
+// "choose up to one enemy unit at each location": with no enemy unit anywhere
+// the play effect resolves and asks nothing; with units, "None" at every
+// location leaves them all untouched.
+TEST_F(VerifyCardsTest, Pin_ElderDragon_ZeroUnitsChosen) {
+    auto dragon = addUnit(P1, kElderDragon, 0, 0);
+    EnginePathAgent nobody(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &nobody);
+    EXPECT_TRUE(nobody.prompts.empty());
+
+    auto at_base = addUnit(P2, kInvalidId, 5);
+    auto at_bf = addUnit(P2, kInvalidId, 5, 0);
+    EnginePathAgent none(EnginePathAgent::script({0, 0}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &none);
+    ASSERT_EQ(none.prompts.size(), 2u) << "one prompt per location with an enemy unit";
+    EXPECT_TRUE(promptOffersValue(none, 0, 0));
+    EXPECT_TRUE(promptOffersValue(none, 1, 0));
+    EXPECT_EQ(o(at_base).damage_marked, 0);
+    EXPECT_EQ(o(at_bf).damage_marked, 0);
+}
+
+// ─── Corrupted Dragon 878 (not a defect) ────────────────────────────────────
+// "you may move any number of enemy units here each with 5 [M] or less to
+// their base": nothing eligible, nothing asked; with eligible units the first
+// prompt has the "stop" option (the one with no object).
+TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
+    auto dragon = addUnit(P1, kCorruptedDragon, 0, 0);
+    auto big = addUnit(P2, kInvalidId, 6, 0);
+    EnginePathAgent nobody(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &nobody);
+    EXPECT_TRUE(nobody.prompts.empty());
+    EXPECT_EQ(bfOf(big), std::optional<BattlefieldId>{0});
+
+    auto small1 = addUnit(P2, kInvalidId, 2, 0);
+    auto small2 = addUnit(P2, kInvalidId, 3, 0);
+    EnginePathAgent stop([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.chosen_objects.empty()) return i;
+        ADD_FAILURE() << "no 'stop' option";
+        return legal.front();
+    });
+    fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &stop);
+    EXPECT_EQ(stop.prompts.size(), 1u);
+    EXPECT_TRUE(stop.wasOffered(small1));
+    EXPECT_TRUE(stop.wasOffered(small2));
+    EXPECT_FALSE(stop.wasOffered(big));
+    EXPECT_EQ(bfOf(small1), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(small2), std::optional<BattlefieldId>{0});
+}
+
+// ─── Forge of the Future 212 (not a defect) ─────────────────────────────────
+// "Kill this: Recycle up to 4 cards from trashes." With both trashes empty the
+// ability is still offered and its cost still paid. (By the time it resolves
+// the Forge itself is in a trash, so there is always a card to offer.) "None"
+// on the first prompt recycles nothing.
+TEST_F(VerifyCardsTest, Pin_ForgeOfTheFuture_ZeroCardsRecycled) {
+    ASSERT_TRUE(ps(P1).trash.empty());
+    ASSERT_TRUE(ps(P2).trash.empty());
+    auto forge = addGear(P1, kForgeOfTheFuture);
+    bool offered = false;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == forge) offered = true;
+    });
+    EXPECT_TRUE(offered) << "activatable with nothing to recycle (CR 355.13)";
+    const int deck_before = deckSize(P1);
+    EnginePathAgent none(EnginePathAgent::script({0}));
+    activate(forge, &none);
+    ASSERT_EQ(none.prompts.size(), 1u);
+    EXPECT_TRUE(none.wasOffered(forge)) << "killed as the cost: it is in a trash by now";
+    EXPECT_TRUE(promptOffersValue(none, 0, 0)) << "\"None\" is on the first prompt";
+    EXPECT_TRUE(inTrash(P1, forge)) << "\"Kill this\" was paid; nothing was recycled";
+    EXPECT_EQ(deckSize(P1), deck_before);
+}
+
+// ─── Emperor's Divide 366 from facedown (CR 811.1.d; not a defect) ──────────
+// From hand, "any number" may be zero (CR 355.13, pinned above). From facedown
+// the choice is tied to the battlefield it was hidden at (CR 811.1.d.2), and
+// CR 811.1.d says a spell with no valid targets under that restriction cannot
+// be played from facedown: with no friendly unit there it is not offered,
+// wherever else the player has units.
+TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FromFacedownNeedsAFriendlyUnitAtItsBattlefield) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    state.battlefields[1].controller = P1;
+    auto spell = addToHand(P1, kEmperorsDivide);
+    {
+        auto& h = ps(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), spell), h.end());
+        auto& card = o(spell);
+        card.zone = ZoneType::BattlefieldZone;
+        card.is_hidden = true;
+        card.hidden_at = static_cast<BattlefieldId>(0);
+        card.hidden_on_turn = 2;
+        state.battlefields[0].facedown.push_back(spell);
+    }
+    // The plays of the facedown card offered while P1 has priority in a
+    // closed state (a hidden card has [Reaction], CR 811.6).
+    auto hiddenPlays = [&]() {
+        std::vector<Intent> out;
+        state.turn.phase = TurnPhase::MainPhase;
+        state.turn.turn_player = P1;
+        state.turn.oc_state = OpenClosedState::Closed;
+        state.turn.priority_holder = P1;
+        withEngine([&](GameEngine& e) {
+            for (const auto& i : e.generateLegalActions())
+                if (i.card == spell) out.push_back(i);
+        });
+        state.turn.oc_state = OpenClosedState::Open;
+        state.turn.priority_holder = std::nullopt;
+        return out;
+    };
+
+    EXPECT_TRUE(hiddenPlays().empty()) << "no friendly unit at any battlefield";
+    auto elsewhere = addUnit(P1, kInvalidId, 2, 1);
+    EXPECT_TRUE(hiddenPlays().empty()) << "a unit at another battlefield is no target (811.1.d.2)";
+
+    // The control: a friendly unit at its battlefield makes it playable.
+    auto here = addUnit(P1, kInvalidId, 2, 0);
+    const auto plays = hiddenPlays();
+    ASSERT_EQ(plays.size(), 1u) << "this setup does offer a hidden Emperor's Divide";
+    EXPECT_EQ(plays[0].targets, std::vector<GameObjectId>{here});
+
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(here)}));
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(plays[0]);
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_FALSE(agent.wasOffered(elsewhere)) << "only the units at that battlefield";
+    EXPECT_TRUE(o(here).isAtBase());
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1});
+    EXPECT_TRUE(inTrash(P1, spell));
 }
 
 }  // namespace

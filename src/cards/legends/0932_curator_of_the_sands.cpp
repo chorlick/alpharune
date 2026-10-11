@@ -30,34 +30,34 @@ public:
         }
         if (ri.triggering_spell_energy_spent < 7) return;
 
-        auto exhausted_runes = [&ctx](GameObjectId except) {
+        auto exhausted_runes = [&ctx]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects)
                 if (obj.isRune() && obj.controller == ctx.controller &&
-                    obj.is_exhausted && obj.location.has_value() && id != except)
+                    obj.is_exhausted && obj.location.has_value())
                     out.push_back(id);
             std::sort(out.begin(), out.end());
             return out;
         };
+        // The cost is all the "may" needs: "up to 2" includes none (CR
+        // 355.13), so it is offered with no exhausted rune too.
         auto still_legal = [&]() {
             return ctx.state.objectExists(ctx.source) &&
-                   !ctx.state.getObject(ctx.source).is_exhausted &&
-                   !exhausted_runes(kInvalidId).empty();
+                   !ctx.state.getObject(ctx.source).is_exhausted;
         };
         if (ctx.state.chain.resuming->may_answer == -1 && !still_legal()) return;
-        int conf = confirmOptional(ctx, "Curator of the Sands: exhaust to ready 2 runes?",
+        int conf = confirmOptional(ctx, "Curator of the Sands: exhaust to ready up to 2 runes?",
                                    still_legal);
         if (conf < 1) return;
-        // Which runes is the controller's choice (they differ by Domain). The
-        // legend is exhausted only after both are known: the callback is
+        // Which runes, and how many, is the controller's choice (they differ
+        // by Domain): one prompt per rune, "None" on each. The legend is
+        // exhausted only after the picks are known: the callback is
         // re-entered from the top with each answer.
-        auto [first, second] = pickTargetPair(
-            ctx, "Curator of the Sands: runes to ready", exhausted_runes(kInvalidId),
-            [&](GameObjectId picked) { return exhausted_runes(picked); });
-        if (first == kInvalidId) return;   // waiting for the choice
+        const auto picks = selectSeveral(ctx, "Curator of the Sands: ready a rune (up to 2)",
+                                         exhausted_runes(), 2);
+        if (!picks.has_value()) return;    // waiting for the choice
         ctx.executor.exhaustObject(ctx.source);
-        ctx.executor.readyObject(first);
-        if (second != kInvalidId) ctx.executor.readyObject(second);
+        for (auto id : *picks) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

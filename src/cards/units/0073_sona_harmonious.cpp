@@ -20,15 +20,25 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
         if (!self.isAtBattlefield()) return;
-        int readied = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (readied >= 4) break;
-            if (!obj.isRune() || obj.controller != ctx.controller) continue;
-            if (!obj.is_exhausted) continue;
-            if (!obj.location.has_value()) continue;
-            ctx.executor.readyObject(id);
-            readied++;
-        }
+        auto readiable = [&](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isRune() && obj.controller == ctx.controller && obj.is_exhausted &&
+                   obj.location.has_value();
+        };
+        std::vector<GameObjectId> exhausted;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (readiable(id)) exhausted.push_back(id);
+        // "up to 4": the controller names the runes one at a time and may stop
+        // at any prompt, the first included (CR 355.13). Which ones matters
+        // when more than four are exhausted (a rune left exhausted is the one
+        // to recycle for Power).
+        const auto chosen = selectSeveral(
+            ctx, "Sona, Harmonious: ready a friendly rune (up to four)", exhausted,
+            /*max_picks=*/4);
+        if (!chosen.has_value()) return;   // waiting for the agent
+        for (auto id : *chosen)
+            if (readiable(id)) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

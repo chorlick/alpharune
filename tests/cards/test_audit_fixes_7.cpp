@@ -536,15 +536,15 @@ TEST_F(AuditFix7Test, StarSpring_MovesAnotherUnitToBase) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
     auto src = installBattlefieldCard(0, 771);
+    state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
-    // Create `other` FIRST so `played` gets the higher id — the impl treats the
-    // newest unit at the BF as the just-played one (no played-unit id is plumbed
-    // through the trigger) and moves a DIFFERENT unit to base.
+    // The played unit is the trigger's subject (TriggerManager::onCardPlayed);
+    // the player says yes and picks the OTHER unit here.
     auto other = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
     auto played = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
-    ASSERT_GT(played, other);
 
-    fireTriggerAs(771, P1, src, TriggerType::WhenYouPlayAUnit, exec);
+    EnginePathAgent agent(EnginePathAgent::choosing(other));
+    fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent, played);
 
     // `other` moved to its base; `played` stays at the battlefield.
     EXPECT_TRUE(state.getObject(other).isAtBase());
@@ -555,17 +555,22 @@ TEST_F(AuditFix7Test, StarSpring_OnlyFiresOncePerTurnPerPlayer) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
     auto src = installBattlefieldCard(0, 771);
+    state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
     auto other = addUnit(P1, kInvalidId, 2, /*at_bf=*/0);
     auto played = addUnit(P1, kInvalidId, 3, /*at_bf=*/0);
-    ASSERT_GT(played, other);
 
-    fireTriggerAs(771, P1, src, TriggerType::WhenYouPlayAUnit, exec);
-    // First fire moved `other` to base. Bring it back to BF 0 and re-fire.
+    EnginePathAgent agent(EnginePathAgent::choosing(other));
+    fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent, played);
+    ASSERT_TRUE(state.getObject(other).isAtBase());
+    // First fire moved `other` to base. Bring it back to BF 0 and play a
+    // second unit here the same turn.
     state.getObject(other).zone = ZoneType::BattlefieldZone;
     state.getObject(other).location = BattlefieldLocation{0};
+    auto second = addUnit(P1, kInvalidId, 3, /*at_bf=*/0);
 
-    fireTriggerAs(771, P1, src, TriggerType::WhenYouPlayAUnit, exec);
+    EnginePathAgent agent2(EnginePathAgent::choosing(other));
+    fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent2, second);
 
     // Already consumed this turn for this player -> no second move.
     EXPECT_TRUE(state.getObject(other).isAtBattlefield());
@@ -575,10 +580,13 @@ TEST_F(AuditFix7Test, StarSpring_NoOpWhenNoOtherUnitHere) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
     auto src = installBattlefieldCard(0, 771);
+    state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
     auto played = addUnit(P1, kInvalidId, 3, /*at_bf=*/0);  // only one unit here
 
-    fireTriggerAs(771, P1, src, TriggerType::WhenYouPlayAUnit, exec);
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent, played);
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to move: the may is not offered";
 
     EXPECT_TRUE(state.getObject(played).isAtBattlefield());  // nothing else to move
 }
@@ -587,9 +595,10 @@ TEST_F(AuditFix7Test, StarSpring_IgnoresTokenOnlyPlay) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
     auto src = installBattlefieldCard(0, 771);
+    state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
-    // ONLY token units at this BF -> the impl finds no non-token unit to treat
-    // as the "played" unit, so the trigger body returns without moving anyone.
+    // A TOKEN unit is played here: "plays a non-token unit" is not met, so the
+    // ability does not trigger and the turn's "first time" is not used up.
     auto mkToken = [&]() {
         auto tok = state.createObject();
         auto& t = state.getObject(tok);
@@ -604,13 +613,15 @@ TEST_F(AuditFix7Test, StarSpring_IgnoresTokenOnlyPlay) {
     auto tok1 = mkToken();
     auto tok2 = mkToken();
 
-    fireTriggerAs(771, P1, src, TriggerType::WhenYouPlayAUnit, exec);
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(src, TriggerType::WhenYouPlayAUnit, &agent, tok2);
 
-    // No non-token unit identified as "played" -> nothing moves.
+    // The played unit is a token -> nothing moves.
     EXPECT_TRUE(state.getObject(tok1).isAtBattlefield());
     EXPECT_TRUE(state.getObject(tok2).isAtBattlefield());
     // Gate not consumed (returned before the decision).
-    EXPECT_EQ(state.getObject(src).card_counters["__starspring_p0"], 0);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(state.getObject(src).card_counters["__starspring_turn_p0"], 0);
 }
 
 } // namespace

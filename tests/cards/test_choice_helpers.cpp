@@ -626,6 +626,71 @@ TEST_F(EnginePathTest, DeathTriggerWithMayTargetAndModeResolvesThroughTheEngine)
     EXPECT_EQ(state.player(P1).main_deck.front(), bury) << "bottom of the deck, as chosen";
 }
 
+// ─── A helper that follows another helper suspends: effects run once ────────
+// Since the helpers compose in any order, the second helper of a callback
+// really asks, and the callback is re-entered from the top with the answer.
+// Whatever the card does between the two helpers must not happen twice.
+
+TEST_F(EnginePathTest, ThrillOfTheHuntBanishesItsUnitOnce) {
+    // "Banish a friendly unit, then its owner plays it to any battlefield,
+    // ignoring its cost." pickTarget, banish, pickMode: the banish ran again
+    // when the spell was re-entered with the battlefield.
+    constexpr CardDefId kThrillOfTheHunt = 745;
+    auto spell = addToHand(P1, kThrillOfTheHunt);
+    auto unit = addUnit(P1, kArmedAssailant, 3);   // at base
+    int banished_events = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == unit && e.what_changed == "banished_owned") ++banished_events;
+    });
+
+    // Prompts: the unit, then the battlefield (mode 1 = battlefield #1).
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == unit) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    conn.disconnect();
+
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(banished_events, 1) << "banished once, not once per pass";
+    EXPECT_EQ(state.player(P1).cards_banished_this_turn, 1);
+    ASSERT_TRUE(state.getObject(unit).battlefieldId().has_value());
+    EXPECT_EQ(*state.getObject(unit).battlefieldId(), 1u) << "played to the chosen battlefield";
+    const auto& bz = state.player(P1).banishment;
+    EXPECT_EQ(std::count(bz.begin(), bz.end(), unit), 0) << "it is on the board, not in banishment";
+}
+
+TEST_F(EnginePathTest, ZenithBladeStunsOnce) {
+    // "Stun an enemy unit at a battlefield. You may move a friendly unit to
+    // that enemy unit's battlefield." pickTarget, stun, confirmOptional: the
+    // stun ran again on re-entry. A second stun of a stunned unit is a no-op,
+    // so the witness is a unit that REPLACES being stunned — Gangplank, Naval,
+    // Empowered: "+3 [M] this turn instead" — which would get +6.
+    constexpr CardDefId kGangplankNaval = 873;
+    auto spell = addToHand(P1, kZenithBlade);
+    auto gangplank = addUnit(P2, kGangplankNaval, 4, 0);
+    state.getObject(gangplank).empowered = 1;
+    auto friendly = addUnit(P1, kInvalidId, 3);   // at base: there is something to move
+
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == gangplank) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;   // Yes
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the enemy unit, then the may";
+    EXPECT_FALSE(state.getObject(gangplank).is_stunned) << "replaced";
+    EXPECT_EQ(state.getObject(gangplank).temp_might_bonus, 3) << "the stun was attempted once";
+    ASSERT_TRUE(state.getObject(friendly).battlefieldId().has_value());
+    EXPECT_EQ(*state.getObject(friendly).battlefieldId(), 0u) << "and the move still happens";
+}
+
 // ─── 7.1 — target-less triggers, seen from the engine ───────────────────────
 // Every card below prints a triggered ability that chooses something. Fired
 // through the engine with a legal choice on the board, the controller must be

@@ -6,6 +6,7 @@
 /// loopback port, and talk to it over a WebSocket exactly as the browser
 /// does.
 
+#include "io/batch_report.h"
 #include "io/play_index_html.h"
 #include "io/play_server.h"
 #include "io/replay_writer.h"
@@ -1030,6 +1031,36 @@ TEST(BatchRunnerFaultInjection, OneThread_EarlierGamesCountLaterGamesAreSkipped)
     EXPECT_EQ(results.games_completed.load(), kBadIndex) << "games 1 and 2 finished and count";
     EXPECT_EQ(results.p1_wins.load() + results.p2_wins.load() + results.draws.load(), kBadIndex);
     EXPECT_EQ(games_started.load(), kBadIndex + 1) << "games 4 and 5 were never started";
+
+    // 9.S1: what the binary prints then. The table for the two games that
+    // completed comes first, the error after it.
+    std::ostringstream printed;
+    reportFailedBatch(printed, printed, results, kGames, 1, what);
+    const std::string text = printed.str();
+    const auto table = text.find("Results (2 of 5 games completed):");
+    const auto error = text.find("Error: a game failed: game 3 [seed=");
+    ASSERT_NE(table, std::string::npos) << text;
+    ASSERT_NE(error, std::string::npos) << text;
+    EXPECT_LT(table, error) << text;
+    EXPECT_NE(text.find("  P1 wins: " + std::to_string(results.p1_wins.load()) + "\n"),
+              std::string::npos) << text;
+    EXPECT_NE(text.find("  Avg turns: " + std::to_string(results.total_turns.load() / 2) + "\n"),
+              std::string::npos) << "averaged over the completed games: " << text;
+    EXPECT_NE(text.find("(2 of 5 games completed)\n"), std::string::npos) << text;
+}
+
+// A batch that ran to the end prints the table it always did.
+TEST(BatchReport, ACompleteBatchPrintsTheUsualTable) {
+    AggregateResults results;
+    results.p1_wins = 3;
+    results.p2_wins = 1;
+    results.total_turns = 40;
+    results.total_decisions = 800;
+    results.games_completed = 4;
+    std::ostringstream out;
+    printBatchResults(out, results, 4, 2);
+    EXPECT_EQ(out.str(), "\nResults (4 games):\n  P1 wins: 3\n  P2 wins: 1\n  Draws:   0\n"
+                         "  Avg turns: 10\n  Avg decisions: 200\n  Threads: 2\n");
 }
 
 // With several workers the games already running finish and count; a game not
@@ -1230,7 +1261,15 @@ TEST(PlayServerGodMode, EditAtANestedDecisionSaysTheListWasKept) {
 // state and throws on a stale one. The server therefore has to hand the human
 // the rebuilt list, and refuse a click made on the old one, at a showdown as
 // it does in the main phase.
-TEST(PlayServerGodMode, EditAtAShowdownRecomputesAndAStaleClickDoesNotEndTheGame) {
+namespace {
+
+/// Play P1 until it is asked a decision that offers `pass_word` ("PassFocus":
+/// a showdown; "PassPriority": chain priority) with a card it could play, take
+/// that card out of its hand by a god-mode edit, and check the server's side
+/// of it: the list is rebuilt, a click on the old list is refused, an answer
+/// from the new one is accepted and the game goes on. `head_for`: the action
+/// types to prefer, in order, at the decisions before that one.
+void editRebuildsTheListAt(const char* pass_word, const std::vector<const char*>& head_for) {
     LiveGame game;
     Client c;
     ASSERT_TRUE(c.connect(game.port()));
@@ -1255,29 +1294,29 @@ TEST(PlayServerGodMode, EditAtAShowdownRecomputesAndAStaleClickDoesNotEndTheGame
         json f = c.nextDecision("P1", last);
         ASSERT_FALSE(f.is_null()) << "the game ended before a usable showdown, decision " << i;
         last = f["decision_id"].get<uint64_t>();
-        const int pass_focus = indexOf(f, "PassFocus");
+        const int pass_focus = indexOf(f, pass_word);
         if (pass_focus < 0) {
-            // Not a showdown: head for one. Move a unit if possible, else
-            // play a card, else whatever is first.
-            int pick = indexOf(f, "Move");
-            if (pick < 0) pick = indexOf(f, "PlayCard");
+            // Not that decision: head for one.
+            int pick = -1;
+            for (const char* word : head_for)
+                if (pick < 0) pick = indexOf(f, word);
             if (pick < 0) pick = 0;
             c.send({{"type", "choose"}, {"player", "P1"}, {"index", pick}, {"decision_id", last}});
             continue;
         }
-        // A showdown decision. Give P1 the means to play anything in hand...
+        // The decision. Give P1 the means to play anything in hand...
         json cur = edit({{"type", "edit_player"}, {"player", "P1"}, {"field", "energy"}, {"value", 20}});
         cur = edit({{"type", "edit_player"}, {"player", "P1"}, {"field", "power"},
                     {"domain_idx", -1}, {"value", 10}});
         ASSERT_FALSE(cur.is_null());
-        ASSERT_GE(indexOf(cur, "PassFocus"), 0) << "still the showdown decision";
+        ASSERT_GE(indexOf(cur, pass_word), 0) << "still that decision";
         last = cur["decision_id"].get<uint64_t>();
         int card = -1;
         for (const auto& a : cur["legal"])
             if (typeHas(a, "Play") && a.contains("card_object_id"))
                 card = a["card_object_id"].get<int>();
-        if (card < 0) {   // nothing playable in this showdown: pass and try the next one
-            c.send({{"type", "choose"}, {"player", "P1"}, {"index", indexOf(cur, "PassFocus")},
+        if (card < 0) {   // nothing playable at this one: pass and try the next
+            c.send({{"type", "choose"}, {"player", "P1"}, {"index", indexOf(cur, pass_word)},
                     {"decision_id", last}});
             continue;
         }
@@ -1286,13 +1325,13 @@ TEST(PlayServerGodMode, EditAtAShowdownRecomputesAndAStaleClickDoesNotEndTheGame
         c.send({{"type", "edit_move"}, {"object_id", card}, {"to_player", "P1"}, {"to_zone", "Trash"}});
         json reply = c.nextReply();
         ASSERT_EQ(reply["type"], "edit_ok") << reply.dump();
-        EXPECT_TRUE(reply["legal_recomputed"].get<bool>()) << "a showdown list is rebuilt";
+        EXPECT_TRUE(reply["legal_recomputed"].get<bool>()) << "the list is rebuilt";
         json g = c.nextDecision("P1", id_before);
         ASSERT_FALSE(g.is_null());
         const uint64_t id_after = g["decision_id"].get<uint64_t>();
         for (const auto& a : g["legal"])
             EXPECT_NE(a.value("card_object_id", -1), card) << a.dump();
-        const int pass = indexOf(g, "PassFocus");
+        const int pass = indexOf(g, pass_word);
         ASSERT_GE(pass, 0);
 
         // A click on the pre-edit list is refused; it does not reach the
@@ -1308,10 +1347,21 @@ TEST(PlayServerGodMode, EditAtAShowdownRecomputesAndAStaleClickDoesNotEndTheGame
             return (m["type"] == "decision" || m["type"] == "state") &&
                    m.value("decision_id", id_after) != id_after;
         });
-        EXPECT_FALSE(next.is_null()) << "the game stopped after the showdown answer";
+        EXPECT_FALSE(next.is_null()) << "the game stopped after the answer";
         done = true;
     }
-    EXPECT_TRUE(done) << "no showdown with a playable card was reached";
+    EXPECT_TRUE(done) << "no " << pass_word << " decision with a playable card was reached";
+}
+
+} // namespace
+
+TEST(PlayServerGodMode, EditAtAShowdownRecomputesAndAStaleClickDoesNotEndTheGame) {
+    editRebuildsTheListAt("PassFocus", {"Move", "PlayCard"});
+}
+
+// 9.S2: the same at a chain priority decision.
+TEST(PlayServerGodMode, EditAtAChainPriorityDecisionRecomputesAndAStaleClickDoesNotEndTheGame) {
+    editRebuildsTheListAt("PassPriority", {"PlayCard", "Move"});
 }
 
 } // namespace riftbound::test::review_fix_io_cli

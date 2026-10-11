@@ -76,6 +76,17 @@ TEST_F(FixtureContractTest, PredictRecyclesOnlyWhenThePickerSaysSo) {
     EXPECT_EQ(state.player(P1).main_deck.front(), top) << "on the bottom";
 }
 
+// 9.S2: accepting() accepts every "may", and Predict's recycle is one.
+TEST_F(FixtureContractTest, AcceptingRecyclesAtAPredictPrompt) {
+    addToDeck(P1, kInvalidId);
+    auto top = addToDeck(P1, kInvalidId);
+    AcceptingEnginePathAgent agent;
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.predict(P1, 1); }, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(agent.predict_kept_by_default, 0);
+    EXPECT_EQ(state.player(P1).main_deck.front(), top) << "recycled: on the bottom";
+}
+
 // ── 9.H5: choosing(id) and a prompt the test did not announce ───────────────
 
 namespace {

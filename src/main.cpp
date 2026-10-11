@@ -34,6 +34,7 @@
 #include "core/version.h"
 #include "engine/batch_runner.h"
 #include "engine/game_engine.h"
+#include "io/batch_report.h"
 #include "io/play_server.h"
 #include "io/replay_writer.h"
 #include "io/state_renderer.h"
@@ -656,23 +657,13 @@ int main(int argc, char* argv[]) {
         try {
             batch.runBatch(deck1, deck2, num_games, cfg, results);
         } catch (const std::exception& e) {
-            std::cerr << "\nError: a game failed: " << e.what() << "\n"
-                      << "  (" << results.games_completed.load() << " of "
-                      << num_games << " games completed)\n";
+            // The games that completed are still results: table first, then
+            // the error. Exit status stays 1.
+            reportFailedBatch(std::cout, std::cerr, results, num_games, num_threads, e.what());
             return 1;
         }
 
-        std::cout << "\nResults (" << num_games << " games):\n"
-                  << "  P1 wins: " << results.p1_wins.load() << "\n"
-                  << "  P2 wins: " << results.p2_wins.load() << "\n"
-                  << "  Draws:   " << results.draws.load()   << "\n";
-        if (num_games > 1) {
-            std::cout << "  Avg turns: "
-                      << (results.total_turns.load() / num_games) << "\n"
-                      << "  Avg decisions: "
-                      << (results.total_decisions.load() / num_games) << "\n"
-                      << "  Threads: " << num_threads << "\n";
-        }
+        printBatchResults(std::cout, results, num_games, num_threads);
         if (log_to_stdout)
             std::cout << "Card tables built in this process: " << CardDB::tablesBuilt() << "\n";
         return 0;

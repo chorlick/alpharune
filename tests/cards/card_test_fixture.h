@@ -281,6 +281,12 @@ public:
     /// Say yes to every yes/no (Card::confirmOptional labels its options
     /// "Yes — ..." / "No — ..."); first option of any other prompt, so a mode
     /// or X prompt is not mistaken for a "may".
+    /// At a Predict prompt the first option is "recycle the card", and that is
+    /// what accepting means there: to Predict is to look at the card and
+    /// choose "whether or not to Recycle it" (CR 437.1), and accepting takes
+    /// the action a prompt offers. This differs on purpose from the agent
+    /// with no picker, which keeps the card
+    /// (FixtureContractTest.AcceptingRecyclesAtAPredictPrompt pins it).
     static Picker accepting() {
         return [](const std::vector<Intent>& legal) {
             for (const auto& i : legal)

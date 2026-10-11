@@ -44,8 +44,6 @@ private:
         d.artist = R"RB(Kudos Productions)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
         d.ability_text = R"RB(When you conquer here, if you assigned 3 or more excess damage, play a 1 [M] Bird unit token with [Deflect].)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/234bb01e24892aefa024ae402f6ee7703ccdbbd4-1039x744.png)RB";
         return d;

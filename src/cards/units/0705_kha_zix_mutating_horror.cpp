@@ -53,7 +53,6 @@ private:
         d.might = 4;
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 When I attack or defend, if an enemy unit is alone here, give me +2 [M] this turn and gain 2 XP.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8306abc5ffce45add8c75c2e215162b2d1aed320-744x1039.png)RB";

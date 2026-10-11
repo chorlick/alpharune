@@ -40,7 +40,6 @@ private:
         d.domains = {Domain::Fury, Domain::Mind};
         d.tags = {R"RB(Kai'Sa)RB"};
         d.rarity = Rarity::Showcase;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction] — [Add] [A]. Use only to play spells. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/57e13462b8fea9a5cfa1b424d3ad3005f37b00ad-1488x2078.png?accountingTag=RB)RB";
         return d;

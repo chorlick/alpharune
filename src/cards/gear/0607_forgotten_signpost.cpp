@@ -103,7 +103,6 @@ private:
         d.domains = {Domain::Calm};
         d.energy_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Action);
         d.ability_text = R"RB([Action][>] Exhaust a unit you control, [E]: Move a different unit you control to the location of the unit you exhausted to pay for this ability.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/edf248974d1d97ff5ff1c6745f663fa059dbc82d-744x1039.png)RB";
         return d;

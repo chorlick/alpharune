@@ -1,6 +1,7 @@
 #pragma once
 /// @file mcts_agent.h
-/// AgentInterface adapter for OpenSpiel's MCTSBot / ISMCTSBot.
+/// AgentInterface adapters for search: OpenSpiel's MCTSBot, and an information-set
+/// MCTS (the ISMCTSBot algorithm, see IsMctsSearch in mcts_agent.cpp).
 ///
 /// MCTS works on a clone-able `open_spiel::State` that wraps the
 /// engine. The agent keeps one such state as a mirror of the game it is
@@ -67,9 +68,12 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-/// Information-set MCTS variant — same wiring shape as MctsAgent but
-/// uses `ISMCTSBot`. Currently behaves like perfect-info MCTS because
-/// the resampler is a Clone (no hidden-info determinization yet).
+/// Information-set MCTS variant — same wiring shape as MctsAgent. The search
+/// is the algorithm of OpenSpiel's `ISMCTSBot`, implemented in mcts_agent.cpp
+/// with ordered containers so that a game is a function of its seeds (the
+/// bot's hash-map order made it differ from run to run; see `IsMctsSearch`).
+/// Currently behaves like perfect-info MCTS because each simulation's world
+/// sample is a Clone (no hidden-info determinization yet).
 class IsMctsAgent : public AgentInterface {
 public:
     IsMctsAgent(std::string deck1_path,

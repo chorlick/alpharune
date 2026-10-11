@@ -40,7 +40,6 @@ private:
         d.card_type = CardType::Spell;
         d.domains = {Domain::Mind};
         d.energy_cost = 5;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(Play two ready 3 [M] Sprite unit tokens with [Temporary]. (Kill each at the start of its controller's Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4427ceffae1c3e7b012167461ce7c080bb2c1fe4-744x1039.png)RB";
         return d;

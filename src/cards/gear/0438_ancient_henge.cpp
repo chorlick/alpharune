@@ -55,7 +55,6 @@ private:
         d.energy_cost = 2;
         d.power_cost = 1;
         d.rarity = Rarity::Epic;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction] — Pay any amount of Energy to [Add] that much [A]. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/c7c260b77b4174a61aed6243ed90f76594102193-744x1039.png?accountingTag=RB)RB";
         return d;

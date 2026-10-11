@@ -28,7 +28,10 @@ public:
             ctx.events.logTrace("BLITZCRANK: returned to owner's hand on hold");
             return;
         }
-        // WhenYouPlayMe, "to a battlefield": pull an enemy unit to here. My
+        // WhenYouPlayMe. "When you play me to a battlefield" is a condition on
+        // where I was played, not a permission: I am played where any unit is
+        // (my base, a battlefield my controller controls — CR 355.2) and so
+        // declare no extraPlayLocations(). Pull an enemy unit to here. My
         // controller chooses which (CR 383.3); units that can't be chosen by
         // enemy spells and abilities are not offered.
         auto elsewhere = [&]() {

@@ -43,8 +43,6 @@ private:
         d.domains = {Domain::Fury};
         d.energy_cost = 4;
         d.rarity = Rarity::Uncommon;
-        d.assault_value = 4;
-        d.keywords.set(Keyword::Assault);
         d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB([Repeat] — Discard 1 (You may pay the additional cost to repeat this spell's effect.)
 Give a unit [Assault 4] this turn. (+4 [M] while it's an attacker.))RB";

@@ -13,6 +13,10 @@ namespace riftbound {
 namespace {
 
 // "When you play me to a battlefield, deal 2 to an enemy unit here."
+// A condition on where she was played, not a permission to be played to any
+// battlefield: no extraPlayLocations(). She reaches a battlefield her
+// controller no longer controls only by being played from face down there
+// ([Hidden]: "A hidden permanent must be played to that battlefield", CR 811.1.d.1).
 
 class MischievousMarai : public UnitCard {
 public:

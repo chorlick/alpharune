@@ -54,7 +54,6 @@ private:
         d.might = 3;
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 When you play me, you may return a friendly unit at a battlefield to its owner's hand.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/af548bbfc856e306c5feefb34eb6bd9a4e442904-744x1039.png)RB";

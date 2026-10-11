@@ -36,7 +36,6 @@ private:
         d.artist = R"RB(Envar Studio)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB(While you control this battlefield, friendly [Repeat] costs cost [1] less.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ff64dcbac9b392d4f6930a7359114aa68aa14ebe-1039x744.png)RB";
         return d;

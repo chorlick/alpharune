@@ -45,8 +45,6 @@ private:
         d.domains = {Domain::Fury, Domain::Mind};
         d.tags = {R"RB(Rumble)RB"};
         d.rarity = Rarity::Showcase;
-        d.shield_value = 1;
-        d.keywords.set(Keyword::Shield);
         d.ability_text = R"RB(Your Mechs have [Shield]. (+1 [M] while they're defenders.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0234cad3663d52d3120e78f2adbe8a253102a7a3-744x1039.png)RB";
         return d;

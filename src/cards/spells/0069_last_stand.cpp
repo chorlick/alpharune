@@ -46,7 +46,6 @@ private:
         d.power_cost = 1;
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Action);
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB([Action] (Play on your turn or in showdowns.)
 Double a friendly unit's Might this turn. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9062d372d299c5c6a0c679f0ff07ba71590ca5f1-744x1039.png)RB";

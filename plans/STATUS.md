@@ -69,8 +69,8 @@ ids are in `.worktrees/agents.txt` (untracked), not here:
   enum values by keeping both — then READ the joined region and compile before
   committing (a keep-both join dropped a closing brace once). Anything needing
   judgement about a stream's code goes back to the stream.
-- Verify: `flock .worktrees/.build.lock flock .worktrees/.build-b.lock bash .worktrees/gate.sh <label>`
-  (both build lanes, see Run decisions)
+- Verify: `flock .worktrees/.build.lock env GATE_JOBS=3 bash .worktrees/gate.sh <label>`
+  (lane A; see Run decisions for stage gates)
   (builds four targets, runs the suite, openspiel tests, clone-equiv, 200-game
   smoke, MCTS batch, fault injection; aborts on a failed build; summary in
   `.worktrees/logs/gate-<label>/summary.txt`). For a stage gate use
@@ -150,10 +150,13 @@ iteration must apply these.
   test runs and links. Builds now run in two lanes at `-j3` each. Lane A locks
   `.worktrees/.build.lock` (sweep-costs, cleanup); lane B locks
   `.worktrees/.build-b.lock` (sweep-flow, sweep-triggers, perf-search). Every
-  later stream is assigned a lane in its spawn prompt. The orchestrator's gate
-  takes BOTH locks, A then B, and keeps `-j6`:
-  `flock .worktrees/.build.lock flock .worktrees/.build-b.lock bash .worktrees/gate.sh <label>`
-  (same for `fixcache.sh`). This overrides README "one build at a time".
+  later stream is assigned a lane in its spawn prompt. Merge gates while
+  streams are running take lane A only at `-j3`:
+  `flock .worktrees/.build.lock env GATE_JOBS=3 bash .worktrees/gate.sh <label>`
+  (or `fixcache.sh` for a clean rebuild). Holding A while queueing for B left
+  lane A idle behind a long lane B queue. A STAGE gate, with no stream
+  running, takes both locks and `-j6`. This overrides README "one build at a
+  time".
 
 - **After the final merge: build the v6 ML tooling (user, 2026-10-11).** Once
   the final gate has passed, `master` holds the final commit and the section 7
@@ -479,3 +482,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 old session confirmed it stood down (host and relay only). Trainer survey returned (`.worktrees/reports/trainer-survey.md`); its engine-side finding (CMake paths break the trainer's subdirectory build) relayed to cleanup and added to carry-over.
 - 2026-10-11 00:52 old host process (pid 2329) found hung: no agent activity since 00:42, unreachable, no terminal. Killed. sweep-costs, sweep-flow, sweep-triggers, cleanup, perf-search and sweep-verify-cards resumed from their transcripts in this session; about 10 minutes of agent time and any in-flight build lost, no file work lost. CMake trainer-compat item re-sent to cleanup directly.
 - 2026-10-11 user: after the final merge, build the v6 ML tooling without waiting (no real training, no baselines); action history and public zones are required in the observation (see Run decisions).
+- 2026-10-11 cleanup returned (4 commits, `e9f8b79`) and merged as `a8723a4`; gate running on a clean rebuild with the new PCH-safe launcher. cleanup sent back for three brief items it had lost on resume (warnings in its files, `testHook_executeIntent` cleanup, play-server confirmation). All streams told to switch launcher and rebuild clean. Merge gates now take lane A only.

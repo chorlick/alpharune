@@ -2411,6 +2411,43 @@ TEST_F(SweepTriggersTest, Reflexive_HweiChoosesItsRunesAtFinalization) {
     EXPECT_EQ(*asked, 3);
 }
 
+// A rune named at finalization that was readied, or left the board, before the
+// trigger resolves is skipped, and no other rune takes its place: the list is
+// rebuilt at resolution and selectSeveral drops what is no longer in it (which
+// is why the card itself re-checks nothing).
+TEST_F(SweepTriggersTest, Reflexive_HweiARuneReadiedOrGoneInResponseIsSkipped) {
+    auto hwei = addUnit(P1, kHwei, 5, 0);
+    stockDeck(P1, 1);
+    auto gear = addToHand(P1, kShepherdsHeirloom);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    ReflexiveWatcher p2;
+    p2.source = hwei;
+    bool done = false;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        if (done) return;
+        done = true;
+        // The engine's own state (the fixture's `state` is written back after
+        // the run), changed here as an effect played in response would.
+        auto& live = const_cast<GameState&>(st);
+        live.getObject(r1).is_exhausted = false;   // in response: readied by something else
+        auto& gone = live.getObject(r2);           // in response: off the board
+        gone.location = std::nullopt;
+        gone.zone = ZoneType::Trash;
+        live.player(P1).trash.push_back(r2);
+    };
+    auto asked = std::make_shared<int>(0);
+    EnginePathAgent p1(inOrder({gear, r1, r2}, asked));
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &p1, kInvalidId, &p2);
+    ASSERT_TRUE(done) << "the opponent had priority with the trigger on the chain";
+    EXPECT_EQ(*asked, 3) << "no new choice as it resolves";
+    EXPECT_FALSE(obj(r1).is_exhausted);
+    EXPECT_TRUE(obj(r2).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_EQ(obj(r2).zone, ZoneType::Trash);
+    EXPECT_TRUE(obj(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
 // Twisted Fate, Gambler 200: the rune is revealed and recycled, then the
 // payoff for its domain is a chain item — its target chosen at finalization,
 // the opponent with priority before the stun.

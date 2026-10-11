@@ -915,7 +915,7 @@ TEST_F(C5Test, AzirMayLeaveTheEquipmentWhereItIs) {
         act.ability_source = azir;
         act.ability_index = 0;
         withEngine([&](GameEngine& e) {
-            e.testHook_executeIntent(act);
+            e.testHook_executeIntent(act); settleLikeTheEngine(e);
             e.testHook_runChain();
         }, &agent);
     };

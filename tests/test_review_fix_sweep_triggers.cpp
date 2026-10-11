@@ -515,7 +515,7 @@ TEST_F(SweepTriggersTest, Vision_TheControllerChoosesWhetherToRecycle) {
     EXPECT_EQ(state.player(P1).main_deck.back(), top) << "kept on top";
 
     auto card2 = addToHand(P1, kLoyalPoro);
-    EnginePathAgent recycle;                        // first option: recycle it
+    EnginePathAgent recycle(EnginePathAgent::first());   // first option: recycle it
     playThroughEngine(card2, &recycle);
     EXPECT_EQ(state.player(P1).main_deck.front(), top) << "recycled to the bottom";
 }

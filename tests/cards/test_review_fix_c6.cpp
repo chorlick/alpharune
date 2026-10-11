@@ -140,7 +140,7 @@ protected:
         act.type = IntentType::ActivateAbility;
         act.player = o(source).controller;
         act.ability_source = source;
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, agent, nullptr,
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); }, agent, nullptr,
                    act.player);
     }
     /// `from`: who controlled the battlefield before P1 conquered it.
@@ -371,7 +371,7 @@ TEST_F(C6Test, Sett543_SpendsTheBuffAsTheAbilityIsActivated) {
     act.ability_source = sett;
     withEngine([&](GameEngine& e) {
         live = &e.mutableState();
-        e.testHook_executeIntent(act);
+        e.testHook_executeIntent(act); settleLikeTheEngine(e);
         live = nullptr;
     }, nullptr, &p2);
     EXPECT_TRUE(probed);
@@ -977,7 +977,12 @@ TEST_F(C6Test, ElderDragon_ChoosesUpToOnePerLocation) {
     EXPECT_EQ(agent.prompts.size(), 2u);
     EXPECT_EQ(o(base_a).damage_marked, 0);
     EXPECT_EQ(o(at_bf).damage_marked, 0);
-    EXPECT_EQ(o(base_b).damage_marked, 1);
+    EXPECT_TRUE(o(base_a).location.has_value());
+    EXPECT_TRUE(o(at_bf).location.has_value());
+    // The 1 damage went to base_b, and with Elder Dragon on the board "any
+    // amount of your damage is enough to kill": the cleanup after the
+    // trigger kills the 5-Might unit.
+    EXPECT_TRUE(inTrash(P2, base_b));
 }
 
 // ── 681 Kha'Zix, Evolving Hunter ────────────────────────────────────────────

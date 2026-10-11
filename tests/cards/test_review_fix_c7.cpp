@@ -116,7 +116,7 @@ protected:
         a.ability_index = index;
         withEngine([&](GameEngine& e) {
             e.testHook_cleanup();
-            e.testHook_executeIntent(a);
+            e.testHook_executeIntent(a); settleLikeTheEngine(e);
             e.testHook_runChain();
         }, agent, nullptr, a.player);
     }

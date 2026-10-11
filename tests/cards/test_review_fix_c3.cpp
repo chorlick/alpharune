@@ -216,7 +216,7 @@ protected:
         play.player = player;
         play.card = card;
         play.targets = std::move(targets);
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, p1, p2, player);
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, p1, p2, player);
     }
     /// Every way the engine offers `card` to its controller right now, with
     /// the cost covered.
@@ -572,7 +572,7 @@ TEST_F(C3Test, Riposte_StillCountersWhenTheChosenUnitIsGone) {
     StepAgent p1{O(unit)};
     withEngine([&](GameEngine& e) {
         engine = &e;
-        e.testHook_executeIntent(play);
+        e.testHook_executeIntent(play); settleLikeTheEngine(e);
     }, &p1, &p2);
     EXPECT_TRUE(inTrash(P2, their_spell)) << "countered";
     EXPECT_TRUE(state.chain.items.empty());
@@ -619,7 +619,7 @@ TEST_F(C3Test, Sacrifice_KillsTheMightyUnitAsItIsPlayed) {
     StepAgent p1{O(mighty)};
     withEngine([&](GameEngine& e) {
         engine = &e;
-        e.testHook_executeIntent(play);
+        e.testHook_executeIntent(play); settleLikeTheEngine(e);
     }, &p1, &p2);
     EXPECT_TRUE(dead_before_anyone_could_respond);
     EXPECT_FALSE(onBoard(mighty));
@@ -906,7 +906,7 @@ TEST_F(C3Test, Guards_PlayedFromFacedownTheTokenGoesToThatBattlefield) {
     play.type = IntentType::PlayReaction;
     play.player = P1;
     play.card = spell;
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); });
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); });
     GameObjectId token = kInvalidId;
     for (const auto& [id, obj] : state.objects)
         if (obj.name == "Sand Soldier" && obj.location.has_value()) token = id;
@@ -939,7 +939,7 @@ TEST_F(C3Test, LotusTrap_PlayedFromFacedownKeepsTheTargetItWasPlayedWith) {
     play.card = spell;
     play.targets = {here};
     StepAgent agent{O(elsewhere)};
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, &agent);
     EXPECT_TRUE(agent.prompts.empty()) << "the target is not asked again";
     EXPECT_TRUE(state.getObject(here).damage_doubled_this_turn);
     EXPECT_FALSE(state.getObject(elsewhere).damage_doubled_this_turn);
@@ -1197,7 +1197,7 @@ TEST_F(C3Test, DefiantDance_TheSecondUnitIsStillAffectedWhenTheFirstIsGone) {
     StepAgent p1{O(first), O(second)};
     withEngine([&](GameEngine& e) {
         engine = &e;
-        e.testHook_executeIntent(play);
+        e.testHook_executeIntent(play); settleLikeTheEngine(e);
     }, &p1, &p2);
     EXPECT_EQ(state.getObject(second).current_might, 3) << "-2 [M] still applies";
 }
@@ -1257,7 +1257,7 @@ TEST_F(C3Test, BackOff_StunsForItsControllerAndDrawsOnlyWhenPlayedFromHand) {
     play.player = P1;
     play.card = hidden;
     play.targets = {other};
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); });
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); });
     EXPECT_TRUE(state.getObject(other).is_stunned);
     EXPECT_EQ(handSize(P1), 1) << "'if you played this from your hand' — it was not";
 }
@@ -1340,7 +1340,7 @@ TEST_F(C3Test, HeedlessResurrection_TheKillIsPaidAsItIsPlayedAndTheUnitCanComeBa
     StepAgent p1{O(unit), O(unit), V(0)};   // kill it; play it back; to base
     withEngine([&](GameEngine& e) {
         engine = &e;
-        e.testHook_executeIntent(play);
+        e.testHook_executeIntent(play); settleLikeTheEngine(e);
     }, &p1, &p2);
     EXPECT_TRUE(dead_before_anyone_could_respond);
     EXPECT_EQ(p1.missed, 0);
@@ -1361,7 +1361,7 @@ TEST_F(C3Test, UndyingLoyalty_OnlyABirdCatDogOrPoroEarnsTheDiscount) {
     play.player = P1;
     play.card = spell;
     StepAgent agent{O(sage), V(0)};
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_TRUE(onBoard(sage));
     EXPECT_TRUE(inTrash(P1, poro));
@@ -1379,7 +1379,7 @@ TEST_F(C3Test, UndyingLoyalty_AUnitThatIsNotAPoroIsNotOfferedWithoutTheTwoEnergy
     play.player = P1;
     play.card = spell;
     StepAgent agent{O(poro), V(0)};
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, &agent);
     EXPECT_FALSE(agent.offered(sage));
     EXPECT_FALSE(agent.offered(big));
     EXPECT_TRUE(onBoard(poro));

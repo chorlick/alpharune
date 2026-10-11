@@ -132,7 +132,7 @@ protected:
         a.ability_index = index;
         withEngine([&](GameEngine& e) {
             e.testHook_cleanup();
-            e.testHook_executeIntent(a);
+            e.testHook_executeIntent(a); settleLikeTheEngine(e);
             e.testHook_runChain();
         }, agent, nullptr, a.player);
     }
@@ -376,7 +376,7 @@ TEST_F(C4Test, MagmaWurm_OtherFriendlyUnitsEnterReady) {
         play.card = unit;
         play.play_location = LocationId{BaseLocation{P1}};
         e.mutableState().player(P1).rune_pool.energy += 3;
-        e.testHook_executeIntent(play);
+        e.testHook_executeIntent(play); settleLikeTheEngine(e);
         token = e.testHook_executor().createToken(P1, CardType::Unit, "Recruit", 1, {"Recruit"},
                                                   KeywordSet{}, LocationId{BaseLocation{P1}}, false);
     });
@@ -944,8 +944,9 @@ TEST_F(C4Test, AccelerationGate_ChargesDeflectForAnEnemyUnitItReadies) {
 // ─── 08 item 8.4: aura-granted Vision ───────────────────────────────────────
 
 TEST_F(C4Test, GemcraftSeer_UnitsPlayedBesideItGetTheirVisionLook) {
-    // The engine's Vision look puts a spell it finds on top on the bottom.
-    // Teemo, Scout has no Vision of his own: played alone, the top card stays.
+    // Teemo, Scout has no Vision of his own: played alone, there is no look
+    // and the top card stays. Beside Gemcraft Seer he has one, and the
+    // controller (here: always "recycle") puts the card on the bottom.
     addToDeck(P1, kFirstMate);
     auto top = addToDeck(P1, kIncinerate);
     auto alone = addToHand(P1, kTeemoScout);
@@ -954,7 +955,9 @@ TEST_F(C4Test, GemcraftSeer_UnitsPlayedBesideItGetTheirVisionLook) {
 
     addUnit(P1, kGemcraftSeer);
     auto unit = addToHand(P1, kTeemoScout);
-    playThroughEngine(unit);
+    EnginePathAgent recycle(EnginePathAgent::first());
+    playThroughEngine(unit, &recycle);
+    EXPECT_EQ(recycle.prompts.size(), 1u) << "the Vision look asked once";
     EXPECT_EQ(state.player(P1).main_deck.front(), top)
         << "\"Other friendly units have [Vision]\": the played unit looked at the top card";
 }

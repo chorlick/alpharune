@@ -161,7 +161,7 @@ protected:
         act.ability_source = source;
         act.targets = std::move(targets);
         act.granted_ability_def = granted;
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, agent, nullptr,
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); }, agent, nullptr,
                    act.player);
     }
     /// Play a spell from hand at `target`, cost paid from the floating pool
@@ -172,7 +172,7 @@ protected:
         play.player = o(spell).controller;
         play.card = spell;
         play.targets = {target};
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, agent, nullptr,
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, agent, nullptr,
                    play.player);
     }
     /// Queue `source`'s trigger and run the chain. `probe` is handed the live
@@ -876,17 +876,22 @@ TEST_F(C0Test, SolariShrine_OnlyAStunnedEnemyUnitsDeathTriggers) {
     auto plain = addUnit(P2, kInvalidId, 2, 0);
     auto stunned = addUnit(P2, kInvalidId, 2, 0);
     o(stunned).is_stunned = true;
-    // "When YOU kill": P1's damage is what is lethal to both.
-    for (auto id : {plain, stunned}) {
+    // "When YOU kill": P1's damage is what is lethal. Each unit is marked
+    // just before it is killed: a lethally damaged unit does not outlive the
+    // cleanup that follows the other one's death.
+    auto markedByP1 = [&](GameObjectId id) {
         o(id).damage_marked = 2;
         o(id).damage_marked_by[0] = 2;
-    }
+    };
 
+    markedByP1(plain);
     EnginePathAgent a1(EnginePathAgent::script({1}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(plain); }, &a1);
     EXPECT_TRUE(a1.prompts.empty());
     EXPECT_EQ(handSize(P1), 0);
+    ASSERT_TRUE(o(stunned).location.has_value()) << "the stunned unit is still on the board";
 
+    markedByP1(stunned);
     EnginePathAgent a2(EnginePathAgent::script({1}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(stunned); }, &a2);
     EXPECT_EQ(a2.prompts.size(), 1u);
@@ -935,7 +940,7 @@ TEST_F(C0Test, GarbageGrabber_TheRecycleHappensAtActivation) {
     });
     withEngine([&](GameEngine& e) {
         live = &e.mutableState();
-        e.testHook_executeIntent(act);
+        e.testHook_executeIntent(act); settleLikeTheEngine(e);
         live = nullptr;
     }, nullptr, &p2);
     EXPECT_EQ(trash_when_p2_could_respond, 0);

@@ -156,7 +156,7 @@ protected:
         act.ability_source = source;
         act.ability_index = index;
         act.targets = std::move(targets);
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); },
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); },
                    p1_agent, p2_agent, act.player);
     }
     /// Whether the engine offers ability `index` of `source` in the main phase.
@@ -734,7 +734,7 @@ TEST_F(ReviewFixC1Test, ScryersBloom_RecyclingAnnouncesTheRecycle) {
         [&](const ObjectStateChangedEvent& e) {
             if (e.what_changed == "recycled_main") ++recycled_events;
         });
-    EnginePathAgent agent;   // first option of each prompt: recycle
+    EnginePathAgent agent(EnginePathAgent::first());   // first option of each prompt: recycle
     activate(bloom, 0, &agent);
     conn.disconnect();
 

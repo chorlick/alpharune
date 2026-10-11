@@ -168,18 +168,47 @@ public:
     EnginePathAgent() = default;
     explicit EnginePathAgent(Picker p) : pick(std::move(p)) {}
 
-    Intent selectAction(const GameState&,
+    Intent selectAction(const GameState& state,
                         const std::vector<Intent>& legal) override {
         if (legal.empty()) return Intent{};
         const bool is_choice = std::all_of(legal.begin(), legal.end(),
             [](const Intent& i) { return i.type == IntentType::MakeChoice; });
         if (is_choice) {
             prompts.push_back(legal);
-            return pick ? pick(legal) : legal.front();
+            if (pick) return pick(legal);
+            // No picker. The default is the first option, except at a Predict
+            // "recycle this card or keep it" prompt, whose first option is
+            // "recycle": a test that plays a Vision / Predict card without
+            // saying anything must not have its deck reordered. Default: keep.
+            // A test that wants the recycle passes a picker.
+            if (isPredictRecycleOrKeep(state, legal)) { ++predict_kept_by_default; return legal[1]; }
+            return legal.front();
         }
         for (const auto& i : legal)
             if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
         return legal.front();
+    }
+
+    /// How often the no-picker default answered a Predict prompt with "keep".
+    int predict_kept_by_default = 0;
+
+    /// The prompt EffectExecutor::predict makes for one looked-at card: two
+    /// options, [0] names the card (recycle it), [1] names nothing (keep it),
+    /// and the card is the looked-at one: a Main Deck card that is at that
+    /// moment held out of its owner's deck.
+    static bool isPredictRecycleOrKeep(const GameState& state, const std::vector<Intent>& legal) {
+        if (legal.size() != 2) return false;
+        const Intent& recycle = legal[0];
+        const Intent& keep = legal[1];
+        if (recycle.chosen_objects.size() != 1 || recycle.chosen_value.has_value()) return false;
+        if (!keep.chosen_objects.empty() || keep.chosen_value.has_value() ||
+            !keep.choice_label.empty()) return false;
+        const GameObjectId card = recycle.chosen_objects.front();
+        if (!state.objectExists(card)) return false;
+        const auto& obj = state.getObject(card);
+        if (obj.zone != ZoneType::MainDeck) return false;
+        const auto& deck = state.player(obj.owner).main_deck;
+        return std::find(deck.begin(), deck.end(), card) == deck.end();
     }
 
     /// True if any prompt offered `id` as an object to choose.
@@ -191,6 +220,11 @@ public:
     }
 
     // ── Pickers ──
+    /// The first option of every prompt, stated: at a Predict prompt that is
+    /// "recycle the card" (the no-picker default keeps it instead).
+    static Picker first() {
+        return [](const std::vector<Intent>& legal) { return legal.front(); };
+    }
     /// Choose object `id` when offered; say yes (1) to a yes/no; otherwise first.
     static Picker choosing(GameObjectId id) {
         return [id](const std::vector<Intent>& legal) {
@@ -573,10 +607,20 @@ protected:
         // damage_marked >= might.
         withEngine([&](GameEngine& e) {
             e.testHook_executeIntent(play);
-            e.testHook_runChain();
-            e.testHook_cleanup();
-            e.testHook_runChain();
+            settleLikeTheEngine(e);
         }, p1_agent, p2_agent, player);
+    }
+
+    /// What GameEngine::resolveMainPhaseDecision does after it has executed
+    /// an intent: resolve the triggers that queued, cleanup (which kills
+    /// lethally damaged units, CR 319), resolve the triggers the cleanup
+    /// queued. Every *ThroughEngine helper ends with it; a test that calls
+    /// testHook_executeIntent itself inside withEngine calls this after it
+    /// unless it is looking at the state before the cleanup on purpose.
+    static void settleLikeTheEngine(GameEngine& e) {
+        e.testHook_runChain();
+        e.testHook_cleanup();
+        e.testHook_runChain();
     }
 
     /// Put `source`'s triggered ability for `trigger` on the chain as if its
@@ -594,7 +638,7 @@ protected:
         withEngine([&](GameEngine& e) {
             ASSERT_TRUE(e.testHook_executor().canQueueTriggers());
             e.testHook_executor().queueTriggeredAbility(source, controller, trigger, subject);
-            e.testHook_runChain();
+            settleLikeTheEngine(e);
         }, p1_agent, p2_agent, controller);
     }
 
@@ -607,7 +651,7 @@ protected:
                               PlayerId turn_player = P1) {
         withEngine([&](GameEngine& e) {
             cause(e.testHook_executor(), e.mutableState());
-            e.testHook_runChain();
+            settleLikeTheEngine(e);
         }, p1_agent, p2_agent, turn_player);
     }
 

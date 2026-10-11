@@ -537,3 +537,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 sweep-verify-cards third tranche merged, gate green: 2444 tests. Open boxes 99, ticked 504. 9.G3 (hidden Guards! at a no-units battlefield plays no token) is a rules reading for the user to confirm (9.I7). Fourth, small tranche assigned (9.I4, 9.I5).
 - 2026-10-11 sweep-costs merged as `7f59ce2`, gate green: 2488/2488. All three engine sweeps are in. Open boxes 77, ticked 532.
 - 2026-10-11 02:50 sweep-verify split by ownership and started: sweep-verify-engine and sweep-verify-ledger spawned from `502288c`; sweep-verify-cards given the card boxes sweep-costs unblocked (3.13, 3.21, 7.23, 7.26, S2-S5, eight batch boxes, 9.B1, 9.B2, 9.J6). Six agents running. perf-engine waits for all of them.
+- 2026-10-11 sweep-triggers second follow-up (9.H1-H4, 9.I1-I3) merged, gate green: 2497 tests. Third, final follow-up assigned (9.J5, 9.K2). Open boxes 72, ticked 539.

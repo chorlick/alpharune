@@ -805,6 +805,34 @@ TEST_F(SweepTriggersTest, CalledShot_DrawingOneCountsAsADraw) {
     EXPECT_EQ(deckSize(P1), 2);
 }
 
+// "... reveal a <card> from among them and draw it": a draw, for Ornn,
+// Blacksmith 381, Ivern, Nurturer 613 and Fate Weaver 626 alike.
+TEST_F(SweepTriggersTest, RevealAndDrawIt_CountsAsADraw) {
+    struct Case { CardDefId unit; TriggerType trigger; CardDefId wanted; };
+    const Case cases[] = {
+        {381, TriggerType::WhenIHold, kShepherdsHeirloom},     // a gear
+        {613, TriggerType::WhenIHold, kLoyalPoro},             // a unit
+        {626, TriggerType::WhenYouPlayMe, kDeathFromBelow},    // a spell costing [4] or more
+    };
+    for (const auto& c : cases) {
+        SCOPED_TRACE(card_db.get(c.unit).name);
+        auto source = addUnit(P1, c.unit, 3, 0);
+        stockDeck(P1, 2);
+        auto wanted = addToDeck(P1, c.wanted);              // on top
+        const int draws = state.player(P1).draws_this_turn;
+        int drawn_events = 0;
+        auto conn = events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
+            if (e.player == P1) drawn_events += e.count;
+        });
+        EnginePathAgent agent(EnginePathAgent::choosing(wanted));   // yes, and that card
+        fireTriggerThroughEngine(source, c.trigger, &agent);
+        conn.disconnect();
+        EXPECT_TRUE(inHand(P1, wanted));
+        EXPECT_EQ(state.player(P1).draws_this_turn - draws, 1);
+        EXPECT_EQ(drawn_events, 1);
+    }
+}
+
 // "Gain N XP" always counts toward "if you've gained XP this turn".
 TEST_F(SweepTriggersTest, GainXp_IsCountedForTheTurn) {
     auto heirloom = addToHand(P1, kShepherdsHeirloom);

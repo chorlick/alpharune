@@ -33,7 +33,9 @@ public:
                 legal.push_back(cid);
             }
         }
-        if (legal.empty()) return;
+        // No return on an empty list: pickTarget stores "no target" on the
+        // chain item, so the resolution asks nothing if such a unit has
+        // reached the trash since.
         GameObjectId picked = pickTarget(ctx, "Starhound (Bird/Cat/Dog/Poro from trash)",
                                           legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

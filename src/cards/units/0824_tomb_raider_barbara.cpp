@@ -28,10 +28,20 @@ public:
         }
         return out;
     }
+    // "if you control 7 or more runes" is part of the trigger condition (CR
+    // 383.2.a.1): asked as she is played, so no ability goes on the chain
+    // with fewer.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return runesControlled(state, controller) >= 7;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (runesControlled(ctx.state, ctx.controller) < 7) return;
-        GameObjectId tgt = pickTarget(ctx, "Tomb-Raider Barbara: choose an enemy gear",
-                                      enemyGear(ctx));
+        // With fewer than 7 runes there is no gear to choose. No return ahead
+        // of pickTarget — it stores "no target" on the chain item, so the
+        // resolution asks nothing if a seventh rune has arrived since.
+        std::vector<GameObjectId> candidates;
+        if (runesControlled(ctx.state, ctx.controller) >= 7) candidates = enemyGear(ctx);
+        GameObjectId tgt = pickTarget(ctx, "Tomb-Raider Barbara: choose an enemy gear", candidates);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         auto& gear = ctx.state.getObject(tgt);

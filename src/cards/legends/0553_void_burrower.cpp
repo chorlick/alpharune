@@ -91,11 +91,10 @@ public:
                 ri.resume_data[3] = 1;   // nothing more to do
                 return;
             }
-            // Publish "you may banish one": a skip slot (empty chosen_objects)
-            // plus one slot per revealed card.
+            // Publish "you may banish one": a skip slot (no object, value 0, so
+            // an agent can name it) plus one slot per revealed card.
             std::vector<Intent> choices;
-            { Intent skip; skip.type = IntentType::MakeChoice; skip.player = ctx.controller;
-              choices.push_back(std::move(skip)); }
+            choices.push_back(valChoice(ctx.controller, 0, "Void Burrower: banish none"));
             for (auto cid : revealed) {
                 Intent c; c.type = IntentType::MakeChoice; c.player = ctx.controller;
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));

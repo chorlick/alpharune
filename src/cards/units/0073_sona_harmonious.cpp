@@ -52,9 +52,10 @@ public:
         if (!chosen.has_value()) return;   // waiting for the agent
         const std::vector<GameObjectId>& picks = *chosen;
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        // A rune readied or off the board since it was named is skipped.
-        for (auto id : picks)
-            if (readiable(id)) ctx.executor.readyObject(id);
+        // No second readiable() check: every id selectSeveral returns is in
+        // the list built above in this entry, and nothing changes a rune
+        // between there and here (readying one rune does not touch another).
+        for (auto id : picks) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

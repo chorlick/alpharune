@@ -27,13 +27,17 @@ public:
         // and abilities are not legal picks.
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
-        auto legal = chooseableUnits(ctx.state, ctx.controller,
-            [&](const GameObject& o) {
-                if (o.controller == ctx.controller) return false;
-                auto bf = o.battlefieldId();
-                return bf.has_value() && *bf == *my_bf;
-            });
+        // Not at a battlefield: no unit is "here". No return ahead of the
+        // helper — with nothing to choose it marks the item done, so the
+        // resolution asks nothing if I am at a battlefield again by then.
+        std::vector<GameObjectId> legal;
+        if (my_bf)
+            legal = chooseableUnits(ctx.state, ctx.controller,
+                [&](const GameObject& o) {
+                    if (o.controller == ctx.controller) return false;
+                    auto bf = o.battlefieldId();
+                    return bf.has_value() && *bf == *my_bf;
+                });
         std::vector<GameObjectId> damaged;
         // "any number of": none is a legal choice (CR 355.13).
         if (!splitDamageAmong(ctx, "Volibear, Furious", 5, ctx.source, legal, damaged,

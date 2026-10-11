@@ -42,8 +42,9 @@ public:
             auto cur = s.battlefieldId();
             return !(cur && *cur == *bf);
         };
-        if (!still_legal()) return;
-
+        // No return ahead of the "may": when there is no move to make
+        // confirmOptional stores the "no" on the chain item, so the resolution
+        // asks nothing if she or the stunned unit has moved since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Vex Mocking: move me to that battlefield?",
                                     still_legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

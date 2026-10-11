@@ -25,7 +25,9 @@ public:
             if (!ctx.state.objectExists(cid)) continue;
             if (ctx.state.getObject(cid).isUnit()) trash_units.push_back(cid);
         }
-        if (trash_units.empty()) return;
+        // No return on an empty list: pickTarget stores "no target" on the
+        // chain item, so the resolution asks nothing if a unit has reached
+        // the trash since.
         GameObjectId picked = pickTarget(ctx, "Cemetery Attendant (unit from trash)",
                                           trash_units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

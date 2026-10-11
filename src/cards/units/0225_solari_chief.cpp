@@ -23,7 +23,9 @@ public:
                 obj.location.has_value() && !obj.untargetable_by_enemy)
                 enemies.push_back(id);
         }
-        if (enemies.empty()) return;
+        // No return on an empty list: pickTarget stores "no target" on the
+        // chain item, so the resolution asks nothing if an enemy unit has
+        // arrived since.
         GameObjectId picked = pickTarget(ctx, "Solari Chief (enemy unit)", enemies);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&

@@ -28,16 +28,28 @@ public:
     // "[Empowered][>] When I attack, kill an enemy unit here with less Might
     //  than me."
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
+    // "[Empowered][>]": I have the ability only while I have the status (CR
+    // 828.1.b.1), so it triggers only for an Empowered Ambessa — no ability
+    // goes on the chain otherwise.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isEmpowered();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        if (!self.isEmpowered() || !self.location.has_value()) return;
-        const auto here = *self.location;
         const int my_might = self.current_might;
-        auto legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& obj) {
-            return obj.controller != ctx.controller && *obj.location == here &&
-                   obj.current_might < my_might;
-        });
+        // Not Empowered, or off the board: nothing to choose. No return ahead
+        // of pickTarget — it stores "no target" on the chain item, so the
+        // resolution asks nothing if I have been Empowered since.
+        std::vector<GameObjectId> legal;
+        if (self.isEmpowered() && self.location.has_value()) {
+            const auto here = *self.location;
+            legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& obj) {
+                return obj.controller != ctx.controller && *obj.location == here &&
+                       obj.current_might < my_might;
+            });
+        }
         GameObjectId picked = pickTarget(ctx, "Ambessa: kill a weaker enemy here", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;

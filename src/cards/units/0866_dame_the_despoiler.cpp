@@ -22,16 +22,26 @@ public:
     // "[Empowered][>] When I attack or defend, choose a unit here. Increase my
     // Might to its Might this turn, then give me +1 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenIAttackOrDefend; }
+    // "[Empowered][>]": I have the ability only while I have the status (CR
+    // 828.1.b.1), so it triggers only for an Empowered Dame — no ability goes
+    // on the chain otherwise.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isEmpowered();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        if (!ctx.state.getObject(ctx.source).isEmpowered()) return;
         auto bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!bf) return;
-        auto here = chooseableUnits(ctx.state, ctx.controller,
-            [&](const GameObject& o) {
-                auto obf = o.battlefieldId();
-                return obf.has_value() && *obf == *bf;
-            });
+        // Not Empowered, or not at a battlefield: nothing to choose. No
+        // return ahead of pickTarget — it stores "no target" on the chain
+        // item, so the resolution asks nothing if I have been Empowered since.
+        std::vector<GameObjectId> here;
+        if (bf && ctx.state.getObject(ctx.source).isEmpowered())
+            here = chooseableUnits(ctx.state, ctx.controller,
+                [&](const GameObject& o) {
+                    auto obf = o.battlefieldId();
+                    return obf.has_value() && *obf == *bf;
+                });
         std::sort(here.begin(), here.end());
         auto picked = pickTarget(ctx, "Dame the Despoiler: choose a unit here", here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

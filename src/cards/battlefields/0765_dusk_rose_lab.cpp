@@ -43,11 +43,12 @@ public:
         for (const auto& bf : ctx.state.battlefields)
             if (bf.card_object_id == ctx.source)
                 mine = bf.controller.has_value() && *bf.controller == ctx.controller;
-        if (!mine) return;
         // "kill a unit you control here" is the cost: it is paid as the
         // ability is finalized (CR 383.3), with a unit the controller picks.
-        auto still_legal = [&]() { return !unitsHere(ctx).empty(); };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // Both conditions are the "may"'s, with no return ahead of it: when
+        // one fails confirmOptional stores the "no" on the chain item, so the
+        // resolution asks nothing if a unit has arrived here since.
+        auto still_legal = [&]() { return mine && !unitsHere(ctx).empty(); };
         int conf = confirmOptional(ctx,
             "Dusk Rose Lab: kill a unit here to draw 1?", still_legal);
         if (conf < 1) return;    // waiting for the agent, declined, or no unit here

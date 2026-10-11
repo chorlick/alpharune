@@ -33,7 +33,6 @@ private:
         d.power_cost = 1;
         d.might = 6;
         d.keywords.set(Keyword::Accelerate);
-        d.keywords.set(Keyword::Equip);
         d.keywords.set(Keyword::Weaponmaster);
         d.ability_text = R"RB([Accelerate] (You may pay [1][R] as an additional cost to have me enter ready.)
 [Weaponmaster] (When you play me, you may [Equip] one of your Equipment to me for [A] less, even if it's already attached.))RB";

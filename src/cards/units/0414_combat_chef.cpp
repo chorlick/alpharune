@@ -31,7 +31,6 @@ private:
         d.tags = {R"RB(Demacia)RB"};
         d.energy_cost = 5;
         d.might = 5;
-        d.keywords.set(Keyword::Equip);
         d.keywords.set(Keyword::Weaponmaster);
         d.ability_text = R"RB([Weaponmaster] (When you play me, you may [Equip] one of your Equipment to me for [A] less, even if it's already attached.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/dffa05408c0b53f62dfbb9452986342ff2d4352d-744x1039.png?accountingTag=RB)RB";

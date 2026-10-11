@@ -15,8 +15,8 @@
 # not check header contents) and every unit using the PCH is compiled against
 # the wrong declarations.
 #
-# The fix: delete the stale .gch before a PCH is created, so ccache keys the
-# compile on the preprocessed headers. Everything else goes to ccache as is.
+# The fix: delete the stale .gch before a PCH is created. Everything that is
+# not a PCH goes to ccache as is.
 out=""
 is_pch=0
 prev=""
@@ -27,7 +27,18 @@ for arg in "$@"; do
     fi
     prev=$arg
 done
-if [ "$is_pch" = 1 ] && [ -n "$out" ] && [ -f "$out" ]; then
-    rm -f -- "$out"
+#
+# A PCH is also never TAKEN from the cache. ccache can hit on the preprocessed
+# text, which ignores comments: after a comment-only edit to a header it handed
+# back a .gch made from the previous version of that file. GCC records each
+# `#pragma once` header's size and time in the .gch, the record no longer
+# matched the file, and the header was included a second time ("redefinition
+# of kInvalidId" in every unit). So the PCH itself is always compiled; the
+# units that use it are still cached, keyed on the .gch they were built with.
+if [ "$is_pch" = 1 ]; then
+    if [ -n "$out" ] && [ -f "$out" ]; then
+        rm -f -- "$out"
+    fi
+    exec "$@"
 fi
 exec ccache "$@"

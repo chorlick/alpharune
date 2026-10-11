@@ -59,7 +59,8 @@ ids are in `.worktrees/agents.txt` (untracked), not here:
   enum values by keeping both — then READ the joined region and compile before
   committing (a keep-both join dropped a closing brace once). Anything needing
   judgement about a stream's code goes back to the stream.
-- Verify: `flock .worktrees/.build.lock bash .worktrees/gate.sh <label>`
+- Verify: `flock .worktrees/.build.lock flock .worktrees/.build-b.lock bash .worktrees/gate.sh <label>`
+  (both build lanes, see Run decisions)
   (builds four targets, runs the suite, openspiel tests, clone-equiv, 200-game
   smoke, MCTS batch, fault injection; aborts on a failed build; summary in
   `.worktrees/logs/gate-<label>/summary.txt`). For a stage gate use
@@ -133,6 +134,16 @@ iteration must apply these.
   (`CCACHE_NAMESPACE=<name>`, plain sloppiness) and does a clean build before
   its final suite run. `CLAUDE.md` still documents the shared launcher — fix or
   caveat it in the sweep.
+
+- **Two build lanes (user, 2026-10-11):** five streams queueing on one lock
+  spent most of their time waiting, and the lock is held through single-core
+  test runs and links. Builds now run in two lanes at `-j3` each. Lane A locks
+  `.worktrees/.build.lock` (sweep-costs, cleanup); lane B locks
+  `.worktrees/.build-b.lock` (sweep-flow, sweep-triggers, perf-search). Every
+  later stream is assigned a lane in its spawn prompt. The orchestrator's gate
+  takes BOTH locks, A then B, and keeps `-j6`:
+  `flock .worktrees/.build.lock flock .worktrees/.build-b.lock bash .worktrees/gate.sh <label>`
+  (same for `fixcache.sh`). This overrides README "one build at a time".
 
 - **Sweep split (orchestrator, 2026-10-11):** stage 2 left ~90 carry-over rows,
   67 open boxes in 03/07/08 and 43 BLOCKED card items for the sweep — too much
@@ -419,3 +430,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 user: nothing may be left optional (see Run decisions). Relabelled 10 rows, reopened the documented residuals, messaged the five running stage 3 streams.
 - 2026-10-11 user: a not-a-defect closure still needs a pinning test and a clarification at the code site (see Run decisions). Brief updated, running sweep streams messaged, retrofit of earlier closures assigned to sweep-verify.
 - 2026-10-11 wrote "Resume notes" at the top of this file ahead of a context reset; stage 3 streams told to write their final reports to `.worktrees/reports/<stream>.md`.
+- 2026-10-11 context reset survived: all five stage 3 streams still running, state resumed from this file. User: two build lanes at `-j3` (see Run decisions); the five streams messaged with their lane, brief updated.

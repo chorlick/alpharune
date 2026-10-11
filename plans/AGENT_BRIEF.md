@@ -77,10 +77,14 @@ Fix directions in the plans are suggestions from the reviewer, not decisions.
   one-line comment citing the card text or CR number. Never delete or weaken a
   test to get green.
 
-## Building — one build at a time
+## Building — two lanes, one build per lane
 
-The machine has 8 cores and other work is running; build with `-j6`, never more (user limit; CMake also caps it, see `RIFTBOUND_BUILD_JOBS`). All builds and test runs go
-through a shared lock so only one runs at once:
+The machine has 8 cores and other work is running. Builds run in two lanes of
+`-j3` each (user decision, 2026-10-11; before that it was one lane at `-j6`).
+Your spawn prompt names your lane: lane A locks `.worktrees/.build.lock`, lane
+B locks `.worktrees/.build-b.lock`. Take only your own lane's lock, for every
+configure, build and test run, and never build with more than `-j3`. The
+commands below show lane A; lane B substitutes its lock file.
 
 ```bash
 REPO=/home/pirateporkchop/code/riftbound-engine
@@ -93,7 +97,7 @@ flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
 # build + test
-flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j6
+flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j3
 flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_tests --gtest_brief=1
 ```
 
@@ -110,7 +114,8 @@ flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_test
   nothing stale is linked, and say so in your report.
 - The session scratchpad directory is shared by every stream: keep your scripts
   and logs in a subdirectory named after your stream.
-- CMake caps concurrent jobs at 6 (`RIFTBOUND_BUILD_JOBS`); do not raise it.
+- CMake caps concurrent jobs at 6 (`RIFTBOUND_BUILD_JOBS`); that cap is per build
+  directory, so with two lanes the limit that matters is your own `-j3`.
 - Test files are unity-built (`RIFTBOUND_UNITY_TESTS`, see `CLAUDE.md`): a new
   test file must not define file-scope names that clash with other test files.
   Wrap the whole file body in a namespace named after the file, as the existing

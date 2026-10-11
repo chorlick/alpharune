@@ -860,9 +860,20 @@ void GameEngine::beginningStep() {
         if (obj.controller != state_.turn.turn_player) continue;
         if (!obj.location.has_value()) continue;
         if (obj.isUnit()) units_to_kill.push_back(id);
-        // CR 718.2: an attached Equipment's rules text is inactive, so its
-        // [Temporary] does not trigger ("If this is unattached, kill it ...").
-        else if (obj.isGear() && !obj.attached_to.has_value()) gear_to_kill.push_back(id);
+        else if (obj.isGear()) {
+            // CR 718.2: while attached, the card's PRINTED rules text is
+            // Inactive, so a printed [Temporary] does not trigger ("If this
+            // is unattached, kill it ..." — Spinning Axe). A [Temporary] an
+            // effect GAVE the Equipment (Turn to Dust, Fading Memories) is not
+            // its printed text and still kills it. The def holds the printed
+            // set. (An Equipment that prints [Temporary] and is also given it
+            // is read as printed only: instances are redundant, CR 816.2, and
+            // the object does not record the second one.)
+            bool printed = false;
+            if (obj.card_def_id != kInvalidId)
+                printed = card_db_.get(obj.card_def_id).keywords.has(Keyword::Temporary);
+            if (!obj.attached_to.has_value() || !printed) gear_to_kill.push_back(id);
+        }
     }
     for (auto id : units_to_kill) {
         killUnit(id);
@@ -1358,11 +1369,18 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
             runFinalizePass(item);
         return;
     }
-    if (!item.targets.empty()) return;
     const Card* card = (item.is_ability && item.granted_ability_def != 0)
         ? card_registry_.get(item.granted_ability_def)
         : card_registry_.get(item.card_def_id);
     if (!card) return;
+    if (!item.targets.empty()) {
+        // Its targets were locked in as it was played. A spell may still have
+        // other choices the rules place at finalization — the units a split is
+        // divided among (CR 355.14.b), a "may": its callback makes them now.
+        if (item.is_spell && (card->choicesAtFinalization() & Card::kFinalizeResolve))
+            runFinalizePass(item);
+        return;
+    }
 
     std::vector<GameObjectId> legal;
     if (item.is_spell) {
@@ -1554,8 +1572,17 @@ void GameEngine::runFinalizePass(ChainItem& item) {
                          (pending.label.empty() ? "MakeChoice" : pending.label) + " [" +
                          std::to_string(pending.legal.size()) + " options] (" +
                          toString(pending.player) + ")");
-        Intent choice = queryAgentForChain(pending.player, pending.legal);
-        effect_executor_->recordChoice(std::move(choice));
+        // An answer the engine refuses (askAgent) ends the game with an
+        // exception; the chain is still left as it was before this pass —
+        // no item "resolving", no prompt pending — so the state a caller
+        // inspects afterwards is a consistent one.
+        try {
+            Intent choice = queryAgentForChain(pending.player, pending.legal);
+            effect_executor_->recordChoice(std::move(choice));
+        } catch (...) {
+            state_.chain.resuming.reset();
+            throw;
+        }
     }
 
     ChainItem done = std::move(*state_.chain.resuming);
@@ -2787,21 +2814,22 @@ void GameEngine::executeStandardMove(const Intent& intent) {
             : "Base(" + std::string(toString(std::get<BaseLocation>(dest).player)) + ")";
         events_.logTrace("MOVE: " + unit_obj.name + " (id=" + std::to_string(unit_id) +
                          ") -> " + dest_str);
-        auto& unit = state_.getObject(unit_id);
-
-        // Pay cost: exhaust (CR 144.2)
-        unit.is_exhausted = true;
-        events_.emit(ObjectStateChangedEvent{unit_id, "exhausted"});
-
-        auto old_location = unit.location;
-        moveUnit(unit_id, dest);
-
-        events_.emit(UnitMovedEvent{
-            unit_id, intent.player,
-            old_location.value_or(BaseLocation{intent.player}),
-            dest, true
-        });
     }
+    // CR 144.3: the units move as ONE action — the exhaust costs are paid
+    // simultaneously (144.3.c), then every unit is at the destination, and
+    // only then is anything announced: an ability that triggers on the first
+    // unit's move sees all of them arrived and all of them exhausted.
+    for (auto unit_id : moving) state_.getObject(unit_id).is_exhausted = true;   // CR 144.2
+    for (auto unit_id : moving) events_.emit(ObjectStateChangedEvent{unit_id, "exhausted"});
+    std::vector<LocationId> origins;
+    origins.reserve(moving.size());
+    for (auto unit_id : moving) {
+        origins.push_back(state_.getObject(unit_id).location.value_or(
+            LocationId{BaseLocation{intent.player}}));
+        moveUnit(unit_id, dest);
+    }
+    for (size_t i = 0; i < moving.size(); ++i)
+        events_.emit(UnitMovedEvent{moving[i], intent.player, origins[i], dest, true});
 
     // Check if this contests a battlefield
     if (std::holds_alternative<BattlefieldLocation>(dest)) {
@@ -3537,6 +3565,7 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
         const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
+            if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
             bool here = bf.hasUnitsFrom(player, state_.objects);
             // Rengar, Trophy Hunter: may Ambush to a BF with enemy units even
             // without units of your own there.
@@ -3565,6 +3594,7 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
 
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
+            if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
             if (!bf.combat_in_progress) continue;
             if (!bf.attacker.has_value() || *bf.attacker != player) continue;
             Intent pounce;
@@ -3684,6 +3714,7 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
         const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
+            if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
             bool here = bf.hasUnitsFrom(player, state_.objects);
             if (!here && enemy_bf_ok)
                 here = bf.hasUnitsFrom(opponent(player), state_.objects);
@@ -3709,6 +3740,7 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
 
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
+            if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
             if (!bf.combat_in_progress) continue;
             if (!bf.attacker.has_value() || *bf.attacker != player) continue;
             Intent pounce;
@@ -4844,7 +4876,8 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         for (auto uid : att_remaining) effect_executor_->recallToBase(uid);
         if (recall_all) {
             for (auto uid : def_remaining) effect_executor_->recallToBase(uid);
-            events_.logTrace("SYMBOL OF THE SOLARI: attacker tie -> recall ALL units");
+            events_.logTrace("COMBAT TIE: the attacker recalls ALL units "
+                             "(recall_all_on_attacker_tie)");
         }
     }
 
@@ -4948,6 +4981,15 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
 // Scoring
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// "Players can't score here until their third turn" (Forgotten Monument 523,
+// through BattlefieldCard::minTurnToScore). Conquer and Hold are the two ways
+// of Scoring (CR 471), so while this returns true there is no Score at all:
+// no point, no ScoreEvent, the battlefield is not marked scored and no
+// Conquer / Hold ability triggers (CR 473.2.c: "These will only trigger when
+// the Battlefield is Scored"). That is deliberately different from
+// `cannot_gain_points` ("can't gain points"), where the battlefield IS scored
+// and only the point is withheld (CR 470.1). Pinned by
+// VerifyCardsTest.Pin_2_20_ForgottenMonument523_NoScoreMeansNoScoreEventAndNoConquerTrigger.
 bool GameEngine::isScoreGatedByTurn(PlayerId player, BattlefieldId bf) const {
     const auto& b = getBattlefield(bf);
     if (b.min_turn_to_score <= 0) return false;
@@ -4957,16 +4999,6 @@ bool GameEngine::isScoreGatedByTurn(PlayerId player, BattlefieldId bf) const {
 void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
                               std::optional<PlayerId> previous_controller) {
     auto& ps = state_.player(player);
-
-    // Stamp the conquer for "battlefield you conquered this turn" consumers
-    // (Perched Grimwyrm). Reaching here means `player` conquered `bf`, even if
-    // the point-gain below is blocked/gated.
-    {
-        auto& bfs = getBattlefield(bf);
-        bfs.conquered_on_turn = state_.turn.turn_number;
-        bfs.conquered_by_player = player;
-        bfs.conquered_from = previous_controller;
-    }
 
     // Turn-gated scoring (Forgotten Monument): can't score here until the
     // player has taken `min_turn_to_score` of their own turns.
@@ -4981,6 +5013,22 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // Can only score once per BF per turn (CR 465)
     if (ps.battlefields_scored_this_turn.count(bf)) return;
 
+    // Only now has `player` conquered `bf`: a Conquer is one of the two ways
+    // of Scoring ("gains Control of a Battlefield they did not yet Score this
+    // turn", CR 471.1; "Establishing Control results in a Conquer if that
+    // player has not yet scored this Battlefield this turn", CR 468.5.d). The
+    // two returns above are control taken WITHOUT a conquer — a battlefield
+    // that can't be scored yet, or one already scored this turn — so "a
+    // battlefield you conquered this turn" (Perched Grimwyrm, Yone) does not
+    // see them. From here on the conquer stands even when its point is
+    // withheld or replaced (CR 470.1).
+    {
+        auto& bfs = getBattlefield(bf);
+        bfs.conquered_on_turn = state_.turn.turn_number;
+        bfs.conquered_by_player = player;
+        bfs.conquered_from = previous_controller;
+    }
+
     ps.battlefields_scored_this_turn.insert(bf);
     events_.logTrace(std::string("CONQUER: ") + toString(player) + " conquers BF#" +
                      std::to_string(bf) + " (score was " + std::to_string(ps.score) + ")");
@@ -4991,7 +5039,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // is withheld.
     if (ps.cannot_gain_points) {
         events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
-                         " can't gain points (Tianna)");
+                         " can't gain points (cannot_gain_points)");
         events_.emit(ScoreEvent{player, bf, ScoreMethod::Conquer, ps.score, previous_controller});
         return;
     }
@@ -5052,7 +5100,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     // point is withheld.
     if (ps.cannot_gain_points) {
         events_.logTrace(std::string("SCORE_BLOCKED: ") + toString(player) +
-                         " can't gain points (Tianna)");
+                         " can't gain points (cannot_gain_points)");
         events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
         return;
     }
@@ -5753,6 +5801,11 @@ void GameEngine::recallMisplacedObjects() {
     // would indicate otherwise: Unattached non-Unit Gear located at
     // Battlefields; ... Unattached Permanents and Runes in Bases other than
     // their controller's." (A recall is not a move.)
+    // Which objects is decided here; the recall itself is the one recall
+    // there is, EffectExecutor::recallToBase (attachments go along, CR
+    // 719.3.a; "recalled" is announced). Collected first: recalling moves
+    // attachments, and the loop walks the object map.
+    std::vector<GameObjectId> misplaced;
     for (auto& [id, obj] : state_.objects) {
         if (!obj.location.has_value() || obj.is_hidden) continue;   // facedown cards stay put
         if (obj.controller == PlayerId::None) continue;
@@ -5763,11 +5816,13 @@ void GameEngine::recallMisplacedObjects() {
         if ((obj.isPermanent() || obj.isRune()) && !obj.attached_to.has_value() &&
             obj.isAtBase() && *obj.location != home)
             recall = true;
-        if (!recall) continue;
-        events_.logTrace("RECALL (CR 323.6): " + obj.name + " (id=" + std::to_string(id) + ")");
-        obj.location = home;
-        obj.zone = ZoneType::Base;
-        obj.combat_designation = CombatDesignation::None;
+        if (recall) misplaced.push_back(id);
+    }
+    std::sort(misplaced.begin(), misplaced.end());
+    for (auto id : misplaced) {
+        events_.logTrace("RECALL (CR 323.6): " + state_.getObject(id).name +
+                         " (id=" + std::to_string(id) + ")");
+        effect_executor_->recallToBase(id);
     }
 }
 
@@ -6095,9 +6150,16 @@ static int extraAnyPowerCost(const GameState& state, PlayerId player, const Game
                               card.keywords.has(Keyword::Ambush);
     if (has_reaction) {
         int tax = 0;
-        for (const auto& bf : state.battlefields)
-            if ((bf.showdown_in_progress || bf.combat_in_progress) && bf.reaction_tax_power > tax)
-                tax = bf.reaction_tax_power;
+        // "During showdowns here": only while that battlefield's showdown is
+        // open. A combat is a showdown during its Combat Showdown Step only
+        // (CR 316.8.a, 466) — not once it has moved on to damage or resolution.
+        for (const auto& bf : state.battlefields) {
+            const bool showdown_open =
+                bf.showdown_in_progress ||
+                (bf.combat_in_progress && bf.combat_phase != CombatPhase::DamageStep &&
+                 bf.combat_phase != CombatPhase::ResolutionStep);
+            if (showdown_open && bf.reaction_tax_power > tax) tax = bf.reaction_tax_power;
+        }
         extra += tax;
     }
     return std::max(0, extra);

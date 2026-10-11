@@ -34,7 +34,7 @@ public:
         for (auto& [id, obj] : ctx.state.objects)
             if (movable(id)) tokens.push_back(id);
         // "you may move any number": the controller names them one at a time.
-        auto picked = selectAnyNumber(ctx, "Azir, Sovereign: move a token unit here", tokens);
+        auto picked = selectSeveral(ctx, "Azir, Sovereign: move a token unit here", tokens);
         if (!picked.has_value()) return;   // waiting for the agent
         int moved = 0;
         for (auto id : *picked) {

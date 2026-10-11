@@ -1025,12 +1025,20 @@ public:
 
     /// Whether this PERMANENT card itself has [Reaction] (CR 813.1.c.1: "This
     /// can be played during Closed States on any player's turn") — Shen,
-    /// Kinkou; Janna, Savior. Not the same as Keyword::Reaction on the def,
-    /// which is also set for permanents that merely have a [Reaction]
-    /// ABILITY (the Seals, Gold). When true the engine offers the card at
+    /// Kinkou; Rengar, Pouncing; Janna, Savior; Sumpworks Map. Such a card
+    /// also carries Keyword::Reaction on its def. A permanent that only has
+    /// a [Reaction] ABILITY (the Seals, Gold) does not — that is
+    /// ActivatedAbility::is_reaction — and neither does an [Ambush] unit
+    /// (CR 822.1.b); LedgerTest.Defs_APermanentHasReactionOnlyWhenTheCardItselfDoes
+    /// holds the two in step. When true the engine offers the card at
     /// Reaction and Action timing, to wherever it may normally be played
     /// (CR 813.3.a). Spells use Keyword::Reaction; [Quick-Draw] gear needs no
     /// override (CR 819.1.b).
+    /// Why a virtual beside the def keyword: the keyword on an OBJECT can be
+    /// given or taken by effects and is also what marks a spell, a hidden
+    /// card and [Quick-Draw] gear; the play generators ask this for "the
+    /// card's own printed timing as a permanent", and the test above keeps
+    /// the def from saying anything else.
     virtual bool hasReactionTiming() const { return false; }
 
     /// For a spell whose several targets are locked in as it is played

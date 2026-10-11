@@ -3374,6 +3374,8 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
     // the card was hidden. Phase 6q+ fix: enumerate targets per-BF and emit
     // one intent per (hidden card × valid target).
     for (auto& bf : state_.battlefields) {
+        // "Your opponents' [Hidden] cards can't be revealed here."
+        if (bf.opp_hidden_unrevealable[playerIndex(player)]) continue;
         for (auto card_id : bf.facedown) {
             if (!state_.objectExists(card_id)) continue;
             auto& card = state_.getObject(card_id);
@@ -4834,7 +4836,7 @@ void GameEngine::recalculateAuras() {
     // Altar of Blood). Reset here; re-asserted by unit/BF applyPassiveAura.
     for (auto& bf : state_.battlefields) {
         bf.surcharge_enemy_multi_move = false;
-        bf.opp_hidden_unrevealable = false;
+        bf.opp_hidden_unrevealable[0] = bf.opp_hidden_unrevealable[1] = false;
         bf.ignore_tank[0] = bf.ignore_tank[1] = false;   // Dune Surfer
         bf.ignore_deflect_here = false;                  // Heisho
         bf.reaction_tax_power = 0;                       // Mystic Vortex

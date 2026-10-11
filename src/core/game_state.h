@@ -388,7 +388,10 @@ struct BattlefieldState {
     // Aura-derived per-BF flags (reset + recomputed each recalculateAuras by the
     // BF/unit cards' applyPassiveAura):
     bool surcharge_enemy_multi_move = false; // Mageseeker Investigator (725): enemy multi-unit moves here cost [A]/extra unit
-    bool opp_hidden_unrevealable = false;    // Noxus Saboteur (018): opponent [Hidden] cards can't be revealed here
+    // Noxus Saboteur (018): "Your opponents' [Hidden] cards can't be revealed
+    // here." [p] is set for the player whose facedown cards here can't be
+    // turned face up, i.e. can't be played from facedown (CR 811).
+    bool opp_hidden_unrevealable[2] = {false, false};
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(

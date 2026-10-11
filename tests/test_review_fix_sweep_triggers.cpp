@@ -15,6 +15,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -2027,15 +2030,27 @@ TEST_F(SweepTriggersTest, Zilean_ADeclinedCopyIsStillAvailableLaterThatTurn) {
 // 9.Q1: every card with a replacement effect says when it applies — the
 // default applies to nothing — and the engine never lists one that does not.
 TEST_F(SweepTriggersTest, ReplacementEffects_EveryCardDefinesWhenItApplies) {
-    const std::vector<CardDefId> expected = {77, 264, 374, 550, 762};
+    // Found from the registry, not listed by hand (9.V1): a card that says it
+    // has a replacement effect must answer Yes or No — never the base
+    // class's NotDefined — and a card that has none leaves it NotDefined.
+    auto probe = addUnit(P2, kInvalidId, 2, 1);
     std::vector<CardDefId> found;
+    int without = 0;
     for (CardDefId id = 1; id <= 1100; ++id) {
         const Card* c = card_registry.get(id);
-        if (c && c->hasReplacementEffect()) found.push_back(id);
+        if (!c) continue;
+        const auto answer = c->replacementAppliesTo(state, kInvalidId, P2, probe);
+        if (c->hasReplacementEffect()) {
+            found.push_back(id);
+            EXPECT_NE(answer, Card::Applies::NotDefined)
+                << card_db.get(id).name << " has a replacement effect but does not say when it applies";
+        } else {
+            ++without;
+            EXPECT_EQ(answer, Card::Applies::NotDefined) << card_db.get(id).name;
+        }
     }
-    // A new replacement card must be added here together with a test that its
-    // replacementApplies is true where its text applies.
-    EXPECT_EQ(found, expected);
+    ASSERT_GE(found.size(), 5u);
+    EXPECT_GT(without, 900);
 
     // None applies to a death it has nothing to do with: an enemy unit dying
     // somewhere else, nothing attached, no combat.
@@ -2054,7 +2069,9 @@ TEST_F(SweepTriggersTest, ReplacementEffects_EveryCardDefinesWhenItApplies) {
     EnginePathAgent agent;
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(mine); }, &agent);
     EXPECT_TRUE(atBase(mine)) << "Zhonya's Hourglass: any friendly unit";
-    EXPECT_TRUE(agent.prompts.empty()) << "only one replacement applied";
+    std::string asked;
+    for (const auto& pr : agent.prompts) for (const auto& i : pr) asked += i.choice_label + " | ";
+    EXPECT_TRUE(agent.prompts.empty()) << "only one replacement applied; asked: " << asked;
 }
 
 // 9.Q3: spell damage that was removed — here by a card zeroing the damage
@@ -2114,6 +2131,135 @@ TEST_F(SweepTriggersTest, CombatParticipants_ARecalledAttackerOfARealTieWasInThe
     EXPECT_TRUE(obj(attacker).isEmpowered()) << "it was in that combat";
     EXPECT_FALSE(obj(bystander).isEmpowered());
     EXPECT_TRUE(obj(defender).location.has_value());
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 21. Sixth follow-up (plans/09 9.U3, 9.V1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.U3: a play dropped from a priority window as failed is offered again
+// once the state has been edited from outside (god mode) — the edit may have
+// removed what made it fail.
+TEST_F(SweepTriggersTest, PriorityWindow_AnOutsideEditBringsBackADroppedPlay) {
+    auto source = addUnit(P1, kInvalidId, 2, -1);
+    auto rune = addUnit(P1, kInvalidId, 0, -1);
+    auto reaction = addToHand(P1, kDecreeOfInsight);
+    ChainManager cm(state, events, card_db);
+    int plays = 0;
+    cm.setPlayCard([&](const Intent&) { ++plays; });               // the play never happens
+    cm.setActivateAbility([](const Intent&) { return false; });    // cost-only: keeps priority
+    cm.addAbility(source, P1, kInvalidId);
+    Intent tap;
+    tap.type = IntentType::ActivateReactionAbility;
+    tap.player = P1;
+    tap.ability_source = rune;
+    Intent play;
+    play.type = IntentType::PlayReaction;
+    play.player = P1;
+    play.card = reaction;
+    std::vector<bool> play_offered;        // per time P1 was asked
+    cm.processFEPR(
+        [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
+            if (p != P1) return Intent::passPriority(p);
+            bool offered = false;
+            for (const auto& i : legal) if (i.type == IntentType::PlayReaction) offered = true;
+            play_offered.push_back(offered);
+            switch (play_offered.size()) {
+                case 1: return play;                       // fails: dropped
+                case 2: return tap;                        // still dropped
+                case 3: cm.forgetDroppedPlays();           // the state is edited while P1 is asked
+                        return tap;
+                default: return Intent::passPriority(p);   // asked again: it is back
+            }
+        },
+        [](const ChainItem&) {},
+        [](const ChainItem&) {},
+        [&](PlayerId p) {
+            std::vector<Intent> out{Intent::passPriority(p)};
+            if (p == P1) { out.push_back(tap); out.push_back(play); }
+            return out;
+        });
+    ASSERT_GE(play_offered.size(), 4u);
+    EXPECT_TRUE(play_offered[0]);
+    EXPECT_FALSE(play_offered[1]) << "dropped after it failed";
+    EXPECT_FALSE(play_offered[2]);
+    EXPECT_TRUE(play_offered[3]) << "offered again after the edit";
+    EXPECT_EQ(plays, 1);
+}
+
+// ... and the engine tells the chain when it is told of an edit: the list a
+// parked decision is rebuilt from (recomputePendingLegalActions) and the
+// chain's own then agree.
+TEST_F(SweepTriggersTest, PriorityWindow_TheEngineForgetsDroppedPlaysOnAnEdit) {
+    auto source = addUnit(P1, kInvalidId, 2, -1);
+    (void)source;
+    // The engine's hook is the one place an edit is announced.
+    const std::string engine_src = [] {
+        std::ifstream in(std::string(std::getenv("RIFTBOUND_ROOT") ? std::getenv("RIFTBOUND_ROOT") : ".") +
+                         "/src/engine/game_engine.cpp");
+        std::stringstream ss; ss << in.rdbuf(); return ss.str();
+    }();
+    const auto at = engine_src.find("void GameEngine::noteEditWhileParked() {");
+    ASSERT_NE(at, std::string::npos);
+    const auto end = engine_src.find("\n}\n", at);
+    EXPECT_NE(engine_src.substr(at, end - at).find("forgetDroppedPlays()"), std::string::npos)
+        << "noteEditWhileParked must clear the chain's dropped plays";
+}
+
+// 9.V1: the combat-damage half of 9.Q3, through a real combat. A unit takes
+// spell damage, the damage is removed, and it then dies of combat damage: not
+// "killed with a spell" (Immortal Phoenix 37 stays in the trash, unasked).
+TEST_F(SweepTriggersTest, KillWithASpell_HealedSpellDamageThenCombatDamageIsNotASpellKill) {
+    constexpr CardDefId kImmortalPhoenix = 37;
+    auto phoenix = addToHand(P1, kImmortalPhoenix);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), phoenix), h.end());
+        obj(phoenix).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(phoenix);
+    }
+    auto spell = addToHand(P1, kDredgeUp);
+    state.battlefields[0].controller = P2;
+    state.battlefields[0].is_contested = true;
+    state.battlefields[0].contested_by = P1;
+    state.battlefields[0].combat_staged = true;
+    addUnit(P1, kInvalidId, 5, 0);
+    auto defender = addUnit(P2, kInvalidId, 2, 0);
+    int phoenix_triggers = 0;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("TRIGGER: Immortal Phoenix") != std::string::npos) ++phoenix_triggers;
+    });
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().dealDamage(defender, 1, spell);      // P1's spell, not lethal
+        e.mutableState().getObject(defender).damage_marked = 0;    // the damage is removed
+        e.testHook_runCombat(0);
+        e.testHook_runChain();
+    });
+    conn.disconnect();
+    ASSERT_FALSE(obj(defender).location.has_value()) << "it died in the combat";
+    EXPECT_EQ(obj(defender).last_known.killed_by, P1);
+    EXPECT_FALSE(obj(defender).last_known.killed_with_spell);
+    EXPECT_EQ(phoenix_triggers, 0);
+}
+
+// Control for the test above: with the spell damage still marked, the same
+// combat death IS a kill with a spell (the marker is what the test removes).
+TEST_F(SweepTriggersTest, KillWithASpell_SpellDamageStillMarkedCountsInCombat) {
+    auto spell = addToHand(P1, kDredgeUp);
+    state.battlefields[0].controller = P2;
+    state.battlefields[0].is_contested = true;
+    state.battlefields[0].contested_by = P1;
+    state.battlefields[0].combat_staged = true;
+    addUnit(P1, kInvalidId, 5, 0);
+    auto defender = addUnit(P2, kInvalidId, 3, 0);
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().dealDamage(defender, 1, spell);
+        e.testHook_runCombat(0);
+        e.testHook_runChain();
+    });
+    ASSERT_FALSE(obj(defender).location.has_value());
+    EXPECT_TRUE(obj(defender).last_known.killed_with_spell);
 }
 
 }  // namespace

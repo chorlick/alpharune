@@ -6992,6 +6992,9 @@ GameEngine::ParkedRef GameEngine::parkedRefOf(GameObjectId id) const {
 
 void GameEngine::noteEditWhileParked() {
     edited_while_parked_ = true;
+    // A play dropped from the current priority window as failed is judged
+    // again in the edited state (ChainManager::forgetDroppedPlays).
+    if (chain_manager_) chain_manager_->forgetDroppedPlays();
     parked_refs_.clear();
     if (!parked_legal_ || pending_query_ != PendingQuery::None) return;
     // A decision that cannot be rebuilt: remember where every object its

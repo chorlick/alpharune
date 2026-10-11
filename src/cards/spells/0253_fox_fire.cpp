@@ -4,7 +4,9 @@
 #include "core/events.h"
 #include "engine/effect_executor.h"
 #include <algorithm>
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include "cards/card_helpers.h"
@@ -16,82 +18,174 @@ class FoxFire : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Kill any number of units at a battlefield with total Might 4 or less."
-    // The controller chooses the units, one prompt at a time: the first names
-    // the battlefield, each later one adds a unit there that still fits the
-    // total, or stops. Progress lives on the resolving item: resume_point
-    // kAwait while a prompt is out, resume_data = the units picked so far.
-    bool needsPlayTimeTarget() const override { return true; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                  .must_be_at_battlefield = true, .max_might = 4};
+    // The units are chosen as the spell is played (CR 355.11.a), one prompt at
+    // a time: the first names the battlefield, each later one adds a unit
+    // there that still fits the total, or stops. Progress lives on the item:
+    // resume_point kAwait while a prompt is out, resume_data = the units
+    // picked so far.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !chooseableUnits(state, controller, [](const GameObject& u) {
+            return u.isAtBattlefield() && u.current_might <= kTotalMight;
+        }).empty();
     }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
         if (ri.resume_point == kDone) return;
-        auto picked_before = [&ri](GameObjectId id) {
-            return std::find(ri.resume_data.begin(), ri.resume_data.end(),
-                             static_cast<int32_t>(id)) != ri.resume_data.end();
+        if (ri.resume_point != kChosen && ri.resume_point != kRechoose &&
+            ri.resume_point != kRechooseAwait) {
+            auto picked_before = [&ri](GameObjectId id) {
+                return std::find(ri.resume_data.begin(), ri.resume_data.end(),
+                                 static_cast<int32_t>(id)) != ri.resume_data.end();
+            };
+            auto candidates = [&]() {
+                int budget = kTotalMight;
+                // Played from facedown: units at that battlefield (CR 811.1.d.2).
+                std::optional<BattlefieldId> bf = facedownPlayBattlefield(ctx.state, ctx.source);
+                for (auto id : ri.resume_data) {
+                    const auto& u = ctx.state.getObject(static_cast<GameObjectId>(id));
+                    budget -= std::max(0, u.current_might);
+                    bf = u.battlefieldId();
+                }
+                auto units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                    return u.isAtBattlefield() && (!bf.has_value() || u.battlefieldId() == bf) &&
+                           u.current_might <= budget && !picked_before(u.id);
+                });
+                std::sort(units.begin(), units.end());
+                return offerableChoices(ctx, units);
+            };
+            bool stop = false;
+            if (ri.resume_point == kAwait) {
+                const auto can_pick = candidates();
+                const GameObjectId unit = takenObject(ctx);
+                if (std::find(can_pick.begin(), can_pick.end(), unit) == can_pick.end()) {
+                    stop = true;   // "stop here", or the unit is no longer available
+                } else {
+                    commitChosenObject(ctx, unit);
+                    ri.resume_data.push_back(static_cast<int32_t>(unit));
+                }
+            } else if (ri.resume_point != kPicking) {
+                ri.resume_data.clear();   // first entry
+            }
+            ri.resume_point = kPicking;
+            if (!stop) {
+                const auto can_pick = candidates();
+                if (!can_pick.empty()) {
+                    std::vector<Intent> options;
+                    // "any number": after the first unit the controller may stop.
+                    if (!ri.resume_data.empty())
+                        options.push_back(valChoice(ctx.controller, 0, "Stop here"));
+                    for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
+                    ctx.executor.requestChoice(ctx.controller, std::move(options),
+                        "Fox-Fire: kill a unit at a battlefield (total Might 4 or less)");
+                    ri.resume_point = kAwait;
+                    return;
+                }
+            }
+            ri.resume_point = kChosen;
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+
+        auto kill = [&](const std::vector<GameObjectId>& units) {
+            ri.resume_point = kDone;
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, units);   // they die at the same time
+                for (auto id : units) ctx.executor.killObject(id);
+            }
+            ctx.events.logTrace("FOX-FIRE: killed " + std::to_string(units.size()) +
+                                " chosen units (total Might <= 4) at one battlefield");
         };
-        auto candidates = [&]() {
+        if (ri.resume_point == kChosen) {
+            // The chosen units that are still legal targets: units at a
+            // battlefield. "At a battlefield with total Might 4 or less" is a
+            // requirement on them as a group (CR 355.11), judged now.
+            const auto legal = chooseableUnits(ctx.state, ctx.controller, [&ri](const GameObject& u) {
+                return u.isAtBattlefield() &&
+                       std::find(ri.resume_data.begin(), ri.resume_data.end(),
+                                 static_cast<int32_t>(u.id)) != ri.resume_data.end();
+            });
+            if (fitsTogether(ctx.state, legal)) { kill(legal); return; }
+            // They no longer fit (a unit gained Might, or they are at different
+            // battlefields): the controller chooses a legal subset of the
+            // ORIGINAL targets to affect (CR 355.11.b). resume_data becomes
+            // [n, the n originals still legal, the subset picked so far].
+            ri.resume_data.assign(1, static_cast<int32_t>(legal.size()));
+            for (auto id : legal) ri.resume_data.push_back(static_cast<int32_t>(id));
+            ri.resume_point = kRechoose;
+        }
+        // One original per prompt, from those at the subset's battlefield that
+        // still fit the total. There is no "stop": a legal subset holds as
+        // many targets as it can (CR 355.11.b.1), so the picking ends when no
+        // original fits any more, and a lone option is taken without asking.
+        if (ri.resume_data.empty()) { ri.resume_point = kDone; return; }
+        const size_t n = static_cast<size_t>(ri.resume_data[0]);
+        auto subset = [&]() {
+            return std::vector<GameObjectId>(
+                ri.resume_data.begin() + static_cast<std::ptrdiff_t>(1 + n), ri.resume_data.end());
+        };
+        auto can_add = [&]() {
+            const auto sub = subset();
             int budget = kTotalMight;
             std::optional<BattlefieldId> bf;
-            for (auto id : ri.resume_data) {
-                const auto& u = ctx.state.getObject(static_cast<GameObjectId>(id));
+            for (auto id : sub) {
+                const auto& u = ctx.state.getObject(id);
                 budget -= std::max(0, u.current_might);
                 bf = u.battlefieldId();
             }
-            auto units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
-                return u.isAtBattlefield() && (!bf.has_value() || u.battlefieldId() == bf) &&
-                       u.current_might <= budget && !picked_before(u.id);
-            });
-            std::sort(units.begin(), units.end());
-            return offerableChoices(ctx, units);
+            std::vector<GameObjectId> out;
+            for (size_t i = 1; i <= n; ++i) {
+                const auto id = static_cast<GameObjectId>(ri.resume_data[i]);
+                if (std::find(sub.begin(), sub.end(), id) != sub.end()) continue;
+                const auto& u = ctx.state.getObject(id);
+                if ((!bf.has_value() || u.battlefieldId() == bf) && u.current_might <= budget)
+                    out.push_back(id);
+            }
+            return out;
         };
-        bool stop = false;
-        if (ri.resume_point == kAwait) {
-            const auto can_pick = candidates();
-            const GameObjectId unit = takenObject(ctx);
-            if (std::find(can_pick.begin(), can_pick.end(), unit) == can_pick.end()) {
-                stop = true;   // "stop here", or the unit is no longer available
-            } else {
-                commitChosenObject(ctx, unit);
-                ri.resume_data.push_back(static_cast<int32_t>(unit));
+        if (ri.resume_point == kRechooseAwait) {
+            const auto options = can_add();
+            GameObjectId unit = takenObject(ctx);
+            if (std::find(options.begin(), options.end(), unit) == options.end())
+                unit = options.empty() ? kInvalidId : options.front();
+            if (unit != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(unit));
+            ri.resume_point = kRechoose;
+        }
+        for (;;) {
+            const auto options = can_add();
+            if (options.empty()) break;
+            if (options.size() == 1) {
+                ri.resume_data.push_back(static_cast<int32_t>(options.front()));
+                continue;
             }
-        } else if (ri.resume_point != kPicking) {
-            // The first unit was chosen as the spell was played (the engine
-            // asks for a needsPlayTimeTarget spell's target then).
-            ri.resume_data.clear();
-            if (!targets.empty()) ri.resume_data.push_back(static_cast<int32_t>(targets[0]));
+            std::vector<Intent> choices;
+            for (auto id : options) choices.push_back(objChoice(ctx.controller, id));
+            ctx.executor.requestChoice(ctx.controller, std::move(choices),
+                "Fox-Fire: the chosen units no longer have total Might 4 or less at one"
+                " battlefield - choose which of them to kill");
+            ri.resume_point = kRechooseAwait;
+            return;
         }
-        ri.resume_point = kPicking;
-        if (!stop) {
-            const auto can_pick = candidates();
-            if (!can_pick.empty()) {
-                std::vector<Intent> options;
-                // "any number": after the first unit the controller may stop.
-                if (!ri.resume_data.empty())
-                    options.push_back(valChoice(ctx.controller, 0, "Stop here"));
-                for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
-                ctx.executor.requestChoice(ctx.controller, std::move(options),
-                    "Fox-Fire: kill a unit at a battlefield (total Might 4 or less)");
-                ri.resume_point = kAwait;
-                return;
-            }
-        }
-        ri.resume_point = kDone;
-        {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
-            for (auto id : ri.resume_data)
-                ctx.executor.killObject(static_cast<GameObjectId>(id));
-        }
-        ctx.events.logTrace("FOX-FIRE: killed " + std::to_string(ri.resume_data.size()) +
-                            " chosen units (total Might <= 4) at one battlefield");
+        kill(subset());
     }
 private:
     static constexpr int kTotalMight = 4;
     // 0-Might units fit any total: "any number" is every unit on offer.
-    enum : int { kPicking = 20, kAwait = 21, kDone = 22 };
+    enum : int { kPicking = 20, kAwait = 21, kDone = 22, kChosen = 23,
+                 kRechoose = 24, kRechooseAwait = 25 };
+    /// Whether `units` meet the requirement as a group: all at one battlefield,
+    /// total Might 4 or less.
+    static bool fitsTogether(const GameState& state, const std::vector<GameObjectId>& units) {
+        int total = 0;
+        std::optional<BattlefieldId> bf;
+        for (auto id : units) {
+            const auto& u = state.getObject(id);
+            if (bf.has_value() && u.battlefieldId() != bf) return false;
+            bf = u.battlefieldId();
+            total += std::max(0, u.current_might);
+        }
+        return total <= kTotalMight;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

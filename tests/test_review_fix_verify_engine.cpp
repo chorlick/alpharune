@@ -1885,9 +1885,11 @@ TEST_F(VerifyEngineTest, EffectPlayedSpell_IsFinalizedAndAnnouncedAsItIsPutOnThe
             auto& counters = st.getObject(outer).card_counters;
             auto it = counters.find("after_play");
             after_play_at_event = it == counters.end() ? 0 : it->second;
-            for (const auto& ci : st.chain.items)
-                if (ci.source == inner)
+            for (const auto& ci : st.chain.items) {
+                if (ci.source == inner) {
                     EXPECT_EQ(ci.status, ChainItemStatus::Finalized);
+                }
+            }
         });
     PickInOrder me;
     me.picks = {e1};

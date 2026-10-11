@@ -5904,12 +5904,11 @@ TEST_F(VerifyCardsTest, Pin_KinkouMonk_NoOtherFriendlyUnit_NothingAsked) {
     EXPECT_EQ(o(enemy).buff_count, 0);
 }
 
-// ─── Volibear, Furious 41 (NOT DONE: needs splitDamageAmong) ────────────────
+// ─── Volibear, Furious 41 ────────────────────────────────────────────────────
 // "When I attack, deal 5 damage split among any number of enemy units here."
-// Fails on the current code: splitDamageAmong offers "No more targets" only
-// from the second prompt on, so the first prompt forces a target. Enable once
-// the helper takes `may_choose_none` and Volibear passes it.
-TEST_F(VerifyCardsTest, DISABLED_VolibearFurious_FirstPromptOffersDamagingNoUnit) {
+// splitDamageAmong(..., may_choose_none) offers "No more targets" on the first
+// prompt too (plans/09 item 9.Z1).
+TEST_F(VerifyCardsTest, VolibearFurious_FirstPromptOffersDamagingNoUnit) {
     auto voli = addUnit(P1, kVolibearFurious, 0, 0);
     auto enemy = addUnit(P2, kInvalidId, 6, 0);
     EnginePathAgent agent(EnginePathAgent::script({0}));   // "No more targets"

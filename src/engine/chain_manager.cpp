@@ -482,9 +482,9 @@ void ChainManager::stepResolve(
     // and is driven through the same resumable loop, so a repeated effect
     // that asks for a choice gets its answer and finishes before the item is
     // disposed of. Its choices may differ from the first execution's
-    // (CR 820.2.a); they are asked here, as the repeat executes, rather than
-    // in the Make-Relevant-Choices step (the simplification noted on
-    // ChainItem::repeats_paid). Play-time `targets` are reused.
+    // (CR 820.2.a) and were made with them, as the item was finalized (CR
+    // 820.2): they are loaded from ChainItem::repeat_choices below. An item
+    // nobody finalized has none and asks as the repeat executes.
     if (state_.chain.resuming.has_value()) {
         const int repeats = state_.chain.resuming->repeats_paid;
         for (int r = 0; r < repeats && state_.chain.resuming.has_value(); ++r) {
@@ -495,6 +495,18 @@ void ChainManager::stepResolve(
             ri.choices_finalized = false;
             ri.finalize_costs_paid = false;
             ri.finalize_checked = 0;
+            // The choices this execution was given as the item was finalized
+            // (CR 820.2; ChainItem::repeat_choices).
+            if (static_cast<size_t>(r) < ri.repeat_choices.size()) {
+                const auto chosen = ri.repeat_choices[static_cast<size_t>(r)];   // copy
+                ri.targets = chosen.targets;
+                ri.chosen_objects = chosen.chosen_objects;
+                ri.resume_point = chosen.resume_point;
+                ri.resume_data = chosen.resume_data;
+                ri.may_answer = chosen.may_answer;
+                ri.choices_finalized = chosen.choices_finalized;
+                ri.finalize_costs_paid = chosen.finalize_costs_paid;
+            }
             runResumable(query_agent, resolve_spell);
         }
     }

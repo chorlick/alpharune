@@ -40,6 +40,11 @@ constexpr CardDefId kTAbilityUnit = 1085;    // unit with "[E]: draw 1"
 constexpr CardDefId kTChooserUnit = 1086;    // unit: "choose an enemy unit" trigger
 constexpr CardDefId kTChooserGear = 1087;    // gear: the same
 constexpr CardDefId kTChooserLegend = 1088;  // legend: the same
+constexpr CardDefId kTFinalSpell = 1089;     // spell: "choose an enemy unit" at finalization, marks it
+constexpr CardDefId kTFinalRepeat = 1090;    // the same with [Repeat] [1]
+constexpr CardDefId kTPlayerSpell = 1091;    // spell: plays a kTFinalSpell from hand, then marks itself
+constexpr CardDefId kTRechooser = 1092;      // [Reaction] spell: the spell below makes new choices
+constexpr CardDefId kTurnToDust = 632;
 constexpr CardDefId kSpinningAxe = 504;      // Equipment that prints [Temporary]
 constexpr CardDefId kPerchedGrimwyrm = 338;  // "play me only to a battlefield you conquered this turn"
 constexpr CardDefId kDianaNoLongerHuman = 711;  // an [Ambush] unit
@@ -171,6 +176,52 @@ using TChooserUnit = TChooser<UnitCard, kTChooserUnit, CardType::Unit>;
 using TChooserGear = TChooser<GearCard, kTChooserGear, CardType::Gear>;
 using TChooserLegend = TChooser<LegendCard, kTChooserLegend, CardType::Legend>;
 
+// "Choose an enemy unit." — chosen as the spell is finalized (kFinalizeResolve);
+// the effect marks the unit.
+class TFinalSpell : public SpellCard {
+public:
+    VE_TEST_CARD_DEF([] { return makeDef(kTFinalSpell, "Test Final", CardType::Spell); }())
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const PlayerId me = ctx.controller;
+        const GameObjectId t = pickTarget(ctx, "Test Final", chooseableUnits(ctx.state, me,
+            [me](const GameObject& o) { return o.controller != me; }));
+        if (finalizingChoices(ctx)) return;
+        if (t != kInvalidId) ctx.state.getObject(t).card_counters["hit"]++;
+    }
+};
+class TFinalRepeat : public TFinalSpell {
+public:
+    const CardDef& def() const override {
+        static const CardDef d = makeDef(kTFinalRepeat, "Test Final Repeat", CardType::Spell);
+        return d;
+    }
+    std::vector<RepeatCost> repeatCosts() const override { return {RepeatCost{.energy = 1}}; }
+};
+// "Play a Test Final from your hand, ignoring its cost." Then marks itself.
+class TPlayerSpell : public SpellCard {
+public:
+    VE_TEST_CARD_DEF([] { return makeDef(kTPlayerSpell, "Test Player", CardType::Spell); }())
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        GameObjectId inner = kInvalidId;
+        for (auto id : ctx.state.player(ctx.controller).hand)
+            if (ctx.state.getObject(id).card_def_id == kTFinalSpell) inner = id;
+        if (inner != kInvalidId) ctx.executor.playIgnoringCost(ctx.controller, inner);
+        ctx.state.getObject(ctx.source).card_counters["after_play"] = 1;
+    }
+};
+// "[Reaction] The spell below this makes new choices." Then marks itself.
+class TRechooser : public SpellCard {
+public:
+    VE_TEST_CARD_DEF([] { auto d = makeDef(kTRechooser, "Test Rechooser", CardType::Spell);
+                          d.keywords.set(Keyword::Reaction); return d; }())
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.chain.items.empty())
+            ctx.executor.makeNewChoices(ctx.state.chain.items.back().id);
+        ctx.state.getObject(ctx.source).card_counters["after_rechoose"] = 1;
+    }
+};
+
 // ─── Agents ─────────────────────────────────────────────────────────────────
 
 /// Answers every decision with `answer(state, legal)`; counts what it was asked.
@@ -214,6 +265,10 @@ protected:
         card_registry.registerCard(kTChooserUnit, std::make_unique<TChooserUnit>());
         card_registry.registerCard(kTChooserGear, std::make_unique<TChooserGear>());
         card_registry.registerCard(kTChooserLegend, std::make_unique<TChooserLegend>());
+        card_registry.registerCard(kTFinalSpell, std::make_unique<TFinalSpell>());
+        card_registry.registerCard(kTFinalRepeat, std::make_unique<TFinalRepeat>());
+        card_registry.registerCard(kTPlayerSpell, std::make_unique<TPlayerSpell>());
+        card_registry.registerCard(kTRechooser, std::make_unique<TRechooser>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1504,6 +1559,219 @@ TEST_F(VerifyEngineTest, EnemyChoices_CountUnitAbilitiesNotGearOrLegendAbilities
     EXPECT_EQ(ps(P1).enemy_choices_this_turn, 0) << "nor is a legend's";
     fire(unit);
     EXPECT_EQ(ps(P1).enemy_choices_this_turn, 1) << "a unit's ability counts";
+}
+
+// ═══ 9.T4: choices are made where the rules finalize ════════════════════════
+
+namespace {
+/// Answers the n-th object prompt with picks[n]; `at_prompt(state)` is called
+/// at each one. Passes priority, says yes (1) to a yes/no.
+struct PickInOrder : AgentInterface {
+    std::vector<GameObjectId> picks;
+    std::function<void(const GameState&)> at_prompt;
+    int object_prompts = 0;
+    Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+        const bool objects = std::any_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return i.type == IntentType::MakeChoice && !i.chosen_objects.empty();
+        });
+        if (objects) {
+            if (at_prompt) at_prompt(st);
+            const size_t n = static_cast<size_t>(object_prompts++);
+            for (const auto& i : legal)
+                if (n < picks.size() && !i.chosen_objects.empty() &&
+                    i.chosen_objects.front() == picks[n]) return i;
+            ADD_FAILURE() << "object prompt " << n << " did not offer the scripted pick";
+            return legal.front();
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::MakeChoice && i.chosen_value.has_value() &&
+                *i.chosen_value == 1) return i;
+        return passOrFirst(legal);
+    }
+};
+}  // namespace
+
+// (1) A spell an effect plays is finalized as it is put on the chain: its
+//     choices are made then, before the rest of the effect that played it.
+TEST_F(VerifyEngineTest, EffectPlayedSpell_MakesItsChoicesAsItIsPutOnTheChain) {
+    auto e1 = addVanilla(P2, 3);
+    auto e2 = addVanilla(P2, 3);
+    auto outer = addToHand(P1, kTPlayerSpell);
+    addToHand(P1, kTFinalSpell);
+    PickInOrder me;
+    me.picks = {e2};
+    int after_play_at_prompt = -1;
+    me.at_prompt = [&](const GameState& st) {
+        auto& c = st.getObject(outer).card_counters;
+        auto it = c.find("after_play");
+        after_play_at_prompt = it == c.end() ? 0 : it->second;
+    };
+    playThroughEngine(outer, &me);
+    ASSERT_EQ(me.object_prompts, 1);
+    EXPECT_EQ(after_play_at_prompt, 0)
+        << "the inner spell chose while the effect that played it was still under way";
+    EXPECT_EQ(o(e2).card_counters["hit"], 1);
+    EXPECT_EQ(o(e1).card_counters["hit"], 0);
+    EXPECT_EQ(o(outer).card_counters["after_play"], 1);
+}
+
+// (2) "Make new choices" (CR 750-755): the new choices are made as that effect
+//     resolves, not when the re-chosen spell resolves later.
+TEST_F(VerifyEngineTest, MakeNewChoices_AFinalizePassSpellChoosesAgainAtOnce) {
+    auto e1 = addVanilla(P2, 3);
+    auto e2 = addVanilla(P2, 3);
+    auto spell = addToHand(P1, kTFinalSpell);
+    auto rechooser = addToHand(P2, kTRechooser);
+    PickInOrder me;
+    me.picks = {e1, e2};
+    std::vector<int> marker_at_prompt;
+    me.at_prompt = [&](const GameState& st) {
+        auto& c = st.getObject(rechooser).card_counters;
+        auto it = c.find("after_rechoose");
+        marker_at_prompt.push_back(it == c.end() ? 0 : it->second);
+    };
+    bool responded = false;
+    LambdaAgent them([&](const GameState&, const std::vector<Intent>& legal) {
+        if (!responded)
+            for (const auto& i : legal)
+                if (i.type == IntentType::PlayReaction && i.card == rechooser) {
+                    responded = true;
+                    return i;
+                }
+        return passOrFirst(legal);
+    });
+    playThroughEngine(spell, &me, std::nullopt, &them);
+    ASSERT_TRUE(responded) << "the opponent answered with the re-choice spell";
+    ASSERT_EQ(me.object_prompts, 2);
+    ASSERT_EQ(marker_at_prompt.size(), 2u);
+    EXPECT_EQ(marker_at_prompt[1], 0)
+        << "asked again while the re-choice effect was resolving, not afterwards";
+    EXPECT_EQ(o(e1).card_counters["hit"], 0);
+    EXPECT_EQ(o(e2).card_counters["hit"], 1) << "the new choice is the one that counts";
+}
+
+// (3) Repeat (CR 820.2): the choices of the additional execution are made with
+//     the first execution's, as the spell is finalized — the opponent responds
+//     knowing both — and need not be the same (820.2.a).
+TEST_F(VerifyEngineTest, Repeat_TheExtraExecutionChoosesAtFinalization) {
+    auto e1 = addVanilla(P2, 3);
+    auto e2 = addVanilla(P2, 3);
+    auto spell = addToHand(P1, kTFinalRepeat);
+    ps(P1).rune_pool.energy = 1;   // the Repeat cost
+    PickInOrder me;
+    me.picks = {e1, e2};
+    int prompts_answered_at_priority = -1;
+    size_t stored_at_priority = 99;
+    LambdaAgent them([&](const GameState& st, const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority && !st.chain.items.empty() &&
+                prompts_answered_at_priority < 0) {
+                prompts_answered_at_priority = me.object_prompts;
+                stored_at_priority = st.chain.items.back().repeat_choices.size();
+            }
+        return passOrFirst(legal);
+    });
+    playThroughEngine(spell, &me, std::nullopt, &them);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "the Repeat was paid";
+    EXPECT_EQ(prompts_answered_at_priority, 2)
+        << "both executions had chosen when the opponent could respond";
+    EXPECT_EQ(stored_at_priority, 1u);
+    EXPECT_EQ(me.object_prompts, 2) << "nothing is asked again at resolution";
+    EXPECT_EQ(o(e1).card_counters["hit"], 1);
+    EXPECT_EQ(o(e2).card_counters["hit"], 1);
+}
+
+// Pin (CR 355.14.b): with nothing to target as the split is finalized, no
+// target is chosen — a unit that arrives in response takes nothing.
+TEST_F(VerifyEngineTest, Pin_SplitDamage_NothingToTargetAtFinalizationDealsNothing) {
+    state.battlefields[0].controller = P2;
+    auto bear = addUnit(P1, kVolibearFurious, 0, 0);
+    auto late = addVanilla(P2, 9);
+    GameEngine* engine = nullptr;
+    bool arrived = false;
+    LambdaAgent them([&](const GameState& st, const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority && !st.chain.items.empty() && !arrived) {
+                arrived = true;
+                engine->testHook_executor().moveToBattlefield(late, 0);
+            }
+        return passOrFirst(legal);
+    });
+    EnginePathAgent me;
+    withEngine([&](GameEngine& e) {
+        engine = &e;
+        e.testHook_executor().queueTriggeredAbility(bear, P1, TriggerType::WhenIAttack,
+                                                    kInvalidId);
+        e.testHook_runChain();
+    }, &me, &them);
+    ASSERT_TRUE(arrived);
+    EXPECT_TRUE(me.prompts.empty());
+    EXPECT_EQ(o(late).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(o(late).damage_marked, 0);
+}
+
+// ═══ 9.U1: a [Temporary] given to Equipment that also prints it ═════════════
+
+TEST_F(VerifyEngineTest, Temporary_GivenToAttachedEquipmentThatAlsoPrintsItKillsIt) {
+    auto bearer = addVanilla(P1, 3);
+    auto axe = addGear(P1, kSpinningAxe);
+    o(axe).attached_to = bearer;
+    o(bearer).attachments.push_back(axe);
+    auto control = addGear(P1, kSpinningAxe);        // attached, printed only
+    auto bearer2 = addVanilla(P1, 3);
+    o(control).attached_to = bearer2;
+    o(bearer2).attachments.push_back(control);
+
+    // Turn to Dust 632: "Give a gear [Temporary]."
+    auto dust = addToHand(P2, kTurnToDust);
+    const auto& def = card_db.get(kTurnToDust);
+    ps(P2).rune_pool.energy += def.energy_cost;
+    ps(P2).rune_pool.universal_power += def.power_cost;
+    Intent play = playOf(dust);
+    play.targets = {axe};
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, nullptr, nullptr, P2);
+    ASSERT_TRUE(o(axe).granted_keywords.has(Keyword::Temporary));
+    ASSERT_TRUE(onBoard(axe));
+
+    state.turn.turn_player = P1;
+    withEngine([&](GameEngine& e) { e.testHook_beginningStep(); });
+    EXPECT_FALSE(onBoard(axe)) << "the given [Temporary] is not its printed text (CR 718.2)";
+    EXPECT_TRUE(onBoard(control)) << "printed only, attached: Inactive";
+}
+
+// ═══ 9.U2: "the second player" is who lost the coin toss (CR 116) ═══════════
+
+TEST_F(VerifyEngineTest, ChannelPhase_TheExtraRuneGoesToWhoeverDidNotGoFirst) {
+    auto fill = [&](PlayerId p) {
+        ps(p).rune_deck.clear();
+        for (int i = 0; i < 4; ++i) {
+            auto rune = state.createObject();
+            o(rune).owner = o(rune).controller = p;
+            o(rune).card_type = CardType::Rune;
+            o(rune).domains = {Domain::Order};
+            o(rune).zone = ZoneType::RuneDeck;
+            ps(p).rune_deck.push_back(rune);
+        }
+    };
+    auto channeled = [&](PlayerId turn_player, int turn_number) {
+        fill(turn_player);
+        state.turn.turn_player = turn_player;
+        state.turn.turn_number = turn_number;
+        ps(turn_player).is_first_turn = true;
+        withEngine([](GameEngine& e) { e.testHook_channelPhase(); }, nullptr, nullptr,
+                   turn_player);
+        return 4 - static_cast<int>(ps(turn_player).rune_deck.size());
+    };
+    state.turn.starting_player = P1;
+    state.turn.phase = TurnPhase::AwakenPhase;
+    // P2 lost the toss. Its first turn gets the extra rune whatever number the
+    // turn carries (the old code read "turn 0" as "the first player's turn").
+    EXPECT_EQ(channeled(P2, 0), 3);
+    EXPECT_EQ(channeled(P2, 1), 3);
+    // P1 went first: no extra rune on its first turn, at any turn number (an
+    // extra turn before it does not make it "the second player").
+    EXPECT_EQ(channeled(P1, 0), 2);
+    EXPECT_EQ(channeled(P1, 2), 2);
 }
 
 }  // namespace

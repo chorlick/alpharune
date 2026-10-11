@@ -413,7 +413,7 @@ TEST_F(LedgerTest, ReactionUnit_IsStillOfferedInAClosedState) {
 
 // ═══ 09 item 9.C4: no play-anywhere permission on 67, 562, 752 ══════════════
 
-// Printed texts (def().ability_text, identical in cards/raw/gallery_raw.json
+// Printed texts (def().ability_text; the same wording in cards/raw/gallery_raw.json
 // ogn-067-298, unl-003-219, unl-194-219):
 //   Blitzcrank, Impassive: "When you play me to a battlefield, you may move an
 //     enemy unit to here."                                — a trigger condition

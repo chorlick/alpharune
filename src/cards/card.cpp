@@ -126,6 +126,7 @@ enum : uint32_t {
     kModeAwait = 1u << 2,  kModeDone = 1u << 3,
     kTgtAwait = 1u << 4,   kTgtDone = 1u << 5,
     kPairAwaitA = 1u << 6, kPairAwaitB = 1u << 7, kPairDone = 1u << 8,
+    kCostUnpaid = 1u << 9,   // Card::markCostUnpaid
 };
 uint32_t choiceState(const ChainItem& ri) {
     return ri.resume_data.size() > Card::kChoiceStateSlot
@@ -137,6 +138,33 @@ void setChoiceState(ChainItem& ri, uint32_t clear, uint32_t set) {
     slot = static_cast<int32_t>((static_cast<uint32_t>(slot) & ~clear) | set);
 }
 }  // namespace
+
+void Card::markCostUnpaid(CardContext& ctx) {
+    auto& r = ctx.state.chain.resuming;
+    if (r.has_value()) setChoiceState(*r, 0, kCostUnpaid);
+}
+
+bool Card::costUnpaid(const CardContext& ctx) {
+    const auto& r = ctx.state.chain.resuming;
+    return r.has_value() && (choiceState(*r) & kCostUnpaid);
+}
+
+bool Card::killAsCost(CardContext& ctx, GameObjectId object) const {
+    bool died = false;
+    if (ctx.state.objectExists(object) && ctx.state.getObject(object).location.has_value()) {
+        // The death itself is what counts, not where the object is afterwards:
+        // EffectExecutor::killObject announces a death as a LeftBoardEvent
+        // with was_killed, and a replacement ("banish it instead", "return it
+        // to hand instead", "it stays") announces something else or nothing.
+        boost::signals2::scoped_connection watch = ctx.events.on_left_board.connect(
+            [&died, object](const LeftBoardEvent& e) {
+                if (e.object == object && e.was_killed) died = true;
+            });
+        ctx.executor.killObject(object);
+    }
+    if (!died) markCostUnpaid(ctx);
+    return died;
+}
 
 int Card::confirmOptional(CardContext& ctx, const std::string& label,
                            const std::function<bool()>& still_legal) {

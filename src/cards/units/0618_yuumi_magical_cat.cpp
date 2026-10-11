@@ -25,12 +25,11 @@ public:
         if (ctx.state.objectExists(ctx.source)) {
             auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
             if (my_bf)
-                for (auto& [id, obj] : ctx.state.objects)
-                    if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
-                        obj.battlefieldId() == my_bf)
-                        legal.push_back(id);
+                legal = boardObjects(ctx.state, [&](const GameObject& o) {
+                    return o.id != ctx.source && o.isUnit() && o.controller == ctx.controller &&
+                           o.battlefieldId() == my_bf;
+                });
         }
-        std::sort(legal.begin(), legal.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Yuumi: give one of your other units here +3 [M] and [Tank]",
                                           legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

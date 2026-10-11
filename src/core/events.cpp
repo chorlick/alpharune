@@ -27,7 +27,6 @@ void EventBus::emit(const CombatStartedEvent& e) { on_combat_started(e); }
 void EventBus::emit(const CombatEndedEvent& e) { on_combat_ended(e); }
 void EventBus::emit(const ShowdownStartedEvent& e) { on_showdown_started(e); }
 void EventBus::emit(const ShowdownEndedEvent& e) { on_showdown_ended(e); }
-void EventBus::emit(const CleanupNeededEvent& e) { on_cleanup_needed(e); }
 void EventBus::emit(const StateSettledEvent& e) { on_state_settled(e); }
 void EventBus::emit(const ObjectStateChangedEvent& e) { on_object_state_changed(e); }
 void EventBus::emit(const UnitStunnedEvent& e) { on_unit_stunned(e); }
@@ -80,7 +79,6 @@ void EventBus::disconnectAll() {
     on_combat_ended.disconnect_all_slots();
     on_showdown_started.disconnect_all_slots();
     on_showdown_ended.disconnect_all_slots();
-    on_cleanup_needed.disconnect_all_slots();
     on_state_settled.disconnect_all_slots();
     on_object_state_changed.disconnect_all_slots();
     on_unit_stunned.disconnect_all_slots();

@@ -313,6 +313,10 @@ struct ActivationCost {
     // gear"): 0 = any card, else 1 + static_cast<int>(CardType).
     int discard_type_filter = 0;
     bool kill_friendly_unit = false; // "Kill a friendly unit" as a cost (Escaped Grayback)
+    // "Banish this" as a cost (The Zero Drive): the source is banished as the
+    // ability is activated, so it is gone before anyone can respond. A source
+    // that is not on the board cannot pay it.
+    bool banish_self = false;
 };
 
 // ─── Complete effect script ─────────────────────────────────────────────────

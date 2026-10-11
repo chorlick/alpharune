@@ -28,10 +28,6 @@ public:
     // Each unit moved is a unit chosen: units that can't be chosen by enemy
     // abilities are left out, Deflect is paid (Card::offerableChoices /
     // commitChosenObject).
-    // ENGINE-GAP: the resolve loop allows 16 re-entries, so at most kMaxMoves
-    // units can be moved by one attack.
-    static constexpr int kMaxMoves = 12;
-    static constexpr size_t kMovedSlot = 7;   // resume_data: units moved so far
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;    // needs the resume loop
@@ -39,7 +35,6 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!bf) return;
-        while (ri.resume_data.size() <= kMovedSlot) ri.resume_data.push_back(0);
         auto eligible = [&]() {
             const PlayerId me = ctx.controller;
             const BattlefieldId here = *bf;
@@ -47,11 +42,9 @@ public:
                 auto obf = obj.battlefieldId();
                 return obj.controller != me && obf && *obf == here && obj.current_might <= 5;
             });
-            std::sort(out.begin(), out.end());
             return offerableChoices(ctx, out);
         };
         auto offer = [&]() {
-            if (ri.resume_data[kMovedSlot] >= kMaxMoves) return false;
             auto units = eligible();
             if (units.empty()) return false;
             std::vector<Intent> out;
@@ -76,7 +69,6 @@ public:
             if (std::find(legal.begin(), legal.end(), uid) != legal.end()) {
                 commitChosenObject(ctx, uid);
                 ctx.executor.moveToBase(uid);
-                ++ri.resume_data[kMovedSlot];
                 ctx.events.logTrace("CORRUPTED DRAGON: moved an enemy unit to its base");
             }
             if (!offer()) ri.resume_point = 2;

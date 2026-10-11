@@ -123,8 +123,21 @@ GameResult GameRunner::run() {
             "ships RandomAgent; mcts/ismcts/human live in the binary's TU).");
     };
 
-    auto agent1 = makeAgent(0, config_.agent1_spec);
-    auto agent2 = makeAgent(1, config_.agent2_spec);
+    // A failure is reported with the game it happened in: in a batch the
+    // caller otherwise cannot tell which seed to re-run.
+    auto inThisGame = [&](const std::exception& e) {
+        return std::runtime_error(
+            "game " + std::to_string(config_.game_index + 1) +
+            " [seed=" + std::to_string(game_seed) + "]: " + e.what());
+    };
+
+    std::unique_ptr<AgentInterface> agent1, agent2;
+    try {
+        agent1 = makeAgent(0, config_.agent1_spec);
+        agent2 = makeAgent(1, config_.agent2_spec);
+    } catch (const std::exception& e) {
+        throw inThisGame(e);
+    }
 
     // Decision callback feeds the HTML replay writer when --render is on.
     engine.on_decision = [&](const GameState& state,
@@ -135,7 +148,12 @@ GameResult GameRunner::run() {
         }
     };
 
-    auto result = engine.runGame(deck1_, deck2_, *agent1, *agent2, game_seed);
+    GameResult result;
+    try {
+        result = engine.runGame(deck1_, deck2_, *agent1, *agent2, game_seed);
+    } catch (const std::exception& e) {
+        throw inThisGame(e);
+    }
 
     // Finalize outputs
     if (replay) {

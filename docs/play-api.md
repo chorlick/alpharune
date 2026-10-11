@@ -157,8 +157,11 @@ Player2) is parked in `selectAction` waiting for input.
   (`"hand"`, `"main_deck"`, `"rune_deck"`); `hand_count`,
   `main_deck_count` and `rune_deck_count` are always present.
   `render_text` follows the same rule (`Hand:  (4 cards, hidden)`).
-  The `log` stream does **not**: trace lines name cards as the engine
-  handles them (draws, mulligans), whoever they belong to.
+  The `log` stream is withheld entirely in that case: no `log`
+  message is sent to any client. Engine log lines name cards as they
+  are drawn, mulliganed, hidden or looked at, and carry no marker of
+  who may see them, so none are forwarded. (The HTML replay on disk
+  still has the full trace.)
 * `battlefields[].name` is disambiguated when both players brought the
   same battlefield. `controller` / `contributed_by` are `"P1"`, `"P2"`
   or `"none"`.
@@ -206,6 +209,11 @@ One engine log line, streamed as it is emitted:
 ```
 
 `level` is `TRC`, `DBG`, `INF` or `WRN`.
+
+Sent only when frames carry everything (god mode on, no human seat, or
+`--show-hand`). With hidden information withheld — a human seat and
+`--god-mode off` — the server sends no `log` messages at all; see
+"Hidden information" above.
 
 ### `edit_ok` / `edit_err`
 

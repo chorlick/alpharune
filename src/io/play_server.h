@@ -66,7 +66,8 @@ struct PlayServerConfig {
     /// When true, frames carry every hand and both decks in order. When
     /// false a frame shows only what a seated human may see: their own
     /// hand (in hot-seat play, the hand of whoever is deciding), sizes for
-    /// everything else. `main.cpp` sets it when god mode is on (the editor
+    /// everything else, and `broadcastLog` sends nothing (log lines name
+    /// hidden cards). `main.cpp` sets it when god mode is on (the editor
     /// lists every zone) or no seat is human.
     bool reveal_hidden = false;
 
@@ -132,7 +133,9 @@ public:
     /// SIGINT / SIGTERM does. The server keeps serving until stop().
     void requestShutdown();
 
-    /// Push a single log line to every connected WebSocket client.
+    /// Push a single log line to every connected WebSocket client — unless
+    /// `PlayServerConfig::reveal_hidden` is off, in which case the line is
+    /// not sent (it may name a card the viewer must not see).
     /// Safe to call from any thread (engine, game runner, etc.).
     /// `level` is the engine LogLevel as a short tag — "TRC", "DBG",
     /// "INF", "WRN". The UI's log panel filters and styles by level.

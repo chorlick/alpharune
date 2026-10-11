@@ -234,10 +234,11 @@ std::unique_ptr<AgentInterface> buildAgent(const AgentSpec& spec,
                                            const std::string& deck1,
                                            const std::string& deck2,
                                            const std::string& registry,
+                                           PlayerId seat,
                                            HumanAgent** human_out) {
     if (spec.kind == "random") return std::make_unique<RandomAgent>(derived_seed);
     if (spec.kind == "human") {
-        auto a = std::make_unique<HumanAgent>();
+        auto a = std::make_unique<HumanAgent>(seat);
         if (human_out) *human_out = a.get();
         return a;
     }
@@ -630,7 +631,8 @@ int main(int argc, char* argv[]) {
                     throw std::runtime_error("batch mode cannot use human seats");
                 }
                 uint64_t derived = game_seed * 2 + static_cast<uint64_t>(seat);
-                return buildAgent(s, game_seed, derived, d1, d2, r, nullptr);
+                return buildAgent(s, game_seed, derived, d1, d2, r,
+                                  seat == 0 ? PlayerId::Player1 : PlayerId::Player2, nullptr);
             };
 
         GameConfig cfg;
@@ -690,8 +692,8 @@ int main(int argc, char* argv[]) {
     try {
         // game_seed flows through verbatim so MCTS-style agents seed their
         // internal OpenSpiel state with the same value runGame uses below.
-        agent1 = buildAgent(spec1, game_seed, game_seed * 2,     deck1_path, deck2_path, registry_path, &p1_human_ptr);
-        agent2 = buildAgent(spec2, game_seed, game_seed * 2 + 1, deck1_path, deck2_path, registry_path, &p2_human_ptr);
+        agent1 = buildAgent(spec1, game_seed, game_seed * 2,     deck1_path, deck2_path, registry_path, PlayerId::Player1, &p1_human_ptr);
+        agent2 = buildAgent(spec2, game_seed, game_seed * 2 + 1, deck1_path, deck2_path, registry_path, PlayerId::Player2, &p2_human_ptr);
     } catch (const std::exception& e) {
         std::cerr << "Failed to build agents: " << e.what() << "\n";
         return 1;
@@ -831,7 +833,13 @@ int main(int argc, char* argv[]) {
             seat2 = published2.get();
         }
 
-        // Stream engine log events into the UI log panel.
+        if (any_human && !god_mode_enabled && !show_hand) {
+            std::cout << "  Fair play: the opponent's hand, both decks and the engine "
+                         "log are not sent to the browser.\n\n";
+        }
+
+        // Stream engine log events into the UI log panel. (The server
+        // drops them when it is withholding hidden information.)
         if (debug_mode || trace_mode) {
             events.on_log.connect([s = server.get(), trace_mode](const LogEvent& e) {
                 if (e.level == LogLevel::Trace && !trace_mode) return;

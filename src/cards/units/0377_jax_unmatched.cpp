@@ -57,8 +57,6 @@ private:
         d.rarity = Rarity::Rare;
         d.deflect_value = 1;
         d.keywords.set(Keyword::Deflect);
-        d.keywords.set(Keyword::QuickDraw);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Deflect] (Opponents must pay [A] to choose me with a spell or ability.)
 Your Equipment everywhere have [Quick-Draw]. (Each gains [Reaction]. When you play it, attach it to a unit you control.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3d425589c74dbff818fa09db134fdd8bb7136420-744x1039.png)RB";

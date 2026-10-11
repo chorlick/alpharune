@@ -14,13 +14,22 @@ namespace {
 class IreliaFervent : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "When you choose OR ready me, give me +1 [M] this turn." Both halves
-    // now have an engine trigger; both grant the same +1 M.
+    // "When you choose OR ready me, give me +1 [M] this turn."
+    // Choose: WhenYouChooseAFriendlyUnit fires on every friendly watcher with
+    // the chosen unit as subject — only my own choice counts.
+    // Ready: WhenIBecomeReady covers an effect readying me and my controller
+    // readying me in their Awaken Phase (CR 416.3.a).
     std::vector<TriggerType> triggerTypes() const override {
-        return {TriggerType::WhenYouChooseAFriendlyUnit, TriggerType::WhenIAmReadied};
+        return {TriggerType::WhenYouChooseAFriendlyUnit, TriggerType::WhenIBecomeReady};
+    }
+    bool triggerCondition(const GameState& /*state*/, GameObjectId source,
+                          PlayerId /*controller*/, TriggerType trigger,
+                          GameObjectId subject) const override {
+        return trigger != TriggerType::WhenYouChooseAFriendlyUnit || subject == source;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        // "give me": only while I'm still on the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 1);
         ctx.events.logTrace("IRELIA FERVENT: chosen/readied -> +1 [M] this turn");
     }

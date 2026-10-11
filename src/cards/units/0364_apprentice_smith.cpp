@@ -20,6 +20,9 @@ public:
     // draw it. Otherwise, recycle it."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         auto& ps = ctx.state.player(ctx.controller);
+        // Void Hatchling: "If you would reveal cards from a deck, look at the
+        // top card first." — this reveal counts too.
+        ctx.executor.lookBeforeReveal(ctx.controller);
         if (ps.main_deck.empty()) return;
         GameObjectId top = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::everyone());
         if (!ctx.state.objectExists(top)) return;

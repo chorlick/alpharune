@@ -15,21 +15,15 @@ class YordleExplorer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you play a card with Power cost [A][A] or more, draw 1." ([A][A] = 2 Power)
-    std::vector<TriggerType> triggerTypes() const override {
-        return {TriggerType::WhenYouPlayAUnit,
-                TriggerType::WhenYouPlayASpell,
-                TriggerType::WhenYouPlayAGear};
-    }
+    // The played card is the trigger's subject (unit, gear or spell).
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayACard; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Find the most-recently played card on the chain (skip the trigger
-        // ability items pushed on top of it).
-        CardDefId played = kInvalidId;
-        for (auto it = ctx.state.chain.items.rbegin(); it != ctx.state.chain.items.rend(); ++it) {
-            if (it->is_spell || it->is_permanent) { played = it->card_def_id; break; }
-        }
-        if (played == kInvalidId) return;
-        const auto& def = ctx.executor.cardDB().get(played);
-        if (def.power_cost < 2) return;
+        const GameObjectId played = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (played == kInvalidId || !ctx.state.objectExists(played)) return;
+        const CardDefId played_def = ctx.state.getObject(played).card_def_id;
+        if (played_def == kInvalidId) return;   // a token without a card has no cost
+        if (ctx.executor.cardDB().get(played_def).power_cost < 2) return;
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("YORDLE EXPLORER: played [A][A]+ card -> draw 1");
     }

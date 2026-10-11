@@ -19,12 +19,13 @@ class RenataGlascMastermind : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
-            if (obj.isAtBattlefield()) return true;
-        }
-        return false;
+    // "Use my abilities only while I'm at a battlefield." — the Renata whose
+    // ability it is, not any Renata the player controls.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!state.objectExists(source) || !state.getObject(source).isAtBattlefield())
+            return false;
+        return UnitCard::canActivateAbilityAt(state, controller, source, ability_index);
     }
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {

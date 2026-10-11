@@ -32,6 +32,8 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         auto& self = ctx.state.getObject(ctx.source);
+        // "my keywords", "my Might": nothing to give once I've left the board.
+        if (!self.location.has_value()) return;
         // Grant my current keywords (this turn).
         for (uint32_t k = 0; k < static_cast<uint32_t>(Keyword::Count); ++k) {
             auto kw = static_cast<Keyword>(k);

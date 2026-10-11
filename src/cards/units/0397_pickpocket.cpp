@@ -27,8 +27,9 @@ public:
                 if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy)
                     continue;
-                const auto& def = ctx.executor.cardDB().get(obj.card_def_id);
-                if (def.energy_cost > 1) continue;
+                // A token without a card of its own costs nothing.
+                if (obj.card_def_id != kInvalidId &&
+                    ctx.executor.cardDB().get(obj.card_def_id).energy_cost > 1) continue;
                 out.push_back(id);
             }
             return out;

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -23,57 +24,13 @@ public:
             ctx.events.logTrace("CORRUPT ENFORCER: win combat -> draw 1");
             return;
         }
-        // WhenIMoveToFB (default branch): discard 1 via the resumable
-        // single-card discard choice.
-        discardThenAct(ctx, 1, "Corrupt Enforcer: discard 1");
-    }
-
-private:
-    // Local copy of the resumable discard helper (the deck_cards.cpp version
-    // is file-local and not exported). Posts one MakeChoice per hand card;
-    // resume_point 1 commits the chosen discard.
-    static void discardThenAct(CardContext& ctx, int count,
-                                const std::string& label) {
+        // WhenIMoveToFB: "discard 1" — the controller chooses the card.
         if (!ctx.state.chain.resuming.has_value()) {
-            // No chain context (e.g. direct test invocation): best-effort
-            // discard via executor's own chooser.
-            ctx.executor.discardCards(ctx.controller, count);
+            // No chain item to resume (called directly): no agent to ask.
+            ctx.executor.discardCards(ctx.controller, 1);
             return;
         }
-        auto& ri = ctx.state.chain.resuming.value();
-        auto& ps = ctx.state.player(ctx.controller);
-        auto build_choices = [&]() {
-            std::vector<Intent> out;
-            for (auto cid : ps.hand) {
-                Intent c;
-                c.type = IntentType::MakeChoice;
-                c.player = ctx.controller;
-                c.chosen_objects = {cid};
-                out.push_back(std::move(c));
-            }
-            return out;
-        };
-        switch (ri.resume_point) {
-        case 0: {
-            if (ps.hand.empty() || count <= 0) return;
-            ri.resume_data = {count};
-            ctx.executor.requestChoice(ctx.controller, build_choices(), label);
-            ri.resume_point = 1;
-            return;
-        }
-        case 1: {
-            auto choice = ctx.executor.takeChoice();
-            if (choice && !choice->chosen_objects.empty()) {
-                ctx.executor.applyDiscard(ctx.controller, choice->chosen_objects[0]);
-            }
-            if (!ri.resume_data.empty()) ri.resume_data[0]--;
-            if (ri.resume_data.empty() || ri.resume_data[0] <= 0 || ps.hand.empty()) {
-                return;
-            }
-            ctx.executor.requestChoice(ctx.controller, build_choices(), label);
-            return;
-        }
-        }
+        discardThenAct(ctx, 1, "Corrupt Enforcer: discard 1", [](CardContext&) {});
     }
 private:
     const CardDef def_ = [] {

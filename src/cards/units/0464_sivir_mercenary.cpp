@@ -50,7 +50,6 @@ private:
         d.might = 4;
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Accelerate);
-        d.keywords.set(Keyword::Ganking);
         d.ability_text = R"RB([Accelerate] (You may pay [1][P] as an additional cost to have me enter ready.)
 If you've spent at least [A][A] this turn, I have +2 [M] and [Ganking]. (I can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cb07b4adc6e301fae973ab13156028390facbad2-744x1039.png)RB";

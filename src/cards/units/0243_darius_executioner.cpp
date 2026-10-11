@@ -15,12 +15,11 @@ namespace {
 class DariusExecutioner_243 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;
         ctx.executor.readyObject(ctx.source);
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    bool requiresLegion() const override { return true; }
     // "Other friendly units have +1 [M] here." — every OTHER friendly unit at
     // the battlefield I'm at.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {

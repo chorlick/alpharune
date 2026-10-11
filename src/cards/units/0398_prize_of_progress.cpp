@@ -21,6 +21,8 @@ public:
         return TriggerType::WhenYouActivateAGearAbility;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        // "give me": only while I'm still on the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 1);
         ctx.events.logTrace("PRIZE OF PROGRESS: gear ability used -> +1 [M] this turn");
     }

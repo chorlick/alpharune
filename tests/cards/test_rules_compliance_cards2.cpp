@@ -1026,16 +1026,22 @@ TEST_F(RulesCards2Test, RulesCards2_JaeMedarda_DrawsWhenASpellOfMineChoseHer) {
     addToDeck(P1, kInvalidId);
     addToDeck(P1, kInvalidId);
 
+    // "with a spell" of mine is the ability's trigger condition, decided as
+    // the choice happens (plans/cards/batch-05.md, 463): it used to be
+    // re-derived from the chain when the trigger resolved.
+    const Card* card = card_registry.get(kJaeMedarda);
+    const auto chosen = TriggerType::WhenYouChooseAFriendlyUnit;
+
     // An ENEMY spell choosing her is not "you choose me".
     pushSpellOnChain(P2, kInvalidId, {});
     state.chain.items.back().chosen_objects = {jae};
-    fireTriggerAs(kJaeMedarda, P1, jae, TriggerType::WhenYouChooseAFriendlyUnit, exec);
-    EXPECT_EQ(handSize(P1), 0);
+    EXPECT_FALSE(card->triggerCondition(state, jae, P1, chosen, jae));
 
     // My spell, with her only in chosen_objects.
     pushSpellOnChain(P1, kInvalidId, {});
     state.chain.items.back().chosen_objects = {jae};
-    fireTriggerAs(kJaeMedarda, P1, jae, TriggerType::WhenYouChooseAFriendlyUnit, exec);
+    ASSERT_TRUE(card->triggerCondition(state, jae, P1, chosen, jae));
+    fireTriggerAs(kJaeMedarda, P1, jae, chosen, exec);
     EXPECT_EQ(handSize(P1), 1);
 }
 

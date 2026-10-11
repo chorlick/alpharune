@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,16 +21,8 @@ public:
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;
-            // "here" — must be at a battlefield with another friendly unit.
-            auto my_bf = self.battlefieldId();
-            if (!my_bf) continue;
-            bool another = false;
-            for (auto& [oid, other] : state.objects) {
-                if (oid == sid) continue;
-                if (!other.isUnit() || other.controller != controller) continue;
-                if (other.battlefieldId() == my_bf) { another = true; break; }
-            }
-            if (!another) continue;
+            // "here" — my location, a battlefield or my base (CR 464.2.b).
+            if (otherFriendlyUnitsHere(state, self) == 0) continue;
             GameObject::AuraEffect ae;
             ae.source = sid;
             ae.might_bonus = 1;

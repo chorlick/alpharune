@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,10 +17,16 @@ public:
     const CardDef& def() const override { return def_; }
     // "When another non-Recruit unit you control dies, play a 1 [M] Recruit
     // unit token into your base."
-    // NOTE: the engine fires WhenAFriendlyUnitDies generically and does not
-    // surface the dead unit's tags at resolution time, so the "non-Recruit"
-    // filter can't be enforced here. Core effect (token into base) implemented.
     TriggerType triggerType() const override { return TriggerType::WhenAFriendlyUnitDies; }
+    // "another non-Recruit unit": the dead unit is the trigger's subject and
+    // keeps its tags in the trash (a token keeps them too, CR 183.1).
+    bool triggerCondition(const GameState& state, GameObjectId source,
+                          PlayerId /*controller*/, TriggerType /*trigger*/,
+                          GameObjectId subject) const override {
+        if (subject == kInvalidId || subject == source) return false;
+        if (!state.objectExists(subject)) return false;
+        return !hasTag(state.getObject(subject), "Recruit");
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         LocationId loc{BaseLocation{ctx.controller}};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",

@@ -48,7 +48,6 @@ private:
         d.energy_cost = 4;
         d.might = 2;
         d.rarity = Rarity::Epic;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction] — [Add] [2]. Use only to play spells. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/17d0793ad495727e67bb1c94ae0e11cd4705870f-744x1039.png)RB";
         return d;

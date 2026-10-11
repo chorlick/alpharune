@@ -17,8 +17,8 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        createGoldToken(ctx);
-        ctx.events.logTrace("HONEST BROKER (Deathknell): Gold gear token created");
+        createGoldExhausted(ctx);
+        ctx.events.logTrace("HONEST BROKER (Deathknell): Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

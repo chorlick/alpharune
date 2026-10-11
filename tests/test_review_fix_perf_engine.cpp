@@ -3035,4 +3035,165 @@ TEST_F(PerfEngineHiddenHourglass, HiddenBlade_ADeathReplacedByABanishDrawsNobody
     EXPECT_EQ(state.player(P1).hand.size(), p1_hand + 2);
 }
 
+
+// ─── 9.QQ1: every Hidden Blade example of the Vendetta rules FAQ ────────────
+// "Kill a unit at a battlefield. Its controller draws 2." The FAQ passage on
+// ignored and negated instructions:
+//   1. the unit is returned to hand in reaction (Star-Crossed): the kill
+//      mistargets, "Its controller draws 2" is ignored;
+//   2. [Repeat] (the Academy) with both executions on the same unit: "the
+//      unit's controller doesn't draw 4 cards" — the second mistargets;
+//   3. "I can't be killed": negated, the controller still draws 2 — NOT
+//      testable here: no card in the engine says "can't be killed" and there
+//      is no such hook; the on-board branch it would take is example 5's;
+//   4. moved to base in reaction (Flash): ignored, no draw;
+//   5. Zhonya's Hourglass in reaction: on the board, its controller draws 2;
+//   6. Smite earlier this turn: banished instead, nobody draws.
+// 5 and 6 are HiddenBlade_ADeathReplacedByABanishDrawsNobodyCards above.
+class PerfEngineHiddenBladeFaq : public PerfEngineHiddenHourglass {
+protected:
+    static constexpr CardDefId kHiddenBladeCard = 213;
+    static constexpr CardDefId kDetonate = 328;
+    void SetUp() override {
+        PerfEngineHiddenHourglass::SetUp();
+        for (int i = 0; i < 8; ++i) { addToDeck(P1, kShipyardSkulker); addToDeck(P2, kShipyardSkulker); }
+    }
+    size_t hand(PlayerId p) { return state.player(p).hand.size(); }
+    /// P2 plays `spell` choosing `target`; `in_reaction` runs with the spell on
+    /// the chain, before it resolves.
+    void playChoosing(GameObjectId spell, GameObjectId target, bool pay_repeat,
+                      const std::function<void(EffectExecutor&, GameState&)>& in_reaction = {}) {
+        state.player(P2).rune_pool.energy += 12;
+        state.player(P2).rune_pool.universal_power += 6;
+        EnginePathAgent p2([&, target, pay_repeat](const std::vector<Intent>& legal) -> Intent {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == target) return i;
+            for (const auto& i : legal)
+                if (i.chosen_value == std::optional<int>{pay_repeat ? 1 : 0}) return i;
+            return legal.front();
+        });
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P2;
+        play.card = spell;
+        if (state.getObject(spell).card_def_id == kDetonate) play.targets = {target};
+        // "In reaction": the first time P1 is given priority with the spell
+        // on the chain (finalized, not resolved).
+        GameEngine* live = nullptr;
+        bool reacted = false;
+        riftbound::test::PickByPredicateAgent p1([&](int, const std::vector<Intent>& legal) {
+            const bool priority = std::any_of(legal.begin(), legal.end(), [](const Intent& i) {
+                return i.type == IntentType::PassPriority; });
+            if (priority && !reacted && live && in_reaction) {
+                reacted = true;
+                in_reaction(live->testHook_executor(), live->mutableState());
+            }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) return i;
+            return legal.front();
+        });
+        withEngine([&](GameEngine& e) {
+            live = &e;
+            e.testHook_executeIntent(play);
+            settleLikeTheEngine(e);
+            live = nullptr;
+        }, &p1, &p2, P2);
+        if (in_reaction) { EXPECT_TRUE(reacted) << "P1 was never given priority on the spell"; }
+    }
+};
+
+TEST_F(PerfEngineHiddenBladeFaq, ReturnedToHandInReaction_TheDrawIsIgnored) {            // example 1
+    const GameObjectId unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId blade = addToHand(P2, kHiddenBladeCard);
+    const size_t before = hand(P1);
+    playChoosing(blade, unit, false, [&](EffectExecutor& x, GameState&) { x.bounceToHand(unit); });
+    EXPECT_EQ(o(unit).zone, ZoneType::Hand);
+    EXPECT_EQ(hand(P1), before + 1) << "the returned unit only: no draw";
+}
+
+TEST_F(PerfEngineHiddenBladeFaq, MovedToBaseInReaction_TheDrawIsIgnored) {               // example 4
+    const GameObjectId unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId blade = addToHand(P2, kHiddenBladeCard);
+    const size_t before = hand(P1);
+    playChoosing(blade, unit, false, [&](EffectExecutor& x, GameState&) { x.moveToBase(unit); });
+    ASSERT_TRUE(onBoard(unit)) << "not at a battlefield any more: not killed";
+    EXPECT_TRUE(o(unit).isAtBase());
+    EXPECT_EQ(hand(P1), before);
+}
+
+TEST_F(PerfEngineHiddenBladeFaq, RepeatedOnTheSameUnit_ItsControllerDrawsTwoNotFour) {    // example 2
+    const GameObjectId unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId blade = addToHand(P2, kHiddenBladeCard);
+    state.player(P2).grant_repeat_base_to_next_spell = true;      // the Academy
+    const size_t before = hand(P1);
+    int repeats_executed = 0;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("REPEAT: paid 1 extra tranche(s) for Hidden Blade") != std::string::npos)
+            ++repeats_executed;
+    });
+    playChoosing(blade, unit, /*pay_repeat=*/true);
+    conn.disconnect();
+    ASSERT_EQ(repeats_executed, 1) << "the Repeat was paid";
+    EXPECT_EQ(o(unit).zone, ZoneType::Trash);
+    EXPECT_EQ(hand(P1), before + 2) << "the second execution mistargets: no second draw";
+}
+
+// The control for example 2: a Repeat that chooses ANOTHER unit does draw again.
+TEST_F(PerfEngineHiddenBladeFaq, RepeatedOnTwoUnits_EachControllerDraws) {
+    const GameObjectId first = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId second = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId blade = addToHand(P2, kHiddenBladeCard);
+    state.player(P2).grant_repeat_base_to_next_spell = true;
+    state.player(P2).rune_pool.energy += 12;
+    state.player(P2).rune_pool.universal_power += 6;
+    const size_t before = hand(P1);
+    int object_prompts = 0;
+    EnginePathAgent p2([&](const std::vector<Intent>& legal) -> Intent {
+        const bool objects = std::any_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return !i.chosen_objects.empty(); });
+        if (objects) {
+            const GameObjectId want = object_prompts++ == 0 ? first : second;
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        }
+        for (const auto& i : legal) if (i.chosen_value == std::optional<int>{1}) return i;
+        return legal.front();
+    });
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P2;
+    play.card = blade;
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(play);
+        settleLikeTheEngine(e);
+    }, nullptr, &p2, P2);
+    EXPECT_EQ(o(first).zone, ZoneType::Trash);
+    EXPECT_EQ(o(second).zone, ZoneType::Trash);
+    EXPECT_EQ(hand(P1), before + 4);
+}
+
+// Detonate 328, "Kill a gear. Its controller draws 2.": the same passage.
+TEST_F(PerfEngineHiddenBladeFaq, Detonate_FollowsTheSameRules) {
+    // Killed: its controller draws 2.
+    const GameObjectId gear = addEquipment(P1, kLongSword);
+    size_t before = hand(P1);
+    playChoosing(addToHand(P2, kDetonate), gear, false);
+    EXPECT_EQ(o(gear).zone, ZoneType::Trash);
+    EXPECT_EQ(hand(P1), before + 2);
+    // Returned to hand in reaction: ignored.
+    const GameObjectId gone = addEquipment(P1, kLongSword);
+    before = hand(P1);
+    playChoosing(addToHand(P2, kDetonate), gone, false,
+                 [&](EffectExecutor& x, GameState&) { x.bounceToHand(gone); });
+    EXPECT_EQ(o(gone).zone, ZoneType::Hand);
+    EXPECT_EQ(hand(P1), before + 1) << "the returned gear only";
+    // Repeated on the same gear: 2, not 4.
+    const GameObjectId twice = addEquipment(P1, kLongSword);
+    state.player(P2).grant_repeat_base_to_next_spell = true;
+    before = hand(P1);
+    playChoosing(addToHand(P2, kDetonate), twice, /*pay_repeat=*/true);
+    EXPECT_EQ(o(twice).zone, ZoneType::Trash);
+    EXPECT_EQ(hand(P1), before + 2);
+}
+
 }  // namespace test_review_fix_perf_engine

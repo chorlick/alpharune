@@ -9,38 +9,51 @@
 
 namespace riftbound {
 
-// finalize_checked bit 4: a cost payment was started during the finalize pass.
-// It counts as paid only once the card reaches its end-of-choices marker, so a
-// payment that fails (the card returns early) is still owed at resolution.
+// A cost is due exactly once per chain item, on every path.
+//
+// The end-of-choices marker (finalizingChoices) is also the end of the card's
+// cost section: once a run of the callback reaches it after costDueNow() said
+// "due", the cost counts as paid. Until then it is still owed — a card that
+// asks which unit to kill inside its cost section is re-entered with the cost
+// still due, and a payment that fails (the card returns early) is owed again
+// later. After it, costDueNow() is false however often a later prompt brings
+// the card back in: in the rest of the finalize pass, at resolution after a
+// finalize pass that paid, and at resolution when no finalize pass ran at all
+// (a card that does not opt in, an item an effect put on the chain).
+//
+// finalize_checked bit 4: a cost was asked for during the finalize pass.
+// finalize_checked bit 16: a cost was asked for while resolving.
+// finalize_checked bit 8: that cost was paid while resolving (marker reached).
 bool Card::finalizingChoices(const CardContext& ctx) {
     auto& r = ctx.state.chain.resuming;
-    if (!r.has_value() || !r->finalizing) return false;
+    if (!r.has_value()) return false;
+    if (!r->finalizing) {
+        if (r->finalize_checked & 16) r->finalize_checked |= 8;
+        return false;
+    }
     if (r->finalize_checked & 4) r->finalize_costs_paid = true;
     return true;
 }
 
-// finalize_checked bit 16: a cost was asked for in THIS run of the callback.
-// bit 8: one was asked for in an EARLIER run of the same pass — the engine
-// promotes 16 to 8 each time it re-enters the card (GameEngine::resolveSpell)
-// — so it is paid and not due again when a prompt after the payment brings
-// the card back in. A cost is therefore due exactly once per chain item on
-// every path (finalize pass, or resolution when no finalize pass paid it), and
-// every costDueNow() call within one run of the callback agrees.
 bool Card::costDueNow(CardContext& ctx) {
     auto& r = ctx.state.chain.resuming;
     if (!r.has_value()) return true;
-    if (!r->finalizing && r->choices_finalized && r->finalize_costs_paid) return false;
+    if (r->finalizing) {
+        if (r->finalize_costs_paid) return false;   // paid earlier in this pass
+        r->finalize_checked |= 4;
+        return true;
+    }
+    if (r->choices_finalized && r->finalize_costs_paid) return false;
     if (r->finalize_checked & 8) return false;
     r->finalize_checked |= 16;
-    if (r->finalizing) r->finalize_checked |= 4;
     return true;
 }
 
 bool Card::costAlreadyPaid(const CardContext& ctx) {
     const auto& r = ctx.state.chain.resuming;
     if (!r.has_value()) return false;
-    if (r->finalize_checked & 8) return true;
-    return !r->finalizing && r->choices_finalized && r->finalize_costs_paid;
+    if (r->finalizing) return r->finalize_costs_paid;
+    return (r->choices_finalized && r->finalize_costs_paid) || (r->finalize_checked & 8);
 }
 
 // ── Choice-helper progress ──────────────────────────────────────────────────
@@ -852,9 +865,9 @@ bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTer
     if (!payEquipExtraCost(ctx, unit)) return false;
     // The extra cost may have removed either end ("Kill a friendly unit").
     if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
-    if (ctx.state.getObject(ctx.source).attached_to.has_value())
-        ctx.executor.unattachGear(ctx.source);
-    attachEquipped(ctx, ctx.source, unit);
+    // EffectExecutor::attachGear takes an attached Equipment off its old
+    // bearer first (unattachGear) and checks both ends are on the board.
+    if (!ctx.executor.attachGear(ctx.source, unit)) return false;
     onEquipped(ctx, unit);
     return true;
 }

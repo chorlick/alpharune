@@ -63,12 +63,9 @@ public:
             for (auto cid : top) {
                 deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
             }
-            if (drawn != kInvalidId && ctx.state.objectExists(drawn)) {
-                auto& d = ctx.state.getObject(drawn);
-                d.zone = ZoneType::Hand;
-                d.location = std::nullopt;
-                ps.hand.push_back(drawn);
-            }
+            // "Draw one": a draw (draws_this_turn, "When you draw").
+            if (drawn != kInvalidId && ctx.state.objectExists(drawn))
+                ctx.executor.drawHeldCard(ctx.controller, drawn, /*seen_by_all=*/false);
             std::vector<GameObjectId> rest;
             for (auto cid : top) if (cid != drawn) rest.push_back(cid);
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);

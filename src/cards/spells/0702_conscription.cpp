@@ -62,18 +62,7 @@ public:
         // Recall (CR 457-458): relocated to its controller's base. Not a Move,
         // so no UnitMovedEvent and no "when I move" triggers. Attached gear
         // goes with it; damage and statuses are unaffected.
-        auto& unit = ctx.state.getObject(picked);
-        if (unit.location.has_value()) {
-            unit.location = BaseLocation{unit.controller};
-            unit.zone = ZoneType::Base;
-            unit.combat_designation = CombatDesignation::None;
-            for (auto gid : unit.attachments) {
-                if (!ctx.state.objectExists(gid)) continue;
-                auto& g = ctx.state.getObject(gid);
-                g.location = unit.location;
-                g.zone = ZoneType::Base;
-            }
-        }
+        ctx.executor.recallToBase(picked);
         ctx.events.logTrace("CONSCRIPTION: take control + exhaust + recall (paid="
                             + std::to_string(widened) + ")");
     }

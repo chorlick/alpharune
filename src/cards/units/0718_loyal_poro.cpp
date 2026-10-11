@@ -16,26 +16,16 @@ class LoyalPoro : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    // "I wasn't alone if there were other friendly units here." — judged from
+    // the last-known information taken as I died (CR 383.2.c.3.b): for units
+    // that die at the same time it is taken for all of them first, so a unit
+    // that died with me was still "here".
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        // Read where I died from. last_location is set by killObject when
-        // a unit dies; current `location` will be empty (in trash now).
-        if (!self.last_location.has_value()) return;
-        const auto& death_loc = *self.last_location;
-        // "Didn't die alone" — any OTHER friendly unit still at the same
-        // location, not counting myself (already in trash).
-        bool has_company = false;
-        for (const auto& [oid, obj] : ctx.state.objects) {
-            if (oid == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (*obj.location == death_loc) { has_company = true; break; }
-        }
-        if (has_company) {
-            ctx.events.logTrace("LOYAL PORO: not alone at death — drawing 1");
-            ctx.executor.drawCards(ctx.controller, 1);
-        }
+        const auto& lk = ctx.state.getObject(ctx.source).last_known;
+        if (!lk.valid || lk.other_friendly_units_here.empty()) return;
+        ctx.events.logTrace("LOYAL PORO: not alone at death — drawing 1");
+        ctx.executor.drawCards(ctx.controller, 1);
     }
 private:
     const CardDef def_ = [] {

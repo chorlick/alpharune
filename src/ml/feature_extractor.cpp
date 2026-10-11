@@ -26,6 +26,59 @@ inline float safeBfId(BattlefieldId id) {
     return static_cast<float>(id);
 }
 
+// Where the extractor's board queries land, gathered in ONE pass over
+// `state.objects`. The extractor used to ask the state ~24 separate
+// questions (`unitsAt` per battlefield per player, twice; runes, base units,
+// base gear and ready base units per player), each a full scan of the object
+// map returning a fresh vector. Every list keeps the map's iteration order,
+// which is the order those queries returned — the top-3 sorts below depend
+// on it for ties.
+struct BoardIndex {
+    static constexpr int kBfSlots = 4;
+    std::vector<GameObjectId> bf_units[kBfSlots][2];  // [battlefield slot][seat]
+    std::vector<GameObjectId> runes_in_base[2];       // by whose base
+    std::vector<GameObjectId> base_units[2];          // by controller, any base
+    std::vector<GameObjectId> base_gear[2];           // by controller, any base
+
+    static int seat(PlayerId p) { return p == PlayerId::Player2 ? 1 : 0; }
+
+    void build(const GameState& state) {
+        for (auto& slot : bf_units) for (auto& v : slot) v.clear();
+        for (int s = 0; s < 2; ++s) {
+            runes_in_base[s].clear();
+            base_units[s].clear();
+            base_gear[s].clear();
+        }
+        const int bf_count = std::min<int>(
+            kBfSlots, static_cast<int>(state.battlefields.size()));
+        for (auto& [oid, obj] : state.objects) {
+            if (!obj.location.has_value()) continue;
+            const bool seated = obj.controller == PlayerId::Player1 ||
+                                obj.controller == PlayerId::Player2;
+            if (const auto* base = std::get_if<BaseLocation>(&*obj.location)) {
+                if (obj.isRune()) {
+                    if (base->player == PlayerId::Player1 ||
+                        base->player == PlayerId::Player2) {
+                        runes_in_base[seat(base->player)].push_back(oid);
+                    }
+                } else if (obj.isUnit()) {
+                    if (seated) base_units[seat(obj.controller)].push_back(oid);
+                } else if (obj.isGear()) {
+                    if (seated) base_gear[seat(obj.controller)].push_back(oid);
+                }
+            } else if (obj.isUnit() && seated) {
+                const BattlefieldId at =
+                    std::get<BattlefieldLocation>(*obj.location).id;
+                for (int i = 0; i < bf_count; ++i) {
+                    if (state.battlefields[i].id == at) {
+                        bf_units[i][seat(obj.controller)].push_back(oid);
+                    }
+                }
+            }
+        }
+    }
+};
+
 // 20 features per side (written to `out`) plus 12 extended per-unit features
 // (3 units × 4 fields) written to `ext_out` if non-null. Top-3 ordering is by
 // current_might descending — same for both buffers so the trainer can line
@@ -128,8 +181,10 @@ void extractSideFeatures(const GameState& state,
 void extractPlayerFeatures(const GameState& state, PlayerId player,
                            bool is_self, PlayerId /*perspective*/,
                            const CardDB& card_db,
+                           const BoardIndex& board,
                            std::vector<float>& out) {
     auto& ps = state.player(player);
+    const int seat = BoardIndex::seat(player);
 
     // Resources (8)
     out.push_back(static_cast<float>(ps.score));
@@ -183,7 +238,7 @@ void extractPlayerFeatures(const GameState& state, PlayerId player,
     }
 
     // Runes (2) — ready vs exhausted count
-    auto runes = state.runesInBase(player);
+    const auto& runes = board.runes_in_base[seat];
     int ready = 0, exhausted = 0;
     for (auto rid : runes) {
         if (state.getObject(rid).is_exhausted) exhausted++;
@@ -225,14 +280,14 @@ void extractPlayerFeatures(const GameState& state, PlayerId player,
     // Base units: count, total might, total damage, num exhausted (4)
     struct BaseUnitInfo { CardDefId def_id; int might; };
     std::vector<BaseUnitInfo> base_unit_infos;
+    base_unit_infos.reserve(board.base_units[seat].size());
     int base_might = 0, base_damage = 0, base_exhausted = 0;
-    for (auto& [id, obj] : state.objects) {
-        if (obj.isUnit() && obj.controller == player && obj.isAtBase()) {
-            base_unit_infos.push_back({obj.card_def_id, obj.current_might});
-            base_might += obj.current_might;
-            base_damage += obj.damage_marked;
-            if (obj.is_exhausted) base_exhausted++;
-        }
+    for (auto uid : board.base_units[seat]) {
+        auto& obj = state.getObject(uid);
+        base_unit_infos.push_back({obj.card_def_id, obj.current_might});
+        base_might += obj.current_might;
+        base_damage += obj.damage_marked;
+        if (obj.is_exhausted) base_exhausted++;
     }
     out.push_back(static_cast<float>(base_unit_infos.size()));
     out.push_back(static_cast<float>(base_might));
@@ -247,15 +302,12 @@ void extractPlayerFeatures(const GameState& state, PlayerId player,
                        ? safeCardId(base_unit_infos[i].def_id) : 0.0f);
 
     // Base gear count (1) + top 2 gear IDs (2)
-    std::vector<CardDefId> gear_ids;
-    for (auto& [id, obj] : state.objects) {
-        if (obj.isGear() && obj.controller == player && obj.isAtBase())
-            gear_ids.push_back(obj.card_def_id);
-    }
+    const auto& gear_ids = board.base_gear[seat];
     out.push_back(static_cast<float>(gear_ids.size()));
     for (int i = 0; i < 2; ++i)
         out.push_back(i < static_cast<int>(gear_ids.size())
-                       ? safeCardId(gear_ids[i]) : 0.0f);
+                       ? safeCardId(state.getObject(gear_ids[i]).card_def_id)
+                       : 0.0f);
 
     // Trash and banishment sizes (2)
     out.push_back(static_cast<float>(ps.trash.size()));
@@ -288,9 +340,25 @@ std::vector<float> extractStateFeatures(const GameState& state,
                                         PlayerId perspective,
                                         const CardDB& card_db) {
     std::vector<float> features;
+    extractStateFeatures(state, perspective, card_db, features);
+    return features;
+}
+
+void extractStateFeatures(const GameState& state,
+                          PlayerId perspective,
+                          const CardDB& card_db,
+                          std::vector<float>& features) {
+    features.clear();
     features.reserve(kStateFeatureDim);
 
     PlayerId opp = opponent(perspective);
+
+    // One scan of the object map for everything below (see BoardIndex). The
+    // index is per thread so its lists keep their capacity between calls.
+    thread_local BoardIndex board;
+    board.build(state);
+    const int self_seat = BoardIndex::seat(perspective);
+    const int opp_seat  = BoardIndex::seat(opp);
 
     // Global features (10)
     features.push_back(static_cast<float>(state.turn.turn_number));
@@ -334,10 +402,12 @@ std::vector<float> extractStateFeatures(const GameState& state,
     }
 
     // Self player features (70)
-    extractPlayerFeatures(state, perspective, true, perspective, card_db, features);
+    extractPlayerFeatures(state, perspective, true, perspective, card_db,
+                          board, features);
 
     // Opponent player features (70)
-    extractPlayerFeatures(state, opp, false, perspective, card_db, features);
+    extractPlayerFeatures(state, opp, false, perspective, card_db,
+                          board, features);
 
     // Battlefield features (49 each × 4 = 196). Also collects per-side
     // extended features (12 floats per side) into ext_per_side for later
@@ -385,9 +455,8 @@ std::vector<float> extractStateFeatures(const GameState& state,
             features.push_back(bf.is_token ? 1.0f : 0.0f);
 
             // Per-side features (20 each × 2 = 40) + extended per-side (12 each).
-            auto bf_loc = BattlefieldLocation{bf.id};
-            auto p1u = state.unitsAt(bf_loc, PlayerId::Player1);
-            auto p2u = state.unitsAt(bf_loc, PlayerId::Player2);
+            const auto& p1u = board.bf_units[i][0];
+            const auto& p2u = board.bf_units[i][1];
             extractSideFeatures(state, p1u, features, ext_per_side[ext_slot++]);
             extractSideFeatures(state, p2u, features, ext_per_side[ext_slot++]);
         } else {
@@ -536,10 +605,9 @@ std::vector<float> extractStateFeatures(const GameState& state,
     };
     for (int i = 0; i < 4; ++i) {
         if (i < static_cast<int>(state.battlefields.size())) {
-            auto bf_loc = BattlefieldLocation{state.battlefields[i].id};
             // perspective ordering: self side first, then opp side
-            emit_unit_t2(state.unitsAt(bf_loc, perspective));
-            emit_unit_t2(state.unitsAt(bf_loc, opp));
+            emit_unit_t2(board.bf_units[i][self_seat]);
+            emit_unit_t2(board.bf_units[i][opp_seat]);
         } else {
             for (int slot = 0; slot < 2 * kMaxBfUnitsPerSide * kPerUnitExtFieldsT2; ++slot)
                 features.push_back(0.0f);
@@ -548,16 +616,15 @@ std::vector<float> extractStateFeatures(const GameState& state,
 
     // Extended globals (positions 4599..4622, 24 floats).
     // 4599..4600: ready base unit count (self, opp).
-    auto count_ready_base = [&](PlayerId p) {
+    auto count_ready_base = [&](int seat) {
         int n = 0;
-        for (auto& [id, obj] : state.objects) {
-            if (obj.isUnit() && obj.controller == p && obj.isAtBase()
-                && !obj.is_exhausted) n++;
+        for (auto uid : board.base_units[seat]) {
+            if (!state.getObject(uid).is_exhausted) n++;
         }
         return n;
     };
-    features.push_back(static_cast<float>(count_ready_base(perspective)));
-    features.push_back(static_cast<float>(count_ready_base(opp)));
+    features.push_back(static_cast<float>(count_ready_base(self_seat)));
+    features.push_back(static_cast<float>(count_ready_base(opp_seat)));
 
     // 4601..4602: cost modifier magnitude sum (self, opp).
     auto cost_mod_sum = [](const auto& mods) {
@@ -630,8 +697,6 @@ std::vector<float> extractStateFeatures(const GameState& state,
 
     // 4622: total battlefield count.
     features.push_back(static_cast<float>(state.battlefields.size()));
-
-    return features;
 }
 
 int actionTypeIndex(IntentType type) {

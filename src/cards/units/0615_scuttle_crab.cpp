@@ -38,9 +38,11 @@ public:
             };
             for (auto card_id : ctx.state.player(opp).hand)
                 show(card_id, ZoneType::Hand, deck::Place::Hand);
-            // ENGINE-GAP: "this turn" covers cards the opponent hides later in
-            // the turn too; there is no standing look-at permission, so only
-            // the cards facedown now are shown.
+            // "this turn": the cards facedown now, and — through the standing
+            // permission — any the opponent hides later this turn
+            // (TriggerManager::onCardHidden shows them).
+            ctx.state.player(ctx.controller).may_look_at_opp_facedown_turn =
+                ctx.state.turn.turn_number;
             for (const auto& bf : ctx.state.battlefields)
                 for (auto card_id : bf.facedown)
                     if (ctx.state.objectExists(card_id) &&

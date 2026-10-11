@@ -52,7 +52,7 @@ public:
                 break;
             const GameObjectId unit = ctx.executor.chooseObjectNow(ctx.controller, units);
             if (unit == kInvalidId) break;
-            spendBuff(ctx, unit);
+            ctx.executor.spendBuff(unit, ctx.controller);
             ++adj.power_reduction;
         }
         return adj;

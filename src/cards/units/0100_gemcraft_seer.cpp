@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -15,31 +16,22 @@ class GemcraftSeer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // Clause 1: "[Vision]" on me — engine-handled (TriggerManager::onCardPlayed
-    // peeks the top card on play for any unit with the Vision keyword).
-    // Clause 2: "Other friendly units have [Vision]." Grant the Vision keyword
-    // via aura to every other friendly unit. Mirrors Forecaster's grant. The
-    // play-time Vision look (TriggerManager::onCardPlayed) refreshes the
-    // continuous effects and asks hasKeyword(), so a unit played while a Seer
-    // is on the board gets its look. One Seer is enough: Vision is redundant.
+    // "[Vision]" on me is the keyword's own ability (TriggerManager queues
+    // it, engine/keyword_abilities.h). "Other friendly units have [Vision]."
+    // is granted by aura, once per Seer on the board (applyPassiveAura is
+    // called once per card and controller, so every instance is looped):
+    // each grant is an instance of [Vision], and instances trigger separately
+    // (CR 817.2).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        GameObjectId self_id = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId()) continue;
-            if (obj.controller != controller || !obj.location.has_value()) continue;
-            self_id = id;
-            break;
-        }
-        if (self_id == kInvalidId) return;
-        for (auto& [uid, u] : state.objects) {
-            if (uid == self_id) continue;  // "other"
-            if (!u.isUnit() || u.controller != controller || !u.location.has_value())
-                continue;
-            GameObject::AuraEffect ae;
-            ae.source = self_id;
-            ae.keyword = Keyword::Vision;
-            u.aura_effects.push_back(ae);
-        }
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId self_id, GameObject& self) {
+            if (!self.location.has_value()) return;
+            for (auto& [uid, u] : state.objects) {
+                if (uid == self_id) continue;  // "other"
+                if (!u.isUnit() || u.controller != controller || !u.location.has_value())
+                    continue;
+                auraKeyword(u, self_id, Keyword::Vision);
+            }
+        });
     }
 private:
     const CardDef def_ = [] {

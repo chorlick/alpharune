@@ -212,6 +212,8 @@ struct LiveGame {
     std::thread game_thread;
     bool spectating = false;
     std::atomic<int> trace_lines{0};   // engine log lines handed to the server
+    std::mutex log_mu;
+    std::vector<std::string> not_for_p1;   // lines P1 may not read (LogEvent::audience)
 
     /// `tweak` adjusts the config before the server starts.
     explicit LiveGame(std::function<void(PlayServerConfig&)> tweak = {},
@@ -231,7 +233,12 @@ struct LiveGame {
         // As main.cpp does with a human seat: the whole trace goes to the server.
         events.on_log.connect([this](const LogEvent& e) {
             trace_lines.fetch_add(1);
-            server->broadcastLog(e.level == LogLevel::Trace ? "TRC" : "DBG", e.message);
+            if (!e.visibleTo(PlayerId::Player1)) {
+                std::lock_guard<std::mutex> lock(log_mu);
+                not_for_p1.push_back(e.message);
+            }
+            server->broadcastLog(e.level == LogLevel::Trace ? "TRC" : "DBG", e.message,
+                                 e.audience);
         });
         engine.on_decision = [this](const GameState&, const std::vector<Intent>& legal,
                                     const Intent& chosen) {
@@ -535,13 +542,32 @@ TEST(PlayServerProtocol, FairPlayFramesWithholdOpponentHandAndDeckOrder) {
         EXPECT_EQ(p2_section.find(" Hand:  " + name), std::string::npos) << name;
     }
     // By now cards were drawn and mulligans taken, and the engine logged
-    // every one by name. None of it may have reached this client.
+    // every one by name. The human in seat 1 gets the lines seat 1 may read
+    // (LogEvent::audience) and none of the others: no P2 draw, no line for
+    // neither player.
+    game.server->broadcastLog("TRC", "sweep-marker: public", LogAudience::both());
+    game.server->broadcastLog("TRC", "sweep-marker: P1 only", LogAudience::only(PlayerId::Player1));
+    game.server->broadcastLog("TRC", "sweep-marker: P2 only", LogAudience::only(PlayerId::Player2));
+    game.server->broadcastLog("TRC", "sweep-marker: nobody", LogAudience::neither());
+    game.server->broadcastLog("TRC", "sweep-marker: untagged");
     c.send({{"type", "request_state"}});
-    int log_lines = 0;
+    std::vector<std::string> received;
     while (auto m = c.read(300ms)) {
-        if ((*m)["type"] == "log") ++log_lines;
+        if ((*m)["type"] == "log") received.push_back((*m)["msg"].get<std::string>());
     }
-    EXPECT_EQ(log_lines, 0);
+    auto got = [&](const std::string& text) {
+        return std::find(received.begin(), received.end(), text) != received.end();
+    };
+    EXPECT_TRUE(got("sweep-marker: public"));
+    EXPECT_TRUE(got("sweep-marker: P1 only"));
+    EXPECT_FALSE(got("sweep-marker: P2 only"));
+    EXPECT_FALSE(got("sweep-marker: nobody"));
+    EXPECT_FALSE(got("sweep-marker: untagged")) << "no tag: for an all-seeing viewer only";
+    {
+        std::lock_guard<std::mutex> lock(game.log_mu);
+        EXPECT_FALSE(game.not_for_p1.empty()) << "P2 drew its hand: the engine logged it privately";
+        for (const auto& line : game.not_for_p1) EXPECT_FALSE(got(line)) << line;
+    }
     EXPECT_GT(game.trace_lines.load(), 0) << "the engine did log during this game";
     // God-mode edits stay off.
     c.send({{"type", "edit_player"}, {"player", "P1"}, {"field", "score"}, {"value", 7}});

@@ -50,7 +50,7 @@ public:
             !ctx.executor.confirmNow(ctx.controller, "spend a buff to ignore this spell's cost"))
             return {};
         const GameObjectId unit = ctx.executor.chooseObjectNow(ctx.controller, units);
-        if (unit == kInvalidId || !spendBuff(ctx, unit)) return {};
+        if (unit == kInvalidId || !ctx.executor.spendBuff(unit, ctx.controller)) return {};
         PlayCostAdjust adj;
         adj.ignore_cost = true;
         return adj;

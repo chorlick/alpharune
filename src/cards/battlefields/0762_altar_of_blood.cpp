@@ -41,14 +41,7 @@ public:
         if (!ctx.executor.payAnyPower(payer, 3)) return false;
         ctx.events.logTrace("ALTAR OF BLOOD: " + unit.name +
                             " pays [A][A][A] -> heal/exhaust/recall");
-        ctx.executor.healObject(dying_unit);
-        ctx.executor.exhaustObject(dying_unit);
-        unit.combat_designation = CombatDesignation::None;
-        // A recall is not a move (CR 458): it must not count toward "moved N
-        // times this turn", which EffectExecutor::moveToBase bumps.
-        const int moves = unit.moves_this_turn;
-        ctx.executor.moveToBase(dying_unit);
-        unit.moves_this_turn = moves;
+        ctx.executor.healExhaustRecall(dying_unit);   // a recall is not a move (CR 458)
         return true;
     }
 private:

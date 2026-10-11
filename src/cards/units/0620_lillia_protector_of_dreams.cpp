@@ -15,12 +15,16 @@ class LilliaProtectorOfDreams : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "When you play a token unit, give me +1 [M] this turn." A token is
+    // played (CR 350.2); TriggerManager fires this from TokenCreatedEvent.
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayATokenUnit; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
+        ctx.executor.giveTemporaryMight(ctx.source, 1);
+        ctx.events.logTrace("LILLIA, PROTECTOR OF DREAMS: token unit played -> +1 [M] this turn");
+    }
     // "Your token units have [Tank]." (Granted via aura.)
-    // ENGINE-GAP: "When you play a token unit, give me +1 [M] this turn" is
-    // not implemented. EffectExecutor::createToken emits TokenCreatedEvent /
-    // EnteredBoardEvent only, and TriggerManager dispatches no trigger from
-    // either: it needs a "when you play a token unit" TriggerType fired from
-    // TokenCreatedEvent on the token controller's cards in play.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects) {
             if (!obj.isUnit() || obj.controller != controller) continue;

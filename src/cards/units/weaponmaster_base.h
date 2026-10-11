@@ -70,9 +70,8 @@ public:
     static bool weaponmasterEquip(CardContext& ctx, GameObjectId gear, GameObjectId unit) {
         if (!ctx.state.objectExists(gear)) return false;
         if (ctx.state.getObject(gear).card_def_id == kInvalidId) {
-            if (ctx.state.getObject(gear).attached_to.has_value())
-                ctx.executor.unattachGear(gear);
-            attachFree(ctx, gear, unit);
+            // An Equipment with no card behind it has no Equip cost to pay.
+            if (!ctx.executor.attachGear(gear, unit)) return false;
         } else {
             Card* gc = ctx.registry ? ctx.registry->get(ctx.state.getObject(gear).card_def_id)
                                     : nullptr;

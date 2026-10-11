@@ -80,6 +80,24 @@ target_include_directories(riftbound_clone_breakdown PRIVATE
     ${open_spiel_SOURCE_DIR}
 )
 
+# Search-path microbench: LoadGame, the pending-decision accessors
+# (CurrentPlayer / LegalActions / legalIntents) and the observation calls
+# (InfoSetId / ObservationString / ObservationTensor), as means over the
+# decisions of a real game. Prints a checksum of the observation values.
+add_executable(riftbound_search_microbench
+    search_microbench.cpp
+    riftbound_game.cpp
+    riftbound_state.cpp
+)
+target_link_libraries(riftbound_search_microbench PRIVATE
+    riftbound_core open_spiel_core
+    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
+    absl::optional absl::random_random absl::str_format absl::strings absl::time
+)
+target_include_directories(riftbound_search_microbench PRIVATE
+    ${open_spiel_SOURCE_DIR}
+)
+
 # parity_baseline: runs GameEngine + RandomAgent without the OpenSpiel wrapper.
 # Diagnostic — confirms whether the engine itself produces BatchRunner-like
 # results when invoked through the same RiftboundGame resource container.

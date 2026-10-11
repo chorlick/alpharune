@@ -27,9 +27,7 @@ public:
         ctx.events.logTrace("GUARDIAN ANGEL: kill self, heal/exhaust/recall bearer");
         ctx.executor.unattachGear(ctx.source);
         ctx.executor.killObject(ctx.source);       // kill Guardian Angel instead
-        ctx.executor.healObject(dying_unit);        // heal me
-        ctx.executor.exhaustObject(dying_unit);     // exhaust me
-        ctx.executor.moveToBase(dying_unit);        // recall me
+        ctx.executor.healExhaustRecall(dying_unit); // heal me, exhaust me, recall me (CR 457)
         return true;
     }
 private:

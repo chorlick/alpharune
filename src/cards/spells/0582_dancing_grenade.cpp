@@ -23,9 +23,8 @@ public:
     // they pay [A] the spell is played again under their control
     // (EffectExecutor::playIgnoringCost puts it back on the chain, where they
     // choose its target), and that play makes the same offer in turn.
-    // ENGINE-GAP: the card object is filed in its owner's trash when this
-    // resolution ends while the new play is still on the chain; the engine has
-    // no "a spell replayed while it resolves" state.
+    // The card is on the chain for the new play: ChainManager does not file a
+    // spell that was played again while it resolved; the new play files it.
     //
     // "Each time this spell has dealt damage this turn" is counted on the card
     // object, stamped with the turn so an old count never carries over.

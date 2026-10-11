@@ -294,8 +294,13 @@ public:
     enum : unsigned { kFinalizeTrigger = 1, kFinalizeResolve = 2, kFinalizeActivate = 4 };
     virtual unsigned choicesAtFinalization() const { return 0; }
     /// True while the engine is collecting this item's finalization choices.
+    /// The marker also ends the card's cost section on every path: a cost
+    /// that costDueNow() said was due counts as paid once a run reaches it.
     static bool finalizingChoices(const CardContext& ctx);
-    /// False at resolution when the cost was already paid at finalization.
+    /// Whether the cost is still to be paid in this run. Due exactly once per
+    /// chain item: false after it was paid at finalization, and false after a
+    /// run reached the marker with it paid — also when no finalize pass ran
+    /// and a later prompt re-enters the card.
     static bool costDueNow(CardContext& ctx);
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
@@ -907,6 +912,37 @@ public:
     /// don't trigger." When true, TriggerManager suppresses triggers fired by a
     /// friendly [Temporary] unit sharing this card's battlefield + controller.
     virtual bool suppressesTemporaryTriggersHere() const { return false; }
+
+    /// "Your hold effects for holding here trigger an additional time." (Blue
+    /// Sentinel; Red Brambleback for conquers.) Asked of every card `scorer`
+    /// has on the board when they score battlefield `bf` (`hold`: by holding,
+    /// else by conquering); `self` is the instance asked. Each +1 makes
+    /// TriggerManager::onScore queue every hold / conquer ability of that
+    /// player for this score once more.
+    virtual int extraScoreTriggers(const GameState& /*state*/, GameObjectId /*self*/,
+                                   PlayerId /*scorer*/, BattlefieldId /*bf*/,
+                                   bool /*hold*/) const { return 0; }
+
+    /// "When ONE OR MORE enemy units die, ..." (Battle Mistress): true makes
+    /// `trigger` fire once for a set of events that happen together instead of
+    /// once per event — while an ability of this source for that trigger is
+    /// still waiting to be finalized, a further event does not trigger it.
+    virtual bool triggersOncePerBatch(TriggerType /*trigger*/) const { return false; }
+
+    /// An Equipment whose effect text is a copy of its bearer's text ("As this
+    /// is attached to a unit, copy that unit's text to this Equipment's effect
+    /// text" — Svellsongur, CR 479.1.d). Effect text speaks for the bearer, so
+    /// the bearer has each of its abilities once more per such Equipment:
+    /// EffectExecutor::textCopiesOn counts them, TriggerManager::fireTrigger
+    /// queues the bearer's own triggered abilities that many more times, and
+    /// GameEngine::recalculateAuras applies its continuous effects that many
+    /// more times.
+    virtual bool copiesBearerText() const { return false; }
+
+    /// "When my Might becomes N or more, ..." (Renekton, Brute): N. The engine
+    /// fires TriggerType::WhenMyMightReachesThreshold on the unit each time
+    /// its Might goes from below N to N or more. 0 = no such ability.
+    virtual int mightThreshold() const { return 0; }
 
     // ── Condition gates ──
     // [Legion] / [Level N] are conditions a card checks itself, where its

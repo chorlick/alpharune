@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -17,7 +18,7 @@ public:
     // "When you hold" — not on a conquer.
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 1;
+        gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("KEEPER OF THE HAMMER: +1 XP on hold");
     }
     bool hasActivatedAbility() const override { return true; }

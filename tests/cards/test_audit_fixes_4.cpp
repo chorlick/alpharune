@@ -372,7 +372,8 @@ TEST_F(AuditFix4Test, Iascylla_HoldSchedulesDelayedAbility) {
     EXPECT_EQ(da.trigger, TriggerType::AtStartOfMain);
     EXPECT_EQ(da.source, ias);
     EXPECT_EQ(da.controller, P1);
-    EXPECT_EQ(da.expires_on_turn, -1);
+    // "at the start of your next Main Phase": it waits until it fires.
+    EXPECT_EQ(da.expires_on_turn, DelayedAbility::kUntilFired);
     // The triggering battlefield was stashed.
     EXPECT_EQ(state.getObject(ias).card_counters["__iascylla_pull_bf"], 0);
 }

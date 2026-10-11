@@ -2,9 +2,10 @@
 /// @file riftbound_game.h
 /// OpenSpiel Game subclass for Riftbound (Phase A, fully-observable v1).
 ///
-/// Holds the heavy shared resources (CardDB, CardRegistry, loaded decks)
-/// constructed once per game-instance. Every State spawned from this Game
-/// reuses these via const references.
+/// Holds the two loaded decks, and refers to the card table (CardDB,
+/// CardRegistry). The card table is built once per process and shared by
+/// every RiftboundGame (it is compiled-in, const data: see `sharedCards`);
+/// every State spawned from this Game reuses all of it via const references.
 ///
 /// Game parameters (settable via LoadGame("riftbound(deck1=..., deck2=...)")):
 ///   - deck1     : path to player-1 deck list .txt (default: decks/yi_rebuild.txt)
@@ -29,6 +30,19 @@ namespace riftbound::openspiel {
 /// random rollouts finite (see RiftboundState::IsTerminal).
 inline constexpr int kMaxGameLength = 600;
 
+/// The card table every RiftboundGame uses: registry and database, built from
+/// the card classes on first use (thread-safe) and never changed afterwards.
+/// Card objects are stateless, so concurrent games read it freely.
+///
+/// LoadGame used to rebuild both per call — once per search agent per game —
+/// at 1.25 ms of its 1.39 ms; what is left is reading the two deck files
+/// (plans/06-performance.md item 6.8).
+struct SharedCards {
+    ::riftbound::CardRegistry registry;
+    ::riftbound::CardDB db;
+};
+const SharedCards& sharedCards();
+
 class RiftboundGame : public ::open_spiel::Game {
 public:
     explicit RiftboundGame(const ::open_spiel::GameParameters& params);
@@ -52,8 +66,8 @@ public:
     uint64_t seed() const { return seed_; }
 
 private:
-    ::riftbound::CardDB card_db_;
-    ::riftbound::CardRegistry registry_;
+    const ::riftbound::CardDB& card_db_;
+    const ::riftbound::CardRegistry& registry_;
     ::riftbound::DeckSubmission deck1_;
     ::riftbound::DeckSubmission deck2_;
     uint64_t seed_;

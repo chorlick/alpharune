@@ -48,6 +48,7 @@ constexpr CardDefId kScornOfTheMoon = 786;
 constexpr CardDefId kGangplankNaval = 873;    // [Empower] [O][O]
 constexpr CardDefId kDeathMark = 931;         // [Flow] [1][A][A]
 constexpr CardDefId kProgressDay = 114;       // [6][B]: Draw 4.
+constexpr CardDefId kEndlessRiches = 809;
 
 // ── Test cards (ids above the registered range) ──
 constexpr CardDefId kTCostThenPrompt = 1052;       // spell: spend 1 XP, then choose a unit
@@ -812,6 +813,82 @@ TEST_F(SweepCostsTest, Aphelios_ReadiesTheTwoRunesThePlayerChooses) {
     EXPECT_TRUE(o(r1).is_exhausted);
     EXPECT_FALSE(o(r2).is_exhausted);
     EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+// ─── Endless Riches: play from the trash, and the trash is replaced ─────────
+
+TEST_F(SweepCostsTest, EndlessRiches_CardsArePlayedFromTheTrashAtTheirOwnCost) {
+    auto riches = addGear(P1, kEndlessRiches);
+    (void)riches;
+    auto poro = addToTrash(P1, kPoutyPoro);          // unit, [2]
+    auto wallop = addToTrash(P1, kWallop);           // spell, [2]
+    auto unit = addUnit(P1, kInvalidId, 2);
+    o(unit).is_exhausted = true;
+    auto trashPlay = [&](GameObjectId card) -> std::optional<Intent> {
+        for (const auto& i : legal())
+            if (i.card == card && i.play_source == Intent::PlaySource::Trash) return i;
+        return std::nullopt;
+    };
+    setPool(P1, 1, 0);
+    EXPECT_FALSE(trashPlay(poro).has_value()) << "its normal cost is still owed";
+    setPool(P1, 2, 0);
+    auto offer = trashPlay(poro);
+    ASSERT_TRUE(offer.has_value()) << "a unit, not only a spell";
+    execute(*offer);
+    EXPECT_TRUE(onBoard(poro));
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+
+    setPool(P1, 2, 0);
+    auto spell_offer = trashPlay(wallop);
+    ASSERT_TRUE(spell_offer.has_value());
+    EnginePathAgent agent(EnginePathAgent::choosing(unit));
+    execute(*spell_offer, &agent);
+    EXPECT_FALSE(o(unit).is_exhausted);
+    EXPECT_EQ(o(wallop).zone, ZoneType::Banishment)
+        << "the resolved spell would go to the trash: banished instead";
+    EXPECT_FALSE(inTrash(P1, wallop));
+}
+
+TEST_F(SweepCostsTest, EndlessRiches_WhatWouldGoToTheTrashIsBanishedExceptFromTheDeck) {
+    addGear(P1, kEndlessRiches);
+    auto dying = addUnit(P1, kPoutyPoro, 2);
+    auto in_hand = addToHand(P1, kPoutyPoro);
+    auto top = addToDeck(P1, kPoutyPoro);
+    auto theirs = addUnit(P2, kPoutyPoro, 2);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        exec.recalculateContinuousEffects();   // the Riches' flags are continuous
+        exec.killObject(dying);
+        exec.killObject(theirs);
+        exec.applyDiscard(P1, in_hand);
+        exec.burn(P1, 1);
+    });
+    EXPECT_EQ(o(dying).zone, ZoneType::Banishment);
+    EXPECT_FALSE(inTrash(P1, dying));
+    EXPECT_EQ(o(in_hand).zone, ZoneType::Banishment);
+    EXPECT_TRUE(inTrash(P1, top)) << "from the Main Deck: not replaced";
+    EXPECT_TRUE(inTrash(P2, theirs)) << "only the Riches' controller's cards";
+}
+
+// ─── The play gate counts the card's cost and Deflect together (2.11) ───────
+
+TEST_F(SweepCostsTest, PlayGate_ATargetWhoseDeflectCannotBePaidWithTheCostIsNotOffered) {
+    // Frigid Touch costs [2]. One ready rune in base and one floating Energy
+    // pay it — by exhausting the rune — and then nothing is left to recycle
+    // for a Deflect of 2... but one recycle is: the rune just exhausted. So
+    // Deflect 1 is payable together with the cost and Deflect 2 is not.
+    auto spell = addToHand(P1, kFrigidTouch);
+    auto one = addUnit(P2, kInvalidId, 5, 0);
+    o(one).keywords.set(Keyword::Deflect);
+    o(one).deflect_value = 1;
+    auto two = addUnit(P2, kInvalidId, 5, 0);
+    o(two).keywords.set(Keyword::Deflect);
+    o(two).deflect_value = 2;
+    setPool(P1, 1, 0);
+    addRune(P1, Domain::Mind);
+    EnginePathAgent agent(EnginePathAgent::choosing(two));
+    play(spell, &agent);
+    EXPECT_TRUE(agent.wasOffered(one));
+    EXPECT_FALSE(agent.wasOffered(two)) << "cost + Deflect 2 is more than there is";
 }
 
 // ─── A cost paid while resolving is due once per chain item (9.A4) ──────────

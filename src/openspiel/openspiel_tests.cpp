@@ -91,7 +91,9 @@ void expectSamePosition(const ::open_spiel::State& a,
         ASSERT_EQ(a.ObservationString(p), b.ObservationString(p)) << where;
         ASSERT_EQ(a.ObservationTensor(p), b.ObservationTensor(p)) << where;
     }
-    if (a.IsTerminal()) ASSERT_EQ(a.Returns(), b.Returns()) << where;
+    if (a.IsTerminal()) {
+        ASSERT_EQ(a.Returns(), b.Returns()) << where;
+    }
 }
 
 // ─── LoadGame ───────────────────────────────────────────────────────────────
@@ -115,6 +117,36 @@ TEST(RiftboundGameTest, DefaultParametersNameDecksThatExist) {
         ",registry=cards/ban-list.csv)");
     ASSERT_NE(game, nullptr);
     EXPECT_FALSE(game->NewInitialState()->IsTerminal());
+}
+
+// 6.8 — the card table is compiled-in, const data: every game instance in
+// the process refers to the same one instead of rebuilding it per LoadGame
+// (one per search agent per game). The decks are still each game's own.
+TEST(RiftboundGameTest, EveryGameSharesOneCardTable) {
+    auto a = loadGame(7);
+    auto b = ::open_spiel::LoadGame(
+        "riftbound(deck1=" + deckFile("fiora.txt") +
+        ",deck2=" + deckFile("yi_rebuild.txt") + ",seed=8)");
+    const auto& ga = static_cast<const RiftboundGame&>(*a);
+    const auto& gb = static_cast<const RiftboundGame&>(*b);
+    EXPECT_EQ(&ga.cardDb(), &gb.cardDb());
+    EXPECT_EQ(&ga.cardRegistry(), &gb.cardRegistry());
+    EXPECT_EQ(&ga.cardDb(), &::riftbound::openspiel::sharedCards().db);
+    EXPECT_GT(ga.cardDb().size(), 900u);
+    EXPECT_EQ(ga.cardRegistry().size(), ga.cardDb().size());
+
+    EXPECT_NE(&ga.deck1(), &gb.deck1());
+    EXPECT_EQ(ga.deck1().legend, gb.deck2().legend);
+    EXPECT_NE(ga.deck1().legend, gb.deck1().legend);
+    // Both still play.
+    std::mt19937_64 rng(8);
+    for (const auto& game : {a, b}) {
+        auto state = game->NewInitialState();
+        for (int n = 0; n < 40 && !state->IsTerminal(); ++n) {
+            state->ApplyAction(pickAction(rng, state->LegalActions()));
+        }
+        EXPECT_GT(state->MoveNumber(), 0);
+    }
 }
 
 TEST(RiftboundGameTest, AdvertisedShapesMatchTheEngine) {
@@ -450,6 +482,108 @@ TEST(RiftboundStateTest, ObservationKeyHidesWhatTheNonDeciderCannotSee) {
     EXPECT_NE(state->ObservationString(0), state->ObservationString(1));
     EXPECT_EQ(state->ObservationString(0), state->Clone()->ObservationString(0));
     EXPECT_EQ(state->ObservationString(0).size(), 16u);
+}
+
+// 6.9 — the key and the tensor come from per-thread scratch buffers and a
+// hash that skips zero runs. Both still equal what the plain functions give:
+// the tensor is the feature vector, the key is its byte-wise hash with the
+// decision mixed in, for either player, on a state and on its clone.
+TEST(RiftboundStateTest, ObservationTensorAndKeyMatchThePlainFunctions) {
+    for (int seed : {4, 9}) {
+        auto game = loadGame(seed);
+        const auto& db = static_cast<const RiftboundGame&>(*game).cardDb();
+        auto state = game->NewInitialState();
+        std::mt19937_64 rng(seed);
+        int checked = 0;
+        while (!state->IsTerminal()) {
+            const auto decider = state->CurrentPlayer();
+            const auto legal = state->LegalActions();
+            for (::open_spiel::Player p : {0, 1}) {
+                const auto feats = ::riftbound::ml::extractStateFeatures(
+                    rb(*state).engineState(),
+                    p == 0 ? PlayerId::Player1 : PlayerId::Player2, db);
+                ASSERT_EQ(state->ObservationTensor(p), feats)
+                    << "seed " << seed << " move " << state->MoveNumber();
+                // Interleave the other player's key: the scratch buffer is
+                // shared between calls and must not leak between them.
+                (void)rb(*state).InfoSetId(1 - p);
+                std::vector<int64_t> offered;
+                if (p == decider) offered.assign(legal.begin(), legal.end());
+                const uint64_t expected =
+                    ::riftbound::ml::mixDecisionIntoInfoSetId(
+                        ::riftbound::ml::computeInfoSetId(feats, p),
+                        decider, offered);
+                ASSERT_EQ(rb(*state).InfoSetId(p), expected)
+                    << "seed " << seed << " move " << state->MoveNumber();
+                ASSERT_EQ(rb(*state->Clone()).InfoSetId(p), expected);
+                ++checked;
+            }
+            state->ApplyAction(pickAction(rng, legal));
+        }
+        EXPECT_GT(checked, 100);
+    }
+}
+
+// 6.7 carry-over — a state walked forward by ApplyAction alone has no
+// resumable snapshot behind it, so a clone taken at a decision that cannot be
+// resumed directly (chain priority, a prompt, combat...) is rebuilt by
+// replaying the game. Every clone of that position used to replay it from
+// the start; now the first one leaves the nearest resumable decision it
+// passed for the others, and for the positions that follow.
+TEST(RiftboundStateTest, OnlyTheFirstCloneOfAPositionReplaysTheWholeGame) {
+    int positions = 0;
+    for (int seed : {3, 6, 12}) {
+        auto game = loadGame(seed);
+        auto state = game->NewInitialState();
+        std::mt19937_64 rng(seed);
+        auto resumable = [&] {
+            return GameEngine::isResumableDecision(rb(*state).engineState(),
+                                                   rb(*state).legalIntents());
+        };
+        // No Clone() on the way: nothing behind this state can be resumed.
+        while (!state->IsTerminal() &&
+               (state->MoveNumber() < 80 || resumable())) {
+            state->ApplyAction(pickAction(rng, state->LegalActions()));
+        }
+        if (state->IsTerminal()) continue;
+        const size_t here = static_cast<size_t>(state->MoveNumber());
+        const auto action = pickAction(rng, state->LegalActions());
+
+        auto first = state->Clone();
+        auto second = state->Clone();
+        auto third = second->Clone();          // clone of a clone
+        first->ApplyAction(action);
+        EXPECT_EQ(rb(*first).decisionsReplayedToBuild(), here)
+            << "seed " << seed << ": the first clone starts from the beginning";
+        second->ApplyAction(action);
+        third->ApplyAction(action);
+        const size_t tail = rb(*second).decisionsReplayedToBuild();
+        EXPECT_LT(tail, here / 2) << "seed " << seed;
+        EXPECT_EQ(rb(*third).decisionsReplayedToBuild(), tail);
+
+        // All of them are the position the original reaches.
+        state->ApplyAction(action);
+        expectSamePosition(*state, *first, "first clone");
+        expectSamePosition(*state, *second, "second clone");
+        expectSamePosition(*state, *third, "clone of a clone");
+
+        // The original learned of the nearer starting point too: the next
+        // position that needs a replay starts there, not at the beginning.
+        while (!state->IsTerminal() && resumable()) {
+            state->ApplyAction(pickAction(rng, state->LegalActions()));
+        }
+        if (state->IsTerminal()) continue;
+        const auto next_action = pickAction(rng, state->LegalActions());
+        auto later = state->Clone();
+        later->ApplyAction(next_action);
+        EXPECT_LT(rb(*later).decisionsReplayedToBuild(),
+                  static_cast<size_t>(state->MoveNumber()) / 2)
+            << "seed " << seed;
+        state->ApplyAction(next_action);
+        expectSamePosition(*state, *later, "clone of the next position");
+        ++positions;
+    }
+    EXPECT_GE(positions, 2);
 }
 
 // ─── Mirroring a runGame game (what MctsAgent does) ─────────────────────────

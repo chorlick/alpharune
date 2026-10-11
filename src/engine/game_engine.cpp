@@ -2,8 +2,11 @@
 #include <cstdlib>
 #include "engine/resource_payment.h"
 #include "engine/deck_ops.h"
+#include "engine/trash_replacement.h"
 #include "game_engine.h"
+#include "engine/keyword_abilities.h"
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "openspiel/action_vocab.h"
 
 #include <algorithm>
@@ -77,6 +80,7 @@ void GameEngine::initSubsystems() {
     chain_manager_->setFinalizeChoices([this](ChainItem& item) { chooseTargetsAtFinalize(item); });
     chain_manager_->setActivateAbility(
         [this](const Intent& i) { return payAndQueueAbility(i); });
+    chain_manager_->setPlayCard([this](const Intent& i) { executeIntent(i); });
     trigger_manager_ = std::make_unique<TriggerManager>(
         state_, events_, card_db_, *chain_manager_, card_registry_);
     trigger_manager_->setEffectExecutor(effect_executor_.get());
@@ -93,10 +97,10 @@ GameEngine::~GameEngine() {
     // Without this, a successor engine on the same EventBus would
     // emit reveals into a dangling `this`.
     if (card_revealed_conn_.connected()) card_revealed_conn_.disconnect();
-    // Fiber refactor: StepDriver's destructor drains the fiber by
-    // feeding choice=0 until done. No separate thread to join — the
-    // fiber lives in the same call stack as this destructor.
-    // step_driver_'s unique_ptr destruction handles it.
+    // A step-machine game still in progress is abandoned: StepDriver's
+    // destructor unwinds the engine fiber (it does not play the game out).
+    // Do that first, while everything the parked frames refer to is intact.
+    step_driver_.reset();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -180,7 +184,7 @@ void GameEngine::refreshStepFromDriver() {
     current_step_.perspective = step_driver_->currentPlayerSnapshot();
 }
 
-StepResult GameEngine::beginGame(
+const StepResult& GameEngine::beginGame(
     const DeckSubmission& deck1,
     const DeckSubmission& deck2,
     uint64_t seed) {
@@ -250,7 +254,7 @@ bool GameEngine::isResumableDecision(const GameState& state,
     return true;
 }
 
-StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
+const StepResult& GameEngine::resumeFromSnapshot(GameState snapshot_state,
                                             const std::mt19937_64& rng_state,
                                             const StepResult& snapshot_step) {
     if (step_driver_) {
@@ -353,12 +357,12 @@ StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
     return current_step_;
 }
 
-StepResult GameEngine::currentStep() const {
+const StepResult& GameEngine::currentStep() const {
     rethrowIfStepFailed();
     return current_step_;
 }
 
-StepResult GameEngine::applyChoice(int legal_index) {
+const StepResult& GameEngine::applyChoice(int legal_index) {
     if (!step_driver_) {
         throw std::logic_error(
             "GameEngine::applyChoice called before beginGame.");
@@ -1141,6 +1145,7 @@ void GameEngine::endingStep() {
 }
 
 void GameEngine::expireTemporaryKeywords(GameObject& obj, const CardDB& db) {
+    obj.temp_deflect_value = 0;   // [Deflect N] given "this turn"
     if (obj.temp_keywords.bits == 0) return;
     KeywordSet base_keywords;
     if (obj.card_def_id != kInvalidId) {
@@ -1296,7 +1301,7 @@ void GameEngine::doExpirationBody() {
     state_.delayed_abilities.erase(
         std::remove_if(state_.delayed_abilities.begin(), state_.delayed_abilities.end(),
             [&](const DelayedAbility& da) {
-                return da.expires_on_turn == state_.turn.turn_number;
+                return da.expiresAtEndOf(state_.turn.turn_number);
             }),
         state_.delayed_abilities.end());
 }
@@ -1706,6 +1711,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         }
         events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
             was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
+        effect_executor_->announceRecycledToMainDeck(intent.ability_source);
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
@@ -2350,12 +2356,6 @@ void GameEngine::runChain() {
 }
 
 void GameEngine::resolveSpell(const ChainItem& item) {
-    // A cost the card asked for in an earlier run of this callback
-    // (Card::costDueNow, at finalization or while resolving) is paid: it is
-    // not due again when the card is re-entered after a prompt.
-    if (auto& r = state_.chain.resuming; r.has_value() && (r->finalize_checked & 16)) {
-        r->finalize_checked = static_cast<uint8_t>((r->finalize_checked & ~16) | 8);
-    }
     {
         std::string name = state_.objectExists(item.source) ? state_.getObject(item.source).name : "?";
         events_.logTrace(std::string(item.finalizing ? "FINALIZE-CHOICES: " : "RESOLVE: ") +
@@ -2393,7 +2393,8 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     // Cards that defer target choice to resolve time via
     // pickTarget/pickTargetPair (Phase 6q opt-in) are unaffected —
     // they re-enumerate legal targets at resolve time themselves.
-    Card* card = card_registry_.get(item.card_def_id);
+    Card* card = item.keyword_ability ? keywordAbilityCard(*item.keyword_ability)
+                                      : card_registry_.get(item.card_def_id);
     std::vector<GameObjectId> effective_targets = item.targets;
     if (card && !item.targets.empty()) {
         // An activated ability is re-validated against ITS OWN requirements
@@ -2634,7 +2635,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
         if (target_unit != kInvalidId) {
             events_.logTrace("QUICK_DRAW: auto-attaching " + card.name + " to " +
                              state_.getObject(target_unit).name);
-            attachGearToUnit(item.source, target_unit);
+            effect_executor_->attachGear(item.source, target_unit);
         }
     }
 
@@ -2843,7 +2844,8 @@ void GameEngine::executeMulligan(const Intent& intent) {
         if (it != ps.hand.end()) {
             set_aside.push_back(*it);
             ps.hand.erase(it);
-            events_.logTrace("  MULLIGAN: " + std::string(toString(intent.player)) +
+            events_.logTracePrivate(intent.player,
+                             "  MULLIGAN: " + std::string(toString(intent.player)) +
                              " set aside " + state_.getObject(card_id).name +
                              " (id=" + std::to_string(card_id) + ")");
         }
@@ -2857,7 +2859,8 @@ void GameEngine::executeMulligan(const Intent& intent) {
     drawCards(intent.player, static_cast<int>(set_aside.size()));
     for (size_t i = before_draw; i < ps.hand.size(); ++i) {
         auto did = ps.hand[i];
-        events_.logTrace("  MULLIGAN: " + std::string(toString(intent.player)) +
+        events_.logTracePrivate(intent.player,
+                         "  MULLIGAN: " + std::string(toString(intent.player)) +
                          " drew replacement " + state_.getObject(did).name +
                          " (id=" + std::to_string(did) +
                          ") — PRIVATE to " + toString(intent.player));
@@ -2872,6 +2875,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
         placed.push_back({card_id, deck::Place::Hand, knowledge::nobody()});
     }
     deck::putOnBottomTogether(state_, intent.player, placed);
+    if (!set_aside.empty()) effect_executor_->announceRecycledToMainDeck(set_aside.front());
 }
 
 // ── Combat damage and replacement effects (CR 467.2.c.5) ─────────────────────
@@ -3024,7 +3028,11 @@ void GameEngine::executeHideCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
 
-    events_.logTrace("HIDE: " + card.name + " at BF#" +
+    // Which card it is, is the hiding player's to know (LogAudience); that a
+    // card was hidden, and where, both players see.
+    events_.logTrace(std::string("HIDE: ") + toString(intent.player) + " hides a card at BF#" +
+                     std::to_string(intent.chosen_battlefield));
+    events_.logTracePrivate(intent.player, "HIDE: " + card.name + " at BF#" +
                      std::to_string(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
@@ -3041,7 +3049,8 @@ void GameEngine::executeHideCard(const Intent& intent) {
             canPayAdditionalCost(intent.player, hide_cost.energy, 0, Domain::Count,
                                  SpendFor::Other);
         if (!power_ok && !energy_ok) {
-            events_.logTrace("HIDE: " + card.name + " not hidden — the cost could not be paid");
+            events_.logTracePrivate(intent.player, "HIDE: " + card.name +
+                                    " not hidden — the cost could not be paid");
             return;
         }
         bool pay_energy = energy_ok && !power_ok;
@@ -3075,8 +3084,9 @@ void GameEngine::executeHideCard(const Intent& intent) {
     card.hidden_at = bf_id;
     card.hidden_on_turn = state_.turn.turn_number;
 
-    events_.logDebug(std::string("HIDDEN: ") + card.name + " hidden at BF#" +
-                     std::to_string(bf_id) + " by " + toString(intent.player));
+    events_.logFor(LogLevel::Debug, LogAudience::only(intent.player),
+                   std::string("HIDDEN: ") + card.name + " hidden at BF#" +
+                   std::to_string(bf_id) + " by " + toString(intent.player));
 
     // "When you hide a card" (Katarina, Reckless).
     events_.emit(CardHiddenEvent{intent.card, intent.player});
@@ -4864,17 +4874,10 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         // (CR 461.1.a.2). Symbol of the Solari (227): if the attacker controls
         // it, recall ALL units (attackers AND defenders) instead.
         const bool recall_all = state_.player(attacker).recall_all_on_attacker_tie;
-        for (auto uid : att_remaining) {
-            moveUnit(uid, BaseLocation{attacker});
-            events_.emit(UnitMovedEvent{uid, attacker,
-                BattlefieldLocation{bf_id}, BaseLocation{attacker}, false});
-        }
+        // A recall is not a move (CR 458): no UnitMovedEvent, no move count.
+        for (auto uid : att_remaining) effect_executor_->recallToBase(uid);
         if (recall_all) {
-            for (auto uid : def_remaining) {
-                moveUnit(uid, BaseLocation{defender});
-                events_.emit(UnitMovedEvent{uid, defender,
-                    BattlefieldLocation{bf_id}, BaseLocation{defender}, false});
-            }
+            for (auto uid : def_remaining) effect_executor_->recallToBase(uid);
             events_.logTrace("SYMBOL OF THE SOLARI: attacker tie -> recall ALL units");
         }
     }
@@ -5299,6 +5302,65 @@ void GameEngine::recalculateAuras() {
         }
     }
 
+    // Step 1b': a unit whose text an Equipment copies (Card::copiesBearerText,
+    // CR 479.1.d — the Equipment's effect text speaks for the unit) has its
+    // continuous effects once more per such Equipment. The hook is called per
+    // (card, controller) and finds its own instances by card_def_id, so for
+    // the extra calls every OTHER instance that controller has is masked (it
+    // stays on the board as a unit the effect may apply to) and the
+    // once-per-pass marker forEachSelfOnce left on this one is dropped.
+    auto asTextCopy = [&](GameObjectId unit_id, const Card& card,
+                          const std::function<void()>& apply) {
+        const PlayerId controller = state_.getObject(unit_id).controller;
+        const CardDefId def = state_.getObject(unit_id).card_def_id;
+        std::vector<GameObjectId> masked;
+        for (auto& [oid, other] : state_.objects)
+            if (oid != unit_id && other.card_def_id == def && other.controller == controller) {
+                other.card_def_id = kInvalidId;
+                masked.push_back(oid);
+            }
+        const int copies = effect_executor_->textCopiesOn(unit_id);
+        for (int i = 0; i < copies; ++i) {
+            auto& effects = state_.getObject(unit_id).aura_effects;
+            effects.erase(std::remove_if(effects.begin(), effects.end(),
+                [unit_id](const GameObject::AuraEffect& ae) {
+                    return ae.source == unit_id && ae.keyword == Keyword::Count &&
+                           ae.keyword_value == kAuraOnceMarker;
+                }), effects.end());
+            apply();
+        }
+        for (auto oid : masked) state_.getObject(oid).card_def_id = def;
+        (void)card;
+    };
+    std::vector<GameObjectId> text_copied;
+    for (auto& [id, obj] : state_.objects)
+        if (obj.isUnit() && obj.location.has_value() && obj.card_def_id != kInvalidId &&
+            !obj.attachments.empty() && effect_executor_->textCopiesOn(id) > 0)
+            text_copied.push_back(id);
+    for (auto id : text_copied) {
+        const Card* card = card_registry_.get(state_.getObject(id).card_def_id);
+        if (!card) continue;
+        const PlayerId controller = state_.getObject(id).controller;
+        asTextCopy(id, *card, [&]() {
+            card->applyPassiveAura(state_, controller);
+            // Its printed [Assault N] / [Shield N] / [Deflect N] are text too:
+            // instances add up (CR 807, 809, 814).
+            auto& unit = state_.getObject(id);
+            const auto& def = card_db_.get(unit.card_def_id);
+            auto again = [&](Keyword kw, int value) {
+                if (!def.keywords.has(kw) || value <= 0) return;
+                GameObject::AuraEffect ae;
+                ae.source = id;
+                ae.keyword = kw;
+                ae.keyword_value = value;
+                unit.aura_effects.push_back(ae);
+            };
+            again(Keyword::Assault, def.assault_value);
+            again(Keyword::Shield, def.shield_value);
+            again(Keyword::Deflect, def.deflect_value);
+        });
+    }
+
     // Step 1c: Battlefield-card passive auras. BF card objects have no
     // `location` (so the loop above skips them) but can carry static auras
     // (Forbidding Waste, Black Flame Altar, Ornn's Forge). Apply each,
@@ -5380,6 +5442,13 @@ void GameEngine::recalculateAuras() {
     if (!might_dependent.empty()) {
         for (const auto& [card, controller] : might_dependent)
             card->applyMightDependentAura(state_, controller);
+        for (auto id : text_copied) {
+            if (!state_.objectExists(id)) continue;
+            const Card* card = card_registry_.get(state_.getObject(id).card_def_id);
+            if (!card || !card->hasMightDependentAura()) continue;
+            const PlayerId controller = state_.getObject(id).controller;
+            asTextCopy(id, *card, [&]() { card->applyMightDependentAura(state_, controller); });
+        }
         foldAuras();
     }
 
@@ -5573,6 +5642,8 @@ void GameEngine::cleanup() {
             obj.card_counters["__was_mighty"] = 0;
         }
     }
+    // Other "my Might becomes N or more" edges are the trigger manager's.
+    events_.emit(StateSettledEvent{});
 }
 
 // C-1 commit 8 — cleanup is naturally yield-free (no agent queries
@@ -5633,9 +5704,13 @@ void GameEngine::processLethalDamage() {
 
         if (lethal) to_kill.push_back(id);
     }
+    // They die at the same time: each one's last-known information is taken
+    // while all of them are still on the board.
+    effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);
     }
+    effect_executor_->endDeathBatch(to_kill);
 }
 
 void GameEngine::updateBattlefieldControl() {
@@ -5670,6 +5745,7 @@ void GameEngine::updateBattlefieldControl() {
             card.zone = ZoneType::Trash;
             card.location = std::nullopt;
             state_.player(card.owner).trash.push_back(card_id);
+            settleInTrash(state_, events_, card_id);
             events_.logDebug(std::string("HIDDEN: ") + card.name +
                              " removed from facedown (control lost)");
         }
@@ -6725,23 +6801,9 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     // (Tactical Retreat 737: "the next time it would die this turn, heal it,
     // exhaust it, and recall it instead"). Consulted before any source-based
     // replacement; consumes the flag and aborts the death.
-    if (unit.death_replacement_recall_pending) {
-        unit.death_replacement_recall_pending = false;
-        events_.logDebug("REPLACEMENT (self): " + unit.name +
-                         " heals/exhausts/recalls instead of dying");
-        detachAllGear(unit_id);                // CR 719.5 — recall sheds gear
-        auto old_loc = unit.location;
-        unit.damage_marked = 0;
-        unit.is_exhausted = true;
-        unit.combat_designation = CombatDesignation::None;
-        unit.location = BaseLocation{controller};
-        unit.zone = ZoneType::Base;
-        events_.emit(ObjectStateChangedEvent{unit_id, "healed"});
-        events_.emit(UnitMovedEvent{unit_id, controller,
-            old_loc.value_or(BaseLocation{controller}),
-            BaseLocation{controller}, false});
-        return;  // replacement consumed — unit does NOT die
-    }
+    // The unit keeps its gear: a recall is not a move and what is attached
+    // goes with it (CR 458, 719.3.a) — EffectExecutor::recallToBase.
+    if (effect_executor_->applyOwnDeathReplacement(unit_id)) return;
 
     // "If it would die this turn, banish it instead." (Smite) The unit is
     // banished and does not die.
@@ -6813,6 +6875,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     unit.combat_designation = CombatDesignation::None;
     if (!is_token) {
         state_.player(unit.owner).trash.push_back(unit_id);
+        settleInTrash(state_, events_, unit_id);
     } else {
         events_.logTrace("  TOKEN CEASES TO EXIST (CR 183.1): " + unit.name +
                          " (id=" + std::to_string(unit_id) + ")");
@@ -6831,7 +6894,8 @@ void GameEngine::killUnit(GameObjectId unit_id) {
             state_.player(controller).unit_died_in_beginning_this_turn = true;
     }
     events_.emit(UnitDiedEvent{unit_id, controller,
-        was_at.value_or(BaseLocation{controller}), might});
+        was_at.value_or(BaseLocation{controller}), might,
+        state_.getObject(unit_id).last_known.killed_by});
     events_.emit(LeftBoardEvent{unit_id, controller, CardType::Unit,
         was_at.value_or(BaseLocation{controller}),
         is_token ? ZoneType::Banishment : ZoneType::Trash, true});
@@ -7029,36 +7093,6 @@ void GameEngine::swapBackBattlefield(BattlefieldId token_bf) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Equip/Attach (CR 716-725)
 // ═══════════════════════════════════════════════════════════════════════════════
-
-bool GameEngine::attachGearToUnit(GameObjectId gear_id, GameObjectId unit_id) {
-    if (!state_.objectExists(gear_id) || !state_.objectExists(unit_id)) return false;
-
-    auto& gear = state_.getObject(gear_id);
-    auto& unit = state_.getObject(unit_id);
-
-    if (!gear.isGear() || !unit.isUnit()) return false;
-    if (gear.attached_to.has_value()) return false; // already attached
-
-    events_.logTrace("ATTACH: " + gear.name + " (id=" + std::to_string(gear_id) +
-                     ") -> " + unit.name + " (id=" + std::to_string(unit_id) + ")");
-
-    gear.attached_to = unit_id;
-    gear.is_rules_text_inactive = true; // CR 718.2: rules text inactive while attached
-    unit.attachments.push_back(gear_id);
-
-    // Move gear to same location as unit
-    gear.location = unit.location;
-    gear.zone = unit.zone;
-
-    // Apply might bonus (CR 472.3.c — Arithmetic layer)
-    unit.attachment_might_bonus += gear.might_bonus;
-    unit.recomputeMight();
-
-    events_.emit(ObjectStateChangedEvent{gear_id, "attached"});
-    events_.emit(ObjectStateChangedEvent{unit_id, "equipped"});
-
-    return true;
-}
 
 void GameEngine::detachAllGear(GameObjectId unit_id) {
     if (!state_.objectExists(unit_id)) return;

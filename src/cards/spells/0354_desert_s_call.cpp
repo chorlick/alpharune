@@ -29,7 +29,8 @@ public:
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sand Soldier",
                                  /*might=*/2, /*tags=*/{"Shurima"},
                                  KeywordSet{}, destLocation(ctx.controller, dest),
-                                 /*enter_ready=*/false);
+                                 /*enter_ready=*/false,
+                                 tokenPlayLocations(ctx.state, ctx.controller));
         ctx.events.logTrace("DESERT'S CALL: played 2[M] Sand Soldier token "
                             "(engine repeats per [Repeat][2] paid)");
     }

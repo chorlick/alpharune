@@ -198,6 +198,11 @@ struct PlayerState {
     int max_spell_spent_this_turn = 0;         // most-expensive single spell paid for this turn (Jhin, Meticulous Killer: "spent [4]+ to play a spell")
     int next_spell_bonus_damage = 0;           // Ravenborn Tome: "the next spell you play this turn deals N Bonus Damage" (consumed when that spell deals damage)
     bool grant_repeat_base_to_next_spell = false; // The Academy (772): next spell gets [Repeat] at tranche cost = its base energy
+    // "You can look at their facedown cards this turn." (Scuttle Crab): the
+    // turn this player may look at the other player's facedown cards, cards
+    // hidden later that turn included (TriggerManager::onCardHidden shows
+    // them). Turn-stamped, so it needs no reset.
+    int may_look_at_opp_facedown_turn = -1;
     int zilean_double_token_turn = -1;         // Zilean, Time Mage (648): turn on which the once/turn token-doubling was used
     // Staged around an effect-driven play that ignores part of a card's cost
     // ("ignoring its Energy cost" — you still pay its Power). Read by
@@ -666,6 +671,13 @@ struct ChainItem {
     // through Card::onEquippedTrigger(ctx, equipped_unit, ...) instead of
     // Card::onTrigger. kInvalidId for every other item.
     GameObjectId equipped_unit = kInvalidId;
+
+    // Set for a keyword's own triggered ability ([Vision]: "When this is
+    // played, [Predict]", CR 817; [Weaponmaster], CR 821). The keyword may
+    // come from a continuous effect and the object may be a token with no
+    // card class, so the ability is the keyword's (engine/keyword_abilities.h)
+    // rather than the source card's: `card_def_id` is not consulted.
+    std::optional<Keyword> keyword_ability;
 };
 
 struct ChainState {
@@ -710,10 +722,22 @@ struct DelayedAbility {
     CardDefId card_def_id = kInvalidId;   // for looking up the Card object
     PlayerId controller = PlayerId::None;
     TriggerType trigger = TriggerType::None; // what event fires it
-    int expires_on_turn = -1;             // -1 = end of current turn
+    // When it stops waiting. The expiration step removes it at the end of
+    // turn `expires_on_turn` (and of any later turn, should that one have been
+    // missed). kThisTurn — the default, so an ability nobody dated cannot
+    // outlive its turn — is whichever turn is ending first; kUntilFired never
+    // expires ("at the start of your next Main Phase").
+    static constexpr int kThisTurn = -1;
+    static constexpr int kUntilFired = -2;
+    int expires_on_turn = kThisTurn;
+    bool expiresAtEndOf(int turn_number) const {
+        if (expires_on_turn == kUntilFired) return false;
+        return expires_on_turn == kThisTurn || expires_on_turn <= turn_number;
+    }
     bool fired = false;                   // one-shot: fire once, then remove
-    // "When a friendly unit is played this turn, ..." (Rally the Troops): fires
-    // for EVERY matching event until it expires, instead of once.
+    // Fires for EVERY matching event until it expires, instead of once ("When
+    // a friendly unit is played this turn, ..." — Rally the Troops; "When any
+    // unit takes damage this turn, kill it" — Imperial Decree).
     bool repeats = false;
 
     // Optional filter for events that carry an object id (e.g.
@@ -722,10 +746,6 @@ struct DelayedAbility {
     // subject (Deadly Flourish: "when IT dies"). kInvalidId = no filter,
     // fires on any matching trigger.
     GameObjectId target_filter = kInvalidId;
-
-    // Fires every time its event happens until it expires, instead of once
-    // ("When ANY unit takes damage this turn, kill it" — Imperial Decree).
-    bool every_time = false;
 };
 
 // ─── Complete Game State ─────────────────────────────────────────────────────

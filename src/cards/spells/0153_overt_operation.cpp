@@ -41,8 +41,7 @@ public:
         // Spend the buff: the counter is the +1 [M] (recomputeMight).
         auto spend_to_ready = [&](GameObjectId id) {
             auto& u = ctx.state.getObject(id);
-            u.buff_count -= 1;
-            u.recomputeMight();
+            ctx.executor.spendBuff(id, ctx.controller);   // CR 427.2; "When you spend a buff"
             ctx.executor.readyObject(id);
             ctx.events.logTrace("OVERT OPERATION: spent buff to ready " + u.name);
         };

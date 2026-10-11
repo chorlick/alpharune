@@ -14,7 +14,7 @@ namespace {
 
 // "When you attach an Equipment to me, choose one that hasn't been chosen this
 //  turn — Ready 2 runes. / Channel 1 rune exhausted. / Buff a friendly unit."
-// Wired via WhenEquipmentAttachedToMe: attachGearToUnit/attachFree already emit
+// Wired via WhenEquipmentAttachedToMe: EffectExecutor::attachGear emits
 // ObjectStateChangedEvent{"equipped"}; TriggerManager now dispatches that as
 // WhenEquipmentAttachedToMe on the equipped unit. The modal body tracks which
 // modes were chosen this turn (card_counters["__aph_mask"], reset when the turn

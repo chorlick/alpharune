@@ -110,7 +110,7 @@ public:
 
     /// Begin a game in step-machine mode. Loads decks, initialises state,
     /// runs until the first NeedDecision or terminal.
-    StepResult beginGame(
+    const StepResult& beginGame(
         const DeckSubmission& deck1,
         const DeckSubmission& deck2,
         uint64_t seed = 0);
@@ -142,9 +142,9 @@ public:
     /// resumable snapshot from one that only looks like it, and the
     /// resumed engine is checked against it: std::logic_error if it does
     /// not arrive at the same decision.
-    StepResult resumeFromSnapshot(GameState snapshot_state,
-                                    const std::mt19937_64& rng_state,
-                                    const StepResult& snapshot_step);
+    const StepResult& resumeFromSnapshot(GameState snapshot_state,
+                                         const std::mt19937_64& rng_state,
+                                         const StepResult& snapshot_step);
 
     /// True iff a snapshot of `state`, taken while an agent is being asked
     /// to choose from `legal`, can be handed to `resumeFromSnapshot`.
@@ -156,7 +156,12 @@ public:
 
     /// Inspect what the engine is currently waiting on without advancing.
     /// Throws the engine's exception if the game failed (see applyChoice).
-    StepResult currentStep() const;
+    ///
+    /// Returns a view of the engine's own record of the pending decision,
+    /// as do beginGame / resumeFromSnapshot / applyChoice: no copy of the
+    /// legal list per call. The next applyChoice overwrites it — copy the
+    /// StepResult (`auto step = ...`) to keep it across a choice.
+    const StepResult& currentStep() const;
 
     /// Apply the chosen decision (index into the prior step's `legal`),
     /// then advance until the next NeedDecision or terminal. Returns the
@@ -167,7 +172,7 @@ public:
     /// that failed is never reported as a finished one. `isStepDone()` is
     /// true afterwards and `stepResult().termination_reason` is
     /// "engine_error" with no winner.
-    StepResult applyChoice(int legal_index);
+    const StepResult& applyChoice(int legal_index);
 
     /// True iff the engine is no longer waiting on a decision: the game
     /// finished, or it failed (`stepFailed()`).
@@ -248,6 +253,7 @@ public:
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
     void testHook_endingStep() { endingStep(); }
+    void testHook_expirationStep() { expirationStep(); }
     // Phase 6q+ engine-audit CRITICAL #2 + #3 — exposed so tests can
     // exercise the showdown / combat trigger drain + action-type
     // dispatch in isolation without driving a full turn.
@@ -258,7 +264,6 @@ public:
         return resolveShowdownDecision(bf, chosen, current_focus, action_count);
     }
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
-    void testHook_expirationStep() { expirationStep(); }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
     // The top-level main-phase decision, asked of `p`'s agent.
@@ -803,8 +808,7 @@ private:
     void swapBackBattlefield(BattlefieldId token_bf);
 
     // ── Equip/Attach (CR 716-725) ──
-    /// Attach a gear to a unit. Returns true if successful.
-    bool attachGearToUnit(GameObjectId gear, GameObjectId unit);
+    // Attaching goes through EffectExecutor::attachGear (the one attach path).
     /// Detach all gear from a unit (e.g., when unit leaves board).
     void detachAllGear(GameObjectId unit);
 };

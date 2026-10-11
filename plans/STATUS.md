@@ -75,7 +75,7 @@ iteration must apply these.
 | 1 | io-cli | merged | `f3e2208` | gate: 1726 run, 1726 passed | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
 | 1 | integrity | merged | `fc1f7cb` (merge `b0d329b`) | gate: 1726 run, 1726 passed | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
 | 2 | cards-c0 | merged | `0c82974` (merge `7ad4269`) | clean build: 1783/1783, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 31 boxes ticked; 6 batch-00 items BLOCKED on engine work (in carry-over); 3 `shared:` commits incl. engine changes |
-| 2 | cards-c1 | running | | | based on `1640e81` |
+| 2 | cards-c1 | returned | `7e89826` (merged in batch with c2, c4; gate running) | 1850 passed, 0 failed (clean namespaced build, on its branch) | 35 of 40 batch-01 boxes + 5 batch-08; 6 BLOCKED on engine work; corrected tests in 12 existing files; did not build `riftbound` or run the smoke |
 | 2 | cards-c2 | returned | `2fe1205` (merged, gate running) | 1851 passed, 0 failed (clean namespaced build, on its branch) | 41 of 42 batch-02 boxes + 3 batch-08; Wallop 146 / Call to Glory 207 BLOCKED (spell alternative-cost path); 3 `shared:` commits with engine state and trigger additions |
 | 2 | cards-c3 | running | | | based on `1640e81` |
 | 2 | cards-c4 | returned | `fd00d2c` (merged in batch with c2, gate running) | 1833 passed, 0 failed (clean namespaced build, on its branch) | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
@@ -108,6 +108,18 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c1 | BLOCKED batch-01: Prodigal Explorer 514 (needs a counter instead of bool `chose_enemy_unit_this_turn`, set at five engine sites); Emperor of the Sands 512 (Weaponmaster for tokens, 8.4); Endless Riches 809 (play-from-trash for every card type + trash-to-banish replacement); 294 / 506 / 786 (restricted resource pools in `RunePool`: spell-only, gear-only, showdown-only); Swift Scout 259 (hide cost has no card hook in `executeHideCard`) | sweep | open |
+| cards-c1 | Wuju Master 784 Level 11 — one line in the aura hook now that `PlayerState::units_enter_ready_by` (c4) is merged | sweep | open |
+| cards-c1 | Battle Mistress 517 once-per-batch is in c1's range, not c6's, and was NOT done: needs engine batching of simultaneous deaths | sweep | open |
+| cards-c1 | batch-08 three-card item (274 / 671 / 783) fully fixed across c0 and c1 — tick it | sweep | open |
+| cards-c1 | warnings left in untouched files in its range: 408, 430, 437, 439, 445, 455, 493, 507, 658 | cleanup | open |
+| cards-c1 | `shared:` changes to review: `TriggerType` `WhenAnEnemyUnitAttacksYourBattlefield`, `WhenYouMoveAnEnemyUnit`, `WhenYouRecycleARune` with dispatch in `onCombatStarted` / `onUnitMoved` / `onLeftBoard`; `beginningStep` no longer kills attached [Temporary] gear (CR 718.2); tests corrected in 12 existing files | sweep (review the 12 test edits) | open |
+| cards-c1 | NEW: `grant_repeat_base_to_next_spell` carries only Energy, so a spell that also costs Power repeats for Energy alone (Temporal Portal 401 / The Academy 772) | sweep | open |
+| cards-c1 | NEW: `is_rules_text_inactive` is set by only one attach path, not `attachEquipped` / `attachFree`, while `fireTrigger` skips triggers on gear with it — behaviour depends on how the gear was attached; Blighted Battleaxe 581 end-of-turn ability would be suppressed | sweep | open |
+| cards-c1 | NEW: `TriggerManager::onUnitStunned` queues with `addAbility` directly: no `fired_trigger`, no `triggerCondition`, reads `triggerType()` not `triggerTypes()` | sweep | open |
+| cards-c1 | NEW: a trigger queued while an Equip is being paid sits on the chain until something else runs it (`executeIntent` runs the chain only when `payAndQueueAbility` returns true) — same family as the search "item on chain, state Closed" row | sweep | open |
+| cards-c1 | NEW: `CardTestFixture::addToHand` leaves a unit's `base_might` at 0, so a unit played through `playThroughEngine` has 0 Might unless the test sets it | sweep (fixture) | open |
+| cards-c1 | NEW: Chem-Baroness 556 reads `state.mode.victory_score` (ignores `victoryScoreModifier()`), same as the Leona 79 row | sweep (with the victory-score row) | open |
 | cards-c4 | BLOCKED batch-04: Brazen Buccaneer 2 (`canAfford` ignores the optional discard discount; `executePlayCard` must force the discard when full cost is unaffordable) and Kraken Hunter 150 (variable additional cost needs a prompt before payment) — same pre-payment code path | sweep | open |
 | cards-c4 | BLOCKED batch-04: Leona, Zealot 79 victory score — `entersReadyOnPlay` cannot see the effective Victory Score; Find Your Center 47, Poppy 678, Corrupted Dragon 878 read `mode.victory_score` directly too. Needs a state-visible effective Victory Score (c2 added `TurnState::victory_score_bonus` — use it) | sweep | open |
 | cards-c4 | BLOCKED batch-04: Rebuttal 939 "[4] or less" half — `hasLegalTargets` sees only `GameState`, printed cost is in `CardDB` (same limit as Defy 45) | sweep (with the `hasLegalTargets` CardDB row) | open |
@@ -248,3 +260,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c0 verified on a clean private-cache build (gate-c0-clean, 4.5 min cold): all checks green. Worktree and branch removed. Spawned cards-c6.
 - 2026-10-10 cards-c2 (`2fe1205`) returned and merged, gate running. 10 rows to carry-over.
 - 2026-10-10 cards-c4 (`fd00d2c`) merged into the batch with c2; two-line engine conflict resolved by keeping both conditions (see merge commit `12c4935`). 11 rows to carry-over. Decision: mechanical both-sides conflicts (appended helpers, appended plan sub-bullets, independent conditions) are resolved by the orchestrator and verified by the gate; anything else goes back to the stream.
+- 2026-10-10 cards-c1 (`7e89826`) merged into the batch with c2 and c4 (merge `faa7516`); conflicts were appended enum values, appended plan sub-bullets and the kKnownOffenders list, resolved mechanically. 12 rows to carry-over.

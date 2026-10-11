@@ -74,13 +74,13 @@ iteration must apply these.
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
 | 1 | io-cli | merged | `f3e2208` | gate: 1726 run, 1726 passed | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
 | 1 | integrity | merged | `fc1f7cb` (merge `b0d329b`) | gate: 1726 run, 1726 passed | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
-| 2 | cards-c0 | returned | `0c82974` (merged, clean-build gate in progress) | 1783 passed, 0 failed (on its branch) | 31 boxes ticked; 6 batch-00 items BLOCKED on engine work (in carry-over); 3 `shared:` commits incl. engine changes |
+| 2 | cards-c0 | merged | `0c82974` (merge `7ad4269`) | clean build: 1783/1783, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 31 boxes ticked; 6 batch-00 items BLOCKED on engine work (in carry-over); 3 `shared:` commits incl. engine changes |
 | 2 | cards-c1 | running | | | based on `1640e81` |
 | 2 | cards-c2 | running | | | based on `1640e81` |
 | 2 | cards-c3 | running | | | based on `1640e81` |
 | 2 | cards-c4 | running | | | based on `1640e81` |
 | 2 | cards-c5 | running | | | based on `1640e81` |
-| 2 | cards-c6 | pending | | | |
+| 2 | cards-c6 | running | | | based on integration with cards-c0 merged |
 | 2 | cards-c7 | pending | | | |
 | 3 | sweep | pending | | | |
 | 3 | perf-engine | pending | | | |
@@ -224,3 +224,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 STAGE 1 GATE PASSED at `b0d329b`. integrity and io-cli marked merged; their worktrees and branches removed.
 - 2026-10-10 master fast-forwarded to `1640e81`. Stage 2: spawned cards-c0..c5 (6 running); c6 and c7 wait for a slot.
 - 2026-10-10 cards-c0 returned and merged; it found the shared-ccache launcher restoring a foreign PCH. All running streams told to use a private cache namespace and clean-build before their final run; integration reconfigured the same way and rebuilt from clean. 9 rows to carry-over.
+- 2026-10-10 cards-c0 verified on a clean private-cache build (gate-c0-clean, 4.5 min cold): all checks green. Worktree and branch removed. Spawned cards-c6.

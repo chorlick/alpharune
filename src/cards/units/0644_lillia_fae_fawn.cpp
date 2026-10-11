@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include <stdexcept>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -18,15 +19,13 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        // "there" is the location I moved FROM. TriggerManager::onUnitMoved
-        // notes it on me as the move happens: a battlefield id, or -1 for my
-        // base. The token is played there whether or not I am still around.
-        if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        const auto from = self.card_counters.find("__moved_from_bf");
-        LocationId loc = BaseLocation{ctx.controller};
-        if (from != self.card_counters.end() && from->second >= 0)
-            loc = BattlefieldLocation{static_cast<BattlefieldId>(from->second)};
+        // "there" is the location I moved FROM: the origin of the move that
+        // triggered this, carried on the chain item (triggeringMove) — so two
+        // moves give two tokens in two places. The token is played there
+        // whether or not I am still around.
+        const auto* move = triggeringMove(ctx.state);
+        if (!move) throw std::logic_error("Lillia, Fae Fawn: \"When I move\" resolved without a move");
+        const LocationId loc = move->from;
         KeywordSet kw; kw.set(Keyword::Temporary);
         // Not "ready": a unit token enters exhausted (CR 143.4).
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite",

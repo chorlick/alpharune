@@ -70,10 +70,12 @@ public:
         const int enemy_might = ctx.state.getObject(enemy).current_might;
         ctx.executor.dealDamage(enemy, friendly_might, ctx.source);
         ctx.executor.dealDamage(friendly, enemy_might, ctx.source);
-        DeathBatch together(ctx.executor, std::vector<GameObjectId>{enemy, friendly});   // they die at the same time
-        for (auto id : {enemy, friendly})
-            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, std::vector<GameObjectId>{enemy, friendly});   // they die at the same time
+            for (auto id : {enemy, friendly})
+                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
+                    ctx.executor.killObject(id);
+        }
     }
 private:
     const CardDef def_ = [] {

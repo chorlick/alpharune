@@ -50,10 +50,12 @@ public:
             hit.push_back(id);
         }
         for (auto id : hit) ctx.executor.dealDamage(id, dmg, ctx.source);
-        DeathBatch together(ctx.executor, hit);   // they die at the same time
-        for (auto id : hit) {
-            const auto& obj = ctx.state.getObject(id);
-            if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, hit);   // they die at the same time
+            for (auto id : hit) {
+                const auto& obj = ctx.state.getObject(id);
+                if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
+            }
         }
         // Then move your unit there.
         ctx.executor.moveToBattlefield(mover, bf);

@@ -4,6 +4,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include <stdexcept>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -26,17 +27,15 @@ public:
 
     // "When I move, you may deal 1 to a unit at a battlefield I moved to or
     //  from. If I'm [Empowered], deal 2 instead."
-    // The battlefield I left is card_counters["__moved_from_bf"] (stamped by
-    // TriggerManager::onUnitMoved before this fires; -1 when I left a base).
+    // Both ends are those of the move that triggered this (triggeringMove,
+    // carried on the chain item) — not where I am now, nor my latest move.
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     std::vector<GameObjectId> unitsWhereIMoved(CardContext& ctx) const {
         if (!ctx.state.objectExists(ctx.source)) return {};
-        const auto& self = ctx.state.getObject(ctx.source);
-        const auto to_bf = self.battlefieldId();
-        std::optional<BattlefieldId> from_bf;
-        if (auto it = self.card_counters.find("__moved_from_bf");
-            it != self.card_counters.end() && it->second >= 0)
-            from_bf = static_cast<BattlefieldId>(it->second);
+        const auto* move = triggeringMove(ctx.state);
+        if (!move) throw std::logic_error("Akali, Deadly Weapon: \"When I move\" resolved without a move");
+        const std::optional<BattlefieldId> to_bf = battlefieldOfLocation(move->to);
+        const std::optional<BattlefieldId> from_bf = battlefieldOfLocation(move->from);
         if (!to_bf && !from_bf) return {};
         return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
             auto bf = o.battlefieldId();

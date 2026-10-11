@@ -1,8 +1,10 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include <stdexcept>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,16 +17,14 @@ class HarpoonSquad : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When I move from a battlefield, give me +2 [M] this turn."
-    // "from a battlefield": TriggerManager::onUnitMoved records where the move
-    // started in card_counters["__moved_from_bf"] (-1 = out of a base) before
-    // it fires the trigger.
+    // "from a battlefield": the origin of the move being announced
+    // (triggeringMove), judged as the ability triggers.
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
         if (!state.objectExists(source)) return false;
-        const auto& counters = state.getObject(source).card_counters;
-        auto from = counters.find("__moved_from_bf");
-        return from != counters.end() && from->second >= 0;
+        const auto* move = triggeringMove(state);
+        return move && battlefieldOfLocation(move->from).has_value();
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "give me": only while I'm still on the board.

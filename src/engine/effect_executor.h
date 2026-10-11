@@ -29,8 +29,11 @@ class EffectExecutor;
 /// the loop that kills them: each unit's last-known information is taken while
 /// all of them are still on the board, so abilities that look back at the
 /// death see the others ("if I didn't die alone") — as the engine does for
-/// lethal damage found in one cleanup. Listing a unit that then survives is
-/// harmless. (EffectExecutor::beginDeathBatch / endDeathBatch.)
+/// lethal damage found in one cleanup. Put it in a block of its own with the
+/// loop, so it ends with the kills. Listing a unit that then survives is
+/// harmless: if it is changed and dies later while the batch is still open,
+/// its last-known information is taken afresh.
+/// (EffectExecutor::beginDeathBatch / endDeathBatch.)
 class DeathBatch {
 public:
     DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units);
@@ -305,7 +308,10 @@ public:
     /// copy goes there too. `token_card`: the registered token card this token
     /// is (Gold 326, Shadow Clone 955) — set before the play is announced, so
     /// what triggers on it sees the token with its abilities, and carried by
-    /// an additional copy. Returns the token asked for; lastTokensCreated()
+    /// an additional copy. `enters_exhausted`: the instruction says "play a
+    /// ... token exhausted" (a gear otherwise enters ready, CR 149.1) — it is
+    /// exhausted when its play is announced, unless "your tokens enter ready"
+    /// replaces how it enters (CR 184.1). Returns the token asked for; lastTokensCreated()
     /// also lists any additional copies.
     GameObjectId createToken(PlayerId controller, CardType type,
                              const std::string& name, int might,
@@ -313,7 +319,8 @@ public:
                              KeywordSet keywords, LocationId location,
                              bool enter_ready = false,
                              const std::vector<LocationId>& location_choices = {},
-                             CardDefId token_card = kInvalidId);
+                             CardDefId token_card = kInvalidId,
+                             bool enters_exhausted = false);
     /// Every token the most recent createToken call put on the board: the one
     /// asked for first, then additional copies.
     const std::vector<GameObjectId>& lastTokensCreated() const { return last_tokens_; }

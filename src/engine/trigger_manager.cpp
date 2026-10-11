@@ -134,6 +134,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
             if (item.id != item_id) continue;
             item.fired_trigger = trigger;
             item.triggering_subject = event_object;
+            item.triggering_move = state_.chain.move_being_announced;
             break;
         }
     }
@@ -179,6 +180,7 @@ void TriggerManager::queueEquippedTrigger(GameObjectId gear_id, GameObjectId uni
         item.fired_trigger = trigger;
         item.equipped_unit = unit_id;
         item.triggering_subject = unit_id;
+        item.triggering_move = state_.chain.move_being_announced;
         break;
     }
 }
@@ -326,6 +328,7 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
         if (triggering_spell_energy_spent > 0)
             item.triggering_spell_energy_spent = triggering_spell_energy_spent;
         if (subject != kInvalidId) item.triggering_subject = subject;
+        item.triggering_move = state_.chain.move_being_announced;
         break;
     }
     // An Equipment on this unit whose effect text is a copy of the unit's
@@ -1141,11 +1144,18 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
     if (!state_.objectExists(e.object)) return;
     auto& obj = state_.getObject(e.object);
 
-    // Where it moved from, for "a battlefield I moved to or from" (Akali,
-    // Deadly Weapon): battlefield id, or -1 when it left a base.
-    obj.card_counters["__moved_from_bf"] =
-        std::holds_alternative<BattlefieldLocation>(e.from)
-            ? static_cast<int>(std::get<BattlefieldLocation>(e.from).id) : -1;
+    // Where it moved from and to, for every ability this move triggers
+    // (ChainItem::triggering_move): "play a token there", "a battlefield I
+    // moved to or from", "to the same battlefield". Cleared when this returns.
+    struct Announcing {
+        ChainState& chain;
+        std::optional<ChainItem::Move> outer;
+        Announcing(ChainState& c, const UnitMovedEvent& ev)
+            : chain(c), outer(c.move_being_announced) {
+            chain.move_being_announced = ChainItem::Move{ev.from, ev.to};
+        }
+        ~Announcing() { chain.move_being_announced = outer; }
+    } announcing(state_.chain, e);
     if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenIMove)) {
         fireTrigger(e.object, e.controller, 0, TriggerType::WhenIMove);
     }

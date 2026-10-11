@@ -14,6 +14,10 @@ namespace {
 class FeralStrength : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [2]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 2}};
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (!targets.empty())
             ctx.executor.giveTemporaryMight(targets[0], 2);

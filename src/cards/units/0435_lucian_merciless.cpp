@@ -23,8 +23,12 @@ public:
     }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (ctx.firing_trigger == TriggerType::WhenIConquer) firstConquerReady(ctx);
-        else WeaponmasterUnit::onTrigger(ctx, targets);
+        if (ctx.firing_trigger == TriggerType::WhenIConquer) {
+            if (finalizingChoices(ctx)) return;   // no choice in this branch (CR 383.3)
+            firstConquerReady(ctx);
+        } else {
+            WeaponmasterUnit::onTrigger(ctx, targets);
+        }
     }
 
     void firstConquerReady(CardContext& ctx) {

@@ -20,6 +20,10 @@ namespace {
 class Temptation : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [2]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 2}};
+    }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     /// Where `a` may be moved (int-coded as moveDests): each other location
     /// holding another unit of its controller.

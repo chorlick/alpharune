@@ -19,10 +19,10 @@ public:
     // "Your" is each Altar's own controller: the hook is called once per slot
     // holding this card and is not told which, so it sets every Altar's
     // discount for that Altar's controller (idempotent).
-    // ENGINE-GAP: only the [1] Energy reduction exists (GameObject::
-    // empower_cost_reduction feeds Card::activationCostReductionFor, which is
-    // Energy only), so an [Empower] cost with no Energy — Gangplank, Naval's
-    // [O][O] — is not reduced by the "[A] less" alternative.
+    // GameObject::empower_cost_reduction takes [1] off the Empower cost's
+    // Energy (Card::activationCostReductionFor) and, where there is no Energy
+    // to take — Gangplank, Naval's [O][O] — one Power instead
+    // (Card::activationPowerReductionFor).
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
         for (auto& bf : state.battlefields) {
             if (!state.objectExists(bf.card_object_id)) continue;

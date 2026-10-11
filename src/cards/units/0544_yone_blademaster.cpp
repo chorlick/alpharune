@@ -53,7 +53,8 @@ public:
             [&](const GameObject& u) { return u.controller != ctx.controller && u.isAtBase(); });
         const GameObjectId t = pickTarget(ctx, "Yone: deal my Might to an enemy unit in a base",
                                           legal);
-        if (t == kInvalidId) return;   // none / waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;   // none / mistarget
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
         if (!self.location.has_value()) return;   // "my Might": I must still be here

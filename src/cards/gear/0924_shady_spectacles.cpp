@@ -123,10 +123,10 @@ public:
     }
 
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        if (!ctx.state.objectExists(unit)) return false;
-        if (!standardEquip(ctx, ctx.source, unit, /*energy_cost=*/1, Domain::Order))
-            return false;
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 1, .power = 1, .power_domain = Domain::Order};
+    }
+    void onEquipped(CardContext& ctx, GameObjectId unit) override {
         // A copy this gear left behind on an earlier bearer (it came off by a
         // path that skipped onUnattached) ends now at the latest.
         {
@@ -152,7 +152,6 @@ public:
                 static_cast<int>(unit) + 1;
             ctx.executor.copyUnit(unit, chosen);
         }
-        return true;
     }
 private:
     const CardDef def_ = [] {

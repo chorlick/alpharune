@@ -15,6 +15,10 @@ namespace {
 class DangerZone : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [1][A]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 1, .power = 1, .power_domain = Domain::Count}};
+    }
     // "Give your Mechs +1 [M] this turn." No target: every Mech unit you
     // control when this resolves.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

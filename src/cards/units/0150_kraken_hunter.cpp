@@ -16,13 +16,47 @@ public:
     const CardDef& def() const override { return def_; }
     // [Accelerate] / [Assault] are engine-handled keywords.
     // "As you play me, you may spend any number of buffs as an additional cost.
-    // Reduce my cost by [O] for each buff you spend."
-    // ENGINE LIMITATION: there is no per-card interactive additional-cost hook
-    // that lets the agent choose to spend a VARIABLE number of buffs at play
-    // time and translate that into a cost reduction. optionalAdditionalCost()
-    // only pays a fixed energy/power amount (no waiver/scaling), and
-    // selfCostReduction() has no agent decision point. The optional
-    // buff-spend cost reduction is left unimplemented (needs engine support).
+    // Reduce my cost by [O] for each buff you spend." An additional cost
+    // chosen before payment (CR 356.2.b): one buff at a time, from a friendly
+    // unit of the player's choice; the player may stop once what is left can
+    // be paid.
+    static std::vector<GameObjectId> buffed(const GameState& state, PlayerId player) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == player && obj.location.has_value() &&
+                obj.buff_count > 0) out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        int buffs = 0;
+        for (auto id : buffed(state, player)) buffs += state.getObject(id).buff_count;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.payable = buffs > 0;
+        c.best.power_reduction = std::min(buffs, def_.power_cost);
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        PlayCostAdjust adj;
+        while (adj.power_reduction < def_.power_cost) {
+            const auto units = buffed(ctx.state, ctx.controller);
+            if (units.empty()) break;
+            if (affordable(adj) &&
+                !ctx.executor.confirmNow(ctx.controller,
+                                         "Kraken Hunter: spend a buff to cost [O] less"))
+                break;
+            const GameObjectId unit = ctx.executor.chooseObjectNow(ctx.controller, units);
+            if (unit == kInvalidId) break;
+            ctx.executor.spendBuff(unit, ctx.controller);
+            ++adj.power_reduction;
+        }
+        return adj;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

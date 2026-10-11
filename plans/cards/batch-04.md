@@ -37,7 +37,7 @@ Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - i
   - Text: "Other friendly units enter ready."
   - Code: no implementation (the file notes the engine gap; no engine hook exists).
   - Scenario: units played while Magma Wurm is on board still enter exhausted; the card is a vanilla 8-Might unit.
-- [ ] **2 Brazen Buccaneer** - `units/0002_brazen_buccaneer.cpp:22-28` [confirmed] medium
+- [x] **2 Brazen Buccaneer** - `units/0002_brazen_buccaneer.cpp:22-28` [confirmed] medium — FIXED (sweep-costs): the discard is an additional cost chosen before payment (`Card::additionalPlayCost` default), counted by `canAfford` and forced when only it makes the card payable; test: SweepCostsTest.BrazenBuccaneer_DiscardCountsTowardAffordability
   - Text: "As you play me, you may discard 1 as an additional cost. If you do, reduce my cost by [2]."
   - Code: the discount is only staged inside `executePlayCard` (`game_engine.cpp:1606-1637`); the play generator gates on `canAfford` (`game_engine.cpp:2676`), which uses the full printed cost.
   - Scenario: with 4 or 5 Energy available and a card to discard, the Buccaneer is never offered as a play; the discount only works when the player could already pay 6.
@@ -70,7 +70,7 @@ Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - i
   - Text: "If I have moved twice this turn, I don't take damage."
   - Code: reads `moves_this_turn`, which is incremented only in `GameEngine::moveUnit` (`game_engine.cpp:6251`). `EffectExecutor::moveToBattlefield` / `moveToBase` (`effect_executor.cpp:735-770`) set the location directly and do not count.
   - Scenario: Kayn makes one standard move and is moved once by a spell or ability -> not immune.
-- [ ] **150 Kraken Hunter** - `units/0150_kraken_hunter.cpp:18-25` [documented] medium
+- [x] **150 Kraken Hunter** - `units/0150_kraken_hunter.cpp:18-25` [documented] medium — FIXED (sweep-costs): buffs are spent one at a time before payment (`payAdditionalPlayCost`), one [O] off each; test: SweepCostsTest.KrakenHunter_SpendsBuffsBeforePaying
   - Text: "As you play me, you may spend any number of buffs as an additional cost. Reduce my cost by [O] for each buff you spend."
   - Code: not implemented.
   - Scenario: buffs can never be spent; the full [O][O] is always charged.

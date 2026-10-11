@@ -58,7 +58,7 @@ protected:
         return id;
     }
 
-    // Attach `gear` to `unit` (mirrors GameEngine::attachGearToUnit essentials).
+    // Attach `gear` to `unit` (mirrors EffectExecutor::attachGear essentials).
     void attach(GameObjectId gear, GameObjectId unit) {
         auto& g = state.getObject(gear);
         auto& u = state.getObject(unit);

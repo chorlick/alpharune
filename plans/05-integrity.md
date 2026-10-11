@@ -13,7 +13,7 @@
 
 ## Card-specific logic in the engine
 
-- [ ] **5.4 `ability_text` matching beyond the documented `killUnit` exception** [confirmed]
+- [x] **5.4 `ability_text` matching beyond the documented `killUnit` exception** [confirmed]
   - Done by engine-auras-costs (the sites in its functions): aura parsing in `recalculateAuras` deleted (2.1 / 8.1), with the `std::tolower` on UTF-8 bytes; `anyDamageIsLethalFor` asks `Card::anyDamageIsLethal()` (Elder Dragon 680), test: AurasCostsTest.ElderDragon_AnyOfYourDamageKills; the Altar of Blood block is the card's `applyReplacement` (2.26).
   - BLOCKED: the three remaining sites are in engine-play-combat's functions and each needs a new `Card` virtual plus edits to the cards that print the text — `setupBattlefields` ("can't move from here to base" / "can't be played here": Rockfall Path 530, Vilemaw's Lair 290), `generateMainPhaseActions` ("play me to an open battlefield" and variants: Ocean Drake 902, Sneaky Deckhand 176, Miss Fortune 193, Sai Scout 174, Bard 540), `executePlaySpell` → `parseRepeatCost` (also 8.9).
   - `game_engine.cpp:4508-4624` and `:4691-4795` — aura parsing in `recalculateAuras` ("your mechs each have", "my might is increased by your points", "while you have another unit here", …). Root cause of 2.1.
@@ -24,6 +24,7 @@
   - `:1837` — `parseRepeatCost`.
   - `std::tolower(char)` at `:4515` / `:4703` is called on raw UTF-8 bytes (text contains `\xe2\x80\x99`); a negative argument is formally UB.
   - sweep-flow: the two sites in flow functions are gone. `setupBattlefields` asks `BattlefieldCard::blocksMoveToBase()` / `blocksUnitPlay()` (Vilemaw's Lair 290, Rockfall Path 530); `generateMainPhaseActions` asks `Card::extraPlayLocations()` (Sneaky Deckhand 176, Sai Scout 174, Miss Fortune 193, Ocean Drake 902: open; Deadbloom Predator 161, Dauntless Vanguard 415: occupied enemy). The "play me to a battlefield" match had also given Blitzcrank 67, Mischievous Marai 562 and Shadow 752 a play-anywhere permission their text does not print (it is a trigger condition) — gone with it. `killUnit` has no text match left (stale comment removed). Only `parseRepeatCost` (sweep-costs) remains; test: SweepFlowTest.PlayLocation_OpenBattlefieldPermissionComesFromTheCard, .PlayLocation_OccupiedEnemyBattlefieldPermissionComesFromTheCard, .PlayLocation_ATriggerThatMentionsPlayingToABattlefieldGrantsNothing, .BattlefieldRestrictions_AreReadFromTheCardAtSetup
+  - sweep-costs: the last site is gone — `parseRepeatCost` deleted, Repeat costs are `Card::repeatCosts()`; no engine source matches `ability_text` (grep of `src/engine` finds only comments) — FIXED; test: JhinDeckTest.RepeatCost_EnergyOnly, .RepeatCost_EnergyPlusDomain, .RepeatCost_UniversalA
 
 ## Types and invariants
 

@@ -437,18 +437,41 @@ TEST_F(C3Test, TricksyTentacles_MovesSeveralUnitsWithinTheMightBudgetToOneLocati
         EXPECT_TRUE(i.chosen_objects.empty() || i.chosen_objects.front() != big);
 }
 
+// Corrected (sweep-costs, 8.9): the Repeat is now offered — its cost is the
+// card's declaration (Card::repeatCosts) — so there is one prompt, and
+// declining it keeps the hand.
 TEST_F(C3Test, SquareUp_DoesNotForceADiscard) {
     // "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn." The
     // discard is the Repeat's cost; the base effect used to demand it.
     auto spell = addToHand(P1, kSquareUp);
     auto keep = addToHand(P1, kSkulker);
     auto unit = addUnit(P1, kInvalidId, 2, 0);
-    StepAgent agent;
+    StepAgent agent{V(0)};   // decline the Repeat
     playAt(spell, {unit}, &agent);
-    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(agent.missed, 0);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "only the Repeat offer";
     EXPECT_TRUE(inHand(P1, keep));
     EXPECT_TRUE(state.getObject(unit).hasKeyword(Keyword::Assault));
     EXPECT_EQ(state.getObject(unit).assault_value, 4);
+}
+
+TEST_F(C3Test, SquareUp_RepeatIsPaidWithADiscard) {
+    auto spell = addToHand(P1, kSquareUp);
+    auto fodder = addToHand(P1, kSkulker);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    StepAgent agent{V(1)};   // pay the Repeat
+    playAt(spell, {unit}, &agent);
+    EXPECT_EQ(agent.missed, 0);
+    EXPECT_FALSE(inHand(P1, fodder)) << "the discard is the Repeat's cost";
+    EXPECT_EQ(state.getObject(unit).assault_value, 8) << "the effect ran twice";
+
+    // With nothing to discard the Repeat is not offered.
+    auto again = addToHand(P1, kSquareUp);
+    auto other = addUnit(P1, kInvalidId, 2, 0);
+    StepAgent none;
+    playAt(again, {other}, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_EQ(state.getObject(other).assault_value, 4);
 }
 
 TEST_F(C3Test, CurtainCall_TargetFitsTheModeAndALaterCastStartsFresh) {

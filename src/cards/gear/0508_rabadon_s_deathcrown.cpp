@@ -16,9 +16,8 @@ class RabadonSDeathcrown : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        // [A] equip: recycle any rune for power.
-        return standardEquip(ctx, ctx.source, unit, std::nullopt);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 0, .power = 1, .power_any_domain = true};
     }
     // Equipped: "Your spells and abilities deal 3 Bonus Damage (while this is
     // attached)." Raises the controller's bonus_damage_dealt, which dealDamage

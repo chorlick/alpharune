@@ -15,35 +15,41 @@ namespace {
 class CruelPatron : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
-    // "As an additional cost to play me, kill a friendly unit."
-    // The engine has no hook for a "kill a unit" additional play cost, so:
-    //  - canBePlayed gates the play on having a friendly unit to kill;
-    //  - the kill itself is the cost of my WhenYouPlayMe ability, chosen and
-    //    paid as that ability goes on the chain (CR 383.3), before anyone can
-    //    respond — not as it resolves.
-    // APPROX: the kill happens just after I enter the board, not before.
-    bool canBePlayed(const GameState& state, PlayerId player) const override {
+    // "As an additional cost to play me, kill a friendly unit." A mandatory
+    // additional cost (CR 356.2.a): without a friendly unit to kill I cannot
+    // be played, and the unit — the player's choice — dies as I am played,
+    // before my cost is paid and before I enter the board.
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId player) {
+        std::vector<GameObjectId> out;
         for (const auto& [id, obj] : state.objects)
             if (obj.isUnit() && obj.controller == player && obj.location.has_value())
-                return true;
-        return false;
+                out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
     }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!costAlreadyPaid(ctx)) {
-            std::vector<GameObjectId> friendly;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
-                    friendly.push_back(id);
-            }
-            std::sort(friendly.begin(), friendly.end());
-            GameObjectId picked = pickTarget(ctx, "Cruel Patron (kill a friendly unit)", friendly);
-            if (picked == kInvalidId) return;   // waiting / no other unit
-            if (costDueNow(ctx)) ctx.executor.killObject(picked);
+    bool canBePlayed(const GameState& state, PlayerId player) const override {
+        return !friendlyUnits(state, player).empty();
+    }
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.mandatory = true;
+        c.payable = !friendlyUnits(state, player).empty();
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        (void)affordable;
+        const GameObjectId unit = ctx.executor.chooseObjectNow(
+            ctx.controller, friendlyUnits(ctx.state, ctx.controller));
+        if (unit != kInvalidId) {
+            ctx.executor.killObject(unit);
+            ctx.events.logTrace("CRUEL PATRON: killed a friendly unit (additional cost)");
         }
-        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        return {};
     }
 private:
     const CardDef def_ = [] {

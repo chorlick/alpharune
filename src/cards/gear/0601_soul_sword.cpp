@@ -16,9 +16,8 @@ class SoulSword : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        // [G] equip: recycle a Calm rune for power.
-        return standardEquip(ctx, ctx.source, unit, Domain::Calm);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 0, .power = 1, .power_domain = Domain::Calm};
     }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Find this gear's on-board instance(s); if attached and the

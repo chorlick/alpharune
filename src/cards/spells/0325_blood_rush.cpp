@@ -14,6 +14,10 @@ namespace {
 class BloodRush : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [1]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 1}};
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (!targets.empty())
             ctx.executor.giveTemporaryKeyword(targets[0], Keyword::Assault, 2);

@@ -38,44 +38,76 @@ public:
         const auto& d = db.get(obj.card_def_id);
         return d.energy_cost <= 2 && d.power_cost <= 1;
     }
-    /// The cost path has no CardDB to judge "can be chosen" with, so the
-    /// discount keys on a Bird / Cat / Dog / Poro unit being in the trash and
-    /// the surcharge in onResolve settles the difference.
-    int selfCostReduction(const GameState& state, PlayerId player) const override {
-        for (auto cid : state.player(player).trash) {
-            if (!state.objectExists(cid)) continue;
-            const auto& obj = state.getObject(cid);
-            if (obj.isUnit() && discounts(obj)) return 2;
+    // "This costs [2] less if you choose a Bird, Cat, Dog, or Poro." The
+    // unit is chosen as the spell is played, before its cost is determined
+    // (CR 355 -> 356), through the pre-payment hook — which sees the CardDB,
+    // so only units the text allows are on offer and the discount follows the
+    // unit actually chosen. kChosen carries the choice to resolution.
+    static constexpr const char* kChosen = "__undying_loyalty_unit";
+    static std::vector<GameObjectId> choosable(const GameState& state, const CardDB& db,
+                                               PlayerId player) {
+        std::vector<GameObjectId> out;
+        for (auto cid : state.player(player).trash)
+            if (state.objectExists(cid) && eligible(state.getObject(cid), db))
+                out.push_back(cid);
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId /*self*/) const override {
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.mandatory = true;          // the choice is part of playing the spell
+        for (auto cid : choosable(state, db, player)) {
+            c.payable = true;
+            if (discounts(state.getObject(cid))) c.best.energy_reduction = 2;
         }
-        return 0;
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        PlayCostAdjust discount;
+        discount.energy_reduction = 2;
+        // Only units the spell can still be paid for with.
+        std::vector<GameObjectId> legal;
+        for (auto cid : choosable(ctx.state, ctx.executor.cardDB(), ctx.controller))
+            if (affordable(discounts(ctx.state.getObject(cid)) ? discount : PlayCostAdjust{}))
+                legal.push_back(cid);
+        auto& me = ctx.state.getObject(ctx.source);
+        me.card_counters[kChosen] = 0;
+        const GameObjectId picked = ctx.executor.chooseObjectNow(ctx.controller, legal);
+        if (picked == kInvalidId) return {};
+        me.card_counters[kChosen] = static_cast<int>(picked) + 1;
+        ctx.events.logTrace("UNDYING LOYALTY: chose " + ctx.state.getObject(picked).name);
+        return discounts(ctx.state.getObject(picked)) ? discount : PlayCostAdjust{};
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        // Whether a unit of the right cost is there is judged by the play
+        // gate (additionalPlayCost, which has the CardDB); here: any unit.
+        for (auto cid : state.player(controller).trash)
+            if (state.objectExists(cid) && state.getObject(cid).isUnit()) return true;
+        return false;
     }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
-        const bool discounted = selfCostReduction(ctx.state, ctx.controller) > 0;
-        const bool settled = costAlreadyPaid(ctx);
-        std::vector<GameObjectId> legal;
-        for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            const auto& obj = ctx.state.getObject(cid);
-            if (!eligible(obj, ctx.executor.cardDB())) continue;
-            // A unit that does not earn the discount costs the [2] back.
-            if (!settled && discounted && !discounts(obj) &&
-                payableEnergy(ctx.state, ctx.controller) < 2) continue;
-            legal.push_back(cid);
-        }
-        GameObjectId picked = pickTarget(ctx, "Undying Loyalty (unit from trash)", legal);
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;  // waiting / none
+        // The unit chosen as the spell was played; it must still be in the
+        // trash and still what the text allows.
+        const auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        const auto it = counters.find(kChosen);
+        const GameObjectId picked = (it == counters.end() || it->second <= 0)
+            ? kInvalidId : static_cast<GameObjectId>(it->second - 1);
+        const bool still_there = picked != kInvalidId && ctx.state.objectExists(picked) &&
+            std::find(ps.trash.begin(), ps.trash.end(), picked) != ps.trash.end() &&
+            eligible(ctx.state.getObject(picked), ctx.executor.cardDB());
         // Its controller's base or a battlefield they control (CR 355.2.a).
         const auto where = playLocations(ctx.state, ctx.controller);
         const int mode = pickMode(ctx, "Undying Loyalty: where to play it",
                                   where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
-        if (costDueNow(ctx) && discounted && !discounts(ctx.state.getObject(picked))) {
-            if (!payEnergy(ctx, ctx.controller, 2)) return;
-            ctx.events.logTrace("UNDYING LOYALTY: not a Bird, Cat, Dog or Poro — pays the [2]");
-        }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (!still_there) return;
         ctx.executor.playIgnoringCost(ctx.controller, picked, where.locations[mode]);
         ctx.events.logTrace("UNDYING LOYALTY: played a unit from trash, ignoring cost");
     }

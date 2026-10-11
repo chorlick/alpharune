@@ -23,7 +23,7 @@ public:
             [&](const GameObject& u) {
                 const auto bf = u.battlefieldId();
                 if (!bf) return false;
-                for (const auto& [id, e] : state.objects)
+                for (const auto& [id, e] : state.objects.onBoard())
                     if (e.isUnit() && e.controller != controller && e.battlefieldId() == bf)
                         return true;
                 return false;
@@ -41,11 +41,11 @@ public:
     // unit (so a legal same-BF pair exists).
     bool hasLegalTargets(const GameState& state,
                           PlayerId controller) const override {
-        for (auto& [fid, f] : state.objects) {
+        for (auto& [fid, f] : state.objects.onBoard()) {
             if (!f.isUnit() || f.controller != controller) continue;
             auto fbf = f.battlefieldId();
             if (!fbf) continue;
-            for (auto& [eid, e] : state.objects) {
+            for (auto& [eid, e] : state.objects.onBoard()) {
                 if (!e.isUnit() || e.controller == controller) continue;
                 if (e.untargetable_by_enemy) continue;
                 auto ebf = e.battlefieldId();
@@ -59,12 +59,12 @@ public:
         // First pick: a friendly unit at a battlefield that ALSO has a
         // valid enemy unit (otherwise the pair can't complete).
         std::vector<GameObjectId> legal_friendly;
-        for (auto& [fid, f] : ctx.state.objects) {
+        for (auto& [fid, f] : ctx.state.objects.onBoard()) {
             if (!f.isUnit() || f.controller != ctx.controller) continue;
             auto fbf = f.battlefieldId();
             if (!fbf) continue;
             bool enemy_here = false;
-            for (auto& [eid, e] : ctx.state.objects) {
+            for (auto& [eid, e] : ctx.state.objects.onBoard()) {
                 if (!e.isUnit() || e.controller == ctx.controller) continue;
                 if (e.untargetable_by_enemy) continue;
                 auto ebf = e.battlefieldId();
@@ -78,7 +78,7 @@ public:
             if (!ctx.state.objectExists(picked_a)) return legal_enemy;
             auto abf = ctx.state.getObject(picked_a).battlefieldId();
             if (!abf) return legal_enemy;
-            for (auto& [eid, e] : ctx.state.objects) {
+            for (auto& [eid, e] : ctx.state.objects.onBoard()) {
                 if (!e.isUnit() || e.controller == ctx.controller) continue;
                 if (e.untargetable_by_enemy) continue;
                 auto ebf = e.battlefieldId();

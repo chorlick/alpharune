@@ -76,7 +76,7 @@ public:
             // "1 to all other enemy units here" is not a choice: every other
             // enemy unit at my battlefield. Collect-then-kill.
             std::vector<GameObjectId> hit;
-            for (const auto& [id, obj] : ctx.state.objects) {
+            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
                 if (!my_bf.has_value() || obj.battlefieldId() != my_bf) continue;
                 hit.push_back(id);

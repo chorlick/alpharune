@@ -36,7 +36,7 @@ public:
 
         // Collect all enemy units at the chosen battlefield, then deal-then-kill.
         std::vector<GameObjectId> to_damage;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
             if (obj.battlefieldId() != bf) continue;
             to_damage.push_back(id);

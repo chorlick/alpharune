@@ -39,7 +39,7 @@ public:
             std::vector<GameObjectId> out;
             if (!ctx.state.objectExists(picked_unit)) return out;
             PlayerId uctrl = ctx.state.getObject(picked_unit).controller;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != uctrl) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;

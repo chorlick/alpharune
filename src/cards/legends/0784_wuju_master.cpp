@@ -23,6 +23,7 @@ public:
         // Confirm an on-board (LegendZone) instance of this legend.
         bool present = false;
         GameObjectId self_id = kInvalidId;
+        // (Every object: finds its own legend object by card id, in whatever zone.)
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             present = true; self_id = sid; break;
@@ -31,7 +32,7 @@ public:
         int xp = state.player(controller).xp;
         // [Level 6]: +1 [M] to all friendly on-board units.
         if (xp >= 6) {
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit() || u.controller != controller) continue;
                 if (!u.location.has_value()) continue;
                 GameObject::AuraEffect ae;

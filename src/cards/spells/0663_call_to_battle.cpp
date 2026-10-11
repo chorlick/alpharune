@@ -42,7 +42,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
             if (destinationMask(state, controller, id) != 0) out.push_back(id);
         }
@@ -55,7 +55,7 @@ public:
 
     static std::vector<GameObjectId> unitsNotAt(const GameState& state, PlayerId p, BattlefieldId bf) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != p || !obj.location.has_value()) continue;
             const auto at = obj.battlefieldId();
             if (at.has_value() && *at == bf) continue;

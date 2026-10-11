@@ -26,7 +26,7 @@ public:
                    const std::vector<GameObjectId>& /*targets*/) override {
         auto buffed = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == ctx.controller &&
                     obj.location.has_value() && obj.buff_count > 0) out.push_back(id);
             return out;

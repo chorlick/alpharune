@@ -24,7 +24,7 @@ public:
         }
         if (my_bf == kInvalidId) return;
         int units_here = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (obj.battlefieldId() == my_bf) units_here++;
         }

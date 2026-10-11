@@ -57,7 +57,7 @@ public:
         // "another unit they control here", able to move to its base.
         auto movable = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (id == played || !obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (obj.battlefieldId() != here || moveToBaseBlocked(ctx.state, obj)) continue;
                 out.push_back(id);

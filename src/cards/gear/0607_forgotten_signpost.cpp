@@ -68,7 +68,7 @@ private:
         if (!state.objectExists(anchor) || !state.getObject(anchor).location.has_value())
             return out;
         const LocationId dest = *state.getObject(anchor).location;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (id == anchor || !obj.isUnit() || obj.controller != controller) continue;
             if (!obj.location.has_value() || *obj.location == dest) continue;
             out.push_back(id);
@@ -81,7 +81,7 @@ private:
     static std::vector<GameObjectId> exhaustable(const GameState& state, PlayerId controller,
                                                  bool must_be_ready) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
             if (must_be_ready && obj.is_exhausted) continue;
             if (!moversTo(state, controller, id).empty()) out.push_back(id);

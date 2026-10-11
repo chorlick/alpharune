@@ -30,7 +30,7 @@ public:
                    const std::vector<GameObjectId>& /*targets*/) override {
         auto ready_friendly = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (obj.is_exhausted) continue;

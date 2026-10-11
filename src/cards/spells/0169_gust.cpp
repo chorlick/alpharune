@@ -32,7 +32,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> targets;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             if (!std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;
             if (obj.current_might > 3) continue;

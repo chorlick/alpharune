@@ -29,13 +29,13 @@ public:
     static constexpr int kMaxGrantedAbilityIndex = 4;   // no card prints more abilities
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> heimers;
-        for (auto& [id, obj] : state.objects)
+        for (auto& [id, obj] : state.objects.onBoard())
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&
                 obj.location.has_value())
                 heimers.push_back(id);
         if (heimers.empty()) return;
         std::vector<CardDefId> granters;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.inPlay()) {
             if (obj.controller != controller || obj.card_def_id == kInvalidId) continue;
             if (obj.card_def_id == cardDefId()) continue;  // not myself / other Heimers
             const bool on_board = obj.location.has_value();

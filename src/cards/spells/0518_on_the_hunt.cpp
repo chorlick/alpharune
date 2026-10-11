@@ -18,7 +18,7 @@ public:
     // "Ready your units." No target: every unit you control.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> units;
-        for (const auto& [id, obj] : ctx.state.objects)
+        for (const auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 units.push_back(id);
         for (auto id : units) ctx.executor.readyObject(id);

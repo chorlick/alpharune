@@ -19,12 +19,12 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Find each on-board copy of me and apply to other buffed friendlies
         // sharing my battlefield.
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
             auto my_bf = self.battlefieldId();
             if (!my_bf) continue;  // must be at a battlefield
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (uid == sid) continue;                       // "other"
                 if (!u.isUnit() || u.controller != controller) continue;
                 if (u.buff_count <= 0) continue;                // "buffed"

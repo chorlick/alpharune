@@ -28,7 +28,7 @@ public:
                    const std::vector<GameObjectId>& /*targets*/) override {
         PlayerId opp = opponent(ctx.controller);
         std::vector<GameObjectId> enemy_at_bf;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp) continue;
             if (!obj.isAtBattlefield()) continue;
             if (obj.untargetable_by_enemy) continue;
@@ -49,7 +49,7 @@ public:
             std::vector<GameObjectId> out;
             if (!dest.has_value() ||
                 !std::holds_alternative<BattlefieldLocation>(*dest)) return out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (obj.location == dest) continue;  // already there

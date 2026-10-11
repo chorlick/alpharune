@@ -49,7 +49,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller, int /*ability_index*/) const override {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (isClone(obj, controller)) out.push_back(id);
         return out;
     }

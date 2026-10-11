@@ -65,7 +65,7 @@ private:
     static std::vector<GameObjectId> equipmentFor(const GameState& state, PlayerId me,
                                                   int ability_index) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, g] : state.objects) {
+        for (const auto& [id, g] : state.objects.onBoard()) {
             if (g.controller != me || !g.location.has_value() || !isEquipment(g)) continue;
             if (g.attached_to.has_value() != (ability_index == 1)) continue;
             if (!unitsFor(state, me, id).empty()) out.push_back(id);
@@ -80,7 +80,7 @@ private:
         std::vector<GameObjectId> out;
         if (!state.objectExists(gear)) return out;
         const auto bearer = state.getObject(gear).attached_to;
-        for (const auto& [id, u] : state.objects) {
+        for (const auto& [id, u] : state.objects.onBoard()) {
             if (!u.isUnit() || u.controller != me || !u.location.has_value()) continue;
             if (bearer.has_value() && *bearer == id) continue;
             out.push_back(id);

@@ -26,7 +26,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouRecycle; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> friendly;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
         const GameObjectId pick = pickTarget(ctx, "Karma, Channeler: buff a friendly unit",

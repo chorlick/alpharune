@@ -49,6 +49,7 @@ public:
     bool canActivateAbility(const GameState& state, PlayerId controller) const override {
         // Find this gear instance and check it has any tracked banished unit
         // still in banishment.
+        // (Every object: finds its own instances by card id, wherever they are.)
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             for (auto bid : obj.tracked_objects) {

@@ -33,7 +33,7 @@ public:
             return;
         }
         std::vector<GameObjectId> unbuffed;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value() || obj.buff_count > 0) continue;
             unbuffed.push_back(id);

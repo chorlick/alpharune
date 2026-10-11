@@ -29,7 +29,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(const GameState& state,
                                                     PlayerId controller) const override {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.isUnit() && obj.controller == controller && obj.location.has_value() &&
                 obj.is_exhausted) out.push_back(id);
         return out;

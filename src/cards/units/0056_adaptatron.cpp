@@ -20,7 +20,7 @@ public:
         // Collect legal gears on the board.
         auto gears = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (obj.isGear() && obj.location.has_value()) out.push_back(id);
             }
             std::sort(out.begin(), out.end());

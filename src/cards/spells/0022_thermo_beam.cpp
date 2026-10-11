@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         std::vector<GameObjectId> gear_ids;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isGear() && obj.location.has_value()) {
                 gear_ids.push_back(id);
             }

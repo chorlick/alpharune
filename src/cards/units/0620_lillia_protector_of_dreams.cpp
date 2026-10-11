@@ -26,7 +26,7 @@ public:
     }
     // "Your token units have [Tank]." (Granted via aura.)
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.isToken() || !obj.location.has_value()) continue;
             GameObject::AuraEffect ae;

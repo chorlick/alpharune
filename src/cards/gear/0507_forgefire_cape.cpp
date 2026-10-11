@@ -21,7 +21,7 @@ public:
         auto bf = ctx.state.getObject(unit).battlefieldId();
         if (!bf) return;
         std::vector<GameObjectId> enemies;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
             auto obf = obj.battlefieldId();
             if (obf && *obf == *bf) enemies.push_back(id);

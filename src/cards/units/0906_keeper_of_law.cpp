@@ -23,7 +23,7 @@ public:
         for (const auto& bf : state.battlefields) {
             if (!bf.controller.has_value() || *bf.controller != player) continue;
             int units = 0;
-            for (const auto& [id, obj] : state.objects) {
+            for (const auto& [id, obj] : state.objects.onBoard()) {
                 if (!obj.isUnit()) continue;
                 auto obf = obj.battlefieldId();
                 if (obf && *obf == bf.id) ++units;

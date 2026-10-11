@@ -22,7 +22,7 @@ public:
     // goes back as I am played, before my cost is paid and before I enter.
     static std::vector<GameObjectId> friendlyGear(const GameState& state, PlayerId controller) {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects)
+        for (auto& [id, obj] : state.objects.onBoard())
             if (obj.isGear() && obj.controller == controller && obj.location.has_value())
                 out.push_back(id);
         std::sort(out.begin(), out.end());

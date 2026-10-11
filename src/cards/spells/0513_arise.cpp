@@ -35,7 +35,7 @@ public:
         // The number of tokens is fixed when the first one is played: the
         // count is re-read on re-entry, and tokens are not Equipment.
         int equip_count = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.controller != ctx.controller) continue;
             if (isEquipment(obj) && obj.location.has_value()) ++equip_count;
         }

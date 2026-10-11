@@ -33,7 +33,7 @@ public:
         auto paid_it = counters.find("__frostcoat_paid");
         const bool paid = paid_it != counters.end() && paid_it->second == 1;
         std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!paid) break;
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             if (obj.controller != ctx.controller && obj.untargetable_by_enemy)

@@ -23,7 +23,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         auto candidates = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy)
                     continue;

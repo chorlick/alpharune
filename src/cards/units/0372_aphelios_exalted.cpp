@@ -62,7 +62,7 @@ public:
         GameObjectId pick = kInvalidId;
         std::vector<GameObjectId> friendly;
         if (mode == 2) {
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == ctx.controller &&
                     obj.location.has_value())
                     friendly.push_back(id);
@@ -90,7 +90,7 @@ public:
         GameObjectId rune_a = kInvalidId, rune_b = kInvalidId;
         if (mode == 0) {
             std::vector<GameObjectId> exhausted;
-            for (const auto& [id, obj] : ctx.state.objects)
+            for (const auto& [id, obj] : ctx.state.objects.onBoard())
                 if (readiable(id)) exhausted.push_back(id);
             std::sort(exhausted.begin(), exhausted.end());
             // selectObject keeps each answer on the chain item (slots 7 and

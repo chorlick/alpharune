@@ -29,7 +29,7 @@ public:
         std::vector<GameObjectId> out;
         if (!state.objectExists(unit)) return out;
         const PlayerId who = state.getObject(unit).controller;
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (obj.controller != who || !isEquipment(obj) || !obj.location.has_value()) continue;
             if (obj.attached_to.has_value() && *obj.attached_to == unit) continue;
             out.push_back(id);

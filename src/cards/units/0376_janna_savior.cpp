@@ -45,7 +45,7 @@ public:
 
         // Heal ALL friendly units here.
         std::vector<GameObjectId> mine;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == me && obj.location.has_value() &&
                 *obj.location == *here)
                 mine.push_back(id);

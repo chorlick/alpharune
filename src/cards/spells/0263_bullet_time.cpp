@@ -67,7 +67,7 @@ public:
         // Snapshot first so kills don't invalidate iteration.
         std::vector<GameObjectId> victims;
         PlayerId enemy = opponent(ctx.controller);
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (obj.controller != enemy) continue;
             if (!obj.isAtBattlefield()) continue;

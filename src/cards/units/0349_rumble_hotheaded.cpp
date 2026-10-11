@@ -25,7 +25,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
             if (!self.location.has_value()) return;
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
                 if (!hasTag(u, "Mech")) continue;
                 auraKeyword(u, sid, Keyword::Assault, 1);
@@ -41,7 +41,7 @@ public:
         // of the ability, paid as the trigger is finalized (CR 383.3).
         auto recyclable = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (id == ctx.source) continue;   // "another"
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;

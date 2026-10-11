@@ -17,7 +17,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // AoE: collect targets BEFORE killing (CR — avoid iterator invalidation).
         std::vector<GameObjectId> to_damage;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (!obj.isAtBattlefield()) continue;  // exclude base units
             to_damage.push_back(id);

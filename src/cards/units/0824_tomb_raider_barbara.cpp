@@ -21,7 +21,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     std::vector<GameObjectId> enemyGear(CardContext& ctx) const {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : ctx.state.objects) {
+        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isGear() || obj.controller == ctx.controller) continue;
             if (!obj.location.has_value() || obj.untargetable_by_enemy) continue;
             out.push_back(id);

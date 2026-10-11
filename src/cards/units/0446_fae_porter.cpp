@@ -35,7 +35,7 @@ public:
         if (!my_bf) return;   // WhenIMoveToFB: cannot happen
         auto movable = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (id == ctx.source) continue;
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;

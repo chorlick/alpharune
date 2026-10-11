@@ -18,6 +18,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Confirm an on-board instance of this legend controlled by `controller`.
         GameObjectId self_id = kInvalidId;
+        // (Every object: finds its own legend object by card id, in whatever zone.)
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
@@ -27,6 +28,7 @@ public:
         if (self_id == kInvalidId) return;
         // For each friendly Equipment that is attached to a unit, grant the
         // equipped unit [Assault] via an aura effect.
+        // (Every object: Equipment by its attachment, in whatever zone the object is.)
         for (auto& [gid, g] : state.objects) {
             if (g.controller != controller) continue;
             if (!isEquipment(g)) continue;

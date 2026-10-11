@@ -78,7 +78,7 @@ public:
 
         auto units_of = [&](PlayerId p) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == p && obj.location.has_value())
                     out.push_back(id);
             return out;

@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         // 1. Exhaust all friendly units.
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller == ctx.controller &&
                 obj.location.has_value()) {
                 obj.is_exhausted = true;
@@ -26,7 +26,7 @@ public:
         // 2. Deal 12 to every unit currently at any battlefield. Snapshot
         //    first so dealDamage / kill chain doesn't invalidate iterator.
         std::vector<GameObjectId> victims;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isUnit() && obj.isAtBattlefield()) victims.push_back(id);
         }
         for (auto v : victims) ctx.executor.dealDamage(v, 12, ctx.source);

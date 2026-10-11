@@ -25,7 +25,7 @@ public:
     // [Level 6] static: [Deflect] and [Ganking] while controller has 6+ XP.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (state.player(controller).xp < 6) return;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             GameObject::AuraEffect deflect;

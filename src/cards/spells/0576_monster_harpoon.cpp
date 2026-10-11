@@ -19,6 +19,7 @@ public:
         // deal 4 to it instead."
         if (!targets.empty()) {
             bool has_facedown = false;
+            // (Every object: facedown cards, which are not on the board.)
             for (auto& [id, obj] : ctx.state.objects) {
                 if (obj.controller == ctx.controller && obj.is_hidden) {
                     has_facedown = true;

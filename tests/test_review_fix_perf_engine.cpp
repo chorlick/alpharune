@@ -22,9 +22,13 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <random>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -1016,6 +1020,82 @@ TEST(PerfEngineTable, AnEmptyTableAnswersWithEmptyRanges) {
     EXPECT_TRUE(empty.objects.atLocation(LocationId{BaseLocation{PlayerId::Player1}}).empty());
     EXPECT_TRUE(empty.unitsAt(LocationId{BattlefieldLocation{0}}, PlayerId::Player1).empty());
     EXPECT_EQ(empty.objects.indexRebuilds(), 0u);
+}
+
+// ─── 9.KK2: card code reads the board through the object table's lists ──────
+
+// A source scan: a card file may walk every object of the game
+// (`for (... : state.objects)`) only where it has to see a zone the board
+// lists do not hold, and then it says so. 337 such walks in src/cards were
+// walks over the board in disguise (they skipped everything without a
+// location first); they now name the list. The ones below are the walks that
+// stay, each with its reason. A new card that walks every object fails here:
+// use state.objects.onBoard() / inPlay() / atLocation(loc) (CLAUDE.md, "Object
+// table and board index"), or add the loop to this list with its reason and
+// the "// (Every object: ...)" comment above it.
+TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
+    const std::map<std::string, std::pair<int, std::string>> allowed = {
+        {"card.cpp", {1, "costStateFingerprint digests cards in every zone"}},
+        {"gear/0101_mushroom_pouch.cpp", {1, "facedown cards"}},
+        {"gear/0181_pack_of_wonders.cpp", {1, "the board and facedown cards"}},
+        {"gear/0365_brutalizer.cpp", {1, "its own instances by card id; clears a counter off the board"}},
+        {"gear/0509_shurelya_s_requiem.cpp", {1, "its own instances by card id"}},
+        {"gear/0710_cursed_sarcophagus.cpp", {1, "its own instances by card id"}},
+        {"gear/0860_jagged_cutlass.cpp", {1, "its own instances by card id"}},
+        {"spells/0576_monster_harpoon.cpp", {1, "facedown cards"}},
+        {"legends/0317_wuju_bladesman_starter.cpp", {1, "its own legend object by card id"}},
+        {"legends/0502_purifier.cpp", {2, "its own legend object by card id; Equipment by attachment, in any zone"}},
+        {"legends/0512_emperor_of_the_sands.cpp", {2, "its own legend object by card id; Sand Soldiers by name, in any zone"}},
+        {"legends/0784_wuju_master.cpp", {1, "its own legend object by card id"}},
+        {"units/0189_kayn_unleashed.cpp", {1, "its own instances by card id"}},
+        {"units/0362_royal_entourage.cpp", {1, "Legends (the Legend Zone)"}},
+        {"units/0377_jax_unmatched.cpp", {1, "Equipment you own in any zone, the hand included"}},
+        {"units/0432_fiora_peerless.cpp", {1, "its own instances by card id; clears a counter off the board"}},
+        {"units/0597_monch.cpp", {1, "Stunned units in any zone"}},
+        {"units/0716_crimson_pigeons.cpp", {2, "its own instances by card id; combat designations"}},
+        {"battlefields/0764_black_flame_altar.cpp", {1, "battlefield cards, which have no location"}},
+    };
+    const char* root_env = std::getenv("RIFTBOUND_ROOT");
+    const std::filesystem::path cards = std::filesystem::path(root_env ? root_env : "..") / "src" / "cards";
+    ASSERT_TRUE(std::filesystem::is_directory(cards)) << cards;
+    // `for (<anything> : <something>objects)` — a range-for over the table
+    // itself, not over one of its lists (those end in `()`).
+    const std::regex full_walk(R"(for \([^;()]*:\s*[A-Za-z_][A-Za-z0-9_.>()-]*\bobjects\))");
+    std::map<std::string, int> found;
+    int files = 0;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(cards)) {
+        const auto ext = entry.path().extension();
+        if (!entry.is_regular_file() || (ext != ".cpp" && ext != ".h")) continue;
+        ++files;
+        std::ifstream in(entry.path());
+        std::string line, previous;
+        const std::string name = std::filesystem::relative(entry.path(), cards).generic_string();
+        while (std::getline(in, line)) {
+            const auto comment = line.find("//");
+            const std::string code = line.substr(0, comment);
+            if (std::regex_search(code, full_walk)) {
+                ++found[name];
+                EXPECT_NE(previous.find("// (Every object:"), std::string::npos)
+                    << name << ": a walk over every object without the comment that says "
+                       "which zone it has to see:\n" << line;
+            }
+            if (line.find_first_not_of(" \t") != std::string::npos) previous = line;
+        }
+    }
+    EXPECT_GT(files, 900);
+    for (const auto& [name, count] : found) {
+        const auto it = allowed.find(name);
+        if (it == allowed.end()) {
+            ADD_FAILURE() << "src/cards/" << name << " walks every object of the game " << count
+                          << " time(s). Use state.objects.onBoard() / inPlay() / atLocation(loc) "
+                             "if it only looks at the board; otherwise list it here with its reason.";
+            continue;
+        }
+        EXPECT_EQ(count, it->second.first) << "src/cards/" << name << " (" << it->second.second << ")";
+    }
+    for (const auto& [name, why] : allowed)
+        EXPECT_EQ(found.count(name), 1u) << "src/cards/" << name << " no longer walks every object ("
+                                         << why.second << "): take it off the list";
 }
 
 }  // namespace test_review_fix_perf_engine

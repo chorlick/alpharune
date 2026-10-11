@@ -28,7 +28,7 @@ public:
         if (!my_bf) return out;
         int my_might = self.current_might;
         PlayerId opp = opponent(ctx.controller);
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp || !obj.location.has_value()) continue;
             if (obj.untargetable_by_enemy) continue;
             auto bf = obj.battlefieldId();

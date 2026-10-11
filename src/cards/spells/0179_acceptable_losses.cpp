@@ -20,7 +20,7 @@ public:
         auto& ri = ctx.state.chain.resuming.value();
         auto own_gear = [&](PlayerId p) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isGear() || obj.controller != p) continue;
                 if (!obj.location.has_value()) continue;
                 out.push_back(id);

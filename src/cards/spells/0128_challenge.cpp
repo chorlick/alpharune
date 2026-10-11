@@ -33,7 +33,7 @@ public:
     bool hasLegalTargets(const GameState& state,
                           PlayerId controller) const override {
         bool any_friendly = false, any_enemy = false;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value() || !obj.isUnit()) continue;
             if (obj.controller == controller) any_friendly = true;
             else if (!obj.untargetable_by_enemy) any_enemy = true;
@@ -42,14 +42,14 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> legal_friendly;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.location.has_value() || !obj.isUnit()) continue;
             if (obj.controller != ctx.controller) continue;
             legal_friendly.push_back(id);
         }
         auto enemy_fn = [&](GameObjectId /*picked_a*/) {
             std::vector<GameObjectId> legal_enemy;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.location.has_value() || !obj.isUnit()) continue;
                 if (obj.controller == ctx.controller) continue;
                 if (obj.untargetable_by_enemy) continue;

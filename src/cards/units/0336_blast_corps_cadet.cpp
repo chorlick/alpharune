@@ -33,7 +33,7 @@ public:
         // No return ahead of the marker when the cost was not paid: there is
         // then no unit to choose, and pickTarget stores that on the item.
         std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!paid) break;
             if (!obj.isUnit() || !obj.battlefieldId().has_value()) continue;
             if (obj.controller != ctx.controller && obj.untargetable_by_enemy)

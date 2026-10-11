@@ -20,6 +20,7 @@ public:
         // Find an on-board instance of this legend controlled by `controller`.
         bool present = false;
         GameObjectId self_id = kInvalidId;
+        // (Every object: finds its own legend object by card id, in whatever zone.)
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
@@ -30,6 +31,7 @@ public:
         if (!present) return;
         // Grant [Weaponmaster] to friendly Sand Soldiers. "Sand Soldier" is the
         // token's name; its tag is Shurima (CR 187.3), so match on the name.
+        // (Every object: Sand Soldiers by name, in whatever zone the object is.)
         for (auto& [uid, u] : state.objects) {
             if (!u.isUnit() || u.controller != controller) continue;
             if (u.name != "Sand Soldier") continue;

@@ -21,7 +21,7 @@ public:
     // base might_bonus once (attachment_might_bonus); add an aura granting
     // an EXTRA copy of each attached Equipment's base might bonus to double it.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, self] : state.objects) {
+        for (auto& [id, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
             int extra = 0;

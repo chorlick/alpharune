@@ -28,7 +28,7 @@ public:
         forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
             auto my_bf = self.battlefieldId();
             if (!my_bf) return;  // "here" — only while I'm at a battlefield
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit() || u.controller == controller) continue;  // enemy
                 if (!u.is_stunned || u.battlefieldId() != my_bf) continue;
                 GameObject::AuraEffect ae;

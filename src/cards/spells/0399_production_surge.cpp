@@ -16,7 +16,7 @@ class ProductionSurge : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     int selfCostReduction(const GameState& state, PlayerId controller) const override {
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             // "a Mech" is a unit with the Mech TAG (CR 187.4: a Mech token has

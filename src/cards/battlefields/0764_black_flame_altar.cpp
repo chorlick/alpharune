@@ -19,6 +19,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
         // Find this battlefield's id (the BF whose card_object_id is an
         // instance of this card def).
+        // (Every object: battlefield cards, which have no location.)
         for (auto& [bid, bf_obj] : state.objects) {
             if (bf_obj.card_def_id != cardDefId()) continue;
             if (!bf_obj.isBattlefield()) continue;
@@ -29,7 +30,7 @@ public:
             }
             if (!bf_id) continue;
             // Grant [Shield] to each unit at this BF that has [Temporary].
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit()) continue;
                 auto ubf = u.battlefieldId();
                 if (!ubf || *ubf != *bf_id) continue;

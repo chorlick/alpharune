@@ -18,7 +18,7 @@ public:
     // +1 [M] buff counter (buff_count > 0). Granted as a self-aura recomputed
     // each cleanup; it vanishes the moment the buff is removed.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
             if (self.buff_count <= 0) continue;

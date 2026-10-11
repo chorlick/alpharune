@@ -48,7 +48,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // Collect first: killing / damaging fires events that can touch the map.
         std::vector<GameObjectId> units;
-        for (const auto& [id, obj] : ctx.state.objects)
+        for (const auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 units.push_back(id);
         std::sort(units.begin(), units.end());

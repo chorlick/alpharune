@@ -28,7 +28,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // Prefer to buff a friendly unit ("if it doesn't have a buff, +1").
         std::vector<GameObjectId> targets;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 targets.push_back(id);

@@ -20,13 +20,14 @@ public:
     // [Quick-Draw]." Grant QuickDraw to friendly Equipment in any zone.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         GameObjectId self_id = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             self_id = id;
             break;
         }
         if (self_id == kInvalidId) return;
+        // (Every object: Equipment you own in any zone - it has [Quick-Draw] in your hand.)
         for (auto& [gid, g] : state.objects) {
             if (g.owner != controller) continue;
             if (!isEquipment(g)) continue;  // gear with "Equipment" tag

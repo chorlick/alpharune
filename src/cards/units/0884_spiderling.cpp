@@ -27,7 +27,7 @@ public:
         forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
             if (!self.location.has_value()) return;
             int others = 0;
-            for (const auto& [id, obj] : state.objects) {
+            for (const auto& [id, obj] : state.objects.onBoard()) {
                 if (id == sid || !obj.isUnit() || obj.controller != controller) continue;
                 if (!obj.location.has_value() || *obj.location != *self.location) continue;
                 if (obj.name == self.name) ++others;

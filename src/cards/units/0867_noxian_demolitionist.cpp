@@ -24,7 +24,7 @@ public:
         auto gears = [&]() {
             const int my_might = ctx.state.getObject(ctx.source).current_might;
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
                 // Tokens have no CardDef-backed cost: Energy cost 0. A gear

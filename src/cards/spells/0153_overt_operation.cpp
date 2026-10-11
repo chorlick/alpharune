@@ -24,7 +24,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto friendly_units = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (obj.isUnit() && obj.controller == ctx.controller &&
                     obj.location.has_value()) {
                     out.push_back(id);

@@ -28,7 +28,7 @@ public:
             if (bf.card_object_id == ctx.source) { my_bf = bf.id; found = true; break; }
         }
         if (!found) return out;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             auto ubf = obj.battlefieldId();
             if (ubf && *ubf == my_bf) out.push_back(id);

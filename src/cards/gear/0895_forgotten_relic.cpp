@@ -41,7 +41,7 @@ public:
                             const std::vector<int32_t>& data) override {
         const int might = data.empty() ? 0 : data[0];
         std::vector<GameObjectId> friendly;
-        for (const auto& [id, obj] : ctx.state.objects)
+        for (const auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 friendly.push_back(id);
         std::sort(friendly.begin(), friendly.end());

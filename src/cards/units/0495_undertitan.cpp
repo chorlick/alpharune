@@ -26,7 +26,7 @@ public:
             return;
         }
         // WhenYouPlayMe: buff all OTHER friendly units +2 [M] this turn.
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == ctx.source) continue;
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;

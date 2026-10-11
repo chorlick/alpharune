@@ -18,7 +18,7 @@ public:
         // "all enemy units in combat": attackers and defenders of the combat
         // under way, not units in a base or at another battlefield.
         std::vector<GameObjectId> to_damage;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (!obj.isUnit()) continue;
             if (obj.controller == ctx.controller) continue;

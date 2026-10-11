@@ -22,7 +22,7 @@ class NoxusSaboteur : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller)
                 continue;
             auto bf = obj.battlefieldId();

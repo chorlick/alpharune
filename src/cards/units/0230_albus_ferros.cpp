@@ -23,7 +23,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // One entry per buff: a unit that holds several can be picked for each.
         std::vector<GameObjectId> buffs;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller || !obj.location.has_value())
                 continue;
             for (int i = 0; i < obj.buff_count; ++i) buffs.push_back(id);

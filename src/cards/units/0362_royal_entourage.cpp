@@ -24,6 +24,7 @@ public:
         // Enumerate legend objects (either player's). Triggers get empty
         // targets, so pick at resolve time.
         std::vector<GameObjectId> legends;
+        // (Every object: Legends, which are in the Legend Zone and not on the board.)
         for (auto& [id, obj] : ctx.state.objects) {
             if (obj.card_type == CardType::Legend) legends.push_back(id);
         }

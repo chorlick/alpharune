@@ -18,10 +18,10 @@ public:
     //  instance of me, grant Shield to every OTHER friendly unit sharing my
     //  location (base or battlefield). Mirrors Forecaster's keyword-grant aura.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (uid == sid) continue;             // "Other"
                 if (!u.isUnit() || u.controller != controller) continue;
                 if (!u.location.has_value() || *u.location != *self.location) continue;  // "here"

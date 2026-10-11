@@ -20,7 +20,7 @@ public:
     // in resolveCostPaymentDecision).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (state.player(controller).power_spent_this_turn < 2) return;
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;
             GameObject::AuraEffect mighty; mighty.source = sid; mighty.might_bonus = 2;

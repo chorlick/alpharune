@@ -31,7 +31,7 @@ public:
     // "[Level 16][>] I can't be chosen by enemy spells and abilities."
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (state.player(controller).xp < 16) return;
-        for (auto& [id, obj] : state.objects)
+        for (auto& [id, obj] : state.objects.onBoard())
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&
                 obj.location.has_value())
                 obj.untargetable_by_enemy = true;

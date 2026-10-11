@@ -20,12 +20,12 @@ public:
     // same battlefield as me. Mirrors Rumble/Forecaster aura pattern, scoped
     // to "here" (same battlefield).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller)
                 continue;
             auto my_bf = self.battlefieldId();
             if (!my_bf) continue;  // only active while I'm at a battlefield
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (uid == sid) continue;  // "other" — exclude myself
                 if (!u.isUnit() || u.controller != controller) continue;
                 if (u.battlefieldId() != my_bf) continue;  // "here"

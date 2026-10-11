@@ -26,7 +26,7 @@ public:
     }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (state.player(controller).xp < 3) return;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             auraMight(obj, id, 1);

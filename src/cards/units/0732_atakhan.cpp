@@ -23,7 +23,7 @@ public:
     //  killed unit's printed cost comes from the CardDB (a token costs nothing).
     static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId player) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.isUnit() && obj.controller == player && obj.location.has_value())
                 out.push_back(id);
         std::sort(out.begin(), out.end());
@@ -88,7 +88,7 @@ public:
         if (!my_bf) return;
         const PlayerId defender = opponent(ctx.controller);
         std::vector<GameObjectId> theirs_here;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != defender) continue;
             auto bf = obj.battlefieldId();
             if (bf && *bf == *my_bf) theirs_here.push_back(id);   // "here"

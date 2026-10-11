@@ -22,7 +22,7 @@ public:
                    const std::vector<GameObjectId>& /*targets*/) override {
         // 1) Choose a friendly unit in your base.
         std::vector<GameObjectId> base_units;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.isAtBase()) continue;
             base_units.push_back(id);
@@ -44,7 +44,7 @@ public:
 
         // Deal <dmg> to all enemy units there (collect, damage, then kill).
         std::vector<GameObjectId> hit;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
             if (obj.battlefieldId() != bf) continue;
             hit.push_back(id);

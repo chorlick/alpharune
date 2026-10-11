@@ -26,7 +26,7 @@ public:
         // After the move, count enemy units remaining at that battlefield.
         PlayerId opp = opponent(ctx.controller);
         int enemy_here = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (id == tgt) continue;
             if (!obj.isUnit() || obj.controller != opp || !obj.location.has_value()) continue;
             auto bf = obj.battlefieldId();

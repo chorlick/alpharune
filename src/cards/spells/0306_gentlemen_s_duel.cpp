@@ -30,7 +30,7 @@ public:
         // First target: friendly unit. Second: enemy unit.
         auto legal_a = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == ctx.controller &&
                     obj.location.has_value())
                     out.push_back(id);
@@ -38,7 +38,7 @@ public:
         }();
         auto legal_b_fn = [&](GameObjectId /*a*/) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (obj.isUnit() && obj.controller != ctx.controller &&
                     obj.location.has_value() && !obj.untargetable_by_enemy)
                     out.push_back(id);

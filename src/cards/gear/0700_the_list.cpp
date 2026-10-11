@@ -124,7 +124,7 @@ private:
         for (PlayerId side : {opponent(player), player}) {
             // On the board, most common first.
             std::map<std::string, int> on_board;
-            for (const auto& [id, obj] : state.objects)
+            for (const auto& [id, obj] : state.objects.onBoard())
                 if (obj.isUnit() && obj.controller == side && obj.location.has_value())
                     for (const auto& t : obj.tags) on_board[t]++;
             std::vector<std::pair<std::string, int>> ranked(on_board.begin(), on_board.end());

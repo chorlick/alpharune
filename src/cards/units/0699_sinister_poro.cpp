@@ -25,7 +25,7 @@ public:
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return out;
         PlayerId opp = opponent(ctx.controller);
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp || !obj.location.has_value()) continue;
             if (obj.untargetable_by_enemy) continue;
             auto bf = obj.battlefieldId();

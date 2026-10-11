@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     bool entersReadyOnPlay(const GameState& state, PlayerId controller,
                            const GameObject& self) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value())
                 continue;
             if (id == self.id) continue;   // "another Dragon" — another Direwing counts

@@ -32,7 +32,7 @@ public:
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller, int /*ability_index*/) const override {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (obj.controller != controller) continue;
             if (!obj.isUnit() && !obj.isGear()) continue;

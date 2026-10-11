@@ -27,7 +27,7 @@ public:
         if (state.player(controller).xp < 6) return;
         // Find every on-board instance of this card controlled by `controller`
         // and push a +1 might aura effect onto it.
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;

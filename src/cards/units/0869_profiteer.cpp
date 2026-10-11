@@ -24,7 +24,7 @@ public:
         // Empowered things I control (board + my legend).
         auto mine_empowered = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.inPlay()) {
                 if (obj.controller != ctx.controller || !obj.isEmpowered()) continue;
                 if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
                 out.push_back(id);
@@ -36,7 +36,7 @@ public:
         // disempowered (so `paid` itself is a legal recipient).
         auto recipients = [&](GameObjectId paid) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.inPlay()) {
                 const bool legend = obj.isLegend() && obj.zone == ZoneType::LegendZone;
                 const bool permanent = (obj.isUnit() || obj.isGear()) && obj.location.has_value();
                 if (!legend && !permanent) continue;

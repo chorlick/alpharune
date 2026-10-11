@@ -18,7 +18,7 @@ public:
     // "When you play me, if you control a Poro, buff me and draw 1."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         bool controls_poro = false;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             if (!obj.location.has_value()) continue;
             if (hasTag(obj, "Poro")) { controls_poro = true; break; }

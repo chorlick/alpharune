@@ -86,7 +86,7 @@ public:
                 return obj.isRune() && obj.is_exhausted && obj.location.has_value();
             };
             std::vector<GameObjectId> exhausted;
-            for (auto& [id, obj] : ctx.state.objects)
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (readiable(id)) exhausted.push_back(id);
             const auto chosen = selectSeveral(ctx, "Hwei: ready a rune (up to two)", exhausted,
                                               /*max_picks=*/2);

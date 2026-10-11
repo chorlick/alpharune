@@ -20,7 +20,7 @@ public:
     static std::vector<GameObjectId> legalTargets(const GameState& state,
                                                   PlayerId controller) {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             // "Can't be chosen by enemy spells and abilities."
             if (obj.controller != controller && obj.untargetable_by_enemy) continue;

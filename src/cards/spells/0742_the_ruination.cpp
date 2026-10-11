@@ -18,7 +18,7 @@ public:
         // AoE kill
         {
             std::vector<GameObjectId> to_kill;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.location.has_value()) continue;
                 if (!obj.isUnit()) continue;
                 to_kill.push_back(id);

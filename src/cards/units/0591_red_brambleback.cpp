@@ -33,7 +33,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "[Buff] a friendly unit." Pick a friendly unit on the board.
         std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
                 legal.push_back(id);
         }

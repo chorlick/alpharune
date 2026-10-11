@@ -21,7 +21,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
             if (!self.location.has_value()) return;
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
                 if (!hasTag(u, "Mech")) continue;  // I'm a Mech too: "including me"
                 auraMight(u, sid, 1);

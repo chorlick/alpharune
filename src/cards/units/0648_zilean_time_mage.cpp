@@ -27,7 +27,7 @@ public:
     // choose (createToken's `location_choices`). A card that then changes
     // "its" tokens reads EffectExecutor::lastTokensCreated (Keeper of Masks).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&
                 obj.isAtBattlefield())
                 ++state.player(controller).additional_token_copy_sources;

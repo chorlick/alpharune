@@ -32,7 +32,7 @@ public:
     }
     bool needsPlayTimeTargetPair() const override { return true; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value() || !obj.isUnit()) continue;
             if (obj.controller == controller) return true;
         }
@@ -41,7 +41,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto friendly_units = [&](GameObjectId exclude) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (id == exclude) continue;
                 if (!obj.location.has_value() || !obj.isUnit()) continue;
                 if (obj.controller != ctx.controller) continue;

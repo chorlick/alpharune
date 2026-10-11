@@ -21,7 +21,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> runes;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isRune() && obj.controller == ctx.controller && obj.location.has_value())
                 runes.push_back(id);
         const auto rune = selectObject(ctx, "Sigil of the Storm: recycle which rune", runes);

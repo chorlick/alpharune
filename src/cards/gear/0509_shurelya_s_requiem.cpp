@@ -18,7 +18,7 @@ public:
 
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayThis; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (obj.isUnit() && obj.controller == ctx.controller &&
                 obj.location.has_value() && obj.is_exhausted) {
                 ctx.executor.readyObject(id);
@@ -33,13 +33,14 @@ public:
     // wearing this is — read from the bearer, not from the gear's own
     // location, so it cannot lag behind a bearer that was moved by an effect.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        // (Every object: finds its own instances by card id, wherever they are.)
         for (auto& [gid, gear] : state.objects) {
             if (gear.card_def_id != cardDefId()) continue;
             if (gear.controller != controller || !gear.attached_to.has_value()) continue;
             if (!state.objectExists(*gear.attached_to)) continue;
             auto bf = state.getObject(*gear.attached_to).battlefieldId();
             if (!bf) continue;
-            for (auto& [tid, tgt] : state.objects) {
+            for (auto& [tid, tgt] : state.objects.onBoard()) {
                 if (!tgt.isUnit() || tgt.controller != controller) continue;
                 auto tbf = tgt.battlefieldId();
                 if (!tbf || *tbf != *bf) continue;

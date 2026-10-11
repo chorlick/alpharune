@@ -49,17 +49,17 @@ public:
         return out;
     }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects)
+        for (auto& [id, obj] : state.objects.onBoard())
             if (isEquippedFriendly(obj, controller, state)) return true;
         return false;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> equipped;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (isEquippedFriendly(obj, ctx.controller, ctx.state)) equipped.push_back(id);
         auto enemy_fn = [&](GameObjectId /*a*/) {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
                 if (!obj.location.has_value() || obj.untargetable_by_enemy) continue;
                 out.push_back(id);

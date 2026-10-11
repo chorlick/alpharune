@@ -36,7 +36,7 @@ public:
         for (const auto& bf : state.battlefields) {
             if (bf.controller.has_value()) continue;
             bool occupied = false;
-            for (const auto& [id, obj] : state.objects)
+            for (const auto& [id, obj] : state.objects.onBoard())
                 if (obj.isUnit() && obj.battlefieldId() == bf.id) { occupied = true; break; }
             if (!occupied) out.push_back(bf.id);
         }
@@ -103,7 +103,7 @@ public:
                    obj.location.has_value() && obj.battlefieldId() != dest;
         };
         std::vector<GameObjectId> units;
-        for (auto& [id, obj] : ctx.state.objects)
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (movable(id)) units.push_back(id);
         auto picked = selectSeveral(ctx, "Bard, Mercurial: move a unit there", units);
         if (!picked.has_value()) return;      // waiting for the agent

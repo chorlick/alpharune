@@ -21,7 +21,7 @@ public:
     // the player's choice when both apply — for a spell that chose me, and the
     // play gate (canAffordChoosing) counts it.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&
                 obj.location.has_value())
                 obj.spells_targeting_me_cost_reduction = 1;

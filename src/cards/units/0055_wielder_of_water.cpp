@@ -19,7 +19,7 @@ public:
     // when I'm the only friendly unit sharing my combat designation
     // (Attacker / Defender) at my battlefield.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller)
                 continue;
             auto my_bf = self.battlefieldId();
@@ -29,7 +29,7 @@ public:
                 mine != CombatDesignation::Defender)
                 continue;  // not currently attacking or defending
             bool alone = true;
-            for (auto& [oid, o] : state.objects) {
+            for (auto& [oid, o] : state.objects.onBoard()) {
                 if (oid == sid) continue;
                 if (!o.isUnit() || o.controller != controller) continue;
                 if (o.battlefieldId() != my_bf) continue;

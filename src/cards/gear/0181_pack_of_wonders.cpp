@@ -33,6 +33,7 @@ public:
         const GameState& state, PlayerId controller,
         int /*ability_index*/, GameObjectId source) const override {
         std::vector<GameObjectId> out;
+        // (Every object: the board and facedown cards.)
         for (auto& [id, obj] : state.objects) {
             if (id == source || obj.controller != controller) continue;   // "another"
             const bool on_board = obj.location.has_value() && (obj.isUnit() || obj.isGear());

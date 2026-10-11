@@ -29,7 +29,7 @@ public:
                                                   PlayerId controller,
                                                   GameObjectId azir) {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             if (id == azir) continue;
@@ -52,7 +52,7 @@ public:
     // Card-wide gate: some Azir of mine has a unit to swap with. Which Azir
     // may still activate this turn is canActivateAbilityAt.
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
             if (!legalTargets(state, controller, id).empty()) return true;

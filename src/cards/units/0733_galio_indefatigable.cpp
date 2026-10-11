@@ -17,7 +17,7 @@ public:
     // "I don't deal combat damage." Continuous self-property → suppress
     // combat damage via a self aura recomputed each cleanup.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [sid, self] : state.objects) {
+        for (auto& [sid, self] : state.objects.onBoard()) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             if (!self.location.has_value()) continue;
             GameObject::AuraEffect ae;

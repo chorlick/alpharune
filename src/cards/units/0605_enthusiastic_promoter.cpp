@@ -19,7 +19,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto bf_id = ctx.state.getObject(ctx.source).battlefieldId();
         if (!bf_id) return;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (obj.battlefieldId() != bf_id) continue;
             // "if it doesn't have one" — skip units that already have a buff.

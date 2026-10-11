@@ -30,7 +30,7 @@ public:
     static std::vector<GameObjectId> gearOnBoard(const GameState& state, PlayerId controller,
                                                  bool friendly_only) {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isGear() || !obj.location.has_value()) continue;
             if (friendly_only && obj.controller != controller) continue;
             out.push_back(id);

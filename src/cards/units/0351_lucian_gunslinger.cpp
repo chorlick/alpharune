@@ -36,7 +36,7 @@ public:
         auto self_bf = self.battlefieldId();
         std::vector<GameObjectId> enemies;
         if (assault > 0 && self_bf) {
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
                 auto bf = obj.battlefieldId();
                 if (!bf || *bf != *self_bf) continue;

@@ -23,13 +23,13 @@ public:
 
             // For each unit at this battlefield that is defending: check if
             // it's alone (no other friendly units here). If so, -2 M.
-            for (auto& [uid, u] : state.objects) {
+            for (auto& [uid, u] : state.objects.onBoard()) {
                 if (!u.isUnit()) continue;
                 auto ubf = u.battlefieldId();
                 if (!ubf || *ubf != bf.id) continue;
                 if (u.combat_designation != CombatDesignation::Defender) continue;
                 int friendly_here = 0;
-                for (auto& [oid, o] : state.objects) {
+                for (auto& [oid, o] : state.objects.onBoard()) {
                     if (!o.isUnit() || o.controller != u.controller) continue;
                     auto obf = o.battlefieldId();
                     if (obf && *obf == bf.id) friendly_here++;

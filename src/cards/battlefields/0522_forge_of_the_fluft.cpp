@@ -35,7 +35,7 @@ public:
     // Equipment moves it (CR 435.1.f, attachFree detaches it first).
     static std::vector<GameObjectId> equipmentOf(const GameState& state, PlayerId player) {
         std::vector<GameObjectId> out;
-        for (const auto& [id, obj] : state.objects)
+        for (const auto& [id, obj] : state.objects.onBoard())
             if (obj.controller == player && obj.location.has_value() && isEquipment(obj))
                 out.push_back(id);
         return out;
@@ -46,7 +46,7 @@ public:
         std::vector<GameObjectId> out;
         if (!state.objectExists(equipment)) return out;
         const auto& eq = state.getObject(equipment);
-        for (const auto& [id, obj] : state.objects) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != player || !obj.location.has_value()) continue;
             if (eq.attached_to.has_value() && *eq.attached_to == id) continue;
             out.push_back(id);

@@ -18,7 +18,7 @@ public:
 
     // "I must be assigned combat damage last." = Backline (CR 460.2.c).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (obj.card_def_id != cardDefId()) continue;
             if (obj.controller != controller || !obj.location.has_value()) continue;
             GameObject::AuraEffect ae;
@@ -50,7 +50,7 @@ public:
         const GameState& state, PlayerId controller,
         int /*ability_index*/) const override {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
             // "Can't be chosen by enemy spells and abilities."
             if (obj.controller != controller && obj.untargetable_by_enemy) continue;

@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> to_bounce;
-        for (auto& [id, obj] : ctx.state.objects) {
+        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.location.has_value()) continue;   // only on-board cards
             if (obj.isUnit() || obj.isGear()) to_bounce.push_back(id);
         }

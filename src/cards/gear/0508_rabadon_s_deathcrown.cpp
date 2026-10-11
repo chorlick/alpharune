@@ -24,7 +24,7 @@ public:
     // adds to each instance of their spell / ability damage; the engine zeroes
     // it at the start of every aura pass (as for Annie, Fiery).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (const auto& [gid, gear] : state.objects) {
+        for (const auto& [gid, gear] : state.objects.onBoard()) {
             if (gear.card_def_id != cardDefId() || gear.controller != controller) continue;
             if (!gear.location.has_value() || !gear.attached_to.has_value()) continue;
             if (!state.objectExists(*gear.attached_to)) continue;

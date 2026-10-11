@@ -17,6 +17,7 @@ public:
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         // Confirm an on-board instance of this legend controlled by `controller`.
         GameObjectId self_id = kInvalidId;
+        // (Every object: finds its own legend object by card id, in whatever zone.)
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
@@ -26,7 +27,7 @@ public:
         if (self_id == kInvalidId) return;
         // Collect this controller's defenders.
         std::vector<GameObjectId> defenders;
-        for (auto& [uid, u] : state.objects) {
+        for (auto& [uid, u] : state.objects.onBoard()) {
             if (!u.isUnit() || u.controller != controller) continue;
             if (u.combat_designation != CombatDesignation::Defender) continue;
             defenders.push_back(uid);

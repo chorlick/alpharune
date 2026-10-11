@@ -25,7 +25,7 @@ public:
         const LocationId my_bf = *where;
         {
             std::vector<GameObjectId> to_damage;
-            for (auto& [id, obj] : ctx.state.objects) {
+            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.location.has_value() || *obj.location != my_bf) continue;
                 if (!obj.isUnit()) continue;
                 to_damage.push_back(id);

@@ -253,6 +253,12 @@ public:
     void copyUnit(GameObjectId token, GameObjectId source);
 
     // ── Composite operations ──
+    /// "If you would reveal cards from a deck, look at the top card first. You
+    /// may recycle it." (Void Hatchling, PlayerState::has_reveal_peek.) Called
+    /// by revealUntil / revealAndChoose; a card that reveals from `player`'s
+    /// deck by hand calls it once, before it takes the cards. Does nothing
+    /// without the effect.
+    void lookBeforeReveal(PlayerId player);
     std::pair<GameObjectId, std::vector<GameObjectId>>
         revealUntil(PlayerId player, CardType condition);
     /// Play `card` from its current zone onto the board without paying

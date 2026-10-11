@@ -18,39 +18,48 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIDefend; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-
-        // Read the captured attacker. Validate it still exists and is a
-        // legal bounce target (unit, on board, enemy). The card_counters
-        // entry persists until reset, but the actual GameObject may have
-        // moved / been removed during chain resolution.
-        auto get_attacker = [&]() -> GameObjectId {
-            if (!ctx.state.objectExists(ctx.source)) return kInvalidId;
-            auto& self = ctx.state.getObject(ctx.source);
+        // "When I defend, you may kill me to move an attacking unit to its
+        // base." Killing me is the cost, paid as the trigger is finalized (CR
+        // 383.3); the attacking unit is the controller's choice.
+        // The combat's battlefield: mine while I'm there, afterwards the one
+        // the attacker captured at fire time is at.
+        auto combat_bf = [&]() -> std::optional<BattlefieldId> {
+            const auto& self = ctx.state.getObject(ctx.source);
+            if (auto bf = self.battlefieldId()) return bf;
             auto it = self.card_counters.find("__defend_attacker_id");
-            if (it == self.card_counters.end()) return kInvalidId;
-            GameObjectId attacker_id = static_cast<GameObjectId>(it->second);
-            if (!ctx.state.objectExists(attacker_id)) return kInvalidId;
-            auto& a = ctx.state.getObject(attacker_id);
-            if (!a.isUnit()) return kInvalidId;
-            if (a.controller == ctx.controller) return kInvalidId;
-            if (!a.location.has_value()) return kInvalidId;
-            return attacker_id;
+            if (it == self.card_counters.end()) return std::nullopt;
+            const auto attacker = static_cast<GameObjectId>(it->second);
+            if (!ctx.state.objectExists(attacker)) return std::nullopt;
+            return ctx.state.getObject(attacker).battlefieldId();
         };
-        auto still_legal = [&]() { return get_attacker() != kInvalidId; };
-
+        auto attackers = [&]() {
+            const auto bf = combat_bf();
+            if (!bf) return std::vector<GameObjectId>{};
+            const PlayerId me = ctx.controller;
+            return chooseableUnits(ctx.state, me, [&](const GameObject& o) {
+                return o.controller != me && o.battlefieldId() == bf &&
+                       o.combat_designation == CombatDesignation::Attacker;
+            });
+        };
+        auto still_legal = [&]() {
+            return costAlreadyPaid(ctx) ||
+                   (ctx.state.getObject(ctx.source).location.has_value() && !attackers().empty());
+        };
         int conf = confirmOptional(ctx,
-            "Overzealous Fan: kill self to bounce attacker?", still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;
-        if (conf == 0) return;
-
-        GameObjectId attacker = get_attacker();
-        if (attacker == kInvalidId) return;
+            "Overzealous Fan: kill me to move an attacking unit to its base?", still_legal);
+        GameObjectId attacker = kInvalidId;
+        if (conf == 1) attacker = pickTarget(ctx, "Overzealous Fan: choose an attacking unit",
+                                             attackers());
+        if (conf == 1 && attacker != kInvalidId && costDueNow(ctx)) {
+            // The cost can only be paid by a Fan that is still on the board.
+            if (!ctx.state.getObject(ctx.source).location.has_value()) return;
+            ctx.executor.killObject(ctx.source);
+        }
+        if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
+        if (conf < 1 || attacker == kInvalidId) return;   // waiting / declined / mistarget
         std::string attacker_name = ctx.state.getObject(attacker).name;
-        ctx.executor.killObject(ctx.source);
-        ctx.executor.bounceToHand(attacker);
-        ctx.events.logTrace("OVERZEALOUS FAN: killed self, bounced " + attacker_name);
+        ctx.executor.moveToBase(attacker);   // to ITS base; it keeps buffs, damage and gear
+        ctx.events.logTrace("OVERZEALOUS FAN: killed self, moved " + attacker_name + " to its base");
     }
 private:
     const CardDef def_ = [] {

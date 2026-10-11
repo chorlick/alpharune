@@ -260,7 +260,7 @@ TEST_F(AuditFix1Test, Akshan_StealsEnemyGearToBase) {
     state.getObject(akshan).card_counters["__akshan_paid"] = 1;
     EffectExecutor exec(state, events, card_db);
 
-    fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerAs(kAkshan, P1, akshan, TriggerType::AsYouPlayMe, exec);  // the theft; WhenYouPlayMe is [Weaponmaster]
 
     auto& g = state.getObject(enemy_gear);
     EXPECT_EQ(g.controller, P1);                            // control taken
@@ -279,7 +279,7 @@ TEST_F(AuditFix1Test, Akshan_AttachesStolenEquipment) {
     state.getObject(akshan).card_counters["__akshan_paid"] = 1;  // paid the additional cost
     EffectExecutor exec(state, events, card_db);
 
-    fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerAs(kAkshan, P1, akshan, TriggerType::AsYouPlayMe, exec);  // the theft; WhenYouPlayMe is [Weaponmaster]
 
     auto& g = state.getObject(enemy_equip);
     auto& self = state.getObject(akshan);
@@ -300,7 +300,7 @@ TEST_F(AuditFix1Test, Akshan_NoEnemyGearNoOp) {
     state.getObject(akshan).card_counters["__akshan_paid"] = 1;  // even if paid
     EffectExecutor exec(state, events, card_db);
 
-    fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerAs(kAkshan, P1, akshan, TriggerType::AsYouPlayMe, exec);  // the theft; WhenYouPlayMe is [Weaponmaster]
 
     EXPECT_EQ(state.getObject(friendly).controller, P1);   // unchanged
     EXPECT_FALSE(state.getObject(friendly).attached_to.has_value());
@@ -314,7 +314,7 @@ TEST_F(AuditFix1Test, Akshan_NoStealWhenAdditionalCostNotPaid) {
                                      /*equipment=*/false);
     // No __akshan_paid flag -> additional cost not paid -> no steal.
     EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kAkshan, P1, akshan, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerAs(kAkshan, P1, akshan, TriggerType::AsYouPlayMe, exec);  // the theft; WhenYouPlayMe is [Weaponmaster]
     EXPECT_EQ(state.getObject(enemy_gear).controller, P2);  // NOT stolen
 }
 

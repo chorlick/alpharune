@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,23 +17,28 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you play me, buff up to four friendly units. (Give each a +1 [M]
     //  buff if it doesn't have one.)"
-    // Auto-applies to up to four currently-unbuffed friendly units — faithful
-    // since buffing unbuffed units is strictly beneficial and never declined.
+    // The controller chooses which, one at a time, and may stop early. Only
+    // units without a buff are offered: buffing one that has a buff does
+    // nothing (CR 427.1.b).
     //
     // ENGINE GAP: "When you spend a buff, play a Gold gear token exhausted."
-    // There is no "spend a buff" trigger event in TriggerType, so this second
-    // clause is left unimplemented.
+    // There is no "spend a buff" event: the nine cards that spend buffs each
+    // decrement buff_count by hand. It needs a shared spend-a-buff primitive
+    // that announces the spend, plus a trigger type for it.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        int buffed = 0;
+        std::vector<GameObjectId> unbuffed;
         for (auto& [id, obj] : ctx.state.objects) {
-            if (buffed >= 4) break;
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (obj.buff_count > 0) continue;  // "if it doesn't have one"
-            ctx.executor.buffUnit(id);
-            ++buffed;
+            if (!obj.location.has_value() || obj.buff_count > 0) continue;
+            unbuffed.push_back(id);
         }
+        std::vector<GameObjectId> chosen;
+        if (!pickSeveral(ctx, "Fae Dragon: buff a friendly unit (up to four)", 4,
+                         unbuffed, chosen)) return;   // waiting for the agent
+        int buffed = 0;
+        for (auto id : chosen)
+            if (ctx.executor.buffUnit(id)) ++buffed;
         ctx.events.logTrace("FAE DRAGON: buffed " + std::to_string(buffed) +
                             " friendly units (up to 4)");
     }

@@ -35,13 +35,9 @@ public:
             return out;
         };
         int conf = confirmOptional(ctx, "Zaun Punk: kill a friendly gear (cost) to kill a gear?",
-                                   [&]() { return !friendly_gear().empty(); });
-        if (conf == -1) return;  // waiting on agent
-        if (conf == 0) return;   // declined / no friendly gear
-
+                                   [&]() { return costAlreadyPaid(ctx) || !friendly_gear().empty(); });
         // Two sequential picks: A = friendly gear to kill (cost), B = any gear
-        // to kill (effect, B excludes A since A is gone). pickTargetPair (9..14)
-        // composes with confirmOptional (0/1/2).
+        // to kill (effect, B excludes A since A is gone).
         auto any_gear_fn = [&](GameObjectId a) {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
@@ -51,19 +47,20 @@ public:
             }
             return out;
         };
-        auto [cost, victim] = pickTargetPair(ctx, "Zaun Punk", friendly_gear(), any_gear_fn);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        bool suspending = (cost == kInvalidId || victim == kInvalidId) &&
-                          ctx.state.chain.resuming.has_value() &&
-                          (ctx.state.chain.resuming->resume_point == 10 ||
-                           ctx.state.chain.resuming->resume_point == 12);
-        if (suspending) return;
-        if (cost == kInvalidId || !ctx.state.objectExists(cost)) return;
-        // Pay the additional cost: kill the chosen friendly gear.
-        ctx.executor.killObject(cost);
-        // Effect: kill the chosen gear.
-        if (victim != kInvalidId && ctx.state.objectExists(victim))
-            ctx.executor.killObject(victim);
+        std::pair<GameObjectId, GameObjectId> picks{kInvalidId, kInvalidId};
+        if (conf == 1) picks = pickTargetPair(ctx, "Zaun Punk", friendly_gear(), any_gear_fn);
+        // The additional cost — killing the chosen friendly gear — is paid as
+        // the trigger is finalized (CR 383.3), the nearest point to "as you
+        // play me"; nobody can respond before it is paid.
+        bool paid = costAlreadyPaid(ctx);
+        if (!paid && conf == 1 && picks.first != kInvalidId && costDueNow(ctx)) {
+            ctx.executor.killObject(picks.first);
+            paid = true;
+        }
+        if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
+        if (!paid) return;   // waiting / declined / no friendly gear
+        // Effect: kill the chosen gear (kInvalidId if it left the board since).
+        if (picks.second != kInvalidId) ctx.executor.killObject(picks.second);
         ctx.events.logTrace("ZAUN PUNK: killed a friendly gear (cost) -> killed a gear");
     }
 private:

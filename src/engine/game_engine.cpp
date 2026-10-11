@@ -2845,6 +2845,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
                 if (src_bf.blocks_move_to_base) allow_to_base = false;
             }
             if (unit.cant_move_to_base) allow_to_base = false;  // Determined Sentry
+            if (unit.aura_cant_move_to_base) allow_to_base = false;  // Minotaur Reckoner
             if (allow_to_base) {
                 actions.push_back(Intent::standardMove(
                     player, {unit_id}, BaseLocation{player}));
@@ -3701,7 +3702,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
 static int extraAnyPowerCost(const GameState& state, PlayerId player, const GameObject& card);
 static bool costModifierApplies(const GameState& state, const PlayerState::CostModifier& mod,
                                 bool own, PlayerId payer, const GameObject& card,
-                                bool combat_active);
+                                bool combat_active, int printed_energy_cost = -1);
 static bool anyCombatInProgress(const GameState& state);
 
 namespace {
@@ -4802,6 +4803,7 @@ void GameEngine::recalculateAuras() {
         obj.granted_abilities = obj.temp_granted_abilities;  // Forge / Gardens / Heimerdinger re-add theirs; "this turn" grants persist
         obj.prevent_enemy_spell_ability_damage = false;      // Esteemed Hierophant
         obj.cant_be_moved_by_enemy = false;                  // Jagged Cutlass
+        obj.aura_cant_move_to_base = false;                  // Minotaur Reckoner
         obj.empower_cost_reduction = 0;              // Risen Altar
         // Empowered is a board status (CR 442.2): it doesn't survive leaving.
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) {
@@ -5718,10 +5720,15 @@ static int extraAnyPowerCost(const GameState& state, PlayerId player, const Game
 // modifier sits in the payer's own list (false: in the opponent's, where only
 // "enemy" modifiers reach across). The single filter used for the Energy part,
 // the Power part and the one-shot consume, so the three cannot drift.
+// `printed_energy_cost` is the card's printed Energy cost (-1 = not known to
+// the caller: a modifier limited by printed cost then does not apply).
 static bool costModifierApplies(const GameState& state, const PlayerState::CostModifier& mod,
                                 bool own, PlayerId payer, const GameObject& card,
-                                bool combat_active) {
+                                bool combat_active, int printed_energy_cost) {
     if (mod.affects_enemy_only == own) return false;
+    if (mod.max_printed_energy_cost >= 0 &&
+        (printed_energy_cost < 0 || printed_energy_cost > mod.max_printed_energy_cost))
+        return false;
     if (mod.next_spell_only && !card.isSpell()) return false;
     if (mod.next_unit_only && !card.isUnit()) return false;
     if (mod.units_only && !card.isUnit()) return false;
@@ -5748,14 +5755,17 @@ static int powerCostDelta(const GameState& state, PlayerId player, const GameObj
     if (card.isSpell()) delta -= ps.spell_discount_power;
     delta -= ps.transient_power_discount;
     const bool combat_active = anyCombatInProgress(state);
+    const int printed_energy = card_class ? card_class->def().energy_cost : -1;
     for (const auto& mod : ps.cost_modifiers) {
         if (mod.power_reduction == 0) continue;
-        if (!costModifierApplies(state, mod, /*own=*/true, player, card, combat_active)) continue;
+        if (!costModifierApplies(state, mod, /*own=*/true, player, card, combat_active,
+                                 printed_energy)) continue;
         delta -= mod.power_reduction;
     }
     for (const auto& mod : state.player(opponent(player)).cost_modifiers) {
         if (mod.power_reduction == 0) continue;
-        if (!costModifierApplies(state, mod, /*own=*/false, player, card, combat_active)) continue;
+        if (!costModifierApplies(state, mod, /*own=*/false, player, card, combat_active,
+                                 printed_energy)) continue;
         delta -= mod.power_reduction;
     }
     if (card_class) delta -= card_class->selfPowerCostReduction(state, player);
@@ -5787,7 +5797,8 @@ EffectiveCardCost effectiveCardCost(const GameState& state, const CardDef& def,
         const auto& mods = own ? ps.cost_modifiers
                                : state.player(opponent(player)).cost_modifiers;
         for (const auto& mod : mods) {
-            if (!costModifierApplies(state, mod, own, player, card, combat_active)) continue;
+            if (!costModifierApplies(state, mod, own, player, card, combat_active,
+                                     def.energy_cost)) continue;
             energy_needed -= mod.energy_reduction;
             increases += mod.energy_increase;
             if (mod.min_cost > min_cost) min_cost = mod.min_cost;
@@ -6002,7 +6013,8 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
                     [&](const PlayerState::CostModifier& m) {
                         if (!m.next_spell_only && !m.next_unit_only && !m.next_card_only)
                             return false;
-                        return costModifierApplies(state_, m, own, player, card, combat_active);
+                        return costModifierApplies(state_, m, own, player, card, combat_active,
+                                                   def.energy_cost);
                     }),
                 mods.end());
         }

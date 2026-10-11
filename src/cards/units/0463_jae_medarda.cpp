@@ -15,21 +15,28 @@ class JaeMedarda : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you choose me with a spell, draw 1."
-    // The engine fires WhenYouChooseAFriendlyUnit on ALL the player's units
-    // when ANY friendly unit is chosen, so self-filter: only draw if a chain
-    // item actually chose ME (ChainItem::chosen_objects / targets).
+    // WhenYouChooseAFriendlyUnit fires on every friendly watcher with the
+    // chosen unit as subject: only my own choice counts, and only when a
+    // SPELL made it. Checked as the choice happens: the item that is choosing
+    // is the one being finalized / resolved (chain.resuming) or, for a spell
+    // whose targets were fixed as it was played, the newest item naming me.
     TriggerType triggerType() const override { return TriggerType::WhenYouChooseAFriendlyUnit; }
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
+        if (subject != source) return false;
+        auto names_me = [source](const ChainItem& item) {
+            return std::find(item.chosen_objects.begin(), item.chosen_objects.end(), source)
+                       != item.chosen_objects.end() ||
+                   std::find(item.targets.begin(), item.targets.end(), source)
+                       != item.targets.end();
+        };
+        if (state.chain.resuming.has_value() && names_me(*state.chain.resuming))
+            return state.chain.resuming->is_spell && state.chain.resuming->controller == controller;
+        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it)
+            if (names_me(*it)) return it->is_spell && it->controller == controller;
+        return false;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        bool chose_me = false;
-        for (const auto& item : ctx.state.chain.items) {
-            if (!item.is_spell || item.controller != ctx.controller) continue;
-            chose_me = std::find(item.chosen_objects.begin(), item.chosen_objects.end(),
-                                 ctx.source) != item.chosen_objects.end() ||
-                       std::find(item.targets.begin(), item.targets.end(), ctx.source)
-                           != item.targets.end();
-            if (chose_me) break;
-        }
-        if (!chose_me) return;
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("JAE MEDARDA: chosen by a spell -> draw 1");
     }

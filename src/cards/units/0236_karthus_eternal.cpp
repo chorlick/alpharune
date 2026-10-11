@@ -42,7 +42,6 @@ private:
         d.power_cost = 1;
         d.might = 3;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Deathknell);
         d.ability_text = R"RB(Your [Deathknell] effects trigger an additional time.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/df3497ce6a602da554813340f572240675c7f0e2-744x1039.png)RB";
         return d;

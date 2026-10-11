@@ -708,8 +708,7 @@ TEST_F(ChainTriggerFixTest, ChosenUnit_IreliaTriggersOnHerOwnChoice) {
 
 TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
     static const std::set<CardDefId> kKnownOffenders = {
-        234, 238, 330,
-        361, 384, 453, 479, 539, 589, 618, 738,
+        539, 589, 618, 738,
     };
     // Cards that declare requirements their trigger never reads; nothing
     // waits on the engine. (Empty: Void Burrower 553 dropped its dead

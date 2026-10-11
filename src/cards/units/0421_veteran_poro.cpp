@@ -31,7 +31,6 @@ private:
         d.tags = {R"RB(Poro)RB", R"RB(Freljord)RB"};
         d.energy_cost = 2;
         d.might = 2;
-        d.keywords.set(Keyword::Equip);
         d.keywords.set(Keyword::Weaponmaster);
         d.ability_text = R"RB([Weaponmaster] (When you play me, you may [Equip] one of your Equipment to me for [A] less, even if it's already attached.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/54b8aa5aa80e74e0c545d4c484353c5b9e78bdfc-744x1039.png)RB";

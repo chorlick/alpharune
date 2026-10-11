@@ -31,6 +31,7 @@ subject") describes something nothing implements.
   - c0: 535 Veiled Temple — FIXED: `confirmOptional` (the may), `pickTarget` (a friendly gear), two-mode `pickMode` (detach an attached Equipment or not), all at finalization; test: C0Test.VeiledTemple_ReadiesAGearAndMayDetachIt
   - c0: 763 Amateur Recital — FIXED: `confirmOptional` + `pickTarget` over every chooseable unit at a battlefield (not one at a battlefield units can't leave for base) + `kFinalizeTrigger`; test: C0Test.AmateurRecital_MovesTheChosenUnitToItsBase
   - c0: 212 Forge of the Future — FIXED: on play it plays a 1 [M] Recruit token at base (no kill); "Kill this: Recycle up to 4 cards from trashes" is an activated ability whose kill is paid at finalization and whose cards are picked one at a time with a "None" option; test: C0Test.ForgeOfTheFuture_PlaysARecruitWhenPlayed, .ForgeOfTheFuture_KillThisRecyclesUpToFourFromTrashes
+  - c5: 234 Harnessed Dragon, 238 Leona Determined, 330 Gem Jammer, 361 Ribbon Dancer, 384 Aspiring Engineer (a gear from the TRASH), 453 Beast Below (another friendly unit AND an enemy unit, `pickTargetPair`; either alone if the other has no legal target), 479 Sandshifter — FIXED: `pickTarget` + `kFinalizeTrigger`, `getTargetRequirements()` deleted, ids removed from `kKnownOffenders`, rows removed from the DISABLED list (each has an enabled engine-path test instead); test: C5Test.HarnessedDragonKillsTheChosenEnemyUnit, .LeonaDeterminedStunsAnEnemyUnitHere, .GemJammerGivesTheChosenUnitGanking, .RibbonDancerBuffsAnotherFriendlyUnit, .AspiringEngineerReturnsAGearFromTheTrash, .BeastBelowReturnsAFriendlyAndAnEnemyUnit, .BeastBelowAloneStillReturnsAnEnemyUnit, .SandshifterKillsAnEnemyUnitWithThreeMightOrLess
 
 | File | Line | Trigger | What never happens |
 |---|---|---|---|
@@ -112,6 +113,7 @@ subject") describes something nothing implements.
 - [ ] **7.5 Complete list — 14 cards** [confirmed]
   - c4: 107 Ava Achiever — FIXED: [C] is paid at finalization (`costDueNow`, once, after the card is picked); test: C4Test.AvaAchiever_PaysAsTheAbilityGoesOnTheChain
   - c0: 277 Monastery of Hirana, 765 Dusk Rose Lab — FIXED: the buff is spent / the unit is killed under `costDueNow` at finalization, from the unit the player picks (`selectObject`); test: C0Test.MonasteryOfHirana_TheBuffIsSpentBeforeAnyoneCanRespond, .MonasteryOfHirana_SpendsTheBuffThePlayerPicks, .DuskRoseLab_KillsThePickedUnitAsTheCost
+  - c5: 446 Fae Porter ([P] under `costDueNow`, payability in `still_legal`), 349 Rumble (the unit to recycle and the Mech are chosen with `pickTargetPair`; the recycle is paid under `costDueNow`), 449 Overzealous Fan (kill under `costDueNow`, verified on board) — FIXED; 230 Albus Ferros — FIXED as an effect at resolution (03 item 3.11); test: C5Test.FaePorterPaysWhenTheTriggerIsFinalized, .RumbleHotheadedLetsThePlayerChooseBothCards, .OverzealousFanMovesTheAttackerToItsBase, .AlbusFerrosSpendsTheBuffsThePlayerChooses
 
 | File:line of late payment | Cost | Payability tested in `still_legal`? |
 |---|---|---|
@@ -134,11 +136,13 @@ subject") describes something nothing implements.
   - Legion Quartermaster's playability gate (`hasLegalTargets`) is never consulted for a unit play, so it is also free with no gear on board (08 §D).
   - `units/0481_zaun_punk.cpp:63`, `units/0367_legion_quartermaster.cpp:50`, `units/0208_cruel_patron.cpp:39` (free with an empty board), `units/0728_stalking_wolf.cpp:54` (free if no Bird/Cat/Dog/Poro).
   - c4: 208 Cruel Patron — FIXED (as far as a card can): `canBePlayed` requires a friendly unit on the board, and the kill is chosen and paid at the trigger's finalization (`costDueNow`), not at resolution; still a trigger, not a play cost — a real additional-cost hook is engine work; test: C4Test.CruelPatron_NeedsAFriendlyUnitAndKillsTheChosenOne
+  - c5: 367 Legion Quartermaster (gate moved to `canBePlayed`; gear returned under `costDueNow`) and 481 Zaun Punk (friendly gear killed under `costDueNow`) — FIXED: paid when the play trigger is finalized, before anyone can respond. Still a trigger, not a true cost paid before the unit lands (no engine hook for a non-rune additional cost); test: C5Test.LegionQuartermasterNeedsAGearAndReturnsIt, .ZaunPunkKillsTheCostAndTheChosenGear
 - [ ] **7.7 Costs never charged** [confirmed]
   - `units/0194_nocturne_horrifying.cpp:43` — "play me for [A]" uses `playIgnoringCost` (TODO in file).
   - `units/0331_sentinel_adept.cpp:62-68` and `units/weaponmaster_base.h:60-70` (reached from `units/0828_riven_shattered.cpp:34`) — Weaponmaster equip is always free.
   - `units/0406_jayce_man_of_progress.cpp:68`, `units/0741_rift_herald.cpp:80` — `playIgnoringCost` for an effect that ignores only Energy; Power should still be paid. Soulgorger (196:48) does it correctly with `EffectPlayCost{.ignore_energy = true}`.
   - c4: 194 Nocturne, Horrifying — FIXED: "play me for [A]" pays one Power (`payAnyPower`) at finalization; the banish and the play are separate decisions (banish alone is allowed); test: C4Test.Nocturne_PlayingCostsOnePower_AndBanishingAloneIsAllowed
+  - c5: 331 Sentinel Adept — now the shared `WeaponmasterUnit` (its own copy deleted); the Equip cost is still not charged there (needs the equip-cost descriptor, sweep). 406 Jayce — FIXED: the permission is a this-turn Energy-only `CostModifier`, so the gear's Power is paid by the normal play; test: C5Test.JayceKillsTheChosenGearAndGrantsAPlayThisTurn
 - [ ] **7.8 Cost paid, effect denied** [confirmed]
   - `battlefields/0532_sunken_temple.cpp:36` — `if (!has_mighty) return;` runs at resolution before the `costAlreadyPaid` guard; pay [1], lose the Mighty unit in response, no draw.
   - `legends/0295_relentless_storm.cpp:32` — legend exhausted at finalization, no rune channeled.
@@ -160,6 +164,7 @@ subject") describes something nothing implements.
 - [ ] **7.14** `legends/0753_green_father.cpp:23-33,46` — replaces the first controlled non-Brush battlefield, not "that battlefield"; recomputed at resolution. [confirmed]
   - c1: 753 Green Father — FIXED: replaces the battlefield that was scored (the trigger's subject), exhaust paid under `costDueNow`; test: ReviewFixC1Test.GreenFather_ReplacesTheBattlefieldThatWasScored, CardTestFixture.GreenFather_OnConquerOrHoldReplacesABFWithBrush
 - [ ] **7.15** `units/0226_spectral_matron.cpp:22-45` vs `units/0486_glasc_mixologist.cpp:30-31` — same printed restriction ("no more than [3] and no more than [A]") implemented two different ways, neither matching. Glasc ignores Power cost; Matron compares Energy against available power. [confirmed they disagree]
+  - c5: 226 Spectral Matron and 486 Glasc Mixologist — FIXED: both read the printed cost — Energy cost at most 3 and Power cost at most 1; test: C5Test.SpectralMatronLimitsThePrintedCostAndAsksWhere, .GlascMixologistUsesTheSameCostLimit
 - [ ] **7.16** `spells/0263_bullet_time.cpp:50-57` — X is capped at already-exhausted runes; `payableAnyPower` is the right count. [confirmed]
   - c2: 263 Bullet Time — FIXED: X ranges up to `payableAnyPower` and is paid with `EffectExecutor::payAnyPower` (also 03 item 3.24); test: ReviewFixC2Test.BulletTime_XCountsReadyRunesAndPaysThroughTheEngine
 - [ ] **7.17** `spells/0702_conscription.cpp:19-36,54-57` — play-time target comes from any enemy unit; the 3-Might cap is applied only at resolution, so the spell can mistarget. `:45` — `ps.xp -= 5` sits unguarded between `confirmOptional` and `pickTarget` [latent double charge]. [confirmed]
@@ -176,6 +181,7 @@ subject") describes something nothing implements.
   - c3: 511 Defiant Dance — FIXED: each target handled by itself; only a pending prompt returns early; test: C3Test.DefiantDance_TheSecondUnitIsStillAffectedWhenTheFirstIsGone
 - [ ] **7.23** `units/0828_riven_shattered.cpp:33-34` + `weaponmaster_base.h:26-74` — "you may [Equip]" is forced and takes the first Equipment found. [confirmed]
   - Done by stream helpers in `weaponmaster_base.h` (its file): the base asks the "may" (`confirmOptional`) and the Equipment (`pickTarget`), and does nothing when the unit is no longer on the board (also the `weaponmaster_base.h` part of 7.26); tests: `EnginePathTest.WeaponmasterIsAMayWithAChoiceOfEquipment`, `.WeaponmasterDoesNotEquipAUnitThatLeftTheBoard`. Not ticked: owned by a card stream (check Riven and the 5 other `WeaponmasterUnit` cards; Yone 544 and Sentinel Adept 331 have their own copies). The cost (7.7) is still not charged: it needs an equip-cost descriptor on `Card`.
+  - c5: the Weaponmaster cards in units/0219..0494 — 324, 414, 421, 448 use the fixed base unchanged; 331 Sentinel Adept, 407 Ornn Forge God, 435 Lucian Merciless and 431 Akshan (which had no Weaponmaster at all) now derive from it; 440 Jax, Unrelenting keeps its own (it charges a cost, see batch-10). FIXED apart from the cost (7.7); test: C5Test.WeaponmasterUnitsUseTheSharedMay, .AkshanHasWeaponmasterAndChoosesTheGearHeSteals
 - [ ] **7.24 No target choice; first match is taken** [confirmed]
   - `units/0674_irresistible_faefolk.cpp:28-38,48`, `units/0067_blitzcrank_impassive.cpp:41-51,60`, `units/0583_grim_apothecary.cpp:21-29,39`.
   - `units/0461_fizz_trickster.cpp:25-38`, `units/0112_kai_sa_evolutionary.cpp:26-38` — most recent eligible spell; fizzles if its Power is unaffordable even when an older one is.
@@ -183,6 +189,7 @@ subject") describes something nothing implements.
   - c2: 258 Zenith Blade — FIXED: with more than one friendly unit that could move, the controller chooses which (asked after the "may"; the stun still runs once, after every prompt); test: ReviewFixC2Test.ZenithBlade_TheFriendlyUnitToMoveIsChosen
   - c4: 67 Blitzcrank, Impassive — FIXED: `pickTarget` among enemy units elsewhere (`chooseableUnits`); 112 Kai'Sa, Evolutionary — FIXED: the controller picks among the spells whose Power can be paid (at resolution); test: C4Test.Blitzcrank_PullsTheEnemyUnitItsControllerChooses, C4Test.KaiSaEvolutionary_PlaysTheSpellItsControllerChooses
   - c3: 429 Strike Down — FIXED: with more than one Equipment the controller picks which is detached (`pickTarget`, before the damage); test: C3Test.StrikeDown_TheControllerChoosesWhichEquipmentIsDetached
+  - c5: 461 Fizz, Trickster (the controller picks among the spells whose Power they can pay) and 349 Rumble, Hotheaded (both units chosen) — FIXED; test: C5Test.FizzPlaysTheSpellThePlayerChooses, .RumbleHotheadedLetsThePlayerChooseBothCards
 - [ ] **7.25 Plausible mismatches**
   - `legends/0782_virtuoso.cpp:39,53` — rescans the trash at resolution instead of using `triggering_subject`; a Reaction played in response is banished instead.
   - `units/0613_ivern_nurturer.cpp:49-51` — the "may" is asked at finalization about cards only looked at during resolution; first unit auto-drafted (`:67-75`).
@@ -194,6 +201,7 @@ subject") describes something nothing implements.
   - c0: 774 Valley of Idols — FIXED: "it" is `triggering_subject`; no token exclusion, no id guess; test: C0Test.ValleyOfIdols_BuffsTheUnitThatWasPlayed, .ValleyOfIdols_ARealPlayHandsTheTriggerItsUnit
   - c1: 782 Virtuoso — FIXED (confirmed): banishes the trigger's subject, not the newest spell in the trash; 698 Scryer's Bloom — FIXED (confirmed): "Kill this" is paid in the finalize pass (`kFinalizeActivate` + `costDueNow`); test: ReviewFixC1Test.Virtuoso_BanishesTheSpellThatWasPlayedAndCountsIt, ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
   - c3: 457 Hard Bargain — FIXED: `payableEnergy` / `payEnergy` (floating Energy counts); test: C3Test.HardBargain_FloatingEnergyCanPayTheTwo. 450 Temptation — FIXED: the destination is a `pickMode` choice among locations, not a second target, so no Deflect; test: C3Test.Temptation_TheDestinationIsAChoiceNotASecondTarget
+  - c5: 491 Rek'Sai, Swarm Queen — FIXED (confirmed): "you may reveal" is a `confirmOptional`; test: C5Test.RekSaiRevealIsAMayAndTheBanishIsCounted
 
 ## E. Source or target no longer on board
 
@@ -209,6 +217,7 @@ in those executor functions would close most of this section.
   - Lower impact: Adaptatron 56:41, Kato 434:34.
   - Already listed in 03 item 3.14: Ezreal Dashing 404, Blitzcrank 67, Azir 373.
   - c4: 177 Stealthy Pursuer, 35 Vayne, Hunter, 56 Adaptatron — ALREADY FIXED by the executor guards (02 item 2.28: move / bounce / buff do nothing for an off-board object); 177 and 35 also test `location.has_value()` in their own `still_legal` now. Reprint Vayne 537 is outside this range.
+  - c5: 447 Loyal Pup — FIXED (and the executor no longer moves an off-board unit, `99d179e`); 331 Sentinel Adept — FIXED (shared base checks the board); 347 Rell — FIXED (attach only while on board); 434 Kato — FIXED (nothing given once off the board); 404 / 373 see 03 item 3.14; test: C5Test.LoyalPupIsNotMovedOutOfTheTrash, .RellMagneticPlaysTheEquipmentOutOfHand, .WeaponmasterUnitsUseTheSharedMay
 - [ ] **7.27** `units/0149_carnivorous_snapvine.cpp:23,41,45-47` — bounced in response, it damages and "kills" itself in hand; the card ends in hand and trash with a death event. [plausible]
   - c4: 149 Carnivorous Snapvine — ALREADY FIXED by the executor guards (`dealDamage` / `killObject` on an off-board object are no-ops: the test passes against the un-fixed card); the card now also returns when it has left the board; test: C4Test.CarnivorousSnapvine_ThatLeftTheBoardFightsNobody
 - [ ] **7.28** `spells/0029_falling_star.cpp:37,50-59` — both hits on one token: the second `killObject` runs on a dead token (Banishment, not Trash) and re-emits death events. [plausible]
@@ -229,6 +238,7 @@ in those executor functions would close most of this section.
   - `spells/0115_promising_future.cpp:75-80`, `units/0491_rek_sai_swarm_queen.cpp:63-65`, `legends/0553_void_burrower.cpp:118-121` — skip `cards_banished_this_turn` and the `"banished_owned"` event.
   - c2: 115 Promising Future — FIXED: banishes through `EffectExecutor::banishObject`; the manual banishment erase before `playPayingCost` is gone (8.13); test: ReviewFixC2Test.PromisingFuture_BanishesThroughTheExecutor
   - c1: 553 Void Burrower — FIXED: banishes through `EffectExecutor::banishObject` (counts the banish, emits `banished_owned`), then `playPayingCost`; existing Void Burrower tests still pass
+  - c5: 491 Rek'Sai, Swarm Queen — FIXED: `EffectExecutor::banishObject`; test: C5Test.RekSaiRevealIsAMayAndTheBanishIsCounted
 - [x] **7.32 `pickTargetPair` partial result treated as complete** [plausible, latent] — FIXED: confirmed in the helper; while waiting for the second pick `pickTargetPair` now returns `{kInvalidId, kInvalidId}` (as its doc always said), so Azir and Flash are correct without edits; `{a, kInvalidId}` only comes back finished (`resume_point` 13); test: `ChoiceHelperTest.PickTargetPairReturnsNothingWhileWaitingForTheSecondPick`, `.PickTargetPairWithNoSecondTargetIsAFinishedPartialPair`
   - `units/0373_azir_ascendant.cpp:95-118` and `spells/0309_flash.cpp:46-50` only check for both ids invalid; at `resume_point` 12 the helper returns `{a, kInvalidId}`, so the first half is acted on, then again on re-entry. Masked by the finalize pass; reachable when it is skipped (spell played by an effect, or after `makeNewChoicesFor`, e.g. Rebuttal 939). Kinkou Monk, Zaun Punk and Profiteer check 10/12 explicitly.
   - c2: 309 Flash — rewritten for batch-08 (hand-built prompts, no `pickTargetPair`); 306 Gentlemen's Duel (batch-08, same shape) verified: ReviewFixC2Test.GentlemensDuel_GivesTheBonusOnce
@@ -250,6 +260,7 @@ in those executor functions would close most of this section.
   - c0: 72 Solari Shrine — FIXED for "stunned": `WhenAnEnemyUnitDies` now carries the dead unit as its subject (`shared:` 776a84b) and `triggerCondition` requires it to be stunned. Still an approximation, documented in the card: who killed it is not tracked; test: C0Test.SolariShrine_OnlyAStunnedEnemyUnitsDeathTriggers
   - c4: 37 Immortal Phoenix — FIXED: affordability and payment through `payableEnergy` / `payEnergy` + `payableOnePower` / `payOnePower` (floating Energy and Power count; one Fury rune covers both); 121 Teemo, Strategist — FIXED: the reveal and recycle happen even with no unit to choose; test: C4Test.ImmortalPhoenix_PaysFromThePoolAndOneRuneCoversBothHalves, C4Test.TeemoStrategist_StillRevealsWhenThereIsNoUnitToChoose
   - c1: 756 Deceiver, 895 Forgotten Relic — FIXED: progress moved to `resume_data` slots 7+ (no hand-rolled resume points inside the helpers' ranges); 553 Void Burrower, 710 Cursed Sarcophagus — FIXED: no manual erase, the card stays banished (and tracked) when `playPayingCost` is not paid; test: ReviewFixC1Test.CursedSarcophagus_AnUnpaidUnitStaysBanishedWithIt, existing Deceiver / Forgotten Relic tests
+  - c5: 397 Pickpocket — FIXED: a gear without a card costs nothing (no `cardDB().get(kInvalidId)`); 343 Draven, Vanquisher — FIXED: `payableOnePower` (floating and universal Power count), paid under `costDueNow`; test: C5Test.PickpocketCanKillAGearTokenWithoutACard, .DravenVanquisherPaysWithFloatingPower
 
 ## G. Loop mutation and AoE
 

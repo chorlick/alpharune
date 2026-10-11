@@ -35,6 +35,8 @@ public:
         GameObjectId tgt = pickTarget(ctx, "Ezreal: deal Might damage to an enemy here", here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
+        // "damage equal to my Might": nothing if I'm no longer on the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         int dmg = ctx.state.getObject(ctx.source).current_might;
         ctx.executor.dealDamage(tgt, dmg, ctx.source);
         if (ctx.state.objectExists(tgt) && ctx.state.getObject(tgt).hasLethalDamage())

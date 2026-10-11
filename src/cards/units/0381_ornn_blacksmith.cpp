@@ -17,47 +17,65 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIHold};
     }
+    // Top (up to) 4 cards of the deck (back = top).
+    std::vector<GameObjectId> topFour(CardContext& ctx) const {
+        const auto& ps = ctx.state.player(ctx.controller);
+        std::vector<GameObjectId> out;
+        for (auto it = ps.main_deck.rbegin();
+             it != ps.main_deck.rend() && out.size() < 4; ++it)
+            if (ctx.state.objectExists(*it)) out.push_back(*it);
+        return out;
+    }
+    std::vector<GameObjectId> gearAmong(CardContext& ctx) const {
+        std::vector<GameObjectId> out;
+        for (auto id : topFour(ctx))
+            if (ctx.state.getObject(id).isGear()) out.push_back(id);
+        return out;
+    }
+    // "look at the top 4 cards of your Main Deck. You may reveal a gear from
+    // among them and draw it. Then recycle the rest." (As Fate Weaver 626.)
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        auto& ps = ctx.state.player(ctx.controller);
-
-        // Look at top 4 (top = back of vector).
-        std::vector<GameObjectId> peeked;
-        for (int i = 0; i < 4 && !ps.main_deck.empty(); ++i) {
-            peeked.push_back(deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller)));
-        }
-        if (peeked.empty()) return;
-
-        // Reveal a gear from among them and draw it (first gear; "may" is
-        // treated as always-take when a gear is present — consistent with
-        // the other look-N drafters in this engine).
+        // The look is private; it tells the controller what is there to take.
+        const auto looked = topFour(ctx);
+        for (size_t i = 0; i < looked.size(); ++i)
+            knowledge::seenInDeck(ctx.state, looked[i], knowledge::only(ctx.controller),
+                                  DeckEnd::Top, static_cast<int>(i));
+        int conf = confirmOptional(ctx, "Ornn, Blacksmith: reveal a gear from the top 4 and draw it?",
+                                   [&]() { return !gearAmong(ctx).empty(); });
+        if (conf == -1) return;  // waiting for agent
         GameObjectId drafted = kInvalidId;
-        std::vector<GameObjectId> rest;
-        for (auto id : peeked) {
-            if (!ctx.state.objectExists(id)) { continue; }
-            const auto& obj = ctx.state.getObject(id);
-            if (drafted == kInvalidId && obj.isGear()) drafted = id;
-            else rest.push_back(id);
+        if (conf == 1) {
+            drafted = pickTarget(ctx, "Ornn, Blacksmith: choose a gear to draw", gearAmong(ctx));
+            if (drafted == kInvalidId && ctx.state.chain.resuming.has_value() &&
+                ctx.state.chain.resuming->resume_point == 7)
+                return;  // suspended for the choice
         }
-
+        // Snapshot the top 4 before drawing (drawing shifts the deck).
+        const std::vector<GameObjectId> original_top = topFour(ctx);
+        auto& ps = ctx.state.player(ctx.controller);
         if (drafted != kInvalidId) {
             auto& drafted_obj = ctx.state.getObject(drafted);
+            // Revealed, then drawn: the opponent sees it and knows it is in hand.
             ctx.events.emit(CardRevealedEvent{
                 /*card=*/drafted,
                 /*card_def_id=*/drafted_obj.card_def_id,
                 /*owner=*/drafted_obj.owner,
-                /*revealed_to_all=*/false,
+                /*revealed_to_all=*/true,
                 /*revealed_to=*/ctx.controller,
                 /*source_zone=*/ZoneType::MainDeck,
             });
-            ctx.events.logTrace("ORNN, BLACKSMITH: drafted gear " +
-                                 drafted_obj.name);
-            // The gear is revealed before it is drawn: the opponent knows it too.
-            knowledge::seen(ctx.state, drafted, deck::Place::Held, knowledge::everyone());
+            deck::take(ctx.state, drafted, deck::Place::Held, knowledge::everyone(), /*slot_public=*/false);
             drafted_obj.zone = ZoneType::Hand;
             ps.hand.push_back(drafted);
+            ctx.events.logTrace("ORNN, BLACKSMITH: drafted gear " + drafted_obj.name);
         }
-
         // Recycle the rest to the bottom of the deck.
+        std::vector<GameObjectId> rest;
+        for (auto id : original_top) {
+            if (id == drafted) continue;
+            deck::take(ctx.state, id, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
+            rest.push_back(id);
+        }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);
         }

@@ -36,56 +36,84 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        // Legal if there's ANOTHER friendly unit on board to recycle AND a Mech
-        // unit in the controller's trash to play.
-        auto find_recyclable = [&]() -> GameObjectId {
+        // "you may recycle another friendly unit to play a Mech from your
+        // trash": the controller chooses both. Recycling the unit is the cost
+        // of the ability, paid as the trigger is finalized (CR 383.3).
+        auto recyclable = [&]() {
+            std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
+                if (id == ctx.source) continue;   // "another"
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
-                return id;
+                out.push_back(id);
             }
-            return kInvalidId;
+            return out;
         };
-        auto find_trash_mech = [&]() -> GameObjectId {
-            const auto& ps = ctx.state.player(ctx.controller);
-            for (auto it = ps.trash.rbegin(); it != ps.trash.rend(); ++it) {
-                if (!ctx.state.objectExists(*it)) continue;
-                const auto& obj = ctx.state.getObject(*it);
-                if (!obj.isUnit()) continue;
-                for (auto& tag : obj.tags)
-                    if (tag == "Mech") return *it;
+        auto trash_mechs = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto id : ctx.state.player(ctx.controller).trash) {
+                if (!ctx.state.objectExists(id)) continue;
+                const auto& obj = ctx.state.getObject(id);
+                if (obj.isUnit() && obj.card_def_id != kInvalidId && hasTag(obj, "Mech"))
+                    out.push_back(id);
             }
-            return kInvalidId;
+            return out;
         };
         auto still_legal = [&]() -> bool {
-            return find_recyclable() != kInvalidId &&
-                   find_trash_mech() != kInvalidId;
+            return costAlreadyPaid(ctx) || (!recyclable().empty() && !trash_mechs().empty());
         };
-        int conf = confirmOptional(ctx,
-            "Rumble: recycle a friendly unit to play a Mech from trash?",
-            still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;  // waiting on agent
-        if (conf == 0) return;   // declined / not legal
+        auto& ri = ctx.state.chain.resuming.value();
+        // resume_data[kMightSlot]: 1 + the Might of the unit recycled as the
+        // cost (0 = not paid yet). Past the choice helpers' own slots.
+        constexpr size_t kMightSlot = Card::kChoiceStateSlot + 1;
+        auto paid_might = [&]() -> int {
+            return ri.resume_data.size() > kMightSlot ? ri.resume_data[kMightSlot] - 1 : -1;
+        };
 
-        GameObjectId recyclable = find_recyclable();
-        GameObjectId trash_mech = find_trash_mech();
-        if (recyclable == kInvalidId || trash_mech == kInvalidId) return;
+        int conf = confirmOptional(ctx,
+            "Rumble: recycle a friendly unit to play a Mech from trash?", still_legal);
+        std::pair<GameObjectId, GameObjectId> pick{kInvalidId, kInvalidId};
+        if (conf == 1) {
+            // (At resolution the recycled unit is gone, so the first pick comes
+            // back as kInvalidId; only the Mech is still needed then.)
+            pick = pickTargetPair(ctx, "Rumble: unit to recycle, then Mech to play", recyclable(),
+                                  [&](GameObjectId) { return trash_mechs(); });
+            if (pick.first != kInvalidId && pick.second != kInvalidId &&
+                paid_might() < 0 && costDueNow(ctx)) {
+                const int might = ctx.state.getObject(pick.first).current_might;
+                ctx.executor.recycleCards(ctx.controller, {pick.first});
+                if (ri.resume_data.size() <= kMightSlot) ri.resume_data.resize(kMightSlot + 1, 0);
+                ri.resume_data[kMightSlot] = might + 1;
+            }
+        }
+        if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
+        if (conf < 1 || paid_might() < 0) return;   // waiting / declined / cost not paid
+        const GameObjectId trash_mech = pick.second;
+        if (trash_mech == kInvalidId) return;       // the Mech left the trash in response
+
         // "Reduce its Energy cost by the Might of the unit you recycled." The
-        // rest of the Mech's cost is still owed (CR 356.1.b.2); recycling the
-        // unit is the cost of the ability and happens either way.
-        const EffectExecutor::EffectPlayCost reduced{
-            .energy_reduction = ctx.state.getObject(recyclable).current_might};
-        ctx.executor.recycleCards(ctx.controller, {recyclable});
+        // rest of the Mech's cost is still owed (CR 356.1.b.2).
+        const EffectExecutor::EffectPlayCost reduced{.energy_reduction = paid_might()};
         if (!ctx.executor.canPlayPayingCost(ctx.controller, trash_mech, reduced)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), trash_mech);
-        if (it != ps.trash.end()) ps.trash.erase(it);
-        ctx.executor.playPayingCost(ctx.controller, trash_mech,
-                                    LocationId{BaseLocation{ctx.controller}}, reduced);
-        ctx.events.logTrace("RUMBLE: conquer -> recycled a unit, played a Mech "
-                            "from trash (cost reduction approximated as free)");
+
+        // CR 355.2.a: the Mech goes to its controller's base or to a
+        // battlefield they control — chosen as it is played.
+        std::vector<LocationId> where{LocationId{BaseLocation{ctx.controller}}};
+        std::vector<std::string> labels{"base"};
+        for (const auto& bf : ctx.state.battlefields) {
+            if (!bf.controller.has_value() || *bf.controller != ctx.controller) continue;
+            where.push_back(LocationId{BattlefieldLocation{bf.id}});
+            labels.push_back("battlefield " + std::to_string(bf.id));
+        }
+        int dest = 0;
+        if (where.size() > 1) {
+            dest = pickMode(ctx, "Rumble: where to play the Mech",
+                            static_cast<int>(where.size()), labels);
+            if (dest < 0) return;   // waiting for the agent
+        }
+        // playPayingCost takes the card out of the trash only if it is played.
+        if (ctx.executor.playPayingCost(ctx.controller, trash_mech, where[dest], reduced))
+            ctx.events.logTrace("RUMBLE: conquer -> recycled a unit, played a Mech from trash");
     }
 private:
     const CardDef def_ = [] {

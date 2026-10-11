@@ -18,7 +18,9 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
 
-    // Eligible units in trash: card_type Unit with printed energy cost <= 3.
+    // "with cost no more than [3] and no more than [A]": a limit on the card's
+    // printed cost — Energy cost at most 3 and Power cost at most 1 (the same
+    // rule as Spectral Matron 226).
     std::vector<GameObjectId> eligibleTrashUnits(CardContext& ctx) const {
         std::vector<GameObjectId> out;
         auto& ps = ctx.state.player(ctx.controller);
@@ -27,8 +29,9 @@ public:
             auto& obj = ctx.state.getObject(cid);
             if (!obj.isUnit()) continue;
             if (obj.card_def_id == kInvalidId) continue;
-            int cost = ctx.executor.cardDB().get(obj.card_def_id).energy_cost;
-            if (cost > 3) continue;
+            const auto& cdef = ctx.executor.cardDB().get(obj.card_def_id);
+            if (cdef.energy_cost > 3) continue;   // "no more than [3]"
+            if (cdef.power_cost > 1) continue;    // "no more than [A]"
             out.push_back(cid);
         }
         return out;
@@ -55,10 +58,7 @@ public:
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
 
-        // Remove from trash, then play ignoring cost.
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), picked);
-        if (it != ps.trash.end()) ps.trash.erase(it);
+        // playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked);
         ctx.events.logTrace("GLASC MIXOLOGIST: played a unit from trash for free");
     }

@@ -17,18 +17,15 @@ public:
     // [Shield 5] and [Tank] are engine-handled via the keyword set.
     //
     // "I cost [2][G] less for each point you scored from holding this turn."
-    // PlayerState::hold_points_this_turn now exists (incremented in
-    // GameEngine::scoreHold, reset in resetTurnTracking). The ENERGY portion of
-    // the discount — [2] per hold point — is applied here via selfCostReduction
-    // (engine clamps the net energy cost to >= 0).
-    //
-    // ESCALATE(power_cost_reduction): the [G] (Order power) portion of the
-    // discount — 1 Order power per hold point — cannot be expressed. The engine
-    // has NO per-card POWER reduction hook (selfCostReduction reduces ENERGY
-    // only). Same gap as Master Yi, Unstoppable's tiered "[2][G] less". Only the
-    // energy half of the discount is applied.
+    // PlayerState::hold_points_this_turn is incremented in
+    // GameEngine::scoreHold and reset in resetTurnTracking. Per hold point:
+    // [2] off the Energy cost and one [G] off the Power cost (the engine
+    // clamps both at 0).
     int selfCostReduction(const GameState& state, PlayerId player) const override {
         return 2 * state.player(player).hold_points_this_turn;
+    }
+    int selfPowerCostReduction(const GameState& state, PlayerId player) const override {
+        return state.player(player).hold_points_this_turn;
     }
 private:
     const CardDef def_ = [] {

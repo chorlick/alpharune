@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -17,17 +18,12 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        // "another unit at a battlefield with 3 [M] or less" — an enemy one
+        // only if it can be chosen by enemy spells and abilities.
         auto legal = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;          // "another unit"
-                if (!obj.isUnit()) continue;
-                if (!obj.isAtBattlefield()) continue;    // "at a battlefield"
-                if (obj.current_might > 3) continue;     // "3 [M] or less"
-                out.push_back(id);
-            }
-            return out;
+            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.id != ctx.source && o.isAtBattlefield() && o.current_might <= 3;
+            });
         };
         auto still_legal = [&]() { return !legal().empty(); };
         int conf = confirmOptional(ctx, "Windsinger: return a small unit to hand?",
@@ -58,7 +54,8 @@ private:
         d.energy_cost = 2;
         d.might = 1;
         d.rarity = Rarity::Uncommon;
-        d.ability_text = R"RB(Hidden (Hide now for [A] to react with later for .)
+        d.keywords.set(Keyword::Hidden);
+        d.ability_text = R"RB([Hidden] (Hide now for [A] to react with later for .)
 When you play me, you may return another unit at a battlefield with 3 [M] or less to its owner's hand.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e47c9a3956f8fbb77daa5fdb2ee433dd1772f247-744x1039.png)RB";
         return d;

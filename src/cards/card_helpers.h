@@ -345,7 +345,9 @@ inline GameObjectId createGoldExhausted(CardContext& ctx) {
                                         0, {}, {}, loc, /*enter_ready=*/false);
     if (ctx.state.objectExists(tok)) {
         auto& gold = ctx.state.getObject(tok);
-        gold.is_exhausted = true;
+        // "Your tokens enter ready" (Renata Glasc, Industrialist) replaces how
+        // the token enters, the printed "exhausted" included (CR 184.1, 376).
+        gold.is_exhausted = !ctx.state.player(ctx.controller).tokens_enter_ready;
         // Bind the Gold token card so its "[Reaction] Kill this, [E]: Add" ability exists.
         gold.card_def_id = kGoldGearCardDefId;
     }
@@ -664,6 +666,89 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
     ri.resume_data[slot] = 1;
     return std::nullopt;
+}
+
+// ── Several objects, one at a time ("up to N", "any number of") ─────────────
+// "buff up to four friendly units", "spend any number of buffs": the
+// controller picks one object per prompt and may stop at any prompt. For the
+// controller's OWN objects, chosen as the effect resolves: no Deflect is
+// charged and no "chosen" bookkeeping is done (use Card::pickTarget /
+// offerableChoices for anything that can be an opponent's).
+//
+// The card is re-entered after every answer, so progress lives on the
+// resolving chain item: resume_point kPickSeveralAsk / Await / Done and
+// resume_data = the objects picked so far — so, like splitDamageAmong, a card
+// that uses this must not also call a Card::pick* helper in the same callback.
+// At most kPickSeveralMaxPicks prompts are issued (ChainManager::stepResolve
+// allows 16 re-entries per resolution).
+constexpr int kPickSeveralAsk = 110;
+constexpr int kPickSeveralAwait = 111;
+constexpr int kPickSeveralDone = 112;
+constexpr int kPickSeveralMaxPicks = 12;
+
+/// Returns true once the selection is finished (`picked` holds it, in pick
+/// order), false while a prompt is pending. `legal` are the objects on offer;
+/// one listed k times can be picked k times (a unit with two buffs to spend).
+/// The "stop" option is offered last and carries chosen_value 0.
+inline bool pickSeveral(CardContext& ctx, const std::string& label, int max_picks,
+                        std::vector<GameObjectId> legal, std::vector<GameObjectId>& picked) {
+    std::sort(legal.begin(), legal.end());
+    max_picks = std::min(max_picks, kPickSeveralMaxPicks);
+    picked.clear();
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) {
+        // Direct invocation (no chain item to resume): no agent can be asked,
+        // so take the first objects on offer, like the other choice helpers
+        // default to their first option.
+        for (auto id : legal)
+            if (static_cast<int>(picked.size()) < max_picks) picked.push_back(id);
+        return true;
+    }
+    auto& ri = *ri_opt;
+    auto load = [&]() {
+        picked.clear();
+        for (auto v : ri.resume_data) picked.push_back(static_cast<GameObjectId>(v));
+    };
+    // What can still be picked: each object as often as it is listed.
+    auto remaining = [&]() {
+        std::vector<GameObjectId> left = legal;
+        for (auto v : ri.resume_data) {
+            auto it = std::find(left.begin(), left.end(), static_cast<GameObjectId>(v));
+            if (it != left.end()) left.erase(it);
+        }
+        left.erase(std::unique(left.begin(), left.end()), left.end());
+        return left;
+    };
+    if (ri.resume_point == kPickSeveralDone) { load(); return true; }
+    if (ri.resume_point == kPickSeveralAwait) {
+        const GameObjectId t = takenObject(ctx);
+        const auto left = remaining();
+        if (t == kInvalidId || std::find(left.begin(), left.end(), t) == left.end()) {
+            ri.resume_point = kPickSeveralDone;   // "stop" (or an answer that is no longer on offer)
+            load();
+            return true;
+        }
+        ri.resume_data.push_back(static_cast<int32_t>(t));
+        ri.resume_point = kPickSeveralAsk;
+    } else if (ri.resume_point != kPickSeveralAsk) {
+        ri.resume_data.clear();   // first entry
+        ri.resume_point = kPickSeveralAsk;
+    }
+    const auto left = remaining();
+    if (static_cast<int>(ri.resume_data.size()) >= max_picks || left.empty()) {
+        ri.resume_point = kPickSeveralDone;
+        load();
+        return true;
+    }
+    std::vector<Intent> options;
+    options.reserve(left.size() + 1);
+    for (auto id : left) options.push_back(objChoice(ctx.controller, id));
+    options.push_back(valChoice(ctx.controller, 0, "stop"));
+    ctx.events.logTrace("PICK_SEVERAL_PROMPT: " + label + " (" +
+                        std::to_string(ri.resume_data.size()) + " picked)");
+    ctx.executor.requestChoice(ctx.controller, std::move(options), label);
+    ri.resume_point = kPickSeveralAwait;
+    return false;
 }
 
 // ── Split damage (CR 355.14) ────────────────────────────────────────────────

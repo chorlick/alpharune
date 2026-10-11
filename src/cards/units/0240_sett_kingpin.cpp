@@ -22,7 +22,6 @@ public:
             if (!my_bf) continue;
             int buffed = 0;
             for (auto& [oid, o] : state.objects) {
-                if (oid == sid) continue;
                 if (!o.isUnit() || o.controller != controller) continue;
                 if (o.battlefieldId() != my_bf) continue;
                 if (o.buff_count > 0) buffed++;

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,18 +15,33 @@ namespace {
 class FioraVictorious : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "While I'm [Mighty], I have [Deflect], [Ganking], and [Shield]."
+    // The keywords come before the Might arithmetic (CR 478-479), so the
+    // [Shield] this ability grants must not count toward the Mighty test that
+    // grants it: a buffed, defending Fiora who loses her buff drops straight
+    // from 6 [M] to 4 [M] with no keywords (CR 478.4 example).
+    // The hook runs before this pass has folded any Might, so `current_might`
+    // is the previous pass's total; `__fiora_shield_folded` records whether
+    // that total includes this ability's own +1 (granted while a defender).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        static const std::string kFolded = "__fiora_shield_folded";
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller) continue;
-            if (!self.location.has_value()) continue;
-            if (self.current_might < 5) continue;   // "While I'm [Mighty]"
-            for (Keyword kw : {Keyword::Deflect, Keyword::Ganking, Keyword::Shield}) {
-                GameObject::AuraEffect ae;
-                ae.source = sid;
-                ae.keyword = kw;
-                self.aura_effects.push_back(ae);
+            if (!self.location.has_value()) { self.card_counters.erase(kFolded); continue; }
+            int might = self.current_might;
+            auto folded = self.card_counters.find(kFolded);
+            if (folded != self.card_counters.end() && folded->second == 1) might -= 1;
+            if (might < 5) {   // not [Mighty] without her own [Shield]
+                self.card_counters.erase(kFolded);
+                continue;
             }
+            auraKeyword(self, sid, Keyword::Deflect);
+            auraKeyword(self, sid, Keyword::Ganking);
+            auraKeyword(self, sid, Keyword::Shield);
+            // The engine's fold adds the [Shield] +1 while she is a defender.
+            self.card_counters[kFolded] =
+                self.combat_designation == CombatDesignation::Defender ? 1 : 0;
         }
     }
 private:

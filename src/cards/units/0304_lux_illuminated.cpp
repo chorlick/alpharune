@@ -19,14 +19,17 @@ public:
     // "When you play a spell that costs [5] or more, give me +3 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        // Gate on the triggering spell's printed energy cost (>= 5). Find the
-        // most-recently-played spell and read its CardDef cost.
-        GameObjectId sid = findMostRecentlyPlayedSpell(ctx.state, ctx.controller);
-        if (sid == kInvalidId || !ctx.state.objectExists(sid)) return;
-        const auto& def = ctx.executor.cardDB().get(
-            ctx.state.getObject(sid).card_def_id);
-        if (def.energy_cost < 5) return;
+        // "a spell that costs [5] or more": the spell that was played is the
+        // trigger's subject (wherever it went after resolving — trash,
+        // banishment or back into the deck), not "the newest spell in trash".
+        const GameObjectId spell = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (spell == kInvalidId || !ctx.state.objectExists(spell)) return;
+        const CardDefId spell_def = ctx.state.getObject(spell).card_def_id;
+        if (spell_def == kInvalidId) return;
+        if (ctx.executor.cardDB().get(spell_def).energy_cost < 5) return;
+        // "give me": only while I'm still on the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 3);
         ctx.events.logTrace("LUX ILLUMINATED: 5+ cost spell -> +3 [M] this turn");
     }

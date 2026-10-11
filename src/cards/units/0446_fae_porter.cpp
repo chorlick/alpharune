@@ -35,18 +35,19 @@ public:
             }
             return out;
         };
-        // "you may pay [P]" — gate on having a Chaos power source + a movable unit.
+        // "you may pay [P] to ...": [P] is the cost, paid as the trigger is
+        // finalized (CR 383.3) — so it must be payable to say yes.
         auto still_legal = [&]() {
-            return !movable().empty();
+            return costAlreadyPaid(ctx) ||
+                   (!movable().empty() && payableOnePower(ctx.state, ctx.controller, Domain::Chaos));
         };
         int conf = confirmOptional(ctx, "Fae Porter: pay [P] to move a unit here?", still_legal);
-        if (conf == -1) return;  // waiting on agent
-        if (conf == 0) return;   // declined / not legal
-        GameObjectId tgt = pickTarget(ctx, "Fae Porter: move which unit here?", movable());
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (tgt == kInvalidId) return;  // suspend or no target
-        if (!ctx.state.objectExists(tgt)) return;
-        if (!payOnePower(ctx, ctx.controller, Domain::Chaos)) return;
+        GameObjectId tgt = kInvalidId;
+        if (conf == 1) tgt = pickTarget(ctx, "Fae Porter: move which unit here?", movable());
+        if (conf == 1 && tgt != kInvalidId && costDueNow(ctx) &&
+            !payOnePower(ctx, ctx.controller, Domain::Chaos)) return;
+        if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
+        if (conf < 1 || tgt == kInvalidId) return;  // waiting / declined / mistarget
         ctx.executor.moveToBattlefield(tgt, *my_bf);
         ctx.events.logTrace("FAE PORTER: paid [P] -> moved a unit to my battlefield");
     }

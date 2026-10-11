@@ -14,13 +14,26 @@ namespace {
 class AspiringEngineer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.bounceToHand(targets[0]);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_gear = true, .must_be_friendly = true};
+
+    // "When you play me, return a gear from your trash to your hand."
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto& ps = ctx.state.player(ctx.controller);
+        std::vector<GameObjectId> trashed_gear;
+        for (auto id : ps.trash)
+            if (ctx.state.objectExists(id) && ctx.state.getObject(id).isGear())
+                trashed_gear.push_back(id);
+        const GameObjectId t = pickTarget(ctx, "Aspiring Engineer: return a gear from your trash",
+                                          trashed_gear);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / it left the trash / waiting
+        ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), t), ps.trash.end());
+        auto& gear = ctx.state.getObject(t);
+        gear.zone = ZoneType::Hand;
+        gear.location = std::nullopt;
+        ps.hand.push_back(t);
+        ctx.events.logTrace("ASPIRING ENGINEER: returned " + gear.name + " from trash to hand");
     }
 private:
     const CardDef def_ = [] {

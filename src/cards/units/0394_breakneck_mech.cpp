@@ -17,32 +17,29 @@ public:
     const CardDef& def() const override { return def_; }
 
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        // Locate an on-board instance controlled by `controller`.
-        GameObjectId self_id = kInvalidId;
+        // "Your Mechs have [Deflect] and [Ganking]." Each Breakneck Mech on the
+        // board is its own source (two of them: Deflect 2, CR 809.2). The
+        // keywords are not printed on the card itself — a Breakneck Mech has
+        // them because it is one of your Mechs.
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;
-            self_id = sid;
-            break;
-        }
-        if (self_id == kInvalidId) return;
-        for (auto& [uid, u] : state.objects) {
-            if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
-            if (!hasTag(u, "Mech")) continue;
-            for (Keyword kw : {Keyword::Deflect, Keyword::Ganking}) {
-                GameObject::AuraEffect ae;
-                ae.source = self_id;
-                ae.keyword = kw;
-                u.aura_effects.push_back(ae);
+            for (auto& [uid, u] : state.objects) {
+                if (!u.isUnit() || u.controller != controller || !u.location.has_value()) continue;
+                if (!hasTag(u, "Mech")) continue;
+                auraKeyword(u, sid, Keyword::Deflect);
+                auraKeyword(u, sid, Keyword::Ganking);
             }
         }
     }
-
-    bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
+    // "I enter ready if you control another Mech." — any Mech other than this
+    // one, another Breakneck Mech included.
+    bool entersReadyOnPlay(const GameState& state, PlayerId controller,
+                           const GameObject& self) const override {
         for (auto& [id, obj] : state.objects) {
             if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value())
                 continue;
-            if (obj.card_def_id == cardDefId()) continue;   // "another Mech" (skip self def)
+            if (id == self.id) continue;   // "another Mech"
             if (hasTag(obj, "Mech")) return true;
         }
         return false;
@@ -65,9 +62,6 @@ private:
         d.power_cost = 2;
         d.might = 7;
         d.rarity = Rarity::Uncommon;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
-        d.keywords.set(Keyword::Ganking);
         d.ability_text = R"RB(Your Mechs have [Deflect] and [Ganking]. (Opponents must pay [A] to choose us with a spell or ability. We can move from battlefield to battlefield.)
 I enter ready if you control another Mech.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8564fc233cfcb4fc774ac4bc4ee72085d7586163-744x1039.png?accountingTag=RB)RB";

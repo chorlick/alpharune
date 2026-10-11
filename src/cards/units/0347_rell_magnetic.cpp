@@ -22,13 +22,12 @@ public:
     // to me."
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         auto candidates = [&]() {
             std::vector<GameObjectId> out;
             for (auto id : ctx.state.player(ctx.controller).hand) {
                 if (!ctx.state.objectExists(id)) continue;
                 const auto& obj = ctx.state.getObject(id);
-                if (!isEquipment(obj)) continue;
+                if (!isEquipment(obj) || obj.card_def_id == kInvalidId) continue;
                 const auto& def = ctx.executor.cardDB().get(obj.card_def_id);
                 if (def.energy_cost > 2) continue;
                 out.push_back(id);
@@ -38,17 +37,17 @@ public:
         int conf = confirmOptional(ctx,
             "Rell: play an Equipment (<= [2]) free and attach to me?",
             [&]() { return !candidates().empty(); });
-        if (conf == -1) return;  // waiting for agent
-        if (conf == 0) return;   // declined / none available
-
-        GameObjectId eq = pickTarget(ctx, "Rell: choose an Equipment to play",
-                                     candidates());
+        GameObjectId eq = kInvalidId;
+        if (conf == 1) eq = pickTarget(ctx, "Rell: choose an Equipment to play", candidates());
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (eq == kInvalidId || !ctx.state.objectExists(eq)) return;
-        // Play it ignoring cost (to base), then attach it to me.
+        if (conf < 1 || eq == kInvalidId) return;   // waiting / declined / none
+        // Play it ignoring cost (to base; playIgnoringCost takes it out of the
+        // hand). "If you do, attach it to me" — only while I'm still on the
+        // board: an Equipment can't follow a unit that left it.
         ctx.executor.playIgnoringCost(ctx.controller, eq,
                                       LocationId{BaseLocation{ctx.controller}});
-        if (ctx.state.objectExists(eq) && ctx.state.objectExists(ctx.source))
+        if (ctx.state.getObject(eq).location.has_value() &&
+            equipEndsOnBoard(ctx.state, eq, ctx.source))
             attachFree(ctx, eq, ctx.source);
         ctx.events.logTrace("RELL MAGNETIC: played + attached an Equipment (free)");
     }

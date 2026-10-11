@@ -29,14 +29,10 @@ public:
                 obj.location.has_value())
                 friendly.push_back(id);
         }
-        if (friendly.empty()) return;
         GameObjectId pick = pickTarget(ctx, "Karma, Channeler: buff a friendly unit",
                                        friendly);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (pick == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7)
-            return;  // suspended
-        if (pick == kInvalidId || !ctx.state.objectExists(pick)) return;
+        if (pick == kInvalidId) return;       // none / mistarget / waiting
         ctx.executor.buffUnit(pick);
         ctx.events.logTrace("KARMA CHANNELER: buffed a friendly unit on recycle");
     }
@@ -54,7 +50,7 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Order};
-        d.tags = {R"RB(Vi)RB", R"RB(Ionia)RB"};
+        d.tags = {R"RB(Karma)RB", R"RB(Ionia)RB"};
         d.energy_cost = 6;
         d.power_cost = 1;
         d.might = 6;

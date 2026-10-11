@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/units/weaponmaster_base.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -11,53 +12,10 @@
 namespace riftbound {
 namespace {
 
-class OrnnForgeGod : public UnitCard {
+// [Weaponmaster] is the shared keyword ability (weaponmaster_base.h).
+class OrnnForgeGod : public WeaponmasterUnit {
 public:
     const CardDef& def() const override { return def_; }
-
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // Weaponmaster: find a friendly Equipment gear and attach it to me
-        // (free — "[A] less" reduces the simple equip cost to nothing here).
-        if (!ctx.state.objectExists(ctx.source)) return;
-        GameObjectId best_gear = kInvalidId;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isGear() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            bool is_equipment = false;
-            for (auto& tag : obj.tags) {
-                if (tag == "Equipment") { is_equipment = true; break; }
-            }
-            if (!is_equipment) continue;
-            best_gear = id;
-            break;
-        }
-        if (best_gear == kInvalidId) return;
-
-        auto& gear = ctx.state.getObject(best_gear);
-        // "even if it's already attached" — detach from current bearer first.
-        if (gear.attached_to.has_value()) {
-            auto old_unit = *gear.attached_to;
-            if (ctx.state.objectExists(old_unit)) {
-                auto& old = ctx.state.getObject(old_unit);
-                old.attachment_might_bonus -= gear.might_bonus;
-                auto it = std::find(old.attachments.begin(), old.attachments.end(), best_gear);
-                if (it != old.attachments.end()) old.attachments.erase(it);
-                old.recomputeMight();
-            }
-            gear.attached_to = std::nullopt;
-        }
-        auto& self = ctx.state.getObject(ctx.source);
-        gear.attached_to = ctx.source;
-        self.attachments.push_back(best_gear);
-        gear.location = self.location;
-        gear.zone = self.zone;
-        self.attachment_might_bonus += gear.might_bonus;
-        self.recomputeMight();
-        ctx.events.emit(ObjectStateChangedEvent{best_gear, "attached"});
-        ctx.events.emit(ObjectStateChangedEvent{ctx.source, "equipped"});
-        ctx.events.logTrace("ORNN: Weaponmaster equip " + gear.name);
-    }
 
     // "I have +1 [M] for each friendly gear." Recomputed every aura pass.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
@@ -97,7 +55,6 @@ private:
         d.rarity = Rarity::Rare;
         d.deflect_value = 2;
         d.keywords.set(Keyword::Deflect);
-        d.keywords.set(Keyword::Equip);
         d.keywords.set(Keyword::Weaponmaster);
         d.ability_text = R"RB([Deflect 2] (Opponents must pay [A][A] to choose me with a spell or ability.)
 [Weaponmaster] (When you play me, you may [Equip] one of your Equipment to me for [A] less, even if it's already attached.)

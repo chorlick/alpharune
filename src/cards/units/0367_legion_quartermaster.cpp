@@ -18,11 +18,12 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
 
     // "As an additional cost to play me, return a friendly gear to its
-    // owner's hand." Mandatory additional cost. The engine has no structured
-    // "return a gear" cost hook, so we (1) gate playability on the presence
-    // of a friendly on-board gear via hasLegalTargets, and (2) perform the
-    // bounce as a WhenYouPlayMe effect. NOTE: the bounce resolves just after
-    // I enter rather than strictly before (no true pre-cost hook).
+    // owner's hand." Mandatory additional cost.
+    // The engine has no structured "return a gear" cost, so (1) the card can't
+    // be played without a friendly gear on the board (canBePlayed — the gate
+    // the engine asks for a unit play), and (2) the gear is chosen and
+    // returned when the play trigger is finalized (CR 383.3), before anyone
+    // can respond — the nearest point to "as you play me".
     static bool hasFriendlyGear(const GameState& state, PlayerId controller) {
         for (auto& [id, obj] : state.objects) {
             if (!obj.isGear() || obj.controller != controller) continue;
@@ -31,25 +32,26 @@ public:
         }
         return false;
     }
-    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        return hasFriendlyGear(state, controller);
+    bool canBePlayed(const GameState& state, PlayerId player) const override {
+        return hasFriendlyGear(state, player);
     }
-
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         std::vector<GameObjectId> gears;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isGear() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            gears.push_back(id);
-        }
+        if (!costAlreadyPaid(ctx))
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isGear() || obj.controller != ctx.controller) continue;
+                if (!obj.location.has_value()) continue;
+                gears.push_back(id);
+            }
         GameObjectId gear = pickTarget(ctx,
             "Legion Quartermaster: return a friendly gear to hand", gears);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (gear == kInvalidId || !ctx.state.objectExists(gear)) return;
-        ctx.executor.bounceToHand(gear);
-        ctx.events.logTrace("LEGION QUARTERMASTER: returned a friendly gear to hand "
-                            "(additional cost)");
+        if (gear != kInvalidId && costDueNow(ctx)) {
+            ctx.executor.bounceToHand(gear);
+            ctx.events.logTrace("LEGION QUARTERMASTER: returned a friendly gear to hand "
+                                "(additional cost)");
+        }
+        if (finalizingChoices(ctx)) return;   // the cost ends here (CR 383.3)
     }
 private:
     const CardDef def_ = [] {

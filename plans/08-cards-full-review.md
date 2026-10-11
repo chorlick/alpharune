@@ -63,6 +63,7 @@ cross-referenced.
   - `Keyword::Weaponmaster` is read nowhere: Emperor of the Sands 512.
   - Vision — FIXED by engine-auras-costs (`shared:` commit in `TriggerManager::onCardPlayed`, possible now that 2.12 sets the location before `CardPlayedEvent`): the handler refreshes the continuous effects and asks `hasKeyword(Keyword::Vision)`; test: AuraVisionTest.Forecaster_MechPlayedLooksAtTheTopCard, .NoVisionSource_TopCardStays.
   - BLOCKED (Weaponmaster): the keyword exists only as the `WeaponmasterUnit` card base class, for cards that print it. A Sand Soldier token (five cards create them: 354, 475, 478, 513, 521 and the legend itself) has no card class, so honouring an aura-granted Weaponmaster needs a keyword-level "when you play me, you may [Equip] ... for [A] less" handler in the trigger path (chain-triggers' file), with a real choice and payment — the base class today attaches the first Equipment for free. Nothing is missing in `recalculateAuras`: the keyword is granted and visible through `hasKeyword()`.
+  - c5: 388 Forecaster — verified ALREADY FIXED (`3d881b9`); 377 Jax, Unmatched — Quick-Draw from his aura is read by `generateReactionPermanentActions` / `resolvePermanent` (`hasKeyword`); test: C5Test.JaxUnmatchedGivesEquipmentQuickDraw
 
 - [x] **8.5 Gear never gets `WhenIDie`** — FIXED: `TriggerManager::onLeftBoard` fires a killed gear's own WhenIDie (with Deathknell doubling); test: ChainTriggerFixTest.GearDeath_TemporaryGearGetsItsDeathknell, ChainTriggerFixTest.GearDeath_KilledGearTriggers. Treasure Trove's "leaves the board" by bounce is still a card gap (batch-00)
   - `UnitDiedEvent` is emitted only for units (`effect_executor.cpp:261`, `game_engine.cpp:6419`); a dying gear emits only `LeftBoardEvent`, which `TriggerManager` does not subscribe to.
@@ -89,6 +90,7 @@ cross-referenced.
   - c0: 21 Sun Disc — FIXED: self-gates in `onActivate` on a card other than itself having been played this turn (CR 812.1.c); its `requiresLegion()` override is removed; test: C0Test.SunDisc_NeedsAnotherCardPlayedThisTurn, .SunDisc_DoesNotCountItselfOnTheTurnItIsPlayed
   - c4: 218 Vanguard Captain — FIXED: `onTrigger` gates on `cards_played_this_turn >= 2`; test: C4Test.VanguardCaptain_NeedsLegion. (16, 20, 217, 218 still override `requiresLegion()` — `ChainTestFixture.LegionParsesAsConditionGate` reads Duo's — to be deleted with the virtual.)
   - c1: 296 Hand of Noxus — FIXED: `onActivate` returns without Legion (`cards_played_this_turn < 1`); the dead `requiresLegion()` override is removed; test: ReviewFixC1Test.HandOfNoxus_NoEnergyWithoutLegion
+  - c5: 243 Darius, Executioner gates his trigger himself; his dead `requiresLegion()` override is deleted. Hand of Noxus 296 is `legends/0296_hand_of_noxus.cpp` — outside units/0219..0494 (stream c1's path range); NOT edited by c5.
 
 - [ ] **8.8 Keywords set on the def because the text mentions them**
   - `Keyword::Temporary` on the card itself — the unit is killed at its controller's next Beginning Phase (`game_engine.cpp:761`): Sprite Mother 106, Trevor Snoozebottom 610, Petal Pixie 638, Lillia, Fae Fawn 644, Sprite Queen 646, LeBlanc, Everywhere at Once 652.
@@ -96,6 +98,7 @@ cross-referenced.
   - Missing: Windsinger 459 lacks `Keyword::Hidden`, so it is never offered to hide. Baccai Witherclaw 865 and Noxian Emissary 915 lack `Deathknell` (data only — their triggers work).
   - Looks like one extraction error; each batch file lists its instances.
   - c4: 106 Sprite Mother (`Temporary`), 107 Ava Achiever (`Hidden`) — FIXED, with 18 Noxus Saboteur and 167 Ember Monk (`Hidden`) and 157 Udyr (`Ganking`) from batch-04; test: C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions, C4Test.SpriteMother_SurvivesHerBeginningPhase_TheSpriteDoesNot
+  - c5: 330 Gem Jammer (`Ganking`) — FIXED. Same class, also removed in range: `Reaction` on 312 Lux, Crownguard and 377 Jax, Unmatched (+ his `QuickDraw`), `Deathknell` on 236 Karthus, `Ganking` on 464 Sivir, Mercenary, `Deflect` / `Ganking` on 394 Breakneck Mech, `Equip` on the Weaponmaster units; 459 Windsinger gained `Hidden`; test: C5Test.KeywordsTheTextOnlyMentionsAreNotOnTheDef
 
 - [ ] **8.9 Repeat** (extends 02 item 2.4 and 07 item 7.4)
   - Repeat spells that request a choice lose the repeat and leave a stale pending choice: Frigid Touch 389, Upstage Comedy 571, Existential Dread 696, Rocket Barrage 400 — with Called Shot 443, Hard Bargain 457, Marching Orders 436, Temptation 450 and Bonds of Strength 472 that is nine cards. A granted Repeat (The Academy, Syndra) on any choice-requesting spell hits the same gap [plausible].
@@ -158,15 +161,18 @@ Each has a full entry in its batch file. Listed here so the scale is visible;
   - c2: FIXED in the c2 range (see batch-02): Last Breath 257, Detonate 328, Confront 129, Noxian Guillotine 251, Imperial Decree 221, Bushwhack 327.
   - c1: 252 Nine-Tailed Fox, 401 Temporal Portal — FIXED, see cards/batch-01.md
   - c1: 556 Chem-Baroness — FIXED (Gold bonus, see cards/batch-08.md); 259 Swift Scout — BLOCKED: the hide cost is paid by `GameEngine::executeHideCard`, which has no card hook
+  - c5: 441 Sivir, Ambitious — FIXED (batch-05). 470 Ezreal, Prodigy — BLOCKED on the engine (batch-10).
 - **Multi-target or "all" effect coded as one target:** Back to Back 206, Grand Strategem 233, Decisive Strike 322, Danger Zone 501, On the Hunt 518, Icathian Rain 247, Tricksy Tentacles 616, Against the Odds 323 (flat +2).
   - c2: FIXED in the c2 range (see batch-02): Back to Back 206, Grand Strategem 233, Decisive Strike 322, Icathian Rain 247, Against the Odds 323.
 - **Wrong scope or zone:** Anivia, Primal 148 (every battlefield), Tibbers 316 (hits bases), Cannon Barrage 127 (not combat-only), Fox-Fire 253 (kills the caster's own units first), Ride the Wind 173 (base only), Unforgiven 256, Harpoon Squad 458, Gentle Gemdragon 666, Viktor, Leader 246, Right of Conquest 577, Overzealous Fan 449 (bounces instead of moving to base).
   - c2: FIXED in the c2 range (see batch-02): Cannon Barrage 127, Fox-Fire 253, Ride the Wind 173.
   - c4: 148 Anivia, Primal — FIXED: see batch-04; test: C4Test.AniviaPrimal_DamagesOnlyEnemyUnitsHere
   - c1: 256 Unforgiven — FIXED, see cards/batch-01.md
+  - c5: 316 Tibbers, 458 Harpoon Squad, 246 Viktor, Leader, 449 Overzealous Fan — FIXED (batch-05 / batch-10).
 - **Missing gate:** Loose Cannon 249 (draws regardless of hand size), Prodigal Explorer 514 (no "chosen twice" gate, wrong timing), Grandmaster at Arms 554 (attaches Equipment still in deck/hand/trash), Baited Hook 242 (cost coded as recycle-self, Power never charged), Altar of Memories 490, Forgotten Signpost 607, Yordle Explorer 422 (never draws), Seal of Strength 542 (wrong domain).
   - c0: 242 Baited Hook — FIXED: cost is `[1]` + one Order Power + exhaust, no recycle-self; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
   - c1: 249 Loose Cannon, 554 Grandmaster at Arms, 490 Altar of Memories, 607 Forgotten Signpost, 542 Seal of Strength — FIXED; 514 Prodigal Explorer — timing fixed, the "chosen twice" count is BLOCKED on the engine; see cards/batch-01.md
+  - c5: 422 Yordle Explorer — FIXED (batch-05).
 
 ## C. Systemic lists
 
@@ -179,10 +185,12 @@ section.
   - c0: 242 Baited Hook, 186 Treasure Trove (and 272, 60, 143) — FIXED: on-board checks on the victim / source / subject; test: see cards/batch-00.md and cards/batch-08.md
   - c2: 247 Icathian Rain — FIXED (rewritten; damage goes through the executor guard, no kill calls); 108 Convergent Mutation — ALREADY FIXED (resolve-time target re-validation + executor guard).
   - c4: 91 Pit Crew and the batch-04 S2 list (27, 36, 59, 61, 78, 103, 131, 139, 157, 164, 167, 197, 202, 217) — FIXED: on-board guards, see batch-04 Systemic S2.
+  - c5: units/0219..0494 — done, per card in batch-05 "Systemic" (Weaponmaster cards on the shared base; self-buff / self-ready cards guarded by the executor or by the card).
 - [ ] **S3 Aura multiplies with copies** (02 item 2.2) — about 45 more cards, including Captain Farron 15, Raging Soul 19, Wielder of Water 55, Wizened Elder 65, Dr. Mundo 109, Lee Sin, Centered 151, Fiora, Victorious 232, Sett, Kingpin 240, Yi, Meditative 302, Garen 311, Gearhead 391, Ornn 407, Ancient Warmonger 452, Sivir, Mercenary 464, Trusty Ramhound 480, Soraka 550, Vilemaw 622, Master Yi, Tempered 675, Crimson Pigeons 716, Brutalizer 365, Soul Sword 601.
   - Battlefields have the same problem when both players bring the same battlefield: Trifarian War Camp 289, Void Gate 291, Kinkou Temple 946, Forbidding Waste 766, Black Flame Altar 764, Ornn's Forge 527, Gardens of Becoming 769, Risen Altar 950.
   - c0: 365 Brutalizer — FIXED (each instance gives its own bearer +2 once); battlefields 289, 291, 946, 766, 764, 527, 769, 950 (and 292) — FIXED card-side with a per-slot guard; test: C0Test.SameBattlefieldTwice_EachCopyAppliesOnce, .SameBattlefieldTwice_VoidGateWasteAltarAndGardens, .SameBattlefieldTwice_ControllerScopedDiscounts, .Brutalizer_BonusAppliesHoweverItWasAttached
   - c4: 15, 19, 55, 65, 109, 151 (and 111's duplicate refs) — ALREADY FIXED by the 2.2 aura contract, verified per card; test: C4Test.TwoWizenedElders_EachGetTheirOwnPlusOneOnce, AurasCostsTest.TwoDrMundos_EachCountsTheTrashOnce
+  - c5: 232, 240, 302, 311, 391, 407, 452, 464, 480 — ALREADY FIXED by the once-per-(card, controller) contract (`1ae4c88`); each hook visits every instance of its own.
 - [ ] **S4 Unlimited buff** (02 item 2.14) — Arena Bar 124, Stand United 53, Overt Operation 153, Adaptatron 56, Karma 235, Poro Herder 61, Pit Rookie 136, Trifarian Gloryseeker 217, Warmog's Armor 430, Blind Monk 254, Radiant Dawn 297, Aphelios 372, Red Brambleback 591, Ivern 613, Nami 614, Enthralling Protector 724, Voidreaver 787, Navori Fighting Pit 278, Spirit's Refuge 63.
   - Exempt when fixing: Lee Sin, Ascetic 78 ("I can have any number of buffs").
   - c0: 124 Arena Bar, 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by 02 item 2.14 (`buffUnit` gives a Buff only to a unit without one); the cards call `buffUnit`
@@ -190,10 +198,12 @@ section.
   - c4: 56 Adaptatron, 61 Poro Herder, 136 Pit Rookie, 217 Trifarian Gloryseeker — ALREADY FIXED by `EffectExecutor::buffUnit` (02 item 2.14); none prints "if it was buffed this way"; 78 Lee Sin, Ascetic stays exempt.
   - c1: 601 Soul Sword — ALREADY FIXED by 02 item 2.2 (its hook visits each of its own instances once per call); 509 Shurelya's Requiem likewise
   - c1: 430 Warmog's Armor, 254 Blind Monk, 297 Radiant Dawn, 787 Voidreaver — ALREADY FIXED by 02 item 2.14 (`buffUnit` places a Buff only on a unit without one); none prints "if it was buffed this way"
+  - c5: 235 Karma, 372 Aphelios — ALREADY FIXED by `buffUnit` (`99d179e`).
 - [ ] **S5 First match taken where the player (or opponent) should choose** — about 70 more cards. Each batch file lists them with what should be chosen.
   - c0: 282 Sigil of the Storm, 276 Hallowed Tomb, 771 Star Spring, 339 Recurve Bow, 99 Garbage Grabber, 342 Assembly Rig, 284 Targon's Peak — FIXED: each asks its controller (cards/batch-00.md Systemic S5)
   - c4: 136 Pit Rookie, 36 Vi, Destructive, 109 Dr. Mundo, Expert — FIXED: see batch-04 Systemic S5.
   - c3: 503, 505, 594, 663, 665, 669, 755 — FIXED (plans/cards/batch-03.md Systemic)
+  - c5: units/0219..0494 — FIXED: 230, 349, 381, 385, 403 (the opponent), 406, 423, 431, 449, 461 and the Weaponmaster cards; details in batch-05 / 09 / 10.
 - [ ] **S6 Helper ordering** (03 item 3.1) — nothing new beyond Thrill of the Hunt 745, Altar of Memories 490, Zenith Blade 258, Blast Cone 695; Keeper's Verdict 760 has it on a fallback path; Forgotten Signpost 607 has two `pickTarget` calls.
   - c2: 258 Zenith Blade — ALREADY FIXED by stream helpers (see 03 item 3.1).
   - c1: 490 Altar of Memories — ALREADY FIXED (03 item 3.1); 695 Blast Cone, 607 Forgotten Signpost — FIXED, see 03 item 3.1

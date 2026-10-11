@@ -1,4 +1,6 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
+#include "cards/units/weaponmaster_base.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -11,7 +13,11 @@
 namespace riftbound {
 namespace {
 
-class AkshanMischievous : public UnitCard {
+// [Weaponmaster] is the shared keyword ability (weaponmaster_base.h), on
+// WhenYouPlayMe. The gear theft is a second "when you play me" ability with a
+// choice of its own, so it rides the card's other play trigger (AsYouPlayMe):
+// two chain items, each with its own choices.
+class AkshanMischievous : public WeaponmasterUnit {
 public:
     const CardDef& def() const override { return def_; }
     // "You may pay [O][O] as an additional cost to play me." Now a real
@@ -20,55 +26,50 @@ public:
         return {/*valid=*/true, /*energy=*/0, /*power=*/2, Domain::Order,
                 /*any_domain=*/false, /*paid_flag=*/"__akshan_paid"};
     }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        // "if you paid the additional cost" — gate on the flag set at play time.
-        auto& self_obj = ctx.state.getObject(ctx.source);
-        if (self_obj.card_counters["__akshan_paid"] != 1) return;
+    std::vector<TriggerType> triggerTypes() const override {
+        return {TriggerType::WhenYouPlayMe, TriggerType::AsYouPlayMe};
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        if (ctx.firing_trigger != TriggerType::AsYouPlayMe) {
+            WeaponmasterUnit::onTrigger(ctx, targets);
+            return;
+        }
+        // "if you paid the additional cost" — the flag set at play time.
+        auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        auto paid = counters.find("__akshan_paid");
+        if (paid == counters.end() || paid->second != 1) return;
         PlayerId me = ctx.controller;
 
-        // Find an enemy gear on the board.
-        GameObjectId target_gear = kInvalidId;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isGear()) continue;
-            if (obj.controller == me) continue;       // must be enemy-controlled
-            if (!obj.location.has_value()) continue;   // on board
-            target_gear = id;
-            break;
-        }
+        // "move an enemy gear to your base" — the controller chooses which.
+        std::vector<GameObjectId> enemy_gear;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isGear() && obj.controller != me && obj.location.has_value())
+                enemy_gear.push_back(id);
+        const GameObjectId target_gear = pickTarget(ctx, "Akshan: move an enemy gear to your base",
+                                                    enemy_gear);
+        if (target_gear == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        // The payment covers this play only.
+        counters.erase("__akshan_paid");
         if (target_gear == kInvalidId) return;
 
         // Detach it from whatever it was equipped to (it moves zones).
-        auto& gear = ctx.state.getObject(target_gear);
-        bool is_equipment = false;
-        for (auto& tag : gear.tags) {
-            if (tag == "Equipment") { is_equipment = true; break; }
-        }
-        if (gear.attached_to.has_value()) {
+        const bool is_equipment = isEquipment(ctx.state.getObject(target_gear));
+        if (ctx.state.getObject(target_gear).attached_to.has_value())
             ctx.executor.unattachGear(target_gear);
-        }
 
         // "You control it until I leave the board." Reverts to the original
-        // owner via GameEngine::revertLapsedControl once this Akshan is gone.
+        // owner via GameEngine::revertLapsedControl once this Akshan is gone —
+        // so nothing is taken if I already left.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.takeControlUntilSourceLeaves(target_gear, me, ctx.source);
         ctx.executor.moveToBase(target_gear);
         ctx.events.logTrace("AKSHAN: stole enemy gear until I leave the board");
 
         // If it's an Equipment, attach it to me.
-        if (is_equipment && ctx.state.objectExists(target_gear) &&
-            ctx.state.objectExists(ctx.source)) {
-            auto& g = ctx.state.getObject(target_gear);
-            auto& self = ctx.state.getObject(ctx.source);
-            g.attached_to = ctx.source;
-            self.attachments.push_back(target_gear);
-            g.location = self.location;
-            g.zone = self.zone;
-            g.controller = me;
-            self.attachment_might_bonus += g.might_bonus;
-            self.recomputeMight();
-            ctx.events.emit(ObjectStateChangedEvent{target_gear, "attached"});
-            ctx.events.emit(ObjectStateChangedEvent{ctx.source, "equipped"});
+        if (is_equipment && equipEndsOnBoard(ctx.state, target_gear, ctx.source)) {
+            attachFree(ctx, target_gear, ctx.source);
             ctx.events.logTrace("AKSHAN: attached stolen Equipment to me");
         }
     }

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,23 @@ namespace {
 class LeonaDetermined : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.stunUnit(targets[0]);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .must_be_at_battlefield = true};
+
+    // "When I attack, stun an enemy unit here."
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const PlayerId me = ctx.controller;
+        const auto here = ctx.state.getObject(ctx.source).battlefieldId();
+        std::vector<GameObjectId> enemies_here;
+        if (here.has_value())
+            enemies_here = chooseableUnits(ctx.state, me, [&](const GameObject& o) {
+                return o.controller != me && o.battlefieldId() == here;
+            });
+        const GameObjectId t = pickTarget(ctx, "Leona, Determined: stun an enemy unit here",
+                                          enemies_here);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.stunUnitBy(t, ctx.source);
     }
 private:
     const CardDef def_ = [] {

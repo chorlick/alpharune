@@ -14,13 +14,12 @@ namespace {
 class Tibbers : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // AoE: deal 3 to all matching
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "deal 3 to all units at battlefields" — units in a base are untouched.
         {
             std::vector<GameObjectId> to_damage;
             for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.location.has_value()) continue;
-                if (!obj.isUnit()) continue;
+                if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
                 to_damage.push_back(id);
             }
             for (auto id : to_damage)

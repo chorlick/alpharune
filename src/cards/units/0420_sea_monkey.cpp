@@ -26,8 +26,11 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        if (self.card_counters["__sea_monkey_paid"] != 1) return;
-        if (self.buff_count > 0) return;  // "if I don't already have one"
+        // The payment covers this play only (erase returns how many it removed).
+        auto paid = self.card_counters.find("__sea_monkey_paid");
+        const bool was_paid = paid != self.card_counters.end() && paid->second == 1;
+        self.card_counters.erase("__sea_monkey_paid");
+        if (!was_paid) return;
         ctx.executor.buffUnit(ctx.source);
         ctx.events.logTrace("SEA MONKEY: paid [1] -> buff me (+1 [M] buff)");
     }

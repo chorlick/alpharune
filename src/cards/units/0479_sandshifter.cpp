@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,20 @@ namespace {
 class Sandshifter : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.killObject(targets[0]);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .max_might = 3};
+
+    // "When you play me, kill an enemy unit with 3 [M] or less."
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const PlayerId me = ctx.controller;
+        auto small_enemies = chooseableUnits(ctx.state, me, [me](const GameObject& o) {
+            return o.controller != me && o.current_might <= 3;
+        });
+        const GameObjectId t = pickTarget(ctx, "Sandshifter: kill an enemy unit with 3 [M] or less",
+                                          small_enemies);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget (it grew) / waiting
+        ctx.executor.killObject(t);
     }
 private:
     const CardDef def_ = [] {

@@ -770,13 +770,6 @@ TEST_P(DISABLED_TargetedTriggerTest, TheControllerIsAskedToChoose) {
 INSTANTIATE_TEST_SUITE_P(
     Plan07Item71, DISABLED_TargetedTriggerTest,
     ::testing::Values(
-        TargetedTrigger{234, TriggerType::WhenYouPlayMe, CardType::Unit, "Harnessed Dragon"},
-        TargetedTrigger{238, TriggerType::WhenIAttack, CardType::Unit, "Leona, Determined"},
-        TargetedTrigger{330, TriggerType::WhenYouPlayMe, CardType::Unit, "Gem Jammer"},
-        TargetedTrigger{361, TriggerType::WhenIMoveToFB, CardType::Unit, "Ribbon Dancer"},
-        TargetedTrigger{384, TriggerType::WhenYouPlayMe, CardType::Unit, "Aspiring Engineer"},
-        TargetedTrigger{453, TriggerType::WhenYouPlayMe, CardType::Unit, "Beast Below"},
-        TargetedTrigger{479, TriggerType::WhenYouPlayMe, CardType::Unit, "Sandshifter"},
         TargetedTrigger{539, TriggerType::WhenIAttackOrDefend, CardType::Unit, "Ahri, Inquisitive"},
         TargetedTrigger{589, TriggerType::WhenIConquer, CardType::Unit, "Inviolus Vox"},
         TargetedTrigger{618, TriggerType::WhenIAttackOrDefend, CardType::Unit, "Yuumi, Magical Cat"},

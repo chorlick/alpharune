@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -28,11 +29,26 @@ public:
             else if (obj.combat_designation == CombatDesignation::Defender) ++defenders;
         }
         if (attackers != 1 || defenders != 1) return;  // not one on one
-        // Double my Might this combat: add my current Might as temporary might.
-        int cur = ctx.state.getObject(ctx.source).current_might;
-        ctx.executor.giveTemporaryMight(ctx.source, cur);
-        ctx.events.logTrace("FIORA PEERLESS: one on one -> doubled Might this combat (+" +
-                            std::to_string(cur) + ")");
+        // Double my Might THIS COMBAT: the bonus is a continuous effect that
+        // lasts while I'm an attacker or a defender (applyPassiveAura), not a
+        // "this turn" bonus that would outlive the combat.
+        auto& self = ctx.state.getObject(ctx.source);
+        self.card_counters["__fiora_combat_bonus"] += self.current_might;
+        ctx.executor.recalculateContinuousEffects();
+        ctx.events.logTrace("FIORA PEERLESS: one on one -> doubled Might this combat");
+    }
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [sid, self] : state.objects) {
+            if (self.card_def_id != cardDefId() || self.controller != controller) continue;
+            auto bonus = self.card_counters.find("__fiora_combat_bonus");
+            if (bonus == self.card_counters.end()) continue;
+            if (!self.location.has_value() ||
+                self.combat_designation == CombatDesignation::None) {
+                self.card_counters.erase(bonus);   // the combat is over
+                continue;
+            }
+            auraMight(self, sid, bonus->second);
+        }
     }
 private:
     const CardDef def_ = [] {

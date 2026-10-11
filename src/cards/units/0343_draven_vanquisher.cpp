@@ -31,25 +31,19 @@ public:
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenIAttackOrDefend) {
-            if (!ctx.state.objectExists(ctx.source)) return;
-            // "you may pay [R]" — gate on a [R] (Fury) power being available
-            // (a ready Fury rune at base, recyclable for power via payOnePower).
-            auto base_loc = LocationId{BaseLocation{ctx.controller}};
-            auto has_fury_power = [&]() -> bool {
-                for (auto& [id, obj] : ctx.state.objects) {
-                    if (!obj.isRune() || obj.controller != ctx.controller) continue;
-                    if (obj.is_exhausted || !obj.location.has_value()) continue;
-                    if (*obj.location != base_loc) continue;
-                    for (auto d : obj.domains) if (d == Domain::Fury) return true;
-                }
-                return false;
+            // "you may pay [R]": floating Fury or universal Power, or a Fury
+            // rune to recycle (CR 164.2) — not only a ready rune.
+            auto can_pay = [&]() -> bool {
+                return costAlreadyPaid(ctx) ||
+                       payableOnePower(ctx.state, ctx.controller, Domain::Fury);
             };
-            int conf = confirmOptional(ctx, "Draven: pay [R] for +2 [M]?",
-                                       has_fury_power);
-            if (conf == -1) return;  // waiting for agent
-            if (conf == 0) return;   // declined / can't pay
-            if (costDueNow(ctx) && !payOnePower(ctx, ctx.controller, Domain::Fury)) return;
+            int conf = confirmOptional(ctx, "Draven: pay [R] for +2 [M]?", can_pay);
+            if (conf == 1 && costDueNow(ctx) &&
+                !payOnePower(ctx, ctx.controller, Domain::Fury)) return;
             if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+            if (conf < 1) return;   // waiting / declined / can't pay
+            // "give me": only while I'm still on the board.
+            if (!ctx.state.getObject(ctx.source).location.has_value()) return;
             ctx.executor.giveTemporaryMight(ctx.source, 2);
             ctx.events.logTrace("DRAVEN: paid [R] -> +2 [M] this turn");
             return;

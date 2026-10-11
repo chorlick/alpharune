@@ -22,68 +22,75 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
         auto& ps = ctx.state.player(ctx.controller);
-        switch (ri.resume_point) {
-        case 0: {
+        // "you may reveal the top 2 cards of your Main Deck"
+        const int go = confirmOptional(ctx, "Rek'Sai: reveal the top 2 cards of your Main Deck?",
+                                       [&]() { return !ps.main_deck.empty(); });
+        if (go != 1) return;   // waiting / declined / empty deck
+
+        // Progress of the reveal, past the choice helpers' own resume_data
+        // slots: 0 = not revealed yet, 1 = waiting for the pick, 2 = done.
+        constexpr size_t kStepSlot = Card::kChoiceStateSlot + 1;
+        if (ri.resume_data.size() <= kStepSlot) ri.resume_data.resize(kStepSlot + 1, 0);
+        if (ri.resume_data[kStepSlot] == 2) return;
+        if (ri.resume_data[kStepSlot] == 0) {
+            // Void Hatchling: "If you would reveal cards from a deck, look at
+            // the top card first."
+            ctx.executor.lookBeforeReveal(ctx.controller);
             int n = std::min(2, static_cast<int>(ps.main_deck.size()));
-            if (n == 0) return;
             std::vector<Intent> choices;
             for (int i = 0; i < n; ++i) {
                 GameObjectId cid = ps.main_deck[ps.main_deck.size() - 1 - i];
                 if (!ctx.state.objectExists(cid)) continue;
                 const auto& obj = ctx.state.getObject(cid);
-                ctx.events.emit(CardRevealedEvent{cid, obj.card_def_id, obj.owner,
-                                                  false, ctx.controller, ZoneType::MainDeck});
                 // "Reveal": both players see the top two.
+                ctx.events.emit(CardRevealedEvent{cid, obj.card_def_id, obj.owner,
+                                                  true, ctx.controller, ZoneType::MainDeck});
                 knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top, i);
                 Intent c; c.type = IntentType::MakeChoice; c.player = ctx.controller;
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }
+            if (choices.empty()) { ri.resume_data[kStepSlot] = 2; return; }
             // "you may banish one" — add a decline option (empty chosen_objects).
             { Intent decline; decline.type = IntentType::MakeChoice;
               decline.player = ctx.controller; choices.push_back(std::move(decline)); }
-            if (choices.empty()) return;
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "Rek'Sai: banish & play one of top 2 (or decline)");
-            ri.resume_point = 1;
+            ri.resume_data[kStepSlot] = 1;
             return;
         }
-        case 1: {
+        {
+            ri.resume_data[kStepSlot] = 2;
             auto choice = ctx.executor.takeChoice();
             GameObjectId picked = kInvalidId;
             if (choice && !choice->chosen_objects.empty()) picked = choice->chosen_objects[0];
             int n = std::min(2, static_cast<int>(ps.main_deck.size()));
             std::vector<GameObjectId> top;
             for (int i = 0; i < n; ++i) top.push_back(ps.main_deck[ps.main_deck.size() - 1 - i]);
-            // Remove the top cards from the deck.
-            for (auto cid : top) {
-                deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone());
-            }
+            if (std::find(top.begin(), top.end(), picked) == top.end()) picked = kInvalidId;
             // Banish + play the picked card; if a unit, play it "here" (Rek'Sai's BF).
-            if (picked != kInvalidId && ctx.state.objectExists(picked)) {
-                auto& pc = ctx.state.getObject(picked);
-                pc.zone = ZoneType::Banishment;
-                pc.location = std::nullopt;
-                ps.banishment.push_back(picked);
-                // Remove from banishment before playing for free.
+            if (picked != kInvalidId) {
+                // Through the executor: it counts the banish and announces it
+                // ("When you banish a card you own").
+                ctx.executor.banishObject(picked);
                 std::optional<LocationId> loc;
-                if (pc.isUnit() && ctx.state.objectExists(ctx.source)) {
+                if (ctx.state.getObject(picked).isUnit()) {
                     auto bf = ctx.state.getObject(ctx.source).battlefieldId();
                     if (bf) loc = LocationId{BattlefieldLocation{*bf}};  // "play it here"
                 }
-                // The cost is not waived (CR 356.1.b.2): unpaid, it stays banished.
-                if (ctx.executor.canPlayPayingCost(ctx.controller, picked)) {
-                    auto it = std::find(ps.banishment.begin(), ps.banishment.end(), picked);
-                    if (it != ps.banishment.end()) ps.banishment.erase(it);
+                // The cost is not waived (CR 356.1.b.2): unpaid, it stays
+                // banished. playPayingCost takes it out of banishment itself.
+                if (ctx.executor.canPlayPayingCost(ctx.controller, picked))
                     ctx.executor.playPayingCost(ctx.controller, picked, loc);
-                }
             }
             // Recycle the rest.
             std::vector<GameObjectId> rest;
-            for (auto cid : top) if (cid != picked) rest.push_back(cid);
+            for (auto cid : top) {
+                if (cid == picked) continue;
+                deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone());
+                rest.push_back(cid);
+            }
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
             ctx.events.logTrace("REK'SAI: revealed top 2, banished+played one, recycled rest");
-            return;
-        }
         }
     }
 private:

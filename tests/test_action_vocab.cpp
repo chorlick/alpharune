@@ -44,14 +44,14 @@ struct MiniState {
 
     BattlefieldId addBattlefield() {
         BattlefieldState bf;
-        bf.id = next_bf_++;
+        bf.id = BattlefieldId::fromRaw(next_bf_++);
         state.battlefields.push_back(bf);
         return state.battlefields.back().id;
     }
 
 private:
     GameObjectId next_id_ = 1;
-    BattlefieldId next_bf_ = 0;
+    uint32_t next_bf_ = 0;
 };
 
 void expectRoundTrip(const Intent& intent, const GameState& state) {

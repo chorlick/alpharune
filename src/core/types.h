@@ -104,13 +104,14 @@ void from_json(const Json& j, StrongId<Tag>& id) {
 }
 
 struct CardDefIdTag { static constexpr bool kNamedByLiteral = true; };
+struct BattlefieldIdTag { static constexpr bool kNamedByLiteral = false; };
 
 using CardDefId   = StrongId<CardDefIdTag>;  // Index into CardDB (the card class's def().id)
 using GameObjectId = uint32_t; // Runtime game object instance
 using AbilityId   = uint32_t;  // Ability instance
 using ChainItemId = uint32_t;  // Chain item instance
 using ZoneId      = uint32_t;  // Zone instance
-using BattlefieldId = uint32_t; // Battlefield slot
+using BattlefieldId = StrongId<BattlefieldIdTag>; // Battlefield slot (an index into GameState::battlefields)
 
 // ─── Player ──────────────────────────────────────────────────────────────────
 
@@ -254,6 +255,16 @@ struct BaseLocation {
 
 struct BattlefieldLocation {
     BattlefieldId id;
+    constexpr BattlefieldLocation() noexcept = default;
+    constexpr BattlefieldLocation(BattlefieldId slot) noexcept : id(slot) {}
+    constexpr BattlefieldLocation(InvalidId) noexcept {}
+    /// `BattlefieldLocation{0}`: the slot named by its number, spelled out
+    /// with the type. A literal only (consteval), and only here: a
+    /// BattlefieldId itself takes no number (`BattlefieldId::fromRaw(n)`).
+    explicit consteval BattlefieldLocation(int slot_literal)
+        : id(BattlefieldId::fromRaw(slot_literal)) {
+        if (slot_literal < 0) throw "a battlefield slot is 0 or more";
+    }
     bool operator==(const BattlefieldLocation& o) const { return id == o.id; }
 };
 

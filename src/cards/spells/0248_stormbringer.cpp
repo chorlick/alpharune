@@ -39,7 +39,7 @@ public:
         const int dest = pickMoveDest(*this, ctx, "Stormbringer: battlefield", unit,
                                       /*battlefields_only=*/true);
         if (dest < 1) return;              // waiting, or no battlefield
-        const BattlefieldId bf = static_cast<BattlefieldId>(dest - 1);
+        const BattlefieldId bf = BattlefieldId::fromRaw(dest - 1);
         const int dmg = unit.current_might;
 
         // Deal <dmg> to all enemy units there (collect, damage, then kill).

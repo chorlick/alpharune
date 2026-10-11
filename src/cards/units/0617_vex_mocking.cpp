@@ -51,7 +51,7 @@ public:
         if (!bf) return;
         ctx.executor.moveToBattlefield(ctx.source, *bf);
         RIFT_TRACE(ctx.events, "VEX MOCKING: moved to stunned unit's battlefield BF" +
-                            std::to_string(*bf));
+                            toString(*bf));
     }
 private:
     const CardDef def_ = [] {

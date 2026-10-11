@@ -66,7 +66,7 @@ TEST(TypesTest, LocationIdVariant) {
     EXPECT_TRUE(std::holds_alternative<BattlefieldLocation>(bf));
 
     EXPECT_EQ(std::get<BaseLocation>(base).player, PlayerId::Player1);
-    EXPECT_EQ(std::get<BattlefieldLocation>(bf).id, 42u);
+    EXPECT_EQ(std::get<BattlefieldLocation>(bf).id, BattlefieldId::fromRaw(42));
 }
 
 TEST(TypesTest, LocationIdEquality) {

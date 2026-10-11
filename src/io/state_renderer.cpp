@@ -925,7 +925,7 @@ static std::string formatActionShort(const GameState& state,
                 }
             }
             if (a.chosen_battlefield != kInvalidId) {
-                ss << " @BF#" << static_cast<int>(a.chosen_battlefield);
+                ss << " @BF#" << static_cast<int>(a.chosen_battlefield.raw());
             }
             break;
         }
@@ -1061,8 +1061,8 @@ std::string StateRenderer::battlefieldLabel(const GameState& state,
             break;
         }
     }
-    if (!target) return "BF#" + std::to_string(bf_id);
-    if (name.empty()) return "BF#" + std::to_string(bf_id);
+    if (!target) return "BF#" + toString(bf_id);
+    if (name.empty()) return "BF#" + toString(bf_id);
 
     // Disambiguate when another BF on the board shares this name
     // (mirror match where both players brought the same BF). Use
@@ -1079,7 +1079,7 @@ std::string StateRenderer::battlefieldLabel(const GameState& state,
     std::string suffix;
     if (target->contributed_by == PlayerId::Player1) suffix = "P1's";
     else if (target->contributed_by == PlayerId::Player2) suffix = "P2's";
-    else suffix = "#" + std::to_string(bf_id);
+    else suffix = "#" + toString(bf_id);
     return name + " (" + suffix + ")";
 }
 

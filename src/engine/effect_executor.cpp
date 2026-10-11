@@ -222,7 +222,7 @@ static uint64_t deathBatchStamp(const GameObject& obj) {
     mix(obj.attachments.size());
     if (obj.location.has_value()) {
         mix(obj.location->index() + 1);
-        if (auto bf = obj.battlefieldId()) mix(static_cast<uint64_t>(*bf) + 17);
+        if (auto bf = obj.battlefieldId()) mix(static_cast<uint64_t>((*bf).raw()) + 17);
     }
     return h;
 }
@@ -1799,7 +1799,7 @@ LocationId EffectExecutor::chooseLocationNow(PlayerId player,
         const auto& loc = locations[i];
         o.choice_label = label + (std::holds_alternative<BaseLocation>(loc)
             ? std::string(" base")
-            : " battlefield #" + std::to_string(std::get<BattlefieldLocation>(loc).id));
+            : " battlefield #" + toString(std::get<BattlefieldLocation>(loc).id));
         options.push_back(std::move(o));
     }
     const int pick = ask(player, options, label).chosen_value.value_or(0);
@@ -2072,14 +2072,14 @@ BattlefieldId EffectExecutor::addBattlefieldToken(const std::string& name,
     // holds the BF for scoring; `accepts_any_inbound` carries the
     // movement-rule relaxer onto the slot itself.
     BattlefieldState bf;
-    bf.id = static_cast<BattlefieldId>(state_.battlefields.size());
+    bf.id = BattlefieldId::fromRaw(state_.battlefields.size());
     bf.card_object_id = bf_card_id;
     bf.is_token = true;
     bf.accepts_any_inbound = accepts_any_inbound;
     state_.battlefields.push_back(bf);
 
     RIFT_TRACE(events_, "BF_TOKEN: added '" + name + "' (id=" +
-                     std::to_string(bf.id) + ", card=" +
+                     toString(bf.id) + ", card=" +
                      std::to_string(bf_card_id) +
                      (accepts_any_inbound ? ", accepts_any_inbound" : "") +
                      ")");
@@ -2128,7 +2128,7 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     slot->card_object_id = token_id;
     slot->contributed_by = controller;
 
-    RIFT_TRACE(events_, "BF_REPLACE: BF#" + std::to_string(target_bf) +
+    RIFT_TRACE(events_, "BF_REPLACE: BF#" + toString(target_bf) +
                      " replaced by '" + token_name + "' token (card=" +
                      std::to_string(token_id) + ")");
 }

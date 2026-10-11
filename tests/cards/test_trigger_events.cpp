@@ -110,12 +110,12 @@ TEST_F(TriggerEventTest, FriendlyUnitDies_DoesNotFirePyke) {
 // ── WhenAUnitReturnsToHandHere: Ripper's Bay BF card enqueues ──
 TEST_F(TriggerEventTest, UnitReturnsToHandHere_FiresRippersBay) {
     auto unit = addUnit(P2, kInvalidId, 3, /*at_bf=*/0);
-    installBattlefieldCard(0, 770);                  // Ripper's Bay on BF 0
+    installBattlefieldCard(BattlefieldId::fromRaw(0), 770);                  // Ripper's Bay on BF 0
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = chainSize();
-    events.emit(UnitReturnedToHandEvent{unit, P2, /*from_battlefield=*/0});
+    events.emit(UnitReturnedToHandEvent{unit, P2, /*from_battlefield=*/BattlefieldId::fromRaw(0)});
     EXPECT_GT(chainSize(), before);
 }
 
@@ -126,7 +126,7 @@ TEST_F(TriggerEventTest, ShowdownBeginsHere_FiresDiana) {
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = chainSize();
-    events.emit(ShowdownStartedEvent{/*battlefield=*/1, /*is_combat=*/true});
+    events.emit(ShowdownStartedEvent{/*battlefield=*/BattlefieldId::fromRaw(1), /*is_combat=*/true});
     EXPECT_GT(chainSize(), before);
 }
 
@@ -136,7 +136,7 @@ TEST_F(TriggerEventTest, ShowdownBeginsElsewhere_DoesNotFireDiana) {
     TriggerManager tm(state, events, card_db, cm, card_registry);
     tm.subscribe();
     size_t before = chainSize();
-    events.emit(ShowdownStartedEvent{/*battlefield=*/0, true});  // a different BF
+    events.emit(ShowdownStartedEvent{/*battlefield=*/BattlefieldId::fromRaw(0), true});  // a different BF
     EXPECT_EQ(chainSize(), before);
 }
 

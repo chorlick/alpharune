@@ -504,7 +504,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
             Intent c;
             c.type = IntentType::ChooseBattlefield;
             c.player = player;
-            c.chosen_battlefield = static_cast<BattlefieldId>(i);  // deck index
+            c.chosen_battlefield = BattlefieldId::fromRaw(i);  // deck index
             choices.push_back(c);
         }
 
@@ -521,7 +521,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         auto chosen = askAgent(player, choices);
         state_.turn.turn_player = saved_turn;
 
-        size_t idx = static_cast<size_t>(chosen.chosen_battlefield);
+        size_t idx = static_cast<size_t>(chosen.chosen_battlefield.raw());
         if (idx >= bfs.size()) idx = 0;  // defensive — fall back to first
         RIFT_TRACE(events_, "  CHOSE BF #" + std::to_string(idx) + " (" +
                           card_db_.get(bfs[idx]).name + ")");
@@ -532,7 +532,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
     auto bf2_def = pickFromDeck(PlayerId::Player2, deck2.battlefields);
 
     // Create battlefield game objects and state
-    BattlefieldId next_bf_id = 0;
+    uint32_t next_bf_slot = 0;  // a battlefield's id is its slot
 
     auto addBF = [&](CardDefId def_id, PlayerId contributor) {
         auto obj_id = instantiateCard(def_id, contributor);
@@ -540,7 +540,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         obj.zone = ZoneType::BattlefieldZone;
 
         BattlefieldState bf;
-        bf.id = next_bf_id++;
+        bf.id = BattlefieldId::fromRaw(next_bf_slot++);
         bf.card_object_id = obj_id;
         bf.contributed_by = contributor;
 
@@ -2603,7 +2603,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
             effect_executor_->payAnyPower(intent.player, bf.paid_play_power);
             RIFT_TRACE(events_, "ADDITIONAL_COST: " + card.name + " pays " +
                              std::to_string(bf.paid_play_power) + " [A] to be played to BF#" +
-                             std::to_string(bf_id));
+                             toString(bf_id));
         }
     }
 
@@ -3477,7 +3477,7 @@ void GameEngine::executeStandardMove(const Intent& intent) {
         RIFT_TRACE(events_, "MOVE: " + unit_obj.name + " (id=" + std::to_string(unit_id) +
                          ") -> " +
                          (std::holds_alternative<BattlefieldLocation>(dest)
-                              ? "BF#" + std::to_string(std::get<BattlefieldLocation>(dest).id)
+                              ? "BF#" + toString(std::get<BattlefieldLocation>(dest).id)
                               : "Base(" + std::string(toString(std::get<BaseLocation>(dest).player)) + ")"));
     }
     // CR 144.3: the units move as ONE action — the exhaust costs are paid
@@ -3737,9 +3737,9 @@ void GameEngine::executeHideCard(const Intent& intent) {
     // Which card it is, is the hiding player's to know (LogAudience); that a
     // card was hidden, and where, both players see.
     RIFT_TRACE(events_, std::string("HIDE: ") + toString(intent.player) + " hides a card at BF#" +
-                     std::to_string(intent.chosen_battlefield));
+                     toString(intent.chosen_battlefield));
     RIFT_TRACE_PRIVATE(events_, intent.player, "HIDE: " + card.name + " at BF#" +
-                     std::to_string(intent.chosen_battlefield) +
+                     toString(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
     // Pay the Hide cost, [A] (CR 811.1.b) — one Power of any domain, through
@@ -3792,7 +3792,7 @@ void GameEngine::executeHideCard(const Intent& intent) {
 
     RIFT_LOG_FOR(events_, LogLevel::Debug, LogAudience::only(intent.player),
                    std::string("HIDDEN: ") + card.name + " hidden at BF#" +
-                   std::to_string(bf_id) + " by " + toString(intent.player));
+                   toString(bf_id) + " by " + toString(intent.player));
 
     // "When you hide a card" (Katarina, Reckless).
     events_.emit(CardHiddenEvent{intent.card, intent.player});
@@ -3816,7 +3816,7 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
     // Where and when, for a hidden SPELL's own text (CR 811.1.d: its choices
     // are tied to that battlefield; "if you played this from your hand").
     // Turn-stamped, so a stale value never reads as this play.
-    card.card_counters["__facedown_play_bf"] = static_cast<int>(bf_id) + 1;
+    card.card_counters["__facedown_play_bf"] = static_cast<int>(bf_id.raw()) + 1;
     card.card_counters["__facedown_play_turn"] = state_.turn.turn_number;
 
     // "When you play a card from face down" (Katarina, Reckless).
@@ -5123,7 +5123,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
 
 void GameEngine::runShowdown(BattlefieldId bf_id) {
     auto& bf = getBattlefield(bf_id);
-    RIFT_TRACE(events_, "SHOWDOWN: BF#" + std::to_string(bf_id) +
+    RIFT_TRACE(events_, "SHOWDOWN: BF#" + toString(bf_id) +
                      (bf.combat_staged ? " (combat)" : " (non-combat)"));
 
     bf.showdown_in_progress = true;
@@ -5289,7 +5289,7 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     // Determine attacker/defender (CR 459.2.b)
     bf.attacker = bf.contested_by;
     bf.defender = opponent(bf.contested_by);
-    RIFT_TRACE(events_, "COMBAT: BF#" + std::to_string(bf_id) + " attacker=" +
+    RIFT_TRACE(events_, "COMBAT: BF#" + toString(bf_id) + " attacker=" +
                      toString(*bf.attacker) + " defender=" + toString(*bf.defender));
 
     // Assign combat designations to units
@@ -5408,7 +5408,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
             def_str += u.name + "(" + std::to_string(u.current_might) + "M" +
                        (u.is_stunned ? ",STUNNED" : "") + ")";
         }
-        RIFT_TRACE(events_, "DAMAGE_STEP: BF#" + std::to_string(bf_id) +
+        RIFT_TRACE(events_, "DAMAGE_STEP: BF#" + toString(bf_id) +
                          " ATK=[" + att_str + "] DEF=[" + def_str + "]");
     }
 
@@ -5727,7 +5727,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         bf.is_contested = true;
         bf.contested_by = attacker;
         bf.combat_staged = true;
-        RIFT_TRACE(events_, "COMBAT: no result at BF#" + std::to_string(bf_id) +
+        RIFT_TRACE(events_, "COMBAT: no result at BF#" + toString(bf_id) +
                          " with both players present -> another combat is staged");
         return;
     }
@@ -5783,7 +5783,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
     // player has taken `min_turn_to_score` of their own turns.
     if (isScoreGatedByTurn(player, bf)) {
         RIFT_TRACE(events_, std::string("SCORE_GATED: ") + toString(player) +
-                         " can't score BF#" + std::to_string(bf) + " until turn " +
+                         " can't score BF#" + toString(bf) + " until turn " +
                          std::to_string(getBattlefield(bf).min_turn_to_score) +
                          " (turns_taken=" + std::to_string(ps.turns_taken) + ")");
         return;
@@ -5810,7 +5810,7 @@ void GameEngine::scoreConquer(PlayerId player, BattlefieldId bf,
 
     ps.battlefields_scored_this_turn.insert(bf);
     RIFT_TRACE(events_, std::string("CONQUER: ") + toString(player) + " conquers BF#" +
-                     std::to_string(bf) + " (score was " + std::to_string(ps.score) + ")");
+                     toString(bf) + " (score was " + std::to_string(ps.score) + ")");
 
     // Continuous "can't gain points" lock (Tianna Crownguard, set via aura).
     // Scoring is distinct from gaining points (CR 470.1): the battlefield is
@@ -5865,7 +5865,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
 
     if (isScoreGatedByTurn(player, bf)) {
         RIFT_TRACE(events_, std::string("SCORE_GATED: ") + toString(player) +
-                         " can't score BF#" + std::to_string(bf) + " until turn " +
+                         " can't score BF#" + toString(bf) + " until turn " +
                          std::to_string(getBattlefield(bf).min_turn_to_score) +
                          " (turns_taken=" + std::to_string(ps.turns_taken) + ")");
         return;
@@ -5901,7 +5901,7 @@ void GameEngine::scoreHold(PlayerId player, BattlefieldId bf) {
     ps.score++;
     ps.hold_points_this_turn++;
     RIFT_TRACE(events_, std::string("SCORE: ") + toString(player) + " +1 via Hold BF#" +
-                     std::to_string(bf) + " -> " + std::to_string(ps.score));
+                     toString(bf) + " -> " + std::to_string(ps.score));
     events_.emit(ScoreEvent{player, bf, ScoreMethod::Hold, ps.score});
 
     checkWinCondition();
@@ -6489,7 +6489,7 @@ void GameEngine::cleanup() {
                 flags * 0xFF51AFD7ED558CCDULL);
         }
         for (auto& bf : state_.battlefields) {
-            mix(static_cast<uint64_t>(bf.id));
+            mix(static_cast<uint64_t>(bf.id.raw()));
             // bf.controller is std::optional<PlayerId> — encode the
             // has_value bit + the value (if any) into one mix.
             mix(bf.controller.has_value()
@@ -6726,7 +6726,7 @@ void GameEngine::processContestedBattlefields() {
             const bool contester_present = bf.contested_by != PlayerId::None
                 ? present(bf.contested_by) : (has_p1 || has_p2);
             if (!contester_present) {
-                RIFT_TRACE(events_, "CONTESTED_REMOVED: BF#" + std::to_string(bf.id) +
+                RIFT_TRACE(events_, "CONTESTED_REMOVED: BF#" + toString(bf.id) +
                                  " (contester has no units here)");
                 bf.is_contested = false;
                 bf.contested_by = PlayerId::None;
@@ -8032,7 +8032,7 @@ Intent GameEngine::queryAgent(PlayerId player) {
             choice_str += "]";
         }
         if (chosen.chosen_battlefield != kInvalidId) {
-            choice_str += " bf=" + std::to_string(chosen.chosen_battlefield);
+            choice_str += " bf=" + toString(chosen.chosen_battlefield);
         }
         // Player tag at the front so the line scans independently of
         // the surrounding DECISION # context.
@@ -8054,14 +8054,14 @@ BattlefieldState& GameEngine::getBattlefield(BattlefieldId id) {
     for (auto& bf : state_.battlefields) {
         if (bf.id == id) return bf;
     }
-    throw std::runtime_error("Battlefield not found: " + std::to_string(id));
+    throw std::runtime_error("Battlefield not found: " + toString(id));
 }
 
 const BattlefieldState& GameEngine::getBattlefield(BattlefieldId id) const {
     for (auto& bf : state_.battlefields) {
         if (bf.id == id) return bf;
     }
-    throw std::runtime_error("Battlefield not found: " + std::to_string(id));
+    throw std::runtime_error("Battlefield not found: " + toString(id));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

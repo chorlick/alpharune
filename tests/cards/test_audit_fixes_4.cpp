@@ -52,7 +52,7 @@ protected:
         }
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -378,7 +378,7 @@ TEST_F(AuditFix4Test, Iascylla_HoldDoesNotMoveEnemyImmediately) {
 
     EffectExecutor exec(state, events, card_db);
     fireTriggerAs(kIascylla, P1, ias, TriggerType::WhenIHold, exec);
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>(1))
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)})
         << "enemy stays put until the deferred fire at next Main Phase";
 }
 
@@ -399,7 +399,7 @@ TEST_F(AuditFix4Test, Iascylla_DeferredFirePullsEnemyToBattlefield) {
     // resumable confirmOptional/pickTarget; only the single-pass path works.
     fireTriggerAs(kIascylla, P1, ias, TriggerType::AtStartOfMain, exec);
 
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>(0))
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "deferred fire pulls the enemy to Iascylla's battlefield";
     // The stash is consumed.
     EXPECT_EQ(state.getObject(ias).card_counters.count("__iascylla_pull_bf"), 0u);
@@ -443,7 +443,7 @@ TEST_F(AuditFix4Test, KeeperOfMasks_CreatesTwoReflectionCopies) {
         EXPECT_EQ(obj.controller, P1);
         EXPECT_EQ(obj.base_might, state.getObject(keeper).base_might);
         // Spawned "here" = Keeper's battlefield (BF0).
-        EXPECT_EQ(obj.battlefieldId(), std::optional<BattlefieldId>(0));
+        EXPECT_EQ(obj.battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     }
     EXPECT_EQ(copies, 2);
 }
@@ -518,7 +518,7 @@ GameObjectId installBF(GameState& state, BattlefieldId bf, CardDefId def_id) {
 }  // namespace
 
 TEST_F(AuditFix4Test, ForbiddingWaste_DefendingAloneGetsMinus2) {
-    installBF(state, /*bf=*/0, kForbiddingWaste);
+    installBF(state, /*bf=*/BattlefieldId::fromRaw(0), kForbiddingWaste);
     auto defender = addUnit(P1, kInvalidId, /*might=*/5, /*at_bf=*/0);
     state.getObject(defender).combat_designation = CombatDesignation::Defender;
 
@@ -532,7 +532,7 @@ TEST_F(AuditFix4Test, ForbiddingWaste_DefendingAloneGetsMinus2) {
 }
 
 TEST_F(AuditFix4Test, ForbiddingWaste_NotAloneNoDebuff) {
-    installBF(state, /*bf=*/0, kForbiddingWaste);
+    installBF(state, /*bf=*/BattlefieldId::fromRaw(0), kForbiddingWaste);
     auto defender = addUnit(P1, kInvalidId, 5, /*at_bf=*/0);
     addUnit(P1, kInvalidId, 5, /*at_bf=*/0);  // a second friendly here -> not alone
     state.getObject(defender).combat_designation = CombatDesignation::Defender;
@@ -546,7 +546,7 @@ TEST_F(AuditFix4Test, ForbiddingWaste_NotAloneNoDebuff) {
 }
 
 TEST_F(AuditFix4Test, ForbiddingWaste_NonDefenderNoDebuff) {
-    installBF(state, /*bf=*/0, kForbiddingWaste);
+    installBF(state, /*bf=*/BattlefieldId::fromRaw(0), kForbiddingWaste);
     auto attacker = addUnit(P1, kInvalidId, 5, /*at_bf=*/0);
     state.getObject(attacker).combat_designation = CombatDesignation::Attacker;
 
@@ -559,7 +559,7 @@ TEST_F(AuditFix4Test, ForbiddingWaste_NonDefenderNoDebuff) {
 }
 
 TEST_F(AuditFix4Test, ForbiddingWaste_OtherBattlefieldUnaffected) {
-    installBF(state, /*bf=*/0, kForbiddingWaste);
+    installBF(state, /*bf=*/BattlefieldId::fromRaw(0), kForbiddingWaste);
     auto elsewhere = addUnit(P1, kInvalidId, 5, /*at_bf=*/1);  // different BF
     state.getObject(elsewhere).combat_designation = CombatDesignation::Defender;
 

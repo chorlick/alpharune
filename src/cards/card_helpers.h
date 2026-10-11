@@ -965,7 +965,7 @@ inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::strin
     uint32_t mask = 1u;
     std::vector<std::string> labels{"Base"};
     for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
-        labels.push_back("Battlefield #" + std::to_string(bfs[i].id));
+        labels.push_back("Battlefield #" + toString(bfs[i].id));
         if (!base_only && !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
             *bfs[i].controller == ctx.controller)   // as battlefieldTakesUnitsFrom
             mask |= 1u << (i + 1);
@@ -1006,7 +1006,7 @@ inline std::optional<BattlefieldId> facedownPlayBattlefield(const GameState& sta
     auto bf = counters.find("__facedown_play_bf");
     if (turn == counters.end() || bf == counters.end()) return std::nullopt;
     if (turn->second != state.turn.turn_number || bf->second <= 0) return std::nullopt;
-    return static_cast<BattlefieldId>(bf->second - 1);
+    return BattlefieldId::fromRaw(bf->second - 1);
 }
 
 // ── Where an effect-played unit goes (CR 355.2.a) ───────────────────────────
@@ -1048,7 +1048,7 @@ inline PlayLocations playLocations(const GameState& state, PlayerId player,
     auto bfName = [&state](const BattlefieldState& bf) {
         return state.objectExists(bf.card_object_id)
             ? state.getObject(bf.card_object_id).name
-            : "Battlefield #" + std::to_string(static_cast<int>(bf.id));
+            : "Battlefield #" + std::to_string(static_cast<int>(bf.id.raw()));
     };
     if (only_bf.has_value()) {
         for (const auto& bf : state.battlefields)
@@ -1165,7 +1165,7 @@ inline std::vector<int> moveDests(const GameState& state, const GameObject& u) {
     for (const auto& bf : state.battlefields) {
         auto here = u.battlefieldId();
         if (here.has_value() && *here == bf.id) continue;
-        out.push_back(1 + static_cast<int>(bf.id));
+        out.push_back(1 + static_cast<int>(bf.id.raw()));
     }
     return out;
 }
@@ -1175,7 +1175,7 @@ inline std::string destLabel(int d) {
 /// Move `u` to a moveDests destination.
 inline void moveTo(CardContext& ctx, GameObjectId u, int dest) {
     if (dest <= 0) ctx.executor.moveToBase(u);
-    else ctx.executor.moveToBattlefield(u, static_cast<BattlefieldId>(dest - 1));
+    else ctx.executor.moveToBattlefield(u, BattlefieldId::fromRaw(dest - 1));
 }
 /// Where `player` may put a unit token an effect plays ("They can be played
 /// to your base or to battlefields you control"), as moveDests codes: 0 =
@@ -1186,13 +1186,13 @@ inline std::vector<int> tokenPlayDests(const GameState& state, PlayerId player) 
     for (const auto& bf : state.battlefields)
         if (bf.controller.has_value() && *bf.controller == player &&
             battlefieldTakesUnitsFrom(state, player, bf))
-            out.push_back(1 + static_cast<int>(bf.id));
+            out.push_back(1 + static_cast<int>(bf.id.raw()));
     return out;
 }
 /// The location a moveDests / tokenPlayDests code stands for.
 inline LocationId destLocation(PlayerId player, int dest) {
     if (dest <= 0) return LocationId{BaseLocation{player}};
-    return LocationId{BattlefieldLocation{static_cast<BattlefieldId>(dest - 1)}};
+    return LocationId{BattlefieldLocation{BattlefieldId::fromRaw(dest - 1)}};
 }
 /// tokenPlayDests as locations: what a card that asked with pickTokenDest
 /// passes to createToken as `location_choices`.
@@ -1231,7 +1231,7 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
         if (d < 32 && !(d == 0 && battlefields_only)) mask |= 1u << d;
     int modes = 1;
     for (const auto& bf : ctx.state.battlefields)
-        modes = std::max(modes, 2 + static_cast<int>(bf.id));
+        modes = std::max(modes, 2 + static_cast<int>(bf.id.raw()));
     std::vector<std::string> labels;
     for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
     return card.pickMode(ctx, label, modes, labels, mask);

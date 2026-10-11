@@ -1056,7 +1056,7 @@ namespace {
 GameState editorState() {
     GameState s{};
     BattlefieldState bf;
-    bf.id = 0;
+    bf.id = BattlefieldId::fromRaw(0);
     s.battlefields.push_back(bf);
     auto add = [&](GameObjectId id, PlayerId who, ZoneType zone) -> GameObject& {
         GameObject o{};
@@ -1146,7 +1146,7 @@ TEST(StateEditorReviewFix, ChainAndFacedownMovesAreRefused) {
     EXPECT_TRUE(contains(s.player(PlayerId::Player1).hand, 5));
     // Out of the chain, which would keep an item pointing at it.
     EXPECT_FALSE(ed.moveObject(s, 4, PlayerId::Player1, ZoneType::Hand).ok);
-    EXPECT_FALSE(ed.moveObjectToBattlefield(s, 4, 0).ok);
+    EXPECT_FALSE(ed.moveObjectToBattlefield(s, 4, BattlefieldId::fromRaw(0)).ok);
     EXPECT_EQ(s.getObject(4).zone, ZoneType::Chain);
 }
 

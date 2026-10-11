@@ -222,7 +222,7 @@ TEST_F(CardTestFixture, FriskyHunter_OnPlaySpawnsBirdAtMyLocation) {
         if (obj.controller != P1) continue;
         if (!obj.location.has_value()) continue;
         auto bf = std::get_if<BattlefieldLocation>(&*obj.location);
-        if (!bf || bf->id != 1) continue;
+        if (!bf || bf->id != BattlefieldId::fromRaw(1)) continue;
         ++birds_at_bf1;
         EXPECT_TRUE(obj.keywords.has(Keyword::Deflect))
             << "Bird token must have Deflect.";
@@ -466,11 +466,11 @@ TEST_F(CardTestFixture, VilemawsLair_BlocksMoveFromBFToBase) {
     // BF#0: Vilemaw's Lair stand-in (blocks_move_to_base).
     // BF#1: unflagged (control sentinel for the counter-test).
     BattlefieldState lair;
-    lair.id = 0;
+    lair.id = BattlefieldId::fromRaw(0);
     lair.blocks_move_to_base = true;
     s.battlefields.push_back(lair);
     BattlefieldState normal;
-    normal.id = 1;
+    normal.id = BattlefieldId::fromRaw(1);
     s.battlefields.push_back(normal);
 
     auto legend = s.createObject();
@@ -538,11 +538,11 @@ TEST_F(CardTestFixture, VilemawsLair_AllowsBFToBFAndUnitsCanStillEnter) {
     s.turn.oc_state    = OpenClosedState::Open;
 
     BattlefieldState lair;
-    lair.id = 0;
+    lair.id = BattlefieldId::fromRaw(0);
     lair.blocks_move_to_base = true;
     s.battlefields.push_back(lair);
     BattlefieldState normal;
-    normal.id = 1;
+    normal.id = BattlefieldId::fromRaw(1);
     s.battlefields.push_back(normal);
 
     auto legend = s.createObject();
@@ -584,12 +584,12 @@ TEST_F(CardTestFixture, VilemawsLair_AllowsBFToBFAndUnitsCanStillEnter) {
         auto uid = a.units_to_move[0];
         if (uid == base_unit &&
             std::holds_alternative<BattlefieldLocation>(*a.move_destination) &&
-            std::get<BattlefieldLocation>(*a.move_destination).id == 0) {
+            std::get<BattlefieldLocation>(*a.move_destination).id == BattlefieldId::fromRaw(0)) {
             can_enter_lair_from_base = true;
         }
         if (uid == ganker &&
             std::holds_alternative<BattlefieldLocation>(*a.move_destination) &&
-            std::get<BattlefieldLocation>(*a.move_destination).id == 1) {
+            std::get<BattlefieldLocation>(*a.move_destination).id == BattlefieldId::fromRaw(1)) {
             ganker_can_bf_to_bf = true;
         }
     }
@@ -651,17 +651,17 @@ struct RockfallScenario {
 
         // BF #0: blocked (Rockfall Path stand-in), controlled by P1.
         BattlefieldState bf0;
-        bf0.id = 0;
+        bf0.id = BattlefieldId::fromRaw(0);
         bf0.blocks_unit_play = true;
         bf0.controller = P1;
         s.battlefields.push_back(bf0);
-        blocked_bf = 0;
+        blocked_bf = BattlefieldId::fromRaw(0);
 
         // BF #1: open, no controller, no restriction.
         BattlefieldState bf1;
-        bf1.id = 1;
+        bf1.id = BattlefieldId::fromRaw(1);
         s.battlefields.push_back(bf1);
-        open_bf = 1;
+        open_bf = BattlefieldId::fromRaw(1);
 
         // Legend in legend zone (engine queries it for various paths).
         legend = s.createObject();
@@ -797,7 +797,7 @@ TEST_F(CardTestFixture, Reinforce_PlayCardToControlledBFIsLegal) {
     s.turn.oc_state    = OpenClosedState::Open;
 
     BattlefieldState bf;
-    bf.id = 0;
+    bf.id = BattlefieldId::fromRaw(0);
     bf.controller = P1;  // P1 already holds it
     s.battlefields.push_back(bf);
 
@@ -857,7 +857,7 @@ TEST_F(CardTestFixture, Reinforce_PlayCardToControlledBFIsLegal) {
             play_to_base = true;
         } else if (std::holds_alternative<BattlefieldLocation>(*a.play_location)) {
             auto bf_id = std::get<BattlefieldLocation>(*a.play_location).id;
-            if (bf_id == 0) play_to_controlled_bf = true;
+            if (bf_id == BattlefieldId::fromRaw(0)) play_to_controlled_bf = true;
         }
     }
 
@@ -889,11 +889,11 @@ TEST_F(CardTestFixture, Reinforce_PlayCardToEnemyOrUncontrolledBFNotEmitted) {
 
     // BF#0: P2 controls. BF#1: open (no controller).
     BattlefieldState bf0;
-    bf0.id = 0;
+    bf0.id = BattlefieldId::fromRaw(0);
     bf0.controller = P2;
     s.battlefields.push_back(bf0);
     BattlefieldState bf1;
-    bf1.id = 1;  // no controller
+    bf1.id = BattlefieldId::fromRaw(1);  // no controller
     s.battlefields.push_back(bf1);
 
     auto legend = s.createObject();
@@ -938,8 +938,8 @@ TEST_F(CardTestFixture, Reinforce_PlayCardToEnemyOrUncontrolledBFNotEmitted) {
         if (!a.play_location.has_value()) continue;
         if (!std::holds_alternative<BattlefieldLocation>(*a.play_location)) continue;
         auto bf_id = std::get<BattlefieldLocation>(*a.play_location).id;
-        if (bf_id == 0) play_to_enemy_bf = true;
-        if (bf_id == 1) play_to_open_bf  = true;
+        if (bf_id == BattlefieldId::fromRaw(0)) play_to_enemy_bf = true;
+        if (bf_id == BattlefieldId::fromRaw(1)) play_to_open_bf  = true;
     }
 
     EXPECT_FALSE(play_to_enemy_bf)

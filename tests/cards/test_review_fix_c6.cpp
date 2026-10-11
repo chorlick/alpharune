@@ -147,13 +147,13 @@ protected:
     void conquer(int bf, AgentInterface* agent = nullptr,
                  std::optional<PlayerId> from = std::nullopt) {
         withEngine([&](GameEngine& e) {
-            e.testHook_scoreConquer(P1, static_cast<BattlefieldId>(bf), from);
+            e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(bf), from);
             e.testHook_runChain();
         }, agent);
     }
     void hold(int bf, AgentInterface* agent = nullptr) {
         withEngine([&](GameEngine& e) {
-            e.testHook_scoreHold(P1, static_cast<BattlefieldId>(bf));
+            e.testHook_scoreHold(P1, BattlefieldId::fromRaw(bf));
             e.testHook_runChain();
         }, agent);
     }
@@ -182,7 +182,7 @@ protected:
     int might(GameObjectId id) { return o(id).current_might; }
     bool atBf(GameObjectId id, int bf) {
         auto b = o(id).battlefieldId();
-        return b.has_value() && static_cast<int>(*b) == bf;
+        return b.has_value() && static_cast<int>((*b).raw()) == bf;
     }
     int goldTokens(PlayerId p) {
         int n = 0;
@@ -512,7 +512,7 @@ TEST_F(C6Test, YetiBrawler_NeedsThreeExcessDamage) {
 TEST_F(C6Test, YetiBrawler_PlaysTwoExhaustedGoldWithThreeExcess) {
     addUnit(P1, kYetiBrawler, 0, 0);
     state.battlefields[0].controller = P1;
-    ps(P1).last_combat_bf = 0;
+    ps(P1).last_combat_bf = BattlefieldId::fromRaw(0);
     ps(P1).excess_combat_damage = 3;
     conquer(0);
     EXPECT_EQ(goldTokens(P1), 2);
@@ -816,7 +816,7 @@ TEST_F(C6Test, KeeperOfMasks_ZileansExtraReflectionBecomesACopyToo) {
 
 TEST_F(C6Test, LilliaFawn_PlaysTheSpriteWhereSheMovedFromExhausted) {
     auto lillia = addUnit(P1, kLilliaFawn);
-    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(lillia, 0); });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(lillia, BattlefieldId::fromRaw(0)); });
     GameObjectId sprite = kInvalidId;
     for (auto& [id, obj] : state.objects)
         if (obj.isToken() && obj.isUnit() && obj.name == "Sprite") sprite = id;

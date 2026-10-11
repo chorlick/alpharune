@@ -26,7 +26,7 @@ int cardDefSlot(uint32_t card_def) {
 /// Encode a destination BattlefieldId into a 0-indexed slot (0..7).
 int bfSlot(BattlefieldId bf) {
     if (bf == kInvalidId) return 0;
-    int v = static_cast<int>(bf);
+    int v = static_cast<int>(bf.raw());
     if (v < 0 || v >= 7) return 0;
     return v + 1;  // reserve 0 for "none/base"
 }
@@ -56,7 +56,7 @@ struct Fingerprint {
         if (auto* base = std::get_if<BaseLocation>(&*loc)) {
             add(1); add(static_cast<uint64_t>(base->player));
         } else if (auto* bf = std::get_if<BattlefieldLocation>(&*loc)) {
-            add(2); add(static_cast<uint64_t>(bf->id));
+            add(2); add(static_cast<uint64_t>(bf->id.raw()));
         }
     }
     void addIds(const std::vector<GameObjectId>& ids) {
@@ -273,7 +273,7 @@ int64_t historyToken(const Intent& intent, const GameState& state) {
         fp.add(static_cast<uint64_t>(da.damage));
     }
     fp.addIds(intent.cards_to_mulligan);
-    fp.add(static_cast<uint64_t>(intent.chosen_battlefield));
+    fp.add(static_cast<uint64_t>(intent.chosen_battlefield.raw()));
     fp.add(intent.choose_first ? 1 : 0);
     fp.add(intent.sideboard_swaps.size());
     for (const auto& [out, in] : intent.sideboard_swaps) {

@@ -512,8 +512,8 @@ TEST_F(BountyHunterTest, ActivatedAbilityOfferedInLegalActions) {
     s.turn.phase       = TurnPhase::MainPhase;
     s.turn.ns_state    = NeutralShowdownState::Neutral;
     s.turn.oc_state    = OpenClosedState::Open;
-    BattlefieldState b0; b0.id = 0; s.battlefields.push_back(b0);
-    BattlefieldState b1; b1.id = 1; s.battlefields.push_back(b1);
+    BattlefieldState b0; b0.id = BattlefieldId::fromRaw(0); s.battlefields.push_back(b0);
+    BattlefieldState b1; b1.id = BattlefieldId::fromRaw(1); s.battlefields.push_back(b1);
 
     // Bounty Hunter ready in the legend zone.
     auto legend = s.createObject();
@@ -628,8 +628,8 @@ TEST_F(BountyHunterTest, ActivatedAbilityNotOfferedWhenNoUnitsExist) {
     s.turn.phase       = TurnPhase::MainPhase;
     s.turn.ns_state    = NeutralShowdownState::Neutral;
     s.turn.oc_state    = OpenClosedState::Open;
-    BattlefieldState b0; b0.id = 0; s.battlefields.push_back(b0);
-    BattlefieldState b1; b1.id = 1; s.battlefields.push_back(b1);
+    BattlefieldState b0; b0.id = BattlefieldId::fromRaw(0); s.battlefields.push_back(b0);
+    BattlefieldState b1; b1.id = BattlefieldId::fromRaw(1); s.battlefields.push_back(b1);
 
     auto legend = s.createObject();
     auto& leg = s.getObject(legend);

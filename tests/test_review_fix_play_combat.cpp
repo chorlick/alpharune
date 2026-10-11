@@ -305,7 +305,7 @@ protected:
         st.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(st.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(st.battlefields.size());
             st.battlefields.push_back(bf);
         }
         engine_->testHook_setAgents(&a1_, &a2_);
@@ -373,7 +373,7 @@ protected:
         auto& c = s().getObject(id);
         if (at_bf >= 0) {
             c.zone = ZoneType::BattlefieldZone;
-            c.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            c.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             c.zone = ZoneType::Base;
             c.location = BaseLocation{p};
@@ -492,7 +492,7 @@ TEST_F(PlayCombatFixTest, Showdown_PlayReactionIntent_PlaysThePermanent) {
     ASSERT_TRUE(pounce.has_value()) << "the pounce play is offered";
 
     int count = 0;
-    engine_->testHook_resolveShowdownDecision(0, *pounce, P1, count);
+    engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), *pounce, P1, count);
 
     const auto& r = s().getObject(rengar);
     ASSERT_TRUE(r.location.has_value()) << "the intent was executed, not dropped";
@@ -643,7 +643,7 @@ TEST_F(CombatResultTest, AttackerWhoWipesTheDefendersWins) {
     stageCombat();
     fighter(P1, 5);
     fighter(P2, 2);
-    engine_->testHook_runCombat(0);
+    engine_->testHook_runCombat(BattlefieldId::fromRaw(0));
     ASSERT_EQ(results_.size(), 1u);
     ASSERT_TRUE(results_[0].has_value());
     EXPECT_EQ(*results_[0], P1);
@@ -655,7 +655,7 @@ TEST_F(CombatResultTest, DoubleWipeHasNoWinner) {
     stageCombat();
     fighter(P1, 2);
     fighter(P2, 2);
-    engine_->testHook_runCombat(0);
+    engine_->testHook_runCombat(BattlefieldId::fromRaw(0));
     ASSERT_EQ(results_.size(), 1u);
     EXPECT_FALSE(results_[0].has_value())
         << "no winner: the event must not carry an engaged PlayerId::None";
@@ -668,7 +668,7 @@ TEST_F(CombatResultTest, TieWithRecalledAttackersHasNoWinner) {
     stageCombat();
     auto att = fighter(P1, 3, /*stunned=*/true);   // stunned units deal no damage
     auto def = fighter(P2, 3, /*stunned=*/true);
-    engine_->testHook_runCombat(0);
+    engine_->testHook_runCombat(BattlefieldId::fromRaw(0));
     ASSERT_EQ(results_.size(), 1u);
     EXPECT_FALSE(results_[0].has_value()) << "the defender did not win a tie";
     EXPECT_TRUE(s().getObject(att).isAtBase()) << "attackers are recalled";
@@ -696,7 +696,7 @@ TEST_F(ScoringFixTest, FinalPointCheck_UsesTheEffectiveVictoryScore) {
     inDeck(P1, kTVanilla);
     s().player(P1).score = 7;
 
-    engine_->testHook_scoreConquer(P1, 0);
+    engine_->testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));
 
     EXPECT_EQ(s().player(P1).score, 8) << "the point is gained";
     EXPECT_TRUE(s().player(P1).hand.empty()) << "nothing is drawn instead";
@@ -711,14 +711,14 @@ TEST_F(ScoringFixTest, ConquerWhoseFinalPointBecomesADraw_StillTriggersConquerAb
     inDeck(P1, kTVanilla);
     s().player(P1).score = 7;             // 1 from the Victory Score of 8
 
-    engine_->testHook_scoreConquer(P1, 0);   // BF 1 was not scored this turn
+    engine_->testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));   // BF 1 was not scored this turn
 
     EXPECT_EQ(s().player(P1).score, 7);
     EXPECT_EQ(s().player(P1).hand.size(), 1u) << "drew a card instead";
     ASSERT_EQ(scores_.size(), 1u) << "the conquer is announced";
     EXPECT_EQ(scores_[0].method, ScoreMethod::Conquer);
-    EXPECT_EQ(scores_[0].battlefield, 0u);
-    EXPECT_TRUE(s().player(P1).battlefields_scored_this_turn.count(0));
+    EXPECT_EQ(scores_[0].battlefield, BattlefieldId::fromRaw(0));
+    EXPECT_TRUE(s().player(P1).battlefields_scored_this_turn.count(BattlefieldId::fromRaw(0)));
 }
 
 TEST_F(ScoringFixTest, CantGainPoints_StillScoresTheBattlefield) {
@@ -729,15 +729,15 @@ TEST_F(ScoringFixTest, CantGainPoints_StillScoresTheBattlefield) {
     s().player(P1).cannot_gain_points = true;
     s().player(P1).score = 2;
 
-    engine_->testHook_scoreConquer(P1, 0);
-    engine_->testHook_scoreHold(P1, 1);
+    engine_->testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));
+    engine_->testHook_scoreHold(P1, BattlefieldId::fromRaw(1));
 
     EXPECT_EQ(s().player(P1).score, 2);
     ASSERT_EQ(scores_.size(), 2u);
     EXPECT_EQ(scores_[0].method, ScoreMethod::Conquer);
     EXPECT_EQ(scores_[1].method, ScoreMethod::Hold);
-    EXPECT_TRUE(s().player(P1).battlefields_scored_this_turn.count(0));
-    EXPECT_TRUE(s().player(P1).battlefields_scored_this_turn.count(1));
+    EXPECT_TRUE(s().player(P1).battlefields_scored_this_turn.count(BattlefieldId::fromRaw(0)));
+    EXPECT_TRUE(s().player(P1).battlefields_scored_this_turn.count(BattlefieldId::fromRaw(1)));
 }
 
 // ─── 2.24: the Chosen Champion is played like a unit from hand ──────────────
@@ -1033,7 +1033,7 @@ TEST_F(PlayCombatFixTest, ReactionUnit_IsOfferedAndPlayedInAShowdown) {
     auto plays = playsOf(engine_->generateLegalActions(), reaction);
     ASSERT_FALSE(plays.empty()) << "CR 813.1.b: Reaction includes Action's permissions";
     int count = 0;
-    engine_->testHook_resolveShowdownDecision(0, plays.front(), P1, count);
+    engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), plays.front(), P1, count);
     EXPECT_TRUE(s().getObject(reaction).location.has_value());
 }
 

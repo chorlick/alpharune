@@ -24,7 +24,7 @@ public:
         uint32_t mask = 1u;
         std::vector<std::string> labels = {"Base"};
         for (int i = 0; i < nbf; ++i) {
-            std::string name = "BF#" + std::to_string(static_cast<int>(bfs[i].id));
+            std::string name = "BF#" + std::to_string(static_cast<int>(bfs[i].id.raw()));
             if (ctx.state.objectExists(bfs[i].card_object_id))
                 name = ctx.state.getObject(bfs[i].card_object_id).name;
             labels.push_back(name);

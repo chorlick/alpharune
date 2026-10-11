@@ -76,6 +76,15 @@ concept DoNotMix =
     !requires(std::unordered_map<A, int> m, B b) { m.find(b); };
 
 static_assert(StrongIdShape<CardDefId>);
+static_assert(StrongIdShape<BattlefieldId>);
+static_assert(TakesNoNumber<BattlefieldId>);
+static_assert(DoNotMix<CardDefId, BattlefieldId>);
+// A location is not an id, and takes a slot number only as a literal spelled
+// with its type (`BattlefieldLocation{0}`), never by itself.
+static_assert(!std::is_convertible_v<int, BattlefieldLocation>);
+static_assert(!std::is_convertible_v<int, LocationId>);
+static_assert(std::is_convertible_v<BattlefieldId, BattlefieldLocation>);
+static_assert(!std::is_constructible_v<BattlefieldLocation, CardDefId>);
 
 // ── Values ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +138,24 @@ TEST(StrongIds, OrderAndHashAreTheNumbers) {
     std::vector<uint32_t> got;
     for (auto id : ordered) got.push_back(id.raw());
     EXPECT_EQ(got, (std::vector<uint32_t>{2, 5, 9, 4294967295u}));
+}
+
+TEST(StrongIds, ABattlefieldIdIsItsSlot) {
+    GameState state;
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        BattlefieldState bf;
+        bf.id = BattlefieldId::fromRaw(slot);
+        state.battlefields.push_back(bf);
+    }
+    // The list is indexed by position and by id alike.
+    EXPECT_EQ(&state.battlefields[1], &state.battlefields[BattlefieldId::fromRaw(1)]);
+    EXPECT_EQ(state.battlefields[BattlefieldId::fromRaw(2)].id.raw(), 2u);
+    EXPECT_EQ(BattlefieldLocation{2}.id, BattlefieldId::fromRaw(2));
+    EXPECT_EQ(BattlefieldLocation{}.id, kInvalidId);
+    EXPECT_EQ(BattlefieldLocation{kInvalidId}.id, kInvalidId);
+    EXPECT_EQ(GameObject{}.hidden_at, kInvalidId);
+    EXPECT_EQ(Intent{}.chosen_battlefield, kInvalidId);
+    EXPECT_EQ(std::hash<BattlefieldId>{}(BattlefieldId::fromRaw(3)), std::hash<uint32_t>{}(3u));
 }
 
 // ── One "none" per kind: the places that used 0 for "no card" ───────────────
@@ -199,6 +226,40 @@ TEST(StrongIds, TheHistoryTokenOfAnOwnAbilityKeptItsNumber) {
     as_zero.granted_ability_def = CardDefId::fromRaw(0);
     EXPECT_EQ(own_token, openspiel::historyToken(as_zero, state))
         << "none must be fed to the token as the 0 it used to be";
+}
+
+TEST(StrongIds, HistoryTokensAndSlotsAreTheNumbersOfTheBinaryBeforeIdsWereTypes) {
+    // Recorded from a build of fcfa93b (ids still plain integers) with the same
+    // intents on a default GameState. A trainer replay or a saved game holds
+    // these numbers.
+    GameState state;
+    Intent own;
+    own.type = IntentType::ActivateAbility;
+    own.player = PlayerId::Player1;
+    own.ability_source = 9;
+    EXPECT_EQ(openspiel::historyToken(own, state), 3611872453840603442LL);
+    EXPECT_EQ(openspiel::encodeAction(own, state), 2354);
+
+    Intent granted = own;
+    granted.granted_ability_def = 506;
+    EXPECT_EQ(openspiel::historyToken(granted, state), 9183008626965481778LL);
+
+    Intent named;  // "name a card": a MakeChoice that carries a card id
+    named.type = IntentType::MakeChoice;
+    named.player = PlayerId::Player2;
+    named.chosen_card_def = 235;
+    EXPECT_EQ(openspiel::historyToken(named, state), 7576281683122461517LL);
+    EXPECT_EQ(openspiel::encodeAction(named, state), 6989);
+
+    Intent bf;
+    bf.type = IntentType::ChooseBattlefield;
+    bf.player = PlayerId::Player1;
+    bf.chosen_battlefield = BattlefieldId::fromRaw(1);
+    EXPECT_EQ(openspiel::historyToken(bf, state), 4557704407380131852LL);
+    EXPECT_EQ(openspiel::encodeAction(bf, state), 12);
+
+    EXPECT_EQ(openspiel::historyToken(Intent::endTurn(PlayerId::Player1), state),
+              3408968969468510209LL);
 }
 
 }  // namespace riftbound::test::strong_ids

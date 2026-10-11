@@ -34,7 +34,7 @@ public:
         for (int i = 0; i < n; ++i) {
             labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
                 ? ctx.state.getObject(bfs[i].card_object_id).name
-                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
             if (!hidden_at.has_value() || *hidden_at == bfs[i].id) mask |= (1u << i);
         }
         const int mode = pickMode(ctx, "Bone Skewer: choose a battlefield", n, labels, mask);
@@ -86,7 +86,7 @@ public:
                                       LocationId{BattlefieldLocation{dest_bf}});
         RIFT_TRACE(ctx.events, "BONE SKEWER: opponent forced to play " +
                              ctx.state.getObject(chosen).name + " to BF#" +
-                             std::to_string(dest_bf));
+                             toString(dest_bf));
 
         // "If they do, then do this: [Stun] it." — a reflexive trigger (CR
         // 388): if the unit was played it goes on the chain as an item of its

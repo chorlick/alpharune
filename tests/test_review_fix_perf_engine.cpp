@@ -537,7 +537,8 @@ void expectIndexMatchesAWalk(const GameState& st, const std::string& when) {
 /// A state with objects in every kind of place.
 GameState scatteredState(int objects) {
     GameState st;
-    for (BattlefieldId b = 0; b < 3; ++b) {
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        const BattlefieldId b = BattlefieldId::fromRaw(slot);
         BattlefieldState bf;
         bf.id = b;
         st.battlefields.push_back(bf);
@@ -670,7 +671,7 @@ TEST(PerfEngineTable, QueriesBetweenTwoMovesShareOneWalk) {
     (void)st.unitsAt(LocationId{BattlefieldLocation{0}}, PlayerId::Player1);
     const std::size_t built = st.objects.indexRebuilds();
     for (int i = 0; i < 50; ++i) {
-        (void)st.unitsAt(LocationId{BattlefieldLocation{static_cast<BattlefieldId>(i % 3)}}, PlayerId::Player2);
+        (void)st.unitsAt(LocationId{BattlefieldLocation{BattlefieldId::fromRaw(i % 3)}}, PlayerId::Player2);
         (void)st.allUnitsControlledBy(PlayerId::Player1);
         (void)st.runesInBase(PlayerId::Player2);
         st.getObject(4).is_exhausted = !st.getObject(4).is_exhausted;   // not a move
@@ -1004,9 +1005,9 @@ TEST(PerfEngineTable, AConstStateCanBeQueriedFromSeveralThreadsAtOnce) {
         // A move by the only writer, before the readers start.
         const GameObjectId mover = static_cast<GameObjectId>(1 + round % 100);
         if (state.getObject(mover).location.has_value()) state.getObject(mover).location.reset();
-        else state.getObject(mover).location = BattlefieldLocation{static_cast<BattlefieldId>(round % 3)};
+        else state.getObject(mover).location = BattlefieldLocation{BattlefieldId::fromRaw(round % 3)};
         const auto board = Walk::where(shared, [](const GameObject& o) { return o.location.has_value(); });
-        const LocationId here{BattlefieldLocation{static_cast<BattlefieldId>(round % 3)}};
+        const LocationId here{BattlefieldLocation{BattlefieldId::fromRaw(round % 3)}};
         const auto units_here = Walk::where(shared, [&](const GameObject& o) {
             return o.isUnit() && o.controller == PlayerId::Player1 && o.location.has_value() &&
                    *o.location == here;
@@ -2213,7 +2214,7 @@ TEST_F(PerfEngineDeathBatch, ALethalOnlyBatchLeavesTheUnitsThatDoNotDieAlone) {
     EXPECT_EQ(o(soraka).zone, ZoneType::Trash);
     expectRecalled(small);
     ASSERT_TRUE(onBoard(sturdy));
-    EXPECT_EQ(o(sturdy).battlefieldId(), std::optional<BattlefieldId>{0}) << "it was not about to die";
+    EXPECT_EQ(o(sturdy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)}) << "it was not about to die";
     EXPECT_TRUE(o(sturdy).death_replacement_recall_pending) << "its replacement was not used up";
     EXPECT_EQ(o(sturdy).damage_marked, 4);
 }
@@ -2850,7 +2851,7 @@ protected:
         GameObject& c = o(card);
         c.zone = ZoneType::BattlefieldZone;
         c.is_hidden = true;
-        c.hidden_at = static_cast<BattlefieldId>(bf);
+        c.hidden_at = BattlefieldId::fromRaw(bf);
         c.hidden_on_turn = 2;
         state.battlefields[bf].facedown.push_back(card);
         return card;

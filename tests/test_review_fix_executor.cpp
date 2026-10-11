@@ -49,7 +49,7 @@ protected:
         st.players[1].id = P2;
         for (int i = 0; i < 2; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(st.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(st.battlefields.size());
             st.battlefields.push_back(bf);
         }
         engine_->testHook_setAgents(&a1_, &a2_);
@@ -95,7 +95,7 @@ protected:
         auto& u = s().getObject(id);
         if (at_bf >= 0) {
             u.zone = ZoneType::BattlefieldZone;
-            u.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            u.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             u.zone = ZoneType::Base;
             u.location = BaseLocation{p};
@@ -122,7 +122,7 @@ protected:
     /// A token unit, made the way cards make them.
     GameObjectId token(PlayerId p, int at_bf) {
         return exec().createToken(p, CardType::Unit, "Recruit", 1, {}, KeywordSet{},
-                                  LocationId{BattlefieldLocation{static_cast<BattlefieldId>(at_bf)}});
+                                  LocationId{BattlefieldLocation{BattlefieldId::fromRaw(at_bf)}});
     }
     /// A gear on the board attached to `to`.
     GameObjectId attachedGear(PlayerId p, GameObjectId to) {
@@ -367,7 +367,7 @@ TEST_F(ExecutorReviewFixTest, EffectMove_CarriesAttachedGear) {
     auto u = unit(P1, kVanillaUnit);
     auto gear = attachedGear(P1, u);
 
-    exec().moveToBattlefield(u, 1);
+    exec().moveToBattlefield(u, BattlefieldId::fromRaw(1));
     ASSERT_TRUE(s().getObject(gear).location.has_value());
     EXPECT_EQ(*s().getObject(gear).location, LocationId{BattlefieldLocation{1}})
         << "CR 719.3: attached gear is at its unit's location";
@@ -381,11 +381,11 @@ TEST_F(ExecutorReviewFixTest, EffectMove_CarriesAttachedGear) {
 
 TEST_F(ExecutorReviewFixTest, EffectMove_CountsTowardKaynUnleashed) {
     auto kayn = unit(P1, kKaynUnleashed);
-    exec().moveToBattlefield(kayn, 0);
+    exec().moveToBattlefield(kayn, BattlefieldId::fromRaw(0));
     engine_->testHook_cleanup();
     EXPECT_FALSE(s().getObject(kayn).immune_to_damage) << "one move is not enough";
 
-    exec().moveToBattlefield(kayn, 1);
+    exec().moveToBattlefield(kayn, BattlefieldId::fromRaw(1));
     engine_->testHook_cleanup();
     EXPECT_EQ(s().getObject(kayn).moves_this_turn, 2);
     EXPECT_TRUE(s().getObject(kayn).immune_to_damage)
@@ -399,7 +399,7 @@ TEST_F(ExecutorReviewFixTest, EffectMove_ToWhereItAlreadyIsIsNotAMove) {
     auto u = unit(P1, kVanillaUnit, /*at_bf=*/0);
     int moved = 0;
     auto conn = events.on_unit_moved.connect([&](const UnitMovedEvent&) { ++moved; });
-    exec().moveToBattlefield(u, 0);
+    exec().moveToBattlefield(u, BattlefieldId::fromRaw(0));
     conn.disconnect();
     EXPECT_EQ(moved, 0) << "CR 421.1: a move is between two locations";
     EXPECT_EQ(s().getObject(u).moves_this_turn, 0);
@@ -437,7 +437,7 @@ TEST_F(ExecutorReviewFixTest, OffBoard_DeadUnitIsNotMovedBouncedBuffedOrStunned)
     exec().killObject(u);
     ASSERT_EQ(s().getObject(u).zone, ZoneType::Trash);
 
-    exec().moveToBattlefield(u, 1);     // Loyal Pup / Stealthy Pursuer resolving after death
+    exec().moveToBattlefield(u, BattlefieldId::fromRaw(1));     // Loyal Pup / Stealthy Pursuer resolving after death
     exec().moveToBase(u);
     exec().bounceToHand(u);             // Vayne, Hunter resolving after death
     EXPECT_FALSE(exec().buffUnit(u));

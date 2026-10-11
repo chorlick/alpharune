@@ -32,7 +32,7 @@ public:
             // fire pulls the enemy to the correct BF even if Iascylla moves.
             auto bf = self.battlefieldId();
             if (!bf) return;
-            self.card_counters["__iascylla_pull_bf"] = static_cast<int>(*bf);
+            self.card_counters["__iascylla_pull_bf"] = static_cast<int>((*bf).raw());
 
             DelayedAbility da;
             da.source = ctx.source;
@@ -52,7 +52,7 @@ public:
         // definitively commits (no legal target / declined / moved).
         auto it = self.card_counters.find("__iascylla_pull_bf");
         if (it == self.card_counters.end()) return;
-        BattlefieldId bf = static_cast<BattlefieldId>(it->second);
+        BattlefieldId bf = BattlefieldId::fromRaw(it->second);
 
         // "an enemy unit": anywhere on the board (a base included) other
         // than this battlefield, and one that may be chosen.
@@ -73,7 +73,7 @@ public:
         ctx.executor.moveToBattlefield(picked, bf);
         RIFT_TRACE(ctx.events, "IASCYLLA: pulled " +
                              ctx.state.getObject(picked).name +
-                             " to BF" + std::to_string(bf));
+                             " to BF" + toString(bf));
     }
 private:
     const CardDef def_ = [] {

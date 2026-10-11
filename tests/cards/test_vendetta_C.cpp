@@ -439,7 +439,7 @@ TEST_F(VendettaCTest, Vendetta_ZedWithoutASound_SwapsWithClone) {
     c->onActivate(ctx, 0, {clone});
     EXPECT_TRUE(state.getObject(zed).isAtBase());
     ASSERT_TRUE(state.getObject(clone).battlefieldId().has_value());
-    EXPECT_EQ(*state.getObject(clone).battlefieldId(), 0u);
+    EXPECT_EQ(*state.getObject(clone).battlefieldId(), BattlefieldId::fromRaw(0));
 
     // A non-clone target is rejected.
     c->onActivate(ctx, 0, {other});

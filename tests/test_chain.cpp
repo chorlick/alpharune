@@ -106,10 +106,10 @@ protected:
 
         // Add two battlefields
         BattlefieldState bf0;
-        bf0.id = 0;
+        bf0.id = BattlefieldId::fromRaw(0);
         state.battlefields.push_back(bf0);
         BattlefieldState bf1;
-        bf1.id = 1;
+        bf1.id = BattlefieldId::fromRaw(1);
         state.battlefields.push_back(bf1);
 
         return state;
@@ -194,7 +194,7 @@ TEST_F(ChainTestFixture, AddSpellCreatesChain) {
     ChainManager cm(state, events, card_db);
 
     auto spell = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
-    auto target = addUnit(state, PlayerId::Player2, 5, /*at_bf=*/0);
+    auto target = addUnit(state, PlayerId::Player2, 5, /*at_bf=*/BattlefieldId::fromRaw(0));
 
     bool chain_created = false;
     events.on_chain_created.connect([&](const ChainCreatedEvent&) {
@@ -274,7 +274,7 @@ TEST_F(ChainTestFixture, SpellResolvesAfterBothPass) {
     ChainManager cm(state, events, card_db);
 
     auto spell = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
 
     // Remove from hand since addSpell expects it
     state.player(PlayerId::Player1).hand.clear();
@@ -311,7 +311,7 @@ TEST_F(ChainTestFixture, LIFOResolutionOrder) {
 
     auto spell1 = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
     auto spell2 = addSpellToHand(state, PlayerId::Player1, kDisciplineId);
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
 
     state.player(PlayerId::Player1).hand.clear();
 
@@ -341,7 +341,7 @@ TEST_F(ChainTestFixture, ReactionAddsToChainAndRestarsFEPR) {
     state.turn.turn_player = PlayerId::Player1;
     ChainManager cm(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
 
     // P1 plays Hextech Ray
     auto spell1 = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
@@ -405,7 +405,7 @@ TEST_F(ChainTestFixture, HextechRayDeals3Damage) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
 
     int damage_dealt = 0;
     events.on_damage_dealt.connect([&](const DamageDealtEvent& e) {
@@ -423,7 +423,7 @@ TEST_F(ChainTestFixture, DisintegrateKillsItsTargetAndDrawsNothingWithoutAnEngin
     EffectExecutor exec(state, events, card_db);
 
     // Unit with 3 might -- exactly lethal from 3 damage
-    auto target = addUnit(state, PlayerId::Player2, 3, 0);
+    auto target = addUnit(state, PlayerId::Player2, 3, BattlefieldId::fromRaw(0));
 
     // Give P1 a card to draw
     auto deck_card = state.createObject();
@@ -450,7 +450,7 @@ TEST_F(ChainTestFixture, DisintegrateNoDrawIfNotLethal) {
     EffectExecutor exec(state, events, card_db);
 
     // Unit with 5 might -- 3 damage is not lethal
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
 
     int cards_drawn = 0;
     events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
@@ -468,7 +468,7 @@ TEST_F(ChainTestFixture, DisciplineBuffsAndDraws) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player1, 4, 0);
+    auto target = addUnit(state, PlayerId::Player1, 4, BattlefieldId::fromRaw(0));
 
     auto deck_card = state.createObject();
     state.getObject(deck_card).zone = ZoneType::MainDeck;
@@ -484,7 +484,7 @@ TEST_F(ChainTestFixture, GustBouncesSmallUnit) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player2, 3, 0);
+    auto target = addUnit(state, PlayerId::Player2, 3, BattlefieldId::fromRaw(0));
 
     resolveCard(state, exec, kGustId, PlayerId::Player1, kInvalidId, {target});
 
@@ -496,7 +496,7 @@ TEST_F(ChainTestFixture, CleaveGivesAssault) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player1, 4, 0);
+    auto target = addUnit(state, PlayerId::Player1, 4, BattlefieldId::fromRaw(0));
 
     resolveCard(state, exec, kCleaveId, PlayerId::Player1, kInvalidId, {target});
 
@@ -515,7 +515,7 @@ TEST_F(ChainTestFixture, HextechRayTargetsOnlyUnitsAtBattlefield) {
     auto state = makeMinimalState();
 
     // Unit at BF -- valid target
-    auto bf_unit = addUnit(state, PlayerId::Player2, 5, 0);
+    auto bf_unit = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
     // Unit at base -- NOT valid target
     addUnit(state, PlayerId::Player2, 5);
     // Gear at BF -- NOT valid target (not a unit)
@@ -537,9 +537,9 @@ TEST_F(ChainTestFixture, HextechRayTargetsOnlyUnitsAtBattlefield) {
 TEST_F(ChainTestFixture, GustOnlyTargetsUnitsWithMight3OrLess) {
     auto state = makeMinimalState();
 
-    auto small = addUnit(state, PlayerId::Player2, 2, 0);
-    auto exact = addUnit(state, PlayerId::Player2, 3, 0);
-    auto big   = addUnit(state, PlayerId::Player2, 4, 0);
+    auto small = addUnit(state, PlayerId::Player2, 2, BattlefieldId::fromRaw(0));
+    auto exact = addUnit(state, PlayerId::Player2, 3, BattlefieldId::fromRaw(0));
+    auto big   = addUnit(state, PlayerId::Player2, 4, BattlefieldId::fromRaw(0));
 
     Card* card = card_registry.get(kGustId);
     ASSERT_NE(card, nullptr);
@@ -555,7 +555,7 @@ TEST_F(ChainTestFixture, GustOnlyTargetsUnitsWithMight3OrLess) {
 TEST_F(ChainTestFixture, TargetValidationFailsWhenTargetDies) {
     auto state = makeMinimalState();
 
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
 
     // Targets valid now
     Card* card = card_registry.get(kHextechRayId);
@@ -578,7 +578,7 @@ TEST_F(ChainTestFixture, SpellFizzlesWithInvalidTargets) {
     ChainManager cm(state, events, card_db);
     EffectExecutor exec(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
     auto spell = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
     state.player(PlayerId::Player1).hand.clear();
 
@@ -626,7 +626,7 @@ TEST_F(ChainTestFixture, ChainEventsFireCorrectly) {
     ChainManager cm(state, events, card_db);
 
     auto spell = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
     state.player(PlayerId::Player1).hand.clear();
 
     bool created = false, finalized = false, resolved = false, emptied = false;
@@ -670,7 +670,7 @@ TEST_F(ChainTestFixture, SpellGoesToTrashAfterResolving) {
     ChainManager cm(state, events, card_db);
 
     auto spell = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
     state.player(PlayerId::Player1).hand.clear();
 
     cm.addSpell(spell, PlayerId::Player1, {target});
@@ -751,9 +751,9 @@ TEST_F(ChainTestFixture, FlurryOfBladesHitsAllUnits) {
     EffectExecutor exec(state, events, card_db);
 
     // Place 3 units at battlefields -- mix of both players
-    auto u1 = addUnit(state, PlayerId::Player1, 3, 0);
-    auto u2 = addUnit(state, PlayerId::Player2, 2, 0);
-    auto u3 = addUnit(state, PlayerId::Player1, 4, 1);
+    auto u1 = addUnit(state, PlayerId::Player1, 3, BattlefieldId::fromRaw(0));
+    auto u2 = addUnit(state, PlayerId::Player2, 2, BattlefieldId::fromRaw(0));
+    auto u3 = addUnit(state, PlayerId::Player1, 4, BattlefieldId::fromRaw(1));
 
     int damage_events = 0;
     events.on_damage_dealt.connect([&](const DamageDealtEvent&) {
@@ -773,8 +773,8 @@ TEST_F(ChainTestFixture, FlurryOfBladesKillsLowMightUnits) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 
-    auto alive = addUnit(state, PlayerId::Player1, 3, 0);
-    auto dead  = addUnit(state, PlayerId::Player2, 1, 0); // 1M dies to 1 damage
+    auto alive = addUnit(state, PlayerId::Player1, 3, BattlefieldId::fromRaw(0));
+    auto dead  = addUnit(state, PlayerId::Player2, 1, BattlefieldId::fromRaw(0)); // 1M dies to 1 damage
 
     resolveCard(state, exec, kFlurryOfBladesId, PlayerId::Player1, kInvalidId, {});
 
@@ -795,8 +795,8 @@ TEST_F(ChainTestFixture, StunReducesCombatMight) {
     auto state = makeMinimalState();
     state.turn.turn_player = PlayerId::Player1;
 
-    auto attacker = addUnit(state, PlayerId::Player1, 5, 0);
-    addUnit(state, PlayerId::Player2, 3, 0);
+    auto attacker = addUnit(state, PlayerId::Player1, 5, BattlefieldId::fromRaw(0));
+    addUnit(state, PlayerId::Player2, 3, BattlefieldId::fromRaw(0));
 
     // Stun the attacker
     state.getObject(attacker).is_stunned = true;
@@ -812,7 +812,7 @@ TEST_F(ChainTestFixture, TemporaryBuffsExpire) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 
-    auto unit = addUnit(state, PlayerId::Player1, 4, 0);
+    auto unit = addUnit(state, PlayerId::Player1, 4, BattlefieldId::fromRaw(0));
 
     // Apply temporary might buff via Card object
     resolveCard(state, exec, kDisciplineId, PlayerId::Player1, kInvalidId, {unit});
@@ -831,9 +831,9 @@ TEST_F(ChainTestFixture, TemporaryBuffsExpire) {
 TEST_F(ChainTestFixture, TankUnitsOrderedFirstInDamageAssignment) {
     auto state = makeMinimalState();
 
-    addUnit(state, PlayerId::Player1, 3, 0);
-    auto tank    = addUnit(state, PlayerId::Player1, 2, 0);
-    auto backline = addUnit(state, PlayerId::Player1, 4, 0);
+    addUnit(state, PlayerId::Player1, 3, BattlefieldId::fromRaw(0));
+    auto tank    = addUnit(state, PlayerId::Player1, 2, BattlefieldId::fromRaw(0));
+    auto backline = addUnit(state, PlayerId::Player1, 4, BattlefieldId::fromRaw(0));
 
     state.getObject(tank).keywords.set(Keyword::Tank);
     state.getObject(backline).keywords.set(Keyword::Backline);
@@ -999,7 +999,7 @@ TEST_F(ChainTestFixture, ChooseRequiresValidTargetToPlay) {
     EXPECT_TRUE(targets.empty());
 
     // Add enemy unit -> now there's a target
-    addUnit(state, PlayerId::Player2, 5, 0);
+    addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
     targets = card->enumerateLegalTargets(state, PlayerId::Player1);
     EXPECT_EQ(targets.size(), 1u);
 }
@@ -1018,7 +1018,7 @@ TEST_F(ChainTestFixture, ActionSpellsNotOfferedInClosedState) {
     for (int i = 0; i < 4; ++i) addRune(state, PlayerId::Player2, Domain::Fury);
 
     // Add a target so Gust has valid targets
-    addUnit(state, PlayerId::Player1, 2, 0);
+    addUnit(state, PlayerId::Player1, 2, BattlefieldId::fromRaw(0));
 
     GameEngine engine(card_db, events, card_registry);
     // We can't easily call generateClosedStateActions on the engine directly,
@@ -1043,7 +1043,7 @@ TEST_F(ChainTestFixture, AddAbilityClosesState) {
     state.turn.oc_state = OpenClosedState::Open;
     ChainManager cm(state, events, card_db);
 
-    auto unit = addUnit(state, PlayerId::Player1, 3, 0);
+    auto unit = addUnit(state, PlayerId::Player1, 3, BattlefieldId::fromRaw(0));
 
     EXPECT_EQ(state.turn.oc_state, OpenClosedState::Open);
 
@@ -1062,7 +1062,7 @@ TEST_F(ChainTestFixture, AmbushUnitPlayedAsReactionIsAPermanent) {
     state.turn.turn_player = PlayerId::Player1;
     ChainManager cm(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);   // P2 has a unit at BF 0
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));   // P2 has a unit at BF 0
     auto spell1 = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
     state.player(PlayerId::Player1).hand.clear();
     cm.addSpell(spell1, PlayerId::Player1, {target});
@@ -1134,7 +1134,7 @@ TEST_F(ChainTestFixture, ReactionAbilityActivatedInResponseIsQueued) {
     state.turn.turn_player = PlayerId::Player1;
     ChainManager cm(state, events, card_db);
 
-    auto target = addUnit(state, PlayerId::Player2, 5, 0);
+    auto target = addUnit(state, PlayerId::Player2, 5, BattlefieldId::fromRaw(0));
     auto spell1 = addSpellToHand(state, PlayerId::Player1, kHextechRayId);
     state.player(PlayerId::Player1).hand.clear();
     cm.addSpell(spell1, PlayerId::Player1, {target});

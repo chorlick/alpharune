@@ -46,7 +46,7 @@ protected:
         }
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -80,7 +80,7 @@ TEST_F(AuditFix6Test, Blitzcrank_PlayPullsEnemyToMyBattlefield) {
     fireTriggerAs(kBlitzcrank, P1, self, TriggerType::WhenYouPlayMe, exec);
 
     // Enemy moved onto Blitzcrank's battlefield (BF#0).
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // WhenYouPlayMe with no enemy elsewhere → still_legal() false → no-op.
@@ -92,7 +92,7 @@ TEST_F(AuditFix6Test, Blitzcrank_PlayNoOpWhenNoEnemyElsewhere) {
     EffectExecutor exec(state, events, card_db);
     fireTriggerAs(kBlitzcrank, P1, self, TriggerType::WhenYouPlayMe, exec);
 
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // WhenIHold: return me to my owner's hand.
@@ -534,8 +534,8 @@ TEST_F(AuditFix6Test, SmokeMirrors_SwapsWhenTemporaryAndDrawsOne) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(src, kSmokeMirrors, P1, {a, b}, exec);
 
-    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>(1));
-    EXPECT_EQ(state.getObject(b).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+    EXPECT_EQ(state.getObject(b).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(handSize(P1), 1);  // Draw 1
 }
 
@@ -549,8 +549,8 @@ TEST_F(AuditFix6Test, SmokeMirrors_NoSwapWithoutTemporaryButStillDraws) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(src, kSmokeMirrors, P1, {a, b}, exec);
 
-    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>(0));
-    EXPECT_EQ(state.getObject(b).battlefieldId(), std::optional<BattlefieldId>(1));
+    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(state.getObject(b).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(handSize(P1), 1);  // still draws
 }
 
@@ -565,8 +565,8 @@ TEST_F(AuditFix6Test, SmokeMirrors_SameLocationNoSwapStillDraws) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(src, kSmokeMirrors, P1, {a, b}, exec);
 
-    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>(0));
-    EXPECT_EQ(state.getObject(b).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(state.getObject(b).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(handSize(P1), 1);
 }
 
@@ -581,7 +581,7 @@ TEST_F(AuditFix6Test, SmokeMirrors_FewerThanTwoTargetsNoSwapButStillDraws) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(src, kSmokeMirrors, P1, {a}, exec);
 
-    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(handSize(P1), 1);  // card text: "... Draw 1." does not depend on the units
 }
 
@@ -678,7 +678,7 @@ TEST_F(AuditFix6Test, Thrill_BanishesAndReplaysToBattlefield) {
 
     auto& u = state.getObject(unit);
     EXPECT_EQ(u.zone, ZoneType::BattlefieldZone);
-    EXPECT_EQ(u.battlefieldId(), std::optional<BattlefieldId>(0));  // pickMode → BF#0
+    EXPECT_EQ(u.battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});  // pickMode → BF#0
     EXPECT_TRUE(u.is_exhausted);  // playIgnoringCost exhausts units (CR 143.4)
     // No longer in P1's banishment.
     auto& bz = state.player(P1).banishment;
@@ -695,7 +695,7 @@ TEST_F(AuditFix6Test, Thrill_NoFriendlyUnitNoOp) {
     invokeOnResolve(src, kThrill, P1, {}, exec);
 
     // Enemy untouched.
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // ─── [770] Ripper's Bay ─────────────────────────────────────────────────────

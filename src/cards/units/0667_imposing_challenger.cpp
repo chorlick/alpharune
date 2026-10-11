@@ -66,20 +66,20 @@ public:
                 int32_t n = 0;
                 for (const auto& bf : ctx.state.battlefields) {
                     if (my_bf && bf.id == *my_bf) continue;
-                    rd.push_back(static_cast<int32_t>(bf.id));
+                    rd.push_back(static_cast<int32_t>(bf.id.raw()));
                     ++n;
                 }
                 rd[kDestsSlot] = n + 1;
             }
             const size_t n = static_cast<size_t>(rd[kDestsSlot] - 1);
             for (size_t i = 0; i < n && kDestsSlot + 1 + i < rd.size(); ++i)
-                dests.push_back(static_cast<BattlefieldId>(rd[kDestsSlot + 1 + i]));
+                dests.push_back(BattlefieldId::fromRaw(rd[kDestsSlot + 1 + i]));
         } else {
             for (const auto& bf : ctx.state.battlefields)
                 if (!my_bf || bf.id != *my_bf) dests.push_back(bf.id);
         }
         std::vector<std::string> labels;
-        for (auto id : dests) labels.push_back("Battlefield #" + std::to_string(id));
+        for (auto id : dests) labels.push_back("Battlefield #" + toString(id));
         int which = 0;
         if (tgt != kInvalidId && dests.size() > 1)
             which = pickMode(ctx, "Imposing Challenger: move it to which battlefield",

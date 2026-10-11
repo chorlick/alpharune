@@ -427,7 +427,7 @@ protected:
 
     BattlefieldId addBattlefield() {
         BattlefieldState bf;
-        bf.id = static_cast<int>(state.battlefields.size());
+        bf.id = BattlefieldId::fromRaw(state.battlefields.size());
         state.battlefields.push_back(bf);
         return bf.id;
     }
@@ -535,7 +535,7 @@ protected:
         obj.current_might = obj.base_might;
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};

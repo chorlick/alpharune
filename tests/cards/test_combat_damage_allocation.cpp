@@ -33,7 +33,7 @@ protected:
         s.mode = ModeOfPlay{};
         s.players[0].id = P1;
         s.players[1].id = P2;
-        BattlefieldState bf; bf.id = 0;
+        BattlefieldState bf; bf.id = BattlefieldId::fromRaw(0);
         s.battlefields.push_back(bf);
     }
 

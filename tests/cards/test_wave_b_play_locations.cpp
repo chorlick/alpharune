@@ -33,7 +33,7 @@ TEST_F(PlayLocTest, PerchedGrimwyrm_RestrictsAndUsesConqueredBFs) {
     auto locs = c->getPlayLocations(state, P1);
     ASSERT_EQ(locs.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<BattlefieldLocation>(locs[0]));
-    EXPECT_EQ(std::get<BattlefieldLocation>(locs[0]).id, 1u);
+    EXPECT_EQ(std::get<BattlefieldLocation>(locs[0]).id, BattlefieldId::fromRaw(1));
     // A stale conquer (previous turn) does not count.
     state.battlefields[1].conquered_on_turn = state.turn.turn_number - 1;
     EXPECT_TRUE(c->getPlayLocations(state, P1).empty());

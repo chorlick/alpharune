@@ -295,9 +295,9 @@ TEST(IntegrityFixIntent, EqualityDistinguishesAltCostAndGrantedAbilityTwins) {
 TEST(IntegrityFixBattlefield, UnitsControlledByFindsUnitsAtTheBattlefield) {
     GameState state;
     BattlefieldState bf;
-    bf.id = 0;
+    bf.id = BattlefieldId::fromRaw(0);
     BattlefieldState other;
-    other.id = 1;
+    other.id = BattlefieldId::fromRaw(1);
 
     auto addUnit = [&](PlayerId controller, std::optional<LocationId> loc, ZoneType zone) {
         GameObjectId id = state.createObject();

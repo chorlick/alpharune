@@ -63,7 +63,7 @@ protected:
         }
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -608,7 +608,7 @@ TEST_F(AuditFix0Test, VexMocking_MovesToStunnedUnitsBattlefield) {
 
     auto bf = state.getObject(vex).battlefieldId();
     ASSERT_TRUE(bf.has_value());
-    EXPECT_EQ(*bf, 1u) << "Vex moves to the stunned unit's battlefield";
+    EXPECT_EQ(*bf, BattlefieldId::fromRaw(1)) << "Vex moves to the stunned unit's battlefield";
 }
 
 TEST_F(AuditFix0Test, VexMocking_DeclineLeavesVexInPlace) {
@@ -622,7 +622,7 @@ TEST_F(AuditFix0Test, VexMocking_DeclineLeavesVexInPlace) {
 
     auto bf = state.getObject(vex).battlefieldId();
     ASSERT_TRUE(bf.has_value());
-    EXPECT_EQ(*bf, 0u) << "declining keeps Vex at its original BF";
+    EXPECT_EQ(*bf, BattlefieldId::fromRaw(0)) << "declining keeps Vex at its original BF";
 }
 
 TEST_F(AuditFix0Test, VexMocking_NoOpWhenAlreadyAtSameBF) {
@@ -637,7 +637,7 @@ TEST_F(AuditFix0Test, VexMocking_NoOpWhenAlreadyAtSameBF) {
 
     auto bf = state.getObject(vex).battlefieldId();
     ASSERT_TRUE(bf.has_value());
-    EXPECT_EQ(*bf, 0u) << "nothing to move — already at that battlefield";
+    EXPECT_EQ(*bf, BattlefieldId::fromRaw(0)) << "nothing to move — already at that battlefield";
 }
 
 TEST_F(AuditFix0Test, VexMocking_NoOpWithoutCapturedStun) {
@@ -646,7 +646,7 @@ TEST_F(AuditFix0Test, VexMocking_NoOpWithoutCapturedStun) {
     EffectExecutor exec(state, events, card_db);
     driveResumableTrigger(kVexMocking, P1, vex, &AuditFix0Test::yes, exec,
                           TriggerType::WhenYouStun);
-    EXPECT_EQ(*state.getObject(vex).battlefieldId(), 0u);
+    EXPECT_EQ(*state.getObject(vex).battlefieldId(), BattlefieldId::fromRaw(0));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -696,7 +696,7 @@ TEST_F(AuditFix0Test, Evelynn_PullsEnemyToMyBattlefield) {
 
     auto bf = state.getObject(enemy).battlefieldId();
     ASSERT_TRUE(bf.has_value());
-    EXPECT_EQ(*bf, 0u) << "enemy pulled to Evelynn's battlefield (not its own base)";
+    EXPECT_EQ(*bf, BattlefieldId::fromRaw(0)) << "enemy pulled to Evelynn's battlefield (not its own base)";
 }
 
 TEST_F(AuditFix0Test, Evelynn_DeclineLeavesEnemyInPlace) {
@@ -707,7 +707,7 @@ TEST_F(AuditFix0Test, Evelynn_DeclineLeavesEnemyInPlace) {
     driveResumableTrigger(kEvelynn, P1, eve, &AuditFix0Test::no, exec,
                           TriggerType::WhenYouPlayMe);
 
-    EXPECT_EQ(*state.getObject(enemy).battlefieldId(), 1u)
+    EXPECT_EQ(*state.getObject(enemy).battlefieldId(), BattlefieldId::fromRaw(1))
         << "declining leaves the enemy where it was";
 }
 
@@ -719,7 +719,7 @@ TEST_F(AuditFix0Test, Evelynn_NoOpWhenEvelynnAtBase) {
     driveResumableTrigger(kEvelynn, P1, eve, &AuditFix0Test::yes, exec,
                           TriggerType::WhenYouPlayMe);
 
-    EXPECT_EQ(*state.getObject(enemy).battlefieldId(), 1u)
+    EXPECT_EQ(*state.getObject(enemy).battlefieldId(), BattlefieldId::fromRaw(1))
         << "Evelynn must be at a battlefield to have a destination";
 }
 
@@ -732,7 +732,7 @@ TEST_F(AuditFix0Test, Evelynn_SameBFEnemyNotEligible) {
                           TriggerType::WhenYouPlayMe);
 
     // No "different location" enemy exists → no prompt, no move.
-    EXPECT_EQ(*state.getObject(enemy).battlefieldId(), 0u);
+    EXPECT_EQ(*state.getObject(enemy).battlefieldId(), BattlefieldId::fromRaw(0));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

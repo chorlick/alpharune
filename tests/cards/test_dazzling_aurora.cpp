@@ -44,8 +44,8 @@ void primeMainPhase(GameEngine& engine) {
     s.turn.oc_state    = OpenClosedState::Open;
     // Two empty battlefields — Dazzling Aurora doesn't care about them
     // but generateLegalActions iterates them, so they must exist.
-    BattlefieldState b0; b0.id = 0; s.battlefields.push_back(b0);
-    BattlefieldState b1; b1.id = 1; s.battlefields.push_back(b1);
+    BattlefieldState b0; b0.id = BattlefieldId::fromRaw(0); s.battlefields.push_back(b0);
+    BattlefieldState b1; b1.id = BattlefieldId::fromRaw(1); s.battlefields.push_back(b1);
 }
 
 GameObjectId addAuroraToHand(GameState& s, const CardDB& card_db,
@@ -258,7 +258,7 @@ TEST_F(CardTestFixture, DazzlingAurora_PromptsForLocationAndLandsOnPickedBF) {
     // Build a BF controlled by P1 — that should appear in the location
     // prompt alongside base.
     BattlefieldState bf;
-    bf.id = 99;
+    bf.id = BattlefieldId::fromRaw(99);
     bf.controller = P1;
     state.battlefields.push_back(bf);
 

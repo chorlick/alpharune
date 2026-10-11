@@ -70,7 +70,7 @@ public:
             auto choices = build_choices(bf, units);
             if (choices.size() <= 1) return;  // no friendly units here
             // Stash the battlefield id for re-entry.
-            ri.resume_data = {static_cast<int32_t>(bf)};
+            ri.resume_data = {static_cast<int32_t>(bf.raw())};
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "Emperor's Divide: move a unit to base, or stop");
             ri.resume_point = 1;
@@ -79,7 +79,7 @@ public:
         case 1: {
             auto choice = ctx.executor.takeChoice();
             if (ri.resume_data.empty()) return;
-            BattlefieldId bf = static_cast<BattlefieldId>(ri.resume_data[0]);
+            BattlefieldId bf = BattlefieldId::fromRaw(ri.resume_data[0]);
 
             // "done" = empty chosen_objects.
             if (!choice || choice->chosen_objects.empty()) return;

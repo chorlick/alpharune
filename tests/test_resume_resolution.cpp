@@ -64,8 +64,8 @@ protected:
         state.players[0].id = PlayerId::Player1;
         state.players[1].id = PlayerId::Player2;
         // Two empty battlefields so location math doesn't crash.
-        BattlefieldState bf0; bf0.id = 0; state.battlefields.push_back(bf0);
-        BattlefieldState bf1; bf1.id = 1; state.battlefields.push_back(bf1);
+        BattlefieldState bf0; bf0.id = BattlefieldId::fromRaw(0); state.battlefields.push_back(bf0);
+        BattlefieldState bf1; bf1.id = BattlefieldId::fromRaw(1); state.battlefields.push_back(bf1);
     }
 
     // Create a card instance with the matching def, owner, current zone.

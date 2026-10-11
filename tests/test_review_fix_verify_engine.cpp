@@ -566,7 +566,7 @@ TEST_F(VerifyEngineTest, CombatDamage_AnAssignmentThatWasNotOfferedIsRefused) {
         return passOrFirst(legal);
     });
     withEngine([&](GameEngine& e) {
-        EXPECT_THROW(e.testHook_runCombat(0), std::invalid_argument);
+        EXPECT_THROW(e.testHook_runCombat(BattlefieldId::fromRaw(0)), std::invalid_argument);
     }, &liar);
     EXPECT_EQ(damage_prompts, 1);
 }
@@ -875,13 +875,13 @@ TEST_F(VerifyEngineTest, PlayLocationHelpers_LeaveOutABattlefieldUnitsCannotBePl
     const auto where = playLocations(state, P1);
     ASSERT_EQ(where.count(), 2);
     EXPECT_TRUE(std::holds_alternative<BaseLocation>(where.locations[0]));
-    EXPECT_EQ(std::get<BattlefieldLocation>(where.locations[1]).id, 1);
+    EXPECT_EQ(std::get<BattlefieldLocation>(where.locations[1]).id, BattlefieldId::fromRaw(1));
     EXPECT_EQ(tokenPlayDests(state, P1), (std::vector<int>{0, 2}));
     EXPECT_EQ(tokenPlayLocations(state, P1).size(), 2u);
     // A hidden card's battlefield (CR 811.1.d.5) where units can't be played:
     // nowhere at all.
-    EXPECT_EQ(playLocations(state, P1, BattlefieldId{0}).count(), 0);
-    EXPECT_EQ(playLocations(state, P1, BattlefieldId{1}).count(), 1);
+    EXPECT_EQ(playLocations(state, P1, BattlefieldId::fromRaw(0)).count(), 0);
+    EXPECT_EQ(playLocations(state, P1, BattlefieldId::fromRaw(1)).count(), 1);
     EXPECT_EQ(playLocations(state, P1, std::nullopt, /*include_base=*/false).count(), 1);
 
     // "Units can only be played to base" (Mageseeker Warden): no battlefield.
@@ -889,7 +889,7 @@ TEST_F(VerifyEngineTest, PlayLocationHelpers_LeaveOutABattlefieldUnitsCannotBePl
     ps(P1).units_play_base_only = true;
     EXPECT_EQ(playLocations(state, P1).count(), 1);
     EXPECT_EQ(tokenPlayDests(state, P1), (std::vector<int>{0}));
-    EXPECT_EQ(playLocations(state, P1, BattlefieldId{1}).count(), 0);
+    EXPECT_EQ(playLocations(state, P1, BattlefieldId::fromRaw(1)).count(), 0);
     EXPECT_EQ(playLocations(state, P2).count(), 1) << "the other player controls none";
 }
 
@@ -917,8 +917,8 @@ TEST_F(VerifyEngineTest, TokenPlays_DoNotOfferABattlefieldUnitsCannotBePlayedTo)
         playThroughEngine(call, &agent);
         ASSERT_EQ(agent.prompts.size(), 1u);
         EXPECT_EQ(agent.prompts[0].size(), 2u) << "base and battlefield 1 only";
-        EXPECT_EQ(unitsAt(0), 1);
-        EXPECT_EQ(unitsAt(1), 2);
+        EXPECT_EQ(unitsAt(BattlefieldId::fromRaw(0)), 1);
+        EXPECT_EQ(unitsAt(BattlefieldId::fromRaw(1)), 2);
     }
     {   // playTokensChoosingLocations — Arise! 513 (one Sand Soldier per Equipment)
         addGear(P1, kSerratedDirk);
@@ -931,13 +931,13 @@ TEST_F(VerifyEngineTest, TokenPlays_DoNotOfferABattlefieldUnitsCannotBePlayedTo)
                 if (!i.chosen_objects.empty()) return legal.back();
             return legal.back();
         });
-        const int before = unitsAt(1);
+        const int before = unitsAt(BattlefieldId::fromRaw(1));
         playThroughEngine(arise, &agent);
         ASSERT_GE(agent.prompts.size(), 2u);
         EXPECT_EQ(agent.prompts[0].size(), 2u) << "base and battlefield 1 only";
         EXPECT_EQ(agent.prompts[1].size(), 2u);
-        EXPECT_EQ(unitsAt(0), 1);
-        EXPECT_EQ(unitsAt(1), before + 2);
+        EXPECT_EQ(unitsAt(BattlefieldId::fromRaw(0)), 1);
+        EXPECT_EQ(unitsAt(BattlefieldId::fromRaw(1)), before + 2);
     }
     {   // only the base left: nothing is asked
         state.battlefields[1].blocks_unit_play = true;
@@ -973,7 +973,7 @@ TEST_F(VerifyEngineTest, OverzealousFan_BanishedInsteadOfDyingMovesNobody) {
     ASSERT_FALSE(agent.prompts.empty()) << "the may was offered";
     EXPECT_FALSE(onBoard(fan));
     EXPECT_EQ(o(fan).zone, ZoneType::Banishment);
-    EXPECT_EQ(o(attacker).battlefieldId(), std::optional<BattlefieldId>(0))
+    EXPECT_EQ(o(attacker).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "the cost was not paid: the attacker stays";
 }
 
@@ -1171,7 +1171,7 @@ TEST_F(VerifyEngineTest, CombatResolution_LeavesNoContesterAndNoStagedCombat) {
     boost::signals2::scoped_connection c1 = events.on_control_changed.connect(
         [&](const ControlChangedEvent& e) { controller_event = e.new_controller; });
     withEngine([&](GameEngine& e) {
-        e.testHook_runCombat(0);
+        e.testHook_runCombat(BattlefieldId::fromRaw(0));
         const auto& bf = e.state().battlefields[0];
         EXPECT_FALSE(bf.combat_in_progress);
         EXPECT_FALSE(bf.is_contested);
@@ -1205,7 +1205,7 @@ TEST_F(VerifyEngineTest, Pin_Brush_WhenScoredRestoresTheBattlefieldItReplaced) {
 
     AcceptingEnginePathAgent agent;
     withEngine([&](GameEngine& e) {
-        e.testHook_executor().replaceBattlefieldWithToken(0, "Brush", P1, kBrush);
+        e.testHook_executor().replaceBattlefieldWithToken(BattlefieldId::fromRaw(0), "Brush", P1, kBrush);
         const auto& bf = e.state().battlefields[0];
         ASSERT_TRUE(bf.was_replaced);
         ASSERT_EQ(e.state().getObject(original).zone, ZoneType::Banishment);
@@ -1439,10 +1439,10 @@ TEST_F(VerifyEngineTest, ScoreConquer_ControlWithoutAScoreIsNotAConquer) {
     ps(P1).turns_taken = 1;
     // (b) Already scored this turn (held it, lost it, took it back): "did not
     //     yet Score this turn" fails (CR 468.5.d).
-    ps(P1).battlefields_scored_this_turn.insert(1);
+    ps(P1).battlefields_scored_this_turn.insert(BattlefieldId::fromRaw(1));
     withEngine([&](GameEngine& e) {
-        e.testHook_scoreConquer(P1, 0);
-        e.testHook_scoreConquer(P1, 1);
+        e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));
+        e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(1));
     });
     EXPECT_EQ(state.battlefields[0].conquered_on_turn, -1);
     EXPECT_EQ(state.battlefields[1].conquered_on_turn, -1);
@@ -1452,7 +1452,7 @@ TEST_F(VerifyEngineTest, ScoreConquer_ControlWithoutAScoreIsNotAConquer) {
     // Control: a real conquer is stamped, also when its point is withheld.
     state.battlefields[0].min_turn_to_score = 0;
     ps(P1).cannot_gain_points = true;
-    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, 0, P2); });
+    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0), P2); });
     EXPECT_EQ(state.battlefields[0].conquered_on_turn, state.turn.turn_number);
     EXPECT_EQ(state.battlefields[0].conquered_by_player, P1);
     ASSERT_EQ(grimwyrm->getPlayLocations(state, P1).size(), 1u);
@@ -1714,7 +1714,7 @@ TEST_F(VerifyEngineTest, Pin_SplitDamage_NothingToTargetAtFinalizationDealsNothi
         for (const auto& i : legal)
             if (i.type == IntentType::PassPriority && !st.chain.items.empty() && !arrived) {
                 arrived = true;
-                engine->testHook_executor().moveToBattlefield(late, 0);
+                engine->testHook_executor().moveToBattlefield(late, BattlefieldId::fromRaw(0));
             }
         return passOrFirst(legal);
     });
@@ -1727,7 +1727,7 @@ TEST_F(VerifyEngineTest, Pin_SplitDamage_NothingToTargetAtFinalizationDealsNothi
     }, &me, &them);
     ASSERT_TRUE(arrived);
     EXPECT_TRUE(me.prompts.empty());
-    EXPECT_EQ(o(late).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(o(late).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(o(late).damage_marked, 0);
 }
 

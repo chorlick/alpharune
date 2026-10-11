@@ -987,7 +987,7 @@ TEST_F(C0Test, MushroomPouch_SeesACardHiddenAtABattlefield) {
     state.player(P1).hand.pop_back();
     o(hidden).zone = ZoneType::FacedownZone;
     o(hidden).is_hidden = true;
-    o(hidden).hidden_at = 0;
+    o(hidden).hidden_at = BattlefieldId::fromRaw(0);
     state.battlefields[0].facedown.push_back(hidden);
     fireTriggerThroughEngine(pouch, TriggerType::AtStartOfBeginning);
     EXPECT_EQ(handSize(P1), 1);
@@ -1056,7 +1056,7 @@ TEST_F(C0Test, PackOfWonders_NeverItselfAndCanTakeAFacedownCard) {
     state.player(P1).hand.pop_back();
     o(hidden).zone = ZoneType::FacedownZone;
     o(hidden).is_hidden = true;
-    o(hidden).hidden_at = 1;
+    o(hidden).hidden_at = BattlefieldId::fromRaw(1);
     state.battlefields[1].facedown.push_back(hidden);
     EXPECT_EQ(card->enumerateLegalTargets(state, P1, 0, pack), std::vector<GameObjectId>{hidden});
 
@@ -1221,7 +1221,7 @@ TEST_F(C0Test, RecurveBow_ItsControllerPicksTheEnemyUnitHere) {
     EnginePathAgent agent(EnginePathAgent::choosing(e2));
     // Combat starts at battlefield 0 with P1 attacking: the bearer attacks.
     resolveThroughEngine([&](EffectExecutor&, GameState&) {
-        events.emit(CombatStartedEvent{0, P1, P2});
+        events.emit(CombatStartedEvent{BattlefieldId::fromRaw(0), P1, P2});
     }, &agent);
     EXPECT_TRUE(o(bow).attached_to.has_value());
     EXPECT_TRUE(agent.wasOffered(e1));

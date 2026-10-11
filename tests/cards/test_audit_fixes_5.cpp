@@ -275,8 +275,8 @@ TEST_F(AuditFix5Test, EdgeOfNight_EquipFailsNoChaos) {
 // auto-attaches it to a friendly unit at the same battlefield.
 TEST_F(AuditFix5Test, EdgeOfNight_PlayFromFacedownAutoAttaches) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 0;
-    auto unit = addUnit(P1, kInvalidId, 3, /*at_bf=*/static_cast<int>(bf));
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto unit = addUnit(P1, kInvalidId, 3, /*at_bf=*/static_cast<int>(bf.raw()));
     // Gear unattached, at the same battlefield as the friendly unit.
     auto gear = addGear(P1, kEdgeOfNight, 2);
     {
@@ -296,9 +296,9 @@ TEST_F(AuditFix5Test, EdgeOfNight_PlayFromFacedownAutoAttaches) {
 // WhenYouPlayThis trigger a no-op (does not re-attach or double-buff).
 TEST_F(AuditFix5Test, EdgeOfNight_AlreadyAttachedTriggerIsNoop) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 0;
-    auto unit = addUnit(P1, kInvalidId, 3, static_cast<int>(bf));
-    auto other = addUnit(P1, kInvalidId, 3, static_cast<int>(bf));
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto unit = addUnit(P1, kInvalidId, 3, static_cast<int>(bf.raw()));
+    auto other = addUnit(P1, kInvalidId, 3, static_cast<int>(bf.raw()));
     auto gear = addGear(P1, kEdgeOfNight, 2);
     {
         auto& g = state.getObject(gear);
@@ -522,7 +522,7 @@ TEST_F(AuditFix5Test, IvernNurturer_EmptyDeckNoop) {
 // the origin of the move that triggered it (ChainItem::triggering_move).
 TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 0;
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
     auto lillia = addUnit(P1, kLillia, 3, /*at_bf=*/1);
     AnnouncedMove moved(state, LocationId{BattlefieldLocation{bf}}, LocationId{BattlefieldLocation{1}});
 
@@ -561,7 +561,7 @@ TEST_F(AuditFix5Test, Lillia_TheSpriteIsPlayedWhereSheMovedFromEvenAfterSheLeftT
     // location of her own, and the Sprite is still played at battlefield 1.
     auto lillia = addUnit(P1, kLillia, 3, /*at_bf=*/1);
     resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
-        ex.moveToBattlefield(lillia, 0);
+        ex.moveToBattlefield(lillia, BattlefieldId::fromRaw(0));
         ex.killObject(lillia);
     });
     ASSERT_FALSE(state.getObject(lillia).location.has_value()) << "she is off the board";
@@ -573,7 +573,7 @@ TEST_F(AuditFix5Test, Lillia_TheSpriteIsPlayedWhereSheMovedFromEvenAfterSheLeftT
     // that is where she moved from.
     auto second = addUnit(P1, kLillia, 3);  // at base
     resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
-        ex.moveToBattlefield(second, 0);
+        ex.moveToBattlefield(second, BattlefieldId::fromRaw(0));
         ex.killObject(second);
     });
     ASSERT_FALSE(state.getObject(second).location.has_value());

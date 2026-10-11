@@ -50,7 +50,7 @@ protected:
         s.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(s.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(s.battlefields.size());
             s.battlefields.push_back(bf);
         }
     }

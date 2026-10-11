@@ -41,7 +41,7 @@ GameObjectId addTokenUnit(GameState& state, PlayerId owner,
     obj.base_might = might;
     obj.current_might = might;
     obj.zone = ZoneType::BattlefieldZone;
-    obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+    obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
     return id;
 }
 

@@ -387,7 +387,7 @@ TEST_F(XpTrevorSnoozebottomTest, OnHoldCreatesSpriteToken) {
             EXPECT_EQ(obj.card_type, CardType::Unit);
             EXPECT_TRUE(obj.keywords.has(Keyword::Temporary));
             ASSERT_TRUE(obj.battlefieldId().has_value());
-            EXPECT_EQ(*obj.battlefieldId(), 0);
+            EXPECT_EQ(*obj.battlefieldId(), BattlefieldId::fromRaw(0));
             EXPECT_EQ(obj.base_might, 3);
         }
     }

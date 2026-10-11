@@ -90,7 +90,7 @@ public:
         BattlefieldId dest = open.front();
         if (open.size() > 1) {
             std::vector<std::string> labels;
-            for (auto bf : open) labels.push_back("Battlefield #" + std::to_string(bf));
+            for (auto bf : open) labels.push_back("Battlefield #" + toString(bf));
             const int mode = pickMode(ctx, "Bard, Mercurial: which open battlefield",
                                       static_cast<int>(open.size()), labels);
             if (mode < 0) return;             // waiting for the agent

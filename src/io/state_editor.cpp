@@ -191,7 +191,7 @@ EditResult StateEditor::moveObjectToBattlefield(GameState& state,
         if (bf.id == battlefield_id) { bf_exists = true; break; }
     }
     if (!bf_exists) {
-        return EditResult::fail("battlefield not found: " + std::to_string(static_cast<int>(battlefield_id)));
+        return EditResult::fail("battlefield not found: " + std::to_string(static_cast<int>(battlefield_id.raw())));
     }
     if (isOnChain(state, object_id)) {
         return EditResult::fail("object is on the chain; let it resolve first");

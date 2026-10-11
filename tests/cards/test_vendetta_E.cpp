@@ -289,8 +289,8 @@ TEST_F(VendettaE, Vendetta_TwilightStep_MovesSmallUnitOnly) {
     }, exec);
 
     EXPECT_EQ(call, 2);
-    EXPECT_TRUE(atBattlefield(small, 1));
-    EXPECT_TRUE(atBattlefield(big, 0));
+    EXPECT_TRUE(atBattlefield(small, BattlefieldId::fromRaw(1)));
+    EXPECT_TRUE(atBattlefield(big, BattlefieldId::fromRaw(0)));
     auto f = card_registry.get(kTwilightStep)->flowCost();
     EXPECT_EQ(f.energy, 4);
     EXPECT_EQ(f.power, 1);
@@ -473,7 +473,7 @@ TEST_F(VendettaE, Vendetta_ShurikenFlip_DamagesThenMoves) {
 
     EXPECT_EQ(call, 3);
     EXPECT_EQ(state.getObject(enemy).damage_marked, 2);
-    EXPECT_TRUE(atBattlefield(mine, 0));
+    EXPECT_TRUE(atBattlefield(mine, BattlefieldId::fromRaw(0)));
 }
 
 TEST_F(VendettaE, Vendetta_ShurikenFlip_DamageIsOptional) {
@@ -600,7 +600,7 @@ TEST_F(VendettaE, Vendetta_ShadowDash_MovesEnemyAndBuffsExactlyTwo) {
     }, exec);
 
     EXPECT_EQ(call, 2);
-    EXPECT_TRUE(atBattlefield(enemy, 0));
+    EXPECT_TRUE(atBattlefield(enemy, BattlefieldId::fromRaw(0)));
     EXPECT_EQ(state.getObject(a).temp_might_bonus, 1);
     EXPECT_EQ(state.getObject(b).temp_might_bonus, 1);
     EXPECT_EQ(state.getObject(enemy).temp_might_bonus, 0);
@@ -614,7 +614,7 @@ TEST_F(VendettaE, Vendetta_ShadowDash_NoBonusWithThreeUnits) {
     auto enemy = addUnit(P2, kInvalidId, 4);        // in its base
     auto spell = addToHand(P1, kShadowDash);
     driveResumable(kShadowDash, P1, spell, script({O(enemy), V(1 + 0)}), exec);
-    EXPECT_TRUE(atBattlefield(enemy, 0));
+    EXPECT_TRUE(atBattlefield(enemy, BattlefieldId::fromRaw(0)));
     EXPECT_EQ(state.getObject(a).temp_might_bonus, 0);
 
     const Card* card = card_registry.get(kShadowDash);
@@ -1067,17 +1067,17 @@ TEST_F(VendettaE, Vendetta_JaggedCutlass_BearerCantBeMovedByEnemyEffects) {
     enemy_item.is_spell = true;
     state.chain.resuming = enemy_item;
     exec.moveToBase(unit);
-    EXPECT_TRUE(atBattlefield(unit, 0));
-    exec.moveToBattlefield(unit, 1);
-    EXPECT_TRUE(atBattlefield(unit, 0));
+    EXPECT_TRUE(atBattlefield(unit, BattlefieldId::fromRaw(0)));
+    exec.moveToBattlefield(unit, BattlefieldId::fromRaw(1));
+    EXPECT_TRUE(atBattlefield(unit, BattlefieldId::fromRaw(0)));
     exec.moveToBase(bystander);
-    EXPECT_FALSE(atBattlefield(bystander, 0)) << "an unequipped unit still moves";
+    EXPECT_FALSE(atBattlefield(bystander, BattlefieldId::fromRaw(0))) << "an unequipped unit still moves";
 
     // A friendly effect may still move it.
     enemy_item.controller = P1;
     state.chain.resuming = enemy_item;
-    exec.moveToBattlefield(unit, 1);
-    EXPECT_TRUE(atBattlefield(unit, 1));
+    exec.moveToBattlefield(unit, BattlefieldId::fromRaw(1));
+    EXPECT_TRUE(atBattlefield(unit, BattlefieldId::fromRaw(1)));
     state.chain.resuming.reset();
 }
 

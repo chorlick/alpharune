@@ -126,7 +126,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         mix(static_cast<uint64_t>(pool.gear_power));
     }
     for (const auto& bf : state.battlefields) {
-        mix(static_cast<uint64_t>(bf.id));
+        mix(static_cast<uint64_t>(bf.id.raw()));
         mix(bf.controller.has_value() ? static_cast<uint64_t>(*bf.controller) + 1 : 0u);
         mix(bf.facedown.size());
     }
@@ -142,7 +142,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         else if (const auto* base = std::get_if<BaseLocation>(&*obj.location))
             omix(1u + static_cast<uint64_t>(base->player));
         else
-            omix(1000u + static_cast<uint64_t>(std::get<BattlefieldLocation>(*obj.location).id));
+            omix(1000u + static_cast<uint64_t>((std::get<BattlefieldLocation>(*obj.location).id).raw()));
         omix(static_cast<uint64_t>(obj.controller));
         omix(obj.is_stunned ? 1u : 0u);
         omix(obj.is_exhausted ? 1u : 0u);

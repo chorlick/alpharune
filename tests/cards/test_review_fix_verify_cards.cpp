@@ -360,7 +360,7 @@ protected:
         }
         if (at_bf >= 0) {
             g.zone = ZoneType::BattlefieldZone;
-            g.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            g.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             g.zone = ZoneType::Base;
             g.location = BaseLocation{owner};
@@ -603,7 +603,7 @@ protected:
             for (const auto& i : e.generateLegalActions())
                 if (i.card == card && i.play_location &&
                     *i.play_location ==
-                        LocationId{BattlefieldLocation{static_cast<BattlefieldId>(bf)}})
+                        LocationId{BattlefieldLocation{BattlefieldId::fromRaw(bf)}})
                     found = i;
         });
         return found;
@@ -744,7 +744,7 @@ protected:
         p.trash.erase(std::remove(p.trash.begin(), p.trash.end(), id), p.trash.end());
         if (at_bf >= 0) {
             x.zone = ZoneType::BattlefieldZone;
-            x.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            x.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             x.zone = ZoneType::Base;
             x.location = BaseLocation{x.controller};
@@ -792,7 +792,7 @@ TEST_F(VerifyCardsTest, SpectralMatron_DoesNotOfferABattlefieldUnitsCannotBePlay
     EXPECT_FALSE(promptOffersValue(agent, 2, 1)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, 2, 2));
     ASSERT_TRUE(onBoard(cheap));
-    EXPECT_EQ(bfOf(cheap), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(cheap), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, RumbleHotheaded_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
@@ -810,7 +810,7 @@ TEST_F(VerifyCardsTest, RumbleHotheaded_DoesNotOfferABattlefieldUnitsCannotBePla
     EXPECT_FALSE(promptOffersValue(agent, last, 1)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, last, 2));
     ASSERT_TRUE(onBoard(mech));
-    EXPECT_EQ(bfOf(mech), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(mech), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 // ═══ Work item 3: fixes merged without a test ═══════════════════════════════
@@ -937,7 +937,7 @@ TEST_F(VerifyCardsTest, VexMocking_AcceptingMovesHerToTheStunnedUnitsBattlefield
         exec.stunUnitBy(enemy, vex);
     }, &agent);
     EXPECT_EQ(agent.prompts.size(), 1u);
-    EXPECT_EQ(bfOf(vex), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(vex), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, Hwei_OffTheBoardStillDiscardsButGetsNoMight) {
@@ -1072,8 +1072,8 @@ TEST_F(VerifyCardsTest, Pin_Batch03_VoidAssault758_TheCasterContestsAndIsTheAtta
     EnginePathAgent agent(EnginePathAgent::script({3}));
     playAt(spell, {mine, theirs}, &agent, nullptr,
            [](GameEngine& e) { e.testHook_cleanup(); });
-    ASSERT_EQ(bfOf(mine), std::optional<BattlefieldId>{1});
-    ASSERT_EQ(bfOf(theirs), std::optional<BattlefieldId>{1});
+    ASSERT_EQ(bfOf(mine), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+    ASSERT_EQ(bfOf(theirs), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(state.battlefields[1].contested_by, P1)
         << "CR 190.3.a: the turn player — the caster — applies Contested, and the "
            "player who applied it is the attacker";
@@ -1134,7 +1134,7 @@ TEST_F(VerifyCardsTest, Pin_Batch10_StalkingWolf728_CanBePlayedToItsVictimsBattl
     EXPECT_FALSE(at_bf1) << "no unit of mine there";
     EnginePathAgent agent(EnginePathAgent::choosing(poro));
     playThroughEngine(wolf, &agent, LocationId{BattlefieldLocation{0}}, nullptr, /*fund=*/false);
-    EXPECT_EQ(bfOf(wolf), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(bfOf(wolf), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "even if you don't have other units there";
     EXPECT_FALSE(onBoard(poro));
 }
@@ -1201,7 +1201,7 @@ TEST_F(VerifyCardsTest, Pin_2_20_ForgottenMonument523_NoScoreMeansNoScoreEventAn
     auto conn = events.on_score.connect([&](const ScoreEvent&) { ++scores; });
     auto conquer = [&]() {
         withEngine([&](GameEngine& e) {
-            e.testHook_scoreConquer(P1, 0);
+            e.testHook_scoreConquer(P1, BattlefieldId::fromRaw(0));
             e.testHook_runChain();
         });
     };
@@ -1255,7 +1255,7 @@ TEST_F(VerifyCardsTest, FaePorter_ThePowerIsGoneBeforeTheOpponentCanRespond) {
         EXPECT_EQ(live.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
         EXPECT_TRUE(live.getObject(ally).isAtBase()) << "not moved yet";
     });
-    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(VerifyCardsTest, RumbleHotheaded_TheUnitIsRecycledBeforeTheOpponentCanRespond) {
@@ -1435,7 +1435,7 @@ TEST_F(VerifyCardsTest, LoyalPup_AcceptingMovesItToTheDefendedBattlefield) {
     EnginePathAgent yes(EnginePathAgent::script({1}));
     fireTriggerThroughEngine(pup, TriggerType::WhenYouDefendAtABattlefield, &yes);
     EXPECT_EQ(yes.prompts.size(), 1u);
-    EXPECT_EQ(bfOf(pup), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(pup), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, LoyalPup_DecliningLeavesItInBase) {
@@ -1483,7 +1483,7 @@ TEST_F(VerifyCardsTest, AzirAscendant_KilledInResponseSwapsNobody) {
     EXPECT_EQ(power(P1, Domain::Calm), 0) << "activated and paid for";
     EXPECT_FALSE(onBoard(azir));
     EXPECT_EQ(o(azir).zone, ZoneType::Trash);
-    EXPECT_EQ(bfOf(other), std::optional<BattlefieldId>{1}) << "it stays where it was";
+    EXPECT_EQ(bfOf(other), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)}) << "it stays where it was";
 }
 
 TEST_F(VerifyCardsTest, AzirAscendant_SwapsPlacesWithTheChosenUnit) {
@@ -1495,7 +1495,7 @@ TEST_F(VerifyCardsTest, AzirAscendant_SwapsPlacesWithTheChosenUnit) {
     act.player = P1;
     act.ability_source = azir;
     executeAndProbe(act, nullptr, [](GameState&) {});
-    EXPECT_EQ(bfOf(azir), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(azir), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(o(other).isAtBase());
 }
 
@@ -1982,8 +1982,8 @@ TEST_F(VerifyCardsTest, MaddenedMarauder_DoesNotOfferAUnitThatCannotBeMovedToBas
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
     EXPECT_TRUE(agent.wasOffered(free_unit));
     EXPECT_TRUE(o(free_unit).isAtBase());
-    EXPECT_EQ(bfOf(stuck), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(stuck), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 // 695 Blast Cone: an enemy unit enemy abilities can't move is not a choice.
@@ -2006,7 +2006,7 @@ TEST_F(VerifyCardsTest, BlastCone_DoesNotOfferAnEnemyUnitItCannotMove) {
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
     EXPECT_TRUE(agent.wasOffered(free_unit));
     EXPECT_TRUE(o(free_unit).isAtBase());
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(VerifyCardsTest, BlastCone_WithOnlyAnUnmovableEnemyAsksNothing) {
@@ -2018,7 +2018,7 @@ TEST_F(VerifyCardsTest, BlastCone_WithOnlyAnUnmovableEnemyAsksNothing) {
     EnginePathAgent agent(EnginePathAgent::accepting());
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
     EXPECT_TRUE(agent.prompts.empty()) << "no enemy unit it could move: the \"may\" is not offered";
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // 147 Wildclaw Shaman: spending a unit's buff is paying a cost, not choosing
@@ -2081,7 +2081,7 @@ TEST_F(VerifyCardsTest, OverzealousFan_SurvivingTheKillMovesNobody) {
     fireTriggerThroughEngine(fan, TriggerType::WhenIDefend, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, the attacker";
     EXPECT_TRUE(onBoard(fan)) << "the death was replaced";
-    EXPECT_EQ(bfOf(attacker), std::optional<BattlefieldId>{0}) << "no kill, no move";
+    EXPECT_EQ(bfOf(attacker), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)}) << "no kill, no move";
 }
 
 // 21 Sun Disc: unarmed, playing a unit puts no Sun Disc ability on the chain.
@@ -2170,7 +2170,7 @@ TEST_F(VerifyCardsTest, AzirAscendant_AnActivationThatDoesNothingIsStillTheUseFo
         removeFromBoard(live, other);                     // in response: the chosen unit leaves
     });
     EXPECT_TRUE(o(azir).isAtBase()) << "nothing to swap with";
-    EXPECT_EQ(bfOf(spare), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(spare), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(o(azir).card_counters["azir_used_turn"], state.turn.turn_number + 1);
     const Card* card = card_registry.get(kAzirAscendant);
     ASSERT_NE(card, nullptr);
@@ -2478,7 +2478,7 @@ TEST_F(VerifyCardsTest, Deceiver_ThroughTheEngine_TheCostIsPaidBeforeTheOpponent
     for (const auto& [id, obj] : state.objects)
         if (obj.isToken() && obj.isUnit() && obj.location.has_value()) token = id;
     ASSERT_NE(token, kInvalidId);
-    EXPECT_EQ(bfOf(token), std::optional<BattlefieldId>{0}) << "there";
+    EXPECT_EQ(bfOf(token), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)}) << "there";
     EXPECT_EQ(o(token).card_def_id, kShipyardSkulker) << "a copy of the chosen unit";
     EXPECT_TRUE(o(token).keywords.has(Keyword::Temporary));
     EXPECT_FALSE(o(token).is_exhausted) << "a READY Reflection";
@@ -2552,7 +2552,7 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheUnitCanBePlayedHere) {
     ps(P1).rune_pool.energy = card_db.get(kShipyardSkulker).energy_cost;
     EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &agent);
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_FALSE(inBanishment(P1, unit));
 }
 
@@ -2626,7 +2626,7 @@ TEST_F(VerifyCardsTest, GlascMixologist_ChoosesWhereAndIsNotOfferedABattlefieldU
     EXPECT_FALSE(promptOffersValue(agent, 2, 1)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, 2, 2));
     ASSERT_TRUE(onBoard(cheap));
-    EXPECT_EQ(bfOf(cheap), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(cheap), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, HeedlessResurrection_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
@@ -2651,7 +2651,7 @@ TEST_F(VerifyCardsTest, HeedlessResurrection_DoesNotOfferABattlefieldUnitsCannot
     EXPECT_FALSE(promptOffersValue(agent, 2, 2)) << "units can't be played to battlefield #0";
     EXPECT_EQ(agent.prompts[2].size(), 2u);
     ASSERT_TRUE(onBoard(corpse));
-    EXPECT_EQ(bfOf(corpse), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(corpse), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(inTrash(P1, victim));
 }
 
@@ -2673,7 +2673,7 @@ TEST_F(VerifyCardsTest, ArcaneShift_DoesNotOfferABattlefieldUnitsCannotBePlayedT
     EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
     EXPECT_EQ(agent.prompts[0].size(), 2u);
     ASSERT_TRUE(onBoard(unit));
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
@@ -2698,7 +2698,7 @@ TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
     EXPECT_EQ(agent.prompts[0].size(), 2u);
     ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
-    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, Guards_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
@@ -2718,7 +2718,7 @@ TEST_F(VerifyCardsTest, Guards_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
     EXPECT_EQ(agent.prompts[0].size(), 2u);
     ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
-    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 TEST_F(VerifyCardsTest, Guards_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheBase) {
@@ -2761,7 +2761,7 @@ TEST_F(VerifyCardsTest, WildClaw_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) 
     EXPECT_FALSE(promptOffersValue(agent, 1, 1)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, 1, 2));
     ASSERT_TRUE(onBoard(mech));
-    EXPECT_EQ(bfOf(mech), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(mech), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 
@@ -3232,8 +3232,8 @@ TEST_F(VerifyCardsTest, FaePorter_MovedOnInResponse_TheUnitGoesToTheBattlefieldO
         // In response the Porter ends up at the other battlefield.
         live.getObject(porter).location = BattlefieldLocation{1};
     });
-    EXPECT_EQ(bfOf(porter), std::optional<BattlefieldId>{1});
-    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(bfOf(porter), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "the battlefield the Porter moved to, not the one it is at now";
 }
 
@@ -3250,7 +3250,7 @@ TEST_F(VerifyCardsTest, FaePorter_BackAtBaseInResponse_TheUnitStillGoesToTheBatt
         p.zone = ZoneType::Base;
     });
     EXPECT_TRUE(o(porter).isAtBase());
-    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // The CR 359.3.f.3 example: Lillia leaving the board in response "will not
@@ -3268,7 +3268,7 @@ TEST_F(VerifyCardsTest, FaePorter_GoneBeforeResolution_TheUnitStillGoesToTheBatt
     });
     EXPECT_FALSE(onBoard(porter));
     EXPECT_EQ(power(P1, Domain::Chaos), 0);
-    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "the battlefield was noted when the Porter moved there";
 }
 
@@ -3287,7 +3287,7 @@ TEST_F(VerifyCardsTest, FaePorter_TheChosenUnitAlreadyAtThatBattlefieldIsNotMove
         a.location = BattlefieldLocation{0};
         a.zone = ZoneType::BattlefieldZone;
     });
-    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{0}) << "not dragged to battlefield #1";
+    EXPECT_EQ(bfOf(ally), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)}) << "not dragged to battlefield #1";
 }
 
 // ═══ 9.G3: Guards! 475 from facedown at "Units can't be played here." ═══════
@@ -3304,7 +3304,7 @@ TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier
         auto& card = o(spell);
         card.zone = ZoneType::BattlefieldZone;
         card.is_hidden = true;
-        card.hidden_at = static_cast<BattlefieldId>(bf);
+        card.hidden_at = BattlefieldId::fromRaw(bf);
         card.hidden_on_turn = 2;
         state.battlefields[bf].facedown.push_back(spell);
         return spell;
@@ -3327,7 +3327,7 @@ TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier
     EnginePathAgent free_agent;
     playHidden(hide(1), &free_agent);
     ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1) << "this setup does play a hidden Guards!";
-    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 
     // Hidden at the battlefield units can't be played to.
     power(P1, Domain::Order) = 1;
@@ -3336,7 +3336,7 @@ TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier
     EXPECT_EQ(countNamed(P1, "Sand Soldier"), 1) << "no second token: not there, not anywhere";
     for (const auto& [id, obj] : state.objects)
         if (obj.name == "Sand Soldier" && obj.location.has_value()) {
-            EXPECT_NE(obj.battlefieldId(), std::optional<BattlefieldId>{0})
+            EXPECT_NE(obj.battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
                 << "\"Units can't be played here.\"";
         }
     // 9.I7, judge ruling 2026-10-11 (confirmed): nothing happens — and the
@@ -3469,11 +3469,11 @@ TEST_F(VerifyCardsTest, BackAlleyBar_AUnitThatReallyMovesFromHereGetsPlusOne) {
     auto from_elsewhere = addUnit(P1, kShipyardSkulker, 0, 1);
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
         exec.moveToBase(to_base);
-        exec.moveToBattlefield(to_other, 1);
+        exec.moveToBattlefield(to_other, BattlefieldId::fromRaw(1));
         exec.moveToBase(from_elsewhere);
     });
     ASSERT_TRUE(o(to_base).isAtBase());
-    ASSERT_EQ(bfOf(to_other), std::optional<BattlefieldId>{1});
+    ASSERT_EQ(bfOf(to_other), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(o(to_base).temp_might_bonus, 1) << "moved from here to base";
     EXPECT_EQ(o(to_other).temp_might_bonus, 1) << "moved from here to another battlefield";
     EXPECT_EQ(o(stays).temp_might_bonus, 0);
@@ -3962,14 +3962,14 @@ TEST_F(VerifyCardsTest, Faefolk_DoesNotOfferAnEnemyUnitThatCannotBeChosen) {
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(shrouded));
     EXPECT_TRUE(agent.wasOffered(open));
-    EXPECT_EQ(bfOf(open), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(shrouded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(open), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(shrouded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 
     // Only the unchoosable unit is elsewhere now: the "may" is not offered.
     AcceptingEnginePathAgent none;
     fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &none);
     EXPECT_TRUE(none.prompts.empty());
-    EXPECT_EQ(bfOf(shrouded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(shrouded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 // 681 Kha'Zix, Evolving Hunter: no test had an unchoosable unit.
@@ -4024,7 +4024,7 @@ TEST_F(VerifyCardsTest, ImmortalPhoenix_CanBePlayedToAControlledBattlefield) {
     EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "base";
     EXPECT_FALSE(promptOffersValue(agent, 1, 1)) << "battlefield #0 is not controlled";
     ASSERT_TRUE(onBoard(phoenix));
-    EXPECT_EQ(bfOf(phoenix), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(phoenix), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_FALSE(inTrash(P1, phoenix));
     EXPECT_EQ(ps(P1).rune_pool.energy, 0);
     EXPECT_EQ(power(P1, Domain::Fury), 0);
@@ -4048,7 +4048,7 @@ TEST_F(VerifyCardsTest, Nocturne_CanBePlayedToAControlledBattlefieldButNotWhereU
     EXPECT_FALSE(promptOffersValue(agent, 1, 2)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, 1, 3));
     ASSERT_TRUE(onBoard(nocturne));
-    EXPECT_EQ(bfOf(nocturne), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(nocturne), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_FALSE(inDeck(P1, nocturne));
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "\"play me for [A]\"";
 }
@@ -4070,7 +4070,7 @@ TEST_F(VerifyCardsTest, UndyingLoyalty_TheUnitCanBePlayedToAControlledBattlefiel
     });
     playThroughEngine(spell, &agent);
     ASSERT_TRUE(onBoard(poro));
-    EXPECT_EQ(bfOf(poro), std::optional<BattlefieldId>{1})
+    EXPECT_EQ(bfOf(poro), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)})
         << "CR 355.2.a: base or a battlefield you control";
     EXPECT_FALSE(inTrash(P1, poro));
 }
@@ -4186,7 +4186,7 @@ TEST_F(VerifyCardsTest, BardMercurial_TheSecondOpenBattlefieldAndALaterUnitWhenT
     EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "both open battlefields are offered";
     EXPECT_TRUE(promptOffersValue(agent, 1, 1));
     EXPECT_TRUE(agent.wasOffered(u1));
-    EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(o(u1).isAtBase()) << "any number: not every unit";
     EXPECT_TRUE(o(bard).isAtBase());
 }
@@ -4328,7 +4328,7 @@ TEST_F(VerifyCardsTest, StalkingWolf_AmbushedToItsVictimsBattlefield_TheVictimIs
     EXPECT_EQ(entered, 1);
     EXPECT_FALSE(victim_on_board_at_entry) << "killed as I am played, before I enter";
     EXPECT_FALSE(onBoard(poro));
-    EXPECT_EQ(bfOf(wolf), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(bfOf(wolf), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "even if you don't have other units there";
 }
 
@@ -4358,8 +4358,8 @@ TEST_F(VerifyCardsTest, CorruptedDragon_DoesNotOfferAnEnemyUnitItCannotMoveToBas
     EXPECT_FALSE(agent.wasOffered(rooted)) << "can't move to base";
     EXPECT_TRUE(agent.wasOffered(free_unit));
     EXPECT_TRUE(o(free_unit).isAtBase());
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(rooted), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(rooted), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(o(guarded).moves_this_turn, 0);
     EXPECT_EQ(o(rooted).moves_this_turn, 0);
 }
@@ -4376,7 +4376,7 @@ TEST_F(VerifyCardsTest, Blitzcrank_DoesNotOfferAnEnemyUnitItCannotMove) {
     EnginePathAgent none(EnginePathAgent::accepting());
     fireTriggerThroughEngine(blitz, TriggerType::WhenYouPlayMe, &none);
     EXPECT_TRUE(none.prompts.empty()) << "no enemy unit he could move";
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 1);
     EnginePathAgent agent(EnginePathAgent::choosing(free_unit, EnginePathAgent::May::Yes));
@@ -4384,8 +4384,8 @@ TEST_F(VerifyCardsTest, Blitzcrank_DoesNotOfferAnEnemyUnitItCannotMove) {
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
     EXPECT_TRUE(agent.wasOffered(free_unit));
-    EXPECT_EQ(bfOf(free_unit), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(free_unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 // 674 Irresistible Faefolk: "you may move an enemy unit to that battlefield".
@@ -4399,15 +4399,15 @@ TEST_F(VerifyCardsTest, Faefolk_DoesNotOfferAnEnemyUnitItCannotMove) {
     EnginePathAgent none(EnginePathAgent::accepting());
     fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &none);
     EXPECT_TRUE(none.prompts.empty()) << "no enemy unit it could move";
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 1);
     EnginePathAgent agent(EnginePathAgent::choosing(free_unit, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
-    EXPECT_EQ(bfOf(free_unit), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(free_unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
 
 // ─── 9.M28: Safety Inspector 726 — the 3 XP is an additional cost of the play ─
@@ -4705,7 +4705,7 @@ TEST_F(VerifyCardsTest, Voidreaver_SecondAbilityDoesNotMoveAUnitThatCannotMoveTo
     setXp(P1, 2);
     EnginePathAgent agent(EnginePathAgent::choosing(unit));
     activate(legend, &agent, 1);
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "a move is stopped by \"can't move to base\"; a recall would not be (CR 458.3)";
     EXPECT_EQ(o(unit).moves_this_turn, 0);
 }
@@ -5021,7 +5021,7 @@ TEST_F(VerifyCardsTest, BlindFury_TheRevealedUnitIsPlayedWhereTheCasterChooses) 
     EXPECT_TRUE(promptOffersValue(agent, 0, 2));
     ASSERT_TRUE(onBoard(top));
     EXPECT_EQ(o(top).controller, P1);
-    EXPECT_EQ(bfOf(top), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(top), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(shown, 1) << "revealed once, not again when re-entered with the answer";
     EXPECT_FALSE(inBanishment(P2, top));
 }
@@ -5051,7 +5051,7 @@ TEST_F(VerifyCardsTest, Reinforce_TheUnitIsPlayedWhereItsControllerChooses) {
     EXPECT_FALSE(promptOffersValue(agent, 1, 1)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, 1, 2));
     ASSERT_TRUE(onBoard(unit));
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_FALSE(inBanishment(P1, unit));
     EXPECT_EQ(deckSize(P1), 1) << "the rest was recycled";
 }
@@ -5075,8 +5075,8 @@ TEST_F(VerifyCardsTest, PromisingFuture_EachPlayerChoosesWhereTheirUnitIsPlayed)
     EXPECT_TRUE(promptOffersValue(them, 1, 2));
     ASSERT_TRUE(onBoard(mine));
     ASSERT_TRUE(onBoard(theirs));
-    EXPECT_EQ(bfOf(mine), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(theirs), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(mine), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(theirs), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(o(theirs).controller, P2);
 }
 
@@ -5090,7 +5090,7 @@ TEST_F(VerifyCardsTest, TheHarrowing_TheUnitIsPlayedWhereItsControllerChooses) {
     EXPECT_TRUE(promptOffersValue(agent, last, 0)) << "the last prompt is where: base";
     EXPECT_TRUE(promptOffersValue(agent, last, 1));
     ASSERT_TRUE(onBoard(dead));
-    EXPECT_EQ(bfOf(dead), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(dead), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_FALSE(inTrash(P1, dead));
 }
 
@@ -5118,7 +5118,7 @@ TEST_F(VerifyCardsTest, BaitedHook_TheUnitIsPlayedWhereItsControllerChooses) {
     EXPECT_TRUE(promptOffersValue(agent, 1, 1));
     EXPECT_FALSE(onBoard(victim));
     ASSERT_TRUE(onBoard(eligible));
-    EXPECT_EQ(bfOf(eligible), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(eligible), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_FALSE(inBanishment(P1, eligible));
     EXPECT_EQ(deckSize(P1), 1) << "the rest was recycled";
 }
@@ -5151,7 +5151,7 @@ TEST_F(VerifyCardsTest, ZeroDrive_EachUnitIsPlayedWhereItsControllerChooses) {
     }
     ASSERT_TRUE(onBoard(first));
     ASSERT_TRUE(onBoard(second));
-    EXPECT_EQ(bfOf(first), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(first), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(o(second).isAtBase());
     EXPECT_TRUE(ps(P1).banishment == std::vector<GameObjectId>{drive})
         << "\"Banish this\" was paid once; both units left banishment";
@@ -5177,7 +5177,7 @@ TEST_F(VerifyCardsTest, LastRites_TheUnitIsPlayedWhereItsControllerChooses) {
     EXPECT_TRUE(promptOffersValue(agent, 2, 1)) << "where the bearer held";
     EXPECT_TRUE(promptOffersValue(agent, 2, 2)) << "the other battlefield it controls";
     ASSERT_TRUE(onBoard(in_trash));
-    EXPECT_EQ(bfOf(in_trash), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(in_trash), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "its [3] was paid";
 }
 
@@ -5196,7 +5196,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_TheBanishedUnitIsPlayedWhereItsControllerCh
     EXPECT_FALSE(promptOffersValue(agent, 2, 1)) << "units can't be played to battlefield #0";
     EXPECT_TRUE(promptOffersValue(agent, 2, 2));
     ASSERT_TRUE(onBoard(top));
-    EXPECT_EQ(bfOf(top), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(top), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_FALSE(inBanishment(P1, top));
     EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "its cost was paid";
     EXPECT_TRUE(inDeck(P1, below)) << "recycle the rest";
@@ -5235,7 +5235,7 @@ TEST_F(VerifyCardsTest, CursedSarcophagus_TheUnitIsPlayedWhereItsControllerChoos
     EXPECT_TRUE(promptOffersValue(agent, 1, 0));
     EXPECT_TRUE(promptOffersValue(agent, 1, 1));
     ASSERT_TRUE(onBoard(unit));
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "its [3] was paid";
     EXPECT_TRUE(o(coffin).tracked_objects.empty());
     EXPECT_TRUE(ps(P1).banishment.empty());
@@ -5268,7 +5268,7 @@ TEST_F(VerifyCardsTest, MysticVortex_TaxesAReactionPlayedHereFromTheFirstDecisio
     EXPECT_EQ(ps(P1).rune_pool.energy, 0);
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "her [2] and the Vortex's [A]";
     ASSERT_TRUE(bfOf(inferna).has_value());
-    EXPECT_EQ(*bfOf(inferna), 0u);
+    EXPECT_EQ(*bfOf(inferna), BattlefieldId::fromRaw(0));
 }
 
 // "here" is where the SHOWDOWN is, not where the taxed card goes: the same
@@ -5290,7 +5290,7 @@ TEST_F(VerifyCardsTest, MysticVortex_TaxesAReactionPlayedToAnotherBattlefieldDur
     });
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "the [A] was charged for a play elsewhere";
     ASSERT_TRUE(bfOf(inferna).has_value());
-    EXPECT_EQ(*bfOf(inferna), 1u);
+    EXPECT_EQ(*bfOf(inferna), BattlefieldId::fromRaw(1));
 }
 
 // A showdown at ANOTHER battlefield is not a showdown "here".
@@ -5406,7 +5406,7 @@ TEST_F(VerifyCardsTest, FoxFire_TotalNoLongerFits_TheControllerChoosesASubsetOfT
         x.name = "LateUnit";
         x.base_might = x.current_might = 1;
         x.zone = ZoneType::BattlefieldZone;
-        x.location = BattlefieldLocation{static_cast<BattlefieldId>(0)};
+        x.location = BattlefieldLocation{BattlefieldId::fromRaw(0)};
     });
     ASSERT_EQ(agent.prompts.size(), 6u) << "4 choices as it is played, 2 as it resolves";
     const std::vector<GameObjectId> originals = {r1, r2, r3, r4};
@@ -5489,7 +5489,7 @@ TEST_F(VerifyCardsTest, FoxFire_ChosenUnitsNoLongerAtOneBattlefield_OneGroupIsCh
     play.card = fox;
     EnginePathAgent agent(pickingInOrder({stays, moves, moves}));
     executeAndProbe(play, &agent, [&](GameState& live) {
-        live.getObject(moves).location = BattlefieldLocation{static_cast<BattlefieldId>(1)};
+        live.getObject(moves).location = BattlefieldLocation{BattlefieldId::fromRaw(1)};
     });
     ASSERT_EQ(agent.prompts.size(), 3u);
     const std::vector<GameObjectId> both = {stays, moves};
@@ -5572,7 +5572,7 @@ TEST_F(VerifyCardsTest, Flash_FirstPromptOffersMovingNoUnit) {
     EXPECT_TRUE(promptOffersValue(agent, 0, 0));
     ASSERT_FALSE(agent.prompts[0].empty());
     EXPECT_TRUE(agent.prompts[0].front().chosen_value.has_value()) << "listed first";
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0}) << "up to 2: none was chosen";
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)}) << "up to 2: none was chosen";
     EXPECT_TRUE(inTrash(P1, flash));
 }
 
@@ -5654,7 +5654,7 @@ TEST_F(VerifyCardsTest, EmperorsDivide_PlayableFromHandWithNoFriendlyUnitAtABatt
     EXPECT_TRUE(agent.prompts.empty());
     EXPECT_TRUE(inTrash(P1, spell));
     EXPECT_TRUE(o(in_base).isAtBase());
-    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // With units to choose, "done" is on the first prompt: none has to move.
@@ -5672,8 +5672,8 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FirstPromptOffersMovingNoUnit) {
     });
     playAt(spell, {u1}, &agent);
     EXPECT_EQ(agent.prompts.size(), 1u);
-    EXPECT_EQ(bfOf(u1), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(u1), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // ─── Disposal Order 665 (fixed) ─────────────────────────────────────────────
@@ -5832,7 +5832,7 @@ TEST_F(VerifyCardsTest, Pin_Moonfall_NoEnemyUnitMoved_StillGivesMinusTwo) {
     EnginePathAgent decline(EnginePathAgent::script({0, 0}));   // slot 0; no move
     playThroughEngine(second, &decline);
     EXPECT_EQ(decline.prompts.size(), 2u);
-    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_EQ(o(elsewhere).current_might, 3);
 }
 
@@ -5852,7 +5852,7 @@ TEST_F(VerifyCardsTest, Pin_TricksyTentacles_PlayableWithNoneAndMayChooseNone) {
     playThroughEngine(second, &done);
     EXPECT_EQ(done.prompts.size(), 1u) << "nothing chosen: no location is asked";
     EXPECT_TRUE(done.wasOffered(enemy));
-    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // 890 Shadows of the Past: "Return up to 2 units from trashes to their owners'
@@ -5888,7 +5888,7 @@ TEST_F(VerifyCardsTest, Pin_RelentlessPursuit_NoEquipment_StillMovesAndGrants) {
     EnginePathAgent agent(EnginePathAgent::script({1}));   // destination 1 = battlefield #0
     playAt(spell, {unit}, &agent);
     EXPECT_EQ(agent.prompts.size(), 1u) << "no Equipment: the attach is not asked";
-    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(state.delayed_abilities.size(), delayed_before + 1)
         << "\"When I conquer, you may move me to my base.\"";
 }
@@ -5904,7 +5904,7 @@ TEST_F(VerifyCardsTest, Pin_ShurikenFlip_NoEnemyUnitChosen_StillMovesAFriendlyUn
     EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine), 1}));
     playThroughEngine(first, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u) << "the damage is not asked";
-    EXPECT_EQ(bfOf(mine), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(mine), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 
     // With an enemy unit at a battlefield, "No damage" is on that prompt.
     auto enemy = addUnit(P2, kInvalidId, 5, 1);
@@ -5916,7 +5916,7 @@ TEST_F(VerifyCardsTest, Pin_ShurikenFlip_NoEnemyUnitChosen_StillMovesAFriendlyUn
     ASSERT_EQ(decline.prompts.size(), 3u);
     EXPECT_TRUE(promptOffersValue(decline, 0, 0));
     EXPECT_EQ(o(enemy).damage_marked, 0);
-    EXPECT_EQ(bfOf(other), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(other), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // 937 Acceleration Gate: "Ready up to 4 units, gear, and/or runes."
@@ -6177,7 +6177,7 @@ TEST_F(VerifyCardsTest, Pin_JannaSavior_NoEnemyHere_NothingAskedAndStillHeals) {
     playThroughEngine(janna, &agent);                  // to my base
     EXPECT_TRUE(agent.prompts.empty());
     EXPECT_EQ(o(hurt).damage_marked, 0) << "the heal does not depend on the move";
-    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(VerifyCardsTest, Pin_JannaSavior_MovingNoEnemyIsTheFirstPromptsNo_AndStillHeals) {
@@ -6191,7 +6191,7 @@ TEST_F(VerifyCardsTest, Pin_JannaSavior_MovingNoEnemyIsTheFirstPromptsNo_AndStil
     ASSERT_EQ(agent.prompts.size(), 1u);
     EXPECT_TRUE(promptOffersValue(agent, 0, 0));
     EXPECT_FALSE(agent.wasOffered(enemy)) << "no unit prompt after 'No'";
-    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(o(hurt).damage_marked, 0);
 }
 
@@ -6511,7 +6511,7 @@ TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
     EnginePathAgent nobody(EnginePathAgent::script({}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &nobody);
     EXPECT_TRUE(nobody.prompts.empty());
-    EXPECT_EQ(bfOf(big), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(big), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 
     auto small1 = addUnit(P2, kInvalidId, 2, 0);
     auto small2 = addUnit(P2, kInvalidId, 3, 0);
@@ -6526,8 +6526,8 @@ TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
     EXPECT_TRUE(stop.wasOffered(small1));
     EXPECT_TRUE(stop.wasOffered(small2));
     EXPECT_FALSE(stop.wasOffered(big));
-    EXPECT_EQ(bfOf(small1), std::optional<BattlefieldId>{0});
-    EXPECT_EQ(bfOf(small2), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(small1), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+    EXPECT_EQ(bfOf(small2), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 // ─── Forge of the Future 212 (not a defect) ─────────────────────────────────
@@ -6574,7 +6574,7 @@ TEST_F(VerifyCardsTest, EmperorsDivide_FromFacedownWithNoFriendlyUnitThereIsPlay
         auto& card = o(spell);
         card.zone = ZoneType::BattlefieldZone;
         card.is_hidden = true;
-        card.hidden_at = static_cast<BattlefieldId>(0);
+        card.hidden_at = BattlefieldId::fromRaw(0);
         card.hidden_on_turn = 2;
         state.battlefields[0].facedown.push_back(spell);
     }
@@ -6621,7 +6621,7 @@ TEST_F(VerifyCardsTest, EmperorsDivide_FromFacedownWithNoFriendlyUnitThereIsPlay
     }, &agent);
     EXPECT_FALSE(agent.wasOffered(elsewhere)) << "only the units at that battlefield";
     EXPECT_TRUE(o(here).isAtBase());
-    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(inTrash(P1, spell));
 }
 
@@ -8025,12 +8025,12 @@ TEST_F(VerifyCardsTest, ElderDragon_ABattlefieldAddedInResponse_IsNotAskedAboutA
     fireAndProbe(dragon, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         asked_at_response = agent.prompts.size();
         BattlefieldState pit;                           // as Baron Nashor's Pit arrives
-        pit.id = static_cast<BattlefieldId>(live.battlefields.size());
+        pit.id = BattlefieldId::fromRaw(live.battlefields.size());
         live.battlefields.push_back(pit);
-        putOnBoard(live, late, static_cast<int>(pit.id));
+        putOnBoard(live, late, static_cast<int>(pit.id.raw()));
     });
     ASSERT_EQ(state.battlefields.size(), 3u);
-    ASSERT_EQ(bfOf(late), std::optional<BattlefieldId>{2});
+    ASSERT_EQ(bfOf(late), std::optional<BattlefieldId>{BattlefieldId::fromRaw(2)});
     EXPECT_EQ(asked_at_response, 1u) << "one location had an enemy unit at finalization";
     EXPECT_EQ(agent.prompts.size(), 1u) << "nothing is asked as it resolves";
     EXPECT_FALSE(agent.wasOffered(late));
@@ -8050,13 +8050,13 @@ TEST_F(VerifyCardsTest, ImposingChallenger_ABattlefieldAddedInResponse_NoDestina
     fireAndProbe(imp, TriggerType::WhenIMove, &agent, [&](GameState& live) {
         asked_at_response = agent.prompts.size();
         BattlefieldState pit;
-        pit.id = static_cast<BattlefieldId>(live.battlefields.size());
+        pit.id = BattlefieldId::fromRaw(live.battlefields.size());
         live.battlefields.push_back(pit);
     });
     ASSERT_EQ(state.battlefields.size(), 3u);
     EXPECT_EQ(asked_at_response, 2u) << "the may and the unit, at finalization";
     EXPECT_EQ(agent.prompts.size(), 2u) << "nothing is asked as it resolves";
-    EXPECT_EQ(bfOf(foe), std::optional<BattlefieldId>{1})
+    EXPECT_EQ(bfOf(foe), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)})
         << "moved to the battlefield that was the only other one at finalization";
 }
 
@@ -8353,7 +8353,7 @@ struct HiddenSpellSetup {
         h.erase(std::remove(h.begin(), h.end(), spell), h.end());
         card.zone = ZoneType::BattlefieldZone;
         card.is_hidden = true;
-        card.hidden_at = static_cast<BattlefieldId>(bf);
+        card.hidden_at = BattlefieldId::fromRaw(bf);
         card.hidden_on_turn = 2;
         state.battlefields[bf].facedown.push_back(spell);
         return spell;
@@ -8385,8 +8385,8 @@ TEST_F(VerifyCardsTest, EmperorsDivide_PlayedFromFacedownChoosingNone_MovesNothi
     }, &agent);
     EXPECT_TRUE(agent.prompts.empty()) << "nothing to choose";
     EXPECT_TRUE(inTrash(P1, spell)) << "it was played and resolved";
-    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1}) << "nothing moved";
-    EXPECT_EQ(bfOf(enemy_here), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)}) << "nothing moved";
+    EXPECT_EQ(bfOf(enemy_here), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(VerifyCardsTest, Pin_FoxFire_PlayedFromFacedownWithNoUnitAtItsBattlefield_KillsNothing) {

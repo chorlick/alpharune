@@ -324,12 +324,12 @@ TEST_F(C5Test, FioraVictoriousHasHerKeywordsOnlyWhileMighty) {
     EXPECT_EQ(might(fiora), 4);
 
     addUnit(P2, kInvalidId, 1, 0);
-    startCombat(0, P2, P1);
+    startCombat(BattlefieldId::fromRaw(0), P2, P1);
     cleanup();
     cleanup();
     EXPECT_EQ(might(fiora), 4) << "defending at 4 [M] does not make her Mighty";
     EXPECT_FALSE(has(fiora, Keyword::Shield));
-    endCombat(0);
+    endCombat(BattlefieldId::fromRaw(0));
 
     state.getObject(fiora).buff_count = 1;
     state.getObject(fiora).recomputeMight();
@@ -339,7 +339,7 @@ TEST_F(C5Test, FioraVictoriousHasHerKeywordsOnlyWhileMighty) {
     EXPECT_TRUE(has(fiora, Keyword::Shield));
     EXPECT_EQ(might(fiora), 5);
 
-    startCombat(0, P2, P1);
+    startCombat(BattlefieldId::fromRaw(0), P2, P1);
     state.getObject(fiora).recomputeMight();
     cleanup();
     cleanup();
@@ -470,7 +470,7 @@ TEST_F(C5Test, HarpoonSquadOnlyWhenItMovesFromABattlefield) {
     // Through the engine: base -> battlefield gives nothing, battlefield ->
     // base gives +2.
     auto mover = addUnit(P1, kHarpoonSquad, 0);
-    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(mover, 1); });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBattlefield(mover, BattlefieldId::fromRaw(1)); });
     EXPECT_EQ(state.getObject(mover).temp_might_bonus, 0);
     resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.moveToBase(mover); });
     EXPECT_EQ(state.getObject(mover).temp_might_bonus, 2);
@@ -480,7 +480,7 @@ TEST_F(C5Test, SivirAmbitiousDealsTheExcessDamage) {
     auto sivir = addUnit(P1, kSivirAmbitious, 0, 0);
     auto enemy = addUnit(P2, kInvalidId, 6, 1);
     auto& ps = state.player(P1);
-    ps.last_combat_bf = 0;
+    ps.last_combat_bf = BattlefieldId::fromRaw(0);
     ps.last_combat_attacker = true;
     ps.excess_combat_damage = 4;
     EXPECT_FALSE(card(kSivirAmbitious).triggerCondition(state, sivir, P1, TriggerType::WhenIConquer,
@@ -672,14 +672,14 @@ TEST_F(C5Test, TrustyRamhoundHasCompanyInBaseToo) {
 TEST_F(C5Test, FioraPeerlessDoublesHerMightForTheCombatOnly) {
     auto fiora = addUnit(P1, kFioraPeerless, 0, 0);
     addUnit(P2, kInvalidId, 3, 0);
-    startCombat(0, P1, P2);
+    startCombat(BattlefieldId::fromRaw(0), P1, P2);
     const int base = might(fiora);
     fireTriggerThroughEngine(fiora, TriggerType::WhenIAttackOrDefend);
     cleanup();
     EXPECT_EQ(might(fiora), 2 * base);
     EXPECT_EQ(state.getObject(fiora).temp_might_bonus, 0) << "not a 'this turn' bonus";
     // The combat ends.
-    endCombat(0);
+    endCombat(BattlefieldId::fromRaw(0));
     cleanup();
     EXPECT_EQ(might(fiora), base);
 }
@@ -749,7 +749,7 @@ TEST_F(C5Test, SpectralMatronLimitsThePrintedCostAndAsksWhere) {
     playThroughEngine(matron, &agent);
     EXPECT_FALSE(agent.wasOffered(powered)) << "no more than [3] AND no more than [A]";
     ASSERT_TRUE(onBoard(cheap));
-    EXPECT_EQ(state.getObject(cheap).battlefieldId(), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(state.getObject(cheap).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "CR 355.2.a: base or a battlefield you control";
     EXPECT_FALSE(inTrash(P1, cheap));
 }
@@ -929,7 +929,7 @@ TEST_F(C5Test, AzirMayLeaveTheEquipmentWhereItIs) {
     auto azir = addUnit(P1, kAzir, 0);
     EnginePathAgent no(EnginePathAgent::script({0, static_cast<int>(swap_with)}));
     activate(azir, no);
-    EXPECT_EQ(state.getObject(azir).battlefieldId(), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(state.getObject(azir).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(state.getObject(swap_with).isAtBase());
     EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>{swap_with})
         << "you MAY attach one of its Equipment";
@@ -955,7 +955,7 @@ TEST_F(C5Test, JannaSaviorHealsInBaseAndMayMoveNoOne) {
     EnginePathAgent no(EnginePathAgent::script({0}));
     playThroughEngine(at_bf, &no, LocationId{BattlefieldLocation{0}});
     ASSERT_FALSE(no.prompts.empty());
-    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(state.getObject(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "UP TO one enemy unit";
 
     auto mover = addToHand(P1, kJannaSavior);
@@ -1057,7 +1057,7 @@ TEST_F(C5Test, FaePorterPaysWhenTheTriggerIsFinalized) {
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
     EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(porter, TriggerType::WhenIMoveToFB, &agent);
-    EXPECT_EQ(state.getObject(ally).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(state.getObject(ally).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
 }
 
@@ -1075,7 +1075,7 @@ TEST_F(C5Test, OverzealousFanMovesTheAttackerToItsBase) {
     auto fan = addUnit(P1, kOverzealousFan, 0, 0);
     auto attacker = addUnit(P2, kShipyardSkulker, 0, 0);
     auto other = addUnit(P2, kShipyardSkulker, 0, 0);
-    startCombat(0, P2, P1);
+    startCombat(BattlefieldId::fromRaw(0), P2, P1);
     state.getObject(attacker).buff_count = 1;
     state.getObject(fan).card_counters["__defend_attacker_id"] = static_cast<int>(other);
     EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
@@ -1085,7 +1085,7 @@ TEST_F(C5Test, OverzealousFanMovesTheAttackerToItsBase) {
     EXPECT_FALSE(inHand(P2, attacker)) << "moved to its base, not returned to hand";
     EXPECT_TRUE(state.getObject(attacker).isAtBase());
     EXPECT_EQ(state.getObject(attacker).buff_count, 1) << "it keeps its buff";
-    EXPECT_EQ(state.getObject(other).battlefieldId(), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(state.getObject(other).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
 TEST_F(C5Test, FizzPlaysTheSpellThePlayerChooses) {
@@ -1134,7 +1134,7 @@ TEST_F(C5Test, RekSaiRevealIsAMayAndTheBanishIsCounted) {
     // "you may play it here": where it goes is asked (mode 1 = battlefield #0, here).
     EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &yes);
-    EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{0})
+    EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "If it is a unit, you may play it here.";
     EXPECT_EQ(state.player(P1).cards_banished_this_turn, 1);
     EXPECT_TRUE(state.player(P1).banishment.empty()) << "it was played out of banishment";

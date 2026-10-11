@@ -39,7 +39,7 @@ public:
         for (int i = 0; i < n; ++i)
             labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
                 ? ctx.state.getObject(bfs[i].card_object_id).name
-                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
         const int mode = pickMode(ctx, "Stare Down: battlefield", n, labels);
         if (mode == -1) return;   // waiting for the agent
 

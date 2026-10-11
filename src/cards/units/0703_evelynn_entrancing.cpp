@@ -53,7 +53,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         ctx.executor.moveToBattlefield(picked, *my_bf);
         RIFT_TRACE(ctx.events, "EVELYNN: pulled " + ctx.state.getObject(picked).name +
-                            " to my battlefield BF" + std::to_string(*my_bf));
+                            " to my battlefield BF" + toString(*my_bf));
     }
 private:
     const CardDef def_ = [] {

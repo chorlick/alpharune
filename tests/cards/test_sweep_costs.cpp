@@ -503,7 +503,7 @@ protected:
         hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
         o(card).zone = ZoneType::FacedownZone;
         o(card).is_hidden = true;
-        o(card).hidden_at = static_cast<BattlefieldId>(bf);
+        o(card).hidden_at = BattlefieldId::fromRaw(bf);
         o(card).hidden_on_turn = state.turn.turn_number - 1;
         state.battlefields[bf].facedown.push_back(card);
     }
@@ -1064,7 +1064,7 @@ TEST_F(SweepCostsTest, SwiftScout_HidesForOneEnergyInsteadOfThePower) {
     hide.type = IntentType::HideCard;
     hide.player = P1;
     hide.card = hidden_card;
-    hide.chosen_battlefield = 0;
+    hide.chosen_battlefield = BattlefieldId::fromRaw(0);
     execute(hide);
     EXPECT_TRUE(o(hidden_card).is_hidden);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
@@ -1545,7 +1545,7 @@ TEST_F(SweepCostsTest, HiddenPlay_HasNoCostGateAndATargetIsOfferedOnlyIfItsDefle
     hand.erase(std::remove(hand.begin(), hand.end(), spell), hand.end());
     o(spell).zone = ZoneType::FacedownZone;
     o(spell).is_hidden = true;
-    o(spell).hidden_at = 0;
+    o(spell).hidden_at = BattlefieldId::fromRaw(0);
     o(spell).hidden_on_turn = 2;
     state.battlefields[0].facedown.push_back(spell);
     // A hidden card is played with [Reaction] timing: an enemy item on the
@@ -1591,7 +1591,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ADiscountFromWhatItChoosesCountsBeforeP
     EXPECT_FALSE(agent.wasOffered(other)) << "[2] is out of reach for any other unit";
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
-    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 0u) << "it was played and resolved";
+    EXPECT_EQ(o(irelia).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(0)) << "it was played and resolved";
     EXPECT_TRUE(inTrash(P1, spell));
 }
 
@@ -1607,7 +1607,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_WithoutADiscountItPaysItsFullCostAndIsN
     EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(other)}));
     play(spell, &agent);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
-    EXPECT_EQ(o(other).battlefieldId().value_or(99), 0u);
+    EXPECT_EQ(o(other).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(0));
 }
 
 // ─── 9.T1: its Deflect is judged, and paid, with the spell's cost ───────────
@@ -1955,7 +1955,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AChoiceThatWouldLeaveItUnpayableIsNotOf
     EXPECT_TRUE(inTrash(P1, spell)) << "played and paid for";
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
-    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 1u);
+    EXPECT_EQ(o(irelia).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(1));
 }
 
 TEST_F(SweepCostsTest, FinalizePassSpell_IsNotOfferedWhenNoSequenceOfItsChoicesPaysForIt) {

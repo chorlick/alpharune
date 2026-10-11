@@ -126,7 +126,7 @@ public:
                 uint32_t mask = 1u;
                 std::vector<std::string> labels{"Base"};
                 for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
-                    labels.push_back("Battlefield #" + std::to_string(bfs[i].id));
+                    labels.push_back("Battlefield #" + toString(bfs[i].id));
                     if (ps.units_play_base_only || bfs[i].blocks_unit_play) continue;
                     const bool mine = bfs[i].controller.has_value() &&
                                       *bfs[i].controller == ctx.controller;

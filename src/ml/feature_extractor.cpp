@@ -23,8 +23,8 @@ inline float safeCardId(CardDefId id) {
 // certainly a corruption signal.
 inline float safeBfId(BattlefieldId id) {
     if (id == kInvalidId) return -1.0f;
-    if (id > 15) return -1.0f;
-    return static_cast<float>(id);
+    if (id.raw() > 15) return -1.0f;
+    return static_cast<float>(id.raw());
 }
 
 // Where the extractor's board queries land, gathered in ONE pass over

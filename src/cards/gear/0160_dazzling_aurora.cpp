@@ -50,7 +50,7 @@ public:
         for (const auto& bf : ctx.state.battlefields) {
             if (bf.controller.has_value() && *bf.controller == ctx.controller) {
                 locations.push_back(LocationId{BattlefieldLocation{bf.id}});
-                std::string bf_name = "BF#" + std::to_string(bf.id);
+                std::string bf_name = "BF#" + toString(bf.id);
                 if (ctx.state.objectExists(bf.card_object_id)) {
                     bf_name = ctx.state.getObject(bf.card_object_id).name;
                 }

@@ -31,8 +31,8 @@ TEST_F(TargetingAndCombatTest, HiddenBlade_TargetAlreadyDead_NoDrawNoCrash) {
     // CR 463 (no-target language): if the chosen unit no longer exists at
     // resolve time, the effect does nothing — including the "its
     // controller draws 2" rider.
-    BattlefieldId bf = 0;
-    auto victim = addUnit(P2, /*def_id=*/kInvalidId, /*might=*/3, /*at_bf=*/bf);
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto victim = addUnit(P2, /*def_id=*/kInvalidId, /*might=*/3, /*at_bf=*/static_cast<int>(bf.raw()));
     auto src = addToHand(P1, 213);  // Hidden Blade
 
     // Seed P2 deck so we can detect any stray draw (Hidden Blade rider
@@ -58,8 +58,8 @@ TEST_F(TargetingAndCombatTest, HiddenBlade_LivingTarget_KillsAndDrawsForOpponent
     // Sanity baseline: the rider DOES fire when the target is still
     // valid at resolve time. Without this, the previous test would
     // pass trivially (no draw = "feature working").
-    BattlefieldId bf = 0;
-    auto victim = addUnit(P2, /*def_id=*/kInvalidId, /*might=*/3, /*at_bf=*/bf);
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto victim = addUnit(P2, /*def_id=*/kInvalidId, /*might=*/3, /*at_bf=*/static_cast<int>(bf.raw()));
     auto src = addToHand(P1, 213);
     auto deck_card_1 = addToDeck(P2, kInvalidId);
     auto deck_card_2 = addToDeck(P2, kInvalidId);
@@ -84,8 +84,8 @@ TEST_F(TargetingAndCombatTest, DealDamage_DoesNotReduceBaseMightOrCurrentMight) 
     // Common MTG-brain bug: assume damage = stat reduction. In Riftbound
     // damage accumulates in damage_marked; base_might / current_might
     // are stat values that stay unchanged.
-    BattlefieldId bf = 0;
-    auto unit = addUnit(P1, /*def_id=*/kInvalidId, /*might=*/5, /*at_bf=*/bf);
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto unit = addUnit(P1, /*def_id=*/kInvalidId, /*might=*/5, /*at_bf=*/static_cast<int>(bf.raw()));
     ASSERT_EQ(state.getObject(unit).base_might, 5);
     ASSERT_EQ(state.getObject(unit).current_might, 5);
     ASSERT_EQ(state.getObject(unit).damage_marked, 0);
@@ -113,8 +113,8 @@ TEST_F(TargetingAndCombatTest, MutatedMouser_HasTankKeyword) {
     // lambda reads `hasKeyword(Keyword::Tank)` — verify the registry
     // load wired the keyword through so that comparator sees it.
     constexpr CardDefId kMutatedMouser = 598;
-    BattlefieldId bf = 0;
-    auto unit = addUnit(P1, kMutatedMouser, /*might=*/0, /*at_bf=*/bf);
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto unit = addUnit(P1, kMutatedMouser, /*might=*/0, /*at_bf=*/static_cast<int>(bf.raw()));
     EXPECT_TRUE(state.getObject(unit).hasKeyword(Keyword::Tank))
         << "Mutated Mouser must report Tank; combat ordering depends on it";
 }
@@ -125,10 +125,10 @@ TEST_F(TargetingAndCombatTest, TankAndBacklineOrdering_PartitionedAsExpected) {
     // non-Tank, and non-Backline precedes Backline. We build the same
     // sort the engine does to verify the contract is testable without
     // running a full combat step.
-    BattlefieldId bf = 0;
-    auto normal = addUnit(P1, kInvalidId, 3, bf);
-    auto tank = addUnit(P1, /*def_id=*/598, /*might=*/0, /*at_bf=*/bf);  // Mouser
-    auto backline = addUnit(P1, kInvalidId, 4, bf);
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto normal = addUnit(P1, kInvalidId, 3, static_cast<int>(bf.raw()));
+    auto tank = addUnit(P1, /*def_id=*/598, /*might=*/0, /*at_bf=*/static_cast<int>(bf.raw()));  // Mouser
+    auto backline = addUnit(P1, kInvalidId, 4, static_cast<int>(bf.raw()));
     state.getObject(backline).keywords.set(Keyword::Backline);
 
     std::vector<GameObjectId> units = {normal, backline, tank};
@@ -158,8 +158,8 @@ TEST_F(TargetingAndCombatTest, HiddenBlade_TargetMovedToBaseBeforeResolve_Fizzle
     // from the battlefield (e.g. to base, via a reaction). The target
     // no longer satisfies "a unit at a battlefield" → fizzle, no kill,
     // no rider draw.
-    BattlefieldId bf = 0;
-    auto victim = addUnit(P2, /*def_id=*/kInvalidId, /*might=*/3, /*at_bf=*/bf);
+    BattlefieldId bf = BattlefieldId::fromRaw(0);
+    auto victim = addUnit(P2, /*def_id=*/kInvalidId, /*might=*/3, /*at_bf=*/static_cast<int>(bf.raw()));
     auto src = addToHand(P1, 213);
     addToDeck(P2, kInvalidId);
     addToDeck(P2, kInvalidId);
@@ -207,7 +207,7 @@ protected:
         s.players[1].id = P2;
         for (int i = 0; i < n_bfs; ++i) {
             BattlefieldState bf;
-            bf.id = static_cast<int>(s.battlefields.size());
+            bf.id = BattlefieldId::fromRaw(s.battlefields.size());
             s.battlefields.push_back(bf);
         }
     }

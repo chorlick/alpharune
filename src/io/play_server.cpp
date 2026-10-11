@@ -517,7 +517,7 @@ private:
             auto zone = strToZone(zone_str);
             if (!zone) return EditResult::fail("unknown to_zone: '" + zone_str + "'");
             if (*zone == ZoneType::BattlefieldZone) {
-                BattlefieldId bid = static_cast<BattlefieldId>(idField(m, "battlefield_id"));
+                BattlefieldId bid = BattlefieldId::fromRaw(idField(m, "battlefield_id"));
                 return impl_.editor.moveObjectToBattlefield(state, oid, bid);
             }
             return impl_.editor.moveObject(state, oid, strToPlayer(strField(m, "to_player")),
@@ -755,7 +755,7 @@ json buildLegalActionJson(const CardDB& db,
         // the renderer's regular path handles those.)
         if (a.type == IntentType::ChooseBattlefield) {
             const auto& pool = state.player(a.player).battlefield_pool;
-            auto idx = static_cast<size_t>(a.chosen_battlefield);
+            auto idx = static_cast<size_t>(a.chosen_battlefield.raw());
             if (idx < pool.size()) {
                 const auto& def = db.get(pool[idx]);
                 label = "Choose battlefield: " + def.name;
@@ -871,7 +871,7 @@ json buildBattlefieldsJson(const CardDB& db, const GameState& state) {
         if (bf.contributed_by == PlayerId::Player1) contributor_str = "P1";
         else if (bf.contributed_by == PlayerId::Player2) contributor_str = "P2";
         arr.push_back(json{
-            {"id", static_cast<int>(bf.id)},
+            {"id", static_cast<int>(bf.id.raw())},
             {"name", std::move(name)},
             {"controller", controller_str},
             {"contributed_by", contributor_str},

@@ -28,7 +28,7 @@ struct Table {
 
     Table() {
         s.battlefields.emplace_back();
-        s.battlefields.back().id = 0;
+        s.battlefields.back().id = BattlefieldId::fromRaw(0);
     }
 
     GameObjectId make(PlayerId owner, CardDefId card, ZoneType zone) {

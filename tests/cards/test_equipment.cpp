@@ -106,7 +106,7 @@ protected:
         // this test and put the gear at a battlefield that does not exist.)
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -841,7 +841,7 @@ TEST_F(WeaponmasterTest, AllWeaponmasterUnitsRegistered) {
 
 TEST_F(WeaponmasterTest, ArmedAssailantEquipsAvailableEquipment) {
     auto wm   = addUnit(P1, kArmedAssailant, /*might=*/0, /*at_bf=*/0);
-    auto gear = addEquipmentGear(P1, kLongSword, /*at_bf=*/0);
+    auto gear = addEquipmentGear(P1, kLongSword, /*at_bf=*/BattlefieldId::fromRaw(0));
     int gear_bonus = state.getObject(gear).might_bonus;
 
     EffectExecutor exec(state, events, card_db);
@@ -855,7 +855,7 @@ TEST_F(WeaponmasterTest, ArmedAssailantEquipsAvailableEquipment) {
 TEST_F(WeaponmasterTest, OrnnDetachesGearFromOtherUnitToSelf) {
     // Existing unit with an Equipment already attached — Ornn steals it.
     auto holder = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
-    auto gear   = addEquipmentGear(P1, kBFSword, /*at_bf=*/0);
+    auto gear   = addEquipmentGear(P1, kBFSword, /*at_bf=*/BattlefieldId::fromRaw(0));
     int gear_bonus = state.getObject(gear).might_bonus;
     state.getObject(gear).attached_to = holder;
     state.getObject(holder).attachments.push_back(gear);

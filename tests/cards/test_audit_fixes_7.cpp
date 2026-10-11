@@ -32,7 +32,7 @@ protected:
         obj.might_bonus = might_bonus;
         if (at_bf >= 0) {
             obj.zone = ZoneType::BattlefieldZone;
-            obj.location = BattlefieldLocation{static_cast<BattlefieldId>(at_bf)};
+            obj.location = BattlefieldLocation{BattlefieldId::fromRaw(at_bf)};
         } else {
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{owner};
@@ -98,7 +98,7 @@ TEST_F(AuditFix7Test, Stupefy_NoTargetStillDraws) {
 TEST_F(AuditFix7Test, ArenasGreatest_FirstBeginningGivesPoint) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 285);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 285);
     setScore(P1, 0);
 
     fireTriggerAs(285, P1, src, TriggerType::AtStartOfBeginning, exec);
@@ -109,7 +109,7 @@ TEST_F(AuditFix7Test, ArenasGreatest_FirstBeginningGivesPoint) {
 TEST_F(AuditFix7Test, ArenasGreatest_OnlyFiresOncePerPlayer) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 285);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 285);
     setScore(P1, 0);
 
     fireTriggerAs(285, P1, src, TriggerType::AtStartOfBeginning, exec);
@@ -121,7 +121,7 @@ TEST_F(AuditFix7Test, ArenasGreatest_OnlyFiresOncePerPlayer) {
 TEST_F(AuditFix7Test, ArenasGreatest_PerPlayerGate) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 285);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 285);
     setScore(P1, 0);
     setScore(P2, 0);
 
@@ -272,7 +272,7 @@ TEST_F(AuditFix7Test, Switcheroo_SecondMustBeSameBattlefield) {
 TEST_F(AuditFix7Test, EmperorsDais_BounceAndSpawnToken) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 521);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 521);
     auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
     addRune(P1, Domain::Body, /*exhausted=*/false);  // pays [1]
 
@@ -286,7 +286,7 @@ TEST_F(AuditFix7Test, EmperorsDais_BounceAndSpawnToken) {
     int soldiers = 0;
     for (auto& [id, obj] : state.objects) {
         if (obj.isToken() && obj.name == "Sand Soldier" &&
-            obj.battlefieldId() && *obj.battlefieldId() == 0) {
+            obj.battlefieldId() && *obj.battlefieldId() == BattlefieldId::fromRaw(0)) {
             ++soldiers;
             EXPECT_EQ(obj.current_might, 2);
         }
@@ -297,7 +297,7 @@ TEST_F(AuditFix7Test, EmperorsDais_BounceAndSpawnToken) {
 TEST_F(AuditFix7Test, EmperorsDais_NoUnitHereNoEffect) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 521);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 521);
     addRune(P1, Domain::Body, false);
     // No friendly unit at BF 0.
 
@@ -313,7 +313,7 @@ TEST_F(AuditFix7Test, EmperorsDais_NoUnitHereNoEffect) {
 TEST_F(AuditFix7Test, EmperorsDais_CannotPayNoEffect) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 521);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 521);
     auto unit = addUnit(P1, kInvalidId, /*might=*/3, /*at_bf=*/0);
     addRune(P1, Domain::Body, /*exhausted=*/true);  // only an exhausted rune
 
@@ -540,7 +540,7 @@ TEST_F(AuditFix7Test, HextechGauntlets_ConquerRiderDraws) {
     EXPECT_EQ(card->equippedTriggerType(), TriggerType::WhenIConquer);
     CardContext ctx{state, events, exec, P1, gear};
     // "if you assigned 3 or more excess damage": in the combat where my unit is.
-    state.player(P1).last_combat_bf = 0;
+    state.player(P1).last_combat_bf = BattlefieldId::fromRaw(0);
     state.player(P1).excess_combat_damage = 2;
     card->onEquippedTrigger(ctx, unit, {});
     EXPECT_EQ(handSize(P1), before) << "2 excess is not enough";
@@ -556,7 +556,7 @@ TEST_F(AuditFix7Test, HextechGauntlets_ConquerRiderDraws) {
 TEST_F(AuditFix7Test, StarSpring_MovesAnotherUnitToBase) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 771);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 771);
     state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
     // The played unit is the trigger's subject (TriggerManager::onCardPlayed);
@@ -575,7 +575,7 @@ TEST_F(AuditFix7Test, StarSpring_MovesAnotherUnitToBase) {
 TEST_F(AuditFix7Test, StarSpring_OnlyFiresOncePerTurnPerPlayer) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 771);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 771);
     state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
     auto other = addUnit(P1, kInvalidId, 2, /*at_bf=*/0);
@@ -600,7 +600,7 @@ TEST_F(AuditFix7Test, StarSpring_OnlyFiresOncePerTurnPerPlayer) {
 TEST_F(AuditFix7Test, StarSpring_NoOpWhenNoOtherUnitHere) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 771);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 771);
     state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
     auto played = addUnit(P1, kInvalidId, 3, /*at_bf=*/0);  // only one unit here
@@ -615,7 +615,7 @@ TEST_F(AuditFix7Test, StarSpring_NoOpWhenNoOtherUnitHere) {
 TEST_F(AuditFix7Test, StarSpring_IgnoresTokenOnlyPlay) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    auto src = installBattlefieldCard(0, 771);
+    auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 771);
     state.getObject(src).controller = P1;   // who the engine-path helper fires it for
     state.turn.turn_number = 1;
     // A TOKEN unit is played here: "plays a non-token unit" is not met, so the

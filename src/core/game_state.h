@@ -826,6 +826,19 @@ struct DelayedAbility {
 
 // ─── Complete Game State ─────────────────────────────────────────────────────
 
+/// GameState::battlefields: the vector it always was, which a slot's id also
+/// indexes (`state.battlefields[bf_id]`; an id is the slot's position).
+struct BattlefieldList : std::vector<BattlefieldState> {
+    using std::vector<BattlefieldState>::vector;
+    using std::vector<BattlefieldState>::operator[];
+    BattlefieldState& operator[](BattlefieldId id) {
+        return std::vector<BattlefieldState>::operator[](id.raw());
+    }
+    const BattlefieldState& operator[](BattlefieldId id) const {
+        return std::vector<BattlefieldState>::operator[](id.raw());
+    }
+};
+
 struct GameState {
     // Configuration
     ModeOfPlay mode;
@@ -834,7 +847,7 @@ struct GameState {
     PlayerState players[2];
 
     // Board
-    std::vector<BattlefieldState> battlefields;
+    BattlefieldList battlefields;
 
     // All game objects (the object pool). An ObjectTable: the unordered_map it
     // always was — same iteration order, stable references — plus an index of

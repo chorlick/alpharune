@@ -59,7 +59,7 @@ public:
         std::string name = ctx.state.getObject(target).name;
         ctx.executor.moveToBattlefield(target, *my_bf);
         RIFT_TRACE(ctx.events, "BLITZCRANK: pulled " + name + " to BF#" +
-                             std::to_string(static_cast<int>(*my_bf)));
+                             std::to_string(static_cast<int>((*my_bf).raw())));
     }
 private:
     const CardDef def_ = [] {

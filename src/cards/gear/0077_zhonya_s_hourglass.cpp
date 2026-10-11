@@ -22,13 +22,9 @@ public:
         return victim.isUnit() && victim.controller == state.getObject(self).controller;
     }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
-        if (!ctx.state.objectExists(ctx.source)) return false;
-        if (!ctx.state.objectExists(dying_unit)) return false;
-        const auto& self = ctx.state.getObject(ctx.source);
+        // Only a FRIENDLY unit's death (replacementApplies).
+        if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
         const auto& victim = ctx.state.getObject(dying_unit);
-        // Only intercept a FRIENDLY unit's death.
-        if (!victim.isUnit()) return false;
-        if (victim.controller != self.controller) return false;
         ctx.events.logTrace("ZHONYA'S HOURGLASS: kill self instead of " +
                              victim.name + " — heal/exhaust/recall it");
         // Kill the gear instead.

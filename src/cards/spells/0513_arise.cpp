@@ -57,6 +57,7 @@ public:
             c.chosen_objects = {id};
             opts.push_back(std::move(c));
         }
+        // On every prompt, the first included: none of them is a choice (CR 355.13).
         Intent stop;                       // "up to two": may stop early
         stop.type = IntentType::MakeChoice;
         stop.player = ctx.controller;

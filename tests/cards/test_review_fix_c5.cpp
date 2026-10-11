@@ -487,7 +487,7 @@ TEST_F(C5Test, SivirAmbitiousDealsTheExcessDamage) {
     ps.excess_combat_damage = 6;
     EXPECT_TRUE(card(kSivirAmbitious).triggerCondition(state, sivir, P1, TriggerType::WhenIConquer,
                                                        kInvalidId));
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(sivir, TriggerType::WhenIConquer, &agent);
     ASSERT_GE(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(onBoard(enemy)) << "6 excess damage kills a 6 [M] unit";
@@ -538,7 +538,7 @@ TEST_F(C5Test, AkshanHasWeaponmasterAndChoosesTheGearHeSteals) {
     auto plain = addGear(P2);
     auto equipment = addGear(P2, kInvalidId, /*equipment=*/true);
     state.getObject(akshan).card_counters["__akshan_paid"] = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(equipment));
+    EnginePathAgent agent(EnginePathAgent::choosing(equipment, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(akshan, TriggerType::AsYouPlayMe, &agent);
     EXPECT_TRUE(agent.wasOffered(plain)) << "the controller chooses among the enemy gear";
     EXPECT_EQ(state.getObject(equipment).controller, P1);
@@ -549,7 +549,7 @@ TEST_F(C5Test, AkshanHasWeaponmasterAndChoosesTheGearHeSteals) {
 
     // [Weaponmaster]: a may, with a choice of Equipment.
     auto own = addGear(P1, kInvalidId, /*equipment=*/true);
-    EnginePathAgent wm(EnginePathAgent::choosing(own));
+    EnginePathAgent wm(EnginePathAgent::choosing(own, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(akshan, TriggerType::WhenYouPlayMe, &wm);
     ASSERT_FALSE(wm.prompts.empty());
     EXPECT_EQ(state.getObject(own).attached_to, std::optional<GameObjectId>{akshan});
@@ -706,7 +706,7 @@ TEST_F(C5Test, OrnnBlacksmithLetsThePlayerChooseTheGearOrNone) {
     auto gear_b = addToDeck(P1, kDoransShield);
     auto gear_a = addToDeck(P1, kSerratedDirk);
     addToDeck(P1, kMeditation);   // top
-    EnginePathAgent agent(EnginePathAgent::choosing(gear_b));
+    EnginePathAgent agent(EnginePathAgent::choosing(gear_b, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(ornn, TriggerType::WhenIHold, &agent);
     EXPECT_TRUE(agent.wasOffered(gear_a));
     EXPECT_TRUE(inHand(P1, gear_b));
@@ -813,7 +813,7 @@ TEST_F(C5Test, DravenVanquisherPaysWithFloatingPower) {
 TEST_F(C5Test, RellMagneticPlaysTheEquipmentOutOfHand) {
     auto rell = addUnit(P1, kRellMagnetic, 0, 0);
     auto dirk = addToHand(P1, kSerratedDirk);
-    EnginePathAgent agent(EnginePathAgent::choosing(dirk));
+    EnginePathAgent agent(EnginePathAgent::choosing(dirk, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(rell, TriggerType::WhenIAttack, &agent);
     EXPECT_FALSE(inHand(P1, dirk));
     EXPECT_EQ(state.getObject(dirk).attached_to, std::optional<GameObjectId>{rell});
@@ -823,7 +823,7 @@ TEST_F(C5Test, RellMagneticPlaysTheEquipmentOutOfHand) {
     auto gone = addUnit(P1, kRellMagnetic, 0, 0);
     auto shield = addToHand(P1, kDoransShield);
     sendToTrash(gone);
-    EnginePathAgent agent2(EnginePathAgent::choosing(shield));
+    EnginePathAgent agent2(EnginePathAgent::choosing(shield, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(gone, TriggerType::WhenIAttack, &agent2);
     // 9.B3: the checks on the Equipment were inside `if (onBoard(shield))`, so
     // a Rell that did nothing at all passed. "You may play an Equipment ..."
@@ -921,7 +921,7 @@ TEST_F(C5Test, AzirMayLeaveTheEquipmentWhereItIs) {
         act.ability_source = azir;
         act.ability_index = 0;
         withEngine([&](GameEngine& e) {
-            e.testHook_executeIntent(act);
+            e.testHook_executeIntent(act); settleLikeTheEngine(e);
             e.testHook_runChain();
         }, &agent);
     };
@@ -958,7 +958,7 @@ TEST_F(C5Test, JannaSaviorHealsInBaseAndMayMoveNoOne) {
         << "UP TO one enemy unit";
 
     auto mover = addToHand(P1, kJannaSavior);
-    EnginePathAgent yes(EnginePathAgent::choosing(enemy));
+    EnginePathAgent yes(EnginePathAgent::choosing(enemy, EnginePathAgent::May::Yes));
     playThroughEngine(mover, &yes, LocationId{BattlefieldLocation{0}});
     EXPECT_TRUE(state.getObject(enemy).isAtBase());
 }
@@ -978,7 +978,7 @@ TEST_F(C5Test, BubbleBotReadiesTheMechThePlayerChooses) {
 TEST_F(C5Test, PickpocketCanKillAGearTokenWithoutACard) {
     auto pickpocket = addToHand(P1, kPickpocket);
     auto token = addGear(P2);   // no card_def_id
-    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    EnginePathAgent agent(EnginePathAgent::choosing(token, EnginePathAgent::May::Yes));
     EXPECT_NO_THROW(playThroughEngine(pickpocket, &agent));
     EXPECT_FALSE(onBoard(token));
     EXPECT_EQ(goldCount(P1), 1);
@@ -989,7 +989,7 @@ TEST_F(C5Test, JayceKillsTheChosenGearAndGrantsAPlayThisTurn) {
     auto keep = addGear(P1, kSerratedDirk);
     auto kill = addGear(P1, kDoransShield);
     auto in_hand = addToHand(P1, kScrapheap);
-    EnginePathAgent agent(EnginePathAgent::choosing(kill));
+    EnginePathAgent agent(EnginePathAgent::choosing(kill, EnginePathAgent::May::Yes));
     playThroughEngine(jayce, &agent);
     EXPECT_TRUE(agent.wasOffered(keep)) << "the player chooses which gear";
     EXPECT_FALSE(onBoard(kill));
@@ -1054,7 +1054,7 @@ TEST_F(C5Test, FaePorterPaysWhenTheTriggerIsFinalized) {
     EXPECT_TRUE(state.getObject(ally).isAtBase());
 
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(porter, TriggerType::WhenIMoveToFB, &agent);
     EXPECT_EQ(state.getObject(ally).battlefieldId(), std::optional<BattlefieldId>{0});
     EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
@@ -1077,7 +1077,7 @@ TEST_F(C5Test, OverzealousFanMovesTheAttackerToItsBase) {
     startCombat(0, P2, P1);
     state.getObject(attacker).buff_count = 1;
     state.getObject(fan).card_counters["__defend_attacker_id"] = static_cast<int>(other);
-    EnginePathAgent agent(EnginePathAgent::choosing(attacker));
+    EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fan, TriggerType::WhenIDefend, &agent);
     EXPECT_TRUE(agent.wasOffered(other)) << "AN attacking unit: the controller chooses";
     EXPECT_FALSE(onBoard(fan)) << "kill me";

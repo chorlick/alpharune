@@ -440,7 +440,7 @@ TEST_F(XpMegatuskTest, BelowThreeXpIsNoOp) {
     act.type = IntentType::ActivateAbility;
     act.player = P1;
     act.ability_source = megatusk;
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); });
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); });
 
     EXPECT_EQ(state.player(P1).xp, 2) << "no XP spent when can't afford";
     EXPECT_FALSE(state.getObject(buddy).keywords.has(Keyword::Ganking))
@@ -457,7 +457,7 @@ TEST_F(XpMegatuskTest, SpendsThreeXpAndGrantsGanking) {
     act.type = IntentType::ActivateAbility;
     act.player = P1;
     act.ability_source = megatusk;
-    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); });
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); settleLikeTheEngine(e); });
 
     EXPECT_EQ(state.player(P1).xp, 2) << "3 XP spent";
     EXPECT_TRUE(state.getObject(buddy).keywords.has(Keyword::Ganking))

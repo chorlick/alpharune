@@ -31,6 +31,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: each chooses "a unit".
   - Code: the hand-built candidate lists omit the `untargetable_by_enemy` filter that `Card::enumerateLegalTargets` / `chooseableUnits` apply (Challenge 128, Facebreaker 220, Strike Down 429 in this batch do filter). Whirlwind also builds raw `MakeChoice` options, so no Deflect is charged (same class as 07 item 7.30).
   - Scenario: opponent controls a "can't be chosen by enemy spells and abilities" unit (Baron Nashor) -> Falling Star deals 3 to it, Switcheroo swaps its Might, Whirlwind bounces it.
+  - c2: 29 Falling Star, 334 Angle Shot, 187 Whirlwind — FIXED: candidates come from `chooseableUnits` (Angle Shot also filters the Equipment); Whirlwind builds each player's options with `offerableChoices` and pays Deflect with `commitChosenObject`, from the choosing player's side; test: ReviewFixC2Test.HandBuiltUnitChoicesSkipAnUnchoosableEnemyUnit, ReviewFixC2Test.Whirlwind_ChoosingAnOpponentsDeflectUnitCostsPower. 466 Switcheroo is outside the c2 range.
 - [x] **63 Spirit's Refuge** - `gear/0063_spirit_s_refuge.cpp:36-45,63-64` [confirmed] medium — FIXED: (a) units that already have [Deflect] are skipped (`hasKeywordInAuraPass`), (b) so a second Refuge adds nothing, (c) the def no longer gives the gear itself [Deflect]; test: C0Test.SpiritsRefuge_DeflectOnlyIfTheUnitHadNone, .SpiritsRefuge_BuffsAChosenUnitWhenPlayed
   - Text: "Friendly buffed units have [Deflect] if they didn't already."
   - Code: (a) every buffed unit gets a Deflect-1 aura with no "didn't already" check, and `deflectCostFor` (`effect_executor.cpp:368-370`) sums `deflect_value` plus each aura, so a unit with printed Deflect costs 2. (b) The hook is called once per on-board Refuge and each call adds another aura from the first instance (S3), so two Refuges give Deflect 2. (c) The def sets `d.keywords.set(Keyword::Deflect)` and `d.deflect_value = 1` on the gear itself (`game_engine.cpp:5250-5253` copies both), so the opponent pays [A] to choose the Refuge gear, which the card does not say.
@@ -44,11 +45,11 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "You may pay [1] to hide a card with [Hidden] instead of [A]."
   - Code: not implemented ("ENGINE GAP" comment); the hide cost path (`game_engine.cpp:2505`) always recycles a rune.
   - Scenario: Teemo player with one ready rune and no rune to spare for Power cannot hide a card for [1].
-- [ ] **309 Flash** - `spells/0309_flash.cpp:30-44` [documented] low
+- [x] **309 Flash** - `spells/0309_flash.cpp:30-44` [documented] low — FIXED: the units are chosen one prompt at a time at finalization and "No more units" is offered after the first; test: ReviewFixC2Test.Flash_UpToTwo_OneUnitCanStayBehind, ReviewFixC2Test.Flash_StillMovesTwo
   - Text: "Move up to 2 friendly units to base."
   - Code: `pickTargetPair` has no decline; with two or more friendly units at battlefields exactly two must be moved, and zero is impossible when one exists.
   - Scenario: you want to pull one defender out and keep the second holding -> both are moved to base.
-- [ ] **306 Gentlemen's Duel** - `spells/0306_gentlemen_s_duel.cpp:46-51` [plausible] low
+- [x] **306 Gentlemen's Duel** - `spells/0306_gentlemen_s_duel.cpp:46-51` [plausible] low — ALREADY FIXED: confirmed plausible, fixed in the helper (07 item 7.32: `pickTargetPair` returns `{kInvalidId, kInvalidId}` while waiting for the second pick, commit `f892d67`), so `friendly == kInvalidId` is the suspend; the card is unchanged; test: ChoiceHelperTest.PickTargetPairReturnsNothingWhileWaitingForTheSecondPick, ReviewFixC2Test.GentlemensDuel_GivesTheBonusOnce
   - Text: "Give a friendly unit +3 [M] this turn."
   - Code: only `friendly == kInvalidId` is treated as "suspended". While the second pick is pending `pickTargetPair` returns `{a, kInvalidId}` (resume_point 12, `card.cpp:583-584`), so `giveTemporaryMight(friendly, 3)` runs, then runs again on re-entry. Masked by the finalize pass; reachable when choices are redone at resolution (`game_engine.cpp:1312-1321`, "make new choices"). Same shape as 07 item 7.32; this card is not listed there.
   - Scenario: opponent's Rebuttal makes new choices for the Duel -> friendly unit gets +6 and deals 3 extra damage.
@@ -61,6 +62,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Code: all three restrict the choice to friendly units. Matriarch of War (940), same "Ready a unit" wording, offers every unit.
   - Scenario: an enemy unit can never be chosen (rarely wanted, but legal by the text).
   - c0: 274 Fortified Position — FIXED: offers every chooseable unit on the board, either player's; test: C0Test.FortifiedPosition_OffersEveryUnit
+  - c2: 940 Matriarch of War — NOT A DEFECT: named only as the correct comparison ("Ready a unit." offers every unit, `enumerateLegalTargets` in `legends/0940_matriarch_of_war.cpp`); nothing to change.
 - [ ] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low
   - Text: "[Predict 2] ... Recycle any of them and put the rest back in any order."
   - Code: the two cards are popped top-first and each kept card is `push_back`ed in that order, so keeping both always reverses them; the player is never asked for an order.
@@ -77,7 +79,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "Counter a spell unless its controller pays [2]."
   - Code: `hasLegalTargets` accepts a spell anywhere on the chain, but resolution only looks at `chain.items.back()` and no-ops if that is not a spell.
   - Scenario: chain is [enemy spell, enemy triggered ability]; Hard Bargain is offered, paid for, and does nothing.
-- [ ] **248 Stormbringer** - `spells/0248_stormbringer.cpp:55-59` [confirmed] low
+- [x] **248 Stormbringer** - `spells/0248_stormbringer.cpp:55-59` [confirmed] low — FIXED: the battlefield is chosen (07 item 7.21) from every battlefield, so with no enemy unit anywhere the unit still moves; test: ReviewFixC2Test.Stormbringer_MovesToAnEmptyBattlefield
   - Text: "Deal damage ... to all enemy units at a battlefield, then move your unit there."
   - Code: if no enemy unit is at any battlefield the spell returns before the move (follows from the unchosen battlefield in 07 item 7.21, but a different wrong result).
   - Scenario: enemy has no units at battlefields -> your base unit is not moved to the battlefield.
@@ -85,6 +87,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
 ## Systemic
 - S2: 242 Baited Hook (`targets[0]` killed and its Might read after only `objectExists`; CR 359.3.e.12 uses this exact card as the example), 152 Mistfall (`readyObject(subject)`), 555 Blade Dancer (`readyObject(chosen)` after the cost is paid), 108 Convergent Mutation (`targets[0]`)
   - c0: 242 Baited Hook — FIXED (the victim must be a unit on the board; its Might is read before the kill and kept on the chain item; a replaced death stops the ability); 152 Mistfall — FIXED (the subject must still be a unit on the board); test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit, .Mistfall_NotOfferedWithoutThePowerAndPaysFromThePool
+  - c2: 108 Convergent Mutation — ALREADY FIXED: `targets[0]` reaches the card only if it is still a legal target (on the board and friendly; `GameEngine::resolveSpell` re-validation) and `giveTemporaryMight` / the executor guard (02 item 2.28) ignore an off-board unit; the card is unchanged.
 - S3: 63 Spirit's Refuge (see finding)
 - S4: 787 Voidreaver (ability 0), 278 Navori Fighting Pit, 63 Spirit's Refuge (the last two are also S1, already listed in 07)
   - c0: 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by the executor (`99d179e`: one Buff per unit); S3 for 63: FIXED, see the finding

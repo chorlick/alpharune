@@ -14,125 +14,125 @@ Engine facts traced for this batch (so the findings below are not re-derived):
 - Timing keywords ([Action]/[Reaction]) match the printed text on every spell in the batch.
 
 ## Findings
-- [ ] **105 Singularity** - `spells/0105_singularity.cpp:19` [confirmed] high
+- [x] **105 Singularity** - `spells/0105_singularity.cpp:19` [confirmed] high — ALREADY FIXED: engine item 8.6 (`spellTargetSets` builds every set of at most N distinct targets for an "up to N" requirement; merged with engine-play-combat, `ec13e47`); the card needed no change; test: ReviewFixC2Test.Singularity_TwoEnemyUnitsOrOneWithNoFriendlyUnit
   - Text: "Deal 6 to each of up to two units."
   - Code: `TargetRequirements{.count = 2, .must_be_unit = true, .optional = true}`; the generator turns count==2 into {one friendly, one enemy} pairs only.
   - Scenario: caster has units -> every legal play must deal 6 to one of the caster's own units. Caster has no units (or the opponent has none) while the other side does -> the pair product is empty and Singularity is not offered at all. Two enemy units, or a single unit, can never be chosen. Needs `needsPlayTimeTargetPair()` + `pickTargetPair` (or a custom enumeration).
-- [ ] **346 Piercing Light** - `spells/0346_piercing_light.cpp:21` [confirmed] high
+- [x] **346 Piercing Light** - `spells/0346_piercing_light.cpp:21` [confirmed] high — FIXED: `enumerateLegalTargetSets` lists {unit at a battlefield} and {unit at a battlefield, any other unit}; the requirement no longer forces both to a battlefield and `onResolve` reads the slots as chosen (a paid [Repeat] reuses the same targets, the engine's documented simplification); test: ReviewFixC2Test.PiercingLight_FirstAtABattlefield_SecondAnywhere_OrNone, ReviewFixC2Test.PiercingLight_NotOfferedWithoutAUnitAtABattlefield
   - Text: "Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
   - Code: same count==2 requirement, with `must_be_at_battlefield` applied to both targets.
   - Scenario: only playable when both players have a unit at a battlefield; targets[0] is always the caster's OWN unit and targets[1] an enemy; the second unit can never be a base unit; the spell can never be played with one target. With [Repeat] paid, the caster's own unit takes 4.
-- [ ] **253 Fox-Fire** - `spells/0253_fox_fire.cpp:34-51` [confirmed] high
+- [x] **253 Fox-Fire** - `spells/0253_fox_fire.cpp:34-51` [confirmed] high — FIXED: the controller picks the units, one prompt at a time (the first names the battlefield, later ones must be there and fit the remaining total, "Stop here" after the first); all chosen units are killed together; test: ReviewFixC2Test.FoxFire_TheControllerChoosesWhichUnitsDie, ReviewFixC2Test.FoxFire_AnyNumberUpToTheTotal_AndMayStopEarly
   - Text: "Kill any number of units at a battlefield with total Might 4 or less." (player chooses which)
   - Code: gathers ALL units at the anchor's battlefield, both players', sorts by Might ascending and greedily kills while the total fits in 4.
   - Scenario: battlefield holds the caster's 1-Might Recruit and an enemy 4-Might unit -> Fox-Fire kills the caster's Recruit (budget 3 left) and the enemy unit survives. Any friendly low-Might unit there is killed before enemy units.
-- [ ] **221 Imperial Decree** - `spells/0221_imperial_decree.cpp:19-26` [documented] high
+- [x] **221 Imperial Decree** - `spells/0221_imperial_decree.cpp:19-26` [documented] high — FIXED: resolving registers a delayed ability that lasts the turn and kills every unit dealt damage from then on (new `TriggerType::WhenAUnitTakesDamage` + `DelayedAbility::every_time`, `shared:` commit); units damaged earlier are no longer killed; test: ReviewFixC2Test.ImperialDecree_KillsUnitsDamagedAfterItResolves
   - Text: "When any unit takes damage this turn, kill it."
   - Code: kills every unit that ALREADY has `damage_marked > 0` at resolution and sets nothing for later damage.
   - Scenario: cast before combat (the normal use) -> no unit is damaged yet, nothing happens, and units that take non-lethal combat/spell damage afterwards survive. Conversely units damaged earlier in the turn are killed, which the text does not say.
-- [ ] **257 Last Breath** - `spells/0257_last_breath.cpp:17-20` [confirmed] high
+- [x] **257 Last Breath** - `spells/0257_last_breath.cpp:17-20` [confirmed] high — FIXED: two targets through `pickTargetPair` at finalization (friendly unit, then an enemy unit at a battlefield); the readied unit deals its Might to the enemy unit; test: ReviewFixC2Test.LastBreath_TheReadiedUnitDealsItsMightToAnEnemyUnitAtABattlefield
   - Text: "Ready a friendly unit. It deals damage equal to its Might to an enemy unit at a battlefield."
   - Code: only `readyObject(targets[0])`. The damage sentence and its enemy target do not exist.
   - Scenario: Last Breath on a 5-Might unit -> the unit is readied, no enemy takes 5.
-- [ ] **323 Against the Odds** - `spells/0323_against_the_odds.cpp:17-20` [confirmed] high
+- [x] **323 Against the Odds** - `spells/0323_against_the_odds.cpp:17-20` [confirmed] high — FIXED: +2 [M] per enemy unit at the target's battlefield, counted at resolution (0 enemies = no bonus); test: ReviewFixC2Test.AgainstTheOdds_TwoMightPerEnemyUnitThere
   - Text: "Give a friendly unit at a battlefield +2 [M] this turn for each enemy unit there."
   - Code: flat `giveTemporaryMight(targets[0], 2)`.
   - Scenario: target faces 3 enemy units -> gets +2 instead of +6; target at a battlefield with 0 enemy units -> gets +2 instead of +0.
-- [ ] **206 Back to Back** - `spells/0206_back_to_back.cpp:17-23` [confirmed] high
+- [x] **206 Back to Back** - `spells/0206_back_to_back.cpp:17-23` [confirmed] high — FIXED: two different friendly units through `pickTargetPair` at finalization, each +2; not offered with fewer than two friendly units; test: ReviewFixC2Test.BackToBack_BothChosenFriendlyUnitsGetTheBonus, ReviewFixC2Test.BackToBack_NeedsTwoFriendlyUnits
   - Text: "Give two friendly units each +2 [M] this turn."
   - Code: one target, one +2.
   - Scenario: two friendly defenders -> only one gets +2.
-- [ ] **233 Grand Strategem** - `spells/0233_grand_strategem.cpp:17-23` [confirmed] high
+- [x] **233 Grand Strategem** - `spells/0233_grand_strategem.cpp:17-23` [confirmed] high — FIXED: no target; every friendly unit on the board gets +5 [M]; test: ReviewFixC2Test.GrandStrategemAndDecisiveStrike_BuffEveryFriendlyUnit
   - Text: "Give friendly units +5 [M] this turn." (all of them)
   - Code: single friendly target gets +5.
   - Scenario: three friendly units -> one gets +5, the other two get nothing.
-- [ ] **322 Decisive Strike** - `spells/0322_decisive_strike.cpp:17-23` [confirmed] high
+- [x] **322 Decisive Strike** - `spells/0322_decisive_strike.cpp:17-23` [confirmed] high — FIXED: no target; every friendly unit on the board gets +2 [M]; test: ReviewFixC2Test.GrandStrategemAndDecisiveStrike_BuffEveryFriendlyUnit
   - Text: "Give friendly units +2 [M] this turn." (all of them)
   - Code: single friendly target gets +2.
   - Scenario: as Grand Strategem.
-- [ ] **328 Detonate** - `spells/0328_detonate.cpp:17-20` [confirmed] high
+- [x] **328 Detonate** - `spells/0328_detonate.cpp:17-20` [confirmed] high — FIXED: the gear's controller is captured before the kill and draws 2; test: ReviewFixC2Test.Detonate_TheGearsControllerDrawsTwo
   - Text: "Kill a gear. Its controller draws 2."
   - Code: `killObject(targets[0])` only; no draw.
   - Scenario: opponent's gear is killed and the opponent draws nothing (Hidden Blade 213 shows the intended pattern: capture controller, kill, draw 2).
-- [ ] **127 Cannon Barrage** - `spells/0127_cannon_barrage.cpp:21-26` [confirmed] high
+- [x] **127 Cannon Barrage** - `spells/0127_cannon_barrage.cpp:21-26` [confirmed] high — FIXED: only enemy units with a combat designation (attackers / defenders) are damaged; test: ReviewFixC2Test.CannonBarrage_OnlyEnemyUnitsInCombat
   - Text: "Deal 2 to all enemy units in combat."
   - Code: every enemy unit with a location (base included, every battlefield, combat or not).
   - Scenario: played during a showdown at battlefield A -> the opponent's units in base and at battlefield B also take 2. Should filter on `combat_designation != None`.
-- [ ] **247 Icathian Rain** - `spells/0247_icathian_rain.cpp:17-59` [confirmed] high
+- [x] **247 Icathian Rain** - `spells/0247_icathian_rain.cpp:17-59` [confirmed] high — FIXED: six separately chosen units (the first as the spell is played, five prompts at resolution; a unit may be chosen again), 2 damage each; the per-instance kill calls on a dead unit are gone (cleanup kills); test: ReviewFixC2Test.IcathianRain_SixSeparatelyChosenUnits
   - Text: "Deal 2 to a unit." x6 (six separately chosen instances)
   - Code: one target; all six instances hit `targets[0]`. After it dies the remaining `dealDamage(targets[0], ...)` calls are unguarded and keep marking damage / emitting DamageDealtEvent on the dead object.
   - Scenario: three 2-Might enemy units -> the real card kills all three; the code deals 12 to one of them.
-- [ ] **327 Bushwhack** - `spells/0327_bushwhack.cpp:27-33` [documented] high
+- [x] **327 Bushwhack** - `spells/0327_bushwhack.cpp:27-33` [documented] high — FIXED: sets `PlayerState::units_enter_ready_this_turn` (new, `shared:` commit; read where a unit or unit token enters); units already on the board are no longer readied; test: ReviewFixC2Test.Bushwhack_DoesNotReadyUnitsAlreadyOnTheBoard
   - Text: "Friendly units enter ready this turn. Play a Gold gear token exhausted."
   - Code: readies every exhausted friendly unit already on the board; units played afterwards still enter exhausted.
   - Scenario: caster with 4 exhausted attackers gets a full board ready (not printed); a unit played after Bushwhack enters exhausted (printed effect missing).
-- [ ] **129 Confront** - `spells/0129_confront.cpp:17-26` [documented] high
+- [x] **129 Confront** - `spells/0129_confront.cpp:17-26` [documented] high — FIXED: sets `PlayerState::units_enter_ready_this_turn` (see Bushwhack), then draws 1; test: ReviewFixC2Test.ConfrontAndBushwhack_UnitsPlayedLaterThisTurnEnterReady
   - Text: "Units you play this turn enter ready. Draw 1."
   - Code: draw 1 only.
   - Scenario: Confront then a unit -> the unit enters exhausted.
-- [ ] **251 Noxian Guillotine** - `spells/0251_noxian_guillotine.cpp:35` [documented] high
+- [x] **251 Noxian Guillotine** - `spells/0251_noxian_guillotine.cpp:35` [documented] high — FIXED: without Legion a one-shot delayed ability (`WhenAUnitTakesDamage`, scoped to the chosen unit, this turn) kills it the next time it is dealt damage; the unread counter is gone; test: ReviewFixC2Test.NoxianGuillotine_WithoutLegion_KillsTheUnitTheNextTimeItIsDamaged, ReviewFixC2Test.NoxianGuillotine_WithLegion_KillsNow
   - Text: "Choose a unit. Kill it the next time it takes damage this turn."
   - Code: sets `card_counters["__kill_on_next_damage_this_turn"]`; the key is written here and read nowhere in `src/` (grep), and is never cleared.
   - Scenario: without Legion the spell does nothing. Only the [Legion] branch works.
-- [ ] **173 Ride the Wind** - `spells/0173_ride_the_wind.cpp:32` [confirmed] high
+- [x] **173 Ride the Wind** - `spells/0173_ride_the_wind.cpp:32` [confirmed] high — FIXED: the controller chooses the destination (its base or any other battlefield) through the new `pickMoveDest` helper, then the unit is readied; test: ReviewFixC2Test.RideTheWind_MovesABaseUnitToAChosenBattlefieldAndReadiesIt
   - Text: "Move a friendly unit and ready it."
   - Code: always `moveToBase(picked)`; no destination choice.
   - Scenario: the normal use (send a base unit to a battlefield, ready it, attack) is impossible - a base unit "moves" base -> base and is readied; a battlefield unit can only be pulled home. `moveDests` / `moveTo` in card_helpers.h already provide the destination choice.
-- [ ] **122 Time Warp** - `spells/0122_time_warp.cpp:26-28` [confirmed] medium
+- [x] **122 Time Warp** - `spells/0122_time_warp.cpp:26-28` [confirmed] medium — ALREADY FIXED: `ChainManager::stepResolve` no longer files a spell that left the Chain zone during its own resolution (chain-triggers stream, 08 item 8.16 bullet); the card is unchanged; test: ReviewFixC2Test.TimeWarp_IsBanishedAndNotAlsoFiledInTheTrash
   - Text: "Take a turn after this one. Banish this."
   - Code: calls `banishObject(ctx.source)` during resolution (pushes the id into `banishment`), then `ChainManager::stepResolve` (`chain_manager.cpp:466-476`) sets `zone = Trash` and pushes the same id into `trash` because `banish_on_leave_chain` is false.
   - Scenario: after resolving, Time Warp sits in BOTH the banishment and trash vectors with `zone == Trash`; any trash-recursion effect can replay the extra-turn spell, and it is counted in both zones. Fix: set `banish_on_leave_chain = true` instead of banishing mid-resolve.
-- [ ] **25 Blind Fury** - `spells/0025_blind_fury.cpp:38-50` [documented] medium
+- [x] **25 Blind Fury** - `spells/0025_blind_fury.cpp:38-50` [documented] medium — FIXED: a revealed spell is played too (`playIgnoringCost` queues it); the card is banished through `banishObject` (no direct `main_deck` edit, so the knowledge tracker sees it) and the play takes it back out of banishment; test: ReviewFixC2Test.BlindFury_PlaysARevealedUnitAndLeavesNoCopyInBanishment, ReviewFixC2Test.BlindFury_PlaysARevealedSpell
   - Text: "Choose one and banish it, then play it, ignoring its cost."
   - Code: only units/gear are played; a revealed spell is left banished. The comment says `playIgnoringCost` cannot play spells, but it now can (`effect_executor.cpp:1700-1709`, via `queue_spell_`).
   - Scenario: opponent's top card is a spell -> it is banished and never played.
   - Second defect (confirmed, `:39-44`): `banishObject(top)` pushes the id into the owner's `banishment` vector and it is never removed before `playIgnoringCost` (Portal Rescue 102 and Reinforce 62 both erase it first) -> the played permanent is on the board and still listed in the opponent's banishment.
-- [ ] **43 Charm** - `spells/0043_charm.cpp:33` [documented] medium
+- [x] **43 Charm** - `spells/0043_charm.cpp:33` [documented] medium — FIXED: the caster chooses the destination (the unit's base or any other battlefield) through `pickMoveDest`; test: ReviewFixC2Test.Charm_MovesAnEnemyUnitWhereTheCasterChooses
   - Text: "Move an enemy unit."
   - Code: always `moveToBase`.
   - Scenario: an enemy unit in its base is a legal target and nothing happens; an enemy unit cannot be moved to another battlefield.
-- [ ] **363 Thwonk!** - `spells/0363_thwonk.cpp:21-23` [confirmed] medium
+- [x] **363 Thwonk!** - `spells/0363_thwonk.cpp:21-23` [confirmed] medium — FIXED: only attacking units are legal targets; the unit is asked for through `pickTarget`, so a paid [Repeat] chooses again and can stun a second attacker (the plausible engine half is confirmed and fixed with it); test: ReviewFixC2Test.Thwonk_OnlyAnAttackingUnit_AndTheCasterIsTheStunner, ReviewFixC2Test.Thwonk_APaidRepeatStunsASecondAttacker
   - Text: "Stun an attacking unit."
   - Code: any unit is a legal target (`must_be_unit` only).
   - Scenario: played on the caster's own turn to stun a defender, or outside combat to stun any unit - not allowed by the card.
   - Also (plausible, engine): [Repeat] re-runs with the same target and `stunUnitBy` is a no-op on an already-stunned unit, so a paid Repeat does nothing.
-- [ ] **50 Rune Prison / 363 Thwonk!** - `spells/0050_rune_prison.cpp:19`, `spells/0363_thwonk.cpp:19` [confirmed] medium
+- [x] **50 Rune Prison / 363 Thwonk!** - `spells/0050_rune_prison.cpp:19`, `spells/0363_thwonk.cpp:19` [confirmed] medium — FIXED: both call `stunUnitBy(target, ctx.source)`; Facebreaker 220 had the same defect and is fixed with them; test: ReviewFixC2Test.RunePrisonAndFacebreaker_TheCasterIsTheStunner, ReviewFixC2Test.Thwonk_OnlyAnAttackingUnit_AndTheCasterIsTheStunner
   - Text: "Stun a unit." (the caster is the one stunning)
   - Code: `executor.stunUnit(target)`, which is `stunUnitBy(target, target)`; `UnitStunnedEvent.stunner` becomes the victim's controller and `TriggerManager::onUnitStunned` (`trigger_manager.cpp:63`) returns on `stunner == victim_controller`.
   - Scenario: caster controls Vex, Mocking (617) / Radiant Dawn (297) / Eclipse Herald (59) and stuns an enemy with Rune Prison -> the WhenYouStun trigger never fires. Should be `stunUnitBy(targets[0], ctx.source)`.
-- [ ] **265 Showstopper** - `spells/0265_showstopper.cpp:25-41` [confirmed] medium
+- [x] **265 Showstopper** - `spells/0265_showstopper.cpp:25-41` [confirmed] medium — FIXED: only a friendly unit in its controller's base is a legal target; the battlefield is chosen (`pickMoveDest`, battlefields only) before the buff, which is placed once; test: ReviewFixC2Test.Showstopper_OnlyABaseUnit_ToTheChosenBattlefield
   - Text: "Buff a friendly unit in your base, then move it to a battlefield."
   - Code: target requirement is any friendly unit (comment says "in your base" but nothing enforces it); destination is the first battlefield the caster controls, else `battlefields.front()`.
   - Scenario: a unit already at battlefield B can be targeted and is teleported to battlefield A (a battlefield-to-battlefield move the card does not grant); the caster never chooses the destination, so attacking the non-controlled battlefield with this is impossible when they control the other.
-- [ ] **224 Salvage** - `spells/0224_salvage.cpp:26-28` [confirmed] medium
+- [x] **224 Salvage** - `spells/0224_salvage.cpp:26-28` [confirmed] medium — FIXED: `enumerateLegalTargetSets` always includes the empty set (CR 355.13); test: ReviewFixC2Test.Salvage_CanBePlayedWithoutKillingTheOnlyGear
   - Text: "You may kill up to one gear. Draw 1."
   - Code: `count = 1, optional = true`; the generator offers a no-target play only when there is no gear on the board at all.
   - Scenario: the only gear in play is the caster's own -> every legal Salvage play kills it; the caster cannot just draw.
-- [ ] **153 Overt Operation** - `spells/0153_overt_operation.cpp:34-52` [confirmed] medium
+- [x] **153 Overt Operation** - `spells/0153_overt_operation.cpp:34-52` [confirmed] medium — FIXED: one yes/no per buffed friendly unit; spending a buff removes the counter only (no extra -1 temporary Might); test: ReviewFixC2Test.OvertOperation_PerUnitChoice_AndNoDoubleDebuff
   - Text: "For each friendly unit, you may spend its buff to ready it. Then buff all friendly units."
   - Code: (a) spending a buff does `buff_count -= 1` AND `temp_might_bonus -= 1`; Might already derives from `buff_count`, so the unit is debuffed twice. (b) one yes/no covers every unit, not a per-unit choice.
   - Scenario: a buffed 3-Might unit (4 total) spends its buff and is re-buffed -> should be 4, is 3 until end of turn. A caster who wants to ready only the exhausted units still strips/re-adds buffs on the ready ones (no net change there, but no per-unit choice).
-- [ ] **244 Divine Judgment** - `spells/0244_divine_judgment.cpp:31-67` [documented] medium
+- [x] **244 Divine Judgment** - `spells/0244_divine_judgment.cpp:31-67` [documented] medium — FIXED: each player (caster first) chooses the two to keep per category (one prompt per category holding more than two); recycled permanents leave the board properly — attached gear comes off, a token ceases to exist instead of entering the deck, `LeftBoardEvent` is emitted; test: ReviewFixC2Test.DivineJudgment_EachPlayerChoosesWhatToKeep
   - Text: "Each player chooses 2 units, 2 gear, 2 runes, and 2 cards in their hands. Recycle the rest."
   - Code: no player chooses; keeps the 2 highest-Might units, the first 2 gear/runes in map order and the first 2 hand cards. Board objects go straight to `recycleCards`, which only rewrites zone/location.
   - Scenario: (documented) a player cannot keep their key gear or hand cards. (confirmed, undocumented) a recycled token is inserted into its owner's Main Deck and can be drawn later (CR 183.1 says it ceases to exist); a recycled unit's attached gear keeps `attached_to` pointing at it, and a recycled attached gear stays in the unit's `attachments` with its Might bonus; no LeftBoardEvent is emitted.
-- [ ] **62 Reinforce** - `spells/0062_reinforce.cpp:53-58,76-83` [confirmed] medium
+- [x] **62 Reinforce** - `spells/0062_reinforce.cpp:53-58,76-83` [confirmed] medium — FIXED: "Banish none" is always offered; the chosen unit is banished and played through `playPayingCost` (cost - [5]; unpaid, it stays banished per CR 445.2); the manual banishment erase is gone (8.13); the stale "played for free" comment is removed; test: ReviewFixC2Test.Reinforce_BanishingAUnitIsOptional, ReviewFixC2Test.Reinforce_PlaysTheChosenUnitForItsReducedCost
   - Text: "You may banish a unit from among them, then play it, reducing its cost by [5]."
   - Code: if any unit is among the top 5, `pickTarget` forces a pick (no decline); the pick is banished before affordability is checked.
   - Scenario: the only unit revealed costs 9 and the caster has 2 Energy left -> it is banished and not played (stays in banishment) instead of being recycled. (The header comment saying the unit is played for free is stale; the code does charge cost - 5.)
-- [ ] **237 King's Edict** - `spells/0237_king_s_edict.cpp:23-39` [documented] medium
+- [x] **237 King's Edict** - `spells/0237_king_s_edict.cpp:23-39` [documented] medium — FIXED: the opponent is asked which unit the caster does not control dies; test: ReviewFixC2Test.KingsEdict_TheOpponentChoosesTheirUnit
   - Text: "each other player chooses a unit you don't control ... Kill those units."
   - Code: kills the opponent's lowest-Might unit; the opponent is never asked.
   - Scenario: the opponent would sacrifice a 4-Might exhausted base unit to keep a 2-Might unit holding a battlefield; the code kills the holder.
-- [ ] **255 Dragon's Rage** - `spells/0255_dragon_s_rage.cpp:37-55` [documented] medium
+- [x] **255 Dragon's Rage** - `spells/0255_dragon_s_rage.cpp:37-55` [documented] medium — FIXED: the caster chooses the destination (`pickMoveDest`, base included) and, after the move, the other enemy unit there (Deflect and "can't be chosen" honoured); Mights are read after the move; test: ReviewFixC2Test.DragonsRage_DestinationAndOpponentAreChosen, ReviewFixC2Test.DragonsRage_CanSendTheUnitToItsBaseToFightAUnitThere
   - Text: "Move an enemy unit. Then do this: Choose another enemy unit at its destination. They deal damage equal to their Mights to each other."
   - Code: destination and second unit are the first match in map order on a battlefield other than the mover's; with no such battlefield it moves to `battlefields.front()` (which may be where it already is) and base is never a destination.
   - Scenario: enemy has units at both battlefields and in base -> the caster cannot choose which enemy unit is hit, cannot send the mover to base to hit a base unit.
-- [ ] **33 Shakedown** - `spells/0033_shakedown.cpp:26` [documented] medium
+- [x] **33 Shakedown** - `spells/0033_shakedown.cpp:26` [documented] medium — FIXED: the unit's controller is asked at resolution: take 6 or have the caster draw 2; test: ReviewFixC2Test.Shakedown_TheUnitsControllerMayHaveTheCasterDrawTwoInstead
   - Text: "Deal 6 to it unless its controller has you draw 2."
   - Code: always deals 6; the opponent's option is not offered.
   - Scenario: opponent would rather give 2 cards than lose a champion; the unit takes 6.
-- [ ] **53 Stand United** - `spells/0053_stand_united.cpp:22-25` [documented] medium
+- [x] **53 Stand United** - `spells/0053_stand_united.cpp:22-25` [documented] medium — FIXED: also sets `PlayerState::buff_might_bonus_this_turn` (new, `shared:` commit; the aura pass adds it per Buff on that player's units until end of turn); test: ReviewFixC2Test.StandUnited_BuffsAreWorthOneMoreThisTurn
   - Text: "Buffs give an additional +1 [M] to friendly units this turn."
   - Code: only the single buff.
   - Scenario: three buffed friendly units should each have +1 more this turn; they do not.
@@ -140,47 +140,48 @@ Engine facts traced for this batch (so the findings below are not re-derived):
   - Text: "As you play this, you may spend a buff as an additional cost. If you do, ignore this spell's cost."
   - Code: not implemented; always full cost.
   - Scenario: a player with a buffed unit and no Energy cannot play either spell.
-- [ ] **250 Super Mega Death Rocket!** - `spells/0250_super_mega_death_rocket.cpp:29-33` [documented] medium
+  - BLOCKED: needs an alternative cost on the spell play path — `Card::alternativePlayCost` is read only for permanents (`generateMainPhaseActions` / `executePlayCard`); `generateSpellActions` drops a spell the player cannot afford before any alternative is considered and `executePlaySpell` always charges the printed cost. With that in place the card side is: `alternativePlayCost` valid while a friendly unit has a buff, and the buff to spend chosen and spent at finalization (`kFinalizeResolve`, `costDueNow`). Too large for a `shared:` commit (two generators, the payment path, Intent equality).
+- [x] **250 Super Mega Death Rocket!** - `spells/0250_super_mega_death_rocket.cpp:29-33` [documented] medium — FIXED: `WhenIConquer` trigger that works from the trash (`TriggerManager::onScore` now looks in the conquering player's trash for spells that declare it, `shared:` commit); the "may", the card to discard and the discard are decided at finalization; test: ReviewFixC2Test.SuperMegaDeathRocket_ReturnsFromTheTrashWhenYouConquer, ReviewFixC2Test.SuperMegaDeathRocket_NotOnAHoldOrAnOpponentsConquer
   - Text: "When you conquer, you may discard 1 to return this from your trash to your hand."
   - Code: not implemented.
   - Scenario: conquering with SMDR in the trash never offers the return.
-- [ ] **260 Guerilla Warfare** - `spells/0260_guerilla_warfare.cpp:25-44` [documented] medium
+- [x] **260 Guerilla Warfare** - `spells/0260_guerilla_warfare.cpp:25-44` [documented] medium — FIXED: the controller picks up to two [Hidden] cards (may stop early); sets `PlayerState::hide_ignoring_costs_this_turn` (new, `shared:` commit; read by the Hide generator and payment); test: ReviewFixC2Test.GuerillaWarfare_ChoosesTheCardsAndHidingIsFreeThisTurn, ReviewFixC2Test.GuerillaWarfare_UpToTwo_MayStopAfterOne
   - Text: "Return up to two cards with [Hidden] from your trash to your hand. You can hide cards ignoring costs this turn."
   - Code: returns the two most recently trashed [Hidden] cards (no choice, no "up to"); the hide-for-free clause is missing.
   - Scenario: three [Hidden] cards in trash -> the caster cannot pick which two; hiding still costs [A] this turn.
-- [ ] **144 Spoils of War** - `spells/0144_spoils_of_war.cpp:22-28` [documented] medium
+- [x] **144 Spoils of War** - `spells/0144_spoils_of_war.cpp:22-28` [documented] medium — FIXED: reads `PlayerState::unit_died_this_turn` of the opponent (new, `shared:` commit; set at both kill sites, tokens included, reset each turn); test: ReviewFixC2Test.SpoilsOfWar_DiscountOnlyWhenAnEnemyUnitDiedThisTurn
   - Text: "If an enemy unit has died this turn, this costs [2] less."
   - Code: discount whenever any unit card is in the opponent's trash, from any turn (and discarded/burned units count); an enemy token that died this turn does not count.
   - Scenario: from the first enemy unit death onward the spell costs 2 for the rest of the game.
-- [ ] **45 Defy** - `spells/0045_defy.cpp:39-47` [documented] medium
+- [x] **45 Defy** - `spells/0045_defy.cpp:39-47` [documented] medium — FIXED: resolution checks printed Energy <= 4 and printed Power <= 1; `hasLegalTargets` now looks only at the item Defy would counter (the top of the chain) — the cost caps cannot be checked there (no CardDB in `hasLegalTargets`), so Defy can still be offered against a too-expensive spell and then does nothing; test: ReviewFixC2Test.Defy_DoesNotCounterASpellThatCostsMoreThanOnePower
   - Text: "Counter a spell that costs no more than [4] and no more than [A]."
   - Code: checks printed Energy only; the Power cap is ignored.
   - Scenario: Defy counters Rebuke (2 Energy, 2 Power) or Wind Wall (3 Energy, 2 Power), which it should not be able to target.
-- [ ] **80 Mystic Reversal** - `spells/0080_mystic_reversal.cpp:30-35` [documented] medium
+- [x] **80 Mystic Reversal** - `spells/0080_mystic_reversal.cpp:30-35` [documented] medium — FIXED: after the control change it calls `EffectExecutor::makeNewChoices` for the taken item; test: ReviewFixC2Test.MysticReversal_TheNewControllerMakesNewChoices
   - Text: "Gain control of a spell. You may make new choices for it."
   - Code: controller swap only. The comment says re-targeting is unsupported, but `EffectExecutor::makeNewChoices(ChainItemId)` exists (effect_executor.h:76).
   - Scenario: stealing an enemy "Deal 6 to a unit" aimed at the thief's unit -> it still hits the thief's unit.
-- [ ] **48 Meditation** - `spells/0048_meditation.cpp:20-43` [confirmed] low
+- [x] **48 Meditation** - `spells/0048_meditation.cpp:20-43` [confirmed] low — FIXED: `kFinalizeResolve` — the "may", the unit (controller's choice) and the exhaust are decided and paid as the spell is finalized; test: ReviewFixC2Test.Meditation_TheUnitToExhaustIsChosen
   - Text: "As an additional cost to play this, you may exhaust a friendly unit. If you do, draw 2."
   - Code: decided and paid at resolution, exhausting the first ready friendly unit in map order.
   - Scenario: the caster wants to exhaust a base unit but the first ready unit in id order is their only untapped attacker -> that one is exhausted. Also a unit readied/played in response can pay a cost that was due at play time.
-- [ ] **936 Defender of Tomorrow** - `legends/0936_defender_of_tomorrow.cpp:36-44` [documented] low
+- [x] **936 Defender of Tomorrow** - `legends/0936_defender_of_tomorrow.cpp:36-44` [documented] low — FIXED: the gear to ready is chosen (`pickTarget`; `pickTargetPair` while Empowered) at activation (`kFinalizeActivate`). The two printed abilities stay one activation: splitting them would renumber the [Empower] ability's index, i.e. its action-vocabulary slot, and the Empowered one strictly dominates at the same cost; test: ReviewFixC2Test.DefenderOfTomorrow_TheGearToReadyIsChosen
   - Text: "[1], [E]: Ready a gear." / "[Empowered][>] [1], [E]: Ready 2 gear."
   - Code: readies the first N exhausted friendly gear in map order; the two abilities are merged into one.
   - Scenario: two exhausted gear, legend not Empowered -> the player cannot choose which one readies.
-- [ ] **168 Fight or Flight** - `spells/0168_fight_or_flight.cpp:21-23` [confirmed] low
+- [x] **168 Fight or Flight** - `spells/0168_fight_or_flight.cpp:21-23` [confirmed] low — FIXED: the requirement has `must_be_at_battlefield`; test: ReviewFixC2Test.FightOrFlight_ABaseUnitIsNotATarget
   - Text: "Move a unit from a battlefield to its base."
   - Code: target requirement lacks `must_be_at_battlefield`.
   - Scenario: a base unit is offered as a target (and the spell is playable with no unit at any battlefield); resolving does nothing but still emits a UnitMovedEvent base -> base.
-- [ ] **313 Recruit the Vanguard** - `spells/0313_recruit_the_vanguard.cpp:21` [documented] low
+- [x] **313 Recruit the Vanguard** - `spells/0313_recruit_the_vanguard.cpp:21` [documented] low — FIXED: each token's place (base or a controlled battlefield) is chosen; no prompt when the base is the only place. Sprite Call 94 and Desert's Call 354 fixed the same way (`pickTokenDest`, new helper); test: ReviewFixC2Test.RecruitTheVanguard_TokensCanGoToAControlledBattlefield, ReviewFixC2Test.RecruitTheVanguard_NoPromptWhenOnlyTheBaseIsAvailable, ReviewFixC2Test.SpriteCallAndDesertsCall_TokenToAControlledBattlefield
   - Text: "Play four 1 [M] Recruit unit tokens. (They can be played to your base or to battlefields you control.)"
   - Code: all four to base. (Sprite Call 94 and Desert's Call 354 do the same.)
   - Scenario: caster controlling a battlefield cannot reinforce it with the tokens.
-- [ ] **47 Find Your Center** - `spells/0047_find_your_center.cpp:20` [plausible] low
+- [x] **47 Find Your Center** - `spells/0047_find_your_center.cpp:20` [plausible] low — FIXED: confirmed; reads `mode.victory_score + TurnState::victory_score_bonus` (new, `shared:` commit; the aura pass sets it from `effectiveVictoryScore`, so code with only the state can read it); test: ReviewFixC2Test.FindYourCenter_UsesTheVictoryScoreInEffect
   - Text: "If an opponent's score is within 3 points of the Victory Score, this costs [2] less."
   - Code: uses `state.mode.victory_score`, not the effective score (`EffectExecutor::effectiveVictoryScore`, which adds `victoryScoreModifier`).
   - Scenario: with a "+1 points needed to win" battlefield in play and the opponent at 5, the discount applies (5 >= 8-3) although they are 4 away from 9.
-- [ ] **145 Unyielding Spirit** - `spells/0145_unyielding_spirit.cpp:19` [confirmed] low
+- [x] **145 Unyielding Spirit** - `spells/0145_unyielding_spirit.cpp:19` [confirmed] low — FIXED: sets the prevention flag on both players; test: ReviewFixC2Test.UnyieldingSpirit_PreventsAnOpponentsSpellDamageToTheirOwnUnits
   - Text: "Prevent all spell and ability damage this turn."
   - Code: sets the flag on the caster only; `dealDamage` prevents when the target's controller OR the source's controller has it.
   - Scenario: the opponent's own spell damaging the opponent's own unit (e.g. their Flurry of Blades hitting their units) is not prevented.

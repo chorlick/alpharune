@@ -149,11 +149,14 @@ subject") describes something nothing implements.
 - [ ] **7.14** `legends/0753_green_father.cpp:23-33,46` — replaces the first controlled non-Brush battlefield, not "that battlefield"; recomputed at resolution. [confirmed]
 - [ ] **7.15** `units/0226_spectral_matron.cpp:22-45` vs `units/0486_glasc_mixologist.cpp:30-31` — same printed restriction ("no more than [3] and no more than [A]") implemented two different ways, neither matching. Glasc ignores Power cost; Matron compares Energy against available power. [confirmed they disagree]
 - [ ] **7.16** `spells/0263_bullet_time.cpp:50-57` — X is capped at already-exhausted runes; `payableAnyPower` is the right count. [confirmed]
+  - c2: 263 Bullet Time — FIXED: X ranges up to `payableAnyPower` and is paid with `EffectExecutor::payAnyPower` (also 03 item 3.24); test: ReviewFixC2Test.BulletTime_XCountsReadyRunesAndPaysThroughTheEngine
 - [ ] **7.17** `spells/0702_conscription.cpp:19-36,54-57` — play-time target comes from any enemy unit; the 3-Might cap is applied only at resolution, so the spell can mistarget. `:45` — `ps.xp -= 5` sits unguarded between `confirmOptional` and `pickTarget` [latent double charge]. [confirmed]
 - [ ] **7.18** `spells/0209_cull_the_weak.cpp:40-47` — the opponent does not choose; first unit in map order dies. Acceptable Losses (179) shows the two-player pattern. [confirmed]
+  - c2: 209 Cull the Weak — FIXED: each player chooses among their own units (caster first), both die together; the caster's pick no longer goes through `pickTarget` (nothing is targeted, CR 355.10.e); test: ReviewFixC2Test.CullTheWeak_EachPlayerChoosesTheirOwnUnit
 - [ ] **7.19** `spells/0433_here_to_help.cpp:39-41,52-58` — "you may play" has no decline; battlefield is the first controlled one; falls back to base, which the text does not allow. [confirmed]
 - [ ] **7.20** `spells/0604_back_off.cpp:42` — "If you played this from your hand, draw 1" has no play-source check; the card has [Hidden]. [confirmed]
 - [ ] **7.21** `spells/0248_stormbringer.cpp:55-61` — the battlefield is not chosen (code comment admits it). [confirmed]
+  - c2: 248 Stormbringer — FIXED: the battlefield is chosen through `pickMoveDest` (battlefields only); test: ReviewFixC2Test.Stormbringer_TheBattlefieldIsChosen_AndTheUnitMovesEvenWithNoEnemies
 - [ ] **7.22** `spells/0511_defiant_dance.cpp:40` — second target skipped when the first mistargets (CR 359.3.e.5). [confirmed]
 - [ ] **7.23** `units/0828_riven_shattered.cpp:33-34` + `weaponmaster_base.h:26-74` — "you may [Equip]" is forced and takes the first Equipment found. [confirmed]
   - Done by stream helpers in `weaponmaster_base.h` (its file): the base asks the "may" (`confirmOptional`) and the Equipment (`pickTarget`), and does nothing when the unit is no longer on the board (also the `weaponmaster_base.h` part of 7.26); tests: `EnginePathTest.WeaponmasterIsAMayWithAChoiceOfEquipment`, `.WeaponmasterDoesNotEquipAUnitThatLeftTheBoard`. Not ticked: owned by a card stream (check Riven and the 5 other `WeaponmasterUnit` cards; Yone 544 and Sentinel Adept 331 have their own copies). The cost (7.7) is still not charged: it needs an equip-cost descriptor on `Card`.
@@ -161,6 +164,7 @@ subject") describes something nothing implements.
   - `units/0674_irresistible_faefolk.cpp:28-38,48`, `units/0067_blitzcrank_impassive.cpp:41-51,60`, `units/0583_grim_apothecary.cpp:21-29,39`.
   - `units/0461_fizz_trickster.cpp:25-38`, `units/0112_kai_sa_evolutionary.cpp:26-38` — most recent eligible spell; fizzles if its Power is unaffordable even when an older one is.
   - `units/0349_rumble_hotheaded.cpp:48-67`, `spells/0258_zenith_blade.cpp:45,68-75`, `spells/0429_strike_down.cpp:72-76`, `units/0680_elder_dragon.cpp` (`enemies.front()` instead of "choose up to one").
+  - c2: 258 Zenith Blade — FIXED: with more than one friendly unit that could move, the controller chooses which (asked after the "may"; the stun still runs once, after every prompt); test: ReviewFixC2Test.ZenithBlade_TheFriendlyUnitToMoveIsChosen
 - [ ] **7.25 Plausible mismatches**
   - `legends/0782_virtuoso.cpp:39,53` — rescans the trash at resolution instead of using `triggering_subject`; a Reaction played in response is banished instead.
   - `units/0613_ivern_nurturer.cpp:49-51` — the "may" is asked at finalization about cards only looked at during resolution; first unit auto-drafted (`:67-75`).
@@ -186,6 +190,7 @@ in those executor functions would close most of this section.
   - Already listed in 03 item 3.14: Ezreal Dashing 404, Blitzcrank 67, Azir 373.
 - [ ] **7.27** `units/0149_carnivorous_snapvine.cpp:23,41,45-47` — bounced in response, it damages and "kills" itself in hand; the card ends in hand and trash with a death event. [plausible]
 - [ ] **7.28** `spells/0029_falling_star.cpp:37,50-59` — both hits on one token: the second `killObject` runs on a dead token (Banishment, not Trash) and re-emits death events. [plausible]
+  - c2: 29 Falling Star — ALREADY FIXED: confirmed plausible; `EffectExecutor::killObject` is a no-op for an object without a location (02 item 2.28), so the second hit on a dead token does nothing. The card's candidate list now uses `chooseableUnits` (batch-08); test: ExecutorReviewFixTest.OffBoard_DeadUnitIsNotMovedBouncedBuffedOrStunned, ReviewFixC2Test.HandBuiltUnitChoicesSkipAnUnchoosableEnemyUnit
 
 ## F. Shared-helper and bookkeeping gaps
 
@@ -197,10 +202,13 @@ in those executor functions would close most of this section.
   - STILL OPEN, card streams — recipe for the 5 cards (927, 894, 937, 892, 935): prefer `pickTarget`; if the hand-built prompt stays, build the options from `offerableChoices(ctx, list)` and call `commitChosenObject(ctx, picked)` once, in the branch that consumes the answer (`takenObject`).
 - [ ] **7.31 Banish by direct zone write** [confirmed]
   - `spells/0115_promising_future.cpp:75-80`, `units/0491_rek_sai_swarm_queen.cpp:63-65`, `legends/0553_void_burrower.cpp:118-121` — skip `cards_banished_this_turn` and the `"banished_owned"` event.
+  - c2: 115 Promising Future — FIXED: banishes through `EffectExecutor::banishObject`; the manual banishment erase before `playPayingCost` is gone (8.13); test: ReviewFixC2Test.PromisingFuture_BanishesThroughTheExecutor
 - [x] **7.32 `pickTargetPair` partial result treated as complete** [plausible, latent] — FIXED: confirmed in the helper; while waiting for the second pick `pickTargetPair` now returns `{kInvalidId, kInvalidId}` (as its doc always said), so Azir and Flash are correct without edits; `{a, kInvalidId}` only comes back finished (`resume_point` 13); test: `ChoiceHelperTest.PickTargetPairReturnsNothingWhileWaitingForTheSecondPick`, `.PickTargetPairWithNoSecondTargetIsAFinishedPartialPair`
   - `units/0373_azir_ascendant.cpp:95-118` and `spells/0309_flash.cpp:46-50` only check for both ids invalid; at `resume_point` 12 the helper returns `{a, kInvalidId}`, so the first half is acted on, then again on re-entry. Masked by the finalize pass; reachable when it is skipped (spell played by an effect, or after `makeNewChoicesFor`, e.g. Rebuttal 939). Kinkou Monk, Zaun Punk and Profiteer check 10/12 explicitly.
+  - c2: 309 Flash — rewritten for batch-08 (hand-built prompts, no `pickTargetPair`); 306 Gentlemen's Duel (batch-08, same shape) verified: ReviewFixC2Test.GentlemensDuel_GivesTheBonusOnce
 - [ ] **7.33 `spells/0071_party_favors.cpp:29-32,40` — options differ only in `ability_index`** [confirmed]
   - Both encode to MakeChoice slot 0 (`action_vocab.cpp:173-190`), so under OpenSpiel the opponent can never choose Runes. Belongs with 01 item 1.12.
+  - c2: 71 Party Favors — FIXED: the two options are `valChoice` 0 (Cards) / 1 (Runes), i.e. distinct `chosen_value`s; test: ReviewFixC2Test.PartyFavors_TheTwoAnswersAreDistinctValues
 - [ ] **7.34 Dead opt-in bit** — `battlefields/0522_forge_of_the_fluft.cpp:18,28`: `needs_activation_time_target = true` routes away from `runFinalizePass` (`game_engine.cpp:1217-1221`), so `kFinalizeActivate` does nothing. [confirmed]
   - c0: 522 Forge of the Fluft — FIXED: `needs_activation_time_target` removed, so `kFinalizeActivate` runs the finalize pass and the Equipment and unit are picked there; test: C0Test.ForgeOfTheFluft_MovesAnAttachedEquipment
 - [ ] **7.35 Low severity**

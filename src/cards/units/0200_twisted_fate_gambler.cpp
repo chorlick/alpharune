@@ -49,6 +49,7 @@ public:
     }
 
     static constexpr int kByDomain = 0;
+    bool hasReflexiveTrigger() const override { return true; }
     enum : int32_t { kFury = 1, kMind = 2, kOrder = 4 };
     // `data[0]`: the revealed rune's domains. The first that matches, in the
     // printed order ([R], then [B], then [Y]).

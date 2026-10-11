@@ -88,13 +88,25 @@ public:
                              ctx.state.getObject(chosen).name + " to BF#" +
                              std::to_string(dest_bf));
 
-        // "If they do, then do this: [Stun] it."
+        // "If they do, then do this: [Stun] it." — a reflexive trigger (CR
+        // 388): if the unit was played it goes on the chain as an item of its
+        // own.
         if (ctx.state.objectExists(chosen) &&
-            ctx.state.getObject(chosen).location.has_value()) {
-            ctx.executor.stunUnitBy(chosen, ctx.source);
-            ctx.events.logTrace("BONE SKEWER: stunned " +
-                                 ctx.state.getObject(chosen).name);
-        }
+            ctx.state.getObject(chosen).location.has_value())
+            ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
+                                               {static_cast<int32_t>(chosen)});
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data[0]`: the unit they played.
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (finalizingChoices(ctx)) return;   // nothing to choose
+        if (data.empty()) return;
+        const auto unit = static_cast<GameObjectId>(data[0]);
+        if (!ctx.state.objectExists(unit) || !ctx.state.getObject(unit).location.has_value())
+            return;                           // it left in response
+        ctx.executor.stunUnitBy(unit, ctx.source);
+        ctx.events.logTrace("BONE SKEWER: stunned " + ctx.state.getObject(unit).name);
     }
 private:
     const CardDef def_ = [] {

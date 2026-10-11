@@ -5611,11 +5611,12 @@ TEST_F(VerifyCardsTest, Pin_PiercingLight_NeedsTheFirstUnit_TheOtherIsOptional) 
 TEST_F(VerifyCardsTest, Pin_Arise_ReadyingNoneOfTheSandSoldiers) {
     auto spell = addToHand(P1, kArise);
     for (int i = 0; i < 2; ++i) ASSERT_TRUE(isEquipment(o(addGear(P1, kSerratedDirk))));
-    // "ready no more" on the first ready prompt; the first location otherwise.
+    // "None" on the first ready prompt (the reflexive trigger's "up to
+    // two", asked as it is finalized); the first location otherwise.
     int stops = 0;
     EnginePathAgent agent([&](const std::vector<Intent>& legal) {
         for (const auto& i : legal)
-            if (i.choice_label == "Arise!: ready no more") { ++stops; return i; }
+            if (i.choice_label.rfind("None — Arise!", 0) == 0) { ++stops; return i; }
         return legal.front();
     });
     playThroughEngine(spell, &agent);
@@ -6761,7 +6762,7 @@ TEST_F(VerifyCardsTest, Pin_CuratorOfTheSands_DeclinedAtFinalization_NothingIsPa
 // belongs to the reflexive trigger the discard creates (CR 388.1.b, 389.1),
 // not to the move ability: when the move ability is finalized there is nothing
 // to name yet (which card is discarded is only known while it resolves).
-TEST_F(VerifyCardsTest, Pin_Hwei_TheRunesAreNamedAfterTheDiscardNotAtFinalization) {
+TEST_F(VerifyCardsTest, Pin_Hwei_TheRunesAreNamedAtTheReflexiveTriggersFinalizationNotTheMoveAbilitys) {
     auto hwei = addUnit(P1, kHwei, 0, 0);
     addToDeck(P1, kMeditation);                        // the card drawn
     auto gear = addToHand(P1, kSealOfStrength163);

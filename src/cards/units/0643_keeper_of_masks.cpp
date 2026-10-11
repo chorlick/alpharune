@@ -31,7 +31,23 @@ public:
                 /*tags=*/{}, /*kw=*/KeywordSet{}, loc, /*enter_ready=*/false);
             for (auto tok : ctx.executor.lastTokensCreated()) reflections.push_back(tok);
         }
-        for (auto tok : reflections) {
+        // "Then do this: They become copies of me." — a reflexive trigger
+        // (CR 388): with the tokens played it goes on the chain as an item of
+        // its own, carrying them.
+        std::vector<int32_t> tokens;
+        for (auto tok : reflections) tokens.push_back(static_cast<int32_t>(tok));
+        ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0, std::move(tokens));
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data`: the Reflection tokens.
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (finalizingChoices(ctx)) return;   // nothing to choose
+        if (!ctx.state.objectExists(ctx.source)) return;
+        for (auto v : data) {
+            const auto tok = static_cast<GameObjectId>(v);
+            if (!ctx.state.objectExists(tok) || !ctx.state.getObject(tok).location.has_value())
+                continue;                     // it left in response
             // Become a copy of me (base traits — copyUnit inherits
             // card_def_id so death triggers still fire, per Mirror Image).
             ctx.executor.copyUnit(tok, ctx.source);

@@ -69,6 +69,7 @@ public:
     // "Spell — Draw 1. Gear — Ready up to 2 runes. Unit — Give me +3 [M] this
     // turn." `data[0]` is the discarded card's type.
     static constexpr int kByType = 0;
+    bool hasReflexiveTrigger() const override { return true; }
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& data) override {
         if (data.empty()) return;

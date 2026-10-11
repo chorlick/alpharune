@@ -22,72 +22,15 @@ public:
     // Each token is played to the controller's base or a battlefield they
     // control, token by token (playTokensChoosingLocations).
     //
-    // "Then do this: Ready up to two of them." — which of the new tokens, and
-    // how many (0, 1 or 2), is the controller's choice. Progress lives on the
-    // resolving chain item: resume_point kAwaitReady / kDone (clear of the
-    // ranges the Card::pick* / confirmOptional helpers use) and
-    // resume_data = [readied so far, token, token, ...].
-    static constexpr int kAwaitReady = 20;
+    // "Then do this: Ready up to two of them." is a reflexive trigger (CR
+    // 388): with the tokens played it goes on the chain as an item of its
+    // own, carrying them; which of them, and how many (0, 1 or 2), is chosen
+    // as that item is finalized (CR 388.4, 355.13).
     static constexpr int kDone = 21;
-
-    static std::vector<GameObjectId> readyable(const GameState& state,
-                                               const std::vector<int32_t>& data) {
-        std::vector<GameObjectId> out;
-        for (size_t i = 1; i < data.size(); ++i) {
-            const auto id = static_cast<GameObjectId>(data[i]);
-            if (!state.objectExists(id)) continue;
-            const auto& t = state.getObject(id);
-            if (t.location.has_value() && t.is_exhausted) out.push_back(id);
-        }
-        return out;
-    }
-    // Offers the next "ready one of them" pick, or finishes.
-    static void promptReady(CardContext& ctx) {
-        auto& ri = *ctx.state.chain.resuming;
-        auto cands = readyable(ctx.state, ri.resume_data);
-        if (ri.resume_data.empty() || ri.resume_data[0] >= 2 || cands.empty()) {
-            ri.resume_point = kDone;
-            return;
-        }
-        std::vector<Intent> opts;
-        for (auto id : cands) {
-            Intent c;
-            c.type = IntentType::MakeChoice;
-            c.player = ctx.controller;
-            c.chosen_objects = {id};
-            opts.push_back(std::move(c));
-        }
-        // On every prompt, the first included: none of them is a choice (CR 355.13).
-        Intent stop;                       // "up to two": may stop early
-        stop.type = IntentType::MakeChoice;
-        stop.player = ctx.controller;
-        stop.chosen_value = 0;
-        stop.choice_label = "Arise!: ready no more";
-        opts.push_back(std::move(stop));
-        ctx.executor.requestChoice(ctx.controller, std::move(opts),
-            "Arise!: ready a Sand Soldier (" + std::to_string(ri.resume_data[0] + 1) +
-            " of up to 2)");
-        ri.resume_point = kAwaitReady;
-    }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri_opt = ctx.state.chain.resuming;
         if (ri_opt.has_value() && ri_opt->resume_point == kDone) return;
-        if (ri_opt.has_value() && ri_opt->resume_point == kAwaitReady) {
-            auto& ri = *ri_opt;
-            auto choice = ctx.executor.takeChoice();
-            auto cands = readyable(ctx.state, ri.resume_data);
-            GameObjectId picked = kInvalidId;
-            if (choice && !choice->chosen_objects.empty()) picked = choice->chosen_objects[0];
-            if (std::find(cands.begin(), cands.end(), picked) == cands.end()) {
-                ri.resume_point = kDone;   // stopped (or nothing valid picked)
-                return;
-            }
-            ctx.executor.readyObject(picked);
-            ri.resume_data[0]++;
-            promptReady(ctx);
-            return;
-        }
 
         // The number of tokens is fixed when the first one is played: the
         // count is re-read on re-entry, and tokens are not Equipment.
@@ -111,24 +54,29 @@ public:
             return;   // waiting for a location
         ctx.events.logTrace("ARISE!: played " + std::to_string(made.size()) +
                             " Sand Soldier token(s)");
-        if (!ri_opt.has_value()) {
-            // Direct invocation (no chain item to resume): no agent can be
-            // asked, so ready the first two, as the choice helpers default to
-            // their first option.
-            int readied = 0;
-            for (auto tok : made) {
-                if (readied >= 2) break;
-                if (!ctx.state.objectExists(tok)) continue;
-                ctx.executor.readyObject(tok);
-                ++readied;
-            }
-            return;
-        }
-        auto& ri = *ri_opt;
-        ri.resume_data.clear();
-        ri.resume_data.push_back(0);
-        for (auto tok : made) ri.resume_data.push_back(static_cast<int32_t>(tok));
-        promptReady(ctx);
+        if (ri_opt.has_value()) ri_opt->resume_point = kDone;
+        std::vector<int32_t> tokens;
+        for (auto tok : made) tokens.push_back(static_cast<int32_t>(tok));
+        ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0, std::move(tokens));
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data`: the tokens this spell played.
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        auto readyable = [&](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& t = ctx.state.getObject(id);
+            return t.location.has_value() && t.is_exhausted;
+        };
+        std::vector<GameObjectId> cands;
+        for (auto v : data)
+            if (readyable(static_cast<GameObjectId>(v))) cands.push_back(static_cast<GameObjectId>(v));
+        const auto chosen = selectSeveral(ctx, "Arise!: ready a Sand Soldier (up to two)", cands,
+                                          /*max_picks=*/2);
+        if (!chosen.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;       // choices end here (CR 388.4)
+        for (auto id : *chosen)
+            if (readyable(id)) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

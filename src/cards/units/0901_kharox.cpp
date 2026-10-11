@@ -32,18 +32,30 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const PlayerId opp = opponent(ctx.controller);
-        const auto& ri = ctx.state.chain.resuming;
-        // Burn exactly once: only on the first entry, not on choice re-entries.
-        if (!ri.has_value() || ri->resume_point == 0) ctx.executor.burn(opp, 3);
+        ctx.executor.burn(opp, 3);
+        // "Then you may do this: ..." — a reflexive trigger (CR 388): after
+        // the burn it goes on the chain as an item of its own; the "may", the
+        // unit and where it goes are chosen as that item is finalized (CR
+        // 388.4), with the burned cards already in the trash.
+        ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& /*data*/) override {
+        const PlayerId opp = opponent(ctx.controller);
         int conf = confirmOptional(ctx, "Kharox: play a unit from their trash?",
                                    [&]() { return !unitsInTrash(ctx.state, opp).empty(); });
-        if (conf < 1) return;
-        GameObjectId picked = pickTarget(ctx, "Kharox: unit in their trash",
-                                         unitsInTrash(ctx.state, opp));
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        const int where = pickEffectPlayLocation(*this, ctx, "Kharox: play it to");
-        if (where == -1) return;                      // waiting for the agent
-        if (ctx.state.getObject(picked).zone != ZoneType::Trash) return;   // left the trash
+        GameObjectId picked = kInvalidId;
+        int where = -2;
+        if (conf == 1) {
+            picked = pickTarget(ctx, "Kharox: unit in their trash", unitsInTrash(ctx.state, opp));
+            if (picked != kInvalidId)
+                where = pickEffectPlayLocation(*this, ctx, "Kharox: play it to");
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 388.4)
+        if (conf < 1 || picked == kInvalidId || where < 0) return;
+        if (!ctx.state.objectExists(picked) ||
+            ctx.state.getObject(picked).zone != ZoneType::Trash) return;   // left the trash
         // playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked,
                                       effectPlayLocation(ctx.state, ctx.controller, where));

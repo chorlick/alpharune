@@ -285,7 +285,9 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     // Plays that were chosen in this window and did not happen. They are not
     // offered again: choosing one changes nothing, so asking again with the
     // same options would only repeat it.
-    std::vector<Intent> failed_plays;
+    // (ChainManager::dropped_plays_: a member, so an outside edit of the
+    // state can clear it — forgetDroppedPlays.)
+    dropped_plays_.clear();
     // An ability used in response that puts nothing on the chain (a rune's
     // Add, CR 164.2) is not a pass: the player keeps priority and the window
     // goes on, however many of them are used. The bound only stops an
@@ -302,11 +304,11 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         auto actions = gen_closed_actions
             ? gen_closed_actions(current)
             : generateClosedStateActions(current);
-        if (!failed_plays.empty())
+        if (!dropped_plays_.empty())
             actions.erase(std::remove_if(actions.begin(), actions.end(),
                 [&](const Intent& a) {
-                    return std::find(failed_plays.begin(), failed_plays.end(), a) !=
-                           failed_plays.end();
+                    return std::find(dropped_plays_.begin(), dropped_plays_.end(), a) !=
+                           dropped_plays_.end();
                 }), actions.end());
 
         // Query agent
@@ -349,7 +351,7 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             // (An activated ability that adds no item is different: a
             // cost-only ability — a rune's Add — has done its work, and is
             // offered again only while it is still legal.)
-            failed_plays.push_back(chosen);
+            dropped_plays_.push_back(chosen);
         } else if (chosen.type == IntentType::PlayReaction) {
             // There is one way to play a card: the engine's (setPlayCard). A
             // ChainManager with no play callback cannot play one.

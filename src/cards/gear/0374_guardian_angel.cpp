@@ -17,8 +17,13 @@ public:
     GuardianAngel() : SimpleEquipGear(Domain::Calm) {}
     const CardDef& def() const override { return def_; }
     bool hasReplacementEffect() const override { return true; }
-    bool replacementApplies(const GameState& state, GameObjectId self, PlayerId /*controller*/,
-                            GameObjectId dying_unit) const override {
+    Applies replacementAppliesTo(const GameState& state, GameObjectId self_object,
+                                 PlayerId controller, GameObjectId dying_unit) const override {
+        return conditionsHold(state, self_object, controller, dying_unit) ? Applies::Yes
+                                                                          : Applies::No;
+    }
+    bool conditionsHold(const GameState& state, GameObjectId self, PlayerId /*controller*/,
+                        GameObjectId dying_unit) const {
         if (!state.objectExists(self)) return false;
         const auto& gear = state.getObject(self);
         return gear.attached_to.has_value() && *gear.attached_to == dying_unit;

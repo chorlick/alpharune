@@ -266,6 +266,25 @@ protected:
             if (i.type == IntentType::ActivateAbility && i.ability_source == gear) out.push_back(i);
         return out;
     }
+    /// Put `card` (in its owner's hand) facedown at battlefield `bf`, hidden
+    /// since last turn.
+    void hideAt(GameObjectId card, int bf) {
+        auto& hand = state.player(o(card).owner).hand;
+        hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
+        o(card).zone = ZoneType::FacedownZone;
+        o(card).is_hidden = true;
+        o(card).hidden_at = static_cast<BattlefieldId>(bf);
+        o(card).hidden_on_turn = state.turn.turn_number - 1;
+        state.battlefields[bf].facedown.push_back(card);
+    }
+    /// A hidden card is played with [Reaction] timing: an enemy item on the
+    /// chain (it does nothing), priority with `p`.
+    void reactionWindowFor(PlayerId p) {
+        pushSpellOnChain(opponent(p));
+        state.chain.items.back().status = ChainItemStatus::Finalized;
+        state.turn.oc_state = OpenClosedState::Closed;
+        state.turn.priority_holder = p;
+    }
     bool canAfford(GameObjectId card) {
         bool ok = false;
         withEngine([&](GameEngine& e) { ok = e.testHook_canAfford(o(card).controller, card); },
@@ -1385,31 +1404,39 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AUnitIsOfferedOnlyIfItsDeflectCanBePaid
 // ─── 9.T2: a hidden spell needs its choices at its battlefield (CR 811.1.d) ─
 
 TEST_F(SweepCostsTest, HiddenPlay_AFinalizePassSpellNeedsSomethingToChooseAtItsBattlefield) {
+    // Resonating Strike hidden at battlefield 0: "Choose a battlefield you
+    // control and a unit you control at a different location." From facedown
+    // the battlefield is the one it was hidden at.
     state.battlefields[0].controller = P1;
     state.turn.turn_number = 3;
-    addUnit(P1, kInvalidId, 9, 0);                      // too big for Fox-Fire
-    addUnit(P2, kInvalidId, 2, 1);                      // eligible, but at the other battlefield
-    auto spell = addToHand(P1, kFoxFire);
-    auto& hand = state.player(P1).hand;
-    hand.erase(std::remove(hand.begin(), hand.end(), spell), hand.end());
-    o(spell).zone = ZoneType::FacedownZone;
-    o(spell).is_hidden = true;
-    o(spell).hidden_at = 0;
-    o(spell).hidden_on_turn = 2;
-    state.battlefields[0].facedown.push_back(spell);
-    pushSpellOnChain(P2);
-    state.chain.items.back().status = ChainItemStatus::Finalized;
-    state.turn.oc_state = OpenClosedState::Closed;
-    state.turn.priority_holder = P1;
+    addUnit(P1, kInvalidId, 2, 0);                      // here: not "at a different location"
+    auto spell = addToHand(P1, kResonatingStrike);
+    hideAt(spell, 0);
+    reactionWindowFor(P1);
     auto offered = [&] {
         for (const auto& i : legal())
             if (i.card == spell) return true;
         return false;
     };
-    EXPECT_FALSE(offered()) << "nothing it can choose at the battlefield it is hidden at";
-    auto here = addUnit(P2, kInvalidId, 2, 0);
-    ASSERT_TRUE(offered());
-    (void)here;
+    EXPECT_FALSE(offered()) << "no unit of mine anywhere else to move here";
+    addUnit(P1, kInvalidId, 2);                         // in base
+    EXPECT_TRUE(offered());
+}
+
+// NOT A DEFECT (9.T2, Fox-Fire 253): "Kill any number of units" includes zero
+// (CR 355.13), so the spell is playable with nothing to choose — from
+// facedown as from hand.
+TEST_F(SweepCostsTest, HiddenPlay_FoxFireMayBePlayedWithNothingToChoose) {
+    state.battlefields[0].controller = P1;
+    state.turn.turn_number = 3;
+    addUnit(P1, kInvalidId, 9, 0);                      // too big for Fox-Fire
+    auto spell = addToHand(P1, kFoxFire);
+    hideAt(spell, 0);
+    reactionWindowFor(P1);
+    bool offered = false;
+    for (const auto& i : legal())
+        if (i.card == spell) offered = true;
+    EXPECT_TRUE(offered);
 }
 
 // ─── 9.N5: Weaponmaster needs an Equip cost to pay (CR 821.1.c.4) ───────────

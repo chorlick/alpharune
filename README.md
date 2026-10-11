@@ -50,15 +50,16 @@ RIFTBOUND_ROOT=. ./build/riftbound_tests
 # Play random vs MCTS (single game, stdout + HTML replay)
 ./build/riftbound \
     --agent1 random --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt \
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt \
     --render-html on
 
-# Batch 100 games on 8 threads (random vs random, no UI)
+# Batch 100 games on 8 threads (random vs random, no UI). Add
+# --render-html on to write replays/<timestamp>/replay_gameN.html.
 ./build/riftbound \
     --agent1 random --agent2 random \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt \
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt \
     --games 100 --threads 8
 
 # Play AS A HUMAN against MCTS-50 in your browser. The binary
@@ -67,24 +68,24 @@ RIFTBOUND_ROOT=. ./build/riftbound_tests
 # auto-enabled. Open the URL in any browser to play.
 ./build/riftbound \
     --agent1 human --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt
 
 # Want to play as P2 instead? Swap the seats:
 ./build/riftbound \
     --agent1 mcts:sims=50 --agent2 human \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt
 
 # Hot-seat (two humans in one browser tab, take turns):
 ./build/riftbound --agent1 human --agent2 human \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt
 
 # Spectator (force the web UI ON for an AI-vs-AI game):
 ./build/riftbound --agent1 random --agent2 mcts:sims=20 --web on \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt
 ```
 
 Pass `--help` for the full flag list. The web UI's WebSocket protocol
@@ -98,8 +99,8 @@ The fastest way to play a game yourself, as Player 1, against a
 ```bash
 ./build/riftbound \
     --agent1 human --agent2 mcts:sims=50 \
-    --deck1 decks/miss_fortune_test.txt \
-    --deck2 decks/miss_fortune_test.txt
+    --deck1 decks/fiora.txt \
+    --deck2 decks/yi_rebuild.txt
 ```
 
 Because a seat is `human`, the binary auto-starts a small Boost.Beast
@@ -120,8 +121,8 @@ Useful flags:
 |---|---|---|
 | `--agent1` / `--agent2` | `random` | Per-seat agent: `human`, `random`, `mcts:sims=N`, `ismcts:sims=N`. |
 | `--web` | `auto` | `auto` starts the UI whenever a seat is human; `on` forces it (spectate AI-vs-AI); `off` disables it. |
-| `--port` / `--bind` | `8080` / `127.0.0.1` | Where the UI listens. Use `--bind 0.0.0.0` to reach it from another machine. |
-| `--god-mode` | `auto` | `auto`/`on` enables the in-browser state editor when a human is seated; `off` hides it. |
+| `--port` / `--bind` | `8080` / `127.0.0.1` | Where the UI listens. Use `--bind 0.0.0.0` to reach it from another machine: the printed URL then carries an access token that the server requires. |
+| `--god-mode` | `auto` | `auto`/`on` enables the in-browser state editor when a human is seated. While it is on the UI shows every hand and deck. `off` hides the editor **and** the opponent's hand and both decks' order, for a fair game. |
 | `--seed` | `0` | Fix the RNG for a reproducible game (`0` = random per game). |
 | `--wild` | off | Wild format: allow banned cards in decks (ignores each card's `banned` flag so banned cards can be played). |
 
@@ -219,9 +220,10 @@ src/cards/       Card subclasses — one TU per card under units/ spells/ gear/
                  cross-cutting helpers in card_helpers.h; cards_init.cpp is the
                  generated registration aggregator.
 src/agents/      AgentInterface + RandomAgent + HumanAgent
-src/io/          HTML replay writer, ASCII state renderer
+src/io/          HTML replay writer, ASCII state renderer, play server
+                 (web UI) and its god-mode state editor
 src/openspiel/   OpenSpiel Game / State subclasses, action vocabulary,
-                 match runner, clone-correctness tests
+                 clone-correctness tests
 src/ml/          Engine-side shared infra: feature extractor +
                  CFR utilities. No torch — these emit data for
                  downstream ML consumers.
@@ -230,7 +232,7 @@ src/effects/     Effect type definitions
 
 tests/           Google Test — engine behavior + card mechanics
 cards/           raw/gallery_raw.json (reference art/metadata for authoring)
-decks/           Sample decks (per-archetype .txt deck lists, Piltover Archive format)
+decks/           Sample decks (.txt deck lists, Piltover Archive format)
 rules/           core-rules.md, tournament-rules.md, core-rules.pdf
 errata/          Official errata documents
 scripts/         Card-data pipeline + replay generation

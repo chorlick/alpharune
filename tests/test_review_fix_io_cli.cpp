@@ -1,0 +1,906 @@
+/// @file test_review_fix_io_cli.cpp
+/// Regression tests for plan 04 (play server, HTML output, runners).
+///
+/// The play-server tests run a real game (GameEngine::runGame on its own
+/// thread, a HumanAgent in seat 1) behind a real PlayServer on an ephemeral
+/// loopback port, and talk to it over a WebSocket exactly as the browser
+/// does. play_server.cpp and play_index_html.cpp are linked only into the
+/// `riftbound` executable, so they are compiled into this file.
+
+#include "src/io/play_index_html.cpp"
+#include "src/io/play_server.cpp"
+
+#include "agents/random_agent.h"
+#include "cards/card_registry.h"
+#include "engine/batch_runner.h"
+#include "rules/deck_validator.h"
+
+#include <gtest/gtest.h>
+
+#include <boost/asio/connect.hpp>
+
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+using namespace riftbound;
+using namespace std::chrono_literals;
+
+namespace {
+
+// ─── Shared card data ────────────────────────────────────────────────────────
+
+struct Cards {
+    CardRegistry registry;
+    CardDB db;
+    DeckSubmission deck1, deck2;
+
+    Cards() {
+        registry.loadAll();
+        db.buildFromClasses(registry);
+        const char* env = std::getenv("RIFTBOUND_ROOT");
+        const std::string root = env ? env : ".";
+        deck1 = DeckValidator::loadFromDeckList(root + "/decks/fiora.txt", db);
+        deck2 = DeckValidator::loadFromDeckList(root + "/decks/yi_rebuild.txt", db);
+    }
+};
+
+Cards& cards() {
+    static Cards c;
+    return c;
+}
+
+// ─── A seat-2 AI the test can freeze mid-decision ────────────────────────────
+// While `hold` is set the engine thread blocks inside selectAction: the
+// engine is "busy" (not parked for the server) for as long as the test likes.
+
+class GatedAgent : public AgentInterface {
+public:
+    explicit GatedAgent(uint64_t seed) : inner_(seed) {}
+
+    Intent selectAction(const GameState& state,
+                        const std::vector<Intent>& legal) override {
+        {
+            std::unique_lock<std::mutex> lock(mu_);
+            if (hold_) {
+                entered_ = true;
+                cv_.notify_all();
+                cv_.wait(lock, [&] { return !hold_; });
+                entered_ = false;
+            }
+        }
+        return inner_.selectAction(state, legal);
+    }
+
+    void hold() { std::lock_guard<std::mutex> lock(mu_); hold_ = true; }
+    void release() {
+        { std::lock_guard<std::mutex> lock(mu_); hold_ = false; }
+        cv_.notify_all();
+    }
+    bool entered() { std::lock_guard<std::mutex> lock(mu_); return entered_; }
+
+private:
+    RandomAgent inner_;
+    std::mutex mu_;
+    std::condition_variable cv_;
+    bool hold_ = false;
+    bool entered_ = false;
+};
+
+// ─── WebSocket test client ───────────────────────────────────────────────────
+
+class Client {
+public:
+    /// Returns false if the server declined the upgrade.
+    bool connect(uint16_t port, const std::string& target = "/ws",
+                 const std::string& origin = "", std::string host = "") {
+        if (host.empty()) host = "127.0.0.1:" + std::to_string(port);
+        beast::error_code ec;
+        ws_.next_layer().connect(
+            tcp::endpoint{net::ip::make_address("127.0.0.1"), port}, ec);
+        if (ec) return false;
+        if (!origin.empty()) {
+            ws_.set_option(ws::stream_base::decorator(
+                [origin](ws::request_type& req) { req.set(http::field::origin, origin); }));
+        }
+        ws_.handshake(host, target, ec);
+        return !ec;
+    }
+
+    void send(const json& m) { sendRaw(m.dump()); }
+    void sendRaw(const std::string& text) { ws_.write(net::buffer(text)); }
+
+    /// Next message, or nullopt if none arrives within `timeout` (or the
+    /// connection closed — see closed()).
+    std::optional<json> read(std::chrono::milliseconds timeout = 3000ms) {
+        if (closed_) return std::nullopt;
+        if (!reading_) {
+            reading_ = true;
+            done_ = false;
+            ws_.async_read(buf_, [this](beast::error_code ec, std::size_t) {
+                done_ = true;
+                if (ec) closed_ = true;
+            });
+        }
+        ioc_.restart();
+        ioc_.run_for(timeout);
+        if (!done_) return std::nullopt;
+        reading_ = false;
+        if (closed_) return std::nullopt;
+        json m = json::parse(beast::buffers_to_string(buf_.data()));
+        buf_.consume(buf_.size());
+        return m;
+    }
+
+    /// Reads until `pred(message)`; fails the test and returns null json on timeout.
+    template <class Pred>
+    json readUntil(Pred pred, std::chrono::milliseconds timeout = 5000ms) {
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline && !closed_) {
+            auto m = read(200ms);
+            if (m && pred(*m)) return *m;
+        }
+        ADD_FAILURE() << "timed out waiting for a message";
+        return json();
+    }
+
+    json nextFrame() {
+        return readUntil([](const json& m) {
+            return m["type"] == "decision" || m["type"] == "state";
+        });
+    }
+
+    /// The next `decision` frame for `player` whose id is greater than `after`.
+    json nextDecision(const std::string& player, uint64_t after = 0) {
+        return readUntil([&](const json& m) {
+            return m["type"] == "decision" && m["player"] == player &&
+                   m["decision_id"].get<uint64_t>() > after;
+        });
+    }
+
+    /// The reply to a request: the next `err` / `edit_err` / `edit_ok`.
+    json nextReply() {
+        return readUntil([](const json& m) {
+            return m["type"] == "err" || m["type"] == "edit_err" || m["type"] == "edit_ok";
+        });
+    }
+
+    bool closed() const { return closed_; }
+
+private:
+    net::io_context ioc_;
+    ws::stream<tcp::socket> ws_{ioc_};
+    beast::flat_buffer buf_;
+    bool reading_ = false;
+    bool done_ = false;
+    bool closed_ = false;
+};
+
+// ─── A live game behind a live server ────────────────────────────────────────
+
+struct LiveGame {
+    EventBus events;
+    GameEngine engine{cards().db, events, cards().registry};
+    StateRenderer renderer{cards().db};
+    HumanAgent human;                 // seat 1 (unless spectating)
+    RandomAgent random1{11};          // seat 1 when spectating
+    GatedAgent ai{22};                // seat 2
+    std::unique_ptr<PlayServer> server;
+    std::thread game_thread;
+    bool spectating = false;
+
+    /// `tweak` adjusts the config before the server starts.
+    explicit LiveGame(std::function<void(PlayServerConfig&)> tweak = {},
+                      bool spectator = false)
+        : spectating(spectator) {
+        renderer.show_hand = true;
+        PlayServerConfig cfg;
+        cfg.port = 0;   // ephemeral
+        cfg.god_mode_enabled = true;
+        cfg.reveal_hidden = true;
+        cfg.spectator = spectator;
+        if (!spectator) cfg.p1_human = &human;
+        cfg.on_shutdown_signal = [this] { human.abort(); };
+        if (tweak) tweak(cfg);
+        server = std::make_unique<PlayServer>(engine, renderer, cards().db, std::move(cfg));
+        server->start();
+        engine.on_decision = [this](const GameState&, const std::vector<Intent>& legal,
+                                    const Intent& chosen) {
+            server->awaitSpectatorStep(legal, chosen);
+            server->notifyDecisionMade();
+        };
+        game_thread = std::thread([this] {
+            AgentInterface& seat1 = spectating ? static_cast<AgentInterface&>(random1)
+                                               : static_cast<AgentInterface&>(human);
+            engine.runGame(cards().deck1, cards().deck2, seat1, ai, 20261010);
+        });
+    }
+
+    uint16_t port() const { return server->port(); }
+
+    /// Ends the game the way a shutdown signal does and waits for the engine.
+    void finishGame() {
+        server->requestShutdown();
+        ai.release();
+        if (game_thread.joinable()) game_thread.join();
+    }
+
+    ~LiveGame() {
+        finishGame();
+        server->stop();
+    }
+};
+
+/// Answers P1's decisions with option 0 until `done(frame)` holds for one of
+/// them; returns that frame (P1 still parked on it).
+template <class Pred>
+json playUntil(Client& c, Pred done, int max_decisions = 200) {
+    uint64_t last = 0;
+    for (int i = 0; i < max_decisions; ++i) {
+        json f = c.nextDecision("P1", last);
+        if (f.is_null()) return f;
+        if (done(f)) return f;
+        last = f["decision_id"].get<uint64_t>();
+        c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", last}});
+    }
+    ADD_FAILURE() << "condition not reached in " << max_decisions << " decisions";
+    return json();
+}
+
+std::string readFile(const std::string& path) {
+    std::ifstream in(path);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+int countOf(const std::string& hay, const std::string& needle) {
+    int n = 0;
+    for (auto pos = hay.find(needle); pos != std::string::npos;
+         pos = hay.find(needle, pos + needle.size())) ++n;
+    return n;
+}
+
+} // namespace
+
+// ─── 4.2 — a malformed message must not take the IO thread down ──────────────
+
+TEST(PlayServerProtocol, MalformedMessagesGetErrorsAndServerKeepsServing) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json first = c.nextDecision("P1");
+    ASSERT_FALSE(first.is_null());
+
+    // Each of these used to throw json::type_error out of the read handler,
+    // which ended io_context::run() — and with it the signal handler.
+    const std::vector<std::string> bad = {
+        "this is not json",
+        "[1,2,3]",
+        R"({"type":5})",
+        R"({"type":"choose","player":"P1","index":"zero","decision_id":"x"})",
+        R"({"type":"choose","player":7,"index":0})",
+        R"({"type":"edit_reorder_deck","player":"P1","order":["a",{}]})",
+        R"({"type":"edit_reorder_deck","player":"P1","order":7})",
+        R"({"type":"edit_move","object_id":"x","to_zone":5,"to_player":[]})",
+        R"({"type":"edit_object","object_id":1e300,"field":"damage","value":"lots"})",
+        R"({"type":"edit_player","player":{},"field":"score","value":[1]})",
+        R"({"type":"edit_phase","field":"phase","value":"main"})",
+    };
+    for (const auto& text : bad) {
+        c.sendRaw(text);
+        json reply = c.nextReply();
+        ASSERT_FALSE(reply.is_null()) << "no reply to: " << text;
+        EXPECT_NE(reply["type"], "edit_ok") << text;
+    }
+    c.sendRaw(R"({"type":"spectator_autoplay","on":"yes","delay_ms":"fast"})");
+
+    // Still alive, still parked on the same decision, and a new client can connect.
+    c.send({{"type", "request_state"}});
+    json again = c.nextDecision("P1");
+    EXPECT_EQ(again["decision_id"], first["decision_id"]);
+    Client second;
+    EXPECT_TRUE(second.connect(game.port()));
+    EXPECT_FALSE(second.nextFrame().is_null());
+}
+
+// ─── 4.3 — a choose answers only the decision it names ───────────────────────
+
+TEST(PlayServerProtocol, StaleOrInvalidChooseIsRefused) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json d1 = c.nextDecision("P1");
+    ASSERT_FALSE(d1.is_null());
+    const uint64_t id1 = d1["decision_id"].get<uint64_t>();
+    const int n = static_cast<int>(d1["legal"].size());
+    ASSERT_GT(n, 0);
+
+    auto refused = [&](json msg, const char* why) {
+        c.send(msg);
+        json reply = c.nextReply();
+        EXPECT_EQ(reply["type"], "err") << why;
+        // Nothing was applied: the engine is still waiting on decision id1.
+        EXPECT_TRUE(game.human.atDecision()) << why;
+        EXPECT_EQ(game.human.decisionId(), id1) << why;
+    };
+    refused({{"type", "choose"}, {"player", "P1"}, {"index", 0}}, "no decision_id");
+    refused({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id1 + 1}},
+            "decision_id from the future");
+    refused({{"type", "choose"}, {"player", "P1"}, {"index", n}, {"decision_id", id1}},
+            "index past the end");
+    refused({{"type", "choose"}, {"player", "P1"}, {"index", -1}, {"decision_id", id1}},
+            "negative index");
+    refused({{"type", "choose"}, {"player", "P2"}, {"index", 0}, {"decision_id", id1}},
+            "seat that is not human");
+
+    // A valid answer goes through…
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id1}});
+    json d2 = c.nextDecision("P1", id1);
+    ASSERT_FALSE(d2.is_null());
+    const uint64_t id2 = d2["decision_id"].get<uint64_t>();
+
+    // …and the same click arriving again (a double click, a second tab) is
+    // not applied to the decision that followed.
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id1}});
+    json reply = c.nextReply();
+    EXPECT_EQ(reply["type"], "err");
+    EXPECT_NE(reply["msg"].get<std::string>().find("stale"), std::string::npos);
+    EXPECT_TRUE(game.human.atDecision());
+    EXPECT_EQ(game.human.decisionId(), id2);
+}
+
+// ─── 4.1 — no reads or edits of GameState while the engine is running ────────
+
+TEST(PlayServerProtocol, EditsAndSnapshotsWaitForTheEngineToPark) {
+    LiveGame game;
+    game.ai.hold();   // seat 2 freezes inside its first decision
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+
+    // Answer P1 until the engine is inside seat 2's selectAction.
+    uint64_t last = 0;
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (!game.ai.entered() && std::chrono::steady_clock::now() < deadline) {
+        auto m = c.read(100ms);
+        if (!m || (*m)["type"] != "decision" || (*m)["player"] != "P1") continue;
+        const uint64_t id = (*m)["decision_id"].get<uint64_t>();
+        if (id <= last) continue;
+        last = id;
+        c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id}});
+    }
+    ASSERT_TRUE(game.ai.entered()) << "seat 2 was never asked";
+
+    // Engine thread is mid-decision for the AI. An edit must be refused…
+    c.send({{"type", "edit_player"}, {"player", "P1"}, {"field", "score"}, {"value", 5}});
+    json reply = c.readUntil([](const json& m) {
+        return m["type"] == "edit_err" || m["type"] == "edit_ok";
+    });
+    EXPECT_EQ(reply["type"], "edit_err");
+    EXPECT_NE(reply["msg"].get<std::string>().find("busy"), std::string::npos);
+    // (reading the engine's state here is safe: its thread is held in the gate)
+    EXPECT_EQ(game.engine.state().player(PlayerId::Player1).score, 0);
+
+    // …and a state request is answered from the last snapshot, with nothing to click.
+    c.send({{"type", "request_state"}});
+    json busy = c.readUntil([](const json& m) { return m["type"] == "state"; });
+    EXPECT_TRUE(busy["engine_busy"].get<bool>());
+    EXPECT_TRUE(busy["legal"].empty());
+    // A choose now is refused too: no decision is pending.
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", last}});
+    EXPECT_EQ(c.nextReply()["type"], "err");
+
+    // Once the engine is parked on P1 again the same edit applies.
+    game.ai.release();
+    json d = c.nextDecision("P1", last);
+    ASSERT_FALSE(d.is_null());
+    EXPECT_FALSE(d["engine_busy"].get<bool>());
+    c.send({{"type", "edit_player"}, {"player", "P1"}, {"field", "score"}, {"value", 5}});
+    reply = c.readUntil([](const json& m) {
+        return m["type"] == "edit_err" || m["type"] == "edit_ok";
+    });
+    EXPECT_EQ(reply["type"], "edit_ok");
+    json after = c.readUntil([](const json& m) {
+        return m["type"] == "decision" && m["zones"]["P1"]["score"] == 5;
+    });
+    ASSERT_FALSE(after.is_null());
+    EXPECT_EQ(after["decision_id"], d["decision_id"]);
+}
+
+// ─── 4.4 — cross-site WebSocket hijacking ────────────────────────────────────
+
+TEST(PlayServerProtocol, UpgradeChecksOriginHostAndPath) {
+    LiveGame game;
+    const uint16_t port = game.port();
+    const std::string self = "127.0.0.1:" + std::to_string(port);
+
+    { Client c; EXPECT_TRUE(c.connect(port)) << "no Origin (non-browser client)"; }
+    { Client c; EXPECT_TRUE(c.connect(port, "/ws", "http://" + self)) << "the served page"; }
+    { Client c; EXPECT_TRUE(c.connect(port, "/ws", "http://localhost:" + std::to_string(port),
+                                      "localhost:" + std::to_string(port))); }
+    { Client c; EXPECT_FALSE(c.connect(port, "/ws", "http://evil.example"))
+          << "another site's page must not be able to connect"; }
+    { Client c; EXPECT_FALSE(c.connect(port, "/ws", "https://" + self)) << "different scheme"; }
+    { Client c; EXPECT_FALSE(c.connect(port, "/ws", "http://evil.example:" + std::to_string(port),
+                                       "evil.example:" + std::to_string(port)))
+          << "DNS rebinding: Origin matches Host, but Host is not this machine"; }
+    { Client c; EXPECT_FALSE(c.connect(port, "/elsewhere")) << "only /ws upgrades"; }
+}
+
+TEST(PlayServerProtocol, AccessTokenIsRequiredWhenConfigured) {
+    LiveGame game([](PlayServerConfig& cfg) { cfg.access_token = "s3cret"; });
+    const uint16_t port = game.port();
+
+    { Client c; EXPECT_FALSE(c.connect(port, "/ws")); }
+    { Client c; EXPECT_FALSE(c.connect(port, "/ws?token=wrong")); }
+    { Client c; EXPECT_FALSE(c.connect(port, "/ws?token=s3cretX")); }
+    { Client c; EXPECT_TRUE(c.connect(port, "/ws?token=s3cret")); }
+
+    auto get = [&](const std::string& target) {
+        net::io_context ioc;
+        tcp::socket sock(ioc);
+        sock.connect(tcp::endpoint{net::ip::make_address("127.0.0.1"), port});
+        http::request<http::string_body> req{http::verb::get, target, 11};
+        req.set(http::field::host, "127.0.0.1:" + std::to_string(port));
+        http::write(sock, req);
+        beast::flat_buffer buf;
+        http::response<http::string_body> res;
+        http::read(sock, buf, res);
+        return res;
+    };
+    EXPECT_EQ(get("/").result(), http::status::forbidden);
+    auto ok = get("/?token=s3cret");
+    EXPECT_EQ(ok.result(), http::status::ok);
+    EXPECT_NE(ok.body().find("<title>Riftbound"), std::string::npos);
+}
+
+// ─── 4.13 — a busy port is an exception the caller can report ───────────────
+
+TEST(PlayServerProtocol, StartOnABusyPortThrowsAndLeavesTheServerStopped) {
+    LiveGame game;
+    PlayServerConfig cfg;
+    cfg.port = game.port();   // taken
+    PlayServer second(game.engine, game.renderer, cards().db, std::move(cfg));
+    EXPECT_THROW(second.start(), std::exception);
+    second.stop();            // no-op: nothing was started
+    // The first server is unaffected.
+    Client c;
+    EXPECT_TRUE(c.connect(game.port()));
+}
+
+// ─── 4.5 — a frame carries only what its viewer may see──────────────────────
+
+TEST(PlayServerProtocol, FairPlayFramesWithholdOpponentHandAndDeckOrder) {
+    LiveGame game([](PlayServerConfig& cfg) {
+        cfg.god_mode_enabled = false;
+        cfg.reveal_hidden = false;
+    });
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json f = playUntil(c, [](const json& m) {
+        return m["zones"]["P1"]["hand_count"].get<int>() > 0 &&
+               m["zones"]["P2"]["hand_count"].get<int>() > 0;
+    });
+    ASSERT_FALSE(f.is_null());
+
+    const json& p1 = f["zones"]["P1"];
+    const json& p2 = f["zones"]["P2"];
+    // Own hand: all of it. Opponent's: a count.
+    EXPECT_EQ(static_cast<int>(p1["hand"].size()), p1["hand_count"].get<int>());
+    EXPECT_TRUE(p2["hand"].empty());
+    // Deck order is hidden from both players.
+    for (const json* z : {&p1, &p2}) {
+        EXPECT_TRUE((*z)["main_deck"].empty());
+        EXPECT_TRUE((*z)["rune_deck"].empty());
+        EXPECT_GT((*z)["main_deck_count"].get<int>(), 0);
+    }
+    // The ASCII board follows the same rule: exactly one hand is replaced by a count.
+    const std::string board = f["render_text"].get<std::string>();
+    EXPECT_EQ(countOf(board, "cards, hidden)") + countOf(board, "card, hidden)"), 1);
+    // No name from the opponent's hand appears as a hand entry. (P1 is
+    // parked on this decision, so GameState is stable.)
+    const auto& st = game.engine.state();
+    const auto p2_section = board.substr(board.rfind(" P2  "));
+    for (auto id : st.player(PlayerId::Player2).hand) {
+        const std::string& name = st.getObject(id).name;
+        EXPECT_EQ(p2_section.find(" Hand:  " + name), std::string::npos) << name;
+    }
+    // God-mode edits stay off.
+    c.send({{"type", "edit_player"}, {"player", "P1"}, {"field", "score"}, {"value", 7}});
+    EXPECT_EQ(c.nextReply()["type"], "edit_err");
+}
+
+TEST(PlayServerProtocol, RevealHiddenFramesCarryEverything) {
+    LiveGame game;   // reveal_hidden = true (god mode / spectator)
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json f = playUntil(c, [](const json& m) {
+        return m["zones"]["P2"]["hand_count"].get<int>() > 0;
+    });
+    ASSERT_FALSE(f.is_null());
+    const json& p2 = f["zones"]["P2"];
+    EXPECT_EQ(static_cast<int>(p2["hand"].size()), p2["hand_count"].get<int>());
+    EXPECT_EQ(static_cast<int>(p2["main_deck"].size()), p2["main_deck_count"].get<int>());
+    EXPECT_EQ(f["render_text"].get<std::string>().find("hidden)"), std::string::npos);
+}
+
+// ─── 4.6 — spectator stepping, and the terminal frame ────────────────────────
+
+TEST(PlayServerProtocol, SpectatorStepsAdvanceTheBoardOneDecisionAtATime) {
+    LiveGame game({}, /*spectator=*/true);
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    auto held = [](const json& m) {
+        return m["type"] == "decision" && m["spectator"]["waiting"].get<bool>();
+    };
+    json d1 = c.readUntil(held);
+    ASSERT_FALSE(d1.is_null());
+    const uint64_t id1 = d1["decision_id"].get<uint64_t>();
+    EXPECT_FALSE(d1["render_text"].get<std::string>().empty());
+    EXPECT_GE(d1["spectator"]["chosen"].get<int>(), 0);
+    EXPECT_LT(d1["spectator"]["chosen"].get<int>(), static_cast<int>(d1["legal"].size()));
+
+    // Nothing moves until the viewer steps.
+    c.send({{"type", "request_state"}});
+    EXPECT_EQ(c.readUntil(held)["decision_id"].get<uint64_t>(), id1);
+
+    c.send({{"type", "spectator_step"}});
+    json d2 = c.readUntil([&](const json& m) {
+        return held(m) && m["decision_id"].get<uint64_t>() > id1;
+    });
+    ASSERT_FALSE(d2.is_null());
+    EXPECT_EQ(d2["decision_id"].get<uint64_t>(), id1 + 1);
+
+    // Autoplay keeps the frames coming without further clicks.
+    c.send({{"type", "spectator_autoplay"}, {"on", true}, {"delay_ms", 0}});
+    json later = c.readUntil([&](const json& m) {
+        return m["type"] == "decision" && m["decision_id"].get<uint64_t>() >= id1 + 5;
+    });
+    EXPECT_FALSE(later.is_null());
+}
+
+TEST(PlayServerProtocol, TerminalFrameIsDeliveredBeforeTheServerStops) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    ASSERT_FALSE(c.nextDecision("P1").is_null());
+
+    game.finishGame();                    // P1 concedes; engine thread is done
+    game.server->notifyGameFinished();
+    game.server->stop();                  // returns only once the frame is written
+
+    json last;
+    while (auto m = c.read(500ms)) {
+        if ((*m)["type"] == "state" || (*m)["type"] == "decision") last = *m;
+    }
+    ASSERT_FALSE(last.is_null());
+    EXPECT_TRUE(last["game_over"].get<bool>());
+    EXPECT_EQ(last["type"], "state");
+    EXPECT_TRUE(last["legal"].empty());
+    EXPECT_TRUE(last.contains("winner"));
+}
+
+// ─── 4.7 — a prompt heads the decision it was asked for, and only that one ───
+
+TEST(PlayServerProtocol, PromptStaysWithItsDecision) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json d1 = c.nextDecision("P1");
+    ASSERT_FALSE(d1.is_null());
+    const uint64_t id1 = d1["decision_id"].get<uint64_t>();
+    EXPECT_FALSE(d1.contains("prompt"));
+
+    // The engine logs the prompt right before asking; here it is P1's.
+    game.server->broadcastLog("TRC", "MODE_PROMPT: Choose a mode [Draw | Burn]");
+    auto frame = [&] {
+        c.send({{"type", "request_state"}});
+        return c.nextDecision("P1");
+    };
+    EXPECT_EQ(frame().value("prompt", ""), "Choose a mode");
+    // Every frame of that decision carries it (a reconnect, a re-render)…
+    EXPECT_EQ(frame().value("prompt", ""), "Choose a mode");
+
+    // …and once the decision is answered it is gone.
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id1}});
+    json d2 = c.nextDecision("P1", id1);
+    ASSERT_FALSE(d2.is_null());
+    EXPECT_FALSE(d2.contains("prompt"));
+
+    // A prompt asked of the other seat (answered by the AI, which the server
+    // only hears about through notifyDecisionMade) never reaches P1's frame.
+    game.server->broadcastLog("TRC", "MAY_PROMPT: Pay 1 to draw?");
+    game.server->notifyDecisionMade();
+    EXPECT_FALSE(frame().contains("prompt"));
+}
+
+// ─── 4.8 — god-mode moves keep the state consistent ──────────────────────────
+
+namespace {
+
+GameState editorState() {
+    GameState s{};
+    BattlefieldState bf;
+    bf.id = 0;
+    s.battlefields.push_back(bf);
+    auto add = [&](GameObjectId id, PlayerId who, ZoneType zone) -> GameObject& {
+        GameObject o{};
+        o.id = id;
+        o.owner = who;
+        o.controller = who;
+        o.zone = zone;
+        return s.objects[id] = o;
+    };
+    // 1: P2's unit at the battlefield, carrying gear 3.
+    auto& unit = add(1, PlayerId::Player2, ZoneType::BattlefieldZone);
+    unit.location = BattlefieldLocation{0};
+    unit.attachments = {3};
+    auto& gear = add(3, PlayerId::Player2, ZoneType::BattlefieldZone);
+    gear.location = BattlefieldLocation{0};
+    gear.attached_to = 1;
+    // 2: P1's facedown card at the battlefield.
+    auto& hidden = add(2, PlayerId::Player1, ZoneType::FacedownZone);
+    hidden.is_hidden = true;
+    s.battlefields[0].facedown.push_back(2);
+    // 4: a spell on the chain.
+    add(4, PlayerId::Player1, ZoneType::Chain);
+    // 5: a card in P1's hand.
+    add(5, PlayerId::Player1, ZoneType::Hand);
+    s.player(PlayerId::Player1).hand.push_back(5);
+    return s;
+}
+
+bool contains(const std::vector<GameObjectId>& v, GameObjectId id) {
+    return std::find(v.begin(), v.end(), id) != v.end();
+}
+
+} // namespace
+
+TEST(StateEditorReviewFix, MovingAFacedownCardTakesItOffTheBattlefield) {
+    GameState s = editorState();
+    StateEditor ed;
+    ASSERT_TRUE(ed.moveObject(s, 2, PlayerId::Player1, ZoneType::Trash).ok);
+    EXPECT_TRUE(s.battlefields[0].facedown.empty());   // was left behind as an orphan
+    EXPECT_FALSE(s.getObject(2).is_hidden);
+    EXPECT_TRUE(contains(s.player(PlayerId::Player1).trash, 2));
+}
+
+TEST(StateEditorReviewFix, MovingAUnitOffBoardDropsItsGearAndKeepsOwnership) {
+    GameState s = editorState();
+    StateEditor ed;
+    // The UI sends the unit's own owner, not the battlefield's controller.
+    ASSERT_TRUE(ed.moveObject(s, 1, PlayerId::Player2, ZoneType::Hand).ok);
+    const auto& unit = s.getObject(1);
+    EXPECT_EQ(unit.owner, PlayerId::Player2);
+    EXPECT_EQ(unit.controller, PlayerId::Player2);
+    EXPECT_TRUE(contains(s.player(PlayerId::Player2).hand, 1));
+    EXPECT_FALSE(contains(s.player(PlayerId::Player1).hand, 1));
+    EXPECT_TRUE(unit.attachments.empty());
+    const auto& gear = s.getObject(3);
+    EXPECT_FALSE(gear.attached_to.has_value());
+    EXPECT_EQ(gear.zone, ZoneType::Base);
+    ASSERT_TRUE(gear.location.has_value());
+    EXPECT_EQ(*gear.location, LocationId{BaseLocation{PlayerId::Player2}});
+}
+
+TEST(StateEditorReviewFix, GivingACardToTheOtherPlayerChangesOwnerAndController) {
+    GameState s = editorState();
+    StateEditor ed;
+    ASSERT_TRUE(ed.moveObject(s, 5, PlayerId::Player2, ZoneType::Hand).ok);
+    EXPECT_EQ(s.getObject(5).owner, PlayerId::Player2);
+    EXPECT_EQ(s.getObject(5).controller, PlayerId::Player2);
+    EXPECT_FALSE(contains(s.player(PlayerId::Player1).hand, 5));
+    EXPECT_TRUE(contains(s.player(PlayerId::Player2).hand, 5));
+}
+
+TEST(StateEditorReviewFix, MovingAttachedGearDetachesItFromItsUnit) {
+    GameState s = editorState();
+    StateEditor ed;
+    ASSERT_TRUE(ed.moveObject(s, 3, PlayerId::Player2, ZoneType::Trash).ok);
+    EXPECT_TRUE(s.getObject(1).attachments.empty());
+    EXPECT_FALSE(s.getObject(3).attached_to.has_value());
+}
+
+TEST(StateEditorReviewFix, ChainAndFacedownMovesAreRefused) {
+    GameState s = editorState();
+    StateEditor ed;
+    // To a zone that needs a container entry the editor cannot build.
+    EXPECT_FALSE(ed.moveObject(s, 5, PlayerId::Player1, ZoneType::Chain).ok);
+    EXPECT_FALSE(ed.moveObject(s, 5, PlayerId::Player1, ZoneType::FacedownZone).ok);
+    EXPECT_EQ(s.getObject(5).zone, ZoneType::Hand);
+    EXPECT_TRUE(contains(s.player(PlayerId::Player1).hand, 5));
+    // Out of the chain, which would keep an item pointing at it.
+    EXPECT_FALSE(ed.moveObject(s, 4, PlayerId::Player1, ZoneType::Hand).ok);
+    EXPECT_FALSE(ed.moveObjectToBattlefield(s, 4, 0).ok);
+    EXPECT_EQ(s.getObject(4).zone, ZoneType::Chain);
+}
+
+TEST(StateEditorReviewFix, SetPhaseRejectsValuesOutsideTheEnum) {
+    GameState s = editorState();
+    StateEditor ed;
+    EXPECT_FALSE(ed.setPhase(s, -1).ok);
+    EXPECT_FALSE(ed.setPhase(s, static_cast<int>(TurnPhase::GameOver) + 1).ok);
+    EXPECT_FALSE(ed.setPhase(s, 300).ok);   // would wrap into range as a uint8
+    EXPECT_TRUE(ed.setPhase(s, static_cast<int>(TurnPhase::MainPhase)).ok);
+    EXPECT_EQ(s.turn.phase, TurnPhase::MainPhase);
+}
+
+TEST(PlayServerProtocol, UnknownZoneIsAnErrorNotAMoveToHand) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json f = playUntil(c, [](const json& m) {
+        return m["zones"]["P1"]["main_deck_count"].get<int>() > 0;
+    });
+    ASSERT_FALSE(f.is_null());
+    const int card = f["zones"]["P1"]["main_deck"][0]["id"].get<int>();
+    const int hand_before = f["zones"]["P1"]["hand_count"].get<int>();
+    c.send({{"type", "edit_move"}, {"object_id", card}, {"to_player", "P1"}, {"to_zone", "Graveyard"}});
+    json reply = c.nextReply();
+    EXPECT_EQ(reply["type"], "edit_err");
+    EXPECT_EQ(c.nextDecision("P1")["zones"]["P1"]["hand_count"].get<int>(), hand_before);
+    // Objects in a frame say whose they are, so the UI need not guess.
+    EXPECT_EQ(f["zones"]["P1"]["main_deck"][0]["owner"], "P1");
+}
+
+// ─── 4.9 — the ASCII board lists every unit and every option in full ─────────
+
+TEST(StateRendererReviewFix, CrowdedBattlefieldListsEveryUnit) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json f = playUntil(c, [](const json& m) {
+        return !m["battlefields"].empty() &&
+               m["zones"]["P1"]["main_deck_count"].get<int>() > 10;
+    });
+    ASSERT_FALSE(f.is_null());
+
+    // P1 is parked: put six of its units on one battlefield.
+    std::lock_guard<std::mutex> lock(game.server->stateMutex());
+    auto& st = game.engine.mutableState();
+    const BattlefieldId bf = st.battlefields[0].id;
+    StateEditor ed;
+    std::vector<GameObjectId> moved;
+    for (auto id : std::vector<GameObjectId>(st.player(PlayerId::Player1).main_deck)) {
+        if (!st.getObject(id).isUnit()) continue;
+        ASSERT_TRUE(ed.moveObjectToBattlefield(st, id, bf).ok);
+        moved.push_back(id);
+        if (moved.size() == 6) break;
+    }
+    ASSERT_EQ(moved.size(), 6u);
+
+    const std::string board = game.renderer.render(st);
+    for (auto id : moved) {
+        const std::string unit = game.renderer.renderObject(st, id);
+        EXPECT_NE(board.find(unit), std::string::npos)
+            << unit << " was cut off the board";
+    }
+}
+
+TEST(StateRendererReviewFix, LongOptionLabelsAreNotTruncated) {
+    GameState s{};
+    StateRenderer renderer(cards().db);
+    const std::string common(45, 'x');
+    std::vector<Intent> options;
+    for (const char* tail : {"-deal 2 damage", "-draw 2 cards"}) {
+        Intent it{};
+        it.type = IntentType::MakeChoice;
+        it.player = PlayerId::Player1;
+        it.chosen_value = static_cast<int>(options.size());
+        it.choice_label = common + tail;
+        options.push_back(it);
+    }
+    const std::string text = renderer.renderActions(s, options);
+    // Both labels share their first 45 characters; the old 38-column cap
+    // rendered them identically.
+    EXPECT_NE(text.find(common + "-deal 2 damage"), std::string::npos);
+    EXPECT_NE(text.find(common + "-draw 2 cards"), std::string::npos);
+}
+
+TEST(StateRendererReviewFix, HiddenHandShowsOnlyItsSize) {
+    LiveGame game;
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json f = playUntil(c, [](const json& m) {
+        return m["zones"]["P2"]["hand_count"].get<int>() > 0 &&
+               m["zones"]["P1"]["hand_count"].get<int>() > 0;
+    });
+    ASSERT_FALSE(f.is_null());
+    std::lock_guard<std::mutex> lock(game.server->stateMutex());
+    const auto& st = game.engine.state();
+    const std::string all = game.renderer.render(st);
+    const std::string p1_view = game.renderer.render(st, RenderVisibility{true, false});
+    EXPECT_EQ(all.find("hidden)"), std::string::npos);
+    EXPECT_EQ(countOf(p1_view, "hidden)"), 1);
+    const auto n = st.player(PlayerId::Player2).hand.size();
+    EXPECT_NE(p1_view.find(" Hand:  (" + std::to_string(n) + " card"), std::string::npos);
+}
+
+// ─── 4.10 / 4.11 — script-embedded strings; gallery parsed once ──────────────
+
+TEST(HtmlOutputReviewFix, CardNamesCannotCloseTheScriptBlock) {
+    const std::map<std::string, std::string> benign = {{"Plain Card", "https://x/y.png"}};
+    const std::map<std::string, std::string> hostile = {
+        {"Evil</script><script>alert(1)</script>", "https://x/</script>.png"}};
+    const std::string a = buildPlayIndexHtml(benign, "v", "d", 1, true);
+    const std::string b = buildPlayIndexHtml(hostile, "v", "d", 1, true);
+    EXPECT_EQ(countOf(b, "</script"), countOf(a, "</script"));
+    EXPECT_NE(b.find("Evil\\u003c/script>"), std::string::npos);
+}
+
+TEST(HtmlOutputReviewFix, ReplayStringsCannotCloseTheScriptBlock) {
+    const auto dir = std::filesystem::path(testing::TempDir());
+    auto write = [&](const std::string& name, const std::string& header) {
+        const std::string path = (dir / name).string();
+        ReplayWriter w(cards().db, path);
+        w.setGameHeader(header);
+        w.addTraceLine("[TRC] " + header);
+        w.writeHtml();
+        return readFile(path);
+    };
+    const std::string a = write("io_cli_plain.html", "seed 1");
+    const std::string b = write("io_cli_hostile.html", "x</script><script>alert(1)</script>");
+    ASSERT_FALSE(a.empty());
+    EXPECT_EQ(countOf(b, "</script"), countOf(a, "</script"));
+    EXPECT_NE(b.find("x\\x3c/script>"), std::string::npos);
+}
+
+TEST(HtmlOutputReviewFix, CardImageMapIsLoadedOnce) {
+    const auto& a = ReplayWriter::loadCardImageMap();
+    const auto& b = ReplayWriter::loadCardImageMap();
+    EXPECT_EQ(&a, &b);
+}
+
+// ─── 4.14 / 4.18 / 4.19 — batch and game runner ──────────────────────────────
+
+TEST(BatchRunnerReviewFix, ExceptionInAWorkerIsRethrownNotFatal) {
+    GameConfig cfg;
+    cfg.base_seed = 7;
+    cfg.agent_factory = [](int, uint64_t) -> std::unique_ptr<AgentInterface> {
+        throw std::runtime_error("agent factory failed");
+    };
+    AggregateResults results;
+    BatchRunner batch(cards().db, cards().registry, 3);
+    // Used to escape the pool task and std::terminate the process.
+    try {
+        batch.runBatch(cards().deck1, cards().deck2, 6, cfg, results);
+        FAIL() << "expected the worker's exception";
+    } catch (const std::runtime_error& e) {
+        EXPECT_STREQ(e.what(), "agent factory failed");
+    }
+    EXPECT_EQ(results.games_completed.load(), 0);
+}
+
+TEST(GameRunnerReviewFix, ReplayGoesToTheConfiguredDirectory) {
+    const auto dir = std::filesystem::path(testing::TempDir()) / "io_cli_replays";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    GameConfig cfg;
+    cfg.base_seed = 20261010;
+    cfg.do_render = true;
+    cfg.replay_dir = dir.string();
+    AggregateResults results;
+    results.total_games = 1;
+    GameRunner runner(cards().db, cards().registry, cards().deck1, cards().deck2, cfg, results);
+    testing::internal::CaptureStdout();
+    runner.run();
+    testing::internal::GetCapturedStdout();
+    EXPECT_TRUE(std::filesystem::exists(dir / "replay_game1.html"));
+}
+
+TEST(GameRunnerReviewFix, DebugLogIsPrinted) {
+    GameConfig cfg;
+    cfg.base_seed = 20261010;
+    cfg.debug_mode = true;
+    cfg.trace_mode = true;
+    AggregateResults results;
+    results.total_games = 1;
+    GameRunner runner(cards().db, cards().registry, cards().deck1, cards().deck2, cfg, results);
+    testing::internal::CaptureStdout();
+    runner.run();
+    const std::string out = testing::internal::GetCapturedStdout();
+    // The log used to be collected into a buffer nobody read.
+    EXPECT_NE(out.find("[TRC] "), std::string::npos);
+    EXPECT_NE(out.find("Game 1 [seed=20261010] log"), std::string::npos);
+}

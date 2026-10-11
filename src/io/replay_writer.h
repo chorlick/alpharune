@@ -109,9 +109,10 @@ public:
     /// from the current directory. Returns an empty map if no gallery
     /// file is found — callers should still render their HTML, the
     /// click-to-image affordance just won't have anything to display.
-    /// Reused by `riftbound_play` to populate its in-browser card
-    /// details panel.
-    static std::map<std::string, std::string> loadCardImageMap();
+    /// Reused by the play server to populate its in-browser card
+    /// details panel. The file is read on the first call and the result
+    /// kept for the life of the process.
+    static const std::map<std::string, std::string>& loadCardImageMap();
 };
 
 } // namespace riftbound

@@ -12,7 +12,9 @@
 
 namespace riftbound {
 
-std::map<std::string, std::string> ReplayWriter::loadCardImageMap() {
+namespace {
+
+std::map<std::string, std::string> readCardImageMap() {
     namespace fs = std::filesystem;
     std::vector<fs::path> candidates = {
         fs::path("cards/raw/gallery_raw.json"),
@@ -46,6 +48,15 @@ std::map<std::string, std::string> ReplayWriter::loadCardImageMap() {
         if (!out.empty()) return out;
     }
     return out;  // empty if no gallery file found
+}
+
+} // namespace
+
+const std::map<std::string, std::string>& ReplayWriter::loadCardImageMap() {
+    // Parsed once per process (thread-safe static init): a batch run writes
+    // one replay per game and the gallery file is several megabytes.
+    static const std::map<std::string, std::string> cached = readCardImageMap();
+    return cached;
 }
 
 ReplayWriter::ReplayWriter(const CardDB& db, const std::string& output_path)
@@ -222,6 +233,9 @@ std::string ReplayWriter::escapeJs(const std::string& s) {
             case '\n': out += "\\n"; break;
             case '\r': break;
             case '\t': out += "\\t"; break;
+            // The string is written inside a <script> block, which the HTML
+            // parser ends at the first "</script" whatever JS makes of it.
+            case '<': out += "\\x3c"; break;
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
                     out += ' ';
@@ -397,7 +411,7 @@ pre {
     // decision / trace panels clickable; clicking sets the side-pane
     // image src to the URL below.
     {
-        auto image_map = loadCardImageMap();
+        const auto& image_map = loadCardImageMap();
         file << "const CARD_IMAGES = {\n";
         bool first = true;
         for (const auto& [name, url] : image_map) {

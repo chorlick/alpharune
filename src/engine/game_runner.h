@@ -24,6 +24,9 @@ struct GameConfig {
     int game_index = 0;           // 0-based game number
     uint64_t base_seed = 0;       // base seed (0 = random per game)
     bool do_render = false;
+    /// Directory the HTML replay goes to (`<replay_dir>/replay_gameN.html`).
+    /// Empty = the working directory. Must exist.
+    std::string replay_dir;
     bool show_hand = false;
     bool step_mode = false;
     bool debug_mode = false;

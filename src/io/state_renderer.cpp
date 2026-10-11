@@ -13,6 +13,11 @@ std::string StateRenderer::padRight(const std::string& s, int width) const {
     return s + std::string(width - s.size(), ' ');
 }
 
+std::string StateRenderer::padRightKeep(const std::string& s, int width) const {
+    if (static_cast<int>(s.size()) >= width) return s;
+    return s + std::string(width - s.size(), ' ');
+}
+
 std::string StateRenderer::centerPad(const std::string& s, int width) const {
     if (static_cast<int>(s.size()) >= width) return s.substr(0, width);
     int pad = width - static_cast<int>(s.size());
@@ -144,6 +149,9 @@ std::string StateRenderer::renderPlayerSummary(const GameState& state,
     return ss.str();
 }
 
+static std::string renderCardList(const std::vector<std::string>& labels,
+                                   int line_width, int indent_width);
+
 // ─── Base rendering ──────────────────────────────────────────────────────────
 
 std::string StateRenderer::renderBase(const GameState& state,
@@ -167,22 +175,21 @@ std::string StateRenderer::renderBase(const GameState& state,
         }
     }
 
-    if (!unit_strs.empty()) {
-        ss << "  Units: ";
-        for (size_t i = 0; i < unit_strs.size(); ++i) {
-            if (i > 0) ss << " ";
-            ss << unit_strs[i];
+    // Lists wrap onto continuation lines rather than running past the
+    // board's right edge. render() adds one leading space to each line.
+    auto emitList = [&](const char* prefix, const std::vector<std::string>& items) {
+        const std::string head = prefix;
+        std::istringstream lines(renderCardList(
+            items, max_width, static_cast<int>(head.size()) + 1));
+        std::string line;
+        bool first = true;
+        while (std::getline(lines, line)) {
+            ss << (first ? head : std::string(head.size(), ' ')) << line << "\n";
+            first = false;
         }
-        ss << "\n";
-    }
-    if (!gear_strs.empty()) {
-        ss << "  Gear:  ";
-        for (size_t i = 0; i < gear_strs.size(); ++i) {
-            if (i > 0) ss << " ";
-            ss << gear_strs[i];
-        }
-        ss << "\n";
-    }
+    };
+    if (!unit_strs.empty()) emitList("  Units: ", unit_strs);
+    if (!gear_strs.empty()) emitList("  Gear:  ", gear_strs);
     if (!rune_strs.empty()) {
         ss << "  Runes: ";
         // Group by name for compactness
@@ -281,8 +288,8 @@ std::string StateRenderer::renderChain(const GameState& state) const {
 
 /// Render a list of card names in multi-column format, each line bordered.
 /// indent_width is how many chars the caller's prefix occupies (e.g., 8 for " Hand:  ").
-static std::string renderCardList(const std::vector<std::string>& labels,
-                                   int line_width, int indent_width) {
+std::string renderCardList(const std::vector<std::string>& labels,
+                           int line_width, int indent_width) {
     if (labels.empty()) return "(empty)";
 
     std::ostringstream ss;
@@ -371,7 +378,8 @@ std::string StateRenderer::renderBanishmentLine(const GameState& state,
 // ─── Player section ─────────────────────────────────────────────────────────
 
 std::string StateRenderer::renderPlayerSection(const GameState& state,
-                                                PlayerId player) const {
+                                                PlayerId player,
+                                                bool show_private) const {
     auto& ps = state.player(player);
     int w = max_width;
     std::ostringstream ss;
@@ -476,9 +484,13 @@ std::string StateRenderer::renderPlayerSection(const GameState& state,
     }
     ss << "|" << padRight(champ_line.str(), w - 2) << "|\n";
 
-    // Hand — may be multi-line
-    auto hand_text = renderHandLine(state, player);
-    {
+    // Hand — may be multi-line. A hidden hand shows its size only.
+    if (!show_private) {
+        ss << "|" << padRight(" Hand:  (" + std::to_string(ps.hand.size()) +
+                              (ps.hand.size() == 1 ? " card" : " cards") +
+                              ", hidden)", w - 2) << "|\n";
+    } else {
+        auto hand_text = renderHandLine(state, player);
         std::istringstream hs(hand_text);
         std::string line;
         bool first = true;
@@ -535,6 +547,11 @@ std::string StateRenderer::renderPlayerSection(const GameState& state,
 // ─── Full board render ───────────────────────────────────────────────────────
 
 std::string StateRenderer::render(const GameState& state) const {
+    return render(state, RenderVisibility{});
+}
+
+std::string StateRenderer::render(const GameState& state,
+                                  const RenderVisibility& visibility) const {
     std::ostringstream ss;
     int w = max_width;
     auto divider = "+" + horizontalLine(w - 2, '-') + "+\n";
@@ -560,7 +577,7 @@ std::string StateRenderer::render(const GameState& state) const {
     // P1 is rendered on top so the natural "you/active first" reading
     // order matches the trace log (which numbers P1 decisions before
     // P2's in a turn). Swapping from the old bottom-P1 layout.
-    ss << renderPlayerSection(state, PlayerId::Player1);
+    ss << renderPlayerSection(state, PlayerId::Player1, visibility.p1);
     ss << divider;
 
     // ── P1 Base ──
@@ -574,7 +591,7 @@ std::string StateRenderer::render(const GameState& state) const {
             std::string line;
             while (std::getline(bs, line)) {
                 if (!line.empty()) {
-                    ss << "|" << padRight(" " + line, w - 2) << "|\n";
+                    ss << "|" << padRightKeep(" " + line, w - 2) << "|\n";
                 }
             }
         }
@@ -603,17 +620,19 @@ std::string StateRenderer::render(const GameState& state) const {
         auto bf_loc = BattlefieldLocation{bf.id};
         for (auto player : {PlayerId::Player1, PlayerId::Player2}) {
             auto units = state.unitsAt(bf_loc, player);
-            std::ostringstream ul;
-            ul << "   " << toString(player) << ": ";
-            if (units.empty()) {
-                ul << "--";
-            } else {
-                for (size_t i = 0; i < units.size(); ++i) {
-                    if (i > 0) ul << "  ";
-                    ul << renderObject(state, units[i]);
-                }
+            const std::string head = "   " + std::string(toString(player)) + ": ";
+            std::vector<std::string> unit_strs;
+            for (auto uid : units) unit_strs.push_back(renderObject(state, uid));
+            // Wraps onto continuation lines: every unit here is listed.
+            std::istringstream lines(units.empty() ? std::string("--")
+                : renderCardList(unit_strs, w, static_cast<int>(head.size())));
+            std::string line;
+            bool first = true;
+            while (std::getline(lines, line)) {
+                ss << "|" << padRightKeep(
+                    (first ? head : std::string(head.size(), ' ')) + line, w - 2) << "|\n";
+                first = false;
             }
-            ss << "|" << padRight(ul.str(), w - 2) << "|\n";
         }
 
         // Facedown cards
@@ -623,7 +642,8 @@ std::string StateRenderer::render(const GameState& state) const {
                 auto& card = state.getObject(card_id);
                 std::ostringstream fd;
                 fd << "   [HIDDEN: " << toString(card.controller) << " \xe2\x80\x94 facedown";
-                if (show_hand) fd << ": " << card.name; // reveal in debug mode
+                // Reveal in debug mode, to those who may see its owner's cards.
+                if (show_hand && visibility.shows(card.controller)) fd << ": " << card.name;
                 fd << "]";
                 ss << "|" << padRight(fd.str(), w - 2) << "|\n";
             }
@@ -646,7 +666,7 @@ std::string StateRenderer::render(const GameState& state) const {
             std::string line;
             while (std::getline(bs, line)) {
                 if (!line.empty()) {
-                    ss << "|" << padRight(" " + line, w - 2) << "|\n";
+                    ss << "|" << padRightKeep(" " + line, w - 2) << "|\n";
                 }
             }
         }
@@ -654,7 +674,7 @@ std::string StateRenderer::render(const GameState& state) const {
     ss << divider;
 
     // ── P2 player section (bottom) ──
-    ss << renderPlayerSection(state, PlayerId::Player2);
+    ss << renderPlayerSection(state, PlayerId::Player2, visibility.p2);
     ss << thick_divider;
 
     // ── Chain (if exists) — rendered as a vertical stack ──
@@ -930,20 +950,25 @@ std::string StateRenderer::renderActions(const GameState& state,
         labels.push_back(formatActionShort(state, a));
     }
 
-    // Find max label width for column alignment
+    // Columns are as wide as the longest option, so no label is ever cut:
+    // two options that differ only near the end stay distinguishable. Long
+    // labels simply get fewer columns (down to one per line).
+    std::vector<std::string> entries;
     int col_width = 0;
-    for (auto& l : labels) {
-        col_width = std::max(col_width, static_cast<int>(l.size()));
+    for (size_t i = 0; i < labels.size(); ++i) {
+        entries.push_back("[" + std::to_string(i) + "] " + labels[i]);
+        col_width = std::max(col_width, static_cast<int>(entries.back().size()));
     }
-    col_width = std::min(col_width + 4, 38); // cap + padding
+    col_width += 2; // gap between columns
 
     int cols = std::max(1, (max_width - 4) / col_width);
 
     ss << "  " << actions.size() << " options:\n";
-    for (size_t i = 0; i < labels.size(); ++i) {
+    for (size_t i = 0; i < entries.size(); ++i) {
         if (i % cols == 0) ss << "    ";
-        ss << padRight("[" + std::to_string(i) + "] " + labels[i], col_width);
-        if ((i + 1) % cols == 0 || i + 1 == labels.size()) ss << "\n";
+        const bool last_in_row = (i + 1) % cols == 0 || i + 1 == entries.size();
+        ss << (last_in_row ? entries[i] : padRight(entries[i], col_width));
+        if (last_in_row) ss << "\n";
     }
 
     return ss.str();

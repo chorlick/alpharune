@@ -12,7 +12,8 @@
 ///   ismcts:sims=N     — OpenSpiel ISMCTSBot wrapped as AgentInterface
 ///
 /// When any seat is human:
-///   • `god_mode` edits are accepted by the WebSocket API.
+///   • `god_mode` edits are accepted by the WebSocket API (--god-mode off
+///     turns them off, and with them the view of the opponent's hand).
 ///   • An HTML replay is written to ./replays/<timestamp>/replay.html.
 ///   • Trace + debug logging stream to the UI by default.
 ///
@@ -32,10 +33,12 @@
 #include "io/state_renderer.h"
 #include "rules/deck_validator.h"
 
+#include <boost/asio/ip/address.hpp>
 #include <boost/program_options.hpp>
 #include <nlohmann/json.hpp>
-#include <fstream>
+#include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -178,6 +181,7 @@ AgentSpec parseAgentSpec(const std::string& s) {
             "Unknown agent kind '" + out.kind + "'. Expected one of: "
             "random, human, mcts, ismcts.");
     }
+    const bool search = (out.kind == "mcts" || out.kind == "ismcts");
     if (colon != std::string::npos) {
         auto rest = s.substr(colon + 1);
         // key=value pairs separated by commas; only "sims=N" recognised.
@@ -186,17 +190,29 @@ AgentSpec parseAgentSpec(const std::string& s) {
             auto eq    = rest.find('=', i);
             auto comma = rest.find(',', i);
             if (comma == std::string::npos) comma = rest.size();
-            if (eq != std::string::npos && eq < comma) {
-                auto key = rest.substr(i, eq - i);
-                auto val = rest.substr(eq + 1, comma - eq - 1);
-                if (key == "sims") out.sims = std::stoi(val);
+            auto key = rest.substr(i, std::min(eq, comma) - i);
+            if (!search || key != "sims" || eq == std::string::npos || eq > comma) {
+                throw std::runtime_error(
+                    "Agent spec '" + s + "': unrecognised option '" +
+                    rest.substr(i, comma - i) + "'." +
+                    (search ? " Expected sims=N." : " '" + out.kind + "' takes no options."));
+            }
+            auto val = rest.substr(eq + 1, comma - eq - 1);
+            size_t used = 0;
+            try { out.sims = std::stoi(val, &used); } catch (const std::exception&) { used = 0; }
+            if (used == 0 || used != val.size()) {
+                throw std::runtime_error(
+                    "Agent spec '" + s + "': sims must be a whole number, got '" + val + "'.");
             }
             i = comma + 1;
         }
-        if ((out.kind == "mcts" || out.kind == "ismcts") && out.sims <= 0) {
-            throw std::runtime_error(
-                "Agent '" + out.kind + "' requires sims=N (e.g. " + out.kind + ":sims=50).");
-        }
+    }
+    // Checked whether or not the spec had a ':' — a bare "mcts" used to slip
+    // through with sims=0.
+    if (search && out.sims <= 0) {
+        throw std::runtime_error(
+            "Agent '" + out.kind + "' requires sims=N with N > 0 (e.g. " +
+            out.kind + ":sims=50).");
     }
     return out;
 }
@@ -234,6 +250,43 @@ std::unique_ptr<AgentInterface> buildAgent(const AgentSpec& spec,
                                               game_seed, derived_seed, spec.sims);
     }
     throw std::runtime_error("Unsupported agent spec '" + spec.raw + "'");
+}
+
+/// Parses an auto|on|off flag value. Throws on anything else: a typo such
+/// as "--web true" must not silently mean "auto".
+bool resolveTriState(const std::string& flag, const std::string& value, bool auto_value) {
+    if (value == "on")   return true;
+    if (value == "off")  return false;
+    if (value == "auto") return auto_value;
+    throw std::runtime_error("--" + flag + " must be one of: auto | on | off (got '" + value + "')");
+}
+
+/// An AI seat as the web UI sees it. Before the wrapped agent starts
+/// choosing — which for a search agent can take a long time — the engine
+/// thread publishes the board as it now stands, so the browser shows the
+/// result of the last action instead of the position before it.
+class PublishingAgent : public AgentInterface {
+public:
+    PublishingAgent(AgentInterface& inner, PlayServer& server)
+        : inner_(inner), server_(server) {}
+
+    Intent selectAction(const GameState& state,
+                        const std::vector<Intent>& legal_actions) override {
+        server_.publishEngineState();
+        return inner_.selectAction(state, legal_actions);
+    }
+
+private:
+    AgentInterface& inner_;
+    PlayServer& server_;
+};
+
+std::string randomToken() {
+    std::random_device rd;
+    std::ostringstream s;
+    s << std::hex << std::setfill('0');
+    for (int i = 0; i < 4; ++i) s << std::setw(8) << rd();
+    return s.str();
 }
 
 std::string timestampDirName() {
@@ -303,15 +356,19 @@ int main(int argc, char* argv[]) {
          "One of: random | human | mcts:sims=N | ismcts:sims=N")
         ("web", po::value<std::string>()->default_value("auto"),
          "Web UI mode: auto (default — ON if any seat is human, else OFF), "
-         "on (force ON), off (force OFF, even with human seats)")
+         "on (force ON: with no human seat this is spectator mode), off. "
+         "Single game only.")
         ("port,p", po::value<uint16_t>()->default_value(8080),
          "TCP port for the web UI when --web is on")
         ("bind", po::value<std::string>()->default_value("127.0.0.1"),
-         "Bind address for the web UI when --web is on "
-         "(use 0.0.0.0 to accept connections from any interface)")
+         "Bind address for the web UI when --web is on. Anything other than "
+         "loopback exposes the game to the network: the server then requires "
+         "the access token it prints in the URL.")
         ("god-mode", po::value<std::string>()->default_value("auto"),
          "God-mode state-editor in the web UI: auto (default — ON if any "
-         "seat is human), on (force ON), off (force OFF, even with a human seat)")
+         "seat is human), on (force ON), off (force OFF, even with a human seat). "
+         "While it is on the UI shows every hand and deck; turn it off to play "
+         "without seeing the opponent's cards.")
         ("seed,s", po::value<uint64_t>()->default_value(0),
          "RNG seed (0 = random)")
         ("render-html", po::value<std::string>()->default_value("auto"),
@@ -319,19 +376,22 @@ int main(int argc, char* argv[]) {
          "on (force ON), off (force OFF)")
         ("replay-dir", po::value<std::string>()->default_value("replays"),
          "Directory for HTML replay output. Single-game writes "
-         "<dir>/<timestamp>/replay.html; batch writes <dir>/replay_gameN.html.")
+         "<dir>/<timestamp>/replay.html; batch writes "
+         "<dir>/<timestamp>/replay_gameN.html.")
         ("debug", po::bool_switch()->default_value(false),
-         "Stream debug-level engine events (trigger firings, ability resolution). "
-         "Implied when any seat is human.")
+         "Print debug-level engine events (trigger firings, ability resolution) "
+         "to stdout. With a human seat they are implied and go to the web UI.")
         ("trace", po::bool_switch()->default_value(false),
-         "Stream trace-level engine events (phases, intents, draws, kills, "
-         "scoring). Implies --debug. Implied when any seat is human.")
+         "Print trace-level engine events (phases, intents, draws, kills, "
+         "scoring) to stdout. Implies --debug. With a human seat they are "
+         "implied and go to the web UI.")
         ("games,n", po::value<int>()->default_value(1),
-         "Number of games. > 1 runs via BatchRunner and requires no human seats.")
+         "Number of games (>= 1). > 1 runs via BatchRunner: no human seats, no web UI.")
         ("threads,t", po::value<int>()->default_value(1),
          "Parallel workers for --games > 1 (0 = hardware concurrency).")
         ("show-hand", po::bool_switch()->default_value(false),
-         "Show hand contents in stdout / replay renders (debug aid).")
+         "Name facedown cards in replay renders, and show every hand in the "
+         "web UI even with god mode off (debug aid).")
         ("wild", po::bool_switch()->default_value(false),
          "Wild format: allow banned cards in decks (skips the ban-list check).")
     ;
@@ -392,25 +452,54 @@ int main(int argc, char* argv[]) {
     const bool p2_human = (spec2.kind == "human");
     const bool any_human = p1_human || p2_human;
 
-    // Resolve auto-mode flags.
-    bool web_enabled =
-        (web_mode == "on")  ? true  :
-        (web_mode == "off") ? false : any_human;  // auto
-    bool render_html =
-        (render_mode == "on")  ? true  :
-        (render_mode == "off") ? false : any_human;  // auto
+    // Resolve auto-mode flags. Every flag is checked here, before anything
+    // is loaded or written to disk.
+    bool web_enabled, render_html, god_mode_enabled;
+    bool bind_is_loopback = true;
+    try {
+        web_enabled      = resolveTriState("web", web_mode, any_human);
+        render_html      = resolveTriState("render-html", render_mode, any_human);
+        god_mode_enabled = resolveTriState("god-mode", god_mode_arg, any_human);
+        if (web_enabled) {
+            boost::system::error_code ec;
+            auto addr = boost::asio::ip::make_address(bind_address, ec);
+            if (ec) throw std::runtime_error("--bind '" + bind_address + "' is not an IP address");
+            bind_is_loopback = addr.is_loopback();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
 
+    // Flags the user typed print to stdout; the logging a human seat
+    // implies goes to the web UI and the replay only.
+    const bool log_to_stdout = debug_mode || trace_mode;
     // Human seat implies full logging — user wants to see what the engine
     // is doing. Trace implies debug.
     if (any_human) { debug_mode = true; trace_mode = true; }
     if (trace_mode) debug_mode = true;
 
+    if (num_games < 1) {
+        std::cerr << "Error: --games must be at least 1.\n";
+        return 1;
+    }
     if (num_games > 1 && any_human) {
         std::cerr << "Error: --games > 1 cannot be combined with a 'human' "
                      "seat. Use --games 1 for interactive play.\n";
         return 1;
     }
-    if (num_threads <= 0) num_threads = static_cast<int>(std::thread::hardware_concurrency());
+    if (num_games > 1 && web_mode == "on") {
+        std::cerr << "Error: --web on needs --games 1 (the web UI shows a single game).\n";
+        return 1;
+    }
+    if (any_human && !web_enabled) {
+        // A human seat with --web off would just hang forever.
+        std::cerr << "Error: --web off cannot be combined with a 'human' seat.\n";
+        return 1;
+    }
+    if (num_threads <= 0) {
+        num_threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+    }
 
     std::cout << "Riftbound " << kVersionTag
               << " (built " << kBuildDate << ")\n";
@@ -545,6 +634,20 @@ int main(int argc, char* argv[]) {
             };
 
         GameConfig cfg;
+        if (render_html) {
+            // One directory per run, so a second run does not overwrite the first.
+            auto dir = fs::path(replay_dir) / timestampDirName();
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            if (ec) {
+                std::cerr << "Error: cannot create replay directory '" << dir.string()
+                          << "': " << ec.message() << "\n";
+                return 1;
+            }
+            cfg.replay_dir = dir.string();
+            std::cout << "Replays will be written to " << cfg.replay_dir
+                      << "/replay_gameN.html\n";
+        }
         cfg.base_seed     = seed;
         cfg.do_render     = render_html;
         cfg.show_hand     = show_hand;
@@ -557,7 +660,14 @@ int main(int argc, char* argv[]) {
 
         AggregateResults results;
         BatchRunner batch(card_db, card_registry, num_threads);
-        batch.runBatch(deck1, deck2, num_games, cfg, results);
+        try {
+            batch.runBatch(deck1, deck2, num_games, cfg, results);
+        } catch (const std::exception& e) {
+            std::cerr << "\nError: a game failed: " << e.what() << "\n"
+                      << "  (" << results.games_completed.load() << " of "
+                      << num_games << " games completed)\n";
+            return 1;
+        }
 
         std::cout << "\nResults (" << num_games << " games):\n"
                   << "  P1 wins: " << results.p1_wins.load() << "\n"
@@ -593,6 +703,8 @@ int main(int argc, char* argv[]) {
     EventBus events;
     GameEngine engine(card_db, events, card_registry);
     StateRenderer renderer(card_db);
+    // Names facedown cards in renders. On for a human seat: the web UI
+    // then decides per frame whose cards that seat may see.
     renderer.show_hand = show_hand || any_human;
 
     std::unique_ptr<ReplayWriter> replay;
@@ -600,7 +712,13 @@ int main(int argc, char* argv[]) {
     std::string replay_path;
     if (render_html) {
         replay_dir_path = (fs::path(replay_dir) / timestampDirName()).string();
-        fs::create_directories(replay_dir_path);
+        std::error_code mkdir_ec;
+        fs::create_directories(replay_dir_path, mkdir_ec);
+        if (mkdir_ec) {
+            std::cerr << "Error: cannot create replay directory '" << replay_dir_path
+                      << "': " << mkdir_ec.message() << "\n";
+            return 1;
+        }
         replay_path = replay_dir_path + "/replay.html";
         replay = std::make_unique<ReplayWriter>(card_db, replay_path);
 
@@ -630,27 +748,42 @@ int main(int argc, char* argv[]) {
         std::cout << "Replay will be written to " << replay_path << "\n";
     }
 
+    // --debug / --trace as typed: print the engine's log to stdout.
+    if (log_to_stdout) {
+        events.on_log.connect([trace_mode](const LogEvent& e) {
+            if (e.level == LogLevel::Trace && !trace_mode) return;
+            const char* prefix = "[TRC]";
+            if (e.level == LogLevel::Debug)   prefix = "[DBG]";
+            if (e.level == LogLevel::Info)    prefix = "[INF]";
+            if (e.level == LogLevel::Warning) prefix = "[WRN]";
+            std::cout << "  " << prefix << " " << e.message << "\n";
+        });
+    }
+
     // ── Web server (optional) ─────────────────────────────────────────────
     std::unique_ptr<PlayServer> server;
+    // AI seats are wrapped once the server exists (see PublishingAgent).
+    std::unique_ptr<AgentInterface> published1, published2;
+    AgentInterface* seat1 = agent1.get();
+    AgentInterface* seat2 = agent2.get();
     if (web_enabled) {
         PlayServerConfig server_config;
         server_config.port             = port;
         server_config.bind_address     = bind_address;
-        bool god_mode_enabled;
-        if      (god_mode_arg == "on")  god_mode_enabled = true;
-        else if (god_mode_arg == "off") god_mode_enabled = false;
-        else if (god_mode_arg == "auto") god_mode_enabled = any_human;
-        else {
-            std::cerr << "Error: --god-mode must be one of: auto | on | off\n";
-            return 1;
-        }
         server_config.god_mode_enabled = god_mode_enabled;
+        // The god-mode editor lists every zone, and with no human seat
+        // there is nobody to hide a hand from. Otherwise a frame carries
+        // only what the human seat may see.
+        server_config.reveal_hidden    = god_mode_enabled || !any_human || show_hand;
         server_config.p1_human         = p1_human_ptr;
         server_config.p2_human         = p2_human_ptr;
         server_config.spectator        = !any_human;
         server_config.version_tag      = kVersionTag;
         server_config.build_date       = kBuildDate;
         server_config.seed             = game_seed;
+        // Off loopback anyone on the network can reach the port; make them
+        // need the URL this prints.
+        if (!bind_is_loopback) server_config.access_token = randomToken();
         server_config.on_shutdown_signal = [p1_human_ptr, p2_human_ptr] {
             if (p1_human_ptr) p1_human_ptr->abort();
             if (p2_human_ptr) p2_human_ptr->abort();
@@ -658,21 +791,44 @@ int main(int argc, char* argv[]) {
 
         server = std::make_unique<PlayServer>(engine, renderer, card_db,
                                               std::move(server_config));
-        std::string url = server->start();
+        std::string url;
+        try {
+            url = server->start();
+        } catch (const std::exception& e) {
+            std::cerr << "Error: cannot start the web UI on " << bind_address << ":"
+                      << port << ": " << e.what() << "\n";
+            return 1;
+        }
         std::cout << "\n  → Open " << url << " in your browser to play.\n\n";
+        if (!bind_is_loopback) {
+            std::cout << "  The web UI is reachable from the network. Anyone with the URL "
+                         "above can play this game"
+                      << (god_mode_enabled ? " and edit its state" : "") << ".\n\n";
+        }
 
-        // Spectator: hold the engine after each AI decision until the
-        // viewer steps (or autoplay advances) in the browser.
         if (!any_human) {
             std::cout << "  Spectator mode: the game is paused at each decision — "
                          "use Step / Play in the browser to advance.\n\n";
-            engine.on_decision = [s = server.get(), prev = std::move(engine.on_decision)](
-                                     const GameState& st,
-                                     const std::vector<Intent>& actions,
-                                     const Intent& chosen) {
-                if (prev) prev(st, actions, chosen);
-                s->awaitSpectatorStep(actions, chosen);
-            };
+        }
+        // After every decision: retire the prompt that belonged to it, and
+        // in spectator mode hold the engine until the viewer steps (or
+        // autoplay advances) in the browser.
+        engine.on_decision = [s = server.get(), prev = std::move(engine.on_decision)](
+                                 const GameState& st,
+                                 const std::vector<Intent>& actions,
+                                 const Intent& chosen) {
+            if (prev) prev(st, actions, chosen);
+            s->awaitSpectatorStep(actions, chosen);
+            s->notifyDecisionMade();
+        };
+
+        if (!p1_human) {
+            published1 = std::make_unique<PublishingAgent>(*agent1, *server);
+            seat1 = published1.get();
+        }
+        if (!p2_human) {
+            published2 = std::make_unique<PublishingAgent>(*agent2, *server);
+            seat2 = published2.get();
         }
 
         // Stream engine log events into the UI log panel.
@@ -686,32 +842,45 @@ int main(int argc, char* argv[]) {
                 s->broadcastLog(level, e.message);
             });
         }
-    } else if (any_human) {
-        // Sanity: a human seat with --web off would just hang forever.
-        std::cerr << "Error: --web off cannot be combined with a 'human' seat.\n";
-        return 1;
     }
 
     // ── Run the single game in a worker thread; main waits for it ─────────
+    std::atomic<bool> game_failed{false};
     std::thread game_thread([&] {
+        std::string last_line;
         try {
-            auto result = engine.runGame(deck1, deck2, *agent1, *agent2, game_seed);
+            auto result = engine.runGame(deck1, deck2, *seat1, *seat2, game_seed);
             std::cout << "\nGame over: winner="
                       << static_cast<int>(result.winner)
                       << " | reason=" << result.termination_reason
                       << " | turns=" << result.total_turns
                       << "\n";
-            if (replay) {
-                replay->addTraceLine("[TRC] GAME_OVER: " + result.termination_reason);
-                replay->writeHtml();
-                std::cout << "Replay saved to " << replay_path << "\n";
-            }
+            last_line = "[TRC] GAME_OVER: " + result.termination_reason;
         } catch (const std::exception& e) {
             std::cerr << "[engine] exception: " << e.what() << "\n";
+            game_failed.store(true);
+            last_line = std::string("[WRN] ENGINE_EXCEPTION: ") + e.what();
+        }
+        // Written on failure too: the replay up to the exception is what
+        // one needs to debug it.
+        if (replay) {
+            try {
+                replay->addTraceLine(last_line);
+                replay->writeHtml();
+                std::cout << "Replay saved to " << replay_path << "\n";
+            } catch (const std::exception& e) {
+                std::cerr << "Error: could not write replay: " << e.what() << "\n";
+                game_failed.store(true);
+            }
         }
     });
 
     if (game_thread.joinable()) game_thread.join();
-    if (server) server->stop();
-    return 0;
+    if (server) {
+        // After an engine exception GameState may be half-updated: the
+        // server then keeps showing its last good snapshot.
+        if (!game_failed.load()) server->notifyGameFinished();
+        server->stop();
+    }
+    return game_failed.load() ? 1 : 0;
 }

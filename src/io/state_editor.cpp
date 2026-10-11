@@ -28,6 +28,7 @@ std::vector<GameObjectId>* zoneVectorFor(PlayerState& ps, ZoneType zone) {
 } // namespace
 
 bool StateEditor::removeFromZoneVector(GameState& state, GameObjectId object_id) {
+    bool removed = false;
     for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
         auto& ps = state.player(pid);
         for (auto* vec : {&ps.main_deck, &ps.rune_deck, &ps.hand,
@@ -35,19 +36,63 @@ bool StateEditor::removeFromZoneVector(GameState& state, GameObjectId object_id)
             auto it = std::find(vec->begin(), vec->end(), object_id);
             if (it != vec->end()) {
                 vec->erase(it);
-                return true;
+                removed = true;
             }
         }
         if (ps.champion_zone == object_id) {
             ps.champion_zone = kInvalidId;
-            return true;
+            removed = true;
         }
         if (ps.legend_zone == object_id) {
             ps.legend_zone = kInvalidId;
-            return true;
+            removed = true;
         }
     }
-    return false;
+    // Facedown cards live in their battlefield's own list.
+    for (auto& bf : state.battlefields) {
+        auto it = std::find(bf.facedown.begin(), bf.facedown.end(), object_id);
+        if (it != bf.facedown.end()) {
+            bf.facedown.erase(it);
+            removed = true;
+        }
+    }
+    return removed;
+}
+
+bool StateEditor::isOnChain(const GameState& state, GameObjectId object_id) {
+    return state.getObject(object_id).zone == ZoneType::Chain;
+}
+
+void StateEditor::detachGear(GameState& state, GameObjectId gear_id) {
+    auto& gear = state.getObject(gear_id);
+    if (!gear.attached_to.has_value()) return;
+    GameObjectId host_id = *gear.attached_to;
+    if (state.objectExists(host_id)) {
+        auto& host = state.getObject(host_id);
+        auto& att = host.attachments;
+        if (std::find(att.begin(), att.end(), gear_id) != att.end()) {
+            att.erase(std::remove(att.begin(), att.end(), gear_id), att.end());
+            host.attachment_might_bonus -= gear.might_bonus;
+            host.recomputeMight();
+        }
+    }
+    gear.attached_to = std::nullopt;
+    gear.is_rules_text_inactive = false;
+}
+
+void StateEditor::dropAttachments(GameState& state, GameObjectId host_id) {
+    // Copy: detachGear edits the host's list.
+    auto attached = state.getObject(host_id).attachments;
+    for (auto gear_id : attached) {
+        if (!state.objectExists(gear_id)) continue;
+        detachGear(state, gear_id);
+        // CR 719.5 — detached gear stays on the board, unattached. The host
+        // is leaving the board, so park the gear at its controller's base.
+        auto& gear = state.getObject(gear_id);
+        gear.zone = ZoneType::Base;
+        gear.location = BaseLocation{gear.controller};
+    }
+    state.getObject(host_id).attachments.clear();
 }
 
 void StateEditor::insertIntoZoneVector(GameState& state,
@@ -90,9 +135,20 @@ EditResult StateEditor::moveObject(GameState& state,
     if (target_zone == ZoneType::BattlefieldZone) {
         return EditResult::fail("use moveObjectToBattlefield for battlefield moves");
     }
+    // Chain items and facedown cards live in containers that carry more than
+    // the object id (targets, payment, the hiding battlefield); setting only
+    // `obj.zone` would leave an object no container knows about.
+    if (target_zone == ZoneType::Chain || target_zone == ZoneType::FacedownZone) {
+        return EditResult::fail("cannot move a card to the chain or a facedown zone");
+    }
+    if (isOnChain(state, object_id)) {
+        return EditResult::fail("object is on the chain; let it resolve first");
+    }
 
     auto& obj = state.getObject(object_id);
     removeFromZoneVector(state, object_id);
+    detachGear(state, object_id);
+    obj.is_hidden = false;
     obj.zone = target_zone;
     obj.combat_designation = CombatDesignation::None;
     obj.controller = target_player;
@@ -100,9 +156,20 @@ EditResult StateEditor::moveObject(GameState& state,
         // Base is on-board; units have a LocationId pointing at their
         // controller's base. Clear the existing location first so a
         // unit moving from a battlefield to base loses its BF binding.
+        // Attached gear travels with its unit.
         obj.location = BaseLocation{target_player};
+        for (auto gear_id : obj.attachments) {
+            if (!state.objectExists(gear_id)) continue;
+            state.getObject(gear_id).location = obj.location;
+            state.getObject(gear_id).controller = target_player;
+        }
     } else {
+        // Off-board zones belong to a card's owner: a card put into a
+        // player's hand / deck / trash becomes that player's card, so owner
+        // and controller never disagree off the board.
+        obj.owner = target_player;
         obj.location.reset();  // off-board zones have no location
+        dropAttachments(state, object_id);
     }
     insertIntoZoneVector(state, object_id, target_player, target_zone, to_top);
     return EditResult::success();
@@ -121,11 +188,22 @@ EditResult StateEditor::moveObjectToBattlefield(GameState& state,
     if (!bf_exists) {
         return EditResult::fail("battlefield not found: " + std::to_string(static_cast<int>(battlefield_id)));
     }
+    if (isOnChain(state, object_id)) {
+        return EditResult::fail("object is on the chain; let it resolve first");
+    }
 
     auto& obj = state.getObject(object_id);
     removeFromZoneVector(state, object_id);
+    detachGear(state, object_id);
+    obj.is_hidden = false;
+    obj.combat_designation = CombatDesignation::None;
     obj.zone = ZoneType::BattlefieldZone;
     obj.location = BattlefieldLocation{battlefield_id};
+    // Attached gear travels with its unit.
+    for (auto gear_id : obj.attachments) {
+        if (!state.objectExists(gear_id)) continue;
+        state.getObject(gear_id).location = obj.location;
+    }
     return EditResult::success();
 }
 
@@ -193,8 +271,12 @@ EditResult StateEditor::setPlayerPower(GameState& state,
     return EditResult::success();
 }
 
-EditResult StateEditor::setPhase(GameState& state, TurnPhase phase) {
-    state.turn.phase = phase;
+EditResult StateEditor::setPhase(GameState& state, int phase) {
+    if (phase < 0 || phase > static_cast<int>(TurnPhase::GameOver)) {
+        return EditResult::fail("phase out of range [0, " +
+            std::to_string(static_cast<int>(TurnPhase::GameOver)) + "]");
+    }
+    state.turn.phase = static_cast<TurnPhase>(phase);
     return EditResult::success();
 }
 

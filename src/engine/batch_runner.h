@@ -18,6 +18,8 @@ public:
 
     /// Run N games with the given decks and config template.
     /// Results are written to the provided AggregateResults object.
+    /// If a game throws, games not yet started are skipped and the first
+    /// exception is rethrown here once the running ones have finished.
     void runBatch(
         const DeckSubmission& deck1,
         const DeckSubmission& deck2,

@@ -27,6 +27,7 @@
 #include <csignal>
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <list>
 #include <memory>
 #include <set>
@@ -75,7 +76,7 @@ const char* zoneToStr(ZoneType z) {
     return "?";
 }
 
-ZoneType strToZone(const std::string& s) {
+std::optional<ZoneType> strToZone(const std::string& s) {
     if (s == "MainDeck")        return ZoneType::MainDeck;
     if (s == "RuneDeck")        return ZoneType::RuneDeck;
     if (s == "Hand")            return ZoneType::Hand;
@@ -87,7 +88,92 @@ ZoneType strToZone(const std::string& s) {
     if (s == "BattlefieldZone") return ZoneType::BattlefieldZone;
     if (s == "Chain")           return ZoneType::Chain;
     if (s == "FacedownZone")    return ZoneType::FacedownZone;
-    return ZoneType::Hand;  // safe fallback
+    return std::nullopt;
+}
+
+// ── Message field readers ──
+// Client JSON is untrusted: a field may be missing or of any type. These
+// never throw (nlohmann's `value()` / `get<T>()` do on a type mismatch).
+
+std::string strField(const json& m, const char* key) {
+    auto it = m.find(key);
+    return (it != m.end() && it->is_string()) ? it->get<std::string>() : std::string();
+}
+
+std::optional<int64_t> intField(const json& m, const char* key) {
+    auto it = m.find(key);
+    if (it == m.end() || !it->is_number_integer()) return std::nullopt;
+    if (it->is_number_unsigned() &&
+        it->get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return std::nullopt;
+    }
+    return it->get<int64_t>();
+}
+
+/// An int field clamped into `int` range; `fallback` when absent / not an integer.
+int intFieldOr(const json& m, const char* key, int fallback) {
+    auto v = intField(m, key);
+    if (!v) return fallback;
+    return static_cast<int>(std::clamp<int64_t>(*v, std::numeric_limits<int>::min(),
+                                                std::numeric_limits<int>::max()));
+}
+
+bool boolFieldOr(const json& m, const char* key, bool fallback) {
+    auto it = m.find(key);
+    return (it != m.end() && it->is_boolean()) ? it->get<bool>() : fallback;
+}
+
+/// An object / battlefield id; kInvalidId when absent or not a valid id.
+uint32_t idField(const json& m, const char* key) {
+    auto v = intField(m, key);
+    if (!v || *v < 0 || *v > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+        return static_cast<uint32_t>(kInvalidId);
+    }
+    return static_cast<uint32_t>(*v);
+}
+
+// ── HTTP request checks ──
+
+/// The Host header must name this machine by IP literal or as "localhost".
+/// A page on another site can reach a local server under its own DNS name
+/// (DNS rebinding); it cannot make the browser send a Host it does not own.
+bool hostHeaderAllowed(std::string host) {
+    if (host.empty()) return false;
+    if (host.front() == '[') {                 // [v6]:port
+        auto end = host.find(']');
+        if (end == std::string::npos) return false;
+        host = host.substr(1, end - 1);
+    } else if (auto colon = host.rfind(':'); colon != std::string::npos) {
+        host = host.substr(0, colon);
+    }
+    if (beast::iequals(host, "localhost")) return true;
+    beast::error_code ec;
+    net::ip::make_address(host, ec);
+    return !ec;
+}
+
+/// Browsers send Origin on every WebSocket handshake; it must be the page
+/// this server served. Without the check any site open in the user's
+/// browser could connect to ws://127.0.0.1 and drive the game. Clients
+/// that send no Origin (websocat, scripts) are not browsers and pass.
+bool originAllowed(const http::request<http::string_body>& req) {
+    auto origin = req[http::field::origin];
+    if (origin.empty()) return true;
+    const std::string expected = "http://" + std::string(req[http::field::host]);
+    return beast::iequals(origin, expected);
+}
+
+/// True if `query` ("a=1&token=x") carries `token=<expected>`.
+bool queryHasToken(const std::string& query, const std::string& expected) {
+    size_t i = 0;
+    while (i <= query.size()) {
+        auto amp = query.find('&', i);
+        if (amp == std::string::npos) amp = query.size();
+        const std::string pair = query.substr(i, amp - i);
+        if (pair.rfind("token=", 0) == 0 && pair.substr(6) == expected) return true;
+        i = amp + 1;
+    }
+    return false;
 }
 
 } // namespace
@@ -110,24 +196,38 @@ struct PlayServer::Impl {
     std::mutex sessions_mu;
     std::list<std::weak_ptr<WsSession>> sessions;
 
-    // Watcher coordination.
     std::atomic<bool> stopping{false};
-    uint64_t last_p1_decision_id = 0;
-    uint64_t last_p2_decision_id = 0;
-    // Tracks whether the most recent broadcast was a "decision" frame.
-    // Lets the watcher detect the at-decision→engine-busy transition
-    // (human just clicked, AI is now thinking) and push a state frame
-    // so the UI clears the stale buttons instead of letting the user
-    // re-click an already-consumed decision.
-    bool was_at_decision = false;
+
+    // Frames posted to sessions and not yet written; stop() waits for it
+    // to drain so the terminal frame is not lost.
+    std::atomic<int> pending_writes{0};
+
+    // ── Guarded by PlayServer::state_mutex_ ──
+    // Decision ids already answered by a `choose`. A HumanAgent still
+    // reports atDecision() for a moment after it is answered (until the
+    // engine thread wakes); from the answer on, the engine may be running.
+    uint64_t answered_p1 = 0;
+    uint64_t answered_p2 = 0;
+    // Shutdown signal received: human seats are aborted, so the engine no
+    // longer waits for the server and is never again considered parked.
+    bool engine_released = false;
+    // The engine thread has finished the game (notifyGameFinished).
+    bool engine_finished = false;
+    // What the last broadcast frame was about ("H1:7", "S:12", "busy",
+    // "finished"); the watcher broadcasts when this changes.
+    std::string last_key;
+    // The board part of the most recent frame built from GameState. Sent
+    // again, marked engine_busy, while GameState may not be read.
+    json last_snapshot;
 
     StateEditor editor;
 
     // Most recent prompt-style trace line, captured by broadcastLog as
     // it streams. Cards / engine emit `<X>_PROMPT: <text>` right before
     // requesting an agent choice (MAY_PROMPT, X_PROMPT, MODE_PROMPT,
-    // TGT_PROMPT). We attach the latest one to the next outbound
-    // decision frame so the UI can show "what are we choosing?"
+    // TGT_PROMPT), so it belongs to the next decision anyone makes. It is
+    // attached to every frame of that decision and dropped once the
+    // decision is made, so the UI can show "what are we choosing?"
     // alongside the otherwise opaque MakeChoice options.
     std::mutex prompt_mu;
     std::string last_prompt;
@@ -153,7 +253,25 @@ struct PlayServer::Impl {
     void setSpectatorAutoplay(bool on, int delay_ms);
     void releaseSpectator();
 
-    void broadcastDecisionFrame();
+    /// Where the engine thread is, as far as a server thread may rely on.
+    struct Park {
+        enum class Kind { Busy, Human, Spectator, Finished };
+        Kind kind = Kind::Busy;
+        PlayerId player = PlayerId::None;   // who is deciding
+        uint64_t decision_id = 0;
+        HumanAgent* agent = nullptr;        // Kind::Human only
+    };
+
+    // The *Locked members require PlayServer::state_mutex_.
+    Park parkedLocked();
+    static std::string keyOf(const Park& park);
+    RenderVisibility visibilityFor(const Park& park) const;
+    json buildSnapshotLocked(const Park& park);
+    void broadcastLocked(bool on_engine_thread);
+    void broadcast(bool on_engine_thread = false);
+    void clearPrompt();
+    void sendAll(const std::string& text);
+
     void runWatcher();
     void armSignalSet();
 };
@@ -184,6 +302,7 @@ public:
     /// write queue and async_write call run on the IO thread.
     void send(std::string text) {
         auto self = shared_from_this();
+        impl_.pending_writes.fetch_add(1);
         net::post(ws_.get_executor(),
             [self, t = std::move(text)]() mutable {
                 self->queue_.push_back(std::move(t));
@@ -193,8 +312,9 @@ public:
 
 private:
     void onAccept() {
-        // Push initial decision frame if engine is already at a decision.
-        impl_.broadcastDecisionFrame();
+        // Push the current frame so a client that connects mid-game has a
+        // board to show straight away.
+        impl_.broadcast();
         doRead();
     }
 
@@ -204,10 +324,20 @@ private:
             [self](beast::error_code ec, std::size_t /*n*/) {
                 if (ec == ws::error::closed || ec == net::error::operation_aborted) return;
                 if (ec) return;
-                self->onMessage();
+                // Nothing a client sends may take the IO thread down: it
+                // also serves every other client and the signal handler.
+                try {
+                    self->onMessage();
+                } catch (const std::exception& e) {
+                    self->sendErr(std::string("bad message: ") + e.what());
+                }
                 self->read_buf_.consume(self->read_buf_.size());
                 self->doRead();
             });
+    }
+
+    void sendErr(const std::string& msg) {
+        send(json{{"type", "err"}, {"msg", msg}}.dump());
     }
 
     void onMessage() {
@@ -215,141 +345,177 @@ private:
         json m;
         try { m = json::parse(msg); }
         catch (const std::exception& e) {
-            send(json{{"type", "err"}, {"msg", std::string("bad json: ") + e.what()}}.dump());
+            sendErr(std::string("bad json: ") + e.what());
             return;
         }
-        auto type = m.value("type", "");
+        if (!m.is_object()) {
+            sendErr("message must be a JSON object");
+            return;
+        }
+        auto type = strField(m, "type");
         if      (type == "choose")             handleChoose(m);
         else if (type == "edit_move")          handleEditMove(m);
         else if (type == "edit_object")        handleEditObject(m);
         else if (type == "edit_player")        handleEditPlayer(m);
         else if (type == "edit_phase")         handleEditPhase(m);
         else if (type == "edit_reorder_deck")  handleEditReorderDeck(m);
-        else if (type == "request_state")      impl_.broadcastDecisionFrame();
+        else if (type == "request_state")      impl_.broadcast();
         else if (type == "spectator_step")     impl_.spectatorStep();
         else if (type == "spectator_autoplay") {
-            impl_.setSpectatorAutoplay(m.value("on", false), m.value("delay_ms", 600));
-            impl_.broadcastDecisionFrame();
+            impl_.setSpectatorAutoplay(boolFieldOr(m, "on", false),
+                                       intFieldOr(m, "delay_ms", 600));
+            impl_.broadcast();
         }
         else {
-            send(json{{"type", "err"}, {"msg", "unknown message type: " + type}}.dump());
+            sendErr("unknown message type: " + type);
         }
     }
 
+    /// A `choose` answers exactly the decision it names. Anything else —
+    /// a click that arrives after the engine moved on, a second click, an
+    /// index that is not on offer — is refused, never guessed at.
     void handleChoose(const json& m) {
-        auto player_str = m.value("player", "");
+        auto player_str = strField(m, "player");
         PlayerId pid = strToPlayer(player_str);
-        int idx = m.value("index", -1);
         HumanAgent* agent = nullptr;
         if (pid == PlayerId::Player1) agent = server_.config_p1();
         if (pid == PlayerId::Player2) agent = server_.config_p2();
         if (!agent) {
-            send(json{{"type", "edit_err"}, {"msg", "no human agent for " + player_str}}.dump());
+            sendErr("no human agent for '" + player_str + "'");
             return;
         }
-        if (idx < 0) {
-            send(json{{"type", "edit_err"}, {"msg", "invalid index"}}.dump());
+        auto idx = intField(m, "index");
+        auto decision_id = intField(m, "decision_id");
+
+        std::lock_guard<std::mutex> lock(server_.stateMutex());
+        auto park = impl_.parkedLocked();
+        std::string refusal;
+        if (park.kind != PlayServer::Impl::Park::Kind::Human || park.agent != agent) {
+            refusal = "no decision is pending for " + player_str;
+        } else if (!decision_id) {
+            refusal = "choose needs the decision_id of the decision it answers";
+        } else if (static_cast<uint64_t>(*decision_id) != park.decision_id) {
+            refusal = "stale choose: decision " + std::to_string(*decision_id) +
+                      " is no longer pending (now " + std::to_string(park.decision_id) + ")";
+        } else if (!idx || *idx < 0 ||
+                   static_cast<size_t>(*idx) >= agent->pendingLegal().size()) {
+            refusal = "index is not one of the legal actions";
+        }
+        if (!refusal.empty()) {
+            sendErr(refusal);
+            // The client disabled its buttons when it sent the click; give
+            // it the real current frame back.
+            impl_.broadcastLocked(false);
             return;
         }
-        agent->setChosenAction(idx);
+        (pid == PlayerId::Player1 ? impl_.answered_p1 : impl_.answered_p2) = park.decision_id;
+        impl_.clearPrompt();
+        agent->setChosenAction(static_cast<int>(*idx));
+        // The engine is running from here on: tell clients right away so
+        // the answered decision's buttons go.
+        impl_.broadcastLocked(false);
     }
 
     bool requireGodMode() {
         if (!server_.godModeEnabled()) {
-            send(json{{"type", "edit_err"}, {"msg", "god mode disabled (no human seat)"}}.dump());
+            send(json{{"type", "edit_err"}, {"msg", "god mode disabled"}}.dump());
             return false;
         }
         return true;
     }
 
-    void handleEditMove(const json& m) {
+    /// Run one god-mode edit. `fn(GameState&)` is called only while the
+    /// engine thread is parked (see play_server.h); otherwise the edit is
+    /// refused — the engine would be mutating the same state.
+    template <class Fn>
+    void applyEdit(Fn&& fn) {
         if (!requireGodMode()) return;
-        GameObjectId oid = static_cast<GameObjectId>(m.value("object_id", 0));
-        PlayerId pid = strToPlayer(m.value("to_player", ""));
-        std::string zone_str = m.value("to_zone", "");
-        bool to_top = m.value("to_top", true);
-
+        std::lock_guard<std::mutex> lock(server_.stateMutex());
         EditResult res;
-        {
-            std::lock_guard<std::mutex> lock(server_.stateMutex());
-            auto& state = server_.engineMutableState();
-            if (zone_str == "BattlefieldZone") {
-                BattlefieldId bid = static_cast<BattlefieldId>(m.value("battlefield_id", 0));
-                res = impl_.editor.moveObjectToBattlefield(state, oid, bid);
-            } else {
-                res = impl_.editor.moveObject(state, oid, pid, strToZone(zone_str), to_top);
-            }
+        if (impl_.parkedLocked().kind == PlayServer::Impl::Park::Kind::Busy) {
+            res = EditResult::fail("engine is busy; edits apply only while it waits at a decision");
+        } else {
+            res = fn(server_.engineMutableState());
         }
         replyEdit(res);
+    }
+
+    void handleEditMove(const json& m) {
+        applyEdit([&](GameState& state) {
+            GameObjectId oid = static_cast<GameObjectId>(idField(m, "object_id"));
+            std::string zone_str = strField(m, "to_zone");
+            auto zone = strToZone(zone_str);
+            if (!zone) return EditResult::fail("unknown to_zone: '" + zone_str + "'");
+            if (*zone == ZoneType::BattlefieldZone) {
+                BattlefieldId bid = static_cast<BattlefieldId>(idField(m, "battlefield_id"));
+                return impl_.editor.moveObjectToBattlefield(state, oid, bid);
+            }
+            return impl_.editor.moveObject(state, oid, strToPlayer(strField(m, "to_player")),
+                                           *zone, boolFieldOr(m, "to_top", true));
+        });
     }
 
     void handleEditObject(const json& m) {
-        if (!requireGodMode()) return;
-        GameObjectId oid = static_cast<GameObjectId>(m.value("object_id", 0));
-        std::string field = m.value("field", "");
-        EditResult res = EditResult::fail("unknown object field: " + field);
-        {
-            std::lock_guard<std::mutex> lock(server_.stateMutex());
-            auto& state = server_.engineMutableState();
-            if      (field == "exhausted") res = impl_.editor.setObjectExhausted(state, oid, m.value("value", false));
-            else if (field == "damage")    res = impl_.editor.setObjectDamage(state, oid, m.value("value", 0));
-            else if (field == "might")     res = impl_.editor.setObjectMight(state, oid, m.value("value", 0));
-        }
-        replyEdit(res);
+        applyEdit([&](GameState& state) {
+            GameObjectId oid = static_cast<GameObjectId>(idField(m, "object_id"));
+            std::string field = strField(m, "field");
+            if (field == "exhausted") return impl_.editor.setObjectExhausted(state, oid, boolFieldOr(m, "value", false));
+            if (field == "damage")    return impl_.editor.setObjectDamage(state, oid, intFieldOr(m, "value", 0));
+            if (field == "might")     return impl_.editor.setObjectMight(state, oid, intFieldOr(m, "value", 0));
+            return EditResult::fail("unknown object field: " + field);
+        });
     }
 
     void handleEditPlayer(const json& m) {
-        if (!requireGodMode()) return;
-        PlayerId pid = strToPlayer(m.value("player", ""));
-        std::string field = m.value("field", "");
-        EditResult res = EditResult::fail("unknown player field: " + field);
-        {
-            std::lock_guard<std::mutex> lock(server_.stateMutex());
-            auto& state = server_.engineMutableState();
-            if      (field == "score")           res = impl_.editor.setPlayerScore(state, pid, m.value("value", 0));
-            else if (field == "energy")          res = impl_.editor.setPlayerEnergy(state, pid, m.value("value", 0));
-            else if (field == "power")           res = impl_.editor.setPlayerPower(state, pid, m.value("domain_idx", -1), m.value("value", 0));
-        }
-        replyEdit(res);
+        applyEdit([&](GameState& state) {
+            PlayerId pid = strToPlayer(strField(m, "player"));
+            std::string field = strField(m, "field");
+            if (field == "score")  return impl_.editor.setPlayerScore(state, pid, intFieldOr(m, "value", 0));
+            if (field == "energy") return impl_.editor.setPlayerEnergy(state, pid, intFieldOr(m, "value", 0));
+            if (field == "power")  return impl_.editor.setPlayerPower(state, pid, intFieldOr(m, "domain_idx", -1), intFieldOr(m, "value", 0));
+            return EditResult::fail("unknown player field: " + field);
+        });
     }
 
     void handleEditPhase(const json& m) {
-        if (!requireGodMode()) return;
-        std::string field = m.value("field", "");
-        EditResult res = EditResult::fail("unknown phase field: " + field);
-        {
-            std::lock_guard<std::mutex> lock(server_.stateMutex());
-            auto& state = server_.engineMutableState();
+        applyEdit([&](GameState& state) {
+            std::string field = strField(m, "field");
             if (field == "phase") {
-                int p = m.value("value", 0);
-                res = impl_.editor.setPhase(state, static_cast<TurnPhase>(p));
-            } else if (field == "turn_player") {
-                res = impl_.editor.setTurnPlayer(state, strToPlayer(m.value("value", "")));
+                auto p = intField(m, "value");
+                if (!p) return EditResult::fail("phase value must be an integer");
+                return impl_.editor.setPhase(state, intFieldOr(m, "value", -1));
             }
-        }
-        replyEdit(res);
+            if (field == "turn_player") {
+                return impl_.editor.setTurnPlayer(state, strToPlayer(strField(m, "value")));
+            }
+            return EditResult::fail("unknown phase field: " + field);
+        });
     }
 
     void handleEditReorderDeck(const json& m) {
-        if (!requireGodMode()) return;
-        PlayerId pid = strToPlayer(m.value("player", ""));
-        std::vector<GameObjectId> order;
-        for (auto& v : m.value("order", json::array())) {
-            order.push_back(static_cast<GameObjectId>(v.get<int>()));
-        }
-        EditResult res;
-        {
-            std::lock_guard<std::mutex> lock(server_.stateMutex());
-            res = impl_.editor.reorderMainDeck(server_.engineMutableState(), pid, order);
-        }
-        replyEdit(res);
+        applyEdit([&](GameState& state) {
+            auto it = m.find("order");
+            if (it == m.end() || !it->is_array()) {
+                return EditResult::fail("order must be an array of object ids");
+            }
+            std::vector<GameObjectId> order;
+            for (const auto& v : *it) {
+                if (!v.is_number_integer()) {
+                    return EditResult::fail("order must be an array of object ids");
+                }
+                order.push_back(static_cast<GameObjectId>(
+                    idField(json{{"id", v}}, "id")));
+            }
+            return impl_.editor.reorderMainDeck(state, strToPlayer(strField(m, "player")), order);
+        });
     }
 
+    /// Caller holds the state mutex.
     void replyEdit(const EditResult& res) {
         if (res.ok) send(json{{"type", "edit_ok"}}.dump());
         else        send(json{{"type", "edit_err"}, {"msg", res.error}}.dump());
         // Re-broadcast state so the UI re-renders post-edit.
-        impl_.broadcastDecisionFrame();
+        impl_.broadcastLocked(false);
     }
 
     void doWrite() {
@@ -361,9 +527,11 @@ private:
             [self](beast::error_code ec, std::size_t /*n*/) {
                 self->writing_ = false;
                 if (ec) {
+                    self->impl_.pending_writes.fetch_sub(static_cast<int>(self->queue_.size()));
                     self->queue_.clear();
                     return;
                 }
+                self->impl_.pending_writes.fetch_sub(1);
                 self->queue_.pop_front();
                 if (!self->queue_.empty()) self->doWrite();
             });
@@ -400,7 +568,29 @@ private:
     }
 
     void onRequest() {
+        const std::string target(req_.target());
+        const auto qmark = target.find('?');
+        const std::string path  = target.substr(0, qmark);
+        const std::string query = qmark == std::string::npos ? "" : target.substr(qmark + 1);
+        const auto& cfg = server_.config();
+
+        if (!hostHeaderAllowed(std::string(req_[http::field::host]))) {
+            return respond(http::status::forbidden, "text/plain",
+                           "Forbidden: unexpected Host header");
+        }
+        if (!cfg.access_token.empty() && !queryHasToken(query, cfg.access_token)) {
+            return respond(http::status::forbidden, "text/plain",
+                           "Forbidden: missing or wrong access token");
+        }
+
         if (ws::is_upgrade(req_)) {
+            if (path != "/ws") {
+                return respond(http::status::not_found, "text/plain", "Not Found");
+            }
+            if (!originAllowed(req_)) {
+                return respond(http::status::forbidden, "text/plain",
+                               "Forbidden: cross-origin WebSocket");
+            }
             // Hand off to a WsSession that owns the socket.
             auto session = std::make_shared<WsSession>(std::move(socket_), impl_, server_);
             {
@@ -411,16 +601,18 @@ private:
             return;
         }
         // Otherwise: serve embedded index for GET /, 404 elsewhere.
-        http::response<http::string_body> res;
-        if (req_.method() == http::verb::get && req_.target() == "/") {
-            res.result(http::status::ok);
-            res.set(http::field::content_type, "text/html; charset=utf-8");
-            res.body() = impl_.index_html;
+        if (req_.method() == http::verb::get && path == "/") {
+            respond(http::status::ok, "text/html; charset=utf-8", impl_.index_html);
         } else {
-            res.result(http::status::not_found);
-            res.set(http::field::content_type, "text/plain");
-            res.body() = "Not Found";
+            respond(http::status::not_found, "text/plain", "Not Found");
         }
+    }
+
+    void respond(http::status status, const char* content_type, std::string body) {
+        http::response<http::string_body> res;
+        res.result(status);
+        res.set(http::field::content_type, content_type);
+        res.body() = std::move(body);
         res.set(http::field::server, "riftbound_play");
         res.prepare_payload();
         auto self = shared_from_this();
@@ -536,16 +728,26 @@ json objToJson(const CardDB& db, const GameState& state, GameObjectId oid) {
         {"exhausted", obj.is_exhausted},
         {"damage", obj.damage_marked},
         {"might", obj.current_might},
+        {"controller", playerToStr(obj.controller)},
+        {"owner", playerToStr(obj.owner)},
     };
 }
 
-json buildZoneJson(const CardDB& db, const GameState& state, PlayerId pid) {
+/// `show_hand` / `show_decks`: whether the frame's viewer may see this
+/// player's hand and the order of their decks. A withheld zone is sent as
+/// an empty array, named in `hidden`; `<zone>_count` always has its size.
+json buildZoneJson(const CardDB& db, const GameState& state, PlayerId pid,
+                   bool show_hand, bool show_decks) {
     const auto& ps = state.player(pid);
-    auto vecToJson = [&](const std::vector<GameObjectId>& v) {
+    auto vecToJson = [&](const std::vector<GameObjectId>& v, bool show) {
         json a = json::array();
+        if (!show) return a;
         for (auto oid : v) a.push_back(objToJson(db, state, oid));
         return a;
     };
+    json hidden = json::array();
+    if (!show_hand)  hidden.push_back("hand");
+    if (!show_decks) { hidden.push_back("main_deck"); hidden.push_back("rune_deck"); }
 
     // Sweep all GameObjects for ones at this player's base. Battlefield
     // units live in a separate per-BF bucket — see buildBattlefieldsJson.
@@ -559,12 +761,16 @@ json buildZoneJson(const CardDB& db, const GameState& state, PlayerId pid) {
     }
 
     json z = {
-        {"hand",       vecToJson(ps.hand)},
-        {"main_deck",  vecToJson(ps.main_deck)},
-        {"rune_deck",  vecToJson(ps.rune_deck)},
-        {"trash",      vecToJson(ps.trash)},
-        {"banishment", vecToJson(ps.banishment)},
+        {"hand",       vecToJson(ps.hand, show_hand)},
+        {"main_deck",  vecToJson(ps.main_deck, show_decks)},
+        {"rune_deck",  vecToJson(ps.rune_deck, show_decks)},
+        {"trash",      vecToJson(ps.trash, true)},
+        {"banishment", vecToJson(ps.banishment, true)},
         {"base",       std::move(base)},
+        {"hand_count",      ps.hand.size()},
+        {"main_deck_count", ps.main_deck.size()},
+        {"rune_deck_count", ps.rune_deck.size()},
+        {"hidden",     std::move(hidden)},
         {"score",      ps.score},
         {"energy",     ps.rune_pool.energy},
         {"power_total", ps.rune_pool.totalPower()},
@@ -608,124 +814,203 @@ json buildBattlefieldsJson(const CardDB& db, const GameState& state) {
 
 } // namespace
 
-void PlayServer::Impl::broadcastDecisionFrame() {
-    PlayerId active_player = PlayerId::None;
-    std::vector<Intent> legal;
-    std::string render_text;
-    uint64_t decision_id = 0;
-    bool at_decision = false;
-
-    // Snapshot under the state mutex so an in-flight edit can't tear.
-    {
-        std::lock_guard<std::mutex> lock(parent.state_mutex_);
-        auto* p1 = parent.config_.p1_human;
-        auto* p2 = parent.config_.p2_human;
-        if (p1 && p1->atDecision()) {
-            at_decision = true;
-            active_player = PlayerId::Player1;
-            legal = p1->pendingLegal();
-            decision_id = p1->decisionId();
-            last_p1_decision_id = decision_id;
-        } else if (p2 && p2->atDecision()) {
-            at_decision = true;
-            active_player = PlayerId::Player2;
-            legal = p2->pendingLegal();
-            decision_id = p2->decisionId();
-            last_p2_decision_id = decision_id;
-        }
-        render_text = parent.renderer_.render(parent.engine_.state());
+PlayServer::Impl::Park PlayServer::Impl::parkedLocked() {
+    Park park;
+    if (engine_finished) {
+        park.kind = Park::Kind::Finished;
+        return park;
     }
+    if (!engine_released) {
+        auto human = [&](HumanAgent* agent, PlayerId seat, uint64_t answered) {
+            if (!agent || !agent->atDecision()) return false;
+            const uint64_t id = agent->decisionId();
+            if (id == answered) return false;   // answered; engine may be running
+            park.kind = Park::Kind::Human;
+            park.player = seat;
+            park.decision_id = id;
+            park.agent = agent;
+            return true;
+        };
+        if (human(parent.config_.p1_human, PlayerId::Player1, answered_p1)) return park;
+        if (human(parent.config_.p2_human, PlayerId::Player2, answered_p2)) return park;
+    }
+    if (parent.config_.spectator) {
+        std::lock_guard<std::mutex> lock(spec_mu);
+        if (spec_waiting) {
+            park.kind = Park::Kind::Spectator;
+            park.player = spec_player;
+            park.decision_id = spec_decision_id;
+        }
+    }
+    return park;
+}
+
+std::string PlayServer::Impl::keyOf(const Park& park) {
+    switch (park.kind) {
+        case Park::Kind::Human:
+            return "H" + playerToStr(park.player) + ":" + std::to_string(park.decision_id);
+        case Park::Kind::Spectator: return "S:" + std::to_string(park.decision_id);
+        case Park::Kind::Finished:  return "finished";
+        case Park::Kind::Busy:      break;
+    }
+    return "busy";
+}
+
+RenderVisibility PlayServer::Impl::visibilityFor(const Park& park) const {
+    const auto& cfg = parent.config_;
+    if (cfg.reveal_hidden) return RenderVisibility{true, true};
+    const bool h1 = cfg.p1_human != nullptr;
+    const bool h2 = cfg.p2_human != nullptr;
+    RenderVisibility v{false, false};
+    if (h1 && h2) {
+        // Hot seat, one screen: only the hand of whoever is deciding.
+        if (park.kind == Park::Kind::Human) {
+            v.p1 = park.player == PlayerId::Player1;
+            v.p2 = park.player == PlayerId::Player2;
+        }
+    } else {
+        v.p1 = h1;
+        v.p2 = h2;
+    }
+    return v;
+}
+
+json PlayServer::Impl::buildSnapshotLocked(const Park& park) {
+    const auto& st = parent.engine_.state();
+    const auto& cfg = parent.config_;
+    const RenderVisibility vis = visibilityFor(park);
+
+    json snap = json::object();
+    snap["render_text"] = parent.renderer_.render(st, vis);
+    snap["zones"] = {
+        {"P1", buildZoneJson(parent.card_db_, st, PlayerId::Player1, vis.p1, cfg.reveal_hidden)},
+        {"P2", buildZoneJson(parent.card_db_, st, PlayerId::Player2, vis.p2, cfg.reveal_hidden)},
+    };
+    snap["battlefields"] = buildBattlefieldsJson(parent.card_db_, st);
+    // Phase name string — int-only was a UX miss, the integer phase
+    // tells the user nothing without a CR cross-reference.
+    const char* phase_name = "?";
+    switch (st.turn.phase) {
+        case TurnPhase::Setup:           phase_name = "Setup";         break;
+        case TurnPhase::Mulligan:        phase_name = "Mulligan";      break;
+        case TurnPhase::AwakenPhase:     phase_name = "Awaken";        break;
+        case TurnPhase::BeginningStep:   phase_name = "Beginning";     break;
+        case TurnPhase::ScoringStep:     phase_name = "Scoring";       break;
+        case TurnPhase::ChannelPhase:    phase_name = "Channel";       break;
+        case TurnPhase::DrawPhase:       phase_name = "Draw";          break;
+        case TurnPhase::MainPhase:       phase_name = "Main";          break;
+        case TurnPhase::EndingStep:      phase_name = "Ending";        break;
+        case TurnPhase::ExpirationStep:  phase_name = "Expiration";    break;
+        default:                          phase_name = "?";            break;
+    }
+    snap["turn"] = {
+        {"phase",       static_cast<int>(st.turn.phase)},
+        {"phase_name",  phase_name},
+        {"turn_player", playerToStr(st.turn.turn_player)},
+        {"turn_number", st.turn.turn_number},
+        {"p1_score",    st.player(PlayerId::Player1).score},
+        {"p2_score",    st.player(PlayerId::Player2).score},
+        {"victory_score", st.mode.victory_score},
+    };
+    snap["game_over"] = st.game_over;
+    if (st.game_over) {
+        snap["winner"] = playerToStr(st.winner);
+        snap["game_over_reason"] = st.game_over_reason;
+    }
+    return snap;
+}
+
+void PlayServer::Impl::broadcastLocked(bool on_engine_thread) {
+    const Park park = parkedLocked();
+    // GameState may be read on the engine thread itself, or while the
+    // engine is parked (and this lock keeps it parked). Otherwise clients
+    // get the last snapshot again.
+    const bool can_read = on_engine_thread || park.kind != Park::Kind::Busy;
+    const bool at_decision = park.kind == Park::Kind::Human ||
+                             park.kind == Park::Kind::Spectator;
+
+    json frame;
+    if (can_read) {
+        frame = buildSnapshotLocked(park);
+        last_snapshot = frame;
+    } else if (!last_snapshot.is_null()) {
+        frame = last_snapshot;
+    } else {
+        // Nothing snapshotted yet (client connected before the first decision).
+        json empty_zone = {
+            {"hand", json::array()}, {"main_deck", json::array()},
+            {"rune_deck", json::array()}, {"trash", json::array()},
+            {"banishment", json::array()}, {"base", json::array()},
+            {"score", 0}, {"energy", 0}, {"power_total", 0},
+        };
+        frame = {
+            {"render_text", ""},
+            {"zones", {{"P1", empty_zone}, {"P2", empty_zone}}},
+            {"battlefields", json::array()},
+            {"turn", json::object()},
+            {"game_over", false},
+        };
+    }
+
+    frame["type"] = at_decision ? "decision" : "state";
+    frame["decision_id"] = park.decision_id;
+    frame["player"] = playerToStr(park.player);
+    frame["god_mode"] = parent.config_.god_mode_enabled;
+    frame["engine_busy"] = park.kind == Park::Kind::Busy;
+
+    std::vector<Intent> legal;
+    if (park.kind == Park::Kind::Human) legal = park.agent->pendingLegal();
 
     // Spectator mode: the "decision" is the one an AI seat just made,
     // held at the gate until the viewer steps.
-    json spectator;
     if (parent.config_.spectator) {
         std::lock_guard<std::mutex> lock(spec_mu);
-        spectator = {
+        json spectator = {
             {"waiting",  spec_waiting},
             {"autoplay", spec_autoplay},
             {"delay_ms", spec_delay_ms},
         };
-        if (spec_waiting) {
-            at_decision = true;
-            active_player = spec_player;
+        if (park.kind == Park::Kind::Spectator) {
             legal = spec_legal;
-            decision_id = spec_decision_id;
             spectator["chosen"] = spec_chosen;
         }
+        frame["spectator"] = std::move(spectator);
+    }
+    // Labels name cards, so they need GameState: only decisions have any.
+    frame["legal"] = at_decision
+        ? buildLegalActionJson(parent.card_db_, parent.renderer_,
+                               parent.engine_.state(), legal)
+        : json::array();
+
+    if (at_decision) {
+        std::lock_guard<std::mutex> lock(prompt_mu);
+        if (!last_prompt.empty()) frame["prompt"] = last_prompt;
     }
 
-    json frame = {
-        {"type", at_decision ? "decision" : "state"},
-        {"decision_id", decision_id},
-        {"player", playerToStr(active_player)},
-        {"render_text", render_text},
-        {"god_mode", parent.config_.god_mode_enabled},
-    };
-    if (!spectator.is_null()) frame["spectator"] = std::move(spectator);
-    {
-        std::lock_guard<std::mutex> lock(parent.state_mutex_);
-        const auto& st = parent.engine_.state();
-        frame["legal"] = buildLegalActionJson(parent.card_db_, parent.renderer_, st, legal);
-        frame["zones"] = {
-            {"P1", buildZoneJson(parent.card_db_, st, PlayerId::Player1)},
-            {"P2", buildZoneJson(parent.card_db_, st, PlayerId::Player2)},
-        };
-        frame["battlefields"] = buildBattlefieldsJson(parent.card_db_, st);
-        // Phase name string — int-only was a UX miss, the integer phase
-        // tells the user nothing without a CR cross-reference.
-        const char* phase_name = "?";
-        switch (st.turn.phase) {
-            case TurnPhase::Setup:           phase_name = "Setup";         break;
-            case TurnPhase::Mulligan:        phase_name = "Mulligan";      break;
-            case TurnPhase::AwakenPhase:     phase_name = "Awaken";        break;
-            case TurnPhase::BeginningStep:   phase_name = "Beginning";     break;
-            case TurnPhase::ScoringStep:     phase_name = "Scoring";       break;
-            case TurnPhase::ChannelPhase:    phase_name = "Channel";       break;
-            case TurnPhase::DrawPhase:       phase_name = "Draw";          break;
-            case TurnPhase::MainPhase:       phase_name = "Main";          break;
-            case TurnPhase::EndingStep:      phase_name = "Ending";        break;
-            case TurnPhase::ExpirationStep:  phase_name = "Expiration";    break;
-            default:                          phase_name = "?";            break;
-        }
-        frame["turn"] = {
-            {"phase",       static_cast<int>(st.turn.phase)},
-            {"phase_name",  phase_name},
-            {"turn_player", playerToStr(st.turn.turn_player)},
-            {"turn_number", st.turn.turn_number},
-            {"p1_score",    st.player(PlayerId::Player1).score},
-            {"p2_score",    st.player(PlayerId::Player2).score},
-            {"victory_score", st.mode.victory_score},
-        };
-        frame["game_over"] = st.game_over;
-        if (st.game_over) {
-            frame["winner"] = playerToStr(st.winner);
-            frame["game_over_reason"] = st.game_over_reason;
-        }
+    last_key = keyOf(park);
+    sendAll(frame.dump());
+}
 
-        // Attach the most recent prompt (set by broadcastLog when it saw
-        // a *_PROMPT trace line) so the UI can header the MakeChoice
-        // options with what's actually being decided. Cleared after
-        // attaching so the prompt doesn't bleed into subsequent
-        // unrelated decisions.
-        {
-            std::lock_guard<std::mutex> lock(prompt_mu);
-            if (!last_prompt.empty()) {
-                frame["prompt"] = last_prompt;
-                last_prompt.clear();
-            }
-        }
-    }
+void PlayServer::Impl::broadcast(bool on_engine_thread) {
+    std::lock_guard<std::mutex> lock(parent.state_mutex_);
+    broadcastLocked(on_engine_thread);
+}
 
-    std::string text = frame.dump();
-    std::list<std::weak_ptr<WsSession>> snapshot;
+void PlayServer::Impl::clearPrompt() {
+    std::lock_guard<std::mutex> lock(prompt_mu);
+    last_prompt.clear();
+}
+
+void PlayServer::Impl::sendAll(const std::string& text) {
+    std::vector<std::shared_ptr<WsSession>> live;
     {
         std::lock_guard<std::mutex> lock(sessions_mu);
-        snapshot = sessions;
+        for (auto it = sessions.begin(); it != sessions.end();) {
+            if (auto s = it->lock()) { live.push_back(std::move(s)); ++it; }
+            else it = sessions.erase(it);
+        }
     }
-    for (auto& w : snapshot) {
-        if (auto s = w.lock()) s->send(text);
-    }
+    for (auto& s : live) s->send(text);
 }
 
 void PlayServer::Impl::spectatorStep() {
@@ -754,17 +1039,20 @@ void PlayServer::awaitSpectatorStep(const std::vector<Intent>& legal, const Inte
     if (!config_.spectator || !running_.load()) return;
     auto& im = *impl_;
     {
-        std::lock_guard<std::mutex> lock(im.spec_mu);
-        if (im.spec_released) return;
-        im.spec_legal = legal;
-        auto it = std::find(legal.begin(), legal.end(), chosen);
-        im.spec_chosen = it == legal.end() ? -1 : static_cast<int>(it - legal.begin());
-        im.spec_player = chosen.player;
-        ++im.spec_decision_id;
-        im.spec_step_requested = false;
-        im.spec_waiting = true;
+        std::lock_guard<std::mutex> state_lock(state_mutex_);
+        {
+            std::lock_guard<std::mutex> lock(im.spec_mu);
+            if (im.spec_released) return;
+            im.spec_legal = legal;
+            auto it = std::find(legal.begin(), legal.end(), chosen);
+            im.spec_chosen = it == legal.end() ? -1 : static_cast<int>(it - legal.begin());
+            im.spec_player = chosen.player;
+            ++im.spec_decision_id;
+            im.spec_step_requested = false;
+            im.spec_waiting = true;
+        }
+        im.broadcastLocked(true);
     }
-    im.broadcastDecisionFrame();
     {
         std::unique_lock<std::mutex> lock(im.spec_mu);
         auto stepped = [&] { return im.spec_step_requested || im.spec_released; };
@@ -778,12 +1066,35 @@ void PlayServer::awaitSpectatorStep(const std::vector<Intent>& legal, const Inte
                 im.spec_cv.wait(lock, [&] { return stepped() || im.spec_autoplay; });
             }
         }
+    }
+    // Leave the gate under the state mutex: a server thread that saw
+    // spec_waiting is reading GameState and must finish before the engine
+    // moves on.
+    std::lock_guard<std::mutex> state_lock(state_mutex_);
+    {
+        std::lock_guard<std::mutex> lock(im.spec_mu);
         im.spec_waiting = false;
         im.spec_step_requested = false;
     }
+    im.clearPrompt();
     // Clear the held decision so the UI shows "engine busy" while the
     // next agent thinks.
-    im.broadcastDecisionFrame();
+    im.broadcastLocked(true);
+}
+
+void PlayServer::publishEngineState() {
+    if (!running_.load()) return;
+    impl_->broadcast(/*on_engine_thread=*/true);
+}
+
+void PlayServer::notifyDecisionMade() {
+    impl_->clearPrompt();
+}
+
+void PlayServer::notifyGameFinished() {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    impl_->engine_finished = true;
+    if (running_.load()) impl_->broadcastLocked(false);
 }
 
 void PlayServer::Impl::runWatcher() {
@@ -792,28 +1103,12 @@ void PlayServer::Impl::runWatcher() {
         std::this_thread::sleep_for(100ms);
         if (stopping.load()) break;
 
-        auto* p1 = parent.config_.p1_human;
-        auto* p2 = parent.config_.p2_human;
-        bool currently_at_decision =
-            (p1 && p1->atDecision()) || (p2 && p2->atDecision());
-
-        bool changed = false;
-        if (p1 && p1->atDecision() && p1->decisionId() != last_p1_decision_id) changed = true;
-        if (p2 && p2->atDecision() && p2->decisionId() != last_p2_decision_id) changed = true;
-        // Transition from human-at-decision to engine-busy (AI is thinking
-        // or engine is processing internally). Push a state frame so the
-        // UI clears the stale legal-action buttons — otherwise the user
-        // would still see the buttons from the just-completed decision
-        // and could re-click them, queuing a phantom choice for the next
-        // human decision.
-        if (was_at_decision && !currently_at_decision) changed = true;
-        // Also re-push when game ends so the UI shows the terminal state.
-        if (parent.engine_.state().game_over) changed = true;
-
-        if (changed) {
-            broadcastDecisionFrame();
-            was_at_decision = currently_at_decision;
-        }
+        // Broadcast when what there is to say changes: a human seat
+        // reached a new decision, or the engine went from waiting to busy
+        // (a HumanAgent was aborted, say). Everything else is pushed by
+        // whoever causes it.
+        std::lock_guard<std::mutex> lock(parent.state_mutex_);
+        if (keyOf(parkedLocked()) != last_key) broadcastLocked(false);
     }
 }
 
@@ -833,30 +1128,55 @@ PlayServer::~PlayServer() {
     stop();
 }
 
-std::string PlayServer::start() {
-    if (running_.exchange(true)) {
-        return "http://" + config_.bind_address + ":" + std::to_string(config_.port);
+namespace {
+std::string serverUrl(const PlayServerConfig& cfg, uint16_t port) {
+    std::string url = "http://" + cfg.bind_address + ":" + std::to_string(port);
+    if (!cfg.access_token.empty()) url += "/?token=" + cfg.access_token;
+    return url;
+}
+} // namespace
+
+uint16_t PlayServer::port() const noexcept {
+    beast::error_code ec;
+    if (impl_->acceptor) {
+        auto ep = impl_->acceptor->local_endpoint(ec);
+        if (!ec) return ep.port();
     }
+    return config_.port;
+}
+
+std::string PlayServer::start() {
+    if (running_.load()) return serverUrl(config_, port());
+
     // Build the served HTML once; reused across all GET /.
-    auto images = ReplayWriter::loadCardImageMap();
+    const auto& images = ReplayWriter::loadCardImageMap();
     impl_->index_html = buildPlayIndexHtml(
         images, config_.version_tag, config_.build_date, config_.seed,
         config_.god_mode_enabled);
 
+    // Both throw on failure (bad address, port in use). Nothing is running
+    // yet, so the caller gets the exception and a server it can discard.
     auto addr = net::ip::make_address(config_.bind_address);
     impl_->acceptor.emplace(impl_->ioc, tcp::endpoint{addr, config_.port});
     std::make_shared<Listener>(*impl_->acceptor, *impl_, *this)->start();
     impl_->armSignalSet();
+    running_.store(true);
 
     impl_->io_thread = std::thread([this] {
-        try { impl_->ioc.run(); }
-        catch (const std::exception& e) {
-            std::cerr << "[play_server] io_context exception: " << e.what() << "\n";
+        // A handler that throws must not end the loop: the signal handler
+        // and every connection live on it.
+        while (!impl_->stopping.load()) {
+            try {
+                impl_->ioc.run();
+                break;   // stopped
+            } catch (const std::exception& e) {
+                std::cerr << "[play_server] io_context exception: " << e.what() << "\n";
+            }
         }
     });
     impl_->watcher_thread = std::thread([this] { impl_->runWatcher(); });
 
-    return "http://" + config_.bind_address + ":" + std::to_string(config_.port);
+    return serverUrl(config_, port());
 }
 
 void PlayServer::Impl::armSignalSet() {
@@ -865,10 +1185,7 @@ void PlayServer::Impl::armSignalSet() {
         if (ec) return;  // cancelled during shutdown — fine
         std::cerr << "\n[riftbound_play] received signal " << sig
                   << "; shutting down (signal again to force-quit)\n";
-        if (parent.config_.on_shutdown_signal) {
-            parent.config_.on_shutdown_signal();
-        }
-        releaseSpectator();
+        parent.requestShutdown();
         // Re-arm so a second signal does NOT get handled here — we want
         // the second signal to use the default handler (kernel kills us).
         // Boost.Asio resets pending registrations once a handler fires;
@@ -879,15 +1196,29 @@ void PlayServer::Impl::armSignalSet() {
     });
 }
 
+void PlayServer::requestShutdown() {
+    {
+        // The callback aborts the human seats, which wakes the engine:
+        // from here on it is never parked for the server again.
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        impl_->engine_released = true;
+        if (config_.on_shutdown_signal) config_.on_shutdown_signal();
+    }
+    impl_->releaseSpectator();
+}
+
 void PlayServer::stop() {
     if (!running_.exchange(false)) return;
     impl_->stopping.store(true);
     impl_->releaseSpectator();
-    // Push the terminal state and give the IO thread a moment to flush
-    // it — the watcher's 100ms poll usually loses the race with the
-    // caller stopping us right after the game thread exits.
-    impl_->broadcastDecisionFrame();
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    // Push the last frame (the terminal state, once notifyGameFinished has
+    // been called) and wait for the IO thread to write it out.
+    impl_->broadcast();
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (impl_->pending_writes.load() > 0 &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
     beast::error_code ec;
     if (impl_->acceptor) impl_->acceptor->close(ec);
     impl_->ioc.stop();
@@ -920,15 +1251,7 @@ void PlayServer::broadcastLog(const std::string& level, const std::string& messa
         {"level", level},
         {"msg", message},
     };
-    std::string text = frame.dump();
-    std::list<std::weak_ptr<WsSession>> snapshot;
-    {
-        std::lock_guard<std::mutex> lock(impl_->sessions_mu);
-        snapshot = impl_->sessions;
-    }
-    for (auto& w : snapshot) {
-        if (auto s = w.lock()) s->send(text);
-    }
+    impl_->sendAll(frame.dump());
 }
 
 // ─── Accessor shims used by the session classes ────────────────────────────

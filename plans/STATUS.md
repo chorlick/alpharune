@@ -81,7 +81,7 @@ iteration must apply these.
 | 2 | cards-c4 | merged | `fd00d2c` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
 | 2 | cards-c5 | merged | `870307e` (merge `b95b4e4`) | gate-c5: 2100/2100, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 33 of 39 batch-05 boxes + 6 batch-09 + 4 batch-10; 7 BLOCKED on engine work; 5 `shared:` commits |
 | 2 | cards-c6 | merged | `d06b58d` (merge `a07ce94`) | gate-c6: 2161/2161, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 39 of 46 batch-06 boxes + 1 batch-10; 7 BLOCKED on engine work; one `shared:` commit |
-| 2 | cards-c7 | running | | | based on integration with c0–c4 merged |
+| 2 | cards-c7 | returned | `8ff64db` (merged, stage 2 gate running) | 2203 passed, 0 failed (clean namespaced build, on its branch) | 10 of 18 batch-07 boxes + 6 batch-10; 8 left BLOCKED on engine work; one `shared:` commit; `kKnownOffenders` now empty (all 26 target-less-trigger cards converted) |
 | 3 | sweep | pending | | | |
 | 3 | perf-engine | pending | | | |
 | 3 | perf-search | pending | | | |
@@ -108,6 +108,13 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c7 | BLOCKED batch-07: Renekton, Brute 879 (engine event for Might crossing a threshold; only 5 is announced); Atakhan 732 (additional-cost hook that picks a unit to kill before payment and reads its printed cost); Loyal Poro 718 / Lonely Poro 777 (last-known "other friendly units here" snapshot for a batch of deaths — same work as Battle Mistress 517); Vex 712 (per-unit can't-move-this-turn flag read by the move generator); Poppy, Defender of the Meek 740 (XP optional additional cost with pre-payment reduction — Buccaneer path); Mageseeker Investigator 725 (multi-unit moves and a move cost); Reluctant Leader 908 / Vex 712 token plays (`createToken` does not announce a play, CR 350.2); Sky Crusier 847 (typed discard cost takes the first gear in hand; engine must ask) | sweep | open |
+| cards-c7 | `shared:` commit `e52e52a` to review: `selectObjectAs(ctx, chooser, ...)` helper; `TriggerManager::onScore` fires delayed abilities with trigger `WhenIHold` on their controller's hold (Ashe registers hers with the opponent as controller and a far-future `expires_on_turn`); 4 existing test files corrected | sweep (review) | open |
+| cards-c7 | Corrupted Dragon 878 uses `mode.victory_score + turn.victory_score_bonus` because `entersReadyOnPlay` has no executor — fold into the effective-victory-score row; Astral Heron 831 documented limit (a countered response hides the first spell); Black Rose Dignitary 714 still has a warning | sweep / cleanup | open |
+| cards-c7 | trainer note: units asking more or different `MakeChoice` prompts — 722, 726, 732, 738, 741, 754, 810, 869, 888, 896, 901 | final report | open |
+| cards-c7 | NEW: `createToken` Zilean doubling plays the copy at the same location with no choice | sweep (with Zilean 648) | open |
+| cards-c7 | NEW: Fate Weaver 626 moves the chosen spell to hand by hand (no draw event, unused `ps`) — same class as Called Shot 443 | sweep | open |
+| cards-c7 | NEW: `WhenOpponentPlaysAUnit` carries no `triggering_subject`; the played unit is passed through a counter on the watcher, so two plays before resolution overwrite it | sweep | open |
 | cards-c6 | BLOCKED: Blue Sentinel 649 and Red Brambleback 591 ("hold / conquer effects for ... here trigger an additional time" — `TriggerManager::onScore` must queue those triggers an extra time); Undying Legion 587 (play-a-unit-from-trash path); Arachnoid Horror 679 (grant to other friendly units needs a `PlayerState` flag read by the unit-play generator); Lillia, Protector of Dreams 620 (trigger from `TokenCreatedEvent`); Zilean 648 (choice point inside `createToken`); Soraka 550 (recall primitive) | sweep | open |
 | cards-c6 | Wily Newtfish 670: XP sources outside its range still write `xp +=` and must call `gainXp` — gear 658, 671, 698, 720; legends 759, 787; spells 657, 669, 751; battlefield 769; units 719, 724 | cards-c7 (719, 724), sweep (the rest) | open |
 | cards-c6 | `shared:` commit `65518a8` to review: `Card::canBeReadied()` (checked in `awakenPhase` and `readyObject`); `Card::optionalAdditionalCost(state, player)` overload; `recalculateAuras` resets `untargetable_by_enemy` in its own pass before the hooks; helpers `gainXp`, `selectAnyNumber`; `testHook_awakenPhase` | sweep (review) | open |
@@ -300,3 +307,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c5 verified (gate-c5): 2100 run, 2100 passed; smoke 141 / 59 / 0 rc=0 (baseline was 128 / 72: the fiora-vs-yi split has drifted as cards were fixed — expected, but worth a look in the final report). Worktree and branch removed.
 - 2026-10-10 cards-c6 (`d06b58d`) merged cleanly, gate running. 9 rows to carry-over.
 - 2026-10-10 cards-c6 verified (gate-c6): 2161 run, 2161 passed; smoke 135 / 65 / 0. Worktree and branch removed. cards-c7 messaged with the c5/c6 hand-overs.
+- 2026-10-10 cards-c7 (`8ff64db`) merged cleanly; stage 2 gate started on a clean rebuild. 7 rows to carry-over.

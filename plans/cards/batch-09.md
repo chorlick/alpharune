@@ -7,7 +7,7 @@ Files read in full: 81 of 81.
 Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. Engine facts used below were traced: `playIgnoringCost` never removes the card from its source zone (`engine/effect_executor.cpp:1686-1759`); `ChainManager` always files a resolved spell in trash unless `banish_on_leave_chain` (`engine/chain_manager.cpp:453-487`); an aura-granted keyword adds Might only through `AuraEffect::might_bonus` (`engine/game_engine.cpp:4838-4850`, `core/game_object.h:317-340`); `card_counters` is never cleared on a zone change; `hasLegalTargets` is consulted only for spells and abilities (`engine/game_engine.cpp:3295,3452,3555`); `Card::pickTarget` / `pickTargetPair` do not filter `untargetable_by_enemy` (`card.cpp:339-627`).
 
 ## Findings
-- [ ] **515 Arcane Shift** - `spells/0515_arcane_shift.cpp:56` [confirmed] high
+- [x] **515 Arcane Shift** - `spells/0515_arcane_shift.cpp:56` [confirmed] high — FIXED: sets `banish_on_leave_chain` instead of calling `banishObject` on itself; test: C3Test.ArcaneShift_ReplaysTheUnitOnceAndBanishesItself
   - Text: "Banish this."
   - Code: `banishObject(ctx.source)` while the spell is still the resolving chain item. That pushes the id into `banishment` (and bumps `cards_banished_this_turn`, emits `banished_owned`), then `ChainManager::stepResolve` (`chain_manager.cpp:468-476`) sees `banish_on_leave_chain == false`, sets `zone = Trash` and pushes the same id into `trash`.
   - Scenario: Arcane Shift resolves -> it sits in the trash (zone Trash) and its id is also in the banishment vector. Annie, Stubborn / Kai'Sa / any trash recursion can take it back and replay it; the card is never actually banished. Fix: set `banish_on_leave_chain = true` instead of calling `banishObject`.
@@ -39,15 +39,15 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: "you may ready something else that's exhausted."
   - Code: candidates need `obj.location.has_value()` and `controller == ctx.controller`. Legends live in `ZoneType::LegendZone` with no location (`game_engine.cpp:4464`).
   - Scenario: your legend is exhausted and it is the only exhausted thing you have -> the trigger is not offered at all; with other exhausted objects the legend is never among the choices. (Text is also not limited to friendly objects.)
-- [ ] **730 Undying Loyalty** - `spells/0730_undying_loyalty.cpp:32-36,38-54` [documented] medium
+- [x] **730 Undying Loyalty** - `spells/0730_undying_loyalty.cpp:32-36,38-54` [documented] medium — FIXED: eligible = at most 2 Energy and at most one Power; the [2] discount is given up front when a Bird/Cat/Dog/Poro unit is in the trash and paid back if another unit is chosen (offered only if it can be), so the cost follows the unit chosen; location chosen; test: C3Test.UndyingLoyalty_OnlyABirdCatDogOrPoroEarnsTheDiscount, C3Test.UndyingLoyalty_AUnitThatIsNotAPoroIsNotOfferedWithoutTheTwoEnergy
   - Text: "This costs [2] less if you choose a Bird, Cat, Dog, or Poro. Play a unit with cost no more than [2] and no more than [A] from your trash"
   - Code: `selfCostReduction` returns 2 if ANY unit with one of the four tags is in trash (no Energy check, not tied to the unit actually chosen); `eligible` ignores Power cost entirely.
   - Scenario: trash holds a 5-cost Poro and a 2-cost non-Poro -> the spell costs 0 Energy and revives the non-Poro. A unit costing [2][R][R] is revived although it exceeds "[A]". Not listed with Matron/Glasc in 7.15.
-- [ ] **702 Conscription** - `spells/0702_conscription.cpp:67` [confirmed] medium
+- [x] **702 Conscription** - `spells/0702_conscription.cpp:67` [confirmed] medium — FIXED: the recall writes the location (no UnitMovedEvent, no move blockers), as Hostile Takeover does; test: C3Test.Conscription_WithoutTheXpOnlySmallUnitsAndTheRecallIsNotAMove
   - Text: "Take control of it, exhaust it, and recall it."
   - Code: `moveToBase(picked)`, which emits `UnitMovedEvent` and honours move blockers. CR 457-458: a Recall is not a Move and does not trigger move abilities (Hostile Takeover 516:86-96 does it correctly by writing the location).
   - Scenario: conscript Miss Fortune, Captain (or any "when I move" unit) -> her move trigger fires for the new controller, readying something for free.
-- [ ] **604 Back Off** - `spells/0604_back_off.cpp:37` [confirmed] low
+- [x] **604 Back Off** - `spells/0604_back_off.cpp:37` [confirmed] low — FIXED: `stunUnitBy(picked, ctx.source)`; test: C3Test.BackOff_StunsForItsControllerAndDrawsOnlyWhenPlayedFromHand
   - Text: "[Stun] a unit."
   - Code: `stunUnit(picked)` = `stunUnitBy(target, target)`, so `UnitStunnedEvent.stunner` is the victim's controller (`effect_executor.cpp:773-800`).
   - Scenario: you Back Off an enemy unit while controlling Vex, Mocking -> "when you stun" never fires. Heroic Charge 717:67 and Bone Skewer 701:87 use `stunUnitBy`. (Solari Shieldbearer 51:19 and Leona 238:19 have the same call behind the dead S1 path.)
@@ -59,19 +59,21 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: each chooses "a unit" / "an enemy unit"
   - Code: hand-built legal lists with no `untargetable_by_enemy` test; `pickTarget` / `pickTargetPair` do not add one (only `enumerateLegalTargets` and `chooseableUnits` do).
   - Scenario: opponent controls Baron Nashor / Ruin Runner / a Twilight Shroud unit -> Defiant Dance can give it -2 [M], Snapvine can fight it, Ahri can shrink it, Blitzcrank can pull it.
+  - c3: 511 Defiant Dance — FIXED: both picks through `chooseableUnits`; test: C3Test.DefiantDance_TheSecondUnitIsStillAffectedWhenTheFirstIsGone (same code path)
 - [ ] **Effect-played units always land in base** - `units/0006_flame_chompers.cpp:35`, `units/0037_immortal_phoenix.cpp:68`, `units/0196_soulgorger.cpp:53`, `units/0226_spectral_matron.cpp:72`, `units/0194_nocturne_horrifying.cpp:43`, `units/0349_rumble_hotheaded.cpp:92`, `spells/0704_heedless_resurrection.cpp:86`, `spells/0730_undying_loyalty.cpp:73`, `spells/0515_arcane_shift.cpp:31`, `spells/0513_arise.cpp:103` [confirmed; Arise documented] low
   - Text: "play me" / "play a unit from your trash" / "play a ... token"
   - Code: `playIgnoringCost` / `playPayingCost` called with no location or a hard-coded base. CR 355.2.a lets the controller choose base or a battlefield they control; Wild Claw 876:138-151 shows the prompt.
   - Scenario: you control a battlefield and revive a unit with Soulgorger -> it can only go to base, never to the battlefield to hold/defend.
-- [ ] **704 Heedless Resurrection** - `spells/0704_heedless_resurrection.cpp:75-80` [documented] low
+  - c3: 704 Heedless Resurrection, 730 Undying Loyalty, 515 Arcane Shift — FIXED: `playLocations` + `pickMode`; 513 Arise! — FIXED: per-token location (`playTokensChoosingLocations`); test: C3Test.Arise_EachSandSoldierCanBePlayedToAControlledBattlefield, C3Test.ArcaneShift_ReplaysTheUnitOnceAndBanishesItself, C3Test.HeedlessResurrection_TheKillIsPaidAsItIsPlayedAndTheUnitCanComeBack
+- [x] **704 Heedless Resurrection** - `spells/0704_heedless_resurrection.cpp:75-80` [documented] low — FIXED: `kFinalizeResolve` — the unit is chosen and killed as the spell is played; the unit to play is chosen at resolution from the trash as it is then; test: C3Test.HeedlessResurrection_TheKillIsPaidAsItIsPlayedAndTheUnitCanComeBack
   - Text: "As an additional cost to play this, kill a friendly unit."
   - Code: the kill happens in `onResolve` (no `kFinalizeResolve`, no cost hook).
   - Scenario: the spell is countered -> the friendly unit survives although the cost should already be paid; the opponent can also respond to the spell by removing the chosen unit, which then fizzles the revive budget. Same class as 7.6 (units), not listed there.
-- [ ] **693 Abandon** - `spells/0693_abandon.cpp:23-28,36-38` [confirmed] low
+- [x] **693 Abandon** - `spells/0693_abandon.cpp:23-28,36-38` [confirmed] low — FIXED: `hasLegalTargets` requires the chain top to be a spell; the Predict recycle goes through `recycleCards` (announces "recycled_main", 02 item 2.15); test: C3Test.CountersAreOnlyPlayableAgainstTheChainTop, C3Test.Abandon_RecyclingThePredictedCardIsAnnounced
   - Text: "Counter a spell."
   - Code: `hasLegalTargets` is true if ANY chain item is a spell, but resolution only looks at `items.back()` and does nothing unless that one is a spell.
   - Scenario: opponent's spell is on the chain with a triggered ability above it -> Abandon is offered, costs [2], and counters nothing (only the Predict happens).
-- [ ] **701 Bone Skewer** - `spells/0701_bone_skewer.cpp:38-41,58-63` [documented] low
+- [x] **701 Bone Skewer** - `spells/0701_bone_skewer.cpp:38-41,58-63` [documented] low — FIXED: battlefield (`pickMode`), reveal once, then a real "may" and the unit; test: C3Test.BoneSkewer_ChoosingAUnitIsOptional
   - Text: "You may choose a unit from it."
   - Code: `pickTargetPair` forces a pick whenever the opponent's hand holds a unit.
   - Scenario: the opponent's only hand unit has a strong play effect -> you must put it into play for them.
@@ -81,7 +83,8 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Scenario: two buffed units, spend 1 -> the engine picks which unit loses its buff.
 - [ ] **playPayingCost result ignored after the card left its zone** - `spells/0876_wild_claw.cpp:153,165`, `units/0196_soulgorger.cpp:52-53`, `units/0112_kai_sa_evolutionary.cpp:53,62`, `units/0349_rumble_hotheaded.cpp:91-92` [plausible] low
   - Code: the card is erased from trash / deck+banishment, then `playPayingCost` is called and its `false` return is not handled (the header says the caller must leave the card where it was). Extends the 7.35 list (491, 553, 710); as there, `canPlayPayingCost` is checked just before, so no failing path was found today. Wild Claw is the most exposed: an agent decision sits between the check (resume point 1) and the payment (resume point 2).
-- [ ] **890 Shadows of the Past** - `spells/0890_shadows_of_the_past.cpp:86` [confirmed] low
+  - c3: 876 Wild Claw — FIXED: the chosen card stays listed in banishment until `playPayingCost` succeeds (which removes it), so a failed payment leaves it banished, not zoneless; no test: no failing-payment path could be constructed (the finding is [plausible])
+- [x] **890 Shadows of the Past** - `spells/0890_shadows_of_the_past.cpp:86` [confirmed] low — FIXED: stray `effect_text` removed (data only)
   - Code: `d.effect_text = "1"` - stray data; no other spell in the batch sets `effect_text`.
 
 ## Systemic

@@ -31,6 +31,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: each chooses "a unit".
   - Code: the hand-built candidate lists omit the `untargetable_by_enemy` filter that `Card::enumerateLegalTargets` / `chooseableUnits` apply (Challenge 128, Facebreaker 220, Strike Down 429 in this batch do filter). Whirlwind also builds raw `MakeChoice` options, so no Deflect is charged (same class as 07 item 7.30).
   - Scenario: opponent controls a "can't be chosen by enemy spells and abilities" unit (Baron Nashor) -> Falling Star deals 3 to it, Switcheroo swaps its Might, Whirlwind bounces it.
+  - c3: 466 Switcheroo — FIXED: both picks through `chooseableUnits`; test: C3Test.Switcheroo_DoesNotOfferAUnitThatCannotBeChosenByEnemySpells
 - [x] **63 Spirit's Refuge** - `gear/0063_spirit_s_refuge.cpp:36-45,63-64` [confirmed] medium — FIXED: (a) units that already have [Deflect] are skipped (`hasKeywordInAuraPass`), (b) so a second Refuge adds nothing, (c) the def no longer gives the gear itself [Deflect]; test: C0Test.SpiritsRefuge_DeflectOnlyIfTheUnitHadNone, .SpiritsRefuge_BuffsAChosenUnitWhenPlayed
   - Text: "Friendly buffed units have [Deflect] if they didn't already."
   - Code: (a) every buffed unit gets a Deflect-1 aura with no "didn't already" check, and `deflectCostFor` (`effect_executor.cpp:368-370`) sums `deflect_value` plus each aura, so a unit with printed Deflect costs 2. (b) The hook is called once per on-board Refuge and each call adds another aura from the first instance (S3), so two Refuges give Deflect 2. (c) The def sets `d.keywords.set(Keyword::Deflect)` and `d.deflect_value = 1` on the gear itself (`game_engine.cpp:5250-5253` copies both), so the opponent pays [A] to choose the Refuge gear, which the card does not say.
@@ -73,7 +74,7 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Text: "you may banish it"
   - Code: banishes by direct zone write (erase from trash, set zone, push to `banishment`); skips `cards_banished_this_turn` and the `"banished_owned"` event. Same defect as 07 item 7.31, which does not list this card.
   - Scenario: a "when a card you own is banished" trigger never fires for Virtuoso's banish.
-- [ ] **457 Hard Bargain** - `spells/0457_hard_bargain.cpp:20-25,34-38` [confirmed] low
+- [x] **457 Hard Bargain** - `spells/0457_hard_bargain.cpp:20-25,34-38` [confirmed] low — FIXED: `hasLegalTargets` requires the chain top to be a spell; test: C3Test.CountersAreOnlyPlayableAgainstTheChainTop
   - Text: "Counter a spell unless its controller pays [2]."
   - Code: `hasLegalTargets` accepts a spell anywhere on the chain, but resolution only looks at `chain.items.back()` and no-ops if that is not a spell.
   - Scenario: chain is [enemy spell, enemy triggered ability]; Hard Bargain is offered, paid for, and does nothing.

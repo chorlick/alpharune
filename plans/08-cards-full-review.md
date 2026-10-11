@@ -78,6 +78,7 @@ cross-referenced.
   - Singularity 105 and Piercing Light 346 always hit one of the caster's own units, and are not offered when either side has no target.
   - Deathgrip 484 and Smoke and Mirrors 645 (two friendly targets) are never offered from hand.
   - Bellows Breath 402 (`count = 3`) only ever gets one target.
+  - c3: 402 Bellows Breath, 484 Deathgrip, 645 Smoke and Mirrors — FIXED: each overrides `enumerateLegalTargetSets`; test: C3Test.BellowsBreath_TargetSetsAreUnitsAtOneLocation, C3Test.Deathgrip_IsPlayableOnASingleFriendlyUnit, C3Test.SmokeAndMirrors_IsOfferedForUnitsAtDifferentLocationsOnly. Smoke and Mirrors from facedown is still blocked by the hidden generator's all-targets-here filter (CR 811.1.d.4; batch-03)
 
 - [ ] **8.7 `requiresLegion()` and `requiresLevel()` are never read by the engine**
   - Engine side — NOT A DEFECT: the two virtuals are card-wide flags, and no engine gate keyed on them would be right. Legion / Level are per-ability conditions (CR 812.1.b): Darius 243/547 gate only the play trigger, not the aura; Gustwalker 637 and Scorchclaw 578 put [Level] on the passive, not on [Hunt]; Concentrate 653 and Master Yi 621 use Level only for a cost reduction; Hand of Noxus 296 wants "a card", the units "another card". Cards that work gate themselves (16, 20, 217, 243, 547, 637, 660, 713). The engine was left alone.
@@ -98,6 +99,7 @@ cross-referenced.
   - A Repeat cost can be paid up to 32 times; CR 820.1.c.3 allows once.
   - chain-triggers stream: bullet 1 FIXED (02 item 2.4; all nine cards go through the same loop; tests ChainTriggerFixTest.Repeat_*). Bullet 3 FIXED (`executePlaySpell` offers the cost once; test ChainTriggerFixTest.Repeat_CostCanBePaidOnlyOnce).
   - BLOCKED (bullet 2): Square Up's cost is "Discard 1" and Curtain Call has three separate costs; neither fits `parseRepeatCost`'s `[N][D]` shape. Needs a card-declared Repeat cost (e.g. `Card::repeatCosts()` in card.h, read by `executePlaySpell`, with a discard payment that asks the agent) plus the two card files: card.h / game_engine.cpp / cards, outside this stream.
+  - c3: 579 Square Up — the forced discard is gone (base effect only); 743 Curtain Call — the mask is per play and the target fits the mode. Both Repeat costs still need the card-declared Repeat cost (not done, sweep)
 
 - [x] **8.10 Unit [Reaction] is not implemented** — FIXED: new `Card::hasReactionTiming()` (the def keyword cannot be used: it is also set on ~25 permanents that only have a [Reaction] ability). `generateReactionPermanentActions` offers such units from hand or the Champion Zone in Closed States and showdowns, to the base or a controlled battlefield (CR 813.1.c.1, 813.3.a); `chain_manager.cpp` clears the Champion Zone on such a play. Shen 241, Janna 376, Rengar 348 and Sumpworks Map 647 opt in (`shared:` commit); tests: PlayCombatFixTest.ReactionUnit_IsOfferedInAClosedState_ToBaseAndControlledBattlefields, PlayCombatFixTest.ReactionUnit_IsOfferedAndPlayedInAShowdown, PlayCombatFixTest.ReactionUnit_PlayedFromTheChampionZoneInResponseToASpell
   - `Keyword::Reaction` is consulted only for spells (`game_engine.cpp:3260-3265`, `chain_manager.cpp:510-511`). Shen, Kinkou 241, Janna, Savior 376 and Rengar, Pouncing 348 cannot be played at Reaction timing (see also 02 item 2.7).
@@ -135,6 +137,7 @@ cross-referenced.
   - `[A][A]` Flow can only be paid from one domain: Death Mark 931.
   - "This turn" delayed death-watches never expire: Deadly Flourish 635, Siphoning Strike 933.
   - c0: 17 Iron Ballista — FIXED (`entersExhausted()`); 101 Mushroom Pouch — FIXED (`hidden_at`); 375 Heart of Dark Ice — FIXED (`enumerateLegalTargets` overload); test: C0Test.IronBallista_EntersExhausted, .MushroomPouch_SeesACardHiddenAtABattlefield, .HeartOfDarkIce_IsOfferedAndGivesTheChosenUnitMight
+  - c3: 515 Arcane Shift — FIXED (`banish_on_leave_chain`; C3Test.ArcaneShift_ReplaysTheUnitOnceAndBanishesItself); 466 Switcheroo — FIXED (`chooseableUnits`; C3Test.Switcheroo_DoesNotOfferAUnitThatCannotBeChosenByEnemySpells); 635 Deadly Flourish, 933 Siphoning Strike — FIXED (`expires_on_turn`; C3Test.SiphoningStrike_DeathWatchExpiresWithTheTurn); 931 Death Mark — NOT DONE, engine ([A][A] from two domains)
 
 ## B. Cards with a missing or unimplemented effect
 
@@ -166,8 +169,11 @@ section.
   - c0: 124 Arena Bar, 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by 02 item 2.14 (`buffUnit` gives a Buff only to a unit without one); the cards call `buffUnit`
 - [ ] **S5 First match taken where the player (or opponent) should choose** — about 70 more cards. Each batch file lists them with what should be chosen.
   - c0: 282 Sigil of the Storm, 276 Hallowed Tomb, 771 Star Spring, 339 Recurve Bow, 99 Garbage Grabber, 342 Assembly Rig, 284 Targon's Peak — FIXED: each asks its controller (cards/batch-00.md Systemic S5)
+  - c3: 503, 505, 594, 663, 665, 669, 755 — FIXED (plans/cards/batch-03.md Systemic)
 - [ ] **S6 Helper ordering** (03 item 3.1) — nothing new beyond Thrill of the Hunt 745, Altar of Memories 490, Zenith Blade 258, Blast Cone 695; Keeper's Verdict 760 has it on a fallback path; Forgotten Signpost 607 has two `pickTarget` calls.
+  - c3: 745 ALREADY FIXED (2e0f181), 760 FIXED (owner prompt; batch-03)
 - [ ] **S7 `giveTemporaryKeyword(Temporary)` stripped the same turn** — Turn to Dust 632, with Shadow's Call 727 (07 item 7.9).
+  - c3: 632 Turn to Dust, 727 Shadow's Call — FIXED (07 item 7.9)
 
 ## D. Corrections to earlier plan files
 

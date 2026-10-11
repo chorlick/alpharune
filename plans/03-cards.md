@@ -27,6 +27,7 @@ Two engine facts drive several findings:
     - `gear/0607_forgotten_signpost.cpp` — two `pickTarget` calls in one callback: the second returns the first pick. Use `pickTargetPair`.
     - `spells/0263_bullet_time.cpp` — delete the "they don't collide" comment; pay with `ctx.executor.payAnyPower` (03 item 3.24).
     - Rule for every card: a helper that follows another helper now suspends, so nothing between two helper calls may change game state unless it is guarded to run once.
+  - c3: 745 Thrill of the Hunt — ALREADY FIXED (2e0f181); 760 Keeper's Verdict — FIXED: top/bottom is now asked of the unit's owner by a hand-built prompt, no state change before it; test: C3Test.KeepersVerdict_TheOwnerChoosesTopOrBottom
 
 ## B. Triggers that act only on `targets`
 
@@ -44,10 +45,12 @@ The callback re-runs from the top after a choice, so anything before the helper 
 
 - [ ] **3.3** `units/0200_twisted_fate_gambler.cpp:45-46` — pops and recycles the top rune before `pickTarget` (`:64`, `:92`); a second rune is revealed on re-entry and the payoff re-derived. [confirmed]
 - [ ] **3.4** `spells/0515_arcane_shift.cpp:25-31` — banishes and replays `targets[0]` before `pickTarget` (`:44`); play triggers fire twice. [confirmed]
+  - c3: 515 Arcane Shift — FIXED: the enemy target and the replay location are chosen before the banish-and-replay, so it happens once; "Banish this" sets `banish_on_leave_chain`; test: C3Test.ArcaneShift_ReplaysTheUnitOnceAndBanishesItself
 - [ ] **3.5** `units/0406_jayce_man_of_progress.cpp:50-52` — `killObject(gear)` before `pickTarget` (`:59`); with two gears both die, with one the picked gear is never played. [confirmed]
 - [ ] **3.6** `gear/0242_baited_hook.cpp:33-36` — kills `targets[0]` then suspends (`:59`); on re-entry returns early, the chosen unit is never played. [confirmed]
   - c0: 242 Baited Hook — FIXED: the kill is recorded on the chain item (`resume_data[7]` = 1 + the killed unit's Might) so the re-entry after the pick neither kills again nor returns early; the picked unit is played; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
 - [ ] **3.7** `gear/0490_altar_of_memories.cpp:35-38` — once-guard `__altar_drew` is never erased; from the second friendly death "yes" neither exhausts nor draws but still forces a hand card onto the deck. `spells/0475_guards.cpp:25-33` has the same permanent guard (`__guards_token`) [plausible]. [confirmed]
+  - c3: 475 Guards! — FIXED: the token id is kept on the resolving chain item, not on the card; test: C3Test.Guards_ALaterCastOfTheSameCardMakesANewToken
 
 ## D. Choices at finalization
 
@@ -98,6 +101,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
     - `spells/0751_alpha_strike.cpp`, `units/0041_volibear_furious.cpp`: delete the local `splitDamage` and the four `kSplit*` constants; call `splitDamageAmong(ctx, label, total, source, legal, damaged)` (same signature and behaviour).
     - `units/0444_corrupt_enforcer.cpp`: delete the private `discardThenAct`; call `discardThenAct(ctx, 1, label, [](CardContext&) {})` from `card_helpers.h`.
     - `gear/0405_hextech_anomaly.cpp`, `gear/0412_the_zero_drive.cpp`, `gear/0498_blade_of_the_ruined_king.cpp`, `gear/0748_hextech_gauntlets.cpp`, `spells/0263_bullet_time.cpp`: replace every hand-written `rune_deck.insert(...)` recycle with `payOnePower(ctx, player, domain)` (one Power of a Domain; `std::nullopt` = [A]), `ctx.executor.payAnyPower(player, n)` (n [A]), or — where the card picks the rune itself — `recycleRuneForPower(ctx, player, rune)`. Check affordability first with `payableOnePower` / `ctx.executor.payableAnyPower`. An Equip that is "[N] + one Power" is `standardEquip(ctx, ctx.source, unit, N, domain)`.
+  - c3: 751 Alpha Strike — FIXED: local `splitDamage` and `kSplit*` deleted, calls `splitDamageAmong`; test: existing Alpha Strike tests (full suite)
 
 ## See also
 

@@ -34,6 +34,7 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Where: `chain_manager.cpp:433-447`. Each repeat resets resume state and calls `resolve_spell` once, with no `hasPendingChoice()` loop like `:390-424`.
   - Called Shot (443) with Repeat paid: re-enters case 0, requests a choice, returns; repeated effect never happens. `pending_.active` stays set, so the next chain item (`:405`) sees the stale choice and resolves twice.
   - Also Hard Bargain (457), Marching Orders (436), Temptation (450), Bonds of Strength (472) — all confirmed by the second pass (07 item 7.4). Frigid Touch (389) likely.
+  - c3: 389 Frigid Touch, 436 Marching Orders, 443 Called Shot, 450 Temptation, 457 Hard Bargain, 472 Bonds of Strength — ALREADY FIXED by the engine loop, no card change needed for the Repeat; test: C3Test.Repeat_ATwoTargetSpellChoosesAgainForItsRepeat (Bonds of Strength, through the engine)
 
 - [x] **2.5 "Then recycle it" leaves the spell in both trash and main deck** [verified] — FIXED: the spell goes from the chain straight to its owner's deck, no trash push; test: ChainTriggerFixTest.RecycleOnLeaveChain_SpellEndsUpOnlyInTheDeck
   - Where: `chain_manager.cpp:461-468`. Pushes onto `trash`, then `recycleCards` (`effect_executor.cpp:907-921`) inserts into the deck without removing from the source zone.

@@ -786,4 +786,66 @@ TEST_F(PerfEngineCards, AnAuraPassClearsWhatTheLastOneLeftOnACardOffTheBoard) {
     EXPECT_EQ(o(stays).current_might, 3) << "Might recomputed without the stale bonus";
 }
 
+// ─── 6.5: legal-action generation ───────────────────────────────────────────
+
+// Card::abilities() is activatedAbilities() built once. For every registered
+// card it holds the descriptors a fresh call returns.
+TEST_F(PerfEngineCards, EveryCardsCachedAbilitiesAreItsActivatedAbilities) {
+    int with_abilities = 0;
+    for (const CardDefId id : card_registry.classDefIds()) {
+        const Card* card = card_registry.get(id);
+        const std::vector<ActivatedAbility> fresh = card->activatedAbilities();
+        const std::vector<ActivatedAbility>& cached = card->abilities();
+        ASSERT_EQ(cached.size(), fresh.size()) << card->def().name;
+        EXPECT_EQ(&cached, &card->abilities()) << "one vector per card, not one per call";
+        if (!fresh.empty()) ++with_abilities;
+        for (size_t i = 0; i < fresh.size(); ++i) {
+            const auto& a = cached[i];
+            const auto& b = fresh[i];
+            SCOPED_TRACE(card->def().name + " ability " + std::to_string(i));
+            EXPECT_EQ(a.is_action, b.is_action);
+            EXPECT_EQ(a.is_reaction, b.is_reaction);
+            EXPECT_EQ(a.is_empower, b.is_empower);
+            EXPECT_EQ(a.needs_activation_time_target, b.needs_activation_time_target);
+            EXPECT_EQ(a.cost.energy, b.cost.energy);
+            EXPECT_EQ(a.cost.power, b.cost.power);
+            EXPECT_EQ(a.cost.exhaust, b.cost.exhaust);
+            EXPECT_EQ(a.cost.xp_cost, b.cost.xp_cost);
+            EXPECT_EQ(a.cost.discard_count, b.cost.discard_count);
+            EXPECT_EQ(a.targets.count, b.targets.count);
+            EXPECT_EQ(a.targets.optional, b.targets.optional);
+            EXPECT_EQ(a.targets.must_be_unit, b.targets.must_be_unit);
+            EXPECT_EQ(a.targets.must_be_enemy, b.targets.must_be_enemy);
+            EXPECT_EQ(a.targets.must_be_friendly, b.targets.must_be_friendly);
+        }
+        EXPECT_EQ(card->empowerAbilityIndex() >= 0,
+                  std::any_of(fresh.begin(), fresh.end(),
+                              [](const ActivatedAbility& a) { return a.is_empower; }));
+    }
+    EXPECT_GT(with_abilities, 100);
+}
+
+// The generators read the board through the index. The options they offer at
+// every decision of a game are what a second engine, rebuilt from the same
+// state, offers — and the order is the table's, so a fixed seed still plays
+// the same game (the smoke split and the observation checksum pin that; this
+// pins that an option list does not depend on when the index was last built).
+TEST_F(PerfEngineGame, TheOptionsOfADecisionDoNotDependOnWhenTheIndexWasBuilt) {
+    int compared = 0;
+    for (const uint64_t seed : {4u, 17u}) {
+        Game g(seed, seed + 9);
+        do {
+            const std::vector<Intent> offered = g.engine->currentStep().legal;
+            if (auto again = g.engine->recomputePendingLegalActions()) {
+                // A copy of the state has an index of its own, built afresh.
+                ASSERT_EQ(again->size(), offered.size()) << "seed " << seed << ", decision " << g.applied;
+                for (size_t i = 0; i < offered.size(); ++i)
+                    ASSERT_TRUE((*again)[i] == offered[i]) << "option " << i;
+                ++compared;
+            }
+        } while (g.advance(1));
+    }
+    EXPECT_GT(compared, 100);
+}
+
 }  // namespace test_review_fix_perf_engine

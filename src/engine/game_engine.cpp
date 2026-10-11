@@ -1504,7 +1504,7 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         }
         legal = card->enumerateLegalTargets(state_, item.controller);
     } else {
-        auto abs = card->activatedAbilities();
+        const auto& abs = card->abilities();
         if (item.ability_index < 0 || item.ability_index >= static_cast<int>(abs.size())) return;
         if (abs[item.ability_index].is_empower) return;
         if (!abs[item.ability_index].needs_activation_time_target) {
@@ -1865,7 +1865,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         ? card_registry_.get(intent.granted_ability_def) : ability_card;
     ActivationCost act_cost;
     if (cost_card) {
-        auto abilities = cost_card->activatedAbilities();
+        const auto& abilities = cost_card->abilities();
         int idx = intent.ability_index;
         if (idx < 0 || idx >= static_cast<int>(abilities.size())) idx = 0;
         if (!abilities.empty()) act_cost = abilities[idx].cost;
@@ -1883,7 +1883,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // Empowered, "use only if unattached", once a turn), asked of the card
     // the ability comes from, for this source.
     if (cost_card) {
-        auto gate_abilities = cost_card->activatedAbilities();
+        const auto& gate_abilities = cost_card->abilities();
         int gate_idx = intent.ability_index;
         if (gate_idx < 0 || gate_idx >= static_cast<int>(gate_abilities.size())) gate_idx = 0;
         if (!cost_card->canActivateAbility(state_, intent.player)) return false;
@@ -2034,7 +2034,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         // printed cost, before reductions).
         int printed_energy = 0;
         if (cost_card) {
-            auto abilities = cost_card->activatedAbilities();
+            const auto& abilities = cost_card->abilities();
             if (intent.ability_index >= 0 &&
                 intent.ability_index < static_cast<int>(abilities.size()))
                 printed_energy = abilities[intent.ability_index].cost.energy;
@@ -3010,7 +3010,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
             const Card* acard = (item.granted_ability_def != 0)
                 ? card_registry_.get(item.granted_ability_def) : card;
             if (acard) {
-                auto abs = acard->activatedAbilities();
+                const auto& abs = acard->abilities();
                 if (item.ability_index >= 0 &&
                     item.ability_index < static_cast<int>(abs.size())) {
                     reqs = abs[item.ability_index].targets;
@@ -3070,7 +3070,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                     ? card_registry_.get(item.granted_ability_def) : card;
                 bool is_empower = false;
                 if (act_card) {
-                    auto abs = act_card->activatedAbilities();
+                    const auto& abs = act_card->abilities();
                     is_empower = item.ability_index >= 0 &&
                         item.ability_index < static_cast<int>(abs.size()) &&
                         abs[item.ability_index].is_empower;
@@ -3614,7 +3614,7 @@ Card::HideCost GameEngine::hideCostFor(PlayerId player) const {
     };
     ask(ps.legend_zone);
     std::vector<GameObjectId> in_play;
-    for (const auto& [id, obj] : state_.objects)
+    for (const auto& [id, obj] : state_.objects.onBoard())
         if (obj.controller == player && obj.location.has_value() && !obj.isRune())
             in_play.push_back(id);
     std::sort(in_play.begin(), in_play.end());
@@ -3856,7 +3856,7 @@ std::vector<LocationId> GameEngine::standardMoveDestinations(const GameObject& u
 
 bool GameEngine::enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const {
     int units = 0, enemies = 0;
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf}})) {
         if (!obj.isUnit() || obj.battlefieldId() != bf) continue;
         ++units;
         if (obj.controller != player) ++enemies;
@@ -4035,14 +4035,14 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
     // discounts must be payable for that unit, and an Equipment that is
     // already attached is not offered — its Rules Text, the Equip ability
     // included, is Inactive while attached (CR 718.2, 721.2).
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isGear() || obj.controller != player) continue;
         if (!obj.location.has_value()) continue;
 
         Card* gear_card = card_registry_.get(obj.card_def_id);
         if (!gear_card || !gear_card->hasEquipAbility()) continue;
 
-        for (auto& [uid, unit] : state_.objects) {
+        for (auto& [uid, unit] : state_.objects.onBoard()) {
             if (!unit.isUnit() || unit.controller != player) continue;
             if (!unit.location.has_value()) continue;
             if (!canPayEquip(player, id, uid)) continue;
@@ -4657,7 +4657,7 @@ bool GameEngine::payableThroughAFinalizeChoice(
         !(cc->choicesAtFinalization() & Card::kFinalizeResolve)) return false;
     // Only an object that takes something off the cost can change the answer.
     bool declared = false;
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.location.has_value()) continue;
         if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction <= 0 &&
             targetCostDiscount(player, {id}, true, nullptr).power_reduction <= 0) continue;
@@ -4854,7 +4854,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
     // Single-ability cards use the default Card::activatedAbilities() impl
     // which wraps the legacy single-ability virtuals into a one-element
     // vector — semantics unchanged for them.
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.inPlay()) {
         if (obj.controller != player) continue;
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
 
@@ -4862,7 +4862,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
         if (!card) continue;
         // Per-card "Use only if …" gate (Emperor of the Sands etc.).
         if (!card->canActivateAbility(state_, player)) continue;
-        auto abilities = card->activatedAbilities();
+        const auto& abilities = card->abilities();
         // Don't skip when the object carries no OWN abilities but has been
         // granted some by an aura (Forge/Gardens/Heimerdinger).
         if (abilities.empty() && obj.granted_abilities.empty()) continue;
@@ -4951,7 +4951,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
         for (const auto& ref : obj.granted_abilities) {
             Card* gcard = card_registry_.get(ref.source_def_id);
             if (!gcard) continue;
-            auto gabs = gcard->activatedAbilities();
+            const auto& gabs = gcard->abilities();
             if (ref.ability_index < 0 ||
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
             const auto& gab = gabs[ref.ability_index];
@@ -6656,7 +6656,7 @@ int GameEngine::availablePower(PlayerId player, Domain domain) const {
     // Each rune in base (exhausted or ready) of matching domain can be recycled for 1 Power
     int count = 0;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{base_loc})) {
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == LocationId{base_loc}) {
             for (auto d : obj.domains) {
@@ -6674,7 +6674,7 @@ int GameEngine::availableAnyPower(PlayerId player) const {
     // Any rune in base can be recycled for 1 Power of its domain
     int count = 0;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{base_loc})) {
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == LocationId{base_loc}) {
             count++;
@@ -6692,7 +6692,7 @@ int GameEngine::availableAnyPower(PlayerId player) const {
 // additional cost to 0 and it still counts as paid).
 int GameEngine::optionalCostDiscount(PlayerId player) const {
     int total = 0;
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller != player || !obj.location.has_value()) continue;
         if (obj.card_def_id == kInvalidId) continue;
         if (const Card* c = card_registry_.get(obj.card_def_id))
@@ -7056,7 +7056,7 @@ bool GameEngine::canAffordWith(PlayerId player, GameObjectId card_obj, int extra
     int matching_exhausted = 0;
     // (The player's base, from the board index: this is asked for every card
     // in hand at every decision — plans/06 item 6.5.)
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{base_loc})) {
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
         bool matches_domain = false;
@@ -7127,7 +7127,7 @@ namespace {
 std::vector<GameObjectId> readyRunesInBase(const GameState& state, PlayerId player) {
     std::vector<GameObjectId> out;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state.objects) {
+    for (auto& [id, obj] : state.objects.atLocation(LocationId{base_loc})) {
         if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
         out.push_back(id);
@@ -7140,7 +7140,7 @@ std::vector<GameObjectId> matchingRunesInBase(const GameState& state, PlayerId p
                                                 const std::vector<Domain>& wanted) {
     std::vector<GameObjectId> out;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state.objects) {
+    for (auto& [id, obj] : state.objects.atLocation(LocationId{base_loc})) {
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
         bool match = false;
@@ -7183,7 +7183,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     // transient PlayerState::current_play_source (set in executePlayCard).
     if (card.isUnit()) {
         const bool from_hand = ps.current_play_source == Intent::PlaySource::Hand;
-        for (auto& [oid, obj] : state_.objects) {
+        for (auto& [oid, obj] : state_.objects.onBoard()) {
             if (obj.controller != player || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             const Card* granter = card_registry_.get(obj.card_def_id);

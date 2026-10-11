@@ -50,8 +50,10 @@ public:
         const PlayerId owner = ctx.state.getObject(picked).owner;
 
         // "Its owner places it": the owner decides, not this spell's controller.
+        // A token is never placed anywhere — it ceases to exist as it leaves
+        // the board (CR 183.1) — so its owner has nothing to decide.
         bool to_top = true;
-        if (ri.has_value()) {
+        if (ri.has_value() && !ctx.state.getObject(picked).isToken()) {
             if (ri->resume_point != kAwaitOwner) {
                 ctx.executor.requestChoice(owner,
                     {valChoice(owner, 0, "Keeper's Verdict: top of your Main Deck"),
@@ -91,8 +93,10 @@ public:
         ctx.events.emit(LeftBoardEvent{picked, controller, CardType::Unit, was_at,
                                        token ? ZoneType::Banishment : ZoneType::MainDeck,
                                        /*was_killed=*/false});
-        ctx.events.logTrace("KEEPER'S VERDICT: placed " + u.name +
-                            (to_top ? " on TOP" : " on BOTTOM") + " of deck");
+        ctx.events.logTrace("KEEPER'S VERDICT: " + u.name +
+                            (token ? " (a token) ceased to exist"
+                                   : to_top ? " placed on TOP of deck"
+                                            : " placed on BOTTOM of deck"));
     }
 private:
     const CardDef def_ = [] {

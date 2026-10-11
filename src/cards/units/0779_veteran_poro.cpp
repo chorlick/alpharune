@@ -32,6 +32,9 @@ private:
         d.energy_cost = 2;
         d.might = 2;
         d.rarity = Rarity::Showcase;
+        // [Weaponmaster] is the only keyword: it lets an Equipment be [Equip]ped
+        // to this unit as it is played, but the unit has no Equip ability of its
+        // own, so no Keyword::Equip (reprint 421 matches).
         d.keywords.set(Keyword::Weaponmaster);
         d.ability_text = R"RB([Weaponmaster])RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/337f38fae6a4d801fc14abcda2a7d09c3e7e6ae3-744x1039.png)RB";

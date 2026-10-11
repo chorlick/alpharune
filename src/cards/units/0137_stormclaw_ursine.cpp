@@ -14,7 +14,7 @@ namespace {
 class StormclawUrsine : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.channelRunes(ctx.controller, 1, true);
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }

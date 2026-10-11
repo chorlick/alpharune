@@ -1188,7 +1188,8 @@ TEST_F(ReviewFixC2Test, BulletTime_XCountsReadyRunesAndPaysThroughTheEngine) {
     auto e2 = addUnit(P2, kInvalidId, 9, 0);
     for (int i = 0; i < 3; ++i) addRune(P1, Domain::Body);   // all ready
 
-    EnginePathAgent agent(script({O(e1), V(3)}));
+    // "all enemy units at a battlefield": the battlefield is a mode, no unit is chosen.
+    EnginePathAgent agent(script({V(0), V(3)}));
     playThroughEngine(addToHand(P1, kBulletTime), &agent);
     EXPECT_EQ(state.getObject(e1).damage_marked, 3);
     EXPECT_EQ(state.getObject(e2).damage_marked, 3);

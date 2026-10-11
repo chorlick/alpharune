@@ -51,16 +51,32 @@ public:
         int conf = confirmOptional(ctx,
             "Dusk Rose Lab: kill a unit here to draw 1?", still_legal);
         if (conf < 1) return;    // waiting for the agent, declined, or no unit here
-        if (costDueNow(ctx)) {
+        // The cost is attempted once. A death that was replaced is not a
+        // kill: the cost was not paid, so there is no draw — and no second
+        // attempt when the ability resolves, which is why the failed attempt
+        // is kept on the chain item (past selectObject's slots 7..8) and the
+        // marker below is still reached.
+        constexpr size_t kKillReplacedSlot = 9;
+        auto kill_replaced = [&]() {
+            const auto& ri = ctx.state.chain.resuming;
+            return ri.has_value() && ri->resume_data.size() > kKillReplacedSlot &&
+                   ri->resume_data[kKillReplacedSlot] == 1;
+        };
+        if (costDueNow(ctx) && !kill_replaced()) {
             const auto picked = selectObject(ctx, "Dusk Rose Lab (unit to kill)", unitsHere(ctx));
             if (!picked.has_value() || *picked == kInvalidId) return;   // waiting / none
             const auto here = unitsHere(ctx);
             if (std::find(here.begin(), here.end(), *picked) == here.end()) return;
             ctx.executor.killObject(*picked);
-            // A death that was replaced is not a kill: the cost was not paid.
-            if (ctx.state.getObject(*picked).location.has_value()) return;
+            if (ctx.state.getObject(*picked).location.has_value()) {
+                if (!ctx.state.chain.resuming.has_value()) return;   // direct call: no item
+                auto& data = ctx.state.chain.resuming->resume_data;
+                while (data.size() <= kKillReplacedSlot) data.push_back(0);
+                data[kKillReplacedSlot] = 1;
+            }
         }
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (kill_replaced()) return;          // the unit did not die: nothing was paid
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("DUSK ROSE LAB: killed a unit here -> draw 1");
     }

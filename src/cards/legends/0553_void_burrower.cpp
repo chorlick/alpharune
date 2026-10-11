@@ -17,40 +17,52 @@ namespace {
 //
 // Legend trigger (fires via TriggerManager::fireLegendTrigger on the
 // controller's Conquer score). Resumable:
-//   - confirmOptional gate ("exhaust me?") reserves resume_points 0/1/2 +
-//     resume_data[0].
-//   - After confirm we exhaust the legend, snapshot the top-2 ids into
+//   - "you may exhaust me to ...": the "may" and the cost open the effect, so
+//     both belong to finalization (CR 383.3.a / 383.3.b) — the legend is
+//     exhausted before anyone can respond. confirmOptional asks.
+//   - The cards are only revealed as the ability resolves, so "You may banish
+//     one" is decided then (CR 383.3.a.3): we snapshot the top-2 ids into
 //     resume_data[1]/[2], and publish a banish choice (a "skip" slot plus
-//     each revealed card). Phase tracked in resume_data[3].
+//     each revealed card). Phase tracked in resume_data[3]: -1 nothing done,
+//     0 cost paid, 1 waiting for the banish choice.
 //   - On re-entry: banish + play the chosen card (or none), recycle whatever
 //     of the top-2 wasn't banished.
 class VoidBurrower : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& ri = ctx.state.chain.resuming.value();
 
         // "you may exhaust me" — legal only if I'm currently ready.
+        // (Once the cost is paid I am exhausted: that no longer argues
+        // against the effect.)
         auto still_legal = [&]() -> bool {
-            return ctx.state.objectExists(ctx.source) &&
-                   !ctx.state.getObject(ctx.source).is_exhausted;
+            return costAlreadyPaid(ctx) ||
+                   (ctx.state.objectExists(ctx.source) &&
+                    !ctx.state.getObject(ctx.source).is_exhausted);
         };
         int conf = confirmOptional(ctx, "Void Burrower: exhaust me to reveal 2?",
                                    still_legal);
         if (conf == -1) return;  // waiting for agent
-        if (conf == 0) return;   // declined or no longer legal
 
-        // Ensure our private resume_data slots exist: [0]=confirm, [1]/[2]=
-        // the revealed ids, [3]=phase.
+        // Ensure our private resume_data slots exist: [1]/[2]= the revealed
+        // ids, [3]=phase.
         while (ri.resume_data.size() < 4) ri.resume_data.push_back(-1);
+        if (conf == 1 && costDueNow(ctx) && ri.resume_data[3] < 0) {
+            ctx.executor.exhaustObject(ctx.source);   // the cost, paid once
+            ri.resume_data[3] = 0;
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (conf == 0) return;   // declined or no longer legal
+        if (ri.resume_data[3] < 0) return;   // the cost was not paid
         const int phase = ri.resume_data[3];
 
-        if (phase < 0) {
-            // First pass after confirmation: exhaust me + reveal top 2.
-            ctx.executor.exhaustObject(ctx.source);
+        if (phase == 0) {
+            // First pass of the effect: reveal top 2.
             auto& ps = ctx.state.player(ctx.controller);
             GameObjectId a = kInvalidId, b = kInvalidId;
             int n = static_cast<int>(ps.main_deck.size());
@@ -63,15 +75,16 @@ public:
             for (auto cid : {a, b}) {
                 if (cid == kInvalidId || !ctx.state.objectExists(cid)) continue;
                 const auto& o = ctx.state.getObject(cid);
-                ctx.events.emit(CardRevealedEvent{cid, o.card_def_id, o.owner,
-                                                  false, ctx.controller, ZoneType::MainDeck});
                 // "Reveal": both players see the top two.
+                ctx.events.emit(CardRevealedEvent{cid, o.card_def_id, o.owner,
+                                                  true, ctx.controller, ZoneType::MainDeck});
                 knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top,
                                       cid == a ? 0 : 1);
                 revealed.push_back(cid);
             }
             if (revealed.empty()) {
                 ctx.events.logTrace("VOID BURROWER: deck empty, nothing to reveal");
+                ri.resume_data[3] = 1;   // nothing more to do
                 return;
             }
             // Publish "you may banish one": a skip slot (empty chosen_objects)

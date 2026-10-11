@@ -30,6 +30,7 @@ public:
                         obj.battlefieldId() == my_bf)
                         legal.push_back(id);
         }
+        std::sort(legal.begin(), legal.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Yuumi: give one of your other units here +3 [M] and [Tank]",
                                           legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

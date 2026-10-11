@@ -49,9 +49,13 @@ public:
                     for (auto cid : in_trash)
                         if (std::find(to_recycle.begin(), to_recycle.end(), cid) == to_recycle.end())
                             rest.push_back(cid);
-                    const auto pick = selectObject(
-                        ctx, "Garbage Grabber: recycle from your trash (" +
-                             std::to_string(i + 1) + " of 3)", rest, 7 + 2 * i);
+                    // Built with += rather than a chain of operator+: GCC 13
+                    // reports a false -Warray-bounds on the temporary's
+                    // small-string buffer for the chained form at -O3.
+                    std::string label = "Garbage Grabber: recycle from your trash (";
+                    label += std::to_string(i + 1);
+                    label += " of 3)";
+                    const auto pick = selectObject(ctx, label, rest, 7 + 2 * i);
                     if (!pick.has_value() || *pick == kInvalidId) return;   // waiting on the agent
                     if (std::find(rest.begin(), rest.end(), *pick) == rest.end()) return;
                     to_recycle.push_back(*pick);

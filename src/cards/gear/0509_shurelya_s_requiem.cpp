@@ -27,7 +27,9 @@ public:
         ctx.events.logTrace("SHURELYA'S REQUIEM: ready your units");
     }
 
-    // Equipped: "Your units here have [Ganking]." "Here" is where the unit
+    // Equipped: "Your units here have [Ganking]." The sentence is printed in
+    // the Equipment's effect box (def().effect_text), not in ability_text.
+    // "Here" is where the unit
     // wearing this is — read from the bearer, not from the gear's own
     // location, so it cannot lag behind a bearer that was moved by an effect.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {

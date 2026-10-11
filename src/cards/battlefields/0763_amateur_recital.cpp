@@ -22,12 +22,14 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouHoldHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto movable = [&]() {
-            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+            auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
                 // Not from a battlefield units can't move to base from, and
                 // not a unit enemy effects can't move.
                 return u.isAtBattlefield() && !moveToBaseBlocked(ctx.state, u) &&
                        !(u.controller != ctx.controller && u.cant_be_moved_by_enemy);
             });
+            std::sort(out.begin(), out.end());   // stable option order, not hash order
+            return out;
         };
         const int go = confirmOptional(ctx, "Amateur Recital: move a unit at a battlefield "
                                             "to its base?",

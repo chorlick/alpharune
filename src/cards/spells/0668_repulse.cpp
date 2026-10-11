@@ -21,7 +21,9 @@ public:
     // Peek-and-pop: Repulse has been popped by FEPR, so the item it answers is
     // the top of the chain; it never scans or flags the chain. What that item
     // chooses is ChainItem::chosen_objects (everything it has chosen) together
-    // with its play-time targets.
+    // with its play-time targets. A triggered ability is never handed targets by
+    // the engine: its event's subject is ChainItem::triggering_subject, which is
+    // not a choice and is deliberately not read here.
 
     /// The one friendly unit `item` chooses, if it chooses exactly one and
     /// that unit is at a battlefield; kInvalidId otherwise.

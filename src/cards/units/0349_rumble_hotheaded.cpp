@@ -97,22 +97,13 @@ public:
         if (!ctx.executor.canPlayPayingCost(ctx.controller, trash_mech, reduced)) return;
 
         // CR 355.2.a: the Mech goes to its controller's base or to a
-        // battlefield they control — chosen as it is played.
-        std::vector<LocationId> where{LocationId{BaseLocation{ctx.controller}}};
-        std::vector<std::string> labels{"base"};
-        for (const auto& bf : ctx.state.battlefields) {
-            if (!bf.controller.has_value() || *bf.controller != ctx.controller) continue;
-            where.push_back(LocationId{BattlefieldLocation{bf.id}});
-            labels.push_back("battlefield " + std::to_string(bf.id));
-        }
-        int dest = 0;
-        if (where.size() > 1) {
-            dest = pickMode(ctx, "Rumble: where to play the Mech",
-                            static_cast<int>(where.size()), labels);
-            if (dest < 0) return;   // waiting for the agent
-        }
+        // battlefield they control (and may be played to) — chosen as it is
+        // played, through the shared helper every effect play uses.
+        const int where = pickEffectPlayLocation(*this, ctx, "Rumble: play the Mech to");
+        if (where == -1) return;   // waiting for the agent
         // playPayingCost takes the card out of the trash only if it is played.
-        if (ctx.executor.playPayingCost(ctx.controller, trash_mech, where[dest], reduced))
+        if (ctx.executor.playPayingCost(ctx.controller, trash_mech,
+                                        effectPlayLocation(ctx.state, ctx.controller, where), reduced))
             ctx.events.logTrace("RUMBLE: conquer -> recycled a unit, played a Mech from trash");
     }
 private:

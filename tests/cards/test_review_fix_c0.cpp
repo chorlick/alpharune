@@ -768,11 +768,13 @@ TEST_F(C0Test, SunDisc_ReadiesThePlayedUnitAndIsUsedUpByIt) {
     state.player(P1).cards_played_this_turn = 1;
     auto bystander = addUnit(P1, kRecruit, 0);
     o(bystander).is_exhausted = true;
-    auto ready_already = addUnit(P1, kRecruit, 0);      // e.g. entered ready by itself
+    auto played = addUnit(P1, kRecruit, 0);             // the unit just played: exhausted
+    o(played).is_exhausted = true;
     activate(disc);
     EnginePathAgent agent;
-    fireTriggerThroughEngine(disc, TriggerType::WhenYouPlayAUnit, &agent, ready_already);
+    fireTriggerThroughEngine(disc, TriggerType::WhenYouPlayAUnit, &agent, played);
     EXPECT_TRUE(agent.prompts.empty()) << "nothing to choose: \"the next unit you play\"";
+    EXPECT_FALSE(o(played).is_exhausted) << "the played unit is readied";
     EXPECT_TRUE(o(bystander).is_exhausted) << "not some other exhausted unit";
 
     // The arm is gone: the following unit is not readied (batch-08).

@@ -50,13 +50,30 @@ public:
         GameObjectId attacker = kInvalidId;
         if (conf == 1) attacker = pickTarget(ctx, "Overzealous Fan: choose an attacking unit",
                                              attackers());
-        if (conf == 1 && attacker != kInvalidId && costDueNow(ctx)) {
+        // "Kill me to ...": a death that was replaced is not a kill, so the
+        // cost was not paid and nothing is moved. The cost is attempted once:
+        // the failed attempt is kept on the chain item (past the pick*
+        // helpers' slots 0..6) so the resolution does not try again.
+        constexpr size_t kKillReplacedSlot = 7;
+        auto kill_replaced = [&]() {
+            const auto& ri = ctx.state.chain.resuming;
+            return ri.has_value() && ri->resume_data.size() > kKillReplacedSlot &&
+                   ri->resume_data[kKillReplacedSlot] == 1;
+        };
+        if (conf == 1 && attacker != kInvalidId && costDueNow(ctx) && !kill_replaced()) {
             // The cost can only be paid by a Fan that is still on the board.
             if (!ctx.state.getObject(ctx.source).location.has_value()) return;
             ctx.executor.killObject(ctx.source);
+            if (ctx.state.getObject(ctx.source).location.has_value()) {
+                if (!ctx.state.chain.resuming.has_value()) return;   // direct call: no item
+                auto& data = ctx.state.chain.resuming->resume_data;
+                while (data.size() <= kKillReplacedSlot) data.push_back(0);
+                data[kKillReplacedSlot] = 1;
+            }
         }
         if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
         if (conf < 1 || attacker == kInvalidId) return;   // waiting / declined / mistarget
+        if (kill_replaced()) return;                      // I did not die: nothing was paid
         std::string attacker_name = ctx.state.getObject(attacker).name;
         ctx.executor.moveToBase(attacker);   // to ITS base; it keeps buffs, damage and gear
         ctx.events.logTrace("OVERZEALOUS FAN: killed self, moved " + attacker_name + " to its base");

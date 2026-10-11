@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIAttackOrDefend; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
+                            const std::vector<GameObjectId>& /*targets*/) override {
         auto bf = ctx.state.getObject(unit).battlefieldId();
         if (!bf) return;
         std::vector<GameObjectId> enemies;

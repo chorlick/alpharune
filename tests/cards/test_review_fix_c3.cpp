@@ -676,7 +676,9 @@ TEST_F(C3Test, SkywardStrike_MovesWhereChosenAndAtLevelSixAlsoStuns) {
 
 TEST_F(C3Test, KeepersVerdict_TheOwnerChoosesTopOrBottom) {
     auto spell = addToHand(P1, kKeepersVerdict);
-    auto victim = addUnit(P2, kInvalidId, 3, 0);
+    // A real card: a unit with no card behind it is a token, and a token's
+    // owner is not asked (it ceases to exist, CR 183.1).
+    auto victim = addUnit(P2, 175, 3, 0);   // Shipyard Skulker
     addToDeck(P2, kInvalidId);
     addToDeck(P2, kInvalidId);
     StepAgent p1{O(victim)};

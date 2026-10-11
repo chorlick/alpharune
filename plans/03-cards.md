@@ -84,6 +84,7 @@ The callback re-runs from the top after a choice, so anything before the helper 
   - c5: 372 Aphelios, Exalted — FIXED: the mode is still claimed when chosen (a second trigger must not take it), but the claim remembers its chain item, so the same item asked again (re-entry, `makeNewChoicesFor`) is not blocked by its own answer; test: C5Test.ApheliosModeCannotBeChosenTwiceInATurn
   - c7: 789 Blade Twirler — FIXED: no counter; `triggerCondition` (`moves_this_turn == 1`); 855 Jayce, Brilliant Inventor — FIXED: "first non-token gear" is `triggerCondition`; the stamp is written idempotently and no path returns on it, so a re-chosen ability is not lost; test: C7Test.BladeTwirler_OnlyTheFirstMoveOfTheTurnBurns, C7Test.JayceBrilliantInventor_OnlyTheFirstNonTokenGearOfTheTurn
   - verify-cards: 162, 789, 855 verified in the code by sweep-verify-cards (no counter write before the marker that a path returns on). needs sweep-verify: (a) Aphelios 372 is with sweep-costs — verify after it merges; (b) 855 Jayce has no test that re-enters `onTrigger` after `makeNewChoicesFor` (the original defect) — add one. Then tick.
+  - verify-cards: (tranche 2) the 855 re-entry test now exists: VerifyCardsTest.JayceBrilliantInventor_IsAskedAgainAfterNewChoicesAndStillResolves. Only 372 Aphelios (sweep-costs) is left.
 
 Clean: opt-in bits match overridden callbacks; every effect branch of the 10 multi-trigger cards has a marker; no pre-check is missing `costAlreadyPaid`.
 

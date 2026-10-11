@@ -63,6 +63,13 @@ public:
                 static_cast<int>(chosen_mask | (1u << mode));
         }
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 355)
+        // The ability is its own item on the chain (CR 377.3.a.1) and resolves
+        // whether or not I am still on the board. Only an instruction that
+        // reads something off me is ignored once I am gone (CR 359.3.e.12,
+        // 359.3.f.1): "Ready me" and "Give me [Ganking]". "Deal 2 to a unit
+        // at a battlefield" and "Stun a unit at a battlefield" name neither
+        // me nor where I am, so they are carried out (as the Sprite of the
+        // CR 359.3.f.3 example is played after Lillia has left).
         switch (mode) {
         case 0:  // Deal 2 to a unit at a battlefield
             ctx.executor.dealDamage(t, 2, ctx.source);

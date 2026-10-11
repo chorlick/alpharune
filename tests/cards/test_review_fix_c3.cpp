@@ -506,6 +506,15 @@ TEST_F(C3Test, RallyTheTroops_DoesNotBuffAnOpponentsUnit) {
     playThroughEngine(spell);
     auto theirs = addToHand(P2, kSkulker);
     playThroughEngine(theirs);
+    // 9.B7: nothing showed the opponent's unit was played at all (a play that
+    // never happened leaves buff_count at 0 too), nor that the rider was live.
+    EXPECT_FALSE(inHand(P2, theirs));
+    ASSERT_TRUE(onBoard(theirs)) << "the opponent's unit reached the board";
+    EXPECT_EQ(state.getObject(theirs).controller, P2);
+    EXPECT_EQ(state.getObject(theirs).buff_count, 0);
+    auto mine = addToHand(P1, kSkulker);
+    playThroughEngine(mine);
+    EXPECT_EQ(state.getObject(mine).buff_count, 1) << "the rider is live: a friendly unit is buffed";
     EXPECT_EQ(state.getObject(theirs).buff_count, 0);
 }
 

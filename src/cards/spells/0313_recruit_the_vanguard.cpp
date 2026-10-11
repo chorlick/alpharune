@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,17 +16,47 @@ class RecruitTheVanguard : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Play four 1 [M] Recruit unit tokens. (They can be played to your base
-    //  or to battlefields you control.)" Free token plays default to the
-    //  controller's base (CR 355.2.a — base is always a legal landing spot).
+    //  or to battlefields you control.)" Each token's place is its
+    //  controller's choice; nothing is asked when the base is the only one.
+    //  Progress lives on the resolving item: resume_point kAwait while a
+    //  prompt is out, resume_data = the places chosen so far.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        LocationId loc{BaseLocation{ctx.controller}};
-        for (int i = 0; i < 4; ++i) {
+        std::vector<int> places;
+        if (ctx.state.chain.resuming.has_value()) {
+            auto& ri = *ctx.state.chain.resuming;
+            if (ri.resume_point == kDone) return;
+            const auto dests = tokenPlayDests(ctx.state, ctx.controller);
+            if (ri.resume_point == kAwait) {
+                int d = takenValue(ctx, 0);
+                if (std::find(dests.begin(), dests.end(), d) == dests.end()) d = 0;
+                ri.resume_data.push_back(d);
+            } else {
+                ri.resume_data.clear();
+            }
+            if (ri.resume_data.size() < kTokens && dests.size() > 1) {
+                std::vector<Intent> options;
+                for (int d : dests) options.push_back(valChoice(ctx.controller, d, destLabel(d)));
+                ctx.executor.requestChoice(ctx.controller, std::move(options),
+                    "Recruit the Vanguard: where to play Recruit " +
+                    std::to_string(ri.resume_data.size() + 1) + " of 4");
+                ri.resume_point = kAwait;
+                return;
+            }
+            ri.resume_point = kDone;
+            places.assign(ri.resume_data.begin(), ri.resume_data.end());
+        }
+        places.resize(kTokens, 0);
+        for (int d : places) {
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
-                                     1, {"Recruit"}, KeywordSet{}, loc,
+                                     1, {"Recruit"}, KeywordSet{},
+                                     destLocation(ctx.controller, d),
                                      /*enter_ready=*/false);
         }
         ctx.events.logTrace("RECRUIT THE VANGUARD: played four 1[M] Recruit tokens");
     }
+private:
+    static constexpr size_t kTokens = 4;
+    enum : int { kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

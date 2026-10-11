@@ -16,16 +16,23 @@ class Defy : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // Playable only if there is a counterable spell on the chain. The [4]
-    // cost gate is re-checked at resolve via the CardDB def lookup; only the
-    // printed energy cost is modeled ([A] = additional power, not tracked).
+    // "Counter a spell that costs no more than [4] and no more than [A]."
+    // Both caps are on the spell's printed cost: at most 4 Energy and at most
+    // one Power. Defy counters the item directly beneath it, so that item is
+    // what has to qualify.
+    static bool counterable(const GameState& state, const CardDB& db) {
+        if (state.chain.items.empty()) return false;
+        const auto& top = state.chain.items.back();
+        if (!top.is_spell || top.card_def_id == kInvalidId) return false;
+        const auto& d = db.get(top.card_def_id);
+        return d.energy_cost <= 4 && d.power_cost <= 1;
+    }
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it) {
-            if (!it->is_spell) continue;
-            if (it->card_def_id == kInvalidId) continue;
-            return true;  // cost re-checked at resolve via def lookup
-        }
-        return false;
+        if (state.chain.items.empty()) return false;
+        const auto& top = state.chain.items.back();
+        // The cost caps need the CardDB, which is not reachable from here:
+        // they are checked as Defy resolves (counterable).
+        return top.is_spell && top.card_def_id != kInvalidId;
     }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
@@ -34,15 +41,9 @@ public:
         if (!top.is_spell) return;
         if (isUncounterable(ctx, top)) return;
 
-        // Cost gate: "no more than [4]". Read the static energy cost of the
-        // spell being countered from the CardDB.
-        int cost = 0;
-        if (top.card_def_id != kInvalidId) {
-            cost = ctx.executor.cardDB().get(top.card_def_id).energy_cost;
-        }
-        if (cost > 4) {
-            ctx.events.logTrace("DEFY: cannot counter — cost " +
-                                 std::to_string(cost) + " exceeds [4]");
+        if (!counterable(ctx.state, ctx.executor.cardDB())) {
+            ctx.events.logTrace("DEFY: cannot counter — the spell costs more than [4] "
+                                "or more than [A]");
             return;  // illegal target; spell resolves normally
         }
 
@@ -54,7 +55,6 @@ public:
             ctx.events.logTrace("COUNTER: " + obj.name + " countered by Defy -> trash");
             disposeCounteredCard(ctx, countered);
         }
-        // NOTE: removed the previously-present (un-printed) "draw 1".
     }
 private:
     const CardDef def_ = [] {

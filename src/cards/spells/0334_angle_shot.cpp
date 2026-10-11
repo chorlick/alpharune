@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -23,12 +24,10 @@ public:
 
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        // First pick: any unit on board.
-        std::vector<GameObjectId> units;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || !obj.location.has_value()) continue;
-            units.push_back(id);
-        }
+        // First pick: any unit on board the caster may choose (not an enemy
+        // unit that can't be chosen by enemy spells and abilities).
+        auto units = chooseableUnits(ctx.state, ctx.controller,
+                                     [](const GameObject&) { return true; });
         std::sort(units.begin(), units.end());
         // Second pick: an Equipment gear with the SAME controller as the unit.
         auto second_fn = [&](GameObjectId picked_unit) {
@@ -38,6 +37,7 @@ public:
             for (auto& [id, obj] : ctx.state.objects) {
                 if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != uctrl) continue;
+                if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
                 bool is_equipment = false;
                 for (auto& tag : obj.tags)
                     if (tag == "Equipment") { is_equipment = true; break; }

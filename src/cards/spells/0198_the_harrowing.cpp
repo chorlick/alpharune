@@ -34,11 +34,10 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         // "ignoring its Energy cost. (You must still pay its Power cost.)"
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
-        if (!ctx.executor.canPlayPayingCost(ctx.controller, picked, power_only)) return;
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), picked);
-        if (it != ps.trash.end()) ps.trash.erase(it);
-        ctx.executor.playPayingCost(ctx.controller, picked, std::nullopt, power_only);
-        ctx.events.logTrace("THE HARROWING: played a unit from trash for free");
+        // Paying is optional (CR 445.2); the play takes the unit out of the
+        // trash itself, and only once the Power is paid.
+        if (ctx.executor.playPayingCost(ctx.controller, picked, std::nullopt, power_only))
+            ctx.events.logTrace("THE HARROWING: played a unit from trash for its Power cost");
     }
 private:
     const CardDef def_ = [] {

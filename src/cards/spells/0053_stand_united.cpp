@@ -16,12 +16,12 @@ public:
     const CardDef& def() const override { return def_; }
     // "Buff a friendly unit. Buffs give an additional +1 [M] to friendly units
     //  this turn."
-    // ENGINE GAP: there is no buff-amplification hook (a per-player field that
-    // makes subsequent buffs grant +2 [M] this turn), so only the on-resolve
-    // buff is applied. The amplification rider is unmodeled.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (!targets.empty())
             ctx.executor.buffUnit(targets[0]);
+        // The second sentence does not depend on the target: every Buff on a
+        // friendly unit (now or placed later this turn) is worth +1 more.
+        ctx.state.player(ctx.controller).buff_might_bonus_this_turn += 1;
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};

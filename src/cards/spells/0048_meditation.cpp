@@ -15,35 +15,54 @@ namespace {
 class Meditation : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "As an additional cost to play this, you may exhaust a friendly unit. If
+    //  you do, draw 2. Otherwise, draw 1."
+    // The "may", the unit and the exhaust belong to playing the spell: they
+    // are decided and paid when it is finalized, not as it resolves.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        auto find_ready_friendly = [&]() -> GameObjectId {
+        auto ready_friendly = [&]() {
+            std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (obj.is_exhausted) continue;
-                return id;
+                out.push_back(id);
             }
-            return kInvalidId;
+            std::sort(out.begin(), out.end());
+            return out;
         };
-        auto still_legal = [&]() { return find_ready_friendly() != kInvalidId; };
+        auto still_legal = [&]() {
+            return costAlreadyPaid(ctx) || !ready_friendly().empty();
+        };
 
         int conf = confirmOptional(ctx,
             "Meditation: exhaust a friendly unit to draw 2 (else draw 1)?",
             still_legal);
         if (conf == -1) return;  // waiting for agent choice
 
+        bool paid = false;
         if (conf == 1) {
-            auto target = find_ready_friendly();
-            if (target != kInvalidId) {
-                ctx.executor.exhaustObject(target);
-                ctx.executor.drawCards(ctx.controller, 2);
-                ctx.events.logTrace("MEDITATION: exhausted friendly -> draw 2");
-                return;
+            if (costAlreadyPaid(ctx)) {
+                paid = true;
+            } else {
+                const GameObjectId unit =
+                    pickTarget(ctx, "Meditation: unit to exhaust", ready_friendly());
+                if (unit == kInvalidId) {
+                    if (ctx.state.chain.resuming.has_value() &&
+                        ctx.state.chain.resuming->resume_point == 7) return;  // waiting
+                } else if (costDueNow(ctx)) {
+                    ctx.executor.exhaustObject(unit);
+                    paid = true;
+                }
             }
         }
-        ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("MEDITATION: draw 1");
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+
+        ctx.executor.drawCards(ctx.controller, paid ? 2 : 1);
+        ctx.events.logTrace(paid ? "MEDITATION: exhausted friendly -> draw 2"
+                                 : "MEDITATION: draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -15,8 +15,16 @@ class AgainstTheOdds : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 2);
+        if (targets.empty()) return;
+        // "+2 [M] this turn for each enemy unit there" — counted as the spell
+        // resolves, at the battlefield the unit is at then.
+        const auto here = ctx.state.getObject(targets[0]).battlefieldId();
+        if (!here.has_value()) return;
+        int enemies = 0;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller != ctx.controller && obj.battlefieldId() == here)
+                ++enemies;
+        if (enemies > 0) ctx.executor.giveTemporaryMight(targets[0], 2 * enemies);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true, .must_be_at_battlefield = true};

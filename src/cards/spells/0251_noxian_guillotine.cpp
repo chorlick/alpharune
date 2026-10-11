@@ -17,7 +17,7 @@ public:
     // "Choose a unit. Kill it the next time it takes damage this turn.
     //  [Legion] — Kill it now instead."
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        if (targets.empty()) return;
         GameObjectId tgt = targets[0];
         // Legion = the controller has played another card this turn (this spell
         // already incremented the counter, so >= 2 means Legion is active).
@@ -27,14 +27,26 @@ public:
             ctx.events.logTrace("NOXIAN GUILLOTINE: [Legion] kill now");
             return;
         }
-        // Non-Legion: "Kill it the next time it takes damage this turn."
-        // ENGINE GAP: there is no "when it takes damage" trigger/event, so this
-        // delayed kill cannot be wired from the card file. Mark the target with
-        // a flag the engine would consult; we do NOT kill now (avoids the prior
-        // double-kill bug). Requires an engine-side damage trigger to honor.
-        ctx.state.getObject(tgt).card_counters["__kill_on_next_damage_this_turn"] = 1;
-        ctx.events.logTrace("NOXIAN GUILLOTINE: mark kill-on-next-damage "
-                            "(engine damage-trigger gap; not killed now)");
+        // Without Legion: a one-shot delayed ability (CR 389) watching that
+        // unit until end of turn.
+        DelayedAbility da;
+        da.source = ctx.source;
+        da.card_def_id = cardDefId();
+        da.controller = ctx.controller;
+        da.trigger = TriggerType::WhenAUnitTakesDamage;
+        da.target_filter = tgt;
+        da.expires_on_turn = ctx.state.turn.turn_number;
+        ctx.state.delayed_abilities.push_back(da);
+        ctx.events.logTrace("NOXIAN GUILLOTINE: kills " + ctx.state.getObject(tgt).name +
+                            " the next time it takes damage this turn");
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.chain.resuming.has_value()) return;
+        const GameObjectId unit = ctx.state.chain.resuming->triggering_subject;
+        if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
+        const auto& u = ctx.state.getObject(unit);
+        if (!u.isUnit() || !u.location.has_value()) return;   // already gone
+        ctx.executor.killObject(unit);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};

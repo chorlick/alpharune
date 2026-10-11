@@ -16,15 +16,24 @@ class Salvage : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty() && ctx.state.objectExists(targets[0])) {
-            auto& obj = ctx.state.getObject(targets[0]);
-            if (obj.isGear()) ctx.executor.killObject(targets[0]);
-        }
+        if (!targets.empty() && ctx.state.getObject(targets[0]).isGear())
+            ctx.executor.killObject(targets[0]);
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("SALVAGE: (optional gear kill) + draw 1");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true, .optional = true};
+    }
+    // "up to one gear": no gear at all is always a choice (CR 355.13), not
+    // only when the board has none.
+    std::optional<std::vector<std::vector<GameObjectId>>>
+    enumerateLegalTargetSets(const GameState& state, PlayerId controller) const override {
+        std::vector<std::vector<GameObjectId>> sets;
+        sets.push_back({});
+        auto gear = enumerateLegalTargets(state, controller);
+        std::sort(gear.begin(), gear.end());
+        for (auto g : gear) sets.push_back({g});
+        return sets;
     }
 private:
     const CardDef def_ = [] {

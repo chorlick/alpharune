@@ -27,14 +27,15 @@ public:
         if (!top.is_spell) return;
         // Gain control: re-point both the chain item and the underlying spell
         // object to me. The spell will now resolve under my control.
-        // NOTE: "you may make new choices for it" (re-targeting) is not
-        // supported by the executor — the original targets are retained
-        // (documented engine gap).
+        const ChainItemId taken = top.id;
         top.controller = ctx.controller;
         if (ctx.state.objectExists(top.source))
             ctx.state.getObject(top.source).controller = ctx.controller;
-        ctx.events.logTrace("MYSTIC REVERSAL: gained control of the spell on the "
-                            "chain (re-target unsupported)");
+        ctx.events.logTrace("MYSTIC REVERSAL: gained control of the spell on the chain");
+        // "You may make new choices for it" (CR 750-755): its new controller
+        // re-chooses its targets (keeping one is choosing it again). `top` is
+        // not used past this call — the chain may be reallocated.
+        ctx.executor.makeNewChoices(taken);
     }
 private:
     const CardDef def_ = [] {

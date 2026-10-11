@@ -67,10 +67,10 @@ public:
             if (choice && !choice->chosen_objects.empty()) {
                 keeper = choice->chosen_objects[0];
             }
-            // Recycle the non-chosen peeked cards to bottom; chosen → hand.
-            // We process in original peek order so the recycle order is
-            // deterministic (top peeked card recycles first, ends up
-            // deeper in the deck after subsequent inserts).
+            // Chosen → hand; the rest are recycled together, through the
+            // executor: several cards go to the bottom in a random order (CR
+            // 416.5) and "When you recycle" abilities see it once.
+            std::vector<GameObjectId> rest;
             for (int i = 1; i <= n; ++i) {
                 auto cid = static_cast<GameObjectId>(ri.resume_data[i]);
                 if (!ctx.state.objectExists(cid)) continue;
@@ -81,10 +81,11 @@ public:
                     ps.hand.push_back(cid);
                     ctx.events.logTrace("STACKED DECK: drew " + obj.name);
                 } else {
-                    deck::putOnBottom(ctx.state, ctx.controller, cid, deck::Place::Held, knowledge::only(ctx.controller));
+                    rest.push_back(cid);
                     ctx.events.logTrace("STACKED DECK: recycled " + obj.name);
                 }
             }
+            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
             return;
         }
         }

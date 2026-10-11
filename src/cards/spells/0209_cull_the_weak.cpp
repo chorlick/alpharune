@@ -16,36 +16,61 @@ class CullTheWeak : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "Each player kills one of their units." Nothing is targeted (CR
+    // 355.10.e): each player chooses among their own units as the spell
+    // resolves, the caster first; both units are then killed together.
+    // Progress lives on the resolving item: resume_point says whose prompt is
+    // out, resume_data = the units chosen so far.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Controller's own kill — agent-chosen via pickTarget.
-        std::vector<GameObjectId> own;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.isUnit() && obj.controller == ctx.controller &&
-                obj.location.has_value()) {
-                own.push_back(id);
-            }
+        const PlayerId players[2] = {ctx.controller, opponent(ctx.controller)};
+        auto own_units = [&](PlayerId p) {
+            std::vector<GameObjectId> out;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (obj.isUnit() && obj.controller == p && obj.location.has_value())
+                    out.push_back(id);
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        if (!ctx.state.chain.resuming.has_value()) {
+            // Direct invocation (no chain item to resume): nobody can be
+            // asked, so each player's first unit, like the choice helpers'
+            // default.
+            std::vector<GameObjectId> doomed;
+            for (PlayerId p : players)
+                if (auto units = own_units(p); !units.empty()) doomed.push_back(units.front());
+            for (auto id : doomed) ctx.executor.killObject(id);
+            return;
         }
-        if (!own.empty()) {
-            GameObjectId picked = pickTarget(ctx, "Cull the Weak (your unit)", own);
-            // Suspended for agent decision — chain manager re-enters.
-            if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7) {
-                return;
-            }
-            if (picked != kInvalidId && ctx.state.objectExists(picked)) {
-                ctx.executor.killObject(picked);
-            }
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        int next = 0;
+        if (ri.resume_point == kAwaitCaster || ri.resume_point == kAwaitOpponent) {
+            const int who = ri.resume_point == kAwaitCaster ? 0 : 1;
+            const auto units = own_units(players[who]);
+            GameObjectId unit = takenObject(ctx);
+            if (std::find(units.begin(), units.end(), unit) == units.end())
+                unit = units.empty() ? kInvalidId : units.front();
+            if (unit != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(unit));
+            next = who + 1;
+        } else {
+            ri.resume_data.clear();
         }
-
-        // Opponent's own kill — first available (opponent choice not plumbable).
-        PlayerId opp = opponent(ctx.controller);
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.isUnit() && obj.controller == opp && obj.location.has_value()) {
-                ctx.executor.killObject(id);
-                break;
-            }
+        for (int who = next; who < 2; ++who) {
+            const auto units = own_units(players[who]);
+            if (units.empty()) continue;
+            std::vector<Intent> options;
+            for (auto id : units) options.push_back(objChoice(players[who], id));
+            ctx.executor.requestChoice(players[who], std::move(options),
+                                       "Cull the Weak: kill one of your units");
+            ri.resume_point = who == 0 ? kAwaitCaster : kAwaitOpponent;
+            return;
         }
+        ri.resume_point = kDone;
+        for (auto id : ri.resume_data)
+            ctx.executor.killObject(static_cast<GameObjectId>(id));
     }
+private:
+    enum : int { kAwaitCaster = 21, kAwaitOpponent = 22, kDone = 23 };
 private:
     const CardDef def_ = [] {
         CardDef d;

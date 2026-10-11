@@ -15,8 +15,9 @@ class RunePrison : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // The caster is the one stunning ("When you stun an enemy unit").
         if (!targets.empty())
-            ctx.executor.stunUnit(targets[0]);
+            ctx.executor.stunUnitBy(targets[0], ctx.source);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};

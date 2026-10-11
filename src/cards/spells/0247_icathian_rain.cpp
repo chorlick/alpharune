@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,53 +15,81 @@ namespace {
 class IcathianRain : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 2, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 2, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 2, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 2, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 2, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 2, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
-        }
-    }
+    // "Deal 2 to a unit." six times: six separately chosen units (the same
+    // unit may be chosen more than once), each its own instance of damage.
+    // One Play intent; the units are asked for one prompt at a time.
+    // Progress lives on the resolving item: resume_point kAwait while a prompt
+    // is out, resume_data = the units picked so far.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};
     }
+    bool needsPlayTimeTarget() const override { return true; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        if (!ctx.state.chain.resuming.has_value()) return;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        auto picked_before = [&ri](GameObjectId id) {
+            return std::find(ri.resume_data.begin(), ri.resume_data.end(),
+                             static_cast<int32_t>(id)) != ri.resume_data.end();
+        };
+        // A unit already picked stays available: its Deflect was paid then.
+        auto offered = [&]() {
+            auto units = chooseableUnits(ctx.state, ctx.controller,
+                                         [](const GameObject&) { return true; });
+            std::sort(units.begin(), units.end());
+            std::vector<GameObjectId> fresh, out;
+            for (auto id : units) if (!picked_before(id)) fresh.push_back(id);
+            fresh = offerableChoices(ctx, fresh);
+            for (auto id : units)
+                if (picked_before(id) ||
+                    std::find(fresh.begin(), fresh.end(), id) != fresh.end())
+                    out.push_back(id);
+            return out;
+        };
+        if (ri.resume_point == kAwait) {
+            const auto can_pick = offered();
+            GameObjectId unit = takenObject(ctx);
+            if (std::find(can_pick.begin(), can_pick.end(), unit) == can_pick.end())
+                unit = can_pick.empty() ? kInvalidId : can_pick.front();
+            if (unit == kInvalidId) {
+                ri.resume_point = kDone;   // nothing left to choose
+            } else {
+                if (!picked_before(unit)) commitChosenObject(ctx, unit);
+                ri.resume_data.push_back(static_cast<int32_t>(unit));
+                ri.resume_point = kPicking;
+            }
+        } else if (ri.resume_point != kPicking) {
+            // The first unit was chosen as the spell was played (the engine
+            // asks for a needsPlayTimeTarget spell's target then).
+            ri.resume_data.clear();
+            if (!targets.empty()) ri.resume_data.push_back(static_cast<int32_t>(targets[0]));
+            ri.resume_point = kPicking;
+        }
+        if (ri.resume_point == kPicking && ri.resume_data.size() < kInstances) {
+            const auto can_pick = offered();
+            if (!can_pick.empty()) {
+                std::vector<Intent> options;
+                for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
+                ctx.executor.requestChoice(ctx.controller, std::move(options),
+                    "Icathian Rain: deal 2 to a unit (" +
+                    std::to_string(ri.resume_data.size() + 1) + " of 6)");
+                ri.resume_point = kAwait;
+                return;
+            }
+        }
+        ri.resume_point = kDone;
+        // The executor skips a unit that has left the board (CR 359.3.e.5).
+        for (auto id : ri.resume_data)
+            ctx.executor.dealDamage(static_cast<GameObjectId>(id), 2, ctx.source);
+        for (auto id : ri.resume_data) {
+            const auto& unit = ctx.state.getObject(static_cast<GameObjectId>(id));
+            if (unit.location.has_value() && unit.hasLethalDamage())
+                ctx.executor.killObject(static_cast<GameObjectId>(id));
+        }
+    }
+private:
+    static constexpr size_t kInstances = 6;
+    enum : int { kPicking = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

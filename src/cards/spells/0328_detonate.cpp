@@ -15,8 +15,13 @@ class Detonate : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.killObject(targets[0]);
+        if (targets.empty()) return;
+        // "Its controller draws 2": whoever controlled it as it was killed.
+        const auto& gear = ctx.state.getObject(targets[0]);
+        if (!gear.isGear() || !gear.location.has_value()) return;
+        const PlayerId gear_controller = gear.controller;
+        ctx.executor.killObject(targets[0]);
+        ctx.executor.drawCards(gear_controller, 2);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true};

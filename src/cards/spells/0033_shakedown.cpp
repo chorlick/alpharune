@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -18,15 +19,37 @@ public:
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                   .must_be_enemy = true};
     }
+    // "Deal 6 to it unless its controller has you draw 2." — the unit's
+    // controller decides as the spell resolves.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        // Default branch: opponent declines to feed cards, so deal 6.
-        // (Opponent "have you draw 2 instead" opt-out is an unmodeled partial —
-        // see header comment: no opponent-side resumable choice hook here.)
-        ctx.executor.dealDamage(targets[0], 6, ctx.source);
-        ctx.events.logTrace("SHAKEDOWN: deal 6 to chosen enemy unit "
-                            "(opponent draw-2 opt-out unmodeled)");
+        if (targets.empty()) return;
+        const PlayerId unit_controller = ctx.state.getObject(targets[0]).controller;
+        bool caster_draws = false;
+        if (ctx.state.chain.resuming.has_value()) {
+            auto& ri = *ctx.state.chain.resuming;
+            if (ri.resume_point == kDone) return;
+            if (ri.resume_point != kAwait) {
+                ctx.executor.requestChoice(unit_controller,
+                    {valChoice(unit_controller, 0, "Take 6 damage"),
+                     valChoice(unit_controller, 1, "Opponent draws 2")},
+                    "Shakedown: 6 damage to " + ctx.state.getObject(targets[0]).name +
+                    " unless you have the opponent draw 2");
+                ri.resume_point = kAwait;
+                return;
+            }
+            ri.resume_point = kDone;
+            caster_draws = takenValue(ctx, 0) == 1;
+        }
+        if (caster_draws) {
+            ctx.executor.drawCards(ctx.controller, 2);
+            ctx.events.logTrace("SHAKEDOWN: the unit's controller has the caster draw 2");
+        } else {
+            ctx.executor.dealDamage(targets[0], 6, ctx.source);
+            ctx.events.logTrace("SHAKEDOWN: deal 6 to chosen enemy unit");
+        }
     }
+private:
+    enum : int { kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

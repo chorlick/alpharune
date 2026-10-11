@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -16,11 +17,15 @@ public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        auto loc = LocationId{BaseLocation{ctx.controller}};
+        // To the base or a battlefield its controller controls, their choice
+        // (asked again for each [Repeat] execution).
+        const int dest = pickTokenDest(*this, ctx, "Desert's Call: play the Sand Soldier to");
+        if (dest < 0) return;   // waiting for the choice
         // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sand Soldier",
                                  /*might=*/2, /*tags=*/{"Shurima"},
-                                 KeywordSet{}, loc, /*enter_ready=*/false);
+                                 KeywordSet{}, destLocation(ctx.controller, dest),
+                                 /*enter_ready=*/false);
         ctx.events.logTrace("DESERT'S CALL: played 2[M] Sand Soldier token "
                             "(engine repeats per [Repeat][2] paid)");
     }

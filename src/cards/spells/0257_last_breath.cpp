@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,12 +15,42 @@ namespace {
 class LastBreath : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.readyObject(targets[0]);
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // "Ready a friendly unit. It deals damage equal to its Might to an enemy
+    //  unit at a battlefield." — two targets: the friendly unit, then the
+    //  enemy unit (left out when no enemy unit is at a battlefield).
+    bool needsPlayTimeTargetPair() const override { return true; }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !friendlyUnits(state, controller).empty();
     }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto [unit, enemy] = pickTargetPair(
+            ctx, "Last Breath: friendly unit, then enemy unit at a battlefield",
+            friendlyUnits(ctx.state, ctx.controller),
+            [&](GameObjectId /*picked*/) {
+                auto out = chooseableUnits(ctx.state, ctx.controller,
+                    [&](const GameObject& u) {
+                        return u.controller != ctx.controller && u.isAtBattlefield();
+                    });
+                std::sort(out.begin(), out.end());
+                return out;
+            });
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // Suspended, or the friendly unit is no longer a legal target: its
+        // Might is then unknown and nothing is dealt (CR 359.3.e.12).
+        if (unit == kInvalidId) return;
+        ctx.executor.readyObject(unit);
+        if (enemy == kInvalidId) return;
+        const auto& u = ctx.state.getObject(unit);
+        if (!u.location.has_value()) return;
+        ctx.executor.dealDamage(enemy, u.current_might, unit);
+    }
+private:
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId controller) {
+        auto out = chooseableUnits(state, controller,
+            [controller](const GameObject& u) { return u.controller == controller; });
+        std::sort(out.begin(), out.end());
+        return out;
     }
 private:
     const CardDef def_ = [] {

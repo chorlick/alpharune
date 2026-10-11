@@ -28,11 +28,16 @@ public:
             auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
             picked = pickTarget(ctx, "Charm", legal);
         }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        // "Move an enemy unit" — default destination is base.
-        ctx.executor.moveToBase(picked);
-        ctx.events.logTrace("CHARM: moved enemy " +
-                             ctx.state.getObject(picked).name + " to base");
+        if (picked == kInvalidId) return;   // suspended, or no unit to choose
+        const auto& unit = ctx.state.getObject(picked);
+        if (!unit.isUnit() || !unit.location.has_value()) return;
+        // "Move an enemy unit." — the caster chooses where: the unit's base
+        // or any battlefield other than where it is.
+        const int dest = pickMoveDest(*this, ctx, "Charm: move it to", unit);
+        if (dest < 0) return;               // waiting, or nowhere to move it
+        moveTo(ctx, picked, dest);
+        ctx.events.logTrace("CHARM: moved enemy " + ctx.state.getObject(picked).name +
+                            " to " + destLabel(dest));
     }
 private:
     const CardDef def_ = [] {

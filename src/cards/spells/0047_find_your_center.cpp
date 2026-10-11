@@ -16,8 +16,9 @@ public:
     const CardDef& def() const override { return def_; }
     int selfCostReduction(const GameState& state, PlayerId player) const override {
         // "If an opponent's score is within 3 points of the Victory Score,
-        // this costs [2] less."
-        int vs = state.mode.victory_score;
+        // this costs [2] less." — the Victory Score in effect, battlefields
+        // that raise it included.
+        int vs = state.mode.victory_score + state.turn.victory_score_bonus;
         if (state.player(opponent(player)).score >= vs - 3) return 2;
         return 0;
     }

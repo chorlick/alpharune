@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -16,54 +17,122 @@ public:
     const CardDef& def() const override { return def_; }
     // "Each player chooses 2 units, 2 gear, 2 runes, and 2 cards in their hands.
     //  Recycle the rest."
-    // Each player keeps up to 2 of each category; the rest are recycled.
-    // The "which 2 to keep" is the player's choice; approximated here by
-    // keeping the highest-Might units and the first cards in each other
-    // category (documented approximation — per-player selection not plumbed).
+    // Nothing is targeted (CR 355.10.e): each player chooses as the spell
+    // resolves, the caster first. One prompt per category that holds more
+    // than two (each option is a pair to keep). Progress lives on the
+    // resolving item: resume_point kAwait while a prompt is out, resume_data
+    // = [next step, kept ids...]; step = 4 * player + category.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        for (auto p : {ctx.controller, opponent(ctx.controller)}) {
-            recycleExcept(ctx, p);
+        if (!ctx.state.chain.resuming.has_value()) return;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        const PlayerId players[2] = {ctx.controller, opponent(ctx.controller)};
+        auto category = [&](int step) {
+            const PlayerId p = players[step / 4];
+            std::vector<GameObjectId> out;
+            if (step % 4 == 3) {
+                out = ctx.state.player(p).hand;
+            } else {
+                for (auto& [id, obj] : ctx.state.objects) {
+                    if (obj.controller != p || !obj.location.has_value()) continue;
+                    if (step % 4 == 0 ? obj.isUnit() : step % 4 == 1 ? obj.isGear() : obj.isRune())
+                        out.push_back(id);
+                }
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        if (ri.resume_point == kAwait) {
+            const auto in_category = category(ri.resume_data[0]);
+            auto picked = ctx.executor.takeChoice();
+            std::vector<GameObjectId> keep;
+            if (picked.has_value())
+                for (auto id : picked->chosen_objects)
+                    if (std::find(in_category.begin(), in_category.end(), id) != in_category.end() &&
+                        std::find(keep.begin(), keep.end(), id) == keep.end() && keep.size() < 2)
+                        keep.push_back(id);
+            // No answer: the first two.
+            for (size_t i = 0; keep.size() < 2 && i < in_category.size(); ++i)
+                if (std::find(keep.begin(), keep.end(), in_category[i]) == keep.end())
+                    keep.push_back(in_category[i]);
+            for (auto id : keep) ri.resume_data.push_back(static_cast<int32_t>(id));
+            ++ri.resume_data[0];
+        } else if (ri.resume_point != kChoosing) {
+            ri.resume_data.assign(1, 0);
+        }
+        ri.resume_point = kChoosing;
+        static const char* const kWhat[4] = {"units", "gear", "runes", "cards in hand"};
+        for (; ri.resume_data[0] < 8; ++ri.resume_data[0]) {
+            const int step = ri.resume_data[0];
+            const auto in_category = category(step);
+            if (in_category.size() <= 2) {
+                for (auto id : in_category) ri.resume_data.push_back(static_cast<int32_t>(id));
+                continue;
+            }
+            const PlayerId p = players[step / 4];
+            std::vector<Intent> options;
+            for (size_t a = 0; a < in_category.size(); ++a)
+                for (size_t b = a + 1; b < in_category.size(); ++b) {
+                    Intent keep_two = objChoice(p, in_category[a]);
+                    keep_two.chosen_objects.push_back(in_category[b]);
+                    options.push_back(std::move(keep_two));
+                }
+            ctx.executor.requestChoice(p, std::move(options),
+                std::string("Divine Judgment: choose 2 ") + kWhat[step % 4] + " to keep");
+            ri.resume_point = kAwait;
+            return;
+        }
+        ri.resume_point = kDone;
+
+        auto kept = [&ri](GameObjectId id) {
+            return std::find(ri.resume_data.begin() + 1, ri.resume_data.end(),
+                             static_cast<int32_t>(id)) != ri.resume_data.end();
+        };
+        for (const PlayerId p : players) {
+            std::vector<GameObjectId> rest;
+            for (int c = 0; c < 4; ++c)
+                for (auto id : category(4 * (p == players[0] ? 0 : 1) + c))
+                    if (!kept(id)) rest.push_back(id);
+            recycleAll(ctx, p, rest);
         }
         ctx.events.logTrace("DIVINE JUDGMENT: each player keeps 2/category, recycle rest");
     }
 
 private:
-    void recycleExcept(CardContext& ctx, PlayerId p) const {
-        // Gather candidates per category.
-        std::vector<std::pair<int, GameObjectId>> units;   // (might, id) on board
-        std::vector<GameObjectId> gear;                     // on board
-        std::vector<GameObjectId> runes;                    // on board (base)
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.controller != p && obj.owner != p) continue;
-            if (obj.isUnit() && obj.controller == p && obj.location.has_value())
-                units.emplace_back(obj.current_might, id);
-            else if (obj.isGear() && obj.controller == p && obj.location.has_value())
-                gear.push_back(id);
-            else if (obj.isRune() && obj.controller == p && obj.location.has_value())
-                runes.push_back(id);
-        }
-        // Keep the 2 highest-Might units: sort ascending, recycle all but the
-        // last 2 entries.
-        std::sort(units.begin(), units.end());
-        std::vector<GameObjectId> to_recycle;
-        size_t keep_units = units.size() > 2 ? units.size() - 2 : 0;
-        for (size_t i = 0; i < keep_units; ++i) to_recycle.push_back(units[i].second);
-        for (size_t i = 2; i < gear.size(); ++i)  to_recycle.push_back(gear[i]);
-        for (size_t i = 2; i < runes.size(); ++i) to_recycle.push_back(runes[i]);
+    enum : int { kChoosing = 20, kAwait = 21, kDone = 22 };
 
-        // Hand cards: keep first 2, recycle the rest (remove from hand first).
-        auto& ps = ctx.state.player(p);
-        std::vector<GameObjectId> hand_recycle;
-        if (ps.hand.size() > 2)
-            hand_recycle.assign(ps.hand.begin() + 2, ps.hand.end());
-        for (auto cid : hand_recycle) {
-            auto it = std::find(ps.hand.begin(), ps.hand.end(), cid);
-            if (it != ps.hand.end()) ps.hand.erase(it);
+    // Recycle `cards` (on `p`'s board or in their hand). A permanent leaves
+    // the board properly: gear comes off first (CR 719.5), a token ceases to
+    // exist instead of entering a deck (CR 183.1), and the departure is
+    // announced.
+    static void recycleAll(CardContext& ctx, PlayerId p, const std::vector<GameObjectId>& cards) {
+        struct Left { GameObjectId id; PlayerId controller; CardType type; LocationId was_at; };
+        std::vector<Left> left;
+        std::vector<GameObjectId> to_deck;
+        auto& hand = ctx.state.player(p).hand;
+        for (auto id : cards) {
+            if (!ctx.state.objectExists(id)) continue;
+            if (!ctx.state.getObject(id).location.has_value()) {
+                hand.erase(std::remove(hand.begin(), hand.end(), id), hand.end());
+                to_deck.push_back(id);
+                continue;
+            }
+            const auto attached = ctx.state.getObject(id).attachments;   // copy
+            for (auto gear : attached) ctx.executor.unattachGear(gear);
+            if (ctx.state.getObject(id).attached_to.has_value()) ctx.executor.unattachGear(id);
+            const auto& obj = ctx.state.getObject(id);
+            if (obj.isToken()) {
+                ctx.executor.banishObject(id);   // ceases to exist
+                continue;
+            }
+            left.push_back({id, obj.controller, obj.card_type, *obj.location});
+            to_deck.push_back(id);
         }
-        to_recycle.insert(to_recycle.end(), hand_recycle.begin(), hand_recycle.end());
-
-        if (!to_recycle.empty())
-            ctx.executor.recycleCards(p, to_recycle);
+        if (to_deck.empty()) return;
+        ctx.executor.recycleCards(p, to_deck);
+        for (const auto& l : left)
+            ctx.events.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
+                l.type == CardType::Rune ? ZoneType::RuneDeck : ZoneType::MainDeck, false});
     }
 private:
     const CardDef def_ = [] {

@@ -28,8 +28,14 @@ public:
             auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
             picked = pickTarget(ctx, "Ride the Wind", legal);
         }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        ctx.executor.moveToBase(picked);
+        if (picked == kInvalidId) return;   // suspended, or no unit to choose
+        const auto& unit = ctx.state.getObject(picked);
+        if (!unit.isUnit() || !unit.location.has_value()) return;
+        // "Move a friendly unit" — to wherever its controller chooses: its
+        // base or any battlefield other than where it is.
+        const int dest = pickMoveDest(*this, ctx, "Ride the Wind: move it to", unit);
+        if (dest == -1) return;             // waiting for the destination
+        if (dest >= 0) moveTo(ctx, picked, dest);
         ctx.executor.readyObject(picked);
         ctx.events.logTrace("RIDE THE WIND: moved + readied " +
                              ctx.state.getObject(picked).name);

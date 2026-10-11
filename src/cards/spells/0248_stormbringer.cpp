@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,6 +16,8 @@ class Stormbringer : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "Choose a friendly unit in your base. Deal damage equal to its Might to
+    //  all enemy units at a battlefield, then move your unit there."
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
         // 1) Choose a friendly unit in your base.
@@ -27,63 +30,32 @@ public:
         std::sort(base_units.begin(), base_units.end());
         GameObjectId mover = pickTarget(ctx, "Stormbringer: friendly unit in base",
                                         base_units);
-        // Distinguish suspend (resume_point 7) from fizzle.
-        if (mover == kInvalidId) {
-            if (ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7) return;  // suspend
-            return;  // no legal mover — fizzle
-        }
-        if (!ctx.state.objectExists(mover)) return;
-        int dmg = ctx.state.getObject(mover).current_might;
+        if (mover == kInvalidId) return;   // suspended, or no legal mover — fizzle
+        const auto& unit = ctx.state.getObject(mover);
+        if (!unit.isAtBase()) return;
 
-        // 2) Choose a battlefield with enemy units (anchored by an enemy unit).
-        PlayerId opp = opponent(ctx.controller);
-        std::vector<GameObjectId> enemy_at_bf;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.isAtBattlefield()) continue;
-            enemy_at_bf.push_back(id);
-        }
-        std::sort(enemy_at_bf.begin(), enemy_at_bf.end());
-        // The first pickTarget above already consumed the pickTarget resume
-        // slots (6/7/8), so we cannot pose a SECOND resumable target choice for
-        // the battlefield in the same resolve. Instead we anchor the AoE on the
-        // first enemy unit found at a battlefield; the damage hits ALL enemy
-        // units at that BF regardless, and the mover lands there. The agent's
-        // battlefield preference is not surfaced as a separate vocab slot here
-        // (acceptable simplification — documented in report).
-        if (enemy_at_bf.empty()) {
-            ctx.events.logTrace("STORMBRINGER: no enemy units at a battlefield — "
-                                "damage skipped");
-            return;
-        }
-        std::optional<LocationId> anchor =
-            ctx.state.getObject(enemy_at_bf.front()).location;
-        if (!anchor.has_value()) return;
+        // 2) The battlefield is the controller's choice — any battlefield,
+        //    with or without enemy units (the unit still moves there).
+        const int dest = pickMoveDest(*this, ctx, "Stormbringer: battlefield", unit,
+                                      /*battlefields_only=*/true);
+        if (dest < 1) return;              // waiting, or no battlefield
+        const BattlefieldId bf = static_cast<BattlefieldId>(dest - 1);
+        const int dmg = unit.current_might;
 
-        // AoE: deal <dmg> to all enemy units at the anchor BF, collect-then-kill.
+        // Deal <dmg> to all enemy units there (collect, damage, then kill).
         std::vector<GameObjectId> hit;
         for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (obj.location != anchor) continue;
+            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
+            if (obj.battlefieldId() != bf) continue;
             hit.push_back(id);
         }
+        for (auto id : hit) ctx.executor.dealDamage(id, dmg, ctx.source);
         for (auto id : hit) {
-            if (ctx.state.objectExists(id))
-                ctx.executor.dealDamage(id, dmg, ctx.source);
-        }
-        for (auto id : hit) {
-            if (ctx.state.objectExists(id) &&
-                ctx.state.getObject(id).hasLethalDamage()) {
-                ctx.executor.killObject(id);
-            }
+            const auto& obj = ctx.state.getObject(id);
+            if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
         }
         // Then move your unit there.
-        if (ctx.state.objectExists(mover) &&
-            std::holds_alternative<BattlefieldLocation>(*anchor)) {
-            ctx.executor.moveToBattlefield(
-                mover, std::get<BattlefieldLocation>(*anchor).id);
-        }
+        ctx.executor.moveToBattlefield(mover, bf);
         ctx.events.logTrace("STORMBRINGER: dealt " + std::to_string(dmg) +
                             " to " + std::to_string(hit.size()) +
                             " enemy units, then moved my unit there");

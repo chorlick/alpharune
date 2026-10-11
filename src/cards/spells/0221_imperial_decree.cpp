@@ -14,20 +14,28 @@ namespace {
 class ImperialDecree : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When any unit takes damage this turn, kill it." — a delayed triggered
+    // ability (CR 389) that lasts until end of turn and fires for every unit
+    // that is dealt damage from now on. Damage marked before this resolved
+    // does not count.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Collect first (avoid iterator invalidation while killing).
-        std::vector<GameObjectId> to_kill;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || !obj.location.has_value()) continue;
-            if (obj.damage_marked > 0) to_kill.push_back(id);
-        }
-        for (auto id : to_kill) {
-            if (ctx.state.objectExists(id)) ctx.executor.killObject(id);
-        }
-        ctx.events.logTrace("IMPERIAL DECREE: killed " +
-                            std::to_string(to_kill.size()) +
-                            " already-damaged units (future-damage-this-turn "
-                            "kill unmodeled — no engine turn flag)");
+        DelayedAbility da;
+        da.source = ctx.source;
+        da.card_def_id = cardDefId();
+        da.controller = ctx.controller;
+        da.trigger = TriggerType::WhenAUnitTakesDamage;
+        da.expires_on_turn = ctx.state.turn.turn_number;
+        da.every_time = true;
+        ctx.state.delayed_abilities.push_back(da);
+        ctx.events.logTrace("IMPERIAL DECREE: units that take damage this turn are killed");
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.chain.resuming.has_value()) return;
+        const GameObjectId unit = ctx.state.chain.resuming->triggering_subject;
+        if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
+        const auto& u = ctx.state.getObject(unit);
+        if (!u.isUnit() || !u.location.has_value()) return;   // already gone
+        ctx.executor.killObject(unit);
     }
 private:
     const CardDef def_ = [] {

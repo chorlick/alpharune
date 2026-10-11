@@ -16,6 +16,11 @@ class OvertOperation : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "For each friendly unit, you may spend its buff to ready it. Then buff
+    //  all friendly units." One yes/no per friendly unit that has a buff, in
+    //  id order. Progress lives on the resolving item: resume_point kAwait
+    //  while a prompt is out, resume_data = [units asked so far, the units
+    //  to ask...] (fixed when the spell starts resolving).
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto friendly_units = [&]() {
             std::vector<GameObjectId> out;
@@ -25,40 +30,65 @@ public:
                     out.push_back(id);
                 }
             }
+            std::sort(out.begin(), out.end());
             return out;
         };
-
-        // "you may spend its buff to ready it" — gate the whole spend-to-ready
-        // step on one agent decision; legal only if some friendly unit
-        // actually has a buff to spend.
-        int answer = confirmOptional(ctx, "Overt Operation: spend buffs to ready",
-            [&]() {
-                for (auto id : friendly_units()) {
-                    if (ctx.state.getObject(id).buff_count > 0) return true;
-                }
-                return false;
-            });
-        if (answer == -1) return;  // yielded for agent input
-
-        if (answer == 1) {
-            for (auto id : friendly_units()) {
-                auto& u = ctx.state.getObject(id);
-                if (u.buff_count <= 0) continue;
-                // Spend one buff: -1 [M], then ready.
-                u.buff_count -= 1;
-                u.temp_might_bonus -= 1;
-                u.recomputeMight();
-                ctx.executor.readyObject(id);
-                ctx.events.logTrace("OVERT OPERATION: spent buff to ready " + u.name);
-            }
+        auto has_buff = [&](GameObjectId id) {
+            const auto& u = ctx.state.getObject(id);
+            return u.isUnit() && u.controller == ctx.controller &&
+                   u.location.has_value() && u.buff_count > 0;
+        };
+        // Spend the buff: the counter is the +1 [M] (recomputeMight).
+        auto spend_to_ready = [&](GameObjectId id) {
+            auto& u = ctx.state.getObject(id);
+            u.buff_count -= 1;
+            u.recomputeMight();
+            ctx.executor.readyObject(id);
+            ctx.events.logTrace("OVERT OPERATION: spent buff to ready " + u.name);
+        };
+        auto buff_all = [&]() {
+            // "Then buff all friendly units." (Each one without a buff gets one.)
+            for (auto id : friendly_units()) ctx.executor.buffUnit(id);
+            ctx.events.logTrace("OVERT OPERATION: buffed all friendly units");
+        };
+        if (!ctx.state.chain.resuming.has_value()) {
+            // Direct invocation (no chain item to resume): nobody can be
+            // asked, so every "may" is a yes, like confirmOptional's default.
+            for (auto id : friendly_units()) if (has_buff(id)) spend_to_ready(id);
+            buff_all();
+            return;
         }
-
-        // "Then buff all friendly units." (Engine buff = +1 [M].)
-        for (auto id : friendly_units()) {
-            ctx.executor.buffUnit(id);
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        if (ri.resume_point == kAwait) {
+            const GameObjectId id = static_cast<GameObjectId>(ri.resume_data[ri.resume_data[0]]);
+            if (takenValue(ctx, 0) == 1 && has_buff(id)) spend_to_ready(id);
+        } else if (ri.resume_point != kAsking) {
+            ri.resume_data.assign(1, 0);
+            for (auto id : friendly_units())
+                if (has_buff(id) && ri.resume_data.size() <= kMaxAsked)
+                    ri.resume_data.push_back(static_cast<int32_t>(id));
         }
-        ctx.events.logTrace("OVERT OPERATION: buffed all friendly units");
+        ri.resume_point = kAsking;
+        while (ri.resume_data[0] + 1 < static_cast<int32_t>(ri.resume_data.size())) {
+            const GameObjectId id =
+                static_cast<GameObjectId>(ri.resume_data[++ri.resume_data[0]]);
+            if (!has_buff(id)) continue;
+            ctx.executor.requestChoice(ctx.controller,
+                {valChoice(ctx.controller, 0, "Keep its buff"),
+                 valChoice(ctx.controller, 1, "Spend its buff to ready it")},
+                "Overt Operation: spend " + ctx.state.getObject(id).name +
+                "'s buff to ready it?");
+            ri.resume_point = kAwait;
+            return;
+        }
+        ri.resume_point = kDone;
+        buff_all();
     }
+private:
+    // The resolve loop allows 16 re-entries; later buffed units keep theirs.
+    static constexpr size_t kMaxAsked = 12;
+    enum : int { kAsking = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

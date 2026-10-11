@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,12 +15,15 @@ namespace {
 class SpriteCall : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Play a ready 3 [M] Sprite unit token with [Temporary]."
+    // "Play a ready 3 [M] Sprite unit token with [Temporary]." — to the base
+    // or a battlefield its controller controls, their choice.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const int dest = pickTokenDest(*this, ctx, "Sprite Call: play the Sprite to");
+        if (dest < 0) return;   // waiting for the choice
         KeywordSet kw; kw.set(Keyword::Temporary);
-        auto loc = BaseLocation{ctx.controller};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
-                                  {"Fae"}, kw, loc, /*enter_ready=*/true);
+                                  {"Fae"}, kw, destLocation(ctx.controller, dest),
+                                  /*enter_ready=*/true);
         ctx.events.logTrace("SPRITE CALL: play ready 3 [M] Sprite [Temporary]");
     }
 private:

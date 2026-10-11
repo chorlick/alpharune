@@ -15,22 +15,45 @@ namespace {
 class PiercingLight : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
+    // The two slots differ: the first must be at a battlefield, the second is
+    // any other unit (a base unit included) and may be left out. The location
+    // rule is therefore not in the requirement — it would be applied to both —
+    // but in the target sets and in onResolve.
     TargetRequirements getTargetRequirements() const override {
-        // count=2 with optional=true — first must be a unit at a BF
-        // (enforced); the second is "up to one other unit" so optional.
-        return TargetRequirements{.count = 2, .must_be_unit = true,
-                                   .must_be_at_battlefield = true,
-                                   .optional = true};
+        return TargetRequirements{.count = 2, .must_be_unit = true, .optional = true};
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        for (auto id : enumerateLegalTargets(state, controller))
+            if (state.getObject(id).isAtBattlefield()) return true;
+        return false;
+    }
+    std::optional<std::vector<std::vector<GameObjectId>>>
+    enumerateLegalTargetSets(const GameState& state, PlayerId controller) const override {
+        auto units = enumerateLegalTargets(state, controller);
+        std::sort(units.begin(), units.end());
+        std::vector<std::vector<GameObjectId>> sets;
+        for (auto first : units) {
+            if (!state.getObject(first).isAtBattlefield()) continue;
+            sets.push_back({first});
+            for (auto second : units)
+                if (second != first) sets.push_back({first, second});
+        }
+        return sets;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty()) return;
-        ctx.executor.dealDamage(targets[0], 2, ctx.source);
-        // "then deal 2 to up to one OTHER unit" — the second hit must be a
-        // different unit from the first.
-        if (targets.size() >= 2 && targets[1] != targets[0] &&
-            ctx.state.objectExists(targets[1])) {
-            ctx.executor.dealDamage(targets[1], 2, ctx.source);
-        }
+        // The engine hands over only the targets that are still legal, which
+        // loses the slot a survivor was chosen for; read the slots as chosen.
+        const auto& chosen = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->targets : targets;
+        auto stillLegal = [&](GameObjectId id) {
+            return std::find(targets.begin(), targets.end(), id) != targets.end();
+        };
+        if (!chosen.empty() && stillLegal(chosen[0]) &&
+            ctx.state.getObject(chosen[0]).isAtBattlefield())
+            ctx.executor.dealDamage(chosen[0], 2, ctx.source);
+        if (chosen.size() >= 2 && chosen[1] != chosen[0] && stillLegal(chosen[1]))
+            ctx.executor.dealDamage(chosen[1], 2, ctx.source);
     }
 private:
     const CardDef def_ = [] {

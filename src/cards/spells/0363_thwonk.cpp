@@ -14,12 +14,28 @@ namespace {
 class Thwonk : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.stunUnit(targets[0]);
-    }
+    // "Stun an attacking unit." The unit is asked for as the effect executes,
+    // so a paid [Repeat] chooses again (CR 820.2.a) instead of re-stunning the
+    // unit the first execution already stunned.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};
+    }
+    bool needsPlayTimeTarget() const override { return true; }
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller) const override {
+        std::vector<GameObjectId> out;
+        for (auto id : Card::enumerateLegalTargets(state, controller))
+            if (state.getObject(id).combat_designation == CombatDesignation::Attacker)
+                out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId picked =
+            pickTarget(ctx, "Thwonk!: stun an attacking unit",
+                       enumerateLegalTargets(ctx.state, ctx.controller));
+        if (picked == kInvalidId) return;   // suspended, or no attacker to choose
+        ctx.executor.stunUnitBy(picked, ctx.source);
     }
 private:
     const CardDef def_ = [] {

@@ -26,6 +26,7 @@ private:
         d.collector_number = 7;
         d.artist = R"RB(Envar Studio)RB";
         d.card_type = CardType::Unit;
+        d.super_type = SuperType::Token;
         d.tags = {R"RB(Fae)RB"};
         d.might = 3;
         d.keywords.set(Keyword::Temporary);

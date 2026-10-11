@@ -45,7 +45,6 @@ private:
         d.power_cost = 1;
         d.might = 6;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(When you play me or at the start of your Beginning Phase, play a ready 3 [M] Sprite unit token with [Temporary] to your base. (Kill them at the start of their controller's next Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/64b7debe0dd3d7b644f627eba562187bc45dd313-744x1039.png)RB";
         return d;

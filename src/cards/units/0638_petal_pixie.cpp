@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -24,7 +25,7 @@ public:
             for (auto& [oid, o] : state.objects) {
                 if (!o.isUnit() || o.controller != controller) continue;
                 if (o.battlefieldId() != my_bf) continue;
-                if (o.hasKeyword(Keyword::Temporary)) temp_count++;
+                if (hasKeywordInAuraPass(o, Keyword::Temporary)) temp_count++;
             }
             if (temp_count > 0) {
                 GameObject::AuraEffect ae;
@@ -51,7 +52,6 @@ private:
         d.energy_cost = 2;
         d.might = 2;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(I have +1 [M] for each of your units with [Temporary] at my battlefield.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/68189fb5a6b3193e8925969ac0c545bc78b210c9-744x1039.png)RB";
         return d;

@@ -55,7 +55,6 @@ private:
         d.power_cost = 1;
         d.might = 6;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB(While I'm in a showdown, your spells have [Repeat] [2][P]. (You may pay the additional cost to repeat the spell's effect.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a3695d011175801aaf6ec5a6557b65b8d6341e81-744x1039.png)RB";
         return d;

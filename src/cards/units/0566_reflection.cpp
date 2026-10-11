@@ -26,6 +26,7 @@ private:
         d.collector_number = 6;
         d.artist = R"RB(Kudos Productions & 黯荧岛Dark Glow)RB";
         d.card_type = CardType::Unit;
+        d.super_type = SuperType::Token;
         d.ability_text = R"RB((I become a copy of something when played. I don't get that card's play effects.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/80327b196c59841a67a65327974a93223a3c541a-744x1039.png)RB";
         return d;

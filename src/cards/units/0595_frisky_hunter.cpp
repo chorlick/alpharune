@@ -42,8 +42,6 @@ private:
         d.tags = {R"RB(Cat)RB", R"RB(Zaun)RB"};
         d.energy_cost = 4;
         d.might = 3;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
         d.ability_text = R"RB(When you play me, play a 1 [M] Bird unit token with [Deflect] here. (Opponents must pay [A] to choose it with a spell or ability.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/6bf8978ca42fa50a60067e74364b3caf78b3e928-744x1039.png)RB";
         return d;

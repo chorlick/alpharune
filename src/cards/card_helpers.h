@@ -19,10 +19,6 @@ namespace riftbound {
 
 // The engine-known Gold gear token's card_def_id.
 constexpr CardDefId kGoldGearCardDefId = 326;
-// card_counters key on a Gold: Energy it adds on top of its [A] ("your Gold
-// [ADD] an additional [1]" — set and cleared every aura pass by the card that
-// says so, Chem-Baroness; read by the Gold cards as they add).
-constexpr const char* kGoldExtraEnergyCounter = "__gold_extra_energy";
 
 // ── Equip: pay one power (of `domain`, or any rune if nullopt), then attach ──
 // Complements the energy+Domain `standardEquip` overload in gear/equip_base.h.

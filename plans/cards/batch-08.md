@@ -62,7 +62,6 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
   - Code: all three restrict the choice to friendly units. Matriarch of War (940), same "Ready a unit" wording, offers every unit.
   - Scenario: an enemy unit can never be chosen (rarely wanted, but legal by the text).
   - c0: 274 Fortified Position — FIXED: offers every chooseable unit on the board, either player's; test: C0Test.FortifiedPosition_OffersEveryUnit
-- [ ] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low
   - c1: 671 Blood Rose, 783 Piltover Enforcer — FIXED: any unit on the board can be chosen (Blood Rose also had no target list of its own, so its ability was never offered); test: ReviewFixC1Test.BloodRose_ReadiesAnyUnit, ReviewFixC1Test.PiltoverEnforcer_CanReadyAnEnemyUnit. 274 Fortified Position is not in c1's range.
 - [x] **698 Scryer's Bloom** - `gear/0698_scryer_s_bloom.cpp:46-58,73-79` [confirmed] low — FIXED: when both cards are kept the controller chooses which goes on top; test: ReviewFixC1Test.ScryersBloom_KeptCardsGoBackInTheChosenOrder
   - Text: "[Predict 2] ... Recycle any of them and put the rest back in any order."
@@ -88,12 +87,10 @@ Only findings not already in `03-cards.md` / `07-cards-second-pass.md` are liste
 ## Systemic
 - S2: 242 Baited Hook (`targets[0]` killed and its Might read after only `objectExists`; CR 359.3.e.12 uses this exact card as the example), 152 Mistfall (`readyObject(subject)`), 555 Blade Dancer (`readyObject(chosen)` after the cost is paid), 108 Convergent Mutation (`targets[0]`)
   - c0: 242 Baited Hook — FIXED (the victim must be a unit on the board; its Might is read before the kill and kept on the chain item; a replaced death stops the ability); 152 Mistfall — FIXED (the subject must still be a unit on the board); test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit, .Mistfall_NotOfferedWithoutThePowerAndPaysFromThePool
-- S3: 63 Spirit's Refuge (see finding)
-- S4: 787 Voidreaver (ability 0), 278 Navori Fighting Pit, 63 Spirit's Refuge (the last two are also S1, already listed in 07)
-  - c0: 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by the executor (`99d179e`: one Buff per unit); S3 for 63: FIXED, see the finding
   - c1: 555 Blade Dancer — FIXED: readies the chosen unit only if it is still a unit on the board
 - S3: 63 Spirit's Refuge (see finding)
 - S4: 787 Voidreaver (ability 0), 278 Navori Fighting Pit, 63 Spirit's Refuge (the last two are also S1, already listed in 07)
+  - c0: 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by the executor (`99d179e`: one Buff per unit); S3 for 63: FIXED, see the finding
   - c1: 787 Voidreaver — ALREADY FIXED by 02 item 2.14 (`buffUnit`)
 - S1, S5, S6: nothing beyond the cards already listed in 03 / 07. S7: none in this batch.
 

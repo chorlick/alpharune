@@ -28,13 +28,6 @@ public:
         // exhausted us. CR 183.1: tokens cease to exist on leaving the
         // board, handled by killObject's super_type=Token branch.
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
-        // "Your Gold [ADD] an additional [1]" (Chem-Baroness).
-        if (ctx.state.objectExists(ctx.source)) {
-            const auto& counters = ctx.state.getObject(ctx.source).card_counters;
-            auto extra = counters.find(kGoldExtraEnergyCounter);
-            if (extra != counters.end() && extra->second > 0)
-                ctx.executor.addFloatingEnergy(ctx.controller, extra->second);
-        }
         ctx.events.logTrace("GOLD: kill+[E] -> +1 [A]");
         // "Your Gold [ADD] an additional [1]" (Chem-Baroness): a legend that
         // says so publishes the amount on itself, in

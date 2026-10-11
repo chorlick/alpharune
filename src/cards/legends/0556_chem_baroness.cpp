@@ -37,19 +37,14 @@ public:
     }
 
     // "While your score is within 3 points of the Victory Score, your Gold
-    // [ADD] an additional [1]." Marks every Gold the controller has on the
-    // board each aura pass (and clears the mark when the condition is off);
-    // the Gold card reads it as it adds its Power (kGoldExtraEnergyCounter).
+    // [ADD] an additional [1]." Published on the legend itself every aura
+    // pass, in card_counters["__gold_add_bonus_energy"] (0 = no bonus); the
+    // Gold cards (326, 564) read it from their controller's legend as they add.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject&) {
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId, GameObject& self) {
             const bool close =
                 state.player(controller).score + 3 >= state.mode.victory_score;
-            for (auto& [id, obj] : state.objects) {
-                if (!obj.isGear() || obj.controller != controller) continue;
-                if (!obj.location.has_value() || obj.name != "Gold") continue;
-                if (close) obj.card_counters[kGoldExtraEnergyCounter] = 1;
-                else obj.card_counters.erase(kGoldExtraEnergyCounter);
-            }
+            self.card_counters["__gold_add_bonus_energy"] = close ? 1 : 0;
         });
     }
 private:

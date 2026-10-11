@@ -457,10 +457,15 @@ TEST_F(C5Test, MinotaurReckonerStopsMovesToBaseOnlyWhileOnBoard) {
 TEST_F(C5Test, HarpoonSquadOnlyWhenItMovesFromABattlefield) {
     auto squad = addUnit(P1, kHarpoonSquad, 0, 0);
     const Card& c = card(kHarpoonSquad);
-    state.getObject(squad).card_counters["__moved_from_bf"] = -1;   // out of a base
-    EXPECT_FALSE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
-    state.getObject(squad).card_counters["__moved_from_bf"] = 1;
-    EXPECT_TRUE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
+    // "from a battlefield" is read from the move being announced.
+    {
+        AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});   // out of a base
+        EXPECT_FALSE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
+    }
+    {
+        AnnouncedMove moved(state, LocationId{BattlefieldLocation{1}}, LocationId{BattlefieldLocation{0}});
+        EXPECT_TRUE(c.triggerCondition(state, squad, P1, TriggerType::WhenIMove, kInvalidId));
+    }
     // Through the engine: base -> battlefield gives nothing, battlefield ->
     // base gives +2.
     auto mover = addUnit(P1, kHarpoonSquad, 0);
@@ -1044,6 +1049,8 @@ TEST_F(C5Test, CorruptEnforcerDiscardsTheChosenCard) {
 
 TEST_F(C5Test, FaePorterPaysWhenTheTriggerIsFinalized) {
     auto porter = addUnit(P1, kFaePorter, 0, 0);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     EnginePathAgent broke;
     fireTriggerThroughEngine(porter, TriggerType::WhenIMoveToFB, &broke);

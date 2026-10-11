@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include <stdexcept>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -21,29 +22,17 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIMoveToFB; }
     // "the same battlefield" is the battlefield of the trigger condition ("When
-    // I move to a battlefield"), not "here": it is checked when the condition
-    // is fulfilled (CR 359.3.f.3) and where I go afterwards — another
+    // I move to a battlefield"), not "here": it is fixed when the condition is
+    // fulfilled (CR 359.3.f.3) and where I go afterwards — another
     // battlefield, my base, off the board — does not change it (the Lillia,
-    // Fae Fawn example there). It is noted on the chain item the first time
-    // this runs, which is as the trigger is finalized: battlefield id + 1 in
-    // resume_data[kBattlefieldSlot], clear of the choice helpers' slots 0..6.
-    static constexpr size_t kBattlefieldSlot = 7;
+    // Fae Fawn example there). It is the destination of the move that
+    // triggered this, carried on the chain item (triggeringMove).
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        std::optional<BattlefieldId> my_bf;
-        auto& ri = ctx.state.chain.resuming;
-        if (ri.has_value() && ri->resume_data.size() > kBattlefieldSlot &&
-            ri->resume_data[kBattlefieldSlot] != 0) {
-            my_bf = static_cast<BattlefieldId>(ri->resume_data[kBattlefieldSlot] - 1);
-        } else {
-            my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-            // Gone before the battlefield could be noted: nothing to refer to.
-            if (!my_bf) return;
-            if (ri.has_value()) {
-                while (ri->resume_data.size() <= kBattlefieldSlot) ri->resume_data.push_back(0);
-                ri->resume_data[kBattlefieldSlot] = static_cast<int32_t>(*my_bf) + 1;
-            }
-        }
+        const auto* move = triggeringMove(ctx.state);
+        if (!move) throw std::logic_error("Fae Porter: \"When I move\" resolved without a move");
+        const std::optional<BattlefieldId> my_bf = battlefieldOfLocation(move->to);
+        if (!my_bf) return;   // WhenIMoveToFB: cannot happen
         auto movable = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects) {

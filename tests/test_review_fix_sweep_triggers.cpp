@@ -1428,6 +1428,83 @@ TEST_F(SweepTriggersTest, PriorityWindow_CostOnlyActivationsAreNotPasses) {
     EXPECT_TRUE(state.chain.items.empty());
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 17. The move travels with its trigger (plans/09 section I)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.I2 / 9.I3: Lillia, Fae Fawn 644 moves twice before either "When I move"
+// resolves — a Sprite where each move started, not two at the second origin.
+TEST_F(SweepTriggersTest, MoveTrigger_TwoMovesGiveEachTriggerItsOwnOrigin) {
+    constexpr CardDefId kLilliaFaeFawn = 644;
+    auto lillia = addUnit(P1, kLilliaFaeFawn, 3, -1);
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        exec.moveToBattlefield(lillia, state.battlefields[0].id);   // base -> 0
+        exec.moveToBattlefield(lillia, state.battlefields[1].id);   // 0 -> 1
+        int with_move = 0;
+        for (const auto& ci : e.mutableState().chain.items)
+            if (ci.source == lillia && ci.triggering_move.has_value()) ++with_move;
+        EXPECT_EQ(with_move, 2);
+        EXPECT_FALSE(e.mutableState().chain.move_being_announced.has_value());
+        e.testHook_runChain();
+    });
+    int in_base = 0, at_bf0 = 0, elsewhere = 0;
+    for (auto t : tokenUnits(P1)) {
+        if (obj(t).name != "Sprite") continue;
+        if (obj(t).isAtBase()) ++in_base;
+        else if (obj(t).battlefieldId() == std::optional<BattlefieldId>{state.battlefields[0].id}) ++at_bf0;
+        else ++elsewhere;
+    }
+    EXPECT_EQ(in_base, 1) << "the first move started in base";
+    EXPECT_EQ(at_bf0, 1) << "the second move started at battlefield 0";
+    EXPECT_EQ(elsewhere, 0);
+}
+
+// 9.I1: Fae Porter 446 — "the same battlefield" is where the move ended, read
+// from the trigger, with the Porter already gone from it when it is finalized.
+TEST_F(SweepTriggersTest, MoveTrigger_FaePorterUsesTheDestinationOfItsMove) {
+    constexpr CardDefId kFaePorter = 446;
+    auto porter = addUnit(P1, kFaePorter, 2, -1);
+    auto ally = addUnit(P1, kInvalidId, 2, -1);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
+    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        exec.moveToBattlefield(porter, state.battlefields[1].id);
+        // It leaves the battlefield before its trigger is finalized.
+        auto& p = e.mutableState().getObject(porter);
+        p.location = LocationId{BaseLocation{P1}};
+        p.zone = ZoneType::Base;
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_EQ(obj(ally).battlefieldId(), std::optional<BattlefieldId>{state.battlefields[1].id});
+    EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
+}
+
+// Akali, Deadly Weapon 808: "a battlefield I moved to or from" are the ends
+// of that move, also after she has moved on.
+TEST_F(SweepTriggersTest, MoveTrigger_AkaliChoosesAtTheEndsOfThatMove) {
+    constexpr CardDefId kAkali = 808;
+    auto akali = addUnit(P1, kAkali, 3, 0);
+    auto left_behind = addUnit(P2, kInvalidId, 9, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(left_behind));
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        exec.moveToBase(akali);                    // 0 -> base: only battlefield 0 qualifies
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_EQ(obj(left_behind).damage_marked, 1);
+    EXPECT_TRUE(agent.wasOffered(left_behind));
+}
+
+// A move trigger cannot resolve without its move (9.I3: no silent default).
+TEST_F(SweepTriggersTest, MoveTrigger_WithoutAMoveIsAnError) {
+    constexpr CardDefId kLilliaFaeFawn = 644;
+    auto lillia = addUnit(P1, kLilliaFaeFawn, 3, 0);
+    EXPECT_THROW(fireTriggerThroughEngine(lillia, TriggerType::WhenIMove), std::logic_error);
+}
+
 }  // namespace
 }  // namespace test_review_fix_sweep_triggers
 }  // namespace riftbound::test

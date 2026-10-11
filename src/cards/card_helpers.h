@@ -344,6 +344,24 @@ inline void moveToLocation(EffectExecutor& exec, GameObjectId obj,
 
 inline bool isMighty(const GameObject& obj) { return obj.current_might >= 5; }
 
+/// The move that triggered the ability being checked or resolved ("When I
+/// move", "When a unit moves from here"): where it started and ended. While
+/// TriggerManager is announcing a move (a triggerCondition is being asked) it
+/// is that move; otherwise the one recorded on the resolving chain item. Null
+/// when the ability was not triggered by a move.
+inline const ChainItem::Move* triggeringMove(const GameState& state) {
+    if (state.chain.move_being_announced.has_value()) return &*state.chain.move_being_announced;
+    if (state.chain.resuming.has_value() && state.chain.resuming->triggering_move.has_value())
+        return &*state.chain.resuming->triggering_move;
+    return nullptr;
+}
+/// The battlefield a location is, if it is one.
+inline std::optional<BattlefieldId> battlefieldOfLocation(const LocationId& loc) {
+    if (std::holds_alternative<BattlefieldLocation>(loc))
+        return std::get<BattlefieldLocation>(loc).id;
+    return std::nullopt;
+}
+
 /// Which play of its controller's turn `card` was — 1 for "your first card
 /// this turn", 2 for "your second card" — or 0 if it was not played this turn.
 /// Stamped on the card by TriggerManager::onCardPlayed.

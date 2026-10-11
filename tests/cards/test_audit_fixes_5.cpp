@@ -444,8 +444,14 @@ TEST_F(AuditFix5Test, IvernNurturer_DraftsUnitOnPlay) {
     auto unit_card = addToDeck(P1, kYone);    // unit -> drafted (this is back/top)
 
     int hand_before = handSize(P1);
-    driveResumableTrigger(kIvernNurturer, P1, ivern, &AuditFix5Test::pickYes, exec,
-                          TriggerType::WhenYouPlayMe);
+    // The prompt offers each unit among the three, then "None": the player
+    // picks which one to draw.
+    driveResumableTrigger(kIvernNurturer, P1, ivern,
+        [unit_card](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == unit_card) return i;
+            return legal.back();
+        }, exec, TriggerType::WhenYouPlayMe);
 
     EXPECT_TRUE(inHand(P1, unit_card)) << "the unit should be drafted to hand";
     EXPECT_EQ(handSize(P1), hand_before + 1);
@@ -466,7 +472,8 @@ TEST_F(AuditFix5Test, IvernNurturer_DeclineRecyclesAll) {
 
     int hand_before = handSize(P1);
     int deck_before = deckSize(P1);
-    driveResumableTrigger(kIvernNurturer, P1, ivern, &AuditFix5Test::pickNo, exec,
+    // "None" is the last option of the which-unit prompt.
+    driveResumableTrigger(kIvernNurturer, P1, ivern, &AuditFix5Test::pickYes, exec,
                           TriggerType::WhenIHold);
 
     EXPECT_EQ(handSize(P1), hand_before) << "declined -> nothing drafted";
@@ -484,7 +491,8 @@ TEST_F(AuditFix5Test, IvernNurturer_ThemedDraftBuffs) {
     addToDeck(P1, kRengar);  // top: a Cat-tagged unit -> themed
 
     int buff_before = state.getObject(ivern).buff_count;
-    driveResumableTrigger(kIvernNurturer, P1, ivern, &AuditFix5Test::pickYes, exec,
+    // First option = the Cat unit (the last one is "None").
+    driveResumableTrigger(kIvernNurturer, P1, ivern, &AuditFix5Test::pickNo, exec,
                           TriggerType::WhenYouPlayMe);
 
     EXPECT_EQ(state.getObject(ivern).buff_count, buff_before + 1)
@@ -505,12 +513,14 @@ TEST_F(AuditFix5Test, IvernNurturer_EmptyDeckNoop) {
 
 // ─── [644] Lillia, Fae Fawn ──────────────────────────────────────────────────
 
-// WhenIMove: creates a 3-Might Sprite token with [Temporary] at the unit's
-// current (post-move) location.
+// WhenIMove: creates a 3-Might Sprite token with [Temporary] at the location
+// she moved FROM ("When I move from a location, play a ... token there"),
+// which TriggerManager::onUnitMoved notes on her as "__moved_from_bf".
 TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
     EffectExecutor exec(state, events, card_db);
-    BattlefieldId bf = 1;
-    auto lillia = addUnit(P1, kLillia, 3, /*at_bf=*/static_cast<int>(bf));
+    BattlefieldId bf = 0;
+    auto lillia = addUnit(P1, kLillia, 3, /*at_bf=*/1);
+    state.getObject(lillia).card_counters["__moved_from_bf"] = static_cast<int>(bf);
 
     fireTriggerAs(kLillia, P1, lillia, TriggerType::WhenIMove, exec);
 
@@ -519,14 +529,14 @@ TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
     auto& t = state.getObject(token);
     EXPECT_EQ(t.base_might, 3);
     EXPECT_TRUE(t.hasKeyword(Keyword::Temporary));
-    // Token spawns "there" — same battlefield Lillia is now at.
+    // Token spawns "there" — the battlefield Lillia left, not where she is now.
     ASSERT_TRUE(t.location.has_value());
-    EXPECT_TRUE(std::holds_alternative<BattlefieldLocation>(*t.location));
+    ASSERT_TRUE(std::holds_alternative<BattlefieldLocation>(*t.location));
     EXPECT_EQ(std::get<BattlefieldLocation>(*t.location).id, bf);
 }
 
-// Fallback: if the source has no location, the token spawns at the
-// controller's base.
+// No battlefield recorded as the origin (she moved out of her base): the
+// token is played to her controller's base.
 TEST_F(AuditFix5Test, Lillia_NoLocationFallsBackToBase) {
     EffectExecutor exec(state, events, card_db);
     auto lillia = addUnit(P1, kLillia, 3);  // at base

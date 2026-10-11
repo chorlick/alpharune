@@ -148,9 +148,20 @@ TEST_F(WaveABatch1Test, Revna_ReadiesWhenSpent4Plus) {
     EffectExecutor exec(state, events, card_db);
     auto revna = addUnit(P1, kRevna, 7, 0);
     state.getObject(revna).is_exhausted = true;
-    state.player(P1).last_spell_energy_spent = 5;  // spent 4+
-
+    // "if you spent [4] or more" is about the spell that triggered this: its
+    // spend rides on the chain item (not PlayerState::last_spell_energy_spent,
+    // which a later spell overwrites).
+    ChainItem item;
+    item.id = state.chain.allocateId();
+    item.controller = P1;
+    item.is_ability = true;
+    item.source = revna;
+    item.card_def_id = kRevna;
+    item.fired_trigger = TriggerType::WhenYouPlayASpell;
+    item.triggering_spell_energy_spent = 5;  // spent 4+
+    state.chain.resuming = item;
     fireTriggerAs(kRevna, P1, revna, TriggerType::WhenYouPlayASpell, exec);
+    state.chain.resuming.reset();
     EXPECT_FALSE(state.getObject(revna).is_exhausted) << "spent 4+ -> ready me";
 }
 

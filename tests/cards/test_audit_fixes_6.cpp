@@ -465,7 +465,9 @@ TEST_F(AuditFix6Test, Nami_HoldArmsThenNextUnitReadiedAndBuffed) {
     state.getObject(played).is_exhausted = true;
     int before_might = state.getObject(played).current_might;
 
-    fireTriggerAs(kNami, P1, self, TriggerType::WhenYouPlayAUnit, exec);
+    // "ready it": the unit that was played is the trigger's subject (the
+    // engine records it on the chain item), not any exhausted friendly unit.
+    driveResumableTrigger(kNami, P1, self, nullptr, exec, TriggerType::WhenYouPlayAUnit, played);
 
     EXPECT_FALSE(state.getObject(played).is_exhausted);          // readied
     EXPECT_GT(state.getObject(played).current_might, before_might);  // buffed

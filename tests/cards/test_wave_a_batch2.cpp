@@ -255,7 +255,10 @@ TEST_F(CardTestFixture, RuinRunnerCannotBeChosenByEnemy) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(CardTestFixture, UndyingLegionRequiresLegion) {
-    EXPECT_TRUE(card_registry.get(kUndyingLegion)->requiresLegion())
+    // Card::requiresLegion() is read by nothing (plans/08 item 8.7): the
+    // [Legion] gate is on the def, and the play-from-trash ability itself is
+    // not implemented yet (it needs engine support).
+    EXPECT_TRUE(card_db.get(kUndyingLegion).keywords.has(Keyword::Legion))
         << "Undying Legion's effect is Legion-gated";
 }
 

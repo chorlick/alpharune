@@ -398,10 +398,12 @@ TEST_F(AuditFix0Test, ZeroDrive_ReplayLegalityAndActivate) {
     ASSERT_NE(c, nullptr);
     EXPECT_TRUE(c->hasActivatedAbility());
     EXPECT_EQ(c->getActivationCost().energy, 3);
+    EXPECT_TRUE(c->getActivationCost().banish_self) << "\"Banish this\" is part of the cost";
 
     // Unattached gear with a recorded banished unit → replay is legal.
     auto gear = addGear(P1, kZeroDrive, /*at_bf=*/0);
-    auto banished = addUnit(P1, kInvalidId, /*might=*/4, /*at_bf=*/-1);
+    // A real card: a token would have ceased to exist instead of being banished.
+    auto banished = addUnit(P1, /*Shipyard Skulker*/ 175, /*might=*/4, /*at_bf=*/-1);
     // Move the banished unit into banishment, recorded by the gear.
     {
         auto& u = state.getObject(banished);
@@ -414,15 +416,21 @@ TEST_F(AuditFix0Test, ZeroDrive_ReplayLegalityAndActivate) {
     EXPECT_TRUE(c->canActivateAbilityAt(state, P1, gear, 0))
         << "unattached + has recorded unit → replay legal";
 
-    EffectExecutor exec(state, events, card_db);
-    exec.setCardRegistry(&card_registry);
-    CardContext ctx{state, events, exec, P1, gear};
-    c->onActivate(ctx, {});
+    // Through the engine: the cost ([3][B], Banish this) is the engine's to
+    // pay (plans/09 item 9.A13); a direct onActivate call no longer banishes.
+    state.player(P1).rune_pool.energy = 3;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = gear;
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); });
 
     EXPECT_NE(state.getObject(banished).zone, ZoneType::Banishment)
         << "recorded unit replayed (back on board)";
     EXPECT_EQ(state.getObject(gear).zone, ZoneType::Banishment)
         << "'Banish this' cost — gear banished after activating";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
 }
 
 TEST_F(AuditFix0Test, ZeroDrive_ReplayIllegalWhileAttached) {

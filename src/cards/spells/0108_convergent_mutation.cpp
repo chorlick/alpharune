@@ -19,14 +19,9 @@ public:
         GameObjectId chosen = targets[0];
         // "increase its Might to the Might of another friendly unit."
         // Pick another friendly unit (not the chosen one).
-        std::vector<GameObjectId> others;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == chosen) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            others.push_back(id);
-        }
-        std::sort(others.begin(), others.end());   // a stable option order, not hash order
+        const auto others = boardObjects(ctx.state, [&](const GameObject& o) {
+            return o.id != chosen && o.isUnit() && o.controller == ctx.controller;
+        });
         GameObjectId other = pickTarget(ctx, "Convergent Mutation (copy Might from)", others);
         if (other == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7) {

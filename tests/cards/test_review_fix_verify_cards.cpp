@@ -1903,27 +1903,27 @@ TEST_F(VerifyCardsTest, BulletTime_XIsCappedAtTheFifteenTheActionVocabularyEncod
 
 // ── 3. Promising Future 115: only one of the top five can be banished ──
 
-TEST_F(VerifyCardsTest, PromisingFuture_AnAnswerThatIsNotOneOfTheTopFiveBanishesTheTopCard) {
+// An answer naming an object that was never on offer does not reach the card:
+// the engine refuses it (GameEngine::askAgent, plans/09 item 9.G4). The card's
+// own fallback (banish the top card) is still there for a direct call. This
+// test used to assert that fallback through the engine, before the engine
+// checked answers.
+TEST_F(VerifyCardsTest, PromisingFuture_AnAnswerThatIsNotOneOfTheTopFiveIsRefused) {
     auto bystander = addUnit(P1, kShipyardSkulker, 0);
     for (int i = 0; i < 4; ++i) addToDeck(P1, kShipyardSkulker);
     auto top = addToDeck(P1, kShipyardSkulker);
     auto spell = addToHand(P1, kPromisingFuture);
-    // An answer naming an object that was never on offer.
     EnginePathAgent agent([&](const std::vector<Intent>& legal) {
         Intent wrong = legal.front();
         wrong.chosen_objects = {bystander};
         return wrong;
     });
-    playThroughEngine(spell, &agent);
+    EXPECT_THROW(playThroughEngine(spell, &agent), std::invalid_argument);
     ASSERT_EQ(agent.prompts.size(), 1u) << "P2 has no deck: only P1 is asked";
     EXPECT_FALSE(agent.wasOffered(bystander));
     EXPECT_TRUE(onBoard(bystander)) << "a unit on the board is not one of the top 5";
-    EXPECT_FALSE(inBanishment(P1, bystander));
     EXPECT_TRUE(o(bystander).isAtBase()) << "it never moved";
-    EXPECT_FALSE(inDeck(P1, top)) << "\"banishes one of them\": the top card instead";
-    EXPECT_TRUE(onBoard(top) || inBanishment(P1, top)) << "banished, then played if paid for";
-    EXPECT_EQ(deckSize(P1), 4) << "the other four were recycled";
-    EXPECT_EQ(ps(P1).cards_banished_this_turn, 1);
+    EXPECT_TRUE(inDeck(P1, top));
 }
 
 // ── 4. Keeper's Verdict 760: a token's owner has nothing to decide ──
@@ -2168,15 +2168,18 @@ TEST_F(VerifyCardsTest, HeedlessResurrection_DoesNotOfferABattlefieldUnitsCannot
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    // The unit to kill, the unit to play, where (mode 0 = base, 1 and 2 = the
-    // controlled battlefields in order).
+    // The unit to kill, the unit to play, where (mode 0 = base, then the
+    // battlefields units can be played to, in order).
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(victim), static_cast<int>(corpse), 2}));
+        {static_cast<int>(victim), static_cast<int>(corpse), 1}));
     playThroughEngine(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 3u);
     EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
-    EXPECT_FALSE(promptOffersValue(agent, 2, 1)) << "units can't be played to battlefield #0";
-    EXPECT_TRUE(promptOffersValue(agent, 2, 2));
+    // Options are numbered over what is offered (playLocations leaves the
+    // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
+    EXPECT_TRUE(promptOffersValue(agent, 2, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 2, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[2].size(), 2u);
     ASSERT_TRUE(onBoard(corpse));
     EXPECT_EQ(bfOf(corpse), std::optional<BattlefieldId>{1});
     EXPECT_TRUE(inTrash(P1, victim));
@@ -2190,12 +2193,15 @@ TEST_F(VerifyCardsTest, ArcaneShift_DoesNotOfferABattlefieldUnitsCannotBePlayedT
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({2}));     // no enemy unit: only "where"
+    EnginePathAgent agent(EnginePathAgent::script({1}));     // no enemy unit: only "where"
     playAt(spell, {unit}, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u);
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
-    EXPECT_FALSE(promptOffersValue(agent, 0, 1)) << "units can't be played to battlefield #0";
-    EXPECT_TRUE(promptOffersValue(agent, 0, 2));
+    // Options are numbered over what is offered (playLocations leaves the
+    // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
+    EXPECT_TRUE(promptOffersValue(agent, 0, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[0].size(), 2u);
     ASSERT_TRUE(onBoard(unit));
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{1});
 }
@@ -2208,12 +2214,15 @@ TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({2}));
+    EnginePathAgent agent(EnginePathAgent::script({1}));
     playThroughEngine(spell, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
-    EXPECT_FALSE(promptOffersValue(agent, 0, 1)) << "units can't be played to battlefield #0";
-    EXPECT_TRUE(promptOffersValue(agent, 0, 2));
+    // Options are numbered over what is offered (playLocations leaves the
+    // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
+    EXPECT_TRUE(promptOffersValue(agent, 0, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[0].size(), 2u);
     ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
     EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
 }
@@ -2225,12 +2234,15 @@ TEST_F(VerifyCardsTest, Guards_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({2}));
+    EnginePathAgent agent(EnginePathAgent::script({1}));
     playThroughEngine(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u) << "where; no [Y] for the may";
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
-    EXPECT_FALSE(promptOffersValue(agent, 0, 1)) << "units can't be played to battlefield #0";
-    EXPECT_TRUE(promptOffersValue(agent, 0, 2));
+    // Options are numbered over what is offered (playLocations leaves the
+    // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
+    EXPECT_TRUE(promptOffersValue(agent, 0, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[0].size(), 2u);
     ASSERT_EQ(countNamed(P1, "Sand Soldier"), 1);
     EXPECT_EQ(bfOf(firstNamed(P1, "Sand Soldier")), std::optional<BattlefieldId>{1});
 }
@@ -2390,16 +2402,13 @@ TEST_F(VerifyCardsTest, SoulSword_OffTheBoardGearOrBearerGivesNoLevelBonus) {
 
 // ═══ Sweep C, item 3: Spirit's Refuge 63 next to Allay 603 ══════════════════
 
-// "Friendly buffed units have [Deflect] if they didn't already." The Refuge
-// can only see the [Deflect] that exists when ITS hook runs (printed, "this
-// turn", Equipment, hooks that ran earlier in the pass). The hooks run in
-// GameState::objects order, so next to Allay ("your other units here have
-// [Deflect]") the buffed unit ends with ONE Deflect effect if Allay's hook ran
-// first and TWO if the Refuge's did — and EffectExecutor::deflectCostFor sums
-// them. The right answer is 1 [A]; that needs an engine hook (see the comment
-// in gear/0063_spirit_s_refuge.cpp) and is NOT fixed. This test shows the
-// behaviour as it is: once the engine orders the two, replace the 1-or-2
-// expectations with EXPECT_EQ(..., 1).
+// "Friendly buffed units have [Deflect] if they didn't already." The Refuge's
+// hook cannot see a [Deflect] another card's hook adds after it ran (Allay:
+// "your other units here have [Deflect]"), so its grant is "only if absent"
+// (auraKeywordIfAbsent) and the engine drops it once every hook has run
+// (plans/09 item 9.A19). This test asserted "1 or 2 by hook order" while that
+// was open; it now asserts the 1 [A] the card text says. Both creation orders:
+// VerifyEngineRefugeTest.SpiritsRefuge_NextToAllayCostsOne_*.
 TEST_F(VerifyCardsTest, SpiritsRefuge_NextToAllayTheDeflectCostDependsOnHookOrder) {
     state.battlefields[0].controller = P1;
     auto refuge = addGear(P1, kSpiritsRefuge);
@@ -2428,15 +2437,12 @@ TEST_F(VerifyCardsTest, SpiritsRefuge_NextToAllayTheDeflectCostDependsOnHookOrde
     EXPECT_EQ(deflectCostFor(state, P2, allay), 1) << "printed; the Refuge adds nothing";
     EXPECT_EQ(deflectEffects(allay, kInvalidId), 0);
 
-    // The unit both cards reach: Allay's [Deflect] always, the Refuge's only
-    // if its hook ran before Allay's — and the cost is their sum.
+    // The unit both cards reach: Allay's [Deflect], and none from the Refuge
+    // ("if they didn't already"), whichever hook ran first.
     EXPECT_EQ(deflectEffects(both, allay), 1);
-    const int from_refuge = deflectEffects(both, refuge);
-    EXPECT_GE(from_refuge, 0);
-    EXPECT_LE(from_refuge, 1);
-    EXPECT_EQ(deflectEffects(both, kInvalidId), 1 + from_refuge);
-    EXPECT_EQ(deflectCostFor(state, P2, both), 1 + from_refuge)
-        << "CURRENT BEHAVIOUR: 1 or 2 by hook order; the card text says 1";
+    EXPECT_EQ(deflectEffects(both, refuge), 0);
+    EXPECT_EQ(deflectEffects(both, kInvalidId), 1);
+    EXPECT_EQ(deflectCostFor(state, P2, both), 1);
 }
 
 // ═══ Sweep C, item 4: what a card does once its object has left the board ═══

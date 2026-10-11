@@ -263,6 +263,12 @@ struct PlayerState {
         bool from_aura = false;
         bool first_gear_per_turn = false;   // applies only to the FIRST gear played this
                                             // turn (consult gears_played_this_turn == 0)
+        // Applies only to a card played from its owner's hand ("you may play
+        // a gear ... from hand this turn, ignoring its Energy cost" — Jayce,
+        // Man of Progress): not to a play from the trash, the Champion Zone
+        // or by an effect from anywhere else, and such a play does not use a
+        // one-shot modifier up.
+        bool from_hand_only = false;
     };
     std::vector<CostModifier> cost_modifiers;
 
@@ -309,11 +315,13 @@ struct PlayerState {
     // "Observation tracking" in CLAUDE.md for the trainer wire-up plan.
     std::map<CardDefId, int> observed_cards;
 
-    // Transient: source of the play currently being processed (set by
-    // executePlayCard before payCardCost, cleared after). Lets the cost
-    // path consult play_source without threading it through every
-    // intermediate signature. Default Hand for resetTurnTracking.
-    // Consumed by Rek'Sai Breacher's auto-Accelerate path.
+    // Transient: source of the play currently being paid for. Set by
+    // GameEngine::executePlayCard / executePlaySpell around the payment and
+    // put back to Hand right after it; set by EffectExecutor's effect plays
+    // for a card played from anywhere but a hand, and restored when they are
+    // done. It is Hand at every other moment, so nothing resets it at end of
+    // turn. Lets the cost path know the source without threading it through
+    // every signature (Card::grantsAccelerateTo, CostModifier::from_hand_only).
     Intent::PlaySource current_play_source = Intent::PlaySource::Hand;
 
     // ── Vendetta ─────────────────────────────────────────────────────────
@@ -797,7 +805,8 @@ struct GameState {
     // Saves the rune-pick progress across step-machine yields.
     // Populated when payCardCost has yielded a NeedDecision and
     // is waiting for the agent's rune choice. Cleared when cost
-    // is fully paid (or aborted). Memcpy-clone safe (POD).
+    // is fully paid (or aborted). Copied with the GameState like every other
+    // field (it owns a vector, so it is not a POD and must not be memcpy'd).
     struct CostPaymentCursor {
         GameObjectId card        = kInvalidId;
         PlayerId     player      = PlayerId::None;

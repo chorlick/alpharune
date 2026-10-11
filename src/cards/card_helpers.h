@@ -439,7 +439,39 @@ inline void auraKeyword(GameObject& obj, GameObjectId source, Keyword kw, int va
     obj.aura_effects.push_back(ae);
 }
 
+/// A keyword "if they didn't already" ("Friendly buffed units have [Deflect]
+/// if they didn't already" — Spirit's Refuge): granted only where the object
+/// has that keyword from no other source. The card pushes it unconditionally;
+/// GameEngine::recalculateAuras drops it, after EVERY aura hook of the pass
+/// has run (applyPassiveAura and applyMightDependentAura alike), from each
+/// object that has the keyword printed, "this turn", from an Equipment or from
+/// any other continuous effect — so the result does not depend on the order
+/// the hooks ran in. Of several such effects on one object one is kept.
+inline void auraKeywordIfAbsent(GameObject& obj, GameObjectId source, Keyword kw, int value = 0) {
+    GameObject::AuraEffect ae;
+    ae.source = source;
+    ae.keyword = kw;
+    ae.keyword_value = value;
+    ae.only_if_absent = true;
+    obj.aura_effects.push_back(ae);
+}
+
 // ── Board queries ───────────────────────────────────────────────────────────
+// A list a card offers to an agent is built with boardObjects / chooseableUnits:
+// both return ascending object ids, so the order of the options is a property
+// of the helper and not of GameState::objects' hash order (which differs with
+// the order the objects were created in).
+
+/// Objects on the board matching `pred`, in ascending id order.
+template <typename Pred>
+std::vector<GameObjectId> boardObjects(const GameState& state, Pred&& pred) {
+    std::vector<GameObjectId> out;
+    for (const auto& [id, obj] : state.objects)
+        if (obj.location.has_value() && pred(obj)) out.push_back(id);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 /// Runes `player` controls (in base, ready or exhausted).
 inline int runesControlled(const GameState& state, PlayerId player) {
     int n = 0;
@@ -465,7 +497,7 @@ inline int namedInTrash(const GameState& state, PlayerId player, const std::stri
 }
 
 /// On-board units matching `pred`, honoring "can't be chosen by enemy spells
-/// and abilities" for units `chooser` doesn't control.
+/// and abilities" for units `chooser` doesn't control. Ascending id order.
 template <typename Pred>
 std::vector<GameObjectId> chooseableUnits(const GameState& state, PlayerId chooser, Pred&& pred) {
     std::vector<GameObjectId> out;
@@ -474,6 +506,7 @@ std::vector<GameObjectId> chooseableUnits(const GameState& state, PlayerId choos
         if (obj.controller != chooser && obj.untargetable_by_enemy) continue;
         if (pred(obj)) out.push_back(id);
     }
+    std::sort(out.begin(), out.end());
     return out;
 }
 
@@ -606,12 +639,13 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
 // resolving chain item: resume_point kPickSeveralAsk / Await / Done and
 // resume_data = the objects picked so far — so, like splitDamageAmong, a card
 // that uses this must not also call a Card::pick* helper in the same callback.
-// At most kPickSeveralMaxPicks prompts are issued (ChainManager::stepResolve
-// allows 16 re-entries per resolution).
+// One prompt per pick, as many as `max_picks` and the objects on offer allow:
+// "any number" passes the size of its list. (ChainManager::stepResolve and
+// GameEngine::runFinalizePass allow 1024 re-entries per item, far more than a
+// board can offer.)
 constexpr int kPickSeveralAsk = 110;
 constexpr int kPickSeveralAwait = 111;
 constexpr int kPickSeveralDone = 112;
-constexpr int kPickSeveralMaxPicks = 12;
 
 /// Returns true once the selection is finished (`picked` holds it, in pick
 /// order), false while a prompt is pending. `legal` are the objects on offer;
@@ -620,7 +654,6 @@ constexpr int kPickSeveralMaxPicks = 12;
 inline bool pickSeveral(CardContext& ctx, const std::string& label, int max_picks,
                         std::vector<GameObjectId> legal, std::vector<GameObjectId>& picked) {
     std::sort(legal.begin(), legal.end());
-    max_picks = std::min(max_picks, kPickSeveralMaxPicks);
     picked.clear();
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value()) {
@@ -698,14 +731,11 @@ inline bool pickSeveral(CardContext& ctx, const std::string& label, int max_pick
 // only lock a fixed TargetRequirements::count of targets, so a variable
 // number (1..N) of split targets cannot be declared there; they are chosen at
 // resolution instead.
-// ENGINE-GAP: ChainManager::stepResolve allows 16 re-entries per resolution
-// (kMaxResumeIterations), so at most kSplitDamageMaxPicks prompts are issued;
-// above that total each pick assigns ceil(total / kSplitDamageMaxPicks)
-// damage, which coarsens the split for a source with more than 12 to divide.
+// Every point is its own pick, whatever the total (a single legal unit takes
+// everything in one): the re-entry bound per item is 1024.
 constexpr int kSplitDamageAssign = 100;
 constexpr int kSplitDamageAwait = 101;
 constexpr int kSplitDamageDone = 102;
-constexpr int kSplitDamageMaxPicks = 12;
 
 /// Returns true once the damage has been dealt (or there was nothing to do),
 /// false while a pick is pending. `legal` are the units the controller may
@@ -789,9 +819,9 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             ri.resume_point = kSplitDamageDone;
             return true;
         }
-        // One legal unit: a single pick takes everything.
-        int per_pick = legal.size() == 1
-            ? total : (total + kSplitDamageMaxPicks - 1) / kSplitDamageMaxPicks;
+        // One legal unit: a single pick takes everything. Otherwise one
+        // damage per pick, so every legal split can be expressed.
+        const int per_pick = legal.size() == 1 ? total : 1;
         ri.resume_data = {total, per_pick};
         ri.resume_point = kSplitDamageAssign;
         if (offered().empty()) {   // nothing the controller can afford to choose
@@ -862,7 +892,7 @@ inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::strin
     for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
         labels.push_back("Battlefield #" + std::to_string(bfs[i].id));
         if (!base_only && !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
-            *bfs[i].controller == ctx.controller)
+            *bfs[i].controller == ctx.controller)   // as battlefieldTakesUnitsFrom
             mask |= 1u << (i + 1);
     }
     if (mask == 1u) return 0;
@@ -912,9 +942,24 @@ struct PlayLocations {
     std::vector<std::string> labels;
     int count() const { return static_cast<int>(locations.size()); }
 };
+/// Whether a unit `player` plays may go to `bf` at all, whoever controls it:
+/// not where "Units can't be played here." (BattlefieldState::blocks_unit_play
+/// — Rockfall Path), and to no battlefield for a player who may only play
+/// units to base (PlayerState::units_play_base_only — Mageseeker Warden).
+/// Every helper below that offers a battlefield for a unit asks this, so a
+/// card that uses them needs no mask of its own.
+inline bool battlefieldTakesUnitsFrom(const GameState& state, PlayerId player,
+                                      const BattlefieldState& bf) {
+    return !bf.blocks_unit_play && !state.player(player).units_play_base_only;
+}
+
 /// `only_bf`: the spell was played from facedown at that battlefield, so the
-/// unit must be played there (CR 811.1.d.5). `include_base` = false for text
-/// that names "a battlefield you control".
+/// unit must be played there (CR 811.1.d.5) — and nowhere when units can't be
+/// played there: the rule restricts the choice (CR 811.1.d), it does not lift
+/// a card's "Units can't be played here." (CR 002, 054.1), and two
+/// restrictions that contradict leave no location (Vendetta FAQ, Perched
+/// Grimwyrm at Rockfall Path). `include_base` = false for text that names "a
+/// battlefield you control". An empty result means the unit is not played.
 inline PlayLocations playLocations(const GameState& state, PlayerId player,
                                    std::optional<BattlefieldId> only_bf = std::nullopt,
                                    bool include_base = true) {
@@ -926,7 +971,7 @@ inline PlayLocations playLocations(const GameState& state, PlayerId player,
     };
     if (only_bf.has_value()) {
         for (const auto& bf : state.battlefields)
-            if (bf.id == *only_bf) {
+            if (bf.id == *only_bf && battlefieldTakesUnitsFrom(state, player, bf)) {
                 out.locations.push_back(LocationId{BattlefieldLocation{bf.id}});
                 out.labels.push_back(bfName(bf));
             }
@@ -939,6 +984,7 @@ inline PlayLocations playLocations(const GameState& state, PlayerId player,
     for (const auto& bf : state.battlefields) {
         if (out.locations.size() >= 32) break;   // pickMode's mask is 32 bits
         if (!bf.controller.has_value() || *bf.controller != player) continue;
+        if (!battlefieldTakesUnitsFrom(state, player, bf)) continue;
         out.locations.push_back(LocationId{BattlefieldLocation{bf.id}});
         out.labels.push_back(bfName(bf));
     }
@@ -1052,11 +1098,13 @@ inline void moveTo(CardContext& ctx, GameObjectId u, int dest) {
 }
 /// Where `player` may put a unit token an effect plays ("They can be played
 /// to your base or to battlefields you control"), as moveDests codes: 0 =
-/// their base, 1 + i = battlefield i.
+/// their base, 1 + i = battlefield i. A battlefield units can't be played to
+/// is left out (battlefieldTakesUnitsFrom).
 inline std::vector<int> tokenPlayDests(const GameState& state, PlayerId player) {
     std::vector<int> out{0};
     for (const auto& bf : state.battlefields)
-        if (bf.controller.has_value() && *bf.controller == player)
+        if (bf.controller.has_value() && *bf.controller == player &&
+            battlefieldTakesUnitsFrom(state, player, bf))
             out.push_back(1 + static_cast<int>(bf.id));
     return out;
 }
@@ -1109,16 +1157,16 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
 }
 
 /// "Any number of <objects>": one selectObject prompt per pick, each with a
-/// "None" option that ends the list. Returns the picks (possibly none), or
-/// nullopt while a prompt is pending. Uses resume_data slots `first_slot` ..
-/// `first_slot + 2 * kSelectManyMax - 1`; the caller checks at the end that
-/// each pick is still what the effect needs.
-constexpr int kSelectManyMax = 10;   // ChainManager allows 16 re-entries per resolution
+/// "None" option that ends the list, until the controller stops or nothing is
+/// left to pick. Returns the picks (possibly none), or nullopt while a prompt
+/// is pending. Uses two resume_data slots per pick from `first_slot` on (as
+/// many as there were options); the caller checks at the end that each pick
+/// is still what the effect needs.
 inline std::optional<std::vector<GameObjectId>> selectAnyNumber(
         CardContext& ctx, const std::string& label, std::vector<GameObjectId> options,
         size_t first_slot = 7) {
     std::vector<GameObjectId> picked;
-    for (int k = 0; k < kSelectManyMax && !options.empty(); ++k) {
+    for (int k = 0; !options.empty(); ++k) {
         auto one = selectObject(ctx, label, options, first_slot + 2 * static_cast<size_t>(k),
                                 /*may_decline=*/true);
         if (!one.has_value()) return std::nullopt;

@@ -143,8 +143,11 @@ private:
     /// "When you play a unit here" style triggers. `at_battlefield` (when not
     /// kInvalidId) restricts firing to the BF whose id matches — used so a
     /// "play a unit here" trigger only fires for the BF the unit landed at.
+    /// `subject` is the event's object (the unit played or chosen here), kept
+    /// in ChainItem::triggering_subject.
     void fireBattlefieldTriggers(TriggerType t, PlayerId player,
-                                  BattlefieldId at_battlefield = kInvalidId);
+                                  BattlefieldId at_battlefield = kInvalidId,
+                                  GameObjectId subject = kInvalidId);
 
     /// Fire `t` on any legend in the champion zone that declares it. Pass
     /// `relevant_player = PlayerId::None` to sweep both players (the

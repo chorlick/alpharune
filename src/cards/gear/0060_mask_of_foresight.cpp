@@ -25,6 +25,10 @@ public:
         GameObjectId subject = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
+        // Still a unit on the board (an id exists forever; it may have died or
+        // been bounced before this resolves).
+        const auto& unit = ctx.state.getObject(subject);
+        if (!unit.isUnit() || !unit.location.has_value()) return;
         ctx.executor.giveTemporaryMight(subject, 1);
         ctx.events.logTrace("MASK OF FORESIGHT: +1 [M] to the lone attacker/defender");
     }

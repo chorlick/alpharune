@@ -16,21 +16,23 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you hold here, you may return your Chosen Champion from your trash
     //  to your Champion Zone if it is empty."
-    // (Previously implemented as bounce-friendly-unit-to-hand — wrong effect.)
+    // The Chosen Champion is one particular card (PlayerState::chosen_champion),
+    // not any champion unit: a Main Deck copy of it in the trash does not count.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
-        if (ps.champion_zone != kInvalidId &&
-            ctx.state.objectExists(ps.champion_zone)) {
-            return;  // Champion Zone not empty
-        }
-        // Find a champion unit in the player's trash.
-        GameObjectId champ = kInvalidId;
-        for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            const auto& obj = ctx.state.getObject(cid);
-            if (obj.isUnit() && obj.isChampion()) { champ = cid; break; }
-        }
-        if (champ == kInvalidId) return;
+        auto can_return = [&]() {
+            if (ps.champion_zone != kInvalidId && ctx.state.objectExists(ps.champion_zone))
+                return false;   // Champion Zone not empty
+            return ps.chosen_champion != kInvalidId &&
+                   std::find(ps.trash.begin(), ps.trash.end(), ps.chosen_champion) !=
+                       ps.trash.end();
+        };
+        int go = confirmOptional(ctx, "Hallowed Tomb: return your Chosen Champion to your "
+                                      "Champion Zone?", can_return);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (go < 1 || !can_return()) return;
+        const GameObjectId champ = ps.chosen_champion;
         ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), champ),
                        ps.trash.end());
         auto& obj = ctx.state.getObject(champ);

@@ -473,6 +473,31 @@ inline void auraMight(GameObject& obj, GameObjectId source, int amount) {
     obj.aura_effects.push_back(ae);
 }
 
+/// True when `obj` already carries a continuous effect from `source` in this
+/// aura pass. A battlefield card's applyPassiveAura runs once per battlefield
+/// slot holding that card and is not told which slot, so a hook that walks
+/// every slot with its def uses this to apply each slot's effect only once
+/// when both players brought the same battlefield.
+inline bool hasAuraFrom(const GameObject& obj, GameObjectId source) {
+    for (const auto& ae : obj.aura_effects)
+        if (ae.source == source) return true;
+    return false;
+}
+
+/// Whether `obj` has `kw` as far as this aura pass has got: its printed and
+/// "this turn" keywords plus what the pass has granted so far. For use inside
+/// applyPassiveAura, where GameObject::hasKeyword() only sees the printed
+/// ones (its aura cache is rebuilt after every hook has run). Equipment
+/// keywords are granted before any hook, unit / gear / legend hooks run before
+/// battlefield hooks, so a battlefield's "units here with [Keyword]" sees
+/// both; between two unit hooks the order is not defined.
+inline bool hasKeywordInAuraPass(const GameObject& obj, Keyword kw) {
+    if (obj.keywords.has(kw)) return true;
+    for (const auto& ae : obj.aura_effects)
+        if (ae.keyword == kw) return true;
+    return false;
+}
+
 /// A keyword from a continuous effect. For [Assault N] / [Shield N] pass N
 /// (0 = the bare keyword, which is N = 1): the engine's aura fold adds the
 /// +N [M] while the bearer is an attacker / a defender, so the effect itself
@@ -570,6 +595,75 @@ inline Intent valChoice(PlayerId p, int v, const std::string& label) {
 inline int takenValue(CardContext& ctx, int fallback) {
     auto c = ctx.executor.takeChoice();
     return (c && c->chosen_value.has_value()) ? *c->chosen_value : fallback;
+}
+
+// ── Picking an object without "choosing" it ─────────────────────────────────
+/// Ask the controller which of `options` to use when the pick is not a choice
+/// of that object in the rules sense — which unit's buff to spend, which rune
+/// to recycle, which trash card pays a cost. Unlike Card::pickTarget it
+/// charges no Deflect, records nothing in chosen_objects and fires no "when
+/// you choose" trigger.
+///
+/// Returns nullopt while the agent is being asked (the caller returns and is
+/// re-entered), kInvalidId when there is nothing to pick (or, with
+/// `may_decline`, when the controller picked nothing), else the object. A
+/// single option is taken without asking unless it may be declined. The
+/// answer is kept on the resolving chain item, so later entries — and the
+/// resolution after a finalize pass — get the same one back; the caller checks
+/// it is still what the effect needs.
+///
+/// Progress lives in resume_data[slot] (0 new / 1 asked / 2 answered) and
+/// resume_data[slot + 1] (the object): `slot` must be 7 or more (0..6 belong
+/// to the Card::pick* helpers) and two picks in one callback use slots two
+/// apart.
+inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::string& label,
+                                                std::vector<GameObjectId> options,
+                                                size_t slot = 7, bool may_decline = false) {
+    std::sort(options.begin(), options.end());
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value())   // direct invocation: nobody to ask
+        return options.empty() ? kInvalidId : options.front();
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    auto answer = [&ri, slot](GameObjectId id) {
+        ri.resume_data[slot] = 2;
+        ri.resume_data[slot + 1] = static_cast<int32_t>(id);
+        return id;
+    };
+    if (ri.resume_data[slot] == 2) return static_cast<GameObjectId>(ri.resume_data[slot + 1]);
+    if (ri.resume_data[slot] == 1) {
+        auto picked = ctx.executor.takeChoice();
+        if (picked.has_value() && !picked->chosen_objects.empty() &&
+            std::find(options.begin(), options.end(), picked->chosen_objects.front()) !=
+                options.end())
+            return answer(picked->chosen_objects.front());
+        // "None", or an answer that is no longer on offer.
+        return answer((may_decline || options.empty()) ? kInvalidId : options.front());
+    }
+    if (options.empty()) return answer(kInvalidId);
+    if (options.size() == 1 && !may_decline) return answer(options.front());
+    std::vector<Intent> choices;
+    choices.reserve(options.size() + 1);
+    for (auto id : options) {
+        Intent c;
+        c.type = IntentType::MakeChoice;
+        c.player = ctx.controller;
+        c.chosen_objects = {id};
+        choices.push_back(std::move(c));
+    }
+    if (may_decline) {
+        Intent none;
+        none.type = IntentType::MakeChoice;
+        none.player = ctx.controller;
+        none.chosen_value = 0;
+        none.choice_label = "None — " + label;
+        choices.push_back(std::move(none));
+    }
+    ctx.events.logTrace("SELECT_PROMPT: " + label + " [" + std::to_string(options.size()) +
+                        " options]");
+    ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
+    ri.resume_data[slot] = 1;
+    return std::nullopt;
 }
 
 // ── Split damage (CR 355.14) ────────────────────────────────────────────────
@@ -722,12 +816,23 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
     return true;
 }
 
+/// "Units can't move from here to base" (Vilemaw's Lair): true when `u` is at
+/// a battlefield that says so. Only a move is stopped; a recall is not a move
+/// (CR 458).
+inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
+    const auto here = u.battlefieldId();
+    if (!here.has_value()) return false;
+    for (const auto& bf : state.battlefields)
+        if (bf.id == *here) return bf.blocks_move_to_base;
+    return false;
+}
+
 /// Destinations a card effect may move `u` to, int-coded for valChoice:
 /// 0 = its controller's base, 1 + i = battlefield i. Excludes where it is now.
 inline std::vector<int> moveDests(const GameState& state, const GameObject& u) {
     std::vector<int> out;
     if (!u.location.has_value()) return out;
-    if (!u.isAtBase()) out.push_back(0);
+    if (!u.isAtBase() && !moveToBaseBlocked(state, u)) out.push_back(0);
     for (const auto& bf : state.battlefields) {
         auto here = u.battlefieldId();
         if (here.has_value() && *here == bf.id) continue;

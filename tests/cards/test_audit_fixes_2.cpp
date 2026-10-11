@@ -261,8 +261,9 @@ TEST_F(AuditFix2Test, Brutalizer_EquipStampsAttachTurnAndGrantsAura) {
     EffectExecutor exec(state, events, card_db);
     EXPECT_TRUE(runEquip(gear, unit, exec));
     EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>(unit));
-    EXPECT_EQ(state.getObject(gear).card_counters["__brutalizer_attach_turn"], 5);
 
+    // The attachment is noticed by the aura pass that follows it (so a free
+    // attach counts too), not stamped by onEquip.
     // Aura recalc would clear aura_effects first; we test the contribution.
     state.getObject(unit).aura_effects.clear();
     Card* c = card_registry.get(kBrutalizer);
@@ -280,11 +281,13 @@ TEST_F(AuditFix2Test, Brutalizer_NoAuraIfAttachedEarlierTurn) {
 
     EffectExecutor exec(state, events, card_db);
     ASSERT_TRUE(runEquip(gear, unit, exec));
+    // The cleanup that follows the Equip: the aura pass notes the attachment.
+    Card* c = card_registry.get(kBrutalizer);
+    c->applyPassiveAura(state, P1);
 
     // Advance the turn — no longer "attached this turn".
     state.turn.turn_number = 6;
     state.getObject(unit).aura_effects.clear();
-    Card* c = card_registry.get(kBrutalizer);
     c->applyPassiveAura(state, P1);
     int bonus = 0;
     for (auto& ae : state.getObject(unit).aura_effects) bonus += ae.might_bonus;

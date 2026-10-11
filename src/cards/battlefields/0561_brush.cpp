@@ -89,6 +89,7 @@ private:
         d.collector_number = 3;
         d.artist = R"RB(Kudos Productions)RB";
         d.card_type = CardType::Battlefield;
+        d.super_type = SuperType::Token;
         d.ability_text = R"RB(Bird, Cat, Dog, Poro, and Ivern units here have +1 [M].
 When you score here, you may replace this with the battlefield it replaced.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fad09d6bd9bf38e376f430ecb0b400762420d061-1039x744.png?accountingTag=RB)RB";

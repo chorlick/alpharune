@@ -7,6 +7,7 @@
   - Legend 942 Heart of the Tempest has `{Yordle, Kennen}`; a Kennen deck with Teemo, Strategist (121), Vex, Apathetic (712), Fizz or Poppy as Chosen Champion passes. Yordle-tagged Signature cards pass the same way.
 - [x] **5.2 Card types in main deck and sideboard are never checked** [confirmed] — FIXED: `checkMainDeckCardTypes` allows only units, gear and spells in main deck and sideboard and rejects token reference cards (`CardDef::isTokenCard`), also in battlefield slots; test: IntegrityFixTest.MainDeckRejectsCardsThatAreNotUnitsGearOrSpells, IntegrityFixTest.TokenBattlefieldIsNotADeckBattlefield
   - Where: `deck_validator.cpp:80-89`, `:119-127`. The Gold token def (326), runes, battlefields or a second legend are accepted; only the copy limit applies.
+  - c0: 326 Gold, 558 Baron Pit, 561 Brush — FIXED (STATUS carry-over): their defs now carry `SuperType::Token`; test: C0Test.TokenReferenceCardsAreTokens
 - [x] **5.3 `loadFromDeckList` throws the wrong exception on a count-only line** [plausible] — FIXED: confirmed (`std::out_of_range`); the name is read with `getline`, a count-only line fails with `std::runtime_error`; test: IntegrityFixTest.DeckListLineWithOnlyACountThrowsRuntimeError
   - Where: `deck_validator.cpp:288-290`. `tellg()` returns -1, `substr(size_t(-1))` throws `std::out_of_range`; the header promises `std::runtime_error`.
 

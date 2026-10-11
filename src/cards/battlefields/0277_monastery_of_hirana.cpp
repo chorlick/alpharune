@@ -19,33 +19,35 @@ public:
     TriggerType triggerType() const override {
         return TriggerType::WhenYouConquerHere;
     }
+    // "When you conquer here, you may spend a buff to draw 1." The buff is a
+    // cost: it is spent as the ability is finalized (CR 383.3), from a buffed
+    // unit the controller picks.
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        auto find_buffed_friendly = [&]() -> GameObjectId {
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                if (obj.buff_count <= 0) continue;
-                return id;
-            }
-            return kInvalidId;
+        auto buffed = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (obj.isUnit() && obj.controller == ctx.controller &&
+                    obj.location.has_value() && obj.buff_count > 0) out.push_back(id);
+            return out;
         };
-        auto still_legal = [&]() { return find_buffed_friendly() != kInvalidId; };
-
+        auto still_legal = [&]() { return !buffed().empty(); };
+        if (!costAlreadyPaid(ctx) && !still_legal()) return;
         int conf = confirmOptional(ctx,
             "Monastery of Hirana: spend a buff to draw 1?", still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;
-        if (conf == 0) return;
-
-        auto target = find_buffed_friendly();
-        if (target == kInvalidId) return;
-        auto& obj = ctx.state.getObject(target);
-        obj.buff_count -= 1;
-        obj.recomputeMight();
+        if (conf < 1) return;   // waiting on the agent, declined or no buff to spend
+        if (costDueNow(ctx)) {
+            auto unit = selectObject(ctx, "Monastery of Hirana: spend which unit's buff",
+                                     buffed());
+            if (!unit.has_value() || *unit == kInvalidId) return;   // waiting / none left
+            auto& obj = ctx.state.getObject(*unit);
+            obj.buff_count -= 1;
+            obj.recomputeMight();
+            ctx.events.logTrace("MONASTERY OF HIRANA: spent a buff on " + obj.name);
+        }
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("MONASTERY OF HIRANA: spent a buff on " + obj.name +
-                             " -> draw 1");
+        ctx.events.logTrace("MONASTERY OF HIRANA: buff spent -> draw 1");
     }
 private:
     const CardDef def_ = [] {

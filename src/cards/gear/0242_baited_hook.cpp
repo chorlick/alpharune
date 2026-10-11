@@ -19,9 +19,12 @@ public:
     // "[1][C], [E]: Kill a friendly unit. Look at the top 5 cards of your Main
     //  Deck. You may banish a unit from among them that has Might up to 1 more
     //  than the killed unit and play it, ignoring its cost. Then recycle the rest."
+    // The cost is [1] + [C] + exhaust. [C] is one Power of this card's Domain
+    // (CR 135.2.e.6), so Order — it is not "recycle this".
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        return ActivationCost{.exhaust = true, .energy = 1, .recycle_self = true};
+        return ActivationCost{.exhaust = true, .energy = 1, .power = 1,
+                              .power_domain = Domain::Order};
     }
     // Target = the friendly unit to kill.
     TargetRequirements getTargetRequirements() const override {
@@ -29,11 +32,36 @@ public:
                                   .must_be_friendly = true};
     }
 
+    // The callback is re-entered after each answer, and the killed unit is no
+    // longer a legal target by then (the engine filters `targets`), so the
+    // kill is recorded on the chain item: resume_data[kKilledSlot] is
+    // 1 + the killed unit's Might once the kill has happened.
+    static constexpr size_t kKilledSlot = 7;
+
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        GameObjectId victim = targets[0];
-        int killed_might = ctx.state.getObject(victim).current_might;
-        ctx.executor.killObject(victim);
+        auto& ri = ctx.state.chain.resuming;
+        int killed_might = 0;
+        if (ri.has_value() && ri->resume_data.size() > kKilledSlot &&
+            ri->resume_data[kKilledSlot] != 0) {
+            killed_might = ri->resume_data[kKilledSlot] - 1;
+        } else {
+            // "Kill a friendly unit." A unit that left the board in response
+            // is not killed, and then nothing below has a Might to compare
+            // against (CR 359.3.e.12): the ability does nothing more.
+            if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+            const GameObjectId victim = targets[0];
+            {
+                const auto& v = ctx.state.getObject(victim);
+                if (!v.isUnit() || !v.location.has_value()) return;
+                killed_might = v.current_might;
+            }
+            ctx.executor.killObject(victim);
+            if (ctx.state.getObject(victim).location.has_value()) return;   // death replaced
+            if (ri.has_value()) {
+                while (ri->resume_data.size() <= kKilledSlot) ri->resume_data.push_back(0);
+                ri->resume_data[kKilledSlot] = 1 + std::max(0, killed_might);
+            }
+        }
 
         // Look at the top 5 cards of the Main Deck (top = back).
         auto& ps = ctx.state.player(ctx.controller);
@@ -57,22 +85,18 @@ public:
             if (obj.base_might > killed_might + 1) continue;
             eligible.push_back(cid);
         }
-        if (!eligible.empty()) {
-            // "You may" — let the agent pick which to play (pickTarget over the
-            // eligible top-5 units). Picking is optional in spirit; the agent
-            // can decline by the engine offering all eligible — we always play
-            // the chosen one if any eligible exist.
-            GameObjectId picked = pickTarget(ctx, "Baited Hook (play a unit from top 5)",
-                                              eligible);
-            if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7) {
-                return;  // suspended for agent decision
-            }
-            if (picked != kInvalidId && ctx.state.objectExists(picked)) {
-                // Remove from main deck and play ignoring cost.
-                deck::take(ctx.state, picked, deck::Place::Public, knowledge::everyone(), /*slot_public=*/false);
-                ctx.executor.playIgnoringCost(ctx.controller, picked);
-            }
+        // "You may banish a unit from among them ... and play it": the
+        // controller may take none. (A card in a deck is picked, not chosen:
+        // no Deflect, no "when you choose".)
+        const auto picked = selectObject(ctx, "Baited Hook: banish and play a unit from the top 5",
+                                         eligible, kKilledSlot + 1, /*may_decline=*/true);
+        if (!picked.has_value()) return;   // waiting on the agent
+        if (*picked != kInvalidId &&
+            std::find(eligible.begin(), eligible.end(), *picked) != eligible.end()) {
+            // Banish it (out of the deck, counted and announced as a banish),
+            // then play it from there ignoring its cost.
+            ctx.executor.banishObject(*picked);
+            ctx.executor.playIgnoringCost(ctx.controller, *picked);
         }
         // "Then recycle the rest" — the other looked-at cards go to the bottom
         // of the Main Deck (recycle = put on bottom). Move remaining top5 cards
@@ -87,6 +111,10 @@ public:
         for (auto it = to_recycle.rbegin(); it != to_recycle.rend(); ++it) {
             deck::putOnBottom(ctx.state, ctx.controller, *it, deck::Place::Held, looker);
         }
+        // These cards were Recycled (CR 437.1): announce it once, the way
+        // EffectExecutor::recycleCards does ("When you recycle ...").
+        if (!to_recycle.empty())
+            ctx.events.emit(ObjectStateChangedEvent{to_recycle.front(), "recycled_main"});
         ctx.events.logTrace("BAITED HOOK: kill friendly, dig top 5, recycle rest");
     }
 private:

@@ -38,6 +38,7 @@ private:
         d.collector_number = 1;
         d.artist = R"RB(Fish Art Studio)RB";
         d.card_type = CardType::Battlefield;
+        d.super_type = SuperType::Token;
         d.ability_text = R"RB((You can't start the game with a token battlefield.)
 Units can move here from anywhere.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e44f173629322a4e0c32d3f8902c294d4482ef42-1039x744.png?accountingTag=RB)RB";

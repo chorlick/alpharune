@@ -16,11 +16,9 @@ class IronBallista : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // "This enters exhausted."
-    void onPlay(CardContext& ctx) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        ctx.executor.exhaustObject(ctx.source);
-    }
+    // "This enters exhausted." The engine sets a gear's ready state as the
+    // permanent resolves (an exhaust in onPlay would be overwritten there).
+    bool entersExhausted() const override { return true; }
 
     // "[E]: Deal 2 to a unit at a battlefield."
     std::vector<ActivatedAbility> activatedAbilities() const override {

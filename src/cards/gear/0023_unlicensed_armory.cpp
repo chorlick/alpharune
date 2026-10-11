@@ -18,9 +18,13 @@ public:
 
     // "Discard 1, [E]: Choose a friendly unit. The next time it would die this
     //  turn, you may pay [C] to heal it, exhaust it, and recall it instead."
-    // Uses the engine's one-shot death-replacement-recall flag (CR / Tactical
-    // Retreat 737). NOTE: the optional "pay [C]" at death time is not modeled
-    // by the flag — the recall happens automatically (documented approximation).
+    // The ability marks the unit for this turn; the replacement itself is this
+    // card's applyReplacement, which asks the "may" and takes the [C] (one
+    // Power of this card's Domain, Fury — CR 135.2.e.6) at the moment of death.
+    // APPROXIMATION: the engine consults replacement effects of cards in play,
+    // so the unit is only saved while an Unlicensed Armory is still on its
+    // controller's board.
+    static constexpr const char* kMarkedTurn = "__unlicensed_armory_turn";
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {{
             .cost = {.exhaust = true, .discard = true, .discard_count = 1},
@@ -48,9 +52,41 @@ public:
         else picked = pickTarget(ctx, "Unlicensed Armory: choose a friendly unit",
                                  enumerateLegalTargets(ctx.state, ctx.controller, 0));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        ctx.state.getObject(picked).death_replacement_recall_pending = true;
-        ctx.events.logTrace("UNLICENSED ARMORY: " + ctx.state.getObject(picked).name +
-                            " — next death this turn becomes heal/exhaust/recall");
+        auto& unit = ctx.state.getObject(picked);
+        if (!unit.isUnit() || !unit.location.has_value()) return;
+        unit.card_counters[kMarkedTurn] = ctx.state.turn.turn_number + 1;
+        ctx.events.logTrace("UNLICENSED ARMORY: " + unit.name +
+                            " — may pay [C] to heal/exhaust/recall it the next time it "
+                            "would die this turn");
+    }
+    bool hasReplacementEffect() const override { return true; }
+    bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
+        if (!ctx.state.objectExists(dying_unit)) return false;
+        auto& unit = ctx.state.getObject(dying_unit);
+        auto mark = unit.card_counters.find(kMarkedTurn);
+        if (mark == unit.card_counters.end()) return false;
+        const bool this_turn = mark->second == ctx.state.turn.turn_number + 1;
+        // "The next time it would die": this death uses the effect up, whether
+        // or not the [C] is paid.
+        unit.card_counters.erase(mark);
+        if (!this_turn || !unit.isUnit() || !unit.location.has_value()) return false;
+        const PlayerId payer = ctx.controller;
+        if (!payableOnePower(ctx.state, payer, Domain::Fury)) return false;
+        if (!ctx.executor.confirmNow(payer, "Unlicensed Armory: pay [C] to heal, exhaust "
+                                            "and recall " + unit.name + "?"))
+            return false;
+        if (!payOnePower(ctx, payer, Domain::Fury)) return false;
+        ctx.events.logTrace("UNLICENSED ARMORY: paid [C] -> " + unit.name +
+                            " heals/exhausts/recalls instead of dying");
+        ctx.executor.healObject(dying_unit);
+        ctx.executor.exhaustObject(dying_unit);
+        unit.combat_designation = CombatDesignation::None;
+        // A recall is not a move (CR 458): it must not count toward "moved N
+        // times this turn", which EffectExecutor::moveToBase bumps.
+        const int moves = unit.moves_this_turn;
+        ctx.executor.moveToBase(dying_unit);
+        unit.moves_this_turn = moves;
+        return true;
     }
 private:
     const CardDef def_ = [] {

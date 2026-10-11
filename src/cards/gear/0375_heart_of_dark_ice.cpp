@@ -23,6 +23,13 @@ public:
             .needs_activation_time_target = true,
         }};
     }
+    // "a unit": any unit on the board. Without this the ability's declared
+    // target has no legal list and the ability is never offered.
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller,
+        int /*ability_index*/) const override {
+        return chooseableUnits(state, controller, [](const GameObject&) { return true; });
+    }
     void onActivate(CardContext& ctx, int /*ability_idx*/,
                     const std::vector<GameObjectId>& targets) override {
         GameObjectId picked = kInvalidId;
@@ -33,6 +40,7 @@ public:
             picked = pickTarget(ctx, "Heart of Dark Ice", legal);
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (!ctx.state.getObject(picked).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(picked, 3);
         ctx.events.logTrace("HEART OF DARK ICE: +3M to " +
                              ctx.state.getObject(picked).name);

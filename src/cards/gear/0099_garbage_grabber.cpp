@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,7 +17,10 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "Recycle 3 from your trash, [1], [E]: Draw 1." Energy + exhaust are the
-    // engine-paid ActivationCost; the recycle-3 is paid inside onActivate.
+    // engine-paid ActivationCost. "Recycle 3 from your trash" is a cost too:
+    // it is paid as the ability is finalized (kFinalizeActivate + costDueNow),
+    // with the three cards its controller picks, before anyone can respond.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
         return {.exhaust = true, .energy = 1};
@@ -30,21 +34,37 @@ public:
     }
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ps = ctx.state.player(ctx.controller);
-        std::vector<GameObjectId> to_recycle;
-        for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            to_recycle.push_back(cid);
-            if (to_recycle.size() >= 3) break;
+        if (costDueNow(ctx)) {
+            auto& ps = ctx.state.player(ctx.controller);
+            std::vector<GameObjectId> in_trash;
+            for (auto cid : ps.trash)
+                if (ctx.state.objectExists(cid)) in_trash.push_back(cid);
+            if (in_trash.size() < 3) return;  // cost cannot be paid
+            std::vector<GameObjectId> to_recycle;
+            if (in_trash.size() == 3) {
+                to_recycle = in_trash;
+            } else {
+                for (size_t i = 0; i < 3; ++i) {
+                    std::vector<GameObjectId> rest;
+                    for (auto cid : in_trash)
+                        if (std::find(to_recycle.begin(), to_recycle.end(), cid) == to_recycle.end())
+                            rest.push_back(cid);
+                    const auto pick = selectObject(
+                        ctx, "Garbage Grabber: recycle from your trash (" +
+                             std::to_string(i + 1) + " of 3)", rest, 7 + 2 * i);
+                    if (!pick.has_value() || *pick == kInvalidId) return;   // waiting on the agent
+                    if (std::find(rest.begin(), rest.end(), *pick) == rest.end()) return;
+                    to_recycle.push_back(*pick);
+                }
+            }
+            for (auto cid : to_recycle)
+                ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), cid), ps.trash.end());
+            ctx.executor.recycleCards(ctx.controller, to_recycle);
+            ctx.events.logTrace("GARBAGE GRABBER: recycled 3 from trash");
         }
-        if (to_recycle.size() < 3) return;  // cost cannot be paid
-        for (auto cid : to_recycle) {
-            auto it = std::find(ps.trash.begin(), ps.trash.end(), cid);
-            if (it != ps.trash.end()) ps.trash.erase(it);
-        }
-        ctx.executor.recycleCards(ctx.controller, to_recycle);
+        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("GARBAGE GRABBER: recycled 3 from trash -> draw 1");
+        ctx.events.logTrace("GARBAGE GRABBER: draw 1");
     }
 private:
     const CardDef def_ = [] {

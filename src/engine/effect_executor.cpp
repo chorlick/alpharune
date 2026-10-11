@@ -247,6 +247,30 @@ void EffectExecutor::killObject(GameObjectId target) {
             return;
         }
 
+        // "If a unit here would die ..." on the battlefield the unit is at
+        // (Altar of Blood): the battlefield's card is asked first, for the
+        // dying unit's controller, as GameEngine::killUnit asks it.
+        if (card_registry_) {
+            if (const auto dying_bf = obj.battlefieldId()) {
+                GameObjectId bf_card_id = kInvalidId;
+                for (const auto& bf : state_.battlefields)
+                    if (bf.id == *dying_bf) bf_card_id = bf.card_object_id;
+                if (state_.objectExists(bf_card_id)) {
+                    const CardDefId bf_def = state_.getObject(bf_card_id).card_def_id;
+                    Card* bf_card = bf_def != kInvalidId ? card_registry_->get(bf_def) : nullptr;
+                    if (bf_card && bf_card->hasReplacementEffect()) {
+                        CardContext rctx{state_, events_, *this, controller, bf_card_id};
+                        if (bf_card->applyReplacement(rctx, target)) {
+                            events_.logDebug(std::string("REPLACEMENT: ") +
+                                             state_.getObject(bf_card_id).name + " prevents " +
+                                             state_.getObject(target).name + " from dying");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         // Card-defined death replacements (The Boss, Zhonya's Hourglass,
         // Guardian Angel, Soraka, ...). Effect kills consult them exactly as
         // combat deaths do (GameEngine::killUnit): a kill is a kill.
@@ -1552,6 +1576,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
     if (agent_query_) {
         // Offer choice: recycle each card or keep it
         GameObjectId recycled = kInvalidId;
+        std::vector<GameObjectId> kept;   // in the order they were on the deck, top first
         for (auto card_id : peeked) {
             std::vector<Intent> choices;
             // Choice 1: recycle (put on bottom)
@@ -1573,10 +1598,34 @@ void EffectExecutor::predict(PlayerId player, int count) {
                 events_.logTrace("PREDICT: recycled " + state_.getObject(card_id).name);
                 recycled = card_id;
             } else {
-                // Keep: put back on top
-                deck::putOnTop(state_, player, card_id, deck::Place::Held, looker);
+                kept.push_back(card_id);
             }
         }
+        // The cards that stay go back "in any order": with two or more the
+        // player names the one that ends up on top, then the next one down.
+        // (Taking the first option each time puts them back as they were.)
+        std::vector<GameObjectId> order;   // order[0] = top of the deck
+        while (kept.size() > 1) {
+            std::vector<Intent> choices;
+            for (auto kid : kept) {
+                Intent c;
+                c.type = IntentType::MakeChoice;
+                c.player = player;
+                c.chosen_objects = {kid};
+                c.choice_label = "Predict: put on top";
+                choices.push_back(std::move(c));
+            }
+            auto chosen = agent_query_(player, choices);
+            GameObjectId top = kept.front();
+            if (!chosen.chosen_objects.empty() &&
+                std::find(kept.begin(), kept.end(), chosen.chosen_objects.front()) != kept.end())
+                top = chosen.chosen_objects.front();
+            order.push_back(top);
+            kept.erase(std::remove(kept.begin(), kept.end(), top), kept.end());
+        }
+        if (!kept.empty()) order.push_back(kept.front());
+        for (auto it = order.rbegin(); it != order.rend(); ++it)
+            deck::putOnTop(state_, player, *it, deck::Place::Held, looker);
         // CR 437.1: the cards a Predict puts on the bottom are Recycled, so
         // "When you recycle one or more cards to your Main Deck" sees them —
         // once for the whole Predict, as recycleCards announces it.

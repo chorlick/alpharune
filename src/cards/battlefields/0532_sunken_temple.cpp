@@ -17,23 +17,20 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
+    // "When you conquer here with one or more [Mighty] units": part of the
+    // trigger condition, so it is checked when the conquer happens and not
+    // again as the ability resolves (losing the Mighty unit in response does
+    // not undo an ability that already triggered and was paid for).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        const auto my_bf = battlefieldOfCard(state, source);
+        if (!my_bf) return false;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == controller &&
+                obj.battlefieldId() == my_bf && isMighty(obj)) return true;
+        return false;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // For a battlefield card the trigger fires from the BF card object;
-        // map ctx.source -> its BattlefieldId via the battlefields list.
-        std::optional<BattlefieldId> my_bf;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == ctx.source) { my_bf = bf.id; break; }
-        }
-        if (!my_bf) return;
-        // Require one or more friendly Mighty (5+ M) units at this battlefield.
-        bool has_mighty = false;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit()) continue;
-            if (obj.controller != ctx.controller) continue;
-            if (obj.battlefieldId() != my_bf) continue;
-            if (obj.current_might >= 5) { has_mighty = true; break; }
-        }
-        if (!has_mighty) return;
         // CR 445.2 / 164.2.a: the [1] may come from floating Energy or from
         // exhausting a ready rune (payableEnergy / payEnergy).
         auto still_legal = [&]() {

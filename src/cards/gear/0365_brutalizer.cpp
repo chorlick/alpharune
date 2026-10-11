@@ -18,27 +18,35 @@ public:
 
     bool hasEquipAbility() const override { return true; }
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        bool ok = standardEquip(ctx, ctx.source, unit, /*energy=*/0, Domain::Calm);
-        if (ok && ctx.state.objectExists(ctx.source)) {
-            ctx.state.getObject(ctx.source).card_counters["__brutalizer_attach_turn"] =
-                ctx.state.turn.turn_number;
-        }
-        return ok;
+        return standardEquip(ctx, ctx.source, unit, /*energy=*/0, Domain::Calm);
     }
 
+    // "If this was attached to me this turn, I have an additional +2 [M]."
+    // However it got attached — Equip, or for free by another card (Rell,
+    // Jax, Forge of the Fluft) — so the attachment is noticed here, in the
+    // aura pass that follows it, rather than stamped by onEquip: each
+    // Brutalizer remembers its bearer and the turn that bearer changed.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        static const char* const kBearer = "__brutalizer_bearer";
+        static const char* const kTurn = "__brutalizer_attach_turn";
+        const int this_turn = state.turn.turn_number + 1;
         for (auto& [gid, gear] : state.objects) {
-            if (gear.card_def_id != cardDefId()) continue;
-            if (gear.controller != controller || !gear.attached_to.has_value()) continue;
-            auto it = gear.card_counters.find("__brutalizer_attach_turn");
-            if (it == gear.card_counters.end()) continue;
-            if (it->second != state.turn.turn_number) continue;  // not attached this turn
-            GameObjectId unit_id = *gear.attached_to;
+            if (gear.card_def_id != cardDefId() || gear.controller != controller) continue;
+            if (!gear.location.has_value() || !gear.attached_to.has_value()) {
+                gear.card_counters.erase(kBearer);
+                gear.card_counters.erase(kTurn);
+                continue;
+            }
+            const GameObjectId unit_id = *gear.attached_to;
+            if (gear.card_counters[kBearer] != static_cast<int>(unit_id) + 1) {
+                gear.card_counters[kBearer] = static_cast<int>(unit_id) + 1;
+                gear.card_counters[kTurn] = this_turn;
+            }
+            if (gear.card_counters[kTurn] != this_turn) continue;  // not attached this turn
             if (!state.objectExists(unit_id)) continue;
-            GameObject::AuraEffect ae;
-            ae.source = gid;
-            ae.might_bonus = 2;
-            state.getObject(unit_id).aura_effects.push_back(ae);
+            auto& unit = state.getObject(unit_id);
+            if (!unit.isUnit() || !unit.location.has_value()) continue;
+            auraMight(unit, gid, 2);
         }
     }
 private:

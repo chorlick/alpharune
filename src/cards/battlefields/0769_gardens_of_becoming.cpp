@@ -32,20 +32,21 @@ public:
         ctx.events.logTrace("GARDENS OF BECOMING: unit exhausted -> +1 XP");
     }
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
-        // Find this Gardens' battlefield, then grant the ability to units there.
-        std::optional<BattlefieldId> my_bf;
+        // Grant the ability to the units at every Gardens. The hook runs once
+        // per battlefield slot holding this card (twice when both players
+        // brought it), so a unit that already has this grant is skipped.
         for (const auto& b : state.battlefields) {
             if (!state.objectExists(b.card_object_id)) continue;
-            if (state.getObject(b.card_object_id).card_def_id == cardDefId()) {
-                my_bf = b.id; break;
+            if (state.getObject(b.card_object_id).card_def_id != cardDefId()) continue;
+            for (auto& [id, obj] : state.objects) {
+                if (!obj.isUnit()) continue;
+                auto ubf = obj.battlefieldId();
+                if (!ubf || *ubf != b.id) continue;
+                bool has = false;
+                for (const auto& g : obj.granted_abilities)
+                    if (g.source_def_id == cardDefId() && g.ability_index == 0) has = true;
+                if (!has) obj.granted_abilities.push_back({cardDefId(), 0});
             }
-        }
-        if (!my_bf) return;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit()) continue;
-            auto ubf = obj.battlefieldId();
-            if (ubf && *ubf == *my_bf)
-                obj.granted_abilities.push_back({cardDefId(), 0});
         }
     }
 private:

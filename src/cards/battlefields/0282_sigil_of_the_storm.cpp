@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -15,19 +16,18 @@ class SigilOfTheStorm : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you conquer here, you must recycle one of your runes.
-    //  (This doesn't choose anything.)" — mandatory, no choice. Recycle one
-    //  rune the player controls.
+    //  (This doesn't choose anything.)" — mandatory, and not a choice in the
+    //  rules sense, but the player still decides WHICH rune goes.
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        GameObjectId rune = kInvalidId;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.isRune() && obj.controller == ctx.controller && obj.location.has_value()) {
-                rune = id;
-                break;
-            }
-        }
-        if (rune == kInvalidId) return;
-        ctx.executor.recycleCards(ctx.controller, {rune});
+        std::vector<GameObjectId> runes;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isRune() && obj.controller == ctx.controller && obj.location.has_value())
+                runes.push_back(id);
+        const auto rune = selectObject(ctx, "Sigil of the Storm: recycle which rune", runes);
+        if (!rune.has_value() || *rune == kInvalidId) return;   // waiting / no rune
+        if (std::find(runes.begin(), runes.end(), *rune) == runes.end()) return;
+        ctx.executor.recycleCards(ctx.controller, {*rune});
         ctx.events.logTrace("SIGIL OF THE STORM: conquer -> recycle one rune");
     }
 private:

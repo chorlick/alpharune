@@ -24,9 +24,11 @@ public:
                 if (!u.isUnit()) continue;
                 auto ubf = u.battlefieldId();
                 if (!ubf || *ubf != bf.id) continue;
-                // Printed or "this turn" Tank. (Tank granted by another aura in
-                // the same pass is order-dependent and not seen here.)
-                if (!u.keywords.has(Keyword::Tank)) continue;
+                // Printed or "this turn" Tank, or Tank granted in this pass by
+                // an Equipment (Doran's Shield) or another card's hook.
+                if (!hasKeywordInAuraPass(u, Keyword::Tank)) continue;
+                // Once per Temple (the hook runs once per slot holding this card).
+                if (hasAuraFrom(u, bf.card_object_id)) continue;
                 auraMight(u, bf.card_object_id, 1);
             }
         }

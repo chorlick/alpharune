@@ -14,19 +14,34 @@ namespace {
 class SunDisc : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
-
     // "[E]: [Legion] — The next unit you play this turn enters ready."
     // The activated ability ARMS a one-shot; the WhenYouPlayAUnit trigger
-    // readies the just-played unit and disarms (mirrors Nami, Headstrong).
+    // readies the unit that was played (its subject) and disarms.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
-    bool requiresLegion() const override { return true; }
+    // Remembered so [Legion] can tell whether Sun Disc itself is one of the
+    // cards played this turn.
+    void onPlay(CardContext& ctx) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        ctx.state.getObject(ctx.source).card_counters["__sundisc_played_turn"] =
+            ctx.state.turn.turn_number + 1;
+    }
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        ctx.state.getObject(ctx.source).card_counters["__sundisc_arm_turn"] =
-            ctx.state.turn.turn_number;
+        auto& self = ctx.state.getObject(ctx.source);
+        // [Legion] (CR 812.1.c): the effect happens only if a card OTHER than
+        // this one was played this turn — so Sun Disc does not count itself
+        // on the turn it was played.
+        int others = ctx.state.player(ctx.controller).cards_played_this_turn;
+        if (auto it = self.card_counters.find("__sundisc_played_turn");
+            it != self.card_counters.end() && it->second == ctx.state.turn.turn_number + 1)
+            --others;
+        if (others < 1) {
+            ctx.events.logTrace("SUN DISC: [Legion] not met — no effect");
+            return;
+        }
+        self.card_counters["__sundisc_arm_turn"] = ctx.state.turn.turn_number;
         ctx.events.logTrace("SUN DISC: armed next-unit-enters-ready for this turn");
     }
 
@@ -37,21 +52,16 @@ public:
         auto it = self.card_counters.find("__sundisc_arm_turn");
         if (it == self.card_counters.end()) return;
         if (it->second != ctx.state.turn.turn_number) return;  // stale arm
-        // Ready the just-played unit. The trigger carries no event object,
-        // so pick among freshly-played (exhausted) friendly units.
-        std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || !obj.is_exhausted) continue;
-            legal.push_back(id);
-        }
-        if (legal.empty()) return;
-        GameObjectId pick = pickTarget(ctx, "Sun Disc: ready the played unit", legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (pick == kInvalidId || !ctx.state.objectExists(pick)) return;
-        self.card_counters.erase("__sundisc_arm_turn");  // one-shot
-        ctx.executor.readyObject(pick);
+        // "The next unit you play": this unit uses the effect up, whether or
+        // not it needed readying (it may have entered ready by itself).
+        self.card_counters.erase(it);
+        const GameObjectId played = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (played == kInvalidId || !ctx.state.objectExists(played)) return;
+        const auto& unit = ctx.state.getObject(played);
+        if (!unit.isUnit() || !unit.location.has_value() || unit.controller != ctx.controller)
+            return;
+        ctx.executor.readyObject(played);
         ctx.events.logTrace("SUN DISC: next unit entered ready");
     }
 private:

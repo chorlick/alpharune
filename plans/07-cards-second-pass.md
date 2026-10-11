@@ -26,6 +26,10 @@ comment at `game_engine.cpp:1193` ("`targets` carries the triggering event's
 subject") describes something nothing implements.
 
 - [ ] **7.1 26 cards whose triggered effect never happens** [confirmed by reading every file]
+  - c0: 278 Navori Fighting Pit — FIXED: `pickTarget` over the chooseable units here + `kFinalizeTrigger`; `getTargetRequirements()` removed; test: C0Test.NavoriFightingPit_BuffsTheUnitHereThePlayerPicks
+  - c0: 535 Veiled Temple — FIXED: `confirmOptional` (the may), `pickTarget` (a friendly gear), two-mode `pickMode` (detach an attached Equipment or not), all at finalization; test: C0Test.VeiledTemple_ReadiesAGearAndMayDetachIt
+  - c0: 763 Amateur Recital — FIXED: `confirmOptional` + `pickTarget` over every chooseable unit at a battlefield (not one at a battlefield units can't leave for base) + `kFinalizeTrigger`; test: C0Test.AmateurRecital_MovesTheChosenUnitToItsBase
+  - c0: 212 Forge of the Future — FIXED: on play it plays a 1 [M] Recruit token at base (no kill); "Kill this: Recycle up to 4 cards from trashes" is an activated ability whose kill is paid at finalization and whose cards are picked one at a time with a "None" option; test: C0Test.ForgeOfTheFuture_PlaysARecruitWhenPlayed, .ForgeOfTheFuture_KillThisRecyclesUpToFourFromTrashes
 
 | File | Line | Trigger | What never happens |
 |---|---|---|---|
@@ -60,6 +64,7 @@ subject") describes something nothing implements.
   - `gear/0063_spirit_s_refuge.cpp:18` — the on-play buff never happens; the passive Deflect aura works.
   - `gear/0695_blast_cone.cpp:45-50` — moves `find_enemy()`, the first enemy in map order, with no choice; can be a unit already at base.
   - `legends/0744_pridestalker.cpp:23-32` — assumes the played unit arrives in `targets[0]`; the fallback buffs the first friendly unit at a battlefield in hash order, or nothing.
+  - c0: 63 Spirit's Refuge — FIXED: `pickTarget` over friendly units + `kFinalizeTrigger`; test: C0Test.SpiritsRefuge_BuffsAChosenUnitWhenPlayed
 - [x] **7.3 Tests never exercise this path** [confirmed] — FIXED: `card_test_fixture.h` has a real-engine entry point (`withEngine`, `playThroughEngine`, `fireTriggerThroughEngine`, `resolveThroughEngine`, `EnginePathAgent`) that runs a `GameEngine` on the fixture state (TriggerManager → chain → finalize → resolve); `fireTriggerAs` lost its `targets` parameter and its 6 hand-fed callers (Blast Cone ×3, Nami, Morgana ×2) were migrated and pass; test: `EnginePathTest.*` (9 tests), `Plan07Item71/DISABLED_TargetedTriggerTest` (one row per 7.1 card, red until the card is fixed: enable a row by fixing its card)
   - No test plays any BROKEN card through the real engine. `card_test_fixture.h:451-459` (`fireTriggerAs(..., {target})`) calls `onTrigger` with hand-fed targets, a path the engine never produces. Blast Cone's tests (`tests/cards/test_audit_fixes_6.cpp:577,590,613`) rely on it.
   - Fix direction: make the fixture queue the trigger through `TriggerManager` / the chain, or drop the `targets` argument from the helper.
@@ -102,6 +107,7 @@ subject") describes something nothing implements.
 ## C. Costs paid at resolution instead of finalization (replaces 03 item 3.12)
 
 - [ ] **7.5 Complete list — 14 cards** [confirmed]
+  - c0: 277 Monastery of Hirana, 765 Dusk Rose Lab — FIXED: the buff is spent / the unit is killed under `costDueNow` at finalization, from the unit the player picks (`selectObject`); test: C0Test.MonasteryOfHirana_TheBuffIsSpentBeforeAnyoneCanRespond, .MonasteryOfHirana_SpendsTheBuffThePlayerPicks, .DuskRoseLab_KillsThePickedUnitAsTheCost
 
 | File:line of late payment | Cost | Payability tested in `still_legal`? |
 |---|---|---|
@@ -130,6 +136,7 @@ subject") describes something nothing implements.
 - [ ] **7.8 Cost paid, effect denied** [confirmed]
   - `battlefields/0532_sunken_temple.cpp:36` — `if (!has_mighty) return;` runs at resolution before the `costAlreadyPaid` guard; pay [1], lose the Mighty unit in response, no draw.
   - `legends/0295_relentless_storm.cpp:32` — legend exhausted at finalization, no rune channeled.
+  - c0: 532 Sunken Temple — FIXED: "with one or more [Mighty] units" is the card's `triggerCondition`, checked when the conquer happens and not again at resolution; test: C0Test.SunkenTemple_NeedsAMightyUnitToTriggerNotToResolve
 
 ## D. Card does not match its text
 
@@ -137,6 +144,7 @@ subject") describes something nothing implements.
 - [ ] **7.10** `units/0741_rift_herald.cpp:80` — Deathknell plays a hand unit without erasing it from `ps.hand`; `playIgnoringCost` (`effect_executor.cpp:1686`) never touches the source zone. The unit is on board and in hand. Ava Achiever 107:61 and Jayce 406:67 erase first. [confirmed]
 - [ ] **7.11** `spells/0892_twilight_step.cpp:24,28-37`, `spells/0935_shadow_dash.cpp:55,63-71` — set `needsPlayTimeTarget()` so the engine picks a target at play, then hand-roll a second choice at resolution and ignore the first. [confirmed]
 - [ ] **7.12** `gear/0021_sun_disc.cpp:42-50`, `units/0614_nami_headstrong.cpp:74-83` — "next unit you play" readies any exhausted friendly unit; the trigger carries no subject (`trigger_manager.cpp:352`). [confirmed]
+  - c0: 21 Sun Disc — FIXED: `WhenYouPlayAUnit` now carries the played unit as its subject (`shared:` 776a84b; Nami 614 can use the same) and Sun Disc readies exactly that unit, with no choice; test: C0Test.SunDisc_NeedsAnotherCardPlayedThisTurn, .SunDisc_ReadiesThePlayedUnitAndIsUsedUpByIt
 - [ ] **7.13** `legends/0295_relentless_storm.cpp:26-32` — fires on any unit play while any Mighty friendly unit is on board. [confirmed]
 - [ ] **7.14** `legends/0753_green_father.cpp:23-33,46` — replaces the first controlled non-Brush battlefield, not "that battlefield"; recomputed at resolution. [confirmed]
 - [ ] **7.15** `units/0226_spectral_matron.cpp:22-45` vs `units/0486_glasc_mixologist.cpp:30-31` — same printed restriction ("no more than [3] and no more than [A]") implemented two different ways, neither matching. Glasc ignores Power cost; Matron compares Energy against available power. [confirmed they disagree]
@@ -161,6 +169,7 @@ subject") describes something nothing implements.
   - `gear/0698_scryer_s_bloom.cpp:61-66` — "Kill this" cost is paid at resolution (`ActivationCost` has no kill-self field).
   - `spells/0457_hard_bargain.cpp:43-55,108-121` — ability to pay [2] judged by ready runes only; floating energy ignored.
   - `spells/0450_temptation.cpp:50-62` — second pick is only a destination anchor but is charged Deflect.
+  - c0: 774 Valley of Idols — FIXED: "it" is `triggering_subject`; no token exclusion, no id guess; test: C0Test.ValleyOfIdols_BuffsTheUnitThatWasPlayed, .ValleyOfIdols_ARealPlayHandsTheTriggerItsUnit
 
 ## E. Source or target no longer on board
 
@@ -193,6 +202,7 @@ in those executor functions would close most of this section.
 - [ ] **7.33 `spells/0071_party_favors.cpp:29-32,40` — options differ only in `ability_index`** [confirmed]
   - Both encode to MakeChoice slot 0 (`action_vocab.cpp:173-190`), so under OpenSpiel the opponent can never choose Runes. Belongs with 01 item 1.12.
 - [ ] **7.34 Dead opt-in bit** — `battlefields/0522_forge_of_the_fluft.cpp:18,28`: `needs_activation_time_target = true` routes away from `runFinalizePass` (`game_engine.cpp:1217-1221`), so `kFinalizeActivate` does nothing. [confirmed]
+  - c0: 522 Forge of the Fluft — FIXED: `needs_activation_time_target` removed, so `kFinalizeActivate` runs the finalize pass and the Equipment and unit are picked there; test: C0Test.ForgeOfTheFluft_MovesAnAttachedEquipment
 - [ ] **7.35 Low severity**
   - `units/0397_pickpocket.cpp:30` — `cardDB().get(obj.card_def_id)` with no token guard; throws for a gear token without a def (Noxian Demolitionist 867:32 guards it).
   - `gear/0152_mistfall.cpp:28-32`, `units/0343_draven_vanquisher.cpp:38-46`, `units/0037_immortal_phoenix.cpp:44-48,56-61` — affordability ignores floating power/energy or is not tested; Phoenix pays [1] by setting `is_exhausted` directly.
@@ -202,6 +212,8 @@ in those executor functions would close most of this section.
   - `units/0878_corrupted_dragon.cpp:68-78` — one resume iteration per unit moved; more than 14 eligible units hits the `kMaxResumeIterations` assert.
   - `units/0491`, `legends/0553`, `gear/0710` — card erased from its zone and the `playPayingCost` return ignored; no current failing path found.
   - `spells/0258_zenith_blade.cpp` — `stunUnitBy` runs before `confirmOptional` unguarded; fixing 3.1 will make the stun fire twice unless this is guarded first.
+  - c0: 152 Mistfall — FIXED: offered only when [O] is payable (floating Power or a Body rune, `payableOnePower`) and Mistfall is ready; exhausts through the executor; test: C0Test.Mistfall_NotOfferedWithoutThePowerAndPaysFromThePool
+  - c0: 72 Solari Shrine — FIXED for "stunned": `WhenAnEnemyUnitDies` now carries the dead unit as its subject (`shared:` 776a84b) and `triggerCondition` requires it to be stunned. Still an approximation, documented in the card: who killed it is not tracked; test: C0Test.SolariShrine_OnlyAStunnedEnemyUnitsDeathTriggers
 
 ## G. Loop mutation and AoE
 

@@ -16,20 +16,24 @@ class RecurveBow : public SimpleEquipGear {
 public:
     RecurveBow() : SimpleEquipGear(Domain::Fury) {}
     const CardDef& def() const override { return def_; }
+    // "When I attack or defend, deal 2 to an enemy unit here." Its controller
+    // picks the enemy unit as the ability is finalized (CR 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIAttackOrDefend; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
-        // Deal 2 to an enemy unit here
-        auto bf = ctx.state.getObject(unit).battlefieldId();
-        if (!bf) return;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            auto obf = obj.battlefieldId();
-            if (obf && *obf == *bf) {
-                ctx.executor.dealDamage(id, 2, ctx.source);
-                break;
-            }
+                            const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> enemies;
+        if (ctx.state.objectExists(unit)) {
+            if (const auto bf = ctx.state.getObject(unit).battlefieldId())
+                enemies = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                    return o.controller != ctx.controller && o.battlefieldId() == bf;
+                });
         }
+        const GameObjectId t = pickTarget(ctx, "Recurve Bow: deal 2 to an enemy unit here",
+                                          enemies);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.dealDamage(t, 2, ctx.source);
     }
 private:
     const CardDef def_ = [] {

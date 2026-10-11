@@ -44,22 +44,23 @@ public:
             if (bf.card_object_id == ctx.source)
                 mine = bf.controller.has_value() && *bf.controller == ctx.controller;
         if (!mine) return;
+        // "kill a unit you control here" is the cost: it is paid as the
+        // ability is finalized (CR 383.3), with a unit the controller picks.
         auto still_legal = [&]() { return !unitsHere(ctx).empty(); };
+        if (!costAlreadyPaid(ctx) && !still_legal()) return;
         int conf = confirmOptional(ctx,
             "Dusk Rose Lab: kill a unit here to draw 1?", still_legal);
-        if (conf == -1) return;  // waiting for agent
-        if (conf < 1) return;    // declined / no units here
-
-        auto units = unitsHere(ctx);
-        if (units.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "Dusk Rose Lab (unit to kill)", units);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
+        if (conf < 1) return;    // waiting for the agent, declined, or no unit here
+        if (costDueNow(ctx)) {
+            const auto picked = selectObject(ctx, "Dusk Rose Lab (unit to kill)", unitsHere(ctx));
+            if (!picked.has_value() || *picked == kInvalidId) return;   // waiting / none
+            const auto here = unitsHere(ctx);
+            if (std::find(here.begin(), here.end(), *picked) == here.end()) return;
+            ctx.executor.killObject(*picked);
+            // A death that was replaced is not a kill: the cost was not paid.
+            if (ctx.state.getObject(*picked).location.has_value()) return;
         }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        ctx.executor.killObject(picked);
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.events.logTrace("DUSK ROSE LAB: killed a unit here -> draw 1");
     }

@@ -25,18 +25,28 @@ public:
         GameObjectId subject = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         GameObjectId self = ctx.source;
+        auto subject_on_board = [&]() {
+            if (subject == kInvalidId || !ctx.state.objectExists(subject)) return false;
+            const auto& u = ctx.state.getObject(subject);
+            return u.isUnit() && u.location.has_value();
+        };
+        // Offered only when the whole cost can be paid: this ready to exhaust,
+        // and an [O] from floating Power or a Body rune.
         auto still_legal = [&]() {
             return ctx.state.objectExists(self) &&
+                   ctx.state.getObject(self).location.has_value() &&
                    !ctx.state.getObject(self).is_exhausted &&
-                   subject != kInvalidId && ctx.state.objectExists(subject);
+                   payableOnePower(ctx.state, ctx.controller, Domain::Body) &&
+                   subject_on_board();
         };
         if (!costAlreadyPaid(ctx) && !still_legal()) return;
         int conf = confirmOptional(ctx,
             "Mistfall: pay [O] + exhaust to ready the buffed unit?", still_legal);
         if (conf < 1) return;
         if (costDueNow(ctx) && !payOnePower(ctx, ctx.controller, Domain::Body)) return;  // [O]
-        if (costDueNow(ctx)) ctx.state.getObject(self).is_exhausted = true;                // exhaust this
+        if (costDueNow(ctx)) ctx.executor.exhaustObject(self);                             // exhaust this
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (!subject_on_board()) return;      // it left the board in response
         ctx.executor.readyObject(subject);
         ctx.events.logTrace("MISTFALL: paid [O]+exhaust -> ready buffed unit");
     }

@@ -22,34 +22,56 @@ public:
     // card's ability (index 0) to the controller's legend; activation routes
     // back here to onActivate, which attaches a chosen Equipment to a chosen
     // unit (both controller-owned). Exhausts the bearer (the legend).
+    // The Equipment and the unit are picked as the ability is finalized
+    // (kFinalizeActivate): the ability must NOT set
+    // needs_activation_time_target, which hands target choice to the engine
+    // and skips the finalize pass.
     std::vector<ActivatedAbility> activatedAbilities() const override {
         ActivatedAbility a;
         a.cost.exhaust = true;
-        a.needs_activation_time_target = true;  // pick equipment + unit at resolve
         return {a};
+    }
+    // Equipment `player` controls, attached or not: attaching an attached
+    // Equipment moves it (CR 435.1.f, attachFree detaches it first).
+    static std::vector<GameObjectId> equipmentOf(const GameState& state, PlayerId player) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.controller == player && obj.location.has_value() && isEquipment(obj))
+                out.push_back(id);
+        return out;
+    }
+    // Units `player` controls that `equipment` is not already attached to.
+    static std::vector<GameObjectId> bearersFor(const GameState& state, PlayerId player,
+                                                GameObjectId equipment) {
+        std::vector<GameObjectId> out;
+        if (!state.objectExists(equipment)) return out;
+        const auto& eq = state.getObject(equipment);
+        for (const auto& [id, obj] : state.objects) {
+            if (!obj.isUnit() || obj.controller != player || !obj.location.has_value()) continue;
+            if (eq.attached_to.has_value() && *eq.attached_to == id) continue;
+            out.push_back(id);
+        }
+        return out;
+    }
+    // Offered only when something can be attached somewhere.
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        for (auto eq : equipmentOf(state, controller))
+            if (!bearersFor(state, controller, eq).empty()) return true;
+        return false;
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
                     const std::vector<GameObjectId>&) override {
-        // Equipment the controller owns and that isn't already attached.
         std::vector<GameObjectId> equips;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.controller != ctx.controller || !obj.location.has_value()) continue;
-            if (obj.isGear() && !obj.attached_to.has_value() && isEquipment(obj))
-                equips.push_back(id);
-        }
-        if (equips.empty()) return;
-        auto units_fn = [&](GameObjectId) {
-            std::vector<GameObjectId> units;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isUnit() && obj.controller == ctx.controller &&
-                    obj.location.has_value())
-                    units.push_back(id);
-            return units;
+        for (auto eq : equipmentOf(ctx.state, ctx.controller))
+            if (!bearersFor(ctx.state, ctx.controller, eq).empty()) equips.push_back(eq);
+        auto units_fn = [&](GameObjectId eq) {
+            return bearersFor(ctx.state, ctx.controller, eq);
         };
         auto [eq, unit] = pickTargetPair(ctx, "Forge of the Fluft: attach Equipment to a unit",
                                          equips, units_fn);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (eq == kInvalidId || unit == kInvalidId) return;  // suspended or fizzled
+        if (!equipEndsOnBoard(ctx.state, eq, unit)) return;
         attachFree(ctx, eq, unit);
         ctx.events.logTrace("FORGE OF THE FLUFT: attached an Equipment to a unit");
     }

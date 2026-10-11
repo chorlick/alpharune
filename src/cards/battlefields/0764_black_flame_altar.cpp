@@ -33,12 +33,14 @@ public:
                 if (!u.isUnit()) continue;
                 auto ubf = u.battlefieldId();
                 if (!ubf || *ubf != *bf_id) continue;
-                if (!u.hasKeyword(Keyword::Temporary)) continue;
-                GameObject::AuraEffect ae;
-                ae.source = bid;
-                ae.keyword = Keyword::Shield;
-                ae.keyword_value = 1;
-                u.aura_effects.push_back(ae);
+                // Printed [Temporary] or one granted earlier in this pass.
+                if (!hasKeywordInAuraPass(u, Keyword::Temporary)) continue;
+                // Once per Altar, however often the hook runs (it is called
+                // once per battlefield slot holding this card).
+                if (hasAuraFrom(u, bid)) continue;
+                // [Shield]: the engine's aura fold adds the +1 [M] while the
+                // unit is a defender.
+                auraKeyword(u, bid, Keyword::Shield, 1);
             }
         }
     }

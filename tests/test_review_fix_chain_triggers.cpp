@@ -700,8 +700,8 @@ TEST_F(ChainTriggerFixTest, ChosenUnit_IreliaTriggersOnHerOwnChoice) {
 
 TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
     static const std::set<CardDefId> kKnownOffenders = {
-        16, 51, 63, 76, 82, 92, 97, 130, 132, 188, 191, 234, 238, 278, 330,
-        361, 384, 453, 479, 535, 539, 589, 618, 695, 738, 763,
+        16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 234, 238, 330,
+        361, 384, 453, 479, 539, 589, 618, 695, 738,
     };
     // Declares requirements its trigger never reads (it picks through its
     // own requestChoice calls); nothing waits on the engine.

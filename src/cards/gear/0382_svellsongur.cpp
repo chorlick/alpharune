@@ -15,6 +15,14 @@ namespace {
 class Svellsongur : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // NOT IMPLEMENTED: "As this is attached to a unit, copy that unit's text
+    // to this Equipment's effect text for as long as this is attached to it."
+    // An Equipment's effect text speaks for its bearer, so the bearer would
+    // have each of its own abilities twice. That needs engine support: the
+    // equipped-trigger, aura and activated-ability dispatch all ask the gear's
+    // Card for fixed, state-free descriptors (equippedTriggerType(),
+    // equippedKeywords(), ...), which cannot stand for "whatever the unit I am
+    // on says". Only the Equip ability works.
     bool hasEquipAbility() const override { return true; }
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
         return standardEquip(ctx, ctx.source, unit,

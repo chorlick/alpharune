@@ -22,42 +22,26 @@ public:
     // player — so this covers BOTH players' plays here.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        BattlefieldId here = kInvalidId;
-        for (auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == ctx.source) { here = bf.id; break; }
-        }
-        if (here == kInvalidId) return;
-
-        // Find the just-played unit: newest non-token unit of ctx.controller
-        // sitting here. (Trigger carries no played-object id.)
-        GameObjectId played = kInvalidId;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (obj.isToken()) continue;
-            auto bf = obj.battlefieldId();
-            if (!bf || *bf != here) continue;
-            if (played == kInvalidId || id > played) played = id;  // newest id heuristic
-        }
-        if (played == kInvalidId) return;
-
-        // Find a ready rune to pay [1].
+        // "it" is the unit that was played: the trigger's subject.
+        const GameObjectId played = ctx.state.chain.resuming
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        auto still_there = [&]() {
+            if (played == kInvalidId || !ctx.state.objectExists(played)) return false;
+            const auto& u = ctx.state.getObject(played);
+            return u.isUnit() && u.location.has_value();
+        };
+        if (!still_there()) return;
         int decision = confirmOptional(ctx, "Valley of Idols: pay [1] to [Buff] the unit?",
-            [&]() {
-                return ctx.state.objectExists(played) &&
-                       payableEnergy(ctx.state, ctx.controller) >= 1;
-            });
+            [&]() { return still_there() && payableEnergy(ctx.state, ctx.controller) >= 1; });
         if (decision < 1) return;   // waiting on the agent, declined or not legal
 
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
-        if (!ctx.state.objectExists(played)) return;
-        if (ctx.state.getObject(played).buff_count == 0) {
-            ctx.executor.buffUnit(played);
+        // buffUnit gives the +1 [M] buff only to a unit without one (CR 427.1.b).
+        if (ctx.executor.buffUnit(played))
             ctx.events.logTrace("VALLEY OF IDOLS: paid [1] -> [Buff] the played unit");
-        } else {
+        else
             ctx.events.logTrace("VALLEY OF IDOLS: paid [1] but unit already has a buff");
-        }
     }
 private:
     const CardDef def_ = [] {

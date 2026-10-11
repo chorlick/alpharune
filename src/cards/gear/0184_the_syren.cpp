@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,13 +15,26 @@ namespace {
 class TheSyren : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[1], [E]: Move a friendly unit at a battlefield to its base."
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // The engine drops a target that is no longer legal (see
+        // enumerateLegalTargets), e.g. a unit already recalled in response.
         if (!targets.empty())
             ctx.executor.moveToBase(targets[0]);
     }
     TriggerType triggerType() const override { return TriggerType::Activated; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true, .must_be_at_battlefield = true};
+    }
+    // Not a unit at a battlefield units can't move to base from (Vilemaw's
+    // Lair): this is a move, not a recall.
+    std::vector<GameObjectId> enumerateLegalTargets(const GameState& state,
+                                                    PlayerId controller) const override {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == controller && obj.isAtBattlefield() &&
+                !moveToBaseBlocked(state, obj)) out.push_back(id);
+        return out;
     }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true, .energy = 1}; }

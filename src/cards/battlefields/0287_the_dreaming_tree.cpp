@@ -15,13 +15,28 @@ class TheDreamingTree : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When a player chooses a friendly unit here with a spell for the first
-    // time each turn, they draw 1." Handler wired on WhenAFriendlyUnitChosenHere
-    // (once-per-turn-per-player via a turn-stamped card_counter -> draw 1).
-    // APPROX/INERT: no engine site currently emits "a spell chose a friendly unit
-    // here", so this handler does not yet fire in play. It is the faithful card
-    // implementation, ready for that emit; this card is also tournament-BANNED.
+    // time each turn, they draw 1." Fired from the "chosen_by_controller"
+    // event (WhenAFriendlyUnitChosenHere; the chosen unit is the subject),
+    // which abilities emit too: triggerCondition keeps only a SPELL's choice.
+    // Once per turn per player via a turn-stamped card_counter.
     TriggerType triggerType() const override {
         return TriggerType::WhenAFriendlyUnitChosenHere;
+    }
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/,
+                          PlayerId controller, TriggerType /*trigger*/,
+                          GameObjectId subject) const override {
+        // The chooser is the item whose choice is being made: the one being
+        // resolved or finalized, else the newest chain item of this player
+        // that lists the unit among its choices (a target locked in at play).
+        if (state.chain.resuming.has_value()) return state.chain.resuming->is_spell;
+        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it) {
+            if (it->controller != controller) continue;
+            const auto& picks = it->chosen_objects;
+            if (std::find(picks.begin(), picks.end(), subject) != picks.end() ||
+                std::find(it->targets.begin(), it->targets.end(), subject) != it->targets.end())
+                return it->is_spell;
+        }
+        return false;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;

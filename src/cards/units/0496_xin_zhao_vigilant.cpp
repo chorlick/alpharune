@@ -15,11 +15,14 @@ namespace {
 class XinZhaoVigilant : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
+    // "I enter ready if you have two or more other units in your base." —
+    // "other" is every unit but this one, another Xin Zhao included.
+    bool entersReadyOnPlay(const GameState& state, PlayerId controller,
+                           const GameObject& self) const override {
         int n = 0;
         for (auto& [id, obj] : state.objects) {
+            if (id == self.id) continue;   // "other"
             if (!obj.isUnit() || obj.controller != controller) continue;
-            if (obj.card_def_id == cardDefId()) continue;   // "other" — skip self def
             if (!obj.isAtBase()) continue;
             ++n;
         }

@@ -19,9 +19,7 @@ public:
     // [Hunt 2]
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 2;
-        ctx.events.logTrace("MOSSTOMPER: Hunt 2 -> +2 XP (now " +
-                             std::to_string(ctx.state.player(ctx.controller).xp) + ")");
+        gainXp(ctx, ctx.controller, 2);
     }
 
     // [Level 3] static: +1 [M] and [Deflect] while controller has 3+ XP.
@@ -58,8 +56,6 @@ private:
         d.power_cost = 1;
         d.might = 3;
         d.rarity = Rarity::Uncommon;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
         d.keywords.set(Keyword::Hunt);
         d.keywords.set(Keyword::Level);
         d.ability_text = R"RB([Hunt 2] (When I conquer or hold, gain 2 XP.)

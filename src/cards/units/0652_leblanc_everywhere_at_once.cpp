@@ -21,8 +21,8 @@ public:
     // Clause 2: "Your [Temporary] effects at my battlefield don't trigger."
     //   Wired via suppressesTemporaryTriggersHere(): TriggerManager::fireTrigger
     //   skips a trigger whose source is a friendly [Temporary] unit sharing a
-    //   battlefield + controller with a card declaring this. (LeBlanc is herself
-    //   [Temporary] but has no triggers, so self-suppression is moot.)
+    //   battlefield + controller with a card declaring this. LeBlanc is not
+    //   [Temporary] herself: the word in her text names other cards' effects.
     bool suppressesTemporaryTriggersHere() const override { return true; }
 private:
     const CardDef def_ = [] {
@@ -43,7 +43,6 @@ private:
         d.might = 4;
         d.rarity = Rarity::Epic;
         d.keywords.set(Keyword::Backline);
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB([Backline] (I must be assigned combat damage last.)
 Your [Temporary] effects at my battlefield don't trigger.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a0389576206b1e750a0852c6ff46efd2646d47da-744x1039.png)RB";

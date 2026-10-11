@@ -46,7 +46,6 @@ private:
         d.collector_number = 41;
         d.artist = R"RB(Envar Studio)RB";
         d.card_type = CardType::Unit;
-        d.super_type = SuperType::Champion;
         d.domains = {Domain::Calm};
         d.tags = {R"RB(Yordle)RB", R"RB(Bandle City)RB"};
         d.energy_cost = 3;

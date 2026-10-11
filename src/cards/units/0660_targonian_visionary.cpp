@@ -14,8 +14,6 @@ namespace {
 class TargonianVisionary : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    bool requiresLevel() const override { return true; }
-    int levelThreshold() const override { return 11; }
     // "[Level 11] I have +4 [M]." Level hooks are not consumed by the engine,
     // so implement the tier inline by checking controller XP during aura recalc.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {

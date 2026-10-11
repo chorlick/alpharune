@@ -20,13 +20,17 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Excess-damage assignment is not surfaced to triggers (same engine gap
-        // as Tryndamere / Piltover Enforcer); the "3+ excess" condition is
-        // treated as satisfied (documented approximation).
+        // "if you assigned 3 or more excess damage": in the combat for the
+        // battlefield I conquered (my own, or — if I am gone — the one my
+        // controller last fought at).
+        const auto& ps = ctx.state.player(ctx.controller);
+        BattlefieldId bf = ps.last_combat_bf;
+        if (ctx.state.objectExists(ctx.source))
+            if (auto here = ctx.state.getObject(ctx.source).battlefieldId()) bf = *here;
+        if (excessCombatDamageAt(ctx.state, ctx.controller, bf) < 3) return;
         createGoldExhausted(ctx);
         createGoldExhausted(ctx);
-        ctx.events.logTrace("YETI BRAWLER: conquer -> played two Gold tokens exhausted "
-                            "(excess-damage condition not engine-checked)");
+        ctx.events.logTrace("YETI BRAWLER: conquer with 3+ excess damage -> two Gold tokens, exhausted");
     }
 private:
     const CardDef def_ = [] {
@@ -45,7 +49,6 @@ private:
         d.energy_cost = 6;
         d.might = 6;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB(When I conquer, if you assigned 3 or more excess damage, play two Gold gear tokens exhausted. (They have "[Reaction][>] Kill this, [E]: [Add] [A]."))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/38b59ae384ef6df8c94d5c51418101b2630b43a7-744x1039.png)RB";
         return d;

@@ -30,7 +30,7 @@ public:
         }
         if (enemy_count != 1) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.state.player(ctx.controller).xp += 2;
+        gainXp(ctx, ctx.controller, 2);
         ctx.events.logTrace("KHA'ZIX: enemy alone, +2M and +2 XP");
     }
 private:

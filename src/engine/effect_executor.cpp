@@ -825,6 +825,10 @@ void EffectExecutor::readyObject(GameObjectId target) {
                          " can't be readied by effects (Mageseeker Warden)");
         return;
     }
+    if (card_registry_ && obj.card_def_id != kInvalidId) {
+        const Card* card = card_registry_->get(obj.card_def_id);
+        if (card && !card->canBeReadied()) return;   // "I can't be readied."
+    }
     bool was_exhausted = obj.is_exhausted;
     obj.is_exhausted = false;
     events_.emit(ObjectStateChangedEvent{target, "readied"});

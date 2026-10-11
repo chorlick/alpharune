@@ -44,7 +44,6 @@ private:
         d.rarity = Rarity::Uncommon;
         d.shield_value = 1;
         d.keywords.set(Keyword::Shield);
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB([Shield] (+1 [M] while I'm a defender.)
 When I hold, play a ready 3 [M] Sprite unit token with [Temporary] here. (Kill it at the start of its controller's next Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/fa843ee80d1a35416d61482bc1602279955a2c7f-744x1039.png)RB";

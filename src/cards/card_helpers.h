@@ -1164,6 +1164,38 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
     return card.pickMode(ctx, label, modes, labels, mask);
 }
 
+/// "Any number of <objects>": one selectObject prompt per pick, each with a
+/// "None" option that ends the list. Returns the picks (possibly none), or
+/// nullopt while a prompt is pending. Uses resume_data slots `first_slot` ..
+/// `first_slot + 2 * kSelectManyMax - 1`; the caller checks at the end that
+/// each pick is still what the effect needs.
+constexpr int kSelectManyMax = 10;   // ChainManager allows 16 re-entries per resolution
+inline std::optional<std::vector<GameObjectId>> selectAnyNumber(
+        CardContext& ctx, const std::string& label, std::vector<GameObjectId> options,
+        size_t first_slot = 7) {
+    std::vector<GameObjectId> picked;
+    for (int k = 0; k < kSelectManyMax && !options.empty(); ++k) {
+        auto one = selectObject(ctx, label, options, first_slot + 2 * static_cast<size_t>(k),
+                                /*may_decline=*/true);
+        if (!one.has_value()) return std::nullopt;
+        if (*one == kInvalidId) break;
+        picked.push_back(*one);
+        options.erase(std::remove(options.begin(), options.end(), *one), options.end());
+    }
+    return picked;
+}
+
+/// "Gain N XP." Every card effect that gives XP goes through here so
+/// `xp_gained_this_turn` ("If you've gained XP this turn") is kept.
+inline void gainXp(CardContext& ctx, PlayerId player, int amount) {
+    if (amount <= 0) return;
+    auto& ps = ctx.state.player(player);
+    ps.xp += amount;
+    ps.xp_gained_this_turn += amount;
+    ctx.events.logTrace("XP: " + std::string(toString(player)) + " gains " +
+                        std::to_string(amount) + " XP (now " + std::to_string(ps.xp) + ")");
+}
+
 } // namespace riftbound
 
 // The Equip base classes (SimpleEquipGear / UniversalEquipGear) are built on

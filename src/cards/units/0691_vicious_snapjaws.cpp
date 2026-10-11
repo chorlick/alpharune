@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -17,8 +18,7 @@ public:
     // "When another friendly unit dies, gain 1 XP."
     TriggerType triggerType() const override { return TriggerType::WhenAFriendlyUnitDies; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        ctx.state.player(ctx.controller).xp += 1;
-        ctx.events.logTrace("VICIOUS SNAPJAWS: another friendly unit died -> +1 XP");
+        gainXp(ctx, ctx.controller, 1);
     }
 private:
     const CardDef def_ = [] {

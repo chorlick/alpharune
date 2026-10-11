@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -28,15 +29,7 @@ public:
         // CR 149.2: gear is played to its controller's Base unless an effect
         // says otherwise ("while I'm at a battlefield" is the condition, not a
         // place for the token). Exhausted, as the real Gold card (CR 187.5).
-        LocationId loc{BaseLocation{ctx.controller}};
-        auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
-                                            0, {}, KeywordSet{}, loc,
-                                            /*enter_ready=*/false);
-        if (ctx.state.objectExists(tid)) {
-            auto& tok = ctx.state.getObject(tid);
-            tok.card_def_id = 326;     // real Gold gear, so its [Reaction] ability dispatches
-            tok.is_exhausted = true;
-        }
+        createGoldExhausted(ctx);
         ctx.events.logTrace("PYKE RETURNED: enemy unit died -> Gold gear token (exhausted)");
     }
 private:
@@ -59,7 +52,6 @@ private:
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Backline);
         d.keywords.set(Keyword::Hidden);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Hidden] (Hide now for [A] to react with later for .)
 [Backline] (I must be assigned combat damage last.)
 Once each turn, when an enemy unit dies while I'm at a battlefield, play a Gold gear token exhausted. (It has "[Reaction][>] Kill this, [E]: [Add] [A]."))RB";

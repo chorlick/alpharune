@@ -15,10 +15,13 @@ namespace {
 class HeraldOfSpring : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "[Hunt]" (gain 1 XP on a conquer or a hold) and "When you play me, gain
+    // 2 XP." Hunt is not an engine keyword; the card implements it.
+    std::vector<TriggerType> triggerTypes() const override {
+        return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquerOrHold};
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 2;
-        ctx.events.logTrace("HERALD OF SPRING: +2 XP on play");
+        gainXp(ctx, ctx.controller, ctx.firing_trigger == TriggerType::WhenIConquerOrHold ? 1 : 2);
     }
 private:
     const CardDef def_ = [] {

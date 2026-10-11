@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -22,33 +23,39 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (ctx.firing_trigger == TriggerType::WhenIConquerOrHold) {
             if (finalizingChoices(ctx)) return;   // no choices
-            ctx.state.player(ctx.controller).xp += 1;  // [Hunt]
-            ctx.events.logTrace("KHA'ZIX: [Hunt] +1 XP");
+            gainXp(ctx, ctx.controller, 1);       // [Hunt]
             return;
         }
         // WhenIAttack — optional: spend 3 XP, deal my Might to an enemy unit here.
-        auto& self = ctx.state.getObject(ctx.source);
-        auto my_bf = self.battlefieldId();
-        if (!my_bf) return;
+        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         auto enemiesHere = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-                if (obj.battlefieldId() == my_bf) out.push_back(id);
-            }
-            return out;
+            if (!my_bf) return std::vector<GameObjectId>{};
+            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                return u.controller != ctx.controller && u.battlefieldId() == my_bf;
+            });
         };
-        if (ctx.state.player(ctx.controller).xp < 3 || enemiesHere().empty()) return;
-        int yes = confirmOptional(ctx, "Kha'Zix: spend 3 XP to deal my Might?",
-                                  [&]() { return ctx.state.player(ctx.controller).xp >= 3 &&
-                                                 !enemiesHere().empty(); });
-        if (yes != 1) return;
-        GameObjectId tgt = pickTarget(ctx, "Kha'Zix: deal Might to enemy here",
-                                      enemiesHere());
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
-        ctx.state.player(ctx.controller).xp -= 3;
-        int might = ctx.state.getObject(ctx.source).current_might;
+        // The 3 XP is a cost: offered only when it can be paid, and spent as
+        // the ability is finalized — it stays spent if the unit chosen is gone
+        // by the time this resolves.
+        auto still_legal = [&]() {
+            return costAlreadyPaid(ctx) ||
+                   (ctx.state.player(ctx.controller).xp >= 3 && !enemiesHere().empty());
+        };
+        int yes = confirmOptional(ctx, "Kha'Zix: spend 3 XP to deal my Might?", still_legal);
+        GameObjectId tgt = kInvalidId;
+        if (yes == 1)
+            tgt = pickTarget(ctx, "Kha'Zix: deal Might to enemy here", enemiesHere());
+        bool paid = costAlreadyPaid(ctx);
+        if (yes == 1 && tgt != kInvalidId && costDueNow(ctx) &&
+            ctx.state.player(ctx.controller).xp >= 3) {
+            ctx.state.player(ctx.controller).xp -= 3;
+            paid = true;
+        }
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (yes != 1 || !paid || tgt == kInvalidId) return;
+        const auto& self = ctx.state.getObject(ctx.source);
+        if (!self.location.has_value()) return;   // "my Might": I must still be on the board
+        int might = self.current_might;
         ctx.executor.dealDamage(tgt, might, ctx.source);
         if (ctx.state.objectExists(tgt) && ctx.state.getObject(tgt).hasLethalDamage()) {
             ctx.executor.killObject(tgt);

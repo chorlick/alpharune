@@ -17,44 +17,55 @@ public:
     const CardDef& def() const override { return def_; }
     // "Any amount of your damage is enough to kill enemy units." (CR 142.4.c)
     bool anyDamageIsLethal() const override { return true; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto opp = opponent(ctx.controller);
-
-        // Build the list of LOCATIONS to hit: opponent's base + every
-        // battlefield. Card text "at each location" is the canonical
-        // Riftbound term — see CR 151 / 144.4 for the location-vs-zone
-        // distinction.
+        // "at each location": the opponent's base and every battlefield
+        // (CR 151 / 144.4 for location vs zone).
         std::vector<LocationId> locations;
         locations.reserve(ctx.state.battlefields.size() + 1);
         locations.push_back(BaseLocation{opp});
-        for (auto& bf : ctx.state.battlefields) {
+        for (auto& bf : ctx.state.battlefields)
             locations.push_back(BattlefieldLocation{bf.id});
-        }
 
+        // "choose up to one enemy unit at each location": one prompt per
+        // location that has a choice, each with a "None".
+        std::vector<GameObjectId> chosen;
+        size_t slot = 7;
         for (const auto& loc : locations) {
-            auto enemies = ctx.state.unitsAt(loc, opp);
-            if (enemies.empty()) continue;
-            // Pick the first enemy at this location. CR-faithful "up to
-            // one" with agent choice would route through pickTarget;
-            // first-enemy is a placeholder that matches the prior
-            // battlefield-only behaviour.
-            auto victim = enemies.front();
-            ctx.executor.dealDamage(victim, 1, ctx.source);
-            // Two complementary kill paths: (1) inline natural-lethal
-            // check for units already at 0–1 might (caught here in the
-            // trigger), (2) GameEngine::processLethalDamage during the
-            // post-trigger cleanup applies the Elder Dragon
-            // "any-damage-lethal" aura to higher-might enemies. Both
-            // are needed: this trigger is sometimes invoked outside
-            // the full engine flow (per-card tests), so inline kill
-            // catches the easy case; cleanup catches the aura case
-            // when the engine drives it for real.
-            if (ctx.state.objectExists(victim) &&
-                ctx.state.getObject(victim).hasLethalDamage()) {
-                ctx.executor.killObject(victim);
-            }
+            const auto here = offerableChoices(ctx,
+                chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                    return u.controller == opp && *u.location == loc;
+                }));
+            const auto pick = selectObject(ctx, "Elder Dragon: choose up to one enemy unit here",
+                                           here, slot, /*may_decline=*/true);
+            slot += 2;
+            if (!pick.has_value()) return;     // waiting for the agent
+            if (*pick != kInvalidId) chosen.push_back(*pick);
         }
+        // Choosing is what [Deflect] taxes and what "chosen" abilities see:
+        // done once, with the choices (CR 355).
+        if (costDueNow(ctx))
+            for (auto id : chosen) commitChosenObject(ctx, id);
+        if (finalizingChoices(ctx)) return;    // choices and costs end here (CR 383.3)
+
+        // "Deal 1 to them." All the damage first, then the deaths: a unit
+        // killed mid-loop would put its death trigger ahead of the rest.
+        std::vector<GameObjectId> hit;
+        for (auto id : chosen) {
+            if (!ctx.state.objectExists(id)) continue;
+            const auto& u = ctx.state.getObject(id);
+            if (!u.isUnit() || !u.location.has_value() || u.controller != opp) continue;
+            ctx.executor.dealDamage(id, 1, ctx.source);
+            hit.push_back(id);
+        }
+        // Units this 1 damage is lethal for by itself. The rest die in the
+        // cleanup that follows, where "any amount of your damage is enough"
+        // applies (GameEngine::processLethalDamage).
+        for (auto id : hit)
+            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
+                ctx.executor.killObject(id);
     }
 private:
     const CardDef def_ = [] {

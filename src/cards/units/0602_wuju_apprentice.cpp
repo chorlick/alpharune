@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -20,8 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenIConquerOrHold) {
             // [Hunt] — gain 1 XP on conquer or hold.
-            ctx.state.player(ctx.controller).xp += 1;
-            ctx.events.logTrace("WUJU APPRENTICE: [Hunt] +1 XP");
+            gainXp(ctx, ctx.controller, 1);
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenYouPlayMe) {

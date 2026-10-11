@@ -19,8 +19,12 @@ public:
     // Wired via PlayerState::zilean_present (set here while a Zilean is at a BF)
     // + EffectExecutor::createToken, which spawns one extra copy of a friendly
     // token unit once per turn (PlayerState::zilean_double_token_turn stamps the
-    // turn). Approximated as automatic (token creation is not an agent decision
-    // point), and keyed on token CREATION (the engine's token-unit entry path).
+    // turn), keyed on token CREATION (the engine's token-unit entry path).
+    // ENGINE-GAP: the "may" is not asked — createToken has no way to put a
+    // question to the controller, so the additional copy is always played.
+    // The copy is made inside createToken and its id is not handed back to
+    // the card that asked for the token; a card that then changes "its" token
+    // must look for the copy itself (Keeper of Masks does).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (const auto& [id, obj] : state.objects) {
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&

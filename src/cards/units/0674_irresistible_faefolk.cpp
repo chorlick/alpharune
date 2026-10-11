@@ -19,36 +19,23 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIMoveToFB; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        auto my_bf = self.battlefieldId();
+        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;  // not at a BF — nothing to move to
-
-        // Find first enemy unit that's NOT already at my BF. Includes
-        // enemies at base and enemies at other BFs.
-        auto find_enemy_elsewhere = [&]() -> GameObjectId {
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (!obj.isUnit()) continue;
-                if (obj.controller == ctx.controller) continue;
-                if (obj.battlefieldId() == my_bf) continue;  // already here
-                if (!obj.location.has_value()) continue;
-                return id;
-            }
-            return kInvalidId;
-        };
-        auto still_legal = [&]() { return find_enemy_elsewhere() != kInvalidId; };
-
+        // "an enemy unit": any the controller may choose that is not already
+        // here (in a base or at another battlefield).
+        const auto legal = chooseableUnits(ctx.state, ctx.controller,
+            [&](const GameObject& u) {
+                return u.controller != ctx.controller && u.battlefieldId() != my_bf;
+            });
         int conf = confirmOptional(ctx,
-            "Irresistible Faefolk: pull an enemy unit to my battlefield?",
-            still_legal);
+            "Irresistible Faefolk: move an enemy unit to my battlefield?",
+            [&legal]() { return !legal.empty(); });
+        GameObjectId target = kInvalidId;
+        if (conf == 1)
+            target = pickTarget(ctx, "Irresistible Faefolk: choose an enemy unit", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;
-        if (conf == 0) return;
-
-        auto target = find_enemy_elsewhere();
-        if (target == kInvalidId) return;
-        auto& obj = ctx.state.getObject(target);
-        std::string name = obj.name;
+        if (conf != 1 || target == kInvalidId) return;
+        const std::string name = ctx.state.getObject(target).name;
         ctx.executor.moveToBattlefield(target, *my_bf);
         ctx.events.logTrace("IRRESISTIBLE FAEFOLK: pulled " + name +
                              " to BF#" + std::to_string(static_cast<int>(*my_bf)));

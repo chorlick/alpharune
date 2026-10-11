@@ -76,7 +76,6 @@ public:
         // its current position, so remove each from the deck first (mirrors the
         // pop-then-recycle pattern used by Apprentice Smith).
         std::vector<GameObjectId> rest;
-        auto& ps = ctx.state.player(ctx.controller);
         for (auto id : original_top) {
             if (id == drawn) continue;
             deck::take(ctx.state, id, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);

@@ -666,6 +666,14 @@ public:
         int reduce_energy = 0;          // if paid, reduce this card's energy cost by N (applied before payment)
     };
     virtual OptionalAdditionalCost optionalAdditionalCost() const { return {}; }
+    /// What the engine asks as the card is played: also given the state, for a
+    /// cost that may only be paid under a condition ("If you've played a spell
+    /// this turn, you may pay [P] as an additional cost to play me"). Return
+    /// {} when the condition does not hold. Default: the stateless version.
+    virtual OptionalAdditionalCost optionalAdditionalCost(const GameState& /*state*/,
+                                                          PlayerId /*player*/) const {
+        return optionalAdditionalCost();
+    }
 
     // ── Alternative play cost ──
     /// "You may play me for <alt cost> [instead of my printed cost]" when a
@@ -764,6 +772,12 @@ public:
     /// cleanup/aura recalc, and Card::enumerateLegalTargets reads that
     /// flag to filter out untargetable enemy candidates.
     virtual bool canBeChosenByEnemy() const { return true; }
+
+    /// "I can't be readied." (Maduli the Gatekeeper). False keeps the
+    /// permanent exhausted through the Awaken Phase and through every ready
+    /// effect (EffectExecutor::readyObject). Entering the board ready is not
+    /// being readied.
+    virtual bool canBeReadied() const { return true; }
 
     // ── Entry state ───────────────────────────────────────────────────
     /// Whether this unit should enter the board READY (not exhausted) on

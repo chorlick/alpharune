@@ -226,6 +226,7 @@ public:
     bool testHook_payAdditionalCost(PlayerId p, int energy, int power, Domain d) {
         return payAdditionalCost(p, energy, power, d);
     }
+    void testHook_awakenPhase() { awakenPhase(); }
     void testHook_beginningStep() { beginningStep(); }
     void testHook_scoringStep() { scoringStep(); }
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }

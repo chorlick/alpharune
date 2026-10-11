@@ -14,15 +14,12 @@ namespace {
 class CrescentGuardian : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-
     // "If you've played a spell this turn, you may pay [P] as an additional cost
-    //  to play me. If you do, I enter ready." [P] = Chaos power.
-    // The "played a spell this turn" precondition cannot be enforced on the
-    // static OptionalAdditionalCost descriptor (it has no state access); the
-    // readying below is gated on it instead (a spell played this turn is
-    // detected via PlayerState::last_spell_energy_spent, which resets at turn
-    // start and is set when a spell is played).
-    OptionalAdditionalCost optionalAdditionalCost() const override {
+    //  to play me. If you do, I enter ready." [P] = Chaos power. The cost is
+    //  offered only when the condition holds.
+    OptionalAdditionalCost optionalAdditionalCost(const GameState& state,
+                                                  PlayerId player) const override {
+        if (!state.player(player).played_spell_this_turn) return {};
         return {/*valid=*/true, /*energy=*/0, /*power=*/1, Domain::Chaos,
                 /*any_domain=*/false, /*paid_flag=*/"__crescent_paid"};
     }
@@ -30,9 +27,13 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        if (self.card_counters["__crescent_paid"] != 1) return;
-        if (ctx.state.player(ctx.controller).last_spell_energy_spent <= 0) return;  // no spell this turn
-        ctx.executor.readyObject(ctx.source);
+        // The engine sets the flag when the cost is paid and never clears it:
+        // consume it, or a later replay without paying would still count.
+        const auto flag = self.card_counters.find("__crescent_paid");
+        const bool paid = flag != self.card_counters.end() && flag->second == 1;
+        self.card_counters.erase("__crescent_paid");
+        if (!paid) return;
+        ctx.executor.readyObject(ctx.source);   // no-op if I left the board
         ctx.events.logTrace("CRESCENT GUARDIAN: paid [P] after a spell -> I enter ready");
     }
 private:

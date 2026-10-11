@@ -16,10 +16,11 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "Your token units have [Tank]." (Granted via aura.)
-    // NOTE: the companion clause "When you play a token unit, give me +1 [M]
-    // this turn" is an ENGINE GAP — tokens enter via EffectExecutor::createToken
-    // which emits only EnteredBoardEvent, not CardPlayedEvent, so there is no
-    // "play a token unit" trigger to subscribe to. Left unimplemented.
+    // ENGINE-GAP: "When you play a token unit, give me +1 [M] this turn" is
+    // not implemented. EffectExecutor::createToken emits TokenCreatedEvent /
+    // EnteredBoardEvent only, and TriggerManager dispatches no trigger from
+    // either: it needs a "when you play a token unit" TriggerType fired from
+    // TokenCreatedEvent on the token controller's cards in play.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects) {
             if (!obj.isUnit() || obj.controller != controller) continue;
@@ -47,7 +48,6 @@ private:
         d.energy_cost = 5;
         d.might = 4;
         d.rarity = Rarity::Epic;
-        d.keywords.set(Keyword::Tank);
         d.ability_text = R"RB(When you play a token unit, give me +1 [M] this turn.
 Your token units have [Tank]. (They must be assigned combat damage first.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/daa5fe15e0a1c14c8dbb8f858d8a6d444ea6096e-744x1039.png)RB";

@@ -282,7 +282,10 @@ TEST_F(CardTestFixture, ArenaKingpin_AbilityGivesPlus3ThisTurn) {
 TEST_F(CardTestFixture, LeBlanc_HasBacklineAndTemporary) {
     const auto& def = card_db.get(kLeBlanc);
     EXPECT_TRUE(def.keywords.has(Keyword::Backline));
-    EXPECT_TRUE(def.keywords.has(Keyword::Temporary));
+    // "Your [Temporary] effects at my battlefield don't trigger." names other
+    // cards' effects: LeBlanc is not [Temporary] (she would be killed at her
+    // controller's next Beginning Phase).
+    EXPECT_FALSE(def.keywords.has(Keyword::Temporary));
 }
 
 }  // namespace

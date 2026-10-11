@@ -65,7 +65,7 @@ public:
                 for (auto& [id, obj] : ctx.state.objects) {
                     if (readied >= 2) break;
                     if (obj.isRune() && obj.controller == ctx.controller &&
-                        obj.is_exhausted) {
+                        obj.is_exhausted && obj.location.has_value()) {
                         ctx.executor.readyObject(id);
                         ++readied;
                     }
@@ -73,7 +73,8 @@ public:
                 ctx.events.logTrace("HWEI: discarded Gear -> readied " +
                                      std::to_string(readied) + " rune(s)");
             } else if (dtype == CardType::Unit) {
-                if (ctx.state.objectExists(ctx.source)) {
+                if (ctx.state.objectExists(ctx.source) &&
+                    ctx.state.getObject(ctx.source).location.has_value()) {
                     ctx.executor.giveTemporaryMight(ctx.source, 3);
                     ctx.events.logTrace("HWEI: discarded Unit -> +3 [M] this turn");
                 }

@@ -8,99 +8,78 @@
 #include <string>
 #include <vector>
 #include "cards/card_helpers.h"
+#include "cards/units/weaponmaster_base.h"
 
 namespace riftbound {
 namespace {
 
-class YoneBlademaster : public UnitCard {
+// "[Weaponmaster] ... When I conquer a battlefield that was uncontrolled, deal
+//  damage equal to my Might to an enemy unit in a base."
+class YoneBlademaster : public WeaponmasterUnit {
 public:
     const CardDef& def() const override { return def_; }
-
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer};
     }
 
+    // "a battlefield that was uncontrolled": nothing tells a conquer trigger
+    // who held the battlefield before, so while Yone stands at a battlefield
+    // her controller does not control she notes whether anyone does. The note
+    // is what the battlefield was when she conquered it.
+    static constexpr const char* kSeenBf = "__yone_seen_bf";
+    static constexpr const char* kSeenOpen = "__yone_seen_uncontrolled";
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [id, self] : state.objects) {
+            if (self.card_def_id != cardDefId() || self.controller != controller) continue;
+            const auto here = self.battlefieldId();
+            if (!here.has_value()) continue;
+            for (const auto& bf : state.battlefields) {
+                if (bf.id != *here) continue;
+                if (bf.controller.has_value() && *bf.controller == controller) continue;
+                self.card_counters[kSeenBf] = static_cast<int>(bf.id);
+                self.card_counters[kSeenOpen] = bf.controller.has_value() ? 0 : 1;
+            }
+        }
+    }
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (trigger != TriggerType::WhenIConquer) return true;
+        if (!state.objectExists(source)) return false;
+        const auto& self = state.getObject(source);
+        const auto here = self.battlefieldId();
+        if (!here.has_value()) return false;
+        const auto bf = self.card_counters.find(kSeenBf);
+        const auto open = self.card_counters.find(kSeenOpen);
+        return bf != self.card_counters.end() && bf->second == static_cast<int>(*here) &&
+               open != self.card_counters.end() && open->second == 1;
+    }
+
     void onTrigger(CardContext& ctx,
-                   const std::vector<GameObjectId>& /*targets*/) override {
+                   const std::vector<GameObjectId>& targets) override {
         if (ctx.firing_trigger == TriggerType::WhenYouPlayMe) {
-            doWeaponmasterEquip(ctx);
-        } else if (ctx.firing_trigger == TriggerType::WhenIConquer) {
-            doConquerDamage(ctx);
-        }
-    }
-
-private:
-    // Inlined Weaponmaster "When you play me, you may [Equip] one of your
-    // Equipment to me for [A] less, even if already attached." Mirrors
-    // weaponmaster_cards.cpp::WeaponmasterUnit::onTrigger (free attach).
-    void doWeaponmasterEquip(CardContext& ctx) {
-        GameObjectId best_gear = kInvalidId;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isGear() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            bool is_equipment = false;
-            for (auto& tag : obj.tags) {
-                if (tag == "Equipment") { is_equipment = true; break; }
-            }
-            if (!is_equipment) continue;
-            best_gear = id;
-            break;
-        }
-        if (best_gear == kInvalidId) return;
-        if (!ctx.state.objectExists(ctx.source)) return;
-
-        auto& gear = ctx.state.getObject(best_gear);
-        if (gear.attached_to.has_value()) {
-            auto old_unit = *gear.attached_to;
-            if (ctx.state.objectExists(old_unit)) {
-                auto& old = ctx.state.getObject(old_unit);
-                old.attachment_might_bonus -= gear.might_bonus;
-                auto it = std::find(old.attachments.begin(),
-                                    old.attachments.end(), best_gear);
-                if (it != old.attachments.end()) old.attachments.erase(it);
-                old.recomputeMight();
-            }
-            gear.attached_to = std::nullopt;
-        }
-        auto& self = ctx.state.getObject(ctx.source);
-        gear.attached_to = ctx.source;
-        self.attachments.push_back(best_gear);
-        gear.location = self.location;
-        gear.zone = self.zone;
-        self.attachment_might_bonus += gear.might_bonus;
-        self.recomputeMight();
-        ctx.events.logTrace("WEAPONMASTER(Yone): equips " + gear.name +
-                             " (free, [A] less)");
-        ctx.events.emit(ObjectStateChangedEvent{best_gear, "attached"});
-        ctx.events.emit(ObjectStateChangedEvent{ctx.source, "equipped"});
-    }
-
-    void doConquerDamage(CardContext& ctx) {
-        // ENGINE GAP: printed condition is "When I conquer a battlefield THAT
-        // WAS UNCONTROLLED". By the time WhenIConquer resolves, the BF is
-        // already controlled by us and the prior-controller is not surfaced to
-        // the trigger (no captured "was uncontrolled" flag), so we cannot gate
-        // on it. Fires on any conquer (over-fires when conquering a BF that
-        // was enemy-controlled). Low severity; documented approximation.
-        if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        int my_might = self.current_might;
-        if (my_might <= 0) return;
-        PlayerId opp = opponent(ctx.controller);
-        // Target an enemy unit in a base.
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.isAtBase()) continue;
-            ctx.executor.dealDamage(id, my_might, ctx.source);
-            if (ctx.state.objectExists(id) &&
-                ctx.state.getObject(id).hasLethalDamage()) {
-                ctx.executor.killObject(id);
-            }
-            ctx.events.logTrace("YONE: conquer -> deal " +
-                                 std::to_string(my_might) +
-                                 " to enemy unit in base");
+            // [Weaponmaster]: the shared base asks the "may" and the Equipment.
+            WeaponmasterUnit::onTrigger(ctx, targets);
             return;
         }
+        if (ctx.firing_trigger != TriggerType::WhenIConquer) return;
+        // "an enemy unit in a base" — chosen as the ability resolves (the
+        // Weaponmaster base decides at resolution, so this card is not opted
+        // into choices at finalization).
+        const auto legal = chooseableUnits(ctx.state, ctx.controller,
+            [&](const GameObject& u) { return u.controller != ctx.controller && u.isAtBase(); });
+        const GameObjectId t = pickTarget(ctx, "Yone: deal my Might to an enemy unit in a base",
+                                          legal);
+        if (t == kInvalidId) return;   // none / waiting for the agent
+        if (!ctx.state.objectExists(ctx.source)) return;
+        const auto& self = ctx.state.getObject(ctx.source);
+        if (!self.location.has_value()) return;   // "my Might": I must still be here
+        const int my_might = self.current_might;
+        if (my_might <= 0) return;
+        ctx.executor.dealDamage(t, my_might, ctx.source);
+        if (ctx.state.objectExists(t) && ctx.state.getObject(t).hasLethalDamage())
+            ctx.executor.killObject(t);
+        ctx.events.logTrace("YONE: conquered an uncontrolled battlefield -> deal " +
+                            std::to_string(my_might) + " to an enemy unit in a base");
     }
 private:
     const CardDef def_ = [] {

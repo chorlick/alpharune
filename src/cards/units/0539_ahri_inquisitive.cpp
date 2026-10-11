@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -11,17 +12,28 @@
 namespace riftbound {
 namespace {
 
+// "When I attack or defend, give an enemy unit here -2 [M] this turn, to a
+//  minimum of 1 [M]."
 class AhriInquisitive_539 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // "give an enemy unit here -2 [M] this turn, to a minimum of 1 [M]."
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], -2, /*minimum=*/1);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttackOrDefend; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true, .must_be_at_battlefield = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "an enemy unit here": at my battlefield, and one I may choose.
+        std::vector<GameObjectId> legal;
+        if (ctx.state.objectExists(ctx.source)) {
+            auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+            if (my_bf)
+                legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                    return u.controller != ctx.controller && u.battlefieldId() == my_bf;
+                });
+        }
+        const GameObjectId t = pickTarget(ctx, "Ahri, Inquisitive: give an enemy unit here -2 [M]",
+                                          legal);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.giveTemporaryMight(t, -2, /*minimum=*/1);
     }
 private:
     const CardDef def_ = [] {

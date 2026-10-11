@@ -26,6 +26,7 @@ private:
         d.collector_number = 2;
         d.artist = R"RB(Six More Vodka)RB";
         d.card_type = CardType::Unit;
+        d.super_type = SuperType::Token;
         d.tags = {R"RB(Bird)RB"};
         d.might = 1;
         d.deflect_value = 1;

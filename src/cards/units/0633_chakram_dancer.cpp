@@ -50,10 +50,8 @@ private:
         d.energy_cost = 3;
         d.might = 3;
         d.rarity = Rarity::Uncommon;
-        d.shield_value = 1;
         d.keywords.set(Keyword::Ambush);
         d.keywords.set(Keyword::Reaction);
-        d.keywords.set(Keyword::Shield);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 When you play me, give your other units here [Shield] this turn. (+1 [M] while they're defenders.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/29abe06f1c16a9eed622a5060330116268b73b8c-744x1039.png?accountingTag=RB)RB";

@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -27,12 +28,8 @@ public:
             ctx.executor.readyObject(ctx.source);
             ctx.events.logTrace("KATARINA RECKLESS: hid a card -> ready me");
         } else if (ctx.firing_trigger == TriggerType::WhenYouPlayFromFacedown) {
-            std::vector<GameObjectId> legal;
-            PlayerId opp = opponent(ctx.controller);
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (obj.isUnit() && obj.controller == opp && obj.location.has_value())
-                    legal.push_back(id);
-            }
+            const auto legal = chooseableUnits(ctx.state, ctx.controller,
+                [&](const GameObject& u) { return u.controller != ctx.controller; });
             GameObjectId t = pickTarget(ctx, "Katarina: deal 2 to an enemy unit", legal);
             if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
             if (t == kInvalidId || !ctx.state.objectExists(t)) return;

@@ -29,16 +29,26 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         GameObjectId subject = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        auto still_legal = [&]() {
+        auto subject_on_board = [&]() {
             return subject != kInvalidId && ctx.state.objectExists(subject) &&
-                   ctx.state.getObject(subject).isUnit();
+                   ctx.state.getObject(subject).isUnit() &&
+                   ctx.state.getObject(subject).location.has_value();
+        };
+        // The [Y] is a cost: offered only when it can be paid, and paid as the
+        // ability is finalized (CR 383.3), not when it resolves.
+        auto still_legal = [&]() {
+            return costAlreadyPaid(ctx) ||
+                   (subject_on_board() &&
+                    payableOnePower(ctx.state, ctx.controller, Domain::Order));
         };
         int conf = confirmOptional(ctx, "Fiora, Worthy: pay [Y] to ready it?",
                                    still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;   // waiting for agent
-        if (conf < 1) return;     // declined / invalid
-        if (!payOnePower(ctx, ctx.controller, Domain::Order)) return;
+        bool paid = costAlreadyPaid(ctx);
+        if (conf == 1 && costDueNow(ctx))
+            paid = payOnePower(ctx, ctx.controller, Domain::Order);
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1 || !paid) return;
+        if (!subject_on_board()) return;      // it left the board in response
         ctx.executor.readyObject(subject);
         ctx.events.logTrace("FIORA WORTHY: paid [Y] -> readied the Mighty unit");
     }

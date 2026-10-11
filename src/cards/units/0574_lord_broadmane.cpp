@@ -12,20 +12,20 @@ namespace riftbound {
 namespace {
 
 // "When you play me, give your other units here [Assault] this turn."
-
+// The [Assault] is theirs, not his: his def carries [Ambush] only.
 class LordBroadmane : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
+        const auto& self = ctx.state.getObject(ctx.source);
+        if (!self.location.has_value()) return;
+        const LocationId here = *self.location;   // a battlefield, or my base
         for (auto& [id, obj] : ctx.state.objects) {
             if (id == ctx.source) continue;  // "other units"
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            auto bf = obj.battlefieldId();
-            if (bf && *bf == *my_bf)
+            if (obj.location.has_value() && *obj.location == here)
                 ctx.executor.giveTemporaryKeyword(id, Keyword::Assault, 1);
         }
         ctx.events.logTrace("LORD BROADMANE: gave other friendly units here [Assault]");
@@ -48,9 +48,7 @@ private:
         d.power_cost = 1;
         d.might = 5;
         d.rarity = Rarity::Uncommon;
-        d.assault_value = 1;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Assault);
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 When you play me, give your other units here [Assault] this turn. (+1 [M] while they're attackers.))RB";

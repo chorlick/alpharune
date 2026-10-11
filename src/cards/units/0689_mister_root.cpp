@@ -17,8 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIMoveToFB; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 2;
-        ctx.events.logTrace("MISTER ROOT: +2 XP on move to BF");
+        gainXp(ctx, ctx.controller, 2);
     }
 private:
     const CardDef def_ = [] {

@@ -38,7 +38,6 @@ private:
         d.tags = {R"RB(Ionia)RB"};
         d.energy_cost = 2;
         d.might = 1;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction][>] [E]: [Add] [1]. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2065a3b0fef9779fed8a3d42202606a31acf59ff-744x1039.png)RB";
         return d;

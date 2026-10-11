@@ -16,11 +16,8 @@ class MaduliTheGatekeeper : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // "I can't be readied."
-    // ENGINE GAP: there is no GameObject "can't be readied" flag, and
-    // EffectExecutor::readyObject (plus the phase-readying paths) have no hook
-    // to suppress readying for a specific unit. Enforcing this requires engine
-    // support. Left unimplemented.
+    // "I can't be readied." — neither by the Awaken Phase nor by an effect.
+    bool canBeReadied() const override { return false; }
 
     // "[P]: Move me to an occupied enemy battlefield if my Might is greater
     //  than the total Might of enemy units there." ([P] = one Chaos Power.)
@@ -28,13 +25,16 @@ public:
     ActivationCost getActivationCost() const override {
         return {.power = 1, .power_domain = Domain::Chaos};
     }
-    // Legality: there must be at least one qualifying enemy battlefield.
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
-            return !qualifyingBfs(state, controller, obj.current_might, id).empty();
-        }
-        return false;
+    // Legality: there must be at least one qualifying enemy battlefield for
+    // THIS Maduli (its own Might, its own location).
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!UnitCard::canActivateAbilityAt(state, controller, source, ability_index))
+            return false;
+        if (!state.objectExists(source)) return false;
+        const auto& self = state.getObject(source);
+        return self.location.has_value() &&
+               !qualifyingBfs(state, controller, self.current_might, source).empty();
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;

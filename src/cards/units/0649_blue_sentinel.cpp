@@ -14,14 +14,31 @@ namespace {
 class BlueSentinel : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When I hold, [Add] [A] at the start of your next Main Phase." The hold
+    // schedules a one-shot delayed ability (as Iascylla does); the rune pool
+    // empties at the end of the Draw Phase, so Power added at the hold itself
+    // would never reach the Main Phase.
+    // ENGINE-GAP: "Your hold effects for holding here trigger an additional
+    // time." is not implemented. It needs TriggerManager::onScore to queue
+    // every hold trigger for this battlefield (units, their gear, the legend,
+    // the battlefield card) once more per such unit there, the way
+    // queueOwnDeathTrigger reads deathknell_double_count.
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // "When I hold, [Add] [A] ..." — approximated as immediate add (the
-        // "at the start of your next Main Phase" deferral has no scheduling
-        // primitive; see class comment).
+        if (ctx.firing_trigger == TriggerType::WhenIHold) {
+            DelayedAbility da;
+            da.source = ctx.source;
+            da.card_def_id = cardDefId();
+            da.controller = ctx.controller;
+            da.trigger = TriggerType::AtStartOfMain;
+            da.expires_on_turn = -1;   // stays until it fires
+            ctx.state.delayed_abilities.push_back(da);
+            ctx.events.logTrace("BLUE SENTINEL: hold -> [Add] [A] at the start of the next Main Phase");
+            return;
+        }
+        // The delayed ability (AtStartOfMain).
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
-        ctx.events.logTrace("BLUE SENTINEL: hold -> [Add] [A] "
-                            "(deferral to next main phase approximated as now)");
+        ctx.events.logTrace("BLUE SENTINEL: start of Main Phase -> [Add] [A]");
     }
 private:
     const CardDef def_ = [] {

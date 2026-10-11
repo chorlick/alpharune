@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -11,16 +12,30 @@
 namespace riftbound {
 namespace {
 
+// "When I attack or defend, give one of your other units here +3 [M] and
+//  [Tank] this turn." The [Tank] is the other unit's; Yuumi prints no keyword.
 class YuumiMagicalCat : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 3);
-    }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttackOrDefend; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true, .must_be_at_battlefield = true};
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "one of your other units here": mine, at my battlefield, not me.
+        std::vector<GameObjectId> legal;
+        if (ctx.state.objectExists(ctx.source)) {
+            auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+            if (my_bf)
+                for (auto& [id, obj] : ctx.state.objects)
+                    if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
+                        obj.battlefieldId() == my_bf)
+                        legal.push_back(id);
+        }
+        const GameObjectId t = pickTarget(ctx, "Yuumi: give one of your other units here +3 [M] and [Tank]",
+                                          legal);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.giveTemporaryMight(t, 3);
+        ctx.executor.giveTemporaryKeyword(t, Keyword::Tank, 0);
     }
 private:
     const CardDef def_ = [] {
@@ -41,7 +56,6 @@ private:
         d.power_cost = 1;
         d.might = 1;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Tank);
         d.ability_text = R"RB(When I attack or defend, give one of your other units here +3 [M] and [Tank] this turn. (It must be assigned combat damage first.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/588ddfeb01ab7b37110d8a7e656cf9f35530ce4e-744x1039.png)RB";
         return d;

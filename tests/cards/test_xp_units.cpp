@@ -83,7 +83,9 @@ TEST_F(XpHeraldOfSpringTest, StacksOnExistingXp) {
 
 TEST_F(XpHeraldOfSpringTest, TriggerTypeIsWhenYouPlayMe) {
     Card* c = card_registry.get(kHeraldOfSpring);
-    EXPECT_EQ(c->triggerType(), TriggerType::WhenYouPlayMe);
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenYouPlayMe));
+    // "[Hunt] (When I conquer or hold, gain 1 XP.)" is the card's too.
+    EXPECT_TRUE(c->firesOn(TriggerType::WhenIConquerOrHold));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -420,15 +422,11 @@ class XpMegatuskTest : public CardTestFixture {};
 TEST_F(XpMegatuskTest, HasActivatedAbility) {
     Card* c = card_registry.get(kMegatusk);
     EXPECT_TRUE(c->hasActivatedAbility());
-    // Cost is paid manually inside onActivate via XP (xp_cost not exposed
-    // through the ActivationCost struct here — see the deck_cards.cpp
-    // comment). Make sure we don't accidentally regress to declaring a
-    // non-zero standard cost.
+    // "Spend 3 XP: ..." — the XP is the activation cost, so the engine gates
+    // and charges it (ActivationCost::xp_cost), not onActivate at resolution.
     auto cost = c->getActivationCost();
     EXPECT_EQ(cost.energy, 0);
-    EXPECT_EQ(cost.xp_cost, 0)
-        << "Megatusk pays its 3 XP manually inside onActivate, not via the "
-           "ActivationCost field (see deck_cards.cpp comment)";
+    EXPECT_EQ(cost.xp_cost, 3);
 }
 
 TEST_F(XpMegatuskTest, BelowThreeXpIsNoOp) {
@@ -436,9 +434,13 @@ TEST_F(XpMegatuskTest, BelowThreeXpIsNoOp) {
     auto buddy    = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
     setXp(P1, 2);
 
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, megatusk};
-    card_registry.get(kMegatusk)->onActivate(ctx, {});
+    // Through the engine: the 3 XP is an activation cost it refuses to start
+    // without (the ability no longer checks XP itself).
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = megatusk;
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); });
 
     EXPECT_EQ(state.player(P1).xp, 2) << "no XP spent when can't afford";
     EXPECT_FALSE(state.getObject(buddy).keywords.has(Keyword::Ganking))
@@ -450,9 +452,12 @@ TEST_F(XpMegatuskTest, SpendsThreeXpAndGrantsGanking) {
     auto buddy    = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
     setXp(P1, 5);
 
-    EffectExecutor exec(state, events, card_db);
-    CardContext ctx{state, events, exec, P1, megatusk};
-    card_registry.get(kMegatusk)->onActivate(ctx, {});
+    // Through the engine, which charges the XP as the ability is activated.
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = megatusk;
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); });
 
     EXPECT_EQ(state.player(P1).xp, 2) << "3 XP spent";
     EXPECT_TRUE(state.getObject(buddy).keywords.has(Keyword::Ganking))

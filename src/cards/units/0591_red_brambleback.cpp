@@ -19,9 +19,11 @@ class RedBrambleback : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
-    // ENGINE GAP: "Your conquer effects for conquering here trigger an
-    // additional time" has no engine counter analogous to
-    // deathknell_double_count for conquer triggers; not wired.
+    // ENGINE-GAP: "Your conquer effects for conquering here trigger an
+    // additional time" is not implemented. It needs TriggerManager::onScore
+    // to queue every conquer trigger for this battlefield (units, their gear,
+    // the legend, the battlefield card) once more per such unit there, the
+    // way queueOwnDeathTrigger reads deathknell_double_count.
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "[Buff] a friendly unit." Pick a friendly unit on the board.

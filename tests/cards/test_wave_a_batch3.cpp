@@ -224,18 +224,22 @@ TEST_F(WaveABatch3Test, DirewingReadyWithAnotherDragon) {
 
 TEST_F(WaveABatch3Test, XinZhaoReadyWithTwoBaseUnits) {
     Card* card = card_registry.get(kXinZhao);
-    EXPECT_FALSE(card->entersReadyOnPlay(state, P1));
+    // The engine asks with the unit being played, already in place: "other"
+    // is every unit but that one.
+    const auto& self = state.getObject(addUnit(P1, kXinZhao, 0, -1));
+    EXPECT_FALSE(card->entersReadyOnPlay(state, P1, self));
     addUnit(P1, kInvalidId, 3, -1);   // base unit #1
-    EXPECT_FALSE(card->entersReadyOnPlay(state, P1));
+    EXPECT_FALSE(card->entersReadyOnPlay(state, P1, self));
     addUnit(P1, kInvalidId, 3, -1);   // base unit #2
-    EXPECT_TRUE(card->entersReadyOnPlay(state, P1));
+    EXPECT_TRUE(card->entersReadyOnPlay(state, P1, self));
 }
 
 TEST_F(WaveABatch3Test, XinZhaoBattlefieldUnitsDoNotCount) {
     Card* card = card_registry.get(kXinZhao);
     addUnit(P1, kInvalidId, 3, 0);    // at battlefield, not base
     addUnit(P1, kInvalidId, 3, 0);
-    EXPECT_FALSE(card->entersReadyOnPlay(state, P1));
+    const auto& self = state.getObject(addUnit(P1, kXinZhao, 0, -1));
+    EXPECT_FALSE(card->entersReadyOnPlay(state, P1, self));
 }
 
 // ── Leona, Zealot (79): enter ready when opp near victory ───────────────────

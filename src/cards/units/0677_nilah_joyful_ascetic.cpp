@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -14,8 +15,8 @@ namespace {
 class NilahJoyfulAscetic : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        ctx.state.player(ctx.controller).xp += 1;
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        gainXp(ctx, ctx.controller, 1);
     }
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
 private:

@@ -17,10 +17,9 @@ class PreparedNeophyte : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        // last_spell_energy_spent holds the most-recently-played spell's spend
-        // this turn (reset at end of turn). Approximation: any single spell of
-        // cost [4]+ this turn satisfies the gate.
-        if (state.player(controller).last_spell_energy_spent < 4) return;
+        // The most any one spell cost this turn — a cheaper spell played
+        // afterwards does not take the bonus away.
+        if (state.player(controller).max_spell_spent_this_turn < 4) return;
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId()) continue;
             if (self.controller != controller || !self.location.has_value()) continue;

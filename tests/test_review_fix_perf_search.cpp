@@ -1,5 +1,6 @@
 /// Regression tests for the performance-review fixes in the search path
-/// (plans/06-performance.md item 6.7): an engine abandoned mid-game is torn
+/// (plans/06-performance.md items 6.4 and 6.7): the step API hands out its
+/// pending decision by reference, and an engine abandoned mid-game is torn
 /// down instead of being played to the end.
 ///
 /// The OpenSpiel-side tests for 6.8 / 6.9 are in
@@ -216,6 +217,39 @@ TEST_F(PerfSearchTest, AFailedEngineStillReportsItsFailureAndCanBeDropped) {
     EXPECT_TRUE(g->engine->stepFailed());
     EXPECT_THROW(g->engine->currentStep(), std::runtime_error);
     g->engine.reset();
+}
+
+// ─── 6.4: the pending decision is handed out by reference ───────────────────
+
+const StepResult* addressOf(const StepResult& step) { return &step; }
+
+// 6.4 — currentStep() is a view of the engine's pending decision: asking
+// twice yields the same object (no copy of the legal list per call), and it
+// shows the next decision once a choice has been applied.
+TEST_F(PerfSearchTest, CurrentStepIsAViewOfThePendingDecision) {
+    auto g = begin(9);
+    const StepResult& first = g->engine->currentStep();
+    EXPECT_EQ(&first, addressOf(g->engine->currentStep()));
+    ASSERT_EQ(first.kind, StepKind::NeedDecision);
+    ASSERT_FALSE(first.legal.empty());
+
+    // A copy taken before a choice is the caller's own.
+    const StepResult before = first;
+    const long history_before =
+        static_cast<long>(g->engine->state().action_history.size());
+    const StepResult& returned = g->engine->applyChoice(0);
+    EXPECT_EQ(&returned, addressOf(g->engine->currentStep()));
+    EXPECT_EQ(static_cast<long>(g->engine->state().action_history.size()),
+              history_before + 1);
+    EXPECT_EQ(before.kind, StepKind::NeedDecision);
+    EXPECT_FALSE(before.legal.empty());
+
+    // The view follows the game to its end.
+    std::mt19937_64 rng(9);
+    advance(*g, rng, 100000);
+    ASSERT_TRUE(g->engine->isStepDone());
+    EXPECT_EQ(g->engine->currentStep().kind, StepKind::Done);
+    EXPECT_TRUE(g->engine->currentStep().legal.empty());
 }
 
 } // namespace test_review_fix_perf_search

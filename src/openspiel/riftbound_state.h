@@ -200,7 +200,10 @@ public:
     /// In the engine's order, not LegalActions()' (which is deduplicated
     /// by slot and sorted) — so use this for scoring, then map the chosen
     /// Intent's encoded id back to LegalActions() to apply.
-    std::vector<::riftbound::Intent> legalIntents() const {
+    ///
+    /// A view, not a copy: valid until this state is next advanced (or
+    /// destroyed). Copy it to keep it across an ApplyAction.
+    const std::vector<::riftbound::Intent>& legalIntents() const {
         if (lazy_) return lazy_->step.legal;
         return engine_->currentStep().legal;
     }

@@ -124,7 +124,7 @@ Intent StepDriver::selectActionFor(
     }
 
     // Publish the decision snapshot for the caller, then yield.
-    paused_legal_   = *effective;
+    paused_legal_   = effective;
     paused_player_  = decider;
     at_decision_    = true;
     pending_choice_.reset();
@@ -135,6 +135,7 @@ Intent StepDriver::selectActionFor(
     yield_target_ = std::move(yield_target_).resume();
 
     at_decision_ = false;
+    paused_legal_ = nullptr;
     int chosen = pending_choice_.value_or(0);
     pending_choice_.reset();
 

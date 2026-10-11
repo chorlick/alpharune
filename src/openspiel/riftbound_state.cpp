@@ -94,7 +94,7 @@ void RiftboundState::replayTokens(::riftbound::GameEngine& engine,
                 "RiftboundState: replay ended the game " +
                 std::to_string(tokens.size() - i) + " decisions early.");
         }
-        const auto step = engine.currentStep();
+        const auto& step = engine.currentStep();
         if (refresh_base && tokens.size() - i <= kBaseRefreshWindow &&
             ::riftbound::GameEngine::isResumableDecision(engine.state(),
                                                          step.legal)) {
@@ -163,7 +163,7 @@ void RiftboundState::ensureLive() const {
         } else if (engine->isStepDone()) {
             mismatch = "the replayed game is over";
         } else {
-            const auto step = engine->currentStep();
+            const auto& step = engine->currentStep();
             if (step.perspective != snap.step.perspective) {
                 mismatch = "a different player is deciding";
             } else if (step.legal != snap.step.legal) {
@@ -196,9 +196,7 @@ void RiftboundState::ensureLive() const {
 std::vector<::open_spiel::Action> RiftboundState::LegalActions() const {
     if (IsTerminal()) return {};
     if (lazy_) return encodeLegal(lazy_->step.legal, lazy_->state);
-    // currentStep() returns by value; keep it alive for the encode.
-    const auto step = engine_->currentStep();
-    return encodeLegal(step.legal, engine_->state());
+    return encodeLegal(engine_->currentStep().legal, engine_->state());
 }
 
 std::string RiftboundState::ActionToString(::open_spiel::Player,
@@ -212,7 +210,7 @@ std::string RiftboundState::ActionToString(::open_spiel::Player,
         return "<unknown action_id>";
     }
     if (engine_->isStepDone()) return "<terminal>";
-    auto step = engine_->currentStep();
+    const auto& step = engine_->currentStep();
     if (const auto* intent = decodeAction(static_cast<int>(a), step.legal,
                                           engine_->state())) {
         return intent->describe();
@@ -394,7 +392,7 @@ void RiftboundState::DoApplyAction(::open_spiel::Action action) {
     // Translate the vocab slot into the engine-side legal-list index: the
     // first legal Intent that encodes to it (slots can alias several
     // Intents; see action_vocab.h).
-    const auto step = engine_->currentStep();
+    const auto& step = engine_->currentStep();
     const auto& state = engine_->state();
     int legal_index = -1;
     for (size_t i = 0; i < step.legal.size(); ++i) {
@@ -436,7 +434,7 @@ bool RiftboundState::syncToHistory(const ::riftbound::GameState& live_state,
     // The history alone can match a different game (another seed deals other
     // cards but offers the same first choices). Compare what the choices
     // were made on: the pending decision and every hidden-order zone.
-    const auto step = engine_->currentStep();
+    const auto& step = engine_->currentStep();
     const auto& replayed = engine_->state();
     if ((live_step.perspective != ::riftbound::PlayerId::None &&
          step.perspective != live_step.perspective) ||

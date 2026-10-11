@@ -36,6 +36,7 @@ Two engine facts drive several findings:
   - `units/0016_dangerous_duo.cpp:19`, `units/0238_leona_determined.cpp:18`, `units/0539_ahri_inquisitive.cpp:18`, `units/0199_tideturner.cpp:35`.
   - Full list: Navori Fighting Pit 278, Veiled Temple 535, Amateur Recital 763, Spirit's Refuge 63, Forge of the Future 212, and units 16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 199, 234, 238, 330, 361, 384, 453, 479, 539, 589, 618, 738.
   - Fix direction: either convert each to `pickTarget` + `kFinalizeTrigger`, or have the engine choose targets at finalization for any trigger with `getTargetRequirements().count > 0`. Add an engine-level test that plays the card rather than calling `onTrigger`.
+  - c0: 278 Navori Fighting Pit, 535 Veiled Temple, 763 Amateur Recital, 63 Spirit's Refuge, 212 Forge of the Future — FIXED: see 07 item 7.1 / 7.2
 
 ## C. Non-idempotent work before a suspending helper
 
@@ -45,6 +46,7 @@ The callback re-runs from the top after a choice, so anything before the helper 
 - [ ] **3.4** `spells/0515_arcane_shift.cpp:25-31` — banishes and replays `targets[0]` before `pickTarget` (`:44`); play triggers fire twice. [confirmed]
 - [ ] **3.5** `units/0406_jayce_man_of_progress.cpp:50-52` — `killObject(gear)` before `pickTarget` (`:59`); with two gears both die, with one the picked gear is never played. [confirmed]
 - [ ] **3.6** `gear/0242_baited_hook.cpp:33-36` — kills `targets[0]` then suspends (`:59`); on re-entry returns early, the chosen unit is never played. [confirmed]
+  - c0: 242 Baited Hook — FIXED: the kill is recorded on the chain item (`resume_data[7]` = 1 + the killed unit's Might) so the re-entry after the pick neither kills again nor returns early; the picked unit is played; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
 - [ ] **3.7** `gear/0490_altar_of_memories.cpp:35-38` — once-guard `__altar_drew` is never erased; from the second friendly death "yes" neither exhausts nor draws but still forces a hand card onto the deck. `spells/0475_guards.cpp:25-33` has the same permanent guard (`__guards_token`) [plausible]. [confirmed]
 
 ## D. Choices at finalization
@@ -70,11 +72,13 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - Rest: `grep -nE "(moveToBattlefield|moveToBase|bounceToHand|moveToLocation)\((ctx\.executor, *)?(ctx\.source|source)\b" src/cards/*/*.cpp`
 - [ ] **3.15 Trigger subject used after only `objectExists`** [plausible, low impact]
   - `units/0712_vex_apathetic.cpp:30`, `gear/0143_pirate_s_haven.cpp:26`, `battlefields/0272_back_alley_bar.cpp:26`, `gear/0060_mask_of_foresight.cpp:27`.
+  - c0: 143 Pirate's Haven, 272 Back-Alley Bar, 60 Mask of Foresight — FIXED: the subject must still be a unit on the board; test: C0Test.PiratesHaven_ReadyingARuneDoesNotTrigger, .BackAlleyBar_OnlyAUnitStillOnTheBoardGetsTheMight, .MaskOfForesight_IgnoresAUnitThatLeftTheBoard
 - [ ] **3.16** `units/0416_direwing.cpp:21` — "Another Dragon" skips every Direwing by def id; a second Direwing does not enter ready. Use the three-argument `entersReadyOnPlay(..., self)`. [confirmed]
 
 ## F. Data and reprint drift
 
 - [ ] **3.17** `gear/0542_seal_of_strength.cpp:25` — adds `Domain::Order`; reprint 163 adds `Domain::Body`. [verified]
+  - c0: 163 Seal of Strength — NOT A DEFECT: `gear/0163_seal_of_strength.cpp` adds `Domain::Body`, matching its text "[Add] [O]" and its Body domain; the wrong one is 542 (c1)
 - [ ] **3.18** `units/0778_plundering_poro.cpp:18` — `createGoldToken` (ready); text says exhausted, reprint 392 uses `createGoldExhausted`. [confirmed]
 - [ ] **3.19** `units/0548_karma_channeler.cpp:15-30` — only a `WhenYouPlayMe` Vision (the engine already does Vision, `trigger_manager.cpp:317`, so it runs twice) and no recycle trigger. `units/0235_karma_channeler.cpp:57` has tags `{"Vi", "Ionia"}`. [confirmed]
 - [ ] **3.20** `units/0543_sett_brawler.cpp` lacks the `canActivateAbility` buff gate that `units/0164_sett_brawler.cpp:27` has. [confirmed]

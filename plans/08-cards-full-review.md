@@ -50,11 +50,13 @@ cross-referenced.
   - Ornn's Forge 527 (gear discount stacks without limit, outlives control), Eager Apprentice 84, Herald of Scales 140 (-2 per pass, no Dragon filter), Vex, Cheerless 467 (two modifiers per pass, all card types). After a few cleanups every card that player plays is near free for the rest of the game.
   - Related scope errors: Vaults of Helia 775 taxes spells and gear as well as units; Risen Altar 950.
   - Fix: tag aura-sourced modifiers and clear them at the top of `recalculateAuras`, the same way `aura_effects` are rebuilt.
+  - c0: 527 Ornn's Forge, 950 Risen Altar — the per-slot mix-ups are FIXED card-side (each copy acts for its own controller); 775 Vaults of Helia verified; Risen Altar's "or [A] less" stays open (cards/batch-00.md); test: C0Test.SameBattlefieldTwice_ControllerScopedDiscounts
 
 - [x] **8.3 Aura-granted [Assault N] / [Shield N] add no Might** — FIXED: engine fold — `recalculateAuras` adds max(1, `keyword_value`) per granted Assault / Shield while the bearer is an attacker / a defender; `auraKeyword()` no longer sets `might_bonus`; cards that hand-rolled the bonus or also printed the keyword on the def were converted (Captain Farron 15, Raging Soul 19, Ancient Warmonger 452, Rumble, Hotheaded 349, Fiora, Victorious 232); test: AurasCostsTest.EquippedAssaultAndShield_AddMightInCombat, .AuraShield_TaricAndMechanizedMenace, .AuraAssault_RumbleFarronWarmongerRagingSoul, .AuraAssaultShield_PurifierAndBlackFlameAltar, .AuraKeywordHelper_AssaultCountedOnce, .AuraKeywordHelper_ShieldCountedOnce
   - The aura fold (`game_engine.cpp:4843-4850`) sums only `might_bonus` and sets the keyword bit; `recomputeMight` (`game_object.h:325-331`) adds only the object's own `assault_value` / `shield_value`. `auraKeyword()` in `card_helpers.h` exists to add the conditional Might and is not used.
   - No effect at all: Serrated Dirk 332, Cloth Armor 387, Black Flame Altar 764, Purifier 502, Mechanized Menace 551, Rumble, Hotheaded 349 ("Your Mechs each have [Assault]").
   - Fix: fold `keyword_value` in the engine, or route every one through `auraKeyword()`.
+  - c0: 332 Serrated Dirk, 387 Cloth Armor, 764 Black Flame Altar — verified ALREADY FIXED by this item; Black Flame Altar now uses `auraKeyword`
 
 - [ ] **8.4 Aura-granted keywords the engine never honours**
   - Vision is read from base keywords only, at play time, before any aura exists (`trigger_manager.cpp:317`): Forecaster 388 does nothing.
@@ -65,6 +67,7 @@ cross-referenced.
 - [x] **8.5 Gear never gets `WhenIDie`** — FIXED: `TriggerManager::onLeftBoard` fires a killed gear's own WhenIDie (with Deathknell doubling); test: ChainTriggerFixTest.GearDeath_TemporaryGearGetsItsDeathknell, ChainTriggerFixTest.GearDeath_KilledGearTriggers. Treasure Trove's "leaves the board" by bounce is still a card gap (batch-00)
   - `UnitDiedEvent` is emitted only for units (`effect_executor.cpp:261`, `game_engine.cpp:6419`); a dying gear emits only `LeftBoardEvent`, which `TriggerManager` does not subscribe to.
   - Treasure Trove 186 does nothing; Scrapheap 182's "killed" branch is dead; Sprite Fountain 640's Deathknell never fires.
+  - c0: 186 Treasure Trove — FIXED: new `TriggerType::WhenILeaveTheBoard` covers the bounce (`shared:` 776a84b); 182 Scrapheap also triggers on a discard; test: C0Test.TreasureTrove_TriggersHoweverItLeavesTheBoard, .Scrapheap_DrawsWhenDiscardedAndWhenKilled
 
 - [x] **8.6 Multi-target spell generation is wrong** — FIXED: the engine no longer assumes friendly-plus-enemy. Target sets come from the new `Card::enumerateLegalTargetSets` or, by default, from the requirement: "up to N" (`optional`) = every non-empty set of at most N distinct targets, fixed N = every ordered choice of N distinct targets. Used by hand, trash-replay and hidden plays. Void Assault 758 overrides it to keep its friendly-then-enemy pairs (`shared:` commit); tests: PlayCombatFixTest.MultiTarget_TwoFriendlyTargets_AreOfferedAsOrderedPairs, PlayCombatFixTest.MultiTarget_UpToThree_OffersEverySetOnce, PlayCombatFixTest.MultiTarget_VoidAssault_StillPairsAFriendlyWithAnEnemy
   - Singularity 105: fixed by the default (1 or 2 distinct units of either side).
@@ -81,6 +84,7 @@ cross-referenced.
   - BLOCKED: needs card stream (card files are not this stream's). Hand of Noxus 296 `onActivate`: `if (cards_played_this_turn < 1) return;`. Vanguard Captain 218 `onTrigger` and Sun Disc 21 `onActivate`: `if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;`. Scorchclaw 578: remove the `xp < 3` gate from the [Hunt 2] trigger and add the [Level 3] passive (+1 [M] in `applyPassiveAura`, `entersReadyOnPlay` when xp >= 3), as Gustwalker 637 / Bandle Soldier 713 do. Undying Legion 587: needs a play-a-unit-from-trash path (today's `TrashReplayGrant` is spell-only) — larger, see §B.
   - Suggest the helpers stream delete `requiresLegion` / `requiresLevel` / `levelThreshold` once those cards are done: nothing may read them.
   - Declared in `card.h:639`, called nowhere. Cards that rely on them have no gate: Hand of Noxus 296, Vanguard Captain 218, Sun Disc 21, Undying Legion 587, Scorchclaw 578. (Scrapyard Champion 20 and Trifarian Gloryseeker 217 check `cards_played_this_turn` themselves and work.)
+  - c0: 21 Sun Disc — FIXED: self-gates in `onActivate` on a card other than itself having been played this turn (CR 812.1.c); its `requiresLegion()` override is removed; test: C0Test.SunDisc_NeedsAnotherCardPlayedThisTurn, .SunDisc_DoesNotCountItselfOnTheTurnItIsPlayed
 
 - [ ] **8.8 Keywords set on the def because the text mentions them**
   - `Keyword::Temporary` on the card itself — the unit is killed at its controller's next Beginning Phase (`game_engine.cpp:761`): Sprite Mother 106, Trevor Snoozebottom 610, Petal Pixie 638, Lillia, Fae Fawn 644, Sprite Queen 646, LeBlanc, Everywhere at Once 652.
@@ -103,10 +107,12 @@ cross-referenced.
 
 - [x] **8.12 Quick-Draw gear does not attach when played in the main phase** — FIXED: `resolvePermanent` attaches [Quick-Draw] gear whenever it is played (CR 819.1.d), its controller choosing the unit as it lands; the Closed-State generator emits one play per gear (the per-unit targets it used to emit were dropped by `ChainManager` and never attached), and showdowns offer it too; tests: PlayCombatFixTest.QuickDraw_PlayedInTheMainPhase_AttachesToAUnitYouChoose, PlayCombatFixTest.QuickDraw_AtReactionTiming_IsOneActionAndAttaches
   - The attach needs a targeted play intent (`game_engine.cpp:2195`), which only `generateClosedStateActions` emits (`:3052-3068`). Long Sword 345, Sterak's Gage 379, Cloth Armor 387.
+  - c0: 345 Long Sword, 379 Sterak's Gage, 387 Cloth Armor — verified ALREADY FIXED by this item; no card change
 
 - [x] **8.13 `playIgnoringCost` leaves the card in its source zone** (extends 07 item 7.10) — FIXED: `playIgnoringCost` (and so a successful `playPayingCost`) removes the card from any hand, trash, banishment, Champion Zone or Main Deck before placing it; test: ExecutorReviewFixTest.PlayIgnoringCost_RiftHeraldDeathknellTakesTheUnitOutOfHand, ExecutorReviewFixTest.PlayIgnoringCost_LeavesTrashBanishmentAndDeck
   - Card streams: the manual erase before `playIgnoringCost` is now redundant (harmless). Cards that erase before `playPayingCost` can drop the erase too: they all check `canPlayPayingCost` first, so the only exposure is a payment that fails after that check, which would leave the card in no zone [latent].
   - Rell, Magnetic 347 (Equipment on board and still in hand), Rift Herald 741. Fix in the executor rather than per card.
+  - c0: 160 Dazzling Aurora — FIXED: the manual erase from banishment before `playIgnoringCost` is dropped (the unit stays banished while the location is picked); 242 Baited Hook banishes with `banishObject` and plays from there; test: DazzlingAurora tests (unchanged, green), C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
 
 - [x] **8.14 Off-board source or target** (extends 02 item 2.28, 07 §E) — FIXED: executor guard, see 02 item 2.28; test: ExecutorReviewFixTest.OffBoard_DeadUnitIsNotMovedBouncedBuffedOrStunned
   - Not covered by the guard, still card work (S2): attaching gear to an off-board unit (`attachFree` / hand-rolled attach), and effects the cards apply themselves without the executor. `giveTemporaryMight`, `giveTemporaryKeyword`, `exhaustObject` and `healObject` are left unguarded.
@@ -128,6 +134,7 @@ cross-referenced.
   - Legends are skipped by sweeps that require a location: Battle Mistress 517 (02 item 2.13).
   - `[A][A]` Flow can only be paid from one domain: Death Mark 931.
   - "This turn" delayed death-watches never expire: Deadly Flourish 635, Siphoning Strike 933.
+  - c0: 17 Iron Ballista — FIXED (`entersExhausted()`); 101 Mushroom Pouch — FIXED (`hidden_at`); 375 Heart of Dark Ice — FIXED (`enumerateLegalTargets` overload); test: C0Test.IronBallista_EntersExhausted, .MushroomPouch_SeesACardHiddenAtABattlefield, .HeartOfDarkIce_IsOfferedAndGivesTheChosenUnitMight
 
 ## B. Cards with a missing or unimplemented effect
 
@@ -135,10 +142,12 @@ Each has a full entry in its batch file. Listed here so the scale is visible;
 "documented" means the card's own comment admits the gap.
 
 - **Blank or nearly blank:** Magma Wurm 11 (documented), Nine-Tailed Fox 252 (documented), Alpha Wildclaw 619 (documented), Maduli the Gatekeeper 706 (documented), Atakhan 732 (documented), Temporal Portal 401 (documented), Svellsongur 382, Spiderling 884, Undying Legion 587, Arachnoid Horror 679.
+  - c0: 382 Svellsongur — BLOCKED: needs engine dispatch of the bearer's own abilities through the gear (cards/batch-00.md); the card documents it
 - **A whole sentence missing:** Last Breath 257 (damage), Detonate 328 (draw 2), Eclipse 625 (Predict), Confront 129, Rally the Troops 487, Renekton, Brute 879 (empower at 10 Might), Ezreal, Prodigy 470, Red Brambleback 591, Blue Sentinel 649, Herald of Spring 596, Ashe, Focused 731, Sivir, Ambitious 441, Yeti Brawler 580, Karma, Channeler 548, Chem-Baroness 556, Swift Scout 259, Crescent Strike 634 (splash), Lillia, Protector of Dreams 620, Noxian Guillotine 251, Imperial Decree 221, Bushwhack 327, Relentless Pursuit 503.
 - **Multi-target or "all" effect coded as one target:** Back to Back 206, Grand Strategem 233, Decisive Strike 322, Danger Zone 501, On the Hunt 518, Icathian Rain 247, Tricksy Tentacles 616, Against the Odds 323 (flat +2).
 - **Wrong scope or zone:** Anivia, Primal 148 (every battlefield), Tibbers 316 (hits bases), Cannon Barrage 127 (not combat-only), Fox-Fire 253 (kills the caster's own units first), Ride the Wind 173 (base only), Unforgiven 256, Harpoon Squad 458, Gentle Gemdragon 666, Viktor, Leader 246, Right of Conquest 577, Overzealous Fan 449 (bounces instead of moving to base).
 - **Missing gate:** Loose Cannon 249 (draws regardless of hand size), Prodigal Explorer 514 (no "chosen twice" gate, wrong timing), Grandmaster at Arms 554 (attaches Equipment still in deck/hand/trash), Baited Hook 242 (cost coded as recycle-self, Power never charged), Altar of Memories 490, Forgotten Signpost 607, Yordle Explorer 422 (never draws), Seal of Strength 542 (wrong domain).
+  - c0: 242 Baited Hook — FIXED: cost is `[1]` + one Order Power + exhaust, no recycle-self; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
 
 ## C. Systemic lists
 
@@ -148,11 +157,15 @@ section.
 
 - [ ] **S1 Target-less triggers** — nothing new beyond the 26 in 07 item 7.1.
 - [ ] **S2 Off-board source/target guarded only by `objectExists`** (see 8.14) — about 80 more cards, most low impact. Higher-impact ones: Baited Hook 242, Icathian Rain 247, Treasure Trove 186, Pit Crew 91 (no guard at all), and gear attached to an off-board unit by Armed Assailant 324, Combat Chef 414, Veteran Poro 421, Master Bingwen 448, Ornn, Forge God 407, Lucian, Merciless 435, Akshan, Mischievous 431.
+  - c0: 242 Baited Hook, 186 Treasure Trove (and 272, 60, 143) — FIXED: on-board checks on the victim / source / subject; test: see cards/batch-00.md and cards/batch-08.md
 - [ ] **S3 Aura multiplies with copies** (02 item 2.2) — about 45 more cards, including Captain Farron 15, Raging Soul 19, Wielder of Water 55, Wizened Elder 65, Dr. Mundo 109, Lee Sin, Centered 151, Fiora, Victorious 232, Sett, Kingpin 240, Yi, Meditative 302, Garen 311, Gearhead 391, Ornn 407, Ancient Warmonger 452, Sivir, Mercenary 464, Trusty Ramhound 480, Soraka 550, Vilemaw 622, Master Yi, Tempered 675, Crimson Pigeons 716, Brutalizer 365, Soul Sword 601.
   - Battlefields have the same problem when both players bring the same battlefield: Trifarian War Camp 289, Void Gate 291, Kinkou Temple 946, Forbidding Waste 766, Black Flame Altar 764, Ornn's Forge 527, Gardens of Becoming 769, Risen Altar 950.
+  - c0: 365 Brutalizer — FIXED (each instance gives its own bearer +2 once); battlefields 289, 291, 946, 766, 764, 527, 769, 950 (and 292) — FIXED card-side with a per-slot guard; test: C0Test.SameBattlefieldTwice_EachCopyAppliesOnce, .SameBattlefieldTwice_VoidGateWasteAltarAndGardens, .SameBattlefieldTwice_ControllerScopedDiscounts, .Brutalizer_BonusAppliesHoweverItWasAttached
 - [ ] **S4 Unlimited buff** (02 item 2.14) — Arena Bar 124, Stand United 53, Overt Operation 153, Adaptatron 56, Karma 235, Poro Herder 61, Pit Rookie 136, Trifarian Gloryseeker 217, Warmog's Armor 430, Blind Monk 254, Radiant Dawn 297, Aphelios 372, Red Brambleback 591, Ivern 613, Nami 614, Enthralling Protector 724, Voidreaver 787, Navori Fighting Pit 278, Spirit's Refuge 63.
   - Exempt when fixing: Lee Sin, Ascetic 78 ("I can have any number of buffs").
+  - c0: 124 Arena Bar, 278 Navori Fighting Pit, 63 Spirit's Refuge — ALREADY FIXED by 02 item 2.14 (`buffUnit` gives a Buff only to a unit without one); the cards call `buffUnit`
 - [ ] **S5 First match taken where the player (or opponent) should choose** — about 70 more cards. Each batch file lists them with what should be chosen.
+  - c0: 282 Sigil of the Storm, 276 Hallowed Tomb, 771 Star Spring, 339 Recurve Bow, 99 Garbage Grabber, 342 Assembly Rig, 284 Targon's Peak — FIXED: each asks its controller (cards/batch-00.md Systemic S5)
 - [ ] **S6 Helper ordering** (03 item 3.1) — nothing new beyond Thrill of the Hunt 745, Altar of Memories 490, Zenith Blade 258, Blast Cone 695; Keeper's Verdict 760 has it on a fallback path; Forgotten Signpost 607 has two `pickTarget` calls.
 - [ ] **S7 `giveTemporaryKeyword(Temporary)` stripped the same turn** — Turn to Dust 632, with Shadow's Call 727 (07 item 7.9).
 

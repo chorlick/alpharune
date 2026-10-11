@@ -8,8 +8,11 @@
 /// Agents are wired via `buildAgent(spec, ...)`:
 ///   random            — uniform random over legal actions
 ///   human             — block on browser input through HumanAgent
-///   mcts:sims=N       — OpenSpiel MCTSBot wrapped as AgentInterface
-///   ismcts:sims=N     — OpenSpiel ISMCTSBot wrapped as AgentInterface
+///   mcts:sims=N       — OpenSpiel MCTSBot over a mirror of the live game,
+///                       leaves scored by RiftboundHeuristicEvaluator (no rollout)
+///   ismcts:sims=N     — OpenSpiel ISMCTSBot, same mirror and evaluator
+/// (agents/mcts_agent.{h,cpp}; keep this and the --help text below in step
+/// with that file.)
 ///
 /// When any seat is human:
 ///   • `god_mode` edits are accepted by the WebSocket API (--god-mode off
@@ -293,21 +296,24 @@ int main(int argc, char* argv[]) {
         "  human             Block at every decision and wait for a\n"
         "                    browser click via the WebSocket UI. Implies\n"
         "                    --web on, --render-html on, --debug, --trace.\n"
-        "  mcts:sims=N       OpenSpiel MCTSBot with a RandomRolloutEvaluator.\n"
-        "                    N is the simulation budget per decision (try\n"
-        "                    sims=20 for fast tests, sims=200+ for stronger\n"
-        "                    play). Each selectAction call rebuilds a fresh\n"
-        "                    OpenSpiel state by replaying action_history,\n"
-        "                    so interactive use is fine but cost grows with\n"
-        "                    decision depth.\n"
-        "  ismcts:sims=N     OpenSpiel ISMCTSBot for imperfect-info search.\n"
-        "                    Same N semantics as MCTS. Currently behaves\n"
-        "                    like MCTS at search time — proper hidden-info\n"
-        "                    determinization (sampling from the unseen card\n"
-        "                    pool) is queued as a follow-up. Caveat:\n"
-        "                    StateEditor god-mode edits do not participate\n"
-        "                    in MCTS planning; the bot sees the state\n"
-        "                    implied by action_history alone.\n"
+        "  mcts:sims=N       OpenSpiel MCTSBot. N is the simulation budget\n"
+        "                    per decision (try sims=20 for fast tests,\n"
+        "                    sims=200+ for stronger play). A leaf is scored\n"
+        "                    by a heuristic evaluator of the position, not\n"
+        "                    by a random rollout. The agent keeps a mirror\n"
+        "                    of the live game and, at each decision, replays\n"
+        "                    onto it only the choices made since its last\n"
+        "                    one, so the cost per decision does not grow\n"
+        "                    with the length of the game.\n"
+        "  ismcts:sims=N     OpenSpiel ISMCTSBot (information-set search),\n"
+        "                    same N, mirror and evaluator. It does not yet\n"
+        "                    sample the opponent's hidden cards: each\n"
+        "                    simulation runs on a copy of the real state.\n"
+        "                    Caveat for both: a god-mode edit bypasses the\n"
+        "                    history the mirror is built from. After one the\n"
+        "                    agent searches from a copy of the live state at\n"
+        "                    main-phase decisions only and answers every\n"
+        "                    other decision at random.\n"
         "\n"
         "Common invocations:\n"
         "  ./riftbound --deck1 D1.txt --deck2 D2.txt\n"

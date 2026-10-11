@@ -39,11 +39,14 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
         const int my_might = self.current_might;
-        // Not Empowered, or off the board: nothing to choose. No return ahead
-        // of pickTarget — it stores "no target" on the chain item, so the
-        // resolution asks nothing if I have been Empowered since.
+        // Empowered is not asked again here: it was the trigger condition
+        // (triggerCondition), and an ability that is on the chain resolves
+        // even if I have been disempowered since (CR 383.2.a.1: "it will
+        // still resolve"). Off the board: no unit is "here" (CR 359.3.f.2).
+        // No return ahead of pickTarget — it stores "no target" on the chain
+        // item.
         std::vector<GameObjectId> legal;
-        if (self.isEmpowered() && self.location.has_value()) {
+        if (self.location.has_value()) {
             const auto here = *self.location;
             legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& obj) {
                 return obj.controller != ctx.controller && *obj.location == here &&

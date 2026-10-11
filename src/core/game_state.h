@@ -109,6 +109,11 @@ struct PlayerState {
     int draws_this_turn = 0;         // cards drawn this turn (Frigid Jewel "2nd card")
     // A friendly unit died during THIS player's Beginning Phase this turn (Shadow Watcher).
     bool unit_died_in_beginning_this_turn = false;
+    // Turn-scoped effects of a resolved spell (reset in resetTurnTracking):
+    bool units_enter_ready_this_turn = false;   // "Units you play this turn enter ready" (Confront, Bushwhack)
+    bool unit_died_this_turn = false;           // a unit this player controlled died this turn (Spoils of War)
+    int  buff_might_bonus_this_turn = 0;        // "Buffs give an additional +N [M] to friendly units this turn" (Stand United)
+    bool hide_ignoring_costs_this_turn = false; // "You can hide cards ignoring costs this turn" (Guerilla Warfare)
     // Continuous-effect values (reset + recomputed during aura recompute; set by
     // cards' applyPassiveAura — default = no effect):
     bool cannot_gain_points = false; // Tianna Crownguard ("opponents can't gain points")
@@ -299,6 +304,10 @@ struct PlayerState {
         hold_points_this_turn = 0;
         draws_this_turn = 0;
         unit_died_in_beginning_this_turn = false;
+        units_enter_ready_this_turn = false;
+        unit_died_this_turn = false;
+        buff_might_bonus_this_turn = 0;
+        hide_ignoring_costs_this_turn = false;
         // (cannot_gain_points / extra_points_to_win are continuous-effect flags,
         //  recomputed during aura cleanup — not per-turn counters.)
         // Expire this-turn cost modifiers
@@ -615,6 +624,10 @@ struct DelayedAbility {
     // subject (Deadly Flourish: "when IT dies"). kInvalidId = no filter,
     // fires on any matching trigger.
     GameObjectId target_filter = kInvalidId;
+
+    // Fires every time its event happens until it expires, instead of once
+    // ("When ANY unit takes damage this turn, kill it" — Imperial Decree).
+    bool every_time = false;
 };
 
 // ─── Complete Game State ─────────────────────────────────────────────────────

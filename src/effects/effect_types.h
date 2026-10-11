@@ -197,6 +197,9 @@ enum class TriggerType : uint8_t {
     WhenILeaveTheBoard,          // "When this leaves the board," (Treasure Trove) — fires on the
                                  // permanent itself however it left: killed, returned to hand,
                                  // recycled, banished (TriggerManager::onLeftBoard)
+    WhenAUnitTakesDamage,        // delayed abilities only ("the next time it takes damage this
+                                 // turn", "when any unit takes damage this turn");
+                                 // triggering_subject = the damaged unit
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

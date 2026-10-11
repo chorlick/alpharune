@@ -32,6 +32,8 @@ void TriggerManager::subscribe() {
         [this](const PhaseChangedEvent& e) { onPhaseChanged(e); }));
     connections_.push_back(events_.on_unit_stunned.connect(
         [this](const UnitStunnedEvent& e) { onUnitStunned(e); }));
+    connections_.push_back(events_.on_damage_dealt.connect(
+        [this](const DamageDealtEvent& e) { onDamageDealt(e); }));
     connections_.push_back(events_.on_unit_readied.connect(
         [this](const UnitReadiedEvent& e) { onUnitReadied(e); }));
     connections_.push_back(events_.on_card_hidden.connect(
@@ -84,6 +86,14 @@ void TriggerManager::onUnitStunned(const UnitStunnedEvent& e) {
     checkDelayedAbilities(TriggerType::WhenYouStun, e.stunner, e.stunned_unit);
 }
 
+void TriggerManager::onDamageDealt(const DamageDealtEvent& e) {
+    if (e.amount <= 0 || !state_.objectExists(e.target)) return;
+    const auto& unit = state_.getObject(e.target);
+    if (!unit.isUnit() || !unit.location.has_value()) return;
+    checkDelayedAbilities(TriggerType::WhenAUnitTakesDamage, PlayerId::Player1, e.target);
+    checkDelayedAbilities(TriggerType::WhenAUnitTakesDamage, PlayerId::Player2, e.target);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Delayed abilities (CR 389-392)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -100,7 +110,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         if (da.target_filter != kInvalidId &&
             da.target_filter != event_object) continue;
 
-        da.fired = true;
+        if (!da.every_time) da.fired = true;
         events_.logTrace("DELAYED_ABILITY: firing for " +
                          (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
         chain_.addAbility(da.source, da.controller, da.card_def_id);
@@ -109,6 +119,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         // Targon's Peak's AtEndOfTurn ready-runes).
         if (!state_.chain.items.empty()) {
             state_.chain.items.back().fired_trigger = trigger;
+            state_.chain.items.back().triggering_subject = event_object;
         }
     }
 

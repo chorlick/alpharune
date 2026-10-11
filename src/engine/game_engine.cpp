@@ -2343,6 +2343,8 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                 if (cdef->entersReadyOnPlay(state_, card.controller, card)) enters_ready = true;
             }
         }
+        // "Units you play this turn enter ready." (a resolved spell's effect)
+        if (state_.player(item.controller).units_enter_ready_this_turn) enters_ready = true;
         card.is_exhausted = !enters_ready;
     }
     // Gear enters ready (CR 149.1) unless it says "This enters exhausted."
@@ -2692,7 +2694,8 @@ void GameEngine::executeHideCard(const Intent& intent) {
     // Pay the Hide cost, [A] (CR 811.1.b) — one Power of any domain, through
     // the shared additional-cost path: floating Power first, else a recycled
     // rune (exhausted before ready). Unpaid, the card is not hidden.
-    if (!payAdditionalCost(intent.player, 0, 1, Domain::Count)) {
+    if (!ps.hide_ignoring_costs_this_turn &&
+        !payAdditionalCost(intent.player, 0, 1, Domain::Count)) {
         events_.logTrace("HIDE: " + card.name + " not hidden — [A] could not be paid");
         return;
     }
@@ -3050,7 +3053,8 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
 
         // The Hide cost is [A] (CR 811.1.b): floating Power or any rune in
         // base, ready or exhausted — the same test executeHideCard pays by.
-        if (!canPayAdditionalCost(player, 0, 1, Domain::Count)) continue;
+        if (!ps.hide_ignoring_costs_this_turn &&
+            !canPayAdditionalCost(player, 0, 1, Domain::Count)) continue;
 
         // Can hide at any controlled BF with available facedown slot
         for (auto& bf : state_.battlefields) {
@@ -4949,6 +4953,17 @@ void GameEngine::recalculateAuras() {
     // now the card's own Card::applyPassiveAura, applied in Step 1b / 1c.
     // Step 3c, Equipment keywords, moved up to Step 1a'.)
 
+    // "Buffs give an additional +N [M] to friendly units this turn."
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit() || !obj.location.has_value() || obj.buff_count <= 0) continue;
+        const int bonus = state_.player(obj.controller).buff_might_bonus_this_turn;
+        if (bonus <= 0) continue;
+        GameObject::AuraEffect ae;
+        ae.source = id;
+        ae.might_bonus = bonus * obj.buff_count;
+        obj.aura_effects.push_back(ae);
+    }
+
     // Step 4: Rebuild cached aura values on all objects
     for (auto& [id, obj] : state_.objects) {
         obj.aura_might_bonus = 0;
@@ -6477,6 +6492,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     }
 
     state_.turn.any_unit_died_this_turn = true;
+    state_.player(controller).unit_died_this_turn = true;
     // Shadow Watcher: a friendly unit dying during its controller's Beginning
     // Phase (Awaken/Beginning/Scoring steps of that player's own turn).
     {

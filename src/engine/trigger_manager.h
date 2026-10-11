@@ -113,6 +113,10 @@ private:
     /// card_counters["__stunned_unit_id"] for the trigger's onTrigger.
     void onUnitStunned(const UnitStunnedEvent& e);
 
+    /// Fires delayed abilities waiting on WhenAUnitTakesDamage (either
+    /// player's); the damaged unit is the subject.
+    void onDamageDealt(const DamageDealtEvent& e);
+
     /// Phase-2 trigger events.
     void onUnitReadied(const UnitReadiedEvent& e);          // WhenIAmReadied
     void onCardHidden(const CardHiddenEvent& e);            // WhenYouHideACard

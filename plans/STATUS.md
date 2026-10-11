@@ -10,7 +10,7 @@ States: `pending` → `running` → `returned` → `merged` (or `blocked`).
 
 | Field | Value |
 |---|---|
-| Current stage | 1 |
+| Current stage | 2 |
 | Integration branch | `fix/integration` (`.worktrees/integration`) |
 | Baseline commit (master at stage 0) | `c7143f1` |
 | Baseline tests | 1511 run: 1508 passed, 2 failed, 1 skipped (1 disabled). Failing at baseline: `CardTestFixture.BaronNashor_IntegrationFullPlayPathCreatesPit`, `ChainTestFixture.FullGameRunsWithSpellsInDecks` (both: deleted deck file, item 7.40) |
@@ -64,8 +64,8 @@ iteration must apply these.
 | 1 | chain-triggers | merged | `6d4dd76` (merge `c9ad6b4`) | 1583 run, 1580 passed, 2 baseline failures | 12 items closed; 7.1 decision recorded (cards use `pickTarget` + `kFinalizeTrigger`); 8.9 has one bullet left, in carry-over |
 | 1 | engine-auras-costs | merged | `3ba5256` (merge `a8af2ef`) | 1631 run, 1628 passed, 2 baseline failures | 10 items closed; 5.4 and 8.4 partly done, remainder in carry-over; edited 25 card files (listed in carry-over) |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
-| 1 | io-cli | returned | `f3e2208` (follow-ups merged, verification batched with integrity) | 1707 passed, 0 failed (on its branch) | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
-| 1 | integrity | returned | `fc1f7cb` (merged, gate run in progress) | 1726 passed, 0 failed (on its branch) | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
+| 1 | io-cli | merged | `f3e2208` | gate: 1726 run, 1726 passed | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
+| 1 | integrity | merged | `fc1f7cb` (merge `b0d329b`) | gate: 1726 run, 1726 passed | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
 | 2 | cards-c0 | pending | | | |
 | 2 | cards-c1 | pending | | | |
 | 2 | cards-c2 | pending | | | |
@@ -86,7 +86,7 @@ iteration must apply these.
 | Gate | Passed | Evidence |
 |---|---|---|
 | Stage 0 baseline | yes | `c7143f1`; tests 1508/1511 (2 baseline failures above); smoke: 200 games fiora vs yi_rebuild, `--seed 20261010 --threads 6`, exit 0, P1 128 / P2 72 / 0 draws, no exception; `riftbound_clone_equiv_test` FAILS at baseline (hard-coded `decks/leblanc_test.txt`, item 7.40) and must pass at the stage 1 gate |
-| Stage 1 | | early run at `c0975fc` (7 of 8 streams): suite 1707/1707, `riftbound_openspiel_tests` 17/17, clone-equiv 10/10, smoke 200 games P1 130 / P2 70 / 0 draws rc=0, fault injection exits 1 with message (1.7 confirmed) — logs in `.worktrees/logs/gate-pre1/`; real gate pending integrity |
+| Stage 1 | yes | `b0d329b` (all 8 streams): suite 1726/1726, `riftbound_openspiel_tests` 17/17, clone-equiv 10/10, smoke 200 games fiora vs yi_rebuild seed 20261010 rc=0 P1 130 / P2 70 / 0 draws, MCTS batch rc=0, fault injection rc=1 with "game 1 [seed=7]: injected engine fault" (1.7 confirmed: failure, not a draw). Logs `.worktrees/logs/gate-stage1/`. Checkbox criterion: 87+8 ticked; stage 1 items left `[ ]` because the rest of each is card or cross-stream work, all in carry-over — 3.1, 3.24, 7.30, 7.1 (card streams, sweep ticks), 8.7 (cards), 5.4, 8.4, 8.9 (sweep) |
 | Stage 2 | | |
 | Stage 3 | | |
 | Stage 4 | | |
@@ -204,3 +204,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 user limited builds to `-j3` (see Run decisions).
 - 2026-10-10 user restored `-j6` and asked for CMake to enforce it (integrity adds `RIFTBOUND_BUILD_JOBS`).
 - 2026-10-10 integrity (`fc1f7cb`) merged; integration reconfigured with the shared-ccache launcher; stage 1 gate run started. AGENT_BRIEF.md updated (launcher, job cap, unity-test rule, shell rule). 7 rows to carry-over.
+- 2026-10-10 STAGE 1 GATE PASSED at `b0d329b`. integrity and io-cli marked merged; their worktrees and branches removed.

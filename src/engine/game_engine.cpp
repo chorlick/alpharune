@@ -2343,6 +2343,10 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                 if (cdef->entersReadyOnPlay(state_, card.controller, card)) enters_ready = true;
             }
         }
+        // A continuous effect of a unit already on the board ("Other friendly
+        // units enter ready." — set by its applyPassiveAura, so it never
+        // covers the unit that prints it).
+        if (state_.player(card.controller).units_enter_ready) enters_ready = true;
         card.is_exhausted = !enters_ready;
     }
     // Gear enters ready (CR 149.1) unless it says "This enters exhausted."
@@ -4804,6 +4808,7 @@ void GameEngine::recalculateAuras() {
         ps.grant_friendly_units_open_bf = false; // Miss Fortune, Buccaneer
         ps.units_play_base_only = false;         // Mageseeker Warden
         ps.tokens_enter_ready = false;           // Renata Glasc, Industrialist
+        ps.units_enter_ready = false;            // Magma Wurm
         ps.recall_all_on_attacker_tie = false;   // Symbol of the Solari
         ps.effects_cant_ready_my_units = false;  // Mageseeker Warden cl2
         ps.spells_have_repeat_energy = 0;        // Syndra, Transcendent

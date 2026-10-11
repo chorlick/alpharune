@@ -1351,6 +1351,8 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     // replacement on token creation — a friendly token never enters exhausted
     // while the flag is set (refreshed each cleanup via applyPassiveAura).
     if (state_.player(controller).tokens_enter_ready) enter_ready = true;
+    // "Other friendly units enter ready." (Magma Wurm) covers unit tokens too.
+    if (type == CardType::Unit && state_.player(controller).units_enter_ready) enter_ready = true;
     obj.is_exhausted = !enter_ready && type == CardType::Unit; // units enter exhausted unless ready
 
     if (std::holds_alternative<BaseLocation>(location)) {
@@ -1929,7 +1931,9 @@ void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
     obj.controller = player;
 
     if (obj.isUnit()) {
-        obj.is_exhausted = true;
+        // Units enter exhausted (CR 143.4) unless a continuous effect on the
+        // board says otherwise ("Other friendly units enter ready.").
+        obj.is_exhausted = !state_.player(player).units_enter_ready;
         // A unit (re-)entering play is a fresh presence — clear any marked
         // damage carried from a prior life (e.g. banished-then-replayed by
         // Thrill of the Hunt). New plays from hand are already at 0, so this

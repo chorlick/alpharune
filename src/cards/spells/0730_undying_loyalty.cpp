@@ -26,6 +26,12 @@ class UndyingLoyalty : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
 
     static bool discounts(const GameObject& obj) {
         return hasTag(obj, "Bird") || hasTag(obj, "Cat") ||

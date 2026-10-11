@@ -71,12 +71,6 @@ void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId playe
         if (oac.paid_flag && oac.paid_flag[0] != '\0') counters.erase(oac.paid_flag);
 }
 
-bool Card::mayChooseAtFinalization(const GameState& state, PlayerId controller,
-                                   GameObjectId object) const {
-    const auto legal = enumerateLegalTargets(state, controller);
-    return std::find(legal.begin(), legal.end(), object) != legal.end();
-}
-
 uint64_t Card::costStateFingerprint(const GameState& state) {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };

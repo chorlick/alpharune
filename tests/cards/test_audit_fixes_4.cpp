@@ -250,7 +250,6 @@ TEST_F(AuditFix4Test, BladeRuinedKing_EquipKillsFriendlyAndRecyclesOrderRune) {
 
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    Card* c = card_registry.get(kBladeRuinedKing);
     bool ok = equipThroughEngine(gear, bearer);
 
     EXPECT_TRUE(ok);
@@ -272,7 +271,6 @@ TEST_F(AuditFix4Test, BladeRuinedKing_FailsWithoutOrderRune) {
 
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    Card* c = card_registry.get(kBladeRuinedKing);
     bool ok = equipThroughEngine(gear, bearer);
     EXPECT_FALSE(ok) << "no Order rune -> can't pay [Y] -> equip fails";
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());
@@ -286,7 +284,6 @@ TEST_F(AuditFix4Test, BladeRuinedKing_FailsWithNoOtherFriendlyUnitToKill) {
 
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
-    Card* c = card_registry.get(kBladeRuinedKing);
     bool ok = equipThroughEngine(gear, bearer);
     EXPECT_FALSE(ok) << "no friendly unit to kill (can't kill the equip target) -> fails";
     EXPECT_FALSE(state.getObject(gear).attached_to.has_value());

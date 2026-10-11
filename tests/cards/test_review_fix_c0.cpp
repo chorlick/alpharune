@@ -681,7 +681,7 @@ TEST_F(C0Test, TheAcademy_GrantedRepeatCostsTheWholeBaseCost) {
         auto& pool = state.player(P1).rune_pool;
         pool.energy = 8;
         pool.power[static_cast<int>(Domain::Body)] = 1;   // the base cost's [O] only
-        EnginePathAgent agent(EnginePathAgent::script({1}));
+        EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
         playAt(spell, unit, &agent);
         EXPECT_TRUE(agent.prompts.empty()) << "the Repeat's [O] can't be paid: not offered";
         EXPECT_EQ(o(unit).temp_might_bonus, 7);
@@ -694,7 +694,7 @@ TEST_F(C0Test, TheAcademy_GrantedRepeatCostsTheWholeBaseCost) {
         auto& pool = state.player(P1).rune_pool;
         pool.energy = 8;
         pool.power[static_cast<int>(Domain::Body)] = 2;
-        EnginePathAgent agent(EnginePathAgent::script({1}));
+        EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
         playAt(spell, unit, &agent);
         // The Repeat yes/no, then the additional execution's own target: its
         // choices are made as the spell is finalized and need not be the first

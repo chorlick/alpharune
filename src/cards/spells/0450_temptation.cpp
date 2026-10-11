@@ -25,6 +25,12 @@ public:
         return {RepeatCost{.energy = 2}};
     }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
     /// Where `a` may be moved (int-coded as moveDests): each other location
     /// holding another unit of its controller.
     static std::vector<int> destinations(const GameState& state, GameObjectId a) {

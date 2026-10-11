@@ -16,6 +16,11 @@ class GentlemenSDuel : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
 
     // "Give a friendly unit +3 [M] this turn. Then choose an enemy unit.
     // They deal damage equal to their Mights to each other."

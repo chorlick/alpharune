@@ -1,3 +1,4 @@
+#include "cards/card_helpers.h"
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
@@ -21,6 +22,11 @@ public:
         return {RepeatCost{.energy = 2}};
     }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true, .must_be_friendly = true};
     }

@@ -27,6 +27,14 @@ public:
     // unit to choose (no hasLegalTargets gate), and every prompt, the first
     // included, offers "Stop here".
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // A unit at a battlefield with Might 4 or less.
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+            [&](const GameObject& u) {
+                return u.isAtBattlefield() && u.current_might <= kTotalMight;
+            });
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;

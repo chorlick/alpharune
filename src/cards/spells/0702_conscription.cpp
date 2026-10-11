@@ -22,6 +22,12 @@ public:
     // The additional cost is decided and paid, and the unit chosen from the
     // matching set, as the spell is played (CR 355).
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
     static std::vector<GameObjectId> candidates(const GameState& state, PlayerId me,
                                                 bool any_might) {
         return chooseableUnits(state, me, [&](const GameObject& o) {

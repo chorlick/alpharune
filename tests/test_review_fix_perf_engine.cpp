@@ -309,4 +309,76 @@ TEST_F(PerfEngineGame, AGameIsTheSameWithAndWithoutAListener) {
     }
 }
 
+// ─── 6.6: cleanup ───────────────────────────────────────────────────────────
+
+constexpr CardDefId kTCountingElder = 1040;   // unit: "any amount of your damage is enough to kill"
+
+/// Elder Dragon's rule on a test unit that counts how often it is asked.
+class TCountingElder : public UnitCard {
+public:
+    TCountingElder() {
+        def_.id = kTCountingElder;
+        def_.name = "Test Counting Elder";
+        def_.card_type = CardType::Unit;
+        def_.might = 4;
+    }
+    const CardDef& def() const override { return def_; }
+    bool anyDamageIsLethal() const override { ++asked; return true; }
+    static inline int asked = 0;
+private:
+    CardDef def_;
+};
+
+class PerfEngineCards : public CardTestFixture {
+protected:
+    void SetUp() override {
+        CardTestFixture::SetUp();
+        card_registry.registerCard(kTCountingElder, std::make_unique<TCountingElder>());
+        card_db.buildFromClasses(card_registry);
+        TCountingElder::asked = 0;
+    }
+    GameObject& o(GameObjectId id) { return state.getObject(id); }
+    bool onBoard(GameObjectId id) { return o(id).location.has_value(); }
+};
+
+// 6.6 — processLethalDamage asked "is any amount of P's damage lethal?" for
+// both players at the top of every call. It is now asked only for a unit that
+// carries damage short of lethal, once per player.
+TEST_F(PerfEngineCards, TheElderRuleIsAskedOnlyForAUnitCarryingDamageShortOfLethal) {
+    addUnit(P1, kTCountingElder, 4);
+    const GameObjectId healthy = addUnit(P2, kInvalidId, 3);
+    const GameObjectId dead = addUnit(P2, kInvalidId, 2);
+    o(dead).damage_marked = 2;
+    o(dead).damage_marked_by[0] = 2;
+    withEngine([](GameEngine& e) { e.testHook_processLethalDamage(); });
+    EXPECT_EQ(TCountingElder::asked, 0)
+        << "nothing carried damage short of lethal: nobody needed the rule";
+    EXPECT_FALSE(onBoard(dead)) << "plain lethal damage still kills";
+    EXPECT_TRUE(onBoard(healthy));
+
+    // Two units with one damage each from P1: both die by the rule, which is
+    // asked once (and not at all for P2, whose damage is on nobody).
+    const GameObjectId scratched = addUnit(P2, kInvalidId, 5);
+    o(healthy).damage_marked = 1;
+    o(healthy).damage_marked_by[0] = 1;
+    o(scratched).damage_marked = 1;
+    o(scratched).damage_marked_by[0] = 1;
+    withEngine([](GameEngine& e) { e.testHook_processLethalDamage(); });
+    EXPECT_EQ(TCountingElder::asked, 1);
+    EXPECT_FALSE(onBoard(healthy));
+    EXPECT_FALSE(onBoard(scratched));
+}
+
+TEST_F(PerfEngineCards, DamageAUnitDidToItsOwnSideIsNotTheOtherPlayersDamage) {
+    // The rule is about "your damage": a unit scratched by its own side stays,
+    // with the Elder unit in play on the other side.
+    addUnit(P1, kTCountingElder, 4);
+    const GameObjectId own_goal = addUnit(P2, kInvalidId, 5);
+    o(own_goal).damage_marked = 1;
+    o(own_goal).damage_marked_by[1] = 1;
+    withEngine([](GameEngine& e) { e.testHook_processLethalDamage(); });
+    EXPECT_TRUE(onBoard(own_goal));
+    EXPECT_EQ(TCountingElder::asked, 0);
+}
+
 }  // namespace test_review_fix_perf_engine

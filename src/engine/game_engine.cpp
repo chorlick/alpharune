@@ -6369,8 +6369,18 @@ bool GameEngine::checkWinCondition() {
 }
 
 void GameEngine::processLethalDamage() {
-    const bool elder_p1 = anyDamageIsLethalFor(PlayerId::Player1);
-    const bool elder_p2 = anyDamageIsLethalFor(PlayerId::Player2);
+    // "Any amount of your damage is enough to kill" (CR 142.4.c) is asked only
+    // for a unit that carries damage short of lethal, and at most once per
+    // player per call: most cleanups find no such unit, and the question is a
+    // walk over that player's units in play (plans/06 item 6.6). Nothing in
+    // the loop below changes the answer (it only reads), so asking late and
+    // remembering is the same as asking first.
+    std::optional<bool> any_damage_lethal[2];
+    auto elder = [&](PlayerId damager) {
+        auto& known = any_damage_lethal[playerIndex(damager)];
+        if (!known.has_value()) known = anyDamageIsLethalFor(damager);
+        return *known;
+    };
 
     std::vector<GameObjectId> to_kill;
     for (auto& [id, obj] : state_.objects) {
@@ -6386,9 +6396,7 @@ void GameEngine::processLethalDamage() {
             PlayerId damager = opponent(obj.controller);
             const bool has_their_damage =
                 std::min(obj.damage_marked_by[playerIndex(damager)], obj.damage_marked) > 0;
-            if (has_their_damage &&
-                ((damager == PlayerId::Player1 && elder_p1) ||
-                 (damager == PlayerId::Player2 && elder_p2))) {
+            if (has_their_damage && elder(damager)) {
                 lethal = true;
                 RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
             }

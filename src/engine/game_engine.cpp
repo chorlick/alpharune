@@ -1917,6 +1917,14 @@ void GameEngine::executeIntent(const Intent& intent) {
 // cost by ..." reaches the payment. The card makes the choices and pays
 // (Card::payAdditionalPlayCost); the engine only says what the play could
 // still afford.
+void GameEngine::forgetPlayPayments(PlayerId player, GameObjectId card_id) {
+    if (!state_.objectExists(card_id)) return;
+    const auto& card = state_.getObject(card_id);
+    Card::forgetPlayPayments(state_,
+        card.card_def_id != kInvalidId ? card_registry_.get(card.card_def_id) : nullptr,
+        player, card_id);
+}
+
 Card::PlayCostAdjust GameEngine::payAdditionalPlayCosts(PlayerId player, GameObjectId card_id,
                                                         int extra_any_power) {
     if (!state_.objectExists(card_id)) return {};
@@ -1924,6 +1932,10 @@ Card::PlayCostAdjust GameEngine::payAdditionalPlayCosts(PlayerId player, GameObj
     if (card.card_def_id == kInvalidId) return {};
     Card* cc = card_registry_.get(card.card_def_id);
     if (!cc) return {};
+    // Also reached by plays that do not come through executePlayCard /
+    // executePlaySpell (a reaction played off the chain, an effect that plays
+    // a card and pays for it): the play starts here for them.
+    Card::forgetPlayPayments(state_, cc, player, card_id);
     const auto addl = cc->additionalPlayCost(state_, card_db_, player, card_id);
     if (!addl.exists || !addl.payable) return {};
     CardContext ctx{state_, events_, *effect_executor_, player, card_id};
@@ -2000,6 +2012,7 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
 void GameEngine::executePlayCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
+    forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
     int trace_cost = (card.card_def_id != kInvalidId)
         ? card_db_.get(card.card_def_id).energy_cost : 0;
     events_.logTrace("PLAY: " + card.name + " (id=" + std::to_string(intent.card) +
@@ -2125,6 +2138,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
 void GameEngine::executePlaySpell(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
+    forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
     {
         std::string tgt_str;
         for (auto t : intent.targets) {
@@ -3220,6 +3234,7 @@ void GameEngine::executeHideCard(const Intent& intent) {
 
 void GameEngine::executePlayFromHidden(const Intent& intent) {
     auto& card = state_.getObject(intent.card);
+    forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
     auto bf_id = card.hidden_at;
     auto& bf = getBattlefield(bf_id);
 

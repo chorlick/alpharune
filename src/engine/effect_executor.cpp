@@ -2251,6 +2251,9 @@ void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                                        std::optional<LocationId> location) {
     if (!state_.objectExists(card)) return;
     auto& obj = state_.getObject(card);
+    // A new play, and nothing is paid for it: what an earlier play of this
+    // card paid is forgotten (Card::forgetPlayPayments).
+    Card::forgetPlayPayments(state_, cardFor(obj.card_def_id), player, card);
 
     // A played card leaves the zone it is played from. Done here so no caller
     // can leave it listed in a hand, trash, banishment or deck while it is

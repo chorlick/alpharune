@@ -884,6 +884,20 @@ public:
     virtual PlayCostAdjust payAdditionalPlayCost(
         CardContext& ctx, const std::function<bool(const PlayCostAdjust&)>& affordable);
 
+    /// The counter a card sets on itself (to 1) when its additional cost was
+    /// paid for THIS play, for its play trigger to read ("When you play me,
+    /// if you paid the additional cost, ..."). One key for every card, so
+    /// that one place can forget it: forgetPlayPayments.
+    static constexpr const char* kAdditionalCostPaid = "__additional_cost_paid";
+    /// Forget what was paid for an earlier play of `object`: kAdditionalCostPaid
+    /// and the paid_flag of its optionalAdditionalCost(). The engine calls
+    /// this as every play of a card begins — whatever the play path and
+    /// whether or not the cost can be paid this time — so a flag left behind
+    /// by a play whose trigger never resolved (countered) cannot make a
+    /// later, unpaid play look paid.
+    static void forgetPlayPayments(GameState& state, const Card* card, PlayerId player,
+                                   GameObjectId object);
+
     /// "Optional additional costs you pay cost [1] or [A] less." (Ezreal,
     /// Prodigy): how many such discounts `self`, on its controller's board,
     /// gives. Applies to Accelerate, Repeat and "you may pay" costs.

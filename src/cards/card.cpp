@@ -55,6 +55,17 @@ bool Card::costDueNow(CardContext& ctx) {
     return true;
 }
 
+void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId player,
+                              GameObjectId object) {
+    if (!state.objectExists(object)) return;
+    auto& counters = state.getObject(object).card_counters;
+    counters.erase(kAdditionalCostPaid);
+    if (!card) return;
+    for (const auto& oac : {card->optionalAdditionalCost(),
+                            card->optionalAdditionalCost(state, player)})
+        if (oac.paid_flag && oac.paid_flag[0] != '\0') counters.erase(oac.paid_flag);
+}
+
 bool Card::mayChooseAtFinalization(const GameState& state, PlayerId controller,
                                    GameObjectId object) const {
     const auto legal = enumerateLegalTargets(state, controller);

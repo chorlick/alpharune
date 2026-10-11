@@ -57,8 +57,10 @@ constexpr CardDefId kTCostThenPrompt = 1052;       // spell: spend 1 XP, then ch
 constexpr CardDefId kTCostThenPromptFinal = 1053;  // the same, choices at finalization
 constexpr CardDefId kTPlaysFromHand = 1054;        // spell: play a card from hand, ignoring its cost
 constexpr CardDefId kTPowerTouch = 1055;           // spell costing one Fury Power: buff a unit
+constexpr CardDefId kTCounter = 1056;              // [Reaction] spell: counter the item under it
 constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kSkyCrusier = 847;
+constexpr CardDefId kSafetyInspector = 726;
 constexpr CardDefId kResonatingStrike = 821;   // [2] + 1 Power; chooses in its finalize pass
 constexpr CardDefId kMelDefiantSoul = 897;
 
@@ -119,6 +121,27 @@ private:
     CardDef def_;
 };
 
+/// "[Reaction] Counter a spell or ability." Peek-and-pop: it resolves, then
+/// removes the item that is now on top of the chain.
+class TCounter : public SpellCard {
+public:
+    TCounter() {
+        def_.id = kTCounter;
+        def_.name = "Test Counter";
+        def_.card_type = CardType::Spell;
+        def_.keywords.set(Keyword::Reaction);
+    }
+    const CardDef& def() const override { return def_; }
+    bool hasLegalTargets(const GameState& state, PlayerId) const override {
+        return !state.chain.items.empty();
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.chain.items.empty()) ctx.state.chain.items.pop_back();
+    }
+private:
+    CardDef def_;
+};
+
 /// "Play a spell from your hand, ignoring its cost."
 class TPlaysFromHand : public SpellCard {
 public:
@@ -150,6 +173,7 @@ protected:
             std::make_unique<TCostThenPrompt>(kTCostThenPromptFinal, true));
         card_registry.registerCard(kTPlaysFromHand, std::make_unique<TPlaysFromHand>());
         card_registry.registerCard(kTPowerTouch, std::make_unique<TPowerTouch>());
+        card_registry.registerCard(kTCounter, std::make_unique<TCounter>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1415,6 +1439,81 @@ TEST_F(SweepCostsTest, PayEnergy_ExhaustsTheLowestIdBaseRuneAndNoRuneOutsideTheB
     EXPECT_TRUE(o(first).is_exhausted) << "the lowest-id rune in the base";
     EXPECT_FALSE(o(second).is_exhausted);
     EXPECT_FALSE(o(stray).is_exhausted) << "a rune outside the base gives no Energy";
+}
+
+// ─── 9.R2: what was paid for one play is forgotten when the next begins ─────
+
+/// The opponent answers the first thing they get priority on with Test
+/// Counter (a [Reaction] test spell that counters the item under it by
+/// peek-and-pop, as the engine's counters do), then passes.
+class CountersOnceAgent : public AgentInterface {
+public:
+    GameObjectId counter_card = kInvalidId;
+    int played = 0;
+    Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+        if (played == 0)
+            for (const auto& i : legal)
+                if (i.card == counter_card && (i.type == IntentType::PlayReaction ||
+                                               i.type == IntentType::PlayActionCard ||
+                                               i.type == IntentType::PlayCard)) {
+                    ++played;
+                    return i;
+                }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+        return legal.empty() ? Intent{} : legal.front();
+    }
+};
+
+TEST_F(SweepCostsTest, PaidFlag_ZaunPunkReplayedWithoutPayingDoesNotKillAGear) {
+    auto mine = addGear(P1);
+    auto theirs = addGear(P2);
+    auto punk = addToHand(P1, kZaunPunk);
+    setPool(P1, 3, 0);
+    EnginePathAgent pays(EnginePathAgent::script({1, static_cast<int>(mine)}));
+    CountersOnceAgent counters;
+    counters.counter_card = addToHand(P2, kTCounter);
+    playThroughEngine(punk, &pays, std::nullopt, &counters, /*fund=*/false);
+    ASSERT_EQ(counters.played, 1) << "the play trigger was on the chain and was countered";
+    ASSERT_FALSE(onBoard(mine)) << "the additional cost was paid";
+    ASSERT_TRUE(onBoard(theirs)) << "the trigger never resolved";
+
+    // Back to hand, and played again with no gear to pay the cost with.
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.bounceToHand(punk); });
+    ASSERT_TRUE(inHand(P1, punk));
+    setPool(P1, 3, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(theirs));
+    play(punk, &agent);
+    EXPECT_TRUE(onBoard(punk));
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to pay with, so nothing is asked";
+    EXPECT_TRUE(onBoard(theirs)) << "this play paid nothing: no \"kill a gear\"";
+}
+
+TEST_F(SweepCostsTest, PaidFlag_SafetyInspectorReplayedWithoutPayingStillKillsItsOwnUnit) {
+    // "You may spend 3 XP as an additional cost ... if you paid it, skip your kill."
+    auto my_unit = addUnit(P1, kInvalidId, 2);
+    auto their_unit = addUnit(P2, kInvalidId, 2);
+    auto inspector = addToHand(P1, kSafetyInspector);
+    const auto& def = card_db.get(kSafetyInspector);
+    setPool(P1, def.energy_cost, def.power_cost);
+    setXp(P1, 3);
+    EnginePathAgent pays(EnginePathAgent::script({1}));
+    CountersOnceAgent counters;
+    counters.counter_card = addToHand(P2, kTCounter);
+    playThroughEngine(inspector, &pays, std::nullopt, &counters, /*fund=*/false);
+    ASSERT_EQ(counters.played, 1) << "the play trigger was on the chain and was countered";
+    ASSERT_EQ(state.player(P1).xp, 0) << "the additional cost was paid";
+    ASSERT_TRUE(onBoard(my_unit));
+
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.bounceToHand(inspector); });
+    ASSERT_TRUE(inHand(P1, inspector));
+    setPool(P1, def.energy_cost, def.power_cost);          // and no XP this time
+    EnginePathAgent agent(EnginePathAgent::choosing(my_unit));
+    EnginePathAgent them(EnginePathAgent::choosing(their_unit));
+    playThroughEngine(inspector, &agent, std::nullopt, &them, /*fund=*/false);
+    EXPECT_TRUE(onBoard(inspector));
+    EXPECT_FALSE(onBoard(my_unit)) << "unpaid this time: I kill one of my units too";
+    EXPECT_FALSE(onBoard(their_unit));
 }
 
 }  // namespace riftbound::test::sweep_costs

@@ -679,6 +679,8 @@ private:
     bool payCardCost(PlayerId player, GameObjectId card_obj,
                      const Card::PlayCostAdjust& adj = {});
     /// Choose and pay the additional cost `card_id` prints, before its cost.
+    /// Card::forgetPlayPayments for `card_id`, as a play of it begins.
+    void forgetPlayPayments(PlayerId player, GameObjectId card_id);
     Card::PlayCostAdjust payAdditionalPlayCosts(PlayerId player, GameObjectId card_id,
                                                 int extra_any_power);
     /// What a spell's chosen targets take off its cost.

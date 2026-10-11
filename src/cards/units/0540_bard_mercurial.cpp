@@ -46,7 +46,7 @@ public:
     // "You may exhaust your legend as an additional cost to play me." An
     // optional additional cost (CR 356.2.b): chosen and paid as I am played,
     // before my cost is paid. kPaid records it for the play trigger.
-    static constexpr const char* kPaid = "__bard_mercurial_paid";
+    static constexpr const char* kPaid = kAdditionalCostPaid;   // forgotten by the engine as each play begins
     AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
                                           PlayerId player, GameObjectId self) const override {
         (void)db; (void)self;

@@ -4095,7 +4095,7 @@ TEST_F(VerifyCardsTest, Blitzcrank_DoesNotOfferAnEnemyUnitItCannotMove) {
     EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
 
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 1);
-    EnginePathAgent agent(EnginePathAgent::choosing(free_unit));
+    EnginePathAgent agent(EnginePathAgent::choosing(free_unit, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(blitz, TriggerType::WhenYouPlayMe, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
@@ -4118,7 +4118,7 @@ TEST_F(VerifyCardsTest, Faefolk_DoesNotOfferAnEnemyUnitItCannotMove) {
     EXPECT_EQ(bfOf(guarded), std::optional<BattlefieldId>{1});
 
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 1);
-    EnginePathAgent agent(EnginePathAgent::choosing(free_unit));
+    EnginePathAgent agent(EnginePathAgent::choosing(free_unit, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
@@ -4553,8 +4553,16 @@ TEST_F(VerifyCardsTest, TeemoStrategist_VoidHatchlingLooksOnceBeforeTheFiveAreRe
     auto hidden = addToDeck(P1, kTeemoStrategist);         // sixth from the top, [Hidden]
     for (int i = 0; i < 4; ++i) addToDeck(P1, kMeditation);
     auto top = addToDeck(P1, kMeditation);
-    // The enemy unit at the target prompt; "recycle" at the look.
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    // The enemy unit at the target prompt; "recycle" (1) at the look, which
+    // is an unlabelled 0/1 prompt and so is answered here explicitly.
+    EnginePathAgent agent([enemy](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == enemy) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+        ADD_FAILURE() << "unexpected prompt";
+        return legal.front();
+    });
     fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u) << "the unit, then one look";
     EXPECT_TRUE(askedHatchlingLook(agent));
@@ -4642,7 +4650,7 @@ TEST_F(VerifyCardsTest, Pin_OrnnBlacksmith_RevealingFromAmongLookedAtCardsHasNoH
     addToDeck(P1, kMeditation);
     auto gear = addToDeck(P1, kSerratedDirk);
     auto top = addToDeck(P1, kMeditation);
-    EnginePathAgent agent(EnginePathAgent::choosing(gear));
+    EnginePathAgent agent(EnginePathAgent::choosing(gear, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(ornn, TriggerType::WhenYouPlayMe, &agent);
     EXPECT_FALSE(askedHatchlingLook(agent));
     EXPECT_TRUE(inHand(P1, gear));
@@ -4655,7 +4663,7 @@ TEST_F(VerifyCardsTest, Pin_DoubleTrouble_RevealingFromAmongLookedAtCardsHasNoHa
     addToDeck(P1, kMeditation);
     auto unit = addToDeck(P1, kShipyardSkulker);
     auto top = addToDeck(P1, kMeditation);
-    EnginePathAgent agent(EnginePathAgent::choosing(unit));
+    EnginePathAgent agent(EnginePathAgent::choosing(unit, EnginePathAgent::May::Yes));
     playThroughEngine(addToHand(P1, kDoubleTrouble), &agent);
     EXPECT_FALSE(askedHatchlingLook(agent));
     EXPECT_TRUE(inHand(P1, unit));
@@ -4683,7 +4691,7 @@ TEST_F(VerifyCardsTest, Pin_FateWeaver_RevealingFromAmongLookedAtCardsHasNoHatch
     addToDeck(P1, kMeditation);
     auto big_spell = addToDeck(P1, kPromisingFuture);        // a spell costing [5]
     auto top = addToDeck(P1, kMeditation);
-    EnginePathAgent agent(EnginePathAgent::choosing(big_spell));
+    EnginePathAgent agent(EnginePathAgent::choosing(big_spell, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(weaver, TriggerType::WhenYouPlayMe, &agent);
     EXPECT_FALSE(askedHatchlingLook(agent));
     EXPECT_TRUE(inHand(P1, big_spell));
@@ -4697,7 +4705,7 @@ TEST_F(VerifyCardsTest, Pin_RiftHerald_RevealingFromAmongLookedAtCardsHasNoHatch
     addToDeck(P1, kMeditation);
     auto unit = addToDeck(P1, kShipyardSkulker);
     auto top = addToDeck(P1, kMeditation);
-    EnginePathAgent agent(EnginePathAgent::choosing(unit));
+    EnginePathAgent agent(EnginePathAgent::choosing(unit, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(herald, TriggerType::WhenIMoveToFB, &agent);
     EXPECT_FALSE(askedHatchlingLook(agent));
     EXPECT_TRUE(inHand(P1, unit));

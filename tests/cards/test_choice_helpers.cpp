@@ -508,7 +508,7 @@ TEST_F(EnginePathTest, WeaponmasterDoesNotEquipAUnitThatLeftTheBoard) {
     auto gear = addEquipment(P1);
     auto wm = addUnit(P1, kArmedAssailant, 2);
 
-    EnginePathAgent agent(EnginePathAgent::choosing(gear));
+    EnginePathAgent agent(EnginePathAgent::choosing(gear, EnginePathAgent::May::Yes));
     GameState* live = nullptr;
     bool removed = false;
     // The opponent's first decision is priority on the finalized ability.

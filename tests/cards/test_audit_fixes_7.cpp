@@ -195,7 +195,7 @@ TEST_F(AuditFix7Test, Ornn_WeaponmasterEquipsEquipmentGear) {
     state.getObject(gear).tags = {"Equipment"};
 
     // [Weaponmaster] is a "may": the default agent would decline it.
-    EnginePathAgent yes(EnginePathAgent::choosing(gear));
+    EnginePathAgent yes(EnginePathAgent::choosing(gear, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(ornn, TriggerType::WhenYouPlayMe, &yes);
 
     ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";

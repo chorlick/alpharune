@@ -350,12 +350,20 @@ TEST_F(ReviewFixC1Test, LastRites_ThePlayedUnitIsPaidFor) {
     // Can pay: the Energy is spent.
     state.player(P1).battlefields_scored_this_turn.clear();
     state.player(P1).rune_pool.energy = 4;
-    EnginePathAgent rich(EnginePathAgent::choosing(in_trash, EnginePathAgent::May::Yes));
+    // Yes to the "may", the unit in the trash, and the base as where it is
+    // played (the destination prompt is a mode: stated here).
+    EnginePathAgent rich([inner = EnginePathAgent::choosing(in_trash, EnginePathAgent::May::Yes)](
+                              const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Base") return i;
+        return inner(legal);
+    });
     withEngine([&](GameEngine& e) {
         e.testHook_scoreHold(P1, e.mutableState().battlefields[0].id);
         e.testHook_runChain();
     }, &rich);
     EXPECT_TRUE(state.getObject(in_trash).location.has_value());
+    EXPECT_TRUE(state.getObject(in_trash).isAtBase()) << "played where the controller said";
     EXPECT_FALSE(inTrash(P1, in_trash));
     EXPECT_EQ(state.player(P1).rune_pool.energy, 1) << "its [3] was paid";
 }

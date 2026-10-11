@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -35,9 +36,19 @@ public:
     // is the whole cost; no exhaust / rune cost. Gated on having a buff.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {}; }
+    // The buff is the cost: without one the ability can't be activated. Per
+    // instance, so one buffed Sett does not unlock an unbuffed copy.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!UnitCard::canActivateAbilityAt(state, controller, source, ability_index))
+            return false;
+        return state.objectExists(source) && state.getObject(source).location.has_value() &&
+               state.getObject(source).buff_count > 0;
+    }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
+        if (!self.location.has_value()) return;  // left the board in response
         if (self.buff_count <= 0) return;  // no buff to spend
         self.buff_count -= 1;
         ctx.executor.giveTemporaryMight(ctx.source, 4);

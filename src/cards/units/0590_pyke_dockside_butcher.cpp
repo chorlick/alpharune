@@ -22,7 +22,12 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        if (self.card_counters["__pyke_db_paid"] != 1) return;
+        // The engine sets the flag when the cost is paid and never clears it:
+        // consume it, or a later replay without paying would still count.
+        const auto flag = self.card_counters.find("__pyke_db_paid");
+        const bool paid = flag != self.card_counters.end() && flag->second == 1;
+        self.card_counters.erase("__pyke_db_paid");
+        if (!paid || !self.location.has_value()) return;
         ctx.executor.readyObject(ctx.source);
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         ctx.events.logTrace("PYKE DOCKSIDE BUTCHER: paid [R] -> ready me + +2 [M] this turn");

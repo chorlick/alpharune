@@ -23,13 +23,13 @@ public:
     ActivationCost getActivationCost() const override {
         return ActivationCost{.exhaust = true, .power = 1, .power_domain = Domain::Fury};
     }
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId()) continue;
-            if (obj.controller != controller) continue;
-            if (obj.isAtBattlefield()) return true;
-        }
-        return false;
+    // "Use this ability only while I'm at a battlefield." — this Xerath, not
+    // any Xerath its controller has.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!UnitCard::canActivateAbilityAt(state, controller, source, ability_index))
+            return false;
+        return state.objectExists(source) && state.getObject(source).isAtBattlefield();
     }
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {{
@@ -52,7 +52,6 @@ public:
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
                     const std::vector<GameObjectId>& targets) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         GameObjectId picked = kInvalidId;
         if (!targets.empty()) picked = targets[0];
         else picked = pickTarget(ctx, "Xerath: deal 3 to a unit",

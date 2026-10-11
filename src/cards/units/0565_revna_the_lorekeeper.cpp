@@ -19,12 +19,12 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        // Read the per-trigger snapshot of the triggering spell's spend
-        // (Phase 6q+); fall back to PlayerState for legacy paths.
-        int spent = ctx.state.chain.resuming.has_value()
+        // What was spent on the spell that triggered this (the snapshot on
+        // the chain item). PlayerState::last_spell_energy_spent is the latest
+        // spell's, which may be a different, dearer one played in response.
+        const int spent = ctx.state.chain.resuming.has_value()
             ? ctx.state.chain.resuming->triggering_spell_energy_spent
             : 0;
-        if (spent == 0) spent = ctx.state.player(ctx.controller).last_spell_energy_spent;
         if (spent < 4) {
             ctx.events.logTrace("REVNA: skip (spent=" + std::to_string(spent) + " < 4)");
             return;

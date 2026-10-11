@@ -20,12 +20,24 @@ public:
         const auto& self = ctx.state.getObject(ctx.source);
         // "here" = Keeper's current location (its battlefield, or base).
         LocationId loc = self.location.value_or(LocationId{BaseLocation{ctx.controller}});
-
-        for (int i = 0; i < 2; ++i) {
-            GameObjectId tok = ctx.executor.createToken(
+        // "play two Reflection unit tokens here. Then do this: They become
+        // copies of me." A replacement can add tokens to the two asked for
+        // (Zilean, Time Mage plays an additional copy inside createToken), so
+        // the Reflections are found on the board afterwards, not taken from
+        // the two returned ids.
+        std::vector<GameObjectId> before;
+        for (auto& [id, obj] : ctx.state.objects) before.push_back(id);
+        for (int i = 0; i < 2; ++i)
+            ctx.executor.createToken(
                 ctx.controller, CardType::Unit, "Reflection", /*might=*/0,
                 /*tags=*/{}, /*kw=*/KeywordSet{}, loc, /*enter_ready=*/false);
-            if (tok == kInvalidId || !ctx.state.objectExists(tok)) continue;
+        std::vector<GameObjectId> reflections;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isToken() && obj.isUnit() && obj.controller == ctx.controller &&
+                obj.location.has_value() && obj.name == "Reflection" &&
+                std::find(before.begin(), before.end(), id) == before.end())
+                reflections.push_back(id);
+        for (auto tok : reflections) {
             // Become a copy of me (base traits — copyUnit inherits
             // card_def_id so death triggers still fire, per Mirror Image).
             ctx.executor.copyUnit(tok, ctx.source);

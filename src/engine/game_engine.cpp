@@ -1153,6 +1153,9 @@ void GameEngine::endingStep() {
     // CR 423.1.a.2 — Stunned units lose Stunned at the beginning of the
     // NEXT Ending Step (i.e., this one). Phase 6q+ correction: previously
     // cleared in expirationStep which is the wrong CR step.
+    // (Every object, not the board lists: a unit that was stunned and has
+    // since left the board — to a hand, a trash — must not come back stunned.
+    // Once a turn; 0.4% of a random game.)
     for (auto& [id, obj] : state_.objects) {
         if (obj.is_stunned) {
             obj.is_stunned = false;
@@ -1224,6 +1227,11 @@ void GameEngine::doExpirationBody() {
     // (Stun clearing moved to endingStep per CR 423.1.a.2)
 
     // Expire "this turn" effects (CR 317.2.c)
+    // (Every object, not the board lists: a "this turn" status or tally
+    // stays on a unit that has left the board since it was given — the damage
+    // it took this turn, a temporary Might or keyword, "can't be chosen this
+    // turn" — and must be gone before the card is played again. Once a turn;
+    // 1.0% of a random game.)
     for (auto& [id, obj] : state_.objects) {
         // Lotus Trap-style damage doubling expires here.
         obj.damage_doubled_this_turn = false;
@@ -1308,6 +1316,9 @@ void GameEngine::doExpirationBody() {
     // CR 416 + "take control of … until end of turn" — revert any
     // EOT-scoped control changes. Phase 6q+ wiring of the
     // EffectExecutor::takeControl primitive (until_end_of_turn=true).
+    // (Every object, not the board lists: the card taken "until end of turn"
+    // may have left the board since, and is still returned to its controller.
+    // Once a turn; 0.4% of a random game.)
     for (auto& [id, obj] : state_.objects) {
         if (obj.control_reverts_eot) {
             auto restored = obj.original_controller_eot;
@@ -5250,6 +5261,9 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     }
 
     // Recompute might (assault/shield apply based on designation)
+    // (Every object: a designation can still be on a unit that has left the
+    // board, see processContestedBattlefields. Once per combat; under 0.1% of
+    // a random game.)
     for (auto& [id, obj] : state_.objects) {
         if (obj.isUnit() && obj.combat_designation != CombatDesignation::None) {
             obj.recomputeMight();
@@ -5629,6 +5643,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
             ? std::nullopt : std::optional<PlayerId>(sole_remaining);
 
     // Clear combat designations
+    // (Every object, for the same reason; once per combat, under 0.1%.)
     for (auto& [id, obj] : state_.objects) {
         if (obj.combat_designation != CombatDesignation::None) {
             obj.combat_designation = CombatDesignation::None;
@@ -5880,6 +5895,14 @@ void GameEngine::recalculateAuras() {
         state_.player(PlayerId::Player2).cost_modifiers.size()};
 
     // Step 1: Clear all aura effects from all objects
+    // Every object of the game, not the objects in play: a continuous effect
+    // ends for a card wherever the card is now (a unit that was bounced still
+    // carries the last pass's effects until this clears them), and a hook may
+    // have put an effect on a card in a hand or a trash. Which cards those
+    // are is not recorded anywhere, so they cannot be picked out. It is the
+    // largest walk left in the engine with the cleanup checksum: 4.9% of a
+    // random game (the fields it writes are declared together in GameObject
+    // for it — plans/09 item 9.KK3).
     for (auto& [id, obj] : state_.objects) {
         obj.aura_effects.clear();
         obj.aura_might_bonus = 0;
@@ -6061,6 +6084,8 @@ void GameEngine::recalculateAuras() {
         const PlayerId controller = state_.getObject(unit_id).controller;
         const CardDefId def = state_.getObject(unit_id).card_def_id;
         std::vector<GameObjectId> masked;
+        // (Every object: the hook finds its instances by card id in whatever
+        // zone it looks. Only for a unit with a text-copying Equipment.)
         for (auto& [oid, other] : state_.objects)
             if (oid != unit_id && other.card_def_id == def && other.controller == controller) {
                 other.card_def_id = kInvalidId;
@@ -6147,12 +6172,17 @@ void GameEngine::recalculateAuras() {
     }
 
     // Step 4: Rebuild cached aura values on all objects
+    // Whether the last fold met an effect of the "if they didn't already" kind
+    // (Step 6 has nothing to do otherwise, and is skipped).
+    bool any_conditional = false;
     auto foldAuras = [&]() {
+        any_conditional = false;
         for (auto& [id, obj] : state_.objects) {
             // No effects and not a unit on the board: the four cached values
             // are as Step 1 left them and there is no Might to recompute.
             // (Checked on every object, not only those in play: a hook may
-            // put an effect on a card in a hand or a trash.)
+            // put an effect on a card in a hand or a trash. 2.0% of a random
+            // game.)
             if (obj.aura_effects.empty() && !(obj.isUnit() && obj.location.has_value()))
                 continue;
             obj.aura_might_bonus = 0;
@@ -6160,6 +6190,7 @@ void GameEngine::recalculateAuras() {
             obj.aura_no_combat_damage = false;
             obj.aura_bonus_damage_taken = 0;
             for (auto& ae : obj.aura_effects) {
+                if (ae.only_if_absent && ae.keyword != Keyword::Count) any_conditional = true;
                 obj.aura_might_bonus += ae.might_bonus;
                 if (ae.keyword != Keyword::Count) {
                     obj.aura_keywords.set(ae.keyword);
@@ -6212,7 +6243,10 @@ void GameEngine::recalculateAuras() {
     // object that has the keyword printed or "this turn" (GameObject::keywords;
     // a [Deflect N] value given this turn), or from any other continuous
     // effect, and of several such effects on one object the first is kept.
-    {
+    // (Every object's effects were read by the fold just above, the last one
+    // to run before this step: when it met no such effect, there is none, and
+    // this walk over every object is not made — it was 1.5% of a random game.)
+    if (any_conditional) {
         bool dropped = false;
         for (auto& [id, obj] : state_.objects) {
             auto& effects = obj.aura_effects;
@@ -6326,6 +6360,9 @@ void GameEngine::revertLapsedControl() {
     // "You control it until I leave the board" (Akshan, Mischievous). Once the
     // controlling source object is no longer in play (killed / bounced /
     // banished / otherwise off-board), control returns to the recorded owner.
+    // (Every object, not the board lists: the card that was taken may itself
+    // have left the board before the source did, and its control still
+    // reverts. One flag read per object; 1.3% of a random game.)
     for (auto& [id, obj] : state_.objects) {
         if (!obj.control_reverts_on_source_leave) continue;
         GameObjectId src = obj.control_source_obj;
@@ -6368,15 +6405,26 @@ void GameEngine::cleanup() {
             h *= 0x100000001B3ULL;
         };
         mix(state_.objects.size());
+        // Every object of the game, not only those in play: a pass can change
+        // a card that is in no list of the board index (a unit that just died
+        // has its damage cleared in the trash; a control effect lapses on a
+        // card in a hand), and "nothing changed" has to mean nothing.
+        // This was the largest walk left in the engine: 12% of a random game
+        // when each field was mixed in turn (eight multiplies in a chain per
+        // object). Now an object's fields are combined without a chain and
+        // only one multiply per object waits for the one before: 4.7% of a
+        // random game (plans/09 item 9.KK3).
         for (auto& [id, obj] : state_.objects) {
-            mix(id);
-            mix(static_cast<uint64_t>(obj.zone.get()));
-            mix(static_cast<uint64_t>(obj.damage_marked));
-            mix(static_cast<uint64_t>(obj.current_might));
-            mix(static_cast<uint64_t>(obj.aura_might_bonus));
-            mix(obj.untargetable_by_enemy ? 0xAAA : 0xBBB);
-            mix(obj.is_exhausted ? 0xCCC : 0xDDD);
-            mix(static_cast<uint64_t>(obj.controller));  // control reversions
+            const uint64_t flags =
+                static_cast<uint64_t>(obj.zone.get()) |
+                (static_cast<uint64_t>(obj.controller) << 8) |
+                (obj.untargetable_by_enemy ? 1ULL << 16 : 0) |
+                (obj.is_exhausted ? 1ULL << 17 : 0);
+            mix(static_cast<uint64_t>(id) * 0x9E3779B97F4A7C15ULL ^
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.damage_marked)) * 0xC2B2AE3D27D4EB4FULL ^
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
+                flags * 0xFF51AFD7ED558CCDULL);
         }
         for (auto& bf : state_.battlefields) {
             mix(static_cast<uint64_t>(bf.id));
@@ -6394,9 +6442,13 @@ void GameEngine::cleanup() {
     };
 
     constexpr int kMaxCleanupPasses = 20;
+    // What a pass ended with is what the next one starts with: nothing runs
+    // between them but the win check, which changes none of the fields the
+    // checksum reads (it ends the cleanup if it changes anything at all).
+    std::optional<uint64_t> carried;
     for (int pass = 0; pass < kMaxCleanupPasses; ++pass) {
         if (checkWinCondition()) return;
-        uint64_t before = checksum();
+        uint64_t before = carried.has_value() ? *carried : checksum();
         processLethalDamage();
         revertLapsedControl();           // "until I leave the board" (Akshan)
         updateBattlefieldControl();
@@ -6405,34 +6457,38 @@ void GameEngine::cleanup() {
         recalculateAuras();
         uint64_t after = checksum();
         if (before == after) break;
+        carried = after;
     }
 
     // ── "Becomes Mighty" edge detection (CR: a unit is Mighty at 5+ [M]) ──
     // Run once after the cleanup loop settles so the Might layers are final.
-    // We remember per-unit Mighty state in GameObject::was_mighty (a plain
-    // field: this runs for every unit in play on every cleanup, and a
-    // string-keyed card_counters entry cost a hash and a lookup each time —
-    // plans/06 item 6.11) and
+    // We remember per-unit Mighty state as a stamp, GameObject::mighty_seen:
+    // the number of the last check (GameState::mighty_checks) that found the
+    // unit on the board with 5+ [M]. A unit "was Mighty" if its stamp is the
+    // previous check's number. (Not a string-keyed counter — plans/06 item
+    // 6.11 — and not a flag that has to be cleared on every unit that is off
+    // the board, which made this a walk over every object of the game:
+    // plans/09 item 9.KK3. A unit that is not on the board is not visited and
+    // its stamp goes stale, which is the same as clearing it.) We
     // emit a generic ObjectStateChangedEvent only on a <5 -> >=5 transition;
     // TriggerManager::onObjectStateChanged dispatches WhenAUnitBecomesMighty.
     // Falling below 5 re-arms the edge so it can fire again later this/next
     // turn. (Fiora, Worthy 500 / Grand Duelist 519.) No card-specific logic
     // here — the engine only detects and announces the state change.
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isUnit()) continue;
-        if (!obj.location.has_value()) {
-            // Off the board the edge is forgotten, so a unit that comes back
-            // at 5+ [M] becomes Mighty again.
-            obj.was_mighty = false;
-            continue;
+    {
+        const uint32_t previous = state_.mighty_checks;
+        const uint32_t now = ++state_.mighty_checks;
+        // The units to announce are collected first: an announcement queues
+        // triggers, and the walk is over a board range.
+        std::vector<GameObjectId> became;
+        for (auto& [id, obj] : state_.objects.onBoard()) {
+            if (!obj.isUnit()) continue;
+            if (obj.current_might < 5) continue;   // its stamp stays behind: the edge is armed
+            const bool was = previous != 0 && obj.mighty_seen == previous;
+            obj.mighty_seen = now;
+            if (!was) became.push_back(id);
         }
-        bool mighty = obj.current_might >= 5;
-        if (mighty && !obj.was_mighty) {
-            obj.was_mighty = true;
-            events_.emit(ObjectStateChangedEvent{id, "became_mighty"});
-        } else if (!mighty && obj.was_mighty) {
-            obj.was_mighty = false;
-        }
+        for (auto id : became) events_.emit(ObjectStateChangedEvent{id, "became_mighty"});
     }
     // Other "my Might becomes N or more" edges are the trigger manager's.
     events_.emit(StateSettledEvent{});
@@ -6577,6 +6633,9 @@ void GameEngine::processContestedBattlefields() {
     //  .a  a Unit at the Combat's battlefield without one gains its controller's;
     //  .b  a Unit there with the opposite one (it changed controller) is corrected;
     //  .c  a Unit anywhere else loses any designation it still has.
+    // (Every object, not the board lists, because of .c: "anywhere else"
+    // includes a unit that left the board with its designation — its death
+    // trigger may still read it until this runs. 2.3% of a random game.)
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isUnit()) continue;
         CombatDesignation want = CombatDesignation::None;

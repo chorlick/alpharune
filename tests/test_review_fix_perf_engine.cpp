@@ -388,9 +388,10 @@ TEST_F(PerfEngineCards, DamageAUnitDidToItsOwnSideIsNotTheOtherPlayersDamage) {
     EXPECT_EQ(TCountingElder::asked, 0);
 }
 
-// 6.11 — the "becomes [Mighty]" edge is kept in GameObject::was_mighty, not in
-// a string-keyed counter: it fires once on the way up, re-arms on the way
-// down and is forgotten off the board.
+// 6.11 / 9.KK3 — the "becomes [Mighty]" edge is a stamp on the unit
+// (GameObject::mighty_seen), not a string-keyed counter and not a flag that a
+// walk over every object has to clear: it fires once on the way up, re-arms on
+// the way down and is forgotten off the board.
 TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
     const GameObjectId unit = addUnit(P1, kInvalidId, 4);
     int announced = 0;
@@ -398,18 +399,22 @@ TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
         if (e.object == unit && e.what_changed == "became_mighty") ++announced;
     });
     auto cleanup = [&] { withEngine([](GameEngine& e) { e.testHook_cleanup(); }); };
+    // "Was Mighty at the last cleanup": the unit's stamp is that cleanup's.
+    auto wasMighty = [&] {
+        return o(unit).mighty_seen != 0 && o(unit).mighty_seen == state.mighty_checks;
+    };
     cleanup();
     EXPECT_EQ(announced, 0);
-    EXPECT_FALSE(o(unit).was_mighty);
+    EXPECT_FALSE(wasMighty());
     o(unit).base_might = 5;
     cleanup();
     EXPECT_EQ(announced, 1);
-    EXPECT_TRUE(o(unit).was_mighty);
+    EXPECT_TRUE(wasMighty());
     cleanup();
     EXPECT_EQ(announced, 1) << "still Mighty: not announced again";
     o(unit).base_might = 4;
     cleanup();
-    EXPECT_FALSE(o(unit).was_mighty) << "below 5 the edge is armed again";
+    EXPECT_FALSE(wasMighty()) << "below 5 the edge is armed again";
     o(unit).base_might = 6;
     cleanup();
     EXPECT_EQ(announced, 2);
@@ -417,11 +422,36 @@ TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
     o(unit).location = std::nullopt;
     o(unit).zone = ZoneType::Hand;
     cleanup();
-    EXPECT_FALSE(o(unit).was_mighty);
+    EXPECT_FALSE(wasMighty());
     o(unit).location = BaseLocation{P1};
     o(unit).zone = ZoneType::Base;
     cleanup();
     EXPECT_EQ(announced, 3);
+    // Off the board for several cleanups and back below 5, then up again.
+    o(unit).location = std::nullopt;
+    o(unit).zone = ZoneType::Hand;
+    cleanup();
+    cleanup();
+    o(unit).base_might = 4;
+    o(unit).location = BaseLocation{P1};
+    o(unit).zone = ZoneType::Base;
+    cleanup();
+    EXPECT_EQ(announced, 3);
+    o(unit).base_might = 5;
+    cleanup();
+    EXPECT_EQ(announced, 4);
+    // Two units crossing in the same cleanup are announced in table order,
+    // each once.
+    const GameObjectId other = addUnit(P1, kInvalidId, 7);
+    int other_announced = 0;
+    auto conn2 = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == other && e.what_changed == "became_mighty") ++other_announced;
+    });
+    cleanup();
+    cleanup();
+    EXPECT_EQ(other_announced, 1);
+    EXPECT_EQ(announced, 4);
+    conn2.disconnect();
     EXPECT_TRUE(o(unit).card_counters.empty()) << "the edge no longer lives in card_counters";
     conn.disconnect();
 }

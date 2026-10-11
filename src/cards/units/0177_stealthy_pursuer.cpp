@@ -27,12 +27,17 @@ public:
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
         const auto& mover = ctx.state.getObject(subject);
-        if (!mover.location.has_value()) return;
-        int answer = confirmOptional(ctx, "Stealthy Pursuer: move with it?",
-            [&]() { return ctx.state.objectExists(ctx.source) &&
-                           ctx.state.objectExists(subject); });
-                           if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // Both of us must still be on the board: a Pursuer that died in
+        // response does not follow, and there is nowhere to follow a unit
+        // that left.
+        auto both_on_board = [&]() {
+            return ctx.state.getObject(ctx.source).location.has_value() &&
+                   mover.location.has_value();
+        };
+        int answer = confirmOptional(ctx, "Stealthy Pursuer: move with it?", both_on_board);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (answer < 1) return;  // declined or pending
+        if (!both_on_board()) return;
         if (std::holds_alternative<BattlefieldLocation>(*mover.location))
             ctx.executor.moveToBattlefield(
                 ctx.source, std::get<BattlefieldLocation>(*mover.location).id);

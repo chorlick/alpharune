@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -17,30 +18,49 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "As you look at or reveal me from the top of your deck, you may banish
     // me. If you do, you may play me for [A]." [Ganking] engine-handled.
-    // The two nested "may"s are collapsed into one decision (the resume-slot
-    // helpers run once per resolution). The [A] cost is approximated as
-    // ignoring-cost — there's no clean cost-payment cursor in a reveal-trigger
-    // context (TODO).
+    // Two decisions: the banish is the "may" (confirmOptional); whether to
+    // then play me, and where (my base or a battlefield I control, CR
+    // 355.2.a), is one pickMode. Playing costs [A] — any one Power — in place
+    // of my printed cost, paid with the choices (CR 383.3).
     TriggerType triggerType() const override { return TriggerType::WhenIRevealedFromTop; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        PlayerId owner = ctx.state.getObject(ctx.source).owner;
+        const PlayerId owner = ctx.state.getObject(ctx.source).owner;
         auto still_in_deck = [&] {
-            return ctx.state.objectExists(ctx.source) &&
-                   ctx.state.getObject(ctx.source).zone == ZoneType::MainDeck;
+            return ctx.state.getObject(ctx.source).zone == ZoneType::MainDeck;
         };
-        if (!still_in_deck()) return;  // already left the deck top
-        int conf = confirmOptional(ctx, "Nocturne: banish from deck and play for [A]?",
-                                    still_in_deck);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf != 1) return;
-        auto& ps = ctx.state.player(owner);
+        if (!costAlreadyPaid(ctx) && !still_in_deck()) return;  // already left the deck top
+        int conf = confirmOptional(ctx, "Nocturne: banish me from the top of your deck?",
+                                   still_in_deck);
+        if (conf < 1) return;     // waiting / declined
+        // Mode 0 = stay banished; 1 = play to base; 2 + i = play to battlefield i.
+        const auto& bfs = ctx.state.battlefields;
+        std::vector<std::string> labels{"Don't play me", "Play me for [A] to base"};
+        uint32_t legal = 1u;
+        const bool can_pay = costAlreadyPaid(ctx) || ctx.executor.payableAnyPower(owner) >= 1;
+        if (can_pay) legal |= 2u;
+        for (size_t i = 0; i < bfs.size() && i < 30; ++i) {
+            labels.push_back("Play me for [A] to battlefield #" + std::to_string(bfs[i].id));
+            if (can_pay && !ctx.state.player(owner).units_play_base_only &&
+                !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
+                *bfs[i].controller == owner)
+                legal |= 1u << (i + 2);
+        }
+        const int mode = pickMode(ctx, "Nocturne: play me for [A]?",
+                                  static_cast<int>(labels.size()), labels, legal);
+        if (mode == -1) return;   // waiting for the agent
+        if (mode >= 1 && costDueNow(ctx) && !ctx.executor.payAnyPower(owner, 1)) return;
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (!still_in_deck()) return;         // left the deck in response
         deck::take(ctx.state, ctx.source, deck::Place::Public, knowledge::everyone());
         ctx.executor.banishObject(ctx.source);
-        auto& bz = ctx.state.player(owner).banishment;
-        bz.erase(std::remove(bz.begin(), bz.end(), ctx.source), bz.end());
+        if (mode < 1) {
+            ctx.events.logTrace("NOCTURNE: banished from deck top");
+            return;
+        }
+        // Mode 1 is the base; mode 2 + i is battlefield i (the base if it is
+        // no longer mine to play to).
         ctx.executor.playIgnoringCost(owner, ctx.source,
-                                      LocationId{BaseLocation{owner}});
+                                      effectPlayLocation(ctx.state, owner, mode - 1));
         ctx.events.logTrace("NOCTURNE: banished from deck top and played for [A]");
     }
 private:

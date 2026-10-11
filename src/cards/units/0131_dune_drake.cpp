@@ -16,7 +16,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         auto& self = ctx.state.getObject(ctx.source);
         auto bf = self.battlefieldId();
         if (!bf) return;

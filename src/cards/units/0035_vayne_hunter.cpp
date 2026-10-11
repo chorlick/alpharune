@@ -29,12 +29,11 @@ public:
     // "When I conquer, you may pay [1] to return me to my owner's hand."
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         // CR 445.2 / 164.2.a: the [1] may come from floating Energy or from
         // exhausting a ready rune (payableEnergy / payEnergy).
         auto still_legal = [&]() {
             return payableEnergy(ctx.state, ctx.controller) >= 1 &&
-                   ctx.state.objectExists(ctx.source);
+                   ctx.state.getObject(ctx.source).location.has_value();
         };
         if (!costAlreadyPaid(ctx) && !still_legal()) return;
         int conf = confirmOptional(ctx, "Vayne: pay [1] to return me to hand?",
@@ -42,6 +41,8 @@ public:
         if (conf < 1) return;
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        // A Vayne that left the board in response stays where she went
+        // (EffectExecutor::bounceToHand does nothing for her).
         ctx.executor.bounceToHand(ctx.source);
         ctx.events.logTrace("VAYNE: paid [1] -> returned to owner's hand");
     }

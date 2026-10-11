@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -17,26 +18,22 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIDefend; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        auto my_bf = self.battlefieldId();
-        if (!my_bf) return;  // not defending at a battlefield
-
-        // "choose an enemy unit here" — enemy units at this battlefield.
-        auto legal = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit()) continue;
-                if (obj.controller == ctx.controller) continue;  // enemy only
-                if (obj.battlefieldId() != my_bf) continue;       // "here"
-                out.push_back(id);
-            }
-            return out;
-        };
-        GameObjectId picked = pickTarget(ctx, "Teemo, Strategist", legal());
+        // "choose an enemy unit here" — enemy units at my battlefield, minus
+        // those that can't be chosen by enemy spells and abilities.
+        std::vector<GameObjectId> legal;
+        if (const auto my_bf = ctx.state.getObject(ctx.source).battlefieldId())
+            legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller && o.battlefieldId() == my_bf;
+            });
+        std::sort(legal.begin(), legal.end());
+        GameObjectId picked = pickTarget(ctx, "Teemo, Strategist", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-
+        // Still waiting for the agent (the pick was not made at finalization).
+        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7) return;
+        // With no unit to choose, or one that is gone by now, the reveal and
+        // the recycle still happen (CR 359.3.e: only the instruction that
+        // needs the missing unit is skipped).
         // Reveal the top 5 of own Main Deck (top = back of vector).
         auto& ps = ctx.state.player(ctx.controller);
         int n = std::min(5, static_cast<int>(ps.main_deck.size()));
@@ -65,9 +62,10 @@ public:
                              " — " + std::to_string(hidden_count) + " Hidden");
 
         // Deal 1 for each Hidden card revealed.
-        if (hidden_count > 0 && ctx.state.objectExists(picked)) {
+        if (hidden_count > 0 && picked != kInvalidId &&
+            ctx.state.getObject(picked).location.has_value()) {
             ctx.executor.dealDamage(picked, hidden_count, ctx.source);
-            if (ctx.state.objectExists(picked) &&
+            if (ctx.state.getObject(picked).location.has_value() &&
                 ctx.state.getObject(picked).hasLethalDamage()) {
                 ctx.executor.killObject(picked);
             }

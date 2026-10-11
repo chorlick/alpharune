@@ -18,11 +18,10 @@ public:
     // Clause 1: "[Vision]" on me — engine-handled (TriggerManager::onCardPlayed
     // peeks the top card on play for any unit with the Vision keyword).
     // Clause 2: "Other friendly units have [Vision]." Grant the Vision keyword
-    // via aura to every other friendly unit. Mirrors Forecaster's grant.
-    // NOTE: the engine's play-time Vision peek reads obj.keywords.has(Vision),
-    // not the aura-granted set, so an aura-only Vision unit won't peek on play
-    // (documented engine gap shared with Forecaster); the keyword presence is
-    // still correctly reflected via hasKeyword() for any reader that uses it.
+    // via aura to every other friendly unit. Mirrors Forecaster's grant. The
+    // play-time Vision look (TriggerManager::onCardPlayed) refreshes the
+    // continuous effects and asks hasKeyword(), so a unit played while a Seer
+    // is on the board gets its look. One Seer is enough: Vision is redundant.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         GameObjectId self_id = kInvalidId;
         for (auto& [id, obj] : state.objects) {

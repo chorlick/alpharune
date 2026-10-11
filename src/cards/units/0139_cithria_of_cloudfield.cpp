@@ -20,7 +20,7 @@ public:
     //  me. Buff only when I currently have no buff counter.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         auto& self = ctx.state.getObject(ctx.source);
         if (self.buff_count > 0) {
             ctx.events.logTrace("CITHRIA OF CLOUDFIELD: already buffed -> no-op");

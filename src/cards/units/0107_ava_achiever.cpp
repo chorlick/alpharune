@@ -35,30 +35,18 @@ public:
         return out;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         // CR 445.2: only offer a payment that can be made.
         auto still_legal = [&]() { return !hiddenInHand(ctx).empty() && canPayC(ctx); };
         int conf = confirmOptional(ctx, "Ava Achiever: pay [C] to play a Hidden card?",
                                    still_legal);
-        if (conf == -1) return;  // waiting for agent
-        if (conf < 1) return;    // declined / no Hidden cards
-        auto eligible = hiddenInHand(ctx);
-        if (eligible.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "Ava Achiever (Hidden card)", eligible);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended
-        }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        // Pay [C] exactly once, now that the card is known. pickTarget suspends
-        // (returns kInvalidId) and this trigger is re-entered afterwards, when
-        // confirmOptional answers 1 again — paying between the two helpers
-        // charged the cost on both entries.
-        if (!payC(ctx)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.hand.begin(), ps.hand.end(), picked);
-        if (it != ps.hand.end()) ps.hand.erase(it);
+        if (conf < 1) return;    // waiting / declined / no Hidden cards
+        GameObjectId picked = pickTarget(ctx, "Ava Achiever (Hidden card)", hiddenInHand(ctx));
+        // [C] is paid with the choices, as the ability goes on the chain
+        // (CR 383.3) — once, after the card is known: pickTarget suspends and
+        // this trigger is re-entered.
+        if (picked != kInvalidId && costDueNow(ctx) && !payC(ctx)) return;
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (picked == kInvalidId) return;     // none / no longer in hand / waiting
         // "If it's a unit, play it here." (my battlefield); otherwise default.
         std::optional<LocationId> loc;
         if (ctx.state.getObject(picked).isUnit()) {
@@ -85,7 +73,7 @@ private:
         d.energy_cost = 5;
         d.might = 4;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Hidden);
+        // No printed [Hidden]: the text only refers to the keyword on other cards.
         d.ability_text = R"RB(When I attack, you may pay [C] to play a card with [Hidden] from your hand, ignoring its cost. If it's a unit, play it here.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/93e91aa99eb09baa68dd95b0013a89d9ffde5240-744x1039.png?accountingTag=RB)RB";
         return d;

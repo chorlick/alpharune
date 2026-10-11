@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,22 +21,17 @@ public:
     // resolution from enemy units at my battlefield.
     TriggerType triggerType() const override { return TriggerType::WhenIAttackOrDefend; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
+        // Enemy units at my battlefield, minus those that can't be chosen by
+        // enemy spells and abilities.
         std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            if (obj.battlefieldId() != my_bf) continue;
-            legal.push_back(id);
-        }
+        if (const auto my_bf = ctx.state.getObject(ctx.source).battlefieldId())
+            legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller && o.battlefieldId() == my_bf;
+            });
+        std::sort(legal.begin(), legal.end());
         GameObjectId picked = pickTarget(ctx, "Ahri, Inquisitive (-2 M)", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (picked == kInvalidId) return;     // none / mistarget / waiting
         ctx.executor.giveTemporaryMight(picked, -2, /*minimum=*/1);
     }
 private:

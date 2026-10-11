@@ -20,7 +20,9 @@ public:
     // Resumable: up to four sequential picks (each with a "Done" option) over
     // the exhausted units, gear and runes on the board. The text is not
     // limited to friendly objects; enemy objects that can't be chosen by
-    // enemy spells are excluded.
+    // enemy spells are excluded, an enemy [Deflect] unit is offered only if
+    // its Deflect can be paid, and each pick is committed like a pickTarget
+    // choice (Deflect paid, recorded as chosen).
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
@@ -36,7 +38,7 @@ public:
             return out;
         };
         auto prompt = [&]() {
-            auto c = candidates();
+            auto c = offerableChoices(ctx, candidates());
             if (c.empty()) return false;
             std::vector<Intent> opts;
             for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
@@ -53,12 +55,13 @@ public:
         }
         if (ri.resume_point != 1) return;
         GameObjectId picked = takenObject(ctx);
-        auto legal = candidates();
+        auto legal = offerableChoices(ctx, candidates());
         if (picked == kInvalidId ||
             std::find(legal.begin(), legal.end(), picked) == legal.end()) {
             ri.resume_point = 2;   // "Done"
             return;
         }
+        commitChosenObject(ctx, picked);
         ctx.executor.readyObject(picked);
         if (ri.resume_data.empty()) ri.resume_data = {0};
         if (++ri.resume_data[0] >= 4 || !prompt()) ri.resume_point = 2;

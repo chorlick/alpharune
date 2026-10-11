@@ -17,6 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAGear; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.readyObject(ctx.source);
         ctx.events.logTrace("PIT CREW: gear played, ready me");
     }

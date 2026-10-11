@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,29 +21,27 @@ public:
     // equal to our Mights to each other." Triggers get empty targets — pick at
     // resolution.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            if (!obj.isAtBattlefield()) continue;
-            legal.push_back(id);
-        }
+        // Enemy units at a battlefield, minus those that can't be chosen by
+        // enemy spells and abilities.
+        auto legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+            return o.controller != ctx.controller && o.isAtBattlefield();
+        });
+        std::sort(legal.begin(), legal.end());
         GameObjectId enemy = pickTarget(ctx, "Carnivorous Snapvine (fight)", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (enemy == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
-        if (enemy == kInvalidId || !ctx.state.objectExists(enemy)) return;
+        if (enemy == kInvalidId) return;      // none / mistarget / waiting
+        // "We deal damage ... to each other": nothing happens once I've left
+        // the board (bounced or killed in response).
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         // Collect both Mights BEFORE dealing damage (collect-then-kill).
         int my_might = ctx.state.getObject(ctx.source).current_might;
         int their_might = ctx.state.getObject(enemy).current_might;
         ctx.executor.dealDamage(enemy, my_might, ctx.source);
         ctx.executor.dealDamage(ctx.source, their_might, enemy);
-        if (ctx.state.objectExists(enemy) &&
+        if (ctx.state.getObject(enemy).location.has_value() &&
             ctx.state.getObject(enemy).hasLethalDamage())
             ctx.executor.killObject(enemy);
-        if (ctx.state.objectExists(ctx.source) &&
+        if (ctx.state.getObject(ctx.source).location.has_value() &&
             ctx.state.getObject(ctx.source).hasLethalDamage())
             ctx.executor.killObject(ctx.source);
     }

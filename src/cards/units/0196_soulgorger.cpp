@@ -18,14 +18,15 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     // "When you play me, you may play a unit from your trash, ignoring its
-    // Energy cost." (Power cost approximated as free — same convention as
-    // Spectral Matron / Fizz.)
+    // Energy cost. (You must still pay its Power cost.)" Only units whose
+    // Power cost can be paid are offered.
     std::vector<GameObjectId> trashUnits(CardContext& ctx) const {
         std::vector<GameObjectId> out;
+        const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
         const auto& ps = ctx.state.player(ctx.controller);
         for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            if (ctx.state.getObject(cid).isUnit()) out.push_back(cid);
+            if (!ctx.state.getObject(cid).isUnit()) continue;
+            if (ctx.executor.canPlayPayingCost(ctx.controller, cid, power_only)) out.push_back(cid);
         }
         return out;
     }
@@ -33,25 +34,26 @@ public:
         auto still_legal = [&]() { return !trashUnits(ctx).empty(); };
         int conf = confirmOptional(ctx, "Soulgorger: play a unit from trash?",
                                    still_legal);
-        if (conf == -1) return;  // waiting for agent
-        if (conf < 1) return;    // declined / nothing eligible
-        auto eligible = trashUnits(ctx);
-        if (eligible.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "Soulgorger (unit from trash)", eligible);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended
+        if (conf < 1) return;    // waiting / declined / nothing eligible
+        GameObjectId picked = pickTarget(ctx, "Soulgorger (unit from trash)", trashUnits(ctx));
+        // To my base or a battlefield I control (CR 355.2.a).
+        int where = 0;
+        if (picked != kInvalidId) {
+            where = pickEffectPlayLocation(*this, ctx, "Soulgorger: play it to");
+            if (where == -1) return;          // waiting for the agent
         }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (picked == kInvalidId) return;     // none / no longer in trash / waiting
         // "ignoring its Energy cost. (You must still pay its Power cost.)"
+        // playPayingCost takes the unit out of the trash only if it is paid for.
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
-        if (!ctx.executor.canPlayPayingCost(ctx.controller, picked, power_only)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), picked);
-        if (it != ps.trash.end()) ps.trash.erase(it);
-        ctx.executor.playPayingCost(ctx.controller, picked, std::nullopt, power_only);
-        ctx.events.logTrace("SOULGORGER: played a unit from trash for free");
+        if (!ctx.executor.playPayingCost(ctx.controller, picked,
+                                         effectPlayLocation(ctx.state, ctx.controller, where),
+                                         power_only)) {
+            ctx.events.logTrace("SOULGORGER: can't pay that unit's Power cost");
+            return;
+        }
+        ctx.events.logTrace("SOULGORGER: played a unit from trash, ignoring its Energy cost");
     }
 private:
     const CardDef def_ = [] {

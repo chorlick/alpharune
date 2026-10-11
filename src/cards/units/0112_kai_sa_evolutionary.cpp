@@ -18,52 +18,44 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         auto& ps = ctx.state.player(ctx.controller);
         const auto& db = ctx.executor.cardDB();
-        int points = ps.score;
-
-        auto find_spell = [&]() -> GameObjectId {
-            for (int i = static_cast<int>(ps.trash.size()) - 1; i >= 0; --i) {
-                auto cid = ps.trash[i];
-                if (!ctx.state.objectExists(cid)) continue;
-                auto& obj = ctx.state.getObject(cid);
-                if (obj.card_type != CardType::Spell) continue;
-                if (obj.card_def_id == kInvalidId) continue;
-                // "Energy cost less than your points."
-                if (db.get(obj.card_def_id).energy_cost >= points) continue;
-                return cid;
-            }
-            return kInvalidId;
-        };
-        auto still_legal = [&]() { return find_spell() != kInvalidId; };
-
-        int conf = confirmOptional(ctx,
-            "Kai'Sa: play a spell (Energy cost < points) from trash without Energy cost?",
-            still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf != 1) return;
-
-        GameObjectId chosen = find_spell();
-        if (chosen == kInvalidId) return;
         // Energy is waived; "(You must still pay its Power cost.)" (CR 356.1.b.2).
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
-        if (!ctx.executor.canPlayPayingCost(ctx.controller, chosen, power_only)) return;
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), chosen);
-        if (it != ps.trash.end()) ps.trash.erase(it);
-
+        // Spells in my trash with "Energy cost less than your points" whose
+        // Power cost I can pay.
+        auto playable = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto cid : ps.trash) {
+                const auto& obj = ctx.state.getObject(cid);
+                if (obj.card_type != CardType::Spell || obj.card_def_id == kInvalidId) continue;
+                if (db.get(obj.card_def_id).energy_cost >= ps.score) continue;
+                if (!ctx.executor.canPlayPayingCost(ctx.controller, cid, power_only)) continue;
+                out.push_back(cid);
+            }
+            return out;
+        };
+        int conf = confirmOptional(ctx,
+            "Kai'Sa: play a spell (Energy cost < points) from trash without Energy cost?",
+            [&]() { return !playable().empty(); });
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (conf != 1) return;
+        // Which spell is decided as the ability resolves (it is played, not
+        // targeted): my controller picks among the ones playable now.
+        const GameObjectId chosen = pickTarget(ctx, "Kai'Sa: play which spell", playable());
+        if (chosen == kInvalidId) return;     // none / waiting for the agent
         std::string sname = ctx.state.getObject(chosen).name;
-        // NOTE: playIgnoringCost ignores ALL costs (incl. Power); the printed
-        // "you must still pay its Power cost" is approximated as free — same
-        // convention as Fizz, Trickster (461).
         // The spell goes on the chain and resolves; "Then recycle it" replaces
         // where it goes when it leaves the chain.
         ctx.state.getObject(chosen).card_counters["__recycle_on_leave_chain"] = 1;
-        ctx.executor.playPayingCost(ctx.controller, chosen, std::nullopt, power_only);
+        if (!ctx.executor.playPayingCost(ctx.controller, chosen, std::nullopt, power_only)) {
+            // Not paid for: it stays in the trash, untouched.
+            ctx.state.getObject(chosen).card_counters["__recycle_on_leave_chain"] = 0;
+            return;
+        }
         // With no chain to resolve on (an executor driven directly, outside a
         // game), the spell can't leave the chain later: recycle it now.
-        if (ctx.state.objectExists(chosen) &&
-            ctx.state.getObject(chosen).zone != ZoneType::Chain) {
+        if (ctx.state.getObject(chosen).zone != ZoneType::Chain) {
             ctx.state.getObject(chosen).card_counters["__recycle_on_leave_chain"] = 0;
             ctx.executor.recycleCards(ctx.controller, {chosen});
         }

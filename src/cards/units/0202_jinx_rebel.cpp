@@ -17,7 +17,7 @@ public:
     // "When you discard one or more cards, ready me and give me +1 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenYouDiscard; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.readyObject(ctx.source);
         ctx.executor.giveTemporaryMight(ctx.source, 1);
         ctx.events.logTrace("JINX REBEL: discard -> ready + +1[M]");

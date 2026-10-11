@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,82 +21,74 @@ public:
     //  [R] Deal 2 to an enemy unit here and 1 to all other enemy units here.
     //  [B] Draw 1.  [Y] Stun an enemy unit."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        if (ps.rune_deck.empty()) return;
-        GameObjectId rune = ps.rune_deck.back();
-        if (!ctx.state.objectExists(rune)) return;
-
-        // Determine domain payoff BEFORE recycling (read its domains).
-        const auto& rdomains = ctx.state.getObject(rune).domains;
-        auto has = [&](Domain d) {
-            for (auto x : rdomains) if (x == d) return true;
-            return false;
-        };
-        bool is_r = has(Domain::Fury);
-        bool is_b = has(Domain::Mind);
-        bool is_y = has(Domain::Order);
-
-        // Reveal (public) then recycle the rune to the bottom of the rune deck.
-        const auto& robj = ctx.state.getObject(rune);
-        ctx.events.emit(CardRevealedEvent{
-            /*card=*/rune, /*card_def_id=*/robj.card_def_id, /*owner=*/robj.owner,
-            /*revealed_to_all=*/true, /*revealed_to=*/PlayerId::None,
-            /*source_zone=*/ZoneType::RuneDeck});
-        ps.rune_deck.pop_back();
-        ctx.executor.recycleCards(ctx.controller, {rune});
-
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        auto enemies_here = [&]() {
-            std::vector<GameObjectId> out;
-            if (!my_bf) return out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-                if (obj.battlefieldId() != my_bf) continue;
-                out.push_back(id);
+        // The reveal-and-recycle happens once. pickTarget suspends and this
+        // trigger is re-entered from the top, so what the rune was is kept on
+        // the resolving chain item (slot 7: the choice helpers own 0..6) as
+        // kRevealed | domain bits.
+        enum : int32_t { kRevealed = 8, kFury = 1, kMind = 2, kOrder = 4 };
+        constexpr size_t kPayoffSlot = 7;
+        ChainItem* ri = ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming
+                                                             : nullptr;
+        int32_t payoff = (ri && ri->resume_data.size() > kPayoffSlot)
+            ? ri->resume_data[kPayoffSlot] : 0;
+        if (!(payoff & kRevealed)) {
+            auto& ps = ctx.state.player(ctx.controller);
+            if (ps.rune_deck.empty()) return;
+            GameObjectId rune = ps.rune_deck.back();
+            const auto& robj = ctx.state.getObject(rune);
+            payoff = kRevealed;
+            for (auto d : robj.domains) {
+                if (d == Domain::Fury) payoff |= kFury;
+                if (d == Domain::Mind) payoff |= kMind;
+                if (d == Domain::Order) payoff |= kOrder;
             }
+            // Reveal (public) then recycle the rune to the bottom of the rune deck.
+            ctx.events.emit(CardRevealedEvent{
+                /*card=*/rune, /*card_def_id=*/robj.card_def_id, /*owner=*/robj.owner,
+                /*revealed_to_all=*/true, /*revealed_to=*/PlayerId::None,
+                /*source_zone=*/ZoneType::RuneDeck});
+            ps.rune_deck.pop_back();
+            ctx.executor.recycleCards(ctx.controller, {rune});
+            if (ri) {
+                if (ri->resume_data.size() <= kPayoffSlot) ri->resume_data.resize(kPayoffSlot + 1, 0);
+                ri->resume_data[kPayoffSlot] = payoff;
+            }
+        }
+        // Enemy units my controller may choose (not the ones that can't be
+        // chosen by enemy spells and abilities).
+        const auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+        auto enemies = [&](bool here_only) {
+            auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                if (o.controller == ctx.controller) return false;
+                return !here_only || (my_bf.has_value() && o.battlefieldId() == my_bf);
+            });
+            std::sort(out.begin(), out.end());
             return out;
         };
-
         // Act on the first matching domain (R, then B, then Y).
-        if (is_r) {
-            auto targets = enemies_here();
-            if (!targets.empty()) {
-                GameObjectId focus = pickTarget(ctx, "Twisted Fate [R] (deal 2 here)",
-                                                 targets);
-                if (focus == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                    ctx.state.chain.resuming->resume_point == 7) {
-                    return;  // suspended
-                }
-                // Collect-then-kill: deal damage to all first.
-                std::vector<GameObjectId> hit;
-                for (auto id : enemies_here()) {
-                    if (!ctx.state.objectExists(id)) continue;
-                    int amt = (id == focus) ? 2 : 1;
-                    ctx.executor.dealDamage(id, amt, ctx.source);
-                    hit.push_back(id);
-                }
-                for (auto id : hit)
-                    if (ctx.state.objectExists(id) &&
-                        ctx.state.getObject(id).hasLethalDamage())
-                        ctx.executor.killObject(id);
-            }
-        } else if (is_b) {
-            ctx.executor.drawCards(ctx.controller, 1);
-        } else if (is_y) {
-            std::vector<GameObjectId> enemies;
-            for (auto& [id, obj] : ctx.state.objects) {
+        if (payoff & kFury) {
+            GameObjectId focus = pickTarget(ctx, "Twisted Fate [R] (deal 2 here)", enemies(true));
+            if (focus == kInvalidId) return;   // no enemy unit here / waiting
+            // "1 to all other enemy units here" is not a choice: every other
+            // enemy unit at my battlefield. Collect-then-kill.
+            std::vector<GameObjectId> hit;
+            for (const auto& [id, obj] : ctx.state.objects) {
                 if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                enemies.push_back(id);
+                if (!my_bf.has_value() || obj.battlefieldId() != my_bf) continue;
+                hit.push_back(id);
             }
-            GameObjectId t = pickTarget(ctx, "Twisted Fate [Y] (stun)", enemies);
-            if (t == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7) {
-                return;  // suspended
-            }
-            if (t != kInvalidId && ctx.state.objectExists(t))
-                ctx.executor.stunUnitBy(t, ctx.source);
+            std::sort(hit.begin(), hit.end());
+            for (auto id : hit) ctx.executor.dealDamage(id, id == focus ? 2 : 1, ctx.source);
+            for (auto id : hit)
+                if (ctx.state.getObject(id).location.has_value() &&
+                    ctx.state.getObject(id).hasLethalDamage())
+                    ctx.executor.killObject(id);
+        } else if (payoff & kMind) {
+            ctx.executor.drawCards(ctx.controller, 1);
+        } else if (payoff & kOrder) {
+            GameObjectId t = pickTarget(ctx, "Twisted Fate [Y] (stun)", enemies(false));
+            if (t == kInvalidId) return;       // no enemy unit / waiting
+            ctx.executor.stunUnitBy(t, ctx.source);
         }
         ctx.events.logTrace("TWISTED FATE: revealed rune -> domain payoff");
     }

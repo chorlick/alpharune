@@ -20,45 +20,37 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIHold};
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-
-        // WhenIHold (delayed-fire path leaves firing_trigger=None, so treat
-        // anything that isn't WhenYouPlayMe as the hold branch only when the
-        // unit is actually holding a battlefield — but here both triggers are
-        // event-driven and carry firing_trigger, so branch on it directly).
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
             if (finalizingChoices(ctx)) return;   // no choices
+            // Only a Blitzcrank still on the board returns to hand.
+            if (!ctx.state.getObject(ctx.source).location.has_value()) return;
             ctx.executor.bounceToHand(ctx.source);
             ctx.events.logTrace("BLITZCRANK: returned to owner's hand on hold");
             return;
         }
-
-        // WhenYouPlayMe: pull an enemy unit to my battlefield.
-        auto& self = ctx.state.getObject(ctx.source);
-        auto my_bf = self.battlefieldId();
-        if (!my_bf) return;  // not at a BF — trigger condition not met
-
-        auto find_enemy_elsewhere = [&]() -> GameObjectId {
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (!obj.isUnit()) continue;
-                if (obj.controller == ctx.controller) continue;
-                if (obj.battlefieldId() == my_bf) continue;
-                if (!obj.location.has_value()) continue;
-                return id;
-            }
-            return kInvalidId;
+        // WhenYouPlayMe, "to a battlefield": pull an enemy unit to here. My
+        // controller chooses which (CR 383.3); units that can't be chosen by
+        // enemy spells and abilities are not offered.
+        auto elsewhere = [&]() {
+            std::vector<GameObjectId> out;
+            const auto here = ctx.state.getObject(ctx.source).battlefieldId();
+            if (!here) return out;   // not at a battlefield: nothing to move "to here"
+            out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller && o.battlefieldId() != here;
+            });
+            std::sort(out.begin(), out.end());
+            return out;
         };
-        auto still_legal = [&]() { return find_enemy_elsewhere() != kInvalidId; };
-
         int conf = confirmOptional(ctx,
-            "Blitzcrank: pull an enemy unit to my battlefield?", still_legal);
-        if (conf == -1) return;
-        if (conf == 0) return;
+            "Blitzcrank: pull an enemy unit to my battlefield?",
+            [&]() { return !elsewhere().empty(); });
+        if (conf < 1) return;                 // waiting / declined / nothing to move
+        const GameObjectId target = pickTarget(ctx, "Blitzcrank: move which enemy unit here",
+                                               elsewhere());
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-
-        auto target = find_enemy_elsewhere();
-        if (target == kInvalidId) return;
+        if (target == kInvalidId) return;     // none / mistarget / waiting
+        const auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+        if (!my_bf) return;
         std::string name = ctx.state.getObject(target).name;
         ctx.executor.moveToBattlefield(target, *my_bf);
         ctx.events.logTrace("BLITZCRANK: pulled " + name + " to BF#" +

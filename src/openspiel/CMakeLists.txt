@@ -107,7 +107,7 @@ add_executable(riftbound_openspiel_tests
     openspiel_tests.cpp
     riftbound_game.cpp
     riftbound_state.cpp
-    ${CMAKE_SOURCE_DIR}/src/agents/mcts_agent.cpp
+    ${PROJECT_SOURCE_DIR}/src/agents/mcts_agent.cpp
     $<TARGET_OBJECTS:algorithms>
     $<TARGET_OBJECTS:game_transforms>
     $<TARGET_OBJECTS:utils>
@@ -122,8 +122,8 @@ target_include_directories(riftbound_openspiel_tests PRIVATE
 )
 add_test(NAME riftbound_openspiel_tests
     COMMAND riftbound_openspiel_tests
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(riftbound_openspiel_tests PROPERTIES
-    ENVIRONMENT "RIFTBOUND_ROOT=${CMAKE_SOURCE_DIR}")
+    ENVIRONMENT "RIFTBOUND_ROOT=${PROJECT_SOURCE_DIR}")
 
 # Kuhn Poker CFR validation moved to riftbound-trainer alongside cfr_tabular.

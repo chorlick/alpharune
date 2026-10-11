@@ -49,7 +49,7 @@ public:
 private:
     Card* find(CardDefId id) const;   // the map: ids too large for the table
     std::unordered_map<CardDefId, std::unique_ptr<Card>> cards_;
-    // cards_ by id, for get(). Card ids are small (the vocabulary is ml::kCardVocabSize, 1150);
+    // cards_ by id, for get(). Card ids are small (the vocabulary is ml::kCardVocabSize, 2048);
     // an id of kTableLimit or more stays in the map only.
     static constexpr uint32_t kTableLimit = 1u << 16;
     std::vector<Card*> by_id_;

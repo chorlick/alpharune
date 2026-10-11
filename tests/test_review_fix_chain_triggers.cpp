@@ -45,7 +45,7 @@ constexpr CardDefId kSpriteFountain = 640; // gear, [Temporary]; "[Deathknell][>
 constexpr CardDefId kScrapheap     = 182;  // gear: "When this is played, discarded, or killed, draw 1."
 constexpr CardDefId kJaeMedarda    = 463;  // "When you choose me with a spell, draw 1."
 constexpr CardDefId kIreliaFervent = 380;  // "When you choose or ready me, give me +1 [M] this turn."
-constexpr CardDefId kStubShowdownBattlefield = 1100;  // unused id (reserved range), see below
+constexpr CardDefId kStubShowdownBattlefield = 1900;  // unused id (reserved range), see below
 
 /// Answers every decision by kind: "you may" / Repeat prompts with `say_yes`,
 /// object choices with `want` in order (then the first option), anything else

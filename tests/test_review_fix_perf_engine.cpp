@@ -330,7 +330,7 @@ TEST_F(PerfEngineGame, AGameIsTheSameWithAndWithoutAListener) {
 
 // ─── 6.6 / 6.11: cleanup ────────────────────────────────────────────────────
 
-constexpr CardDefId kTCountingElder = 1040;   // unit: "any amount of your damage is enough to kill"
+constexpr CardDefId kTCountingElder = 1840;   // unit: "any amount of your damage is enough to kill"
 
 /// Elder Dragon's rule on a test unit that counts how often it is asked.
 class TCountingElder : public UnitCard {
@@ -763,7 +763,7 @@ TEST_F(PerfEngineCards, EveryCardFiresOnExactlyItsTriggerTypes) {
     EXPECT_GT(with_trigger, 300);
     // Ids nobody registered, small and huge.
     EXPECT_EQ(card_registry.get(CardDefId::fromRaw(0)), nullptr);
-    EXPECT_EQ(card_registry.get(999), nullptr);
+    EXPECT_EQ(card_registry.get(2047), nullptr);   // spare range: no set is planned there
     EXPECT_EQ(card_registry.get(70000), nullptr);
     EXPECT_EQ(card_registry.get(kInvalidId), nullptr);
     EXPECT_FALSE(card_registry.has(kInvalidId));
@@ -1536,10 +1536,10 @@ TEST_F(PerfEngineLeaveBoard, ACleanupFindsNothingLeftToClear) {
 // characteristics before it changes zones", CR 383.2.c.3 for the abilities of
 // the object that left).
 
-constexpr CardDefId kTWitness = 1041;     // unit: "When I die", writes down itself and another unit
-constexpr CardDefId kTLookBack = 1042;    // spell: moves a unit off the board, then reads it
-constexpr CardDefId kTPowerUnit = 1043;   // unit costing one Calm Power
-constexpr CardDefId kTWatcher = 1044;     // unit: "When another friendly unit dies", counts
+constexpr CardDefId kTWitness = 1841;     // unit: "When I die", writes down itself and another unit
+constexpr CardDefId kTLookBack = 1842;    // spell: moves a unit off the board, then reads it
+constexpr CardDefId kTPowerUnit = 1843;   // unit costing one Calm Power
+constexpr CardDefId kTWatcher = 1844;     // unit: "When another friendly unit dies", counts
 
 struct Saw {
     PlayerId ability_controller = PlayerId::None;
@@ -2490,7 +2490,7 @@ TEST_F(PerfEngineLookBack, KogMaw_DiesTwice_EachDeathknellDealsWhereThatDeathWas
 // rune's departure ("When you recycle a rune") is handed the rune as it left
 // (exhausted, and with whatever else was on it); before, the three sites
 // reset it first — and the effect-play cost announced nothing at all.
-constexpr CardDefId kTRuneWatcher = 1045;   // unit: "When you recycle a rune", writes it down
+constexpr CardDefId kTRuneWatcher = 1845;   // unit: "When you recycle a rune", writes it down
 
 class TRuneWatcher : public UnitCard {
 public:

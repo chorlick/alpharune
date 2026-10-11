@@ -1330,7 +1330,7 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
 // 16. Second follow-up (plans/09 section H)
 // ═══════════════════════════════════════════════════════════════════════════
 
-constexpr CardDefId kTKillBuffKill = 1099;   // test spell, see below
+constexpr CardDefId kTKillBuffKill = 1899;   // test spell, see below
 
 // A spell that opens one death batch over the enemy units at battlefield 0,
 // kills the first, buffs the second and then kills it too — all in one block,
@@ -1361,8 +1361,8 @@ public:
     }
 };
 
-constexpr CardDefId kTRecordsPlaySource = 1098;
-constexpr CardDefId kTDelayedSpawner = 1097;
+constexpr CardDefId kTRecordsPlaySource = 1898;
+constexpr CardDefId kTDelayedSpawner = 1897;
 
 // A free spell that notes where it was being played from each time its cost
 // is worked out (PlayerState::current_play_source).
@@ -2976,7 +2976,7 @@ TEST(SweepTriggersReflexiveRule, AcceptsTheMarkerAndCatchesEachMistake) {
         bool reflexive = false;
         const char* because = nullptr;
         TCard(const char* text, bool r, const char* b) : reflexive(r), because(b) {
-            d.id = 1096;
+            d.id = 1896;   // a test card: the spare range
             d.name = "Test Phrase Card";
             d.card_type = CardType::Spell;
             d.ability_text = text;

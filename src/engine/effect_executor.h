@@ -383,6 +383,8 @@ public:
     int payableAnyPower(PlayerId player) const;
     /// Pay `amount` [A]: floating power first, then recycle runes (exhausted
     /// ones first). Pays nothing and returns false if it can't be covered.
+    /// While a spell is making its choices before its cost is paid, the
+    /// payment leaves that cost payable (resource::payAnyPowerAheadOfCost).
     bool payAnyPower(PlayerId player, int amount);
 
     // ── Scoring by an effect (CR 471 "score N points" outside Conquer/Hold) ──

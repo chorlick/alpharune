@@ -28,6 +28,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <regex>
 #include <map>
 #include <random>
 #include <set>
@@ -136,7 +139,8 @@ const char* blockOf(int i) {
     if (i < L::kUnitT2) return "kPlayLockout";
     if (i < L::kExtGlobals) return "kUnitT2";
     if (i < L::kBfContributedBy) return "kExtGlobals";
-    return "kBfContributedBy";
+    if (i < L::kPadding) return "kBfContributedBy";
+    return "kPadding";
 }
 
 // ─── (a) hand-built positions ───────────────────────────────────────────────
@@ -394,8 +398,67 @@ TEST(FeaturePerspective, BattlefieldSlotsSayWhoBroughtThem) {
     EXPECT_EQ(f2[L::kBfContributedBy + 1], 1.0f);
     EXPECT_EQ(f1[L::kBfContributedBy + 2], 0.0f) << "a token battlefield is nobody's";
     EXPECT_EQ(f1[L::kBfContributedBy + 3], 0.0f) << "no battlefield in the slot";
-    EXPECT_EQ(ml::kStateFeatureDim, L::kBfContributedBy + 4);
+    EXPECT_EQ(L::kPadding, L::kBfContributedBy + 4);
     EXPECT_EQ(f1.size(), static_cast<size_t>(ml::kStateFeatureDim));
+}
+
+// plans/09 item 9.UU1: the vector's length is a multiple of 16 floats (64
+// bytes); what rounds it up is a named block at the end that is always zero.
+TEST(FeaturePerspective, TheVectorEndsInZeroPaddingToAMultipleOfSixteenFloats) {
+    EXPECT_EQ(ml::kStateFeatureDim % 16, 0);
+    EXPECT_EQ(ml::kStateFeatureDim, 10944);
+    EXPECT_EQ(L::kPaddingDim, 12);
+    EXPECT_EQ(ml::kStateFeatureDim, L::kPadding + L::kPaddingDim);
+    EXPECT_LT(L::kPaddingDim, 16);
+    Board b;
+    // Fill everything the extractor reads near the end, then look at the tail.
+    b.state.battlefields[0].controller = P1;
+    b.state.turn.focus_holder = P2;
+    b.inZone(P2, 2048, ZoneType::Banishment, b.state.player(P2).banishment);
+    for (PlayerId p : {P1, P2}) {
+        const auto f = b.from(p);
+        ASSERT_EQ(f.size(), static_cast<size_t>(ml::kStateFeatureDim));
+        for (int i = L::kPadding; i < L::kEnd; ++i) EXPECT_EQ(f[i], 0.0f) << "padding float " << i;
+        // The highest card id has a slot: the last float of the last zone block.
+        EXPECT_EQ(f[L::kPlayLockout - 1], p == P1 ? 1.0f : 0.0f);
+    }
+    // The id ranges the constant is sized for.
+    EXPECT_EQ(ml::kCardVocabSize, 2048);
+    EXPECT_EQ(ml::kLastRegisteredCardId, 955);
+    EXPECT_EQ(ml::kRadianceLastCardId - ml::kRadianceFirstCardId + 1, 210);
+    EXPECT_EQ(ml::kLegacyLastCardId - ml::kLegacyFirstCardId + 1, 400);
+    EXPECT_EQ(ml::kCardVocabSize - ml::kSpareFirstCardId + 1, 483);
+}
+
+// plans/09 item 9.UU1: a test-only card must not take an id a set will
+// register. Every `CardDefId kName = N;` of the test sources is a registered
+// card (N <= 955), sits in the spare range, or is past the id space altogether.
+TEST(FeaturePerspective, NoTestCardIdSitsInARangeReservedForASet) {
+    const char* root = std::getenv("RIFTBOUND_ROOT");
+    const std::filesystem::path tests = std::filesystem::path(root ? root : "..") / "tests";
+    const std::regex id_constant(R"(CardDefId\s+k\w+\s*=\s*(\d+)\s*;)");
+    int constants = 0, spare = 0, outside = 0;
+    std::string offenders;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(tests)) {
+        const auto ext = entry.path().extension();
+        if (ext != ".cpp" && ext != ".h") continue;
+        std::ifstream in(entry.path());
+        std::string line;
+        while (std::getline(in, line)) {
+            std::smatch m;
+            if (!std::regex_search(line, m, id_constant)) continue;
+            const int n = std::stoi(m[1]);
+            ++constants;
+            if (n >= ml::kSpareFirstCardId && n <= ml::kCardVocabSize) ++spare;
+            else if (n > ml::kCardVocabSize) ++outside;   // no slot anywhere: collides with nothing
+            else if (n > ml::kLastRegisteredCardId)
+                offenders += " " + entry.path().filename().string() + ":" + std::to_string(n);
+        }
+    }
+    EXPECT_GT(constants, 500);
+    EXPECT_GT(spare, 50) << "the test-only cards";
+    EXPECT_LE(outside, 3) << "ids past the id space (test_review_fix_integrity.cpp has three on purpose)";
+    EXPECT_TRUE(offenders.empty()) << "ids in a set's reserved range:" << offenders;
 }
 
 // ─── (b), (c): every decision of real games ─────────────────────────────────

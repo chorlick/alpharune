@@ -743,6 +743,10 @@ void extractStateFeatures(const GameState& state,
         }
         features.push_back(who);
     }
+
+    // Padding to a multiple of 16 floats: always zero, carries nothing.
+    blockStartsAt(features, layout::kPadding, "kPadding");
+    features.resize(features.size() + layout::kPaddingDim, 0.0f);
     blockStartsAt(features, layout::kEnd, "the end");
 }
 

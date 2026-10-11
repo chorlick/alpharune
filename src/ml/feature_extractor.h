@@ -68,6 +68,8 @@ namespace riftbound::ml {
 ///                        battlefield count.
 ///   kBfContributedBy (4) per slot: who brought the battlefield (0 none / token,
 ///                        1 self, 2 opp).
+///   kPadding (12)        always 0: rounds the length up to a multiple of 16
+///                        floats (64 bytes). It carries nothing.
 ///
 /// The multi-hot zones are what a player knows by the rules: the composition
 /// (never the order) of their own Main Deck, and both players' public trash
@@ -82,18 +84,23 @@ inline constexpr int kMaxBfUnitsPerSide   = 3;
 inline constexpr int kPerUnitExtFields    = 4;   // cd, gear, delta, temp_might
 inline constexpr int kPerUnitExtFieldsT2  = 8;   // T2/3 per-unit: assault, shield, deflect,
                                                  // buff_count, temp_buff_count, tank, backline, ganking
-// Card-def id space for the multi-hot zones. Registered ids run 1..955
-// (Origins/Proving Grounds/Spiritforged/Unleashed 1..787, Vendetta 788..955);
-// 956..1150 (195 ids) is reserved for Radiance so its release doesn't shift
-// the layout (and invalidate checkpoints) a second time. Radiance needs 169
-// to 174 by the gallery data of 2026-10 (plans/09 item 9.SS2): the 167 cards
-// of its numbered range, two tokens it introduces (Bomb, the 3-Might Mech),
-// and up to five over-numbered champions that may be cards of their own; its
-// other gallery entries are second printings or basic runes that have ids.
-// The 21 to 26 spare cover what the 23 cards of the range not yet shown may
-// add. It was 1100: 145 reserved, at least 24 short. The derivation is in
-// docs/checkpoint-breaking-2026-10.md, section 0.
-inline constexpr int kCardVocabSize       = 1150;
+// Card-def id space: every card-keyed block and range is sized by it. A power
+// of two (user decision, plans/09 item 9.UU1), laid out as
+//      1 ..  955   registered, through Vendetta
+//    956 .. 1165   reserved for Radiance (210 ids; it needs 169 to 174 by the
+//                  gallery data of 2026-10, plans/09 item 9.SS2)
+//   1166 .. 1565   reserved for Legacy (announced with about 400 cards)
+//   1566 .. 2048   spare (483 ids): later sets, and where test-only cards sit
+// so that neither release shifts the layout (and invalidates checkpoints)
+// again. It was 1100, then 1150 (9.SS2). The derivation of the Radiance count
+// is in docs/checkpoint-breaking-2026-10.md, section 0.
+inline constexpr int kCardVocabSize       = 2048;
+inline constexpr int kLastRegisteredCardId = 955;    // through Vendetta
+inline constexpr int kRadianceFirstCardId  = 956;
+inline constexpr int kRadianceLastCardId   = 1165;
+inline constexpr int kLegacyFirstCardId    = 1166;
+inline constexpr int kLegacyLastCardId     = 1565;
+inline constexpr int kSpareFirstCardId     = 1566;   // .. kCardVocabSize
 inline constexpr int kZoneVectorOffset    = 470;  // first multi-hot zone starts here
 inline constexpr int kNumZoneVectors      = 5;    // self deck/trash/banish, opp trash/banish
 
@@ -127,7 +134,13 @@ inline constexpr int kExtGlobals      = kUnitT2 + kBfSlots * 2 * kUnitT2SideDim;
 inline constexpr int kExtGlobalsDim   = 24;
 inline constexpr int kExtFocusHolder  = kExtGlobals + 22;
 inline constexpr int kBfContributedBy = kExtGlobals + kExtGlobalsDim;
-inline constexpr int kEnd             = kBfContributedBy + kBfSlots;
+/// Zero padding: the vector's length is a multiple of 16 floats (64 bytes).
+/// It carries nothing and is always 0; a new block goes BEFORE it.
+inline constexpr int kPadding         = kBfContributedBy + kBfSlots;
+inline constexpr int kAlignFloats     = 16;
+inline constexpr int kPaddingDim      =
+    (kAlignFloats - kPadding % kAlignFloats) % kAlignFloats;
+inline constexpr int kEnd             = kPadding + kPaddingDim;
 
 static_assert(kZones == kZoneVectorOffset);
 
@@ -150,11 +163,16 @@ constexpr int unitT2(int bf, int side, int unit) {
 constexpr int zone(int zone) { return kZones + zone * kCardVocabSize; }
 } // namespace layout
 
-// 6442 with kCardVocabSize = 1150. Before the 2026-10 checkpoint break it was
-// 6188: + the 4 kBfContributedBy dims, + 5 x 50 for the larger card id space.
+// 10944 with kCardVocabSize = 2048: 10932 floats of content and 12 of padding.
+// Before the 2026-10 checkpoint break it was 6188 (1100 card ids, no
+// kBfContributedBy, no padding).
 inline constexpr int kStateFeatureDim     = layout::kEnd;
 static_assert(kStateFeatureDim ==
-              kZoneVectorOffset + kNumZoneVectors * kCardVocabSize + 2 + 192 + 24 + 4);
+              kZoneVectorOffset + kNumZoneVectors * kCardVocabSize + 2 + 192 + 24 + 4 +
+                  layout::kPaddingDim);
+static_assert(kStateFeatureDim % layout::kAlignFloats == 0,
+              "the state vector's length is a multiple of 16 floats");
+static_assert(layout::kPaddingDim < layout::kAlignFloats);
 
 /// Build the state feature vector (kStateFeatureDim dims, layout above) from
 /// `perspective`'s point of view.

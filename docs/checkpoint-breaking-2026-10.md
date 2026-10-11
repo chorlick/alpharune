@@ -6,24 +6,34 @@ recorded or trained against an earlier engine (a checkpoint, a replay of action
 ids, a table keyed by `InfoSetId`) is valid after these commits. The other
 engine changes of the run are in `docs/trainer-notes-2026-10.md`.
 
-Review items: 1.9, 1.12, 9.RR2, 9.SS2 (`plans/completed/`). The v6 interface
+Review items: 1.9, 1.12, 9.RR2, 9.SS2, 9.UU1 (`plans/completed/`). The v6 interface
 (`core/legal_action.h`, `ml/token_layout.h`) is not built yet; these fixes are
 in the encoding the search agents run on today.
 
 | | Before | After |
 |---|---|---|
-| `ml::kStateFeatureDim` | 6188 | **6442** |
-| `ml::kCardVocabSize` / `openspiel::kNumCardDefIds` | 1100 | **1150** (section 0) |
-| `RiftboundGame::NumDistinctActions()` | 13,371 (`kVocabSize`) | **73,162,752** (`kNumActions` = 71,448 slots x 1024 twin planes) |
-| search-microbench observation checksum | `94739f84565d4d16` | `965b13284eb6dc5c` (`366dde83e658847e` after the feature reorder alone, `efc2aa14b545a08e` with the new action ids, before the id space grew) |
+| `ml::kStateFeatureDim` | 6188 | **10944** (10932 of content, 12 of zero padding) |
+| `ml::kCardVocabSize` / `openspiel::kNumCardDefIds` | 1100 | **2048** (section 0) |
+| `RiftboundGame::NumDistinctActions()` | 13,371 (`kVocabSize`) | **130,174,976** (`kNumActions` = 127,124 slots x 1024 twin planes) |
+| search-microbench observation checksum | `94739f84565d4d16` | `4a751d2371810e80` (`366dde83e658847e` after the feature reorder alone, `efc2aa14b545a08e` with the new action ids, `965b13284eb6dc5c` with 1150 card ids) |
 
-## 0. The card id space: 1100 -> 1150
+## 0. The card id space: 1100 -> 2048
 
 `kCardVocabSize` (and `openspiel::kNumCardDefIds`, `ml::kCardEmbeddingRows` - 1)
 is the number of card ids every card-keyed block and range is sized by. Ids
-1..955 are registered through Vendetta. The rest is reserved for Radiance so
-that its release does not move the layout again. 1100 left 145; Radiance needs
-169 to 174, so it is 1150 now (195 reserved).
+1..955 are registered through Vendetta. It is a power of two now (user
+decision, plans/09 item 9.UU1), with room for the two sets that are known, so
+that neither release moves the layout again:
+
+| Card ids | | Constant (`ml::`) |
+|---|---|---|
+| 1 .. 955 | registered, through Vendetta | `kLastRegisteredCardId` |
+| 956 .. 1165 | reserved for Radiance: 210 ids (it needs 169 to 174, below) | `kRadianceFirstCardId`, `kRadianceLastCardId` |
+| 1166 .. 1565 | reserved for Legacy, announced with about 400 cards | `kLegacyFirstCardId`, `kLegacyLastCardId` |
+| 1566 .. 2048 | spare: 483 ids for later sets; the test-only cards of the test suite sit here | `kSpareFirstCardId` |
+
+It was 1100 (145 reserved for Radiance: at least 24 short), then 1150 for a
+day (9.SS2), now 2048.
 
 How the count was derived from `cards/raw/gallery_raw.json` (192 Radiance entries):
 
@@ -43,9 +53,9 @@ How the count was derived from `cards/raw/gallery_raw.json` (192 Radiance entrie
   Spiritforged 233 of /221 (+ 1 token) and Unleashed 225 of /219 (+ 6 tokens):
   those two have over-numbered cards that are cards of their own (the Seals,
   the Poros), which is why the five champions above are counted as a range.
-- Headroom: 195 - 174 = 21 ids at the high count (12%), 26 at the low one. It
+- Headroom in Radiance's 210: 36 ids at the high count, 41 at the low one. It
   covers the 23 cards not shown yet naming more tokens than any set so far
-  has registered (Unleashed: 6) and a further dozen over-numbered cards.
+  has registered (Unleashed: 6) and two dozen over-numbered cards.
 - The engine's 955 cards against the gallery through Vendetta (1,189 entries):
   the 234 entries with no engine card are all second printings (102 alternate
   art `a`, 44 `*` variants, 74 over-numbered, 6 Vendetta `SP`, 6 Vendetta rune
@@ -53,9 +63,31 @@ How the count was derived from `cards/raw/gallery_raw.json` (192 Radiance entrie
   Tracker). No game card is missing. One engine card is not in the gallery:
   Shadow Clone 955, a token.
 
-What grows with it: the five zone blocks of the feature vector (5 x 50 floats)
-and every card-keyed action range (50 keys each). `ml::kCardEmbeddingRows` (the
-v6 token layout, not built yet) is 1151 and `ml::kLayoutVersion` 2.
+What grows with it: the five zone blocks of the feature vector (5 x 2048
+floats, 10,240 of the vector's 10,944) and every card-keyed action range (2049
+keys each). `ml::kCardEmbeddingRows` (the v6 token layout, not built yet) is
+2049 and `ml::kLayoutVersion` 3.
+
+What the larger vector costs, measured against the build with 1150 ids (three
+alternating runs each, medians; fiora vs yi_rebuild):
+
+| | 1150 ids (6,442 floats) | 2048 ids (10,944 floats) | |
+|---|---|---|---|
+| `InfoSetId` per call | 5.03 us | 6.52 us | **+30%** (+1.5 us) |
+| of which hashing (`computeInfoSetId`) | 2.15 us | 3.45 us | +61% |
+| `extractStateFeatures` | 2.68 us | 3.03 us | +13% |
+| `ObservationTensor` | 3.19 us | 3.83 us | +20% |
+| `ismcts:sims=20`, 8 games, seed 1 | 2.92 / 3.00 / 4.34 s | 2.89 / 3.01 / 3.16 s | within the run-to-run spread |
+| `mcts:sims=50`, 5 games, seed 20261010 | 2.80 / 2.84 / 4.19 s | 2.65 / 2.68 / 2.83 s | within the spread (it never asks for the key) |
+| random, 1000 games, 1 thread | 1.25 / 1.27 / 1.29 s | 1.23 / 1.24 / 1.27 s | unchanged (it never builds the vector) |
+
+- `InfoSetId` is slower by more than its spread (about 0.25 us): 0.33 ns per
+  added float. With 1600 ids (8,704 floats) it would have cost about 5.8 us,
+  +15%.
+- In the ISMCTS batch that is 69,000 calls x 1.5 us = 0.10 s of 2.9 s (3.5%;
+  1600 ids: about 0.05 s), which the batch's own spread hides.
+- Both search batches play the same games as with 1150 ids, decision for
+  decision: the action ids are larger numbers in the same order.
 
 ## 1. State features (`src/ml/feature_extractor.h`)
 
@@ -104,11 +136,12 @@ base side block, the extended block and the Tier-2 block.
 | 362 | 4 | `kCostModTypes` | {next spell only, next unit only}: self, opp |
 | 366 | 8 | `kScoredFlags` | 4 slots x {scored by self, by opp} this turn |
 | 374 | 96 | `kUnitExt` | 4 slots x **{self, opp}** x 3 units x {combat designation, attachment card id, Might delta, temporary Might} |
-| 470 | 5750 | `kZones` | 5 x 1150 card counts: self Main Deck, self trash, self banishment, opp trash, opp banishment |
-| 6220 | 2 | `kPlayLockout` | can't play cards this turn: self, opp |
-| 6222 | 192 | `kUnitT2` | 4 slots x {self, opp} x 3 units x {assault, shield, deflect, buffs, temporary buffs, Tank, Backline, Ganking} |
-| 6414 | 24 | `kExtGlobals` | ready base units (self, opp); cost-modifier sum (self, opp); additional turns (self, opp); contested by self x4; combat staged x4; showdown staged x4; facedown age x4; focus holder (1 self / 0 opp / -1 none); battlefield count |
-| 6438 | 4 | `kBfContributedBy` | **new**: who brought each battlefield slot |
+| 470 | 10240 | `kZones` | 5 x 2048 card counts: self Main Deck, self trash, self banishment, opp trash, opp banishment |
+| 10710 | 2 | `kPlayLockout` | can't play cards this turn: self, opp |
+| 10712 | 192 | `kUnitT2` | 4 slots x {self, opp} x 3 units x {assault, shield, deflect, buffs, temporary buffs, Tank, Backline, Ganking} |
+| 10904 | 24 | `kExtGlobals` | ready base units (self, opp); cost-modifier sum (self, opp); additional turns (self, opp); contested by self x4; combat staged x4; showdown staged x4; facedown age x4; focus holder (1 self / 0 opp / -1 none); battlefield count |
+| 10928 | 4 | `kBfContributedBy` | **new**: who brought each battlefield slot |
+| 10932 | 12 | `kPadding` | **new**: always 0. It carries nothing; it rounds the length up to a multiple of 16 floats (64 bytes). A later block goes before it |
 
 - Battlefield header, 9 fields: card id, controller, contested, combat in
   progress, showdown in progress, facedown count, self is attacker (-1 outside
@@ -136,7 +169,7 @@ by any re-deal of the cards p has not been shown
 ### What an id is now
 
 ```
-id   = slot + kNumSlots * twin          kNumSlots = 71448, kTwinPlanes = 1024
+id   = slot + kNumSlots * twin          kNumSlots = 127124, kTwinPlanes = 1024
 slot = actionIdSlot(id)                 what the action is made of
 twin = actionIdTwin(id)                 which of the legal intents with that description
 ```
@@ -168,8 +201,8 @@ twin = actionIdTwin(id)                 which of the legal intents with that des
 
 ### Slot ranges
 
-`kCardKeys` = 1151: key 0 is "an object with no card id" (a token without a
-card class), keys 1..1150 are card ids. `kPlaceKeys` = 8: 0 = none or a base,
+`kCardKeys` = 2049: key 0 is "an object with no card id" (a token without a
+card class), keys 1..2048 are card ids. `kPlaceKeys` = 8: 0 = none or a base,
 1..7 = battlefield slot + 1.
 
 | Verb | First slot | Size | Key |
@@ -180,18 +213,18 @@ card class), keys 1..1150 are card ids. `kPlaceKeys` = 8: 0 = none or a base,
 | `MulliganDecision` | 7 | 38 | 0 keep; 1 + p: hand position p; 9..36: a pair of positions (i < j), row by row; 37: anything else |
 | `ChooseBattlefield` | 45 | 8 | position in the player's battlefield list |
 | `AssignCombatDamage` | 53 | 16 | number of units given damage (15 = 15 or more) |
-| `StandardMove` | 69 | 9208 | unit card x 8 + destination |
-| `Play` | 9277 | 36832 | ((card x 8) + where it lands) x 4 + variant: 0 normal, 1 alternative cost, 2 location cost, 3 not from hand or the Champion Zone |
-| `HideCard` | 46109 | 9208 | card x 8 + battlefield |
-| `ActivateAbility` | 55317 | 4604 | source card x 4 + ability index (own ability, no target in the intent) |
-| `ActivateAtTarget` | 59921 | 1151 | source card (the intent names its target: Equip) |
-| `ActivateGranted` | 61072 | 1151 | the card that grants the ability |
-| `ChooseOwnObject` | 62223 | 1151 | card of the first chosen object, controlled by the decider |
-| `ChooseOpposingObject` | 63374 | 1151 | ... controlled by the opponent |
-| `ChooseNamedCard` | 64525 | 1151 | the card named |
-| `ChooseValue` | 65676 | 17 | the integer answer 0..15; 16 = any other value |
-| `PlaceOptionalTrigger`, `DeclineOptionalTrigger`, `PayTriggeredCost`, `DeclineTriggeredCost` | 65693, 66844, 67995, 69146 | 1151 each | source card |
-| `SideboardSwap` | 70297 | 1151 | card taken out |
+| `StandardMove` | 69 | 16392 | unit card x 8 + destination |
+| `Play` | 16461 | 65568 | ((card x 8) + where it lands) x 4 + variant: 0 normal, 1 alternative cost, 2 location cost, 3 not from hand or the Champion Zone |
+| `HideCard` | 82029 | 16392 | card x 8 + battlefield |
+| `ActivateAbility` | 98421 | 8196 | source card x 4 + ability index (own ability, no target in the intent) |
+| `ActivateAtTarget` | 106617 | 2049 | source card (the intent names its target: Equip) |
+| `ActivateGranted` | 108666 | 2049 | the card that grants the ability |
+| `ChooseOwnObject` | 110715 | 2049 | card of the first chosen object, controlled by the decider |
+| `ChooseOpposingObject` | 112764 | 2049 | ... controlled by the opponent |
+| `ChooseNamedCard` | 114813 | 2049 | the card named |
+| `ChooseValue` | 116862 | 17 | the integer answer 0..15; 16 = any other value |
+| `PlaceOptionalTrigger`, `DeclineOptionalTrigger`, `PayTriggeredCost`, `DeclineTriggeredCost` | 116879, 118928, 120977, 123026 | 2049 each | source card |
+| `SideboardSwap` | 125075 | 2049 | card taken out |
 
 ### Every range that moved or was added
 
@@ -201,14 +234,14 @@ card class), keys 1..1150 are card ids. `kPlaceKeys` = 8: 0 = none or a base,
 | `MulliganDecision` 7 (3): how many cards | 7 (38) | which hand positions |
 | `ChooseBattlefield` 10 (8): position + 1 | 45 (8) | the position itself (`Intent::battlefield_pool_index`) |
 | `AssignCombatDamage` 18 (128): a hash of targets and amounts | 53 (16) | number of units hit; the distribution is the twin |
-| `StandardMove` 146 (8): destination | 69 (9208) | unit card and destination |
-| `Play` 154 (1100): card | 9277 (36832) | card, location, variant |
-| `HideCard` 1254 (1100): card | 46109 (9208) | card and battlefield |
-| `ActivateAbility` 2354 (4400): card x 4 + index, the index replaced by a hash of the target's card for a gear | 55317 (4604) | the index is always the index |
-| | `ActivateAtTarget` 59921 (1151) | new: Equip |
-| | `ActivateGranted` 61072 (1151) | new: a granted ability, by granting card (it shared the source's slot) |
-| `MakeChoice` 6754 (1117): 0 no object or no card id, 1..1100 card of the first object or the named card, then 16 values | `ChooseOwnObject` 62223, `ChooseOpposingObject` 63374, `ChooseNamedCard` 64525 (1151 each), `ChooseValue` 65676 (17) | whose object; a named card apart from an object; a slot for values outside 0..15 |
-| trigger verbs 7871, 8971, 10071, 11171 and `SideboardSwap` 12271 (1100 each) | 65693 .. 70297 (1151 each) | key 0 added; none of these intents is generated today |
+| `StandardMove` 146 (8): destination | 69 (16392) | unit card and destination |
+| `Play` 154 (1100): card | 16461 (65568) | card, location, variant |
+| `HideCard` 1254 (1100): card | 82029 (16392) | card and battlefield |
+| `ActivateAbility` 2354 (4400): card x 4 + index, the index replaced by a hash of the target's card for a gear | 98421 (8196) | the index is always the index |
+| | `ActivateAtTarget` 106617 (2049) | new: Equip |
+| | `ActivateGranted` 108666 (2049) | new: a granted ability, by granting card (it shared the source's slot) |
+| `MakeChoice` 6754 (1117): 0 no object or no card id, 1..1100 card of the first object or the named card, then 16 values | `ChooseOwnObject` 110715, `ChooseOpposingObject` 112764, `ChooseNamedCard` 114813 (2049 each), `ChooseValue` 116862 (17) | whose object; a named card apart from an object; a slot for values outside 0..15 |
+| trigger verbs 7871, 8971, 10071, 11171 and `SideboardSwap` 12271 (1100 each) | 116879 .. 125075 (2049 each) | key 0 added; none of these intents is generated today |
 
 An object with no card id used to take the first slot of its verb's range
 (card 1's slot for a move, a play or an activation; the "no object" slot of a
@@ -320,8 +353,8 @@ Five and eight games say nothing about strength.
 
 ## 7. Checklist for the trainer
 
-1. Size nothing by `NumDistinctActions()` (73 million). Score legal actions,
-   or use `kNumSlots` (71,448) for a per-description head and the twin number
+1. Size nothing by `NumDistinctActions()` (130 million). Score legal actions,
+   or use `kNumSlots` (127,124) for a per-description head and the twin number
    as a tie-break.
 2. Replace `encodeAction` with `actionIds` (ids) or `actionSlot` (descriptions).
 3. Replace feature offsets written as numbers with `ml::layout::*`.

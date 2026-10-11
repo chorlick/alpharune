@@ -384,18 +384,18 @@ TEST(ActionVocab, PlayTimingVariantsShareASlot) {
 TEST(ActionVocab, SizesArePinned) {
     // The numbers a consumer sizes things by. A change here is a break of
     // every recorded action id: list it in docs/checkpoint-breaking-*.md.
-    EXPECT_EQ(kCardKeys, 1151);
-    EXPECT_EQ(kNumSlots, 71448);
+    EXPECT_EQ(kCardKeys, 2049);
+    EXPECT_EQ(kNumSlots, 127124);
     EXPECT_EQ(kTwinPlanes, 1024);
-    EXPECT_EQ(kNumActions, 73162752);
+    EXPECT_EQ(kNumActions, 130174976);
     EXPECT_EQ(verbOffset(ActionVerb::EndTurn), 1);
     EXPECT_EQ(verbOffset(ActionVerb::MulliganDecision), 7);
     EXPECT_EQ(verbOffset(ActionVerb::StandardMove), 69);
-    EXPECT_EQ(verbOffset(ActionVerb::Play), 9277);
-    EXPECT_EQ(verbOffset(ActionVerb::HideCard), 46109);
-    EXPECT_EQ(verbOffset(ActionVerb::ActivateAbility), 55317);
-    EXPECT_EQ(verbOffset(ActionVerb::ChooseOwnObject), 62223);
-    EXPECT_EQ(verbOffset(ActionVerb::ChooseValue), 65676);
+    EXPECT_EQ(verbOffset(ActionVerb::Play), 16461);
+    EXPECT_EQ(verbOffset(ActionVerb::HideCard), 82029);
+    EXPECT_EQ(verbOffset(ActionVerb::ActivateAbility), 98421);
+    EXPECT_EQ(verbOffset(ActionVerb::ChooseOwnObject), 110715);
+    EXPECT_EQ(verbOffset(ActionVerb::ChooseValue), 116862);
     for (int v = 0; v < static_cast<int>(ActionVerb::Count); ++v) {
         const auto verb = static_cast<ActionVerb>(v);
         EXPECT_EQ(slotVerb(verbOffset(verb)), verb);

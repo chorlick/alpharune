@@ -701,6 +701,19 @@ int EffectExecutor::payableAnyPower(PlayerId player) const {
 
 bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
     if (amount <= 0) return true;
+    // A spell that is making its choices before its cost is paid (CR 355 ->
+    // 356: ChainItem::pre_play_choices) pays a chosen unit's Deflect here,
+    // ahead of that cost. What is left must still pay it: take what the
+    // spell's own cost cannot use, and keep the Energy of a ready rune
+    // (resource::payAnyPowerAheadOfCost; plans/09 item 9.VV1).
+    if (const auto& pre = state_.chain.resuming;
+        pre.has_value() && pre->pre_play_choices && pre->controller == player &&
+        state_.objectExists(pre->source)) {
+        const CardDefId def = state_.getObject(pre->source).card_def_id;
+        if (def != kInvalidId)
+            return resource::payAnyPowerAheadOfCost(
+                state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains));
+    }
     // The one payment rule (engine/resource_payment.h): floating Power, then
     // runes recycled from the base, exhausted ones first.
     return resource::pay(state_, events_, player, 0, amount, Domain::Count);

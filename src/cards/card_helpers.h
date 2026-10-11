@@ -848,6 +848,56 @@ inline void moveTo(CardContext& ctx, GameObjectId u, int dest) {
     if (dest <= 0) ctx.executor.moveToBase(u);
     else ctx.executor.moveToBattlefield(u, static_cast<BattlefieldId>(dest - 1));
 }
+/// Where `player` may put a unit token an effect plays ("They can be played
+/// to your base or to battlefields you control"), as moveDests codes: 0 =
+/// their base, 1 + i = battlefield i.
+inline std::vector<int> tokenPlayDests(const GameState& state, PlayerId player) {
+    std::vector<int> out{0};
+    for (const auto& bf : state.battlefields)
+        if (bf.controller.has_value() && *bf.controller == player)
+            out.push_back(1 + static_cast<int>(bf.id));
+    return out;
+}
+/// The location a moveDests / tokenPlayDests code stands for.
+inline LocationId destLocation(PlayerId player, int dest) {
+    if (dest <= 0) return LocationId{BaseLocation{player}};
+    return LocationId{BattlefieldLocation{static_cast<BattlefieldId>(dest - 1)}};
+}
+/// Ask ctx.controller where a unit token they are playing goes (one of
+/// tokenPlayDests). Returns the code, or -1 while the agent is deciding (the
+/// caller must return). Not asked when the base is the only place. This is
+/// the callback's Card::pickMode.
+inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label) {
+    const auto dests = tokenPlayDests(ctx.state, ctx.controller);
+    if (dests.size() == 1) return 0;
+    uint32_t mask = 0;
+    int modes = 1;
+    for (int d : dests) {
+        if (d < 32) mask |= 1u << d;
+        modes = std::max(modes, d + 1);
+    }
+    std::vector<std::string> labels;
+    for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
+    return card.pickMode(ctx, label, modes, labels, mask);
+}
+
+/// "Move a unit" with no destination printed: ask ctx.controller where `u`
+/// goes — one of moveDests, or only the battlefields among them with
+/// `battlefields_only` ("move it to a battlefield"). Returns the moveDests
+/// code, -1 while the agent is deciding (the caller must return) and -2 when
+/// there is nowhere to move it. This is the callback's Card::pickMode.
+inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
+                        const GameObject& u, bool battlefields_only = false) {
+    uint32_t mask = 0;
+    for (int d : moveDests(ctx.state, u))
+        if (d < 32 && !(d == 0 && battlefields_only)) mask |= 1u << d;
+    int modes = 1;
+    for (const auto& bf : ctx.state.battlefields)
+        modes = std::max(modes, 2 + static_cast<int>(bf.id));
+    std::vector<std::string> labels;
+    for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
+    return card.pickMode(ctx, label, modes, labels, mask);
+}
 
 } // namespace riftbound
 

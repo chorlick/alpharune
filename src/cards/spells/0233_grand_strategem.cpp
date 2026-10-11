@@ -14,12 +14,14 @@ namespace {
 class GrandStrategem : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 5);
-    }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    // "Give friendly units +5 [M] this turn." — every friendly unit on the
+    // board as the spell resolves; nothing is chosen.
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> units;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
+                units.push_back(id);
+        for (auto id : units) ctx.executor.giveTemporaryMight(id, 5);
     }
 private:
     const CardDef def_ = [] {

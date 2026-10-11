@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -36,48 +37,65 @@ public:
         std::sort(enemy_at_bf.begin(), enemy_at_bf.end());
         GameObjectId stunned = pickTarget(ctx, "Zenith Blade: stun enemy unit",
                                           enemy_at_bf);
-        if (stunned == kInvalidId) {
-            if (ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7) return;  // suspend
-            return;  // no legal target — fizzle
-        }
+        if (stunned == kInvalidId) return;  // suspended, or no legal target — fizzle
         if (!ctx.state.objectExists(stunned)) return;
-        // The stun comes after the "may" below: confirmOptional suspends and
-        // this callback is re-entered from the top with the answer, so
-        // anything done before it would be done once per pass.
+        // The stun comes after every choice below: each one suspends and this
+        // callback is re-entered from the top with the answer, so anything
+        // done before them would be done once per pass.
         std::optional<LocationId> dest = ctx.state.getObject(stunned).location;
 
         // "You may move a friendly unit to that enemy unit's battlefield."
-        auto movable_exists = [&]() -> bool {
+        auto movable = [&]() {
+            std::vector<GameObjectId> out;
             if (!dest.has_value() ||
-                !std::holds_alternative<BattlefieldLocation>(*dest)) return false;
+                !std::holds_alternative<BattlefieldLocation>(*dest)) return out;
             for (auto& [id, obj] : ctx.state.objects) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (obj.location == dest) continue;  // already there
-                return true;
+                out.push_back(id);
             }
-            return false;
+            std::sort(out.begin(), out.end());
+            return out;
         };
         int conf = confirmOptional(ctx,
             "Zenith Blade: move a friendly unit to that battlefield?",
-            movable_exists);
+            [&]() { return !movable().empty(); });
         if (conf == -1) return;  // waiting on agent
-        ctx.executor.stunUnitBy(stunned, ctx.source);
-        if (conf == 0) return;   // declined / nothing to move
-        if (!dest.has_value() ||
-            !std::holds_alternative<BattlefieldLocation>(*dest)) return;
-        BattlefieldId dest_bf = std::get<BattlefieldLocation>(*dest).id;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (obj.location == dest) continue;
-            ctx.executor.moveToBattlefield(id, dest_bf);
-            ctx.events.logTrace("ZENITH BLADE: stunned enemy + moved a friendly "
-                                "unit to that battlefield");
-            return;
+
+        // Which friendly unit moves is the controller's choice (asked only
+        // when there is more than one). resume_point kAwait marks that prompt.
+        GameObjectId mover = kInvalidId;
+        if (conf == 1) {
+            const auto units = movable();
+            auto* ri = ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr;
+            if (ri && ri->resume_point == kAwait) {
+                mover = takenObject(ctx);
+                if (std::find(units.begin(), units.end(), mover) == units.end())
+                    mover = units.empty() ? kInvalidId : units.front();
+                ri->resume_point = kDone;
+            } else if (ri && ri->resume_point == kDone) {
+                return;
+            } else if (ri && units.size() > 1) {
+                std::vector<Intent> options;
+                for (auto id : units) options.push_back(objChoice(ctx.controller, id));
+                ctx.executor.requestChoice(ctx.controller, std::move(options),
+                    "Zenith Blade: friendly unit to move to that battlefield");
+                ri->resume_point = kAwait;
+                return;
+            } else if (!units.empty()) {
+                mover = units.front();
+            }
         }
+        ctx.executor.stunUnitBy(stunned, ctx.source);
+        if (mover == kInvalidId) return;   // declined / nothing to move
+        commitChosenObject(ctx, mover);
+        ctx.executor.moveToBattlefield(mover, std::get<BattlefieldLocation>(*dest).id);
+        ctx.events.logTrace("ZENITH BLADE: stunned enemy + moved a friendly "
+                            "unit to that battlefield");
     }
+private:
+    enum : int { kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

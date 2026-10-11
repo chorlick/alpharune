@@ -83,6 +83,7 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Card streams: cards that recycle with `deck::putOnBottom` directly still announce nothing — Abandon 693 and Scryer's Bloom 698 (hand-rolled Predict), Stacked Deck 183, Baited Hook 242 ("recycle the rest"), Last Rites 471 (Equip cost). Recipe: after the last `putOnBottom`, `ctx.events.emit(ObjectStateChangedEvent{<one recycled id>, "recycled_main"})` once, or hand the ids to `ctx.executor.recycleCards`.
   - Where: `effect_executor.cpp:1438-1441`, `:1530`; `trigger_manager.cpp:327-330`. Karma, Channeler does not trigger off Predict (CR 437.1).
   - c0: 242 Baited Hook — FIXED: emits `"recycled_main"` once after putting the rest on the bottom; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
+  - c2: 183 Stacked Deck — FIXED: the two cards not kept are recycled through `EffectExecutor::recycleCards` (random order per CR 416.5, one `"recycled_main"`); test: ReviewFixC2Test.StackedDeck_AnnouncesTheRecycleOnce
 
 - [x] **2.16 Showdown battlefield triggers use `PlayerId::None` as controller** [latent] — FIXED: `fireBattlefieldTriggers` resolves `PlayerId::None` to the battlefield's controller, else the turn player (CR 190.6.a/b); test: ChainTriggerFixTest.ShowdownBattlefieldTrigger_IsControlledByARealPlayer
   - Where: `trigger_manager.cpp:1335`. `state.player(None)` indexes `players[-1]`. No battlefield declares `WhenAShowdownBeginsHere` today.

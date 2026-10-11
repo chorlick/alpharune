@@ -82,10 +82,10 @@ public:
                            ctx.state.chain.resuming->resume_point == 12);
         if (suspending) return;
         if (friendly != kInvalidId && ctx.state.objectExists(friendly)) {
-            ctx.executor.stunUnit(friendly);
+            ctx.executor.stunUnitBy(friendly, ctx.source);
         }
         if (enemy != kInvalidId && ctx.state.objectExists(enemy)) {
-            ctx.executor.stunUnit(enemy);
+            ctx.executor.stunUnitBy(enemy, ctx.source);   // the caster is the one stunning
         }
     }
 private:

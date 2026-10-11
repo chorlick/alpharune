@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,50 +16,71 @@ class Flash : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
-
+    // "Move up to 2 friendly units to base." The units are chosen one prompt
+    // at a time as the spell is played; after the first, the controller may
+    // stop ("up to"). Progress lives on the item: resume_point kAwait while a
+    // prompt is out, kChosen once the choices are made; resume_data = the
+    // units chosen.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        PlayerId controller = ctx.controller;
-        auto isMovable = [](const GameObject& obj, PlayerId c) {
-            return obj.isUnit() && obj.controller == c &&
+        if (!ctx.state.chain.resuming.has_value()) return;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        auto picked_before = [&ri](GameObjectId id) {
+            return std::find(ri.resume_data.begin(), ri.resume_data.end(),
+                             static_cast<int32_t>(id)) != ri.resume_data.end();
+        };
+        auto movable = [&](GameObjectId id) {
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isUnit() && obj.controller == ctx.controller &&
                    obj.location.has_value() && !obj.isAtBase();
         };
-        std::vector<GameObjectId> legal_a;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (isMovable(obj, controller)) legal_a.push_back(id);
-        }
-
-        // "Up to 2 friendly units" — modeled as a pair pick (second filtered to
-        // exclude the first). pickTargetPair returns a partial {a, kInvalidId}
-        // when fewer than two units are available, naturally handling 1 or 0.
-        // GAP: pickTargetPair has no "decline" once targets exist, so when 2+
-        // units are present the agent must move two (cannot move only one).
-        auto legal_b_fn = [&ctx, controller, isMovable](GameObjectId picked_a) {
+        auto candidates = [&]() {
             std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == picked_a) continue;
-                if (isMovable(obj, controller)) out.push_back(id);
-            }
+            for (auto& [id, obj] : ctx.state.objects)
+                if (movable(id) && !picked_before(id)) out.push_back(id);
+            std::sort(out.begin(), out.end());
             return out;
         };
-        auto pair = pickTargetPair(ctx, "Flash: move up to 2 friendly units to base",
-                                   legal_a, legal_b_fn);
+        if (ri.resume_point != kChosen) {
+            bool stop = false;
+            if (ri.resume_point == kAwait) {
+                const auto units = candidates();
+                const GameObjectId unit = takenObject(ctx);
+                if (std::find(units.begin(), units.end(), unit) == units.end()) {
+                    stop = true;   // "No more units"
+                } else {
+                    commitChosenObject(ctx, unit);
+                    ri.resume_data.push_back(static_cast<int32_t>(unit));
+                }
+            } else {
+                ri.resume_data.clear();
+            }
+            if (!stop && ri.resume_data.size() < 2) {
+                const auto units = candidates();
+                if (!units.empty()) {
+                    std::vector<Intent> options;
+                    if (!ri.resume_data.empty())
+                        options.push_back(valChoice(ctx.controller, 0, "No more units"));
+                    for (auto id : units) options.push_back(objChoice(ctx.controller, id));
+                    ctx.executor.requestChoice(ctx.controller, std::move(options),
+                        "Flash: move up to 2 friendly units to base");
+                    ri.resume_point = kAwait;
+                    return;
+                }
+            }
+            ri.resume_point = kChosen;
+        }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (pair.first == kInvalidId && pair.second == kInvalidId &&
-            ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point != 13) {
-            return;  // suspended for agent input
-        }
-        if (pair.first != kInvalidId && ctx.state.objectExists(pair.first)) {
-            ctx.executor.moveToBase(pair.first);
-            ctx.events.logTrace("FLASH: moved " +
-                                 ctx.state.getObject(pair.first).name + " to base");
-        }
-        if (pair.second != kInvalidId && ctx.state.objectExists(pair.second)) {
-            ctx.executor.moveToBase(pair.second);
-            ctx.events.logTrace("FLASH: moved " +
-                                 ctx.state.getObject(pair.second).name + " to base");
+        ri.resume_point = kDone;
+        for (auto v : ri.resume_data) {
+            const auto id = static_cast<GameObjectId>(v);
+            if (!movable(id)) continue;   // no longer a legal target
+            ctx.executor.moveToBase(id);
+            ctx.events.logTrace("FLASH: moved " + ctx.state.getObject(id).name + " to base");
         }
     }
+private:
+    enum : int { kAwait = 21, kChosen = 22, kDone = 23 };
 private:
     const CardDef def_ = [] {
         CardDef d;

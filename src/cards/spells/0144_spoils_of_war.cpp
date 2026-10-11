@@ -14,20 +14,12 @@ namespace {
 class SpoilsOfWar : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "If an enemy unit has died this turn, this costs [2] less."
-    // APPROXIMATION: there is no turn-scoped death tracker in GameState, so
-    // "has died this turn" is approximated as "an enemy unit is in the
-    // opponent's trash" (over-approximates across turns; engine edit needed
-    // for an exact this-turn gate). Reduce energy cost by 2 when true.
+    // "If an enemy unit has died this turn, this costs [2] less." — a unit an
+    // opponent controlled, token or not, that died during this turn.
     int selfCostReduction(const GameState& state, PlayerId player) const override {
-        PlayerId opp = opponent(player);
-        for (auto cid : state.player(opp).trash) {
-            if (!state.objectExists(cid)) continue;
-            if (state.getObject(cid).isUnit()) return 2;
-        }
-        return 0;
+        return state.player(opponent(player)).unit_died_this_turn ? 2 : 0;
     }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 2);
     }
 private:

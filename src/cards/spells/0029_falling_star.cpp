@@ -23,11 +23,12 @@ public:
     bool needsPlayTimeTargetPair() const override { return true; }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "a unit": any unit the caster may choose (not an enemy unit that
+        // can't be chosen by enemy spells and abilities).
         auto all_units = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (obj.isUnit() && obj.location.has_value()) out.push_back(id);
-            }
+            auto out = chooseableUnits(ctx.state, ctx.controller,
+                                       [](const GameObject&) { return true; });
+            std::sort(out.begin(), out.end());
             return out;
         };
 
@@ -35,7 +36,7 @@ public:
             ctx, "Falling Star",
             all_units(),
             [&](GameObjectId /*picked_a*/) { return all_units(); });
-            if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
 
         // Suspend detection (mirrors MStarCrossed): if a pick is invalid AND
         // we're parked at a prompt-publish resume_point (10 or 12), the chain

@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,34 +16,63 @@ class GuerillaWarfare : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "Return up to two cards with [Hidden] from your trash to your hand. You
+    //  can hide cards ignoring costs this turn."
+    // The controller picks the cards, one prompt each, and may stop early.
+    // Progress lives on the resolving item: resume_point kAwait while a prompt
+    // is out, resume_data[0] = cards returned so far.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.chain.resuming.has_value()) return;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
         auto& ps = ctx.state.player(ctx.controller);
         const CardDB& db = ctx.executor.cardDB();
-
-        // Collect up to two [Hidden] cards from trash and return them. We
-        // return the first matching cards (deterministic); modeled as "up to
-        // two" by stopping at two.
-        int returned = 0;
-        for (int i = static_cast<int>(ps.trash.size()) - 1;
-             i >= 0 && returned < 2; --i) {
-            auto cid = ps.trash[i];
-            if (!ctx.state.objectExists(cid)) continue;
-            auto& obj = ctx.state.getObject(cid);
-            if (obj.card_def_id == kInvalidId) continue;
-            if (!db.get(obj.card_def_id).keywords.has(Keyword::Hidden)) continue;
-            // Move trash -> hand.
-            ps.trash.erase(ps.trash.begin() + i);
-            obj.zone = ZoneType::Hand;
-            obj.location = std::nullopt;
-            ps.hand.push_back(cid);
-            ++returned;
-            ctx.events.logTrace("GUERILLA WARFARE: returned " + obj.name +
-                                 " from trash to hand");
+        auto hidden_in_trash = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto cid : ps.trash) {
+                if (!ctx.state.objectExists(cid)) continue;
+                const auto& obj = ctx.state.getObject(cid);
+                if (obj.card_def_id == kInvalidId) continue;
+                if (db.get(obj.card_def_id).keywords.has(Keyword::Hidden)) out.push_back(cid);
+            }
+            return out;
+        };
+        bool stop = false;
+        if (ri.resume_point == kAwait) {
+            const auto cards = hidden_in_trash();
+            const GameObjectId cid = takenObject(ctx);
+            if (std::find(cards.begin(), cards.end(), cid) == cards.end()) {
+                stop = true;   // "Return no more"
+            } else {
+                auto& obj = ctx.state.getObject(cid);
+                ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), cid), ps.trash.end());
+                obj.zone = ZoneType::Hand;
+                obj.location = std::nullopt;
+                ps.hand.push_back(cid);
+                ++ri.resume_data[0];
+                ctx.events.logTrace("GUERILLA WARFARE: returned " + obj.name +
+                                     " from trash to hand");
+            }
+        } else {
+            ri.resume_data.assign(1, 0);
         }
-        // TODO: "You can hide cards ignoring costs this turn." — the engine
-        // has no per-player "hide ignoring costs" flag, so this clause is not
-        // implemented (engine gap).
+        if (!stop && ri.resume_data[0] < 2) {
+            const auto cards = hidden_in_trash();
+            if (!cards.empty()) {
+                std::vector<Intent> options;
+                options.push_back(valChoice(ctx.controller, 0, "Return no more"));
+                for (auto cid : cards) options.push_back(objChoice(ctx.controller, cid));
+                ctx.executor.requestChoice(ctx.controller, std::move(options),
+                    "Guerilla Warfare: return a [Hidden] card from your trash (up to two)");
+                ri.resume_point = kAwait;
+                return;
+            }
+        }
+        ri.resume_point = kDone;
+        ps.hide_ignoring_costs_this_turn = true;
     }
+private:
+    enum : int { kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

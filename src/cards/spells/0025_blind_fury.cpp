@@ -20,34 +20,29 @@ public:
     //  play it under your control. "the rest" is empty in 1v1.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         PlayerId opp = opponent(ctx.controller);
-        auto& opp_deck = ctx.state.player(opp).main_deck;
+        const auto& opp_deck = ctx.state.player(opp).main_deck;
         if (opp_deck.empty()) {
             ctx.events.logTrace("BLIND FURY: opponent deck empty — no-op");
             return;
         }
         GameObjectId top = opp_deck.back();
         if (!ctx.state.objectExists(top)) return;
-        auto& card = ctx.state.getObject(top);
+        const std::string name = ctx.state.getObject(top).name;
         // Reveal publicly.
-        ctx.events.emit(CardRevealedEvent{
-            top, card.card_def_id, card.owner,
-            /*revealed_to_all=*/true, ctx.controller, ZoneType::MainDeck});
-        ctx.events.logTrace("BLIND FURY: opponent reveals " + card.name);
-        // Detach from the opponent's deck, banish, then play under my control.
-        opp_deck.pop_back();
-        bool is_permanent = card.isUnit() || card.isGear();
-        ctx.executor.banishObject(top);
-        if (is_permanent) {
-            // playIgnoringCost only boards permanents; a spell would be placed
-            // on the board incorrectly, so spells are left banished
-            // (documented limitation of the ignore-cost primitive).
-            ctx.executor.playIgnoringCost(ctx.controller, top);
-            ctx.events.logTrace("BLIND FURY: banished + played " + card.name +
-                                " ignoring cost");
-        } else {
-            ctx.events.logTrace("BLIND FURY: banished " + card.name +
-                                " (non-permanent play unsupported by primitive)");
+        {
+            const auto& card = ctx.state.getObject(top);
+            ctx.events.emit(CardRevealedEvent{
+                top, card.card_def_id, card.owner,
+                /*revealed_to_all=*/true, ctx.controller, ZoneType::MainDeck});
         }
+        ctx.events.logTrace("BLIND FURY: opponent reveals " + name);
+        // Banish it (the executor takes it out of the deck and tells the
+        // knowledge tracker), then play it under my control: a unit or gear
+        // onto the board, a spell onto the chain. Either way the play takes
+        // it back out of banishment.
+        ctx.executor.banishObject(top);
+        ctx.executor.playIgnoringCost(ctx.controller, top);
+        ctx.events.logTrace("BLIND FURY: banished + played " + name + " ignoring cost");
     }
 private:
     const CardDef def_ = [] {

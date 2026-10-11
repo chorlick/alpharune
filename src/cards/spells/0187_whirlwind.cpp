@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -17,34 +18,34 @@ public:
     // "Starting with the next player, each player may return a unit to its
     // owner's hand." Next player (opponent) chooses first, then the controller.
     // Each choice is optional ("may"): a decline option (empty chosen_objects)
-    // is offered alongside every unit.
+    // is offered alongside every unit. Each player is the one choosing their
+    // unit: "can't be chosen by enemy spells and abilities" and Deflect are
+    // judged, and Deflect is paid, from that player's side.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
         PlayerId opp = opponent(ctx.controller);
-        auto all_units = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isUnit() && obj.location.has_value()) out.push_back(id);
-            return out;
+        auto units_for = [&](PlayerId p) {
+            CardContext as_p{ctx.state, ctx.events, ctx.executor, p, ctx.source};
+            auto out = chooseableUnits(ctx.state, p, [](const GameObject&) { return true; });
+            std::sort(out.begin(), out.end());
+            return offerableChoices(as_p, out);
         };
         auto prompt = [&](PlayerId p) {
             std::vector<Intent> choices;
             // Decline option first.
             Intent decline; decline.type = IntentType::MakeChoice; decline.player = p;
             decline.choice_label = "Decline"; choices.push_back(decline);
-            for (auto uid : all_units()) {
-                Intent c; c.type = IntentType::MakeChoice; c.player = p;
-                c.chosen_objects = {uid}; choices.push_back(std::move(c));
-            }
+            for (auto uid : units_for(p)) choices.push_back(objChoice(p, uid));
             ctx.executor.requestChoice(p, std::move(choices),
                                         "Whirlwind: you may return a unit to its owner's hand");
         };
-        auto apply = [&]() {
-            auto choice = ctx.executor.takeChoice();
-            if (choice && !choice->chosen_objects.empty() &&
-                ctx.state.objectExists(choice->chosen_objects[0])) {
-                ctx.executor.bounceToHand(choice->chosen_objects[0]);
-            }
+        auto apply = [&](PlayerId p) {
+            const GameObjectId unit = takenObject(ctx);
+            const auto units = units_for(p);
+            if (std::find(units.begin(), units.end(), unit) == units.end()) return;
+            CardContext as_p{ctx.state, ctx.events, ctx.executor, p, ctx.source};
+            commitChosenObject(as_p, unit);
+            ctx.executor.bounceToHand(unit);
         };
         switch (ri.resume_point) {
         case 0:  // next player (opponent) chooses
@@ -52,12 +53,13 @@ public:
             ri.resume_point = 1;
             return;
         case 1:  // apply opponent, then controller chooses
-            apply();
+            apply(opp);
             prompt(ctx.controller);
             ri.resume_point = 2;
             return;
         case 2:  // apply controller
-            apply();
+            apply(ctx.controller);
+            ri.resume_point = 3;
             return;
         }
     }

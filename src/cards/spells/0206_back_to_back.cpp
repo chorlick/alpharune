@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,12 +15,33 @@ namespace {
 class BackToBack : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
-            ctx.executor.giveTemporaryMight(targets[0], 2);
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // "Give two friendly units each +2 [M] this turn." — two different units.
+    bool needsPlayTimeTargetPair() const override { return true; }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return friendlyUnits(state, controller).size() >= 2;
     }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto [a, b] = pickTargetPair(
+            ctx, "Back to Back: two friendly units",
+            friendlyUnits(ctx.state, ctx.controller),
+            [&](GameObjectId picked_a) {
+                auto rest = friendlyUnits(ctx.state, ctx.controller);
+                rest.erase(std::remove(rest.begin(), rest.end(), picked_a), rest.end());
+                return rest;
+            });
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (a == kInvalidId && b == kInvalidId) return;   // suspended, or no unit
+        // Each unit is its own target: one that left is skipped (CR 359.3.e.5).
+        if (a != kInvalidId) ctx.executor.giveTemporaryMight(a, 2);
+        if (b != kInvalidId) ctx.executor.giveTemporaryMight(b, 2);
+    }
+private:
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId controller) {
+        auto out = chooseableUnits(state, controller,
+            [controller](const GameObject& u) { return u.controller == controller; });
+        std::sort(out.begin(), out.end());
+        return out;
     }
 private:
     const CardDef def_ = [] {

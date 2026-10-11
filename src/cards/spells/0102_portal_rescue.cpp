@@ -22,10 +22,7 @@ public:
         // ignoring its cost."
         ctx.executor.banishObject(unit);
         if (!ctx.state.objectExists(unit)) return;  // token ceased to exist
-        // Remove from owner's banishment zone before re-playing.
-        auto& bz = ctx.state.player(owner).banishment;
-        auto it = std::find(bz.begin(), bz.end(), unit);
-        if (it != bz.end()) bz.erase(it);
+        // playIgnoringCost takes it back out of the banishment zone.
         ctx.executor.playIgnoringCost(owner, unit,
                                       LocationId{BaseLocation{owner}});
         ctx.events.logTrace("PORTAL RESCUE: banished then re-played to base");

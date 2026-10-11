@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -23,21 +24,17 @@ public:
         PlayerId opp = opponent(ctx.controller);
         switch (ri.resume_point) {
         case 0: {
-            // Two MakeChoice options for the opponent: ability_index 0 = Cards,
-            // 1 = Runes.
-            std::vector<Intent> choices;
-            Intent cards; cards.type = IntentType::MakeChoice; cards.player = opp;
-            cards.ability_index = 0; choices.push_back(cards);
-            Intent runes; runes.type = IntentType::MakeChoice; runes.player = opp;
-            runes.ability_index = 1; choices.push_back(runes);
-            ctx.executor.requestChoice(opp, std::move(choices),
-                                        "Party Favors: choose Cards or Runes");
+            // The two answers are int-coded (0 = Cards, 1 = Runes) so each has
+            // its own action-vocab slot.
+            ctx.executor.requestChoice(opp,
+                {valChoice(opp, 0, "Cards"), valChoice(opp, 1, "Runes")},
+                "Party Favors: choose Cards or Runes");
             ri.resume_point = 1;
             return;
         }
         case 1: {
-            auto choice = ctx.executor.takeChoice();
-            bool chose_runes = (choice && choice->ability_index == 1);
+            ri.resume_point = 2;
+            const bool chose_runes = takenValue(ctx, 0) == 1;
             if (chose_runes) {
                 ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
                 ctx.executor.channelRunes(opp, 1, /*enter_exhausted=*/true);

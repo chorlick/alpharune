@@ -19,6 +19,7 @@ public:
     // "[Empowered][>] [1], [E]: Ready 2 gear."
     // One activation: readies 2 gear while Empowered, otherwise 1 (the
     // Empowered ability strictly dominates the base one at the same cost).
+    // Which gear is the controller's choice, made as the ability is played.
     EmpowerSpec empowerSpec() const override {
         return empowerCost(2, 2, Domain::Mind, /*any_domain=*/true);
     }
@@ -29,19 +30,36 @@ public:
         c.energy = 1;
         return c;
     }
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        int n = 1;
-        if (ctx.state.objectExists(ctx.source) &&
-            ctx.state.getObject(ctx.source).isEmpowered()) n = 2;
-        // Ready the first N exhausted friendly gear (no agent choice yet).
-        std::vector<GameObjectId> picks;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (static_cast<int>(picks.size()) >= n) break;
-            if (!obj.isGear() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || !obj.is_exhausted) continue;
-            picks.push_back(id);
+        // "a gear": any gear on the board. Only an exhausted one is worth
+        // readying, so only those are offered.
+        auto exhausted_gear = [&](GameObjectId except) {
+            std::vector<GameObjectId> out;
+            for (auto& [id, obj] : ctx.state.objects) {
+                if (!obj.isGear() || !obj.location.has_value() || !obj.is_exhausted) continue;
+                if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
+                if (id != except) out.push_back(id);
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        const bool two = ctx.state.getObject(ctx.source).isEmpowered();
+        GameObjectId first = kInvalidId, second = kInvalidId;
+        if (two) {
+            const auto both = pickTargetPair(
+                ctx, "Defender of Tomorrow: ready 2 gear", exhausted_gear(kInvalidId),
+                [&](GameObjectId picked) { return exhausted_gear(picked); });
+            first = both.first;
+            second = both.second;
+        } else {
+            first = pickTarget(ctx, "Defender of Tomorrow: ready a gear",
+                               exhausted_gear(kInvalidId));
         }
-        for (auto id : picks) ctx.executor.readyObject(id);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        // Nothing chosen (yet): suspended, or no exhausted gear.
+        if (first != kInvalidId) ctx.executor.readyObject(first);
+        if (second != kInvalidId) ctx.executor.readyObject(second);
     }
 private:
     const CardDef def_ = [] {

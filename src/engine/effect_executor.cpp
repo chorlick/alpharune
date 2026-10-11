@@ -318,6 +318,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         // "If a unit died this turn" bookkeeping — the same as a combat death
         // (GameEngine::killUnit): a kill is a kill.
         state_.turn.any_unit_died_this_turn = true;
+        state_.player(controller).unit_died_this_turn = true;
         {
             const TurnPhase ph = state_.turn.phase;
             const bool in_beginning = ph == TurnPhase::AwakenPhase ||
@@ -1351,6 +1352,8 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     // replacement on token creation — a friendly token never enters exhausted
     // while the flag is set (refreshed each cleanup via applyPassiveAura).
     if (state_.player(controller).tokens_enter_ready) enter_ready = true;
+    if (type == CardType::Unit && state_.player(controller).units_enter_ready_this_turn)
+        enter_ready = true;
     obj.is_exhausted = !enter_ready && type == CardType::Unit; // units enter exhausted unless ready
 
     if (std::holds_alternative<BaseLocation>(location)) {

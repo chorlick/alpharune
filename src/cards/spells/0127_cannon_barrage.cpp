@@ -14,24 +14,23 @@ namespace {
 class CannonBarrage : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // AoE: deal 2 to all matching
-        {
-            std::vector<GameObjectId> to_damage;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.location.has_value()) continue;
-                if (!obj.isUnit()) continue;
-                if (obj.controller == ctx.controller) continue;
-                to_damage.push_back(id);
-            }
-            for (auto id : to_damage)
-                ctx.executor.dealDamage(id, 2, ctx.source);
-            for (auto id : to_damage) {
-                if (ctx.state.objectExists(id) &&
-                    ctx.state.getObject(id).hasLethalDamage()) {
-                    ctx.executor.killObject(id);
-                }
-            }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "all enemy units in combat": attackers and defenders of the combat
+        // under way, not units in a base or at another battlefield.
+        std::vector<GameObjectId> to_damage;
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (!obj.location.has_value()) continue;
+            if (!obj.isUnit()) continue;
+            if (obj.controller == ctx.controller) continue;
+            if (obj.combat_designation == CombatDesignation::None) continue;
+            to_damage.push_back(id);
+        }
+        for (auto id : to_damage)
+            ctx.executor.dealDamage(id, 2, ctx.source);
+        for (auto id : to_damage) {
+            const auto& obj = ctx.state.getObject(id);
+            if (obj.location.has_value() && obj.hasLethalDamage())
+                ctx.executor.killObject(id);
         }
     }
 private:

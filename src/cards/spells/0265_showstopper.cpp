@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,29 +16,32 @@ class Showstopper : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Buff a friendly unit in your base, then move it to a battlefield."
-    // (Previously moved to base — direction was inverted.)
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        if (targets.empty()) return;
         GameObjectId unit = targets[0];
-        if (ctx.state.getObject(unit).buff_count == 0)
-            ctx.executor.buffUnit(unit);  // "+1 [M] buff if it doesn't have one"
-        // Move it to a battlefield (prefer one the controller already controls).
-        BattlefieldId dest = kInvalidId;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.controller.has_value() && *bf.controller == ctx.controller) {
-                dest = bf.id;
-                break;
-            }
-        }
-        if (dest == kInvalidId && !ctx.state.battlefields.empty())
-            dest = ctx.state.battlefields.front().id;
-        if (dest != kInvalidId)
-            ctx.executor.moveToBattlefield(unit, dest);
+        const auto& u = ctx.state.getObject(unit);
+        if (!u.isAtBase()) return;   // no longer "in your base": not a legal target
+        // The battlefield is the controller's choice. It is asked for before
+        // the buff: the callback is re-entered with the answer, and the buff
+        // must be placed once.
+        const int dest = pickMoveDest(*this, ctx, "Showstopper: move it to", u,
+                                      /*battlefields_only=*/true);
+        if (dest == -1) return;      // waiting for the battlefield
+        ctx.executor.buffUnit(unit);  // "+1 [M] buff if it doesn't have one"
+        if (dest >= 0) moveTo(ctx, unit, dest);
         ctx.events.logTrace("SHOWSTOPPER: buff base unit, move to a battlefield");
     }
     TargetRequirements getTargetRequirements() const override {
-        // "a friendly unit in your base"
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
+    }
+    // "a friendly unit in your base"
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller) const override {
+        std::vector<GameObjectId> out;
+        for (auto id : Card::enumerateLegalTargets(state, controller))
+            if (state.getObject(id).isAtBase()) out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
     }
 private:
     const CardDef def_ = [] {

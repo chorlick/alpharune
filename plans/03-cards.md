@@ -27,6 +27,7 @@ Two engine facts drive several findings:
     - `gear/0607_forgotten_signpost.cpp` — two `pickTarget` calls in one callback: the second returns the first pick. Use `pickTargetPair`.
     - `spells/0263_bullet_time.cpp` — delete the "they don't collide" comment; pay with `ctx.executor.payAnyPower` (03 item 3.24).
     - Rule for every card: a helper that follows another helper now suspends, so nothing between two helper calls may change game state unless it is guarded to run once.
+  - c2: 258 Zenith Blade — ALREADY FIXED by stream helpers (`f892d67`: the stun runs after the "may" is answered); re-read and kept while fixing 7.24 (the stun now runs after the unit prompt too); tests still green: EnginePathTest.ZenithBladeStunsOnce, EnginePathTest.SpellMayAfterTargetCanBeDeclinedThroughTheEngine. 263 Bullet Time — the wrong "they don't collide" comment is deleted.
 
 ## B. Triggers that act only on `targets`
 
@@ -84,6 +85,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
 - [ ] **3.20** `units/0543_sett_brawler.cpp` lacks the `canActivateAbility` buff gate that `units/0164_sett_brawler.cpp:27` has. [confirmed]
 - [ ] **3.21** Region tags differ in 5 reprint pairs (Ahri 539/119, Darius 547/243, Sett 164/543, Yasuo 205/546, Vayne 35/537). `units/0421_veteran_poro.cpp` sets `Keyword::Equip`, 779 does not. [confirmed]
 - [ ] **3.22** `spells/0251_noxian_guillotine.cpp:35` — without Legion writes `__kill_on_next_damage_this_turn`, which nothing reads; the spell does nothing. [confirmed]
+  - c2: 251 Noxian Guillotine — FIXED: a one-shot delayed ability (`TriggerType::WhenAUnitTakesDamage`, `shared:` commit) kills the chosen unit the next time it is dealt damage this turn; test: ReviewFixC2Test.NoxianGuillotine_WithoutLegion_KillsTheUnitTheNextTimeItIsDamaged
 
 ## G. Shared helpers
 

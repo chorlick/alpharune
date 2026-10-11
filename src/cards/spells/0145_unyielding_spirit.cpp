@@ -16,10 +16,14 @@ class UnyieldingSpirit : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "Prevent ALL spell and ability damage this turn": whoever deals it,
+        // to whoever's units — an opponent's spell hitting the opponent's own
+        // units included. The executor checks the flag of the target's and of
+        // the source's controller, so both players carry it.
         ctx.state.player(ctx.controller).prevent_spell_ability_damage_this_turn = true;
-        ctx.events.logTrace("UNYIELDING SPIRIT: spell/ability damage prevention "
-                             "active this turn (controller=" +
-                             std::string(toString(ctx.controller)) + ")");
+        ctx.state.player(opponent(ctx.controller)).prevent_spell_ability_damage_this_turn = true;
+        ctx.events.logTrace("UNYIELDING SPIRIT: all spell/ability damage is "
+                            "prevented this turn");
     }
 private:
     const CardDef def_ = [] {

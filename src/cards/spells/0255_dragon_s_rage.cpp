@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -16,12 +17,12 @@ public:
     const CardDef& def() const override { return def_; }
     // "Move an enemy unit. Then do this: Choose another enemy unit at its
     //  destination. They deal damage equal to their Mights to each other."
-    // The agent picks the enemy unit to move; we move it to a battlefield that
-    // holds another enemy unit (so the clash is meaningful), then the two deal
-    // damage equal to their Might to each other (collect-then-kill).
+    // The caster chooses the unit (as the spell is played), where it moves,
+    // and — once it is there — which other enemy unit it fights. The move
+    // happens between two choices, so it is recorded on the resolving item
+    // (resume_point kMoved) and done once.
     bool needsPlayTimeTarget() const override { return true; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        PlayerId enemy = opponent(ctx.controller);
         GameObjectId mover;
         if (!targets.empty()) {
             mover = targets[0];
@@ -29,45 +30,63 @@ public:
             auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
             mover = pickTarget(ctx, "Dragon's Rage (enemy unit to move)", legal);
         }
-        if (mover == kInvalidId || !ctx.state.objectExists(mover)) return;
-        auto cur_bf = ctx.state.getObject(mover).battlefieldId();
-
-        // Pick a destination battlefield that holds ANOTHER enemy unit and is
-        // not the mover's current battlefield (so it can clash).
-        BattlefieldId dest = kInvalidId;
-        GameObjectId other = kInvalidId;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (cur_bf && bf.id == *cur_bf) continue;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == mover) continue;
-                if (!obj.isUnit() || obj.controller != enemy) continue;
-                if (obj.battlefieldId() == bf.id) { dest = bf.id; other = id; break; }
-            }
-            if (dest != kInvalidId) break;
+        if (mover == kInvalidId || !ctx.state.chain.resuming.has_value()) return;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        if (ri.resume_point != kMoved && ri.resume_point != kAwait) {
+            const auto& u = ctx.state.getObject(mover);
+            if (!u.isUnit() || !u.location.has_value()) return;
+            const int dest = pickMoveDest(*this, ctx, "Dragon's Rage: move it to", u);
+            if (dest < 0) return;   // waiting, or nowhere to move it
+            moveTo(ctx, mover, dest);
+            ri.resume_point = kMoved;
         }
-        if (dest == kInvalidId) {
-            // No other enemy unit elsewhere — just move it (to first BF or base).
-            if (!ctx.state.battlefields.empty())
-                ctx.executor.moveToBattlefield(mover, ctx.state.battlefields.front().id);
-            ctx.events.logTrace("DRAGON'S RAGE: moved enemy unit (no clash target)");
+
+        // "Choose another enemy unit at its destination."
+        std::vector<GameObjectId> others;
+        if (ctx.state.getObject(mover).location.has_value()) {
+            const auto here = ctx.state.getObject(mover).location;
+            others = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                return u.controller != ctx.controller && u.id != mover && u.location == here;
+            });
+            std::sort(others.begin(), others.end());
+            others = offerableChoices(ctx, others);
+        }
+        if (ri.resume_point != kAwait) {
+            if (others.empty()) {
+                ri.resume_point = kDone;
+                ctx.events.logTrace("DRAGON'S RAGE: moved enemy unit (no other enemy unit there)");
+                return;
+            }
+            std::vector<Intent> options;
+            for (auto id : others) options.push_back(objChoice(ctx.controller, id));
+            ctx.executor.requestChoice(ctx.controller, std::move(options),
+                                       "Dragon's Rage: another enemy unit at its destination");
+            ri.resume_point = kAwait;
             return;
         }
-        ctx.executor.moveToBattlefield(mover, dest);
-        if (!ctx.state.objectExists(mover) || !ctx.state.objectExists(other)) return;
-        // "They deal damage equal to their Mights to each other."
+        ri.resume_point = kDone;
+        const GameObjectId other = takenObject(ctx);
+        if (std::find(others.begin(), others.end(), other) == others.end()) return;
+        commitChosenObject(ctx, other);
+        // "They deal damage equal to their Mights to each other." — their
+        // Mights where they now stand.
+        ctx.executor.recalculateContinuousEffects();
         int m_mover = ctx.state.getObject(mover).current_might;
         int m_other = ctx.state.getObject(other).current_might;
         ctx.executor.dealDamage(other, m_mover, mover);
         ctx.executor.dealDamage(mover, m_other, other);
         for (auto id : {mover, other}) {
-            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
+            const auto& obj = ctx.state.getObject(id);
+            if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
         }
         ctx.events.logTrace("DRAGON'S RAGE: moved + mutual-Might damage");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true};
     }
+private:
+    enum : int { kMoved = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

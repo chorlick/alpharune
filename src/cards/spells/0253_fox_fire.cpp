@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,47 +16,80 @@ class FoxFire : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Kill any number of units at a battlefield with total Might 4 or less."
-    // Anchor on a chosen unit (identifies the battlefield), then kill units
-    // there greedily (lowest Might first) while the running total stays <= 4.
+    // The controller chooses the units, one prompt at a time: the first names
+    // the battlefield, each later one adds a unit there that still fits the
+    // total, or stops. Progress lives on the resolving item: resume_point
+    // kAwait while a prompt is out, resume_data = the units picked so far.
     bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId anchor;
-        if (!targets.empty()) {
-            anchor = targets[0];
-        } else {
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            anchor = pickTarget(ctx, "Fox-Fire (a unit at a battlefield)", legal);
-        }
-        if (anchor == kInvalidId || !ctx.state.objectExists(anchor)) return;
-        auto bf = ctx.state.getObject(anchor).battlefieldId();
-        if (!bf) return;
-
-        // Gather all units at that battlefield, sorted by Might ascending.
-        std::vector<std::pair<int, GameObjectId>> here;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit()) continue;
-            if (obj.battlefieldId() != bf) continue;
-            here.emplace_back(obj.current_might, id);
-        }
-        std::sort(here.begin(), here.end());
-
-        int budget = 4;
-        std::vector<GameObjectId> to_kill;
-        for (auto& [might, id] : here) {
-            if (might <= budget) {
-                to_kill.push_back(id);
-                budget -= might;
-            }
-        }
-        for (auto id : to_kill)
-            if (ctx.state.objectExists(id)) ctx.executor.killObject(id);
-        ctx.events.logTrace("FOX-FIRE: killed " + std::to_string(to_kill.size()) +
-                            " units (total Might <= 4) at one BF");
-    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                   .must_be_at_battlefield = true, .max_might = 4};
     }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        if (!ctx.state.chain.resuming.has_value()) return;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        auto picked_before = [&ri](GameObjectId id) {
+            return std::find(ri.resume_data.begin(), ri.resume_data.end(),
+                             static_cast<int32_t>(id)) != ri.resume_data.end();
+        };
+        auto candidates = [&]() {
+            int budget = kTotalMight;
+            std::optional<BattlefieldId> bf;
+            for (auto id : ri.resume_data) {
+                const auto& u = ctx.state.getObject(static_cast<GameObjectId>(id));
+                budget -= std::max(0, u.current_might);
+                bf = u.battlefieldId();
+            }
+            auto units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                return u.isAtBattlefield() && (!bf.has_value() || u.battlefieldId() == bf) &&
+                       u.current_might <= budget && !picked_before(u.id);
+            });
+            std::sort(units.begin(), units.end());
+            return offerableChoices(ctx, units);
+        };
+        bool stop = false;
+        if (ri.resume_point == kAwait) {
+            const auto can_pick = candidates();
+            const GameObjectId unit = takenObject(ctx);
+            if (std::find(can_pick.begin(), can_pick.end(), unit) == can_pick.end()) {
+                stop = true;   // "stop here", or the unit is no longer available
+            } else {
+                commitChosenObject(ctx, unit);
+                ri.resume_data.push_back(static_cast<int32_t>(unit));
+            }
+        } else if (ri.resume_point != kPicking) {
+            // The first unit was chosen as the spell was played (the engine
+            // asks for a needsPlayTimeTarget spell's target then).
+            ri.resume_data.clear();
+            if (!targets.empty()) ri.resume_data.push_back(static_cast<int32_t>(targets[0]));
+        }
+        ri.resume_point = kPicking;
+        if (!stop && ri.resume_data.size() < kMaxPicks) {
+            const auto can_pick = candidates();
+            if (!can_pick.empty()) {
+                std::vector<Intent> options;
+                // "any number": after the first unit the controller may stop.
+                if (!ri.resume_data.empty())
+                    options.push_back(valChoice(ctx.controller, 0, "Stop here"));
+                for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
+                ctx.executor.requestChoice(ctx.controller, std::move(options),
+                    "Fox-Fire: kill a unit at a battlefield (total Might 4 or less)");
+                ri.resume_point = kAwait;
+                return;
+            }
+        }
+        ri.resume_point = kDone;
+        for (auto id : ri.resume_data)
+            ctx.executor.killObject(static_cast<GameObjectId>(id));
+        ctx.events.logTrace("FOX-FIRE: killed " + std::to_string(ri.resume_data.size()) +
+                            " chosen units (total Might <= 4) at one battlefield");
+    }
+private:
+    static constexpr int kTotalMight = 4;
+    // 0-Might units fit any total; the resolve loop allows 16 re-entries.
+    static constexpr size_t kMaxPicks = 12;
+    enum : int { kPicking = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

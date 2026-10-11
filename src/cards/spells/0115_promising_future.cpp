@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -72,12 +73,10 @@ public:
                 if (cid == banished) continue;
                 rest.push_back(cid);
             }
-            if (banished != kInvalidId && ctx.state.objectExists(banished)) {
-                auto& b = ctx.state.getObject(banished);
-                b.zone = ZoneType::Banishment;
-                b.location = std::nullopt;
-                ctx.state.player(b.owner).banishment.push_back(banished);
-            }
+            // Through the executor: it counts the banish and announces it
+            // ("When you banish a card you own").
+            if (banished != kInvalidId && ctx.state.objectExists(banished))
+                ctx.executor.banishObject(banished);
             if (!rest.empty()) ctx.executor.recycleCards(p, rest);
             return banished;
         };
@@ -87,13 +86,7 @@ public:
             // "ignoring Energy costs": Power is still owed, and paying is
             // optional (CR 445.2) — unpaid, the card stays banished.
             const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
-            if (!ctx.executor.canPlayPayingCost(p, banished, power_only)) return;
-            auto& bz = ctx.state.player(p).banishment;
-            auto it = std::find(bz.begin(), bz.end(), banished);
-            if (it != bz.end()) bz.erase(it);
-            // Only units/gear are playable to a board; spells would need chain
-            // handling. playIgnoringCost places permanents; for spells it puts
-            // them on board zone without resolution (best-effort, free).
+            // The play takes the card out of banishment once its Power is paid.
             ctx.executor.playPayingCost(p, banished, std::nullopt, power_only);
         };
 

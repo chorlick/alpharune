@@ -75,6 +75,7 @@ failure. Fix before trusting search or training output.
   - An object with an invalid def id encodes to slot 0, same as skip/decline (reach not confirmed).
   - Champion play and its alt-cost play share a slot (`action_vocab.cpp:101-107`).
   - `MakeChoice` options that differ only in `ability_index` collide: Party Favors (71) — the opponent can never choose Runes under OpenSpiel (07 item 7.33).
+    - c2: 71 Party Favors — FIXED on the card side (07 item 7.33): its options now carry distinct `chosen_value`s; test: ReviewFixC2Test.PartyFavors_TheTwoAnswersAreDistinctValues
   - Gear-target hash overwrites `ability_index` (`:143-152`). Comment at `:73-83` says 16 buckets; code uses 128.
 
 - [x] **1.13 ISMCTS node key ignores the pending decision** [plausible, not reproduced] — FIXED: defect proven (94 same-key / different-action-set pairs in 8 random games with the board-only key). `InfoSetId` now folds in who decides and, for the decider, the legal action set (`ml::mixDecisionIntoInfoSetId`); test: RiftboundStateTest.SameObservationKeyMeansSameLegalActions, CfrUtil.DecisionIsPartOfTheInfoSetId

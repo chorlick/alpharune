@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -18,8 +19,10 @@ public:
         if (!targets.empty())
             ctx.executor.moveToBase(targets[0]);
     }
+    // "a unit from a battlefield": a unit already in a base is not a target.
     TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
+        return TargetRequirements{.count = 1, .must_be_unit = true,
+                                  .must_be_at_battlefield = true};
     }
 private:
     const CardDef def_ = [] {

@@ -14,15 +14,9 @@ namespace {
 class Confront : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "Units you play this turn enter ready. Draw 1."
-        // ENGINE LIMITATION: there is no per-player "units enter ready this
-        // turn" flag in PlayerState, and the resolvePermanent enter-state path
-        // only consults the per-Card entersReadyOnPlay() hook — neither can be
-        // driven by a spell without engine edits (out of scope). The previous
-        // impl erroneously readied the spell object itself; that is removed.
-        // The forward-looking enter-ready clause is left unimplemented; the
-        // Draw 1 is honored.
+        ctx.state.player(ctx.controller).units_enter_ready_this_turn = true;
         ctx.executor.drawCards(ctx.controller, 1);
     }
 private:

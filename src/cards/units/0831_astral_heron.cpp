@@ -17,34 +17,28 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you play your first card each turn, if I'm at a battlefield, your
     //  next card costs [2][A][A] less."
-    // "Your first card each turn": a permanent's play is announced as it is
-    // played, a spell's only once it has resolved (CR 420.4.a) — by which
-    // time cards played in response to it have been announced first, and
-    // PlayerState::cards_played_this_turn has moved past 1. So the Heron
-    // counts the plays it has been told about this turn: the first card is
-    // the one announced when every other card played this turn has already
-    // been announced. (A response that was countered is never announced; the
-    // spell under it is then not recognised as the first card.)
+    // "Your first card each turn" is the card that was played first
+    // (playOrdinalThisTurn, stamped on the card as it is played) — not the
+    // first play this ability hears of: a spell's play triggers only once it
+    // has resolved (CR 420.4.a), after any cards played in response, and a
+    // response that was countered is never announced at all. The Heron itself
+    // can be that first card (WhenYouPlayMe). A token is not a card.
     // The [A][A] half is CostModifier::power_reduction, which the engine's
     // cost path subtracts from the card's Power cost (clamped at 0).
-    static constexpr const char* kTurnKey = "__heron_turn";          // turn + 1
-    static constexpr const char* kSeenKey = "__heron_plays_seen";    // this turn
-    static constexpr const char* kFirstKey = "__heron_first_seen";   // this turn
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayACard; }
+    std::vector<TriggerType> triggerTypes() const override {
+        return {TriggerType::WhenYouPlayACard, TriggerType::WhenYouPlayMe};
+    }
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId subject) const override {
+        const GameObjectId played = trigger == TriggerType::WhenYouPlayMe ? source : subject;
+        if (played == kInvalidId || !state.objectExists(played)) return false;
+        if (state.getObject(played).isToken()) return false;
+        return playOrdinalThisTurn(state, played) == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
         auto& ps = ctx.state.player(ctx.controller);
-        const int turn_id = ctx.state.turn.turn_number + 1;
-        if (self.card_counters[kTurnKey] != turn_id) {
-            self.card_counters[kTurnKey] = turn_id;
-            self.card_counters[kSeenKey] = 0;
-            self.card_counters[kFirstKey] = 0;
-        }
-        const int seen_before = self.card_counters[kSeenKey]++;
-        if (self.card_counters[kFirstKey] != 0) return;              // the first card is past
-        if (ps.cards_played_this_turn - seen_before != 1) return;    // not the first card
-        self.card_counters[kFirstKey] = 1;
         if (!self.isAtBattlefield()) return;                          // "if I'm at a battlefield"
         PlayerState::CostModifier m;
         m.source = ctx.source;

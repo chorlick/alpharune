@@ -55,6 +55,11 @@ constexpr CardDefId kShepherdsHeirloom = 720; // "When you play this, gain 1 XP.
 constexpr CardDefId kSvellsongur     = 382;  // "copy that unit's text to this Equipment's effect text"
 constexpr CardDefId kCaptainFarron   = 15;   // "Other friendly units here have [Assault]."
 constexpr CardDefId kChemtechEnforcer = 3;   // printed [Assault 2]
+constexpr CardDefId kTheRuination    = 742;  // "Kill all units."
+constexpr CardDefId kKarmaChanneler  = 235;  // "When you recycle one or more cards to your Main Deck, buff a friendly unit."
+constexpr CardDefId kStackedDeck     = 183;  // "Look at the top 3 ... Put 1 into your hand and recycle the rest."
+constexpr CardDefId kFateWeaver      = 626;  // looks at the top 4, may reveal a spell and draw it
+constexpr CardDefId kShadowCloneCard = 955;  // the Shadow Clone token card
 
 /// Passes priority; reports, each time it is asked while `spell` has a play on
 /// the chain, whether the card is also filed in its owner's trash.
@@ -1040,6 +1045,207 @@ TEST_F(SweepTriggersTest, Svellsongur_CountsAnAdditionalTimeEffectAgain) {
     for (const auto& da : state.delayed_abilities) if (da.source == sentinel) ++scheduled;
     // "When I hold" twice (the card's and the copy's), each two additional times.
     EXPECT_EQ(scheduled, 6);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. Follow-up (plans/09 section D)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.D2: units one effect kills together are one batch. The Ruination 742
+// ("Kill all units.") against Loyal Poro, Lonely Poro and Battle Mistress.
+TEST_F(SweepTriggersTest, KillAllEffect_UnitsItKillsDiedTogether) {
+    stockDeck(P1, 6);
+    addUnit(P1, kLoyalPoro, 1, 0);
+    addUnit(P1, kLoyalPoro, 1, 0);          // each had the other: 2 draws
+    addUnit(P1, kLonelyPoro, 1, 0);         // not alone: no draw
+    auto legend = addLegend(P2, kBattleMistress);
+    auto spell = addToHand(P2, kTheRuination);
+    int legend_abilities = 0;
+    TrashWatcher p1;                         // passes; counts nothing useful here
+    struct Counter : AgentInterface {
+        GameObjectId legend = kInvalidId;
+        int* seen = nullptr;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            int n = 0;
+            for (const auto& ci : st.chain.items) if (ci.source == legend) ++n;
+            *seen = std::max(*seen, n);
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+            return legal.empty() ? Intent{} : legal.front();
+        }
+    } p2;
+    p2.legend = legend;
+    p2.seen = &legend_abilities;
+    const int before = handSize(P1);
+    playThroughEngine(spell, &p1, std::nullopt, &p2);
+    EXPECT_EQ(handSize(P1) - before, 2) << "two Loyal Poros that died together; the Lonely Poro did not die alone";
+    EXPECT_EQ(legend_abilities, 1) << "\"one or more enemy units die\": once";
+}
+
+// 9.D4: the mulligan's recycle is announced, once for the cards set aside.
+TEST_F(SweepTriggersTest, Mulligan_AnnouncesTheRecycleOnce) {
+    stockDeck(P1, 6);
+    auto a = addToHand(P1, kLoyalPoro);
+    auto b = addToHand(P1, kLoyalPoro);
+    auto karma = addUnit(P1, kKarmaChanneler, 2, -1);
+    int announced = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.what_changed == "recycled_main") ++announced;
+    });
+    EnginePathAgent agent(EnginePathAgent::choosing(karma));
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(Intent::mulligan(P1, {a, b}));
+        e.testHook_runChain();
+    }, &agent);
+    conn.disconnect();
+    EXPECT_EQ(announced, 1);
+    EXPECT_TRUE(inDeck(P1, a) && inDeck(P1, b));
+    EXPECT_EQ(obj(karma).buff_count, 1) << "\"When you recycle one or more cards to your Main Deck\"";
+}
+
+// 9.D4 / 9.D10: a card played in response goes through the callback the engine
+// installs (ChainManager::setPlayCard), and a play that adds no chain item is
+// not offered again in that priority window.
+TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayIsNotReoffered) {
+    auto source = addUnit(P1, kInvalidId, 2, -1);
+    auto reaction = addToHand(P2, kDecreeOfInsight);
+    ChainManager cm(state, events, card_db);
+    std::vector<Intent> played;
+    cm.setPlayCard([&](const Intent& i) { played.push_back(i); });   // adds no chain item
+    cm.addAbility(source, P1, kInvalidId);
+    int p2_asked = 0, p2_offered_play = 0;
+    Intent play;
+    play.type = IntentType::PlayReaction;
+    play.player = P2;
+    play.card = reaction;
+    cm.processFEPR(
+        [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
+            if (p == P2) {
+                ++p2_asked;
+                for (const auto& i : legal)
+                    if (i.type == IntentType::PlayReaction) { ++p2_offered_play; return i; }
+            }
+            return Intent::passPriority(p);
+        },
+        [](const ChainItem&) {},
+        [](const ChainItem&) {},
+        [&](PlayerId p) {
+            std::vector<Intent> out{Intent::passPriority(p)};
+            if (p == P2) out.push_back(play);
+            return out;
+        });
+    ASSERT_EQ(played.size(), 1u) << "the play went to the engine's play path, once";
+    EXPECT_EQ(played[0].card, reaction);
+    EXPECT_EQ(p2_offered_play, 1) << "it did not happen, so it is not offered again";
+    EXPECT_EQ(p2_asked, 2) << "asked again without it, and passed";
+    EXPECT_TRUE(inHand(P2, reaction)) << "the bare fallback path did not run";
+}
+
+// 9.D4: the same through the real engine — a [Reaction] spell played in
+// response is played like any other card (counted, paid, resolved, trashed).
+TEST_F(SweepTriggersTest, ReactionPlay_ThroughTheEngineIsAFullPlay) {
+    auto target = addUnit(P1, kInvalidId, 6, 0);
+    obj(target).domains = {Domain::Body};
+    auto first = addToHand(P1, kDredgeUp);
+    stockDeck(P1, 2);
+    auto reaction = addToHand(P2, kDecreeOfInsight);
+    state.player(P2).rune_pool.energy = card_db.get(kDecreeOfInsight).energy_cost;
+    struct Responder : AgentInterface {
+        GameObjectId card = kInvalidId, target = kInvalidId;
+        Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+            for (const auto& i : legal)
+                if (i.type == IntentType::PlayReaction && i.card == card) return i;
+            for (const auto& i : legal)
+                if (i.type == IntentType::MakeChoice && !i.chosen_objects.empty() &&
+                    i.chosen_objects.front() == target) return i;
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+            return legal.empty() ? Intent{} : legal.front();
+        }
+    } p2;
+    p2.card = reaction;
+    p2.target = target;
+    playThroughEngine(first, nullptr, std::nullopt, &p2);
+    EXPECT_TRUE(inTrash(P2, reaction));
+    EXPECT_EQ(state.player(P2).cards_played_this_turn, 1);
+    EXPECT_EQ(state.player(P2).spells_played_this_turn, 1);
+    EXPECT_EQ(state.player(P2).rune_pool.energy, 0) << "its cost was paid";
+    EXPECT_EQ(obj(target).temp_might_bonus, -5);
+    EXPECT_EQ(playOrdinalThisTurn(state, reaction), 1) << "stamped by the engine's play path";
+}
+
+// 9.D7: Stacked Deck 183 says "Put 1 into your hand" — not a draw.
+TEST_F(SweepTriggersTest, StackedDeck_PuttingACardIntoHandIsNotADraw) {
+    EXPECT_NE(card_db.get(kStackedDeck).ability_text.find("Put 1 into your hand"),
+              std::string::npos);
+    stockDeck(P1, 4);
+    auto spell = addToHand(P1, kStackedDeck);
+    const int draws = state.player(P1).draws_this_turn;
+    int drawn_events = 0;
+    auto conn = events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
+        if (e.player == P1) drawn_events += e.count;
+    });
+    playThroughEngine(spell);
+    conn.disconnect();
+    EXPECT_EQ(handSize(P1), 1) << "one card was put into hand";
+    EXPECT_EQ(state.player(P1).draws_this_turn, draws);
+    EXPECT_EQ(drawn_events, 0);
+}
+
+// 9.D9: a token is its registered token card when its play is announced, and
+// so is an additional copy.
+TEST_F(SweepTriggersTest, CreateToken_TheTokenCardIsSetBeforeThePlayIsAnnounced) {
+    addUnit(P1, kZilean, 5, 0);
+    std::vector<CardDefId> seen;
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        auto c = events.on_token_created.connect([&](const TokenCreatedEvent& ev) {
+            seen.push_back(e.mutableState().getObject(ev.object).card_def_id);
+        });
+        e.testHook_executor().createToken(P1, CardType::Unit, "Shadow Clone", 0, {},
+                                          KeywordSet{}, base(P1), false, {}, kShadowCloneCard);
+        c.disconnect();
+    }, &yes);
+    ASSERT_EQ(seen.size(), 2u) << "the token and Zilean's additional copy";
+    EXPECT_EQ(seen[0], kShadowCloneCard);
+    EXPECT_EQ(seen[1], kShadowCloneCard);
+}
+
+// 9.D11: a prompt line that lists cards from a deck by name is for the player
+// being asked only; one that lists units on the board is for both.
+TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
+    auto weaver = addUnit(P1, kFateWeaver, 3, 0);
+    stockDeck(P1, 2);
+    auto spell = addToDeck(P1, kDeathFromBelow);
+    const std::string name = obj(spell).name;
+    int private_lines = 0, leaked = 0;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("TGT_PROMPT") == std::string::npos) return;
+        if (e.message.find(name) == std::string::npos) return;
+        if (e.visibleTo(P1) && !e.visibleTo(P2)) ++private_lines; else ++leaked;
+    });
+    EnginePathAgent agent(EnginePathAgent::choosing(spell));
+    fireTriggerThroughEngine(weaver, TriggerType::WhenYouPlayMe, &agent);
+    conn.disconnect();
+    EXPECT_GE(private_lines, 1);
+    EXPECT_EQ(leaked, 0);
+
+    // Units on the board: public.
+    auto vex = addUnit(P1, kVexMocking, 5, 0);
+    (void)vex;
+    auto bramble = addUnit(P1, kRedBrambleback, 0, 0);
+    int public_lines = 0, hidden_lines = 0;
+    auto conn2 = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("TGT_PROMPT") == std::string::npos) return;
+        (e.isPublic() ? public_lines : hidden_lines)++;
+    });
+    withEngine([&](GameEngine& e) { e.testHook_scoreConquer(P1, 0); e.testHook_runChain(); });
+    conn2.disconnect();
+    (void)bramble;
+    EXPECT_GE(public_lines, 1);
+    EXPECT_EQ(hidden_lines, 0);
 }
 
 }  // namespace

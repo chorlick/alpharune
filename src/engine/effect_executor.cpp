@@ -195,6 +195,12 @@ void EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
     }
 }
 
+DeathBatch::DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units)
+    : executor_(executor), units_(std::move(units)) {
+    executor_.beginDeathBatch(units_);
+}
+DeathBatch::~DeathBatch() { executor_.endDeathBatch(units_); }
+
 void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units) {
     for (auto id : units)
         if (state_.objectExists(id)) state_.getObject(id).last_known.batch_pending = false;
@@ -1592,7 +1598,8 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
                                           const std::vector<std::string>& tags,
                                           KeywordSet keywords, LocationId location,
                                           bool enter_ready,
-                                          const std::vector<LocationId>& location_choices) {
+                                          const std::vector<LocationId>& location_choices,
+                                          CardDefId token_card) {
     if (token_depth_ == 0) last_tokens_.clear();
     const bool asked_enter_ready = enter_ready;
     auto id = state_.createObject();
@@ -1603,6 +1610,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     obj.card_type = type;
     obj.super_type = SuperType::Token;
     obj.is_token = true;   // CR 185.1 intrinsic
+    obj.card_def_id = token_card;
     obj.name = name;
     obj.base_might = might;
     obj.current_might = might;
@@ -1660,7 +1668,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
             events_.logTrace("TOKEN: an additional copy of " + name + " is played");
             ++token_depth_;
             createToken(controller, type, name, might, tags, keywords, copy_at,
-                        asked_enter_ready, location_choices);
+                        asked_enter_ready, location_choices, token_card);
             --token_depth_;
         }
     }

@@ -30,6 +30,7 @@ public:
             if (obj.battlefieldId() == bf) hit.push_back(id);
         }
         for (auto id : hit) ctx.executor.dealDamage(id, id == main ? 4 : 1, ctx.source);
+        DeathBatch together(ctx.executor, hit);   // they die at the same time
         for (auto id : hit)
             if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
                 ctx.executor.killObject(id);

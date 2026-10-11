@@ -29,6 +29,7 @@ public:
         std::sort(to_damage.begin(), to_damage.end());
         for (auto id : to_damage)
             ctx.executor.dealDamage(id, 3, ctx.source);
+        DeathBatch together(ctx.executor, to_damage);   // they die at the same time
         for (auto id : to_damage) {
             const auto& o = ctx.state.getObject(id);
             if (o.location.has_value() && o.hasLethalDamage())

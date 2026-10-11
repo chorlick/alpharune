@@ -81,6 +81,7 @@ public:
         // The executor skips a unit that has left the board (CR 359.3.e.5).
         for (auto id : ri.resume_data)
             ctx.executor.dealDamage(static_cast<GameObjectId>(id), 2, ctx.source);
+        DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
         for (auto id : ri.resume_data) {
             const auto& unit = ctx.state.getObject(static_cast<GameObjectId>(id));
             if (unit.location.has_value() && unit.hasLethalDamage())

@@ -38,6 +38,25 @@ bool Card::costAlreadyPaid(const CardContext& ctx) {
 // (confirmOptional's answer lives in ChainItem::may_answer and it stays off
 // resume_data entirely: cards with a "may" gate use resume_data freely.)
 namespace {
+
+// Who may read a prompt line that lists `options` by name: both players when
+// every option is somewhere both can see (the board, a trash, banishment, the
+// chain); only the player being asked when one of them is a card in a hand, a
+// deck or facedown (LogEvent::audience).
+LogAudience promptAudience(const CardContext& ctx, const std::vector<GameObjectId>& options) {
+    for (auto id : options) {
+        if (!ctx.state.objectExists(id)) continue;
+        const auto& o = ctx.state.getObject(id);
+        if (o.is_hidden || o.zone == ZoneType::Hand || o.zone == ZoneType::MainDeck ||
+            o.zone == ZoneType::RuneDeck || o.zone == ZoneType::FacedownZone)
+            return LogAudience::only(ctx.controller);
+    }
+    return LogAudience::both();
+}
+
+}  // namespace
+
+namespace {
 enum : uint32_t {
     kXAwait = 1u << 0,     kXDone = 1u << 1,
     kModeAwait = 1u << 2,  kModeDone = 1u << 3,
@@ -476,7 +495,8 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                 ? ctx.state.getObject(t).name
                 : std::string("?");
         }
-        ctx.events.logTrace("TGT_PROMPT: " + label + " [" + label_summary +
+        ctx.events.logTraceFor(promptAudience(ctx, legal_targets),
+                             "TGT_PROMPT: " + label + " [" + label_summary +
                              "] (agent decides among " +
                              std::to_string(legal_targets.size()) +
                              " targets)");
@@ -558,7 +578,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             summary += ctx.state.objectExists(t)
                 ? ctx.state.getObject(t).name : std::string("?");
         }
-        ctx.events.logTrace(std::string(tag) + label + " [" + summary + "] " + which);
+        ctx.events.logTraceFor(promptAudience(ctx, legal),
+                               std::string(tag) + label + " [" + summary + "] " + which);
         ctx.executor.requestChoice(ctx.controller, std::move(options), request + label);
     };
 

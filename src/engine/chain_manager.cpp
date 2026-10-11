@@ -285,6 +285,10 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     PlayerId current = first_priority;
 
     constexpr int kMaxPriorityPasses = 10; // safety (2 players × some margin)
+    // Plays that were chosen in this window and did not happen. They are not
+    // offered again: choosing one changes nothing, so asking again with the
+    // same options would only repeat it.
+    std::vector<Intent> failed_plays;
 
     for (int pass = 0; pass < kMaxPriorityPasses; ++pass) {
         state_.turn.priority_holder = current;
@@ -295,6 +299,12 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         auto actions = gen_closed_actions
             ? gen_closed_actions(current)
             : generateClosedStateActions(current);
+        if (!failed_plays.empty())
+            actions.erase(std::remove_if(actions.begin(), actions.end(),
+                [&](const Intent& a) {
+                    return std::find(failed_plays.begin(), failed_plays.end(), a) !=
+                           failed_plays.end();
+                }), actions.end());
 
         // Query agent
         auto chosen = query_agent(current, actions);
@@ -332,7 +342,11 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             if (state_.chain.next_id != before)
                 return true; // Item added → restart FEPR from Finalize
             // The play did not happen (its cost could not be paid after all):
-            // the same player keeps priority and chooses again.
+            // the same player keeps priority and chooses again, without it.
+            // (An activated ability that adds no item is different: a
+            // cost-only ability — a rune's Add — has done its work, and is
+            // offered again only while it is still legal.)
+            failed_plays.push_back(chosen);
         } else if (chosen.type == IntentType::PlayReaction) {
             // No engine attached (a ChainManager driven on its own): the bare
             // mechanics — leave the zone, pay the printed cost, go on the chain.

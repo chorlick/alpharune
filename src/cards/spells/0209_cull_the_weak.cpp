@@ -38,6 +38,7 @@ public:
             std::vector<GameObjectId> doomed;
             for (PlayerId p : players)
                 if (auto units = own_units(p); !units.empty()) doomed.push_back(units.front());
+            DeathBatch together(ctx.executor, doomed);   // they die at the same time
             for (auto id : doomed) ctx.executor.killObject(id);
             return;
         }
@@ -66,6 +67,7 @@ public:
             return;
         }
         ri.resume_point = kDone;
+        DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
         for (auto id : ri.resume_data)
             ctx.executor.killObject(static_cast<GameObjectId>(id));
     }

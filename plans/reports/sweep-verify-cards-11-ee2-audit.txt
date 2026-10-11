@@ -1,0 +1,220 @@
+src/cards/battlefields/0278_navori_fighting_pit.cpp: CLEAN
+src/cards/battlefields/0280_reaver_s_row.cpp: CLEAN
+src/cards/battlefields/0534_treasure_hoard.cpp: DEFECT pre-check `!costAlreadyPaid && !still_legal -> return` ahead of confirmOptional ([1] unpayable at finalization, payable at resolution) — fixed, test in tests_T11B.cpp
+src/cards/battlefields/0274_fortified_position.cpp: CLEAN
+src/cards/battlefields/0521_emperor_s_dais.cpp: CLEAN
+src/cards/battlefields/0277_monastery_of_hirana.cpp: DEFECT same pre-check (no buffed unit at finalization, one at resolution) — fixed, test in tests_T11B.cpp
+src/cards/battlefields/0276_hallowed_tomb.cpp: CLEAN
+src/cards/battlefields/0771_star_spring.cpp: CLEAN
+src/cards/battlefields/0528_power_nexus.cpp: CLEAN
+src/cards/battlefields/0763_amateur_recital.cpp: CLEAN
+src/cards/battlefields/0535_veiled_temple.cpp: CLEAN
+src/cards/battlefields/0284_targon_s_peak.cpp: REPORT-ONLY clean
+src/cards/battlefields/0283_startipped_peak.cpp: CLEAN
+src/cards/battlefields/0770_ripper_s_bay.cpp: DEFECT same pre-check ([1]) — fixed, test in tests_T11B.cpp
+src/cards/battlefields/0765_dusk_rose_lab.cpp: DEFECT same pre-check (no unit here) and `if (!mine) return` ahead of confirmOptional — fixed, test in tests_T11B.cpp
+src/cards/battlefields/0532_sunken_temple.cpp: DEFECT same pre-check ([1]) — fixed, test in tests_T11B.cpp
+src/cards/battlefields/0522_forge_of_the_fluft.cpp: CLEAN
+src/cards/battlefields/0524_hall_of_legends.cpp: CLEAN
+src/cards/battlefields/0561_brush.cpp: CLEAN
+src/cards/gear/0072_solari_shrine.cpp: DEFECT same pre-check (shrine exhausted at finalization, readied in response) — fixed, test in tests_T11B.cpp
+src/cards/gear/0099_garbage_grabber.cpp: CLEAN
+src/cards/battlefields/0761_abandoned_hall.cpp: CLEAN
+src/cards/gear/0063_spirit_s_refuge.cpp: CLEAN
+src/cards/gear/0342_assembly_rig.cpp: CLEAN
+src/cards/battlefields/0774_valley_of_idols.cpp: DEFECT `if (!still_there()) return` ahead of confirmOptional (played unit off board) — fixed, test in tests_T11B.cpp
+src/cards/gear/0212_forge_of_the_future.cpp: CLEAN
+src/cards/battlefields/0949_protective_sands.cpp: DEFECT same pre-check ([1] / rune count) — fixed, test in tests_T11B.cpp
+src/cards/gear/0152_mistfall.cpp: DEFECT same pre-check (exhausted / no [O] / subject off board) — fixed, test in tests_T11B.cpp
+src/cards/gear/0228_vanguard_helm.cpp: DEFECT `if (targets.empty()) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/gear/0339_recurve_bow.cpp: CLEAN
+src/cards/gear/0465_spirit_wheel.cpp: DEFECT `self.is_exhausted -> return` and the same pre-check — fixed, test in tests_T11B.cpp
+src/cards/gear/0369_poro_snax.cpp: CLEAN
+src/cards/gear/0471_last_rites.cpp: CLEAN
+src/cards/gear/0695_blast_cone.cpp: CLEAN
+src/cards/gear/0460_edge_of_night.cpp: CLEAN
+src/cards/gear/0607_forgotten_signpost.cpp: CLEAN
+src/cards/gear/0386_chemtech_cask.cpp: CLEAN
+src/cards/gear/0490_altar_of_memories.cpp: CLEAN
+src/cards/gear/0671_blood_rose.cpp: DEFECT same pre-check ([1]) — fixed, test in tests_T11B.cpp
+src/cards/legends/0315_dark_child_starter.cpp: REPORT-ONLY clean
+src/cards/gear/0573_fresh_beans.cpp: DEFECT `if (!in_showdown) return` ahead of confirmOptional (part of the trigger condition) — fixed, test in tests_T11B.cpp
+src/cards/legends/0297_radiant_dawn.cpp: CLEAN
+src/cards/legends/0555_blade_dancer.cpp: DEFECT conquer branch: `!self.is_exhausted -> return` and the same pre-check — fixed, test in tests_T11B.cpp
+src/cards/legends/0553_void_burrower.cpp: REPORT-ONLY clean
+src/cards/legends/0753_green_father.cpp: CLEAN
+src/cards/legends/0554_grandmaster_at_arms.cpp: CLEAN
+src/cards/legends/0295_relentless_storm.cpp: CLEAN
+src/cards/gear/0636_frigid_jewel.cpp: CLEAN
+src/cards/legends/0756_deceiver.cpp: REPORT-ONLY clean
+src/cards/legends/0936_defender_of_tomorrow.cpp: DEFECT (branch form) pickMode is reached only while Empowered: a legend Empowered/disempowered between the passes takes the other branch and asks at resolution — fixed, test in tests_T11B.cpp
+src/cards/legends/0785_gloomist.cpp: CLEAN
+src/cards/legends/0519_grand_duelist.cpp: CLEAN
+src/cards/gear/0698_scryer_s_bloom.cpp: CLEAN
+src/cards/legends/0744_pridestalker.cpp: CLEAN
+src/cards/legends/0932_curator_of_the_sands.cpp: REPORT-ONLY `if (may_answer == -1 && !still_legal()) return` ahead of confirmOptional: legend exhausted at finalization and readied in response is asked (and exhausted) at resolution
+src/cards/legends/0783_piltover_enforcer.cpp: DEFECT same pre-check (legend exhausted / no unit) — fixed, test in tests_T11B.cpp
+src/cards/spells/0029_falling_star.cpp: CLEAN
+src/cards/spells/0128_challenge.cpp: CLEAN
+src/cards/spells/0253_fox_fire.cpp: CLEAN
+src/cards/legends/0517_battle_mistress.cpp: CLEAN
+src/cards/spells/0250_super_mega_death_rocket.cpp: CLEAN
+src/cards/spells/0206_back_to_back.cpp: CLEAN
+src/cards/spells/0334_angle_shot.cpp: CLEAN
+src/cards/legends/0556_chem_baroness.cpp: CLEAN
+src/cards/spells/0220_facebreaker.cpp: CLEAN
+src/cards/legends/0782_virtuoso.cpp: CLEAN
+src/cards/spells/0309_flash.cpp: CLEAN
+src/cards/spells/0263_bullet_time.cpp: CLEAN
+src/cards/spells/0511_defiant_dance.cpp: CLEAN
+src/cards/spells/0306_gentlemen_s_duel.cpp: CLEAN
+src/cards/spells/0257_last_breath.cpp: CLEAN
+src/cards/spells/0400_rocket_barrage.cpp: CLEAN
+src/cards/spells/0436_marching_orders.cpp: CLEAN
+src/cards/spells/0048_meditation.cpp: CLEAN
+src/cards/spells/0450_temptation.cpp: CLEAN
+src/cards/spells/0472_bonds_of_strength.cpp: CLEAN
+src/cards/spells/0672_clash_of_giants.cpp: CLEAN
+src/cards/spells/0429_strike_down.cpp: CLEAN
+src/cards/spells/0466_switcheroo.cpp: CLEAN
+src/cards/spells/0702_conscription.cpp: CLEAN
+src/cards/spells/0755_moonfall.cpp: CLEAN
+src/cards/spells/0600_skyward_strike.cpp: CLEAN
+src/cards/spells/0730_undying_loyalty.cpp: CLEAN
+src/cards/spells/0690_star_crossed.cpp: CLEAN
+src/cards/spells/0735_sacrifice.cpp: CLEAN
+src/cards/spells/0751_alpha_strike.cpp: REPORT-ONLY clean (the early return on a missing play-time target cannot be true at finalization and false at resolution)
+src/cards/spells/0717_heroic_charge.cpp: CLEAN
+src/cards/spells/0743_curtain_call.cpp: CLEAN
+src/cards/spells/0821_resonating_strike.cpp: CLEAN
+src/cards/spells/0839_mesmerize.cpp: CLEAN
+src/cards/units/0016_dangerous_duo.cpp: CLEAN
+src/cards/spells/0870_rampage.cpp: CLEAN
+src/cards/units/0006_flame_chompers.cpp: DEFECT same pre-check ([R] / not in trash) — fixed, test in tests_T11B.cpp
+src/cards/spells/0822_sanction.cpp: CLEAN
+src/cards/units/0073_sona_harmonious.cpp: REPORT-ONLY clean (the reference fix)
+src/cards/units/0041_volibear_furious.cpp: DEFECT `if (!my_bf) return` ahead of splitDamageAmong — fixed, test in tests_T11B.cpp
+src/cards/units/0056_adaptatron.cpp: CLEAN
+src/cards/units/0097_blastcone_fae.cpp: CLEAN
+src/cards/units/0037_immortal_phoenix.cpp: DEFECT same pre-check ([1][R]) — fixed, test in tests_T11B.cpp
+src/cards/units/0082_whiteflame_protector.cpp: CLEAN
+src/cards/units/0036_vi_destructive.cpp: CLEAN
+src/cards/units/0067_blitzcrank_impassive.cpp: CLEAN
+src/cards/units/0119_ahri_inquisitive.cpp: CLEAN
+src/cards/spells/0704_heedless_resurrection.cpp: CLEAN
+src/cards/units/0136_pit_rookie.cpp: CLEAN
+src/cards/units/0107_ava_achiever.cpp: CLEAN
+src/cards/units/0076_yasuo_remorseful.cpp: CLEAN
+src/cards/units/0132_first_mate.cpp: CLEAN
+src/cards/units/0121_teemo_strategist.cpp: CLEAN
+src/cards/units/0051_solari_shieldbearer.cpp: CLEAN
+src/cards/units/0196_soulgorger.cpp: CLEAN (note: pickEffectPlayLocation in card_helpers.h asks nothing and stores nothing with no battlefield controlled)
+src/cards/units/0157_udyr_wildman.cpp: CLEAN
+src/cards/units/0149_carnivorous_snapvine.cpp: CLEAN
+src/cards/units/0141_kinkou_monk.cpp: CLEAN
+src/cards/units/0155_qiyana_victorious.cpp: CLEAN
+src/cards/spells/0941_public_execution.cpp: CLEAN
+src/cards/units/0165_cemetery_attendant.cpp: DEFECT `if (trash_units.empty()) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0194_nocturne_horrifying.cpp: DEFECT same pre-check (not in the Main Deck) — fixed, test in tests_T11B.cpp
+src/cards/units/0234_harnessed_dragon.cpp: CLEAN
+src/cards/units/0130_crackshot_corsair.cpp: CLEAN
+src/cards/units/0035_vayne_hunter.cpp: DEFECT same pre-check ([1] / off board) — fixed, test in tests_T11B.cpp
+src/cards/units/0164_sett_brawler.cpp: CLEAN
+src/cards/units/0235_karma_channeler.cpp: CLEAN
+src/cards/units/0355_disarming_rake.cpp: CLEAN
+src/cards/units/0177_stealthy_pursuer.cpp: CLEAN
+src/cards/units/0308_annie_stubborn.cpp: DEFECT `if (eligible.empty()) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0330_gem_jammer.cpp: CLEAN
+src/cards/units/0112_kai_sa_evolutionary.cpp: CLEAN
+src/cards/units/0361_ribbon_dancer.cpp: CLEAN
+src/cards/units/0226_spectral_matron.cpp: CLEAN
+src/cards/units/0347_rell_magnetic.cpp: REPORT-ONLY clean
+src/cards/units/0390_frostcoat_cub.cpp: CLEAN
+src/cards/units/0238_leona_determined.cpp: CLEAN
+src/cards/units/0358_guardian_of_the_passage.cpp: CLEAN
+src/cards/units/0373_azir_ascendant.cpp: CLEAN
+src/cards/units/0384_aspiring_engineer.cpp: CLEAN
+src/cards/units/0351_lucian_gunslinger.cpp: DEFECT `if (assault <= 0) return` / `if (!self_bf) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0162_miss_fortune_captain.cpp: CLEAN
+src/cards/units/0362_royal_entourage.cpp: CLEAN
+src/cards/units/0404_ezreal_dashing.cpp: DEFECT `if (!my_bf) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0376_janna_savior.cpp: CLEAN
+src/cards/units/0349_rumble_hotheaded.cpp: CLEAN
+src/cards/units/0191_maddened_marauder.cpp: CLEAN
+src/cards/units/0385_bubble_bot.cpp: CLEAN
+src/cards/units/0449_overzealous_fan.cpp: CLEAN
+src/cards/units/0446_fae_porter.cpp: CLEAN
+src/cards/units/0199_tideturner.cpp: CLEAN
+src/cards/units/0372_aphelios_exalted.cpp: DEFECT (branch form) mode 2: `if (!friendly.empty())` skips pickTarget, so a friendly unit that appears before resolution is asked for then — fixed, test in tests_T11B.cpp
+src/cards/units/0441_sivir_ambitious.cpp: CLEAN
+src/cards/units/0397_pickpocket.cpp: CLEAN
+src/cards/units/0225_solari_chief.cpp: DEFECT `if (enemies.empty()) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0434_kato_the_arm.cpp: CLEAN
+src/cards/units/0447_loyal_pup.cpp: CLEAN
+src/cards/units/0491_rek_sai_swarm_queen.cpp: REPORT-ONLY clean
+src/cards/units/0540_bard_mercurial.cpp: CLEAN
+src/cards/units/0459_windsinger.cpp: CLEAN
+src/cards/units/0562_mischievous_marai.cpp: DEFECT `if (!my_bf) return` ahead of pickTarget ("to a battlefield" is the trigger condition) — fixed, test in tests_T11B.cpp
+src/cards/units/0500_fiora_worthy.cpp: CLEAN
+src/cards/units/0453_beast_below.cpp: CLEAN
+src/cards/units/0336_blast_corps_cadet.cpp: CLEAN
+src/cards/units/0481_zaun_punk.cpp: CLEAN
+src/cards/units/0479_sandshifter.cpp: CLEAN
+src/cards/units/0591_red_brambleback.cpp: CLEAN
+src/cards/units/0618_yuumi_magical_cat.cpp: CLEAN
+src/cards/units/0539_ahri_inquisitive.cpp: CLEAN
+src/cards/units/0627_icevale_archer.cpp: CLEAN
+src/cards/units/0543_sett_brawler.cpp: CLEAN
+src/cards/units/0641_diana_lunari.cpp: DEFECT same pre-check ([1]) — fixed, test in tests_T11B.cpp
+src/cards/units/0629_ruined_rex.cpp: CLEAN
+src/cards/units/0614_nami_headstrong.cpp: CLEAN
+src/cards/units/0406_jayce_man_of_progress.cpp: CLEAN
+src/cards/units/0583_grim_apothecary.cpp: CLEAN
+src/cards/units/0674_irresistible_faefolk.cpp: DEFECT `if (!my_bf) return` ahead of confirmOptional — fixed, test in tests_T11B.cpp
+src/cards/units/0585_katarina_reckless.cpp: CLEAN
+src/cards/units/0681_kha_zix_evolving_hunter.cpp: CLEAN
+src/cards/units/0667_imposing_challenger.cpp: CLEAN (note: pickMode only with 2+ other battlefields; a battlefield added while on the chain would be asked at resolution)
+src/cards/units/0738_vi_peacekeeper.cpp: CLEAN
+src/cards/units/0789_blade_twirler.cpp: CLEAN
+src/cards/units/0699_sinister_poro.cpp: CLEAN
+src/cards/units/0537_vayne_hunter.cpp: CLEAN
+src/cards/units/0548_karma_channeler.cpp: CLEAN
+src/cards/units/0589_inviolus_vox.cpp: CLEAN
+src/cards/units/0807_twilight_reveler.cpp: CLEAN
+src/cards/units/0867_noxian_demolitionist.cpp: CLEAN
+src/cards/units/0869_profiteer.cpp: CLEAN
+src/cards/units/0828_riven_shattered.cpp: DEFECT attack branch: `if (!my_bf) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0888_gust_monk.cpp: CLEAN
+src/cards/units/0796_baccai_reaper.cpp: CLEAN
+src/cards/units/0881_mask_mother.cpp: CLEAN
+src/cards/units/0808_akali_deadly_weapon.cpp: CLEAN
+src/cards/units/0889_ravenbloom_prefect.cpp: CLEAN
+src/cards/units/0955_shadow_clone.cpp: DEFECT `if (!still_legal()) return` ahead of confirmOptional (no unit in trash yet) — fixed, test in tests_T11B.cpp
+src/cards/units/0875_jayce_hammer_in_hand.cpp: DEFECT `if (!location) return` ahead of pickMode — fixed, test in tests_T11B.cpp
+src/cards/units/0919_fallen_feline.cpp: CLEAN
+src/cards/units/0897_mel_defiant_soul.cpp: CLEAN
+src/cards/units/0147_wildclaw_shaman.cpp: CLEAN
+src/cards/units/0683_bewitching_spirit.cpp: CLEAN
+src/cards/units/0188_zaunite_bouncer.cpp: CLEAN
+src/cards/units/0923_ambessa_respected_and_feared.cpp: DEFECT `if (!isEmpowered || !location) return` ahead of pickTarget ([Empowered][>]) — fixed, test in tests_T11B.cpp
+src/cards/units/0898_minah_swiftfoot.cpp: CLEAN
+src/cards/units/0343_draven_vanquisher.cpp: CLEAN
+src/cards/units/0413_buhru_captain.cpp: CLEAN
+src/cards/units/0461_fizz_trickster.cpp: CLEAN
+src/cards/units/0486_glasc_mixologist.cpp: CLEAN
+src/cards/units/0804_morgana_vindictive.cpp: CLEAN
+src/cards/units/0666_gentle_gemdragon.cpp: REPORT-ONLY clean
+src/cards/units/0617_vex_mocking.cpp: DEFECT `if (!still_legal()) return` ahead of confirmOptional (already at that battlefield) — fixed, test in tests_T11B.cpp
+src/cards/units/0813_field_musicians.cpp: CLEAN
+src/cards/units/0824_tomb_raider_barbara.cpp: DEFECT `if (runes < 7) return` ahead of pickTarget (intervening if) — fixed, test in tests_T11B.cpp
+src/cards/units/0680_elder_dragon.cpp: CLEAN (note: one prompt per location; a battlefield added while on the chain would be asked at resolution)
+src/cards/units/0729_starhound.cpp: DEFECT `if (legal.empty()) return` ahead of pickTarget — fixed, test in tests_T11B.cpp
+src/cards/units/0882_shadow_order_disciple.cpp: CLEAN
+src/cards/units/0754_daisy.cpp: CLEAN
+src/cards/units/0891_tail_cloaked_matriarch.cpp: CLEAN
+src/cards/units/0902_ocean_drake.cpp: CLEAN
+src/cards/units/0855_jayce_brilliant_inventor.cpp: CLEAN
+src/cards/units/0866_dame_the_despoiler.cpp: DEFECT `if (!isEmpowered) return` / `if (!bf) return` ahead of pickTarget ([Empowered][>]) — fixed, test in tests_T11B.cpp
+src/cards/units/0907_masa_crashing_thunder.cpp: CLEAN
+src/cards/units/0922_kennen_keeper_of_balance.cpp: CLEAN
+src/cards/units/0092_riptide_rex.cpp: CLEAN

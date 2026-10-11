@@ -28,7 +28,9 @@ public:
         auto still_in_deck = [&] {
             return ctx.state.getObject(ctx.source).zone == ZoneType::MainDeck;
         };
-        if (!costAlreadyPaid(ctx) && !still_in_deck()) return;  // already left the deck top
+        // Already off the deck top: no return ahead of the "may" —
+        // confirmOptional stores the "no" on the chain item, so the resolution
+        // asks nothing if I am back in the deck by then.
         int conf = confirmOptional(ctx, "Nocturne: banish me from the top of your deck?",
                                    still_in_deck);
         if (conf < 1) return;     // waiting / declined

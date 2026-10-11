@@ -32,7 +32,9 @@ public:
             return out;
         };
         auto still_legal = [&]() { return !buffed().empty(); };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may": with no buff to spend confirmOptional
+        // stores the "no" on the chain item, so the resolution asks nothing
+        // if a unit has been buffed since (CR 383.3.a).
         int conf = confirmOptional(ctx,
             "Monastery of Hirana: spend a buff to draw 1?", still_legal);
         if (conf < 1) return;   // waiting on the agent, declined or no buff to spend

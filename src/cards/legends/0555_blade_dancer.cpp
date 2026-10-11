@@ -25,15 +25,16 @@ public:
         if (ctx.firing_trigger == TriggerType::WhenIConquer) {
             // "you may pay [1] to ready me."
             if (!ctx.state.objectExists(ctx.source)) return;
-            auto& self = ctx.state.getObject(ctx.source);
-            if (!self.is_exhausted) return;  // already ready, nothing to do
+            // Already ready, or [1] unpayable: no return ahead of the "may" —
+            // confirmOptional stores the "no" on the chain item, so the
+            // resolution asks nothing if I have been exhausted (or the [1]
+            // has become payable) since (CR 383.3.a).
             auto still_legal = [&ctx]() {
                 if (!ctx.state.objectExists(ctx.source)) return false;
                 if (!ctx.state.getObject(ctx.source).is_exhausted) return false;
                 // CR 445.2 / 164.2.a: floating Energy or a ready rune can pay.
                 return payableEnergy(ctx.state, ctx.controller) >= 1;
             };
-            if (!costAlreadyPaid(ctx) && !still_legal()) return;
             int conf = confirmOptional(ctx, "Blade Dancer: pay [1] to ready me?",
                                        still_legal);
             if (conf < 1) return;

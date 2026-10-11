@@ -36,15 +36,20 @@ public:
         // "When I attack, choose an enemy unit here. Deal 2 to it for each
         //  Equipment attached to me."
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
-        const BattlefieldId here = *my_bf;
-        const PlayerId me = ctx.controller;
-        GameObjectId tgt = pickTarget(ctx, "Riven, Shattered: choose an enemy unit here",
-            chooseableUnits(ctx.state, me, [here, me](const GameObject& o) {
+        // Not at a battlefield: no unit is "here". No return ahead of
+        // pickTarget — it stores "no target" on the chain item, so the
+        // resolution asks nothing if I am at a battlefield again by then.
+        std::vector<GameObjectId> enemies_here;
+        if (auto my_bf = ctx.state.getObject(ctx.source).battlefieldId()) {
+            const BattlefieldId here = *my_bf;
+            const PlayerId me = ctx.controller;
+            enemies_here = chooseableUnits(ctx.state, me, [here, me](const GameObject& o) {
                 auto bf = o.battlefieldId();
                 return o.controller != me && bf && *bf == here;
-            }));
+            });
+        }
+        GameObjectId tgt = pickTarget(ctx, "Riven, Shattered: choose an enemy unit here",
+                                      enemies_here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         if (!ctx.state.objectExists(ctx.source)) return;

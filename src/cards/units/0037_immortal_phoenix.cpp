@@ -32,7 +32,9 @@ public:
             return in_trash() && payableEnergy(ctx.state, ctx.controller) >= 1 &&
                    payableOnePower(ctx.state, ctx.controller, Domain::Fury);
         };
-        if (!costAlreadyPaid(ctx) && !can_pay()) return;
+        // No return ahead of the "may": with [1][R] unpayable confirmOptional
+        // stores the "no" on the chain item, so the resolution asks nothing
+        // if it has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Immortal Phoenix: pay [1][R] to play from trash?",
                                    can_pay);
         if (conf < 1) return;     // waiting / declined / unaffordable

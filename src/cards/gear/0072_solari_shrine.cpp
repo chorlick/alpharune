@@ -34,7 +34,9 @@ public:
             return ctx.state.objectExists(ctx.source) &&
                    !ctx.state.getObject(ctx.source).is_exhausted;
         };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may": exhausted, confirmOptional stores the
+        // "no" on the chain item, so the resolution asks nothing if this has
+        // been readied since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Solari Shrine: exhaust to draw 1?",
                                    still_legal);
         if (conf < 1) return;

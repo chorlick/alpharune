@@ -35,7 +35,9 @@ public:
             return payableEnergy(ctx.state, ctx.controller) >= 1 &&
                    ctx.state.getObject(ctx.source).location.has_value();
         };
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
+        // No return ahead of the "may" (as the reprint, 537): with [1]
+        // unpayable confirmOptional stores the "no" on the chain item, so the
+        // resolution asks nothing if it has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Vayne: pay [1] to return me to hand?",
                                    still_legal);
         if (conf < 1) return;

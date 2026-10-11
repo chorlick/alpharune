@@ -5386,25 +5386,23 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
         else                                        mids.push_back(tid);
     }
 
+    // The key is the sorted (target, damage) list itself (it used to be that
+    // list printed into a string — plans/06 item 6.11).
+    using DamageKey = std::vector<std::pair<GameObjectId, int>>;
     auto canonicalKey = [](const std::vector<DamageAssignment>& da) {
         // Order-independent key: sort by (target, damage) so two cascades
         // that produce the same FINAL marked-damage pattern dedupe to one.
-        std::vector<std::pair<GameObjectId,int>> kv;
+        DamageKey kv;
         for (auto& a : da) if (a.damage > 0) kv.emplace_back(a.target_unit, a.damage);
         std::sort(kv.begin(), kv.end());
-        std::string s;
-        for (auto& [t, d] : kv) {
-            s += std::to_string(t); s += ':'; s += std::to_string(d); s += ',';
-        }
-        return s;
+        return kv;
     };
 
     std::vector<Intent>& options = adv.legal;
-    std::set<std::string> seen;
+    std::set<DamageKey> seen;
 
     auto emitIfNew = [&](std::vector<DamageAssignment>&& da) {
-        auto key = canonicalKey(da);
-        if (seen.insert(key).second) {
+        if (seen.insert(canonicalKey(da)).second) {
             options.push_back(Intent::assignCombatDamage(assigner, std::move(da)));
         }
     };
@@ -5437,7 +5435,8 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
         std::set<uint64_t> expanded;
         int nodes = 0;
         std::vector<DamageAssignment> cur;
-        std::function<void(uint64_t, int)> walk = [&](uint64_t taken, int remaining) {
+        // (A lambda that is handed itself: no std::function per combat.)
+        auto walk = [&](auto&& self, uint64_t taken, int remaining) -> void {
             if (options.size() >= kMaxDamageOptions || ++nodes > kMaxSearchNodes) return;
             // Current bucket = the first one that still has an untaken unit.
             int bucket = -1;
@@ -5459,12 +5458,12 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
                 // Same set fully served -> same continuations: expand once.
                 if (left > 0 && !expanded.insert(next).second) continue;
                 cur.push_back({flat[k], assigned});
-                walk(next, left);
+                self(self, next, left);
                 cur.pop_back();
                 if (options.size() >= kMaxDamageOptions || nodes > kMaxSearchNodes) return;
             }
         };
-        walk(0, total_damage);
+        walk(walk, 0, total_damage);
     }
 
     adv.kind = CombatDamageAdvance::Kind::NeedDecision;
@@ -6212,8 +6211,13 @@ void GameEngine::refreshFlowGrants() {
                 g.any_domain = flow.any_domain;
             } else {
                 // Flow granted for the turn equal to the card's own cost
-                // (Kennen, Storm of Shuriken).
-                auto it = obj.card_counters.find("__flow_granted_turn");
+                // (Kennen, Storm of Shuriken). This runs for every spell in a
+                // trash on every aura pass: a card with no counters is not
+                // looked up at all, and the key is built once, not per lookup
+                // (plans/06 item 6.11).
+                if (obj.card_counters.empty()) continue;
+                static const std::string kFlowGrantedTurn = "__flow_granted_turn";
+                auto it = obj.card_counters.find(kFlowGrantedTurn);
                 if (it == obj.card_counters.end() || it->second != state_.turn.turn_number)
                     continue;
                 const auto& def = card_db_.get(obj.card_def_id);
@@ -6320,7 +6324,10 @@ void GameEngine::cleanup() {
 
     // ── "Becomes Mighty" edge detection (CR: a unit is Mighty at 5+ [M]) ──
     // Run once after the cleanup loop settles so the Might layers are final.
-    // We remember per-unit Mighty state in card_counters["__was_mighty"] and
+    // We remember per-unit Mighty state in GameObject::was_mighty (a plain
+    // field: this runs for every unit in play on every cleanup, and a
+    // string-keyed card_counters entry cost a hash and a lookup each time —
+    // plans/06 item 6.11) and
     // emit a generic ObjectStateChangedEvent only on a <5 -> >=5 transition;
     // TriggerManager::onObjectStateChanged dispatches WhenAUnitBecomesMighty.
     // Falling below 5 re-arms the edge so it can fire again later this/next
@@ -6331,17 +6338,15 @@ void GameEngine::cleanup() {
         if (!obj.location.has_value()) {
             // Off the board the edge is forgotten, so a unit that comes back
             // at 5+ [M] becomes Mighty again.
-            auto was_it = obj.card_counters.find("__was_mighty");
-            if (was_it != obj.card_counters.end()) was_it->second = 0;
+            obj.was_mighty = false;
             continue;
         }
         bool mighty = obj.current_might >= 5;
-        bool was = obj.card_counters["__was_mighty"] != 0;
-        if (mighty && !was) {
-            obj.card_counters["__was_mighty"] = 1;
+        if (mighty && !obj.was_mighty) {
+            obj.was_mighty = true;
             events_.emit(ObjectStateChangedEvent{id, "became_mighty"});
-        } else if (!mighty && was) {
-            obj.card_counters["__was_mighty"] = 0;
+        } else if (!mighty && obj.was_mighty) {
+            obj.was_mighty = false;
         }
     }
     // Other "my Might becomes N or more" edges are the trigger manager's.

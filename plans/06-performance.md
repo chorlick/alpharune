@@ -66,7 +66,7 @@ yi_rebuild, seed 20261010, 6 threads) does not go through any of the four
   - `GameObject` holds two `std::string`-keyed `unordered_map`s, a tag `vector<string>` and about eight other vectors (`game_object.h:28,184,191`), which makes any state copy expensive.
   - Fix direction: per-zone / per-location id indexes; enum-keyed counters.
 
-- [ ] **6.11 Smaller items**
-  - `card_counters["__was_mighty"]` hashes and inserts a string key for every on-board unit on every cleanup (`game_engine.cpp:5015`).
-  - `refreshFlowGrants` erases and rebuilds grants with a string-keyed lookup per trash spell on every aura pass (`:4877-4911`).
-  - `advanceCombatDamage` dedups through `std::set<std::string>` keys and a recursive `std::function` (`:4060-4142`).
+- [x] **6.11 Smaller items** — FIXED, each of the three (below); test: PerfEngineCards.BecomingMightyIsAnnouncedOncePerCrossing, and the existing combat-damage option tests and Kennen's Flow test for the other two. Together: random 1000 games 1 thread 2.410 s -> 2.354 s, Irelia-deck batch 681 ms -> 650 ms (the cleanup loop of the first sub-item is nearly all of it).
+  - `card_counters["__was_mighty"]` hashes and inserts a string key for every on-board unit on every cleanup (`game_engine.cpp:5015`). — FIXED: the edge is a plain field, `GameObject::was_mighty`, with the same life (set and cleared by the same loop, forgotten off the board). Nothing else read the counter.
+  - `refreshFlowGrants` erases and rebuilds grants with a string-keyed lookup per trash spell on every aura pass (`:4877-4911`). — FIXED: a spell with no counters is not looked up, and the key is a static string, not one built (and heap-allocated: 19 characters) per lookup. The erase-and-rebuild stays: the grants are a continuous effect of what is in the trash now.
+  - `advanceCombatDamage` dedups through `std::set<std::string>` keys and a recursive `std::function` (`:4060-4142`). — FIXED: the dedup key is the sorted (target, damage) list itself, and the walk is a lambda handed itself. Same options in the same order.

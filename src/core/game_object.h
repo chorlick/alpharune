@@ -149,6 +149,8 @@ struct GameObject {
                                  // deflectCostFor, zeroed at the expiration step
     int temp_might_bonus = 0;    // temporary +N might applied "this turn"
     int moves_this_turn = 0;     // times this unit moved this turn (Kayn, Unleashed)
+    bool was_mighty = false;     // had 5+ [M] at the last cleanup while on the board:
+                                 // the "becomes [Mighty]" edge (GameEngine::cleanup)
     bool immune_to_damage = false; // recomputed each recalculateAuras; set by a
                                    // card's applyPassiveAura when its condition
                                    // holds (Kayn, Unleashed: "if I have moved twice

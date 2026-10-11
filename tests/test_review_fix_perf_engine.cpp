@@ -309,7 +309,7 @@ TEST_F(PerfEngineGame, AGameIsTheSameWithAndWithoutAListener) {
     }
 }
 
-// ─── 6.6: cleanup ───────────────────────────────────────────────────────────
+// ─── 6.6 / 6.11: cleanup ────────────────────────────────────────────────────
 
 constexpr CardDefId kTCountingElder = 1040;   // unit: "any amount of your damage is enough to kill"
 
@@ -379,6 +379,44 @@ TEST_F(PerfEngineCards, DamageAUnitDidToItsOwnSideIsNotTheOtherPlayersDamage) {
     withEngine([](GameEngine& e) { e.testHook_processLethalDamage(); });
     EXPECT_TRUE(onBoard(own_goal));
     EXPECT_EQ(TCountingElder::asked, 0);
+}
+
+// 6.11 — the "becomes [Mighty]" edge is kept in GameObject::was_mighty, not in
+// a string-keyed counter: it fires once on the way up, re-arms on the way
+// down and is forgotten off the board.
+TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
+    const GameObjectId unit = addUnit(P1, kInvalidId, 4);
+    int announced = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == unit && e.what_changed == "became_mighty") ++announced;
+    });
+    auto cleanup = [&] { withEngine([](GameEngine& e) { e.testHook_cleanup(); }); };
+    cleanup();
+    EXPECT_EQ(announced, 0);
+    EXPECT_FALSE(o(unit).was_mighty);
+    o(unit).base_might = 5;
+    cleanup();
+    EXPECT_EQ(announced, 1);
+    EXPECT_TRUE(o(unit).was_mighty);
+    cleanup();
+    EXPECT_EQ(announced, 1) << "still Mighty: not announced again";
+    o(unit).base_might = 4;
+    cleanup();
+    EXPECT_FALSE(o(unit).was_mighty) << "below 5 the edge is armed again";
+    o(unit).base_might = 6;
+    cleanup();
+    EXPECT_EQ(announced, 2);
+    // Off the board the edge is forgotten: back at 5+ it becomes Mighty again.
+    o(unit).location = std::nullopt;
+    o(unit).zone = ZoneType::Hand;
+    cleanup();
+    EXPECT_FALSE(o(unit).was_mighty);
+    o(unit).location = BaseLocation{P1};
+    o(unit).zone = ZoneType::Base;
+    cleanup();
+    EXPECT_EQ(announced, 3);
+    EXPECT_TRUE(o(unit).card_counters.empty()) << "the edge no longer lives in card_counters";
+    conn.disconnect();
 }
 
 }  // namespace test_review_fix_perf_engine

@@ -827,6 +827,69 @@ inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
     return false;
 }
 
+// ── Played from facedown (CR 811) ───────────────────────────────────────────
+/// The battlefield the spell `spell` was hidden at, if this play of it is from
+/// facedown (stamped by the engine as it leaves the facedown zone). A hidden
+/// spell's targets, and any unit it plays, are tied to that battlefield (CR
+/// 811.1.d.2 / 811.1.d.5).
+inline std::optional<BattlefieldId> facedownPlayBattlefield(const GameState& state,
+                                                            GameObjectId spell) {
+    if (!state.objectExists(spell)) return std::nullopt;
+    const auto& counters = state.getObject(spell).card_counters;
+    auto turn = counters.find("__facedown_play_turn");
+    auto bf = counters.find("__facedown_play_bf");
+    if (turn == counters.end() || bf == counters.end()) return std::nullopt;
+    if (turn->second != state.turn.turn_number || bf->second <= 0) return std::nullopt;
+    return static_cast<BattlefieldId>(bf->second - 1);
+}
+
+// ── Where an effect-played unit goes (CR 355.2.a) ───────────────────────────
+// "Play a unit / a unit token" with no location printed: its controller's base
+// or a battlefield they control, their choice. One Card::pickMode mode per
+// location:
+//
+//     auto where = playLocations(ctx.state, ctx.controller, facedownPlayBattlefield(...));
+//     int mode = pickMode(ctx, label, where.count(), where.labels);
+//     if (mode < 0 || mode >= where.count()) return;
+//     ... where.locations[mode] ...
+struct PlayLocations {
+    std::vector<LocationId> locations;
+    std::vector<std::string> labels;
+    int count() const { return static_cast<int>(locations.size()); }
+};
+/// `only_bf`: the spell was played from facedown at that battlefield, so the
+/// unit must be played there (CR 811.1.d.5). `include_base` = false for text
+/// that names "a battlefield you control".
+inline PlayLocations playLocations(const GameState& state, PlayerId player,
+                                   std::optional<BattlefieldId> only_bf = std::nullopt,
+                                   bool include_base = true) {
+    PlayLocations out;
+    auto bfName = [&state](const BattlefieldState& bf) {
+        return state.objectExists(bf.card_object_id)
+            ? state.getObject(bf.card_object_id).name
+            : "Battlefield #" + std::to_string(static_cast<int>(bf.id));
+    };
+    if (only_bf.has_value()) {
+        for (const auto& bf : state.battlefields)
+            if (bf.id == *only_bf) {
+                out.locations.push_back(LocationId{BattlefieldLocation{bf.id}});
+                out.labels.push_back(bfName(bf));
+            }
+        return out;
+    }
+    if (include_base) {
+        out.locations.push_back(LocationId{BaseLocation{player}});
+        out.labels.push_back("Base");
+    }
+    for (const auto& bf : state.battlefields) {
+        if (out.locations.size() >= 32) break;   // pickMode's mask is 32 bits
+        if (!bf.controller.has_value() || *bf.controller != player) continue;
+        out.locations.push_back(LocationId{BattlefieldLocation{bf.id}});
+        out.labels.push_back(bfName(bf));
+    }
+    return out;
+}
+
 /// Destinations a card effect may move `u` to, int-coded for valChoice:
 /// 0 = its controller's base, 1 + i = battlefield i. Excludes where it is now.
 inline std::vector<int> moveDests(const GameState& state, const GameObject& u) {

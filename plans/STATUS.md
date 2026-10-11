@@ -48,13 +48,13 @@ iteration must apply these.
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
 |---|---|---|---|---|---|
-| 1 | search | returned | `44a7541` (merged in batch, pending verification) | 1659 passed, 0 failed (on its branch) | all 16 items closed; both baseline failures fixed; clone-equiv 10/10; new binary `riftbound_openspiel_tests` |
-| 1 | helpers | returned | `2e0f181` (merged in batch, pending verification) | 1649 passed, 2 baseline failures (on its branch) | 4 items closed; Thrill of the Hunt 745 and Zenith Blade 258 fixed with red-then-green tests; 3.1, 3.24, 7.30 open for card streams |
+| 1 | search | merged | `44a7541` | batch: 1707 run, 1707 passed, 0 failed | all 16 items closed; both baseline failures fixed; clone-equiv 10/10; new binary `riftbound_openspiel_tests` |
+| 1 | helpers | merged | `2e0f181` | batch: 1707 run, 1707 passed, 0 failed | 4 items closed; Thrill of the Hunt 745 and Zenith Blade 258 fixed with red-then-green tests; 3.1, 3.24, 7.30 open for card streams |
 | 1 | executor | merged | `ac49a38` (merge `e1eb9b8`) | 1560 run, 1557 passed, 2 baseline failures | all 8 items closed; 2 existing tests corrected (CR 427.1.b.1; temp Deflect) |
 | 1 | chain-triggers | merged | `6d4dd76` (merge `c9ad6b4`) | 1583 run, 1580 passed, 2 baseline failures | 12 items closed; 7.1 decision recorded (cards use `pickTarget` + `kFinalizeTrigger`); 8.9 has one bullet left, in carry-over |
 | 1 | engine-auras-costs | merged | `3ba5256` (merge `a8af2ef`) | 1631 run, 1628 passed, 2 baseline failures | 10 items closed; 5.4 and 8.4 partly done, remainder in carry-over; edited 25 card files (listed in carry-over) |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
-| 1 | io-cli | returned | `ae7961b` (merged in batch, pending verification) | 1655 passed, 2 baseline failures (on its branch) | all 21 items of 04 ticked; sent back for: decision-id `handleChoose` + seat (4.3/1.10), close the trace-log hidden-card leak (4.5), confirm batch exit on engine exception, CLAUDE.md / `scripts/generate_replays.py` references to the deleted OpenSpiel CLI |
+| 1 | io-cli | returned | `ae7961b` merged and verified in batch (1707 passed, 0 failed); follow-up commits pending | | all 21 items of 04 ticked; sent back for: decision-id `handleChoose` + seat (4.3/1.10), close the trace-log hidden-card leak (4.5), confirm batch exit on engine exception, CLAUDE.md / `scripts/generate_replays.py` references to the deleted OpenSpiel CLI |
 | 1 | integrity | running | | | based on `ec13e47`; also carries two build tasks: ccache across worktrees, unity-built tests |
 | 2 | cards-c0 | pending | | | |
 | 2 | cards-c1 | pending | | | |
@@ -180,3 +180,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 merged engine-auras-costs (`a8af2ef`), suite 1628/1631 with only the 2 baseline failures; 10 boxes ticked and verified. Worktree and branch removed.
 - 2026-10-10 helpers (`2e0f181`) and search (`44a7541`) merged as one batch; verification build queued. 11 search rows to carry-over.
 - 2026-10-10 io-cli (`ae7961b`) merged into the same batch; io-cli sent back for four follow-ups. 6 rows to carry-over.
+- 2026-10-10 batch helpers + search + io-cli verified: 1707 run, 1707 passed, 0 failed, 28 disabled (27 are the 7.1 work-list rows). Baseline failures are gone (7.40). helpers and search worktrees and branches removed; io-cli kept for its follow-up (also fixing a WebSocket-handshake race it found by repeating its server tests).

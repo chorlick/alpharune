@@ -38,7 +38,6 @@ private:
         d.domains = {Domain::Mind, Domain::Chaos};
         d.tags = {R"RB(Diana)RB"};
         d.rarity = Rarity::Showcase;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction][>] [E]: [Add] [1]. Spend this Energy only during showdowns.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8bd4006c34aa020211e501e3cb7ee14ab5b4c41f-744x1039.png)RB";
         return d;

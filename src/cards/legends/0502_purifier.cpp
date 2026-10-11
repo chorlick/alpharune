@@ -57,8 +57,6 @@ private:
         d.domains = {Domain::Fury, Domain::Body};
         d.tags = {R"RB(Lucian)RB"};
         d.rarity = Rarity::Rare;
-        d.assault_value = 1;
-        d.keywords.set(Keyword::Assault);
         d.ability_text = R"RB(Your Equipment each give [Assault]. (+1 [M] while equipped unit is an attacker.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/450cfb71b8890904d48b37a24bbdc78f8d849614-744x1039.png)RB";
         return d;

@@ -39,10 +39,7 @@ private:
         d.domains = {Domain::Fury};
         d.energy_cost = 1;
         d.power_cost = 1;
-        d.assault_value = 2;
         d.keywords.set(Keyword::Action);
-        d.keywords.set(Keyword::Assault);
-        d.keywords.set(Keyword::Ganking);
         d.ability_text = R"RB([Action] (Play on your turn or in showdowns.)
 Give a unit [Assault 2] and [Ganking] this turn. (+2 [M] while it's an attacker. It can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8046c9f133be83268d7dc9788abea58f461914d8-744x1039.png)RB";

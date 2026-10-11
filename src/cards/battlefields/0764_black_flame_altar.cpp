@@ -57,9 +57,6 @@ private:
         d.artist = R"RB(Envar Studio)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.shield_value = 1;
-        d.keywords.set(Keyword::Shield);
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(Units here with [Temporary] have [Shield]. (+1 [M] while they're defenders.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8cd4edde3e59c8edc8cdcea626fc443c5ed6e1f2-1039x744.png?accountingTag=RB)RB";
         return d;

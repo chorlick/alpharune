@@ -41,8 +41,6 @@ private:
         d.artist = R"RB(Six More Vodka)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.shield_value = 2;
-        d.keywords.set(Keyword::Shield);
         d.ability_text = R"RB(When you defend here, choose a unit. It gains [Shield 2] this combat. (+2 [M] while it's a defender.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/45363bbd907f4f3717868cb04b3cfed814b3bb32-1038x744.png)RB";
         return d;

@@ -89,7 +89,6 @@ private:
         d.power_cost = 1;
         d.might = 3;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Action);
         d.ability_text = R"RB(When I attack or defend, deal damage equal to my Might to an enemy unit here.
 I don't deal combat damage.
 [B]: [Action] — Move me to your base.)RB";

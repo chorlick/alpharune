@@ -35,9 +35,7 @@ private:
         d.card_type = CardType::Spell;
         d.domains = {Domain::Fury};
         d.energy_cost = 1;
-        d.assault_value = 3;
         d.keywords.set(Keyword::Action);
-        d.keywords.set(Keyword::Assault);
         d.ability_text = R"RB([Action] (Play on your turn or in showdowns.)
 Give a unit [Assault 3] this turn. (+3 [M] while it's an attacker.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/95d476a1e88ff547fb846149619177bc7e3cea9f-744x1039.png?accountingTag=RB)RB";

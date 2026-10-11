@@ -34,7 +34,6 @@ private:
         d.assault_value = 2;
         d.keywords.set(Keyword::Ambush);
         d.keywords.set(Keyword::Assault);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 [Assault 2] (+2 [M] while I'm an attacker.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/5db9d66fc22887e8686a13ffdfe480106cbd3b35-744x1039.png)RB";

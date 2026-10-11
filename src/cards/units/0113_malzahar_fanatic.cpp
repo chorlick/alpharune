@@ -74,7 +74,6 @@ private:
         d.energy_cost = 4;
         d.might = 3;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Action);
         d.ability_text = R"RB(Kill a friendly unit or gear, [E]: [Action] — [Add] [A][A]. (Use on your turn or in showdowns. Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ba1fa3a18b1c2ff132ad536577e53deb49bce1f9-744x1039.png)RB";
         return d;

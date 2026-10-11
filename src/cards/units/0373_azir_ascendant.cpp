@@ -148,7 +148,6 @@ private:
         d.power_cost = 1;
         d.might = 6;
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Action);
         d.ability_text = R"RB([G]: [Action] — Choose a unit you control. Move me to its location and it to my original location. If it's equipped, you may attach one of its Equipment to me. Use only once per turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3c42c02f6ebd2e4d4a640c2c6ac081231439888e-744x1039.png?accountingTag=RB)RB";
         return d;

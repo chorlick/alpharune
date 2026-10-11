@@ -56,6 +56,13 @@ public:
         }
         return out;
     }
+    // A battlefield the controller may play a unit to: one they control, not
+    // one where units can't be played (Rockfall Path), and none while they
+    // may only play units to base (Mageseeker Warden).
+    static bool unitPlayableAt(const CardContext& ctx, const BattlefieldState& bf) {
+        return bf.controller.has_value() && *bf.controller == ctx.controller &&
+               !bf.blocks_unit_play && !ctx.state.player(ctx.controller).units_play_base_only;
+    }
     static Intent intChoice(PlayerId p, int value, const std::string& label) {
         Intent i;
         i.type = IntentType::MakeChoice;
@@ -135,11 +142,12 @@ public:
                 return;
             }
 
-            // A unit goes to your base or a battlefield you control; gear to base.
+            // A unit goes to your base or a battlefield you control (CR
+            // 355.2.a) that units may be played to; gear to base.
             std::vector<Intent> where;
             if (ctx.state.getObject(chosen).isUnit()) {
                 for (size_t i = 0; i < bfs.size(); ++i)
-                    if (bfs[i].controller.has_value() && *bfs[i].controller == ctx.controller)
+                    if (unitPlayableAt(ctx, bfs[i]))
                         where.push_back(intChoice(ctx.controller, static_cast<int>(i) + 1,
                                                   "Wild Claw: play to battlefield " + std::to_string(i)));
             }
@@ -159,8 +167,7 @@ public:
             const GameObjectId chosen = static_cast<GameObjectId>(ri.resume_data[0]);
             LocationId loc = BaseLocation{ctx.controller};
             const int v = (choice && choice->chosen_value.has_value()) ? *choice->chosen_value : 0;
-            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() &&
-                bfs[v - 1].controller.has_value() && *bfs[v - 1].controller == ctx.controller)
+            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(ctx, bfs[v - 1]))
                 loc = BattlefieldLocation{bfs[v - 1].id};
             ctx.executor.playPayingCost(ctx.controller, chosen, loc, kReduced);
             ri.resume_point = 3;

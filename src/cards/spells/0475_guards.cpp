@@ -28,10 +28,26 @@ public:
         // No location is printed, so the token is played like any unit: base
         // or a battlefield you control — the battlefield this was hidden at
         // when played from facedown (CR 811.1.d.5).
-        const auto where = playLocations(ctx.state, ctx.controller,
-                                         facedownPlayBattlefield(ctx.state, ctx.source));
+        const auto hidden_at = facedownPlayBattlefield(ctx.state, ctx.source);
+        const auto where = playLocations(ctx.state, ctx.controller, hidden_at);
+        // CR 355.2.a: not a battlefield units can't be played to (Rockfall
+        // Path), and no battlefield at all for a player who may only play
+        // units to base (Mageseeker Warden). The modes keep their numbers.
+        uint32_t playable = 0;
+        for (int i = 0; i < where.count() && i < 32; ++i) {
+            bool ok = true;
+            if (const auto* at = std::get_if<BattlefieldLocation>(&where.locations[i])) {
+                ok = !ctx.state.player(ctx.controller).units_play_base_only;
+                for (const auto& bf : ctx.state.battlefields)
+                    if (bf.id == at->id && bf.blocks_unit_play) ok = false;
+            }
+            if (ok) playable |= 1u << i;
+        }
+        // Played from facedown the unit must go to that battlefield (CR
+        // 811.1.d.5): the one location offered stays as it is.
+        if (hidden_at.has_value()) playable = 0xFFFFFFFFu;
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
-                            where.count(), where.labels);
+                            where.count(), where.labels, playable);
         if (mode < 0 || mode >= where.count()) return;   // -1 waiting for the agent
 
         GameObjectId tok = kInvalidId;

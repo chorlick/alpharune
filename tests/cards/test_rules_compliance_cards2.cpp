@@ -1216,7 +1216,7 @@ TEST_F(RulesCards2Test, RulesCards2_Arise_UpToTwoMayBeNone) {
     EXPECT_EQ(seen.prompts, 1);
     ASSERT_EQ(countOnBoard(P1, "Sand Soldier"), 3);
     for (const auto& [id, obj] : state.objects)
-        if (obj.name == "Sand Soldier") EXPECT_TRUE(obj.is_exhausted) << "\"up to two\": none";
+        if (obj.name == "Sand Soldier") { EXPECT_TRUE(obj.is_exhausted) << "\"up to two\": none"; }
 }
 
 TEST_F(RulesCards2Test, RulesCards2_Arise_OneTokenOnePick) {

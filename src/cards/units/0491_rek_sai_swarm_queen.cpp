@@ -13,24 +13,35 @@ namespace {
 
 // "When I attack, you may reveal the top 2 cards of your Main Deck. You may
 //  banish one, then play it. If it is a unit, you may play it here. Recycle the
-//  rest." Played for free (no partial-cost path).
+//  rest." The cost of the played card is not waived.
+//
+// The first "you may" opens the effect: it is decided as the ability is
+// finalized (CR 383.3.a). The later ones depend on the cards revealed and are
+// decided as it resolves (CR 383.3.a.3).
 
 class RekSaiSwarmQueen : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
         auto& ps = ctx.state.player(ctx.controller);
         // "you may reveal the top 2 cards of your Main Deck"
         const int go = confirmOptional(ctx, "Rek'Sai: reveal the top 2 cards of your Main Deck?",
                                        [&]() { return !ps.main_deck.empty(); });
-        if (go != 1) return;   // waiting / declined / empty deck
+        if (go == -1) return;                 // waiting
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (go != 1) return;                  // declined / empty deck
 
         // Progress of the reveal, past the choice helpers' own resume_data
-        // slots: 0 = not revealed yet, 1 = waiting for the pick, 2 = done.
+        // slots: 0 = not revealed yet, 1 = waiting for the pick, 3 = a card
+        // was banished and is being played, 2 = done. [kPickedSlot] is that
+        // card, [kRestSlot] the other revealed card (kInvalidId if none).
         constexpr size_t kStepSlot = Card::kChoiceStateSlot + 1;
-        if (ri.resume_data.size() <= kStepSlot) ri.resume_data.resize(kStepSlot + 1, 0);
+        constexpr size_t kPickedSlot = kStepSlot + 1;
+        constexpr size_t kRestSlot = kStepSlot + 2;
+        if (ri.resume_data.size() <= kRestSlot) ri.resume_data.resize(kRestSlot + 1, 0);
         if (ri.resume_data[kStepSlot] == 2) return;
         if (ri.resume_data[kStepSlot] == 0) {
             // Void Hatchling: "If you would reveal cards from a deck, look at
@@ -58,8 +69,12 @@ public:
             ri.resume_data[kStepSlot] = 1;
             return;
         }
-        {
-            ri.resume_data[kStepSlot] = 2;
+        auto recycle = [&](GameObjectId cid) {
+            if (cid == kInvalidId || !ctx.state.objectExists(cid)) return;
+            if (deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone()))
+                ctx.executor.recycleCards(ctx.controller, {cid});
+        };
+        if (ri.resume_data[kStepSlot] == 1) {
             auto choice = ctx.executor.takeChoice();
             GameObjectId picked = kInvalidId;
             if (choice && !choice->chosen_objects.empty()) picked = choice->chosen_objects[0];
@@ -67,31 +82,73 @@ public:
             std::vector<GameObjectId> top;
             for (int i = 0; i < n; ++i) top.push_back(ps.main_deck[ps.main_deck.size() - 1 - i]);
             if (std::find(top.begin(), top.end(), picked) == top.end()) picked = kInvalidId;
-            // Banish + play the picked card; if a unit, play it "here" (Rek'Sai's BF).
-            if (picked != kInvalidId) {
-                // Through the executor: it counts the banish and announces it
-                // ("When you banish a card you own").
-                ctx.executor.banishObject(picked);
-                std::optional<LocationId> loc;
-                if (ctx.state.getObject(picked).isUnit()) {
-                    auto bf = ctx.state.getObject(ctx.source).battlefieldId();
-                    if (bf) loc = LocationId{BattlefieldLocation{*bf}};  // "play it here"
-                }
-                // The cost is not waived (CR 356.1.b.2): unpaid, it stays
-                // banished. playPayingCost takes it out of banishment itself.
-                if (ctx.executor.canPlayPayingCost(ctx.controller, picked))
-                    ctx.executor.playPayingCost(ctx.controller, picked, loc);
+            if (picked == kInvalidId) {
+                // Nothing banished: recycle both.
+                ri.resume_data[kStepSlot] = 2;
+                std::vector<GameObjectId> rest;
+                for (auto cid : top)
+                    if (deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone()))
+                        rest.push_back(cid);
+                if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
+                ctx.events.logTrace("REK'SAI: revealed top 2, banished none, recycled them");
+                return;
             }
-            // Recycle the rest.
-            std::vector<GameObjectId> rest;
-            for (auto cid : top) {
-                if (cid == picked) continue;
-                deck::take(ctx.state, cid, deck::Place::Held, knowledge::everyone());
-                rest.push_back(cid);
-            }
-            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
-            ctx.events.logTrace("REK'SAI: revealed top 2, banished+played one, recycled rest");
+            GameObjectId other = kInvalidId;
+            for (auto cid : top) if (cid != picked) other = cid;
+            // Through the executor: it counts the banish and announces it
+            // ("When you banish a card you own").
+            ctx.executor.banishObject(picked);
+            ri.resume_data[kPickedSlot] = static_cast<int32_t>(picked);
+            ri.resume_data[kRestSlot] = static_cast<int32_t>(other);
+            ri.resume_data[kStepSlot] = 3;
         }
+
+        // "then play it". The cost is not waived (CR 356.1.b.2): unpaid, it
+        // stays banished. playPayingCost takes it out of banishment itself.
+        const auto picked = static_cast<GameObjectId>(ri.resume_data[kPickedSlot]);
+        const auto other = static_cast<GameObjectId>(ri.resume_data[kRestSlot]);
+        if (ctx.state.objectExists(picked) &&
+            ctx.executor.canPlayPayingCost(ctx.controller, picked)) {
+            std::optional<LocationId> loc;
+            if (ctx.state.getObject(picked).isUnit()) {
+                // A unit is played to its controller's base or a battlefield
+                // they control (CR 355.2.a); "If it is a unit, you may play it
+                // here" adds my battlefield to those (CR 355.2.b) — a
+                // permission, not an instruction, so the controller chooses.
+                // Mode 0 = base, mode 1 + i = battlefield slot i, the numbering
+                // of pickEffectPlayLocation. Never a battlefield units can't
+                // be played to, nor any battlefield for a player who may only
+                // play units to base.
+                const auto& bfs = ctx.state.battlefields;
+                const auto here = ctx.state.objectExists(ctx.source)
+                    ? ctx.state.getObject(ctx.source).battlefieldId() : std::nullopt;
+                uint32_t mask = 1u;
+                std::vector<std::string> labels{"Base"};
+                for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
+                    labels.push_back("Battlefield #" + std::to_string(bfs[i].id));
+                    if (ps.units_play_base_only || bfs[i].blocks_unit_play) continue;
+                    const bool mine = bfs[i].controller.has_value() &&
+                                      *bfs[i].controller == ctx.controller;
+                    if (mine || (here.has_value() && *here == bfs[i].id)) mask |= 1u << (i + 1);
+                }
+                int mode = 0;
+                if (mask != 1u) {
+                    mode = pickMode(ctx, "Rek'Sai: play it to",
+                                    static_cast<int>(labels.size()), labels, mask);
+                    if (mode == -1) return;   // waiting for the agent
+                }
+                if (mode >= 1 && static_cast<size_t>(mode) <= bfs.size() &&
+                    (mask & (1u << mode)))
+                    loc = LocationId{BattlefieldLocation{bfs[mode - 1].id}};
+                else
+                    loc = LocationId{BaseLocation{ctx.controller}};
+            }
+            ctx.executor.playPayingCost(ctx.controller, picked, loc);
+        }
+        ri.resume_data[kStepSlot] = 2;
+        // Recycle the rest.
+        recycle(other);
+        ctx.events.logTrace("REK'SAI: revealed top 2, banished+played one, recycled rest");
     }
 private:
     const CardDef def_ = [] {

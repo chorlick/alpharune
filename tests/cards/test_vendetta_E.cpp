@@ -539,7 +539,7 @@ TEST_F(VendettaE, Vendetta_DeathMark_BurnsThreeAndMakesAShadowClone) {
     EXPECT_EQ(state.player(P1).cards_burned_this_turn, 3);
     EXPECT_EQ(tokenCount(P1, "Shadow Clone"), 1);
     for (auto& [id, obj] : state.objects)
-        if (obj.name == "Shadow Clone") EXPECT_EQ(obj.base_might, 0);
+        if (obj.name == "Shadow Clone") { EXPECT_EQ(obj.base_might, 0); }
     auto f = card_registry.get(kDeathMark)->flowCost();
     EXPECT_EQ(f.energy, 1);
     EXPECT_EQ(f.power, 2);
@@ -990,7 +990,7 @@ TEST_F(VendettaE, Vendetta_BottledConstellation_KillThreeToScore) {
             EXPECT_FALSE(offers(legal, gear)) << "3 OTHER";
             EXPECT_FALSE(offers(legal, enemy)) << "friendly only";
             const GameObjectId order[] = {a, b, c};
-            if (call == 3) EXPECT_FALSE(offers(legal, a)) << "no double-pick";
+            if (call == 3) { EXPECT_FALSE(offers(legal, a)) << "no double-pick"; }
             return script({O(order[call - 2])})(legal);
         }, exec, TriggerType::AtStartOfMain);
 

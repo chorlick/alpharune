@@ -364,7 +364,7 @@ TEST_F(JhinDeckTest, DeadlyFlourish_Lethal_SpawnsGoldToken) {
         return legal.empty() ? Intent{} : legal.front();
     });
     cm.processFEPR(
-        [&](PlayerId p, const std::vector<Intent>& legal) {
+        [&](PlayerId, const std::vector<Intent>& legal) {
             return agent.selectAction(state, legal);
         },
         [&](const ChainItem&) {},

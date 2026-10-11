@@ -61,6 +61,8 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Fury};
+        // Tags as printed on SFD-223 (cards/raw/gallery_raw.json): the Spiritforged
+        // reprint is not a copy of the Origins def — OGN-035 (card 35) prints Vayne, Demacia without Sentinel.
         d.tags = {R"RB(Vayne)RB", R"RB(Demacia)RB", R"RB(Sentinel)RB"};
         d.energy_cost = 4;
         d.power_cost = 1;

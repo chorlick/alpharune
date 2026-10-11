@@ -54,9 +54,12 @@ public:
             for (auto cid : in_trashes())
                 if (std::find(picks.begin(), picks.end(), cid) == picks.end()) rest.push_back(cid);
             if (rest.empty()) break;
-            const auto pick = selectObject(ctx, "Forge of the Future: recycle a card from a trash (" +
-                                                std::to_string(i + 1) + " of up to 4)",
-                                           rest, 7 + 2 * i, /*may_decline=*/true);
+            // += rather than chained operator+ (GCC 13 false -Warray-bounds, as
+            // in Garbage Grabber).
+            std::string label = "Forge of the Future: recycle a card from a trash (";
+            label += std::to_string(i + 1);
+            label += " of up to 4)";
+            const auto pick = selectObject(ctx, label, rest, 7 + 2 * i, /*may_decline=*/true);
             if (!pick.has_value()) return;          // waiting on the agent
             if (*pick == kInvalidId) break;         // "up to": done
             if (std::find(rest.begin(), rest.end(), *pick) == rest.end()) break;

@@ -49,6 +49,8 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Order};
+        // Tags as printed on SFD-236 (cards/raw/gallery_raw.json): the Spiritforged
+        // reprint is not a copy of the Origins def — OGN-243 (card 243) also prints Noxus.
         d.tags = {R"RB(Trifarian)RB", R"RB(Darius)RB"};
         d.energy_cost = 6;
         d.power_cost = 1;

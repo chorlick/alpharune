@@ -45,6 +45,8 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Chaos};
+        // Tags as printed on SFD-235 (cards/raw/gallery_raw.json): the Spiritforged
+        // reprint is not a copy of the Origins def — OGN-205 (card 205) also prints Ionia.
         d.tags = {R"RB(Yasuo)RB"};
         d.energy_cost = 5;
         d.power_cost = 1;

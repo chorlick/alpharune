@@ -30,6 +30,7 @@ public:
             for (auto& [id, obj] : ctx.state.objects)
                 if (obj.isGear() && obj.controller == ctx.controller && obj.location.has_value())
                     out.push_back(id);
+            std::sort(out.begin(), out.end());   // stable option order, not hash order
             return out;
         };
         const int go = confirmOptional(ctx, "Veiled Temple: ready a friendly gear?",

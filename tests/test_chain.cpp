@@ -506,7 +506,7 @@ TEST_F(ChainTestFixture, HextechRayTargetsOnlyUnitsAtBattlefield) {
     // Unit at BF -- valid target
     auto bf_unit = addUnit(state, PlayerId::Player2, 5, 0);
     // Unit at base -- NOT valid target
-    auto base_unit = addUnit(state, PlayerId::Player2, 5);
+    addUnit(state, PlayerId::Player2, 5);
     // Gear at BF -- NOT valid target (not a unit)
     auto gear_id = state.createObject();
     auto& gear = state.getObject(gear_id);
@@ -785,7 +785,7 @@ TEST_F(ChainTestFixture, StunReducesCombatMight) {
     state.turn.turn_player = PlayerId::Player1;
 
     auto attacker = addUnit(state, PlayerId::Player1, 5, 0);
-    auto defender = addUnit(state, PlayerId::Player2, 3, 0);
+    addUnit(state, PlayerId::Player2, 3, 0);
 
     // Stun the attacker
     state.getObject(attacker).is_stunned = true;
@@ -820,7 +820,7 @@ TEST_F(ChainTestFixture, TemporaryBuffsExpire) {
 TEST_F(ChainTestFixture, TankUnitsOrderedFirstInDamageAssignment) {
     auto state = makeMinimalState();
 
-    auto regular = addUnit(state, PlayerId::Player1, 3, 0);
+    addUnit(state, PlayerId::Player1, 3, 0);
     auto tank    = addUnit(state, PlayerId::Player1, 2, 0);
     auto backline = addUnit(state, PlayerId::Player1, 4, 0);
 
@@ -1094,7 +1094,7 @@ TEST_F(ChainTestFixture, AmbushUnitPlayedAsReactionIsAPermanent) {
                 r.type = IntentType::PlayReaction;
                 r.player = player;
                 r.card = ambusher;
-                r.play_location = BattlefieldLocation{0};
+                r.play_location.emplace(BattlefieldLocation{0});
                 return r;
             }
             return Intent::passPriority(player);

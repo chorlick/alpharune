@@ -22,7 +22,12 @@ public:
     void registerCard(CardDefId id, std::unique_ptr<Card> card);
 
     /// Get the Card object for a given CardDefId. Returns nullptr if not registered.
-    Card* get(CardDefId id) const;
+    /// A table lookup: the engine asks this for every object it looks at in
+    /// every trigger scan, aura pass and legal-action pass (14.9 million times
+    /// per 1000 random games when it was a hash lookup — plans/06 item 6.3).
+    Card* get(CardDefId id) const {
+        return id < by_id_.size() ? by_id_[id] : (id < kTableLimit ? nullptr : find(id));
+    }
 
     /// Check if a card is registered.
     bool has(CardDefId id) const;
@@ -41,7 +46,12 @@ public:
     std::vector<CardDefId> classDefIds() const;
 
 private:
+    Card* find(CardDefId id) const;   // the map: ids too large for the table
     std::unordered_map<CardDefId, std::unique_ptr<Card>> cards_;
+    // cards_ by id, for get(). Card ids are small (the vocabulary is 1100);
+    // an id of kTableLimit or more stays in the map only.
+    static constexpr CardDefId kTableLimit = 1u << 16;
+    std::vector<Card*> by_id_;
 };
 
 /// Registers every card. One authoritative class per card lives in its own TU

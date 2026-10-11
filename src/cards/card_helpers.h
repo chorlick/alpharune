@@ -355,7 +355,7 @@ struct TagPresence {
 
 inline TagPresence scanFriendlyTags(const GameState& state, PlayerId controller) {
     TagPresence out;
-    for (const auto& [id, obj] : state.objects) {
+    for (const auto& [id, obj] : state.objects.onBoard()) {
         if (!obj.isUnit() || obj.controller != controller) continue;
         if (!obj.location.has_value()) continue;
         for (const auto& tag : obj.tags) {
@@ -405,7 +405,9 @@ constexpr int kAuraOnceMarker = -777;
 
 template <typename Fn>
 void forEachSelfOnce(const Card& card, GameState& state, PlayerId controller, Fn&& fn) {
-    for (auto& [sid, self] : state.objects) {
+    // (Only objects in play can pass the test below: the walk is over those.
+    // `fn` is a continuous-effect hook; it does not move objects.)
+    for (auto& [sid, self] : state.objects.inPlay()) {
         if (self.card_def_id != card.cardDefId() || self.controller != controller) continue;
         if (!self.location.has_value() && self.zone != ZoneType::LegendZone) continue;
         bool seen = false;
@@ -501,7 +503,7 @@ inline void auraKeywordIfAbsent(GameObject& obj, GameObjectId source, Keyword kw
 template <typename Pred>
 std::vector<GameObjectId> boardObjects(const GameState& state, Pred&& pred) {
     std::vector<GameObjectId> out;
-    for (const auto& [id, obj] : state.objects)
+    for (const auto& [id, obj] : state.objects.onBoard())
         if (obj.location.has_value() && pred(obj)) out.push_back(id);
     std::sort(out.begin(), out.end());
     return out;
@@ -510,7 +512,7 @@ std::vector<GameObjectId> boardObjects(const GameState& state, Pred&& pred) {
 /// Runes `player` controls (in base, ready or exhausted).
 inline int runesControlled(const GameState& state, PlayerId player) {
     int n = 0;
-    for (const auto& [id, obj] : state.objects)
+    for (const auto& [id, obj] : state.objects.onBoard())
         if (obj.isRune() && obj.controller == player && obj.location.has_value()) ++n;
     return n;
 }
@@ -518,7 +520,7 @@ inline int runesControlled(const GameState& state, PlayerId player) {
 /// Gear `player` controls on the board.
 inline int gearControlled(const GameState& state, PlayerId player) {
     int n = 0;
-    for (const auto& [id, obj] : state.objects)
+    for (const auto& [id, obj] : state.objects.onBoard())
         if (obj.isGear() && obj.controller == player && obj.location.has_value()) ++n;
     return n;
 }
@@ -536,7 +538,7 @@ inline int namedInTrash(const GameState& state, PlayerId player, const std::stri
 template <typename Pred>
 std::vector<GameObjectId> chooseableUnits(const GameState& state, PlayerId chooser, Pred&& pred) {
     std::vector<GameObjectId> out;
-    for (const auto& [id, obj] : state.objects) {
+    for (const auto& [id, obj] : state.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != chooser && obj.untargetable_by_enemy) continue;
         if (pred(obj)) out.push_back(id);
@@ -549,7 +551,7 @@ std::vector<GameObjectId> chooseableUnits(const GameState& state, PlayerId choos
 inline int otherFriendlyUnitsHere(const GameState& state, const GameObject& self) {
     if (!self.location.has_value()) return 0;
     int n = 0;
-    for (const auto& [id, obj] : state.objects) {
+    for (const auto& [id, obj] : state.objects.atLocation(*self.location)) {
         if (id == self.id || !obj.isUnit() || obj.controller != self.controller) continue;
         if (obj.location.has_value() && *obj.location == *self.location) ++n;
     }

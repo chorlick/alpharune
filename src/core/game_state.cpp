@@ -6,32 +6,23 @@
 namespace riftbound {
 
 // ─── BattlefieldState ────────────────────────────────────────────────────────
+// (These and the GameState queries below read the board index of the object
+// table — the objects at the location, in the table's order — where they used
+// to walk every object of the game: plans/06 item 6.10. Same ids, same order.)
 
 std::vector<GameObjectId> BattlefieldState::unitsControlledBy(
-    PlayerId player,
-    const std::unordered_map<GameObjectId, GameObject>& objects) const {
+    PlayerId player, const ObjectTable& objects) const {
     std::vector<GameObjectId> result;
-    for (auto& [oid, obj] : objects) {
-        if (obj.isUnit() && obj.controller == player && obj.isAtBattlefield()) {
-            auto bf_id = obj.battlefieldId();
-            if (bf_id && *bf_id == id) {
-                result.push_back(oid);
-            }
-        }
+    for (const auto& [oid, obj] : objects.atLocation(LocationId{BattlefieldLocation{id}})) {
+        if (obj.isUnit() && obj.controller == player) result.push_back(oid);
     }
     return result;
 }
 
 bool BattlefieldState::hasUnitsFrom(
-    PlayerId player,
-    const std::unordered_map<GameObjectId, GameObject>& objects) const {
-    for (auto& [oid, obj] : objects) {
-        if (obj.isUnit() && obj.controller == player && obj.isAtBattlefield()) {
-            auto bf_id = obj.battlefieldId();
-            if (bf_id && *bf_id == id) {
-                return true;
-            }
-        }
+    PlayerId player, const ObjectTable& objects) const {
+    for (const auto& [oid, obj] : objects.atLocation(LocationId{BattlefieldLocation{id}})) {
+        if (obj.isUnit() && obj.controller == player) return true;
     }
     return false;
 }
@@ -44,22 +35,15 @@ void GameState::throwInvalidObjectId(GameObjectId id) {
 
 std::vector<GameObjectId> GameState::objectsAt(LocationId loc) const {
     std::vector<GameObjectId> result;
-    for (auto& [oid, obj] : objects) {
-        if (obj.location.has_value() && *obj.location == loc) {
-            result.push_back(oid);
-        }
-    }
+    for (const auto& [oid, obj] : objects.atLocation(loc)) result.push_back(oid);
     return result;
 }
 
 std::vector<GameObjectId> GameState::unitsAt(LocationId loc,
                                               PlayerId controller) const {
     std::vector<GameObjectId> result;
-    for (auto& [oid, obj] : objects) {
-        if (obj.isUnit() && obj.controller == controller &&
-            obj.location.has_value() && *obj.location == loc) {
-            result.push_back(oid);
-        }
+    for (const auto& [oid, obj] : objects.atLocation(loc)) {
+        if (obj.isUnit() && obj.controller == controller) result.push_back(oid);
     }
     return result;
 }
@@ -67,11 +51,8 @@ std::vector<GameObjectId> GameState::unitsAt(LocationId loc,
 std::vector<GameObjectId> GameState::allUnitsControlledBy(
     PlayerId controller) const {
     std::vector<GameObjectId> result;
-    for (auto& [oid, obj] : objects) {
-        if (obj.isUnit() && obj.controller == controller &&
-            obj.location.has_value()) {
-            result.push_back(oid);
-        }
+    for (const auto& [oid, obj] : objects.onBoard()) {
+        if (obj.isUnit() && obj.controller == controller) result.push_back(oid);
     }
     return result;
 }
@@ -83,12 +64,8 @@ std::vector<GameObjectId> GameState::objectsInBase(PlayerId p) const {
 
 std::vector<GameObjectId> GameState::runesInBase(PlayerId p) const {
     std::vector<GameObjectId> result;
-    LocationId base_loc = BaseLocation{p};
-    for (auto& [oid, obj] : objects) {
-        if (obj.isRune() && obj.location.has_value() &&
-            *obj.location == base_loc) {
-            result.push_back(oid);
-        }
+    for (const auto& [oid, obj] : objects.atLocation(LocationId{BaseLocation{p}})) {
+        if (obj.isRune()) result.push_back(oid);
     }
     return result;
 }

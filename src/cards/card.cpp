@@ -136,7 +136,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         uint64_t o = 1469598103934665603ull;
         auto omix = [&o](uint64_t v) { o = (o ^ v) * 1099511628211ull; };
         omix(static_cast<uint64_t>(id));
-        omix(static_cast<uint64_t>(obj.zone));
+        omix(static_cast<uint64_t>(obj.zone.get()));
         if (!obj.location.has_value()) omix(0u);
         else if (const auto* base = std::get_if<BaseLocation>(&*obj.location))
             omix(1u + static_cast<uint64_t>(base->player));
@@ -875,8 +875,12 @@ std::vector<GameObjectId> Card::enumerateLegalTargets(
     if (reqs.count == 0) return {};
 
     std::vector<GameObjectId> targets;
+    // What `controller` could pay in [A] for Deflect: asked once, and only if
+    // some candidate has a Deflect cost (it was asked per enemy candidate —
+    // plans/06 item 6.5).
+    std::optional<int> payable_power;
 
-    for (auto& [id, obj] : state.objects) {
+    for (auto& [id, obj] : state.objects.onBoard()) {
         // Must be on the board (has a location)
         if (!obj.location.has_value()) continue;
 
@@ -907,9 +911,14 @@ std::vector<GameObjectId> Card::enumerateLegalTargets(
         // them through this function), and resolve-time picks do their own
         // affordability check in pickTarget.
         if (!state.chain.resuming.has_value() &&
-            !ignoresDeflect() && obj.controller != controller &&
-            deflectCostFor(state, controller, id) > payableAnyPower(state, controller))
-            continue;
+            !ignoresDeflect() && obj.controller != controller) {
+            const int deflect = deflectCostFor(state, controller, id);
+            if (deflect > 0) {
+                if (!payable_power.has_value())
+                    payable_power = payableAnyPower(state, controller);
+                if (deflect > *payable_power) continue;
+            }
+        }
 
         targets.push_back(id);
     }
@@ -971,7 +980,7 @@ void Card::appendEmpowerAbilities(std::vector<ActivatedAbility>& out) const {
 }
 
 int Card::empowerAbilityIndex() const {
-    auto abs = activatedAbilities();
+    const auto& abs = abilities();
     for (size_t i = 0; i < abs.size(); ++i)
         if (abs[i].is_empower) return static_cast<int>(i);
     return -1;
@@ -979,7 +988,7 @@ int Card::empowerAbilityIndex() const {
 
 bool Card::canActivateAbilityAt(const GameState& state, PlayerId /*controller*/,
                                 GameObjectId source, int ability_index) const {
-    auto abs = activatedAbilities();
+    const auto& abs = abilities();
     if (ability_index < 0 || ability_index >= static_cast<int>(abs.size())) return true;
     if (!state.objectExists(source)) return false;
     const auto& obj = state.getObject(source);
@@ -996,7 +1005,7 @@ bool Card::canActivateAbilityAt(const GameState& state, PlayerId /*controller*/,
 int Card::activationCostReductionFor(const GameState& state, PlayerId controller,
                                      GameObjectId source, int ability_index) const {
     int r = activationCostReduction(state, controller, ability_index);
-    auto abs = activatedAbilities();
+    const auto& abs = abilities();
     if (ability_index >= 0 && ability_index < static_cast<int>(abs.size()) &&
         abs[ability_index].is_empower && state.objectExists(source))
         r += state.getObject(source).empower_cost_reduction;
@@ -1008,7 +1017,7 @@ int Card::activationPowerReductionFor(const GameState& state, PlayerId /*control
                                       int unused_energy_reduction) const {
     // "[Empower] costs ... cost [1] or [A] less" (Risen Altar): what the
     // Energy side could not use comes off the Power.
-    auto abs = activatedAbilities();
+    const auto& abs = abilities();
     if (ability_index < 0 || ability_index >= static_cast<int>(abs.size()) ||
         !abs[ability_index].is_empower || !state.objectExists(source))
         return 0;
@@ -1125,6 +1134,18 @@ Card::PlayCostAdjust Card::payAdditionalPlayCost(
     PlayCostAdjust adj;
     adj.energy_reduction = oac.reduce_energy;
     return adj;
+}
+
+void Card::primeStaticFacts() const {
+    auto facts = std::make_shared<StaticFacts>();
+    facts->abilities = activatedAbilities();
+    for (auto t : triggerTypes()) facts->triggers.set(static_cast<size_t>(t));
+    static_facts_ = std::move(facts);
+}
+
+const std::vector<ActivatedAbility>& Card::abilities() const {
+    if (!static_facts_) primeStaticFacts();
+    return static_facts_->abilities;
 }
 
 std::vector<ActivatedAbility> Card::activatedAbilities() const {

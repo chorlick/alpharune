@@ -84,6 +84,16 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
 # through this one function. A target that includes OpenSpiel gets its source
 # root as a SYSTEM include directory as well, which keeps OpenSpiel's own
 # header warnings out of the engine's build output.
+# The board index of the object table (src/core/object_table.h) is rebuilt
+# when an object's zone or location is assigned. With this ON every board
+# query also recomputes the lists and compares them with the index, and a
+# loop over a board range that moves an object is an error: a slow build for
+# running the test suite against the index, not for games.
+option(RIFTBOUND_CHECK_BOARD_INDEX "Verify the object table's board index on every query (slow)" OFF)
+if(RIFTBOUND_CHECK_BOARD_INDEX)
+    add_compile_definitions(RIFTBOUND_CHECK_BOARD_INDEX)
+endif()
+
 option(RIFTBOUND_WARNINGS "Compile engine targets with -Wall -Wextra" ON)
 function(riftbound_enable_warnings)
     if(RIFTBOUND_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

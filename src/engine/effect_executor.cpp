@@ -262,7 +262,7 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
     lk.location = obj.location;
     lk.other_friendly_units_here.clear();
     if (obj.location.has_value())
-        for (const auto& [oid, other] : state_.objects)
+        for (const auto& [oid, other] : state_.objects.atLocation(*obj.location))
             if (oid != id && other.isUnit() && other.controller == obj.controller &&
                 other.location.has_value() && *other.location == *obj.location)
                 lk.other_friendly_units_here.push_back(oid);
@@ -470,7 +470,7 @@ int payableAnyPower(const GameState& state, PlayerId player) {
     int n = pool.universal_power;
     for (int di = 0; di < static_cast<int>(Domain::Count); ++di) n += pool.power[di];
     LocationId base{BaseLocation{player}};
-    for (const auto& [id, obj] : state.objects)
+    for (const auto& [id, obj] : state.objects.atLocation(base))
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == base) ++n;
     return n;
@@ -957,7 +957,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 if (bf.id == *dying_bf && state_.objectExists(bf.card_object_id))
                     sources.push_back(bf.card_object_id);
         std::vector<GameObjectId> in_play;
-        for (const auto& [id, other] : state_.objects) {
+        for (const auto& [id, other] : state_.objects.inPlay()) {
             if (other.controller != controller || id == unit_id) continue;
             if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
             in_play.push_back(id);
@@ -2185,7 +2185,7 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
     for (auto d : cost.domains) p -= ps.rune_pool.power[static_cast<int>(d)];
     LocationId base{BaseLocation{player}};
     std::vector<GameObjectId> runes;
-    for (auto& [id, obj] : state.objects)
+    for (auto& [id, obj] : state.objects.atLocation(base))
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == base) runes.push_back(id);
     int ready = 0, matching = 0;

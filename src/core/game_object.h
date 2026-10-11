@@ -6,6 +6,7 @@
 /// GameObject is the mutable instance that tracks current state
 /// (damage, exhaustion, temporary mods, location, attachments, etc).
 
+#include "tracked_field.h"
 #include "types.h"
 
 #include <optional>
@@ -127,8 +128,12 @@ struct GameObject {
     int damage_marked_by[2] = {0, 0};
 
     // ── Position ──
-    ZoneType zone = ZoneType::MainDeck;
-    std::optional<LocationId> location;  // only meaningful when on board
+    // Both read as the plain value (a ZoneType, an optional LocationId). They
+    // are tracked fields because the board index of the object table is built
+    // from them: assigning either tells the table (core/tracked_field.h,
+    // core/object_table.h). A location is replaced, never edited in place.
+    TrackedField<ZoneType> zone{ZoneType::MainDeck};
+    TrackedLocation location;  // only meaningful when on board
     // Last on-board location before the unit died / left play. Populated
     // by EffectExecutor::killObject just before clearing `location`.
     // Used by Deathknell triggers that need to know "where did I die"

@@ -231,6 +231,13 @@ public:
     void testHook_scoreHold(PlayerId p, BattlefieldId bf) { scoreHold(p, bf); }
     void testHook_drawCards(PlayerId p, int n) { drawCards(p, n); }
     void testHook_processLethalDamage() { processLethalDamage(); }
+    /// The pre-play probe (payableThroughAFinalizeChoice): runs of the last
+    /// search, the most of any search, and the GameState copies made so far.
+    int testHook_prePlayRunsLast() const { return pre_play_runs_last_; }
+    int testHook_prePlayRunsMax() const { return pre_play_runs_max_; }
+    long testHook_prePlayStateCopies() const { return pre_play_state_copies_; }
+    long testHook_prePlayProbes() const { return pre_play_probes_; }
+    long testHook_prePlayRunsTotal() const { return pre_play_runs_total_; }
     void testHook_cleanup() { cleanup(); }
     EffectExecutor& testHook_executor() { return *effect_executor_; }
     bool testHook_canAfford(PlayerId p, GameObjectId card) const { return canAfford(p, card); }
@@ -799,18 +806,35 @@ private:
         bool completed = false;
         ChainItem done;
         std::vector<int> option_counts;      // options of each prompt met
+        // For each prompt met, the options that name an object with which the
+        // spell is payable at that point (filled for a search's runs only).
+        std::vector<std::vector<int>> discount_options;
         std::vector<Intent> next_options;    // the first unscripted prompt, if stopped there
         PlayerId next_player = PlayerId::None;
     };
     ScriptedPass runScriptedPass(const GameState& from, const ChainItem& pre,
                                  const std::vector<int>& script, bool stop_after_script);
+    /// The same run from the state as it stands (the caller has put it at the
+    /// start of the pass): no copy of the state is made.
+    ScriptedPass runScriptedPassHere(const ChainItem& pre, const std::vector<int>& script,
+                                     bool stop_after_script, bool note_discounts = false);
+    /// Puts `state_` back at the start of the pass for another run.
+    using ToPassStart = std::function<void()>;
     /// Whether some continuation of `script` completes the pass and leaves
-    /// the spell payable. Leaves `state_` as `from`. Nothing it does is seen:
-    /// no event, no log line, no agent asked. Bounded: after kPrePlayProbeRuns
-    /// runs with sequences left and none found it throws a std::logic_error
-    /// naming the card (the answer is unknown; "none" would withhold a play).
-    /// A throw of the card's pass (a contract error) is passed on.
-    bool prePlaySequenceExists(const GameState& from, const ChainItem& pre,
+    /// the spell payable. `at_start`: the state already is at the start of
+    /// the pass, so the first run needs no reset. Leaves `state_` as its last
+    /// run left it — the caller puts back what it needs (plans/09 item
+    /// 9.HH4: each reset is a copy of the whole GameState). The sequences are
+    /// walked exhaustively, those that choose an object that makes the spell
+    /// payable first (9.II1): where a payable sequence exists it is
+    /// found in a few runs however many other objects a prompt offers.
+    /// Nothing it does
+    /// is seen: no event, no log line, no agent asked. Bounded: after
+    /// kPrePlayProbeRuns runs with sequences left and none found it throws a
+    /// std::logic_error naming the card (the answer is unknown; "none" would
+    /// withhold a play). A throw of the card's pass (a contract error) is
+    /// passed on.
+    bool prePlaySequenceExists(const ToPassStart& to_start, bool at_start, const ChainItem& pre,
                                const std::vector<int>& script, const PrePlayPayable& payable);
     /// The real pass for a spell that is too dear on its own: at every prompt
     /// only the options from which a payable completion exists are offered,
@@ -823,6 +847,13 @@ private:
     bool prePlayProbe(PlayerId player, GameObjectId card_id,
                       const PlayerState::TrashReplayGrant* grant);
     static constexpr int kPrePlayProbeRuns = 256;
+    /// Runs of the last prePlaySequenceExists search, and the most any search
+    /// of this engine has made (tests: how near a card comes to the bound).
+    int pre_play_runs_last_ = 0;
+    int pre_play_runs_max_ = 0;
+    long pre_play_state_copies_ = 0;   // GameState copies made for probes and viable passes
+    long pre_play_probes_ = 0;         // prePlayProbe calls (the generators' question)
+    long pre_play_runs_total_ = 0;     // finalize-pass runs made by all searches
     /// Whether a spell that chooses in its finalize pass could be paid for by
     /// choosing something that takes enough off its cost (the generators'
     /// half of executePlaySpell's choices-before-payment).

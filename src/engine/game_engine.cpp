@@ -848,7 +848,7 @@ void GameEngine::awakenPhase() {
 
     // Ready all game objects the turn player controls (CR 315.1.b)
     auto player = state_.turn.turn_player;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
             const Card* card = obj.card_def_id != kInvalidId
                 ? card_registry_.get(obj.card_def_id) : nullptr;
@@ -879,7 +879,7 @@ void GameEngine::beginningStep() {
     // AND gear — Fading Memories (180) can grant [Temporary] to either.
     std::vector<GameObjectId> units_to_kill;
     std::vector<GameObjectId> gear_to_kill;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.keywords.has(Keyword::Temporary)) continue;
         if (obj.controller != state_.turn.turn_player) continue;
         if (!obj.location.has_value()) continue;
@@ -1296,7 +1296,7 @@ void GameEngine::doExpirationBody() {
         expireTemporaryKeywords(obj, card_db_);
     }
     // Recompute might for all units after expiration
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.isUnit() && obj.location.has_value()) {
             obj.recomputeMight();
         }
@@ -1504,7 +1504,7 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         }
         legal = card->enumerateLegalTargets(state_, item.controller);
     } else {
-        auto abs = card->activatedAbilities();
+        const auto& abs = card->abilities();
         if (item.ability_index < 0 || item.ability_index >= static_cast<int>(abs.size())) return;
         if (abs[item.ability_index].is_empower) return;
         if (!abs[item.ability_index].needs_activation_time_target) {
@@ -1865,7 +1865,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         ? card_registry_.get(intent.granted_ability_def) : ability_card;
     ActivationCost act_cost;
     if (cost_card) {
-        auto abilities = cost_card->activatedAbilities();
+        const auto& abilities = cost_card->abilities();
         int idx = intent.ability_index;
         if (idx < 0 || idx >= static_cast<int>(abilities.size())) idx = 0;
         if (!abilities.empty()) act_cost = abilities[idx].cost;
@@ -1883,7 +1883,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // Empowered, "use only if unattached", once a turn), asked of the card
     // the ability comes from, for this source.
     if (cost_card) {
-        const auto gate_abilities = cost_card->activatedAbilities();
+        const auto& gate_abilities = cost_card->abilities();
         int gate_idx = intent.ability_index;
         if (gate_idx < 0 || gate_idx >= static_cast<int>(gate_abilities.size())) gate_idx = 0;
         if (!cost_card->canActivateAbility(state_, intent.player)) return false;
@@ -2034,7 +2034,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         // printed cost, before reductions).
         int printed_energy = 0;
         if (cost_card) {
-            auto abilities = cost_card->activatedAbilities();
+            const auto& abilities = cost_card->abilities();
             if (intent.ability_index >= 0 &&
                 intent.ability_index < static_cast<int>(abilities.size()))
                 printed_energy = abilities[intent.ability_index].cost.energy;
@@ -2213,18 +2213,41 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
 GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, const ChainItem& pre,
                                                      const std::vector<int>& script,
                                                      bool stop_after_script) {
-    ScriptedPass out;
     // The record of decisions made so far belongs to the game, not to the
     // state a run starts from.
     auto history = std::move(state_.action_history);
     const int decisions = state_.decision_index;
     state_ = from;
+    ++pre_play_state_copies_;
     state_.action_history = std::move(history);
     state_.decision_index = decisions;
+    return runScriptedPassHere(pre, script, stop_after_script);
+}
+
+GameEngine::ScriptedPass GameEngine::runScriptedPassHere(const ChainItem& pre,
+                                                         const std::vector<int>& script,
+                                                         bool stop_after_script,
+                                                         bool note_discounts) {
+    ScriptedPass out;
     bool dead = false;
     FinalizeAnswerer answer = [&](size_t k, PlayerId p,
                                   const std::vector<Intent>& legal) -> std::optional<Intent> {
         out.option_counts.push_back(static_cast<int>(legal.size()));
+        if (note_discounts) {
+            std::vector<int> pays;
+            for (size_t i = 0; i < legal.size(); ++i)
+                for (auto t : legal[i].chosen_objects) {
+                    if (!state_.objectExists(t) || !state_.getObject(t).location.has_value())
+                        continue;
+                    // The pre-play choice filter is the test: with what is
+                    // chosen so far, choosing `t` leaves the spell payable.
+                    if (effect_executor_->choiceAllowed(t)) {
+                        pays.push_back(static_cast<int>(i));
+                        break;
+                    }
+                }
+            out.discount_options.push_back(std::move(pays));
+        }
         if (k < script.size()) {
             if (script[k] < 0 || script[k] >= static_cast<int>(legal.size())) {
                 dead = true;
@@ -2257,48 +2280,61 @@ GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, cons
     return out;
 }
 
-bool GameEngine::prePlaySequenceExists(const GameState& from, const ChainItem& pre,
-                                       const std::vector<int>& script,
+bool GameEngine::prePlaySequenceExists(const ToPassStart& to_start, bool at_start,
+                                       const ChainItem& pre, const std::vector<int>& script,
                                        const PrePlayPayable& payable) {
-    const auto quiet = events_.beginQuiet();
-    // Leave the state as it was handed in (the decision record kept).
-    auto restore = [&] {
-        auto history = std::move(state_.action_history);
-        const int decisions = state_.decision_index;
-        state_ = from;
-        state_.action_history = std::move(history);
-        state_.decision_index = decisions;
-        events_.endQuiet(quiet);
+    // A run that throws must not leave the bus quiet.
+    struct QuietSearch {
+        EventBus& bus;
+        EventBus::Quiet q;
+        explicit QuietSearch(EventBus& b) : bus(b), q(b.beginQuiet()) {}
+        ~QuietSearch() { bus.endQuiet(q); }
     };
+    const QuietSearch quiet(events_);
     bool found = false;
     int runs = 0;
     std::vector<std::vector<int>> todo{script};
-    try {
-        while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
-            const std::vector<int> prefix = std::move(todo.back());
-            todo.pop_back();
-            ++runs;
-            const ScriptedPass run =
-                runScriptedPass(from, pre, prefix, /*stop_after_script=*/false);
-            if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
-            // Every other answer to each prompt this run met past its prefix.
-            for (size_t k = run.option_counts.size(); k-- > prefix.size();)
+    while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
+        const std::vector<int> prefix = std::move(todo.back());
+        todo.pop_back();
+        // Every run starts from the start of the pass. The first one of a
+        // search that was handed the state there needs no reset.
+        if (runs > 0 || !at_start) to_start();
+        ++runs;
+        ++pre_play_runs_total_;
+        pre_play_runs_last_ = runs;
+        pre_play_runs_max_ = std::max(pre_play_runs_max_, runs);
+        const ScriptedPass run = runScriptedPassHere(pre, prefix, /*stop_after_script=*/false,
+                                                     /*note_discounts=*/true);
+        if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
+        // Every other answer to each prompt this run met past its prefix: all
+        // of them are walked, so "none is payable" is an answer and not a
+        // guess. The order is what keeps a search short when one is: an
+        // answer naming an object with which the spell is payable there and
+        // then is tried before the others (it goes on the stack last). A
+        // spell that offers
+        // every unit on the board at a prompt (Flash) is then decided in two
+        // or three runs instead of one per unit (plans/09 item 9.II1).
+        for (int pass = 0; pass < 2; ++pass)
+            for (size_t k = run.option_counts.size(); k-- > prefix.size();) {
+                const auto& pays = run.discount_options[k];
                 for (int alt = run.option_counts[k] - 1; alt >= 1; --alt) {
+                    const bool discount =
+                        std::find(pays.begin(), pays.end(), alt) != pays.end();
+                    if (discount != (pass == 1)) continue;
                     std::vector<int> next = prefix;
                     next.resize(k, 0);
                     next.push_back(alt);
                     todo.push_back(std::move(next));
                 }
-        }
-    } catch (...) {
-        restore();
-        throw;
+            }
     }
-    restore();
     // The bound was reached with sequences still unwalked and none found: the
     // answer is not known. Saying "none" would withhold a play that may be
     // legal, so it is an error naming the card, as the engine's other bounds
     // are; the remedy is a card whose pass asks less, or a larger bound.
+    // (No registered spell comes near it: SweepCostsTest.
+    // FinalizePassSpell_NoRegisteredSpellComesNearTheProbeBound.)
     if (!found && !todo.empty())
         throw std::logic_error("GameEngine::prePlaySequenceExists: " +
                                state_.getObject(pre.source).name + " has more than " +
@@ -2317,6 +2353,7 @@ bool GameEngine::prePlaySequenceExists(const GameState& from, const ChainItem& p
 // clock) breaks that, and one of the three throws below names it.
 ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPayable& payable) {
     const GameState pass_start = state_;
+    ++pre_play_state_copies_;
     std::vector<int> script;
     // A run that throws must not leave the bus quiet.
     struct QuietRun {
@@ -2324,6 +2361,15 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
         EventBus::Quiet q;
         explicit QuietRun(EventBus& b) : bus(b), q(b.beginQuiet()) {}
         ~QuietRun() { bus.endQuiet(q); }
+    };
+    // Back to the start of the pass, the record of decisions kept.
+    const ToPassStart to_start = [&] {
+        auto history = std::move(state_.action_history);
+        const int decisions = state_.decision_index;
+        state_ = pass_start;
+        ++pre_play_state_copies_;
+        state_.action_history = std::move(history);
+        state_.decision_index = decisions;
     };
     for (;;) {
         // Where the choices so far lead: the next prompt, or the end.
@@ -2333,26 +2379,39 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
             at = runScriptedPass(pass_start, pre, script, /*stop_after_script=*/true);
         }
         if (at.completed) break;
-        if (at.next_options.empty())
-            throw std::logic_error("GameEngine::choosePrePlayViable: " +
-                                   state_.getObject(pre.source).name +
+        if (at.next_options.empty()) {
+            const std::string name = state_.getObject(pre.source).name;
+            to_start();
+            throw std::logic_error("GameEngine::choosePrePlayViable: " + name +
                                    " reached a prompt with no options (or its finalize pass "
                                    "is not repeatable)");
-        // Only the options a payable completion can still follow.
+        }
+        // Only the options a payable completion can still follow. (Each
+        // search leaves the state where its last run ended: the next one, and
+        // the run that asks, start from pass_start themselves.)
         std::vector<int> viable;
         const std::vector<Intent> options = at.next_options;
         const PlayerId asked_player = at.next_player;
         for (int i = 0; i < static_cast<int>(options.size()); ++i) {
             std::vector<int> with = script;
             with.push_back(i);
-            if (prePlaySequenceExists(pass_start, pre, with, payable)) viable.push_back(i);
+            bool exists = false;
+            try {
+                exists = prePlaySequenceExists(to_start, /*at_start=*/false, pre, with, payable);
+            } catch (...) {
+                to_start();
+                throw;
+            }
+            if (exists) viable.push_back(i);
         }
-        if (viable.empty())
-            throw std::logic_error("GameEngine::choosePrePlayViable: " +
-                                   state_.getObject(pre.source).name +
+        if (viable.empty()) {
+            const std::string name = state_.getObject(pre.source).name;
+            to_start();
+            throw std::logic_error("GameEngine::choosePrePlayViable: " + name +
                                    " was offered with no payable sequence of choices (or "
                                    "its finalize pass is not repeatable: the same answers must "
                                    "meet the same prompts)");
+        }
         // Ask with the state as the choices so far left it.
         {
             const QuietRun quiet(events_);
@@ -2387,17 +2446,33 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
 bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
                               const PlayerState::TrashReplayGrant* grant) {
     if (state_.chain.resuming.has_value() || !state_.objectExists(card_id)) return false;
-    const GameState saved = state_;
-    const auto quiet = events_.beginQuiet();
+    // The game is set aside whole — moved, not copied: its objects stay where
+    // every reference held up the call stack points — and the probe plays on
+    // a copy, which is thrown away when the game is moved back. One copy of
+    // the GameState per probe that finds its answer in one run (it was five:
+    // a saved state, a pass-start state, one per run, and two restores), one
+    // more for each further run (plans/09 item 9.HH4).
+    struct Parked {
+        GameState& live;
+        GameState game;
+        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
+        ~Parked() { live = std::move(game); }
+    };
+    Parked parked(state_);
+    ++pre_play_probes_;
     // As the play would begin: the card leaves its zone.
-    {
+    ChainItem pre;
+    const ToPassStart to_start = [&] {
+        state_ = parked.game;
+        ++pre_play_state_copies_;
         auto& ps = state_.player(player);
         ps.hand.erase(std::remove(ps.hand.begin(), ps.hand.end(), card_id), ps.hand.end());
         ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), card_id), ps.trash.end());
-    }
-    forgetPlayPayments(player, card_id);
-    ChainItem pre;
-    pre.id = state_.chain.allocateId();
+        forgetPlayPayments(player, card_id);
+        // The same id every time: the counter is part of the copied state.
+        pre.id = state_.chain.allocateId();
+    };
+    to_start();
     pre.status = ChainItemStatus::Pending;
     pre.source = card_id;
     pre.card_def_id = state_.getObject(card_id).card_def_id;
@@ -2405,8 +2480,12 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
     pre.is_spell = true;
     pre.pre_play_choices = true;
     // The grant, if any, is looked up again in each run: the pointer handed in
-    // points into the state that the runs replace.
+    // points into the game that is set aside.
     const bool via_grant = grant != nullptr;
+    struct FilterSet {
+        EffectExecutor& ex;
+        ~FilterSet() { ex.setChoiceFilter(nullptr); }
+    };
     effect_executor_->setChoiceFilter([this, player, card_id, via_grant](GameObjectId t) {
         std::vector<GameObjectId> all;
         if (state_.chain.resuming.has_value()) all = state_.chain.resuming->chosen_objects;
@@ -2415,6 +2494,7 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
         return g ? canPayTrashGrant(player, card_id, *g, all, {t})
                  : (!via_grant && canAffordChoosing(player, card_id, all, {t}));
     });
+    const FilterSet filter_set{*effect_executor_};
     const PrePlayPayable payable = [this, player, card_id, via_grant](
                                        const std::vector<GameObjectId>& chosen) {
         const auto* g = via_grant ? trashGrantFor(player, card_id) : nullptr;
@@ -2422,21 +2502,9 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
         return chosen.empty() ? canAfford(player, card_id)
                               : canAffordChoosing(player, card_id, chosen, {});
     };
-    const GameState pass_start = state_;
-    bool found = false;
-    try {
-        found = prePlaySequenceExists(pass_start, pre, {}, payable);
-    } catch (...) {
-        // A card-contract error: the probe still leaves nothing behind.
-        effect_executor_->setChoiceFilter(nullptr);
-        state_ = saved;
-        events_.endQuiet(quiet);
-        throw;
-    }
-    effect_executor_->setChoiceFilter(nullptr);
-    state_ = saved;
-    events_.endQuiet(quiet);
-    return found;
+    // (A card-contract error thrown by the search leaves through the guards
+    // above: the filter is cleared, the bus is as it was, the game is back.)
+    return prePlaySequenceExists(to_start, /*at_start=*/true, pre, {}, payable);
 }
 
 void GameEngine::executePlayCard(const Intent& intent) {
@@ -3010,7 +3078,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
             const Card* acard = (item.granted_ability_def != 0)
                 ? card_registry_.get(item.granted_ability_def) : card;
             if (acard) {
-                auto abs = acard->activatedAbilities();
+                const auto& abs = acard->abilities();
                 if (item.ability_index >= 0 &&
                     item.ability_index < static_cast<int>(abs.size())) {
                     reqs = abs[item.ability_index].targets;
@@ -3070,7 +3138,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                     ? card_registry_.get(item.granted_ability_def) : card;
                 bool is_empower = false;
                 if (act_card) {
-                    auto abs = act_card->activatedAbilities();
+                    const auto& abs = act_card->abilities();
                     is_empower = item.ability_index >= 0 &&
                         item.ability_index < static_cast<int>(abs.size()) &&
                         abs[item.ability_index].is_empower;
@@ -3220,7 +3288,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
     // Reaction timing. Its controller chooses the unit as it lands.
     if (card.isGear() && card.hasKeyword(Keyword::QuickDraw)) {
         std::vector<GameObjectId> units;
-        for (auto& [uid, unit] : state_.objects) {
+        for (auto& [uid, unit] : state_.objects.onBoard()) {
             if (!unit.isUnit() || unit.controller != item.controller) continue;
             if (!unit.location.has_value()) continue;
             units.push_back(uid);
@@ -3548,7 +3616,7 @@ std::vector<DamageAssignment> lethalCascade(const GameState& state,
 bool GameEngine::anyDamageIsLethalFor(PlayerId damager) const {
     // "Any amount of your damage is enough to kill." (CR 142.4.c) — a unit
     // `damager` has in play says so through Card::anyDamageIsLethal().
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
         const Card* card = card_registry_.get(obj.card_def_id);
@@ -3614,7 +3682,7 @@ Card::HideCost GameEngine::hideCostFor(PlayerId player) const {
     };
     ask(ps.legend_zone);
     std::vector<GameObjectId> in_play;
-    for (const auto& [id, obj] : state_.objects)
+    for (const auto& [id, obj] : state_.objects.onBoard())
         if (obj.controller == player && obj.location.has_value() && !obj.isRune())
             in_play.push_back(id);
     std::sort(in_play.begin(), in_play.end());
@@ -3856,7 +3924,7 @@ std::vector<LocationId> GameEngine::standardMoveDestinations(const GameObject& u
 
 bool GameEngine::enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const {
     int units = 0, enemies = 0;
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf}})) {
         if (!obj.isUnit() || obj.battlefieldId() != bf) continue;
         ++units;
         if (obj.controller != player) ++enemies;
@@ -4035,14 +4103,14 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
     // discounts must be payable for that unit, and an Equipment that is
     // already attached is not offered — its Rules Text, the Equip ability
     // included, is Inactive while attached (CR 718.2, 721.2).
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isGear() || obj.controller != player) continue;
         if (!obj.location.has_value()) continue;
 
         Card* gear_card = card_registry_.get(obj.card_def_id);
         if (!gear_card || !gear_card->hasEquipAbility()) continue;
 
-        for (auto& [uid, unit] : state_.objects) {
+        for (auto& [uid, unit] : state_.objects.onBoard()) {
             if (!unit.isUnit() || unit.controller != player) continue;
             if (!unit.location.has_value()) continue;
             if (!canPayEquip(player, id, uid)) continue;
@@ -4656,22 +4724,26 @@ bool GameEngine::payableThroughAFinalizeChoice(
     if (!cc || cc->needsPlayTimeTarget() ||
         !(cc->choicesAtFinalization() & Card::kFinalizeResolve)) return false;
     // Only an object that takes something off the cost can change the answer.
-    for (const auto& [id, obj] : state_.objects) {
+    bool declared = false;
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.location.has_value()) continue;
         if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction <= 0 &&
             targetCostDiscount(player, {id}, true, nullptr).power_reduction <= 0) continue;
         if (cc->mayChooseAtFinalization(state_, player, id) != Card::FinalizeChoice::Yes) continue;
         if (!(grant ? canPayTrashGrant(player, card_id, *grant, {id})
                     : canAffordChoosing(player, card_id, {id}))) continue;
-        // An object that could pay for it, by the card's own declaration.
-        // Whether the card's choices can actually be made that way — a mode
-        // or a battlefield chosen first may rule the object out — is found by
-        // making them: the play is offered only if a complete payable
-        // sequence exists. (Nothing of the probe is kept or seen; `this` is
-        // const to its callers in every way they can observe.)
-        return const_cast<GameEngine*>(this)->prePlayProbe(player, card_id, grant);
+        declared = true;
+        break;
     }
-    return false;
+    if (!declared) return false;
+    // An object that could pay for it, by the card's own declaration.
+    // Whether the card's choices can actually be made that way — a mode
+    // or a battlefield chosen first may rule the object out — is found by
+    // making them: the play is offered only if a complete payable
+    // sequence exists. (Nothing of the probe is kept or seen; `this` is
+    // const to its callers in every way they can observe. Called after the
+    // walk above, not from inside it: the probe plays on the state.)
+    return const_cast<GameEngine*>(this)->prePlayProbe(player, card_id, grant);
 }
 
 bool GameEngine::canPayTrashGrant(PlayerId player, GameObjectId card_id,
@@ -4850,7 +4922,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
     // Single-ability cards use the default Card::activatedAbilities() impl
     // which wraps the legacy single-ability virtuals into a one-element
     // vector — semantics unchanged for them.
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.inPlay()) {
         if (obj.controller != player) continue;
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
 
@@ -4858,7 +4930,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
         if (!card) continue;
         // Per-card "Use only if …" gate (Emperor of the Sands etc.).
         if (!card->canActivateAbility(state_, player)) continue;
-        auto abilities = card->activatedAbilities();
+        const auto& abilities = card->abilities();
         // Don't skip when the object carries no OWN abilities but has been
         // granted some by an aura (Forge/Gardens/Heimerdinger).
         if (abilities.empty() && obj.granted_abilities.empty()) continue;
@@ -4947,7 +5019,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
         for (const auto& ref : obj.granted_abilities) {
             Card* gcard = card_registry_.get(ref.source_def_id);
             if (!gcard) continue;
-            auto gabs = gcard->activatedAbilities();
+            const auto& gabs = gcard->abilities();
             if (ref.ability_index < 0 ||
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
             const auto& gab = gabs[ref.ability_index];
@@ -5165,7 +5237,7 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
                      toString(*bf.attacker) + " defender=" + toString(*bf.defender));
 
     // Assign combat designations to units
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf_id}})) {
         if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
         auto unit_bf = obj.battlefieldId();
         if (!unit_bf || *unit_bf != bf_id) continue;
@@ -5499,7 +5571,7 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     processLethalDamage();
 
     // Heal surviving units (CR 461.1.a.1)
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf_id}})) {
         if (obj.isUnit() && obj.isAtBattlefield()) {
             auto unit_bf = obj.battlefieldId();
             if (unit_bf && *unit_bf == bf_id) {
@@ -5820,6 +5892,11 @@ void GameEngine::recalculateAuras() {
         obj.cant_be_moved_by_enemy = false;                  // Jagged Cutlass
         obj.aura_cant_move_to_base = false;                  // Minotaur Reckoner
         obj.empower_cost_reduction = 0;              // Risen Altar
+        // The two below were passes of their own over every object (the fold
+        // in Step 4 cleared the first; the second ran just before the hooks).
+        // Nothing between here and there writes either.
+        obj.aura_no_combat_damage = false;
+        obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
         // Empowered is a board status (CR 442.2): it doesn't survive leaving.
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) {
             obj.empowered = 0;
@@ -5881,7 +5958,7 @@ void GameEngine::recalculateAuras() {
     // Step 1a': Equipment-granted keywords and stats. Before the card hooks,
     // so a hook whose effect depends on a keyword ("Units here with [Tank]
     // have +1 [M]") sees the ones an Equipment gives (hasKeywordInAuraPass).
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         for (auto gear_id : obj.attachments) {
             if (!state_.objectExists(gear_id)) continue;
@@ -5937,13 +6014,15 @@ void GameEngine::recalculateAuras() {
     // Cards whose continuous effect is conditional on Might: they get a second
     // hook after the fold below (Card::applyMightDependentAura).
     std::vector<std::pair<const Card*, PlayerId>> might_dependent;
-    // Reset first, in a pass of its own: a hook below may set the flag on
-    // ANOTHER object ("Your units here ... can't be chosen by enemy spells and
-    // abilities"), which a reset inside the hook loop would undo for every
-    // object the loop reaches after the hook ran.
-    for (auto& [id, obj] : state_.objects)
-        obj.untargetable_by_enemy = obj.untargetable_by_enemy_this_turn;
-    for (auto& [id, obj] : state_.objects) {
+    // untargetable_by_enemy was reset for every object in Step 1, before any
+    // hook: a hook below may set the flag on ANOTHER object ("Your units here
+    // ... can't be chosen by enemy spells and abilities"), which a reset
+    // inside the hook loop would undo for every object the loop reaches after
+    // the hook ran.
+    // The walk is over the objects in play (the board and the Legend Zones):
+    // nothing else passes the test at the top of the body. A hook is a
+    // continuous effect; it does not move objects.
+    for (auto& [id, obj] : state_.objects.inPlay()) {
         // On-board cards AND legends (LegendZone, no location) broadcast their
         // passive auras. Without including legends, legend-sourced passives
         // (Purifier's [Assault], Wuju Master's +1 [M], etc.) never fired.
@@ -6001,7 +6080,7 @@ void GameEngine::recalculateAuras() {
         (void)card;
     };
     std::vector<GameObjectId> text_copied;
-    for (auto& [id, obj] : state_.objects)
+    for (auto& [id, obj] : state_.objects.onBoard())
         if (obj.isUnit() && obj.location.has_value() && obj.card_def_id != kInvalidId &&
             !obj.attachments.empty() && effect_executor_->textCopiesOn(id) > 0)
             text_copied.push_back(id);
@@ -6057,7 +6136,7 @@ void GameEngine::recalculateAuras() {
     // Step 3c, Equipment keywords, moved up to Step 1a'.)
 
     // "Buffs give an additional +N [M] to friendly units this turn."
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value() || obj.buff_count <= 0) continue;
         const int bonus = state_.player(obj.controller).buff_might_bonus_this_turn;
         if (bonus <= 0) continue;
@@ -6070,6 +6149,12 @@ void GameEngine::recalculateAuras() {
     // Step 4: Rebuild cached aura values on all objects
     auto foldAuras = [&]() {
         for (auto& [id, obj] : state_.objects) {
+            // No effects and not a unit on the board: the four cached values
+            // are as Step 1 left them and there is no Might to recompute.
+            // (Checked on every object, not only those in play: a hook may
+            // put an effect on a card in a hand or a trash.)
+            if (obj.aura_effects.empty() && !(obj.isUnit() && obj.location.has_value()))
+                continue;
             obj.aura_might_bonus = 0;
             obj.aura_keywords.reset();
             obj.aura_no_combat_damage = false;
@@ -6154,7 +6239,7 @@ void GameEngine::recalculateAuras() {
     }
 
     // Risen Altar: battlefield-scoped [Empower] discount lands on the units there.
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit()) continue;
         if (auto bf = obj.battlefieldId()) {
             for (auto& b : state_.battlefields)
@@ -6285,7 +6370,7 @@ void GameEngine::cleanup() {
         mix(state_.objects.size());
         for (auto& [id, obj] : state_.objects) {
             mix(id);
-            mix(static_cast<uint64_t>(obj.zone));
+            mix(static_cast<uint64_t>(obj.zone.get()));
             mix(static_cast<uint64_t>(obj.damage_marked));
             mix(static_cast<uint64_t>(obj.current_might));
             mix(static_cast<uint64_t>(obj.aura_might_bonus));
@@ -6388,7 +6473,7 @@ void GameEngine::processLethalDamage() {
     };
 
     std::vector<GameObjectId> to_kill;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.damage_marked <= 0) continue;
 
@@ -6467,7 +6552,7 @@ void GameEngine::recallMisplacedObjects() {
     // 719.3.a; "recalled" is announced). Collected first: recalling moves
     // attachments, and the loop walks the object map.
     std::vector<GameObjectId> misplaced;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.location.has_value() || obj.is_hidden) continue;   // facedown cards stay put
         if (obj.controller == PlayerId::None) continue;
         const LocationId home{BaseLocation{obj.controller}};
@@ -6639,7 +6724,7 @@ int GameEngine::availablePower(PlayerId player, Domain domain) const {
     // Each rune in base (exhausted or ready) of matching domain can be recycled for 1 Power
     int count = 0;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{base_loc})) {
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == LocationId{base_loc}) {
             for (auto d : obj.domains) {
@@ -6657,7 +6742,7 @@ int GameEngine::availableAnyPower(PlayerId player) const {
     // Any rune in base can be recycled for 1 Power of its domain
     int count = 0;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{base_loc})) {
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == LocationId{base_loc}) {
             count++;
@@ -6675,7 +6760,7 @@ int GameEngine::availableAnyPower(PlayerId player) const {
 // additional cost to 0 and it still counts as paid).
 int GameEngine::optionalCostDiscount(PlayerId player) const {
     int total = 0;
-    for (const auto& [id, obj] : state_.objects) {
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller != player || !obj.location.has_value()) continue;
         if (obj.card_def_id == kInvalidId) continue;
         if (const Card* c = card_registry_.get(obj.card_def_id))
@@ -7037,7 +7122,9 @@ bool GameEngine::canAffordWith(PlayerId player, GameObjectId card_obj, int extra
     int ready_total = 0;
     int matching_ready = 0;
     int matching_exhausted = 0;
-    for (auto& [id, obj] : state_.objects) {
+    // (The player's base, from the board index: this is asked for every card
+    // in hand at every decision — plans/06 item 6.5.)
+    for (auto& [id, obj] : state_.objects.atLocation(LocationId{base_loc})) {
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
         bool matches_domain = false;
@@ -7108,7 +7195,7 @@ namespace {
 std::vector<GameObjectId> readyRunesInBase(const GameState& state, PlayerId player) {
     std::vector<GameObjectId> out;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state.objects) {
+    for (auto& [id, obj] : state.objects.atLocation(LocationId{base_loc})) {
         if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
         out.push_back(id);
@@ -7121,7 +7208,7 @@ std::vector<GameObjectId> matchingRunesInBase(const GameState& state, PlayerId p
                                                 const std::vector<Domain>& wanted) {
     std::vector<GameObjectId> out;
     auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state.objects) {
+    for (auto& [id, obj] : state.objects.atLocation(LocationId{base_loc})) {
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
         bool match = false;
@@ -7164,7 +7251,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     // transient PlayerState::current_play_source (set in executePlayCard).
     if (card.isUnit()) {
         const bool from_hand = ps.current_play_source == Intent::PlaySource::Hand;
-        for (auto& [oid, obj] : state_.objects) {
+        for (auto& [oid, obj] : state_.objects.onBoard()) {
             if (obj.controller != player || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             const Card* granter = card_registry_.get(obj.card_def_id);
@@ -7580,7 +7667,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
 }
 
 void GameEngine::healAllUnits() {
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.isUnit() && obj.damage_marked > 0 && obj.location.has_value()) {
             obj.damage_marked = 0;
         }

@@ -363,14 +363,40 @@ void shuffled(GameState& state, PlayerId owner) {
 }
 
 void prune(GameState& state) {
-    std::map<GameObjectId, Place> hidden;
+    // Called before every decision. Most of the time nobody holds a fact
+    // about a hidden card and no group is tracked: then there is nothing to
+    // tidy, and the table of hidden cards below is not built (it was a
+    // std::map of every card in both hands and decks, built and thrown away
+    // per decision — plans/09 item 9.JJ1).
+    auto& known = state.knowledge;
+    if (known.facts[0].empty() && known.facts[1].empty() && known.groups.empty()) return;
+
+    // Where each hidden card is: sorted by id for lookup. A card listed twice
+    // counts where it was listed last, as it did when this was a map filled
+    // in the same order.
+    std::vector<std::pair<GameObjectId, Place>> where;
+    {
+        size_t n = 0;
+        for (const auto& p : state.players) n += p.hand.size() + p.main_deck.size();
+        for (const auto& bf : state.battlefields) n += bf.facedown.size();
+        where.reserve(n);
+    }
     for (const auto& p : state.players) {
-        for (auto id : p.hand) hidden[id] = Place::Hand;
-        for (auto id : p.main_deck) hidden[id] = Place::Deck;
+        for (auto id : p.hand) where.emplace_back(id, Place::Hand);
+        for (auto id : p.main_deck) where.emplace_back(id, Place::Deck);
     }
     for (const auto& bf : state.battlefields) {
-        for (auto id : bf.facedown) hidden[id] = Place::Facedown;
+        for (auto id : bf.facedown) where.emplace_back(id, Place::Facedown);
     }
+    std::stable_sort(where.begin(), where.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    // The place of `id`, or nullptr if it is in no hand, deck or facedown pile.
+    auto placeOf = [&](GameObjectId id) -> const Place* {
+        auto hi = std::upper_bound(where.begin(), where.end(), id,
+            [](GameObjectId v, const auto& e) { return v < e.first; });
+        if (hi == where.begin() || (hi - 1)->first != id) return nullptr;
+        return &(hi - 1)->second;
+    };
     auto inPublicPile = [&](GameObjectId id, PlayerId owner) {
         if (owner == PlayerId::None) return true;
         const auto& p = state.player(owner);
@@ -381,9 +407,9 @@ void prune(GameState& state) {
         auto& facts = state.knowledge.facts[playerIndex(o)];
         for (auto it = facts.begin(); it != facts.end();) {
             const PlayerId owner = ownerOf(state, it->first);
-            auto h = hidden.find(it->first);
+            const Place* h = placeOf(it->first);
             if (it->second.held && owner != PlayerId::None) {
-                auto now = settled(it->second, h == hidden.end() ? nullptr : &h->second,
+                auto now = settled(it->second, h,
                                    o == owner, state.getObject(it->first).zone);
                 if (!now) { it = facts.erase(it); continue; }
                 it->second = *now;
@@ -391,10 +417,10 @@ void prune(GameState& state) {
             bool drop;
             if (it->second.held) {
                 drop = inPublicPile(it->first, owner);
-            } else if (h == hidden.end()) {
+            } else if (!h) {
                 drop = true;
             } else {
-                drop = o == owner && h->second != Place::Deck;
+                drop = o == owner && *h != Place::Deck;
             }
             it = drop ? facts.erase(it) : std::next(it);
         }
@@ -402,8 +428,8 @@ void prune(GameState& state) {
     for (auto git = state.knowledge.groups.begin(); git != state.knowledge.groups.end();) {
         auto& mem = git->second.members;
         mem.erase(std::remove_if(mem.begin(), mem.end(), [&](GameObjectId id) {
-            auto h = hidden.find(id);
-            return h == hidden.end() || h->second != Place::Deck;
+            const Place* h = placeOf(id);
+            return !h || *h != Place::Deck;
         }), mem.end());
         git = mem.empty() ? state.knowledge.groups.erase(git) : std::next(git);
     }

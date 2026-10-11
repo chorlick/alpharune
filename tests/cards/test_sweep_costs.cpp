@@ -75,6 +75,7 @@ constexpr CardDefId kTDeclinedMay = 1050;          // finalize-pass spell: "you 
 constexpr CardDefId kTEndlessChoices = 1051;       // finalize-pass spell with more sequences than the probe walks
 constexpr CardDefId kTUnrepeatable = 1049;         // finalize-pass spell that asks differently each run
 constexpr CardDefId kTNoMarkerDear = 1048;         // kTNoMarker costing [2], declaring a friendly-unit choice
+constexpr CardDefId kTRealRunOnly = 1047;          // finalize-pass spell that asks differently in the run that is seen
 constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kSkyCrusier = 847;
 constexpr CardDefId kFlameChompers = 6;
@@ -293,6 +294,36 @@ private:
     mutable int starts_ = 0;
 };
 
+/// Breaks repeatability in the one run the others cannot stand in for: it
+/// offers every friendly unit while the engine is only trying its choices out
+/// (the bus is quiet then) and only the first of them in the run that counts.
+/// What it looks at is outside the GameState and its chain item — exactly what
+/// the contract forbids.
+class TRealRunOnly : public SpellCard {
+public:
+    TRealRunOnly() {
+        def_.id = kTRealRunOnly;
+        def_.name = "Test Real Run Only";
+        def_.card_type = CardType::Spell;
+        def_.energy_cost = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        std::vector<GameObjectId> legal = chooseableUnits(ctx.state, ctx.controller,
+            [&](const GameObject& u) { return u.controller == ctx.controller; });
+        if (!ctx.events.holding() && legal.size() > 1) legal.resize(1);
+        (void)pickTarget(ctx, "Test Real Run Only", legal);
+        if (finalizingChoices(ctx)) return;
+    }
+private:
+    CardDef def_;
+};
+
 /// Opted into choices at finalization, and returns without reaching the marker.
 class TNoMarker : public SpellCard {
 public:
@@ -374,6 +405,7 @@ protected:
         card_registry.registerCard(kTEndlessChoices, std::make_unique<TEndlessChoices>());
         card_registry.registerCard(kTNoMarkerDear, std::make_unique<TNoMarker>(kTNoMarkerDear, 2));
         card_registry.registerCard(kTUnrepeatable, std::make_unique<TUnrepeatable>());
+        card_registry.registerCard(kTRealRunOnly, std::make_unique<TRealRunOnly>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1977,6 +2009,44 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ProbingAnOfferLeavesNoTrace) {
     EXPECT_FALSE(state.chain.exists());
 }
 
+// ─── 9.HH4: what a probe costs ──────────────────────────────────────────────
+
+TEST_F(SweepCostsTest, FinalizePassSpell_AProbeCopiesTheStateOncePerRun) {
+    // The probe plays on a copy of the game and the game itself is set aside
+    // untouched: one copy of the GameState per run of the spell's choices (a
+    // probe that needed one run used to make five copies). Resonating Strike
+    // with Irelia at battlefield 0 needs two runs: battlefield 0 first (she
+    // is ruled out), then battlefield 1.
+    state.battlefields[0].controller = P1;
+    state.battlefields[1].controller = P1;
+    const GameObjectId irelia = addUnit(P1, kIreliaGraceful, 3, 0);
+    addUnit(P1, kInvalidId, 2, 1);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    const GameObjectId spell = addToHand(P1, kResonatingStrike);
+    setPool(P1, 1, 1);
+    const uint64_t before = Card::costStateFingerprint(state);
+    withEngine([&](GameEngine& e) {
+        // References taken before the probe still point at the game's objects
+        // after it: the game was moved aside and back, not copied over.
+        const GameObject* irelia_before = &e.state().getObject(irelia);
+        const GameObjectId* hand_before = e.state().player(P1).hand.data();
+        bool offered = false;
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == spell) offered = true;
+        EXPECT_TRUE(offered);
+        EXPECT_EQ(e.testHook_prePlayProbes(), 1);
+        EXPECT_EQ(e.testHook_prePlayRunsLast(), 2);
+        EXPECT_EQ(e.testHook_prePlayStateCopies(), 2) << "one per run";
+        EXPECT_EQ(&e.state().getObject(irelia), irelia_before);
+        EXPECT_EQ(e.state().player(P1).hand.data(), hand_before);
+        // And the board index of the game that came back answers for it.
+        EXPECT_EQ(e.state().unitsAt(LocationId{BattlefieldLocation{0}}, P1),
+                  std::vector<GameObjectId>{irelia});
+    });
+    EXPECT_EQ(Card::costStateFingerprint(state), before);
+    EXPECT_TRUE(inHand(P1, spell));
+}
+
 // ─── 9.HH3: the probe's bound and the repeatability it relies on ────────────
 
 TEST_F(SweepCostsTest, FinalizePassSpell_ReachingTheProbeBoundIsAnErrorNotAWithheldPlay) {
@@ -2058,6 +2128,41 @@ TEST_F(SweepCostsTest, FinalizePassSpell_APassThatIsNotRepeatableMakesTheViableP
         EXPECT_NE(std::string(ex.what()).find("not repeatable"), std::string::npos) << ex.what();
     }
     EXPECT_EQ(state.player(P1).rune_pool.energy, 1) << "nothing was paid";
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_APassThatDiffersOnlyInTheRealRunMakesTheFinalRunThrow) {
+    // The third "not repeatable" throw: every run that tries the choices out
+    // agrees with every other, the player's answer is taken, and the run that
+    // is made for real does not meet the prompt that answer was given to.
+    // Two Irelias, so two options keep the spell payable; the second is
+    // picked, and in the real run Test Real Run Only offers only the first.
+    const GameObjectId first = addUnit(P1, kIreliaGraceful, 3);
+    const GameObjectId second = addUnit(P1, kIreliaGraceful, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    const GameObjectId spell = addToHand(P1, kTRealRunOnly);   // [2]
+    setPool(P1, 1, 0);
+    ASSERT_TRUE(playOffered(spell)) << "the probe, which is quiet, finds a payable sequence";
+    Intent i;
+    i.type = IntentType::PlayCard;
+    i.player = P1;
+    i.card = spell;
+    EnginePathAgent agent(EnginePathAgent::choosing(second));
+    try {
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(i); }, &agent);
+        ADD_FAILURE() << "the real run did not follow the choice and the play went through";
+    } catch (const std::logic_error& ex) {
+        const std::string what = ex.what();
+        EXPECT_NE(what.find("choosePrePlayViable"), std::string::npos) << what;
+        EXPECT_NE(what.find("Test Real Run Only"), std::string::npos) << what;
+        EXPECT_NE(what.find("did not complete the choices it had just made"), std::string::npos)
+            << what;
+        EXPECT_NE(what.find("not repeatable"), std::string::npos) << what;
+    }
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the player was asked once, before the real run";
+    EXPECT_EQ(agent.prompts[0].size(), 2u) << "both Irelias kept the spell payable";
+    EXPECT_TRUE(agent.wasOffered(first));
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 1) << "nothing was paid";
+    EXPECT_FALSE(events.holding());
 }
 
 // ─── 9.AA3: a grant play carries the discount of its earlier choices ────────
@@ -2152,6 +2257,8 @@ TEST_F(SweepCostsTest, NoPlayChangesNothingOverTwoHundredRandomGames) {
     };
 
     int undone = 0, offered_again = 0, short_plays = 0, games = 0;
+    long probes = 0, probe_runs = 0, state_copies = 0;
+    int most_runs = 0;
     for (uint64_t seed = 1; seed <= 200; ++seed) {
         EventBus bus;
         GameEngine engine(card_db, bus, card_registry);
@@ -2162,6 +2269,10 @@ TEST_F(SweepCostsTest, NoPlayChangesNothingOverTwoHundredRandomGames) {
         undone += p1.undone + p2.undone;
         offered_again += p1.offered_again + p2.offered_again;
         short_plays += p1.short_plays + p2.short_plays;
+        probes += engine.testHook_prePlayProbes();
+        probe_runs += engine.testHook_prePlayRunsTotal();
+        state_copies += engine.testHook_prePlayStateCopies();
+        most_runs = std::max(most_runs, engine.testHook_prePlayRunsMax());
     }
     EXPECT_EQ(games, 200);
     EXPECT_GT(short_plays, 0) << "the batch did reach the case (else it shows nothing)";
@@ -2170,6 +2281,15 @@ TEST_F(SweepCostsTest, NoPlayChangesNothingOverTwoHundredRandomGames) {
     std::cout << "[ " << games << " random games: " << short_plays
               << " spells played with less Energy at hand than their printed cost, " << undone
               << " plays that changed nothing ]\n";
+    // 9.HH4: what the probes cost. A probe that finds its answer in its first
+    // run copies the GameState once (to play on); it was five copies.
+    std::cout << "[ " << probes << " probes, " << probe_runs << " finalize-pass runs in all (most in one search: "
+              << most_runs << "), " << state_copies << " GameState copies ]\n";
+    EXPECT_GT(probes, 0);
+    EXPECT_LE(state_copies, probes + 8 * short_plays)
+        << "about one copy per probe and six per viable pass (it was five per probe and more "
+           "per viable pass)";
+    EXPECT_LT(most_runs, 16) << "no search of this deck's spells comes near the bound of 256";
 }
 
 // ─── 9.CC3: each declaration agrees with the card's real pick list ──────────
@@ -2351,6 +2471,108 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
         EXPECT_EQ(card_db.get(id).ability_text.find("Choose one") != std::string::npos,
                   modes.count(id) > 0)
             << card_db.get(id).name << " (" << id << ")";
+    state = blank;
+}
+
+// ─── 9.II1: how near the registered spells come to the probe's bound ────────
+
+TEST_F(SweepCostsTest, FinalizePassSpell_NoRegisteredSpellComesNearTheProbeBound) {
+    // The probe walks at most 256 sequences of a spell's choices and reaching
+    // that without an answer is an engine error. For each of the finalize-pass
+    // spells: put it one Energy (or one Power) short with Irelia, Graceful in
+    // play, with and without Sandswept Tomb as a battlefield (the two ways a
+    // registered card takes something off the cost of a spell that chooses a
+    // unit), in each place she can stand, on a small board and on one with
+    // five times the units and two more battlefields, and count the runs of
+    // every search the engine makes to decide the offer. The most any spell
+    // needs is three (Curtain Call: its modes). They must stay within
+    // kMostRuns, and must not
+    // grow with the number of units: the choice filter leaves, at the first
+    // prompt for an object, only the objects that pay for the spell, and any
+    // sequence that chose one is payable — so what a search can walk without
+    // finding an answer are the sequences of a spell's modes, "may"s and
+    // battlefields alone, which the card's text bounds.
+    constexpr int kMostRuns = 4;
+    const GameState blank = state;
+    std::vector<CardDefId> spells;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* card = card_registry.get(id);
+        if (!card || def.card_type != CardType::Spell || id >= 1000) continue;
+        if (!(card->choicesAtFinalization() & Card::kFinalizeResolve)) continue;
+        if (card->needsPlayTimeTarget()) continue;
+        spells.push_back(id);
+    }
+    std::sort(spells.begin(), spells.end());
+    ASSERT_GE(spells.size(), 30u);
+    int probed_spells = 0, most = 0;
+    long searches = 0;
+    for (CardDefId id : spells) {
+        int most_small = 0, most_large = 0;
+        bool probed = false;
+        for (int size = 0; size < 2; ++size)
+        for (int tomb = 0; tomb < 2; ++tomb)
+        for (int irelia_at = -1; irelia_at < 2; ++irelia_at)
+        for (int short_of = 0; short_of < 2; ++short_of) {
+            state = blank;
+            if (tomb == 1) {
+                // Sandswept Tomb as battlefield 0: every friendly unit there
+                // takes [A] off a spell that chooses it.
+                const GameObjectId card = state.createObject();
+                o(card).card_def_id = 951;
+                o(card).card_type = CardType::Battlefield;
+                o(card).name = card_db.get(951).name;
+                state.battlefields[0].card_object_id = card;
+            }
+            const int copies = size == 0 ? 1 : 5;
+            if (size == 1) { addBattlefield(); addBattlefield(); }
+            for (auto& bf : state.battlefields) bf.controller = P1;
+            for (int c = 0; c < copies; ++c) {
+                addUnit(P1, kInvalidId, 2);
+                addUnit(P1, kInvalidId, 3, 0);
+                addUnit(P1, kInvalidId, 6, 1);
+                addUnit(P2, kInvalidId, 2, 0);
+                addUnit(P2, kInvalidId, 5, 1);
+                addUnit(P2, kInvalidId, 3);
+                addGear(P1, kLongSword);
+                addGear(P2);
+                addToHand(P1, kPoutyPoro);
+                addToTrash(P1, kPoutyPoro);
+            }
+            addUnit(P1, kIreliaGraceful, 3, irelia_at);
+            for (int i = 0; i < 10; ++i) addToDeck(P1, kPoutyPoro);
+            setXp(P1, 10);
+            withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+            const GameObjectId spell = addToHand(P1, id);
+            const auto& def = card_db.get(id);
+            // One short: of Energy, or of Power where the spell has a Power cost.
+            if (short_of == 0) setPool(P1, std::max(0, def.energy_cost - 1), 10);
+            else setPool(P1, 30, std::max(0, def.power_cost - 1));
+            withEngine([&](GameEngine& e) {
+                (void)e.generateLegalActions();
+                if (e.testHook_prePlayProbes() == 0) return;
+                probed = true;
+                searches += e.testHook_prePlayProbes();
+                int& m = size == 0 ? most_small : most_large;
+                m = std::max(m, e.testHook_prePlayRunsMax());
+            });
+            (void)spell;
+        }
+        if (probed) ++probed_spells;
+        most = std::max({most, most_small, most_large});
+        EXPECT_LE(most_large, kMostRuns) << card_db.get(id).name << " (" << id << ")";
+        // More units and more battlefields: not one more run. (A search
+        // tries the answers that take something off the cost first, so it
+        // does not walk the other units a prompt offers.)
+        EXPECT_LE(most_large, most_small)
+            << card_db.get(id).name << " (" << id << "): the runs of a search grew with the board ("
+            << most_small << " -> " << most_large << ")";
+        if (probed)
+            std::cout << "[ " << card_db.get(id).name << " (" << id << "): at most " << most_small
+                      << " run(s) on the small board, " << most_large << " on the large one ]\n";
+    }
+    EXPECT_GT(probed_spells, 10) << "the boards did put the spells one short with a discount in reach";
+    EXPECT_GT(searches, 0);
+    EXPECT_LE(most, kMostRuns);
     state = blank;
 }
 

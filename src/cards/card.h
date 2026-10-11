@@ -250,11 +250,14 @@ public:
     ///      "no" → return 0. If "yes" → RE-EVALUATE `still_legal()`
     ///      (state may have shifted while the agent was deciding) and
     ///      return 1 if still legal, else 0.
-    ///   2. Further invocations: returns 1 (already confirmed).
+    ///   2. Further invocations: return the answer already given (1 or 0).
     ///
-    /// Reserves resume_points 0, 1, 2 on the chain item. Cards needing
-    /// additional internal state should use resume_point >= 3 (or use
-    /// `card_counters` for non-step-tracking).
+    /// Leaves resume_point at 1 (waiting) / 2 (answered); the answer itself is
+    /// ChainItem::may_answer, so this composes with the pick* helpers in any
+    /// order. ONE "may" per callback: a second confirmOptional in the same
+    /// callback returns the first one's answer. A second yes/no is a
+    /// two-mode pickMode; a second clause that is its own "When ..." sentence
+    /// is its own trigger (Card::triggerTypes).
     ///
     /// `still_legal` is a closure the card supplies. It captures `ctx`
     /// (or whatever state it needs) and returns true iff the effect can
@@ -309,12 +312,12 @@ public:
     ///   -1 = waiting for agent choice (caller MUST return immediately)
     ///   value in [min, max] = chosen X amount
     ///
-    /// On re-entry (resume_point ≥ 2), returns the previously-chosen X
-    /// stashed in `resume_data[0]` so the caller can re-invoke this
-    /// helper from a later phase of its own resume state machine and
-    /// get the same X back without re-prompting.
+    /// On re-entry, returns the previously-chosen X stashed in
+    /// `resume_data[0]` so the caller can re-invoke this helper from a
+    /// later phase of its own resume state machine and get the same X
+    /// back without re-prompting.
     ///
-    /// Reserves resume_points 0, 1, 2 and resume_data[0].
+    /// Leaves resume_point at 1 (waiting) / 2 (answered); uses resume_data[0].
     int pickXAmount(CardContext& ctx, const std::string& label,
                     int min, int max);
 
@@ -339,9 +342,9 @@ public:
     ///   -2 = no legal mode (caller silently skips)
     ///   value in [0, num_modes) = chosen mode index
     ///
-    /// Reserves resume_points 3, 4, 5 and resume_data[1] so it can
-    /// coexist with `pickXAmount` (which uses 0/1/2 + data[0]) in the
-    /// same Card's onResolve.
+    /// Leaves resume_point at 4 (waiting) / 5 (answered); uses
+    /// resume_data[1]. Composes with the other helpers in any order (see
+    /// kChoiceStateSlot).
     ///
     /// Trace tags: MODE_PROMPT, MODE_PICKED, MODE_NOT_OFFERED.
     int pickMode(CardContext& ctx, const std::string& label, int num_modes,
@@ -379,9 +382,10 @@ public:
     ///      pickMode for the same convention).
     ///   chosen GameObjectId on second / re-entry call.
     ///
-    /// Reserves resume_points 6, 7, 8 and resume_data[2] so it can
-    /// coexist with pickXAmount (0/1/2 + data[0]) and pickMode
-    /// (3/4/5 + data[1]) inside the same Card's onResolve.
+    /// Leaves resume_point at 7 (waiting) / 8 (answered); uses
+    /// resume_data[2]. Composes with the other helpers in any order (see
+    /// kChoiceStateSlot). ONE pickTarget per callback: a second call returns
+    /// the first pick. Two objects are a pickTargetPair.
     ///
     /// Trace tags: TGT_PROMPT, TGT_PICKED, TGT_FORCED, TGT_NOT_OFFERED.
     GameObjectId pickTarget(CardContext& ctx, const std::string& label,
@@ -400,19 +404,19 @@ public:
     /// but excludes the killed unit from the recipient list, etc.).
     ///
     /// Returns:
-    ///   {kInvalidId, kInvalidId} on suspend (caller MUST return
-    ///     immediately — chain manager re-enters after agent picks)
-    ///     OR on fizzle (no legal first target). Distinguish via
-    ///     ctx.state.chain.resuming->resume_point.
+    ///   {kInvalidId, kInvalidId} on suspend — for the first AND for the
+    ///     second pick (caller MUST return immediately — chain manager
+    ///     re-enters after agent picks) OR on fizzle (no legal first
+    ///     target). Distinguish via ctx.state.chain.resuming->resume_point
+    ///     (10 / 12 = waiting, 13 = done).
     ///   {a, b} on full completion.
     ///   {a, kInvalidId} if second pick has no legal targets after
     ///     first was chosen — partial fizzle (b never picked).
     ///     Caller can still fire b-independent riders.
     ///
-    /// Reserves resume_points 9..14 and resume_data[3..4] so it can
-    /// coexist with confirmOptional (0/1/2), pickXAmount (also
-    /// 0/1/2 + data[0]), pickMode (3/4/5 + data[1]), pickTarget
-    /// (6/7/8 + data[2]) inside the same Card.
+    /// Leaves resume_point at 10 / 12 (waiting) / 13 (done); uses
+    /// resume_data[3..4]. Composes with the other helpers in any order
+    /// (see kChoiceStateSlot).
     ///
     /// Trace tags: TGT_PAIR_PROMPT_A, TGT_PAIR_PICKED_A,
     /// TGT_PAIR_PROMPT_B, TGT_PAIR_PICKED_B, TGT_PAIR_NOT_OFFERED.
@@ -420,6 +424,36 @@ public:
         CardContext& ctx, const std::string& label,
         const std::vector<GameObjectId>& legal_a,
         const std::function<std::vector<GameObjectId>(GameObjectId picked_a)>& legal_b_fn);
+
+    /// resume_data slot holding the pick* helpers' per-helper progress flags
+    /// (waiting / answered). Because each helper tracks its own progress here
+    /// rather than reading the shared resume_point, they may be called in any
+    /// order. Slots 0..5 are the helpers' answers and the engine's
+    /// "target chosen at finalization" flag (slot 5). A card that drives
+    /// resume_data by hand AND calls a pick* helper must leave slots 0..6 to
+    /// the helpers (or finish with resume_data before the first helper call).
+    static constexpr size_t kChoiceStateSlot = 6;
+
+    // ── Choosing an object with hand-built options ──
+    // A card that asks for an object through its own MakeChoice options
+    // (objChoice / takenObject in card_helpers.h) instead of pickTarget owes
+    // the same bookkeeping pickTarget does:
+    //
+    //     for (auto id : offerableChoices(ctx, candidates))     // when publishing
+    //         opts.push_back(objChoice(ctx.controller, id));
+    //     ...
+    //     GameObjectId id = takenObject(ctx);                   // on re-entry
+    //     commitChosenObject(ctx, id);                          // exactly once
+    //
+    /// `candidates` minus the objects whose Deflect cost (CR 809) the
+    /// controller can't pay.
+    std::vector<GameObjectId> offerableChoices(
+        CardContext& ctx, const std::vector<GameObjectId>& candidates) const;
+    /// Pays Deflect for choosing `chosen`, records it on the resolving chain
+    /// item, sets "chose an enemy unit this turn" and emits the
+    /// "chosen_by_controller" event. Only for objects ctx.controller chose;
+    /// not for a pick the opponent makes among their own objects.
+    void commitChosenObject(CardContext& ctx, GameObjectId chosen) const;
 
     // ── Targeting ──
     /// Target requirements for legal action generation.

@@ -19,6 +19,14 @@ Two engine facts drive several findings:
   - Latent: `spells/0263_bullet_time.cpp`, `spells/0760_keeper_s_verdict.cpp`, `gear/0607_forgotten_signpost.cpp` have the same ordering but take the first target from `targets[0]`. Bullet Time's comment at lines 22-25 ("they don't collide") is wrong.
   - Latent: `pickXAmount` stores X with `push_back` (`card.cpp:157,195`) but reads `resume_data[0]`; the engine pre-sizes `resume_data` to 6 for play-time targets (`game_engine.cpp:1256,1935`).
   - Fix direction: per-helper completion flags instead of one ordered integer, so helpers compose in any order.
+  - HELPER FIXED (stream helpers): `Card::confirmOptional` / `pickXAmount` / `pickMode` / `pickTarget` / `pickTargetPair` keep per-helper waiting/answered flags (`resume_data[Card::kChoiceStateSlot]`; `confirmOptional` uses `may_answer`) and no longer read each other's progress from `resume_point`; `pickXAmount` stores X in `resume_data[0]`. `resume_point` still gets the documented values (1/2, 4/5, 7/8, 10/12/13). Tests: `ChoiceHelperTest.EveryOrderOfTheHelpersAsksEachOnceAndKeepsEachAnswer`, `.ConfirmOptionalAfterPickTargetCanBeDeclined`, `.PickXAmountAfterAPlayTimeTargetKeepsX`, `.HelpersLeaveTheDocumentedResumePoints`.
+  - Per card, with no card edit: Altar of Memories — bottom is choosable (`EnginePathTest.DeathTriggerWithMayTargetAndModeResolvesThroughTheEngine`); Zenith Blade — the move can be declined (`EnginePathTest.SpellMayAfterTargetCanBeDeclinedThroughTheEngine`); Bullet Time — X is asked (`EnginePathTest.SpellTargetThenXIsAskedThroughTheEngine`); Keeper's Verdict — top/bottom is asked (`EnginePathTest.SpellTargetThenModeIsAskedThroughTheEngine`); Forgotten Signpost unchanged (see below).
+  - Fixed by stream helpers on the orchestrator's instruction (the helper change made both run a state change once per pass): `spells/0745_thrill_of_the_hunt.cpp` asks the battlefield before banishing (test: `EnginePathTest.ThrillOfTheHuntBanishesItsUnitOnce`); `spells/0258_zenith_blade.cpp` stuns after the "may" is answered (test: `EnginePathTest.ZenithBladeStunsOnce`). Both tests were run red against the un-fixed card first. Blast radius checked: the only callbacks where a helper follows a higher-slot helper are 490, 258, 263, 745, 760; 490, 263 and 760 change no state between the two.
+  - STILL OPEN, card streams (cards are not the helpers stream's files):
+    - `gear/0695_blast_cone.cpp` — one `confirmOptional` per callback: the second call returns the first answer by design. "When you move an enemy unit, you may exhaust this to stun it" is its own sentence: make it a second trigger, or ask it with a two-mode `pickMode`.
+    - `gear/0607_forgotten_signpost.cpp` — two `pickTarget` calls in one callback: the second returns the first pick. Use `pickTargetPair`.
+    - `spells/0263_bullet_time.cpp` — delete the "they don't collide" comment; pay with `ctx.executor.payAnyPower` (03 item 3.24).
+    - Rule for every card: a helper that follows another helper now suspends, so nothing between two helper calls may change game state unless it is guarded to run once.
 
 ## B. Triggers that act only on `targets`
 
@@ -75,12 +83,17 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
 
 ## G. Shared helpers
 
-- [ ] **3.23 `payOnePower` bypasses the engine's power accounting** [confirmed]
+- [x] **3.23 `payOnePower` bypasses the engine's power accounting** [confirmed] — FIXED: `payOnePower` recycles through new `recycleRuneForPower` (rune ready, `power_spent_this_turn`, `LeftBoardEvent`) and uses `EffectExecutor::payAnyPower` for [A]; `standardEquip` (both overloads), `SimpleEquipGear` and `UniversalEquipGear` pay through `payEnergy` + `payOnePower`, all-or-nothing, both ends on board; test: `ChoiceHelperTest.PayOnePowerRecyclesARuneWithTheEnginesBookkeeping`, `ChoiceHelperTest.EquipCostsCountAsPowerSpentAndAreAllOrNothing`
   - Where: `card_helpers.h:45-73`, `gear/equip_base.h:57-64`. No `power_spent_this_turn`, no `LeftBoardEvent`, no `is_exhausted` clear (engine path: `effect_executor.cpp:413-423`). Sivir, Mercenary (464) still reads 0 after two Equip costs.
 - [ ] **3.24 Copy-pasted helpers** [confirmed]
   - `splitDamage` + four `kSplit*` constants duplicated in `spells/0751_alpha_strike.cpp:43-52` and `units/0041_volibear_furious.cpp:43-52` (compile only because the directories are separate unity targets).
   - `units/0444_corrupt_enforcer.cpp:35` re-implements `discardThenAct`.
   - 5 files hand-roll rune recycling instead of `payOnePower`.
+  - HELPER DONE (stream helpers): `card_helpers.h` now has `splitDamageAmong` + `kSplitDamage*` (the two copies, verbatim, under a new name so it cannot collide with them) and `recycleRuneForPower`; test: `ChoiceHelperTest.SplitDamageAmongLetsTheControllerDivideTheDamage`.
+  - STILL OPEN, card streams — recipe:
+    - `spells/0751_alpha_strike.cpp`, `units/0041_volibear_furious.cpp`: delete the local `splitDamage` and the four `kSplit*` constants; call `splitDamageAmong(ctx, label, total, source, legal, damaged)` (same signature and behaviour).
+    - `units/0444_corrupt_enforcer.cpp`: delete the private `discardThenAct`; call `discardThenAct(ctx, 1, label, [](CardContext&) {})` from `card_helpers.h`.
+    - `gear/0405_hextech_anomaly.cpp`, `gear/0412_the_zero_drive.cpp`, `gear/0498_blade_of_the_ruined_king.cpp`, `gear/0748_hextech_gauntlets.cpp`, `spells/0263_bullet_time.cpp`: replace every hand-written `rune_deck.insert(...)` recycle with `payOnePower(ctx, player, domain)` (one Power of a Domain; `std::nullopt` = [A]), `ctx.executor.payAnyPower(player, n)` (n [A]), or — where the card picks the rune itself — `recycleRuneForPower(ctx, player, rune)`. Check affordability first with `payableOnePower` / `ctx.executor.payableAnyPower`. An Equip that is "[N] + one Power" is `standardEquip(ctx, ctx.source, unit, N, domain)`.
 
 ## See also
 

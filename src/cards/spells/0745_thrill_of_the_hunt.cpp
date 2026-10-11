@@ -26,16 +26,20 @@ public:
         auto owner = ctx.state.getObject(unit_id).owner;
         std::string uname = ctx.state.getObject(unit_id).name;
 
+        // The battlefield is asked BEFORE anything changes: pickMode suspends
+        // and this callback is re-entered from the top with the answer, so
+        // the banish below must come after the last choice or it would run
+        // once per pass. Use pickMode so the agent records the battlefield
+        // choice (one option per battlefield on the board, not just
+        // controlled ones).
         // Step 1: banish the friendly unit.
-        ctx.executor.banishObject(unit_id);
-        // banishObject pushes to banishment; playIgnoringCost re-zones it, so
-        // drop the duplicate banishment entry.
-        auto& bz = ctx.state.player(owner).banishment;
-        bz.erase(std::remove(bz.begin(), bz.end(), unit_id), bz.end());
-
-        // Step 2: owner plays it to ANY battlefield, ignoring cost. Use
-        // pickMode so the agent records the battlefield choice (one option
-        // per battlefield on the board, not just controlled ones).
+        auto banish = [&]() {
+            ctx.executor.banishObject(unit_id);
+            // banishObject pushes to banishment; playIgnoringCost re-zones it,
+            // so drop the duplicate banishment entry.
+            auto& bz = ctx.state.player(owner).banishment;
+            bz.erase(std::remove(bz.begin(), bz.end(), unit_id), bz.end());
+        };
         std::vector<LocationId> locations;
         std::vector<std::string> labels;
         for (const auto& bf : ctx.state.battlefields) {
@@ -48,6 +52,7 @@ public:
         }
         if (locations.empty()) {
             // No battlefields — fall back to owner's base.
+            banish();
             ctx.executor.playIgnoringCost(owner, unit_id,
                                            LocationId{BaseLocation{owner}});
             ctx.events.logTrace("THRILL: " + uname + " (no BF) played to base");
@@ -60,6 +65,8 @@ public:
                               static_cast<int>(locations.size()), labels, legal_mask);
         if (chosen == -1) return;  // yielded for agent input
         if (chosen < 0 || static_cast<size_t>(chosen) >= locations.size()) chosen = 0;
+        banish();
+        // Step 2: owner plays it to the chosen battlefield, ignoring cost.
         ctx.executor.playIgnoringCost(owner, unit_id, locations[chosen]);
         ctx.events.logTrace("THRILL: " + uname + " played to " + labels[chosen] +
                              ", ignoring cost");

@@ -42,7 +42,9 @@ public:
             return;  // no legal target — fizzle
         }
         if (!ctx.state.objectExists(stunned)) return;
-        ctx.executor.stunUnitBy(stunned, ctx.source);
+        // The stun comes after the "may" below: confirmOptional suspends and
+        // this callback is re-entered from the top with the answer, so
+        // anything done before it would be done once per pass.
         std::optional<LocationId> dest = ctx.state.getObject(stunned).location;
 
         // "You may move a friendly unit to that enemy unit's battlefield."
@@ -61,6 +63,7 @@ public:
             "Zenith Blade: move a friendly unit to that battlefield?",
             movable_exists);
         if (conf == -1) return;  // waiting on agent
+        ctx.executor.stunUnitBy(stunned, ctx.source);
         if (conf == 0) return;   // declined / nothing to move
         if (!dest.has_value() ||
             !std::holds_alternative<BattlefieldLocation>(*dest)) return;

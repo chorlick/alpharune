@@ -290,9 +290,14 @@ TEST_F(VendettaA, Vendetta_Morgana_DealsDamageEqualToMarkedDamage) {
     auto fresh = addUnit(P2, kInvalidId, 6, 0);
     state.getObject(hurt).damage_marked = 2;
 
-    fireTriggerAs(kMorgana, P1, morgana, TriggerType::WhenYouPlayMe, exec, {hurt});
+    // Through the engine: the controller chooses the unit (a trigger is never
+    // handed targets — plans/07 item 7.3).
+    EnginePathAgent pick_hurt(EnginePathAgent::choosing(hurt));
+    fireTriggerThroughEngine(morgana, TriggerType::WhenYouPlayMe, &pick_hurt);
+    EXPECT_EQ(pick_hurt.prompts.size(), 1u);
     EXPECT_EQ(state.getObject(hurt).damage_marked, 4);
-    fireTriggerAs(kMorgana, P1, morgana, TriggerType::WhenYouPlayMe, exec, {fresh});
+    EnginePathAgent pick_fresh(EnginePathAgent::choosing(fresh));
+    fireTriggerThroughEngine(morgana, TriggerType::WhenYouPlayMe, &pick_fresh);
     EXPECT_EQ(state.getObject(fresh).damage_marked, 0) << "no damage marked -> deals 0";
 }
 

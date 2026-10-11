@@ -29,6 +29,32 @@ bool Card::costAlreadyPaid(const CardContext& ctx) {
     return r.has_value() && !r->finalizing && r->choices_finalized && r->finalize_costs_paid;
 }
 
+// ── Choice-helper progress ──────────────────────────────────────────────────
+// Each helper keeps its own "waiting for the agent" / "answered" flags on the
+// resolving item (resume_data[Card::kChoiceStateSlot]), so the helpers compose
+// in any order within one callback. ChainItem::resume_point is still written
+// with the documented per-helper values, but only so cards can tell a suspend
+// from a fizzle; no helper infers another helper's progress from it.
+// (confirmOptional's answer lives in ChainItem::may_answer and it stays off
+// resume_data entirely: cards with a "may" gate use resume_data freely.)
+namespace {
+enum : uint32_t {
+    kXAwait = 1u << 0,     kXDone = 1u << 1,
+    kModeAwait = 1u << 2,  kModeDone = 1u << 3,
+    kTgtAwait = 1u << 4,   kTgtDone = 1u << 5,
+    kPairAwaitA = 1u << 6, kPairAwaitB = 1u << 7, kPairDone = 1u << 8,
+};
+uint32_t choiceState(const ChainItem& ri) {
+    return ri.resume_data.size() > Card::kChoiceStateSlot
+        ? static_cast<uint32_t>(ri.resume_data[Card::kChoiceStateSlot]) : 0u;
+}
+void setChoiceState(ChainItem& ri, uint32_t clear, uint32_t set) {
+    while (ri.resume_data.size() <= Card::kChoiceStateSlot) ri.resume_data.push_back(0);
+    auto& slot = ri.resume_data[Card::kChoiceStateSlot];
+    slot = static_cast<int32_t>((static_cast<uint32_t>(slot) & ~clear) | set);
+}
+}  // namespace
+
 int Card::confirmOptional(CardContext& ctx, const std::string& label,
                            const std::function<bool()>& still_legal) {
     auto& ri_opt = ctx.state.chain.resuming;
@@ -41,8 +67,11 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         return still_legal() ? 1 : 0;
     }
     auto& ri = *ri_opt;
+    // Waiting for the yes/no published below (pickXAmount shares resume_point 1).
+    const bool awaiting = ri.may_answer == -1 && ri.resume_point == 1 &&
+                          !(choiceState(ri) & kXAwait);
 
-    if (ri.resume_point == 0) {
+    if (ri.may_answer == -1 && !awaiting) {
         // Validate-before-prompt. CR principle: never offer a choice that
         // can't legally be acted on. If preconditions failed (e.g. the
         // spell to banish isn't in trash anymore), skip silently.
@@ -86,7 +115,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         return -1;  // caller returns, chain manager re-enters after agent
     }
 
-    if (ri.resume_point == 1) {
+    if (awaiting) {
         auto picked = ctx.executor.takeChoice();
         // Yes = chosen_value == 1 (set explicitly by yes_choice above).
         // Anything else (no_choice with chosen_value=0, no recorded choice,
@@ -117,10 +146,10 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         return 1;
     }
 
-    // resume_point >= 2: already confirmed and the card is in its
-    // post-confirmation work. Return 1 so the caller re-enters its
-    // execute branch on subsequent loop iterations (in case the card
-    // itself requests further choices and is re-entered).
+    // Already answered (whatever other helpers have done to resume_point
+    // since): the card is in its post-confirmation work. Return the answer so
+    // the caller re-enters its execute branch on subsequent loop iterations
+    // (in case the card itself requests further choices and is re-entered).
     if (ri.may_answer == 0) return 0;
     // Answered at finalization: the effect happens only if it can still be
     // done as the ability resolves. (Once a cost has been paid the
@@ -146,15 +175,24 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
         return max;
     }
     auto& ri = *ri_opt;
+    const uint32_t st = choiceState(ri);
+    auto store = [&ri](int x) {
+        if (ri.resume_data.empty()) ri.resume_data.push_back(0);
+        ri.resume_data[0] = x;
+        setChoiceState(ri, kXAwait, kXDone);
+        ri.resume_point = 2;
+    };
 
-    if (ri.resume_point == 0) {
+    // Already chosen: X is stashed in resume_data[0].
+    if (st & kXDone) return ri.resume_data.empty() ? min : ri.resume_data[0];
+
+    if (!(st & kXAwait)) {
         if (max < min) {
             ctx.events.logTrace("X_NOT_OFFERED: " + label +
                                  " (max=" + std::to_string(max) +
                                  " below min=" + std::to_string(min) +
                                  ")");
-            ri.resume_point = 2;
-            ri.resume_data.push_back(min);
+            store(min);
             return min;
         }
         // Publish (max - min + 1) MakeChoice intents, one per legal X.
@@ -178,28 +216,22 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
                              " options) [agent decides]");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
                                     "X: " + label);
+        setChoiceState(ri, 0, kXAwait);
         ri.resume_point = 1;
         return -1;
     }
 
-    if (ri.resume_point == 1) {
-        auto picked = ctx.executor.takeChoice();
-        int x = min;
-        if (picked.has_value() && picked->chosen_value.has_value()) {
-            x = *picked->chosen_value;
-        }
-        if (x < min) x = min;
-        if (x > max) x = max;
-        ctx.events.logTrace("X_PICKED: " + label + " = " +
-                             std::to_string(x));
-        ri.resume_data.push_back(x);
-        ri.resume_point = 2;
-        return x;
+    auto picked = ctx.executor.takeChoice();
+    int x = min;
+    if (picked.has_value() && picked->chosen_value.has_value()) {
+        x = *picked->chosen_value;
     }
-
-    // resume_point >= 2: previously chosen X is stashed in resume_data[0].
-    if (!ri.resume_data.empty()) return ri.resume_data[0];
-    return min;
+    if (x < min) x = min;
+    if (x > max) x = max;
+    ctx.events.logTrace("X_PICKED: " + label + " = " +
+                         std::to_string(x));
+    store(x);
+    return x;
 }
 
 int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
@@ -223,18 +255,26 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
     }
     auto& ri = *ri_opt;
 
-    // resume_point reservations: 3 (publish) → 4 (consume) → 5 (done).
-    // We use a separate slot from pickXAmount (0/1/2) so they coexist.
+    // resume_point is left at 4 (waiting for the agent) / 5 (answered) for
+    // the card to read; the mode itself is kept in resume_data[1].
+    const uint32_t st = choiceState(ri);
+    auto store = [&ri](int m) {
+        while (ri.resume_data.size() < 2) ri.resume_data.push_back(0);
+        ri.resume_data[1] = m;
+        setChoiceState(ri, kModeAwait, kModeDone);
+        ri.resume_point = 5;
+    };
 
-    if (ri.resume_point < 3) ri.resume_point = 3;
+    // Already chosen: the mode is in resume_data[1].
+    if (st & kModeDone)
+        return ri.resume_data.size() >= 2 ? ri.resume_data[1]
+                                          : (legal.empty() ? -2 : legal.front());
 
-    if (ri.resume_point == 3) {
+    if (!(st & kModeAwait)) {
         if (legal.empty()) {
             ctx.events.logTrace("MODE_NOT_OFFERED: " + label +
                                  " (no legal modes after filtering)");
-            ri.resume_point = 5;
-            while (ri.resume_data.size() < 2) ri.resume_data.push_back(0);
-            ri.resume_data[1] = -2;
+            store(-2);
             return -2;
         }
         // Always publish a choice, even if only one mode is legal. The
@@ -267,11 +307,12 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                              std::to_string(legal.size()) + " modes)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
                                     "mode: " + label);
+        setChoiceState(ri, 0, kModeAwait);
         ri.resume_point = 4;
         return -1;
     }
 
-    if (ri.resume_point == 4) {
+    {
         auto picked = ctx.executor.takeChoice();
         int m = legal.empty() ? 0 : legal.front();
         if (picked.has_value() && picked->chosen_value.has_value()) {
@@ -283,15 +324,9 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                              std::to_string(m) +
                              (m < static_cast<int>(mode_labels.size())
                                 ? " (" + mode_labels[m] + ")" : ""));
-        while (ri.resume_data.size() < 2) ri.resume_data.push_back(0);
-        ri.resume_data[1] = m;
-        ri.resume_point = 5;
+        store(m);
         return m;
     }
-
-    // resume_point >= 5: previously chosen mode in resume_data[1].
-    if (ri.resume_data.size() >= 2) return ri.resume_data[1];
-    return legal.empty() ? -2 : legal.front();
 }
 
 // ── Deflect (CR 809) at choice time ─────────────────────────────────────────
@@ -327,22 +362,33 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     }
     if (ctx.state.chain.resuming.has_value())
         ctx.state.chain.resuming->chosen_objects.push_back(t);
-    // "If you've chosen an enemy unit this turn" (Hungry Wolf).
+    // "If you've chosen an enemy unit this turn" (Hungry Wolf). A unit is a
+    // unit on the board (CR 141.1.a): a unit card picked out of a hand, deck
+    // or trash is a card, not an enemy unit.
     const auto& tobj = ctx.state.getObject(t);
-    if (tobj.isUnit() && tobj.controller != ctx.controller)
+    if (tobj.isUnit() && tobj.location.has_value() && tobj.controller != ctx.controller)
         ctx.state.player(ctx.controller).chose_enemy_unit_this_turn = true;
     if (tobj.isUnit() && tobj.location.has_value() && tobj.controller == ctx.controller)
         ctx.events.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
 }
 }  // namespace
 
+std::vector<GameObjectId> Card::offerableChoices(
+    CardContext& ctx, const std::vector<GameObjectId>& candidates) const {
+    return affordableWithDeflect(ctx, *this, candidates);
+}
+
+void Card::commitChosenObject(CardContext& ctx, GameObjectId chosen) const {
+    commitChoice(ctx, *this, chosen);
+}
+
 GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                                 const std::vector<GameObjectId>& legal_targets_in) {
     auto& ri_opt = ctx.state.chain.resuming;
-    // Once a choice is locked in (resume_point 8) the list is not consulted
-    // again, so filtering here can't un-offer an already-paid-for target.
+    // Once a choice is locked in the list is not consulted again, so
+    // filtering here can't un-offer an already-paid-for target.
     const std::vector<GameObjectId> legal_targets =
-        (ri_opt.has_value() && ri_opt->resume_point < 8)
+        (ri_opt.has_value() && !(choiceState(*ri_opt) & kTgtDone))
             ? affordableWithDeflect(ctx, *this, legal_targets_in) : legal_targets_in;
 
     if (!ri_opt.has_value()) {
@@ -354,40 +400,55 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     }
     auto& ri = *ri_opt;
 
-    // resume_point reservations: 6 (publish) → 7 (consume) → 8 (done).
-    // Distinct from pickXAmount (0/1/2 + data[0]) and pickMode
-    // (3/4/5 + data[1]) so all three can coexist in one Card's
-    // onResolve. Uses resume_data[2] to stash the picked id across
-    // re-entry.
-    if (ri.resume_point < 6) ri.resume_point = 6;
-
-    // The target was already chosen when this item was finalized (CR 355;
-    // GameEngine::chooseTargetsAtFinalize). Deflect was paid then. If it is no
-    // longer a legal target the instruction is a mistarget and is ignored
-    // (CR 359.3.e.6) — the caller sees "no target".
-    if (ri.resume_point == 6 && ri.resume_data.size() > 5 && ri.resume_data[5] == 1 &&
-        !ri.targets.empty()) {
-        ri.resume_data[5] = 0;
-        GameObjectId t = ri.targets.front();
-        const bool still_legal =
-            std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end();
-        if (!still_legal) {
-            ctx.events.logTrace("TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
-            t = kInvalidId;
-        }
+    // resume_point is left at 7 (waiting for the agent) / 8 (answered) for
+    // the card to read; the picked id is kept in resume_data[2].
+    const uint32_t st = choiceState(ri);
+    auto store = [&ri](GameObjectId t) {
         while (ri.resume_data.size() < 3) ri.resume_data.push_back(0);
         ri.resume_data[2] = static_cast<int32_t>(t);
+        setChoiceState(ri, kTgtAwait, kTgtDone);
         ri.resume_point = 8;
-        return t;
+    };
+
+    // Already chosen: the target is in resume_data[2].
+    if (st & kTgtDone) {
+        if (ri.resume_data.size() < 3)
+            return legal_targets.empty() ? kInvalidId : legal_targets.front();
+        // Chosen in the finalize pass: checked once as the item resolves. A
+        // target that is no longer legal is a mistarget (CR 359.3.e.6).
+        if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 1)) {
+            ri.finalize_checked |= 1;
+            const auto t = static_cast<GameObjectId>(ri.resume_data[2]);
+            if (t != kInvalidId &&
+                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end()) {
+                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
+                ri.resume_data[2] = static_cast<int32_t>(kInvalidId);
+            }
+        }
+        return static_cast<GameObjectId>(ri.resume_data[2]);
     }
 
-    if (ri.resume_point == 6) {
+    if (!(st & kTgtAwait)) {
+        // The target was already chosen when this item was finalized (CR 355;
+        // GameEngine::chooseTargetsAtFinalize). Deflect was paid then. If it is
+        // no longer a legal target the instruction is a mistarget and is
+        // ignored (CR 359.3.e.6) — the caller sees "no target".
+        if (ri.resume_data.size() > 5 && ri.resume_data[5] == 1 && !ri.targets.empty()) {
+            ri.resume_data[5] = 0;
+            GameObjectId t = ri.targets.front();
+            const bool still_legal =
+                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end();
+            if (!still_legal) {
+                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
+                t = kInvalidId;
+            }
+            store(t);
+            return t;
+        }
         if (legal_targets.empty()) {
             ctx.events.logTrace("TGT_NOT_OFFERED: " + label +
                                  " (no legal targets at resolve time)");
-            ri.resume_point = 8;
-            while (ri.resume_data.size() < 3) ri.resume_data.push_back(0);
-            ri.resume_data[2] = static_cast<int32_t>(kInvalidId);
+            store(kInvalidId);
             return kInvalidId;
         }
         // Always publish a choice, even if only one target is legal —
@@ -421,45 +482,25 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                              " targets)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
                                     "target: " + label);
+        setChoiceState(ri, 0, kTgtAwait);
         ri.resume_point = 7;
         return kInvalidId;
     }
 
-    if (ri.resume_point == 7) {
-        auto picked = ctx.executor.takeChoice();
-        GameObjectId t = legal_targets.empty()
-            ? kInvalidId : legal_targets.front();
-        if (picked.has_value() && !picked->chosen_objects.empty()) {
-            t = picked->chosen_objects.front();
-        }
-        std::string name = ctx.state.objectExists(t)
-            ? ctx.state.getObject(t).name
-            : std::string("?");
-        ctx.events.logTrace("TGT_PICKED: " + label + " = " + name +
-                             " (id=" + std::to_string(t) + ")");
-        commitChoice(ctx, *this, t);
-        while (ri.resume_data.size() < 3) ri.resume_data.push_back(0);
-        ri.resume_data[2] = static_cast<int32_t>(t);
-        ri.resume_point = 8;
-        return t;
+    auto picked = ctx.executor.takeChoice();
+    GameObjectId t = legal_targets.empty()
+        ? kInvalidId : legal_targets.front();
+    if (picked.has_value() && !picked->chosen_objects.empty()) {
+        t = picked->chosen_objects.front();
     }
-
-    // resume_point >= 8: previously chosen target in resume_data[2].
-    if (ri.resume_data.size() >= 3) {
-        // Chosen in the finalize pass: checked once as the item resolves. A
-        // target that is no longer legal is a mistarget (CR 359.3.e.6).
-        if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 1)) {
-            ri.finalize_checked |= 1;
-            const auto t = static_cast<GameObjectId>(ri.resume_data[2]);
-            if (t != kInvalidId &&
-                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end()) {
-                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
-                ri.resume_data[2] = static_cast<int32_t>(kInvalidId);
-            }
-        }
-        return static_cast<GameObjectId>(ri.resume_data[2]);
-    }
-    return legal_targets.empty() ? kInvalidId : legal_targets.front();
+    std::string name = ctx.state.objectExists(t)
+        ? ctx.state.getObject(t).name
+        : std::string("?");
+    ctx.events.logTrace("TGT_PICKED: " + label + " = " + name +
+                         " (id=" + std::to_string(t) + ")");
+    commitChoice(ctx, *this, t);
+    store(t);
+    return t;
 }
 
 std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
@@ -487,54 +528,80 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     }
     auto& ri = *ri_opt;
 
-    // resume_point reservations:
-    //   9  = publish first target
-    //   10 = consume first target
-    //   11 = publish second target (uses picked_a from resume_data[3])
-    //   12 = consume second target
+    // resume_point is left for the card to read at
+    //   10 = waiting for the first target
+    //   12 = waiting for the second target
     //   13 = done
     // resume_data[3] = picked first target id (int32 cast)
     // resume_data[4] = picked second target id (int32 cast)
-    if (ri.resume_point < 9) ri.resume_point = 9;
-
+    const uint32_t st = choiceState(ri);
     while (ri.resume_data.size() < 5) ri.resume_data.push_back(0);
+    auto finish = [&ri](GameObjectId a, GameObjectId b) {
+        ri.resume_data[3] = static_cast<int32_t>(a);
+        ri.resume_data[4] = static_cast<int32_t>(b);
+        setChoiceState(ri, kPairAwaitA | kPairAwaitB, kPairDone);
+        ri.resume_point = 13;
+        return std::pair<GameObjectId, GameObjectId>{a, b};
+    };
+    auto publish = [&](const std::vector<GameObjectId>& legal, const char* tag,
+                       const char* which, const std::string& request) {
+        std::vector<Intent> options;
+        options.reserve(legal.size());
+        std::string summary;
+        for (auto t : legal) {
+            Intent i;
+            i.type = IntentType::MakeChoice;
+            i.player = ctx.controller;
+            i.chosen_objects = { t };
+            options.push_back(std::move(i));
+            if (!summary.empty()) summary += "/";
+            summary += ctx.state.objectExists(t)
+                ? ctx.state.getObject(t).name : std::string("?");
+        }
+        ctx.events.logTrace(std::string(tag) + label + " [" + summary + "] " + which);
+        ctx.executor.requestChoice(ctx.controller, std::move(options), request + label);
+    };
+
+    if (st & kPairDone) {
+        // Chosen in the finalize pass: each target is checked once as the item
+        // resolves; one that is no longer legal is unaffected (CR 359.3.e.5).
+        if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 2)) {
+            ri.finalize_checked |= 2;
+            const auto a = static_cast<GameObjectId>(ri.resume_data[3]);
+            const auto b = static_cast<GameObjectId>(ri.resume_data[4]);
+            if (b != kInvalidId) {
+                const auto lb = legal_b_in_fn(a);
+                if (std::find(lb.begin(), lb.end(), b) == lb.end()) {
+                    ctx.events.logTrace("TGT_MISTARGET: " + label + " — the second target is no longer legal");
+                    ri.resume_data[4] = static_cast<int32_t>(kInvalidId);
+                }
+            }
+            if (a != kInvalidId &&
+                std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end()) {
+                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the first target is no longer legal");
+                ri.resume_data[3] = static_cast<int32_t>(kInvalidId);
+            }
+        }
+        return {static_cast<GameObjectId>(ri.resume_data[3]),
+                static_cast<GameObjectId>(ri.resume_data[4])};
+    }
 
     // ── Step 1: publish first target ──
-    if (ri.resume_point == 9) {
+    if (!(st & (kPairAwaitA | kPairAwaitB))) {
         if (legal_a.empty()) {
             ctx.events.logTrace("TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal first targets at resolve time)");
-            ri.resume_data[3] = static_cast<int32_t>(kInvalidId);
-            ri.resume_data[4] = static_cast<int32_t>(kInvalidId);
-            ri.resume_point = 13;
-            return {kInvalidId, kInvalidId};
+            return finish(kInvalidId, kInvalidId);
         }
         // Always publish a choice, even with a single legal first
         // target — the agent records the decision (engine-wide rule).
-        {
-            std::vector<Intent> options;
-            options.reserve(legal_a.size());
-            std::string summary;
-            for (auto t : legal_a) {
-                Intent i;
-                i.type = IntentType::MakeChoice;
-                i.player = ctx.controller;
-                i.chosen_objects = { t };
-                options.push_back(std::move(i));
-                if (!summary.empty()) summary += "/";
-                summary += ctx.state.objectExists(t)
-                    ? ctx.state.getObject(t).name : std::string("?");
-            }
-            ctx.events.logTrace("TGT_PAIR_PROMPT_A: " + label + " [" +
-                                 summary + "] (agent picks 1st of 2)");
-            ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                        "target A: " + label);
-            ri.resume_point = 10;
-            return {kInvalidId, kInvalidId};
-        }
+        publish(legal_a, "TGT_PAIR_PROMPT_A: ", "(agent picks 1st of 2)", "target A: ");
+        setChoiceState(ri, 0, kPairAwaitA);
+        ri.resume_point = 10;
+        return {kInvalidId, kInvalidId};
     }
 
-    if (ri.resume_point == 10) {
+    if (st & kPairAwaitA) {
         auto picked = ctx.executor.takeChoice();
         GameObjectId a = legal_a.empty() ? kInvalidId : legal_a.front();
         if (picked.has_value() && !picked->chosen_objects.empty()) {
@@ -546,84 +613,39 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
                              name + " (id=" + std::to_string(a) + ")");
         commitChoice(ctx, *this, a);
         ri.resume_data[3] = static_cast<int32_t>(a);
-        ri.resume_point = 11;
-        // Fall through to second-target publish.
-    }
 
-    // ── Step 2: publish second target, filtered by picked_a ──
-    if (ri.resume_point == 11) {
-        GameObjectId a = static_cast<GameObjectId>(ri.resume_data[3]);
+        // ── Step 2: publish second target, filtered by picked_a ──
         auto legal_b = legal_b_fn(a);
         if (legal_b.empty()) {
             ctx.events.logTrace("TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal second targets after A picked)");
-            ri.resume_data[4] = static_cast<int32_t>(kInvalidId);
-            ri.resume_point = 13;
-            return {a, kInvalidId};
+            return finish(a, kInvalidId);
         }
         // Always publish a choice, even with a single legal second
         // target — the agent records the decision (engine-wide rule).
-        std::vector<Intent> options;
-        options.reserve(legal_b.size());
-        std::string summary;
-        for (auto t : legal_b) {
-            Intent i;
-            i.type = IntentType::MakeChoice;
-            i.player = ctx.controller;
-            i.chosen_objects = { t };
-            options.push_back(std::move(i));
-            if (!summary.empty()) summary += "/";
-            summary += ctx.state.objectExists(t)
-                ? ctx.state.getObject(t).name : std::string("?");
-        }
-        ctx.events.logTrace("TGT_PAIR_PROMPT_B: " + label + " [" +
-                             summary + "] (agent picks 2nd of 2)");
-        ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                    "target B: " + label);
+        publish(legal_b, "TGT_PAIR_PROMPT_B: ", "(agent picks 2nd of 2)", "target B: ");
+        setChoiceState(ri, kPairAwaitA, kPairAwaitB);
         ri.resume_point = 12;
-        return {a, kInvalidId};
+        // Still suspended: the pair is not usable until both halves are in,
+        // so a card that only tests for "nothing picked" can't act on the
+        // first half now and again when it is re-entered.
+        return {kInvalidId, kInvalidId};
     }
 
-    if (ri.resume_point == 12) {
-        GameObjectId a = static_cast<GameObjectId>(ri.resume_data[3]);
-        auto picked = ctx.executor.takeChoice();
-        auto legal_b = legal_b_fn(a);
-        GameObjectId b = legal_b.empty() ? kInvalidId : legal_b.front();
-        if (picked.has_value() && !picked->chosen_objects.empty()) {
-            b = picked->chosen_objects.front();
-        }
-        std::string name = ctx.state.objectExists(b)
-            ? ctx.state.getObject(b).name : std::string("?");
-        ctx.events.logTrace("TGT_PAIR_PICKED_B: " + label + " = " +
-                             name + " (id=" + std::to_string(b) + ")");
-        commitChoice(ctx, *this, b);
-        ri.resume_data[4] = static_cast<int32_t>(b);
-        ri.resume_point = 13;
-        return {a, b};
+    // Waiting for the second target.
+    GameObjectId a = static_cast<GameObjectId>(ri.resume_data[3]);
+    auto picked = ctx.executor.takeChoice();
+    auto legal_b = legal_b_fn(a);
+    GameObjectId b = legal_b.empty() ? kInvalidId : legal_b.front();
+    if (picked.has_value() && !picked->chosen_objects.empty()) {
+        b = picked->chosen_objects.front();
     }
-
-    // resume_point >= 13: return the previously-stashed pair.
-    // Chosen in the finalize pass: each target is checked once as the item
-    // resolves; one that is no longer legal is unaffected (CR 359.3.e.5).
-    if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 2)) {
-        ri.finalize_checked |= 2;
-        const auto a = static_cast<GameObjectId>(ri.resume_data[3]);
-        const auto b = static_cast<GameObjectId>(ri.resume_data[4]);
-        if (b != kInvalidId) {
-            const auto lb = legal_b_in_fn(a);
-            if (std::find(lb.begin(), lb.end(), b) == lb.end()) {
-                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the second target is no longer legal");
-                ri.resume_data[4] = static_cast<int32_t>(kInvalidId);
-            }
-        }
-        if (a != kInvalidId &&
-            std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end()) {
-            ctx.events.logTrace("TGT_MISTARGET: " + label + " — the first target is no longer legal");
-            ri.resume_data[3] = static_cast<int32_t>(kInvalidId);
-        }
-    }
-    return {static_cast<GameObjectId>(ri.resume_data[3]),
-            static_cast<GameObjectId>(ri.resume_data[4])};
+    std::string name = ctx.state.objectExists(b)
+        ? ctx.state.getObject(b).name : std::string("?");
+    ctx.events.logTrace("TGT_PAIR_PICKED_B: " + label + " = " +
+                         name + " (id=" + std::to_string(b) + ")");
+    commitChoice(ctx, *this, b);
+    return finish(a, b);
 }
 
 std::vector<GameObjectId> Card::enumerateLegalTargets(

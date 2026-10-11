@@ -8,11 +8,11 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
-#include "cards/gear/equip_base.h"   // canonical standardEquip(+energy,Domain) + bases
 #include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace riftbound {
@@ -43,17 +43,32 @@ inline bool payableOnePower(const GameState& state, PlayerId player,
             *obj.location == base && runeMatchesDomain(obj, domain)) return true;
     return false;
 }
+/// Recycle `rune` (in `player`'s base) to pay one Power, with the engine's
+/// bookkeeping for a rune spent that way (EffectExecutor::payAnyPower): it
+/// goes to the bottom of the Rune Deck ready, counts toward
+/// `power_spent_this_turn` (Sivir, Mercenary) and leaves the board with an
+/// event. Every card effect that recycles a rune for Power goes through here.
+inline void recycleRuneForPower(CardContext& ctx, PlayerId player, GameObjectId rune) {
+    auto& ps = ctx.state.player(player);
+    auto& dr = ctx.state.getObject(rune);
+    const LocationId was_at = dr.location.value_or(LocationId{BaseLocation{player}});
+    dr.location = std::nullopt;
+    dr.zone = ZoneType::RuneDeck;
+    dr.is_exhausted = false;
+    ps.rune_deck.insert(ps.rune_deck.begin(), rune);
+    ps.power_spent_this_turn++;
+    ctx.events.logTrace("  ADDL_COST: recycled " + dr.name + " for power");
+    ctx.events.emit(LeftBoardEvent{rune, player, CardType::Rune, was_at,
+                                   ZoneType::RuneDeck, false});
+}
 inline bool payOnePower(CardContext& ctx, PlayerId player,
                         std::optional<Domain> domain) {
     auto& state = ctx.state;
+    // [A]: the engine's own payment (floating power, then a recycled rune).
+    if (!domain.has_value()) return ctx.executor.payAnyPower(player, 1);
     auto& pool = state.player(player).rune_pool;
-    if (domain.has_value()) {
-        int& own = pool.power[static_cast<int>(*domain)];
-        if (own > 0) { --own; return true; }
-    } else {
-        for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
-            if (pool.power[di] > 0) { --pool.power[di]; return true; }
-    }
+    int& own = pool.power[static_cast<int>(*domain)];
+    if (own > 0) { --own; return true; }
     if (pool.universal_power > 0) { --pool.universal_power; return true; }
     const LocationId base_loc{BaseLocation{player}};
     GameObjectId rune = kInvalidId;
@@ -61,15 +76,44 @@ inline bool payOnePower(CardContext& ctx, PlayerId player,
         if (!obj.isRune() || obj.controller != player) continue;
         if (!obj.location.has_value() || *obj.location != base_loc) continue;
         if (!runeMatchesDomain(obj, domain)) continue;
-        if (rune == kInvalidId || (obj.is_exhausted && !state.getObject(rune).is_exhausted))
-            rune = id;
+        // An exhausted rune first (a ready one can still give Energy), then
+        // the lowest id so the pick does not depend on map order.
+        if (rune == kInvalidId) { rune = id; continue; }
+        const bool cur_ex = state.getObject(rune).is_exhausted;
+        if (obj.is_exhausted != cur_ex ? obj.is_exhausted : id < rune) rune = id;
     }
     if (rune == kInvalidId) return false;
-    auto& dr = state.getObject(rune);
-    dr.location = std::nullopt;
-    dr.zone = ZoneType::RuneDeck;
-    state.player(player).rune_deck.insert(state.player(player).rune_deck.begin(), rune);
-    ctx.events.logTrace("  ADDL_COST: recycled " + dr.name + " for power");
+    recycleRuneForPower(ctx, player, rune);
+    return true;
+}
+
+// ── Paying Energy inside an effect ("you may pay [N] to ...") ───────────────
+/// Energy `player` could pay right now: floating pool + ready runes in base.
+inline int payableEnergy(const GameState& state, PlayerId player) {
+    int n = state.player(player).rune_pool.energy;
+    for (const auto& [id, obj] : state.objects)
+        if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
+            obj.location.has_value()) ++n;
+    return n;
+}
+
+/// Pay `amount` Energy: floating pool first, then exhaust ready runes. Returns
+/// false (paying nothing) if it can't be covered.
+inline bool payEnergy(CardContext& ctx, PlayerId player, int amount) {
+    if (amount <= 0) return true;
+    if (payableEnergy(ctx.state, player) < amount) return false;
+    auto& pool = ctx.state.player(player).rune_pool;
+    int from_pool = std::min(pool.energy, amount);
+    pool.energy -= from_pool;
+    amount -= from_pool;
+    for (auto& [id, obj] : ctx.state.objects) {
+        if (amount <= 0) break;
+        if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
+        if (!obj.location.has_value()) continue;
+        obj.is_exhausted = true;
+        ctx.events.emit(ObjectStateChangedEvent{id, "exhausted"});
+        --amount;
+    }
     return true;
 }
 
@@ -90,11 +134,20 @@ inline int excessCombatDamageAt(const GameState& state, PlayerId player, Battlef
     return ps.last_combat_bf == bf ? ps.excess_combat_damage : 0;
 }
 
-inline bool standardEquip(CardContext& ctx, GameObjectId gear_id,
-                          GameObjectId unit_id, std::optional<Domain> domain) {
-    auto& state = ctx.state;
+/// Both ends of an Equip are on the board (CR 818: an Equipment you control
+/// attaches to a unit you control). objectExists alone is true for every id
+/// ever created, including a unit that died in response.
+inline bool equipEndsOnBoard(const GameState& state, GameObjectId gear_id, GameObjectId unit_id) {
     if (!state.objectExists(gear_id) || !state.objectExists(unit_id)) return false;
-    if (!payOnePower(ctx, ctx.controller, domain)) return false;
+    const auto& gear = state.getObject(gear_id);
+    const auto& unit = state.getObject(unit_id);
+    return gear.isGear() && gear.location.has_value() &&
+           unit.isUnit() && unit.location.has_value();
+}
+
+/// Attach an unattached Equipment to a unit (the cost is already paid).
+inline void attachEquipped(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id) {
+    auto& state = ctx.state;
     auto& gear = state.getObject(gear_id);
     auto& unit = state.getObject(unit_id);
     ctx.events.logTrace("EQUIP: " + gear.name + " -> " + unit.name +
@@ -107,7 +160,24 @@ inline bool standardEquip(CardContext& ctx, GameObjectId gear_id,
     unit.recomputeMight();
     ctx.events.emit(ObjectStateChangedEvent{gear_id, "attached"});
     ctx.events.emit(ObjectStateChangedEvent{unit_id, "equipped"});
+}
+
+// ── Equip: pay [energy] + one power (of `domain`, or [A] if nullopt), attach ──
+// All-or-nothing: nothing is paid unless the whole cost can be.
+inline bool standardEquip(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id,
+                          int energy_cost, std::optional<Domain> domain) {
+    if (!equipEndsOnBoard(ctx.state, gear_id, unit_id)) return false;
+    if (payableEnergy(ctx.state, ctx.controller) < energy_cost) return false;
+    if (!payableOnePower(ctx.state, ctx.controller, domain)) return false;
+    // Energy first: a rune exhausted for it can still be recycled for the Power.
+    if (!payEnergy(ctx, ctx.controller, energy_cost)) return false;
+    if (!payOnePower(ctx, ctx.controller, domain)) return false;
+    attachEquipped(ctx, gear_id, unit_id);
     return true;
+}
+inline bool standardEquip(CardContext& ctx, GameObjectId gear_id,
+                          GameObjectId unit_id, std::optional<Domain> domain) {
+    return standardEquip(ctx, gear_id, unit_id, 0, domain);
 }
 
 // Attach a gear directly (no cost) to a unit (e.g. Edge of Night's
@@ -415,36 +485,6 @@ inline void auraKeyword(GameObject& obj, GameObjectId source, Keyword kw, int va
     obj.aura_effects.push_back(ae);
 }
 
-// ── Paying Energy inside an effect ("you may pay [N] to ...") ───────────────
-/// Energy `player` could pay right now: floating pool + ready runes in base.
-inline int payableEnergy(const GameState& state, PlayerId player) {
-    int n = state.player(player).rune_pool.energy;
-    for (const auto& [id, obj] : state.objects)
-        if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
-            obj.location.has_value()) ++n;
-    return n;
-}
-
-/// Pay `amount` Energy: floating pool first, then exhaust ready runes. Returns
-/// false (paying nothing) if it can't be covered.
-inline bool payEnergy(CardContext& ctx, PlayerId player, int amount) {
-    if (amount <= 0) return true;
-    if (payableEnergy(ctx.state, player) < amount) return false;
-    auto& pool = ctx.state.player(player).rune_pool;
-    int from_pool = std::min(pool.energy, amount);
-    pool.energy -= from_pool;
-    amount -= from_pool;
-    for (auto& [id, obj] : ctx.state.objects) {
-        if (amount <= 0) break;
-        if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
-        if (!obj.location.has_value()) continue;
-        obj.is_exhausted = true;
-        ctx.events.emit(ObjectStateChangedEvent{id, "exhausted"});
-        --amount;
-    }
-    return true;
-}
-
 // ── Board queries ───────────────────────────────────────────────────────────
 /// Runes `player` controls (in base, ready or exhausted).
 inline int runesControlled(const GameState& state, PlayerId player) {
@@ -497,7 +537,11 @@ inline int otherFriendlyUnitsHere(const GameState& state, const GameObject& self
 // ── Agent choices by hand ──
 // For cards whose resolution asks a custom question (a unit from a computed
 // list, then a destination, …) and so build their own MakeChoice options
-// rather than going through Card::pickTarget.
+// rather than going through Card::pickTarget. These two do NO bookkeeping:
+// when the object picked is one the controller is choosing (not a card being
+// sorted, not the opponent's own pick), filter the candidates with
+// Card::offerableChoices and call Card::commitChosenObject on the pick, or
+// Deflect (CR 809) goes unpaid and "chosen" triggers never see it.
 
 /// A MakeChoice option that picks object `id`.
 inline Intent objChoice(PlayerId p, GameObjectId id) {
@@ -528,6 +572,156 @@ inline int takenValue(CardContext& ctx, int fallback) {
     return (c && c->chosen_value.has_value()) ? *c->chosen_value : fallback;
 }
 
+// ── Split damage (CR 355.14) ────────────────────────────────────────────────
+// "Deal N damage split among <units>": the controller decides the division at
+// resolution (CR 355.14.e), every unit that takes part receives at least 1
+// (355.14.f-g), and at most N units can take part (355.14.c). The division is
+// built one damage at a time: each prompt assigns the next point to a unit the
+// controller picks, which can express every legal split and nothing else.
+// Damage is marked only after the whole division is known.
+//
+// The card is re-entered after every answer, so progress lives on the
+// resolving chain item: resume_point kSplitDamageAssign / Await / Done (clear
+// of the values the Card::pick* / confirmOptional helpers leave there) and
+// resume_data = [total, damage per pick, picked unit, picked unit, ...] — so a
+// card that splits damage must not also call a Card::pick* helper in the same
+// callback (they keep their answers in resume_data[0..6]).
+//
+// ENGINE-GAP: CR 355.14.a-b make every unit in a split a Target chosen when
+// the spell or ability is finalized on the chain. The play/trigger path can
+// only lock a fixed TargetRequirements::count of targets, so a variable
+// number (1..N) of split targets cannot be declared there; they are chosen at
+// resolution instead.
+// ENGINE-GAP: ChainManager::stepResolve allows 16 re-entries per resolution
+// (kMaxResumeIterations), so at most kSplitDamageMaxPicks prompts are issued;
+// above that total each pick assigns ceil(total / kSplitDamageMaxPicks)
+// damage, which coarsens the split for a source with more than 12 to divide.
+constexpr int kSplitDamageAssign = 100;
+constexpr int kSplitDamageAwait = 101;
+constexpr int kSplitDamageDone = 102;
+constexpr int kSplitDamageMaxPicks = 12;
+
+/// Returns true once the damage has been dealt (or there was nothing to do),
+/// false while a pick is pending. `legal` are the units the controller may
+/// choose; `damaged` receives the units that were dealt damage.
+inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int total,
+                             GameObjectId damage_source, std::vector<GameObjectId> legal,
+                             std::vector<GameObjectId>& damaged) {
+    std::sort(legal.begin(), legal.end());
+    std::vector<std::pair<GameObjectId, int>> alloc;
+    auto add = [&alloc](GameObjectId id, int n) {
+        for (auto& a : alloc) if (a.first == id) { a.second += n; return; }
+        alloc.emplace_back(id, n);
+    };
+    auto deal = [&]() {
+        for (const auto& [id, n] : alloc) {
+            if (n <= 0 || !ctx.state.objectExists(id)) continue;
+            const auto& o = ctx.state.getObject(id);
+            // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
+            if (o.isUnit() && o.location.has_value() && o.controller != ctx.controller)
+                ctx.state.player(ctx.controller).chose_enemy_unit_this_turn = true;
+            ctx.events.logTrace("SPLIT: " + label + " -> " + std::to_string(n) +
+                                " to " + o.name);
+            ctx.executor.dealDamage(id, n, damage_source);
+            damaged.push_back(id);
+        }
+    };
+
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) {
+        // Direct invocation (no chain item to resume): no agent can be asked,
+        // so default to an even spread over the legal units, like the other
+        // choice helpers default to their first option.
+        if (total <= 0 || legal.empty()) return true;
+        for (int i = 0; i < total; ++i) add(legal[i % legal.size()], 1);
+        deal();
+        return true;
+    }
+    auto& ri = *ri_opt;
+    if (ri.resume_point == kSplitDamageDone) return true;
+
+    // Deflect (CR 809): choosing an opponent's Deflect unit costs [A] per
+    // Deflect, once per unit chosen — charged when the unit first joins the
+    // split, the way Card::pickTarget charges it. A unit whose Deflect cost
+    // can't be paid is not offered; one already in the split stays available.
+    auto alreadyPicked = [&ri](GameObjectId id) {
+        for (size_t i = 2; i < ri.resume_data.size(); ++i)
+            if (static_cast<GameObjectId>(ri.resume_data[i]) == id) return true;
+        return false;
+    };
+    auto offered = [&]() {
+        const int payable = ctx.executor.payableAnyPower(ctx.controller);
+        std::vector<GameObjectId> out;
+        for (auto t : legal)
+            if (alreadyPicked(t) || ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
+                out.push_back(t);
+        return out;
+    };
+
+    if (ri.resume_point == kSplitDamageAwait) {
+        auto picked = ctx.executor.takeChoice();
+        auto can_pick = offered();
+        GameObjectId t = can_pick.empty() ? kInvalidId : can_pick.front();
+        if (picked.has_value() && !picked->chosen_objects.empty() &&
+            std::find(can_pick.begin(), can_pick.end(),
+                      picked->chosen_objects.front()) != can_pick.end())
+            t = picked->chosen_objects.front();
+        if (t != kInvalidId && !alreadyPicked(t)) {
+            const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
+            if (cost > 0) {
+                ctx.executor.payAnyPower(ctx.controller, cost);
+                ctx.events.logTrace("DEFLECT: pays " + std::to_string(cost) +
+                                    " [A] to choose " + ctx.state.getObject(t).name);
+            }
+            ri.chosen_objects.push_back(t);
+        }
+        ri.resume_data.push_back(static_cast<int32_t>(t));
+        ri.resume_point = kSplitDamageAssign;
+    } else if (ri.resume_point != kSplitDamageAssign) {
+        // First entry: latch the amount to divide.
+        if (total <= 0 || legal.empty()) {
+            ri.resume_point = kSplitDamageDone;
+            return true;
+        }
+        // One legal unit: a single pick takes everything.
+        int per_pick = legal.size() == 1
+            ? total : (total + kSplitDamageMaxPicks - 1) / kSplitDamageMaxPicks;
+        ri.resume_data = {total, per_pick};
+        ri.resume_point = kSplitDamageAssign;
+        if (offered().empty()) {   // nothing the controller can afford to choose
+            ri.resume_point = kSplitDamageDone;
+            return true;
+        }
+    }
+
+    total = ri.resume_data[0];
+    const int per_pick = std::max(1, ri.resume_data[1]);
+    int remaining = total;
+    for (size_t i = 2; i < ri.resume_data.size() && remaining > 0; ++i) {
+        int n = std::min(per_pick, remaining);
+        add(static_cast<GameObjectId>(ri.resume_data[i]), n);
+        remaining -= n;
+    }
+
+    const auto can_pick = remaining > 0 ? offered() : std::vector<GameObjectId>{};
+    if (remaining > 0 && !can_pick.empty()) {
+        std::vector<Intent> options;
+        options.reserve(can_pick.size());
+        for (auto t : can_pick) options.push_back(objChoice(ctx.controller, t));
+        ctx.events.logTrace("SPLIT_PROMPT: " + label + " (" + std::to_string(remaining) +
+                            " of " + std::to_string(total) + " damage left to assign)");
+        ctx.executor.requestChoice(ctx.controller, std::move(options),
+                                   "split damage: " + label + " (" +
+                                   std::to_string(remaining) + " left)");
+        ri.resume_point = kSplitDamageAwait;
+        return false;
+    }
+
+    ri.resume_point = kSplitDamageDone;
+    deal();
+    return true;
+}
+
 /// Destinations a card effect may move `u` to, int-coded for valChoice:
 /// 0 = its controller's base, 1 + i = battlefield i. Excludes where it is now.
 inline std::vector<int> moveDests(const GameState& state, const GameObject& u) {
@@ -551,3 +745,8 @@ inline void moveTo(CardContext& ctx, GameObjectId u, int dest) {
 }
 
 } // namespace riftbound
+
+// The Equip base classes (SimpleEquipGear / UniversalEquipGear) are built on
+// the helpers above; included last so a card file that includes only this
+// header still gets them.
+#include "cards/gear/equip_base.h"

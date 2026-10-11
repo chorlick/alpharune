@@ -42,7 +42,7 @@ Training pipelines (model architectures, self-play loops, checkpoints) live in t
 ### Testing
 - Google Test framework, tests in `tests/`, files named `test_<module>.cpp`.
 - Tests cover behavioral boundaries, not 100% line coverage.
-- Per-card tests under `tests/cards/` use the shared `tests/cards/card_test_fixture.h`.
+- Per-card tests under `tests/cards/` use the shared `tests/cards/card_test_fixture.h`. Card behaviour is tested through the real engine path (`playThroughEngine` / `fireTriggerThroughEngine` / `resolveThroughEngine` with an `EnginePathAgent`); the direct-call helpers never hand a trigger targets, because the engine never does.
 - CardDB is built from the card classes (`buildFromClasses`); tests use `RIFTBOUND_ROOT` only to locate sibling data dirs like `decks/`.
 
 ### Key Rule: Legends are NOT Champions
@@ -64,10 +64,11 @@ The GameEngine handles game flow (phases, turns, chain FEPR loop, cleanup, scori
 - **Combat damage**: Both attacker and defender queried through the agent interface. Tank/Backline ordering enforced. Agent picks from greedy-lethal, spread-even, focus-all, and lethal-first distributions.
 - **Cost payment**: `payCardCost()` applies `CostModifier` reductions, then exhausts runes for energy (agent-chosen), then recycles exhausted runes for power (agent-chosen). Energy-first ordering allows recycling just-exhausted runes for power. Each rune selection is an agent decision point.
 - **Multi-ability per Card**: `Card::activatedAbilities() → vector<ActivatedAbility>` returns N descriptors. Default impl wraps the legacy single-ability virtuals for back-compat. Multi-ability cards override `activatedAbilities()` and override the indexed `onActivate(ctx, ability_index, targets)`. `Intent::ability_index` + `ChainItem::ability_index` carry the choice through.
-- **Resumable agent choices**: `Card::confirmOptional` (yes/no), `Card::pickMode` (modal), `Card::pickXAmount` (variable-X), `Card::pickTarget` (single), `Card::pickTargetPair` (dual). Each uses distinct resume_point ranges + resume_data slots so multiple choices compose in one `onResolve`:
-  - confirmOptional / pickXAmount: resume_points 0/1/2 + resume_data[0]
-  - pickMode: resume_points 3/4/5 + resume_data[1]
-  - pickTarget / pickTargetPair: resume_points 6/7/8 + resume_data[2]
+- **Resumable agent choices**: `Card::confirmOptional` (yes/no), `Card::pickMode` (modal), `Card::pickXAmount` (variable-X), `Card::pickTarget` (single), `Card::pickTargetPair` (dual). They compose **in any order** within one callback: each helper tracks its own waiting/answered state (flags in `resume_data[Card::kChoiceStateSlot]`; `confirmOptional` uses `ChainItem::may_answer`), not the shared `resume_point`. One call of each helper per callback (a second `confirmOptional` / `pickTarget` returns the first answer). `resume_point` is still written so a card can tell a suspend from a fizzle:
+  - confirmOptional / pickXAmount: 1 waiting, 2 answered (X in resume_data[0])
+  - pickMode: 4 waiting, 5 answered (resume_data[1])
+  - pickTarget: 7 waiting, 8 answered (resume_data[2])
+  - pickTargetPair: 10 / 12 waiting (returns `{kInvalidId, kInvalidId}` for both), 13 done (resume_data[3..4])
 - **Choices at finalization (CR 355, 383.3)**: a triggered ability's "you may", its "[cost] to [effect]" payment and its targets are decided when it is finalized, not when it resolves. A card opts a callback in with `choicesAtFinalization()` (`kFinalizeTrigger` / `kFinalizeResolve` / `kFinalizeActivate`); the engine then runs that callback once at finalization (`GameEngine::runFinalizePass`) and again at resolution, where the choice helpers return the stored answers. The card marks the end of its choices with `if (finalizingChoices(ctx)) return;` — **nothing before that line may change game state** except the helpers and costs guarded by `costDueNow(ctx)`; pre-checks that depend on the cost use `costAlreadyPaid(ctx)`. Every branch of a multi-trigger card needs the marker, including branches with no choice. A target chosen at finalization that is no longer legal at resolution comes back as `kInvalidId` (mistarget). **The engine never passes targets to `onTrigger` / `onEquippedTrigger`** (the `targets` argument is always empty; the event's subject is `ChainItem::triggering_subject`): a triggered ability that needs a target opts in with `kFinalizeTrigger` and picks it with `pickTarget` / `pickTargetPair` from a list it builds itself.
 - **Target-collision fix**: `Card::needsPlayTimeTarget()` (single target) and `Card::needsPlayTimeTargetPair()` (dual) opt the action generator into emitting ONE `Play` intent per card (no per-target variants) so policy heads get distinct vocab slots per target choice. The card's `onResolve` uses `pickTarget` / `pickTargetPair` at chain time. Equivalent for activated abilities: `ActivatedAbility::needs_activation_time_target`.
 - **Threading model**: `BatchRunner` wraps `boost::asio::thread_pool`. `GameRunner` is per-game, fully thread-safe (all state stack-local). Shared singletons: `CardDB` (const), `CardRegistry` (const). Per-game: `EventBus`, `GameState`, `GameEngine`, agents, I/O. `AggregateResults` uses atomics for counters, mutex for console output.
@@ -113,10 +114,7 @@ The GameEngine handles game flow (phases, turns, chain FEPR loop, cleanup, scori
 - `ChainState::resuming` (`optional<ChainItem>`) holds the resolving item across iterations.
 - `EffectExecutor::{requestChoice, recordChoice, takeChoice, applyDiscard}` publishes/consumes a choice slot.
 - `ChainManager::stepResolve` pops to `resuming`, calls `resolve_spell` in a `while(true)`, breaks on no pending choice. Counter spells unaffected (they peek `items.back()`, not `resuming`).
-- Slot ranges by helper (compose cleanly within a single `onResolve`):
-  - `confirmOptional` / `pickXAmount`: resume_points 0/1/2 + resume_data[0]
-  - `pickMode`: resume_points 3/4/5 + resume_data[1]
-  - `pickTarget` / `pickTargetPair`: resume_points 6/7/8 + resume_data[2]
+- The choice helpers compose in any order within a single callback (see "Resumable agent choices" above). A card that drives `resume_data` by hand and also calls a pick* helper leaves slots 0..6 to the helpers.
 
 ## Adding state to `feature_extractor`
 

@@ -2439,8 +2439,18 @@ TEST_F(SweepTriggersTest, Reflexive_HweiARuneReadiedOrGoneInResponseIsSkipped) {
     };
     auto asked = std::make_shared<int>(0);
     EnginePathAgent p1(inOrder({gear, r1, r2}, asked));
+    // What the card says it readied: readyObject would itself refuse a rune
+    // that is off the board, so the card's own count is what shows that the
+    // stale picks never reached it.
+    std::string said;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        const auto at = e.message.find("HWEI: discarded Gear");
+        if (at != std::string::npos) said = e.message.substr(at);
+    });
     fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &p1, kInvalidId, &p2);
+    conn.disconnect();
     ASSERT_TRUE(done) << "the opponent had priority with the trigger on the chain";
+    EXPECT_EQ(said, "HWEI: discarded Gear -> readied 0 rune(s)");
     EXPECT_EQ(*asked, 3) << "no new choice as it resolves";
     EXPECT_FALSE(obj(r1).is_exhausted);
     EXPECT_TRUE(obj(r2).is_exhausted) << "a rune that left the board is not readied";

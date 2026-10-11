@@ -531,7 +531,7 @@ protected:
         play.type = IntentType::PlayCard;
         play.player = P1;
         play.card = mech;
-        engine_->testHook_executeIntent(play);
+        engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
         ASSERT_TRUE(o(mech).location.has_value());
     }
 };
@@ -762,7 +762,7 @@ TEST_F(AurasCostsTest, Repeat_PowerComesFromRecyclingTheRuneToTheRuneDeck) {
     play.player = P1;
     play.card = spell;
     play.targets = {target};
-    engine_->testHook_executeIntent(play);
+    engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
 
     EXPECT_EQ(a1_.yes_no_asked, 1) << "offered once: the gate and the payment agree";
     EXPECT_TRUE(inRuneDeck(P1, r));
@@ -787,7 +787,7 @@ TEST_F(AurasCostsTest, Repeat_FloatingResourcesPayTheTranche) {
     play.player = P1;
     play.card = spell;
     play.targets = {target};
-    engine_->testHook_executeIntent(play);
+    engine_->testHook_executeIntent(play); settleLikeTheEngine(*engine_);
 
     EXPECT_EQ(s().player(P1).rune_pool.energy, 0);
     EXPECT_EQ(s().player(P1).rune_pool.universal_power, 0);
@@ -808,7 +808,7 @@ TEST_F(AurasCostsTest, Hide_OfferedAndPaidWithAnExhaustedRune) {
         if (i.type == IntentType::HideCard && i.card == card) hide = &i;
     ASSERT_NE(hide, nullptr) << "an exhausted rune can be recycled for the [A]";
 
-    engine_->testHook_executeIntent(*hide);
+    engine_->testHook_executeIntent(*hide); settleLikeTheEngine(*engine_);
     EXPECT_TRUE(o(card).is_hidden);
     EXPECT_TRUE(inRuneDeck(P1, r));
     EXPECT_FALSE(o(r).is_exhausted) << "a recycled rune is not exhausted in the deck";
@@ -828,7 +828,7 @@ TEST_F(AurasCostsTest, Hide_FloatingPowerIsSpentBeforeARune) {
     ASSERT_NE(hide, nullptr) << "floating Power pays the [A] with no rune at all";
 
     auto keep = rune(P1, Domain::Fury);
-    engine_->testHook_executeIntent(*hide);
+    engine_->testHook_executeIntent(*hide); settleLikeTheEngine(*engine_);
     EXPECT_TRUE(o(card).is_hidden);
     EXPECT_EQ(s().player(P1).rune_pool.universal_power, 0);
     EXPECT_TRUE(o(keep).location.has_value()) << "the rune stays in base";
@@ -846,7 +846,7 @@ TEST_F(AurasCostsTest, Hide_NotOfferedWithoutAnyPower) {
     hide.player = P1;
     hide.card = card;
     hide.chosen_battlefield = 0;
-    engine_->testHook_executeIntent(hide);
+    engine_->testHook_executeIntent(hide); settleLikeTheEngine(*engine_);
     EXPECT_FALSE(o(card).is_hidden);
     EXPECT_EQ(o(card).zone, ZoneType::Hand);
 }

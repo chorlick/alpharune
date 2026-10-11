@@ -120,6 +120,11 @@ public:
     /// Iterate all cards.
     const std::unordered_map<CardDefId, CardDef>& all() const { return cards_; }
 
+    /// How many times buildFromClasses has run in this process. A program
+    /// needs one card table (openspiel::sharedCards() in the `riftbound`
+    /// binary); `riftbound --debug` prints this so a second one is noticed.
+    static int tablesBuilt();
+
 private:
     std::unordered_map<CardDefId, CardDef> cards_;
     std::unordered_map<std::string, std::vector<CardDefId>> name_index_; // lowercase

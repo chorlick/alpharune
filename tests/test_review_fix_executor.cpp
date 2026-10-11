@@ -153,14 +153,14 @@ protected:
         act.player = s().getObject(source).controller;
         act.ability_source = source;
         act.targets = targets;
-        engine_->testHook_executeIntent(act);
+        engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
     }
     void play(PlayerId p, GameObjectId c) {
         Intent i;
         i.type = IntentType::PlayCard;
         i.player = p;
         i.card = c;
-        engine_->testHook_executeIntent(i);
+        engine_->testHook_executeIntent(i); settleLikeTheEngine(*engine_);
     }
 };
 

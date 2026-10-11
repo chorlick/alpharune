@@ -458,7 +458,7 @@ TEST_F(EnginePathTest, PlayedUnitsTriggerIsFinalizedAndResolvedByTheEngine) {
     auto gear_a = addEquipment(P1);
     auto gear_b = addEquipment(P1);
 
-    EnginePathAgent agent(EnginePathAgent::choosing(gear_b));
+    EnginePathAgent agent(EnginePathAgent::choosing(gear_b, EnginePathAgent::May::Yes));
     playThroughEngine(adept, &agent);
 
     ASSERT_TRUE(state.getObject(adept).location.has_value()) << "the unit was played";
@@ -493,7 +493,7 @@ TEST_F(EnginePathTest, WeaponmasterIsAMayWithAChoiceOfEquipment) {
     EXPECT_TRUE(state.getObject(declined).attachments.empty()) << "the may was declined";
 
     auto wm = addToHand(P1, kArmedAssailant);
-    EnginePathAgent yes(EnginePathAgent::choosing(gear_b));
+    EnginePathAgent yes(EnginePathAgent::choosing(gear_b, EnginePathAgent::May::Yes));
     playThroughEngine(wm, &yes);
     EXPECT_TRUE(yes.wasOffered(gear_a));
     EXPECT_EQ(state.getObject(gear_b).attached_to, std::optional<GameObjectId>{wm});

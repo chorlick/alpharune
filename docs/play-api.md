@@ -289,16 +289,20 @@ the engine cannot reach via normal play (e.g., a phase out of
 sequence). Use them deliberately for testing, reproduction setups, or
 "I changed my mind" rewinds.
 
-An edit made while a human seat is at its **main-phase decision** (the
-one that offers End Turn) rebuilds that decision's legal actions from
-the edited state: `edit_ok` carries `"legal_recomputed": true` and the
-`decision` frame that follows has a new `decision_id` and the new list.
-A `choose` sent for the old id is refused as stale. At any other
-decision (mulligan, chain priority, showdown, combat damage, a cost
-payment, a card's prompt) and at the spectator gate (where the AI seat
-has already chosen) the list is the one computed before the edit and
-`edit_ok` carries `"legal_recomputed": false`: an action in it may no
-longer make sense.
+An edit made while a human seat is at a decision whose options depend
+on the state alone — its **main-phase decision**, a **showdown** (focus)
+decision or a **chain priority** decision — rebuilds that decision's
+legal actions from the edited state. If the list changed, `edit_ok`
+carries `"legal_recomputed": true` and the `decision` frame that follows
+has a new `decision_id` and the new list; a `choose` sent for the old id
+is refused as stale. (The engine checks the answer to these three
+decisions against the rebuilt list, so the old list must not stay
+clickable.) At any other decision (mulligan, combat damage, a cost
+payment, a card's prompt), when the list did not change, and at the
+spectator gate (where the AI seat has already chosen), the list is the
+one computed before the edit and `edit_ok` carries
+`"legal_recomputed": false`: at those other decisions an action in it
+may no longer make sense.
 
 #### `edit_move` — move a card between zones
 

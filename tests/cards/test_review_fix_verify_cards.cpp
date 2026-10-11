@@ -553,7 +553,7 @@ TEST_F(VerifyCardsTest, WildClaw_ThroughTheEngine_PlaysTheChosenUnitForFiveLessA
     for (int i = 0; i < 4; ++i) addToDeck(P1, kMeditation);
     auto spell = addToHand(P1, kWildClaw);
     ps(P1).rune_pool.energy = 2;
-    EnginePathAgent agent(EnginePathAgent::choosing(mech));   // the unit, then "yes"
+    EnginePathAgent agent(EnginePathAgent::choosing(mech, EnginePathAgent::May::Yes));   // the unit, then "yes"
     playThroughEngine(spell, &agent);
     ASSERT_TRUE(onBoard(mech));
     EXPECT_TRUE(o(mech).isEmpowered()) << "Then you may do this: Empower it.";
@@ -908,7 +908,7 @@ TEST_F(VerifyCardsTest, Pin_7_35_NoxianDemolitionist867_AGearTokenWithoutACardCo
     auto token = addGear(P2, kInvalidId);
     o(token).is_token = true;
     auto dear = addGear(P2, kShurelyasRequiem);      // [4]: more than 1 [M]
-    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    EnginePathAgent agent(EnginePathAgent::choosing(token, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(demo, TriggerType::WhenIConquer, &agent);
     EXPECT_TRUE(agent.wasOffered(token));
     EXPECT_FALSE(agent.wasOffered(dear)) << "Energy cost no more than my Might";
@@ -976,7 +976,7 @@ TEST_F(VerifyCardsTest, FaePorter_ThePowerIsGoneBeforeTheOpponentCanRespond) {
     AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
         EXPECT_EQ(live.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
         EXPECT_TRUE(live.getObject(ally).isAtBase()) << "not moved yet";
@@ -1008,7 +1008,7 @@ TEST_F(VerifyCardsTest, OverzealousFan_IsDeadBeforeTheOpponentCanRespond) {
     o(fan).combat_designation = CombatDesignation::Defender;
     o(attacker).combat_designation = CombatDesignation::Attacker;
     o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
-    EnginePathAgent agent(EnginePathAgent::choosing(attacker));
+    EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
     fireAndProbe(fan, TriggerType::WhenIDefend, &agent, [&](GameState& live) {
         EXPECT_FALSE(live.getObject(fan).location.has_value()) << "\"kill me\" is the cost";
         EXPECT_FALSE(live.getObject(attacker).isAtBase()) << "not moved yet";
@@ -1098,7 +1098,7 @@ TEST_F(VerifyCardsTest, GlascMixologist_AcceptingPlaysTheChosenCheapUnitFromTheT
     auto glasc = addUnit(P1, kGlascMixologist, 0);
     auto cheap = addToTrash(P1, kShipyardSkulker);
     auto dear = addToTrash(P1, kMegaMech);            // [7]
-    EnginePathAgent agent(EnginePathAgent::choosing(cheap));
+    EnginePathAgent agent(EnginePathAgent::choosing(cheap, EnginePathAgent::May::Yes));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(glasc); },
                          &agent);
     ASSERT_FALSE(agent.prompts.empty());
@@ -1126,7 +1126,7 @@ TEST_F(VerifyCardsTest, FizzTrickster_PlaysTheMiddleOfThreeSpells) {
     auto newest = addToTrash(P1, kMeditation);
     for (int i = 0; i < 4; ++i) addToDeck(P1, kShipyardSkulker);
     ps(P1).rune_pool.universal_power = 3;
-    EnginePathAgent agent(EnginePathAgent::choosing(middle));
+    EnginePathAgent agent(EnginePathAgent::choosing(middle, EnginePathAgent::May::Yes));
     playThroughEngine(fizz, &agent);
     EXPECT_TRUE(agent.wasOffered(oldest));
     EXPECT_TRUE(agent.wasOffered(newest));
@@ -1144,7 +1144,7 @@ TEST_F(VerifyCardsTest, KaiSaEvolutionary_PlaysTheMiddleOfThreeSpells) {
     auto newest = addToTrash(P1, kMeditation);
     for (int i = 0; i < 4; ++i) addToDeck(P1, kShipyardSkulker);
     ps(P1).rune_pool.universal_power = 3;
-    EnginePathAgent agent(EnginePathAgent::choosing(middle));
+    EnginePathAgent agent(EnginePathAgent::choosing(middle, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(kaisa, TriggerType::WhenIConquer, &agent);
     EXPECT_TRUE(agent.wasOffered(oldest));
     EXPECT_TRUE(agent.wasOffered(newest));
@@ -1176,7 +1176,7 @@ TEST_F(VerifyCardsTest, LoyalPup_DecliningLeavesItInBase) {
 TEST_F(VerifyCardsTest, ShadowClone_AcceptingBanishesTheChosenUnitAndGivesAssault) {
     auto clone = addUnit(P1, kShadowClone, 0, 0);
     auto corpse = addToTrash(P1, kShipyardSkulker);
-    EnginePathAgent agent(EnginePathAgent::choosing(corpse));
+    EnginePathAgent agent(EnginePathAgent::choosing(corpse, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(clone, TriggerType::WhenIAttack, &agent);
     EXPECT_TRUE(inBanishment(P1, corpse));
     EXPECT_FALSE(inTrash(P1, corpse));
@@ -1413,7 +1413,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_ThroughTheEngine_TheBanishIsCountedAndAnnou
     auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
         if (e.what_changed == "banished_owned") ++announced;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(top));
+    EnginePathAgent agent(EnginePathAgent::choosing(top, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
     conn.disconnect();
     EXPECT_TRUE(o(legend).is_exhausted);
@@ -1665,7 +1665,7 @@ TEST_F(VerifyCardsTest, StarSpring_MovesTheLaterOfTwoOtherUnits) {
     auto played = addUnit(P1, kShipyardSkulker, 0, 0);
     auto first = addUnit(P1, kShipyardSkulker, 0, 0);
     auto later = addUnit(P1, kShipyardSkulker, 0, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(later));
+    EnginePathAgent agent(EnginePathAgent::choosing(later, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(spring, TriggerType::WhenYouPlayAUnit, &agent, played);
     EXPECT_TRUE(agent.wasOffered(first));
     EXPECT_TRUE(o(later).isAtBase());
@@ -1771,7 +1771,7 @@ TEST_F(VerifyCardsTest, DuskRoseLab_AReplacedKillIsNotTriedAgainAtResolution) {
     auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);   // P1 keeps units (and control) here
     auto unit = addUnit(P1, kShipyardSkulker, 0, 0);
     o(unit).death_replacement_recall_pending = true;     // one-shot: recalled instead of dying
-    EnginePathAgent agent(EnginePathAgent::choosing(unit));   // yes, then which unit
+    EnginePathAgent agent(EnginePathAgent::choosing(unit, EnginePathAgent::May::Yes));   // yes, then which unit
     fireAndProbe(lab, TriggerType::AtStartOfBeginning, &agent, [&](GameState& live) {
         auto& u = live.getObject(unit);
         EXPECT_TRUE(u.isAtBase()) << "the death was replaced as the cost was paid";
@@ -1798,7 +1798,7 @@ TEST_F(VerifyCardsTest, OverzealousFan_SurvivingTheKillMovesNobody) {
     o(attacker).combat_designation = CombatDesignation::Attacker;
     o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
     o(fan).death_replacement_recall_pending = true;      // recalled instead of dying
-    EnginePathAgent agent(EnginePathAgent::choosing(attacker));
+    EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fan, TriggerType::WhenIDefend, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, the attacker";
     EXPECT_TRUE(onBoard(fan)) << "the death was replaced";
@@ -1905,7 +1905,7 @@ TEST_F(VerifyCardsTest, JayceBrilliantInventor_MayReadyAnEnemyObject) {
     auto jayce = addUnit(P1, kJayceBrilliantInventor);
     auto theirs = addUnit(P2, kShipyardSkulker, 0, 0);
     o(theirs).is_exhausted = true;
-    EnginePathAgent agent(EnginePathAgent::choosing(theirs));
+    EnginePathAgent agent(EnginePathAgent::choosing(theirs, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayMe, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then what to ready";
     EXPECT_TRUE(agent.wasOffered(theirs)) << "\"something\": no \"friendly\" in the text";
@@ -1966,7 +1966,7 @@ TEST_F(VerifyCardsTest, JayceManOfProgress_TheGrantedGearStillCostsItsPower) {
     auto jayce = addToHand(P1, kJayceManOfProgress);
     auto kill = addGear(P1, kSerratedDirk);
     auto disc = addToHand(P1, kSunDisc);
-    EnginePathAgent agent(EnginePathAgent::choosing(kill));
+    EnginePathAgent agent(EnginePathAgent::choosing(kill, EnginePathAgent::May::Yes));
     playThroughEngine(jayce, &agent);
     ASSERT_FALSE(onBoard(kill));
     ASSERT_EQ(ps(P1).cost_modifiers.size(), 1u) << "the permission";
@@ -2922,7 +2922,7 @@ TEST_F(VerifyCardsTest, FaePorter_MovedOnInResponse_TheUnitGoesToTheBattlefieldO
     AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
         EXPECT_TRUE(live.getObject(ally).isAtBase()) << "not moved yet";
         // In response the Porter ends up at the other battlefield.
@@ -2939,7 +2939,7 @@ TEST_F(VerifyCardsTest, FaePorter_BackAtBaseInResponse_TheUnitStillGoesToTheBatt
     AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
         auto& p = live.getObject(porter);
         p.location = BaseLocation{P1};
@@ -2957,7 +2957,7 @@ TEST_F(VerifyCardsTest, FaePorter_GoneBeforeResolution_TheUnitStillGoesToTheBatt
     AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
         EXPECT_EQ(live.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
         removeFromBoard(live, porter);                    // in response: the Porter dies
@@ -2976,7 +2976,7 @@ TEST_F(VerifyCardsTest, FaePorter_TheChosenUnitAlreadyAtThatBattlefieldIsNotMove
     AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     auto ally = addUnit(P1, kShipyardSkulker, 0);
     power(P1, Domain::Chaos) = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(EnginePathAgent::choosing(ally, EnginePathAgent::May::Yes));
     fireAndProbe(porter, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
         live.getObject(porter).location = BattlefieldLocation{1};
         auto& a = live.getObject(ally);
@@ -3085,7 +3085,7 @@ TEST_F(VerifyCardsTest, DuskRoseLab_AUnitBanishedInsteadOfDyingWasNotKilled_NoDr
     auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);   // P1 keeps units (and control) here
     auto unit = addUnit(P1, kShipyardSkulker, 0, 0);
     o(unit).banish_if_would_die_this_turn = true;        // Smite: "banish it instead"
-    EnginePathAgent agent(EnginePathAgent::choosing(unit));   // yes, then which unit
+    EnginePathAgent agent(EnginePathAgent::choosing(unit, EnginePathAgent::May::Yes));   // yes, then which unit
     fireTriggerThroughEngine(lab, TriggerType::AtStartOfBeginning, &agent);
     EXPECT_FALSE(onBoard(unit));
     EXPECT_TRUE(inBanishment(P1, unit)) << "the replacement applied";
@@ -3103,7 +3103,7 @@ TEST_F(VerifyCardsTest, DuskRoseLab_ATokenBanishedInsteadOfDyingWasNotKilled_NoD
     auto token = addUnit(P1, kShipyardSkulker, 0, 0);
     o(token).is_token = true;
     o(token).banish_if_would_die_this_turn = true;
-    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    EnginePathAgent agent(EnginePathAgent::choosing(token, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(lab, TriggerType::AtStartOfBeginning, &agent);
     EXPECT_FALSE(onBoard(token));
     EXPECT_TRUE(onBoard(keeper));
@@ -3117,7 +3117,7 @@ TEST_F(VerifyCardsTest, DuskRoseLab_KillingATokenPaysTheCost) {
     auto keeper = addUnit(P1, kShipyardSkulker, 0, 0);
     auto token = addUnit(P1, kShipyardSkulker, 0, 0);
     o(token).is_token = true;
-    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    EnginePathAgent agent(EnginePathAgent::choosing(token, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(lab, TriggerType::AtStartOfBeginning, &agent);
     EXPECT_FALSE(onBoard(token));
     EXPECT_TRUE(onBoard(keeper));
@@ -3312,7 +3312,7 @@ TEST_F(VerifyCardsTest, RivenShattered_WeaponmasterEquipsTheChosenEquipmentForIt
     auto skyfall = addGear(P1, kSkyfallOfAreion);    // [Equip] [1][R] -> [1]
     auto riven = addToHand(P1, kRivenShattered);
     ps(P1).rune_pool.energy = 1;                     // beyond Riven's own cost: the [1]
-    EnginePathAgent yes(EnginePathAgent::choosing(skyfall));
+    EnginePathAgent yes(EnginePathAgent::choosing(skyfall, EnginePathAgent::May::Yes));
     playThroughEngine(riven, &yes);
     ASSERT_TRUE(onBoard(riven));
     ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";
@@ -3362,7 +3362,7 @@ TEST_F(VerifyCardsTest, Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEqui
 
     // Control: on the board, the same agent is asked and equips it.
     auto control = addUnit(P1, kVeteranPoro421, 0);
-    EnginePathAgent asked(EnginePathAgent::choosing(bare));
+    EnginePathAgent asked(EnginePathAgent::choosing(bare, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(control, TriggerType::WhenYouPlayMe, &asked);
     ASSERT_EQ(asked.prompts.size(), 2u) << "the may, then the Equipment";
     ASSERT_EQ(o(bare).attached_to, std::optional<GameObjectId>{control});
@@ -3372,7 +3372,7 @@ TEST_F(VerifyCardsTest, Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEqui
                           kRivenShattered, kVeteranPoro779}) {
         auto dead = addUnit(P1, def, 0);
         sendToTrash(dead);
-        EnginePathAgent agent(EnginePathAgent::choosing(bare));
+        EnginePathAgent agent(EnginePathAgent::choosing(bare, EnginePathAgent::May::Yes));
         fireTriggerThroughEngine(dead, TriggerType::WhenYouPlayMe, &agent);
         EXPECT_TRUE(agent.prompts.empty()) << def << ": nothing to offer a unit that left the board";
         EXPECT_EQ(o(bare).attached_to, std::optional<GameObjectId>{control})
@@ -3392,7 +3392,7 @@ TEST_F(VerifyCardsTest, Weaponmaster_AUnitThatLeftInResponseIsNotEquippedAndPays
     auto control_gear = addGear(P1, kSkyfallOfAreion);   // [Equip] [1][R] -> [1]
     auto control = addUnit(P1, kVeteranPoro421, 0);
     ps(P1).rune_pool.energy = 1;
-    EnginePathAgent stays(EnginePathAgent::choosing(control_gear));
+    EnginePathAgent stays(EnginePathAgent::choosing(control_gear, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(control, TriggerType::WhenYouPlayMe, &stays);
     ASSERT_EQ(o(control_gear).attached_to, std::optional<GameObjectId>{control});
     ASSERT_EQ(ps(P1).rune_pool.energy, 0);
@@ -3403,7 +3403,7 @@ TEST_F(VerifyCardsTest, Weaponmaster_AUnitThatLeftInResponseIsNotEquippedAndPays
                           kRivenShattered, kVeteranPoro779}) {
         auto unit = addUnit(P1, def, 0);
         ps(P1).rune_pool.energy = 1;
-        EnginePathAgent agent(EnginePathAgent::choosing(skyfall));
+        EnginePathAgent agent(EnginePathAgent::choosing(skyfall, EnginePathAgent::May::Yes));
         fireAndProbe(unit, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
             EXPECT_FALSE(live.getObject(skyfall).attached_to.has_value())
                 << def << ": attached as the ability resolves, not before";
@@ -3887,7 +3887,7 @@ TEST_F(VerifyCardsTest, Weaponmaster_EveryUnitOfTheBaseTakesTheEquipmentThePlaye
         auto first = addGear(P1, kLongSword);        // [Equip] [R]: free, one Power less
         auto second = addGear(P1, kLongSword);
         auto unit = addToHand(P1, def);
-        EnginePathAgent agent(EnginePathAgent::choosing(second));
+        EnginePathAgent agent(EnginePathAgent::choosing(second, EnginePathAgent::May::Yes));
         playThroughEngine(unit, &agent);
         ASSERT_TRUE(onBoard(unit)) << def;
         EXPECT_TRUE(agent.wasOffered(first)) << def << ": a prompt over the player's Equipment";

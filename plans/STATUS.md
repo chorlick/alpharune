@@ -197,7 +197,10 @@ iteration must apply these.
   their place — one-command setup and start, resume on interruptible
   instances, rsync both ways — proven end to end locally first, because
   vast.ai time is expensive and the user wants to go straight into training
-  with as little friction as possible. Details in trainer `plans/README.md`.
+  with as little friction as possible. Details in trainer `plans/README.md`,
+  "Task list: vast.ai workflow" (nine tasks: script review, `run`, local
+  proof, `find`, `up`, `sync`, `down`, self-shutdown, first remote shakedown
+  with the user watching). The user's vast.ai account needs funding first.
 - **Stage 5 and v6 (user, 2026-10-11):** the trainer plan does not run until
   the engine fixes are merged, and every finding is required first. If stage 5
   is reached unattended, follow README stage 5: check whether v6 has replaced

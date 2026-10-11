@@ -79,7 +79,7 @@ iteration must apply these.
 | 2 | cards-c2 | merged | `2fe1205` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 41 of 42 batch-02 boxes + 3 batch-08; Wallop 146 / Call to Glory 207 BLOCKED (spell alternative-cost path); 3 `shared:` commits with engine state and trigger additions |
 | 2 | cards-c3 | merged | `c2def86` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 35 of 39 batch-03 boxes + 9 in batch-08/09; 4 left open (645 facedown, 579, 743 Repeat cost, 931 Flow); 6 `shared:` commits; corrected 7 existing tests |
 | 2 | cards-c4 | merged | `fd00d2c` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
-| 2 | cards-c5 | returned | `870307e` (merged, gate running) | 2100 passed, 0 failed (clean namespaced build, on its branch) | 33 of 39 batch-05 boxes + 6 batch-09 + 4 batch-10; 7 BLOCKED on engine work; 5 `shared:` commits |
+| 2 | cards-c5 | merged | `870307e` (merge `b95b4e4`) | gate-c5: 2100/2100, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 33 of 39 batch-05 boxes + 6 batch-09 + 4 batch-10; 7 BLOCKED on engine work; 5 `shared:` commits |
 | 2 | cards-c6 | running | | | based on integration with cards-c0 merged |
 | 2 | cards-c7 | running | | | based on integration with c0–c4 merged |
 | 3 | sweep | pending | | | |
@@ -288,3 +288,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 first batch gate (label c2) FAILED TO BUILD: orchestrator's keep-both resolution in `card_helpers.h` dropped a closing brace (fixed in `e36ffa6`). `gate.sh` had gone on to test stale binaries after the failed build; it now aborts on a failed build. Lesson: compile-check a resolved code conflict before committing the merge.
 - 2026-10-10 batch c1+c2+c3+c4 verified at `e36ffa6` (gate-batch1): 2040 run, 2040 passed (1783 + 67 + 68 + 72 + 50), openspiel 17/17, clone-equiv 10/10, smoke 135 / 65 / 0 rc=0, fault injection rc=1. Worktrees and branches removed. Spawned cards-c7.
 - 2026-10-10 cards-c5 (`870307e`) merged cleanly (merge `b95b4e4`), gate running. 11 rows to carry-over.
+- 2026-10-10 cards-c5 verified (gate-c5): 2100 run, 2100 passed; smoke 141 / 59 / 0 rc=0 (baseline was 128 / 72: the fiora-vs-yi split has drifted as cards were fixed — expected, but worth a look in the final report). Worktree and branch removed.

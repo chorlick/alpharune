@@ -18,10 +18,9 @@ public:
     // "[A], [E]: Give the next spell you play this turn [Repeat] equal to its
     // cost." The engine's one-shot grant (PlayerState::
     // grant_repeat_base_to_next_spell, also The Academy's) gives the next
-    // spell without a printed [Repeat] a Repeat cost equal to its Energy cost;
-    // it is consumed by that spell and cleared at end of turn.
-    // ENGINE-GAP: the grant carries the spell's Energy cost only, so a spell
-    // that also costs Power repeats for its Energy alone.
+    // spell without a printed [Repeat] a Repeat cost equal to its base cost
+    // (Energy and Power both, the Power payable in the spell's own Domains);
+    // it is used up by the next spell played and cleared at end of turn.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
         // [A] = one power of any domain, plus [E] = exhaust this gear.

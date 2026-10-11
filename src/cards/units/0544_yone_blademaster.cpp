@@ -46,9 +46,9 @@ public:
             return;
         }
         if (ctx.firing_trigger != TriggerType::WhenIConquer) return;
-        // "an enemy unit in a base" — chosen as the ability resolves (the
-        // Weaponmaster base decides at resolution, so this card is not opted
-        // into choices at finalization).
+        // "an enemy unit in a base" — chosen when the ability is finalized
+        // (CR 383.3): the WeaponmasterUnit base opts every trigger of this
+        // card in (kFinalizeTrigger), so this branch has its own marker.
         const auto legal = chooseableUnits(ctx.state, ctx.controller,
             [&](const GameObject& u) { return u.controller != ctx.controller && u.isAtBase(); });
         const GameObjectId t = pickTarget(ctx, "Yone: deal my Might to an enemy unit in a base",

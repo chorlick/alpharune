@@ -16,11 +16,11 @@ namespace {
 //  Play a unit with cost no more than [2] and no more than [A] from your
 //  trash, ignoring its cost."
 //
-// The unit is chosen as the spell is played. The cost path cannot see that
-// choice, so the [2] discount is granted up front whenever a Bird, Cat, Dog or
-// Poro is among the units that can be chosen, and a player who then chooses a
-// different unit pays the [2] back as the choice is made (such a unit is only
-// offered if they can). Either way the spell costs what the text says.
+// The unit is chosen as the spell is played, before its cost is paid, through
+// the additional-play-cost hook (additionalPlayCost / payAdditionalPlayCost):
+// only units the spell can then be paid for are offered, and the [2] discount
+// is returned only when the unit actually chosen is a Bird, Cat, Dog or Poro.
+// The choice is carried to resolution in a card counter (kChosen).
 
 class UndyingLoyalty : public SpellCard {
 public:

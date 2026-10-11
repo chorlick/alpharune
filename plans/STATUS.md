@@ -33,6 +33,17 @@ iteration must apply these.
   runs were stopped to free cores for this run; they are to be re-run only
   after the final merge to `master`.
 
+- **Email alerts (user, 2026-10-10):** the user is away for stretches. Email
+  them (Gmail connector, to the address in the session context, thread
+  `1a12858947d608c8`, subject prefix `[riftbound fix run]`) only when something
+  needs attention: a section 8 blocker, an agent that looks stalled (for
+  example on a permission prompt), or a gate result (passed and merged to
+  master, or failed). No routine progress mail.
+- **Agent shell rule (2026-10-10):** every stream brief must say: no `rm`, no
+  `sh -c` / `bash -c` / `eval` wrappers, no commands assembled from variables;
+  multi-step locked work goes in a script file run as `flock <lock> bash <file>`.
+  Those shapes raise a permission prompt that stalls the agent.
+
 ## Streams
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |

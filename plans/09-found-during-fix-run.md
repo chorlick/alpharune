@@ -279,3 +279,8 @@ Work that was recorded only as carry-over rows in `STATUS.md` (reports of stage 
 ## V. From the sweep-triggers fifth follow-up report (2026-10-11)
 
 - [ ] **9.V1** The combat-damage half of 9.Q3 (a unit healed of spell damage and then killed by lethal combat damage must not count as killed with a spell) is fixed by one call in `applyCombatDamage` but has no test, and the call was not mutation-checked. Add the engine-path test, red first. Also make `ReplacementEffects_EveryCardDefinesWhenItApplies` find replacement cards from the registry instead of a hand-kept list of five, so a new card cannot be missed. — **owner: sweep-triggers**
+
+## W. From the sweep-verify-cards seventh report (2026-10-11)
+
+- [ ] **9.W1** CR 355.13 (an "any number of" / "up to N" choice may be zero) was applied to the twenty spells with that wording (9.T3). The 23 non-spell card files (units, gear, legends, battlefields) whose text has "any number of" / "up to N" were not read: apply the same question to their triggered and activated abilities, fix or pin per card. Also test Emperor's Divide 366 from facedown with no friendly unit at that battlefield (CR 811.1.d read literally says it cannot be played; pin whichever the rules give). — **owner: sweep-verify-cards**
+- [ ] **9.W2** Judgement to confirm with the user: Disposal Order 665's "recycle up to 3" mode is now selectable with an empty opposing trash, reading CR 355.13 as reaching mode legality (the spell was already playable; this only makes a do-nothing mode choosable). A one-line revert if the rule is read the other way. — **owner: orchestrator (ask the user)**

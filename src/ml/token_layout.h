@@ -22,6 +22,7 @@
 /// plans/tooling-v6/interfaces.md.
 
 #include "core/legal_action.h"
+#include "ml/feature_extractor.h"
 #include "core/types.h"
 
 #include <array>
@@ -35,6 +36,8 @@ inline constexpr int kLayoutVersion = 1;
 /// Size of the card embedding table: index 0 is "none / unknown", 1..1100 are
 /// card ids (must equal feature_extractor.h's kCardVocabSize + 1).
 inline constexpr int kCardEmbeddingRows = 1101;
+static_assert(kCardEmbeddingRows == kCardVocabSize + 1,
+              "card embedding table must cover every card id plus the 'none' row");
 
 inline constexpr int kMaxBattlefieldTokens = 6;
 inline constexpr int kMaxEntityTokens = 192;

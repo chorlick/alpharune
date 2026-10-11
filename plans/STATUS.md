@@ -79,6 +79,27 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| engine-auras-costs | 5.4 remainder: three text matches left in the engine, each needs a `Card` virtual plus card edits — `setupBattlefields` ("can't move from here to base" / "can't be played here"), `generateMainPhaseActions` ("play me to an open battlefield" and variants), `parseRepeatCost` | sweep (ticks 5.4) | open |
+| engine-auras-costs | 8.4 remainder: Weaponmaster for Sand Soldier tokens — keyword exists only as a card base class and tokens have no card class; needs a keyword-level "when you play me" handler with a real choice and payment | sweep (ticks 8.4) | open |
+| engine-auras-costs | card files it already edited — card streams must re-read, not overwrite: battlefields 762, 775; legends 551, 784; units 15, 19, 28, 79, 84, 140, 232, 236, 243, 299, 349, 388, 411, 452, 467, 547, 609, 639, 675, 680, 709. Batch findings resolved by it: Farron (b04), Warmonger (b05), Rumble Hotheaded (b09), Eager Apprentice and Herald of Scales (b04), Vex (b05), Vaults of Helia (b00), Ornn's Forge 527 (engine). Fiora Victorious 232 def change NOT checked against her batch-05 entry | card streams (each in its range) | open |
+| engine-auras-costs | 2.2 contract: `applyPassiveAura` is called once per (card, controller); 08 S3 unit and gear entries and the Heimerdinger duplicate-refs entry are fixed by the engine — verify and close | card streams / sweep | open |
+| engine-auras-costs | battlefield hooks still run once per slot: same battlefield brought by both players doubles — War Camp, Void Gate, Kinkou Temple, Forbidding Waste, Black Flame Altar, Gardens of Becoming, Risen Altar need card-side guards (Brush has one; Marai Spire relies on per-slot) | cards-c0 | open |
+| engine-auras-costs | `EffectExecutor::payAnyPower` duplicates the rule in `payAdditionalCost` | sweep | open |
+| engine-auras-costs | NEW: `killUnit` `death_replacement_recall_pending` block (Tactical Retreat) calls `detachAllGear` on a recall; CR 719.3.a says a recalled unit keeps its gear | sweep | open |
+| engine-auras-costs | NEW: Shurelya's Requiem 509 hook grants Ganking at its battlefield but the def text has no such sentence | cards-c1 | open |
+| engine-auras-costs | NEW: `TriggerManager::onCardPlayed` — Vision fires once however many instances (CR 817.2: each triggers separately); also runs a full aura pass per permanent played (perf, plan 06) | sweep / perf-engine | open |
+| engine-auras-costs | NEW: Fiora Victorious 232 Mighty check reads `current_might` incl. previous pass's auras (pass-order dependent) | cards-c5 | open |
+| engine-auras-costs | NEW: `CLAUDE.md` stale on three points (killUnit replacements described as text matching; power recycled from exhausted runes only; no mention of the once-per-(card, controller) aura contract); `game_engine.h` comment "cleanup has no agent-query sites" is wrong | sweep | open |
+| engine-auras-costs | unplanned behaviour change to review: "to a minimum of [N]" no longer raises a card already cheaper than N | sweep (confirm against CR) | open |
+| helpers | 3.1 card work: Blast Cone 695 (one `confirmOptional` per callback → own trigger or two-mode `pickMode`), Forgotten Signpost 607 (two `pickTarget` → `pickTargetPair`), Zenith Blade 258 stun, Thrill of the Hunt 745; general rule: no state change between two helper calls unless guarded to run once | cards-c1 (607, 695), cards-c2 (258), cards-c3 (745); sweep ticks 3.1 | open |
+| helpers | 3.24 card work: 751, 41 → `splitDamageAmong`; 444 → shared `discardThenAct`; 405, 412, 498, 748, 263 → `payOnePower` / `payAnyPower` / `recycleRuneForPower` | card streams (each in its range); sweep ticks 3.24 | open |
+| helpers | 7.30 card work: 927, 894, 937, 892, 935 → `offerableChoices` + `commitChosenObject`, or `pickTarget` | card streams (each in its range); sweep ticks 7.30 | open |
+| helpers | 7.1 probe: 26 cards never ask the controller on the real path — units 16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 199, 234, 238, 330, 361, 384, 453, 479, 539, 589, 618, 738; battlefields 278, 535, 763; gear 63. Enable each row in `Plan07Item71/DISABLED_TargetedTriggerTest` (`tests/cards/test_choice_helpers.cpp`) when fixed. Blast Cone 695 defect is 7.2; Forge of the Future 212 is not in the probe | card streams (each in its range) | open |
+| helpers | Weaponmaster 7.7: Equip cost still not charged — needs an equip-cost descriptor on `Card` (a gear's cost lives inside its `onEquip`); 7.23 / 7.26 base fixed, Yone 544 and Sentinel Adept 331 carry their own copies | sweep (design), cards-c5 (331), cards-c6 (544) | open |
+| helpers | NEW: file-local test helpers call `onTrigger` directly (`WeaponmasterTest::fireWeaponmasterTrigger`, `invokeOnTrigger` in `test_jhin_deck.cpp`), bypassing finalization | sweep | open |
+| helpers | NEW: `payEnergy` / `payableEnergy` in `card_helpers.h` count and exhaust any rune with a location, not only runes in the player's base, in map order | sweep | open |
+| helpers | NEW: Keeper's Verdict 760 asks the spell's controller instead of the unit's owner | cards-c3 | open |
+| helpers | NEW: Altar of Memories 490 `__altar_drew` guard (3.7) still breaks every death after the first | cards-c1 | open |
 | chain-triggers | 7.1: 26 cards to convert per the rule under the item; remove each id from `kKnownOffenders` in `tests/test_review_fix_chain_triggers.cpp` and enable its row in `Plan07Item71/DISABLED_TargetedTriggerTest` | card streams (each in its range); sweep ticks 7.1 | open |
 | chain-triggers | 8.9 last bullet: Square Up ("Discard 1") and Curtain Call (three costs) need a card-declared Repeat cost in `card.h` read by `executePlaySpell`, plus the two card files | sweep | open |
 | chain-triggers | Irelia 380 and Jae Medarda 463 need `triggerCondition(subject == source)` | cards-c5 | open |
@@ -127,3 +148,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 spawned io-cli from `bbc995d`.
 - 2026-10-10 merged chain-triggers (`c9ad6b4`), suite 1580/1583 with only the 2 baseline failures; 12 boxes ticked and verified; 11 rows to carry-over. Worktree and branch removed.
 - 2026-10-10 helpers returned; sent back for two regressions before merge.
+- 2026-10-10 recorded carry-over from the engine-auras-costs and helpers reports ahead of their merge verification (12 and 9 rows).

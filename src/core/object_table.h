@@ -41,9 +41,13 @@
 /// -DRIFTBOUND_CHECK_BOARD_INDEX=ON turns that case into an error and makes
 /// every query recompute the lists and compare them with the index.
 ///
-/// Not thread-safe, like the rest of a GameState: a query on a `const`
-/// table may rebuild the lists. Each game owns its state; a state shared
-/// between threads may only be copied.
+/// Threads
+/// -------
+/// A `const` table may be queried from several threads at once, like any
+/// other const data of the engine (CardDB, CardRegistry): the first query of
+/// a stale table rebuilds the lists under a mutex, the others wait for it,
+/// and a clean table is read without taking the mutex (one atomic load). As
+/// everywhere, changing a state while another thread reads it is not safe.
 ///
 /// The index holds nothing about what an id IS (it stores pointers to the
 /// table's entries and compares LocationId values), so making GameObjectId /
@@ -55,7 +59,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -92,17 +98,17 @@ public:
 
     BoardRange() = default;
     BoardRange(const BoardRange& o) : first_(o.first_), last_(o.last_), pins_(o.pins_) {
-        if (pins_) ++*pins_;
+        if (pins_) pins_->fetch_add(1, std::memory_order_relaxed);
     }
     BoardRange& operator=(const BoardRange& o) {
-        if (o.pins_) ++*o.pins_;
-        if (pins_) --*pins_;
+        if (o.pins_) o.pins_->fetch_add(1, std::memory_order_relaxed);
+        if (pins_) pins_->fetch_sub(1, std::memory_order_release);
         first_ = o.first_;
         last_ = o.last_;
         pins_ = o.pins_;
         return *this;
     }
-    ~BoardRange() { if (pins_) --*pins_; }
+    ~BoardRange() { if (pins_) pins_->fetch_sub(1, std::memory_order_release); }
 
     const_iterator begin() const { return const_iterator(first_); }
     const_iterator end() const { return const_iterator(last_); }
@@ -112,14 +118,16 @@ public:
 
 private:
     friend class ObjectTable;
-    BoardRange(Entry* const* f, Entry* const* l, int* pins) : first_(f), last_(l), pins_(pins) {
-        if (pins_) ++*pins_;
+    BoardRange(Entry* const* f, Entry* const* l, std::atomic<int>* pins)
+        : first_(f), last_(l), pins_(pins) {
+        if (pins_) pins_->fetch_add(1, std::memory_order_relaxed);
     }
     Entry* const* first_ = nullptr;
     Entry* const* last_ = nullptr;
     // The lists this range views are in use while it lives: a rebuild leaves
-    // them alone and makes new ones (ObjectTable::lists).
-    int* pins_ = nullptr;
+    // them alone and makes new ones (ObjectTable::lists). Atomic: ranges over
+    // a const table may be taken on several threads.
+    std::atomic<int>* pins_ = nullptr;
 };
 
 class ObjectTable {
@@ -193,17 +201,15 @@ public:
     // ── The board index ──
     /// Every object with a location: units, gear and runes at a base or a
     /// battlefield (attached and facedown ones included).
-    Range onBoard() { return range<value_type>(lists().board); }
-    ConstRange onBoard() const { return range<const value_type>(lists().board); }
+    Range onBoard() { return range<value_type>(Which::Board); }
+    ConstRange onBoard() const { return range<const value_type>(Which::Board); }
     /// The board and each player's Legend Zone: everything whose card can
     /// have an ability or a continuous effect working.
-    Range inPlay() { return range<value_type>(lists().in_play); }
-    ConstRange inPlay() const { return range<const value_type>(lists().in_play); }
+    Range inPlay() { return range<value_type>(Which::InPlay); }
+    ConstRange inPlay() const { return range<const value_type>(Which::InPlay); }
     /// The objects at one location.
-    Range atLocation(const LocationId& loc) { return range<value_type>(lists().at(loc)); }
-    ConstRange atLocation(const LocationId& loc) const {
-        return range<const value_type>(lists().at(loc));
-    }
+    Range atLocation(const LocationId& loc) { return rangeAt<value_type>(loc); }
+    ConstRange atLocation(const LocationId& loc) const { return rangeAt<const value_type>(loc); }
 
     /// How often the lists were rebuilt (for tests and benchmarks).
     std::size_t indexRebuilds() const { return index_ ? index_->rebuilds : 0; }
@@ -213,7 +219,7 @@ private:
 
     /// One build of the lists.
     struct Lists {
-        int pins = 0;             // BoardRanges viewing these lists
+        std::atomic<int> pins{0}; // BoardRanges viewing these lists
         List board;
         List in_play;
         // One entry per location that holds, or held, an object. A game has
@@ -260,7 +266,8 @@ private:
     };
 
     struct Index {
-        bool stale = true;        // TrackedField / TrackedLocation write here
+        std::atomic<bool> stale{true};   // TrackedField / TrackedLocation write here
+        std::mutex rebuilding;           // held by the one thread that rebuilds
         std::size_t rebuilds = 0;
         std::unique_ptr<Lists> current;
         // Lists a BoardRange was still iterating when the board changed and
@@ -268,18 +275,22 @@ private:
         std::vector<std::unique_ptr<Lists>> retired;
     };
 
-    Index& ensureIndex() const {
+    // The index object exists from the first object on (adopt) and for every
+    // copy (adoptAll); only a table that never held an object has none, and
+    // its queries answer from an empty static list without creating one —
+    // a const query never allocates the index.
+    Index& ensureIndex() {
         if (!index_) index_ = std::make_unique<Index>();
         return *index_;
     }
     void markStale() {
-        if (index_) index_->stale = true;
+        if (index_) index_->stale.store(true, std::memory_order_release);
     }
     void adopt(GameObject& obj) {
         Index& ix = ensureIndex();
         obj.zone.reportTo(&ix.stale);
         obj.location.reportTo(&ix.stale);
-        ix.stale = true;
+        ix.stale.store(true, std::memory_order_release);
     }
     void adoptAll() {
         Index& ix = ensureIndex();
@@ -287,26 +298,37 @@ private:
             obj.zone.reportTo(&ix.stale);
             obj.location.reportTo(&ix.stale);
         }
-        ix.stale = true;
+        ix.stale.store(true, std::memory_order_release);
     }
 
-    const Lists& lists() const {
-        Index& ix = ensureIndex();
-        if (ix.stale || !ix.current) {
-            if (ix.current && ix.current->pins > 0) {
+    /// The lists, rebuilt first if an object moved since they were built.
+    /// nullptr for a table that never held an object.
+    const Lists* lists() const {
+        Index* ixp = index_.get();
+        if (!ixp) return nullptr;
+        Index& ix = *ixp;
+        if (ix.stale.load(std::memory_order_acquire)) {
+            // One thread rebuilds; a reader that finds the table stale at the
+            // same moment waits here and then finds it clean.
+            const std::lock_guard<std::mutex> lock(ix.rebuilding);
+            if (ix.stale.load(std::memory_order_relaxed)) {
+                if (ix.current && ix.current->pins.load(std::memory_order_acquire) > 0) {
 #ifdef RIFTBOUND_CHECK_BOARD_INDEX
-                throw std::logic_error("ObjectTable: an object changed zone or location inside a "
-                                       "loop over a BoardRange, and the board was asked again");
+                    throw std::logic_error("ObjectTable: an object changed zone or location inside "
+                                           "a loop over a BoardRange, and the board was asked again");
 #endif
-                ix.retired.push_back(std::move(ix.current));
+                    ix.retired.push_back(std::move(ix.current));
+                }
+                ix.retired.erase(std::remove_if(ix.retired.begin(), ix.retired.end(),
+                                     [](const std::unique_ptr<Lists>& l) {
+                                         return l->pins.load(std::memory_order_acquire) == 0;
+                                     }),
+                                 ix.retired.end());
+                if (!ix.current) ix.current = std::make_unique<Lists>();
+                ix.current->fill(map_);
+                ++ix.rebuilds;
+                ix.stale.store(false, std::memory_order_release);
             }
-            ix.retired.erase(std::remove_if(ix.retired.begin(), ix.retired.end(),
-                                 [](const std::unique_ptr<Lists>& l) { return l->pins == 0; }),
-                             ix.retired.end());
-            if (!ix.current) ix.current = std::make_unique<Lists>();
-            ix.current->fill(map_);
-            ix.stale = false;
-            ++ix.rebuilds;
         }
 #ifdef RIFTBOUND_CHECK_BOARD_INDEX
         else {
@@ -322,13 +344,27 @@ private:
                                        "or location changed without the table being told)");
         }
 #endif
-        return *ix.current;
+        return ix.current.get();
     }
 
+    enum class Which { Board, InPlay };
     template <class Entry>
-    BoardRange<Entry> range(const List& list) const {
+    BoardRange<Entry> range(Which which) const {
+        const Lists* l = lists();
+        if (!l) return BoardRange<Entry>();
+        return range<Entry>(*l, which == Which::Board ? l->board : l->in_play);
+    }
+    template <class Entry>
+    BoardRange<Entry> rangeAt(const LocationId& loc) const {
+        const Lists* l = lists();
+        if (!l) return BoardRange<Entry>();
+        return range<Entry>(*l, l->at(loc));
+    }
+    template <class Entry>
+    static BoardRange<Entry> range(const Lists& lists, const List& list) {
         value_type* const* first = list.data();
-        return BoardRange<Entry>(first, first + list.size(), &index_->current->pins);
+        return BoardRange<Entry>(first, first + list.size(),
+                                 const_cast<std::atomic<int>*>(&lists.pins));
     }
 
     Map map_;

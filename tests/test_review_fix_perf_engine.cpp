@@ -19,6 +19,7 @@
 #include "rules/deck_validator.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -26,6 +27,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -928,6 +930,62 @@ TEST(PerfEngineKnowledge, PruneDropsAndKeepsWhatItDid) {
     EXPECT_EQ(theirs.size(), theirs_before);
     EXPECT_EQ(own.size(), own_before);
     EXPECT_EQ(st.knowledge.groups.size(), 1u);
+}
+
+// ─── 9.KK4: a const state may be queried from several threads ───────────────
+
+// Four threads ask a const state the board at the same moment, right after an
+// object moved (so the lists are stale and the first query has to rebuild
+// them), four hundred times over. Every answer must be the walk's. Without
+// the guarded rebuild two threads refill the same lists at once: wrong
+// answers, or a crash.
+TEST(PerfEngineTable, AConstStateCanBeQueriedFromSeveralThreadsAtOnce) {
+    GameState state = scatteredState(120);
+    const GameState& shared = state;
+    constexpr int kThreads = 4;
+    std::atomic<long> wrong{0};
+    std::atomic<long> asked{0};
+    for (int round = 0; round < 400; ++round) {
+        // A move by the only writer, before the readers start.
+        const GameObjectId mover = static_cast<GameObjectId>(1 + round % 100);
+        if (state.getObject(mover).location.has_value()) state.getObject(mover).location.reset();
+        else state.getObject(mover).location = BattlefieldLocation{static_cast<BattlefieldId>(round % 3)};
+        const auto board = Walk::where(shared, [](const GameObject& o) { return o.location.has_value(); });
+        const LocationId here{BattlefieldLocation{static_cast<BattlefieldId>(round % 3)}};
+        const auto units_here = Walk::where(shared, [&](const GameObject& o) {
+            return o.isUnit() && o.controller == PlayerId::Player1 && o.location.has_value() &&
+                   *o.location == here;
+        });
+        const std::size_t built = shared.objects.indexRebuilds();
+        std::atomic<bool> go{false};
+        std::vector<std::thread> readers;
+        for (int t = 0; t < kThreads; ++t)
+            readers.emplace_back([&] {
+                while (!go.load(std::memory_order_acquire)) {}
+                for (int i = 0; i < 20; ++i) {
+                    if (Walk::ids(shared.objects.onBoard()) != board) ++wrong;
+                    if (shared.unitsAt(here, PlayerId::Player1) != units_here) ++wrong;
+                    if (shared.allUnitsControlledBy(PlayerId::Player2).size() > board.size()) ++wrong;
+                    asked += 3;
+                }
+            });
+        go.store(true, std::memory_order_release);
+        for (auto& r : readers) r.join();
+        ASSERT_EQ(shared.objects.indexRebuilds(), built + 1)
+            << "the stale lists were rebuilt once, by one of the threads (round " << round << ")";
+    }
+    EXPECT_EQ(wrong.load(), 0);
+    EXPECT_EQ(asked.load(), 400L * kThreads * 60);
+}
+
+// A table that never held an object answers without building anything.
+TEST(PerfEngineTable, AnEmptyTableAnswersWithEmptyRanges) {
+    const GameState empty;
+    EXPECT_TRUE(empty.objects.onBoard().empty());
+    EXPECT_TRUE(empty.objects.inPlay().empty());
+    EXPECT_TRUE(empty.objects.atLocation(LocationId{BaseLocation{PlayerId::Player1}}).empty());
+    EXPECT_TRUE(empty.unitsAt(LocationId{BattlefieldLocation{0}}, PlayerId::Player1).empty());
+    EXPECT_EQ(empty.objects.indexRebuilds(), 0u);
 }
 
 }  // namespace test_review_fix_perf_engine

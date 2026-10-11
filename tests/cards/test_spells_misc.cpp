@@ -29,6 +29,7 @@
 
 #include "tests/cards/card_test_fixture.h"
 
+namespace test_spells_misc {  // file-unique: test sources are unity-built
 using namespace riftbound;
 using namespace riftbound::test;
 
@@ -904,3 +905,4 @@ TEST_F(SpriteMotherUnitTest, SpriteHasTemporary) {
 }
 
 }  // namespace
+}  // namespace test_spells_misc

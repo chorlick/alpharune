@@ -30,6 +30,11 @@ struct CardDef {
     SuperType super_type = SuperType::None;
     std::vector<Domain> domains;
     std::vector<std::string> tags;
+    // Legends only: which of `tags` is the champion tag (CR 103.3.a.2,
+    // 103.3.d.2). Needed only when a legend prints more than one tag (Heart of
+    // the Tempest: Yordle + Kennen); a single-tag legend's tag is its champion
+    // tag. See legendChampionTag().
+    std::string champion_tag;
 
     int energy_cost = 0;
     int power_cost = 0;
@@ -60,6 +65,26 @@ struct CardDef {
         for (auto& t : tags)
             if (t == tag) return true;
         return false;
+    }
+
+    /// A legend's champion tag: `champion_tag` when authored, else its only
+    /// tag. Empty when it cannot be told (not a legend's concern otherwise) —
+    /// deck validation treats that as an error rather than guessing.
+    const std::string& legendChampionTag() const {
+        static const std::string kNone;
+        if (!champion_tag.empty()) return champion_tag;
+        return tags.size() == 1 ? tags.front() : kNone;
+    }
+
+    /// True for a token's reference card (Gold, Sprite, Baron Pit, …): never a
+    /// legal deck card (CR 103.3). Tokens are numbered "<set>-t<nn>" in
+    /// `def_id`; most of them do not carry SuperType::Token.
+    bool isTokenCard() const {
+        if (super_type == SuperType::Token) return true;
+        auto dash = def_id.find('-');
+        return dash != std::string::npos && dash + 2 < def_id.size() &&
+               def_id[dash + 1] == 't' &&
+               def_id[dash + 2] >= '0' && def_id[dash + 2] <= '9';
     }
 
     bool hasDomain(Domain d) const {

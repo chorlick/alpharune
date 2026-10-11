@@ -17,6 +17,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_vendetta_A {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kBladeTwirler      = 789;
@@ -867,4 +868,5 @@ TEST_F(VendettaA, Vendetta_CloudDrake_DrawsOnPlay) {
 }
 
 }  // namespace
+}  // namespace test_vendetta_A
 }  // namespace riftbound::test

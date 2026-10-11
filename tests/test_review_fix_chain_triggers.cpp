@@ -24,6 +24,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_review_fix_chain_triggers {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kFrigidTouch   = 389;  // [Repeat] [2]; "Give a unit -2 [M] this turn."
@@ -736,4 +737,5 @@ TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
 }
 
 }  // namespace
+}  // namespace test_review_fix_chain_triggers
 }  // namespace riftbound::test

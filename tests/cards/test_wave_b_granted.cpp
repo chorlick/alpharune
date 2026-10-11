@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 namespace riftbound::test {
+namespace test_wave_b_granted {  // file-unique: test sources are unity-built
 namespace {
 
 using GrantedTest = CardTestFixture;
@@ -98,4 +99,5 @@ TEST_F(GrantedTest, Heimerdinger_NoneWhenAlone) {
 }
 
 }  // namespace
+}  // namespace test_wave_b_granted
 }  // namespace riftbound::test

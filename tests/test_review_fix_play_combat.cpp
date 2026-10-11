@@ -24,6 +24,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_review_fix_play_combat {  // file-unique: test sources are unity-built
 namespace {
 
 // ─── Test-only cards (ids in the reserved 956..1100 range) ──────────────────
@@ -1045,4 +1046,5 @@ TEST_F(PlayCombatFixTest, QuickDraw_AtReactionTiming_IsOneActionAndAttaches) {
 }
 
 }  // namespace
+}  // namespace test_review_fix_play_combat
 }  // namespace riftbound::test

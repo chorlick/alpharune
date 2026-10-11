@@ -5,6 +5,24 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ─── Build parallelism cap ────────────────────────────────────────────────────
+# At most RIFTBOUND_BUILD_JOBS compile and link jobs run at once, whatever -j
+# the build is started with (`cmake --build build -j16` still runs 6). One
+# Ninja job pool is shared by compiling, precompiling headers and linking. It
+# is set here, before any target exists, so it also covers the FetchContent
+# projects (OpenSpiel, abseil, GoogleTest). Ninja generators only; "0" = no cap.
+set(RIFTBOUND_BUILD_JOBS "6" CACHE STRING
+    "Maximum concurrent compile+link jobs (Ninja job pool); 0 = no cap")
+if(NOT RIFTBOUND_BUILD_JOBS MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "RIFTBOUND_BUILD_JOBS must be a non-negative integer, got '${RIFTBOUND_BUILD_JOBS}'")
+endif()
+if(CMAKE_GENERATOR MATCHES "Ninja" AND RIFTBOUND_BUILD_JOBS GREATER 0)
+    set_property(GLOBAL PROPERTY JOB_POOLS riftbound_jobs=${RIFTBOUND_BUILD_JOBS})
+    set(CMAKE_JOB_POOL_COMPILE riftbound_jobs)
+    set(CMAKE_JOB_POOL_PRECOMPILE_HEADER riftbound_jobs)
+    set(CMAKE_JOB_POOL_LINK riftbound_jobs)
+endif()
+
 # ─── Version stamp ────────────────────────────────────────────────────────────
 # Capture the current git commit at configure time so binaries + HTML replays
 # can be tied back to a specific build. Falls back to "unknown" outside a git
@@ -58,6 +76,26 @@ configure_file(
     @ONLY
 )
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+# ─── Warnings ─────────────────────────────────────────────────────────────────
+# -Wall -Wextra on the engine's own targets (never on OpenSpiel, abseil or
+# GoogleTest). Warnings are reported, not errors. The flags must be the same on
+# riftbound_pch and on every target that reuses its PCH, so they are applied
+# through this one function. A target that includes OpenSpiel gets its source
+# root as a SYSTEM include directory as well, which keeps OpenSpiel's own
+# header warnings out of the engine's build output.
+option(RIFTBOUND_WARNINGS "Compile engine targets with -Wall -Wextra" ON)
+function(riftbound_enable_warnings)
+    if(RIFTBOUND_WARNINGS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        foreach(_target IN LISTS ARGN)
+            target_compile_options(${_target} PRIVATE -Wall -Wextra)
+            get_target_property(_incs ${_target} INCLUDE_DIRECTORIES)
+            if(open_spiel_SOURCE_DIR AND "${open_spiel_SOURCE_DIR}" IN_LIST _incs)
+                target_include_directories(${_target} SYSTEM PRIVATE ${open_spiel_SOURCE_DIR})
+            endif()
+        endforeach()
+    endif()
+endfunction()
 
 # OpenSpiel is mandatory — the riftbound_openspiel binary's MCTS / ISMCTS /
 # random agents are the engine's first-class AI baselines and the integration
@@ -121,17 +159,48 @@ if(RIFTBOUND_BUILD_OPENSPIEL)
         # packages, which can't run from CMake.
         #
         # So we do just the clones install.sh would do, skipping the
-        # system-package step entirely. Pinned versions match v1.6.14's
-        # install.sh as of 2026-05.
+        # system-package step entirely. abseil and json are pinned to the tags
+        # v1.6.14's install.sh uses; install.sh takes pybind11_json and DDS
+        # from a moving branch, so those two are pinned to the commit that
+        # branch pointed at when this was written (configure is reproducible).
+        #
+        # GIT_REF is a tag, or a full commit hash (fetched directly: a shallow
+        # clone cannot name a commit with --branch).
         function(_riftbound_clone_dep TARGET_DIR GIT_URL GIT_REF)
             if(NOT EXISTS "${TARGET_DIR}")
                 message(STATUS "  Cloning ${GIT_URL} @ ${GIT_REF}")
-                execute_process(
-                    COMMAND git clone --depth 1 --branch ${GIT_REF} ${GIT_URL} ${TARGET_DIR}
-                    RESULT_VARIABLE _rc
-                    OUTPUT_QUIET ERROR_QUIET
-                )
+                if(GIT_REF MATCHES "^[0-9a-f]+$")
+                    string(LENGTH "${GIT_REF}" _ref_len)
+                else()
+                    set(_ref_len 0)
+                endif()
+                if(_ref_len EQUAL 40)
+                    execute_process(
+                        COMMAND git init --quiet ${TARGET_DIR}
+                        COMMAND_ERROR_IS_FATAL ANY
+                        OUTPUT_QUIET ERROR_QUIET)
+                    execute_process(
+                        COMMAND git -C ${TARGET_DIR} fetch --quiet --depth 1 ${GIT_URL} ${GIT_REF}
+                        RESULT_VARIABLE _rc
+                        OUTPUT_QUIET ERROR_QUIET)
+                    if(_rc EQUAL 0)
+                        execute_process(
+                            COMMAND git -C ${TARGET_DIR} -c advice.detachedHead=false
+                                    checkout --quiet FETCH_HEAD
+                            RESULT_VARIABLE _rc
+                            OUTPUT_QUIET ERROR_QUIET)
+                    endif()
+                else()
+                    execute_process(
+                        COMMAND git clone --depth 1 --branch ${GIT_REF} ${GIT_URL} ${TARGET_DIR}
+                        RESULT_VARIABLE _rc
+                        OUTPUT_QUIET ERROR_QUIET
+                    )
+                endif()
                 if(NOT _rc EQUAL 0)
+                    # Leave nothing behind, or the next configure would take a
+                    # half-made directory for a finished clone.
+                    file(REMOVE_RECURSE "${TARGET_DIR}")
                     message(FATAL_ERROR "Failed to clone ${GIT_URL} @ ${GIT_REF} into ${TARGET_DIR}")
                 endif()
             endif()
@@ -152,7 +221,7 @@ if(RIFTBOUND_BUILD_OPENSPIEL)
         _riftbound_clone_dep(
             ${open_spiel_SOURCE_DIR}/open_spiel/pybind11_json
             https://github.com/pybind/pybind11_json.git
-            master)
+            d0bf434be9d287d73a963ff28745542daf02c08f)  # master, 2025-05-24
         # DDS (double-dummy-solver) is referenced unconditionally by
         # games/CMakeLists.txt because the bridge game can't be disabled
         # via a flag. Cloning it is enough — we never link the bridge
@@ -160,12 +229,15 @@ if(RIFTBOUND_BUILD_OPENSPIEL)
         _riftbound_clone_dep(
             ${open_spiel_SOURCE_DIR}/open_spiel/games/bridge/double_dummy_solver
             https://github.com/jblespiau/dds.git
-            develop)
+            091ea94358a4016d4fb6069dea5c452cdc98d0bd)  # develop, 2020-10-30
 
         add_subdirectory(${open_spiel_SOURCE_DIR}/open_spiel ${open_spiel_BINARY_DIR})
     endif()
 
     add_subdirectory(src/openspiel)
+    get_property(_riftbound_openspiel_targets DIRECTORY src/openspiel
+        PROPERTY BUILDSYSTEM_TARGETS)
+    riftbound_enable_warnings(${_riftbound_openspiel_targets})
 endif()
 
 # ─── LibTorch (opt-in) ────────────────────────────────────────────────────────
@@ -267,6 +339,7 @@ if(RIFTBOUND_USE_PCH)
     target_include_directories(riftbound_pch PRIVATE src)
     target_link_libraries(riftbound_pch PRIVATE ${RIFTBOUND_CORE_LIBS})
     target_compile_options(riftbound_pch PRIVATE ${RIFTBOUND_PCH_CCACHE_FLAG})
+    riftbound_enable_warnings(riftbound_pch)
     target_precompile_headers(riftbound_pch PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/pch.h)
 endif()
@@ -310,6 +383,7 @@ foreach(_group IN LISTS RIFTBOUND_CARD_GROUPS)
     target_include_directories(riftbound_cards_${_group} PRIVATE src)
     target_link_libraries(riftbound_cards_${_group} PRIVATE ${RIFTBOUND_CORE_LIBS})
     riftbound_use_pch(riftbound_cards_${_group})
+    riftbound_enable_warnings(riftbound_cards_${_group})
     if(RIFTBOUND_UNITY_CARDS)
         set_target_properties(riftbound_cards_${_group} PROPERTIES
             UNITY_BUILD ON
@@ -351,6 +425,7 @@ add_library(riftbound_core
 
 target_include_directories(riftbound_core PUBLIC src)
 riftbound_use_pch(riftbound_core)
+riftbound_enable_warnings(riftbound_core)
 target_link_libraries(riftbound_core PUBLIC ${RIFTBOUND_CORE_LIBS})
 
 # ─── Engine library ──────────────────────────────────────────────────────────
@@ -399,6 +474,7 @@ target_link_libraries(riftbound PRIVATE
 # OpenSpiel sources include "open_spiel/spiel.h" — needs the parent of the
 # open_spiel/ subdir on the include path.
 target_include_directories(riftbound PRIVATE ${open_spiel_SOURCE_DIR})
+riftbound_enable_warnings(riftbound)
 
 # Config parsing (src/config/) moved to riftbound-trainer along with the
 # training driver — engine has no current consumers. A future engine
@@ -419,9 +495,58 @@ file(GLOB_RECURSE RIFTBOUND_TEST_SOURCES CONFIGURE_DEPENDS
 # Model-forward + CFR util tests live in riftbound-trainer.
 
 add_executable(riftbound_tests ${RIFTBOUND_TEST_SOURCES})
+
+# RIFTBOUND_UNITY_TESTS compiles the test sources as combined units of
+# RIFTBOUND_TEST_UNITY_BATCH files. A test file costs 10-17 s on its own, nearly
+# all of it instantiating the same GoogleTest and engine templates as its
+# neighbours, so a core-header change rebuilds the suite several times faster.
+# The trade-off is the usual one: editing one test file recompiles its batch
+# (turn the option OFF in a build directory used for iterating on one file, or
+# for clangd).
+#
+# Rule for test authors, the same as for card files: file-scope names must be
+# unique across tests/ — unity merges every file's anonymous namespace and
+# `using namespace`. Put a file's helpers, test cards and fixtures in a
+# namespace of its own (see tests/test_review_fix_integrity.cpp) or give them
+# file-specific names. A clash is a compile error (redefinition / ambiguous
+# call) in the batch that pairs the two files, never a silent pick; a file
+# that genuinely cannot share a unit goes in RIFTBOUND_TEST_UNITY_EXCLUDE.
+option(RIFTBOUND_UNITY_TESTS "Unity-build the riftbound_tests sources" ON)
+set(RIFTBOUND_TEST_UNITY_BATCH 8 CACHE STRING
+    "Test source files per unity compile (with RIFTBOUND_UNITY_TESTS)")
+# Compiled on their own even with RIFTBOUND_UNITY_TESTS (paths relative to the
+# repository root).
+set(RIFTBOUND_TEST_UNITY_EXCLUDE
+    # #includes src/io/play_server.cpp and play_index_html.cpp to reach their
+    # file-local functions; those sources' own file-scope names stay out of
+    # the shared units.
+    tests/test_review_fix_io_cli.cpp
+)
+if(RIFTBOUND_UNITY_TESTS)
+    set_target_properties(riftbound_tests PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${RIFTBOUND_TEST_UNITY_BATCH})
+    foreach(_src IN LISTS RIFTBOUND_TEST_UNITY_EXCLUDE)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
+            message(FATAL_ERROR "RIFTBOUND_TEST_UNITY_EXCLUDE names a missing file: ${_src}")
+        endif()
+        set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/${_src}"
+            PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+    endforeach()
+endif()
+# GoogleTest's assertion macros expand __FILE__, and the test PCH and the unity
+# units include their sources by absolute path. Mapping the source root away
+# keeps the checkout's location out of the preprocessed text, so ccache can
+# share test objects between worktrees (and failure messages print paths
+# relative to the repository root).
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(riftbound_tests PRIVATE
+        "-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=")
+endif()
 # Per-card test fixture lives in tests/cards/. Bring tests/ onto the include
 # path so #include "tests/cards/card_test_fixture.h" resolves.
 target_include_directories(riftbound_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+riftbound_enable_warnings(riftbound_tests)
 
 target_link_libraries(riftbound_tests PRIVATE
     riftbound_core

@@ -29,6 +29,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_rules_compliance_cards {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kIronBallista     = 17;
@@ -941,4 +942,5 @@ TEST_F(RulesCardsTest, RulesCards_CR816_MirrorImage_TokenInControllersBaseWithLa
 }
 
 }  // namespace
+}  // namespace test_rules_compliance_cards
 }  // namespace riftbound::test

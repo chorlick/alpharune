@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cassert>
 #include <sstream>
+#include <stdexcept>
+#include <string>
 
 namespace riftbound {
 
@@ -13,7 +15,20 @@ namespace riftbound {
 void registerAllCards(CardRegistry& registry);
 
 void CardRegistry::registerCard(CardDefId id, std::unique_ptr<Card> card) {
-    cards_[id] = std::move(card);
+    // Registration runs once at startup, so these are checked in every build
+    // type: a slip here would otherwise silently drop or mis-key a card.
+    if (!card)
+        throw std::logic_error("registerCard: null card for id " + std::to_string(id));
+    if (card->def().id != id)
+        throw std::logic_error("registerCard: id " + std::to_string(id) +
+                               " does not match def().id " +
+                               std::to_string(card->def().id) + " ('" +
+                               card->def().name + "')");
+    auto [it, inserted] = cards_.emplace(id, std::move(card));
+    if (!inserted)
+        throw std::logic_error("registerCard: id " + std::to_string(id) +
+                               " is already registered ('" +
+                               it->second->def().name + "')");
 }
 
 Card* CardRegistry::get(CardDefId id) const {

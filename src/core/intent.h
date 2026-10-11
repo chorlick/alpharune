@@ -207,7 +207,9 @@ struct Intent {
             && chosen_objects == o.chosen_objects
             && chosen_value == o.chosen_value
             && chosen_card_def == o.chosen_card_def
-            && pay_location_cost == o.pay_location_cost;
+            && use_alt_play_cost == o.use_alt_play_cost
+            && pay_location_cost == o.pay_location_cost
+            && granted_ability_def == o.granted_ability_def;
     }
 };
 

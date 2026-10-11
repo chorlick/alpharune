@@ -2,12 +2,12 @@
 
 ## Deck validation
 
-- [ ] **5.1 Any shared tag is accepted as the champion tag** [verified]
+- [x] **5.1 Any shared tag is accepted as the champion tag** [verified] — FIXED: champion and Signature checks use the legend's champion tag (`CardDef::legendChampionTag`, new `CardDef::champion_tag` authored on 942), not any shared tag; test: IntegrityFixTest.ChosenChampionSharingOnlyANonChampionTagIsRejected, IntegrityFixTest.SignatureSharingOnlyANonChampionTagIsRejected, IntegrityFixTest.EveryLegendHasOneChampionTagCarriedByAChampionUnit
   - Where: `src/rules/deck_validator.cpp:62-77` (`checkChampion`), `:220-226` (signature check). CR 103.3.a.2 / 103.3.d.2 require the legend's champion tag.
   - Legend 942 Heart of the Tempest has `{Yordle, Kennen}`; a Kennen deck with Teemo, Strategist (121), Vex, Apathetic (712), Fizz or Poppy as Chosen Champion passes. Yordle-tagged Signature cards pass the same way.
-- [ ] **5.2 Card types in main deck and sideboard are never checked** [confirmed]
+- [x] **5.2 Card types in main deck and sideboard are never checked** [confirmed] — FIXED: `checkMainDeckCardTypes` allows only units, gear and spells in main deck and sideboard and rejects token reference cards (`CardDef::isTokenCard`), also in battlefield slots; test: IntegrityFixTest.MainDeckRejectsCardsThatAreNotUnitsGearOrSpells, IntegrityFixTest.TokenBattlefieldIsNotADeckBattlefield
   - Where: `deck_validator.cpp:80-89`, `:119-127`. The Gold token def (326), runes, battlefields or a second legend are accepted; only the copy limit applies.
-- [ ] **5.3 `loadFromDeckList` throws the wrong exception on a count-only line** [plausible]
+- [x] **5.3 `loadFromDeckList` throws the wrong exception on a count-only line** [plausible] — FIXED: confirmed (`std::out_of_range`); the name is read with `getline`, a count-only line fails with `std::runtime_error`; test: IntegrityFixTest.DeckListLineWithOnlyACountThrowsRuntimeError
   - Where: `deck_validator.cpp:288-290`. `tellg()` returns -1, `substr(size_t(-1))` throws `std::out_of_range`; the header promises `std::runtime_error`.
 
 ## Card-specific logic in the engine
@@ -28,11 +28,11 @@
 - [ ] **5.5 Id types are plain aliases; `CardDefId` has two "none" values** [confirmed]
   - Where: `src/core/types.h:18-25`. All six ids are `using X = uint32_t`, so the documented `cardDefId()` / `ctx.source` mix-up compiles silently.
   - `GameObject::card_def_id` and `ChainItem::card_def_id` use `kInvalidId`; `CardDef::id`, `DeckSubmission`, `granted_ability_def`, `GrantedAbilityRef` use 0. `recordReveal` (`game_state.h:710`) only filters `kInvalidId`.
-- [ ] **5.6 Invalid ids are UB in Release** [code confirmed, no concrete trigger]
+- [x] **5.6 Invalid ids are UB in Release** [code confirmed, no concrete trigger] — FIXED: `getObject` and `playerIndex` (hence `player()`) throw `std::logic_error` in every build type, `opponent(None)` is `None`; 21,000 random games ran without a throw; test: IntegrityFixIds.GetObjectThrowsOnUnknownId, IntegrityFixIds.PlayerNoneIsNotIndexable, IntegrityFixIds.OpponentOfNoneIsNone
   - Where: `game_state.h:672-682`, `types.h:39-41`. `getObject` is assert-only; `playerIndex(PlayerId::None)` returns -1 and `player()` indexes `players[-1]`; `opponent(PlayerId::None)` returns `Player1`.
-- [ ] **5.7 `Intent::operator==` omits `use_alt_play_cost` and `granted_ability_def`** [confirmed in code, impact plausible]
+- [x] **5.7 `Intent::operator==` omits `use_alt_play_cost` and `granted_ability_def`** [confirmed in code, impact plausible] — FIXED: `operator==` compares both fields; test: IntegrityFixIntent.EqualityDistinguishesAltCostAndGrantedAbilityTwins
   - Where: `src/core/intent.h:190-211`. The engine emits twins differing only in those fields (`game_engine.cpp:2749-2783`, `:3607-3614`). No in-tree production consumer of `==` found.
-- [ ] **5.8 `BattlefieldState::unitsControlledBy` can never match** [confirmed, dead]
+- [x] **5.8 `BattlefieldState::unitsControlledBy` can never match** [confirmed, dead] — FIXED: dropped the `zone == Base` condition (kept the function; it now agrees with `hasUnitsFrom`); test: IntegrityFixBattlefield.UnitsControlledByFindsUnitsAtTheBattlefield
   - Where: `src/core/game_state.cpp:12-13` requires `zone == Base && isAtBattlefield()`. No callers; `hasUnitsFrom` works.
 
 ## Duplicated logic
@@ -45,12 +45,12 @@
 
 ## Registration
 
-- [ ] **5.11 Registration is clean but unguarded** [confirmed by script]
+- [x] **5.11 Registration is clean but unguarded** [confirmed by script] — FIXED: `registerCard` throws `std::logic_error` on a duplicate id, a null card or a key that differs from `def().id`; `buildFromClasses` asserts the key; test: IntegrityFixRegistry.DuplicateIdIsRejected, IntegrityFixRegistry.KeyMustEqualTheCardsOwnDefId, IntegrityFixRegistry.EveryShippedCardRegistersOnceUnderItsOwnId
   - `CardRegistry::registerCard` overwrites silently (`card_registry.cpp:15-17`); `buildFromClasses` keys by `def.id` without checking it equals the registry key (`card_db.cpp:15-45`). Add asserts.
 
 ## Build
 
-- [ ] **5.12 No warning flags; two unpinned dependencies** [confirmed]
+- [x] **5.12 No warning flags; two unpinned dependencies** [confirmed] — FIXED: `-Wall -Wextra` (no `-Werror`, option `RIFTBOUND_WARNINGS`) on all engine targets; pybind11_json and DDS pinned to commits; no warnings in src/core, src/rules or card_registry, 115 distinct warning sites elsewhere reported as carry-over (no behavioural test: build configuration)
   - No target gets `-Wall -Wextra`, so the `class GameState;` forward declaration of a struct (`card.h:25`), unused results and narrowing go unreported.
   - `pybind11_json` is cloned at `master`, DDS at `develop` (`CMakeLists.txt:152-163`); configure is not reproducible.
   - Clean: PCH reuse flags are consistent across `riftbound_pch`, the card groups and `riftbound_core`; no ODR or unity hazards in `card_helpers.h`.

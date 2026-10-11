@@ -18,6 +18,7 @@
 
 #include "tests/cards/card_test_fixture.h"
 
+namespace test_audit_fixes_0 {  // file-unique: test sources are unity-built
 using namespace riftbound;
 using namespace riftbound::test;
 
@@ -775,3 +776,4 @@ TEST_F(AuditFix0Test, BashfulBloom_CreatesReadyTemporarySprite) {
 }
 
 }  // namespace
+}  // namespace test_audit_fixes_0

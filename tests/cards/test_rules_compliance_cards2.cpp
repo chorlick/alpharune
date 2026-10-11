@@ -32,6 +32,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_rules_compliance_cards2 {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kLegionRearguard  = 10;    // 2 [M] unit, no abilities
@@ -1654,4 +1655,5 @@ TEST_F(RulesCards2Test, RulesCards2_NotSoFast_NotWhenOnlyEnemyObjectsAreChosen) 
 }
 
 }  // namespace
+}  // namespace test_rules_compliance_cards2
 }  // namespace riftbound::test

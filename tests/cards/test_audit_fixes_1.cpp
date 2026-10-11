@@ -7,6 +7,7 @@
 
 #include "tests/cards/card_test_fixture.h"
 
+namespace test_audit_fixes_1 {  // file-unique: test sources are unity-built
 using namespace riftbound;
 using namespace riftbound::test;
 
@@ -701,3 +702,4 @@ TEST_F(AuditFix1Test, Deceiver_NoUnitToCopyStillMakesTemporaryToken) {
 }
 
 } // namespace
+}  // namespace test_audit_fixes_1

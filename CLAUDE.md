@@ -6,13 +6,19 @@ C++20 game engine that simulates 1v1 Riftbound TCG matches. This file is the sta
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cmake --build build -j6
 RIFTBOUND_ROOT=. ./build/riftbound_tests
 ```
 
 First configure clones OpenSpiel v1.6.14 + abseil-cpp + nlohmann/json + pybind11_json + DDS into `build/_deps/` (~10s configure + one-time ~30s build of `open_spiel_core`). OpenSpiel is mandatory — the MCTS/ISMCTS agents in the `riftbound` binary (`src/agents/mcts_agent.cpp`) depend on it.
 
-**Build structure.** `src/pch.h` is precompiled once (`riftbound_pch`) and reused by `riftbound_core` and the card groups. Each `src/cards/<type>/` directory is an OBJECT library (`riftbound_cards_<type>`) folded into `riftbound_core`, compiled as unity batches. Options: `-DRIFTBOUND_USE_PCH=OFF`, `-DRIFTBOUND_UNITY_CARDS=OFF` (one compile per card, e.g. for clangd), `-DRIFTBOUND_CARD_UNITY_BATCH=<n>` (default 16). With ccache, configure with `-DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache"` or PCH compiles are not cached.
+**Build structure.** `src/pch.h` is precompiled once (`riftbound_pch`) and reused by `riftbound_core` and the card groups. Each `src/cards/<type>/` directory is an OBJECT library (`riftbound_cards_<type>`) folded into `riftbound_core`, compiled as unity batches. Options: `-DRIFTBOUND_USE_PCH=OFF`, `-DRIFTBOUND_UNITY_CARDS=OFF` (one compile per card, e.g. for clangd), `-DRIFTBOUND_CARD_UNITY_BATCH=<n>` (default 16). `-DRIFTBOUND_WARNINGS=OFF` drops `-Wall -Wextra` (on by default for engine targets, never `-Werror`).
+
+**Parallelism cap.** `-DRIFTBOUND_BUILD_JOBS=<n>` (default 6, `0` = no cap) is a Ninja job pool shared by every compile and link, third-party targets included: `cmake --build build -j16` still runs at most `n` at once. Ninja generators only.
+
+**ccache.** Configure with `-DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_BASEDIR=$PWD;CCACHE_NOHASHDIR=1;CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime;ccache"` (run from the checkout root). `pch_defines,time_macros` is what lets compiles that use the PCH be cached at all; `CCACHE_BASEDIR` (this checkout's root) with `CCACHE_NOHASHDIR` lets a second checkout or git worktree of the same sources reuse the objects instead of paying a cold build.
+
+**Tests are unity-built too.** `riftbound_tests` compiles `tests/**/*.cpp` in batches (`-DRIFTBOUND_UNITY_TESTS=OFF` for one compile per test file, e.g. while iterating on a single file or for clangd; `-DRIFTBOUND_TEST_UNITY_BATCH=<n>`, default 8). File-scope names in a test file must therefore be unique across `tests/`: put a file's helpers, test cards and fixtures in a namespace of its own (`namespace riftbound::test::<file>`), not in a bare anonymous namespace. A clash is a compile error in the batch that pairs the two files; a file that cannot share a unit is listed in `RIFTBOUND_TEST_UNITY_EXCLUDE` in `CMakeLists.txt`.
 
 **Card files share a translation unit with their neighbours.** File-scope names in a card file must be unique within its directory: a reprint's class carries its card id (`KarmaChanneler_235` / `KarmaChanneler_548`), and helpers needed by more than one card go in `src/cards/card_helpers.h` rather than being copied.
 

@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 namespace riftbound::test {
+namespace test_review_fix_auras_costs {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kCaptainFarron = 15;
@@ -951,4 +952,5 @@ TEST_F(AurasCostsTest, WithoutElderDragon_NonLethalDamageDoesNotKill) {
 }
 
 }  // namespace
+}  // namespace test_review_fix_auras_costs
 }  // namespace riftbound::test

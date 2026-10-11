@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 namespace riftbound::test {
+namespace test_vendetta_core {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kBaccaiSandspinner = 788;
@@ -205,4 +206,5 @@ TEST_F(CardTestFixture, Vendetta_DredgeUpDraws) {
 }
 
 }  // namespace
+}  // namespace test_vendetta_core
 }  // namespace riftbound::test

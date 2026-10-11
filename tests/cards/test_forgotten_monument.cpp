@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 namespace riftbound::test {
+namespace test_forgotten_monument {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kForgottenMonument = 523;
@@ -82,4 +83,5 @@ TEST_F(CardTestFixture, ForgottenMonument_GateAppliesToBothPlayers) {
 }
 
 }  // namespace
+}  // namespace test_forgotten_monument
 }  // namespace riftbound::test

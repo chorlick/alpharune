@@ -19,6 +19,7 @@
 #include <memory>
 
 namespace riftbound::test {
+namespace test_review_fix_executor {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kVanillaUnit = 1;        // Blazing Scorcher
@@ -529,4 +530,5 @@ TEST_F(ExecutorReviewFixTest, PlayIgnoringCost_LeavesTrashBanishmentAndDeck) {
 }
 
 }  // namespace
+}  // namespace test_review_fix_executor
 }  // namespace riftbound::test

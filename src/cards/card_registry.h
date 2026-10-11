@@ -17,7 +17,8 @@ namespace riftbound {
 
 class CardRegistry {
 public:
-    /// Register a card implementation. Overwrites any existing registration.
+    /// Register a card implementation under `id`, which must be the card's own
+    /// `def().id` and not registered yet. Throws std::logic_error otherwise.
     void registerCard(CardDefId id, std::unique_ptr<Card> card);
 
     /// Get the Card object for a given CardDefId. Returns nullptr if not registered.

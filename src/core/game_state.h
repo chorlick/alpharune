@@ -686,17 +686,21 @@ struct GameState {
         return id;
     }
 
+    // Checked in every build type: an unknown id throws std::logic_error
+    // instead of dereferencing end() when NDEBUG removes the assert.
     GameObject& getObject(GameObjectId id) {
         auto it = objects.find(id);
-        assert(it != objects.end() && "Invalid game object ID");
+        if (it == objects.end()) [[unlikely]] throwInvalidObjectId(id);
         return it->second;
     }
 
     const GameObject& getObject(GameObjectId id) const {
         auto it = objects.find(id);
-        assert(it != objects.end() && "Invalid game object ID");
+        if (it == objects.end()) [[unlikely]] throwInvalidObjectId(id);
         return it->second;
     }
+
+    [[noreturn]] static void throwInvalidObjectId(GameObjectId id);
 
     bool objectExists(GameObjectId id) const {
         return objects.find(id) != objects.end();

@@ -627,8 +627,6 @@ void TriggerManager::onEnteredBoard(const EnteredBoardEvent& e) {
 }
 
 void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
-    auto bf_loc = BattlefieldLocation{e.battlefield};
-
     // Battlefield cards: "When combat starts here," (Threshold of the Gray).
     fireBattlefieldTriggers(TriggerType::WhenCombatStartsHere, e.attacker, e.battlefield);
     // "When you defend here," (Fortified Position, Reaver's Row, Ravenbloom

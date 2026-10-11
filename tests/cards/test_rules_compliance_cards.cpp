@@ -208,8 +208,8 @@ protected:
         card->onResolve(ctx, targets);
         int guard = 0;
         while (exec.hasPendingChoice()) {
-            // ChainManager::stepResolve allows 16 entries per resolution.
-            ASSERT_LT(++guard, 16) << "more choices than the chain's resume loop allows";
+            // ChainManager::stepResolve allows 1024 entries per resolution.
+            ASSERT_LT(++guard, 1024) << "more choices than the chain's resume loop allows";
             auto pending = exec.consumePendingChoice();
             exec.recordChoice(picker(pending.legal));
             card->onResolve(ctx, targets);
@@ -638,10 +638,14 @@ TEST_F(RulesCardsTest, RulesCards_CR355_14_AlphaStrike_LargeAmountStaysWithinThe
     auto spell = addToHand(P1, kAlphaStrike);
     Seen seen;
 
-    // driveSpell fails the test if more than 15 choices are requested.
+    // One point per pick, whatever the total: 24 damage is 24 picks, well
+    // inside the resume loop's 1024. (This asserted "at most 12 prompts" while
+    // splitDamageAmong capped its picks for the old 16-entry loop and made
+    // each pick worth 2 — plans/09 item 9.D3.)
     driveSpell(kAlphaStrike, P1, spell, {striker}, inOrder({e1, e2}, &seen), exec);
 
-    EXPECT_LE(seen.prompts, 12);
+    EXPECT_GE(seen.prompts, 24);
+    EXPECT_LE(seen.prompts, 26);
     EXPECT_EQ(state.getObject(e1).damage_marked + state.getObject(e2).damage_marked, 24)
         << "CR 355.14: all of the damage is divided, none lost";
     EXPECT_GT(state.getObject(e1).damage_marked, 0);

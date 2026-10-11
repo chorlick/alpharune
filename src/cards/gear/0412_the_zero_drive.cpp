@@ -45,9 +45,10 @@ public:
     //     their costs. (Use only if unattached.)" ──
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        // ENGINE-GAP: ActivationCost has no "banish this" field, so that part
-        // of the cost is paid as the ability resolves (onActivate).
-        return {.exhaust = false, .energy = 3, .power = 1, .power_domain = Domain::Mind};
+        // All of it is the cost, paid as the ability is activated: the Drive
+        // is banished before anyone can respond (ActivationCost::banish_self).
+        return {.exhaust = false, .energy = 3, .power = 1, .power_domain = Domain::Mind,
+                .banish_self = true};
     }
     // "(Use only if unattached.)" — asked of the copy that is activating. Not
     // offered with nothing to play back (the activation would only banish it).
@@ -63,12 +64,11 @@ public:
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& gear = ctx.state.getObject(ctx.source);
-        // Left the board or was attached in response: the cost can't be paid.
-        if (!gear.location.has_value() || gear.attached_to.has_value()) return;
+        // "Banish this" was paid by the engine as the ability was activated;
+        // the Drive is in banishment now and still knows what it banished.
+        // Only the units that are still there are played.
         const std::vector<GameObjectId> to_play = banishedWithThis(ctx.state, gear);
         gear.tracked_objects.clear();
-        // "Banish this" (cost), then the effect.
-        ctx.executor.banishObject(ctx.source);
         for (auto uid : to_play) {
             // playIgnoringCost takes the card out of the banishment zone itself.
             ctx.executor.playIgnoringCost(ctx.controller, uid);

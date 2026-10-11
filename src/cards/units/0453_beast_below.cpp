@@ -24,19 +24,13 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const PlayerId me = ctx.controller;
         auto friends = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (id != ctx.source && obj.isUnit() && obj.controller == me &&
-                    obj.location.has_value())
-                    out.push_back(id);
-            std::sort(out.begin(), out.end());   // stable option order, not hash order
-            return out;
+            return boardObjects(ctx.state, [&](const GameObject& o) {
+                return o.id != ctx.source && o.isUnit() && o.controller == me;
+            });
         };
         auto enemies = [&]() {
-            auto out = chooseableUnits(ctx.state, me,
-                                       [me](const GameObject& o) { return o.controller != me; });
-            std::sort(out.begin(), out.end());
-            return out;
+            return chooseableUnits(ctx.state, me,
+                                   [me](const GameObject& o) { return o.controller != me; });
         };
         // Which helper asks is fixed on the first entry, so later entries read
         // their answers back from the same one: resume_data[kShapeSlot] is

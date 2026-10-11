@@ -29,7 +29,6 @@ public:
                     return u.controller != ctx.controller && u.battlefieldId() == my_bf;
                 });
         }
-        std::sort(legal.begin(), legal.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Ahri, Inquisitive: give an enemy unit here -2 [M]",
                                           legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

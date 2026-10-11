@@ -19,13 +19,10 @@ public:
 
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     std::vector<GameObjectId> friendlyGear(CardContext& ctx) const {
-        std::vector<GameObjectId> out;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isGear() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            out.push_back(id);
-        }
-        return out;
+        const PlayerId me = ctx.controller;
+        return boardObjects(ctx.state, [me](const GameObject& o) {
+            return o.isGear() && o.controller == me;
+        });
     }
 
     // "you may kill a friendly gear" — the controller chooses whether and
@@ -52,6 +49,7 @@ public:
         mod.this_turn_only = true;
         mod.gear_only = true;
         mod.max_printed_energy_cost = 7;   // "Energy cost no more than [7]"
+        mod.from_hand_only = true;         // "from hand": not a gear played from the trash
         mod.next_card_only = true;   // one gear: used up by the next gear played
         ctx.state.player(ctx.controller).cost_modifiers.push_back(mod);
         ctx.events.logTrace("JAYCE: the next gear played this turn ignores up to [7] of its Energy cost");

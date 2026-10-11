@@ -19,3 +19,8 @@ rework the event bus or move header bodies now; these are recorded so the number
   generate games. Measure before doing either.
 - **Card optimisation level.** Card units are a quarter of a full rebuild; `-O1` / `-O2` for them was not
   measured.
+- **MCTS per-simulation cost after the action-id fix (stage 5).** `mcts:sims=50` simulations cost 84 µs each
+  (69 µs before) because an applied action is 27.5 µs on average (19.2 µs before) while clone and
+  `ApplyAction` at a fixed position are unchanged. Not split: how much of that is the replay of a clone
+  taken at a prompt (a non-resumable decision), which the wider legal lists make more common.
+  (plans/reports/checkpoint.md §4)

@@ -2680,9 +2680,10 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     playAt(spell, {unit}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
-            if (i.chosen_objects.empty())
+            if (i.chosen_objects.empty()) {
                 EXPECT_TRUE(!i.chosen_value.has_value() || *i.chosen_value == 0)
                     << "a battlefield was offered as a place to play the unit";
+            }
     ASSERT_TRUE(onBoard(unit));
     EXPECT_TRUE(o(unit).isAtBase());
 }
@@ -2835,9 +2836,10 @@ TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier
     playHidden(hide(0), &agent);
     EXPECT_EQ(countNamed(P1, "Sand Soldier"), 1) << "no second token: not there, not anywhere";
     for (const auto& [id, obj] : state.objects)
-        if (obj.name == "Sand Soldier" && obj.location.has_value())
+        if (obj.name == "Sand Soldier" && obj.location.has_value()) {
             EXPECT_NE(obj.battlefieldId(), std::optional<BattlefieldId>{0})
                 << "\"Units can't be played here.\"";
+        }
     EXPECT_TRUE(agent.prompts.empty()) << "no location to pick, no token to ready";
     EXPECT_EQ(power(P1, Domain::Order), 1) << "[Y] not spent on a token that does not exist";
 }

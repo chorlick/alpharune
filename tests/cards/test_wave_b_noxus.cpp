@@ -14,16 +14,20 @@ constexpr CardDefId kNoxusSaboteur = 18;
 
 TEST_F(NoxusTest, SetsUnrevealableFlagOnItsBattlefield) {
     addUnit(P1, kNoxusSaboteur, 3, /*at_bf=*/0);
-    EXPECT_FALSE(state.battlefields[0].opp_hidden_unrevealable);
+    // "Your opponents' [Hidden] cards": the flag is per player, set for the
+    // Saboteur's opponent only.
+    const int opp = playerIndex(P2), me = playerIndex(P1);
+    EXPECT_FALSE(state.battlefields[0].opp_hidden_unrevealable[opp]);
     card_registry.get(kNoxusSaboteur)->applyPassiveAura(state, P1);
-    EXPECT_TRUE(state.battlefields[0].opp_hidden_unrevealable);
-    EXPECT_FALSE(state.battlefields[1].opp_hidden_unrevealable);
+    EXPECT_TRUE(state.battlefields[0].opp_hidden_unrevealable[opp]);
+    EXPECT_FALSE(state.battlefields[0].opp_hidden_unrevealable[me]);
+    EXPECT_FALSE(state.battlefields[1].opp_hidden_unrevealable[opp]);
 }
 
 TEST_F(NoxusTest, NoFlagFromBase) {
     addUnit(P1, kNoxusSaboteur, 3, /*at_bf=*/-1);  // at base
     card_registry.get(kNoxusSaboteur)->applyPassiveAura(state, P1);
-    EXPECT_FALSE(state.battlefields[0].opp_hidden_unrevealable);
+    EXPECT_FALSE(state.battlefields[0].opp_hidden_unrevealable[playerIndex(P2)]);
 }
 
 }  // namespace

@@ -735,6 +735,10 @@ TEST_F(AurasCostsTest, GrantedAbility_HonoursTheGrantingCardsGates) {
     EXPECT_FALSE(offered()) << "Caitlyn's own gate and target requirement apply";
     s().battlefields[0].controller = P1;
     place(caitlyn, 0);
+    // "Use this ability only while I'm at a battlefield": "I" is the unit that
+    // has the ability, so Caitlyn being there does not let Heimerdinger shoot.
+    EXPECT_FALSE(offered());
+    place(heimer, 0);
     EXPECT_TRUE(offered());
 }
 

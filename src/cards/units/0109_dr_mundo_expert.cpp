@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -33,21 +34,65 @@ public:
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
-        std::vector<GameObjectId> to_recycle;
-        // Recycle up to 3 from trash (front of trash = oldest).
-        for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            to_recycle.push_back(cid);
-            if (to_recycle.size() >= 3) break;
+        auto recycle = [&](const std::vector<GameObjectId>& cards) {
+            std::vector<GameObjectId> out;
+            for (auto cid : cards) {
+                auto it = std::find(ps.trash.begin(), ps.trash.end(), cid);
+                if (it == ps.trash.end()) continue;   // left the trash meanwhile
+                ps.trash.erase(it);
+                out.push_back(cid);
+            }
+            if (out.empty()) return;
+            ctx.executor.recycleCards(ctx.controller, out);
+            ctx.events.logTrace("DR. MUNDO: recycled " + std::to_string(out.size()) +
+                                " from trash");
+        };
+        // Three or fewer cards: all of them, nothing to choose. Also when
+        // driven without a chain item, where nobody can be asked.
+        if (ps.trash.size() <= 3 || !ctx.state.chain.resuming.has_value()) {
+            recycle(std::vector<GameObjectId>(
+                ps.trash.begin(), ps.trash.begin() + std::min<size_t>(3, ps.trash.size())));
+            return;
         }
-        if (to_recycle.empty()) return;
-        for (auto cid : to_recycle) {
-            auto it = std::find(ps.trash.begin(), ps.trash.end(), cid);
-            if (it != ps.trash.end()) ps.trash.erase(it);
+        // More than three: my controller picks which three, one at a time.
+        // resume_data = the cards picked so far; resume_point kAwaitPick while
+        // a prompt is out, kDone once recycled.
+        enum { kAwaitPick = 20, kDone = 21 };
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        auto picked_already = [&](GameObjectId id) {
+            return std::find(ri.resume_data.begin(), ri.resume_data.end(),
+                             static_cast<int32_t>(id)) != ri.resume_data.end();
+        };
+        auto remaining = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto cid : ps.trash) if (!picked_already(cid)) out.push_back(cid);
+            return out;
+        };
+        if (ri.resume_point == kAwaitPick) {
+            GameObjectId id = takenObject(ctx);
+            auto rest = remaining();
+            if (std::find(rest.begin(), rest.end(), id) == rest.end())
+                id = rest.empty() ? kInvalidId : rest.front();
+            if (id != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(id));
+            ri.resume_point = 0;
+        } else {
+            ri.resume_data.clear();   // first entry: nothing picked yet
         }
-        ctx.executor.recycleCards(ctx.controller, to_recycle);
-        ctx.events.logTrace("DR. MUNDO: recycled " +
-                             std::to_string(to_recycle.size()) + " from trash");
+        auto rest = remaining();
+        if (ri.resume_data.size() < 3 && !rest.empty()) {
+            std::vector<Intent> opts;
+            for (auto cid : rest) opts.push_back(objChoice(ctx.controller, cid));
+            ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                "Dr. Mundo: recycle which card from your trash (" +
+                std::to_string(3 - ri.resume_data.size()) + " left)");
+            ri.resume_point = kAwaitPick;
+            return;
+        }
+        std::vector<GameObjectId> chosen;
+        for (auto v : ri.resume_data) chosen.push_back(static_cast<GameObjectId>(v));
+        ri.resume_point = kDone;
+        recycle(chosen);
     }
 private:
     const CardDef def_ = [] {

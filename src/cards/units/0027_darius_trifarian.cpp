@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -19,11 +20,15 @@ public:
                 TriggerType::WhenYouPlayASpell,
                 TriggerType::WhenYouPlayAGear};
     }
+    // "Your second card in a turn" is judged when the card is played, not
+    // when this resolves: a third card played in response must not undo it.
+    // (The count already includes the card just played.)
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.player(controller).cards_played_this_turn == 2;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        // Trigger fires AFTER the play, so cards_played_this_turn already
-        // counts the just-played card. The second card => count == 2.
-        if (ctx.state.player(ctx.controller).cards_played_this_turn != 2) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         ctx.executor.readyObject(ctx.source);
         ctx.events.logTrace("DARIUS TRIFARIAN: second card played, +2M and ready");

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -17,8 +18,10 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     bool requiresLegion() const override { return true; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "[Legion] — play two 1 [M] Recruit unit tokens here." (my location)
-        if (!ctx.state.objectExists(ctx.source)) return;
+        // "[Legion] — play two 1 [M] Recruit unit tokens here." Legion (CR
+        // 812): only if another card was played this turn (the count
+        // includes me). "Here" is my location.
+        if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;
         auto loc = ctx.state.getObject(ctx.source).location;
         if (!loc) loc = LocationId{BaseLocation{ctx.controller}};
         for (int i = 0; i < 2; ++i)

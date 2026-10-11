@@ -21,10 +21,14 @@ public:
     //  Otherwise, counter it."
     // Peek-and-pop: Rebuttal has already been popped by FEPR, so the spell it
     // answers is the top of the chain. It never scans or flags the chain.
+    // Playable only against what it can act on: the item on top of the chain
+    // (the one Rebuttal would be played above) must be a spell, as onResolve
+    // requires — not an ability sitting above a spell.
+    // ENGINE-GAP: the "[4] or less" half can't be tested here: hasLegalTargets
+    // sees only the GameState, and a card's printed Energy cost lives in the
+    // CardDB (same limit as Defy). It is checked as Rebuttal resolves.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it)
-            if (it->is_spell) return true;
-        return false;
+        return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // The chosen spell must still be on top and cost no more than [4]

@@ -17,7 +17,7 @@ public:
     // "When you play a card from [Hidden], give me +2 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayFromFacedown; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         ctx.events.logTrace("EMBER MONK: played from Hidden -> +2 M this turn");
     }
@@ -37,7 +37,7 @@ private:
         d.tags = {R"RB(Bandle City)RB"};
         d.energy_cost = 4;
         d.might = 4;
-        d.keywords.set(Keyword::Hidden);
+        // No printed [Hidden]: the text only refers to the keyword on other cards.
         d.ability_text = R"RB(When you play a card from [Hidden], give me +2 [M] this turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0441f70a7acc377d8cbe08559b7a2fc3139c903b-744x1039.png)RB";
         return d;

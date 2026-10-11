@@ -17,9 +17,19 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        // "Recycle me to ready your runes" — ready every friendly
-        // on-board rune. Same iteration pattern as MSona.
+        // "Recycle me to ready your runes": the runes ready only if I am
+        // recycled, and I can only be recycled from the trash my death put me
+        // in — not a token copy (it ceased to exist), not an Ekko that was
+        // banished or already taken out of the trash.
+        auto& self = ctx.state.getObject(ctx.source);
+        auto& trash = ctx.state.player(self.owner).trash;
+        auto it = std::find(trash.begin(), trash.end(), ctx.source);
+        if (self.zone != ZoneType::Trash || it == trash.end()) {
+            ctx.events.logTrace("EKKO: deathknell -> not in trash, can't recycle me");
+            return;
+        }
+        trash.erase(it);
+        ctx.executor.recycleCards(ctx.controller, {ctx.source});
         int readied = 0;
         for (auto& [id, obj] : ctx.state.objects) {
             if (!obj.isRune() || obj.controller != ctx.controller) continue;
@@ -28,7 +38,7 @@ public:
             ctx.executor.readyObject(id);
             ++readied;
         }
-        ctx.events.logTrace("EKKO: deathknell -> readied " +
+        ctx.events.logTrace("EKKO: deathknell -> recycled me, readied " +
                              std::to_string(readied) + " runes");
     }
 private:

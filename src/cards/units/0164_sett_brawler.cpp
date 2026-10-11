@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,27 +21,31 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer};
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        if (self.buff_count > 0) return;  // only buff while unbuffed
-        ctx.executor.buffUnit(ctx.source);
-        ctx.events.logTrace("SETT, BRAWLER: buff me (+1M buff)");
+        // Nothing happens to a Sett that left the board or already has a buff
+        // (EffectExecutor::buffUnit).
+        if (ctx.executor.buffUnit(ctx.source))
+            ctx.events.logTrace("SETT, BRAWLER: buff me (+1M buff)");
     }
-    // "Spend my buff: Give me +4 [M] this turn."
+    // "Spend my buff: Give me +4 [M] this turn." Spending the buff is the
+    // activation cost: paid as the ability is activated (CR 355), by the Sett
+    // that activates it, so only a buffed Sett is offered the ability.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {}; }
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects)
-            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
-                obj.location.has_value() && obj.buff_count > 0)
-                return true;
-        return false;
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        return Card::canActivateAbilityAt(state, controller, source, ability_index) &&
+               state.getObject(source).buff_count > 0;
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        if (self.buff_count <= 0) return;
-        self.buff_count -= 1;
+        if (costDueNow(ctx)) {
+            if (!self.location.has_value() || self.buff_count <= 0) return;
+            self.buff_count -= 1;
+            self.recomputeMight();
+        }
+        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
+        if (!self.location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 4);
         ctx.events.logTrace("SETT, BRAWLER: spent a buff for +4M this turn");
     }

@@ -1,0 +1,45 @@
+Legend:
+1 Kha'Zix, Voidreaver
+
+Champion:
+1 Kha'Zix, Mutating Horror
+
+MainDeck:
+3 Punch First
+3 Kinkou Initiate
+3 Irresistible Faefolk
+3 Void Assault
+3 Shadow Order Disciple
+2 Sabotage
+2 Star-Crossed
+2 Rampage
+2 Up from the Deep
+2 Tail-Cloaked Matriarch
+1 Ride the Wind
+1 Traveling Merchant
+1 Tideturner
+1 Switcheroo
+1 Tornado Warrior
+3 Fizz, Trickster
+2 Rengar, Trophy Hunter
+2 Vex, Apathetic
+1 Evelynn, Entrancing
+1 Zed, Without a Sound
+
+Battlefields:
+1 Zaun Warrens
+1 Star Spring
+1 Sandswept Tomb
+
+Runes:
+6 Body Rune
+6 Chaos Rune
+
+Sideboard:
+2 Gust
+2 Acceptable Losses
+2 Ravenbloom Prefect
+1 Sabotage
+1 Hard Bargain
+1 Rampage
+1 Decree of Strength

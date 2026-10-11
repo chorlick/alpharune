@@ -1,0 +1,42 @@
+Legend:
+1 Rengar, Pridestalker
+
+Champion:
+1 Rengar, Trophy Hunter
+
+MainDeck:
+3 Noxus Hopeful
+3 Pit Rookie
+3 Sabotage
+3 Punch First
+3 Inferna
+3 Grim Apothecary
+3 Kinkou Initiate
+3 Irresistible Faefolk
+2 First Mate
+2 Thrill of the Hunt
+2 Rampage
+1 Pakaa Cub
+1 Ferrous Forerunner
+3 Kai'Sa, Survivor
+2 Nidalee, Cat Form
+1 Darius, Trifarian
+1 Pyke, Dockside Butcher
+
+Battlefields:
+1 Emperor's Dais
+1 Seat of Power
+1 Star Spring
+
+Runes:
+8 Body Rune
+4 Fury Rune
+
+Sideboard:
+2 Ferrous Forerunner
+2 Brittle Steel
+2 Decree of Strength
+1 Pyke, Dockside Butcher
+1 Thrill of the Hunt
+1 Noxian Demolitionist
+1 Rampage

@@ -1,0 +1,42 @@
+Legend:
+1 Rek'Sai, Void Burrower
+
+Champion:
+1 Rek'Sai, Breacher
+
+MainDeck:
+3 Cleave
+3 Noxus Hopeful
+3 Falling Star
+3 Cull the Weak
+3 Faithful Manufactor
+3 Blood Rush
+3 Void Rush
+3 Inferna
+3 Carrion Dredger
+3 Noxian Emissary
+2 Honest Broker
+2 Mischievous Marai
+1 Hextech Ray
+1 Hidden Blade
+1 Imperial Decree
+1 Undertitan
+1 Shadow Fiend
+
+Battlefields:
+1 Void Gate
+1 Rockfall Path
+1 Forbidding Waste
+
+Runes:
+7 Fury Rune
+5 Order Rune
+
+Sideboard:
+3 Ferrous Forerunner
+2 Smite
+1 Thermo Beam
+1 Forge of the Future
+1 Imperial Decree
+1 Salvage
+1 Brittle Steel

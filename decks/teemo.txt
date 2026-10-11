@@ -1,0 +1,44 @@
+Legend:
+1 Teemo, Swift Scout
+
+Champion:
+1 Teemo, Strategist
+
+MainDeck:
+3 Consult the Past
+3 Sprite Call
+3 Tideturner
+3 Switcheroo
+3 Sprite Fountain
+3 Temporal Breach
+2 Sneaky Deckhand
+2 Guerilla Warfare
+2 Windsinger
+1 Singularity
+1 Thousand-Tailed Watcher
+1 Invert Timelines
+1 Downwell
+1 Existential Dread
+1 Baron Nashor
+2 Teemo, Strategist
+3 Nocturne, Horrifying
+3 Teemo, Scout
+1 Vex, Apathetic
+
+Battlefields:
+1 Grove of the God-Willow
+1 Startipped Peak
+1 Dusk Rose Lab
+
+Runes:
+6 Mind Rune
+6 Chaos Rune
+
+Sideboard:
+3 Acceptable Losses
+2 Star-Crossed
+1 Existential Dread
+1 Evelynn, Entrancing
+1 Vex, Apathetic
+1 Decree of Insight
+1 Ravenbloom Prefect

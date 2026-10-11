@@ -1,0 +1,41 @@
+Legend:
+1 Mel, Soul's Reflection
+
+Champion:
+1 Mel, Newly Awakened
+
+MainDeck:
+3 Stupefy
+3 Ravenbloom Student
+3 Traveling Merchant
+3 Tideturner
+3 Dredge Up
+3 Applied Researchers
+3 Rebuttal
+2 Time Warp
+2 Gust
+2 Ride the Wind
+2 Acceptable Losses
+2 Star-Crossed
+2 Shock Blast
+1 Smoke Screen
+1 Switcheroo
+3 Hwei, Brooding Painter
+1 Fizz, Trickster
+
+Battlefields:
+1 Targon's Peak
+1 Rockfall Path
+1 Frozen Fortress
+
+Runes:
+6 Mind Rune
+6 Chaos Rune
+
+Sideboard:
+2 Pickpocket
+2 Turn to Dust
+2 Decree of Insight
+2 Ravenbloom Prefect
+1 Unchecked Power
+1 Fizz, Trickster

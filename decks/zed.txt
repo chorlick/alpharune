@@ -1,0 +1,39 @@
+Legend:
+1 Zed, Master of Shadows
+
+Champion:
+1 Zed, Without a Sound
+
+MainDeck:
+3 Noxus Hopeful
+3 Traveling Merchant
+3 Rhasa the Sunderer
+3 Seal of Discord
+3 Last Rites
+3 Shadow Order Disciple
+3 Shadowblade Lurker
+3 Death Mark
+2 Ride the Wind
+2 Tideturner
+2 Star-Crossed
+2 Perfect Execution
+3 Kai'Sa, Survivor
+3 Kennen, Storm of Shuriken
+1 Fizz, Trickster
+
+Battlefields:
+1 Zaun Warrens
+1 Minefield
+1 Sandswept Tomb
+
+Runes:
+7 Chaos Rune
+5 Fury Rune
+
+Sideboard:
+2 Piercing Light
+2 Hard Bargain
+2 Switcheroo
+2 Ravenbloom Prefect
+1 Brittle Steel
+1 Up from the Deep

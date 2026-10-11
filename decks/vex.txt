@@ -1,0 +1,44 @@
+Legend:
+1 Vex, Gloomist
+
+Champion:
+1 Vex, Apathetic
+
+MainDeck:
+3 Defy
+3 Discipline
+3 Switcheroo
+3 Mutated Mouser
+3 Steel Paws
+3 Tornado Warrior
+2 Zhonya's Hourglass
+2 Rebuke
+2 Tideturner
+2 Boots of Swiftness
+2 Scuttle Crab
+2 Astral Heron
+2 Kharox
+1 Charm
+1 Block
+1 Ride the Wind
+1 Back Off
+1 Abandon
+1 Irelia, Fervent
+1 Pyke, Returned
+
+Battlefields:
+1 Bandle Tree
+1 Fortified Position
+1 Startipped Peak
+
+Runes:
+7 Chaos Rune
+5 Calm Rune
+
+Sideboard:
+3 Tomb-Raider Barbara
+2 Gust
+2 Decree of Focus
+1 Not So Fast
+1 Star-Crossed
+1 Kha'Zix, Mutating Horror

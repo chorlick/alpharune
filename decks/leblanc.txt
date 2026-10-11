@@ -1,0 +1,43 @@
+Legend:
+1 LeBlanc, Deceiver
+
+Champion:
+1 LeBlanc, Fragmented
+
+MainDeck:
+3 Watchful Sentry
+3 Cull the Weak
+3 Hidden Blade
+3 Soaring Scout
+3 Deathgrip
+3 Glasc Mixologist
+3 Ruined Rex
+3 Mirror Image
+2 Thousand-Tailed Watcher
+2 Honest Broker
+1 Stupefy
+1 B.F. Sword
+1 Chakram Dancer
+1 Black Rose Dignitary
+1 Sacrifice
+1 Ki Barrier
+3 Karthus, Eternal
+1 Vi, Peacekeeper
+1 Kennen, Keeper of Balance
+
+Battlefields:
+1 Windswept Hillock
+1 Dusk Rose Lab
+1 Star Spring
+
+Runes:
+8 Order Rune
+4 Mind Rune
+
+Sideboard:
+3 Decree of Unity
+2 Salvage
+2 Decree of Insight
+1 Time Warp
+1 LeBlanc, Everywhere at Once
+1 Black Rose Dignitary

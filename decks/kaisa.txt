@@ -1,0 +1,42 @@
+Legend:
+1 Kai'Sa, Daughter of the Void
+
+Champion:
+1 Kai'Sa, Survivor
+
+MainDeck:
+3 Noxus Hopeful
+3 Brynhir Thundersong
+3 Falling Star
+3 Lecturing Yordle
+3 Stupefy
+3 Watchful Sentry
+3 Thousand-Tailed Watcher
+3 Plundering Poro
+3 Temporal Breach
+2 Hextech Ray
+2 Smoke Screen
+2 Time Warp
+2 Bellows Breath
+1 Progress Day
+1 Ferrous Forerunner
+1 Rocket Barrage
+1 Perfect Execution
+
+Battlefields:
+1 Void Gate
+1 Rockfall Path
+1 Frozen Fortress
+
+Runes:
+7 Fury Rune
+5 Mind Rune
+
+Sideboard:
+2 Thermo Beam
+2 Ferrous Forerunner
+2 Decree of Rage
+1 Progress Day
+1 Bellows Breath
+1 Sprite Burst
+1 Decree of Insight

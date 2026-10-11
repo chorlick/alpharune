@@ -1,0 +1,46 @@
+Legend:
+1 Irelia, Blade Dancer
+
+Champion:
+1 Irelia, Fervent
+
+MainDeck:
+3 Discipline
+3 Zhonya's Hourglass
+3 Tideturner
+3 Stellacorn Herder
+3 Defiant Dance
+3 Scuttle Crab
+3 Astral Heron
+2 Defy
+2 Treasure Hunter
+2 Boots of Swiftness
+2 Edge of Night
+2 Switcheroo
+1 Adaptatron
+1 Gust
+1 Rebuke
+1 Ride the Wind
+1 Flash
+1 Not So Fast
+1 Star-Crossed
+1 Pyke, Returned
+
+Battlefields:
+1 Targon's Peak
+1 Sunken Temple
+1 Abandoned Hall
+
+Runes:
+6 Calm Rune
+6 Chaos Rune
+
+Sideboard:
+2 Vex, Apathetic
+2 Ravenbloom Prefect
+1 Adaptatron
+1 Gust
+1 Not So Fast
+1 Hard Bargain
+1 Vex, Cheerless
+1 Star-Crossed

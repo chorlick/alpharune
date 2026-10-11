@@ -42,6 +42,7 @@ Two engine facts drive several findings:
   - c0: 278 Navori Fighting Pit, 535 Veiled Temple, 763 Amateur Recital, 63 Spirit's Refuge, 212 Forge of the Future — FIXED: see 07 item 7.1 / 7.2
   - c4: 16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 199 — FIXED: see 07 item 7.1.
   - c5: 238 Leona, Determined — FIXED under 07 item 7.1.
+  - c6: 539 Ahri, Inquisitive — FIXED: see 07 item 7.1
 
 ## C. Non-idempotent work before a suspending helper
 
@@ -74,6 +75,7 @@ The callback re-runs from the top after a choice, so anything before the helper 
   - Clearest: `units/0500_fiora_worthy.cpp:41`, `units/0446_fae_porter.cpp:49`, `units/0796_baccai_reaper.cpp:57`.
   - Rest: in each opted-in file, grep after the `finalizingChoices(ctx)` line for `payOnePower|payEnergy|xp -= |buff_count -= 1|burn\(|killObject\(ctx.source\)`.
   - c5: 446 Fae Porter, 349 Rumble, 449 Overzealous Fan — FIXED (see 07 item 7.5); 230 Albus Ferros is not a cost (03 item 3.11).
+  - c6: 500 Fiora, Worthy, 681 Kha'Zix, Evolving Hunter — FIXED: see 07 item 7.5
 - [ ] **3.13 Counter writes before the marker: 4 cards** [confirmed violation, plausible harm]
   - `units/0162_miss_fortune_captain.cpp:34`, `units/0789_blade_twirler.cpp:31`, `units/0855_jayce_brilliant_inventor.cpp:42,47`, `units/0372_aphelios_exalted.cpp:33-44`. After `makeNewChoicesFor` resets `resume_point`, the "first time this turn" flag is already set.
   - c4: 162 Miss Fortune, Captain — FIXED: no counter at all; "the first time I move each turn" is `triggerCondition` (`moves_this_turn == 1`, bumped before every move event); test: C4Test.MissFortuneCaptain_FirstMoveOnly_AndLegendsCount
@@ -104,10 +106,13 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - c5: 392 Plundering Poro — NOT A DEFECT: 392 already calls `createGoldExhausted` (`units/0392_plundering_poro.cpp`, `onTrigger`); the defect is in reprint 778 (stream c7).
 - [ ] **3.19** `units/0548_karma_channeler.cpp:15-30` — only a `WhenYouPlayMe` Vision (the engine already does Vision, `trigger_manager.cpp:317`, so it runs twice) and no recycle trigger. `units/0235_karma_channeler.cpp:57` has tags `{"Vi", "Ionia"}`. [confirmed]
   - c5: 235 Karma, Channeler — FIXED: tags `{Karma, Ionia}`; test: C5Test.KarmaChanneler235IsAKarma. (The gallery data in `cards/raw/gallery_raw.json` carries "Vi" for OGN-235, which is where the error came from; the SFD reprint says Karma.) 548 is stream c6's.
+  - c6: 548 Karma, Channeler — FIXED: `WhenYouRecycle` + `pickTarget` + `kFinalizeTrigger` as 235, hand-rolled Vision removed; 548's tag `Karma` matches the printed SFD-237/221 (235's tags are cards-c5's; `cards/raw/gallery_raw.json` lists OGN-235/298 as `Vi, Ionia` too); test: C6Test.Karma548_BuffsAChosenUnitWhenACardIsRecycled
 - [ ] **3.20** `units/0543_sett_brawler.cpp` lacks the `canActivateAbility` buff gate that `units/0164_sett_brawler.cpp:27` has. [confirmed]
+  - c6: 543 Sett, Brawler — FIXED: per-instance buff gate (`canActivateAbilityAt`); test: C6Test.Sett543_NeedsItsOwnBuffToActivate
 - [ ] **3.21** Region tags differ in 5 reprint pairs (Ahri 539/119, Darius 547/243, Sett 164/543, Yasuo 205/546, Vayne 35/537). `units/0421_veteran_poro.cpp` sets `Keyword::Equip`, 779 does not. [confirmed]
   - c4: 119, 164, 205, 35 — NOT A DEFECT on these ids: they are the copies that carry the region tag (Ionia / Demacia, as `cards/json/ogn_*.json`); the reprints missing it (539, 543, 546, 537) are outside this range.
   - c5: 421 Veteran Poro — FIXED: `Keyword::Equip` removed (a Weaponmaster unit has no Equip ability; 779 was right), and from the other Weaponmaster units in range (324, 331, 407, 414, 435, 440, 448); test: C5Test.KeywordsTheTextOnlyMentionsAreNotOnTheDef. 243 Darius's region tags are unchanged (reprint 547 is c6's).
+  - c6: 539 Ahri, 543 Sett, 546 Yasuo, 547 Darius, 537 Vayne — NOT A DEFECT: each def matches its own printing in `cards/raw/gallery_raw.json` (SFD-227 `Ahri`; SFD-232 `Sett`; SFD-235 `Yasuo`; SFD-236 `Trifarian, Darius`; SFD-223 `Vayne, Demacia, Sentinel`) — the Spiritforged reprints print fewer region tags than the Origins cards
 - [ ] **3.22** `spells/0251_noxian_guillotine.cpp:35` — without Legion writes `__kill_on_next_damage_this_turn`, which nothing reads; the spell does nothing. [confirmed]
   - c2: 251 Noxian Guillotine — FIXED: a one-shot delayed ability (`TriggerType::WhenAUnitTakesDamage`, `shared:` commit) kills the chosen unit the next time it is dealt damage this turn; test: ReviewFixC2Test.NoxianGuillotine_WithoutLegion_KillsTheUnitTheNextTimeItIsDamaged
 

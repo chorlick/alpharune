@@ -31,6 +31,7 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: "When you play me, if you paid the additional cost, deal 2 to a unit at a battlefield."
   - Code: reads `card_counters["__blastcorps_paid"] != 1` and never erases the flag; `maybePayOptionalAdditionalCost` (`game_engine.cpp:5550-5558`) only ever writes 1, and nothing clears `card_counters` when the object leaves play. Ruthless Strike 795:45 and Rampage 870:61 erase theirs.
   - Scenario: play Cadet paying [1][R]; later it is bounced (Star-Crossed, Zaunite Bouncer) or returned from trash (Cemetery Attendant) and replayed WITHOUT paying -> it deals 2 again for free. The same never-cleared `!= 1` pattern is in 044, 390, 420, 431, 590, 684 (outside this batch; not read).
+  - c6: 590 Pyke, Dockside Butcher, 684 Crescent Guardian — FIXED: the play trigger consumes the paid flag (cards/batch-06.md)
 - [x] **367 Legion Quartermaster** - `units/0367_legion_quartermaster.cpp:34-36` [confirmed] medium — FIXED: the gate is `canBePlayed` (what the engine asks for a unit play); the gear is chosen and returned under `costDueNow` when the play trigger is finalized; test: C5Test.LegionQuartermasterNeedsAGearAndReturnsIt
   - Text: "As an additional cost to play me, return a friendly gear to its owner's hand."
   - Code: gates playability with a `hasLegalTargets` override, but the engine consults `hasLegalTargets` only for spells and activated abilities, never for a unit play (the unit gate is `Card::canBePlayed`, `game_engine.cpp:5608`). The file comment claims the gate works.

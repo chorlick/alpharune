@@ -517,9 +517,11 @@ TEST_F(BulletTimeTest, ElderDragonSynergy_X1_WipesAllEnemiesAtBF) {
     Card* card = card_registry.get(kBulletTime);
     CardContext ctx{state, events, exec, P1, src};
     card->onResolve(ctx, {big1});  // anchor — uses BF#0
+    // Bullet Time names a battlefield first (#0), then asks X (1).
+    int prompt = 0;
     while (exec.hasPendingChoice()) {
         auto pending = exec.consumePendingChoice();
-        exec.recordChoice(pickXSlot(pending.legal, 1));
+        exec.recordChoice(pickXSlot(pending.legal, prompt++ == 0 ? 0 : 1));
         card->onResolve(ctx, {big1});
     }
     state.chain.resuming.reset();

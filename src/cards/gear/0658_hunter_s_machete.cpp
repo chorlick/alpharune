@@ -18,7 +18,7 @@ public:
     HunterSMachete() : SimpleEquipGear(Domain::Body) {}
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquerOrHold; }
-    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
+    void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                             const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 1);
         ctx.events.logTrace("EQUIP_TRIGGER: Hunter's Machete +1 XP");

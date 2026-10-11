@@ -18,7 +18,7 @@ public:
     WorldAtlas() : SimpleEquipGear(Domain::Mind) {}
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIHold; }
-    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
+    void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                             const std::vector<GameObjectId>& /*targets*/) override {
         // CR 149.2: gear is played to its controller's Base unless an effect
         // says otherwise — not to the battlefield the equipped unit holds.

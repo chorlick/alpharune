@@ -17,7 +17,7 @@ public:
     Boneshiver() : SimpleEquipGear(Domain::Body, 1) {}
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquer; }
-    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
+    void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                             const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.channelRunes(ctx.controller, 1, true);
     }

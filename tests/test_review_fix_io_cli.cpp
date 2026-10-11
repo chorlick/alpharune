@@ -978,6 +978,89 @@ TEST(GameRunnerReviewFix, DebugLogIsPrinted) {
     EXPECT_NE(out.find("Game 1 [seed=20261010] log"), std::string::npos);
 }
 
+// ─── 9.L3 — what a batch does after one game throws ─────────────────────────
+
+namespace {
+
+/// Plays at random, except that it throws at its first decision in the game
+/// whose seed is `bad_seed`.
+class ThrowsInOneGameAgent : public AgentInterface {
+public:
+    ThrowsInOneGameAgent(uint64_t seed, int seat, uint64_t bad_seed)
+        : inner_(seed * 2 + static_cast<uint64_t>(seat)), fail_(seed == bad_seed && seat == 0) {}
+    Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
+        if (fail_) throw std::runtime_error("injected fault");
+        return inner_.selectAction(state, legal);
+    }
+private:
+    RandomAgent inner_;
+    bool fail_;
+};
+
+} // namespace
+
+// Pins the behaviour, single-threaded so the order is fixed: the games before
+// the failing one ran and are counted, the failing game is named by number
+// and seed, the games after it are NOT run, and runBatch throws (the binary
+// then prints "Error: a game failed: ... (k of n games completed)" and exits
+// 1 without a results table).
+TEST(BatchRunnerFaultInjection, OneThread_EarlierGamesCountLaterGamesAreSkipped) {
+    constexpr uint64_t kBase = 4100;
+    constexpr int kGames = 5;
+    constexpr int kBadIndex = 2;   // the third game
+    std::atomic<int> games_started{0};
+    GameConfig cfg;
+    cfg.base_seed = kBase;
+    cfg.agent_factory = [&](int seat, uint64_t seed) -> std::unique_ptr<AgentInterface> {
+        if (seat == 0) games_started.fetch_add(1);
+        return std::make_unique<ThrowsInOneGameAgent>(seed, seat, kBase + kBadIndex);
+    };
+    AggregateResults results;
+    BatchRunner batch(cards().db, cards().registry, 1);
+    std::string what;
+    try {
+        batch.runBatch(cards().deck1, cards().deck2, kGames, cfg, results);
+        FAIL() << "expected the failing game's exception";
+    } catch (const std::runtime_error& e) {
+        what = e.what();
+    }
+    EXPECT_NE(what.find("game 3 [seed=" + std::to_string(kBase + kBadIndex) + "]"),
+              std::string::npos) << what;
+    EXPECT_NE(what.find("injected fault"), std::string::npos) << what;
+    EXPECT_EQ(results.games_completed.load(), kBadIndex) << "games 1 and 2 finished and count";
+    EXPECT_EQ(results.p1_wins.load() + results.p2_wins.load() + results.draws.load(), kBadIndex);
+    EXPECT_EQ(games_started.load(), kBadIndex + 1) << "games 4 and 5 were never started";
+}
+
+// With several workers the games already running finish and count; a game not
+// yet started when the failure is recorded is skipped. So the number completed
+// is anything from 0 to all but the failing one: what is pinned is that it is
+// never the failing game, that the process survives, and the game is named.
+TEST(BatchRunnerFaultInjection, ManyThreads_TheFailedGameIsNamedAndNeverCounted) {
+    constexpr uint64_t kBase = 4200;
+    constexpr int kGames = 6;
+    constexpr int kBadIndex = 3;
+    GameConfig cfg;
+    cfg.base_seed = kBase;
+    cfg.agent_factory = [&](int seat, uint64_t seed) -> std::unique_ptr<AgentInterface> {
+        return std::make_unique<ThrowsInOneGameAgent>(seed, seat, kBase + kBadIndex);
+    };
+    AggregateResults results;
+    BatchRunner batch(cards().db, cards().registry, 3);
+    std::string what;
+    try {
+        batch.runBatch(cards().deck1, cards().deck2, kGames, cfg, results);
+        FAIL() << "expected the failing game's exception";
+    } catch (const std::runtime_error& e) {
+        what = e.what();
+    }
+    EXPECT_NE(what.find("game 4 [seed=" + std::to_string(kBase + kBadIndex) + "]"),
+              std::string::npos) << what;
+    EXPECT_LE(results.games_completed.load(), kGames - 1);
+    EXPECT_EQ(results.p1_wins.load() + results.p2_wins.load() + results.draws.load(),
+              results.games_completed.load());
+}
+
 // ─── Carry-over (io-cli) — the first Ctrl-C ends a game with no human seat ───
 
 namespace {

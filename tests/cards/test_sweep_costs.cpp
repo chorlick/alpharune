@@ -9,6 +9,8 @@
 #include "card_test_fixture.h"
 
 #include "agents/random_agent.h"
+#include "cards/card_helpers.h"
+#include "engine/resource_payment.h"
 #include "rules/deck_validator.h"
 
 #include <gtest/gtest.h>
@@ -65,6 +67,7 @@ constexpr CardDefId kTCostThenPromptFinal = 1053;  // the same, choices at final
 constexpr CardDefId kTPlaysFromHand = 1054;        // spell: play a card from hand, ignoring its cost
 constexpr CardDefId kTPowerTouch = 1055;           // spell costing one Fury Power: buff a unit
 constexpr CardDefId kTCounter = 1056;              // [Reaction] spell: counter the item under it
+constexpr CardDefId kTFalseDeclaration = 1057;     // [2] finalize-pass spell that chooses nothing
 constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kSkyCrusier = 847;
 constexpr CardDefId kSafetyInspector = 726;
@@ -135,6 +138,29 @@ private:
     CardDef def_;
 };
 
+/// A finalize-pass spell costing [2] whose declaration is wrong on purpose:
+/// it says it could choose any friendly unit, and chooses nothing.
+class TFalseDeclaration : public SpellCard {
+public:
+    TFalseDeclaration() {
+        def_.id = kTFalseDeclaration;
+        def_.name = "Test False Declaration";
+        def_.card_type = CardType::Spell;
+        def_.energy_cost = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (finalizingChoices(ctx)) return;
+    }
+private:
+    CardDef def_;
+};
+
 /// "[Reaction] Counter a spell or ability." Peek-and-pop: it resolves, then
 /// removes the item that is now on top of the chain.
 class TCounter : public SpellCard {
@@ -188,6 +214,7 @@ protected:
         card_registry.registerCard(kTPlaysFromHand, std::make_unique<TPlaysFromHand>());
         card_registry.registerCard(kTPowerTouch, std::make_unique<TPowerTouch>());
         card_registry.registerCard(kTCounter, std::make_unique<TCounter>());
+        card_registry.registerCard(kTFalseDeclaration, std::make_unique<TFalseDeclaration>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1713,12 +1740,13 @@ TEST_F(SweepCostsTest, TargetDiscount_BelongsToTheControllerOfTheChosenUnit) {
     (void)theirs;
 }
 
-// ─── 9.AA2: an attempt that cannot be paid for leaves nothing behind ────────
+// ─── 9.DD1: a play offered through a discount cannot end unpaid ─────────────
 
-TEST_F(SweepCostsTest, FinalizePassSpell_AnAttemptThatEndsUnpayableIsUndoneCompletely) {
+TEST_F(SweepCostsTest, FinalizePassSpell_AChoiceThatWouldLeaveItUnpayableIsNotOffered) {
     // Resonating Strike with [1] and one Power is playable only by choosing
-    // Irelia. The player picks the battlefield she stands at, so she is no
-    // longer "at a different location" and nothing chosen earns the discount.
+    // Irelia. She stands at battlefield 0, so choosing that battlefield would
+    // rule her out ("a unit at a different location"): only battlefield 1 is
+    // put to the player, then only Irelia.
     state.battlefields[0].controller = P1;
     state.battlefields[1].controller = P1;
     auto irelia = addUnit(P1, kIreliaGraceful, 3, 0);
@@ -1726,21 +1754,68 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AnAttemptThatEndsUnpayableIsUndoneCompl
     withEngine([](GameEngine& e) { e.testHook_cleanup(); });
     auto spell = addToHand(P1, kResonatingStrike);
     setPool(P1, 1, 1);
-    ASSERT_TRUE(playOffered(spell)) << "battlefield 1, then Irelia, would pay for it";
-    const int chain_ids_before = static_cast<int>(state.chain.next_id);
-    EnginePathAgent agent(EnginePathAgent::script({0}));   // battlefield 0
+    ASSERT_TRUE(playOffered(spell));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(irelia)}));
     play(spell, &agent);
-    EXPECT_TRUE(inHand(P1, spell)) << "not played";
-    EXPECT_EQ(o(spell).zone, ZoneType::Hand);
-    EXPECT_EQ(state.player(P1).rune_pool.energy, 1);
-    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1);
-    EXPECT_EQ(state.player(P1).cards_played_this_turn, 0);
-    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 0u);
-    EXPECT_EQ(o(holder).battlefieldId().value_or(99), 1u);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    ASSERT_EQ(agent.prompts[0].size(), 1u) << "battlefield 0 would strand the spell";
+    EXPECT_EQ(agent.prompts[0][0].chosen_value.value_or(-1), 1);
+    EXPECT_FALSE(agent.wasOffered(holder));
+    EXPECT_TRUE(inTrash(P1, spell)) << "played and paid for";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 1u);
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_IsNotOfferedWhenNoSequenceOfItsChoicesPaysForIt) {
+    // A test spell that declares it could choose any friendly unit but in
+    // fact chooses nothing. With Irelia in play the declaration says a
+    // discount is within reach; no sequence of its choices earns it.
+    addUnit(P1, kIreliaGraceful, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kTFalseDeclaration);   // [2]
+    setPool(P1, 1, 0);
+    EXPECT_FALSE(playOffered(spell));
+    setPool(P1, 2, 0);
+    EXPECT_TRUE(playOffered(spell)) << "at its full cost it is";
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_ProbingAnOfferLeavesNoTrace) {
+    // To know whether to offer the play the engine makes the spell's choices
+    // on the side. Nothing of that is seen or kept.
+    state.battlefields[0].controller = P1;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kIreliaGraceful, 3, 0);
+    addUnit(P1, kInvalidId, 2, 1);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kResonatingStrike);
+    setPool(P1, 1, 1);
+    int logs = 0, events_seen = 0;
+    std::vector<boost::signals2::connection> conns;
+    conns.push_back(events.on_log.connect([&](const LogEvent&) { ++logs; }));
+    conns.push_back(events.on_object_state_changed.connect(
+        [&](const ObjectStateChangedEvent&) { ++events_seen; }));
+    conns.push_back(events.on_left_board.connect([&](const LeftBoardEvent&) { ++events_seen; }));
+    conns.push_back(events.on_card_played.connect([&](const CardPlayedEvent&) { ++events_seen; }));
+    const uint64_t before = Card::costStateFingerprint(state);
+    const auto chain_id_before = state.chain.next_id;
+    const auto history_before = state.action_history.size();
+    EnginePathAgent agent;   // must not be asked anything
+    bool offered = false;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == spell) offered = true;
+    }, &agent);
+    for (auto& c : conns) c.disconnect();
+    ASSERT_TRUE(offered) << "the probe ran and found the sequence";
+    EXPECT_EQ(logs, 0);
+    EXPECT_EQ(events_seen, 0);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(Card::costStateFingerprint(state), before);
+    EXPECT_EQ(state.chain.next_id, chain_id_before);
+    EXPECT_EQ(state.action_history.size(), history_before);
+    EXPECT_TRUE(inHand(P1, spell));
     EXPECT_FALSE(state.chain.exists());
-    EXPECT_EQ(static_cast<int>(state.chain.next_id), chain_ids_before)
-        << "the whole pass was rolled back, the chain id it took included";
-    EXPECT_FALSE(agent.prompts.empty()) << "the decisions themselves were made";
 }
 
 // ─── 9.AA3: a grant play carries the discount of its earlier choices ────────
@@ -1770,88 +1845,16 @@ TEST_F(SweepCostsTest, TrashReplayGrant_ALaterChoiceKeepsTheDiscountOfAnEarlierO
     EXPECT_EQ(o(other).temp_might_bonus, 1) << "the second pick was still payable";
 }
 
-// ─── 9.CC1 / 9.CC2: an undone attempt is not offered again and leaves no trace ─
+// ─── 9.DD1: over whole random games no play changes nothing ─────────────────
 
-TEST_F(SweepCostsTest, UndoneAttempt_IsNotOfferedAgainUntilTheStateChanges) {
-    state.battlefields[0].controller = P1;
-    state.battlefields[1].controller = P1;
-    addUnit(P1, kIreliaGraceful, 3, 0);
-    addUnit(P1, kInvalidId, 2, 1);
-    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
-    auto spell = addToHand(P1, kResonatingStrike);
-    setPool(P1, 1, 1);
-    ASSERT_TRUE(playOffered(spell));
-    EnginePathAgent agent(EnginePathAgent::script({0}));   // battlefield 0: Irelia's own
-    play(spell, &agent);
-    ASSERT_TRUE(inHand(P1, spell)) << "attempted and undone";
-    EXPECT_FALSE(playOffered(spell)) << "nothing has changed: the same attempt is not offered";
-    EXPECT_FALSE(playOffered(spell)) << "and still not on a second look";
-
-    // The state changes (a card is drawn): the play is offered again.
-    addToDeck(P1, kPoutyPoro);
-    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.drawCards(P1, 1); });
-    EXPECT_TRUE(playOffered(spell));
-    // And this time the player picks the battlefield that lets Irelia be chosen.
-    GameObjectId irelia = kInvalidId;
-    for (const auto& [id, obj] : state.objects)
-        if (obj.card_def_id == kIreliaGraceful) irelia = id;
-    EnginePathAgent second(EnginePathAgent::script({1, static_cast<int>(irelia)}));
-    play(spell, &second);
-    EXPECT_TRUE(inTrash(P1, spell));
-    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 1u);
-}
-
-TEST_F(SweepCostsTest, UndoneAttempt_EmitsNoEventAndNoLogLine) {
-    state.battlefields[0].controller = P1;
-    state.battlefields[1].controller = P1;
-    auto irelia = addUnit(P1, kIreliaGraceful, 3, 0);
-    addUnit(P1, kInvalidId, 2, 1);
-    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
-    auto spell = addToHand(P1, kResonatingStrike);
-    setPool(P1, 1, 1);
-
-    int logs = 0, object_events = 0, played = 0, left = 0, moved = 0, chain = 0;
-    std::vector<boost::signals2::connection> conns;
-    conns.push_back(events.on_log.connect([&](const LogEvent&) { ++logs; }));
-    conns.push_back(events.on_object_state_changed.connect(
-        [&](const ObjectStateChangedEvent&) { ++object_events; }));
-    conns.push_back(events.on_card_played.connect([&](const CardPlayedEvent&) { ++played; }));
-    conns.push_back(events.on_left_board.connect([&](const LeftBoardEvent&) { ++left; }));
-    conns.push_back(events.on_unit_moved.connect([&](const UnitMovedEvent&) { ++moved; }));
-    conns.push_back(events.on_chain_created.connect([&](const ChainCreatedEvent&) { ++chain; }));
-
-    // Only the attempt itself is run: the engine's executePlaySpell, with no
-    // cleanup after it (the fixture's play() goes through executeIntent,
-    // whose own bookkeeping logs the decision that was made).
-    Intent attempt;
-    attempt.type = IntentType::PlayCard;
-    attempt.player = P1;
-    attempt.card = spell;
-    EnginePathAgent agent(EnginePathAgent::script({0}));   // battlefield 0: nothing to choose
-    withEngine([&](GameEngine& e) { e.testHook_executePlaySpell(attempt); }, &agent);
-    ASSERT_TRUE(inHand(P1, spell)) << "attempted and undone";
-    EXPECT_EQ(logs, 0) << "no log line";
-    EXPECT_EQ(object_events + played + left + moved + chain, 0) << "no event";
-
-    // The counters do see a play that goes through.
-    addToDeck(P1, kPoutyPoro);
-    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.drawCards(P1, 1); });
-    logs = object_events = played = left = moved = chain = 0;
-    EnginePathAgent second(EnginePathAgent::script({1, static_cast<int>(irelia)}));
-    withEngine([&](GameEngine& e) { e.testHook_executePlaySpell(attempt); }, &second);
-    EXPECT_GT(logs, 0);
-    EXPECT_EQ(played, 1);
-    EXPECT_GT(object_events, 0) << "\"chosen\" is announced once the spell is on the chain";
-    for (auto& c : conns) c.disconnect();
-}
-
-TEST_F(SweepCostsTest, UndoneAttempt_NeverRepeatsOverTwoHundredRandomGames) {
+TEST_F(SweepCostsTest, NoPlayChangesNothingOverTwoHundredRandomGames) {
     // A deck built so that the case actually arises: Irelia, Graceful with
     // the finalize-pass spells of her Domains (Resonating Strike, Switcheroo,
     // Star-Crossed, Defiant Dance, Last Breath, Flash), mirrored, played by
-    // two random agents. An attempt that changed nothing is seen from outside
-    // as the same state at the player's next decision; that decision must
-    // not offer the same play again.
+    // two random agents. A play that changed nothing would be seen from
+    // outside as the same state at the player's next decision: there must be
+    // none. That the case is reached is shown by the plays made with less
+    // Energy at hand than the card's printed cost.
     const auto path = std::filesystem::temp_directory_path() /
                       "riftbound_sweep_costs_irelia_deck.txt";
     {
@@ -1873,7 +1876,8 @@ TEST_F(SweepCostsTest, UndoneAttempt_NeverRepeatsOverTwoHundredRandomGames) {
         // state it was chosen in.
         GameObjectId last_play = kInvalidId;
         uint64_t last_state = 0;
-        int undone = 0, offered_again = 0;
+        int undone = 0, offered_again = 0, short_plays = 0;
+        const CardDB* db = nullptr;
         Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
             const bool is_prompt = !legal.empty() && std::all_of(legal.begin(), legal.end(),
                 [](const Intent& i) { return i.type == IntentType::MakeChoice; });
@@ -1895,27 +1899,35 @@ TEST_F(SweepCostsTest, UndoneAttempt_NeverRepeatsOverTwoHundredRandomGames) {
                                chosen.type == IntentType::PlayReaction)) {
                 last_play = chosen.card;
                 last_state = Card::costStateFingerprint(state);
+                const auto& obj = state.getObject(chosen.card);
+                if (db && obj.isSpell() && obj.card_def_id != kInvalidId &&
+                    resource::payableEnergy(state, obj.controller, SpendFor::Spell) <
+                        db->get(obj.card_def_id).energy_cost)
+                    ++short_plays;
             }
             return chosen;
         }
     };
 
-    int undone = 0, offered_again = 0, games = 0;
+    int undone = 0, offered_again = 0, short_plays = 0, games = 0;
     for (uint64_t seed = 1; seed <= 200; ++seed) {
         EventBus bus;
         GameEngine engine(card_db, bus, card_registry);
         Watching p1(seed * 2), p2(seed * 2 + 1);
+        p1.db = p2.db = &card_db;
         engine.runGame(deck, deck, p1, p2, seed);
         ++games;
         undone += p1.undone + p2.undone;
         offered_again += p1.offered_again + p2.offered_again;
+        short_plays += p1.short_plays + p2.short_plays;
     }
     EXPECT_EQ(games, 200);
-    EXPECT_GT(undone, 0) << "the batch did reach the case (else it shows nothing)";
-    EXPECT_EQ(offered_again, 0) << undone << " undone attempts over " << games << " games";
-    RecordProperty("undone_attempts", undone);
-    std::cout << "[ undone attempts over " << games << " random games: " << undone
-              << ", offered again in the same state: " << offered_again << " ]\n";
+    EXPECT_GT(short_plays, 0) << "the batch did reach the case (else it shows nothing)";
+    EXPECT_EQ(undone, 0) << "plays that changed nothing";
+    EXPECT_EQ(offered_again, 0);
+    std::cout << "[ " << games << " random games: " << short_plays
+              << " spells played with less Energy at hand than their printed cost, " << undone
+              << " plays that changed nothing ]\n";
 }
 
 // ─── 9.CC3: each declaration agrees with the card's real pick list ──────────

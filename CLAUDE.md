@@ -14,6 +14,8 @@ First configure clones OpenSpiel v1.6.14 + abseil-cpp + nlohmann/json + pybind11
 
 **Build structure.** `src/pch.h` is precompiled once (`riftbound_pch`) and reused by `riftbound_core` and the card groups. Each `src/cards/<type>/` directory is an OBJECT library (`riftbound_cards_<type>`) folded into `riftbound_core`, compiled as unity batches. Options: `-DRIFTBOUND_USE_PCH=OFF`, `-DRIFTBOUND_UNITY_CARDS=OFF` (one compile per card, e.g. for clangd), `-DRIFTBOUND_CARD_UNITY_BATCH=<n>` (default 16). With ccache, configure with `-DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache"` or PCH compiles are not cached.
 
+**Tests are unity-built too.** `riftbound_tests` compiles `tests/**/*.cpp` in batches (`-DRIFTBOUND_UNITY_TESTS=OFF` for one compile per test file, e.g. while iterating on a single file or for clangd; `-DRIFTBOUND_TEST_UNITY_BATCH=<n>`, default 8). File-scope names in a test file must therefore be unique across `tests/`: put a file's helpers, test cards and fixtures in a namespace of its own (`namespace riftbound::test::<file>`), not in a bare anonymous namespace. A clash is a compile error in the batch that pairs the two files; a file that cannot share a unit is listed in `RIFTBOUND_TEST_UNITY_EXCLUDE` in `CMakeLists.txt`.
+
 **Card files share a translation unit with their neighbours.** File-scope names in a card file must be unique within its directory: a reprint's class carries its card id (`KarmaChanneler_235` / `KarmaChanneler_548`), and helpers needed by more than one card go in `src/cards/card_helpers.h` rather than being copied.
 
 **Dependencies:** cmake, g++ (C++20), libboost-all-dev, nlohmann-json3-dev, ninja-build.

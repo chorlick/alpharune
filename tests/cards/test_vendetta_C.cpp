@@ -18,6 +18,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_vendetta_C {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kPunchingPoro    = 794;   // 2-cost unit, no Power cost
@@ -1096,4 +1097,5 @@ TEST_F(VendettaCTest, Vendetta_Shen_HoldScoresWithExactlyOneOtherFriendlyHere) {
 }
 
 }  // namespace
+}  // namespace test_vendetta_C
 }  // namespace riftbound::test

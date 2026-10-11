@@ -17,6 +17,7 @@
 
 #include "tests/cards/card_test_fixture.h"
 
+namespace test_equipment {  // file-unique: test sources are unity-built
 using namespace riftbound;
 using namespace riftbound::test;
 
@@ -886,3 +887,4 @@ TEST_F(WeaponmasterTest, IgnoresNonEquipmentGear) {
 }
 
 }  // namespace
+}  // namespace test_equipment

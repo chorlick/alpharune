@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+namespace test_legal_targets_gate {  // file-unique: test sources are unity-built
 using namespace riftbound;
 
 namespace {
@@ -208,3 +209,4 @@ TEST_F(LegalTargetsFixture, LiltingLullabyAllowedWhenSpellOnChain) {
 }
 
 }  // namespace
+}  // namespace test_legal_targets_gate

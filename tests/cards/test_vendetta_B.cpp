@@ -17,6 +17,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_vendetta_B {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kIronBallista        = 17;    // gear, Energy cost 3
@@ -1059,4 +1060,5 @@ TEST_F(VendettaB, Vendetta_Stargazer_FlowDiscountWhileOnBoard) {
 }
 
 }  // namespace
+}  // namespace test_vendetta_B
 }  // namespace riftbound::test

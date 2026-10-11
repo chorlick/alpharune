@@ -477,6 +477,50 @@ file(GLOB_RECURSE RIFTBOUND_TEST_SOURCES CONFIGURE_DEPENDS
 # Model-forward + CFR util tests live in riftbound-trainer.
 
 add_executable(riftbound_tests ${RIFTBOUND_TEST_SOURCES})
+
+# RIFTBOUND_UNITY_TESTS compiles the test sources as combined units of
+# RIFTBOUND_TEST_UNITY_BATCH files. A test file costs 10-17 s on its own, nearly
+# all of it instantiating the same GoogleTest and engine templates as its
+# neighbours, so a core-header change rebuilds the suite several times faster.
+# The trade-off is the usual one: editing one test file recompiles its batch
+# (turn the option OFF in a build directory used for iterating on one file, or
+# for clangd).
+#
+# Rule for test authors, the same as for card files: file-scope names must be
+# unique across tests/ — unity merges every file's anonymous namespace and
+# `using namespace`. Put a file's helpers, test cards and fixtures in a
+# namespace of its own (see tests/test_review_fix_integrity.cpp) or give them
+# file-specific names. A clash is a compile error (redefinition / ambiguous
+# call) in the batch that pairs the two files, never a silent pick; a file
+# that genuinely cannot share a unit goes in RIFTBOUND_TEST_UNITY_EXCLUDE.
+option(RIFTBOUND_UNITY_TESTS "Unity-build the riftbound_tests sources" ON)
+set(RIFTBOUND_TEST_UNITY_BATCH 8 CACHE STRING
+    "Test source files per unity compile (with RIFTBOUND_UNITY_TESTS)")
+# Compiled on their own even with RIFTBOUND_UNITY_TESTS (paths relative to the
+# repository root).
+set(RIFTBOUND_TEST_UNITY_EXCLUDE
+)
+if(RIFTBOUND_UNITY_TESTS)
+    set_target_properties(riftbound_tests PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE ${RIFTBOUND_TEST_UNITY_BATCH})
+    foreach(_src IN LISTS RIFTBOUND_TEST_UNITY_EXCLUDE)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
+            message(FATAL_ERROR "RIFTBOUND_TEST_UNITY_EXCLUDE names a missing file: ${_src}")
+        endif()
+        set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/${_src}"
+            PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+    endforeach()
+endif()
+# GoogleTest's assertion macros expand __FILE__, and the test PCH and the unity
+# units include their sources by absolute path. Mapping the source root away
+# keeps the checkout's location out of the preprocessed text, so ccache can
+# share test objects between worktrees (and failure messages print paths
+# relative to the repository root).
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(riftbound_tests PRIVATE
+        "-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=")
+endif()
 # Per-card test fixture lives in tests/cards/. Bring tests/ onto the include
 # path so #include "tests/cards/card_test_fixture.h" resolves.
 target_include_directories(riftbound_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

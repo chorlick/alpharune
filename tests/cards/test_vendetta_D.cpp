@@ -17,6 +17,7 @@
 #include <vector>
 
 namespace riftbound::test {
+namespace test_vendetta_D {  // file-unique: test sources are unity-built
 namespace {
 
 constexpr CardDefId kBrittleSteel     = 790;
@@ -809,4 +810,5 @@ TEST_F(VendettaD, Vendetta_WildClaw_PowerCostIsNotReduced) {
 }
 
 }  // namespace
+}  // namespace test_vendetta_D
 }  // namespace riftbound::test

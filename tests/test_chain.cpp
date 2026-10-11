@@ -13,6 +13,7 @@
 #include <functional>
 #include <vector>
 
+namespace test_chain {  // file-unique: test sources are unity-built
 using namespace riftbound;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1159,3 +1160,4 @@ TEST_F(ChainTestFixture, ReactionAbilityActivatedInResponseIsQueued) {
     EXPECT_EQ(resolve_order[0], source) << "the ability resolves first (LIFO)";
     EXPECT_EQ(resolve_order[1], spell1);
 }
+}  // namespace test_chain

@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 namespace riftbound::test {
+namespace test_wave_b_suppression {  // file-unique: test sources are unity-built
 namespace {
 
 using SuppressionTest = CardTestFixture;
@@ -74,4 +75,5 @@ TEST_F(SuppressionTest, LeBlanc_DoesNotSuppressNonTemporaryOrElsewhere) {
 }
 
 }  // namespace
+}  // namespace test_wave_b_suppression
 }  // namespace riftbound::test

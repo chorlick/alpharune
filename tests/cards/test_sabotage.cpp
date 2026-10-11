@@ -28,6 +28,7 @@
 
 #include <algorithm>
 
+namespace test_sabotage {  // file-unique: test sources are unity-built
 using namespace riftbound;
 using namespace riftbound::test;
 
@@ -316,3 +317,4 @@ TEST_F(CardTestFixture, Sabotage_NoNonUnitInHand_SkipsRecycle) {
         << "No legal choice means no choice should be pending after "
            "resolution.";
 }
+}  // namespace test_sabotage

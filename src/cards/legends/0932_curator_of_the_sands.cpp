@@ -77,6 +77,8 @@ public:
         // since is the cost — exhausting me, a legend, which no rune's
         // readiable() depends on. Readying one rune does not touch another.
         for (auto id : picks) ctx.executor.readyObject(id);
+        ctx.events.logTrace("CURATOR OF THE SANDS: readied " + std::to_string(picks.size()) +
+                            " rune(s)");
     }
 private:
     const CardDef def_ = [] {

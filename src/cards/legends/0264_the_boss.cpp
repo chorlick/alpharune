@@ -38,6 +38,19 @@ public:
     // decision (EffectExecutor::confirmNow); it is only asked when the whole
     // cost can be paid. [C] is one Power of this card's Domains — Body or
     // Order (CR 135.2.e.6.c).
+    // The conditions, before the "may" and the payment.
+    bool replacementApplies(const GameState& state, GameObjectId self_id, PlayerId /*controller*/,
+                            GameObjectId dying_unit) const override {
+        if (!state.objectExists(self_id) || !state.objectExists(dying_unit)) return false;
+        const auto& self = state.getObject(self_id);
+        const auto& victim = state.getObject(dying_unit);
+        if (!victim.isUnit() || !victim.location.has_value()) return false;
+        if (victim.controller != self.controller || victim.buff_count <= 0) return false;
+        if (self.is_exhausted) return false;
+        for (Domain d : def().domains)
+            if (payableOnePower(state, self.controller, d)) return true;
+        return false;
+    }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
         if (!ctx.state.objectExists(ctx.source)) return false;
         if (!ctx.state.objectExists(dying_unit)) return false;

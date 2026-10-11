@@ -59,7 +59,7 @@ public:
                             " — may pay [C] to heal/exhaust/recall it the next time it "
                             "would die this turn");
     }
-    // Asked by EffectExecutor::applyOwnDeathReplacement for the unit that
+    // Asked by EffectExecutor::applyDeathReplacements for the unit that
     // carries the replacement — not through hasReplacementEffect(), which is
     // for cards whose own presence in play replaces a death. "The next time
     // it would die": the engine uses the entry up whether or not [C] is paid.

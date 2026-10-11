@@ -84,7 +84,7 @@ public:
             auto uid = choice->chosen_objects[0];
             if (ctx.state.objectExists(uid)) {
                 ctx.executor.moveToBase(uid);
-                ctx.events.logTrace("EMPEROR'S DIVIDE: moved a unit to base");
+                RIFT_TRACE(ctx.events, "EMPEROR'S DIVIDE: moved a unit to base");
             }
             // Offer the remaining units (+ done) again.
             std::vector<GameObjectId> units;

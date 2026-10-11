@@ -48,9 +48,9 @@ public:
         if (!gear.isGear() || !gear.location.has_value()) return;
         if (gear.isEmpowered()) {
             ctx.executor.disempower(tgt);
-            ctx.events.logTrace("TOMB-RAIDER BARBARA: disempowered " + gear.name);
+            RIFT_TRACE(ctx.events, "TOMB-RAIDER BARBARA: disempowered " + gear.name);
         } else {
-            ctx.events.logTrace("TOMB-RAIDER BARBARA: killed " + gear.name);
+            RIFT_TRACE(ctx.events, "TOMB-RAIDER BARBARA: killed " + gear.name);
             ctx.executor.killObject(tgt);
         }
     }

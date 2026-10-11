@@ -22,7 +22,7 @@ public:
                 gear_ids.push_back(id);
             }
         }
-        ctx.events.logTrace("THERMO BEAM: killing " +
+        RIFT_TRACE(ctx.events, "THERMO BEAM: killing " +
                              std::to_string(gear_ids.size()) + " gear");
         for (auto id : gear_ids) ctx.executor.killObject(id);
     }

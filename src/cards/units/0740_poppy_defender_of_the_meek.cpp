@@ -38,7 +38,7 @@ public:
                                      "Poppy, Defender of the Meek: spend 3 XP to cost [3] less"))
             return {};
         ps.xp -= 3;
-        ctx.events.logTrace("POPPY, DEFENDER: spent 3 XP (cost [3] less)");
+        RIFT_TRACE(ctx.events, "POPPY, DEFENDER: spent 3 XP (cost [3] less)");
         PlayCostAdjust adj;
         adj.energy_reduction = 3;
         return adj;

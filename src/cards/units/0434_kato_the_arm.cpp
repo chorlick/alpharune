@@ -42,7 +42,7 @@ public:
         }
         // +[M] equal to my Might this turn.
         ctx.executor.giveTemporaryMight(tgt, self.current_might);
-        ctx.events.logTrace("KATO THE ARM: granted my keywords + " +
+        RIFT_TRACE(ctx.events, "KATO THE ARM: granted my keywords + " +
                             std::to_string(self.current_might) + " [M] this turn");
     }
 private:

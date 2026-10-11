@@ -27,7 +27,7 @@ public:
         const auto& unit = ctx.state.getObject(attacker);
         if (!unit.isUnit() || !unit.location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(attacker, -1, /*minimum=*/1);
-        ctx.events.logTrace("NINE-TAILED FOX: " + unit.name + " attacks -> -1 [M] (min 1)");
+        RIFT_TRACE(ctx.events, "NINE-TAILED FOX: " + unit.name + " attacks -> -1 [M] (min 1)");
     }
 private:
     const CardDef def_ = [] {

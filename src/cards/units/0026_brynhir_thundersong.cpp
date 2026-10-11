@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         PlayerId opp = opponent(ctx.controller);
         ctx.state.player(opp).cant_play_cards_this_turn = true;
-        ctx.events.logTrace("BRYNHIR: " + std::string(toString(opp)) +
+        RIFT_TRACE(ctx.events, "BRYNHIR: " + std::string(toString(opp)) +
                             " can't play cards this turn");
     }
 private:

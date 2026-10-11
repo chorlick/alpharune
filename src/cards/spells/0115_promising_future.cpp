@@ -151,7 +151,7 @@ public:
                 play_banished(ctx.controller, ctrl_b, taken_where(ctx.controller));
             }
             ri.resume_point = 5;   // done
-            ctx.events.logTrace("PROMISING FUTURE: each player banished 1 of top 5, "
+            RIFT_TRACE(ctx.events, "PROMISING FUTURE: each player banished 1 of top 5, "
                                 "recycled the rest, then played the banished card");
         };
 

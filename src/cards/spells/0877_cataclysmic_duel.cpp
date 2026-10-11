@@ -76,7 +76,7 @@ public:
             doomed.push_back(id);
         }
         std::sort(doomed.begin(), doomed.end());
-        ctx.events.logTrace("CATACLYSMIC DUEL: killing " + std::to_string(doomed.size()) +
+        RIFT_TRACE(ctx.events, "CATACLYSMIC DUEL: killing " + std::to_string(doomed.size()) +
                             " unchosen unit(s)");
         {   // the batch is for these kills only
             DeathBatch together(ctx.executor, doomed);   // they die at the same time

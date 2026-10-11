@@ -40,7 +40,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (conf != 1) return;                // waiting on the agent / declined / exhausted
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("RELENTLESS STORM: played Mighty unit -> exhaust me, "
+        RIFT_TRACE(ctx.events, "RELENTLESS STORM: played Mighty unit -> exhaust me, "
                             "channel 1 rune exhausted");
     }
 private:

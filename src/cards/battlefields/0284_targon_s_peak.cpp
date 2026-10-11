@@ -36,7 +36,7 @@ public:
             da.trigger = TriggerType::AtEndOfTurn;
             da.expires_on_turn = ctx.state.turn.turn_number;  // clean up EOT
             ctx.state.delayed_abilities.push_back(da);
-            ctx.events.logTrace("TARGON'S PEAK: scheduled ready-2-runes for end of turn");
+            RIFT_TRACE(ctx.events, "TARGON'S PEAK: scheduled ready-2-runes for end of turn");
             return;
         }
         // AtEndOfTurn fire: ready up to 2 exhausted runes.
@@ -72,7 +72,7 @@ public:
             ctx.executor.readyObject(id);
             ++readied;
         }
-        ctx.events.logTrace("TARGON'S PEAK: readied " + std::to_string(readied) +
+        RIFT_TRACE(ctx.events, "TARGON'S PEAK: readied " + std::to_string(readied) +
                              " runes at end of turn");
     }
 private:

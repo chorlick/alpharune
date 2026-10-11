@@ -40,7 +40,7 @@ public:
         const auto bf = ctx.state.getObject(unit).battlefieldId();
         if (!bf || excessCombatDamageAt(ctx.state, ctx.controller, *bf) < 3) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("HEXTECH GAUNTLETS: conquer -> draw 1");
+        RIFT_TRACE(ctx.events, "HEXTECH GAUNTLETS: conquer -> draw 1");
     }
 private:
     const CardDef def_ = [] {

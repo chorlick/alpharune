@@ -29,7 +29,7 @@ public:
         if (dest == -1) return;      // waiting for the battlefield
         ctx.executor.buffUnit(unit);  // "+1 [M] buff if it doesn't have one"
         if (dest >= 0) moveTo(ctx, unit, dest);
-        ctx.events.logTrace("SHOWSTOPPER: buff base unit, move to a battlefield");
+        RIFT_TRACE(ctx.events, "SHOWSTOPPER: buff base unit, move to a battlefield");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};

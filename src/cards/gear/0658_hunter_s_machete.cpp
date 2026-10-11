@@ -21,7 +21,7 @@ public:
     void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                             const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 1);
-        ctx.events.logTrace("EQUIP_TRIGGER: Hunter's Machete +1 XP");
+        RIFT_TRACE(ctx.events, "EQUIP_TRIGGER: Hunter's Machete +1 XP");
     }
 private:
     const CardDef def_ = [] {

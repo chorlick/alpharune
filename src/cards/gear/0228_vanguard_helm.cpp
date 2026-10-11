@@ -45,7 +45,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         if (ctx.state.getObject(picked).buff_count == 0)
             ctx.executor.buffUnit(picked);
-        ctx.events.logTrace("VANGUARD HELM: friendly death -> buff a friendly unit");
+        RIFT_TRACE(ctx.events, "VANGUARD HELM: friendly death -> buff a friendly unit");
     }
 private:
     const CardDef def_ = [] {

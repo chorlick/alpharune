@@ -52,7 +52,7 @@ public:
             }
         }
         if (!damaged.empty())
-            ctx.events.logTrace("VOLIBEAR: dealt 5 split among enemy units here");
+            RIFT_TRACE(ctx.events, "VOLIBEAR: dealt 5 split among enemy units here");
     }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
 private:

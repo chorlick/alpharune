@@ -104,7 +104,7 @@ public:
         // playPayingCost takes the card out of the trash only if it is played.
         if (ctx.executor.playPayingCost(ctx.controller, trash_mech,
                                         effectPlayLocation(ctx.state, ctx.controller, where), reduced))
-            ctx.events.logTrace("RUMBLE: conquer -> recycled a unit, played a Mech from trash");
+            RIFT_TRACE(ctx.events, "RUMBLE: conquer -> recycled a unit, played a Mech from trash");
     }
 private:
     const CardDef def_ = [] {

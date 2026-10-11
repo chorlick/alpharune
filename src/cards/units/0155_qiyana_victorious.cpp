@@ -26,7 +26,7 @@ public:
         } else {
             ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
         }
-        ctx.events.logTrace("QIYANA VICTORIOUS: conquer payoff (mode=" +
+        RIFT_TRACE(ctx.events, "QIYANA VICTORIOUS: conquer payoff (mode=" +
                             std::to_string(mode) + ")");
     }
 private:

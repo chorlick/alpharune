@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "When you play a card from face down, play a Gold gear token exhausted."
         createGoldExhausted(ctx);
-        ctx.events.logTrace("BLACK MARKET BROKER: facedown play -> Gold gear token exhausted");
+        RIFT_TRACE(ctx.events, "BLACK MARKET BROKER: facedown play -> Gold gear token exhausted");
     }
 private:
     const CardDef def_ = [] {

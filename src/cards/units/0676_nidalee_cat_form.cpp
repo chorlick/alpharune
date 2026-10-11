@@ -17,7 +17,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIWinCombat; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("NIDALEE, CAT FORM: win combat -> draw 1");
+        RIFT_TRACE(ctx.events, "NIDALEE, CAT FORM: win combat -> draw 1");
     }
 private:
     const CardDef def_ = [] {

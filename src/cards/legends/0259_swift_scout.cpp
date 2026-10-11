@@ -70,10 +70,10 @@ public:
             obj.zone = ZoneType::Hand;
             obj.location = std::nullopt;
             ps.hand.push_back(picked);
-            ctx.events.logTrace("SWIFT SCOUT: return Teemo from Champion Zone to hand");
+            RIFT_TRACE(ctx.events, "SWIFT SCOUT: return Teemo from Champion Zone to hand");
         } else {
             ctx.executor.bounceToHand(picked);
-            ctx.events.logTrace("SWIFT SCOUT: return Teemo from board to hand");
+            RIFT_TRACE(ctx.events, "SWIFT SCOUT: return Teemo from board to hand");
         }
     }
 private:

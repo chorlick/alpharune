@@ -22,7 +22,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenIRevealedFromTop) {
             ctx.executor.addFloatingEnergy(ctx.controller, 2);
-            ctx.events.logTrace("UNDERTITAN: revealed from deck -> Add [2] energy");
+            RIFT_TRACE(ctx.events, "UNDERTITAN: revealed from deck -> Add [2] energy");
             return;
         }
         // WhenYouPlayMe: buff all OTHER friendly units +2 [M] this turn.
@@ -32,7 +32,7 @@ public:
             if (!obj.location.has_value()) continue;
             ctx.executor.giveTemporaryMight(id, 2);
         }
-        ctx.events.logTrace("UNDERTITAN: play -> other friendly units +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "UNDERTITAN: play -> other friendly units +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

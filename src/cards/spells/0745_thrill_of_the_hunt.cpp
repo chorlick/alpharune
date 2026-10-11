@@ -49,7 +49,7 @@ public:
         // CR 183.1: a banished token ceases to exist — nothing to play back.
         if (token) {
             banish();
-            ctx.events.logTrace("THRILL: " + uname + " (a token) is banished and gone");
+            RIFT_TRACE(ctx.events, "THRILL: " + uname + " (a token) is banished and gone");
             return;
         }
         std::vector<LocationId> locations;
@@ -67,7 +67,7 @@ public:
             banish();
             ctx.executor.playIgnoringCost(owner, unit_id,
                                            LocationId{BaseLocation{owner}});
-            ctx.events.logTrace("THRILL: " + uname + " (no BF) played to base");
+            RIFT_TRACE(ctx.events, "THRILL: " + uname + " (no BF) played to base");
             return;
         }
         uint32_t legal_mask = (locations.size() >= 32)
@@ -80,7 +80,7 @@ public:
         banish();
         // Step 2: owner plays it to the chosen battlefield, ignoring cost.
         ctx.executor.playIgnoringCost(owner, unit_id, locations[chosen]);
-        ctx.events.logTrace("THRILL: " + uname + " played to " + labels[chosen] +
+        RIFT_TRACE(ctx.events, "THRILL: " + uname + " played to " + labels[chosen] +
                              ", ignoring cost");
     }
 private:

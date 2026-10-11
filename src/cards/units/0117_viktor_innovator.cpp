@@ -28,7 +28,7 @@ public:
         LocationId loc{BaseLocation{ctx.controller}};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  1, {"Recruit"}, KeywordSet{}, loc, false);
-        ctx.events.logTrace("VIKTOR, INNOVATOR: off-turn play -> 1[M] Recruit in base");
+        RIFT_TRACE(ctx.events, "VIKTOR, INNOVATOR: off-turn play -> 1[M] Recruit in base");
     }
 private:
     const CardDef def_ = [] {

@@ -24,7 +24,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.drawCards(ctx.controller, 2);
-        ctx.events.logTrace("DUNEBREAKER: hold -> draw 2");
+        RIFT_TRACE(ctx.events, "DUNEBREAKER: hold -> draw 2");
     }
 private:
     const CardDef def_ = [] {

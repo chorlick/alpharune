@@ -45,7 +45,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("SUNKEN TEMPLE: paid [1] -> draw 1");
+        RIFT_TRACE(ctx.events, "SUNKEN TEMPLE: paid [1] -> draw 1");
     }
 private:
     const CardDef def_ = [] {

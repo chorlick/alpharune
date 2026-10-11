@@ -24,7 +24,7 @@ public:
             if (isMighty(obj)) ++n;
         }
         if (n > 0) ctx.executor.drawCards(ctx.controller, n);
-        ctx.events.logTrace("SHOW OF STRENGTH: drew " + std::to_string(n) +
+        RIFT_TRACE(ctx.events, "SHOW OF STRENGTH: drew " + std::to_string(n) +
                             " (one per Mighty unit)");
     }
 private:

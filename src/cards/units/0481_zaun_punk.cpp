@@ -61,7 +61,7 @@ public:
         if (gear == kInvalidId) return {};
         ctx.executor.killObject(gear);
         me.card_counters[kPaid] = 1;
-        ctx.events.logTrace("ZAUN PUNK: killed a friendly gear (additional cost)");
+        RIFT_TRACE(ctx.events, "ZAUN PUNK: killed a friendly gear (additional cost)");
         return {};
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
@@ -82,7 +82,7 @@ public:
         if (gear == kInvalidId || !ctx.state.objectExists(gear)) return;
         if (!ctx.state.getObject(gear).location.has_value()) return;
         ctx.executor.killObject(gear);
-        ctx.events.logTrace("ZAUN PUNK: paid the additional cost -> killed a gear");
+        RIFT_TRACE(ctx.events, "ZAUN PUNK: paid the additional cost -> killed a gear");
     }
 private:
     const CardDef def_ = [] {

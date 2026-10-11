@@ -21,7 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (runesControlled(ctx.state, ctx.controller) > 4) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("ECLIPSE DRAGON: moved with 4 or fewer runes -> draw 1");
+        RIFT_TRACE(ctx.events, "ECLIPSE DRAGON: moved with 4 or fewer runes -> draw 1");
     }
 private:
     const CardDef def_ = [] {

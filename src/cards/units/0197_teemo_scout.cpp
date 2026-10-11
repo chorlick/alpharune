@@ -18,7 +18,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 3);
-        ctx.events.logTrace("TEEMO, SCOUT: +3M this turn");
+        RIFT_TRACE(ctx.events, "TEEMO, SCOUT: +3M this turn");
     }
 private:
     const CardDef def_ = [] {

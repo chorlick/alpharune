@@ -93,7 +93,7 @@ public:
         ctx.events.emit(LeftBoardEvent{picked, controller, CardType::Unit, was_at,
                                        token ? ZoneType::Banishment : ZoneType::MainDeck,
                                        /*was_killed=*/false});
-        ctx.events.logTrace("KEEPER'S VERDICT: " + u.name +
+        RIFT_TRACE(ctx.events, "KEEPER'S VERDICT: " + u.name +
                             (token ? " (a token) ceased to exist"
                                    : to_top ? " placed on TOP of deck"
                                             : " placed on BOTTOM of deck"));

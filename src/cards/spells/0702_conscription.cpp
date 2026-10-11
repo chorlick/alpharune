@@ -57,7 +57,7 @@ public:
         if (widened && costDueNow(ctx)) {
             if (ps.xp < 5) return;
             ps.xp -= 5;
-            ctx.events.logTrace("CONSCRIPTION: spent 5 XP");
+            RIFT_TRACE(ctx.events, "CONSCRIPTION: spent 5 XP");
         }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
@@ -69,7 +69,7 @@ public:
         // so no UnitMovedEvent and no "when I move" triggers. Attached gear
         // goes with it; damage and statuses are unaffected.
         ctx.executor.recallToBase(picked);
-        ctx.events.logTrace("CONSCRIPTION: take control + exhaust + recall (paid="
+        RIFT_TRACE(ctx.events, "CONSCRIPTION: take control + exhaust + recall (paid="
                             + std::to_string(widened) + ")");
     }
 private:

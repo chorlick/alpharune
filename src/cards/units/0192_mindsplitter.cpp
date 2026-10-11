@@ -39,7 +39,7 @@ public:
                     /*revealed_to=*/ctx.controller,
                     /*source_zone=*/ZoneType::Hand,
                 });
-                ctx.events.logTrace("MINDSPLITTER: revealed " + obj.name +
+                RIFT_TRACE(ctx.events, "MINDSPLITTER: revealed " + obj.name +
                                      " (id=" + std::to_string(card_id) +
                                      ") to " + std::string(toString(ctx.controller)));
             }
@@ -63,7 +63,7 @@ public:
             auto choice = ctx.executor.takeChoice();
             if (choice && !choice->chosen_objects.empty()) {
                 ctx.executor.applyDiscard(opp, choice->chosen_objects[0]);
-                ctx.events.logTrace("MINDSPLITTER: opponent discards 1");
+                RIFT_TRACE(ctx.events, "MINDSPLITTER: opponent discards 1");
             }
             return;
         }

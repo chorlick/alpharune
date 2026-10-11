@@ -48,7 +48,7 @@ public:
         ctx.state.getObject(ctx.source).card_counters.erase("__frostcoat_paid");
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         ctx.executor.giveTemporaryMight(tgt, -2);
-        ctx.events.logTrace("FROSTCOAT CUB: paid [B] -> gave a unit -2 [M] this turn");
+        RIFT_TRACE(ctx.events, "FROSTCOAT CUB: paid [B] -> gave a unit -2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

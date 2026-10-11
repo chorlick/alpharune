@@ -35,7 +35,7 @@ public:
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Mech",
                                  3, {"Mech"}, KeywordSet{},
                                  LocationId{BaseLocation{ctx.controller}}, false);
-        ctx.events.logTrace("RUMBLE SCRAPPER: hold -> 3[M] Mech token to base");
+        RIFT_TRACE(ctx.events, "RUMBLE SCRAPPER: hold -> 3[M] Mech token to base");
     }
 private:
     const CardDef def_ = [] {

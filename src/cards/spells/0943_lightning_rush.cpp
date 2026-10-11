@@ -63,7 +63,7 @@ public:
             card.zone = ZoneType::Trash;
             card.location = std::nullopt;
             ps.trash.push_back(id);
-            ctx.events.logTrace("LIGHTNING RUSH: " + card.name + " -> trash");
+            RIFT_TRACE(ctx.events, "LIGHTNING RUSH: " + card.name + " -> trash");
         }
         if (draw) {
             // Back on top, then drawn through the normal draw path so draw

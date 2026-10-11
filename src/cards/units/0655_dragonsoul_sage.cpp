@@ -20,7 +20,7 @@ public:
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.addFloatingEnergy(ctx.controller, 1);
-        ctx.events.logTrace("ACTIVATE: Dragonsoul Sage adds [1] energy");
+        RIFT_TRACE(ctx.events, "ACTIVATE: Dragonsoul Sage adds [1] energy");
     }
 private:
     const CardDef def_ = [] {

@@ -22,7 +22,7 @@ public:
         // "[E]: [Reaction] — [Add] [B]." Resolves immediately (CR 429.2),
         // not via the chain — adds 1 Mind power to the controller's pool.
         ctx.executor.addFloatingPower(ctx.controller, Domain::Mind, 1);
-        ctx.events.logTrace("ACTIVATE: Seal of Insight adds [B] (Mind power)");
+        RIFT_TRACE(ctx.events, "ACTIVATE: Seal of Insight adds [B] (Mind power)");
     }
 private:
     const CardDef def_ = [] {

@@ -20,7 +20,7 @@ public:
         // "When I hold, play two Gold gear tokens exhausted."
         createGoldExhausted(ctx);
         createGoldExhausted(ctx);
-        ctx.events.logTrace("EMINENT BENEFACTOR: hold -> two Gold gear tokens exhausted");
+        RIFT_TRACE(ctx.events, "EMINENT BENEFACTOR: hold -> two Gold gear tokens exhausted");
     }
 private:
     const CardDef def_ = [] {

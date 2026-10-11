@@ -68,20 +68,20 @@ public:
                 u.combat_designation = CombatDesignation::None;
                 ctx.executor.playIgnoringCost(owner, unit, back_to);
             }
-            ctx.events.logTrace("ARCANE SHIFT: banished + replayed a friendly unit");
+            RIFT_TRACE(ctx.events, "ARCANE SHIFT: banished + replayed a friendly unit");
         }
 
         // 2. Deal 3 to an enemy unit at a battlefield.
         if (picked != kInvalidId && ctx.state.objectExists(picked)) {
             ctx.executor.dealDamage(picked, 3, ctx.source);
-            ctx.events.logTrace("ARCANE SHIFT: dealt 3 to an enemy unit");
+            RIFT_TRACE(ctx.events, "ARCANE SHIFT: dealt 3 to an enemy unit");
         }
 
         // 3. "Banish this.": it is banished as it leaves the chain instead of
         // going to the trash (ChainManager reads the flag).
         if (ctx.state.objectExists(ctx.source))
             ctx.state.getObject(ctx.source).banish_on_leave_chain = true;
-        ctx.events.logTrace("ARCANE SHIFT: banished this");
+        RIFT_TRACE(ctx.events, "ARCANE SHIFT: banished this");
     }
 private:
     const CardDef def_ = [] {

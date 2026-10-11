@@ -28,7 +28,7 @@ public:
         auto presence = scanFriendlyTags(ctx.state, ctx.controller);
         int bonus = presence.count();  // 0..4
         if (bonus <= 0) return;
-        ctx.events.logTrace("FRIENDSHIP: +" + std::to_string(bonus) +
+        RIFT_TRACE(ctx.events, "FRIENDSHIP: +" + std::to_string(bonus) +
                              "[M] this turn (tags present: B=" +
                              (presence.bird?"1":"0") + " C=" + (presence.cat?"1":"0") +
                              " D=" + (presence.dog?"1":"0") + " P=" + (presence.poro?"1":"0") + ")");

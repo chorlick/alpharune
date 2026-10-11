@@ -26,7 +26,7 @@ public:
             if (obj.buff_count > 0) continue;
             ctx.executor.buffUnit(id);
         }
-        ctx.events.logTrace("ENTHUSIASTIC PROMOTER: +1M buff to unbuffed units here");
+        RIFT_TRACE(ctx.events, "ENTHUSIASTIC PROMOTER: +1M buff to unbuffed units here");
     }
 private:
     const CardDef def_ = [] {

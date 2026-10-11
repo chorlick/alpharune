@@ -16,7 +16,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.events.logTrace("VILEMAW: hold — draw 1");
+        RIFT_TRACE(ctx.events, "VILEMAW: hold — draw 1");
         ctx.executor.drawCards(ctx.controller, 1);
     }
     // "Enemy units here with less Might than me don't deal combat damage."

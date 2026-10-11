@@ -29,7 +29,7 @@ public:
         const auto& moved = ctx.state.getObject(subj);
         if (!moved.isUnit() || !moved.location.has_value()) return;
         ctx.executor.giveTemporaryMight(subj, 1);
-        ctx.events.logTrace("BACK-ALLEY BAR: unit left -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "BACK-ALLEY BAR: unit left -> +1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

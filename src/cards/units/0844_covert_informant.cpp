@@ -24,7 +24,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).isEmpowered()) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("COVERT INFORMANT: moved while Empowered -> draw 1");
+        RIFT_TRACE(ctx.events, "COVERT INFORMANT: moved while Empowered -> draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -39,7 +39,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.giveTemporaryMight(picked, 2);
-        ctx.events.logTrace("MASK MOTHER: discarded, paid [1] -> +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "MASK MOTHER: discarded, paid [1] -> +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

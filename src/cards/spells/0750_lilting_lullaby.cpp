@@ -29,7 +29,7 @@ public:
         PlayerId target_controller = top.controller;
         counterChainTop(ctx);
         ctx.state.player(target_controller).cant_play_spells_this_turn = true;
-        ctx.events.logTrace("LILTING LULLABY: countered + " +
+        RIFT_TRACE(ctx.events, "LILTING LULLABY: countered + " +
                              std::string(toString(target_controller)) +
                              " can't play spells this turn");
     }

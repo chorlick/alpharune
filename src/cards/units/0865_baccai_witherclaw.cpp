@@ -37,7 +37,7 @@ public:
                                                           : self.isEmpowered();
         if (!died_empowered) return;
         ctx.executor.channelRunes(ctx.controller, 2, /*enter_exhausted=*/true);
-        ctx.events.logTrace("BACCAI WITHERCLAW: died Empowered -> channel 2 runes exhausted");
+        RIFT_TRACE(ctx.events, "BACCAI WITHERCLAW: died Empowered -> channel 2 runes exhausted");
     }
 private:
     const CardDef def_ = [] {

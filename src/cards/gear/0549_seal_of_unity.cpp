@@ -21,7 +21,7 @@ public:
                     const std::vector<GameObjectId>& /*targets*/) override {
         // [Add] [Y] resolves immediately (CR 429.2) — not via the chain.
         ctx.executor.addFloatingPower(ctx.controller, Domain::Order, 1);
-        ctx.events.logTrace("ACTIVATE: Seal of Unity adds [Y] (Order power)");
+        RIFT_TRACE(ctx.events, "ACTIVATE: Seal of Unity adds [Y] (Order power)");
     }
 private:
     const CardDef def_ = [] {

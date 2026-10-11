@@ -25,7 +25,7 @@ public:
                                   {"Fae"}, kw, destLocation(ctx.controller, dest),
                                   /*enter_ready=*/true,
                                   tokenPlayLocations(ctx.state, ctx.controller));
-        ctx.events.logTrace("SPRITE CALL: play ready 3 [M] Sprite [Temporary]");
+        RIFT_TRACE(ctx.events, "SPRITE CALL: play ready 3 [M] Sprite [Temporary]");
     }
 private:
     const CardDef def_ = [] {

@@ -49,7 +49,7 @@ public:
         if (!in_play(token)) return;          // the token left in response
         if (in_play(model)) {
             ctx.executor.copyUnit(token, model);
-            ctx.events.logTrace("MIRROR IMAGE: Reflection became a copy of " +
+            RIFT_TRACE(ctx.events, "MIRROR IMAGE: Reflection became a copy of " +
                                  ctx.state.getObject(model).name);
         }
         // "Give it [Temporary]" has no duration, so it lasts (CR 816: the

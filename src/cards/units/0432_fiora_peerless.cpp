@@ -35,7 +35,7 @@ public:
         auto& self = ctx.state.getObject(ctx.source);
         self.card_counters["__fiora_combat_bonus"] += self.current_might;
         ctx.executor.recalculateContinuousEffects();
-        ctx.events.logTrace("FIORA PEERLESS: one on one -> doubled Might this combat");
+        RIFT_TRACE(ctx.events, "FIORA PEERLESS: one on one -> doubled Might this combat");
     }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (auto& [sid, self] : state.objects) {

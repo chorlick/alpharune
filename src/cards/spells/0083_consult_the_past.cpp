@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.drawCards(ctx.controller, 2);
-        ctx.events.logTrace("CONSULT THE PAST: draw 2");
+        RIFT_TRACE(ctx.events, "CONSULT THE PAST: draw 2");
     }
 private:
     const CardDef def_ = [] {

@@ -73,7 +73,7 @@ public:
         if (eq == kInvalidId || unit == kInvalidId) return;  // suspended or fizzled
         if (!equipEndsOnBoard(ctx.state, eq, unit)) return;
         attachFree(ctx, eq, unit);
-        ctx.events.logTrace("FORGE OF THE FLUFT: attached an Equipment to a unit");
+        RIFT_TRACE(ctx.events, "FORGE OF THE FLUFT: attached an Equipment to a unit");
     }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         if (controller == PlayerId::None) return;  // uncontrolled BF

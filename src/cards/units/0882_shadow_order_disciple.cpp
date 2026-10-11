@@ -36,7 +36,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (conf != 1 || !on_board()) return;         // declined / I left the board
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("SHADOW ORDER DISCIPLE: Burn 1 -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "SHADOW ORDER DISCIPLE: Burn 1 -> +1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

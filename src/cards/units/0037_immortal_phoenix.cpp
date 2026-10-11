@@ -48,7 +48,7 @@ public:
         if (!in_trash()) return;              // left the trash in response
         ctx.executor.playIgnoringCost(ctx.controller, ctx.source,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
-        ctx.events.logTrace("IMMORTAL PHOENIX: paid [1][R] -> played from trash");
+        RIFT_TRACE(ctx.events, "IMMORTAL PHOENIX: paid [1][R] -> played from trash");
     }
 private:
     const CardDef def_ = [] {

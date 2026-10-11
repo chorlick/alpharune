@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "play four Gold gear tokens exhausted."
         for (int i = 0; i < 4; ++i) createGoldExhausted(ctx);
-        ctx.events.logTrace("TROVE GOLEM: play four Gold gear tokens exhausted");
+        RIFT_TRACE(ctx.events, "TROVE GOLEM: play four Gold gear tokens exhausted");
     }
 private:
     const CardDef def_ = [] {

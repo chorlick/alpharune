@@ -40,7 +40,7 @@ public:
         }
         if (friendly_here == 1) {
             ctx.executor.giveTemporaryMight(tid, 1);
-            ctx.events.logTrace("EN GARDE: only unit there -> additional +1 M");
+            RIFT_TRACE(ctx.events, "EN GARDE: only unit there -> additional +1 M");
         }
     }
 private:

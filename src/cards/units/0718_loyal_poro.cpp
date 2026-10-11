@@ -24,7 +24,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& lk = ctx.state.getObject(ctx.source).last_known;
         if (!lk.valid || lk.other_friendly_units_here.empty()) return;
-        ctx.events.logTrace("LOYAL PORO: not alone at death — drawing 1");
+        RIFT_TRACE(ctx.events, "LOYAL PORO: not alone at death — drawing 1");
         ctx.executor.drawCards(ctx.controller, 1);
     }
 private:

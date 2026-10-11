@@ -31,7 +31,7 @@ public:
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
         // Only the death of the unit this is attached to (replacementApplies).
         if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
-        ctx.events.logTrace("GUARDIAN ANGEL: kill self, heal/exhaust/recall bearer");
+        RIFT_TRACE(ctx.events, "GUARDIAN ANGEL: kill self, heal/exhaust/recall bearer");
         ctx.executor.unattachGear(ctx.source);
         ctx.executor.killObject(ctx.source);       // kill Guardian Angel instead
         ctx.executor.healExhaustRecall(dying_unit); // heal me, exhaust me, recall me (CR 457)

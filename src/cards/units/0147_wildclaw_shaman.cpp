@@ -45,7 +45,7 @@ public:
             if (costDueNow(ctx)) {
                 auto& unit = ctx.state.getObject(*from);
                 ctx.executor.spendBuff(*from, ctx.controller);   // CR 427.2; "When you spend a buff"
-                ctx.events.logTrace("WILDCLAW SHAMAN: spent " + unit.name + "'s buff");
+                RIFT_TRACE(ctx.events, "WILDCLAW SHAMAN: spent " + unit.name + "'s buff");
             }
         }
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
@@ -53,7 +53,7 @@ public:
         // executor does nothing for one that left).
         ctx.executor.buffUnit(ctx.source);
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("WILDCLAW SHAMAN: buffed & readied me");
+        RIFT_TRACE(ctx.events, "WILDCLAW SHAMAN: buffed & readied me");
     }
 private:
     const CardDef def_ = [] {

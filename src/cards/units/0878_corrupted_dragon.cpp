@@ -74,7 +74,7 @@ public:
             if (std::find(legal.begin(), legal.end(), uid) != legal.end()) {
                 commitChosenObject(ctx, uid);
                 ctx.executor.moveToBase(uid);
-                ctx.events.logTrace("CORRUPTED DRAGON: moved an enemy unit to its base");
+                RIFT_TRACE(ctx.events, "CORRUPTED DRAGON: moved an enemy unit to its base");
             }
             if (!offer()) ri.resume_point = 2;
             return;

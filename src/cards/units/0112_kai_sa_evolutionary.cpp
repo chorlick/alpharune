@@ -59,7 +59,7 @@ public:
             ctx.state.getObject(chosen).card_counters["__recycle_on_leave_chain"] = 0;
             ctx.executor.recycleCards(ctx.controller, {chosen});
         }
-        ctx.events.logTrace("KAI'SA: conquer -> played " + sname +
+        RIFT_TRACE(ctx.events, "KAI'SA: conquer -> played " + sname +
                              " from trash (ignoring Energy), then recycled it");
     }
 private:

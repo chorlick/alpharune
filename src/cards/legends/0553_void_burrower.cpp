@@ -87,7 +87,7 @@ public:
                 revealed.push_back(cid);
             }
             if (revealed.empty()) {
-                ctx.events.logTrace("VOID BURROWER: deck empty, nothing to reveal");
+                RIFT_TRACE(ctx.events, "VOID BURROWER: deck empty, nothing to reveal");
                 ri.resume_data[3] = 1;   // nothing more to do
                 return;
             }
@@ -170,7 +170,7 @@ public:
             std::find(top.begin(), top.end(), banished) != top.end()) {
             // "banish one" — through the executor, so it counts as a card
             // banished this turn and "when you banish a card" abilities see it.
-            ctx.events.logTrace("VOID BURROWER: banished " +
+            RIFT_TRACE(ctx.events, "VOID BURROWER: banished " +
                                 ctx.state.getObject(banished).name + " then play it");
             ctx.executor.banishObject(banished);
             // "then play it". The text does not waive the cost (CR 356.1.b.2):
@@ -180,7 +180,7 @@ public:
         }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);
-            ctx.events.logTrace("VOID BURROWER: recycled the rest");
+            RIFT_TRACE(ctx.events, "VOID BURROWER: recycled the rest");
         }
     }
 private:

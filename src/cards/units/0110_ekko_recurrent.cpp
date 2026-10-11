@@ -25,7 +25,7 @@ public:
         auto& trash = ctx.state.player(self.owner).trash;
         auto it = std::find(trash.begin(), trash.end(), ctx.source);
         if (self.zone != ZoneType::Trash || it == trash.end()) {
-            ctx.events.logTrace("EKKO: deathknell -> not in trash, can't recycle me");
+            RIFT_TRACE(ctx.events, "EKKO: deathknell -> not in trash, can't recycle me");
             return;
         }
         trash.erase(it);
@@ -38,7 +38,7 @@ public:
             ctx.executor.readyObject(id);
             ++readied;
         }
-        ctx.events.logTrace("EKKO: deathknell -> recycled me, readied " +
+        RIFT_TRACE(ctx.events, "EKKO: deathknell -> recycled me, readied " +
                              std::to_string(readied) + " runes");
     }
 private:

@@ -77,7 +77,7 @@ public:
                 if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
                     ctx.executor.killObject(id);
         }
-        ctx.events.logTrace("MARCHING ORDERS: mutual Might damage between friendly + enemy");
+        RIFT_TRACE(ctx.events, "MARCHING ORDERS: mutual Might damage between friendly + enemy");
     }
 private:
     const CardDef def_ = [] {

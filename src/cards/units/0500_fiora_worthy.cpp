@@ -50,7 +50,7 @@ public:
         if (conf != 1 || !paid) return;
         if (!subject_on_board()) return;      // it left the board in response
         ctx.executor.readyObject(subject);
-        ctx.events.logTrace("FIORA WORTHY: paid [Y] -> readied the Mighty unit");
+        RIFT_TRACE(ctx.events, "FIORA WORTHY: paid [Y] -> readied the Mighty unit");
     }
 private:
     const CardDef def_ = [] {

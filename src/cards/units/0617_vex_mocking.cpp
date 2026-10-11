@@ -50,7 +50,7 @@ public:
         auto bf = target_bf_of();
         if (!bf) return;
         ctx.executor.moveToBattlefield(ctx.source, *bf);
-        ctx.events.logTrace("VEX MOCKING: moved to stunned unit's battlefield BF" +
+        RIFT_TRACE(ctx.events, "VEX MOCKING: moved to stunned unit's battlefield BF" +
                             std::to_string(*bf));
     }
 private:

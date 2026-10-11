@@ -25,7 +25,7 @@ public:
         m.units_only = true;   // "your non-token UNITS"
         m.this_turn_only = true;
         ctx.state.player(who).cost_modifiers.push_back(m);
-        ctx.events.logTrace("VAULTS OF HELIA: " + std::string(toString(who)) +
+        RIFT_TRACE(ctx.events, "VAULTS OF HELIA: " + std::string(toString(who)) +
                              "'s non-token units cost +1 this turn");
     }
 private:

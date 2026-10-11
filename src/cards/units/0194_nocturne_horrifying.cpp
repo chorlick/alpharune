@@ -56,14 +56,14 @@ public:
         deck::take(ctx.state, ctx.source, deck::Place::Public, knowledge::everyone());
         ctx.executor.banishObject(ctx.source);
         if (mode < 1) {
-            ctx.events.logTrace("NOCTURNE: banished from deck top");
+            RIFT_TRACE(ctx.events, "NOCTURNE: banished from deck top");
             return;
         }
         // Mode 1 is the base; mode 2 + i is battlefield i (the base if it is
         // no longer mine to play to).
         ctx.executor.playIgnoringCost(owner, ctx.source,
                                       effectPlayLocation(ctx.state, owner, mode - 1));
-        ctx.events.logTrace("NOCTURNE: banished from deck top and played for [A]");
+        RIFT_TRACE(ctx.events, "NOCTURNE: banished from deck top and played for [A]");
     }
 private:
     const CardDef def_ = [] {

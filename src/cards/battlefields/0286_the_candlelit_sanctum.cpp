@@ -20,7 +20,7 @@ public:
     // which to keep on top in chosen order — exactly this scry/recycle.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.predict(ctx.controller, 2);
-        ctx.events.logTrace("THE CANDLELIT SANCTUM: conquer -> look at top 2, recycle/keep");
+        RIFT_TRACE(ctx.events, "THE CANDLELIT SANCTUM: conquer -> look at top 2, recycle/keep");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
 private:

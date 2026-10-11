@@ -33,7 +33,7 @@ public:
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
         ctx.state.player(ctx.controller).grant_repeat_base_to_next_spell = true;
-        ctx.events.logTrace("TEMPORAL PORTAL: next spell this turn has [Repeat] "
+        RIFT_TRACE(ctx.events, "TEMPORAL PORTAL: next spell this turn has [Repeat] "
                             "equal to its cost");
     }
 private:

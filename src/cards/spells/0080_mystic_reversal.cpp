@@ -31,7 +31,7 @@ public:
         top.controller = ctx.controller;
         if (ctx.state.objectExists(top.source))
             ctx.state.getObject(top.source).controller = ctx.controller;
-        ctx.events.logTrace("MYSTIC REVERSAL: gained control of the spell on the chain");
+        RIFT_TRACE(ctx.events, "MYSTIC REVERSAL: gained control of the spell on the chain");
         // "You may make new choices for it" (CR 750-755): its new controller
         // re-chooses its targets (keeping one is choosing it again). `top` is
         // not used past this call — the chain may be reallocated.

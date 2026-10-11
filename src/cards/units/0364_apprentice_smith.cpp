@@ -34,11 +34,11 @@ public:
         if (obj.isGear()) {
             obj.zone = ZoneType::Hand;
             ps.hand.push_back(top);
-            ctx.events.logTrace("APPRENTICE SMITH: revealed gear " + obj.name +
+            RIFT_TRACE(ctx.events, "APPRENTICE SMITH: revealed gear " + obj.name +
                                  " -> drew it");
         } else {
             ctx.executor.recycleCards(ctx.controller, {top});
-            ctx.events.logTrace("APPRENTICE SMITH: revealed non-gear " + obj.name +
+            RIFT_TRACE(ctx.events, "APPRENTICE SMITH: revealed non-gear " + obj.name +
                                  " -> recycled");
         }
     }

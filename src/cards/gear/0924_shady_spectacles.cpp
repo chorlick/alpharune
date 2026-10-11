@@ -115,7 +115,7 @@ public:
         if (--n->second > 0) return;          // another Spectacles copy is still on it
         u.card_counters.erase(n);
         restore(u);
-        ctx.events.logTrace("SHADY SPECTACLES: came off " + u.name +
+        RIFT_TRACE(ctx.events, "SHADY SPECTACLES: came off " + u.name +
                             " -> it is itself again");
     }
     void onUnattached(CardContext& ctx, GameObjectId unit) override {

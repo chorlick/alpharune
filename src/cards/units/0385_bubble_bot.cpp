@@ -30,7 +30,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (pick == kInvalidId) return;       // none / mistarget / waiting
         ctx.executor.readyObject(pick);
-        ctx.events.logTrace("BUBBLE BOT: readied another friendly Mech");
+        RIFT_TRACE(ctx.events, "BUBBLE BOT: readied another friendly Mech");
     }
 private:
     const CardDef def_ = [] {

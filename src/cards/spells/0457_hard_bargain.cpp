@@ -35,19 +35,19 @@ public:
             revertCounteredPlay(ctx, ctx.state.chain.items.back());  // CR 425.1.b
             ctx.state.chain.items.pop_back();
             if (!ctx.state.objectExists(target_source)) return;
-            ctx.events.logTrace("HARD BARGAIN: countered " +
+            RIFT_TRACE(ctx.events, "HARD BARGAIN: countered " +
                                 ctx.state.getObject(target_source).name + " (" + why + ")");
             disposeCounteredCard(ctx, target_source);
         };
         switch (ri.resume_point) {
         case 0: {
             if (ctx.state.chain.items.empty()) {
-                ctx.events.logTrace("HARD BARGAIN: nothing on chain to counter — no-op");
+                RIFT_TRACE(ctx.events, "HARD BARGAIN: nothing on chain to counter — no-op");
                 return;
             }
             auto& top = ctx.state.chain.items.back();
             if (!top.is_spell || isUncounterable(ctx, top)) {
-                ctx.events.logTrace("HARD BARGAIN: top of chain isn't a spell — no-op");
+                RIFT_TRACE(ctx.events, "HARD BARGAIN: top of chain isn't a spell — no-op");
                 return;
             }
             PlayerId target_controller = top.controller;
@@ -97,7 +97,7 @@ public:
             bool wants_to_pay = (choice && !choice->chosen_objects.empty() &&
                                  choice->chosen_objects[0] == target_source);
             if (wants_to_pay && payEnergy(ctx, target_controller, 2)) {
-                ctx.events.logTrace(std::string("HARD BARGAIN: ") +
+                RIFT_TRACE(ctx.events, std::string("HARD BARGAIN: ") +
                                      toString(target_controller) +
                                      " paid [2] to save " +
                                      ctx.state.getObject(target_source).name);

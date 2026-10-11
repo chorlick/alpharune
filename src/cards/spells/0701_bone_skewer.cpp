@@ -84,7 +84,7 @@ public:
         // They play it to that battlefield, ignoring all costs.
         ctx.executor.playIgnoringCost(opp, chosen,
                                       LocationId{BattlefieldLocation{dest_bf}});
-        ctx.events.logTrace("BONE SKEWER: opponent forced to play " +
+        RIFT_TRACE(ctx.events, "BONE SKEWER: opponent forced to play " +
                              ctx.state.getObject(chosen).name + " to BF#" +
                              std::to_string(dest_bf));
 
@@ -106,7 +106,7 @@ public:
         if (!ctx.state.objectExists(unit) || !ctx.state.getObject(unit).location.has_value())
             return;                           // it left in response
         ctx.executor.stunUnitBy(unit, ctx.source);
-        ctx.events.logTrace("BONE SKEWER: stunned " + ctx.state.getObject(unit).name);
+        RIFT_TRACE(ctx.events, "BONE SKEWER: stunned " + ctx.state.getObject(unit).name);
     }
 private:
     const CardDef def_ = [] {

@@ -37,7 +37,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId) return;  // yielded or fizzled
         ctx.executor.killObject(picked);
-        ctx.events.logTrace("DISARMING RAKE: killed a gear");
+        RIFT_TRACE(ctx.events, "DISARMING RAKE: killed a gear");
     }
 private:
     const CardDef def_ = [] {

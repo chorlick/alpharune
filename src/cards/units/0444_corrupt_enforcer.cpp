@@ -21,7 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenIWinCombat) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("CORRUPT ENFORCER: win combat -> draw 1");
+            RIFT_TRACE(ctx.events, "CORRUPT ENFORCER: win combat -> draw 1");
             return;
         }
         // WhenIMoveToFB: "discard 1" — the controller chooses the card.

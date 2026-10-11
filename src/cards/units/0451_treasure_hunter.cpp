@@ -18,7 +18,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         createGoldExhausted(ctx);
-        ctx.events.logTrace("TREASURE HUNTER: Gold gear token (exhausted)");
+        RIFT_TRACE(ctx.events, "TREASURE HUNTER: Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

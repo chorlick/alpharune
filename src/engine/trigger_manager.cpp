@@ -22,7 +22,7 @@ void TriggerManager::queueReflexive(GameObjectId source, PlayerId controller, in
                                     std::vector<int32_t> data) {
     if (!state_.objectExists(source) || index < 0) return;
     const auto& obj = state_.getObject(source);
-    events_.logDebug("TRIGGER: " + obj.name + " (" + toString(controller) +
+    RIFT_DEBUG(events_, "TRIGGER: " + obj.name + " (" + toString(controller) +
                      ") — reflexive trigger goes on the chain");
     const ChainItemId item_id = chain_.addAbility(source, controller, obj.card_def_id);
     for (auto& item : state_.chain.items) {
@@ -145,7 +145,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         state_.delayed_abilities.end());
 
     for (const auto& da : firing) {
-        events_.logTrace("DELAYED_ABILITY: firing for " +
+        RIFT_TRACE(events_, "DELAYED_ABILITY: firing for " +
                          (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
         const ChainItemId item_id = chain_.addAbility(da.source, da.controller, da.card_def_id);
         // Stamp the originating trigger so the card's onTrigger can branch on
@@ -192,7 +192,7 @@ void TriggerManager::queueEquippedTrigger(GameObjectId gear_id, GameObjectId uni
     if (!gear_card || gear_card->equippedTriggerType() != trigger) return;
     if (!gear_card->triggerCondition(state_, gear_id, controller, trigger, unit_id)) return;
 
-    events_.logTrace("EQUIP_TRIGGER: " + gear.name + " fires on " +
+    RIFT_TRACE(events_, "EQUIP_TRIGGER: " + gear.name + " fires on " +
                      (state_.objectExists(unit_id) ? state_.getObject(unit_id).name
                                                    : std::string("?")) +
                      " (" + toString(controller) + ")");
@@ -293,7 +293,7 @@ bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
         if (!obf || *obf != bf) continue;
         const Card* oc = card_registry_.get(other.card_def_id);
         if (oc && oc->suppressesTemporaryTriggersHere()) {
-            events_.logTrace("TRIGGER_SUPPRESSED: " + obj.name +
+            RIFT_TRACE(events_, "TRIGGER_SUPPRESSED: " + obj.name +
                              " (Temporary) at LeBlanc's battlefield");
             return true;
         }
@@ -338,7 +338,7 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
                 return false;
     }
 
-    events_.logDebug("TRIGGER: " + obj.name + " (" + toString(controller) +
+    RIFT_DEBUG(events_, "TRIGGER: " + obj.name + " (" + toString(controller) +
                      ") fires ability");
     const ChainItemId item_id = chain_.addAbility(source, controller, obj.card_def_id);
     // Snapshot the triggering spell's spent value on the just-added
@@ -367,7 +367,7 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
             ChainItem copy = queued;
             copy.id = state_.chain.allocateId();
             state_.chain.items.push_back(std::move(copy));
-            events_.logDebug("TRIGGER: " + state_.getObject(source).name +
+            RIFT_DEBUG(events_, "TRIGGER: " + state_.getObject(source).name +
                              " — the same ability in an Equipment's copied text");
         }
     }
@@ -385,7 +385,7 @@ void TriggerManager::queueKeywordAbilities(GameObjectId object, PlayerId control
         keywordAbilityInstances(state_.getObject(object), keyword, own_card_fires);
     if (instances <= 0 || temporaryTriggerSuppressed(object)) return;
     for (int i = 0; i < instances; ++i) {
-        events_.logDebug("TRIGGER: " + state_.getObject(object).name + " [" +
+        RIFT_DEBUG(events_, "TRIGGER: " + state_.getObject(object).name + " [" +
                          toString(keyword) + "] (" + toString(controller) + ")");
         // Not the source's card: the ability is the keyword's (kInvalidId
         // keeps the source card's own callbacks and finalize pass out of it).
@@ -981,7 +981,7 @@ void TriggerManager::queueOwnDeathTrigger(GameObjectId object, PlayerId controll
     for (int i = 0; i < extra; ++i)
         fireTrigger(object, controller, 0, TriggerType::WhenIDie, /*subject=*/object);
     if (extra > 0) {
-        events_.logTrace("DEATHKNELL_DOUBLE: " + obj.name + " fires " +
+        RIFT_TRACE(events_, "DEATHKNELL_DOUBLE: " + obj.name + " fires " +
                          std::to_string(1 + extra) + " times (Karthus aura)");
     }
 }
@@ -1180,7 +1180,7 @@ void TriggerManager::onScore(const ScoreEvent& e) {
                     state_.chain.items.push_back(std::move(copy));
                 }
             if (!triggered.empty())
-                events_.logTrace("SCORE_TRIGGERS: " + std::to_string(triggered.size()) +
+                RIFT_TRACE(events_, "SCORE_TRIGGERS: " + std::to_string(triggered.size()) +
                                  " ability(ies) trigger " + std::to_string(extra) +
                                  " additional time(s)");
         }

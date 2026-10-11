@@ -59,7 +59,7 @@ public:
 
         auto& legend = ctx.state.getObject(ctx.source);
         legend.tracked_objects.push_back(spell_id);  // "banished with me"
-        ctx.events.logTrace("VIRTUOSO: banished " + spell.name +
+        RIFT_TRACE(ctx.events, "VIRTUOSO: banished " + spell.name +
                              "; banished-with-me count=" +
                              std::to_string(legend.tracked_objects.size()));
 
@@ -95,7 +95,7 @@ public:
             legend.tracked_objects.erase(legend.tracked_objects.begin(),
                                           legend.tracked_objects.begin() + take_first_n);
 
-            ctx.events.logTrace("VIRTUOSO: 4 spells banished-with-me — "
+            RIFT_TRACE(ctx.events, "VIRTUOSO: 4 spells banished-with-me — "
                                  "routed " + std::to_string(moved) +
                                  " back to trash, channel 4 + draw 1");
             ctx.executor.channelRunes(ctx.controller, 4, /*enter_exhausted=*/false);

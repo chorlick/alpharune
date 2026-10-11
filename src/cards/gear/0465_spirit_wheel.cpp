@@ -41,7 +41,7 @@ public:
         if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("SPIRIT WHEEL: paid [1] + exhaust -> draw 1");
+        RIFT_TRACE(ctx.events, "SPIRIT WHEEL: paid [1] + exhaust -> draw 1");
     }
 private:
     const CardDef def_ = [] {

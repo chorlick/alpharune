@@ -37,7 +37,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("RIPPER'S BAY: paid [1] -> channel 1 rune exhausted");
+        RIFT_TRACE(ctx.events, "RIPPER'S BAY: paid [1] -> channel 1 rune exhausted");
     }
 private:
     const CardDef def_ = [] {

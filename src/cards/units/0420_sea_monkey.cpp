@@ -32,7 +32,7 @@ public:
         self.card_counters.erase("__sea_monkey_paid");
         if (!was_paid) return;
         ctx.executor.buffUnit(ctx.source);
-        ctx.events.logTrace("SEA MONKEY: paid [1] -> buff me (+1 [M] buff)");
+        RIFT_TRACE(ctx.events, "SEA MONKEY: paid [1] -> buff me (+1 [M] buff)");
     }
 private:
     const CardDef def_ = [] {

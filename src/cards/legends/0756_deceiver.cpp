@@ -97,7 +97,7 @@ public:
             GameObjectId token = ctx.executor.createToken(
                 ctx.controller, CardType::Unit, "Reflection", 0, {}, KeywordSet{}, loc,
                 /*enter_ready=*/true);
-            ctx.events.logTrace("DECEIVER: created ready Reflection token there");
+            RIFT_TRACE(ctx.events, "DECEIVER: created ready Reflection token there");
             slot(kPhase) = kFinished;
             // "Then do this: It becomes a copy of another unit there. Give it
             // [Temporary]." — a reflexive trigger (CR 388): it goes on the
@@ -141,7 +141,7 @@ public:
         if (model != kInvalidId && ctx.state.objectExists(model) &&
             ctx.state.getObject(model).location.has_value()) {
             ctx.executor.copyUnit(token, model);
-            ctx.events.logTrace("DECEIVER: token became a copy of a unit there");
+            RIFT_TRACE(ctx.events, "DECEIVER: token became a copy of a unit there");
         }
         // "Give it [Temporary]." — after the copy, which overwrites keywords.
         if (token_in_play()) ctx.state.getObject(token).keywords.set(Keyword::Temporary);

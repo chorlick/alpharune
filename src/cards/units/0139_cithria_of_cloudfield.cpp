@@ -23,11 +23,11 @@ public:
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         auto& self = ctx.state.getObject(ctx.source);
         if (self.buff_count > 0) {
-            ctx.events.logTrace("CITHRIA OF CLOUDFIELD: already buffed -> no-op");
+            RIFT_TRACE(ctx.events, "CITHRIA OF CLOUDFIELD: already buffed -> no-op");
             return;  // "If I don't have a buff" — already buffed, do nothing.
         }
         ctx.executor.buffUnit(ctx.source);
-        ctx.events.logTrace("CITHRIA OF CLOUDFIELD: another unit played -> +1 buff");
+        RIFT_TRACE(ctx.events, "CITHRIA OF CLOUDFIELD: another unit played -> +1 buff");
     }
 private:
     const CardDef def_ = [] {

@@ -35,7 +35,7 @@ public:
             if (!obj.location.has_value() || *obj.location != here) continue;
             ctx.executor.giveTemporaryKeyword(id, Keyword::Ganking, 0);
         }
-        ctx.events.logTrace("MEGATUSK: spent 3 XP; friendly units here get Ganking");
+        RIFT_TRACE(ctx.events, "MEGATUSK: spent 3 XP; friendly units here get Ganking");
     }
 private:
     const CardDef def_ = [] {

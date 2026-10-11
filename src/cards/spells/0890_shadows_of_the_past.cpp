@@ -63,7 +63,7 @@ public:
         obj.zone = ZoneType::Hand;
         obj.location = std::nullopt;
         owner.hand.push_back(picked);
-        ctx.events.logTrace("SHADOWS OF THE PAST: returned " + obj.name +
+        RIFT_TRACE(ctx.events, "SHADOWS OF THE PAST: returned " + obj.name +
                             " from trash to its owner's hand");
         if (ri.resume_data.empty()) ri.resume_data = {0};
         if (++ri.resume_data[0] >= 2 || !prompt()) ri.resume_point = 2;

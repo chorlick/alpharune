@@ -32,7 +32,7 @@ public:
         const auto& me = ctx.state.getObject(self);
         if (!me.isEmpowered() || !me.location.has_value()) return false;
         ctx.executor.giveTemporaryMight(self, 3);
-        ctx.events.logTrace("GANGPLANK, NAVAL: Empowered -> +3 [M] this turn instead");
+        RIFT_TRACE(ctx.events, "GANGPLANK, NAVAL: Empowered -> +3 [M] this turn instead");
         return true;
     }
 private:

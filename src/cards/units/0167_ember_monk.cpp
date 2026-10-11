@@ -19,7 +19,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.events.logTrace("EMBER MONK: played from Hidden -> +2 M this turn");
+        RIFT_TRACE(ctx.events, "EMBER MONK: played from Hidden -> +2 M this turn");
     }
 private:
     const CardDef def_ = [] {

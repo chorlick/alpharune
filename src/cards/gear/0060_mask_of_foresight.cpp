@@ -30,7 +30,7 @@ public:
         const auto& unit = ctx.state.getObject(subject);
         if (!unit.isUnit() || !unit.location.has_value()) return;
         ctx.executor.giveTemporaryMight(subject, 1);
-        ctx.events.logTrace("MASK OF FORESIGHT: +1 [M] to the lone attacker/defender");
+        RIFT_TRACE(ctx.events, "MASK OF FORESIGHT: +1 [M] to the lone attacker/defender");
     }
 private:
     const CardDef def_ = [] {

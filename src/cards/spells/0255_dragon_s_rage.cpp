@@ -39,7 +39,7 @@ public:
         if (dest < 0) return;   // waiting, or nowhere to move it
         moveTo(ctx, mover, dest);
         ri.resume_point = kDone;
-        ctx.events.logTrace("DRAGON'S RAGE: moved an enemy unit");
+        RIFT_TRACE(ctx.events, "DRAGON'S RAGE: moved an enemy unit");
         ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
                                            {static_cast<int32_t>(mover)});
     }
@@ -80,7 +80,7 @@ public:
                 if (obj.location.has_value() && obj.hasLethalDamage()) ctx.executor.killObject(id);
             }
         }
-        ctx.events.logTrace("DRAGON'S RAGE: mutual-Might damage");
+        RIFT_TRACE(ctx.events, "DRAGON'S RAGE: mutual-Might damage");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true};

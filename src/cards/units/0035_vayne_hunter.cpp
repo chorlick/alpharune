@@ -46,7 +46,7 @@ public:
         // A Vayne that left the board in response stays where she went
         // (EffectExecutor::bounceToHand does nothing for her).
         ctx.executor.bounceToHand(ctx.source);
-        ctx.events.logTrace("VAYNE: paid [1] -> returned to owner's hand");
+        RIFT_TRACE(ctx.events, "VAYNE: paid [1] -> returned to owner's hand");
     }
 private:
     const CardDef def_ = [] {

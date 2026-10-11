@@ -24,7 +24,7 @@ public:
         for (auto id : to_bounce) {
             if (ctx.state.objectExists(id)) ctx.executor.bounceToHand(id);
         }
-        ctx.events.logTrace("DOWNWELL: returned " +
+        RIFT_TRACE(ctx.events, "DOWNWELL: returned " +
                              std::to_string(to_bounce.size()) +
                              " units/gear to hands");
     }

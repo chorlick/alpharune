@@ -45,7 +45,7 @@ public:
                 ctx.source, std::get<BattlefieldLocation>(*mover.location).id);
         else
             ctx.executor.moveToBase(ctx.source);
-        ctx.events.logTrace("STEALTHY PURSUER: follows the moved friendly unit");
+        RIFT_TRACE(ctx.events, "STEALTHY PURSUER: follows the moved friendly unit");
     }
 private:
     const CardDef def_ = [] {

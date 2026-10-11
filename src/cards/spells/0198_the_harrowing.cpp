@@ -45,7 +45,7 @@ public:
         if (ctx.executor.playPayingCost(ctx.controller, picked,
                                         effectPlayLocation(ctx.state, ctx.controller, where),
                                         power_only))
-            ctx.events.logTrace("THE HARROWING: played a unit from trash for its Power cost");
+            RIFT_TRACE(ctx.events, "THE HARROWING: played a unit from trash for its Power cost");
     }
 private:
     const CardDef def_ = [] {

@@ -62,7 +62,7 @@ public:
         // Swap: bump each toward the other's current Might (this turn).
         ctx.executor.giveTemporaryMight(a, might_b - might_a);
         ctx.executor.giveTemporaryMight(b, might_a - might_b);
-        ctx.events.logTrace("SWITCHEROO: swapped Might " + std::to_string(might_a) +
+        RIFT_TRACE(ctx.events, "SWITCHEROO: swapped Might " + std::to_string(might_a) +
                             " <-> " + std::to_string(might_b));
     }
 private:

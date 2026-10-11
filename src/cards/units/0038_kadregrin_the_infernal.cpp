@@ -24,7 +24,7 @@ public:
         }
         if (mighty > 0) {
             ctx.executor.drawCards(ctx.controller, mighty);
-            ctx.events.logTrace("KADREGRIN THE INFERNAL: drew " +
+            RIFT_TRACE(ctx.events, "KADREGRIN THE INFERNAL: drew " +
                                 std::to_string(mighty) + " (one per Mighty unit)");
         }
     }

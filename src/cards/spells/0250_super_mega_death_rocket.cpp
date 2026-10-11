@@ -60,7 +60,7 @@ public:
         self.zone = ZoneType::Hand;
         self.location = std::nullopt;
         ps.hand.push_back(ctx.source);
-        ctx.events.logTrace("SUPER MEGA DEATH ROCKET!: returned from trash to hand");
+        RIFT_TRACE(ctx.events, "SUPER MEGA DEATH ROCKET!: returned from trash to hand");
     }
 private:
     const CardDef def_ = [] {

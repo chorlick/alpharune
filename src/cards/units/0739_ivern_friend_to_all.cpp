@@ -44,19 +44,19 @@ private:
         if (std::find(tags.begin(), tags.end(), chosen) == tags.end()) {
             tags.push_back(chosen);
         }
-        ctx.events.logTrace("IVERN FRIEND: chose tag [" + chosen + "]");
+        RIFT_TRACE(ctx.events, "IVERN FRIEND: chose tag [" + chosen + "]");
     }
 
     void doScore(CardContext& ctx) {
         auto pres = scanFriendlyTags(ctx.state, ctx.controller);
         if (!pres.allFour()) {
-            ctx.events.logTrace("IVERN FRIEND: union not satisfied (count=" +
+            RIFT_TRACE(ctx.events, "IVERN FRIEND: union not satisfied (count=" +
                                  std::to_string(pres.count()) + "/4) — no score");
             return;
         }
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
         const auto& ps = ctx.state.player(ctx.controller);
-        ctx.events.logTrace("IVERN FRIEND: all-4-tag union satisfied — score 1 -> " +
+        RIFT_TRACE(ctx.events, "IVERN FRIEND: all-4-tag union satisfied — score 1 -> " +
                              std::to_string(ps.score));
     }
 private:

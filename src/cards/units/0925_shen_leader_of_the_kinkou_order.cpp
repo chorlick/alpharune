@@ -26,7 +26,7 @@ public:
         if (!self.isAtBattlefield()) return;
         if (otherFriendlyUnitsHere(ctx.state, self) != 1) return;
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-        ctx.events.logTrace("SHEN, LEADER OF THE KINKOU ORDER: hold with exactly one "
+        RIFT_TRACE(ctx.events, "SHEN, LEADER OF THE KINKOU ORDER: hold with exactly one "
                             "other friendly unit here -> score 1 point");
     }
 private:

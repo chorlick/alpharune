@@ -41,12 +41,12 @@ public:
                     const std::vector<GameObjectId>& /*targets*/) override {
         if (ability_index == 0) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("RENATA MASTERMIND: [1][B] -> draw 1");
+            RIFT_TRACE(ctx.events, "RENATA MASTERMIND: [1][B] -> draw 1");
         } else {
             // CR 194.1.c: points from an ability go through the executor (honours
             // "can't gain points", ends the game at the Victory Score).
             ctx.executor.scorePoints(ctx.controller, 1);
-            ctx.events.logTrace("RENATA MASTERMIND: [4][B][B][B][B],[E] -> score 1 point");
+            RIFT_TRACE(ctx.events, "RENATA MASTERMIND: [4][B][B][B][B],[E] -> score 1 point");
         }
     }
 private:

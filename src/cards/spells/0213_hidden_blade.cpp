@@ -35,14 +35,14 @@ public:
         // the resume re-entry path could lag a turn — defensive re-check.
         auto& obj = ctx.state.getObject(picked);
         if (!obj.isUnit() || !obj.isAtBattlefield()) {
-            ctx.events.logTrace("HIDDEN BLADE: target no longer at a "
+            RIFT_TRACE(ctx.events, "HIDDEN BLADE: target no longer at a "
                                  "battlefield — fizzle (CR 463)");
             return;
         }
         PlayerId target_controller = obj.controller;
         ctx.executor.killObject(picked);
         if (target_controller != PlayerId::None) {
-            ctx.events.logTrace("HIDDEN BLADE: its controller (" +
+            RIFT_TRACE(ctx.events, "HIDDEN BLADE: its controller (" +
                                  std::string(toString(target_controller)) +
                                  ") draws 2");
             ctx.executor.drawCards(target_controller, 2);

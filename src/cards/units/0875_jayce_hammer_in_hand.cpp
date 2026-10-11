@@ -38,7 +38,7 @@ public:
         case 1: ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Deflect, 2); break;
         default: ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Ganking, 0); break;
         }
-        ctx.events.logTrace("JAYCE, HAMMER IN HAND: became ready -> [" + kModes[mode] + "] this turn");
+        RIFT_TRACE(ctx.events, "JAYCE, HAMMER IN HAND: became ready -> [" + kModes[mode] + "] this turn");
     }
 private:
     const CardDef def_ = [] {

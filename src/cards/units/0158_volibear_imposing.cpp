@@ -38,7 +38,7 @@ public:
             return;  // moved to MY battlefield -> no draw
         }
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("VOLIBEAR IMPOSING: opponent moved elsewhere -> draw 1");
+        RIFT_TRACE(ctx.events, "VOLIBEAR IMPOSING: opponent moved elsewhere -> draw 1");
     }
 private:
     const CardDef def_ = [] {

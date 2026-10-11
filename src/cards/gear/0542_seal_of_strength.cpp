@@ -26,7 +26,7 @@ public:
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
         // [O] is Body (CR 134.2), this card's own domain.
         ctx.executor.addFloatingPower(ctx.controller, Domain::Body, 1);
-        ctx.events.logTrace("SEAL OF STRENGTH: Add [O]");
+        RIFT_TRACE(ctx.events, "SEAL OF STRENGTH: Add [O]");
     }
 private:
     const CardDef def_ = [] {

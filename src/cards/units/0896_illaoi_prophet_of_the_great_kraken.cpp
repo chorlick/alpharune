@@ -32,7 +32,7 @@ public:
                                  destLocation(ctx.controller, std::max(0, dest)),
                                  /*enter_ready=*/false,
                                  tokenPlayLocations(ctx.state, ctx.controller));
-        ctx.events.logTrace("ILLAOI, PROPHET: 1[M] Tentacle token");
+        RIFT_TRACE(ctx.events, "ILLAOI, PROPHET: 1[M] Tentacle token");
     }
     // "I have +1 [M] for each token unit you control."
     void applyPassiveAura(GameState& state, PlayerId controller) const override {

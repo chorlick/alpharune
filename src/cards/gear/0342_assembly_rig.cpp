@@ -56,7 +56,7 @@ public:
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Mech",
                                  /*might=*/3, /*tags=*/{"Mech"}, KeywordSet{},
                                  loc, /*enter_ready=*/false);
-        ctx.events.logTrace("ASSEMBLY RIG: recycled a unit -> 3[M] Mech token to base");
+        RIFT_TRACE(ctx.events, "ASSEMBLY RIG: recycled a unit -> 3[M] Mech token to base");
     }
 private:
     const CardDef def_ = [] {

@@ -54,7 +54,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.giveTemporaryMight(tgt, -1);
-        ctx.events.logTrace("ICEVALE ARCHER: paid [1] -> gave a unit here -1 [M] this turn");
+        RIFT_TRACE(ctx.events, "ICEVALE ARCHER: paid [1] -> gave a unit here -1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

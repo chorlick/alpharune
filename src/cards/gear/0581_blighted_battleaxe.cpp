@@ -33,7 +33,7 @@ public:
         bool conquered_this_turn = (it != unit.card_counters.end() &&
                                     it->second == ctx.state.turn.turn_number);
         if (conquered_this_turn) return;
-        ctx.events.logTrace("BLIGHTED BATTLEAXE: no conquer this turn — "
+        RIFT_TRACE(ctx.events, "BLIGHTED BATTLEAXE: no conquer this turn — "
                             "unattach + deal 4 to bearer");
         ctx.executor.unattachGear(ctx.source);
         ctx.executor.dealDamage(unit_id, 4, ctx.source);

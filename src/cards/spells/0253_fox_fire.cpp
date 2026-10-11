@@ -99,7 +99,7 @@ public:
                 DeathBatch together(ctx.executor, units);   // they die at the same time
                 for (auto id : units) ctx.executor.killObject(id);
             }
-            ctx.events.logTrace("FOX-FIRE: killed " + std::to_string(units.size()) +
+            RIFT_TRACE(ctx.events, "FOX-FIRE: killed " + std::to_string(units.size()) +
                                 " chosen units (total Might <= 4) at one battlefield");
         };
         if (ri.resume_point == kChosen) {

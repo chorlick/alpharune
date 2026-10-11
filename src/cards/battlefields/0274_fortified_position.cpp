@@ -25,7 +25,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId) return;     // none / mistarget / waiting
         ctx.executor.giveTemporaryKeyword(picked, Keyword::Shield, 2);
-        ctx.events.logTrace("FORTIFIED POSITION: defend -> grant Shield 2");
+        RIFT_TRACE(ctx.events, "FORTIFIED POSITION: defend -> grant Shield 2");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouDefendHere; }
 private:

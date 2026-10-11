@@ -24,7 +24,7 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         if (ctx.state.getObject(ctx.source).damage_taken_this_turn > 0) return;
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("AFFECTIONATE PORO: combat ended undamaged -> draw 1");
+        RIFT_TRACE(ctx.events, "AFFECTIONATE PORO: combat ended undamaged -> draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -24,7 +24,7 @@ public:
         if (runesControlled(ctx.state, ctx.controller) >=
             runesControlled(ctx.state, opponent(ctx.controller))) return;
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("FORSAKEN BACCAI: fewer runes -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "FORSAKEN BACCAI: fewer runes -> +1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

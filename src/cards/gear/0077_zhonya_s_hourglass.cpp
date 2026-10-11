@@ -30,7 +30,7 @@ public:
         // Only a FRIENDLY unit's death (replacementApplies).
         if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
         const auto& victim = ctx.state.getObject(dying_unit);
-        ctx.events.logTrace("ZHONYA'S HOURGLASS: kill self instead of " +
+        RIFT_TRACE(ctx.events, "ZHONYA'S HOURGLASS: kill self instead of " +
                              victim.name + " — heal/exhaust/recall it");
         // Kill the gear instead.
         ctx.executor.killObject(ctx.source);

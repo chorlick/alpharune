@@ -57,7 +57,7 @@ public:
                 while (ri->resume_data.size() <= kTokenSlot) ri->resume_data.push_back(0);
                 ri->resume_data[kTokenSlot] = static_cast<int32_t>(tok) + 1;
             }
-            ctx.events.logTrace("GUARDS!: play 2[M] Sand Soldier token");
+            RIFT_TRACE(ctx.events, "GUARDS!: play 2[M] Sand Soldier token");
         }
         // "Then do this: You may pay [C] to ready it." — a reflexive trigger
         // (CR 388): with the token played it goes on the chain as an item of
@@ -97,7 +97,7 @@ public:
         if (!ctx.state.objectExists(tok) || !ctx.state.getObject(tok).location.has_value())
             return;                           // the token left in response
         ctx.executor.readyObject(tok);
-        ctx.events.logTrace("GUARDS!: paid [Y] -> readied Sand Soldier");
+        RIFT_TRACE(ctx.events, "GUARDS!: paid [Y] -> readied Sand Soldier");
     }
 private:
     const CardDef def_ = [] {

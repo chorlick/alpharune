@@ -39,14 +39,14 @@ public:
             if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
             if (go != 1) return;
             createGoldExhausted(ctx);
-            ctx.events.logTrace("BATTLE MISTRESS: recycled a rune -> Gold token (exhausted)");
+            RIFT_TRACE(ctx.events, "BATTLE MISTRESS: recycled a rune -> Gold token (exhausted)");
             return;
         }
         // "When one or more enemy units die, ready me."
         if (finalizingChoices(ctx)) return;       // no choices in this ability
         if (!ctx.state.objectExists(ctx.source)) return;
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("BATTLE MISTRESS: enemy unit died -> ready me");
+        RIFT_TRACE(ctx.events, "BATTLE MISTRESS: enemy unit died -> ready me");
     }
 private:
     const CardDef def_ = [] {

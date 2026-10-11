@@ -103,7 +103,7 @@ public:
                 }
             }
         }
-        ctx.events.logTrace("BELLOWS BREATH: dealt 1 to " +
+        RIFT_TRACE(ctx.events, "BELLOWS BREATH: dealt 1 to " +
                              std::to_string(hit.size()) + " units at same location");
     }
 private:

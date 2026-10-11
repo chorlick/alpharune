@@ -31,10 +31,10 @@ public:
         const int max_x = std::min(ctx.executor.payableAnyPower(ctx.controller), 15);
         const int x = pickXAmount(ctx, "Hextech Anomaly: pay X [A] → Add X energy", 0, max_x);
         if (x < 0) return;        // pending choice
-        if (x == 0) { ctx.events.logTrace("HEXTECH ANOMALY: X=0"); return; }
+        if (x == 0) { RIFT_TRACE(ctx.events, "HEXTECH ANOMALY: X=0"); return; }
         if (!ctx.executor.payAnyPower(ctx.controller, x)) return;
         ctx.executor.addFloatingEnergy(ctx.controller, x);
-        ctx.events.logTrace("HEXTECH ANOMALY: paid " + std::to_string(x) +
+        RIFT_TRACE(ctx.events, "HEXTECH ANOMALY: paid " + std::to_string(x) +
                              " [A] → +" + std::to_string(x) + " energy");
     }
 private:

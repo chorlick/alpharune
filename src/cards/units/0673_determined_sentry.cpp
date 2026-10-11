@@ -17,7 +17,7 @@ public:
     void onPlay(CardContext& ctx) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         ctx.state.getObject(ctx.source).cant_move_to_base = true;
-        ctx.events.logTrace("DETERMINED SENTRY: can't move to base");
+        RIFT_TRACE(ctx.events, "DETERMINED SENTRY: can't move to base");
     }
 private:
     const CardDef def_ = [] {

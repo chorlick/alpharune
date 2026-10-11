@@ -40,7 +40,7 @@ public:
         // "If you do" — buff me.
         if (ctx.state.objectExists(ctx.source)) {
             ctx.executor.buffUnit(ctx.source);
-            ctx.events.logTrace("ADAPTATRON: killed gear -> buff me");
+            RIFT_TRACE(ctx.events, "ADAPTATRON: killed gear -> buff me");
         }
     }
 private:

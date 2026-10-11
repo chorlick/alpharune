@@ -36,7 +36,7 @@ public:
         if (!in_trash()) return;              // left the trash in response
         ctx.executor.playIgnoringCost(ctx.controller, ctx.source,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
-        ctx.events.logTrace("FLAME CHOMPERS: paid [R] -> play from trash");
+        RIFT_TRACE(ctx.events, "FLAME CHOMPERS: paid [R] -> play from trash");
     }
 private:
     const CardDef def_ = [] {

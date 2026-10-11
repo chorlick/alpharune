@@ -30,7 +30,7 @@ public:
         if (!paid || !self.location.has_value()) return;
         ctx.executor.readyObject(ctx.source);
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.events.logTrace("PYKE DOCKSIDE BUTCHER: paid [R] -> ready me + +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "PYKE DOCKSIDE BUTCHER: paid [R] -> ready me + +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

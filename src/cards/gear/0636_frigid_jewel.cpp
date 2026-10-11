@@ -46,7 +46,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId) return;        // none / mistarget / waiting
         ctx.executor.giveTemporaryMight(tgt, 2);
-        ctx.events.logTrace("FRIGID JEWEL: 2nd draw -> a friendly unit +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "FRIGID JEWEL: 2nd draw -> a friendly unit +2 [M] this turn");
     }
 private:
     static constexpr const char* kFiredTurn = "__frigid_fired_turn";

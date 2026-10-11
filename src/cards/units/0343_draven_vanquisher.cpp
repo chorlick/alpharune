@@ -27,7 +27,7 @@ public:
         if (ctx.firing_trigger == TriggerType::WhenIWinCombat) {
             if (finalizingChoices(ctx)) return;   // no choices
             createGoldExhausted(ctx);
-            ctx.events.logTrace("DRAVEN: won combat -> Gold gear token (exhausted)");
+            RIFT_TRACE(ctx.events, "DRAVEN: won combat -> Gold gear token (exhausted)");
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenIAttackOrDefend) {
@@ -45,7 +45,7 @@ public:
             // "give me": only while I'm still on the board.
             if (!ctx.state.getObject(ctx.source).location.has_value()) return;
             ctx.executor.giveTemporaryMight(ctx.source, 2);
-            ctx.events.logTrace("DRAVEN: paid [R] -> +2 [M] this turn");
+            RIFT_TRACE(ctx.events, "DRAVEN: paid [R] -> +2 [M] this turn");
             return;
         }
     }

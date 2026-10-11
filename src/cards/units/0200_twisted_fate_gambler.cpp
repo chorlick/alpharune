@@ -38,7 +38,7 @@ public:
             /*source_zone=*/ZoneType::RuneDeck});
         ps.rune_deck.pop_back();
         ctx.executor.recycleCards(ctx.controller, {rune});
-        ctx.events.logTrace("TWISTED FATE: revealed and recycled the top rune");
+        RIFT_TRACE(ctx.events, "TWISTED FATE: revealed and recycled the top rune");
         // "Do one of the following based on its domain" is a reflexive
         // trigger (CR 388.1): the one that matches goes on the chain now, as
         // a pending item of its own (CR 389.1) — its target is chosen when it
@@ -101,7 +101,7 @@ public:
         } else {
             if (finalizingChoices(ctx)) return;
         }
-        ctx.events.logTrace("TWISTED FATE: domain payoff resolved");
+        RIFT_TRACE(ctx.events, "TWISTED FATE: domain payoff resolved");
     }
 private:
     const CardDef def_ = [] {

@@ -31,13 +31,13 @@ void ChainManager::payDeflectForChoices(ChainItem& item) {
     for (auto t : item.targets) {
         const int deflect = executor_->deflectCostFor(item.controller, t);
         if (deflect > 0 && !executor_->payAnyPower(item.controller, deflect)) {
-            events_.logTrace("DEFLECT_UNPAID: " + std::string(toString(item.controller)) +
+            RIFT_TRACE(events_, "DEFLECT_UNPAID: " + std::string(toString(item.controller)) +
                              " cannot pay " + std::to_string(deflect) + " [A] to choose " +
                              state_.getObject(t).name + " — it is not chosen");
             continue;
         }
         if (deflect > 0)
-            events_.logTrace("DEFLECT: " + std::string(toString(item.controller)) + " pays " +
+            RIFT_TRACE(events_, "DEFLECT: " + std::string(toString(item.controller)) + " pays " +
                              std::to_string(deflect) + " [A] to choose " +
                              state_.getObject(t).name);
         chosen.push_back(t);
@@ -417,7 +417,7 @@ void ChainManager::runResumable(
         // decision (e.g. "discard 1 (Lunar Boon)") instead of just the
         // WHAT (e.g. "pick=[Hard Bargain(id=12)]"). Cards that don't pass
         // a label fall back to a generic line.
-        events_.logTrace(
+        RIFT_TRACE(events_, 
             std::string("CHOICE-REQUEST: ") +
             (pending.label.empty() ? "MakeChoice" : pending.label) +
             " [" + std::to_string(pending.legal.size()) + " options] (" +
@@ -434,7 +434,7 @@ void ChainManager::runResumable(
 // leaves without resolving, the state opens and the game goes on. Cards still
 // in the Chain zone go to their owner's trash.
 void ChainManager::abandonChain(const std::string& why) {
-    events_.logWarn("ChainManager: " + why + " — abandoning " +
+    RIFT_WARN(events_, "ChainManager: " + why + " — abandoning " +
                     std::to_string(state_.chain.items.size()) + " chain item(s)");
     for (const auto& item : state_.chain.items) {
         if (!item.is_spell && !item.is_permanent) continue;
@@ -528,7 +528,7 @@ void ChainManager::stepResolve(
             if (ci.is_spell && ci.source == resolved.source) replayed = true;
 
     if (replayed && state_.objectExists(resolved.source)) {
-        events_.logTrace("CHAIN: " + state_.getObject(resolved.source).name +
+        RIFT_TRACE(events_, "CHAIN: " + state_.getObject(resolved.source).name +
                          " was played again while it resolved — it stays on the chain");
         events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
     } else if (resolved.is_spell && state_.objectExists(resolved.source)) {

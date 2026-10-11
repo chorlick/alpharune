@@ -21,7 +21,7 @@ public:
                     const std::vector<GameObjectId>& /*targets*/) override {
         // "Spend this Energy only during showdowns" (RunePool::showdown_energy).
         ctx.state.player(ctx.controller).rune_pool.showdown_energy += 1;
-        ctx.events.logTrace("ACTIVATE: Scorn of the Moon adds [1] Energy, showdowns only");
+        RIFT_TRACE(ctx.events, "ACTIVATE: Scorn of the Moon adds [1] Energy, showdowns only");
     }
 private:
     const CardDef def_ = [] {

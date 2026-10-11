@@ -44,7 +44,7 @@ public:
             }
             if (out.empty()) return;
             ctx.executor.recycleCards(ctx.controller, out);
-            ctx.events.logTrace("DR. MUNDO: recycled " + std::to_string(out.size()) +
+            RIFT_TRACE(ctx.events, "DR. MUNDO: recycled " + std::to_string(out.size()) +
                                 " from trash");
         };
         // Three or fewer cards: all of them, nothing to choose. Also when

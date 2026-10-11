@@ -23,11 +23,11 @@ public:
         const auto& lk = ctx.state.getObject(ctx.source).last_known;
         if (!lk.valid) return;
         if (!lk.other_friendly_units_here.empty()) {
-            ctx.events.logTrace("LONELY PORO: did not die alone -> no draw");
+            RIFT_TRACE(ctx.events, "LONELY PORO: did not die alone -> no draw");
             return;
         }
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("LONELY PORO: died alone -> draw 1");
+        RIFT_TRACE(ctx.events, "LONELY PORO: died alone -> draw 1");
     }
 private:
     const CardDef def_ = [] {

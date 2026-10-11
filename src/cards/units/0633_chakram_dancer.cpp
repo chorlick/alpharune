@@ -29,7 +29,7 @@ public:
             ++granted;
         }
         if (granted > 0) {
-            ctx.events.logTrace("CHAKRAM DANCER: gave [Shield] this turn to " +
+            RIFT_TRACE(ctx.events, "CHAKRAM DANCER: gave [Shield] this turn to " +
                                 std::to_string(granted) + " other unit(s) here");
         }
     }

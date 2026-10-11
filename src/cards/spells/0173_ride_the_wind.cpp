@@ -37,7 +37,7 @@ public:
         if (dest == -1) return;             // waiting for the destination
         if (dest >= 0) moveTo(ctx, picked, dest);
         ctx.executor.readyObject(picked);
-        ctx.events.logTrace("RIDE THE WIND: moved + readied " +
+        RIFT_TRACE(ctx.events, "RIDE THE WIND: moved + readied " +
                              ctx.state.getObject(picked).name);
     }
 private:

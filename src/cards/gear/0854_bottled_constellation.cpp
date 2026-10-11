@@ -48,9 +48,9 @@ public:
             // CR 194.1.c: scorePoints honours "can't gain points" and ends the
             // game at once at the Victory Score.
             if (ctx.executor.scorePoints(ctx.controller, 1) == 0)
-                ctx.events.logTrace("BOTTLED CONSTELLATION: can't gain points");
+                RIFT_TRACE(ctx.events, "BOTTLED CONSTELLATION: can't gain points");
             else
-                ctx.events.logTrace("BOTTLED CONSTELLATION: scored 1 point -> " +
+                RIFT_TRACE(ctx.events, "BOTTLED CONSTELLATION: scored 1 point -> " +
                     std::to_string(ctx.state.player(ctx.controller).score));
         };
         const int go = confirmOptional(

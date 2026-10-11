@@ -54,7 +54,7 @@ public:
             if (my_bf) loc = LocationId{BattlefieldLocation{*my_bf}};
         }
         ctx.executor.playIgnoringCost(ctx.controller, picked, loc);
-        ctx.events.logTrace("AVA ACHIEVER: paid [C] -> played a Hidden card from hand");
+        RIFT_TRACE(ctx.events, "AVA ACHIEVER: paid [C] -> played a Hidden card from hand");
     }
 private:
     const CardDef def_ = [] {

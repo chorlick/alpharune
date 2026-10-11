@@ -27,7 +27,7 @@ public:
             ctx.state.getObject(targets[0]).hasLethalDamage()) {
             ctx.executor.killObject(targets[0]);
         }
-        ctx.events.logTrace("SUDDEN STORM: deal " + std::to_string(dmg));
+        RIFT_TRACE(ctx.events, "SUDDEN STORM: deal " + std::to_string(dmg));
     }
 private:
     const CardDef def_ = [] {

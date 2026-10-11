@@ -26,7 +26,7 @@ public:
         // CR 194.1.c; scorePoints honours "can't gain points" (Tianna Crownguard).
         if (ctx.executor.scorePoints(ctx.controller, 1) == 0) return;
         const auto& ps = ctx.state.player(ctx.controller);
-        ctx.events.logTrace("NASUS, ASCENDED: Empowered conquer -> score 1 point -> " +
+        RIFT_TRACE(ctx.events, "NASUS, ASCENDED: Empowered conquer -> score 1 point -> " +
                             std::to_string(ps.score));
     }
 private:

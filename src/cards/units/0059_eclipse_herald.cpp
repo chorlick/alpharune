@@ -20,7 +20,7 @@ public:
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.readyObject(ctx.source);
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("ECLIPSE HERALD: stun -> ready me + +1 [M]");
+        RIFT_TRACE(ctx.events, "ECLIPSE HERALD: stun -> ready me + +1 [M]");
     }
 private:
     const CardDef def_ = [] {

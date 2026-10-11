@@ -45,7 +45,7 @@ public:
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.bounceToHand(ctx.source);
-        ctx.events.logTrace("VAYNE, HUNTER: conquer -> paid [1] to return to hand");
+        RIFT_TRACE(ctx.events, "VAYNE, HUNTER: conquer -> paid [1] to return to hand");
     }
 private:
     const CardDef def_ = [] {

@@ -42,7 +42,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 355)
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 1);
-        ctx.events.logTrace("VI: recycled 1 from trash -> +1 [M] this turn");
+        RIFT_TRACE(ctx.events, "VI: recycled 1 from trash -> +1 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

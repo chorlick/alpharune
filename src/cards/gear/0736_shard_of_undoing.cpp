@@ -77,7 +77,7 @@ public:
         }
         if (ri) ri->resume_point = kDone;
         ctx.executor.killObject(victim);
-        ctx.events.logTrace("SHARD OF UNDOING: opponent kills a unit "
+        RIFT_TRACE(ctx.events, "SHARD OF UNDOING: opponent kills a unit "
                             "(first friendly death of their Beginning Phase)");
     }
 private:

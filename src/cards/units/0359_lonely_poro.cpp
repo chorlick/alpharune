@@ -24,7 +24,7 @@ public:
         if (!died_at.has_value()) died_at = self.location;
         if (!died_at.has_value()) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("LONELY PORO: death location unknown -> draw 1 (approx alone)");
+            RIFT_TRACE(ctx.events, "LONELY PORO: death location unknown -> draw 1 (approx alone)");
             return;
         }
         bool other_friendly_here = false;
@@ -37,9 +37,9 @@ public:
         }
         if (!other_friendly_here) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("LONELY PORO: died alone -> draw 1");
+            RIFT_TRACE(ctx.events, "LONELY PORO: died alone -> draw 1");
         } else {
-            ctx.events.logTrace("LONELY PORO: did not die alone -> no draw");
+            RIFT_TRACE(ctx.events, "LONELY PORO: did not die alone -> no draw");
         }
     }
 private:

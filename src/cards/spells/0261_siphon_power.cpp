@@ -41,7 +41,7 @@ public:
             else
                 ctx.executor.giveTemporaryMight(id, -1, /*minimum=*/1);
         }
-        ctx.events.logTrace("SIPHON POWER: friendly +1 / enemy -1 (min 1) at one BF");
+        RIFT_TRACE(ctx.events, "SIPHON POWER: friendly +1 / enemy -1 (min 1) at one BF");
     }
 private:
     const CardDef def_ = [] {

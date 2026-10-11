@@ -56,7 +56,7 @@ public:
             // controller's Beginning Phase kills it (a giveTemporaryKeyword
             // grant would be stripped at the end of this turn).
             ctx.state.getObject(picked).keywords.set(Keyword::Temporary);
-            ctx.events.logTrace("SHADOW'S CALL: " + ctx.state.getObject(picked).name +
+            RIFT_TRACE(ctx.events, "SHADOW'S CALL: " + ctx.state.getObject(picked).name +
                                 " gains [Temporary]");
         }
         ctx.executor.drawCards(ctx.controller, 2);

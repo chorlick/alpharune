@@ -19,7 +19,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 1);
-        ctx.events.logTrace("KEEPER OF THE HAMMER: +1 XP on hold");
+        RIFT_TRACE(ctx.events, "KEEPER OF THE HAMMER: +1 XP on hold");
     }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
@@ -27,7 +27,7 @@ public:
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("KEEPER OF THE HAMMER: spent 3 XP, drew 1");
+        RIFT_TRACE(ctx.events, "KEEPER OF THE HAMMER: spent 3 XP, drew 1");
     }
 private:
     const CardDef def_ = [] {

@@ -26,7 +26,7 @@ public:
         for (auto id : to_bounce) {
             if (ctx.state.objectExists(id)) ctx.executor.bounceToHand(id);
         }
-        ctx.events.logTrace("ANGLER BEAST: bounced " +
+        RIFT_TRACE(ctx.events, "ANGLER BEAST: bounced " +
                              std::to_string(to_bounce.size()) + " small units");
     }
 private:

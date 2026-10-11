@@ -35,7 +35,7 @@ public:
         if (!v.isUnit() || !v.location.has_value() || v.controller == ctx.controller) return;
         ctx.executor.stunUnitBy(victim, ctx.source);
         ctx.state.getObject(victim).cant_move_this_turn = true;
-        ctx.events.logTrace("VEX APATHETIC: opponent played a unit -> stun it");
+        RIFT_TRACE(ctx.events, "VEX APATHETIC: opponent played a unit -> stun it");
     }
 private:
     const CardDef def_ = [] {

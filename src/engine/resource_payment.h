@@ -169,7 +169,7 @@ inline bool payIn(GameState& state, EventBus& events, PlayerId player, int energ
         --p_need;
         ++paid_p;
     }
-    events.logTrace("PAY_ADD: " + std::string(toString(player)) + " pays [" +
+    RIFT_TRACE(events, "PAY_ADD: " + std::string(toString(player)) + " pays [" +
                     std::to_string(energy) + "] + " + std::to_string(power) + " power" +
                     (mask == kAnyDomain ? " (any)" : "") +
                     ": exhausted " + std::to_string(paid_e) + ", recycled " +

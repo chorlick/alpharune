@@ -38,7 +38,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (t == kInvalidId) return;          // none / mistarget / waiting
         ctx.executor.stunUnitBy(t, ctx.source);
-        ctx.events.logTrace("VI: stun on attack");
+        RIFT_TRACE(ctx.events, "VI: stun on attack");
     }
 private:
     const CardDef def_ = [] {

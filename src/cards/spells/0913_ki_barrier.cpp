@@ -30,7 +30,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto& unit = ctx.state.getObject(picked);
         unit.prevent_damage_remaining += 7;
-        ctx.events.logTrace("KI BARRIER: prevent the next 7 damage to " + unit.name);
+        RIFT_TRACE(ctx.events, "KI BARRIER: prevent the next 7 damage to " + unit.name);
     }
 private:
     const CardDef def_ = [] {

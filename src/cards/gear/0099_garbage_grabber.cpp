@@ -64,11 +64,11 @@ public:
             for (auto cid : to_recycle)
                 ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), cid), ps.trash.end());
             ctx.executor.recycleCards(ctx.controller, to_recycle);
-            ctx.events.logTrace("GARBAGE GRABBER: recycled 3 from trash");
+            RIFT_TRACE(ctx.events, "GARBAGE GRABBER: recycled 3 from trash");
         }
         if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("GARBAGE GRABBER: draw 1");
+        RIFT_TRACE(ctx.events, "GARBAGE GRABBER: draw 1");
     }
 private:
     const CardDef def_ = [] {

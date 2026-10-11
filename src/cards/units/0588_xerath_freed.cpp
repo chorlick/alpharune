@@ -61,7 +61,7 @@ public:
         if (ctx.state.objectExists(picked) &&
             ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
-        ctx.events.logTrace("XERATH FREED: dealt 3 to a unit");
+        RIFT_TRACE(ctx.events, "XERATH FREED: dealt 3 to a unit");
     }
 private:
     const CardDef def_ = [] {

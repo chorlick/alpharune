@@ -37,7 +37,7 @@ public:
         // "banished with this": only a Drive still on the board can play it back.
         auto& gear = ctx.state.getObject(ctx.source);
         if (gear.location.has_value()) gear.tracked_objects.push_back(unit);
-        ctx.events.logTrace("THE ZERO DRIVE: Deathknell — banished " +
+        RIFT_TRACE(ctx.events, "THE ZERO DRIVE: Deathknell — banished " +
                             ctx.state.getObject(unit).name);
     }
 
@@ -80,7 +80,7 @@ public:
         auto play = [&](GameObjectId uid, std::optional<LocationId> where) {
             // playIgnoringCost takes the card out of the banishment zone itself.
             ctx.executor.playIgnoringCost(ctx.controller, uid, where);
-            ctx.events.logTrace("THE ZERO DRIVE: replayed banished unit " +
+            RIFT_TRACE(ctx.events, "THE ZERO DRIVE: replayed banished unit " +
                                 ctx.state.getObject(uid).name);
         };
 

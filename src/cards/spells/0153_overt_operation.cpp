@@ -43,12 +43,12 @@ public:
             auto& u = ctx.state.getObject(id);
             ctx.executor.spendBuff(id, ctx.controller);   // CR 427.2; "When you spend a buff"
             ctx.executor.readyObject(id);
-            ctx.events.logTrace("OVERT OPERATION: spent buff to ready " + u.name);
+            RIFT_TRACE(ctx.events, "OVERT OPERATION: spent buff to ready " + u.name);
         };
         auto buff_all = [&]() {
             // "Then buff all friendly units." (Each one without a buff gets one.)
             for (auto id : friendly_units()) ctx.executor.buffUnit(id);
-            ctx.events.logTrace("OVERT OPERATION: buffed all friendly units");
+            RIFT_TRACE(ctx.events, "OVERT OPERATION: buffed all friendly units");
         };
         if (!ctx.state.chain.resuming.has_value()) {
             // Direct invocation (no chain item to resume): nobody can be

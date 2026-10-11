@@ -44,7 +44,7 @@ public:
                 }
             }
         }
-        ctx.events.logTrace("FROZEN FORTRESS: dealt 1 to each unit here");
+        RIFT_TRACE(ctx.events, "FROZEN FORTRESS: dealt 1 to each unit here");
     }
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
 private:

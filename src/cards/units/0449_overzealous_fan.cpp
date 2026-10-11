@@ -66,7 +66,7 @@ public:
         if (!paid || costUnpaid(ctx)) return;             // I did not die: nothing was paid
         std::string attacker_name = ctx.state.getObject(attacker).name;
         ctx.executor.moveToBase(attacker);   // to ITS base; it keeps buffs, damage and gear
-        ctx.events.logTrace("OVERZEALOUS FAN: killed self, moved " + attacker_name + " to its base");
+        RIFT_TRACE(ctx.events, "OVERZEALOUS FAN: killed self, moved " + attacker_name + " to its base");
     }
 private:
     const CardDef def_ = [] {

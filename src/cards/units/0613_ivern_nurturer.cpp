@@ -65,7 +65,7 @@ public:
             knowledge::seen(ctx.state, drafted, deck::Place::Held, knowledge::everyone());
             // "draw it": a draw (draws_this_turn, "When you draw").
             ctx.executor.drawHeldCard(ctx.controller, drafted, /*seen_by_all=*/true);
-            ctx.events.logTrace("IVERN NURTURER: revealed and drew " + obj.name);
+            RIFT_TRACE(ctx.events, "IVERN NURTURER: revealed and drew " + obj.name);
         }
         if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
         // "Then if you revealed a Bird, Cat, Dog, or Poro, do this: [Buff] a
@@ -87,7 +87,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 388.4)
         if (to_buff == kInvalidId || !ctx.state.objectExists(to_buff)) return;
         ctx.executor.buffUnit(to_buff);
-        ctx.events.logTrace("IVERN NURTURER: themed reveal -> buff " +
+        RIFT_TRACE(ctx.events, "IVERN NURTURER: themed reveal -> buff " +
                             ctx.state.getObject(to_buff).name);
     }
 private:

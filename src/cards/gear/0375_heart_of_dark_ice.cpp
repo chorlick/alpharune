@@ -42,7 +42,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         if (!ctx.state.getObject(picked).location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(picked, 3);
-        ctx.events.logTrace("HEART OF DARK ICE: +3M to " +
+        RIFT_TRACE(ctx.events, "HEART OF DARK ICE: +3M to " +
                              ctx.state.getObject(picked).name);
     }
 private:

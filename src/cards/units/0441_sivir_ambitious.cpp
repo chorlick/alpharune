@@ -49,7 +49,7 @@ public:
         if (amount <= 0) return;
         ctx.executor.dealDamage(tgt, amount, ctx.source);
         if (ctx.state.getObject(tgt).hasLethalDamage()) ctx.executor.killObject(tgt);
-        ctx.events.logTrace("SIVIR AMBITIOUS: conquer after an attack -> " +
+        RIFT_TRACE(ctx.events, "SIVIR AMBITIOUS: conquer after an attack -> " +
                             std::to_string(amount) + " to an enemy unit");
     }
 private:

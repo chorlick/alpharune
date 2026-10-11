@@ -48,7 +48,7 @@ public:
             return {};
         ps.xp -= 3;
         me.card_counters[kPaid] = 1;
-        ctx.events.logTrace("SAFETY INSPECTOR: paid 3 XP -> skip own kill");
+        RIFT_TRACE(ctx.events, "SAFETY INSPECTOR: paid 3 XP -> skip own kill");
         return {};
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
@@ -104,7 +104,7 @@ public:
         const bool kill_theirs = still_theirs(*theirs, opp);
         if (kill_mine) ctx.executor.killObject(mine);
         if (kill_theirs) ctx.executor.killObject(*theirs);
-        ctx.events.logTrace("SAFETY INSPECTOR: each player killed one of their units");
+        RIFT_TRACE(ctx.events, "SAFETY INSPECTOR: each player killed one of their units");
     }
 private:
     // resume_data slots (0..6 belong to the Card::pick* helpers).

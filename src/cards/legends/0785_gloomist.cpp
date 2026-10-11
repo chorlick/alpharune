@@ -34,7 +34,7 @@ public:
         if (costDueNow(ctx)) legend.is_exhausted = true;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("TRIGGER: Gloomist exhausts to draw 1");
+        RIFT_TRACE(ctx.events, "TRIGGER: Gloomist exhausts to draw 1");
     }
 private:
     const CardDef def_ = [] {

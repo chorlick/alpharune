@@ -32,7 +32,7 @@ public:
             ctx.state.game_over = true;
             ctx.state.winner = ctx.controller;
             ctx.state.game_over_reason = "Gutter Palace win condition";
-            ctx.events.logTrace("GUTTER PALACE: win condition met (4 hand / 4 units)");
+            RIFT_TRACE(ctx.events, "GUTTER PALACE: win condition met (4 hand / 4 units)");
         }
     }
 
@@ -50,7 +50,7 @@ public:
                        .value_or(LocationId{BaseLocation{ctx.controller}});
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Bird", 1,
                                   {"Bird"}, kw, loc, /*enter_ready=*/false);
-        ctx.events.logTrace("GUTTER PALACE: play 1M Bird token with [Deflect]");
+        RIFT_TRACE(ctx.events, "GUTTER PALACE: play 1M Bird token with [Deflect]");
     }
 private:
     const CardDef def_ = [] {

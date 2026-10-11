@@ -38,7 +38,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (conf < 1 || !on_board()) return;  // declined / I left the board
         ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Assault, 2);
-        ctx.events.logTrace("BACCAI REAPER: paid [R] -> [Assault 2] this turn");
+        RIFT_TRACE(ctx.events, "BACCAI REAPER: paid [R] -> [Assault 2] this turn");
     }
 private:
     const CardDef def_ = [] {

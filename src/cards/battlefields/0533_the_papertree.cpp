@@ -20,7 +20,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.channelRunes(PlayerId::Player1, 1, /*enter_exhausted=*/true);
         ctx.executor.channelRunes(PlayerId::Player2, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("THE PAPERTREE: hold -> each player channels 1 rune exhausted");
+        RIFT_TRACE(ctx.events, "THE PAPERTREE: hold -> each player channels 1 rune exhausted");
     }
 private:
     const CardDef def_ = [] {

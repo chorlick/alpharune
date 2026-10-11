@@ -30,7 +30,7 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-        ctx.events.logTrace("TRYNDAMERE: conquered after an attack with 5+ excess damage -> score 1");
+        RIFT_TRACE(ctx.events, "TRYNDAMERE: conquered after an attack with 5+ excess damage -> score 1");
     }
 private:
     const CardDef def_ = [] {

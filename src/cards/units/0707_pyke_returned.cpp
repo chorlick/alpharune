@@ -30,7 +30,7 @@ public:
         // says otherwise ("while I'm at a battlefield" is the condition, not a
         // place for the token). Exhausted, as the real Gold card (CR 187.5).
         createGoldExhausted(ctx);
-        ctx.events.logTrace("PYKE RETURNED: enemy unit died -> Gold gear token (exhausted)");
+        RIFT_TRACE(ctx.events, "PYKE RETURNED: enemy unit died -> Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

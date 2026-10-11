@@ -28,7 +28,7 @@ public:
         // exhausted us. CR 183.1: tokens cease to exist on leaving the
         // board, handled by killObject's super_type=Token branch.
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
-        ctx.events.logTrace("GOLD: kill+[E] -> +1 [A]");
+        RIFT_TRACE(ctx.events, "GOLD: kill+[E] -> +1 [A]");
         // "Your Gold [ADD] an additional [1]" (Chem-Baroness): a legend that
         // says so publishes the amount on itself, in
         // card_counters["__gold_add_bonus_energy"], from its applyPassiveAura
@@ -40,7 +40,7 @@ public:
             if (auto it = counters.find("__gold_add_bonus_energy");
                 it != counters.end() && it->second > 0) {
                 ctx.executor.addFloatingEnergy(ctx.controller, it->second);
-                ctx.events.logTrace("GOLD: +" + std::to_string(it->second) +
+                RIFT_TRACE(ctx.events, "GOLD: +" + std::to_string(it->second) +
                                     " Energy (legend bonus)");
             }
         }

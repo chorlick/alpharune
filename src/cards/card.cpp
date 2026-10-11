@@ -262,7 +262,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         // The trace tag distinguishes "skipped because illegal" from
         // "agent declined" — important for V&V.
         if (!still_legal()) {
-            ctx.events.logTrace("MAY_NOT_OFFERED: " + label +
+            RIFT_TRACE(ctx.events, "MAY_NOT_OFFERED: " + label +
                                  " (precondition failed at prompt time)");
             ri.resume_point = 2;  // mark "done, do not re-enter"
             ri.may_answer = 0;
@@ -290,7 +290,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         yes_choice.chosen_value = 1;
         yes_choice.choice_label = "Yes — " + label;
 
-        ctx.events.logTrace("MAY_PROMPT: " + label +
+        RIFT_TRACE(ctx.events, "MAY_PROMPT: " + label +
                              " (P=" + std::string(toString(ctx.controller)) +
                              ", deferred to agent)");
         ctx.executor.requestChoice(ctx.controller,
@@ -309,7 +309,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
                         picked->chosen_value.has_value() &&
                         *picked->chosen_value == 1;
         if (!said_yes) {
-            ctx.events.logTrace("MAY_DECLINED: " + label);
+            RIFT_TRACE(ctx.events, "MAY_DECLINED: " + label);
             ri.resume_point = 2;
             ri.may_answer = 0;
             nothingToDecide(ri);
@@ -319,7 +319,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         // agent decided — if the precondition no longer holds, the
         // "yes" can't be honored. CR-correct silent-fail behavior.
         if (!still_legal()) {
-            ctx.events.logTrace("MAY_INVALIDATED: " + label +
+            RIFT_TRACE(ctx.events, "MAY_INVALIDATED: " + label +
                                  " (state shifted between agent yes "
                                  "and execution; silent fail)");
             ri.resume_point = 2;
@@ -327,7 +327,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
             nothingToDecide(ri);
             return 0;
         }
-        ctx.events.logTrace("MAY_ACCEPTED: " + label);
+        RIFT_TRACE(ctx.events, "MAY_ACCEPTED: " + label);
         ri.resume_point = 2;  // commit; caller proceeds to do the work
         ri.may_answer = 1;
         return 1;
@@ -343,7 +343,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
     // precondition, which usually includes affording it, no longer applies.)
     if (ri.may_answer == 1 && ri.choices_finalized && !ri.finalizing) {
         if (!ri.finalize_costs_paid && !still_legal()) {
-            ctx.events.logTrace("MAY_INVALIDATED: " + label + " (no longer possible at resolution)");
+            RIFT_TRACE(ctx.events, "MAY_INVALIDATED: " + label + " (no longer possible at resolution)");
             ri.may_answer = 0;
             nothingToDecide(ri);
             return 0;
@@ -376,7 +376,7 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
 
     if (!(st & kXAwait)) {
         if (max < min) {
-            ctx.events.logTrace("X_NOT_OFFERED: " + label +
+            RIFT_TRACE(ctx.events, "X_NOT_OFFERED: " + label +
                                  " (max=" + std::to_string(max) +
                                  " below min=" + std::to_string(min) +
                                  ")");
@@ -397,7 +397,7 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
             intent.choice_label = label + ": " + std::to_string(x);
             options.push_back(intent);
         }
-        ctx.events.logTrace("X_PROMPT: " + label + " (range " +
+        RIFT_TRACE(ctx.events, "X_PROMPT: " + label + " (range " +
                              std::to_string(min) + ".." +
                              std::to_string(max) + ", " +
                              std::to_string(options.size()) +
@@ -416,7 +416,7 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
     }
     if (x < min) x = min;
     if (x > max) x = max;
-    ctx.events.logTrace("X_PICKED: " + label + " = " +
+    RIFT_TRACE(ctx.events, "X_PICKED: " + label + " = " +
                          std::to_string(x));
     store(x);
     return x;
@@ -470,7 +470,7 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
 
     if (!(st & kModeAwait)) {
         if (legal.empty()) {
-            ctx.events.logTrace("MODE_NOT_OFFERED: " + label +
+            RIFT_TRACE(ctx.events, "MODE_NOT_OFFERED: " + label +
                                  " (no legal modes after filtering)");
             store(-2);
             nothingToDecide(ri);
@@ -481,6 +481,8 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
         // rule that every decision point should surface to the agent
         // for training fidelity — see cost-payment loop, pickTarget).
         std::vector<Intent> options;
+        // Built for the MODE_PROMPT line only: not when nobody reads the log.
+        const bool logging = ctx.events.logging();
         std::string label_summary;
         for (int m : legal) {
             Intent i;
@@ -498,10 +500,11 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                 : ("mode#" + std::to_string(m));
             i.choice_label = mode_name;
             options.push_back(i);
+            if (!logging) continue;
             if (!label_summary.empty()) label_summary += "/";
             label_summary += mode_name;
         }
-        ctx.events.logTrace("MODE_PROMPT: " + label + " [" + label_summary +
+        RIFT_TRACE(ctx.events, "MODE_PROMPT: " + label + " [" + label_summary +
                              "] (agent decides among " +
                              std::to_string(legal.size()) + " modes)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
@@ -519,7 +522,7 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
         }
         if (m < 0) m = 0;
         if (m >= num_modes) m = num_modes - 1;
-        ctx.events.logTrace("MODE_PICKED: " + label + " = mode#" +
+        RIFT_TRACE(ctx.events, "MODE_PICKED: " + label + " = mode#" +
                              std::to_string(m) +
                              (m < static_cast<int>(mode_labels.size())
                                 ? " (" + mode_labels[m] + ")" : ""));
@@ -558,7 +561,7 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
         const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
         if (cost > 0) {
             ctx.executor.payAnyPower(ctx.controller, cost);
-            ctx.events.logTrace("DEFLECT: " + std::string(toString(ctx.controller)) +
+            RIFT_TRACE(ctx.events, "DEFLECT: " + std::string(toString(ctx.controller)) +
                                 " pays " + std::to_string(cost) + " [A] to choose " +
                                 ctx.state.getObject(t).name);
         }
@@ -629,7 +632,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             const auto t = static_cast<GameObjectId>(ri.resume_data[2]);
             if (t != kInvalidId &&
                 std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end()) {
-                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
+                RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
                 ri.resume_data[2] = static_cast<int32_t>(kInvalidId);
             }
         }
@@ -647,14 +650,14 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             const bool still_legal =
                 std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end();
             if (!still_legal) {
-                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
+                RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
                 t = kInvalidId;
             }
             store(t);
             return t;
         }
         if (legal_targets.empty()) {
-            ctx.events.logTrace("TGT_NOT_OFFERED: " + label +
+            RIFT_TRACE(ctx.events, "TGT_NOT_OFFERED: " + label +
                                  " (no legal targets at resolve time)");
             store(kInvalidId);
             nothingToDecide(ri);
@@ -673,6 +676,8 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
         // predict picks today.
         std::vector<Intent> options;
         options.reserve(legal_targets.size());
+        // Built for the TGT_PROMPT line only: not when nobody reads the log.
+        const bool logging = ctx.events.logging();
         std::string label_summary;
         for (auto t : legal_targets) {
             Intent i;
@@ -680,12 +685,13 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             i.player = ctx.controller;
             i.chosen_objects = { t };
             options.push_back(std::move(i));
+            if (!logging) continue;
             if (!label_summary.empty()) label_summary += "/";
             label_summary += ctx.state.objectExists(t)
                 ? ctx.state.getObject(t).name
                 : std::string("?");
         }
-        ctx.events.logTraceFor(promptAudience(ctx, legal_targets),
+        RIFT_TRACE_FOR(ctx.events, promptAudience(ctx, legal_targets),
                              "TGT_PROMPT: " + label + " [" + label_summary +
                              "] (agent decides among " +
                              std::to_string(legal_targets.size()) +
@@ -703,10 +709,9 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     if (picked.has_value() && !picked->chosen_objects.empty()) {
         t = picked->chosen_objects.front();
     }
-    std::string name = ctx.state.objectExists(t)
-        ? ctx.state.getObject(t).name
-        : std::string("?");
-    ctx.events.logTrace("TGT_PICKED: " + label + " = " + name +
+    RIFT_TRACE(ctx.events, "TGT_PICKED: " + label + " = " +
+                         (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
+                                                    : std::string("?")) +
                          " (id=" + std::to_string(t) + ")");
     commitChoice(ctx, *this, t);
     store(t);
@@ -758,6 +763,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
                        const char* which, const std::string& request) {
         std::vector<Intent> options;
         options.reserve(legal.size());
+        // Built for the prompt's trace line only: not when nobody reads the log.
+        const bool logging = ctx.events.logging();
         std::string summary;
         for (auto t : legal) {
             Intent i;
@@ -765,11 +772,12 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             i.player = ctx.controller;
             i.chosen_objects = { t };
             options.push_back(std::move(i));
+            if (!logging) continue;
             if (!summary.empty()) summary += "/";
             summary += ctx.state.objectExists(t)
                 ? ctx.state.getObject(t).name : std::string("?");
         }
-        ctx.events.logTraceFor(promptAudience(ctx, legal),
+        RIFT_TRACE_FOR(ctx.events, promptAudience(ctx, legal),
                                std::string(tag) + label + " [" + summary + "] " + which);
         ctx.executor.requestChoice(ctx.controller, std::move(options), request + label);
     };
@@ -784,13 +792,13 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             if (b != kInvalidId) {
                 const auto lb = legal_b_in_fn(a);
                 if (std::find(lb.begin(), lb.end(), b) == lb.end()) {
-                    ctx.events.logTrace("TGT_MISTARGET: " + label + " — the second target is no longer legal");
+                    RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the second target is no longer legal");
                     ri.resume_data[4] = static_cast<int32_t>(kInvalidId);
                 }
             }
             if (a != kInvalidId &&
                 std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end()) {
-                ctx.events.logTrace("TGT_MISTARGET: " + label + " — the first target is no longer legal");
+                RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the first target is no longer legal");
                 ri.resume_data[3] = static_cast<int32_t>(kInvalidId);
             }
         }
@@ -801,7 +809,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     // ── Step 1: publish first target ──
     if (!(st & (kPairAwaitA | kPairAwaitB))) {
         if (legal_a.empty()) {
-            ctx.events.logTrace("TGT_PAIR_NOT_OFFERED: " + label +
+            RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal first targets at resolve time)");
             return finish(kInvalidId, kInvalidId);
         }
@@ -819,17 +827,17 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         if (picked.has_value() && !picked->chosen_objects.empty()) {
             a = picked->chosen_objects.front();
         }
-        std::string name = ctx.state.objectExists(a)
-            ? ctx.state.getObject(a).name : std::string("?");
-        ctx.events.logTrace("TGT_PAIR_PICKED_A: " + label + " = " +
-                             name + " (id=" + std::to_string(a) + ")");
+        RIFT_TRACE(ctx.events, "TGT_PAIR_PICKED_A: " + label + " = " +
+                             (ctx.state.objectExists(a) ? ctx.state.getObject(a).name
+                                                        : std::string("?")) +
+                             " (id=" + std::to_string(a) + ")");
         commitChoice(ctx, *this, a);
         ri.resume_data[3] = static_cast<int32_t>(a);
 
         // ── Step 2: publish second target, filtered by picked_a ──
         auto legal_b = legal_b_fn(a);
         if (legal_b.empty()) {
-            ctx.events.logTrace("TGT_PAIR_NOT_OFFERED: " + label +
+            RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal second targets after A picked)");
             return finish(a, kInvalidId);
         }
@@ -852,10 +860,10 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     if (picked.has_value() && !picked->chosen_objects.empty()) {
         b = picked->chosen_objects.front();
     }
-    std::string name = ctx.state.objectExists(b)
-        ? ctx.state.getObject(b).name : std::string("?");
-    ctx.events.logTrace("TGT_PAIR_PICKED_B: " + label + " = " +
-                         name + " (id=" + std::to_string(b) + ")");
+    RIFT_TRACE(ctx.events, "TGT_PAIR_PICKED_B: " + label + " = " +
+                         (ctx.state.objectExists(b) ? ctx.state.getObject(b).name
+                                                    : std::string("?")) +
+                         " (id=" + std::to_string(b) + ")");
     commitChoice(ctx, *this, b);
     return finish(a, b);
 }

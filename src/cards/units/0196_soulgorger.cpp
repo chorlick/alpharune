@@ -50,10 +50,10 @@ public:
         if (!ctx.executor.playPayingCost(ctx.controller, picked,
                                          effectPlayLocation(ctx.state, ctx.controller, where),
                                          power_only)) {
-            ctx.events.logTrace("SOULGORGER: can't pay that unit's Power cost");
+            RIFT_TRACE(ctx.events, "SOULGORGER: can't pay that unit's Power cost");
             return;
         }
-        ctx.events.logTrace("SOULGORGER: played a unit from trash, ignoring its Energy cost");
+        RIFT_TRACE(ctx.events, "SOULGORGER: played a unit from trash, ignoring its Energy cost");
     }
 private:
     const CardDef def_ = [] {

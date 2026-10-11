@@ -49,7 +49,7 @@ public:
         if (chosen == -1) return;  // waiting on agent
         if (chosen < 0 || static_cast<size_t>(chosen) >= bfs.size()) chosen = 0;
         ctx.executor.moveToBattlefield(ctx.source, bfs[chosen]);
-        ctx.events.logTrace("MADULI: moved to occupied enemy battlefield");
+        RIFT_TRACE(ctx.events, "MADULI: moved to occupied enemy battlefield");
     }
 
 private:

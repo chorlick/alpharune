@@ -72,7 +72,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (target == kInvalidId || !ctx.state.objectExists(target)) return;
         ctx.executor.readyObject(target);
-        ctx.events.logTrace("JAYCE, BRILLIANT INVENTOR: readied " +
+        RIFT_TRACE(ctx.events, "JAYCE, BRILLIANT INVENTOR: readied " +
                             ctx.state.getObject(target).name);
     }
 private:

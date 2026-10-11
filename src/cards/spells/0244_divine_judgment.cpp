@@ -95,7 +95,7 @@ public:
                     if (!kept(id)) rest.push_back(id);
             recycleAll(ctx, p, rest);
         }
-        ctx.events.logTrace("DIVINE JUDGMENT: each player keeps 2/category, recycle rest");
+        RIFT_TRACE(ctx.events, "DIVINE JUDGMENT: each player keeps 2/category, recycle rest");
     }
 
 private:

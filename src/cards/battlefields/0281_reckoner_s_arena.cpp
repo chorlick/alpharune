@@ -127,7 +127,7 @@ public:
                 ++activated;
             }
         }
-        ctx.events.logTrace("RECKONER'S ARENA: activated " + std::to_string(activated) +
+        RIFT_TRACE(ctx.events, "RECKONER'S ARENA: activated " + std::to_string(activated) +
                             " conquer effect(s) of units here");
     }
 private:

@@ -19,7 +19,7 @@ public:
         if (!targets.empty() && ctx.state.getObject(targets[0]).isGear())
             ctx.executor.killObject(targets[0]);
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("SALVAGE: (optional gear kill) + draw 1");
+        RIFT_TRACE(ctx.events, "SALVAGE: (optional gear kill) + draw 1");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true, .optional = true};

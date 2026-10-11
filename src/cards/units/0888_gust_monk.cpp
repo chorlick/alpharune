@@ -54,7 +54,7 @@ public:
             if (!card.has_value() || *card == kInvalidId) return;   // waiting / no card
             if (costDueNow(ctx)) {
                 if (ctx.state.getObject(*card).zone != ZoneType::Trash) return;   // left the trash
-                ctx.events.logTrace("GUST MONK: banished " + ctx.state.getObject(*card).name +
+                RIFT_TRACE(ctx.events, "GUST MONK: banished " + ctx.state.getObject(*card).name +
                                     " from trash");
                 ctx.executor.banishObject(*card);     // counts it, announces "banished_owned"
             }

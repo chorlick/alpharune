@@ -58,7 +58,7 @@ public:
             if (ctx.state.objectExists(ctx.source)) {
                 auto& baron = ctx.state.getObject(ctx.source);
                 baron.location = BattlefieldLocation{pit_id};
-                ctx.events.logTrace("BARON NASHOR: created Baron Pit (bf=" +
+                RIFT_TRACE(ctx.events, "BARON NASHOR: created Baron Pit (bf=" +
                                      std::to_string(pit_id) +
                                      ") and will enter directly there");
             }
@@ -68,7 +68,7 @@ public:
             // Baron does NOT enter the Pit — he stays where the normal
             // permanent-play resolution placed him (whatever location
             // the controller chose during step 2 of the play sequence).
-            ctx.events.logTrace("BARON NASHOR: Baron Pit (bf=" +
+            RIFT_TRACE(ctx.events, "BARON NASHOR: Baron Pit (bf=" +
                                  std::to_string(pit_id) +
                                  ") already exists; staying at chosen location.");
         }

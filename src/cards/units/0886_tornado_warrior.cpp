@@ -58,7 +58,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         if (ctx.executor.empower(picked)) {
             ctx.state.getObject(picked).empower_flip_eot = -1;   // disempower at end of turn
-            ctx.events.logTrace("TORNADO WARRIOR: empowered " +
+            RIFT_TRACE(ctx.events, "TORNADO WARRIOR: empowered " +
                                 ctx.state.getObject(picked).name + " until end of turn");
         }
     }

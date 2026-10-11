@@ -31,7 +31,7 @@ public:
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite",
                                  /*might=*/3, /*tags=*/{"Fae"}, kw, loc,
                                  /*enter_ready=*/false);
-        ctx.events.logTrace("LILLIA: 3 [M] Sprite token ([Temporary]) where I moved from");
+        RIFT_TRACE(ctx.events, "LILLIA: 3 [M] Sprite token ([Temporary]) where I moved from");
     }
 private:
     const CardDef def_ = [] {

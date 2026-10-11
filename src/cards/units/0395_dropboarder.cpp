@@ -26,7 +26,7 @@ public:
         }
         if (gear >= 2) {
             ctx.executor.readyObject(ctx.source);
-            ctx.events.logTrace("DROPBOARDER: 2+ gear controlled, ready me");
+            RIFT_TRACE(ctx.events, "DROPBOARDER: 2+ gear controlled, ready me");
         }
     }
 private:

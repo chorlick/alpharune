@@ -31,7 +31,7 @@ inline bool settleInTrash(GameState& state, EventBus& events, GameObjectId card)
     obj.location = std::nullopt;
     ps.banishment.push_back(card);
     ps.cards_banished_this_turn++;
-    events.logTrace("  REPLACED: " + obj.name + " is banished instead of going to the trash");
+    RIFT_TRACE(events, "  REPLACED: " + obj.name + " is banished instead of going to the trash");
     events.emit(ObjectStateChangedEvent{card, "banished_owned"});
     return true;
 }

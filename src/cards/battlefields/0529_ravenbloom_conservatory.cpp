@@ -45,14 +45,14 @@ public:
             card.zone = ZoneType::Hand;
             card.location = std::nullopt;
             ps.hand.push_back(top);
-            ctx.events.logTrace("RAVENBLOOM: revealed spell " + card.name +
+            RIFT_TRACE(ctx.events, "RAVENBLOOM: revealed spell " + card.name +
                                  " -> hand");
         } else {
             // Recycle it (bottom of owner's main deck). Pop first so
             // recycleCards re-inserts it at the bottom exactly once.
             deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::everyone());
             ctx.executor.recycleCards(ctx.controller, {top});
-            ctx.events.logTrace("RAVENBLOOM: revealed non-spell " + card.name +
+            RIFT_TRACE(ctx.events, "RAVENBLOOM: revealed non-spell " + card.name +
                                  " -> recycled");
         }
     }

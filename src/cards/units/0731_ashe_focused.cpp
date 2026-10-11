@@ -46,7 +46,7 @@ public:
                     /*source_zone=*/ZoneType::Hand,
                 });
             }
-            ctx.events.logTrace("ASHE FOCUSED: opponent reveals hand (" +
+            RIFT_TRACE(ctx.events, "ASHE FOCUSED: opponent reveals hand (" +
                                 std::to_string(opp_ps.hand.size()) + " card(s))");
         }
 
@@ -69,7 +69,7 @@ public:
         da.trigger = TriggerType::WhenIHold;
         da.expires_on_turn = DelayedAbility::kUntilFired;
         ctx.state.delayed_abilities.push_back(da);
-        ctx.events.logTrace("ASHE FOCUSED: banished a card from opponent's hand "
+        RIFT_TRACE(ctx.events, "ASHE FOCUSED: banished a card from opponent's hand "
                             "until they hold");
     }
     // The delayed half: my controller's ability; the player who held is the
@@ -92,7 +92,7 @@ public:
             c.zone = ZoneType::Hand;
             c.location = std::nullopt;
             ps.hand.push_back(cid);
-            ctx.events.logTrace("ASHE FOCUSED: they held -> " + c.name + " returns to hand");
+            RIFT_TRACE(ctx.events, "ASHE FOCUSED: they held -> " + c.name + " returns to hand");
         }
     }
 private:

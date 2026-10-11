@@ -63,7 +63,7 @@ public:
             ctx.controller, fodder(ctx.state, ctx.controller));
         if (victim != kInvalidId) {
             ctx.executor.killObject(victim);
-            ctx.events.logTrace("STALKING WOLF: killed a Bird/Cat/Dog/Poro (additional cost)");
+            RIFT_TRACE(ctx.events, "STALKING WOLF: killed a Bird/Cat/Dog/Poro (additional cost)");
         }
         return {};
     }

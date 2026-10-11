@@ -51,7 +51,7 @@ public:
                                  // set before the play is announced
                                  /*token_card=*/955);
         }
-        ctx.events.logTrace("ZED: additional cost paid -> 0 [M] Shadow Clone token");
+        RIFT_TRACE(ctx.events, "ZED: additional cost paid -> 0 [M] Shadow Clone token");
     }
 private:
     const CardDef def_ = [] {

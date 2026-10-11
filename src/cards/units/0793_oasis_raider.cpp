@@ -25,7 +25,7 @@ public:
             runesControlled(ctx.state, opponent(ctx.controller))) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Ganking, 0);
-        ctx.events.logTrace("OASIS RAIDER: fewer runes -> +2 [M] and [Ganking] this turn");
+        RIFT_TRACE(ctx.events, "OASIS RAIDER: fewer runes -> +2 [M] and [Ganking] this turn");
     }
 private:
     const CardDef def_ = [] {

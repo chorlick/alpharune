@@ -53,7 +53,7 @@ public:
                 ctx.executor.applyDiscard(ctx.controller, choice->chosen_objects[0]);
             }
             ctx.executor.drawCards(ctx.controller, 2);
-            ctx.events.logTrace("EZREAL PRODIGY: discarded 1, drew 2");
+            RIFT_TRACE(ctx.events, "EZREAL PRODIGY: discarded 1, drew 2");
             return;
         }
         }

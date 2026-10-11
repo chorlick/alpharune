@@ -37,7 +37,7 @@ public:
         da.target_filter = picked;
         da.expires_on_turn = ctx.state.turn.turn_number;  // this turn only
         ctx.state.delayed_abilities.push_back(da);
-        ctx.events.logTrace("GRIM RESOLVE: +3M and armed win-combat XP rider");
+        RIFT_TRACE(ctx.events, "GRIM RESOLVE: +3M and armed win-combat XP rider");
     }
 
     // Single non-play trigger: when the delayed ability fires (the buffed unit
@@ -45,7 +45,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIWinCombat; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         gainXp(ctx, ctx.controller, 2);
-        ctx.events.logTrace("GRIM RESOLVE: buffed unit won combat -> gain 2 XP");
+        RIFT_TRACE(ctx.events, "GRIM RESOLVE: buffed unit won combat -> gain 2 XP");
     }
 private:
     const CardDef def_ = [] {

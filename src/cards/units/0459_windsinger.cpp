@@ -35,7 +35,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         std::string n = ctx.state.getObject(picked).name;
         ctx.executor.bounceToHand(picked);
-        ctx.events.logTrace("WINDSINGER: returned " + n + " to hand");
+        RIFT_TRACE(ctx.events, "WINDSINGER: returned " + n + " to hand");
     }
 private:
     const CardDef def_ = [] {

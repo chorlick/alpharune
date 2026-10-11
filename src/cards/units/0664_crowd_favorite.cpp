@@ -37,7 +37,7 @@ public:
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // buffUnit places a Buff only on a unit on the board without one.
         if (ctx.executor.buffUnit(ctx.source))
-            ctx.events.logTrace("CROWD FAVORITE: spent 2 XP -> [Buff] me");
+            RIFT_TRACE(ctx.events, "CROWD FAVORITE: spent 2 XP -> [Buff] me");
     }
 private:
     const CardDef def_ = [] {

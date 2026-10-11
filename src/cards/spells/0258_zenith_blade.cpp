@@ -91,7 +91,7 @@ public:
         if (mover == kInvalidId) return;   // declined / nothing to move
         commitChosenObject(ctx, mover);
         ctx.executor.moveToBattlefield(mover, std::get<BattlefieldLocation>(*dest).id);
-        ctx.events.logTrace("ZENITH BLADE: stunned enemy + moved a friendly "
+        RIFT_TRACE(ctx.events, "ZENITH BLADE: stunned enemy + moved a friendly "
                             "unit to that battlefield");
     }
 private:

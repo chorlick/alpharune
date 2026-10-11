@@ -26,7 +26,7 @@ public:
         if (ctx.firing_trigger == TriggerType::WhenYouHideACard) {
             if (finalizingChoices(ctx)) return;   // no choices
             ctx.executor.readyObject(ctx.source);
-            ctx.events.logTrace("KATARINA RECKLESS: hid a card -> ready me");
+            RIFT_TRACE(ctx.events, "KATARINA RECKLESS: hid a card -> ready me");
         } else if (ctx.firing_trigger == TriggerType::WhenYouPlayFromFacedown) {
             const auto legal = chooseableUnits(ctx.state, ctx.controller,
                 [&](const GameObject& u) { return u.controller != ctx.controller; });
@@ -34,7 +34,7 @@ public:
             if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
             if (t == kInvalidId || !ctx.state.objectExists(t)) return;
             ctx.executor.dealDamage(t, 2, ctx.source);
-            ctx.events.logTrace("KATARINA RECKLESS: played from facedown -> deal 2");
+            RIFT_TRACE(ctx.events, "KATARINA RECKLESS: played from facedown -> deal 2");
         }
     }
 private:

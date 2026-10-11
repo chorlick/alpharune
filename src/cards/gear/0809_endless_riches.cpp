@@ -31,7 +31,7 @@ public:
                 auto& owner = ctx.state.player(card.owner);
                 owner.banishment.push_back(id);
                 owner.cards_banished_this_turn++;
-                ctx.events.logTrace("ENDLESS RICHES: banished " + card.name);
+                RIFT_TRACE(ctx.events, "ENDLESS RICHES: banished " + card.name);
                 // "When you banish a card you own" watchers.
                 ctx.events.emit(ObjectStateChangedEvent{id, "banished_owned"});
             }

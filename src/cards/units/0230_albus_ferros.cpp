@@ -40,7 +40,7 @@ public:
         }
         if (spent <= 0) return;
         ctx.executor.channelRunes(ctx.controller, spent, /*enter_exhausted=*/true);
-        ctx.events.logTrace("ALBUS FERROS: spend " + std::to_string(spent) +
+        RIFT_TRACE(ctx.events, "ALBUS FERROS: spend " + std::to_string(spent) +
                             " buffs -> channel " + std::to_string(spent) + " runes exhausted");
     }
 private:

@@ -49,7 +49,7 @@ public:
             if (picked != kInvalidId && ctx.state.objectExists(picked)) {
                 had = ctx.state.getObject(picked).current_might;
                 ctx.executor.killObject(picked);
-                ctx.events.logTrace("DEATH FROM BELOW: killed unit (might=" +
+                RIFT_TRACE(ctx.events, "DEATH FROM BELOW: killed unit (might=" +
                                      std::to_string(had) + ")");
             }
             if (ri.has_value()) {
@@ -83,7 +83,7 @@ public:
         if (again == 1 && costDueNow(ctx) && !ctx.executor.payAnyPower(ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // the "may" and the [A] end here (CR 388.4)
         if (again < 1 || !in_trash()) return; // declined, or it left the trash in response
-        ctx.events.logTrace("DEATH FROM BELOW: paid [A] -> played from the trash");
+        RIFT_TRACE(ctx.events, "DEATH FROM BELOW: paid [A] -> played from the trash");
         ctx.executor.playIgnoringCost(ctx.controller, ctx.source);
     }
 private:

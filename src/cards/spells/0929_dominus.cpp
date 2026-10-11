@@ -38,7 +38,7 @@ public:
         const GameObject::GrantedAbilityRef ref{cardDefId(), 0};
         unit.temp_granted_abilities.push_back(ref);
         unit.granted_abilities.push_back(ref);   // usable now; the aura pass keeps it
-        ctx.events.logTrace("DOMINUS: doubled Might this turn (+" + std::to_string(bonus) +
+        RIFT_TRACE(ctx.events, "DOMINUS: doubled Might this turn (+" + std::to_string(bonus) +
                             ") and granted \"[A][A]: Ready me.\"");
     }
     // The granted "[A][A]: Ready me." — ability 0, dispatched as a granted

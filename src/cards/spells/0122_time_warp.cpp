@@ -20,7 +20,7 @@ public:
         // controller as the next turn-player.
         auto& ps = ctx.state.player(ctx.controller);
         ps.additional_turns.push_back(ctx.controller);
-        ctx.events.logTrace("TIME WARP: queued extra turn for " +
+        RIFT_TRACE(ctx.events, "TIME WARP: queued extra turn for " +
                              std::string(toString(ctx.controller)));
         // "Banish this" — route source to banishment instead of trash.
         if (ctx.state.objectExists(ctx.source)) {

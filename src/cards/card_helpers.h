@@ -50,7 +50,7 @@ inline void recycleRuneForPower(CardContext& ctx, PlayerId player, GameObjectId 
     dr.is_exhausted = false;
     ps.rune_deck.insert(ps.rune_deck.begin(), rune);
     ps.power_spent_this_turn++;
-    ctx.events.logTrace("  ADDL_COST: recycled " + dr.name + " for power");
+    RIFT_TRACE(ctx.events, "  ADDL_COST: recycled " + dr.name + " for power");
     ctx.events.emit(LeftBoardEvent{rune, player, CardType::Rune, was_at,
                                    ZoneType::RuneDeck, false});
 }
@@ -225,7 +225,7 @@ inline void disposeCounteredCard(CardContext& ctx, GameObjectId id,
         obj.zone = ZoneType::Banishment;
         ctx.state.player(obj.owner).banishment.push_back(id);
         ctx.state.player(obj.owner).cards_banished_this_turn++;
-        ctx.events.logTrace("COUNTER: " + obj.name + " -> banished (played for Flow)");
+        RIFT_TRACE(ctx.events, "COUNTER: " + obj.name + " -> banished (played for Flow)");
         ctx.events.emit(ObjectStateChangedEvent{id, "banished_owned"});
         return;
     }
@@ -258,7 +258,7 @@ inline void counterChainTop(CardContext& ctx) {
     revertCounteredPlay(ctx, top);  // CR 425.1.b
     ctx.state.chain.items.pop_back();
     if (ctx.state.objectExists(countered)) {
-        ctx.events.logTrace("COUNTER: " + ctx.state.getObject(countered).name + " countered");
+        RIFT_TRACE(ctx.events, "COUNTER: " + ctx.state.getObject(countered).name + " countered");
         disposeCounteredCard(ctx, countered);
     }
 }
@@ -657,7 +657,7 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
         none.choice_label = "None — " + label;
         choices.push_back(std::move(none));
     }
-    ctx.events.logTrace("SELECT_PROMPT: " + label + " [" + std::to_string(options.size()) +
+    RIFT_TRACE(ctx.events, "SELECT_PROMPT: " + label + " [" + std::to_string(options.size()) +
                         " options]");
     ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
     ri.resume_data[slot] = 1;
@@ -716,7 +716,7 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
     auto dealAll = [&](const std::vector<std::pair<GameObjectId, int>>& alloc) {
         for (const auto& [id, n] : alloc) {
             if (n <= 0 || !ctx.state.objectExists(id)) continue;
-            ctx.events.logTrace("SPLIT: " + label + " -> " + std::to_string(n) +
+            RIFT_TRACE(ctx.events, "SPLIT: " + label + " -> " + std::to_string(n) +
                                 " to " + ctx.state.getObject(id).name);
             ctx.executor.dealDamage(id, n, damage_source);
             damaged.push_back(id);
@@ -786,7 +786,7 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
                 const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
                 if (cost > 0) {
                     ctx.executor.payAnyPower(ctx.controller, cost);
-                    ctx.events.logTrace("DEFLECT: pays " + std::to_string(cost) +
+                    RIFT_TRACE(ctx.events, "DEFLECT: pays " + std::to_string(cost) +
                                         " [A] to choose " + ctx.state.getObject(t).name);
                 }
                 ri.chosen_objects.push_back(t);
@@ -795,7 +795,7 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
                 data.insert(data.begin() + 2 + static_cast<long>(targetCount()),
                             static_cast<int32_t>(t));
                 ++data[0];
-                ctx.events.logTrace("SPLIT_TARGET: " + label + " -> " +
+                RIFT_TRACE(ctx.events, "SPLIT_TARGET: " + label + " -> " +
                                     ctx.state.getObject(t).name);
             } else {
                 stop = true;   // "No more targets"
@@ -813,7 +813,7 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             for (auto t : can_pick) options.push_back(objChoice(ctx.controller, t));
             if (targetCount() == 0 && may_choose_none)
                 options.push_back(valChoice(ctx.controller, 0, "No more targets"));
-            ctx.events.logTrace("SPLIT_PROMPT: " + label + " (target " +
+            RIFT_TRACE(ctx.events, "SPLIT_PROMPT: " + label + " (target " +
                                 std::to_string(targetCount() + 1) + ")");
             ctx.executor.requestChoice(ctx.controller, std::move(options),
                                        "split damage: " + label + " — choose a target");
@@ -886,7 +886,7 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
         std::vector<Intent> options;
         options.reserve(live.size());
         for (auto t : live) options.push_back(objChoice(ctx.controller, t));
-        ctx.events.logTrace("SPLIT_PROMPT: " + label + " (" + std::to_string(remaining) +
+        RIFT_TRACE(ctx.events, "SPLIT_PROMPT: " + label + " (" + std::to_string(remaining) +
                             " of " + std::to_string(total) + " damage left to assign)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
                                    "split damage: " + label + " (" +
@@ -1277,7 +1277,7 @@ inline void gainXp(CardContext& ctx, PlayerId player, int amount) {
     auto& ps = ctx.state.player(player);
     ps.xp += amount;
     ps.xp_gained_this_turn += amount;
-    ctx.events.logTrace("XP: " + std::string(toString(player)) + " gains " +
+    RIFT_TRACE(ctx.events, "XP: " + std::string(toString(player)) + " gains " +
                         std::to_string(amount) + " XP (now " + std::to_string(ps.xp) + ")");
 }
 
@@ -1316,7 +1316,7 @@ inline std::optional<GameObjectId> selectObjectAs(CardContext& ctx, PlayerId cho
     std::vector<Intent> choices;
     choices.reserve(options.size());
     for (auto id : options) choices.push_back(objChoice(chooser, id));
-    ctx.events.logTrace("SELECT_PROMPT (" + std::string(toString(chooser)) + "): " + label +
+    RIFT_TRACE(ctx.events, "SELECT_PROMPT (" + std::string(toString(chooser)) + "): " + label +
                         " [" + std::to_string(options.size()) + " options]");
     ctx.executor.requestChoice(chooser, std::move(choices), label);
     ri.resume_data[slot] = 1;

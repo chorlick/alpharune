@@ -72,7 +72,7 @@ public:
         if (ctx.state.getObject(picked).location.has_value() &&
             ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
-        ctx.events.logTrace("CAITLYN: deal " + std::to_string(dmg) +
+        RIFT_TRACE(ctx.events, "CAITLYN: deal " + std::to_string(dmg) +
                             " (=Might) to a unit at a battlefield");
     }
 private:

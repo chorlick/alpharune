@@ -42,7 +42,7 @@ public:
                                          /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
                                          loc, /*enter_ready=*/false);
             }
-            ctx.events.logTrace("VANGUARD ARMORY: [E] -> three 1[M] Recruit tokens");
+            RIFT_TRACE(ctx.events, "VANGUARD ARMORY: [E] -> three 1[M] Recruit tokens");
         };
         const auto options = dests();
         if (!ctx.state.chain.resuming.has_value() || options.size() == 1) {

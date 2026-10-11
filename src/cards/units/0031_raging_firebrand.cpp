@@ -24,7 +24,7 @@ public:
         m.next_spell_only = true;
         m.affects_friendly_only = true;
         ctx.state.player(ctx.controller).cost_modifiers.push_back(m);
-        ctx.events.logTrace("RAGING FIREBRAND: next spell this turn costs [5] less");
+        RIFT_TRACE(ctx.events, "RAGING FIREBRAND: next spell this turn costs [5] less");
     }
 private:
     const CardDef def_ = [] {

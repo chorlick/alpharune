@@ -47,7 +47,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (conf != 1) return;                // declined, or can't pay
         ctx.executor.drawCards(ctx.controller, 1);
-        ctx.events.logTrace("JAX, UNRELENTING: paid [1] -> draw 1");
+        RIFT_TRACE(ctx.events, "JAX, UNRELENTING: paid [1] -> draw 1");
     }
 private:
     const CardDef def_ = [] {

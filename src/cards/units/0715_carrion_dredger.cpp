@@ -22,7 +22,7 @@ public:
                                   /*might=*/1, /*tags=*/{"Bird"}, kw,
                                   BaseLocation{ctx.controller},
                                   /*enter_ready=*/false);
-        ctx.events.logTrace("CARRION DREDGER: deathknell -> 1[M] Bird w/ [Deflect]");
+        RIFT_TRACE(ctx.events, "CARRION DREDGER: deathknell -> 1[M] Bird w/ [Deflect]");
     }
 private:
     const CardDef def_ = [] {

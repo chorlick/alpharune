@@ -25,10 +25,10 @@ public:
         }
         if (total >= 5) {
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("KINKOU INITIATE: other units total Might " +
+            RIFT_TRACE(ctx.events, "KINKOU INITIATE: other units total Might " +
                                 std::to_string(total) + " >= 5 -> draw 1");
         } else {
-            ctx.events.logTrace("KINKOU INITIATE: other units total Might " +
+            RIFT_TRACE(ctx.events, "KINKOU INITIATE: other units total Might " +
                                 std::to_string(total) + " < 5 -> no draw");
         }
     }

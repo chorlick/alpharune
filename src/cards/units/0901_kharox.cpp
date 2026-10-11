@@ -59,7 +59,7 @@ public:
         // playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
-        ctx.events.logTrace("KHAROX: played " + ctx.state.getObject(picked).name +
+        RIFT_TRACE(ctx.events, "KHAROX: played " + ctx.state.getObject(picked).name +
                             " from the opponent's trash");
     }
 private:

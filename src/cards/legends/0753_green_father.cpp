@@ -50,7 +50,7 @@ public:
         if (target == kInvalidId) return;
         ctx.executor.replaceBattlefieldWithToken(target, "Brush", ctx.controller,
                                                   /*token_def=*/561);   // the Brush card
-        ctx.events.logTrace("GREEN FATHER: exhausted to replace BF#" +
+        RIFT_TRACE(ctx.events, "GREEN FATHER: exhausted to replace BF#" +
                              std::to_string(target) + " with Brush token");
     }
 private:

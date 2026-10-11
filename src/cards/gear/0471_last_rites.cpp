@@ -38,7 +38,7 @@ public:
             const GameObjectId card_id = ctx.executor.chooseObjectNow(ctx.controller, in_trash);
             if (card_id == kInvalidId) break;
             ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), card_id), ps.trash.end());
-            ctx.events.logTrace("  EQUIP_COST: recycled " +
+            RIFT_TRACE(ctx.events, "  EQUIP_COST: recycled " +
                                  ctx.state.getObject(card_id).name + " from trash");
             deck::putOnBottom(ctx.state, ctx.controller, card_id, deck::Place::Public);
             last_recycled = card_id;
@@ -84,7 +84,7 @@ public:
         const std::string name = ctx.state.getObject(picked).name;
         if (ctx.executor.playPayingCost(ctx.controller, picked,
                                         effectPlayLocation(ctx.state, ctx.controller, where)))
-            ctx.events.logTrace("LAST RITES: played " + name + " from trash");
+            RIFT_TRACE(ctx.events, "LAST RITES: played " + name + " from trash");
     }
 private:
     const CardDef def_ = [] {

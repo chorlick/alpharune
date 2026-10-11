@@ -50,7 +50,7 @@ public:
                     ctx.executor.killObject(id);
             }
         }
-        ctx.events.logTrace("FIRESTORM: 3 to all enemy units at one battlefield");
+        RIFT_TRACE(ctx.events, "FIRESTORM: 3 to all enemy units at one battlefield");
     }
 private:
     const CardDef def_ = [] {

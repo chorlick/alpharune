@@ -20,7 +20,7 @@ public:
         // [Add] [1][A] — 1 floating energy + 1 universal-domain power.
         ctx.executor.addFloatingEnergy(ctx.controller, 1);
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
-        ctx.events.logTrace("JHIN: [Add] [1][A] on move");
+        RIFT_TRACE(ctx.events, "JHIN: [Add] [1][A] on move");
     }
 private:
     const CardDef def_ = [] {

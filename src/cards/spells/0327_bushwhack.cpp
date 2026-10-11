@@ -22,7 +22,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.state.player(ctx.controller).units_enter_ready_this_turn = true;
         createGoldExhausted(ctx);
-        ctx.events.logTrace("BUSHWHACK: friendly units enter ready this turn + "
+        RIFT_TRACE(ctx.events, "BUSHWHACK: friendly units enter ready this turn + "
                             "Gold gear token (exhausted)");
     }
 private:

@@ -52,7 +52,7 @@ public:
         GameObjectId picked = pickTarget(ctx, "Evelynn: pick enemy unit", legal);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         ctx.executor.moveToBattlefield(picked, *my_bf);
-        ctx.events.logTrace("EVELYNN: pulled " + ctx.state.getObject(picked).name +
+        RIFT_TRACE(ctx.events, "EVELYNN: pulled " + ctx.state.getObject(picked).name +
                             " to my battlefield BF" + std::to_string(*my_bf));
     }
 private:

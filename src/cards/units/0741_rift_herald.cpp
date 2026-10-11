@@ -100,7 +100,7 @@ private:
             deck::putOnTop(ctx.state, ctx.controller, drawn, deck::Place::Held,
                            knowledge::everyone());
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.events.logTrace("RIFT HERALD: revealed and drew unit " + obj.name);
+            RIFT_TRACE(ctx.events, "RIFT HERALD: revealed and drew unit " + obj.name);
         }
     }
 
@@ -126,10 +126,10 @@ private:
         if (!ctx.executor.playPayingCost(ctx.controller, picked,
                                          LocationId{BaseLocation{ctx.controller}},
                                          power_only)) {
-            ctx.events.logTrace("RIFT HERALD: can't pay that unit's Power cost");
+            RIFT_TRACE(ctx.events, "RIFT HERALD: can't pay that unit's Power cost");
             return;
         }
-        ctx.events.logTrace("RIFT HERALD: deathknell -> played a unit from hand to base");
+        RIFT_TRACE(ctx.events, "RIFT HERALD: deathknell -> played a unit from hand to base");
     }
 private:
     const CardDef def_ = [] {

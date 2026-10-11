@@ -40,7 +40,7 @@ public:
         da.target_filter = victim;
         da.expires_on_turn = ctx.state.turn.turn_number;
         ctx.state.delayed_abilities.push_back(da);
-        ctx.events.logTrace("DEADLY FLOURISH: armed death-watch on victim "
+        RIFT_TRACE(ctx.events, "DEADLY FLOURISH: armed death-watch on victim "
                              "(id=" + std::to_string(victim) + ")");
 
         ctx.executor.dealDamage(victim, 3, ctx.source);
@@ -53,7 +53,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         createGoldExhausted(ctx);
-        ctx.events.logTrace("DEADLY FLOURISH: victim died — spawned Gold token");
+        RIFT_TRACE(ctx.events, "DEADLY FLOURISH: victim died — spawned Gold token");
     }
 private:
     const CardDef def_ = [] {

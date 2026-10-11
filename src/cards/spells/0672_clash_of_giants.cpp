@@ -61,7 +61,7 @@ public:
         // Snapshot Mights before dealing damage so the exchange is simultaneous.
         int might_a = ctx.state.getObject(a).current_might;
         int might_b = ctx.state.getObject(b).current_might;
-        ctx.events.logTrace("CLASH OF GIANTS: " + ctx.state.getObject(a).name +
+        RIFT_TRACE(ctx.events, "CLASH OF GIANTS: " + ctx.state.getObject(a).name +
                              " (" + std::to_string(might_a) + "M) <-> " +
                              ctx.state.getObject(b).name +
                              " (" + std::to_string(might_b) + "M)");

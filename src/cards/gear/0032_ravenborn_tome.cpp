@@ -24,7 +24,7 @@ public:
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.state.player(ctx.controller).next_spell_bonus_damage += 1;
-        ctx.events.logTrace("RAVENBORN TOME: next spell will deal +1 Bonus Damage");
+        RIFT_TRACE(ctx.events, "RAVENBORN TOME: next spell will deal +1 Bonus Damage");
     }
 private:
     const CardDef def_ = [] {

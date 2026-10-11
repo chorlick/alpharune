@@ -65,7 +65,7 @@ public:
             ++readied;
         }
         if (readied > 0) {
-            ctx.events.logTrace("GENTLE GEMDRAGON: readied " +
+            RIFT_TRACE(ctx.events, "GENTLE GEMDRAGON: readied " +
                                 std::to_string(readied) + " rune(s)");
         }
     }

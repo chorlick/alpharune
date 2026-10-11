@@ -59,7 +59,7 @@ public:
             const PlayerId who = static_cast<PlayerId>(slot(kPlayerSlot));
             if (takenValue(ctx, 0) != 1) return;
             if (!ctx.executor.payAnyPower(who, 1)) return;
-            ctx.events.logTrace(std::string("DANCING GRENADE: ") + toString(who) +
+            RIFT_TRACE(ctx.events, std::string("DANCING GRENADE: ") + toString(who) +
                                 " pays [A] to play it again");
             ctx.executor.playIgnoringCost(who, ctx.source);
             return;
@@ -83,7 +83,7 @@ public:
         const PlayerId unit_controller = ctx.state.getObject(picked).controller;
         const int dmg = 2 + prior_hits;  // +1 Bonus Damage per prior hit this turn
         ctx.executor.dealDamage(picked, dmg, ctx.source);
-        ctx.events.logTrace("DANCING GRENADE: deal " + std::to_string(dmg));
+        RIFT_TRACE(ctx.events, "DANCING GRENADE: deal " + std::to_string(dmg));
         if (ctx.state.objectExists(picked) && ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
 

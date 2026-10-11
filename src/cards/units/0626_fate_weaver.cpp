@@ -71,7 +71,7 @@ public:
                 // "draw it": a draw (draws_this_turn, "When you draw").
                 deck::take(ctx.state, drawn, deck::Place::Held, knowledge::everyone(), /*slot_public=*/false);
                 ctx.executor.drawHeldCard(ctx.controller, drawn, /*seen_by_all=*/true);
-                ctx.events.logTrace("FATE WEAVER: revealed spell " + obj.name + " -> drew it");
+                RIFT_TRACE(ctx.events, "FATE WEAVER: revealed spell " + obj.name + " -> drew it");
             }
         }
 
@@ -87,7 +87,7 @@ public:
         }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);
-            ctx.events.logTrace("FATE WEAVER: recycled the rest of the top 4");
+            RIFT_TRACE(ctx.events, "FATE WEAVER: recycled the rest of the top 4");
         }
     }
 private:

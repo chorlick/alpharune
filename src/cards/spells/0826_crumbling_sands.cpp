@@ -32,7 +32,7 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!opponentPlayedAnotherSpell(ctx.state, ctx.controller)) {
-            ctx.events.logTrace("CRUMBLING SANDS: no other opposing spell this turn — no counter");
+            RIFT_TRACE(ctx.events, "CRUMBLING SANDS: no other opposing spell this turn — no counter");
             return;
         }
         counterChainTop(ctx);

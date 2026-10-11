@@ -35,7 +35,7 @@ public:
         const int amount = unit.damage_marked;
         if (amount <= 0) return;
         ctx.executor.dealDamage(tgt, amount, ctx.source);
-        ctx.events.logTrace("MORGANA: dealt " + std::to_string(amount) +
+        RIFT_TRACE(ctx.events, "MORGANA: dealt " + std::to_string(amount) +
                             " (damage already marked) to a unit");
     }
 private:

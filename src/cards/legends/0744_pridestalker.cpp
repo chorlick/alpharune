@@ -28,7 +28,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (pick == kInvalidId) return;       // none / mistarget / waiting
         ctx.executor.giveTemporaryMight(pick, 1);
-        ctx.events.logTrace("PRIDESTALKER: +1M to " +
+        RIFT_TRACE(ctx.events, "PRIDESTALKER: +1M to " +
                              ctx.state.getObject(pick).name);
     }
 private:

@@ -28,7 +28,7 @@ public:
             if (last == turn_id) return;  // already scored this turn
             last = turn_id;
             ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-            ctx.events.logTrace("DRAVEN AUDACIOUS: first combat win -> score 1");
+            RIFT_TRACE(ctx.events, "DRAVEN AUDACIOUS: first combat win -> score 1");
         } else if (ctx.firing_trigger == TriggerType::WhenIDie) {
             // "When I die in combat": read from the last-known information the
             // kill paths snapshot just before the death (CR 383.2.c.3.b) — I was
@@ -42,7 +42,7 @@ public:
             if (!lk.in_combat && lk.combat_designation == CombatDesignation::None) return;
             // "Choose an opponent. They gain 1 point." 1v1: the one opponent.
             ctx.executor.scorePoints(opponent(ctx.controller), 1);   // CR 194.1.c
-            ctx.events.logTrace("DRAVEN AUDACIOUS: died in combat -> opponent scores 1");
+            RIFT_TRACE(ctx.events, "DRAVEN AUDACIOUS: died in combat -> opponent scores 1");
         }
     }
 private:

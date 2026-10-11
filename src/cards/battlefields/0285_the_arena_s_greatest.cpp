@@ -25,7 +25,7 @@ public:
         self.card_counters[key] = 1;
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
         const auto& ps = ctx.state.player(ctx.controller);
-        ctx.events.logTrace("THE ARENA'S GREATEST: first Beginning Phase -> +1 point ("
+        RIFT_TRACE(ctx.events, "THE ARENA'S GREATEST: first Beginning Phase -> +1 point ("
                             + std::to_string(ps.score) + ")");
     }
 private:

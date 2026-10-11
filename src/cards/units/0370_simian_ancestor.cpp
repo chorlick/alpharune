@@ -19,7 +19,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIAmBuffed; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.readyObject(ctx.source);
-        ctx.events.logTrace("SIMIAN ANCESTOR: buffed -> ready self");
+        RIFT_TRACE(ctx.events, "SIMIAN ANCESTOR: buffed -> ready self");
     }
 private:
     const CardDef def_ = [] {

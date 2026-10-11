@@ -20,7 +20,7 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         createGoldExhausted(ctx);
-        ctx.events.logTrace("PLUNDERING PORO: conquer -> Gold gear token (exhausted)");
+        RIFT_TRACE(ctx.events, "PLUNDERING PORO: conquer -> Gold gear token (exhausted)");
     }
 private:
     const CardDef def_ = [] {

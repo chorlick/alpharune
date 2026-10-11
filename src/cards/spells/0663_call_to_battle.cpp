@@ -83,7 +83,7 @@ public:
             if (std::find(theirs.begin(), theirs.end(), mover) == theirs.end())
                 mover = theirs.front();
             ctx.executor.moveToBattlefield(mover, bf);
-            ctx.events.logTrace("CALL TO BATTLE: opponent moved a unit to the same BF");
+            RIFT_TRACE(ctx.events, "CALL TO BATTLE: opponent moved a unit to the same BF");
             return;
         }
 
@@ -106,7 +106,7 @@ public:
         if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield to move to
         const BattlefieldId dest = bfs[mode].id;
         ctx.executor.moveToBattlefield(unit, dest);
-        ctx.events.logTrace("CALL TO BATTLE: moved a friendly unit to a controlled BF");
+        RIFT_TRACE(ctx.events, "CALL TO BATTLE: moved a friendly unit to a controlled BF");
 
         // "Then, choose an opponent. They move a unit they control to the same
         //  battlefield." — their choice among their units that are not there.

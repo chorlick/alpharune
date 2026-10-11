@@ -21,7 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
-        ctx.events.logTrace("TREASURE TROVE: left board -> draw 1 + channel 1 "
+        RIFT_TRACE(ctx.events, "TREASURE TROVE: left board -> draw 1 + channel 1 "
                             "rune exhausted");
     }
 
@@ -36,7 +36,7 @@ public:
         if (!ctx.state.objectExists(ctx.source) ||
             !ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.killObject(ctx.source);
-        ctx.events.logTrace("TREASURE TROVE: [P],[E] -> kill this");
+        RIFT_TRACE(ctx.events, "TREASURE TROVE: [P],[E] -> kill this");
     }
 private:
     const CardDef def_ = [] {

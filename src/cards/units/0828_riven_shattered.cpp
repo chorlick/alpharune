@@ -57,7 +57,7 @@ public:
         const int n = equipmentAttached(ctx.state, ctx.state.getObject(ctx.source));
         if (n <= 0) return;
         ctx.executor.dealDamage(tgt, 2 * n, ctx.source);
-        ctx.events.logTrace("RIVEN, SHATTERED: " + std::to_string(n) +
+        RIFT_TRACE(ctx.events, "RIVEN, SHATTERED: " + std::to_string(n) +
                             " Equipment -> dealt " + std::to_string(2 * n));
     }
 private:

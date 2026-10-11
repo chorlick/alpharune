@@ -30,7 +30,7 @@ public:
         // "give me": only while I'm still on the board.
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
-        ctx.events.logTrace("HARPOON SQUAD: moved -> +2 [M] this turn");
+        RIFT_TRACE(ctx.events, "HARPOON SQUAD: moved -> +2 [M] this turn");
     }
 private:
     const CardDef def_ = [] {

@@ -64,7 +64,7 @@ private:
         if (!ctx.state.objectExists(unit) || !ctx.state.getObject(unit).location.has_value())
             return;                           // left the board
         moveTo(ctx, unit, dest);
-        ctx.events.logTrace("BLAST CONE: moved enemy on play");
+        RIFT_TRACE(ctx.events, "BLAST CONE: moved enemy on play");
     }
     // "you may exhaust this to [Stun] it": "it" is the unit that was moved,
     // the trigger's subject.
@@ -88,7 +88,7 @@ private:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (go != 1 || !on_board_enemy()) return;
         ctx.executor.stunUnitBy(moved, ctx.source);
-        ctx.events.logTrace("BLAST CONE: exhausted to stun moved enemy");
+        RIFT_TRACE(ctx.events, "BLAST CONE: exhausted to stun moved enemy");
     }
     const CardDef def_ = [] {
         CardDef d;

@@ -33,7 +33,7 @@ public:
         gear.zone = ZoneType::Hand;
         gear.location = std::nullopt;
         ps.hand.push_back(t);
-        ctx.events.logTrace("ASPIRING ENGINEER: returned " + gear.name + " from trash to hand");
+        RIFT_TRACE(ctx.events, "ASPIRING ENGINEER: returned " + gear.name + " from trash to hand");
     }
 private:
     const CardDef def_ = [] {

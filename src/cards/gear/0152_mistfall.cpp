@@ -50,7 +50,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (!subject_on_board()) return;      // it left the board in response
         ctx.executor.readyObject(subject);
-        ctx.events.logTrace("MISTFALL: paid [O]+exhaust -> ready buffed unit");
+        RIFT_TRACE(ctx.events, "MISTFALL: paid [O]+exhaust -> ready buffed unit");
     }
 private:
     const CardDef def_ = [] {

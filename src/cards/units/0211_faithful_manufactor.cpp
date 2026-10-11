@@ -22,7 +22,7 @@ public:
         if (!loc) loc = LocationId{BaseLocation{ctx.controller}};
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  1, {"Recruit"}, KeywordSet{}, *loc, false);
-        ctx.events.logTrace("FAITHFUL MANUFACTOR: play 1[M] Recruit here");
+        RIFT_TRACE(ctx.events, "FAITHFUL MANUFACTOR: play 1[M] Recruit here");
     }
 private:
     const CardDef def_ = [] {

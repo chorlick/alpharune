@@ -54,10 +54,10 @@ public:
             // "[Add] [1][A]": one Energy and one Power of any domain.
             ctx.executor.addFloatingEnergy(ctx.controller, 1);
             ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
-            ctx.events.logTrace("HONEYFRUIT: [Add] [1][A]");
+            RIFT_TRACE(ctx.events, "HONEYFRUIT: [Add] [1][A]");
         } else {
             ctx.executor.addFloatingUniversalPower(ctx.controller, 1);  // [A]
-            ctx.events.logTrace("HONEYFRUIT: [Add] [A]");
+            RIFT_TRACE(ctx.events, "HONEYFRUIT: [Add] [A]");
         }
     }
 private:

@@ -51,13 +51,13 @@ public:
         // An ability (CR 426): it is removed from the chain; there is no card
         // to move, its source stays where it is.
         if (isUncounterable(ctx, top)) {
-            ctx.events.logTrace("NOT SO FAST: that ability can't be countered");
+            RIFT_TRACE(ctx.events, "NOT SO FAST: that ability can't be countered");
             return;
         }
         std::string name = ctx.state.objectExists(top.source)
             ? ctx.state.getObject(top.source).name : std::string("?");
         ctx.state.chain.items.pop_back();
-        ctx.events.logTrace("COUNTER: ability of " + name + " countered (Not So Fast)");
+        RIFT_TRACE(ctx.events, "COUNTER: ability of " + name + " countered (Not So Fast)");
     }
 private:
     const CardDef def_ = [] {

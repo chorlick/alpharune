@@ -30,7 +30,7 @@ public:
         if (excessCombatDamageAt(ctx.state, ctx.controller, bf) < 3) return;
         createGoldExhausted(ctx);
         createGoldExhausted(ctx);
-        ctx.events.logTrace("YETI BRAWLER: conquer with 3+ excess damage -> two Gold tokens, exhausted");
+        RIFT_TRACE(ctx.events, "YETI BRAWLER: conquer with 3+ excess damage -> two Gold tokens, exhausted");
     }
 private:
     const CardDef def_ = [] {

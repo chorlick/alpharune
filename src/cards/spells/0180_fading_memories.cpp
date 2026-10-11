@@ -50,7 +50,7 @@ public:
         auto& obj = ctx.state.getObject(picked);
         obj.keywords.set(Keyword::Temporary);
         obj.granted_keywords.set(Keyword::Temporary);   // given, not printed (CR 718.2)
-        ctx.events.logTrace("FADING MEMORIES: " + obj.name + " gains [Temporary]");
+        RIFT_TRACE(ctx.events, "FADING MEMORIES: " + obj.name + " gains [Temporary]");
         // The start-of-Beginning-Phase Temporary sweep (game_engine.cpp
         // beginningStep) now kills both units AND gear, so a gear given
         // [Temporary] here is auto-killed via EffectExecutor::killObject.

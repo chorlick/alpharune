@@ -72,7 +72,7 @@ public:
         if (def_id == kInvalidId || db.all().find(def_id) == db.all().end()) return;
         const std::string name = db.get(def_id).name;
         ctx.state.getObject(ctx.source).string_state[kNamedKey] = name;
-        ctx.events.logTrace("FALLEN FELINE: named \"" + name + "\"");
+        RIFT_TRACE(ctx.events, "FALLEN FELINE: named \"" + name + "\"");
     }
     // "While I'm at a battlefield, opponents can't play spells with that name."
     // locked_spell_names is cleared every aura pass and re-asserted here.

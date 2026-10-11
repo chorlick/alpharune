@@ -31,7 +31,7 @@ public:
                                  KeywordSet{}, destLocation(ctx.controller, dest),
                                  /*enter_ready=*/false,
                                  tokenPlayLocations(ctx.state, ctx.controller));
-        ctx.events.logTrace("DESERT'S CALL: played 2[M] Sand Soldier token "
+        RIFT_TRACE(ctx.events, "DESERT'S CALL: played 2[M] Sand Soldier token "
                             "(engine repeats per [Repeat][2] paid)");
     }
 private:

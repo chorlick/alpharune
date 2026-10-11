@@ -81,7 +81,7 @@ public:
         if (unit != kInvalidId && ctx.state.objectExists(unit) &&
             ctx.state.getObject(unit).location.has_value() && cost > 0) {
             ctx.executor.giveTemporaryMight(unit, cost);
-            ctx.events.logTrace("RIPOSTE: countered spell -> +" +
+            RIFT_TRACE(ctx.events, "RIPOSTE: countered spell -> +" +
                                 std::to_string(cost) + " [M] this turn");
         }
     }

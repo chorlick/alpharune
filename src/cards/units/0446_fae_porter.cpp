@@ -58,7 +58,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
         if (conf < 1 || tgt == kInvalidId) return;  // waiting / declined / mistarget
         ctx.executor.moveToBattlefield(tgt, *my_bf);
-        ctx.events.logTrace("FAE PORTER: paid [P] -> moved a unit to the battlefield I moved to");
+        RIFT_TRACE(ctx.events, "FAE PORTER: paid [P] -> moved a unit to the battlefield I moved to");
     }
 private:
     const CardDef def_ = [] {

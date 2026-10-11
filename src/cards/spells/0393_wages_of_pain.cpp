@@ -23,10 +23,10 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (!targets.empty() && ctx.state.objectExists(targets[0])) {
             ctx.executor.dealDamage(targets[0], 3, ctx.source);
-            ctx.events.logTrace("WAGES OF PAIN: dealt 3 to a unit at a battlefield");
+            RIFT_TRACE(ctx.events, "WAGES OF PAIN: dealt 3 to a unit at a battlefield");
         }
         createGoldExhausted(ctx);
-        ctx.events.logTrace("WAGES OF PAIN: played a Gold gear token exhausted");
+        RIFT_TRACE(ctx.events, "WAGES OF PAIN: played a Gold gear token exhausted");
     }
 private:
     const CardDef def_ = [] {

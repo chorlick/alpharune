@@ -36,10 +36,10 @@ public:
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         if (mode == 0) {
             ctx.executor.readyObject(tgt);
-            ctx.events.logTrace("ROYAL ENTOURAGE: readied a legend");
+            RIFT_TRACE(ctx.events, "ROYAL ENTOURAGE: readied a legend");
         } else {
             ctx.executor.exhaustObject(tgt);
-            ctx.events.logTrace("ROYAL ENTOURAGE: exhausted a legend");
+            RIFT_TRACE(ctx.events, "ROYAL ENTOURAGE: exhausted a legend");
         }
     }
 private:

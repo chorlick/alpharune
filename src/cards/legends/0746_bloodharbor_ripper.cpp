@@ -31,7 +31,7 @@ public:
             const auto& unit = ctx.state.getObject(targets[0]);
             if (unit.isUnit() && unit.isAtBattlefield() && unit.controller == ctx.controller) {
                 ctx.executor.bounceToHand(targets[0]);
-                ctx.events.logTrace("BLOODHARBOR RIPPER: bounced a friendly unit");
+                RIFT_TRACE(ctx.events, "BLOODHARBOR RIPPER: bounced a friendly unit");
             }
         }
         // Play a Gold gear token, exhausted. createToken with the real Gold
@@ -42,7 +42,7 @@ public:
                                             /*enter_ready=*/false, {}, kGoldGearCardDefId,
                                             /*enters_exhausted=*/true);   // "exhausted"
         (void)tid;
-        ctx.events.logTrace("BLOODHARBOR RIPPER: created exhausted Gold gear token");
+        RIFT_TRACE(ctx.events, "BLOODHARBOR RIPPER: created exhausted Gold gear token");
     }
 private:
     const CardDef def_ = [] {

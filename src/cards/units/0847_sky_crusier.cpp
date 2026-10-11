@@ -49,7 +49,7 @@ public:
         if (ctx.state.objectExists(picked) &&
             ctx.state.getObject(picked).hasLethalDamage())
             ctx.executor.killObject(picked);
-        ctx.events.logTrace("SKY CRUSIER: deal 4 to a unit at a battlefield");
+        RIFT_TRACE(ctx.events, "SKY CRUSIER: deal 4 to a unit at a battlefield");
     }
 private:
     const CardDef def_ = [] {

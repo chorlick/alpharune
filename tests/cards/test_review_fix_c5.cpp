@@ -824,9 +824,14 @@ TEST_F(C5Test, RellMagneticPlaysTheEquipmentOutOfHand) {
     sendToTrash(gone);
     EnginePathAgent agent2(EnginePathAgent::choosing(shield));
     fireTriggerThroughEngine(gone, TriggerType::WhenIAttack, &agent2);
-    if (onBoard(shield)) {
-        EXPECT_FALSE(state.getObject(shield).attached_to.has_value());
-    }
+    // 9.B3: the checks on the Equipment were inside `if (onBoard(shield))`, so
+    // a Rell that did nothing at all passed. "You may play an Equipment ..."
+    // does not depend on her; only "attach it to me" does.
+    EXPECT_FALSE(agent2.prompts.empty()) << "the may is still offered";
+    EXPECT_FALSE(inHand(P1, shield)) << "played out of the hand";
+    ASSERT_TRUE(onBoard(shield)) << "the Equipment is played although Rell is gone";
+    EXPECT_EQ(state.getObject(shield).zone, ZoneType::Base);
+    EXPECT_FALSE(state.getObject(shield).attached_to.has_value());
     EXPECT_TRUE(state.getObject(gone).attachments.empty());
 }
 

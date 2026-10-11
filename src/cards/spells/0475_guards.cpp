@@ -43,12 +43,16 @@ public:
             }
             if (ok) playable |= 1u << i;
         }
-        // Played from facedown the unit must go to that battlefield (CR
-        // 811.1.d.5): the one location offered stays as it is.
-        if (hidden_at.has_value()) playable = 0xFFFFFFFFu;
+        // Played from facedown that battlefield is the only location (CR
+        // 811.1.d: the choice is "restricted to the battlefield where it was
+        // hidden"), and the mask applies to it too: the rule does not lift a
+        // card's "Units can't be played here." (CR 002, 054.1). Two
+        // restrictions that contradict leave no location, so the unit is not
+        // played at all (Vendetta FAQ, Perched Grimwyrm at Rockfall Path) and
+        // the rest of the text has no "it" to ready (CR 055).
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
                             where.count(), where.labels, playable);
-        if (mode < 0 || mode >= where.count()) return;   // -1 waiting for the agent
+        if (mode < 0 || mode >= where.count()) return;   // -1 waiting, -2 nowhere to play it
 
         GameObjectId tok = kInvalidId;
         auto& ri = ctx.state.chain.resuming;

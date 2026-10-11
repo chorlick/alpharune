@@ -794,9 +794,16 @@ TEST_F(C0Test, UnlicensedArmory_SavingTheUnitCostsPowerAndIsOptional) {
 
     // Would die with no Power to pay: it dies.
     {
+        // 9.B4: no agent was passed (a may is declined by default) and the
+        // mark was copied from card_counters, which the card no longer uses:
+        // the unit died whether or not the may was offered.
+        ASSERT_FALSE(o(unit).pending_death_replacements.empty()) << "the ability marked the unit";
         auto doomed = addUnit(P1, kInvalidId, 3, 0);
-        o(doomed).card_counters = o(unit).card_counters;   // marked the same way
-        resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(doomed); });
+        o(doomed).pending_death_replacements = o(unit).pending_death_replacements;   // marked the same way
+        EnginePathAgent broke(EnginePathAgent::script({1}));
+        resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(doomed); },
+                             &broke);
+        EXPECT_TRUE(broke.prompts.empty()) << "no [C] to pay: not offered";
         EXPECT_FALSE(o(doomed).location.has_value()) << "no [C], no rescue";
     }
     // With a Fury Power and a yes: healed, exhausted, recalled; the Power is spent.
@@ -804,6 +811,7 @@ TEST_F(C0Test, UnlicensedArmory_SavingTheUnitCostsPowerAndIsOptional) {
     o(unit).damage_marked = 2;
     EnginePathAgent yes(EnginePathAgent::script({1}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &yes);
+    EXPECT_FALSE(yes.prompts.empty()) << "with the [C] available the may IS offered";
     EXPECT_TRUE(o(unit).isAtBase());
     EXPECT_TRUE(o(unit).is_exhausted);
     EXPECT_EQ(o(unit).damage_marked, 0);
@@ -834,6 +842,13 @@ TEST_F(C0Test, MaskOfForesight_IgnoresAUnitThatLeftTheBoard) {
     o(gone).location = std::nullopt;
     o(gone).zone = ZoneType::Hand;
     fireTriggerThroughEngine(mask, TriggerType::WhenAUnitAttacksOrDefendsAlone, nullptr, gone);
+    EXPECT_EQ(o(gone).temp_might_bonus, 0);
+
+    // 9.B10: `== 0` alone also held for a Mask that does nothing. The same
+    // trigger for a unit still on the board gives it the +1 [M].
+    auto lone = addUnit(P1, kInvalidId, 2, 0);
+    fireTriggerThroughEngine(mask, TriggerType::WhenAUnitAttacksOrDefendsAlone, nullptr, lone);
+    EXPECT_EQ(o(lone).temp_might_bonus, 1) << "+1 [M] this turn to the lone unit";
     EXPECT_EQ(o(gone).temp_might_bonus, 0);
 }
 

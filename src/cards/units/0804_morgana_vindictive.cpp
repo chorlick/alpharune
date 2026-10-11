@@ -21,11 +21,9 @@ public:
     // The unit is chosen at resolution (pickTarget) so the amount reflects the
     // damage marked at that moment.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         GameObjectId tgt = kInvalidId;
-        if (!targets.empty()) {
-            tgt = targets[0];
-        } else {
+        {   // the engine never hands a trigger targets: the card picks
             tgt = pickTarget(ctx, "Morgana, Vindictive: choose a unit",
                              chooseableUnits(ctx.state, ctx.controller,
                                              [](const GameObject&) { return true; }));

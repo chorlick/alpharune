@@ -535,20 +535,46 @@ TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
     EXPECT_EQ(std::get<BattlefieldLocation>(*t.location).id, bf);
 }
 
-// No battlefield recorded as the origin (she moved out of her base): the
-// token is played to her controller's base.
+// 9.B11: this was a direct call (fireTriggerAs) on a Lillia with no location
+// and no recorded origin, asserting a base fallback. "When I move from a
+// location, play a 3 [M] Sprite unit token with [Temporary] there.": "there"
+// is the location she left, wherever she is by the time the ability resolves.
+// The token is in her base only when her base is what she moved from.
 TEST_F(AuditFix5Test, Lillia_NoLocationFallsBackToBase) {
-    EffectExecutor exec(state, events, card_db);
-    auto lillia = addUnit(P1, kLillia, 3);  // at base
-    state.getObject(lillia).location.reset();
+    auto spritesAt = [&](const LocationId& where) {
+        int n = 0;
+        for (auto& [id, obj] : state.objects)
+            if (obj.isToken() && obj.isUnit() && obj.name == "Sprite" &&
+                obj.controller == P1 && obj.location.has_value() && *obj.location == where) ++n;
+        return n;
+    };
+    const LocationId base{BaseLocation{P1}};
+    const LocationId left{BattlefieldLocation{1}};
+    const LocationId arrived{BattlefieldLocation{0}};
 
-    fireTriggerAs(kLillia, P1, lillia, TriggerType::WhenIMove, exec);
+    // She leaves battlefield 1 and is dead before the trigger resolves: no
+    // location of her own, and the Sprite is still played at battlefield 1.
+    auto lillia = addUnit(P1, kLillia, 3, /*at_bf=*/1);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.moveToBattlefield(lillia, 0);
+        ex.killObject(lillia);
+    });
+    ASSERT_FALSE(state.getObject(lillia).location.has_value()) << "she is off the board";
+    EXPECT_EQ(spritesAt(left), 1) << "\"there\" is the battlefield she moved from";
+    EXPECT_EQ(spritesAt(base), 0) << "no base fallback for a Lillia with no location";
+    EXPECT_EQ(spritesAt(arrived), 0);
 
-    auto token = findTokenByName(P1, "Sprite");
-    ASSERT_NE(token, kInvalidId);
-    auto& t = state.getObject(token);
-    ASSERT_TRUE(t.location.has_value());
-    EXPECT_TRUE(std::holds_alternative<BaseLocation>(*t.location));
+    // The same with her base as the origin: the Sprite is in the base because
+    // that is where she moved from.
+    auto second = addUnit(P1, kLillia, 3);  // at base
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.moveToBattlefield(second, 0);
+        ex.killObject(second);
+    });
+    ASSERT_FALSE(state.getObject(second).location.has_value());
+    EXPECT_EQ(spritesAt(base), 1) << "she moved out of her base";
+    EXPECT_EQ(spritesAt(left), 1);
+    EXPECT_EQ(spritesAt(arrived), 0);
 }
 
 // ─── [682] Rengar, Trophy Hunter ─────────────────────────────────────────────

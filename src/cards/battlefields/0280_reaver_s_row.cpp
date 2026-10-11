@@ -16,11 +16,9 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "When you defend here, you may move a friendly unit here to base."
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         GameObjectId unit = kInvalidId;
-        if (!targets.empty()) {
-            unit = targets[0];
-        } else {
+        {   // the engine never hands a trigger targets: the card picks
             auto unitsHere = [&]() {
                 std::vector<GameObjectId> out;
                 for (const auto& bf : ctx.state.battlefields) {

@@ -15,14 +15,18 @@ namespace {
 class Svellsongur : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
-    // NOT IMPLEMENTED: "As this is attached to a unit, copy that unit's text
-    // to this Equipment's effect text for as long as this is attached to it."
-    // An Equipment's effect text speaks for its bearer, so the bearer would
-    // have each of its own abilities twice. That needs engine support: the
-    // equipped-trigger, aura and activated-ability dispatch all ask the gear's
-    // Card for fixed, state-free descriptors (equippedTriggerType(),
-    // equippedKeywords(), ...), which cannot stand for "whatever the unit I am
-    // on says". Only the Equip ability works.
+    // "As this is attached to a unit, copy that unit's text to this
+    // Equipment's effect text for as long as this is attached to it." (A copy
+    // effect, CR 479.1.d.) An Equipment's effect text speaks for its bearer,
+    // so while attached the bearer has each of its abilities a second time:
+    //  - a triggered ability triggers once more (TriggerManager::fireTrigger);
+    //  - a passive ability applies once more, and printed [Assault N] /
+    //    [Shield N] / [Deflect N] count again (GameEngine::recalculateAuras);
+    //  - a second copy of an activated ability adds nothing the first does
+    //    not already allow (same cost, same source to exhaust), so nothing
+    //    more is offered.
+    // The engine asks copiesBearerText(); the copy ends when this comes off.
+    bool copiesBearerText() const override { return true; }
     bool hasEquipAbility() const override { return true; }
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
         return standardEquip(ctx, ctx.source, unit,

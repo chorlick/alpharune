@@ -86,15 +86,7 @@ public:
         // Recall (CR 457-458): relocated to its controller's base; not a Move,
         // so no UnitMovedEvent. Attached gear goes with it (CR 448.1). Damage
         // and statuses are unaffected (CR 460.1).
-        unit.location = BaseLocation{back};
-        unit.zone = ZoneType::Base;
-        for (auto gid : unit.attachments) {
-            if (!ctx.state.objectExists(gid)) continue;
-            auto& g = ctx.state.getObject(gid);
-            g.location = unit.location;
-            g.zone = ZoneType::Base;
-        }
-        unit.recomputeMight();
+        ctx.executor.recallToBase(seized);
         ctx.events.logTrace("HOSTILE TAKEOVER: end of turn -> " + unit.name +
                             " returns to its controller and is recalled");
     }

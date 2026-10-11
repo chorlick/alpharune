@@ -68,8 +68,8 @@ public:
                 /*revealed_to_all=*/true, /*revealed_to=*/ctx.controller,
                 ZoneType::MainDeck});
             knowledge::seen(ctx.state, drafted, deck::Place::Held, knowledge::everyone());
-            obj.zone = ZoneType::Hand;
-            ps.hand.push_back(drafted);
+            // "draw it": a draw (draws_this_turn, "When you draw").
+            ctx.executor.drawHeldCard(ctx.controller, drafted, /*seen_by_all=*/true);
             ctx.events.logTrace("IVERN NURTURER: revealed and drew " + obj.name);
         }
         if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);

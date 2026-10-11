@@ -30,7 +30,7 @@ Owner is sweep-verify-cards (second tranche) unless a line names another stream.
 - [ ] **9.A14** `units/0446_fae_porter.cpp`: early `return` when the Porter has left drops an already paid move.
 - [ ] **9.A15** `legends/0553_void_burrower.cpp`, `legends/0756_deceiver.cpp`, `units/0491_rek_sai_swarm_queen.cpp`: "may" and cost decided at resolution (no `choicesAtFinalization`); 553 and `units/0121` emit the reveal with `revealed_to_all = false`.
 - [ ] **9.A16** `spells/0115_promising_future.cpp` `apply_banish`: picked id not validated against the top 5.
-- [ ] **9.A17** `units/0381_ornn_blacksmith.cpp`, `units/0613_ivern_nurturer.cpp`: "draw it" pushes the card into the hand by hand (no draw event) — same class as 443 / 626. — **owner: sweep-triggers**
+- [x] **9.A17** `units/0381_ornn_blacksmith.cpp`, `units/0613_ivern_nurturer.cpp`: "draw it" pushes the card into the hand by hand (no draw event) — same class as 443 / 626. — **owner: sweep-triggers** — FIXED (sweep-triggers): Ornn 381, Ivern 613, Fate Weaver 626 and Called Shot 443 hand the card to `EffectExecutor::drawHeldCard` (draws_this_turn, `CardsDrawnEvent`, knowledge, private log line unless revealed); test: SweepTriggersTest.RevealAndDrawIt_CountsAsADraw, .CalledShot_DrawingOneCountsAsADraw
 - [ ] **9.A18** `gear/0601_soul_sword.cpp` `applyPassiveAura`: no on-board check.
 - [ ] **9.A19** `gear/0063_spirit_s_refuge.cpp`: "if they didn't already" depends on hook order.
 - [ ] **9.A20** `spells/0760_keeper_s_verdict.cpp`: asks a token's owner top / bottom.
@@ -62,7 +62,7 @@ rewrites the test anyway.
 
 ## C. From the cleanup and sweep-flow reports
 
-- [ ] **9.C1** Svellsongur 382 "the bearer has each of its abilities twice" is the batch-00 item; tracked there. This line is closed when that box is. — **owner: sweep-triggers**
+- [x] **9.C1** Svellsongur 382 "the bearer has each of its abilities twice" is the batch-00 item; tracked there. This line is closed when that box is. — **owner: sweep-triggers** — FIXED (sweep-triggers): see batch-00 382; test: SweepTriggersTest.Svellsongur_*
 - [ ] **9.C2** `scripts/generate_replays.py` was rewritten against `build/riftbound` but never run: run it once end to end, or remove it and its README mention. — **owner: sweep-verify**
 - [ ] **9.C3** God-mode edit at a nested decision keeps the stale legal list (the reply says `legal_recomputed: false`): make it recompute there too, or show with a test that a stale intent is refused. — **owner: sweep-verify**
 - [ ] **9.C4** Blitzcrank 67, Mischievous Marai 562 and Shadow 752 lost a play-anywhere permission that the old text match gave them: confirm against each card's printed text and pin with a test. — **owner: sweep-verify**

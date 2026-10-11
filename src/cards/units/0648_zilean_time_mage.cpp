@@ -16,15 +16,14 @@ public:
     const CardDef& def() const override { return def_; }
     // "Once each turn, if you would play a token unit while I'm at a battlefield,
     //  you may play that token and an additional copy of it instead."
-    // Wired via PlayerState::zilean_present (set here while a Zilean is at a BF)
-    // + EffectExecutor::createToken, which spawns one extra copy of a friendly
-    // token unit once per turn (PlayerState::zilean_double_token_turn stamps the
-    // turn), keyed on token CREATION (the engine's token-unit entry path).
-    // ENGINE-GAP: the "may" is not asked — createToken has no way to put a
-    // question to the controller, so the additional copy is always played.
-    // The copy is made inside createToken and its id is not handed back to
-    // the card that asked for the token; a card that then changes "its" token
-    // must look for the copy itself (Keeper of Masks does).
+    // PlayerState::zilean_present is set here while a Zilean is at a
+    // battlefield; EffectExecutor::createToken then asks the controller, once
+    // each turn (PlayerState::zilean_double_token_turn stamps the turn it was
+    // used), whether to play an additional copy. The copy is played by the
+    // same instruction as the token: at the location that instruction names,
+    // or at one the controller chooses again when the instruction let them
+    // choose (createToken's `location_choices`). A card that then changes
+    // "its" tokens reads EffectExecutor::lastTokensCreated (Keeper of Masks).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (const auto& [id, obj] : state.objects) {
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&

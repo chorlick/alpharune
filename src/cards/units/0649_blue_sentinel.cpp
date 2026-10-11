@@ -18,11 +18,15 @@ public:
     // schedules a one-shot delayed ability (as Iascylla does); the rune pool
     // empties at the end of the Draw Phase, so Power added at the hold itself
     // would never reach the Main Phase.
-    // ENGINE-GAP: "Your hold effects for holding here trigger an additional
-    // time." is not implemented. It needs TriggerManager::onScore to queue
-    // every hold trigger for this battlefield (units, their gear, the legend,
-    // the battlefield card) once more per such unit there, the way
-    // queueOwnDeathTrigger reads deathknell_double_count.
+    // "Your hold effects for holding here trigger an additional time.":
+    // TriggerManager::onScore asks extraScoreTriggers and queues every hold
+    // ability of this hold once more — this card's own "When I hold" included.
+    int extraScoreTriggers(const GameState& state, GameObjectId self, PlayerId scorer,
+                           BattlefieldId bf, bool hold) const override {
+        const auto& me = state.getObject(self);
+        const auto here = me.battlefieldId();
+        return hold && me.controller == scorer && here.has_value() && *here == bf ? 1 : 0;
+    }
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
@@ -31,7 +35,7 @@ public:
             da.card_def_id = cardDefId();
             da.controller = ctx.controller;
             da.trigger = TriggerType::AtStartOfMain;
-            da.expires_on_turn = -1;   // stays until it fires
+            da.expires_on_turn = DelayedAbility::kUntilFired;
             ctx.state.delayed_abilities.push_back(da);
             ctx.events.logTrace("BLUE SENTINEL: hold -> [Add] [A] at the start of the next Main Phase");
             return;

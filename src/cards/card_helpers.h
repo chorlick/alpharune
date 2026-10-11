@@ -145,21 +145,11 @@ inline bool equipEndsOnBoard(const GameState& state, GameObjectId gear_id, GameO
            unit.isUnit() && unit.location.has_value();
 }
 
-/// Attach an unattached Equipment to a unit (the cost is already paid).
+/// Attach an Equipment to a unit (the cost is already paid). Every attach
+/// is EffectExecutor::attachGear: on-board checks, detach from a previous
+/// bearer, rules text Inactive (CR 718.2).
 inline void attachEquipped(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id) {
-    auto& state = ctx.state;
-    auto& gear = state.getObject(gear_id);
-    auto& unit = state.getObject(unit_id);
-    ctx.events.logTrace("EQUIP: " + gear.name + " -> " + unit.name +
-                        " (might_bonus=" + std::to_string(gear.might_bonus) + ")");
-    gear.attached_to = unit_id;
-    unit.attachments.push_back(gear_id);
-    gear.location = unit.location;
-    gear.zone = unit.zone;
-    unit.attachment_might_bonus += gear.might_bonus;
-    unit.recomputeMight();
-    ctx.events.emit(ObjectStateChangedEvent{gear_id, "attached"});
-    ctx.events.emit(ObjectStateChangedEvent{unit_id, "equipped"});
+    ctx.executor.attachGear(gear_id, unit_id);
 }
 
 // ── Equip: pay [energy] + one power (of `domain`, or [A] if nullopt), attach ──
@@ -183,25 +173,7 @@ inline bool standardEquip(CardContext& ctx, GameObjectId gear_id,
 // Attach a gear directly (no cost) to a unit (e.g. Edge of Night's
 // play-from-facedown → attach). Detaches from any prior bearer first.
 inline void attachFree(CardContext& ctx, GameObjectId gear_id, GameObjectId unit_id) {
-    auto& state = ctx.state;
-    auto& gear = state.getObject(gear_id);
-    auto& unit = state.getObject(unit_id);
-    if (gear.attached_to.has_value() && state.objectExists(*gear.attached_to)) {
-        auto& old = state.getObject(*gear.attached_to);
-        old.attachment_might_bonus -= gear.might_bonus;
-        auto it = std::find(old.attachments.begin(), old.attachments.end(), gear_id);
-        if (it != old.attachments.end()) old.attachments.erase(it);
-        old.recomputeMight();
-    }
-    gear.attached_to = unit_id;
-    unit.attachments.push_back(gear_id);
-    gear.location = unit.location;
-    gear.zone = unit.zone;
-    unit.attachment_might_bonus += gear.might_bonus;
-    unit.recomputeMight();
-    ctx.events.logTrace("ATTACH (free): " + gear.name + " -> " + unit.name);
-    ctx.events.emit(ObjectStateChangedEvent{gear_id, "attached"});
-    ctx.events.emit(ObjectStateChangedEvent{unit_id, "equipped"});
+    ctx.executor.attachGear(gear_id, unit_id);
 }
 
 // ── Discard-then-act resumable helpers ──
@@ -374,6 +346,18 @@ inline void moveToLocation(EffectExecutor& exec, GameObjectId obj,
 }
 
 inline bool isMighty(const GameObject& obj) { return obj.current_might >= 5; }
+
+/// Which play of its controller's turn `card` was — 1 for "your first card
+/// this turn", 2 for "your second card" — or 0 if it was not played this turn.
+/// Stamped on the card by TriggerManager::onCardPlayed.
+inline int playOrdinalThisTurn(const GameState& state, GameObjectId card) {
+    if (!state.objectExists(card)) return 0;
+    const auto& counters = state.getObject(card).card_counters;
+    auto turn = counters.find("__play_ordinal_turn");
+    if (turn == counters.end() || turn->second != state.turn.turn_number + 1) return 0;
+    auto n = counters.find("__play_ordinal");
+    return n == counters.end() ? 0 : n->second;
+}
 
 inline bool hasTag(const GameObject& obj, const std::string& tag) {
     for (const auto& t : obj.tags) if (t == tag) return true;
@@ -1069,9 +1053,15 @@ bool playTokensChoosingLocations(CardContext& ctx, const std::string& label, int
         for (size_t i = kTokenPlaySlot + 1; i < data.size(); ++i)
             made.push_back(static_cast<GameObjectId>(data[i]));
     };
+    // The controller chose among `where.locations`: an additional copy a
+    // replacement plays with a token (Zilean, Time Mage) gets the same choice.
+    // `made` lists the tokens the card asked for; a card that acts on every
+    // token played reads EffectExecutor::lastTokensCreated after each make.
     auto play_one = [&](int option) {
         if (option < 0 || option >= where.count()) option = 0;
+        ctx.executor.setTokenLocationChoices(where.locations);
         const GameObjectId tok = make(where.locations[option]);
+        ctx.executor.clearTokenLocationChoices();
         data.push_back(static_cast<int32_t>(tok));
         ++data[kTokenPlaySlot];
     };
@@ -1131,6 +1121,13 @@ inline std::vector<int> tokenPlayDests(const GameState& state, PlayerId player) 
 inline LocationId destLocation(PlayerId player, int dest) {
     if (dest <= 0) return LocationId{BaseLocation{player}};
     return LocationId{BattlefieldLocation{static_cast<BattlefieldId>(dest - 1)}};
+}
+/// tokenPlayDests as locations: what a card that asked with pickTokenDest
+/// passes to createToken as `location_choices`.
+inline std::vector<LocationId> tokenPlayLocations(const GameState& state, PlayerId player) {
+    std::vector<LocationId> out;
+    for (int d : tokenPlayDests(state, player)) out.push_back(destLocation(player, d));
+    return out;
 }
 /// Ask ctx.controller where a unit token they are playing goes (one of
 /// tokenPlayDests). Returns the code, or -1 while the agent is deciding (the

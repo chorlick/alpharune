@@ -15,8 +15,8 @@ class VexApathetic : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "[Deflect] ... When an opponent plays a unit while I'm at a battlefield,
-    // [Stun] it." [Deflect] is engine-handled. The played-unit id is captured
-    // by TriggerManager into card_counters["__opp_played_unit_id"].
+    // [Stun] it." [Deflect] is engine-handled. The played unit is the
+    // trigger's subject (ChainItem::triggering_subject).
     // ("It doesn't deal combat damage this turn" is the stun itself.)
     // "They can't move it this turn": GameObject::cant_move_this_turn, read
     // by the Standard Move generator and by the executor's effect moves, and
@@ -26,9 +26,9 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
         if (!self.battlefieldId().has_value()) return;  // "while I'm at a battlefield"
-        auto it = self.card_counters.find("__opp_played_unit_id");
-        if (it == self.card_counters.end()) return;
-        GameObjectId victim = static_cast<GameObjectId>(it->second);
+        const GameObjectId victim = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (victim == kInvalidId) return;
         // The unit must still be on the board, under an opponent's control.
         if (!ctx.state.objectExists(victim)) return;
         const auto& v = ctx.state.getObject(victim);

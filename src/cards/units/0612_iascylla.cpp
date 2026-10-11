@@ -39,7 +39,7 @@ public:
             da.card_def_id = cardDefId();
             da.controller = ctx.controller;
             da.trigger = TriggerType::AtStartOfMain;
-            da.expires_on_turn = -1;  // persists past current turn until it fires
+            da.expires_on_turn = DelayedAbility::kUntilFired;
             ctx.state.delayed_abilities.push_back(da);
             ctx.events.logTrace("IASCYLLA: scheduled next-Main-Phase enemy pull");
             return;

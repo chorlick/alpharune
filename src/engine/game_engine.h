@@ -247,6 +247,7 @@ public:
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
     void testHook_endingStep() { endingStep(); }
+    void testHook_expirationStep() { expirationStep(); }
     // Phase 6q+ engine-audit CRITICAL #2 + #3 — exposed so tests can
     // exercise the showdown / combat trigger drain + action-type
     // dispatch in isolation without driving a full turn.
@@ -257,7 +258,6 @@ public:
         return resolveShowdownDecision(bf, chosen, current_focus, action_count);
     }
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
-    void testHook_expirationStep() { expirationStep(); }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
     // The top-level main-phase decision, asked of `p`'s agent.

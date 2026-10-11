@@ -2,6 +2,8 @@
 
 #include "effect_executor.h"
 
+#include "cards/card.h"
+
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
@@ -19,6 +21,10 @@ ChainManager::ChainManager(GameState& state, EventBus& events,
 // like a mistarget) instead of being chosen for free.
 void ChainManager::payDeflectForChoices(ChainItem& item) {
     if (!executor_) return;
+    // "Ignore [Deflect] while paying this spell's cost." (Card::ignoresDeflect)
+    // — as Card::pickTarget honours it for a choice made at resolution.
+    if (const Card* card = executor_->cardFor(item.card_def_id); card && card->ignoresDeflect())
+        return;
     std::vector<GameObjectId> chosen;
     chosen.reserve(item.targets.size());
     for (auto t : item.targets) {
@@ -174,6 +180,10 @@ void ChainManager::processFEPR(
     constexpr int kMaxIterations = 1000;
     int iterations = 0;
 
+    // The engine's play path, called from the Execute step for a card played
+    // in response, ends by running the chain: this loop is already doing that.
+    if (playing_card_) return;
+
     while (state_.chain.exists()) {
         if (++iterations > kMaxIterations) {
             abandonChain("FEPR loop did not empty the chain");
@@ -308,7 +318,24 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
 
             // Pass to next player in turn order
             current = opponent(current);
+        } else if (chosen.type == IntentType::PlayReaction && play_card_) {
+            // One play path for every card (see setPlayCard).
+            const ChainItemId before = state_.chain.next_id;
+            playing_card_ = true;
+            try {
+                play_card_(chosen);
+            } catch (...) {
+                playing_card_ = false;
+                throw;
+            }
+            playing_card_ = false;
+            if (state_.chain.next_id != before)
+                return true; // Item added → restart FEPR from Finalize
+            // The play did not happen (its cost could not be paid after all):
+            // the same player keeps priority and chooses again.
         } else if (chosen.type == IntentType::PlayReaction) {
+            // No engine attached (a ChainManager driven on its own): the bare
+            // mechanics — leave the zone, pay the printed cost, go on the chain.
             auto& card = state_.getObject(chosen.card);
             auto& ps = state_.player(current);
 
@@ -515,7 +542,21 @@ void ChainManager::stepResolve(
     resolved = std::move(state_.chain.resuming.value());
     state_.chain.resuming.reset();
 
-    if (resolved.is_spell && state_.objectExists(resolved.source)) {
+    // "Play this spell again" (Dancing Grenade, Death from Below): the spell's
+    // own effect put the card back on the chain as a new play. The card is on
+    // the chain for that play now — it is not filed anywhere as this
+    // resolution ends; the new play files it when IT resolves (and carries
+    // any "banish / recycle as it leaves the chain" along).
+    bool replayed = false;
+    if (resolved.is_spell)
+        for (const auto& ci : state_.chain.items)
+            if (ci.is_spell && ci.source == resolved.source) replayed = true;
+
+    if (replayed && state_.objectExists(resolved.source)) {
+        events_.logTrace("CHAIN: " + state_.getObject(resolved.source).name +
+                         " was played again while it resolved — it stays on the chain");
+        events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
+    } else if (resolved.is_spell && state_.objectExists(resolved.source)) {
         auto& spell_obj = state_.getObject(resolved.source);
         // A card always goes to its OWNER's trash / banishment / deck, whoever
         // controlled the spell (objects built by hand in tests may have none).

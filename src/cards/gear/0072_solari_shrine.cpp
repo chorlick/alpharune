@@ -16,16 +16,17 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "When you kill a stunned enemy unit, you may exhaust this to draw 1."
-    // The dying unit is the trigger's subject and is still marked stunned when
-    // it dies, so "stunned" is checked as the trigger condition.
-    // APPROXIMATION: who killed it is not tracked — any death of a stunned
-    // enemy unit counts as "you kill".
+    // The dying unit is the trigger's subject; whether it was stunned and who
+    // killed it are in its last-known information (LastKnown::killed_by: the
+    // controller of the spell or ability that killed it, else the player
+    // whose damage was lethal).
     TriggerType triggerType() const override { return TriggerType::WhenAnEnemyUnitDies; }
     bool triggerCondition(const GameState& state, GameObjectId /*source*/,
-                          PlayerId /*controller*/, TriggerType /*trigger*/,
+                          PlayerId controller, TriggerType /*trigger*/,
                           GameObjectId subject) const override {
-        return subject != kInvalidId && state.objectExists(subject) &&
-               state.getObject(subject).is_stunned;
+        if (subject == kInvalidId || !state.objectExists(subject)) return false;
+        const auto& lk = state.getObject(subject).last_known;
+        return lk.valid && lk.stunned && lk.killed_by == controller;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;

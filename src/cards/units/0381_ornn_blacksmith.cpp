@@ -52,7 +52,6 @@ public:
         }
         // Snapshot the top 4 before drawing (drawing shifts the deck).
         const std::vector<GameObjectId> original_top = topFour(ctx);
-        auto& ps = ctx.state.player(ctx.controller);
         if (drafted != kInvalidId) {
             auto& drafted_obj = ctx.state.getObject(drafted);
             // Revealed, then drawn: the opponent sees it and knows it is in hand.
@@ -65,8 +64,8 @@ public:
                 /*source_zone=*/ZoneType::MainDeck,
             });
             deck::take(ctx.state, drafted, deck::Place::Held, knowledge::everyone(), /*slot_public=*/false);
-            drafted_obj.zone = ZoneType::Hand;
-            ps.hand.push_back(drafted);
+            // "draw it": a draw (draws_this_turn, "When you draw").
+            ctx.executor.drawHeldCard(ctx.controller, drafted, /*seen_by_all=*/true);
             ctx.events.logTrace("ORNN, BLACKSMITH: drafted gear " + drafted_obj.name);
         }
         // Recycle the rest to the bottom of the deck.

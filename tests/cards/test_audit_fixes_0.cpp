@@ -595,13 +595,11 @@ TEST_F(AuditFix0Test, VexMocking_MovesToStunnedUnitsBattlefield) {
     auto vex   = addUnit(P1, kVexMocking, /*might=*/5, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/1);
     state.getObject(enemy).is_stunned = true;  // already stunned
-    // TriggerManager captures the stunned unit id into card_counters.
-    state.getObject(vex).card_counters["__stunned_unit_id"] =
-        static_cast<int>(enemy);
+    // The stunned unit is the trigger's subject (ChainItem::triggering_subject).
 
     EffectExecutor exec(state, events, card_db);
     driveResumableTrigger(kVexMocking, P1, vex, &AuditFix0Test::yes, exec,
-                          TriggerType::WhenYouStun);
+                          TriggerType::WhenYouStun, /*subject=*/enemy);
 
     auto bf = state.getObject(vex).battlefieldId();
     ASSERT_TRUE(bf.has_value());
@@ -612,12 +610,10 @@ TEST_F(AuditFix0Test, VexMocking_DeclineLeavesVexInPlace) {
     auto vex   = addUnit(P1, kVexMocking, /*might=*/5, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/1);
     state.getObject(enemy).is_stunned = true;
-    state.getObject(vex).card_counters["__stunned_unit_id"] =
-        static_cast<int>(enemy);
 
     EffectExecutor exec(state, events, card_db);
     driveResumableTrigger(kVexMocking, P1, vex, &AuditFix0Test::no, exec,
-                          TriggerType::WhenYouStun);
+                          TriggerType::WhenYouStun, /*subject=*/enemy);
 
     auto bf = state.getObject(vex).battlefieldId();
     ASSERT_TRUE(bf.has_value());
@@ -628,13 +624,11 @@ TEST_F(AuditFix0Test, VexMocking_NoOpWhenAlreadyAtSameBF) {
     auto vex   = addUnit(P1, kVexMocking, /*might=*/5, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/0);  // same BF as Vex
     state.getObject(enemy).is_stunned = true;
-    state.getObject(vex).card_counters["__stunned_unit_id"] =
-        static_cast<int>(enemy);
 
     EffectExecutor exec(state, events, card_db);
     // still_legal returns false (already there) → no prompt; yes-picker is a no-op.
     driveResumableTrigger(kVexMocking, P1, vex, &AuditFix0Test::yes, exec,
-                          TriggerType::WhenYouStun);
+                          TriggerType::WhenYouStun, /*subject=*/enemy);
 
     auto bf = state.getObject(vex).battlefieldId();
     ASSERT_TRUE(bf.has_value());
@@ -643,7 +637,7 @@ TEST_F(AuditFix0Test, VexMocking_NoOpWhenAlreadyAtSameBF) {
 
 TEST_F(AuditFix0Test, VexMocking_NoOpWithoutCapturedStun) {
     auto vex = addUnit(P1, kVexMocking, /*might=*/5, /*at_bf=*/0);
-    // No __stunned_unit_id counter set.
+    // No stunned unit named by the trigger.
     EffectExecutor exec(state, events, card_db);
     driveResumableTrigger(kVexMocking, P1, vex, &AuditFix0Test::yes, exec,
                           TriggerType::WhenYouStun);

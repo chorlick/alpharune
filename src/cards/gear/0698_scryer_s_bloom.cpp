@@ -74,7 +74,8 @@ public:
                 if (ri.resume_data[3 + i] == 1) {
                     deck::putOnBottom(ctx.state, ctx.controller, cid, deck::Place::Held,
                                       knowledge::only(ctx.controller));
-                    ctx.events.logTrace("PREDICT: recycled " + ctx.state.getObject(cid).name);
+                    ctx.events.logTracePrivate(ctx.controller,
+                        "PREDICT: recycled " + ctx.state.getObject(cid).name);
                     recycled = cid;
                 } else {
                     kept.push_back(cid);
@@ -91,7 +92,7 @@ public:
                 ctx.events.emit(ObjectStateChangedEvent{recycled, "recycled_main"});
             ri.resume_point = kDone;
             ctx.executor.drawCards(ctx.controller, 1);
-            ctx.state.player(ctx.controller).xp += 1;
+            gainXp(ctx, ctx.controller, 1);
             ctx.events.logTrace("SCRYER'S BLOOM: predict 2, draw 1, +1 XP");
         };
         // After the keep/recycle answers: ask the order if both were kept.
@@ -120,7 +121,8 @@ public:
                 ri.resume_data[1 + i] = static_cast<int32_t>(cid);
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);
-                    ctx.events.logTrace("  PEEKED: " + obj.name + " (id=" +
+                    ctx.events.logTracePrivate(ctx.controller,
+                                         "  PEEKED: " + obj.name + " (id=" +
                                          std::to_string(cid) +
                                          ") — PRIVATE to " + toString(ctx.controller));
                     ctx.events.emit(CardRevealedEvent{

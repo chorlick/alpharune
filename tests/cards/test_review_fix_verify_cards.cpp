@@ -480,6 +480,35 @@ protected:
         });
         return found;
     }
+
+    /// Answers the n-th MakeChoice prompt with the object order[n]; kInvalidId
+    /// stands for the option that carries a value and no object ("Stop here").
+    /// A wanted option that is not on offer is a test failure. First option
+    /// once the list runs out.
+    static EnginePathAgent::Picker pickingInOrder(std::vector<GameObjectId> order) {
+        auto n = std::make_shared<size_t>(0);
+        return [order = std::move(order), n](const std::vector<Intent>& legal) {
+            if (*n >= order.size()) return legal.front();
+            const GameObjectId want = order[(*n)++];
+            for (const auto& i : legal) {
+                if (want == kInvalidId
+                        ? (i.chosen_objects.empty() && i.chosen_value.has_value())
+                        : (!i.chosen_objects.empty() && i.chosen_objects.front() == want))
+                    return i;
+            }
+            ADD_FAILURE() << "prompt " << *n << ": the wanted option was not offered";
+            return legal.front();
+        };
+    }
+    /// The objects prompt `n` offered, ascending.
+    static std::vector<GameObjectId> promptObjects(const EnginePathAgent& agent, size_t n) {
+        std::vector<GameObjectId> out;
+        if (n >= agent.prompts.size()) return out;
+        for (const auto& i : agent.prompts[n])
+            if (!i.chosen_objects.empty()) out.push_back(i.chosen_objects.front());
+        std::sort(out.begin(), out.end());
+        return out;
+    }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
         for (const auto& [id, obj] : state.objects)
@@ -5038,6 +5067,164 @@ TEST_F(VerifyCardsTest, Pin_MysticVortex_NoTaxOutsideAShowdown) {
         st.turn.oc_state = OpenClosedState::Closed;
     };
     EXPECT_TRUE(affordableAfter(inferna, 2, 0, ended));
+}
+
+// ═══ Tranche 6: 9.R1 Fox-Fire 253 (CR 355.11) ═══════════════════════════════
+// ─── 9.R1: Fox-Fire 253 — the group requirement is re-judged as it resolves ──
+// "Kill any number of units at a battlefield with total Might 4 or less."
+// CR 355.11.a: the whole group is chosen as the spell is finalized.
+// CR 355.11.b: if the group no longer fulfils the requirement as the spell
+// resolves, its controller chooses a legal subset of the ORIGINAL targets;
+// 355.11.b.1: a subset holds as many of them as it can.
+
+// The rule's own example: four 1 [M] units chosen, two of them get +1 [M] in
+// response (1, 1, 2, 2 = 6). The controller chooses the two 2 [M] units.
+TEST_F(VerifyCardsTest, FoxFire_TotalNoLongerFits_TheControllerChoosesASubsetOfTheChosenUnits) {
+    auto r1 = addUnit(P2, kInvalidId, 1, 0);
+    auto r2 = addUnit(P2, kInvalidId, 1, 0);
+    auto r3 = addUnit(P2, kInvalidId, 1, 0);
+    auto r4 = addUnit(P2, kInvalidId, 1, 0);
+    auto fox = addToHand(P1, kFoxFire);
+    ps(P1).rune_pool.energy += card_db.get(kFoxFire).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = fox;
+    // Four picks as it is played, then the new choice: r3, r4.
+    EnginePathAgent agent(pickingInOrder({r1, r2, r3, r4, r3, r4}));
+    // Added in response too, so it was never one of the chosen units.
+    GameObjectId late = kInvalidId;
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 4u)
+            << "all four units are chosen before the opponent can respond (CR 355.11.a)";
+        for (auto id : {r3, r4}) {
+            auto& u = live.getObject(id);
+            u.temp_might_bonus += 1;
+            u.recomputeMight();
+        }
+        late = live.createObject();
+        auto& x = live.getObject(late);
+        x.owner = x.controller = P2;
+        x.card_def_id = kInvalidId;
+        x.card_type = CardType::Unit;
+        x.name = "LateUnit";
+        x.base_might = x.current_might = 1;
+        x.zone = ZoneType::BattlefieldZone;
+        x.location = BattlefieldLocation{static_cast<BattlefieldId>(0)};
+    });
+    ASSERT_EQ(agent.prompts.size(), 6u) << "4 choices as it is played, 2 as it resolves";
+    const std::vector<GameObjectId> originals = {r1, r2, r3, r4};
+    EXPECT_EQ(promptObjects(agent, 4), originals)
+        << "the new choice is among the original targets only";
+    EXPECT_FALSE(promptOffersValue(agent, 4, 0)) << "no 'stop': a subset is as large as it can be";
+    const std::vector<GameObjectId> after_r3 = {r1, r2, r4};
+    EXPECT_EQ(promptObjects(agent, 5), after_r3);
+    EXPECT_FALSE(onBoard(r3));
+    EXPECT_FALSE(onBoard(r4));
+    EXPECT_TRUE(onBoard(r1)) << "2 + 2 used the whole total";
+    EXPECT_TRUE(onBoard(r2));
+    ASSERT_NE(late, kInvalidId);
+    EXPECT_TRUE(onBoard(late)) << "a unit that was not chosen as the spell was played is never affected";
+}
+
+// The other legal subset of the example: the two 1 [M] units plus one 2 [M].
+// After 1 + 1 the two 2 [M] units both still fit, so the controller is asked
+// which; after that nothing fits and the fourth unit lives.
+TEST_F(VerifyCardsTest, FoxFire_TotalNoLongerFits_SubsetHoldsAsManyUnitsAsFit) {
+    auto r1 = addUnit(P2, kInvalidId, 1, 0);
+    auto r2 = addUnit(P2, kInvalidId, 1, 0);
+    auto r3 = addUnit(P2, kInvalidId, 1, 0);
+    auto r4 = addUnit(P2, kInvalidId, 1, 0);
+    auto fox = addToHand(P1, kFoxFire);
+    ps(P1).rune_pool.energy += card_db.get(kFoxFire).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = fox;
+    EnginePathAgent agent(pickingInOrder({r1, r2, r3, r4, r1, r2, r4}));
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        for (auto id : {r3, r4}) {
+            auto& u = live.getObject(id);
+            u.temp_might_bonus += 1;
+            u.recomputeMight();
+        }
+    });
+    ASSERT_EQ(agent.prompts.size(), 7u);
+    EXPECT_FALSE(promptOffersValue(agent, 6, 0))
+        << "1 + 1 is not a legal subset while a 2 [M] target still fits (CR 355.11.b.1)";
+    EXPECT_FALSE(onBoard(r1));
+    EXPECT_FALSE(onBoard(r2));
+    EXPECT_FALSE(onBoard(r4));
+    EXPECT_TRUE(onBoard(r3)) << "1 + 1 + 2 = 4: the other 2 [M] unit no longer fits";
+}
+
+// Fails on the old code: the only chosen unit outgrew the total, so the engine
+// dropped it, the card started over and killed a unit that was never chosen.
+TEST_F(VerifyCardsTest, FoxFire_TheOnlyChosenUnitOutgrowsTheTotal_NothingElseIsKilled) {
+    auto big = addUnit(P2, kInvalidId, 4, 0);
+    auto small = addUnit(P2, kInvalidId, 1, 0);
+    auto fox = addToHand(P1, kFoxFire);
+    ps(P1).rune_pool.energy += card_db.get(kFoxFire).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = fox;
+    EnginePathAgent agent(pickingInOrder({big}));
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        auto& u = live.getObject(big);
+        u.temp_might_bonus += 1;
+        u.recomputeMight();
+    });
+    EXPECT_EQ(agent.prompts.size(), 1u) << "no legal subset: there is nothing to choose";
+    EXPECT_TRUE(onBoard(big)) << "5 [M] is not 'total Might 4 or less'";
+    EXPECT_TRUE(onBoard(small)) << "it was not one of the original targets (CR 355.11.b)";
+}
+
+// "At a battlefield" is part of the group requirement: chosen units that are no
+// longer together are a subset each (the last sentences of the example).
+TEST_F(VerifyCardsTest, FoxFire_ChosenUnitsNoLongerAtOneBattlefield_OneGroupIsChosen) {
+    auto stays = addUnit(P2, kInvalidId, 2, 0);
+    auto moves = addUnit(P2, kInvalidId, 2, 0);
+    auto fox = addToHand(P1, kFoxFire);
+    ps(P1).rune_pool.energy += card_db.get(kFoxFire).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = fox;
+    EnginePathAgent agent(pickingInOrder({stays, moves, moves}));
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        live.getObject(moves).location = BattlefieldLocation{static_cast<BattlefieldId>(1)};
+    });
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    const std::vector<GameObjectId> both = {stays, moves};
+    EXPECT_EQ(promptObjects(agent, 2), both);
+    EXPECT_FALSE(onBoard(moves)) << "a chosen unit that left the battlefield can still be affected";
+    EXPECT_TRUE(onBoard(stays)) << "the two are no longer at one battlefield";
+}
+
+// Nothing changed in response: exactly the chosen units die, all of them
+// chosen before the opponent could respond, and nothing is asked again.
+TEST_F(VerifyCardsTest, FoxFire_UnchangedBoard_KillsTheChosenUnitsWithNoFurtherPrompt) {
+    auto a = addUnit(P2, kInvalidId, 1, 0);
+    auto b = addUnit(P2, kInvalidId, 2, 0);
+    auto spared = addUnit(P2, kInvalidId, 1, 0);
+    auto fox = addToHand(P1, kFoxFire);
+    ps(P1).rune_pool.energy += card_db.get(kFoxFire).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = fox;
+    EnginePathAgent agent(pickingInOrder({a, b, kInvalidId}));   // a, b, "Stop here"
+    executeAndProbe(play, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 3u) << "the choices are made as the spell is played";
+        EXPECT_TRUE(live.getObject(a).location.has_value()) << "not resolved yet";
+        EXPECT_TRUE(live.getObject(b).location.has_value());
+    });
+    EXPECT_EQ(agent.prompts.size(), 3u) << "the group still fits: no new choice";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "'Stop here' while a unit still fits";
+    EXPECT_FALSE(onBoard(a));
+    EXPECT_FALSE(onBoard(b));
+    EXPECT_TRUE(onBoard(spared));
 }
 
 }  // namespace

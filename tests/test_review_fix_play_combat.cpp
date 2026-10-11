@@ -28,7 +28,7 @@ namespace riftbound::test {
 namespace test_review_fix_play_combat {  // file-unique: test sources are unity-built
 namespace {
 
-// ─── Test-only cards (ids in the reserved 956..1100 range) ──────────────────
+// ─── Test-only cards (ids in the reserved 956..1150 range) ──────────────────
 
 constexpr CardDefId kTVanilla = 1081;       // unit, free, 2 [M]
 constexpr CardDefId kTPlayHereBf = 1082;    // battlefield: "when you play a unit here"

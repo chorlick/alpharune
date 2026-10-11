@@ -284,7 +284,7 @@ TEST(PerfSearchHash, SkippingZeroRunsDoesNotChangeTheInfoSetId) {
     for (int player = 0; player < 2; ++player) {
         EXPECT_EQ(ml::computeInfoSetId({}, player), byteWiseInfoSetId({}, player));
         for (size_t run : {1u, 2u, 3u, 254u, 255u, 256u, 257u, 510u, 511u,
-                           1100u, 6188u, 6192u}) {
+                           1100u, 6188u, 6192u, 6442u}) {
             std::vector<float> zeros(run, 0.0f);
             EXPECT_EQ(ml::computeInfoSetId(zeros, player),
                       byteWiseInfoSetId(zeros, player)) << "all zeros, " << run;

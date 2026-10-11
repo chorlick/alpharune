@@ -308,26 +308,28 @@ TEST(StrongIds, HistoryTokensAndSlotsArePinned) {
     // numbers of a build of fcfa93b, from before ids were types. They changed
     // twice in that stage: Intent gained `battlefield_pool_index` (plans/09
     // item 9.RR2), which every token fingerprints, and the action vocabulary
-    // was replaced (plans/01 item 1.12: new slot ranges). A trainer replay or a saved game holds these numbers: a
+    // was replaced (plans/01 item 1.12: new slot ranges), and once more when
+    // the card id space grew to 1150 (plans/09 item 9.SS2: the card-keyed
+    // ranges are wider). A trainer replay or a saved game holds these numbers: a
     // change here is a break that docs/checkpoint-breaking-2026-10.md lists.
     GameState state;
     Intent own;
     own.type = IntentType::ActivateAbility;
     own.player = PlayerId::Player1;
     own.ability_source = GameObjectId::fromRaw(9);
-    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697617589LL);
-    EXPECT_EQ(openspiel::actionSlot(own, state), 52917);
+    EXPECT_EQ(openspiel::historyToken(own, state), 7960844909697619989LL);
+    EXPECT_EQ(openspiel::actionSlot(own, state), 55317);
 
     Intent granted = own;
     granted.granted_ability_def = 506;
-    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613615152LL);
+    EXPECT_EQ(openspiel::historyToken(granted, state), 4496770096613617802LL);
 
     Intent named;  // "name a card": a MakeChoice that carries a card id
     named.type = IntentType::MakeChoice;
     named.player = PlayerId::Player2;
     named.chosen_card_def = 235;
-    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666312200LL);
-    EXPECT_EQ(openspiel::actionSlot(named, state), 61960);
+    EXPECT_EQ(openspiel::historyToken(named, state), 4030418850666315000LL);
+    EXPECT_EQ(openspiel::actionSlot(named, state), 64760);
 
     Intent bf;
     bf.type = IntentType::ChooseBattlefield;

@@ -29,7 +29,7 @@ namespace riftbound::test {
 namespace test_review_fix_verify_engine {  // file-unique: test sources are unity-built
 namespace {
 
-// ─── Test-only cards (ids in the reserved 956..1100 range) ──────────────────
+// ─── Test-only cards (ids in the reserved 956..1150 range) ──────────────────
 
 constexpr CardDefId kTVanilla = 1080;        // unit, free, 2 [M]
 constexpr CardDefId kTTargetReader = 1081;   // unit: trigger that records targets.size()

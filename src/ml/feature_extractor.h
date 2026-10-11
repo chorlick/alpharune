@@ -83,10 +83,17 @@ inline constexpr int kPerUnitExtFields    = 4;   // cd, gear, delta, temp_might
 inline constexpr int kPerUnitExtFieldsT2  = 8;   // T2/3 per-unit: assault, shield, deflect,
                                                  // buff_count, temp_buff_count, tank, backline, ganking
 // Card-def id space for the multi-hot zones. Registered ids run 1..955
-// (Origins/Proving Grounds/Spiritforged/Unleashed 1..787, Vendetta 788..960);
-// 961..1100 is reserved for Radiance so its release doesn't shift the layout
-// (and invalidate checkpoints) a second time.
-inline constexpr int kCardVocabSize       = 1100;
+// (Origins/Proving Grounds/Spiritforged/Unleashed 1..787, Vendetta 788..955);
+// 956..1150 (195 ids) is reserved for Radiance so its release doesn't shift
+// the layout (and invalidate checkpoints) a second time. Radiance needs 169
+// to 174 by the gallery data of 2026-10 (plans/09 item 9.SS2): the 167 cards
+// of its numbered range, two tokens it introduces (Bomb, the 3-Might Mech),
+// and up to five over-numbered champions that may be cards of their own; its
+// other gallery entries are second printings or basic runes that have ids.
+// The 21 to 26 spare cover what the 23 cards of the range not yet shown may
+// add. It was 1100: 145 reserved, at least 24 short. The derivation is in
+// docs/checkpoint-breaking-2026-10.md, section 0.
+inline constexpr int kCardVocabSize       = 1150;
 inline constexpr int kZoneVectorOffset    = 470;  // first multi-hot zone starts here
 inline constexpr int kNumZoneVectors      = 5;    // self deck/trash/banish, opp trash/banish
 
@@ -143,8 +150,8 @@ constexpr int unitT2(int bf, int side, int unit) {
 constexpr int zone(int zone) { return kZones + zone * kCardVocabSize; }
 } // namespace layout
 
-// 6192 with kCardVocabSize = 1100 (6188 before the 2026-10 checkpoint break:
-// + the 4 kBfContributedBy dims).
+// 6442 with kCardVocabSize = 1150. Before the 2026-10 checkpoint break it was
+// 6188: + the 4 kBfContributedBy dims, + 5 x 50 for the larger card id space.
 inline constexpr int kStateFeatureDim     = layout::kEnd;
 static_assert(kStateFeatureDim ==
               kZoneVectorOffset + kNumZoneVectors * kCardVocabSize + 2 + 192 + 24 + 4);

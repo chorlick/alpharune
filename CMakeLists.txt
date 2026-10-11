@@ -536,6 +536,15 @@ target_link_libraries(riftbound PRIVATE
 target_include_directories(riftbound PRIVATE ${open_spiel_SOURCE_DIR})
 riftbound_enable_warnings(riftbound)
 
+# tools/collision_census.cpp: plays random games and counts legal intents that
+# share an action id. The trainer repo builds it against its own decks; it is
+# a target here too (not part of `all`: `cmake --build build --target
+# collision_census`) so a change to openspiel/action_vocab.h cannot leave it
+# uncompiled.
+add_executable(collision_census EXCLUDE_FROM_ALL tools/collision_census.cpp)
+target_link_libraries(collision_census PRIVATE riftbound_core)
+riftbound_enable_warnings(collision_census)
+
 # Config parsing (src/config/) moved to riftbound-trainer along with the
 # training driver — engine has no current consumers. A future engine
 # binary (riftbound_play web UI) that wants config-file input will

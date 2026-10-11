@@ -2734,6 +2734,11 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
     // Lets the card's own "When you play me from face down" tell this play
     // apart from a play from hand. Cleared when it next enters a hand/trash.
     card.card_counters["__played_from_facedown"] = 1;
+    // Where and when, for a hidden SPELL's own text (CR 811.1.d: its choices
+    // are tied to that battlefield; "if you played this from your hand").
+    // Turn-stamped, so a stale value never reads as this play.
+    card.card_counters["__facedown_play_bf"] = static_cast<int>(bf_id) + 1;
+    card.card_counters["__facedown_play_turn"] = state_.turn.turn_number;
 
     // "When you play a card from face down" (Katarina, Reckless).
     events_.emit(PlayedFromFacedownEvent{intent.card, intent.player});

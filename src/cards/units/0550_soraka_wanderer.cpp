@@ -44,18 +44,9 @@ public:
         return dying.current_might < self.current_might;
     }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
-        if (!ctx.state.objectExists(ctx.source)) return false;
-        if (!ctx.state.objectExists(dying_unit)) return false;
-        const auto& self = ctx.state.getObject(ctx.source);
-        const auto& dying = ctx.state.getObject(dying_unit);
-        if (dying_unit == ctx.source) return false;         // "another unit"
-        if (!dying.isUnit() || dying.controller != ctx.controller) return false;
-        // "here" — same battlefield as Soraka.
-        auto my_bf = self.battlefieldId();
-        auto dy_bf = dying.battlefieldId();
-        if (!my_bf || !dy_bf || *my_bf != *dy_bf) return false;
-        // "if it has less Might than me"
-        if (dying.current_might >= self.current_might) return false;
+        // "another unit you control here ... if it has less Might than me"
+        // (replacementApplies).
+        if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
         ctx.events.logTrace("SORAKA, WANDERER: heal/exhaust/recall a dying ally here");
         // "(Send it to base. This isn't a move.)" — CR 457-460.
         ctx.executor.healExhaustRecall(dying_unit);

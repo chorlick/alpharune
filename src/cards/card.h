@@ -712,12 +712,13 @@ public:
     /// this card's object, `controller` the dying unit's controller). When
     /// more than one replacement applies, that controller chooses the order
     /// (CR 372; EffectExecutor::applyDeathReplacements), so the engine needs
-    /// to know which do before it applies any. A card that leaves the default
-    /// is listed whenever it is in play.
+    /// to know which do before it applies any. Every card with
+    /// hasReplacementEffect() defines this (the default applies to nothing),
+    /// and its applyReplacement starts by asking it, so the two cannot drift.
     virtual bool replacementApplies(const GameState& /*state*/, GameObjectId /*self*/,
                                     PlayerId /*controller*/,
                                     GameObjectId /*dying_unit*/) const {
-        return hasReplacementEffect();
+        return false;
     }
 
     // ── Equipment / Equip (CR 716-725, 818) ──

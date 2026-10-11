@@ -3020,7 +3020,7 @@ void GameEngine::applyCombatDamage(GameObjectId target_id, int assigned) {
         events_.logTrace("  COMBAT_DAMAGE: " + t.name + " assigned " + std::to_string(assigned) +
                          " -> dealt " + std::to_string(dealt));
     if (dealt <= 0) return;
-    if (t.damage_marked == 0) t.damage_marked_by[0] = t.damage_marked_by[1] = 0;
+    if (t.damage_marked == 0) EffectExecutor::forgetDamageSources(t);
     t.damage_marked += dealt;
     t.damage_taken_this_turn += dealt;
     t.damage_marked_by[playerIndex(opponent(t.controller))] += dealt;

@@ -33,20 +33,11 @@ public:
         return payableAnyPower(state, unit.controller) >= 3;
     }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
-        if (!ctx.state.objectExists(dying_unit)) return false;
+        // "here ... during combat", and "its controller may pay [A][A][A]" is
+        // offered only when payable (replacementApplies).
+        if (!replacementApplies(ctx.state, ctx.source, ctx.controller, dying_unit)) return false;
         auto& unit = ctx.state.getObject(dying_unit);
-        if (!unit.isUnit()) return false;
-        // "here ... during combat": at my battlefield, with a combat on there.
-        auto my_bf = battlefieldOfCard(ctx.state, ctx.source);
-        if (!my_bf || unit.battlefieldId() != my_bf) return false;
-        bool in_combat = false;
-        for (const auto& bf : ctx.state.battlefields)
-            if (bf.id == *my_bf) in_combat = bf.combat_in_progress;
-        if (!in_combat) return false;
-        // "its controller may pay [A][A][A]" — offered only when payable
-        // (floating Power or any rune in base, ready or exhausted).
         const PlayerId payer = unit.controller;
-        if (ctx.executor.payableAnyPower(payer) < 3) return false;
         if (!ctx.executor.confirmNow(payer, "Altar of Blood: pay [A][A][A] to heal, exhaust "
                                             "and recall " + unit.name + "?"))
             return false;

@@ -232,8 +232,38 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     mark.first_item = state_.chain.next_id;
     mark.oc_state = state_.turn.oc_state;
     mark.chain_was_empty = state_.chain.items.empty();
+    auto on_board = [&](GameObjectId id) {
+        return state_.objectExists(id) && state_.getObject(id).location.has_value();
+    };
+    // Replacements first, for every member, while none of them has died: a
+    // card that dies in this batch still replaces the deaths of the others
+    // (CR 370.4), and one that is put in a trash by this batch is not there
+    // yet to replace anything (the CR 370 example). Turn player's units first
+    // (CR 373.1); within a player, the order the units were listed in.
+    std::vector<GameObjectId> order;
+    for (int pass = 0; pass < 2; ++pass)
+        for (auto id : units) {
+            if (!on_board(id) || !state_.getObject(id).isUnit()) continue;
+            const bool turn_players = state_.getObject(id).controller == state_.turn.turn_player;
+            if (turn_players == (pass == 0) &&
+                std::find(order.begin(), order.end(), id) == order.end())
+                order.push_back(id);
+        }
+    for (auto id : order) {
+        if (!on_board(id)) continue;                 // left through another one's replacement
+        auto& lk = state_.getObject(id).last_known;
+        lk.batch_pending = false;
+        lk.batch_replaced = false;
+        // The snapshot a lone kill takes before its replacements, so that a
+        // replacement which reads the dying unit sees what it always saw.
+        snapshotLastKnown(id);
+        if (applyDeathReplacements(id)) {
+            if (state_.objectExists(id)) state_.getObject(id).last_known.batch_replaced = true;
+        }
+    }
     for (auto id : units) {
-        if (!state_.objectExists(id) || !state_.getObject(id).location.has_value()) continue;
+        if (!on_board(id)) continue;
+        if (state_.getObject(id).last_known.batch_replaced) continue;   // it does not die
         state_.getObject(id).last_known.batch_pending = false;
         snapshotLastKnown(id);
         state_.getObject(id).last_known.batch_pending = true;
@@ -242,16 +272,40 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     return mark;
 }
 
-DeathBatch::DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units)
+// A member of an open death batch: its replacements were applied when the
+// batch began (and none replaced the death).
+static bool replacementsSettledByBatch(const GameObject& obj) {
+    return obj.last_known.batch_pending && obj.last_known.valid &&
+           obj.last_known.batch_stamp == deathBatchStamp(obj);
+}
+
+DeathBatch::DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units,
+                       Members members)
     : executor_(executor), units_(std::move(units)) {
+    if (members == LethalOnly) executor_.keepLethallyDamaged(units_);
     mark_ = executor_.beginDeathBatch(units_);
 }
 DeathBatch::~DeathBatch() { executor_.endDeathBatch(units_, mark_); }
 
+bool EffectExecutor::deathReplacementsSettled(GameObjectId unit) const {
+    return state_.objectExists(unit) && replacementsSettledByBatch(state_.getObject(unit));
+}
+
+void EffectExecutor::keepLethallyDamaged(std::vector<GameObjectId>& units) const {
+    units.erase(std::remove_if(units.begin(), units.end(), [&](GameObjectId id) {
+        if (!state_.objectExists(id)) return true;
+        const auto& obj = state_.getObject(id);
+        return !obj.location.has_value() || !obj.hasLethalDamage();
+    }), units.end());
+}
+
 void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
                                    const DeathBatchMark& mark) {
     for (auto id : units)
-        if (state_.objectExists(id)) state_.getObject(id).last_known.batch_pending = false;
+        if (state_.objectExists(id)) {
+            state_.getObject(id).last_known.batch_pending = false;
+            state_.getObject(id).last_known.batch_replaced = false;
+        }
     // CR 383.2.c.2: an object "will not be able to successfully evaluate its
     // Trigger Condition ... if it leaves the zone that its Trigger is active
     // from at the same time that its Trigger is satisfied". A unit of the
@@ -303,6 +357,7 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id, bool dying) {
     lk.controller = obj.controller;
     lk.died = dying;
     lk.stunned = obj.is_stunned;
+    lk.exhausted = obj.is_exhausted;
     lk.location = obj.location;
     lk.other_friendly_units_here.clear();
     if (obj.location.has_value())
@@ -348,7 +403,11 @@ void EffectExecutor::killObject(GameObjectId target) {
     // Riches) in Banishment, a bounced unit in a hand — killing any of them
     // again would announce a second death. The test is the board, not a zone.
     if (!onBoard(obj)) return;
+    // Its death was replaced when the batch it dies in began (beginDeathBatch):
+    // this kill is the one that was replaced.
+    if (obj.last_known.batch_replaced) return;
     RIFT_TRACE(events_, "EFFECT: kill " + obj.name + " (id=" + std::to_string(target) + ")");
+    const bool replacements_settled = obj.isUnit() && replacementsSettledByBatch(obj);
     // Last-known information for "When I die" (CR 383.2.c.3.b).
     snapshotLastKnown(target);
 
@@ -359,7 +418,8 @@ void EffectExecutor::killObject(GameObjectId target) {
         // Everything that can replace this death — on the unit, on its
         // battlefield, among its controller's cards — in the order its
         // controller chooses (CR 372). GameEngine::killUnit makes the same call.
-        if (applyDeathReplacements(target)) return;
+        // (Already done for a unit of a death batch, before any of them died.)
+        if (!replacements_settled && applyDeathReplacements(target)) return;
         // Its gear is shed (CR 719.5) after the death is announced, so abilities
         // that trigger on it see the unit as it died — including what it was
         // a copy of while an Equipment made it one.
@@ -1963,13 +2023,34 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         // The Rune Deck is "a deck" (judge ruling 2026-10-11, plans/09 9.R5):
         // the look and the "may recycle it" come before a reveal from it too.
         // Its top is the back of the list; a recycled rune goes to the bottom.
+        //
+        // Knowledge (plans/09 9.NN4). After this the player knows the top
+        // rune (left there) or the bottom one (recycled), and a rune a card
+        // then reveals and recycles is known to both players at the bottom.
+        // None of it is recorded, and none of it can reach an observer:
+        //  - the state features hold only the SIZE of each Rune Deck
+        //    (ml/feature_extractor.cpp, `ps.rune_deck.size()`), so neither
+        //    ObservationTensor nor InfoSetId (a hash of those features) can
+        //    depend on its order;
+        //  - KnowledgeView answers "identity unknown" for every object in a
+        //    Rune Deck, for both observers (knowledge_tracker.cpp);
+        //  - the play server sends a Rune Deck's cards only to a viewer who
+        //    may see the decks (`show_decks`); fair-play sends the count.
+        // (Pinned by PerfEngineRuneDeck.* in tests/test_review_fix_perf_engine.cpp.)
+        // What a human at the table would know and an agent cannot use is
+        // therefore a missing FEATURE, for the v6 token layout: per observer,
+        // the known top and bottom runes of each Rune Deck.
+        // The one place the rune is named is the private trace line below:
+        // the option labels and the public lines do not name it.
         if (!ps.has_reveal_peek || ps.rune_deck.empty() || !agent_query_) return;
         const GameObjectId top = ps.rune_deck.back();
         if (!state_.objectExists(top)) return;
+        RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
+                         std::to_string(top) + ") on top of the Rune Deck [Void Hatchling]");
         Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
         Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
-        keep.choice_label = "Void Hatchling: leave " + state_.getObject(top).name + " on top of your Rune Deck";
-        recyc.choice_label = "Void Hatchling: recycle " + state_.getObject(top).name;
+        keep.choice_label = "Void Hatchling: leave the top rune of your Rune Deck";
+        recyc.choice_label = "Void Hatchling: recycle the top rune of your Rune Deck";
         const auto chosen = agent_query_(player, {keep, recyc});
         if (chosen.chosen_value.value_or(0) == 1) {
             ps.rune_deck.pop_back();
@@ -2352,11 +2433,17 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
         if (p_need <= 0) break;
         auto& r = state.getObject(rid);
         if (!runeMatches(r, cost.domains)) continue;
+        // Snapshot, move, announce, then the new object (CR 124.1) — the
+        // order of every other way off the board. (This site announced
+        // nothing before: "When you recycle a rune" did not hear it.)
+        snapshotAsItLeaves(r);
         r.location = std::nullopt;
         r.zone = ZoneType::RuneDeck;
-        forgetBoardState(r, nullptr);   // CR 124.1 (a rune carries no attachments)
         ps.rune_deck.insert(ps.rune_deck.begin(), rid);
         ps.power_spent_this_turn++;
+        events.emit(LeftBoardEvent{rid, player, CardType::Rune, base,
+                                   ZoneType::RuneDeck, false});
+        forgetBoardState(state.getObject(rid), nullptr);
         --p_need;
     }
     return true;

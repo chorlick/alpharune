@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,7 +21,9 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        std::optional<LocationId> died_at = self.last_location;
+        // Where THIS death happened (the snapshot that came with the ability).
+        std::optional<LocationId> died_at = asItLeft(ctx, ctx.source).valid
+            ? asItLeft(ctx, ctx.source).location : self.last_location;
         if (!died_at.has_value()) died_at = self.location;
         if (!died_at.has_value()) {
             ctx.executor.drawCards(ctx.controller, 1);

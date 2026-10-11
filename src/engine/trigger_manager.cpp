@@ -6,6 +6,17 @@
 
 namespace riftbound {
 
+// The subject of an ability that triggered on it leaving the board, as it
+// left: its snapshot goes with the chain item (ChainItem::subject_as_it_left).
+static void captureSubjectAsItLeft(const GameState& state, ChainItem& item) {
+    if (item.triggering_subject == kInvalidId || !state.objectExists(item.triggering_subject))
+        return;
+    const auto& subject = state.getObject(item.triggering_subject);
+    if (subject.location.has_value() || !subject.last_known.valid) return;
+    item.subject_as_it_left = subject.last_known;
+}
+
+
 // Defined with the other dispatch helpers below.
 static bool cardFiresOn(const CardRegistry& reg, CardDefId def_id, TriggerType t);
 
@@ -31,6 +42,7 @@ void TriggerManager::queueReflexive(GameObjectId source, PlayerId controller, in
         item.reflexive_data = std::move(data);
         if (state_.chain.resuming.has_value()) {
             item.triggering_subject = state_.chain.resuming->triggering_subject;
+            item.subject_as_it_left = state_.chain.resuming->subject_as_it_left;
             item.triggering_move = state_.chain.resuming->triggering_move;
         }
         break;
@@ -156,6 +168,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
             if (item.id != item_id) continue;
             item.fired_trigger = trigger;
             item.triggering_subject = event_object;
+            captureSubjectAsItLeft(state_, item);
             item.triggering_move = state_.chain.move_being_announced;
             break;
         }
@@ -202,6 +215,7 @@ void TriggerManager::queueEquippedTrigger(GameObjectId gear_id, GameObjectId uni
         item.fired_trigger = trigger;
         item.equipped_unit = unit_id;
         item.triggering_subject = unit_id;
+        captureSubjectAsItLeft(state_, item);
         item.triggering_move = state_.chain.move_being_announced;
         break;
     }
@@ -351,6 +365,7 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
         if (triggering_spell_energy_spent > 0)
             item.triggering_spell_energy_spent = triggering_spell_energy_spent;
         if (subject != kInvalidId) item.triggering_subject = subject;
+        captureSubjectAsItLeft(state_, item);
         item.triggering_move = state_.chain.move_being_announced;
         break;
     }

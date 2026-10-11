@@ -26,7 +26,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        const bool was_empowered = self.last_known.valid ? self.last_known.empowered > 0
+        const bool was_empowered = asItLeft(ctx, ctx.source).valid ? asItLeft(ctx, ctx.source).empowered > 0
                                                          : self.isEmpowered();
         if (!was_empowered) return;
         for (int i = 0; i < 2; ++i)

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -37,7 +38,7 @@ public:
             // Main Phase, a non-combat showdown) does not count. Without a
             // snapshot nothing is known about the death, so nothing happens.
             if (!ctx.state.objectExists(ctx.source)) return;
-            const auto& lk = ctx.state.getObject(ctx.source).last_known;
+            const auto& lk = asItLeft(ctx, ctx.source);
             if (!lk.valid) return;
             if (!lk.in_combat && lk.combat_designation == CombatDesignation::None) return;
             // "Choose an opponent. They gain 1 point." 1v1: the one opponent.

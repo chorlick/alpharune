@@ -22,7 +22,7 @@ public:
     // that died with me was still "here".
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& lk = ctx.state.getObject(ctx.source).last_known;
+        const auto& lk = asItLeft(ctx, ctx.source);
         if (!lk.valid || lk.other_friendly_units_here.empty()) return;
         RIFT_TRACE(ctx.events, "LOYAL PORO: not alone at death — drawing 1");
         ctx.executor.drawCards(ctx.controller, 1);

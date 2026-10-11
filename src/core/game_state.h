@@ -701,6 +701,13 @@ struct ChainItem {
     // acted on (the buffed/readied/moved unit), so the firing card can do "... to
     // it". kInvalidId when the trigger has no relevant subject.
     GameObjectId triggering_subject = kInvalidId;
+    // That subject as it left the board, when the event was its leaving (it
+    // died, was returned, banished, recycled): the object's own `last_known`
+    // copied as the ability triggered. The object keeps ONE snapshot, so a
+    // card that dies, is played again and dies again before its first death
+    // ability resolves would otherwise have both abilities read the second
+    // death. Cards read it with asItLeft(ctx, id) (cards/card_helpers.h).
+    std::optional<GameObject::LastKnown> subject_as_it_left;
 
     // Set for an Equipment's "When I ..." ability (its effect text, speaking
     // for the unit it is attached to): the unit the event happened to. Such an

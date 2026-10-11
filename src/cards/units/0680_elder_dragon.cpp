@@ -91,7 +91,7 @@ public:
         // cleanup that follows, where "any amount of your damage is enough"
         // applies (GameEngine::processLethalDamage).
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, hit);   // they die at the same time
+            DeathBatch together(ctx.executor, hit, DeathBatch::LethalOnly);   // they die at the same time
             for (auto id : hit)
                 if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
                     ctx.executor.killObject(id);

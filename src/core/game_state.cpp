@@ -1,5 +1,8 @@
 #include "game_state.h"
 
+#include <stdexcept>
+#include <string>
+
 namespace riftbound {
 
 // ─── BattlefieldState ────────────────────────────────────────────────────────
@@ -9,8 +12,7 @@ std::vector<GameObjectId> BattlefieldState::unitsControlledBy(
     const std::unordered_map<GameObjectId, GameObject>& objects) const {
     std::vector<GameObjectId> result;
     for (auto& [oid, obj] : objects) {
-        if (obj.isUnit() && obj.controller == player &&
-            obj.zone == ZoneType::Base && obj.isAtBattlefield()) {
+        if (obj.isUnit() && obj.controller == player && obj.isAtBattlefield()) {
             auto bf_id = obj.battlefieldId();
             if (bf_id && *bf_id == id) {
                 result.push_back(oid);
@@ -35,6 +37,10 @@ bool BattlefieldState::hasUnitsFrom(
 }
 
 // ─── GameState queries ───────────────────────────────────────────────────────
+
+void GameState::throwInvalidObjectId(GameObjectId id) {
+    throw std::logic_error("Invalid game object ID: " + std::to_string(id));
+}
 
 std::vector<GameObjectId> GameState::objectsAt(LocationId loc) const {
     std::vector<GameObjectId> result;

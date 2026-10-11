@@ -32,12 +32,23 @@ enum class PlayerId : uint8_t {
     Player2 = 2,
 };
 
+/// The other player. `None` has no opponent and stays `None`.
 inline PlayerId opponent(PlayerId p) {
-    return p == PlayerId::Player1 ? PlayerId::Player2 : PlayerId::Player1;
+    if (p == PlayerId::Player1) return PlayerId::Player2;
+    if (p == PlayerId::Player2) return PlayerId::Player1;
+    return PlayerId::None;
 }
 
+/// Throws std::logic_error. Out of line so the checks below stay one compare
+/// on the hot path.
+[[noreturn]] void throwInvalidPlayerId(PlayerId p);
+
+/// 0-based index for the per-player arrays. Checked in every build type: an
+/// index of -1 for `None` would otherwise read or write outside the array.
 inline int playerIndex(PlayerId p) {
-    return static_cast<int>(p) - 1; // 0-based for array indexing
+    if (p != PlayerId::Player1 && p != PlayerId::Player2) [[unlikely]]
+        throwInvalidPlayerId(p);
+    return static_cast<int>(p) - 1;
 }
 
 // ─── Card classification ─────────────────────────────────────────────────────

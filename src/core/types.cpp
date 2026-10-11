@@ -1,6 +1,13 @@
 #include "types.h"
 
+#include <stdexcept>
+
 namespace riftbound {
+
+void throwInvalidPlayerId(PlayerId p) {
+    throw std::logic_error("Not a player: PlayerId " +
+                           std::to_string(static_cast<int>(p)));
+}
 
 const char* toString(CardType t) {
     switch (t) {

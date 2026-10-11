@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cctype>
 #include <memory>
 #include <optional>
 #include <string>
@@ -290,6 +291,49 @@ TEST_F(LedgerTest, Defs_AKeywordTheTextGivesToSomethingElseIsNotOnTheCard) {
     EXPECT_TRUE(defHas(606, Keyword::Reaction));
     EXPECT_TRUE(defHas(645, Keyword::Hidden));
     EXPECT_TRUE(defHas(544, Keyword::Weaponmaster));
+}
+
+// Every keyword, every registered card (plans/09 item 9.N1 asked whether the
+// 8.8 checks would have caught Yone, Blademaster 544's `Equip`): a keyword on
+// a def must be printed in the card's text OUTSIDE reminder text. "(When you
+// play me, you may [Equip] one of your Equipment to me ...)" and "(You may
+// play me as a [Reaction] ...)" are reminders of another keyword. The one
+// keyword a reminder really confers is [Reaction] on [Quick-Draw] gear
+// (CR 819.1.b). This does not see a keyword the rules text hands to something
+// else ("Give a unit [Assault 3]"): those are the rows of the test above.
+TEST_F(LedgerTest, Defs_AKeywordPrintedOnlyInReminderTextIsNotOnTheCard) {
+    auto lower = [](std::string s) {
+        for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    auto withoutReminders = [](const std::string& text) {
+        std::string out;
+        int depth = 0;
+        for (char c : text) {
+            if (c == '(') { ++depth; continue; }
+            if (c == ')') { if (depth > 0) --depth; continue; }
+            if (depth == 0) out.push_back(c);
+        }
+        return out;
+    };
+    int keywords_checked = 0;
+    for (CardDefId id : card_registry.classDefIds()) {
+        const CardDef& def = card_db.get(id);
+        const std::string rules = lower(withoutReminders(def.ability_text + "\n" + def.effect_text));
+        for (int k = 0; k < static_cast<int>(Keyword::Count); ++k) {
+            const Keyword kw = static_cast<Keyword>(k);
+            if (!def.keywords.has(kw)) continue;
+            if (kw == Keyword::Reaction && def.keywords.has(Keyword::QuickDraw)) continue;
+            ++keywords_checked;
+            EXPECT_NE(rules.find(lower(std::string(toString(kw)))), std::string::npos)
+                << id << " " << def.name << " carries " << toString(kw)
+                << ", which its text prints only in reminder text or not at all: "
+                << def.ability_text;
+        }
+    }
+    EXPECT_GT(keywords_checked, 500);
+    EXPECT_FALSE(defHas(544, Keyword::Equip)) << "Yone, Blademaster: [Equip] is in the "
+                                                 "[Weaponmaster] reminder (9.N1)";
 }
 
 // The reader named in 8.8: GameEngine::extraAnyPowerCost. Mystic Vortex 947:

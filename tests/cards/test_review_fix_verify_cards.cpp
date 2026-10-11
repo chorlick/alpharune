@@ -6565,6 +6565,15 @@ TEST_F(VerifyCardsTest, DarkChild315_RunesAreNamedBeforeTheOpponentCanRespond) {
 }
 
 TEST_F(VerifyCardsTest, DarkChild315_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto annie = addLegend(P1, kDarkChild);
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
@@ -6579,6 +6588,8 @@ TEST_F(VerifyCardsTest, DarkChild315_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_FALSE(logged("DARK CHILD: readied")) << "no trace line: zero runes were handed back by the helper";
 }
 
 // ─── Targon's Peak 284 ──────────────────────────────────────────────────────
@@ -6605,6 +6616,15 @@ TEST_F(VerifyCardsTest, TargonsPeak_RunesAreNamedBeforeTheOpponentCanRespond) {
 }
 
 TEST_F(VerifyCardsTest, TargonsPeak_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto peak = battlefieldCard(0, kTargonsPeak);
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
@@ -6619,6 +6639,8 @@ TEST_F(VerifyCardsTest, TargonsPeak_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_TRUE(logged("TARGON'S PEAK: readied 0 runes")) << "the helper handed back zero runes";
 }
 
 // The conquer ability itself has no choice (CR 355.5.b): its finalize pass
@@ -6661,6 +6683,15 @@ TEST_F(VerifyCardsTest, GentleGemdragon_RunesAreNamedBeforeTheOpponentCanRespond
 }
 
 TEST_F(VerifyCardsTest, GentleGemdragon_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
     auto r1 = addRune(P1, Domain::Body, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
@@ -6675,6 +6706,8 @@ TEST_F(VerifyCardsTest, GentleGemdragon_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_FALSE(logged("GENTLE GEMDRAGON: readied")) << "no trace line: zero runes were handed back by the helper";
 }
 
 // ─── Sona, Harmonious 73 ────────────────────────────────────────────────────
@@ -6699,6 +6732,15 @@ TEST_F(VerifyCardsTest, Sona_RunesAreNamedBeforeTheOpponentCanRespond) {
 }
 
 TEST_F(VerifyCardsTest, Sona_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
     auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
@@ -6713,6 +6755,8 @@ TEST_F(VerifyCardsTest, Sona_ARuneReadiedOrGoneInResponseIsSkipped) {
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_TRUE(logged("SONA, HARMONIOUS: readied 0 rune(s)")) << "the helper handed back zero runes";
 }
 
 // CR 383 (the Sona example): "if I'm at a battlefield" is asked when the
@@ -6779,6 +6823,15 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_MayCostAndRunesAreDecidedBeforeTheOppo
 // Fails on the old code: asked at resolution, the two named runes were no
 // longer on offer and the third rune was readied in their place.
 TEST_F(VerifyCardsTest, CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped) {
+    // The board alone cannot show the helper dropped the stale picks
+    // (EffectExecutor::readyObject refuses a ready or off-board rune anyway):
+    // the card's own count of what selectSeveral handed back does (9.HH1).
+    std::vector<std::string> log;
+    auto log_conn = events.on_log.connect([&](const LogEvent& e) { log.push_back(e.message); });
+    auto logged = [&](const std::string& part) {
+        for (const auto& line : log) if (line.find(part) != std::string::npos) return true;
+        return false;
+    };
     auto legend = addLegend(P1, kCuratorOfTheSands);
     auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
@@ -6798,6 +6851,8 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped)
     EXPECT_FALSE(onBoard(r2));
     EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
     EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+    log_conn.disconnect();
+    EXPECT_TRUE(logged("CURATOR OF THE SANDS: readied 0 rune(s)")) << "the helper handed back zero runes";
 }
 
 // Declined at finalization: no cost, no rune prompt, nothing at resolution.

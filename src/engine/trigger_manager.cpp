@@ -9,6 +9,9 @@ namespace riftbound {
 // Defined with the other dispatch helpers below.
 static bool cardFiresOn(const CardRegistry& reg, CardDefId def_id, TriggerType t);
 
+// Counter on a unit: battlefield id + 1 of the combat it is, or was, in.
+static const char* const kCombatParticipantKey = "__combat_participant";
+
 TriggerManager::TriggerManager(GameState& state, EventBus& events,
                                const CardDB& card_db, ChainManager& chain,
                                const CardRegistry& card_registry)
@@ -108,7 +111,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
     for (auto& da : state_.delayed_abilities) {
         if (da.fired) continue;
         if (da.trigger != trigger) continue;
-        if (da.controller != relevant_player) continue;
+        if (da.watches() != relevant_player) continue;
         // Object-scoped delayed abilities (e.g. Deadly Flourish: "when IT
         // dies") fire only for the specific target. kInvalidId = unscoped.
         if (da.target_filter != kInvalidId &&
@@ -473,7 +476,23 @@ void TriggerManager::onTokenCreated(const TokenCreatedEvent& e) {
 // "When my Might becomes N or more" (Card::mightThreshold): fires on the edge
 // from below N to N or more, judged each time the state has settled, so it
 // sees every source of Might (buffs, auras, Equipment, "this turn" effects).
+// Every unit at a battlefield while its combat is in progress is in that
+// combat (CR 323.2: it has its controller's designation). Noted on the unit,
+// so "a combat that I was in" still knows it after the unit has left.
+void TriggerManager::noteCombatParticipants() {
+    for (const auto& bf : state_.battlefields) {
+        if (!bf.combat_in_progress) continue;
+        for (auto& [id, obj] : state_.objects) {
+            if (!obj.isUnit() || !obj.location.has_value()) continue;
+            auto here = obj.battlefieldId();
+            if (here && *here == bf.id)
+                obj.card_counters[kCombatParticipantKey] = static_cast<int>(bf.id) + 1;
+        }
+    }
+}
+
 void TriggerManager::onStateSettled() {
+    noteCombatParticipants();
     static const std::string kAtThreshold = "__at_might_threshold";
     std::vector<GameObjectId> crossed;
     for (auto& [id, obj] : state_.objects) {
@@ -628,6 +647,14 @@ void TriggerManager::onEnteredBoard(const EnteredBoardEvent& e) {
 
 void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     auto bf_loc = BattlefieldLocation{e.battlefield};
+    // The units here are in this combat from its start (see
+    // noteCombatParticipants for those that join it later).
+    for (auto& [id, obj] : state_.objects) {
+        if (!obj.isUnit() || !obj.location.has_value()) continue;
+        auto here = obj.battlefieldId();
+        if (here && *here == e.battlefield)
+            obj.card_counters[kCombatParticipantKey] = static_cast<int>(e.battlefield) + 1;
+    }
 
     // Battlefield cards: "When combat starts here," (Threshold of the Gray).
     fireBattlefieldTriggers(TriggerType::WhenCombatStartsHere, e.attacker, e.battlefield);
@@ -764,20 +791,25 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
 }
 
 void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
-    // "When a combat that I was in ends," — fires win, lose or draw. APPROX:
-    // combat designations are already cleared here, so every unit still at
-    // the battlefield counts as having been in the combat.
+    // "When a combat that I was in ends," — fires win, lose or draw, for every
+    // unit that was in this combat (noteCombatParticipants), wherever it is
+    // now: attackers recalled after a tie were in it too. A unit must still be
+    // on the board to have the ability.
     {
-        std::vector<GameObjectId> present;
+        const int mark = static_cast<int>(e.battlefield) + 1;
+        std::vector<GameObjectId> participants;
         for (auto& [id, obj] : state_.objects) {
-            if (!obj.isUnit() || obj.card_def_id == kInvalidId) continue;
-            auto unit_bf = obj.battlefieldId();
-            if (!unit_bf || *unit_bf != e.battlefield) continue;
+            auto it = obj.card_counters.find(kCombatParticipantKey);
+            if (it == obj.card_counters.end() || it->second != mark) continue;
+            obj.card_counters.erase(it);
+            if (!obj.isUnit() || obj.card_def_id == kInvalidId || !obj.location.has_value())
+                continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
                             TriggerType::WhenACombatIWasInEnds))
-                present.push_back(id);
+                participants.push_back(id);
         }
-        for (auto uid : present)
+        std::sort(participants.begin(), participants.end());
+        for (auto uid : participants)
             fireTrigger(uid, state_.getObject(uid).controller, 0,
                         TriggerType::WhenACombatIWasInEnds);
     }
@@ -874,14 +906,15 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
     fireLegendTrigger(TriggerType::WhenAFriendlyUnitDies, e.controller, 0, e.object);
     fireLegendTrigger(TriggerType::WhenAnEnemyUnitDies, opp, 0, e.object);
 
-    // "When you kill a unit with a spell" (Immortal Phoenix 037). Attributed to
-    // the controller of the spell currently resolving on the chain. Fans to that
+    // "When you kill a unit with a spell" (Immortal Phoenix 037): the spell
+    // that is resolving killed it, or it died in a cleanup of lethal damage a
+    // spell dealt (LastKnown::killed_with_spell / killed_by). Fans to that
     // player's on-board cards AND cards in their TRASH (Phoenix triggers from
-    // trash). APPROX: keyed on a spell being the resolving chain item — covers
-    // direct-kill spells cleanly; deferred damage-kills resolved after the chain
-    // item clears won't see it.
-    if (state_.chain.resuming.has_value() && state_.chain.resuming->is_spell) {
-        const PlayerId killer = state_.chain.resuming->controller;
+    // trash).
+    if (state_.objectExists(e.object) && state_.getObject(e.object).last_known.valid &&
+        state_.getObject(e.object).last_known.killed_with_spell &&
+        state_.getObject(e.object).last_known.killed_by != PlayerId::None) {
+        const PlayerId killer = state_.getObject(e.object).last_known.killed_by;
         std::vector<GameObjectId> watchers;
         for (auto& [id, other] : state_.objects) {
             if (id == e.object || other.card_def_id == kInvalidId) continue;

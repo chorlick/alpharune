@@ -27,19 +27,19 @@ static GameObjectId phoenixInTrash(GameState& state, CardDB& db, PlayerId p) {
 TEST_F(PhoenixTest, EnqueuesWhenSpellKillsUnitWhilePhoenixInTrash) {
     auto phoenix = phoenixInTrash(state, card_db, P1);
     auto victim = addUnit(P2, 1, 3, /*at_bf=*/0);
-    // A P1 spell is resolving on the chain.
-    ChainItem ri; ri.id = state.chain.allocateId(); ri.controller = P1; ri.is_spell = true;
-    state.chain.resuming = ri;
-
-    ChainManager cm(state, events, card_db);
-    TriggerManager tm(state, events, card_db, cm, card_registry);
-    tm.subscribe();
-    size_t before = state.chain.items.size();
-    events.emit(UnitDiedEvent{victim, P2, BattlefieldLocation{0}, 3});
-    EXPECT_GT(state.chain.items.size(), before)
-        << "a spell-kill should enqueue Immortal Phoenix from trash";
-    state.chain.resuming.reset();
-    (void)phoenix;
+    // "When you kill a unit with a spell": a P1 spell is resolving when the
+    // unit is killed (the kill records who killed it and with what — 9.M21).
+    size_t queued = 0;
+    withEngine([&](GameEngine& e) {
+        auto& live = e.mutableState();
+        ChainItem ri; ri.id = live.chain.allocateId(); ri.controller = P1; ri.is_spell = true;
+        live.chain.resuming = ri;
+        e.testHook_executor().killObject(victim);
+        live.chain.resuming.reset();
+        for (const auto& ci : live.chain.items) if (ci.source == phoenix) ++queued;
+        live.chain.items.clear();
+    });
+    EXPECT_EQ(queued, 1u) << "a spell-kill should enqueue Immortal Phoenix from trash";
 }
 
 TEST_F(PhoenixTest, PaysAndPlaysFromTrash) {

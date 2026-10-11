@@ -438,7 +438,7 @@ TEST_F(SweepTriggersTest, Zilean_AdditionalCopyCanBeDeclined) {
                                           base(P1));
     }, &agent);
     EXPECT_EQ(tokenUnits(P1).size(), 1u);
-    EXPECT_NE(state.player(P1).zilean_double_token_turn, state.turn.turn_number)
+    EXPECT_EQ(state.player(P1).additional_token_copies_used, 0)
         << "declining does not use up the once-each-turn effect";
 }
 

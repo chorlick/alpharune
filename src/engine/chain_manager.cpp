@@ -355,72 +355,11 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             // offered again only while it is still legal.)
             failed_plays.push_back(chosen);
         } else if (chosen.type == IntentType::PlayReaction) {
-            // No engine attached (a ChainManager driven on its own): the bare
-            // mechanics — leave the zone, pay the printed cost, go on the chain.
-            auto& card = state_.getObject(chosen.card);
-            auto& ps = state_.player(current);
-
-            // Where a permanent played here will land: the facedown card's own
-            // battlefield, or the location the intent names ([Ambush]).
-            LocationId permanent_dest = chosen.play_location.value_or(
-                LocationId{BaseLocation{current}});
-            if (card.is_hidden && card.hidden_at != kInvalidId)
-                permanent_dest = BattlefieldLocation{card.hidden_at};
-
-            if (card.is_hidden) {
-                // Playing from facedown — remove from BF facedown zone, no cost
-                for (auto& bf : state_.battlefields) {
-                    auto fit = std::find(bf.facedown.begin(), bf.facedown.end(),
-                                          chosen.card);
-                    if (fit != bf.facedown.end()) {
-                        bf.facedown.erase(fit);
-                        break;
-                    }
-                }
-                // As GameEngine::executePlayFromHidden records it (read by
-                // the hidden spell's own card).
-                if (card.hidden_at != kInvalidId) {
-                    card.card_counters["__facedown_play_bf"] =
-                        static_cast<int>(card.hidden_at) + 1;
-                    card.card_counters["__facedown_play_turn"] = state_.turn.turn_number;
-                }
-                card.is_hidden = false;
-                card.hidden_at = kInvalidId;
-            } else {
-                // Normal reaction from hand — or the Chosen Champion from its
-                // zone (CR 420.1.a), when it is a [Reaction] unit.
-                auto it = std::find(ps.hand.begin(), ps.hand.end(), chosen.card);
-                if (it != ps.hand.end()) ps.hand.erase(it);
-                else if (ps.champion_zone == chosen.card) ps.champion_zone = kInvalidId;
-
-                // Pay cost
-                if (pay_cost_) {
-                    pay_cost_(current, chosen.card);
-                }
-            }
-
-            // Track play
-            ps.cards_played_this_turn++;
-            int energy_spent = (card.card_def_id != kInvalidId)
-                ? card_db_.get(card.card_def_id).energy_cost : 0;
-            // A permanent's location is chosen before the play is announced,
-            // so "when you play a unit here" abilities see where it is going.
-            if (!card.isSpell()) card.location = permanent_dest;
-            events_.emit(CardPlayedEvent{chosen.card, current,
-                card.card_type, ps.cards_played_this_turn, energy_spent});
-
-            // Add to chain. A unit or gear played with Reaction timing
-            // ([Ambush] — CR 822.1.b, a [Hidden] permanent, "play me as a
-            // Reaction") is still a permanent: it resolves onto the board, it
-            // is not a spell.
-            if (card.isSpell()) {
-                addSpell(chosen.card, current, chosen.targets);
-            } else {
-                card.location = permanent_dest;
-                addPermanent(chosen.card, current);
-            }
-
-            return true; // Item added → restart FEPR from Finalize
+            // There is one way to play a card: the engine's (setPlayCard). A
+            // ChainManager with no play callback cannot play one.
+            throw std::logic_error(
+                "ChainManager: a card was played in response but no play callback is set "
+                "(ChainManager::setPlayCard)");
         }
         else if (chosen.type == IntentType::ActivateReactionAbility ||
                  chosen.type == IntentType::ActivateAbility ||

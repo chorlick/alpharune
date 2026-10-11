@@ -5203,7 +5203,7 @@ void GameEngine::recalculateAuras() {
         ps.spells_have_repeat_power = 0;
         ps.repeat_cost_reduction = 0;            // Marai Spire
         ps.has_reveal_peek = false;              // Void Hatchling
-        ps.zilean_present = false;               // Zilean, Time Mage
+        ps.additional_token_copy_sources = 0;    // "play that token and an additional copy"
         // Vendetta continuous effects.
         ps.skip_draw_phase = false;              // Endless Riches
         ps.may_play_from_trash = false;
@@ -6819,63 +6819,12 @@ void GameEngine::killUnit(GameObjectId unit_id) {
                      ", " + std::to_string(unit.current_might) + "M, dmg=" +
                      std::to_string(unit.damage_marked) + ")");
 
-    // Deferred one-shot death replacement on the dying unit itself
-    // (Tactical Retreat 737: "the next time it would die this turn, heal it,
-    // exhaust it, and recall it instead"). Consulted before any source-based
-    // replacement; consumes the flag and aborts the death.
-    // The unit keeps its gear: a recall is not a move and what is attached
-    // goes with it (CR 458, 719.3.a) — EffectExecutor::recallToBase.
-    if (effect_executor_->applyOwnDeathReplacement(unit_id)) return;
-
-    // "If it would die this turn, banish it instead." (Smite) The unit is
-    // banished and does not die.
-    if (unit.banish_if_would_die_this_turn) {
-        unit.banish_if_would_die_this_turn = false;
-        events_.logDebug("REPLACEMENT (self): " + unit.name + " is banished instead of dying");
-        effect_executor_->banishObject(unit_id);
-        return;
-    }
-
-    // "If a unit here would die ..." on the battlefield the unit is at (Altar
-    // of Blood). A battlefield's card is not on its controller's board, so the
-    // sweep below never reaches it; it gets the same Card::applyReplacement
-    // call, made for the dying unit's controller — the card decides whether
-    // it applies, asks its "may" and takes its payment.
-    if (auto dying_bf = unit.battlefieldId()) {
-        const GameObjectId bf_card_id = getBattlefield(*dying_bf).card_object_id;
-        if (state_.objectExists(bf_card_id)) {
-            const auto& bf_obj = state_.getObject(bf_card_id);
-            Card* bf_card = bf_obj.card_def_id != kInvalidId
-                ? card_registry_.get(bf_obj.card_def_id) : nullptr;
-            if (bf_card && bf_card->hasReplacementEffect()) {
-                CardContext ctx{state_, events_, *effect_executor_, controller, bf_card_id};
-                if (bf_card->applyReplacement(ctx, unit_id)) {
-                    events_.logDebug(std::string("REPLACEMENT: ") + bf_obj.name +
-                                     " prevents " + unit.name + " from dying");
-                    return;  // replacement consumed — unit does NOT die
-                }
-            }
-        }
-    }
-
-    // Structured replacement effects (Card::hasReplacementEffect /
-    // applyReplacement): a card decides whether it replaces THIS unit's death (e.g. Guardian
-    // Angel only protects the unit it's attached to). If applyReplacement
-    // returns true the unit does not die.
-    for (auto& [id, obj] : state_.objects) {
-        if (obj.controller != controller) continue;
-        if (id == unit_id) continue;
-        if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
-        if (obj.card_def_id == kInvalidId) continue;
-        Card* card = card_registry_.get(obj.card_def_id);
-        if (!card || !card->hasReplacementEffect()) continue;
-        CardContext ctx{state_, events_, *effect_executor_, controller, id};
-        if (card->applyReplacement(ctx, unit_id)) {
-            events_.logDebug(std::string("REPLACEMENT: ") + obj.name +
-                             " prevents " + unit.name + " from dying");
-            return; // replacement consumed — unit does NOT die
-        }
-    }
+    // Everything that can replace this death — on the unit, on its
+    // battlefield, among its controller's cards — in the order its controller
+    // chooses (CR 372): EffectExecutor::applyDeathReplacements, shared with
+    // EffectExecutor::killObject. A replaced unit keeps its gear on a recall
+    // (CR 458, 719.3.a).
+    if (effect_executor_->applyDeathReplacements(unit_id)) return;
 
     // No replacement — unit dies normally. Its gear is shed (CR 719.5) after
     // the death is announced below, so abilities that trigger on it see the

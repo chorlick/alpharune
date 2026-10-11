@@ -193,7 +193,13 @@ struct PlayerState {
     Domain spells_have_repeat_domain = Domain::Chaos; // ... and its domain ([P] default)
     int  repeat_cost_reduction = 0;            // Marai Spire (525): friendly [Repeat] costs cost N less
     bool has_reveal_peek = false;              // Void Hatchling (341): peek/recycle top before revealing
-    bool zilean_present = false;               // Zilean, Time Mage (648): a Zilean is at one of my battlefields (aura)
+    // "Once each turn, if you would play a token unit ..., you may play that
+    // token and an additional copy of it instead." How many cards in play give
+    // this player that right now (rebuilt every aura pass by each such card's
+    // applyPassiveAura: one per instance whose condition holds), and how many
+    // of them have been used on turn `additional_token_copies_turn`. Each is
+    // "once each turn" on its own. Read by EffectExecutor::createToken.
+    int additional_token_copy_sources = 0;
     // Turn-scoped riders (NOT aura-derived — reset in resetTurnTracking):
     int max_spell_spent_this_turn = 0;         // most-expensive single spell paid for this turn (Jhin, Meticulous Killer: "spent [4]+ to play a spell")
     int next_spell_bonus_damage = 0;           // Ravenborn Tome: "the next spell you play this turn deals N Bonus Damage" (consumed when that spell deals damage)
@@ -203,7 +209,8 @@ struct PlayerState {
     // hidden later that turn included (TriggerManager::onCardHidden shows
     // them). Turn-stamped, so it needs no reset.
     int may_look_at_opp_facedown_turn = -1;
-    int zilean_double_token_turn = -1;         // Zilean, Time Mage (648): turn on which the once/turn token-doubling was used
+    int additional_token_copies_used = 0;
+    int additional_token_copies_turn = -1;
     // Staged around an effect-driven play that ignores part of a card's cost
     // ("ignoring its Energy cost" — you still pay its Power). Read by
     // canAfford / beginCostPayment; always cleared by the caller.
@@ -736,7 +743,15 @@ struct ChainState {
 struct DelayedAbility {
     GameObjectId source = kInvalidId;     // card that created this
     CardDefId card_def_id = kInvalidId;   // for looking up the Card object
+    // Who controls the ability when it goes on the chain: the controller of
+    // the effect that created it (CR 391-392).
     PlayerId controller = PlayerId::None;
+    // Whose event it waits for, when that is not its controller ("When THEY
+    // hold, ..." — Ashe, Focused). None = the controller's own.
+    PlayerId watched_player = PlayerId::None;
+    PlayerId watches() const {
+        return watched_player != PlayerId::None ? watched_player : controller;
+    }
     TriggerType trigger = TriggerType::None; // what event fires it
     // When it stops waiting. The expiration step removes it at the end of
     // turn `expires_on_turn` (and of any later turn, should that one have been

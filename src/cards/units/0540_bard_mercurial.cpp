@@ -15,65 +15,85 @@ namespace {
 // "You may exhaust your legend as an additional cost to play me. When you play
 //  me, if you paid the additional cost, move any number of your units to an
 //  open battlefield."
-// The "exhaust your legend" additional cost is not expressible via
-// OptionalAdditionalCost (energy/power only), so it is modeled inline at
-// WhenYouPlayMe: the player may choose to exhaust their (ready) legend, and if
-// they do, all their units are moved to the first open (uncontrolled)
-// battlefield.
-
+// ENGINE-GAP: OptionalAdditionalCost can only charge Energy / Power / a
+// discard, so "exhaust your legend" cannot be paid during the play itself. It
+// is offered and paid when the play trigger is finalized instead — before
+// anyone can respond to the trigger, but after the unit has entered.
 class BardMercurial : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+
+    static GameObjectId readyLegend(const GameState& state, PlayerId controller) {
+        const GameObjectId id = state.player(controller).legend_zone;
+        if (id == kInvalidId || !state.objectExists(id)) return kInvalidId;
+        return state.getObject(id).is_exhausted ? kInvalidId : id;
+    }
+    // CR 170.11.c: an open battlefield is unoccupied and uncontrolled.
+    static std::vector<BattlefieldId> openBattlefields(const GameState& state) {
+        std::vector<BattlefieldId> out;
+        for (const auto& bf : state.battlefields) {
+            if (bf.controller.has_value()) continue;
+            bool occupied = false;
+            for (const auto& [id, obj] : state.objects)
+                if (obj.isUnit() && obj.battlefieldId() == bf.id) { occupied = true; break; }
+            if (!occupied) out.push_back(bf.id);
+        }
+        return out;
+    }
+
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        doMove(ctx);
-    }
-
-private:
-    static GameObjectId findReadyLegend(const GameState& state, PlayerId controller) {
-        for (auto& [id, obj] : state.objects) {
-            if (obj.controller != controller) continue;
-            if (obj.card_type != CardType::Legend) continue;
-            if (obj.is_exhausted) continue;
-            return id;
-        }
-        return kInvalidId;
-    }
-    static BattlefieldId findOpenBattlefield(const GameState& state) {
-        for (auto& bf : state.battlefields) {
-            if (!bf.controller.has_value()) return bf.id;  // uncontrolled = open
-        }
-        return kInvalidId;
-    }
-
-    void doMove(CardContext& ctx) {
-        if (!ctx.state.objectExists(ctx.source)) return;
-
+        // The additional cost: offered while the legend is ready, paid as the
+        // ability is finalized.
+        auto still_legal = [&]() {
+            return costAlreadyPaid(ctx) || readyLegend(ctx.state, ctx.controller) != kInvalidId;
+        };
         int conf = confirmOptional(ctx,
-            "Bard, Mercurial: exhaust your legend to move your units to an open battlefield?",
-            [&]() {
-                return findReadyLegend(ctx.state, ctx.controller) != kInvalidId &&
-                       findOpenBattlefield(ctx.state) != kInvalidId;
-            });
-        if (conf == -1) return;  // waiting for agent
-        if (conf == 0) return;
+            "Bard, Mercurial: exhaust your legend as an additional cost?", still_legal);
+        bool paid = costAlreadyPaid(ctx);
+        if (conf == 1 && costDueNow(ctx)) {
+            const GameObjectId legend = readyLegend(ctx.state, ctx.controller);
+            if (legend != kInvalidId) {
+                ctx.executor.exhaustObject(legend);
+                paid = true;
+            }
+        }
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1 || !paid) return;
 
-        GameObjectId legend = findReadyLegend(ctx.state, ctx.controller);
-        BattlefieldId dest = findOpenBattlefield(ctx.state);
-        if (legend == kInvalidId || dest == kInvalidId) return;
-        ctx.executor.exhaustObject(legend);
-        // Move all of the player's units to the open battlefield.
-        std::vector<GameObjectId> to_move;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            to_move.push_back(id);
+        // "move any number of your units to an open battlefield": the
+        // controller picks the battlefield, then the units, as this resolves.
+        const auto open = openBattlefields(ctx.state);
+        if (open.empty()) return;
+        BattlefieldId dest = open.front();
+        if (open.size() > 1) {
+            std::vector<std::string> labels;
+            for (auto bf : open) labels.push_back("Battlefield #" + std::to_string(bf));
+            const int mode = pickMode(ctx, "Bard, Mercurial: which open battlefield",
+                                      static_cast<int>(open.size()), labels);
+            if (mode < 0) return;             // waiting for the agent
+            if (static_cast<size_t>(mode) < open.size()) dest = open[static_cast<size_t>(mode)];
         }
-        for (auto id : to_move) {
-            if (ctx.state.objectExists(id)) ctx.executor.moveToBattlefield(id, dest);
+        auto movable = [&](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isUnit() && obj.controller == ctx.controller &&
+                   obj.location.has_value() && obj.battlefieldId() != dest;
+        };
+        std::vector<GameObjectId> units;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (movable(id)) units.push_back(id);
+        auto picked = selectAnyNumber(ctx, "Bard, Mercurial: move a unit there", units);
+        if (!picked.has_value()) return;      // waiting for the agent
+        int moved = 0;
+        for (auto id : *picked) {
+            if (!movable(id)) continue;
+            ctx.executor.moveToBattlefield(id, dest);
+            ++moved;
         }
-        ctx.events.logTrace("BARD, MERCURIAL: exhausted legend -> moved units to open BF");
+        ctx.events.logTrace("BARD, MERCURIAL: exhausted legend -> moved " +
+                            std::to_string(moved) + " unit(s) to an open battlefield");
     }
 private:
     const CardDef def_ = [] {

@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -53,13 +54,12 @@ public:
         if (it == self.card_counters.end()) return;
         BattlefieldId bf = static_cast<BattlefieldId>(it->second);
 
-        std::vector<GameObjectId> legal;
-        PlayerId opp = opponent(ctx.controller);
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.isAtBattlefield()) continue;
-            legal.push_back(id);
-        }
+        // "an enemy unit": anywhere on the board (a base included) other
+        // than this battlefield, and one that may be chosen.
+        const auto legal = chooseableUnits(ctx.state, ctx.controller,
+            [&](const GameObject& u) {
+                return u.controller != ctx.controller && u.battlefieldId() != bf;
+            });
         auto still_legal = [&legal]() { return !legal.empty(); };
         if (!still_legal()) { self.card_counters.erase("__iascylla_pull_bf"); return; }
         auto conf = confirmOptional(ctx, "Iascylla: move enemy unit here?",

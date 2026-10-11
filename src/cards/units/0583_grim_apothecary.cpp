@@ -18,29 +18,23 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto find_friendly_at_bf = [&]() -> GameObjectId {
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                if (!obj.isAtBattlefield()) continue;
-                return id;
-            }
-            return kInvalidId;
-        };
-        auto still_legal = [&]() { return find_friendly_at_bf() != kInvalidId; };
-
+        // "a friendly unit at a battlefield" — the controller picks which
+        // (this unit included, if it was played to one).
+        std::vector<GameObjectId> legal;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller == ctx.controller && obj.isAtBattlefield())
+                legal.push_back(id);
         int conf = confirmOptional(ctx,
-            "Grim Apothecary: bounce a friendly unit at a battlefield?",
-            still_legal);
+            "Grim Apothecary: return a friendly unit at a battlefield to hand?",
+            [&legal]() { return !legal.empty(); });
+        GameObjectId target = kInvalidId;
+        if (conf == 1)
+            target = pickTarget(ctx, "Grim Apothecary: choose a friendly unit", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf == -1) return;
-        if (conf == 0) return;
-
-        auto target = find_friendly_at_bf();
-        if (target == kInvalidId) return;
-        auto& obj = ctx.state.getObject(target);
+        if (conf != 1 || target == kInvalidId) return;
+        const std::string name = ctx.state.getObject(target).name;
         ctx.executor.bounceToHand(target);
-        ctx.events.logTrace("GRIM APOTHECARY: bounced " + obj.name);
+        ctx.events.logTrace("GRIM APOTHECARY: bounced " + name);
     }
 private:
     const CardDef def_ = [] {

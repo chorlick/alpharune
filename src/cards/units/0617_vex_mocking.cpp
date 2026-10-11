@@ -36,6 +36,7 @@ public:
             if (!bf) return false;                       // stunned unit must be at a BF
             if (!ctx.state.objectExists(ctx.source)) return false;
             auto& s = ctx.state.getObject(ctx.source);
+            if (!s.location.has_value()) return false;   // she left the board
             // Already there? then there's nothing to move.
             auto cur = s.battlefieldId();
             return !(cur && *cur == *bf);

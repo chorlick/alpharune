@@ -48,20 +48,26 @@ public:
 
         GameObjectId tgt = pickTarget(ctx, "Imposing Challenger: choose an enemy unit",
                                       candidates(ctx));
+        // "to a different battlefield" — any battlefield other than mine; the
+        // controller picks when there is more than one.
+        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+        std::vector<BattlefieldId> dests;
+        std::vector<std::string> labels;
+        for (const auto& bf : ctx.state.battlefields) {
+            if (my_bf && bf.id == *my_bf) continue;
+            dests.push_back(bf.id);
+            labels.push_back("Battlefield #" + std::to_string(bf.id));
+        }
+        int which = 0;
+        if (tgt != kInvalidId && dests.size() > 1)
+            which = pickMode(ctx, "Imposing Challenger: move it to which battlefield",
+                             static_cast<int>(dests.size()), labels);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
-
-        // "to a different battlefield" — pick any battlefield other than my_bf.
-        std::optional<BattlefieldId> dest;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.id == *my_bf) continue;
-            dest = bf.id;
-            break;
-        }
-        if (!dest) return;  // no other battlefield exists
-        ctx.executor.moveToBattlefield(tgt, *dest);
+        if (!my_bf || dests.empty()) return;  // no other battlefield exists
+        if (which < 0) return;                // waiting for the agent
+        const BattlefieldId dest = dests[std::min(static_cast<size_t>(which), dests.size() - 1)];
+        ctx.executor.moveToBattlefield(tgt, dest);
         ctx.events.logTrace("IMPOSING CHALLENGER: moved an enemy unit here to a different BF");
     }
 private:

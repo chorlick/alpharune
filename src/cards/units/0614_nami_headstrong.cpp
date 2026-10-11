@@ -26,66 +26,58 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIHold,
                 TriggerType::WhenYouPlayAUnit};
     }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_enemy = true, .optional = true};
+    // "the next time you play a unit this turn": only while a hold this turn
+    // has armed it.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (trigger != TriggerType::WhenYouPlayAUnit) return true;
+        return state.objectExists(source) && armedThisTurn(state, state.getObject(source));
     }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    static bool armedThisTurn(const GameState& state, const GameObject& self) {
+        auto it = self.card_counters.find("__nami_hold_arm_turn");
+        return it != self.card_counters.end() && it->second == state.turn.turn_number;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-
+        auto& self = ctx.state.getObject(ctx.source);
         if (ctx.firing_trigger == TriggerType::WhenYouPlayMe) {
             // "If you paid the additional cost, [Stun] an enemy unit." The [G]
             // cost was offered at play time (maybePayOptionalAdditionalCost);
             // gate on the flag it set.
-            auto& self = ctx.state.getObject(ctx.source);
-            if (self.card_counters["__nami_paid"] != 1) return;
-            std::vector<GameObjectId> legal;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-                if (!obj.location.has_value() || obj.untargetable_by_enemy) continue;
-                legal.push_back(id);
-            }
+            auto paid = self.card_counters.find("__nami_paid");
+            if (paid == self.card_counters.end() || paid->second != 1) return;
+            const auto legal = chooseableUnits(ctx.state, ctx.controller,
+                [&](const GameObject& u) { return u.controller != ctx.controller; });
             GameObjectId enemy = pickTarget(ctx, "Nami: stun an enemy unit", legal);
             if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-            if (enemy == kInvalidId || !ctx.state.objectExists(enemy)) return;
+            // Still waiting for a pick made as this resolves: come back.
+            if (enemy == kInvalidId && !legal.empty() && ctx.state.chain.resuming.has_value() &&
+                ctx.state.chain.resuming->resume_point == 7) return;
+            // The engine never clears the flag: consume it, or a replay
+            // without paying would stun again.
+            self.card_counters.erase("__nami_paid");
+            if (enemy == kInvalidId) return;
             ctx.executor.stunUnitBy(enemy, ctx.source);
             ctx.events.logTrace("NAMI: paid [G] -> stunned an enemy unit");
             return;
         }
-
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
             if (finalizingChoices(ctx)) return;   // no choices
             // Arm the one-shot "next unit you play this turn" effect.
-            auto& self = ctx.state.getObject(ctx.source);
             self.card_counters["__nami_hold_arm_turn"] = ctx.state.turn.turn_number;
             ctx.events.logTrace("NAMI: armed next-unit ready+buff for this turn");
             return;
         }
-
         if (ctx.firing_trigger == TriggerType::WhenYouPlayAUnit) {
-            auto& self = ctx.state.getObject(ctx.source);
-            auto it = self.card_counters.find("__nami_hold_arm_turn");
-            if (it == self.card_counters.end()) return;
-            if (it->second != ctx.state.turn.turn_number) return;  // stale arm
-            // One-shot: disarm now.
-            // Ready+buff the just-played unit. The trigger carries no event
-            // object, so let the agent pick among freshly-played friendly
-            // units (units enter exhausted, so prefer exhausted candidates).
-            std::vector<GameObjectId> legal;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == ctx.source) continue;
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                if (!obj.is_exhausted) continue;  // just-played units are exhausted
-                legal.push_back(id);
-            }
-            if (legal.empty()) return;
-            GameObjectId pick = pickTarget(ctx, "Nami: ready + buff the played unit", legal);
-            if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-            if (pick == kInvalidId || !ctx.state.objectExists(pick)) return;
+            if (finalizingChoices(ctx)) return;   // no choices: "it" is the unit played
+            if (!armedThisTurn(ctx.state, self)) return;   // used by an earlier play
             self.card_counters.erase("__nami_hold_arm_turn");   // one-shot
-            ctx.executor.readyObject(pick);
-            ctx.executor.buffUnit(pick);
+            const GameObjectId played = ctx.state.chain.resuming.has_value()
+                ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+            if (played == kInvalidId || !ctx.state.objectExists(played)) return;
+            if (!ctx.state.getObject(played).location.has_value()) return;   // already gone
+            ctx.executor.readyObject(played);
+            ctx.executor.buffUnit(played);
             ctx.events.logTrace("NAMI: readied + buffed the played unit");
             return;
         }

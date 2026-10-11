@@ -15,17 +15,19 @@ namespace {
 class RuinedRex : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // Deal 4 to an enemy unit at a battlefield
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            if (!obj.isAtBattlefield()) continue;
-            ctx.executor.dealDamage(id, 4, ctx.source);
-            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
-            break;
-        }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "an enemy unit": anywhere on the board, a base included; the
+        // controller chooses.
+        const auto legal = chooseableUnits(ctx.state, ctx.controller,
+            [&](const GameObject& u) { return u.controller != ctx.controller; });
+        const GameObjectId t = pickTarget(ctx, "Ruined Rex: deal 4 to an enemy unit", legal);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (t == kInvalidId) return;          // none / mistarget / waiting
+        ctx.executor.dealDamage(t, 4, ctx.source);
+        if (ctx.state.objectExists(t) && ctx.state.getObject(t).hasLethalDamage())
+            ctx.executor.killObject(t);
     }
 private:
     const CardDef def_ = [] {

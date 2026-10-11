@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -13,10 +14,8 @@ namespace {
 
 // "[Accelerate] ... When I attack, you may move any number of your token units
 //  to this battlefield." ([Accelerate] is engine-handled.)
-// "Any number" + "you may": auto-moves all friendly token units not already
-// here — moving your tokens onto your attack is strictly beneficial, so the
-// optimal "any number" is all of them.
-
+// The controller chooses which tokens (none is allowed), as the ability
+// resolves.
 class AzirSovereign : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
@@ -25,18 +24,27 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;
+        auto movable = [&](GameObjectId id) {
+            if (id == ctx.source || !ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isUnit() && obj.controller == ctx.controller && obj.isToken() &&
+                   obj.location.has_value() && obj.battlefieldId() != my_bf;
+        };
         std::vector<GameObjectId> tokens;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.isToken() || !obj.location.has_value()) continue;
-            if (obj.battlefieldId() == my_bf) continue;  // already here
-            tokens.push_back(id);
+        for (auto& [id, obj] : ctx.state.objects)
+            if (movable(id)) tokens.push_back(id);
+        // "you may move any number": the controller names them one at a time.
+        auto picked = selectAnyNumber(ctx, "Azir, Sovereign: move a token unit here", tokens);
+        if (!picked.has_value()) return;   // waiting for the agent
+        int moved = 0;
+        for (auto id : *picked) {
+            if (!movable(id)) continue;
+            ctx.executor.moveToBattlefield(id, *my_bf);
+            ++moved;
         }
-        for (auto id : tokens) ctx.executor.moveToBattlefield(id, *my_bf);
-        if (!tokens.empty())
+        if (moved > 0)
             ctx.events.logTrace("AZIR SOVEREIGN: attack -> moved " +
-                std::to_string(tokens.size()) + " token unit(s) to this battlefield");
+                std::to_string(moved) + " token unit(s) to this battlefield");
     }
 private:
     const CardDef def_ = [] {

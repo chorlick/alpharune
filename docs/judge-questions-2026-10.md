@@ -117,3 +117,23 @@ Which rule wins when both apply?
 
 - For "may exhaust": 355.13 ("up to" includes zero); a cost may be paid for an effect that does nothing.
 - For "may not": no rule found.
+
+---
+
+## 6. An unplayed hidden unit or gear when its controller loses the battlefield
+
+**Card (example)**
+
+- Zhonya's Hourglass (gear): "[Hidden] If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it."
+
+**Situation.** My Hourglass is facedown at a battlefield. An enemy spell takes or moves away my only unit there. I do **not** play the Hourglass in response. Nothing dies. I lose control of the battlefield in the next cleanup.
+
+**Question.** Where does the facedown Hourglass go?
+
+- (a) To my trash, like any hidden card.
+- (b) To my base, because it is a gear (or a unit); only hidden spells are trashed. If (b): is it revealed, or does it stay facedown in base?
+
+**Rules found**
+
+- For (a): 323.6.a (cleanup step 5): "Remove all Hidden cards from all Battlefields that are not controlled by the same player and place them in their owner's Trash." 107.3.d: cards in the Facedown Zone of a battlefield whose control is lost "are removed during the next Cleanup." Neither separates spells from units or gear.
+- For (b): no rule found. (A gear that was played faceup at a battlefield is recalled to base by 149.3 / 323.6; that is a different case.)

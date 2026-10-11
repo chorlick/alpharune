@@ -44,7 +44,8 @@
 #   GCC does not write byte-identical .gch files for identical inputs, so with
 #   ccache keying on the .gch itself every PCH rebuild made every unit that
 #   uses it a cache miss: a no-change clean rebuild of riftbound_tests was
-#   2 hits in 108 compiles. Keyed on the .sum, those units hit again.
+#   2 hits in 108 compiles and 222 s at -j3. Keyed on the .sum the same
+#   rebuild was 109 hits in 109 and 14 s (2026-10-11).
 
 out=""
 depfile=""

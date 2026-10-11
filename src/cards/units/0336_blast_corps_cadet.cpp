@@ -28,10 +28,13 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& counters = ctx.state.getObject(ctx.source).card_counters;
-        auto paid = counters.find("__blastcorps_paid");
-        if (paid == counters.end() || paid->second != 1) return;
+        auto paid_it = counters.find("__blastcorps_paid");
+        const bool paid = paid_it != counters.end() && paid_it->second == 1;
+        // No return ahead of the marker when the cost was not paid: there is
+        // then no unit to choose, and pickTarget stores that on the item.
         std::vector<GameObjectId> legal;
         for (auto& [id, obj] : ctx.state.objects) {
+            if (!paid) break;
             if (!obj.isUnit() || !obj.battlefieldId().has_value()) continue;
             if (obj.controller != ctx.controller && obj.untargetable_by_enemy)
                 continue;
@@ -40,6 +43,7 @@ public:
         GameObjectId tgt = pickTarget(ctx,
             "Blast Corps Cadet: deal 2 to a unit at a battlefield", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (!paid) return;
         // The payment covers this play only: a Cadet that is returned to hand
         // and played again without paying must not find the old flag.
         ctx.state.getObject(ctx.source).card_counters.erase("__blastcorps_paid");

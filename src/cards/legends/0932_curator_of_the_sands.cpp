@@ -25,13 +25,16 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const auto& ri = ctx.state.chain.resuming.value();
-        if (ctx.firing_trigger != TriggerType::WhenYouActivateAnAbility) {
+        // Whether the event is one this ability answers. No return here when
+        // it is not: the "may" below is then not available, and
+        // confirmOptional stores the "no" on the item.
+        bool applies = ri.triggering_spell_energy_spent >= 7;
+        if (applies && ctx.firing_trigger != TriggerType::WhenYouActivateAnAbility) {
             const GameObjectId played = ri.triggering_subject;
-            if (played == kInvalidId || !ctx.state.objectExists(played)) return;
-            const auto& p = ctx.state.getObject(played);
-            if (!p.isUnit() && !p.isGear()) return;
+            applies = played != kInvalidId && ctx.state.objectExists(played) &&
+                      (ctx.state.getObject(played).isUnit() ||
+                       ctx.state.getObject(played).isGear());
         }
-        if (ri.triggering_spell_energy_spent < 7) return;
 
         // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
         // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
@@ -52,7 +55,7 @@ public:
         // The cost is all the "may" needs: "up to 2" includes none (CR
         // 355.13), so it is offered with no exhausted rune too.
         auto still_legal = [&]() {
-            return ctx.state.objectExists(ctx.source) &&
+            return applies && ctx.state.objectExists(ctx.source) &&
                    !ctx.state.getObject(ctx.source).is_exhausted;
         };
         int conf = confirmOptional(ctx, "Curator of the Sands: exhaust to ready up to 2 runes?",

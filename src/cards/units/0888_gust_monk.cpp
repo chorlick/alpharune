@@ -27,10 +27,14 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
+        // No return here when the additional cost was not paid: there is
+        // then no unit to choose, pickTarget stores that on the item and the
+        // "no unit" return below is the helper's.
+        bool paid = false;
         {
             const auto& self = ctx.state.getObject(ctx.source);
             auto it = self.card_counters.find("__gust_monk_paid");
-            if (it == self.card_counters.end() || it->second != 1) return;
+            paid = it != self.card_counters.end() && it->second == 1;
         }
         // The unit that gets [Assault 2] is the target; the card banished is
         // the cost ("banish a card from any trash to ..."), picked and paid
@@ -38,7 +42,7 @@ public:
         // unit is gone by the time it resolves.
         const auto& ri = ctx.state.chain.resuming;
         const GameObjectId unit = pickTarget(ctx, "Gust Monk: give a unit [Assault 2]",
-            chooseableUnits(ctx.state, ctx.controller, [](const GameObject&) { return true; }));
+            chooseableUnits(ctx.state, ctx.controller, [paid](const GameObject&) { return paid; }));
         if (unit == kInvalidId && ri.has_value() && ri->resume_point == 7) return;   // waiting
         if (!costAlreadyPaid(ctx)) {
             if (unit == kInvalidId) return;           // no unit to give it to

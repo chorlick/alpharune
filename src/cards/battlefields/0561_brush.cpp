@@ -46,14 +46,17 @@ public:
         for (auto& bf : ctx.state.battlefields) {
             if (bf.card_object_id == ctx.source) { slot = &bf; break; }
         }
-        if (!slot || !slot->was_replaced || !slot->replaced_card.has_value()) return;
-        GameObjectId original = *slot->replaced_card;
-        if (!ctx.state.objectExists(original)) return;
-
+        // No return ahead of the "may" when there is nothing to put back:
+        // confirmOptional then stores the "no" on the item.
+        auto replaced = [&]() {
+            return slot && slot->was_replaced && slot->replaced_card.has_value() &&
+                   ctx.state.objectExists(*slot->replaced_card);
+        };
         int conf = confirmOptional(ctx, "Brush: replace this with the battlefield it replaced?",
-                                   [&]() { return true; });
-                                   if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf != 1) return;
+                                   replaced);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (conf != 1 || !replaced()) return;
+        GameObjectId original = *slot->replaced_card;
 
         // Send the Brush token to banishment (tokens cease to exist; this is a
         // BF token, route to banishment without tracking).

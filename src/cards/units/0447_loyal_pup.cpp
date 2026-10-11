@@ -25,16 +25,20 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& me = ctx.state.getObject(ctx.source);
+        // No return ahead of the "may" when no defended battlefield was
+        // recorded: still_legal is then false and confirmOptional stores the
+        // "no" on the item.
         auto it = me.card_counters.find("__defend_bf");
-        if (it == me.card_counters.end()) return;
-        BattlefieldId bf = static_cast<BattlefieldId>(it->second);
+        const bool recorded = it != me.card_counters.end();
+        BattlefieldId bf = recorded ? static_cast<BattlefieldId>(it->second) : kInvalidId;
         auto already_here = [&]() {
             auto loc = ctx.state.getObject(ctx.source).battlefieldId();
             return loc && *loc == bf;
         };
         // "move me": only while I'm on the board (not from the trash).
         auto still_legal = [&]() {
-            return ctx.state.getObject(ctx.source).location.has_value() && !already_here();
+            return recorded && ctx.state.getObject(ctx.source).location.has_value() &&
+                   !already_here();
         };
         int conf = confirmOptional(ctx, "Loyal Pup: move me to the defended battlefield?",
                                    still_legal);

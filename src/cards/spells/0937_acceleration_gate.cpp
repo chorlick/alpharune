@@ -19,7 +19,11 @@ public:
     // "Ready up to 4 units, gear, and/or runes."
     // Resumable: up to four sequential picks (each with a "Done" option) over
     // the exhausted units, gear and runes on the board. The text is not
-    // limited to friendly objects; enemy objects that can't be chosen by
+    // limited to friendly objects — bare "units", "gear" and "runes" are any
+    // on the board, either player's (CR 133.3.a, 355.9.a.1; only a printed
+    // "friendly" / "your" narrows a choice, CR 355.9.b), so an opponent's
+    // exhausted rune is offered like its unit or gear (the same reading as
+    // Dark Child 315); enemy objects that can't be chosen by
     // enemy spells are excluded, an enemy [Deflect] unit is offered only if
     // its Deflect can be paid, and each pick is committed like a pickTarget
     // choice (Deflect paid, recorded as chosen).

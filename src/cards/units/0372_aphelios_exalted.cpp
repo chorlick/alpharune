@@ -73,33 +73,50 @@ public:
                     return;  // suspended on target choice
             }
         }
+        // Mode 0's runes are chosen with the mode (CR 355.5, 383.3), so the
+        // opponent responds knowing them.
+        // "Ready 2 runes": bare "runes", with no "friendly" (Sona 73) or
+        // "your" (Ekko 110), is any rune on the board (CR 133.3.a, 355.9.a.1,
+        // 355.9.b), so an opponent's exhausted rune may be named too. It is
+        // not "up to 2": with two or more exhausted runes exactly two are
+        // readied (no "None" on the prompts), with fewer every one there is
+        // (CR 055) — and with two or fewer there is nothing to ask.
+        auto readiable = [&ctx](GameObjectId id) {
+            if (id == kInvalidId || !ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isRune() && obj.is_exhausted && obj.location.has_value();
+        };
+        GameObjectId rune_a = kInvalidId, rune_b = kInvalidId;
+        if (mode == 0) {
+            std::vector<GameObjectId> exhausted;
+            for (const auto& [id, obj] : ctx.state.objects)
+                if (readiable(id)) exhausted.push_back(id);
+            std::sort(exhausted.begin(), exhausted.end());
+            // selectObject keeps each answer on the chain item (slots 7 and
+            // 9) and takes a single option without asking; at resolution it
+            // returns the stored rune whatever the list is by then.
+            std::vector<GameObjectId> first = exhausted;
+            if (first.size() == 2) first.resize(1);   // both are readied: no choice
+            const auto a = selectObject(ctx, "Aphelios: ready a rune (1 of 2)", first, 7);
+            if (!a.has_value()) return;   // waiting for the agent
+            rune_a = *a;
+            std::vector<GameObjectId> second;
+            for (auto id : exhausted)
+                if (id != rune_a) second.push_back(id);
+            const auto b = selectObject(ctx, "Aphelios: ready a rune (2 of 2)", second, 9);
+            if (!b.has_value()) return;   // waiting for the agent
+            rune_b = *b;
+        }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         switch (mode) {
-        case 0: {  // "Ready 2 runes": which two is the player's choice
-            const LocationId base{BaseLocation{ctx.controller}};
-            std::vector<GameObjectId> exhausted;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isRune() && obj.controller == ctx.controller && obj.is_exhausted &&
-                    obj.location.has_value() && *obj.location == base)
-                    exhausted.push_back(id);
-            std::sort(exhausted.begin(), exhausted.end());
-            std::vector<GameObjectId> to_ready = exhausted;
-            if (exhausted.size() > 2) {
-                auto picked = selectSeveral(ctx, "Aphelios: ready a rune (2)", exhausted);
-                if (!picked.has_value()) return;   // waiting for the agent
-                to_ready.clear();
-                for (auto id : *picked)
-                    if (to_ready.size() < 2 &&
-                        std::find(to_ready.begin(), to_ready.end(), id) == to_ready.end())
-                        to_ready.push_back(id);
-                // Two runes are readied, not fewer: fill from the lowest ids.
-                for (auto id : exhausted)
-                    if (to_ready.size() < 2 &&
-                        std::find(to_ready.begin(), to_ready.end(), id) == to_ready.end())
-                        to_ready.push_back(id);
+        case 0: {  // "Ready 2 runes": the two named as the ability was finalized
+            int readied = 0;
+            for (auto id : {rune_a, rune_b}) {
+                if (!readiable(id)) continue;   // readied or off the board since it was named
+                ctx.executor.readyObject(id);
+                ++readied;
             }
-            for (auto id : to_ready) ctx.executor.readyObject(id);
-            ctx.events.logTrace("APHELIOS: readied " + std::to_string(to_ready.size()) + " runes");
+            ctx.events.logTrace("APHELIOS: readied " + std::to_string(readied) + " runes");
             break;
         }
         case 1:

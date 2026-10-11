@@ -947,9 +947,13 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
         state_.getObject(e.object).last_known.killed_by != PlayerId::None) {
         const PlayerId killer = state_.getObject(e.object).last_known.killed_by;
         std::vector<GameObjectId> watchers;
-        // (Every object: a watcher may be a card in the killer's trash.)
+        // (Every object: a watcher may be a card in the killer's trash — the
+        // killed unit itself included: CR 383.2.c.1, "This ability triggers
+        // if Immortal Phoenix is in your trash immediately after you kill a
+        // unit with a spell, even if the unit you killed with a spell was
+        // that Immortal Phoenix.")
         for (auto& [id, other] : state_.objects) {
-            if (id == e.object || other.card_def_id == kInvalidId) continue;
+            if (other.card_def_id == kInvalidId) continue;
             bool on_board = other.location.has_value() && other.controller == killer;
             bool in_trash = other.zone == ZoneType::Trash && other.owner == killer;
             if (!on_board && !in_trash) continue;

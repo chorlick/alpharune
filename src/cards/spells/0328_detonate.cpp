@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -19,9 +20,8 @@ public:
         // "Its controller draws 2": whoever controlled it as it was killed.
         const auto& gear = ctx.state.getObject(targets[0]);
         if (!gear.isGear() || !gear.location.has_value()) return;
-        const PlayerId gear_controller = gear.controller;
         ctx.executor.killObject(targets[0]);
-        ctx.executor.drawCards(gear_controller, 2);
+        ctx.executor.drawCards(controllerWhenItLeft(ctx.state, targets[0]), 2);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true};

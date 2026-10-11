@@ -901,6 +901,9 @@ void GameEngine::beginningStep() {
             if (!obj.attached_to.has_value() || given) gear_to_kill.push_back(id);
         }
     }
+    // Not a death batch: [Temporary] is a triggered ability of each unit
+    // (CR 816.1), so each kill is its own game action and a unit killed later
+    // sees the earlier ones die.
     for (auto id : units_to_kill) {
         killUnit(id);
     }
@@ -1949,6 +1952,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     if (act_cost.recycle_self && source.location.has_value()) {
         RIFT_TRACE(events_, "ACTIVATE_COST: recycle self " + source.name);
         const LocationId was_at = *source.location;
+        effect_executor_->snapshotLastKnown(intent.ability_source, /*dying=*/false);
         if (source.attached_to.has_value())
             effect_executor_->unattachGear(intent.ability_source);
         detachAllGear(intent.ability_source);
@@ -1962,8 +1966,9 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         }
         events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
             was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
-        effect_executor_->leftBoard(intent.ability_source);   // a new object (CR 124.1)
         effect_executor_->announceRecycledToMainDeck(intent.ability_source);
+        // Announced as it left: in the deck it is a new object (CR 124.1).
+        effect_executor_->leftBoard(intent.ability_source);
     }
     // "Banish this" as a cost: the source is gone before anyone can respond
     // (CR 383.3: costs are paid as the ability is put on the chain). On board
@@ -6569,11 +6574,11 @@ void GameEngine::processLethalDamage() {
     }
     // They die at the same time: each one's last-known information is taken
     // while all of them are still on the board.
-    effect_executor_->beginDeathBatch(to_kill);
+    const DeathBatchMark batch = effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);
     }
-    effect_executor_->endDeathBatch(to_kill);
+    effect_executor_->endDeathBatch(to_kill, batch);
 }
 
 void GameEngine::updateBattlefieldControl() {

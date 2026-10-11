@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,7 +21,12 @@ public:
         // there is no such battlefield and nothing is dealt.
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        const auto& where = self.location.has_value() ? self.location.get() : self.last_location;
+        // Where it died first: a Kog'Maw that is back on the board when this
+        // resolves (played again from the trash in response) is a new object
+        // somewhere else, and the ability is the old one's.
+        const std::optional<LocationId> where =
+            self.last_known.valid && self.last_known.died ? self.last_known.location
+            : self.location.has_value() ? self.location.get() : self.last_location;
         if (!where.has_value() || !std::holds_alternative<BattlefieldLocation>(*where)) return;
         const LocationId my_bf = *where;
         {

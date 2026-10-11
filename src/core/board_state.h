@@ -19,8 +19,11 @@
 ///
 /// What is NOT forgotten, and why:
 ///  - `last_known`, `last_location`: the snapshot of the object as it was on
-///    the board, taken for exactly the readers that come after the move
-///    ("When I die" abilities: CR 383.2.c.3.b).
+///    the board, taken by every leave path before the move
+///    (EffectExecutor::snapshotLastKnown) for exactly the readers that come
+///    after it: "When I die" abilities (CR 383.2.c.3.b) and effects that
+///    move a card and then speak of it (CR 359.3.e.13) — its controller
+///    then (LastKnown::controller), its Might, where it was.
 ///  - `card_counters`, `string_state`, `tracked_objects`: the engine's and the
 ///    cards' own memory (a per-play payment flag, which spell killed it, what
 ///    a card named), not counters in the sense of the rules. Abilities that

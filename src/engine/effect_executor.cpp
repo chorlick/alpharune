@@ -227,7 +227,11 @@ static uint64_t deathBatchStamp(const GameObject& obj) {
     return h;
 }
 
-void EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
+DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
+    DeathBatchMark mark;
+    mark.first_item = state_.chain.next_id;
+    mark.oc_state = state_.turn.oc_state;
+    mark.chain_was_empty = state_.chain.items.empty();
     for (auto id : units) {
         if (!state_.objectExists(id) || !state_.getObject(id).location.has_value()) continue;
         state_.getObject(id).last_known.batch_pending = false;
@@ -235,20 +239,57 @@ void EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
         state_.getObject(id).last_known.batch_pending = true;
         state_.getObject(id).last_known.batch_stamp = deathBatchStamp(state_.getObject(id));
     }
+    return mark;
 }
 
 DeathBatch::DeathBatch(EffectExecutor& executor, std::vector<GameObjectId> units)
     : executor_(executor), units_(std::move(units)) {
-    executor_.beginDeathBatch(units_);
+    mark_ = executor_.beginDeathBatch(units_);
 }
-DeathBatch::~DeathBatch() { executor_.endDeathBatch(units_); }
+DeathBatch::~DeathBatch() { executor_.endDeathBatch(units_, mark_); }
 
-void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units) {
+void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
+                                   const DeathBatchMark& mark) {
     for (auto id : units)
         if (state_.objectExists(id)) state_.getObject(id).last_known.batch_pending = false;
+    // CR 383.2.c.2: an object "will not be able to successfully evaluate its
+    // Trigger Condition ... if it leaves the zone that its Trigger is active
+    // from at the same time that its Trigger is satisfied". A unit of the
+    // batch that was still on the board when an earlier one was killed put
+    // its "when another unit dies" ability on the chain; if it then died in
+    // this batch too, it left with the unit it watched, and the ability never
+    // triggered. Its own "When I die" is another trigger type and stays
+    // (CR 383.2.c.3). A unit of the batch that lived saw the others die.
+    // (Left in the batch by dying, or by what replaced its death: banished.)
+    auto left_here = [&](GameObjectId id) {
+        if (std::find(units.begin(), units.end(), id) == units.end()) return false;
+        return !state_.objectExists(id) || !state_.getObject(id).location.has_value();
+    };
+    auto watches_a_death = [](TriggerType t) {
+        return t == TriggerType::WhenAFriendlyUnitDies || t == TriggerType::WhenAnEnemyUnitDies ||
+               t == TriggerType::WhenAnEnemyUnitDiesHere;
+    };
+    auto& items = state_.chain.items;
+    const auto before = items.size();
+    items.erase(std::remove_if(items.begin(), items.end(), [&](const ChainItem& ci) {
+        if (ci.id < mark.first_item || ci.status != ChainItemStatus::Pending) return false;
+        if (!ci.is_ability || ci.is_activated_ability) return false;
+        if (!watches_a_death(ci.fired_trigger)) return false;
+        if (ci.triggering_subject == ci.source) return false;
+        if (!left_here(ci.source) || !left_here(ci.triggering_subject)) return false;
+        RIFT_DEBUG(events_, "TRIGGER: " + state_.getObject(ci.source).name +
+                         " left with the unit it watched — its ability did not trigger "
+                         "(CR 383.2.c.2)");
+        return true;
+    }), items.end());
+    // Nothing else of the batch on a chain that was empty before it: there is
+    // no chain (ChainManager::addAbility closed the state for the items taken back).
+    if (items.size() != before && items.empty() && mark.chain_was_empty &&
+        !state_.chain.resuming.has_value())
+        state_.turn.oc_state = mark.oc_state;
 }
 
-void EffectExecutor::snapshotLastKnown(GameObjectId id) {
+void EffectExecutor::snapshotLastKnown(GameObjectId id, bool dying) {
     if (!state_.objectExists(id)) return;
     auto& obj = state_.getObject(id);
     auto& lk = obj.last_known;
@@ -256,9 +297,11 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
     // (beginDeathBatch): that is the state "as it died" for every one of them.
     // A unit that survived its batch and was changed since (buffed, moved,
     // stunned, damaged again) is not "as it was then": take it afresh.
-    if (lk.batch_pending && lk.valid && lk.batch_stamp == deathBatchStamp(obj)) return;
+    if (dying && lk.batch_pending && lk.valid && lk.batch_stamp == deathBatchStamp(obj)) return;
     lk.batch_pending = false;
     lk.valid = true;
+    lk.controller = obj.controller;
+    lk.died = dying;
     lk.stunned = obj.is_stunned;
     lk.location = obj.location;
     lk.other_friendly_units_here.clear();
@@ -267,8 +310,10 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
             if (oid != id && other.isUnit() && other.controller == obj.controller &&
                 other.location.has_value() && *other.location == *obj.location)
                 lk.other_friendly_units_here.push_back(oid);
-    lk.killed_by = killerOf(state_, obj);
-    if (state_.chain.resuming.has_value()) {
+    lk.killed_by = dying ? killerOf(state_, obj) : PlayerId::None;
+    if (!dying) {
+        lk.killed_with_spell = false;
+    } else if (state_.chain.resuming.has_value()) {
         lk.killed_with_spell = state_.chain.resuming->is_spell;
     } else {
         // Lethal damage found in a cleanup: with a spell if that player's
@@ -665,6 +710,7 @@ void EffectExecutor::putIntoDeckFromBoard(GameObjectId target, bool to_top) {
     const PlayerId owner = u.owner;
     const CardType type = u.card_type;
     const bool token = u.isToken();
+    snapshotLastKnown(target, /*dying=*/false);   // as it was on the board
     // Gear comes off first (CR 719.5), while the card is still where it was.
     {
         if (u.attached_to.has_value()) unattachGear(target);
@@ -701,6 +747,9 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
     if (!onBoard(state_.getObject(target))) return;
     if (hostileEffectReplaced(state_, events_, *this, card_registry_, target,
                               Card::HostileEffect::ReturnToHand)) return;
+    // As it was on the board, for whatever reads it after the move ("return a
+    // unit to its owner's hand, then ... its Might"): CR 359.3.e.13.
+    snapshotLastKnown(target, /*dying=*/false);
     shedAttachments(state_, *this, target);
     auto& obj = state_.getObject(target);
     auto was_at = obj.location;
@@ -732,8 +781,6 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
 
     events_.emit(LeftBoardEvent{target, controller, obj.card_type,
         was_at.value_or(BaseLocation{controller}), ZoneType::Hand, false});
-    // The card in the hand is a new object (CR 124.1).
-    leftBoard(target);
 
     // "When a unit here is returned to hand" (Ripper's Bay). Only fires if
     // the unit was at a battlefield when bounced.
@@ -744,6 +791,9 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
     if (from_bf != kInvalidId) {
         events_.emit(UnitReturnedToHandEvent{target, obj.owner, from_bf});
     }
+    // Every announcement of the return has been made with the card still as
+    // it left: the card in the hand is a new object (CR 124.1).
+    leftBoard(target);
 }
 
 void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int minimum) {
@@ -1334,6 +1384,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
         if (!state_.objectExists(cid)) continue;
         if (std::find(to_recycle.begin(), to_recycle.end(), cid) != to_recycle.end()) continue;
         if (onBoard(state_.getObject(cid))) {
+            snapshotLastKnown(cid, /*dying=*/false);   // as it was on the board
             shedAttachments(state_, *this, cid);
             auto& obj = state_.getObject(cid);
             const LocationId was_at = *obj.location;
@@ -1348,8 +1399,8 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
                 leftBoard(cid);
                 continue;
             }
-            // (It becomes a new object when it has left: leftBoard, below,
-            // after its LeftBoardEvent.)
+            // (It becomes a new object when it has left and that has been
+            // announced: leftBoard, the last thing this function does.)
             left_board.push_back({cid, obj.controller, obj.card_type, was_at});
         }
         // Where it is for the knowledge tracker, read before it is taken out
@@ -1408,8 +1459,6 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     for (const auto& l : left_board)
         events_.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
             l.type == CardType::Rune ? ZoneType::RuneDeck : ZoneType::MainDeck, false});
-    // In a deck each is a new object (CR 124.1).
-    for (const auto& l : left_board) leftBoard(l.id);
 
     // "When you recycle one or more cards to your Main Deck" (Karma, Channeler
     // 235). Fires once per OWNER who had >=1 non-rune card land in their Main
@@ -1426,10 +1475,16 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
         announced.push_back(obj.owner);
         events_.emit(ObjectStateChangedEvent{cid, "recycled_main"});
     }
+    // Announced, every one of them as it left: in a deck each is a new object
+    // (CR 124.1).
+    for (const auto& l : left_board) leftBoard(l.id);
 }
 
 void EffectExecutor::banishObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
+    // From the board: as it was there, for whatever reads it after the move.
+    // (Banished instead of dying, Smite: it did not die.)
+    if (onBoard(state_.getObject(target))) snapshotLastKnown(target, /*dying=*/false);
     shedAttachments(state_, *this, target);
     auto& obj = state_.getObject(target);
     RIFT_TRACE(events_, "EFFECT: banish " + obj.name + " (id=" + std::to_string(target) + ")");
@@ -1458,10 +1513,11 @@ void EffectExecutor::banishObject(GameObjectId target) {
     if (was_at.has_value()) {
         events_.emit(LeftBoardEvent{target, controller, obj.card_type,
             *was_at, ZoneType::Banishment, false});
-        leftBoard(target);
     }
     // "When you banish a card you own" (Master of Shadows).
     if (!is_token) events_.emit(ObjectStateChangedEvent{target, "banished_owned"});
+    // Announced as it left: what is in Banishment is a new object (CR 124.1).
+    if (was_at.has_value()) leftBoard(target);
 }
 
 void EffectExecutor::forgetDamageSources(GameObject& obj) {

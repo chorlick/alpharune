@@ -15,6 +15,10 @@ namespace {
 class BellowsBreath : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [1][B]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 1, .power = 1, .power_domain = Domain::Mind}};
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 3, .must_be_unit = true, .optional = true};
     }

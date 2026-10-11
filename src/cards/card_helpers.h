@@ -8,6 +8,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "engine/resource_payment.h"
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -33,15 +34,7 @@ inline bool runeMatchesDomain(const GameObject& rune, std::optional<Domain> doma
 }
 inline bool payableOnePower(const GameState& state, PlayerId player,
                             std::optional<Domain> domain) {
-    const auto& pool = state.player(player).rune_pool;
-    if (pool.universal_power > 0) return true;
-    if (domain.has_value()) { if (pool.power[static_cast<int>(*domain)] > 0) return true; }
-    else if (pool.totalPower() > 0) return true;
-    const LocationId base{BaseLocation{player}};
-    for (const auto& [id, obj] : state.objects)
-        if (obj.isRune() && obj.controller == player && obj.location.has_value() &&
-            *obj.location == base && runeMatchesDomain(obj, domain)) return true;
-    return false;
+    return resource::payablePower(state, player, domain.value_or(Domain::Count)) >= 1;
 }
 /// Recycle `rune` (in `player`'s base) to pay one Power, with the engine's
 /// bookkeeping for a rune spent that way (EffectExecutor::payAnyPower): it
@@ -63,57 +56,36 @@ inline void recycleRuneForPower(CardContext& ctx, PlayerId player, GameObjectId 
 }
 inline bool payOnePower(CardContext& ctx, PlayerId player,
                         std::optional<Domain> domain) {
-    auto& state = ctx.state;
-    // [A]: the engine's own payment (floating power, then a recycled rune).
-    if (!domain.has_value()) return ctx.executor.payAnyPower(player, 1);
-    auto& pool = state.player(player).rune_pool;
-    int& own = pool.power[static_cast<int>(*domain)];
-    if (own > 0) { --own; return true; }
-    if (pool.universal_power > 0) { --pool.universal_power; return true; }
-    const LocationId base_loc{BaseLocation{player}};
-    GameObjectId rune = kInvalidId;
-    for (auto& [id, obj] : state.objects) {
-        if (!obj.isRune() || obj.controller != player) continue;
-        if (!obj.location.has_value() || *obj.location != base_loc) continue;
-        if (!runeMatchesDomain(obj, domain)) continue;
-        // An exhausted rune first (a ready one can still give Energy), then
-        // the lowest id so the pick does not depend on map order.
-        if (rune == kInvalidId) { rune = id; continue; }
-        const bool cur_ex = state.getObject(rune).is_exhausted;
-        if (obj.is_exhausted != cur_ex ? obj.is_exhausted : id < rune) rune = id;
-    }
-    if (rune == kInvalidId) return false;
-    recycleRuneForPower(ctx, player, rune);
-    return true;
+    // The engine's own payment (engine/resource_payment.h): floating Power,
+    // then a recycled rune from the player's base, an exhausted one first.
+    return resource::pay(ctx.state, ctx.events, player, 0, 1, domain.value_or(Domain::Count));
 }
 
 // ── Paying Energy inside an effect ("you may pay [N] to ...") ───────────────
-/// Energy `player` could pay right now: floating pool + ready runes in base.
+/// Energy `player` could pay right now: floating pool + ready runes in their
+/// base.
 inline int payableEnergy(const GameState& state, PlayerId player) {
-    int n = state.player(player).rune_pool.energy;
-    for (const auto& [id, obj] : state.objects)
-        if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
-            obj.location.has_value()) ++n;
-    return n;
+    return resource::payableEnergy(state, player);
 }
 
-/// Pay `amount` Energy: floating pool first, then exhaust ready runes. Returns
-/// false (paying nothing) if it can't be covered.
+/// Pay `amount` Energy: floating pool first, then exhaust ready runes in the
+/// player's base (lowest id first). Returns false (paying nothing) if it can't
+/// be covered.
 inline bool payEnergy(CardContext& ctx, PlayerId player, int amount) {
     if (amount <= 0) return true;
-    if (payableEnergy(ctx.state, player) < amount) return false;
-    auto& pool = ctx.state.player(player).rune_pool;
-    int from_pool = std::min(pool.energy, amount);
-    pool.energy -= from_pool;
-    amount -= from_pool;
-    for (auto& [id, obj] : ctx.state.objects) {
-        if (amount <= 0) break;
-        if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
-        if (!obj.location.has_value()) continue;
-        obj.is_exhausted = true;
-        ctx.events.emit(ObjectStateChangedEvent{id, "exhausted"});
-        --amount;
-    }
+    return resource::pay(ctx.state, ctx.events, player, amount, 0, Domain::Count);
+}
+
+// ── Spending a buff as a cost ──
+/// Remove one Buff from `unit` ("spend a buff"). Returns false if it has none.
+inline bool spendBuff(CardContext& ctx, GameObjectId unit) {
+    if (!ctx.state.objectExists(unit)) return false;
+    auto& obj = ctx.state.getObject(unit);
+    if (obj.buff_count <= 0) return false;
+    obj.buff_count -= 1;
+    obj.recomputeMight();
+    ctx.events.logTrace("  COST: spent a buff from " + obj.name);
+    ctx.events.emit(ObjectStateChangedEvent{unit, "buff_spent"});
     return true;
 }
 

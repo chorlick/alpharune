@@ -17,8 +17,8 @@ public:
     const CardDef& def() const override { return def_; }
 
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return standardEquip(ctx, ctx.source, unit, /*energy=*/0, Domain::Calm);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 0, .power = 1, .power_domain = Domain::Calm};
     }
 
     // "If this was attached to me this turn, I have an additional +2 [M]."

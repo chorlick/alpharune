@@ -572,6 +572,7 @@ protected:
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr) << "card_def_id " << def_id << " not registered";
         CardContext ctx{state, events, exec, controller, source};
+        ctx.registry = &card_registry;   // as the engine sets it
         card->onResolve(ctx, targets);
     }
 
@@ -606,6 +607,7 @@ protected:
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
         CardContext ctx{state, events, exec, controller, source};
+        ctx.registry = &card_registry;   // as the engine sets it
         ctx.firing_trigger = firing;
 
         card->onTrigger(ctx, {});
@@ -634,6 +636,7 @@ protected:
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
         CardContext ctx{state, events, exec, controller, source};
+        ctx.registry = &card_registry;   // as the engine sets it
         ctx.firing_trigger = firing;
         card->onTrigger(ctx, {});
     }
@@ -658,6 +661,7 @@ protected:
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
         CardContext ctx{state, events, exec, controller, source};
+        ctx.registry = &card_registry;   // as the engine sets it
 
         // case 0
         card->onResolve(ctx, {});
@@ -707,6 +711,7 @@ protected:
                 Card* c = card_registry.get(item.card_def_id);
                 if (!c) return;
                 CardContext ctx{state, events, exec, item.controller, item.source};
+                ctx.registry = &card_registry;   // as the engine sets it
                 c->onResolve(ctx, item.targets);
             },
             gen_actions ? std::function<std::vector<Intent>(PlayerId)>(gen_actions) : nullptr

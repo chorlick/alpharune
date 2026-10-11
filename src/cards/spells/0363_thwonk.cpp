@@ -14,6 +14,10 @@ namespace {
 class Thwonk : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Repeat] [2]" (CR 820): the Repeat cost, as data the engine charges.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.energy = 2}};
+    }
     // "Stun an attacking unit." The unit is asked for as the effect executes,
     // so a paid [Repeat] chooses again (CR 820.2.a) instead of re-stunning the
     // unit the first execution already stunned.

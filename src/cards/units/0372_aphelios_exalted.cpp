@@ -75,18 +75,31 @@ public:
         }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         switch (mode) {
-        case 0: {  // Ready up to 2 of my exhausted runes
-            int readied = 0;
-            LocationId base{BaseLocation{ctx.controller}};
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (readied >= 2) break;
-                if (!obj.isRune() || obj.controller != ctx.controller) continue;
-                if (!obj.is_exhausted || !obj.location.has_value()) continue;
-                if (*obj.location != base) continue;
-                obj.is_exhausted = false;
-                ++readied;
+        case 0: {  // "Ready 2 runes": which two is the player's choice
+            const LocationId base{BaseLocation{ctx.controller}};
+            std::vector<GameObjectId> exhausted;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (obj.isRune() && obj.controller == ctx.controller && obj.is_exhausted &&
+                    obj.location.has_value() && *obj.location == base)
+                    exhausted.push_back(id);
+            std::sort(exhausted.begin(), exhausted.end());
+            std::vector<GameObjectId> to_ready = exhausted;
+            if (exhausted.size() > 2) {
+                auto picked = selectAnyNumber(ctx, "Aphelios: ready a rune (2)", exhausted);
+                if (!picked.has_value()) return;   // waiting for the agent
+                to_ready.clear();
+                for (auto id : *picked)
+                    if (to_ready.size() < 2 &&
+                        std::find(to_ready.begin(), to_ready.end(), id) == to_ready.end())
+                        to_ready.push_back(id);
+                // Two runes are readied, not fewer: fill from the lowest ids.
+                for (auto id : exhausted)
+                    if (to_ready.size() < 2 &&
+                        std::find(to_ready.begin(), to_ready.end(), id) == to_ready.end())
+                        to_ready.push_back(id);
             }
-            ctx.events.logTrace("APHELIOS: readied " + std::to_string(readied) + " runes");
+            for (auto id : to_ready) ctx.executor.readyObject(id);
+            ctx.events.logTrace("APHELIOS: readied " + std::to_string(to_ready.size()) + " runes");
             break;
         }
         case 1:

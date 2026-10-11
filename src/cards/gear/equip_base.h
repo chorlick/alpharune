@@ -23,7 +23,8 @@ inline bool standardEquip(CardContext& ctx, GameObjectId gear_id, GameObjectId u
     return standardEquip(ctx, gear_id, unit_id, energy_cost, std::optional<Domain>{domain});
 }
 
-// ─── Simple equip gear: pay [DOMAIN] power, then attach ─────────────────────
+// ─── Simple equip gear: "[Equip] [N][DOMAIN]" ───────────────────────────────
+// The cost is declared (Card::equipCost); the engine charges it and attaches.
 class SimpleEquipGear : public GearCard {
 public:
     // Behavior config only (equip domain + energy). The concrete card supplies
@@ -32,8 +33,8 @@ public:
         : equip_domain_(equip_domain), energy_cost_(energy_cost) {}
 
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return standardEquip(ctx, ctx.source, unit, energy_cost_, equip_domain_);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = energy_cost_, .power = 1, .power_domain = equip_domain_};
     }
 
 protected:
@@ -48,8 +49,8 @@ public:
         : energy_cost_(energy_cost) {}
 
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return standardEquip(ctx, ctx.source, unit, energy_cost_, std::optional<Domain>{});
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = energy_cost_, .power = 1, .power_any_domain = true};
     }
 
 protected:

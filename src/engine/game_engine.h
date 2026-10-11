@@ -19,6 +19,7 @@
 #include "core/intent.h"
 #include "engine/chain_manager.h"
 #include "engine/effect_executor.h"
+#include "engine/resource_payment.h"
 #include "engine/trigger_manager.h"
 #include "engine/step_driver.h"
 #include "rules/deck_validator.h"
@@ -269,18 +270,15 @@ public:
         PlayerId assigner, int total_damage,
         const std::vector<GameObjectId>& targets);
 
-    // ── Repeat (CR 820) — optional additional cost ──
-    //
-    // Exposed in public for unit tests (test_jhin_deck.cpp parses
-    // ability_text fragments). The action generator + executePlaySpell
-    // consume these via the private helpers in the cost-payment section.
-    struct RepeatCost {
-        int energy = 0;
-        int power = 0;
-        Domain power_domain = Domain::Count;  // Count = universal [A]
-        bool valid = false;
-    };
-    static RepeatCost parseRepeatCost(const std::string& ability_text);
+    /// The play gate for a spell choosing `targets`: its cost after what the
+    /// targets take off, plus their Deflect, payable together. With no targets
+    /// this is canAfford.
+    bool canAffordChoosing(PlayerId player, GameObjectId card_id,
+                           const std::vector<GameObjectId>& targets) const;
+    /// Whether `player` can activate `gear`'s Equip on `unit` right now.
+    bool canPayEquip(PlayerId player, GameObjectId gear, GameObjectId unit) const;
+    /// Whether `player` can pay to hide a card right now.
+    bool canPayHideCost(PlayerId player) const;
 
 private:
     const CardDB& card_db_;
@@ -516,7 +514,8 @@ private:
     /// covered by pool energy + zero power); else NeedDecision with
     /// the first rune-pick options. Side effects: writes
     /// state_.cost_cursor; consumes one-shot CostModifier entries.
-    CostPaymentAdvance beginCostPayment(PlayerId player, GameObjectId card_obj);
+    CostPaymentAdvance beginCostPayment(PlayerId player, GameObjectId card_obj,
+                                        const Card::PlayCostAdjust& adj = {});
     /// Inspect the cursor and produce the next NeedDecision (or Done
     /// if all payments are complete). Pure read of state — does NOT
     /// mutate runes. Used internally by resolveCostPaymentDecision
@@ -616,10 +615,40 @@ private:
     /// `extra_any_power`: [A] owed on top of everything else (a battlefield's
     /// pay-to-play-here cost).
     bool canAfford(PlayerId player, GameObjectId card_obj, int extra_any_power = 0) const;
+    /// The play-legality gates in front of every play (Card::canBePlayed, a
+    /// spell-name lock), without the cost.
+    bool passesPlayGates(PlayerId player, GameObjectId card_obj) const;
+    /// The Energy / Power half of canAfford, with `adj` taken off the cost.
+    bool canAffordWith(PlayerId player, GameObjectId card_obj, int extra_any_power,
+                       const Card::PlayCostAdjust& adj) const;
 
     /// Auto-pay a card's cost by exhausting/recycling runes.
     /// Returns false if payment failed (shouldn't happen if canAfford was checked).
-    bool payCardCost(PlayerId player, GameObjectId card_obj);
+    bool payCardCost(PlayerId player, GameObjectId card_obj,
+                     const Card::PlayCostAdjust& adj = {});
+    /// Choose and pay the additional cost `card_id` prints, before its cost.
+    Card::PlayCostAdjust payAdditionalPlayCosts(PlayerId player, GameObjectId card_id,
+                                                int extra_any_power);
+    /// What a spell's chosen targets take off its cost.
+    Card::PlayCostAdjust targetCostDiscount(PlayerId player,
+                                            const std::vector<GameObjectId>& targets,
+                                            bool prefer_power, bool* has_choice) const;
+    std::pair<int, int> netCardCost(PlayerId player, GameObjectId card_obj,
+                                    const Card::PlayCostAdjust& adj,
+                                    int base_energy = -1, int base_power = -1) const;
+    struct TrashGrantCost {
+        int energy = 0;
+        int power = 0;
+        resource::DomainMask domains = resource::kAnyDomain;
+        int extra_any = 0;
+    };
+    TrashGrantCost trashGrantCost(PlayerId player, GameObjectId card_id,
+                                  const PlayerState::TrashReplayGrant& grant) const;
+    bool canPayTrashGrant(PlayerId player, GameObjectId card_id,
+                          const PlayerState::TrashReplayGrant& grant, int deflect) const;
+    Card::HideCost hideCostFor(PlayerId player) const;
+    int firstGearAbilityDiscount(PlayerId player) const;
+    Card::EquipTerms equipTerms(PlayerId player) const;
 
     /// Additional-cost helpers (CR 805 Accelerate, future additional costs).
     /// `energy` is paid by exhausting ready runes; `power` is paid by
@@ -636,6 +665,16 @@ private:
                                    const ActivationCost& cost, bool for_unit = false) const;
     bool payActivationResources(PlayerId player, int energy, const ActivationCost& cost,
                                 bool for_unit = false);
+    /// `printed` after every activation-cost reduction, Energy and Power.
+    ActivationCost netActivationCost(const Card& cost_card, PlayerId player,
+                                     GameObjectId source, int index,
+                                     ActivationCost printed) const;
+    /// Whether `player` can pay the Energy and Power of ability `index` of
+    /// `source` (whose descriptor comes from `cost_card`) after reductions,
+    /// using resources restricted to that kind of source. The one predicate
+    /// for the ability generators and payAndQueueAbility.
+    bool canPayActivation(PlayerId player, const Card& cost_card, GameObjectId source,
+                          int index, const ActivationCost& printed) const;
     /// Apply `assigned` combat damage to a unit through the replacement
     /// effects that govern it (CR 467.2.c.5).
     void applyCombatDamage(GameObjectId target, int assigned);
@@ -664,6 +703,10 @@ private:
                                 Domain domain, bool for_unit = false) const;
     bool payAdditionalCost(PlayerId player, int energy, int power,
                             Domain domain, bool for_unit = false);
+    bool canPayAdditionalCost(PlayerId player, int energy, int power,
+                              Domain domain, SpendFor spend_for) const;
+    bool payAdditionalCost(PlayerId player, int energy, int power,
+                           Domain domain, SpendFor spend_for);
 
     /// Pays the matching PlayerState::TrashReplayGrant's override cost for
     /// `card_id` (auto-spends via payAdditionalCost; an [A] grant picks the
@@ -671,26 +714,14 @@ private:
     /// was found and paid, false otherwise (caller falls back to printed cost).
     bool payTrashReplayGrant(PlayerId player, GameObjectId card_id);
 
-    // ── Repeat (CR 820) — optional additional cost ──
-    //
-    // Action gen consults `parseRepeatCost()` (public-section static helper
-    // above) on a card's ability_text. If the text contains
-    // "[Repeat] [N]" / "[Repeat] [N][D]" / "[Repeat] [D]", every legal play
-    // intent is duplicated once per affordable Repeat count and
-    // `chosen_value = R` is set on each duplicate. The chain item's
-    // `repeats_paid` is then populated in executePlaySpell from
-    // `intent.chosen_value`, which the chain manager uses to re-resolve the
-    // spell `R` extra times (CR 820.2). `total_energy_spent` = base + R *
-    // repeat_energy; Forgotten Library / Virtuoso read this for cost gating.
-    //
-    // Limitation: parses the FIRST [Repeat] [...] only — Curtain Call's
-    // three modal Repeat costs are handled by the card's own onResolve
-    // modal logic, NOT by this helper.
-
-    /// Pay an extra Repeat tranche on top of an already-paid base cost.
-    /// Returns false if the additional payment can't be satisfied (which
-    /// indicates a bug in the affordability gate in action gen).
-    bool payRepeatCost(PlayerId player, const RepeatCost& cost);
+    // ── Optional additional costs (CR 356.2.b): Accelerate, Repeat, "you may pay" ──
+    /// "Optional additional costs you pay cost [1] or [A] less": the discount
+    /// `player`'s cards in play give (Card::optionalCostDiscount).
+    int optionalCostDiscount(PlayerId player) const;
+    bool canPayOptionalCost(PlayerId player, int energy, int power,
+                            resource::DomainMask domains, SpendFor spend_for) const;
+    bool payOptionalCost(PlayerId player, int energy, int power,
+                         resource::DomainMask domains, SpendFor spend_for);
 
     /// "You may pay X as an additional cost to play me." Offers the agent a
     /// yes/no during the play action (called from executePlayCard /

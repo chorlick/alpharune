@@ -16,9 +16,11 @@ class SquareUp : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Give a unit [Assault 4] this turn."
-    // ENGINE-GAP: "[Repeat] — Discard 1" is a Repeat cost
-    // GameEngine::parseRepeatCost cannot express, so the Repeat is not offered.
-    // The discard is the Repeat's cost, never part of the base effect.
+    // "[Repeat] — Discard 1": the discard is the Repeat's cost (CR 820),
+    // never part of the base effect.
+    std::vector<RepeatCost> repeatCosts() const override {
+        return {RepeatCost{.discard_cards = 1}};
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
         ctx.executor.giveTemporaryKeyword(targets[0], Keyword::Assault, 4);

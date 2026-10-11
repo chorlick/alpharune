@@ -24,9 +24,8 @@ public:
     // equippedKeywords(), ...), which cannot stand for "whatever the unit I am
     // on says". Only the Equip ability works.
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return standardEquip(ctx, ctx.source, unit,
-                                         /*energy_cost=*/1, Domain::Calm);
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true, .energy = 1, .power = 1, .power_domain = Domain::Calm};
     }
 private:
     const CardDef def_ = [] {

@@ -24,28 +24,81 @@ namespace riftbound {
 
 // ─── Rune Pool ───────────────────────────────────────────────────────────────
 
+/// What a payment is for. Restricted resources ("Use only to play spells")
+/// can pay only for the matching purpose.
+enum class SpendFor : uint8_t {
+    Other,   // anything else (a legend's or battlefield's ability, a Hide cost, ...)
+    Unit,    // playing a unit, or an activated ability of a unit
+    Spell,   // playing a spell
+    Gear,    // playing a gear, or an activated ability of a gear
+};
+
 struct RunePool {
     int energy = 0;
     // Energy that may be spent "only to play units or activated abilities of
     // units" (Butcher of the Sands). Counted and spent first when the engine
     // pays for one of those; invisible to every other payment.
     int unit_energy = 0;
+    // The same for the other restrictions cards print. Every payment goes
+    // through engine/resource_payment.h, which spends restricted resources
+    // before unrestricted ones.
+    int spell_energy = 0;      // "Use only to play spells." (Lux, Crownguard)
+    int showdown_energy = 0;   // "Spend this Energy only during showdowns." (Scorn of the Moon)
     int power[static_cast<int>(Domain::Count)] = {};  // per-domain
     int universal_power = 0;  // [A] — any domain
+    int spell_power = 0;       // [A], "Use only to play spells." (Daughter of the Void)
+    int gear_power = 0;        // [A], "Use only to play gear or use gear abilities."
 
     void clear() {
         energy = 0;
         unit_energy = 0;
+        spell_energy = 0;
+        showdown_energy = 0;
         universal_power = 0;
+        spell_power = 0;
+        gear_power = 0;
         for (int i = 0; i < static_cast<int>(Domain::Count); ++i)
             power[i] = 0;
     }
 
     int totalPower() const {
-        int sum = universal_power;
+        int sum = universal_power + spell_power + gear_power;
         for (int i = 0; i < static_cast<int>(Domain::Count); ++i)
             sum += power[i];
         return sum;
+    }
+
+    /// Restricted Energy usable for a payment of kind `f` right now.
+    int restrictedEnergy(SpendFor f, bool in_showdown) const {
+        return (f == SpendFor::Unit ? unit_energy : 0) +
+               (f == SpendFor::Spell ? spell_energy : 0) +
+               (in_showdown ? showdown_energy : 0);
+    }
+    /// Restricted [A] usable for a payment of kind `f`.
+    int restrictedPower(SpendFor f) const {
+        return (f == SpendFor::Spell ? spell_power : 0) +
+               (f == SpendFor::Gear ? gear_power : 0);
+    }
+    /// Spend up to `need` restricted Energy / Power usable for `f`; `need` is
+    /// reduced by what was spent.
+    void takeRestrictedEnergy(SpendFor f, bool in_showdown, int& need) {
+        auto take = [&need](int& from) {
+            int n = std::min(from, std::max(0, need));
+            from -= n;
+            need -= n;
+        };
+        if (f == SpendFor::Unit) take(unit_energy);
+        if (f == SpendFor::Spell) take(spell_energy);
+        if (in_showdown) take(showdown_energy);
+    }
+    void takeRestrictedPower(SpendFor f, int& need) {
+        auto take = [&need](int& from) {
+            int n = std::min(from, std::max(0, need));
+            from -= n;
+            need -= n;
+        };
+        if (f == SpendFor::Spell) take(spell_power);
+        if (f == SpendFor::Gear) take(gear_power);
     }
 };
 
@@ -216,6 +269,10 @@ struct PlayerState {
         Domain power_domain = Domain::Fury;
         bool any_domain = false;          // [A] — power may be any single domain
         bool banish_after = false;        // granted [Flow]: banish the spell after it's played
+        // A permission the card itself keeps while it is in the trash ([Flow],
+        // "You may play me from your trash for ..."): rebuilt on every aura
+        // pass (GameEngine::refreshFlowGrants) instead of being pushed once.
+        bool standing = false;
     };
     std::vector<TrashReplayGrant> trash_replay_grants;
 

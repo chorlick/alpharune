@@ -1,3 +1,4 @@
+#include "cards/units/weaponmaster_base.h"
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
@@ -30,83 +31,16 @@ public:
     static constexpr int kAwaitGear = 20;
     static constexpr int kDone = 21;
 
-    // What Weaponmaster's "[Equip] ... for [A] less" costs for `gear`.
-    // ENGINE-GAP: an Equip cost lives inside each gear's onEquip — no Card
-    // hook exposes it or accepts a discount (needed: e.g.
-    // `virtual ActivationCost Card::equipCost() const` and an engine equip
-    // path that applies a Power reduction). The printed "[Equip] [n][X]" cost
-    // is read here instead: its Energy is charged and one Power is taken off.
-    // Equipment whose Equip cost has non-rune parts ("[Equip] — Spend 1 XP",
-    // "..., Recycle 2 cards", "..., Kill a friendly unit") or would still have
-    // Power to pay after the discount is not offered.
-    struct ReducedEquipCost {
-        bool payable_here = false;
-        int energy = 0;
-    };
-    static ReducedEquipCost reducedEquipCost(CardContext& ctx, const GameObject& gear) {
-        ReducedEquipCost out;
-        if (gear.card_def_id == kInvalidId) {   // no printed cost at all
-            out.payable_here = true;
-            return out;
-        }
-        const std::string& text = ctx.executor.cardDB().get(gear.card_def_id).ability_text;
-        static const std::string kKey = "[Equip]";
-        size_t p = text.find(kKey);
-        if (p == std::string::npos) return out;
-        p += kKey.size();
-        while (p < text.size() && text[p] == ' ') ++p;
-        int energy = 0, power = 0;
-        bool any = false;
-        while (p < text.size() && text[p] == '[') {
-            const size_t q = text.find(']', p);
-            if (q == std::string::npos) return out;
-            const std::string tok = text.substr(p + 1, q - p - 1);
-            if (tok.empty()) return out;
-            if (std::all_of(tok.begin(), tok.end(),
-                            [](unsigned char c) { return c >= '0' && c <= '9'; })) {
-                energy += std::stoi(tok);
-            } else if (tok.size() == 1 && std::string("RGBOPYCA").find(tok[0]) != std::string::npos) {
-                ++power;
-            } else {
-                return out;
-            }
-            any = true;
-            p = q + 1;
-        }
-        if (!any) return out;                                   // "[Equip] — ..." form
-        while (p < text.size() && text[p] == ' ') ++p;
-        if (p < text.size() && text[p] == ',') return out;     // further costs follow
-        if (power > 1) return out;                              // Power left after "[A] less"
-        out.payable_here = true;
-        out.energy = energy;
-        return out;
-    }
-    /// Equipment I may Weaponmaster-equip right now (cost payable, CR 445.2).
+    // [Weaponmaster] (CR 821): the Equipment's declared Equip cost
+    // (Card::equipCost), one Power less, through the shared Weaponmaster
+    // terms — any Equipment, whatever its cost is made of.
     std::vector<GameObjectId> equippable(CardContext& ctx) const {
-        std::vector<GameObjectId> out;
-        const int energy = payableEnergy(ctx.state, ctx.controller);
-        for (const auto& [id, obj] : ctx.state.objects) {
-            if (obj.controller != ctx.controller || !obj.location.has_value()) continue;
-            if (!isEquipment(obj)) continue;
-            // "even if it's already attached" — to another unit; one already
-            // on me has nothing to gain.
-            if (obj.attached_to.has_value() && *obj.attached_to == ctx.source) continue;
-            const auto cost = reducedEquipCost(ctx, obj);
-            if (!cost.payable_here || cost.energy > energy) continue;
-            out.push_back(id);
-        }
-        std::sort(out.begin(), out.end());
-        return out;
+        return WeaponmasterUnit::weaponmasterChoices(ctx, ctx.source);
     }
     void equip(CardContext& ctx, GameObjectId gear_id) {
-        const auto cost = reducedEquipCost(ctx, ctx.state.getObject(gear_id));
-        if (!payEnergy(ctx, ctx.controller, cost.energy)) return;
-        // Through the executor so the gear's onUnattached hook runs.
-        if (ctx.state.getObject(gear_id).attached_to.has_value())
-            ctx.executor.unattachGear(gear_id);
-        attachFree(ctx, gear_id, ctx.source);   // emits "equipped" -> my attach trigger
-        ctx.events.logTrace("JAX, UNRELENTING: [Weaponmaster] equipped " +
-                            ctx.state.getObject(gear_id).name);
+        if (WeaponmasterUnit::weaponmasterEquip(ctx, gear_id, ctx.source))
+            ctx.events.logTrace("JAX, UNRELENTING: [Weaponmaster] equipped " +
+                                ctx.state.getObject(gear_id).name);
     }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

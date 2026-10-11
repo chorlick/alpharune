@@ -23,24 +23,20 @@ public:
     }
 
     bool hasEquipAbility() const override { return true; }
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
+    // "[Equip] — Spend 1 XP": no Energy or Power; the XP is the
+    // non-resource part of the cost (CR 818.1.c.3).
+    EquipCost equipCost(const GameState&, PlayerId, GameObjectId, GameObjectId) const override {
+        return {.valid = true};
+    }
+    bool canPayEquipExtraCost(const GameState& state, PlayerId controller, GameObjectId,
+                              GameObjectId) const override {
+        return state.player(controller).xp >= 1;
+    }
+    bool payEquipExtraCost(CardContext& ctx, GameObjectId) override {
         auto& ps = ctx.state.player(ctx.controller);
-        if (ps.xp < 1) return false;  // can't pay the cost
-        if (!ctx.state.objectExists(unit)) return false;
-        ps.xp -= 1;  // Spend 1 XP
+        if (ps.xp < 1) return false;
+        ps.xp -= 1;
         ctx.events.logTrace("  EQUIP_COST: spent 1 XP");
-
-        auto& gear = ctx.state.getObject(ctx.source);
-        auto& u = ctx.state.getObject(unit);
-        gear.attached_to = unit;
-        u.attachments.push_back(ctx.source);
-        gear.location = u.location;
-        gear.zone = u.zone;
-        u.attachment_might_bonus += gear.might_bonus;
-        u.recomputeMight();
-        ctx.events.logTrace("EQUIP: " + gear.name + " -> " + u.name);
-        ctx.events.emit(ObjectStateChangedEvent{ctx.source, "attached"});
-        ctx.events.emit(ObjectStateChangedEvent{unit, "equipped"});
         return true;
     }
 private:

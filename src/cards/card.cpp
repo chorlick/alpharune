@@ -3,6 +3,8 @@
 #include "core/intent.h"
 #include "engine/effect_executor.h"
 #include "core/events.h"
+#include "cards/card_helpers.h"
+#include "engine/resource_payment.h"
 #include <algorithm>
 
 namespace riftbound {
@@ -761,6 +763,130 @@ int Card::activationCostReductionFor(const GameState& state, PlayerId controller
         abs[ability_index].is_empower && state.objectExists(source))
         r += state.getObject(source).empower_cost_reduction;
     return r;
+}
+
+int Card::activationPowerReductionFor(const GameState& state, PlayerId /*controller*/,
+                                      GameObjectId source, int ability_index,
+                                      int unused_energy_reduction) const {
+    // "[Empower] costs ... cost [1] or [A] less" (Risen Altar): what the
+    // Energy side could not use comes off the Power.
+    auto abs = activatedAbilities();
+    if (ability_index < 0 || ability_index >= static_cast<int>(abs.size()) ||
+        !abs[ability_index].is_empower || !state.objectExists(source))
+        return 0;
+    return std::max(0, std::min(unused_energy_reduction,
+                                state.getObject(source).empower_cost_reduction));
+}
+
+// ── Equip (CR 818) ──────────────────────────────────────────────────────────
+
+Card::EquipCost Card::netEquipCost(const GameState& state, PlayerId controller,
+                                   GameObjectId gear, GameObjectId unit,
+                                   const EquipTerms& terms) const {
+    EquipCost cost = equipCost(state, controller, gear, unit);
+    cost.energy = std::max(0, cost.energy - std::max(0, terms.energy_discount));
+    // CR 821.1.c.3: a cost with no Power is not reduced by "[A] less".
+    cost.power = std::max(0, cost.power - std::max(0, terms.power_discount));
+    return cost;
+}
+
+bool Card::canPayEquip(const GameState& state, PlayerId controller, GameObjectId gear,
+                       GameObjectId unit, const EquipTerms& terms) const {
+    if (!equipEndsOnBoard(state, gear, unit)) return false;
+    const auto& g = state.getObject(gear);
+    if (g.controller != controller || state.getObject(unit).controller != controller)
+        return false;
+    if (g.attached_to.has_value()) {
+        // Attached: its Rules Text, the Equip ability included, is Inactive
+        // (CR 718.2, 721.2). Weaponmaster lifts that (CR 821.1.c).
+        if (!terms.even_if_attached || *g.attached_to == unit) return false;
+    }
+    const EquipCost cost = netEquipCost(state, controller, gear, unit, terms);
+    if (!cost.valid) return false;                       // CR 821.1.c.4
+    if (!resource::canPay(state, controller, cost.energy, cost.power,
+                          cost.power_any_domain ? Domain::Count : cost.power_domain,
+                          SpendFor::Gear))
+        return false;
+    return canPayEquipExtraCost(state, controller, gear, unit);
+}
+
+bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTerms& terms) {
+    if (!canPayEquip(ctx.state, ctx.controller, ctx.source, unit, terms)) return false;
+    const EquipCost cost = netEquipCost(ctx.state, ctx.controller, ctx.source, unit, terms);
+    if (!resource::pay(ctx.state, ctx.events, ctx.controller, cost.energy, cost.power,
+                       cost.power_any_domain ? Domain::Count : cost.power_domain,
+                       SpendFor::Gear))
+        return false;
+    if (!payEquipExtraCost(ctx, unit)) return false;
+    // The extra cost may have removed either end ("Kill a friendly unit").
+    if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
+    if (ctx.state.getObject(ctx.source).attached_to.has_value())
+        ctx.executor.unattachGear(ctx.source);
+    attachEquipped(ctx, ctx.source, unit);
+    onEquipped(ctx, unit);
+    return true;
+}
+
+bool Card::canPayEquip(const GameState& state, PlayerId controller, GameObjectId gear,
+                       GameObjectId unit) const {
+    return canPayEquip(state, controller, gear, unit, EquipTerms{});
+}
+bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit) {
+    return payEquipAndAttach(ctx, unit, EquipTerms{});
+}
+bool Card::onEquip(CardContext& ctx, GameObjectId unit) {
+    return payEquipAndAttach(ctx, unit, EquipTerms{});
+}
+
+// ── Additional costs chosen before payment (CR 356) ─────────────────────────
+
+Card::AdditionalPlayCost Card::additionalPlayCost(const GameState& state, const CardDB& /*db*/,
+                                                  PlayerId player, GameObjectId self) const {
+    // "you may discard N as an additional cost. If you do, reduce my cost by
+    // [M]" declared through optionalAdditionalCost().
+    const auto oac = optionalAdditionalCost(state, player);
+    if (!oac.valid || oac.discard_cards <= 0 || oac.reduce_energy <= 0) return {};
+    const auto& hand = state.player(player).hand;
+    int others = static_cast<int>(hand.size());
+    if (std::find(hand.begin(), hand.end(), self) != hand.end()) --others;
+    AdditionalPlayCost out;
+    out.exists = true;
+    out.payable = others >= oac.discard_cards;
+    out.best.energy_reduction = oac.reduce_energy;
+    return out;
+}
+
+Card::PlayCostAdjust Card::payAdditionalPlayCost(
+    CardContext& ctx, const std::function<bool(const PlayCostAdjust&)>& affordable) {
+    const auto oac = optionalAdditionalCost(ctx.state, ctx.controller);
+    if (!oac.valid || oac.discard_cards <= 0 || oac.reduce_energy <= 0) return {};
+    {
+        const auto& h = ctx.state.player(ctx.controller).hand;
+        int others = static_cast<int>(h.size());
+        if (std::find(h.begin(), h.end(), ctx.source) != h.end()) --others;
+        if (others < oac.discard_cards) return {};
+    }
+    // Optional while the full cost can be paid; otherwise the play was only
+    // legal with the discount, so the discard is part of it.
+    const bool may_decline = affordable(PlayCostAdjust{});
+    if (may_decline &&
+        !ctx.executor.confirmNow(ctx.controller,
+            "discard " + std::to_string(oac.discard_cards) + " to reduce the cost by [" +
+            std::to_string(oac.reduce_energy) + "]"))
+        return {};
+    // The card being played is not one of the cards discarded for it (an
+    // effect-driven play pays while the card is still in its zone).
+    auto& hand = ctx.state.player(ctx.controller).hand;
+    const auto self_at = std::find(hand.begin(), hand.end(), ctx.source);
+    const bool self_in_hand = self_at != hand.end();
+    if (self_in_hand) hand.erase(self_at);
+    ctx.executor.discardCards(ctx.controller, oac.discard_cards);
+    if (self_in_hand) hand.push_back(ctx.source);
+    if (oac.paid_flag && oac.paid_flag[0] != '\0' && ctx.state.objectExists(ctx.source))
+        ctx.state.getObject(ctx.source).card_counters[oac.paid_flag] = 1;
+    PlayCostAdjust adj;
+    adj.energy_reduction = oac.reduce_energy;
+    return adj;
 }
 
 std::vector<ActivatedAbility> Card::activatedAbilities() const {

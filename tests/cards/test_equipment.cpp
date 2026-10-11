@@ -805,6 +805,7 @@ protected:
         ASSERT_NE(c, nullptr);
         EXPECT_EQ(c->triggerType(), TriggerType::WhenYouPlayMe);
         CardContext ctx{state, events, exec, P1, weapon_master};
+        ctx.registry = &card_registry;   // as the engine sets it: the Equip cost is the gear's
         c->onTrigger(ctx, {});
     }
 };

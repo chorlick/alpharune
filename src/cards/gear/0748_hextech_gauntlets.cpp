@@ -21,16 +21,14 @@ public:
     // "[Equip] [3][A]. This ability's Energy cost is reduced by the Might of
     // the unit you choose." Paid through standardEquip: all-or-nothing, with
     // the engine's Power accounting ([A] = floating Power or any rune).
-    bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
-        const int reduction = ctx.state.getObject(unit).current_might;
-        const int energy_cost = std::max(0, 3 - reduction);
-        if (!standardEquip(ctx, ctx.source, unit, energy_cost, std::optional<Domain>{}))
-            return false;
-        ctx.events.logTrace("EQUIP: Hextech Gauntlets (energy paid=" +
-                            std::to_string(energy_cost) + ", reduced by Might " +
-                            std::to_string(reduction) + ")");
-        return true;
+    EquipCost equipCost(const GameState& state, PlayerId, GameObjectId,
+                        GameObjectId unit) const override {
+        // CR 818.1.c.4: text that alters the Equip cost by the unit chosen.
+        int reduction = 0;
+        if (unit != kInvalidId && state.objectExists(unit))
+            reduction = std::max(0, state.getObject(unit).current_might);
+        return {.valid = true, .energy = std::max(0, 3 - reduction), .power = 1,
+                .power_any_domain = true};
     }
 
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquer; }

@@ -20,16 +20,19 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
 
+        // "replace that battlefield": the one that was just conquered or
+        // held — the trigger's subject is its card object. A battlefield that
+        // is already a Brush token is not replaced again.
         auto find_target = [&]() -> BattlefieldId {
-            for (auto& bf : ctx.state.battlefields) {
-                if (!bf.controller.has_value() ||
-                    *bf.controller != ctx.controller) continue;
-                if (ctx.state.objectExists(bf.card_object_id) &&
-                    ctx.state.getObject(bf.card_object_id).name == "Brush")
-                    continue;
-                return bf.id;
-            }
-            return kInvalidId;
+            if (!ctx.state.chain.resuming.has_value()) return kInvalidId;
+            const GameObjectId bf_card = ctx.state.chain.resuming->triggering_subject;
+            // The card object changes when a battlefield is replaced, so a
+            // subject that is no longer a battlefield's card means "that
+            // battlefield" has already been replaced.
+            const auto bf = battlefieldOfCard(ctx.state, bf_card);
+            if (!bf.has_value()) return kInvalidId;
+            if (ctx.state.getObject(bf_card).name == "Brush") return kInvalidId;
+            return *bf;
         };
         auto still_legal = [&]() {
             if (!ctx.state.objectExists(ctx.source)) return false;
@@ -37,17 +40,14 @@ public:
             return find_target() != kInvalidId;
         };
 
-        int conf = confirmOptional(ctx,
-            "Green Father: exhaust to replace controlled BF with Brush?",
+        const int conf = confirmOptional(ctx,
+            "Green Father: exhaust to replace that battlefield with Brush?",
             still_legal);
-        if (conf == -1) return;
-        if (conf == 0) return;
-
-        BattlefieldId target = find_target();
-        if (target == kInvalidId) return;
-        auto& legend = ctx.state.getObject(ctx.source);
-        if (costDueNow(ctx)) legend.is_exhausted = true;
+        if (conf == 1 && costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1) return;
+        const BattlefieldId target = find_target();
+        if (target == kInvalidId) return;
         ctx.executor.replaceBattlefieldWithToken(target, "Brush", ctx.controller,
                                                   /*token_def=*/561);   // the Brush card
         ctx.events.logTrace("GREEN FATHER: exhausted to replace BF#" +

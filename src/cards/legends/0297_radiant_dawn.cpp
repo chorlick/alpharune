@@ -14,17 +14,25 @@ namespace {
 class RadiantDawn : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you stun one or more enemy units, buff a friendly unit." Which
+    // friendly unit is the controller's choice, made as the ability is
+    // finalized (CR 383.3). A unit that already has a buff is a legal choice
+    // and simply isn't buffed (CR 427.1.b).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouStun; }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        // Buff a friendly unit (first on-board friendly unit found).
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            ctx.executor.buffUnit(id);
-            ctx.events.logTrace("RADIANT DAWN: stunned enemy -> buff " + obj.name);
-            return;
-        }
+        std::vector<GameObjectId> friendly;
+        for (const auto& [id, obj] : ctx.state.objects)
+            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
+                friendly.push_back(id);
+        std::sort(friendly.begin(), friendly.end());
+        const GameObjectId unit = pickTarget(ctx, "Radiant Dawn: buff a friendly unit", friendly);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (unit == kInvalidId) return;       // none / mistarget / waiting
+        if (ctx.executor.buffUnit(unit))
+            ctx.events.logTrace("RADIANT DAWN: stunned enemy -> buff " +
+                                ctx.state.getObject(unit).name);
     }
 private:
     const CardDef def_ = [] {

@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -14,9 +15,25 @@ namespace {
 class Unforgiven : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[2], [E]: Move a friendly unit to or from its base." A unit at a
+    // battlefield goes to its base; a unit in its base goes to a battlefield
+    // the controller chooses as the ability resolves.
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty())
+        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        const auto& unit = ctx.state.getObject(targets[0]);
+        if (!unit.isUnit() || !unit.location.has_value()) return;   // left the board
+        if (unit.controller != ctx.controller) return;              // no longer friendly
+        if (!unit.isAtBase()) {
             ctx.executor.moveToBase(targets[0]);
+            return;
+        }
+        const int num_bfs = static_cast<int>(ctx.state.battlefields.size());
+        if (num_bfs == 0) return;
+        std::vector<std::string> labels;
+        for (int i = 0; i < num_bfs; ++i) labels.push_back(destLabel(1 + i));
+        const int bf = pickMode(ctx, "Unforgiven: move it to which battlefield?", num_bfs, labels);
+        if (bf < 0) return;   // waiting for the agent
+        ctx.executor.moveToBattlefield(targets[0], ctx.state.battlefields[static_cast<size_t>(bf)].id);
     }
     TriggerType triggerType() const override { return TriggerType::Activated; }
     TargetRequirements getTargetRequirements() const override {

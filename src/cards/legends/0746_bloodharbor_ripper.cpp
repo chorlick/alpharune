@@ -25,9 +25,14 @@ public:
                                   .must_be_at_battlefield = true};
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // "a friendly unit at a battlefield": still one as the ability
+        // resolves (bounceToHand alone only checks that it is on the board).
         if (!targets.empty() && ctx.state.objectExists(targets[0])) {
-            ctx.executor.bounceToHand(targets[0]);
-            ctx.events.logTrace("BLOODHARBOR RIPPER: bounced a friendly unit");
+            const auto& unit = ctx.state.getObject(targets[0]);
+            if (unit.isUnit() && unit.isAtBattlefield() && unit.controller == ctx.controller) {
+                ctx.executor.bounceToHand(targets[0]);
+                ctx.events.logTrace("BLOODHARBOR RIPPER: bounced a friendly unit");
+            }
         }
         // Play a Gold gear token, exhausted. createToken with the real Gold
         // card_def_id (326) so its [Reaction] kill-for-[A] ability dispatches.

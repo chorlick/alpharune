@@ -14,7 +14,8 @@ namespace {
 class KeeperOfTheHammer : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
+    // "When you hold" — not on a conquer.
+    TriggerType triggerType() const override { return TriggerType::WhenIHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.state.player(ctx.controller).xp += 1;
         ctx.events.logTrace("KEEPER OF THE HAMMER: +1 XP on hold");

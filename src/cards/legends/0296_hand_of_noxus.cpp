@@ -18,10 +18,15 @@ public:
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
     bool isReactionAbility() const override { return true; }
-    bool requiresLegion() const override { return true; }
+    // "[Legion] — [Add] [1]. (Get the effect if you've played a card this
+    // turn.)" The ability can always be activated; without Legion it does
+    // nothing. This legend's Legion asks for "a card", not "another card".
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        // "[Legion] — [Add] [1]." Add 1 floating energy.
+        if (ctx.state.player(ctx.controller).cards_played_this_turn < 1) {
+            ctx.events.logTrace("HAND OF NOXUS: no Legion — no effect");
+            return;
+        }
         ctx.executor.addFloatingEnergy(ctx.controller, 1);
         ctx.events.logTrace("HAND OF NOXUS: [E] -> [Add] [1]");
     }

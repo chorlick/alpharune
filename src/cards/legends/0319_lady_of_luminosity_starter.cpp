@@ -14,19 +14,19 @@ namespace {
 class LadyOfLuminosityStarter : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you play a spell that costs [5] or more, draw 1." The spell is the
+    // trigger's subject (TriggerManager::onSpellResolved); wherever it went
+    // afterwards (trash, banished for Flow, back in a deck), its cost is the
+    // Energy cost printed on its card.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        // Find the most-recently-played spell (back of controller's trash).
-        const auto& ps = ctx.state.player(ctx.controller);
-        GameObjectId spell_id = kInvalidId;
-        for (auto it = ps.trash.rbegin(); it != ps.trash.rend(); ++it) {
-            if (!ctx.state.objectExists(*it)) continue;
-            if (ctx.state.getObject(*it).isSpell()) { spell_id = *it; break; }
-        }
-        if (spell_id == kInvalidId) return;
-        int printed = ctx.executor.cardDB()
-            .get(ctx.state.getObject(spell_id).card_def_id).energy_cost;
+        const GameObjectId spell_id = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (spell_id == kInvalidId || !ctx.state.objectExists(spell_id)) return;
+        const auto& spell = ctx.state.getObject(spell_id);
+        if (!spell.isSpell() || spell.card_def_id == kInvalidId) return;
+        const int printed = ctx.executor.cardDB().get(spell.card_def_id).energy_cost;
         if (printed < 5) {
             ctx.events.logTrace("LADY OF LUMINOSITY: spell cost " +
                                 std::to_string(printed) + " < 5 — no draw");

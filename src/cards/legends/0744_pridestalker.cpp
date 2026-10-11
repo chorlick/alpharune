@@ -15,22 +15,18 @@ namespace {
 class Pridestalker : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you play a unit, give a unit +1 [M] this turn." Any unit on the
+    // board — not necessarily the one played — chosen by the controller as
+    // the ability is finalized (CR 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // If the trigger context carries the played-unit GameObjectId in
-        // targets[0], buff that. Otherwise pick any friendly unit at a BF.
-        GameObjectId pick = kInvalidId;
-        if (!targets.empty() && ctx.state.objectExists(targets[0])) {
-            pick = targets[0];
-        } else {
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                if (!obj.isAtBattlefield()) continue;
-                pick = id;
-                break;
-            }
-        }
-        if (pick == kInvalidId) return;
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto units = chooseableUnits(ctx.state, ctx.controller,
+                                     [](const GameObject&) { return true; });
+        std::sort(units.begin(), units.end());
+        const GameObjectId pick = pickTarget(ctx, "Pridestalker: give a unit +1 [M]", units);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (pick == kInvalidId) return;       // none / mistarget / waiting
         ctx.executor.giveTemporaryMight(pick, 1);
         ctx.events.logTrace("PRIDESTALKER: +1M to " +
                              ctx.state.getObject(pick).name);

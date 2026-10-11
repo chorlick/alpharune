@@ -16,15 +16,21 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        int readied = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (readied >= 2) break;
+        // "ready up to 2 runes". Which two is not asked: an exhausted rune
+        // is worth the same whatever its Domain (ready it gives [1]; it can
+        // be recycled for its Power ready or exhausted, CR 164.2.b), and
+        // readying fewer is never better. Lowest ids first, so the result
+        // does not depend on map order.
+        std::vector<GameObjectId> exhausted;
+        for (const auto& [id, obj] : ctx.state.objects) {
             if (!obj.isRune() || obj.controller != ctx.controller) continue;
-            if (!obj.is_exhausted) continue;
-            if (!obj.location.has_value()) continue;
-            ctx.executor.readyObject(id);
-            ++readied;
+            if (!obj.is_exhausted || !obj.location.has_value()) continue;
+            exhausted.push_back(id);
         }
+        std::sort(exhausted.begin(), exhausted.end());
+        if (exhausted.size() > 2) exhausted.resize(2);
+        const int readied = static_cast<int>(exhausted.size());
+        for (auto id : exhausted) ctx.executor.readyObject(id);
         if (readied > 0) {
             ctx.events.logTrace("DARK CHILD: readied " + std::to_string(readied)
                                 + " rune(s) at end of turn");

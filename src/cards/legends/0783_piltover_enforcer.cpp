@@ -26,13 +26,11 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
+        // "ready a unit" — any unit on the board, not only a friendly one.
         auto findTargets = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (obj.controller != ctx.controller) continue;
-                if (!obj.isUnit() || !obj.location.has_value()) continue;
-                out.push_back(id);
-            }
+            auto out = chooseableUnits(ctx.state, ctx.controller,
+                                       [](const GameObject&) { return true; });
+            std::sort(out.begin(), out.end());
             return out;
         };
         auto still_legal = [&]() {

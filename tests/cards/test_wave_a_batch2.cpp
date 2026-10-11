@@ -250,14 +250,14 @@ TEST_F(CardTestFixture, RuinRunnerCannotBeChosenByEnemy) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Undying Legion (587) — "[Legion] [>] You may play me from your trash ..."
-// Only the Legion gate is implementable from the card layer; the
-// play-from-trash alternative source is escalated.
+// The play from the trash is Card::trashPlayCost and is tested through the
+// engine by SweepCostsTest.UndyingLegion_IsPlayedFromTheTrashForItsLegionCost.
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(CardTestFixture, UndyingLegionRequiresLegion) {
-    // Card::requiresLegion() is read by nothing (plans/08 item 8.7): the
-    // [Legion] gate is on the def, and the play-from-trash ability itself is
-    // not implemented yet (it needs engine support).
+    // Asserts the def only: the card prints the [Legion] keyword. (The
+    // Card::requiresLegion() virtual this once called is deleted, plans/08
+    // item 8.7.) What the keyword gates is covered by the SweepCostsTest above.
     EXPECT_TRUE(card_db.get(kUndyingLegion).keywords.has(Keyword::Legion))
         << "Undying Legion's effect is Legion-gated";
 }

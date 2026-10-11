@@ -116,7 +116,30 @@ protected:
         return id;
     }
 
-    /// driveResumableTrigger with a triggering subject on the chain item.
+    /// Activate Sky Crusier's ability through the engine: the engine checks
+    /// and charges the cost (exhaust, [1], the gear discard) and resolves it.
+    void activateSkyCrusier(GameObjectId cruiser, AgentInterface* agent) {
+        Intent act;
+        act.type = IntentType::ActivateAbility;
+        act.player = state.getObject(cruiser).controller;
+        act.ability_source = cruiser;
+        act.ability_index = 0;
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(act);
+            e.testHook_runChain();
+        }, agent, nullptr, act.player);
+    }
+    /// Answers Sky Crusier's two prompts: `gear` when the discard is asked,
+    /// `unit` when the target is; first option of anything else.
+    static EnginePathAgent::Picker skyCrusierPicker(GameObjectId gear, GameObjectId unit) {
+        return [gear, unit](const std::vector<Intent>& legal) {
+            for (GameObjectId want : {gear, unit})
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+            return legal.front();
+        };
+    }
+
     void driveTriggerWithSubject(CardDefId def_id, PlayerId controller, GameObjectId source,
                                  TriggerType firing, GameObjectId subject,
                                  std::function<Intent(const std::vector<Intent>&)> picker,
@@ -282,28 +305,54 @@ TEST_F(VendettaB, Vendetta_SkyCrusier_CostAndTargets) {
     EXPECT_EQ(abs[0].cost.discard_count, 1);
     EXPECT_EQ(abs[0].cost.discard_type_filter, 1 + static_cast<int>(CardType::Gear));
 
-    auto at_bf   = addUnit(P2, kInvalidId, 3, 0);
-    auto at_base = addUnit(P2, kInvalidId, 3);
-    auto legal = c->enumerateLegalTargets(state, P1, 0);
-    EXPECT_NE(std::find(legal.begin(), legal.end(), at_bf), legal.end());
-    EXPECT_EQ(std::find(legal.begin(), legal.end(), at_base), legal.end())
-        << "only units at a battlefield";
+    // Through the engine (plans/09 item 9.N6; this was a direct
+    // enumerateLegalTargets call): the ability is activated, the engine
+    // charges the cost and the agent is asked which gear and which unit.
+    auto cruiser = addUnit(P1, kSkyCrusier);
+    auto gear    = addToHand(P1, kIronBallista);
+    auto at_bf   = addUnit(P2, kInvalidId, 6, 0);
+    auto other   = addUnit(P2, kInvalidId, 6, 0);
+    auto at_base = addUnit(P2, kInvalidId, 6);
+    state.player(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(skyCrusierPicker(gear, other));
+    activateSkyCrusier(cruiser, &agent);
+
+    EXPECT_TRUE(state.getObject(cruiser).is_exhausted) << "[E]";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0) << "[1]";
+    EXPECT_TRUE(inTrash(P1, gear)) << "Discard a gear";
+    EXPECT_TRUE(agent.wasOffered(at_bf));
+    EXPECT_TRUE(agent.wasOffered(other));
+    EXPECT_FALSE(agent.wasOffered(at_base)) << "only units at a battlefield";
+    EXPECT_EQ(state.getObject(other).damage_marked, 4) << "the unit the player chose";
+    EXPECT_EQ(state.getObject(at_bf).damage_marked, 0);
+    EXPECT_EQ(state.getObject(at_base).damage_marked, 0);
 }
 
+// Through the engine (plans/09 item 9.N6; this called onActivate itself with
+// hand-fed targets and no cost).
 TEST_F(VendettaB, Vendetta_SkyCrusier_Deals4) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    Card* c = card_registry.get(kSkyCrusier);
     auto cruiser = addUnit(P1, kSkyCrusier);
     auto big   = addUnit(P2, kInvalidId, 6, 0);
     auto small = addUnit(P2, kInvalidId, 4, 1);
-    CardContext ctx{state, events, exec, P1, cruiser};
 
-    c->onActivate(ctx, 0, {big});
+    auto gear1 = addToHand(P1, kIronBallista);
+    state.player(P1).rune_pool.energy = 1;
+    EnginePathAgent first(skyCrusierPicker(gear1, big));
+    activateSkyCrusier(cruiser, &first);
+    EXPECT_TRUE(inTrash(P1, gear1));
     EXPECT_EQ(state.getObject(big).damage_marked, 4);
     EXPECT_TRUE(state.getObject(big).location.has_value()) << "6 [M] survives 4";
+    EXPECT_EQ(state.getObject(small).damage_marked, 0);
 
-    c->onActivate(ctx, 0, {small});
+    // A second activation (as on a later turn: ready again, another gear).
+    state.getObject(cruiser).is_exhausted = false;
+    auto gear2 = addToHand(P1, kIronBallista);
+    state.player(P1).rune_pool.energy = 1;
+    EnginePathAgent second(skyCrusierPicker(gear2, small));
+    activateSkyCrusier(cruiser, &second);
+    EXPECT_TRUE(inTrash(P1, gear2));
     EXPECT_FALSE(state.getObject(small).location.has_value()) << "4 [M] dies to 4";
+    EXPECT_EQ(state.getObject(big).damage_marked, 4) << "not hit again";
 }
 
 // ── 850 Nasus, Guardian of Knowledge ─────────────────────────────────────

@@ -659,12 +659,6 @@ private:
     /// interaction. The caller is responsible for any other side effects
     /// (e.g. flipping `is_exhausted` on a unit that paid Accelerate to
     /// enter ready — that's resolvePermanent's job).
-    /// Energy + power affordability / payment for an activated ability whose
-    /// cost has a power component (honors ActivationCost::power_any_domain).
-    bool canPayActivationResources(PlayerId player, int energy,
-                                   const ActivationCost& cost, bool for_unit = false) const;
-    bool payActivationResources(PlayerId player, int energy, const ActivationCost& cost,
-                                bool for_unit = false);
     /// `printed` after every activation-cost reduction, Energy and Power.
     ActivationCost netActivationCost(const Card& cost_card, PlayerId player,
                                      GameObjectId source, int index,
@@ -729,9 +723,6 @@ private:
     /// On accept, pays the card's Card::optionalAdditionalCost and sets
     /// card_counters[paid_flag] = 1. No-op if the card has none or can't pay.
     void maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id);
-
-    /// Count available Energy from ready runes (exhaust potential).
-    int availableEnergy(PlayerId player, bool for_unit = false) const;
 
     /// Count available Power of a specific domain (recycle potential).
     int availablePower(PlayerId player, Domain domain) const;

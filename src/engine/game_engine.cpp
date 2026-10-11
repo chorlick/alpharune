@@ -1532,8 +1532,9 @@ void GameEngine::runFinalizePass(ChainItem& item) {
 }
 
 // Pay an activated ability's costs and put it on the chain. Returns true if a
-// chain item was added (the caller then runs or resumes the chain); false if
-// the activation completed without one (Equip) or was not possible.
+// chain item was added — the ability, or a trigger queued by an Equip — and
+// the caller then runs or resumes the chain; false if the activation completed
+// without one or was not possible.
 bool GameEngine::payAndQueueAbility(const Intent& intent) {
     auto& source = state_.getObject(intent.ability_source);
     // Skip card-def lookup for tokens (no CardDef). The rest of this
@@ -1557,6 +1558,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
                 CardContext equip_ctx{state_, events_, *effect_executor_,
                                      intent.player, intent.ability_source};
                 equip_ctx.registry = &card_registry_;
+                const size_t chain_before = state_.chain.items.size();
                 bool attached = false;
                 if (has_target) {
                     attached = gear_card->payEquipAndAttach(
@@ -1572,7 +1574,11 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
                     aps.gear_abilities_activated_this_turn++;
                     cleanup();
                 }
-                return false;
+                // The Equip itself adds no chain item, but paying it or
+                // attaching may have queued triggers ("When you attach an
+                // Equipment to me"): the caller must run them now, not leave
+                // them on the chain for the next action.
+                return state_.chain.items.size() > chain_before;
             }
         }
     }
@@ -3252,43 +3258,37 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
     // Activate abilities on gear/legends/units ([E]: abilities)
     generateActivateAbilityActions(player, actions);
 
-    // Equip gear to units (CR 818). Phase 6r — if a gear opts into
-    // needsEquipTimeTarget, emit ONE intent (no target) instead of one
-    // per (gear, friendly_unit) pair. The engine's equip-execution
-    // path calls onEquip(ctx, kInvalidId) and the gear's Card uses
-    // pickTarget inside onEquip to resolve the target. Fixes the same
-    // action-vocab collision class as needsPlayTimeTarget /
-    // needs_activation_time_target for gear equip intents.
+    // Equip gear to units (CR 818). One gate for every Equip, the same one
+    // the execution pays by (canPayEquip): the gear's declared cost after
+    // discounts must be payable for that unit, and an Equipment that is
+    // already attached is not offered — its Rules Text, the Equip ability
+    // included, is Inactive while attached (CR 718.2, 721.2).
+    // A gear that opts into needsEquipTimeTarget gets ONE intent (no target)
+    // and picks the unit inside onEquip (action-vocab collision, like
+    // needsPlayTimeTarget); it is offered while some unit could be equipped.
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isGear() || obj.controller != player) continue;
         if (!obj.location.has_value()) continue;
-        if (obj.attached_to.has_value()) continue; // already attached
 
         Card* gear_card = card_registry_.get(obj.card_def_id);
         if (!gear_card || !gear_card->hasEquipAbility()) continue;
 
-        if (gear_card->needsEquipTimeTarget()) {
-            // One intent per gear; target chosen at resolve via pickTarget.
-            Intent equip;
-            equip.type = IntentType::ActivateAbility;
-            equip.player = player;
-            equip.ability_source = id;
-            actions.push_back(equip);
-            continue;
-        }
-
-        // Legacy path: enumerate friendly units as equip targets (all
-        // unmigrated gear). Per-target action_vocab slot collision lives
-        // here until the gear opts into needsEquipTimeTarget.
+        bool one_intent_emitted = false;
         for (auto& [uid, unit] : state_.objects) {
             if (!unit.isUnit() || unit.controller != player) continue;
             if (!unit.location.has_value()) continue;
+            if (!canPayEquip(player, id, uid)) continue;
 
             Intent equip;
             equip.type = IntentType::ActivateAbility;
             equip.player = player;
             equip.ability_source = id;
-            equip.targets = {uid};
+            if (gear_card->needsEquipTimeTarget()) {
+                if (one_intent_emitted) break;
+                one_intent_emitted = true;
+            } else {
+                equip.targets = {uid};
+            }
             actions.push_back(equip);
         }
     }
@@ -3298,10 +3298,9 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         auto& card = state_.getObject(card_id);
         if (!card.keywords.has(Keyword::Hidden)) continue;
 
-        // The Hide cost is [A] (CR 811.1.b): floating Power or any rune in
-        // base, ready or exhausted — the same test executeHideCard pays by.
-        if (!ps.hide_ignoring_costs_this_turn &&
-            !canPayAdditionalCost(player, 0, 1, Domain::Count)) continue;
+        // The Hide cost — [A] (CR 811.1.b) unless an effect waives it or
+        // lets Energy be paid instead — by the gate executeHideCard pays by.
+        if (!canPayHideCost(player)) continue;
 
         // Can hide at any controlled BF with available facedown slot
         for (auto& bf : state_.battlefields) {
@@ -3430,11 +3429,7 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
             if (!ab.is_action) continue;
             if (!card->canActivateAbilityAt(state_, player, id, (int)ai)) continue;
             if (ab.cost.exhaust && obj.is_exhausted) continue;
-            int net_energy = std::max(0, ab.cost.energy -
-                activationEnergyReduction(*card, player, id, (int)ai));
-            if (net_energy > 0 && availableEnergy(player, obj.isUnit()) < net_energy) continue;
-            if (ab.cost.power > 0 &&
-                !canPayActivationResources(player, net_energy, ab.cost, obj.isUnit())) continue;
+            if (!canPayActivation(player, *card, id, (int)ai, ab.cost)) continue;
             if (ab.cost.discard && ab.cost.discard_count > 0) {
                 int matching = 0;
                 for (auto hid : state_.player(player).hand) {
@@ -3707,11 +3702,7 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
                 if (!ab.is_reaction) continue;
                 if (!card_obj->canActivateAbilityAt(state_, player, id, (int)ai)) continue;
                 if (ab.cost.exhaust && obj.is_exhausted) continue;
-                int net_energy = std::max(0, ab.cost.energy -
-                    activationEnergyReduction(*card_obj, player, id, (int)ai));
-                if (net_energy > 0 && availableEnergy(player, obj.isUnit()) < net_energy) continue;
-                if (ab.cost.power > 0 &&
-                    !canPayActivationResources(player, net_energy, ab.cost, obj.isUnit())) continue;
+                if (!canPayActivation(player, *card_obj, id, (int)ai, ab.cost)) continue;
                 if (ab.cost.discard && ab.cost.discard_count > 0 &&
                     static_cast<int>(state_.player(player).hand.size()) <
                         ab.cost.discard_count) continue;
@@ -4125,11 +4116,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
 
             // Check activation cost: must be ready if exhaust required
             if (act_cost.exhaust && obj.is_exhausted) continue;
-            int net_energy = std::max(0, act_cost.energy -
-                activationEnergyReduction(*card, player, id, (int)ai));
-            if (net_energy > 0 && availableEnergy(player, obj.isUnit()) < net_energy) continue;
-            if (act_cost.power > 0 &&
-                !canPayActivationResources(player, net_energy, act_cost, obj.isUnit())) continue;
+            if (!canPayActivation(player, *card, id, (int)ai, act_cost)) continue;
             if (act_cost.discard && act_cost.discard_count > 0) {
                 int matching = 0;
                 for (auto hid : state_.player(player).hand) {
@@ -4215,10 +4202,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
             if (!gcard->canActivateAbility(state_, player)) continue;
             if (!gcard->canActivateAbilityAt(state_, player, id, ref.ability_index)) continue;
             if (gcost.exhaust && obj.is_exhausted) continue;           // bearer must be ready
-            const int gnet_energy = std::max(0, gcost.energy -
-                activationEnergyReduction(*gcard, player, id, ref.ability_index));
-            if (gnet_energy > 0 && availableEnergy(player, obj.isUnit()) < gnet_energy) continue;
-            if (gcost.power > 0 && !canPayActivationResources(player, gnet_energy, gcost, obj.isUnit())) continue;
+            if (!canPayActivation(player, *gcard, id, ref.ability_index, gcost)) continue;
             if (gcost.discard && gcost.discard_count > 0) {
                 int matching = 0;
                 for (auto hid : state_.player(player).hand) {
@@ -5754,24 +5738,6 @@ void GameEngine::shuffleRuneDeck(PlayerId player) {
 // Cost payment
 // ═══════════════════════════════════════════════════════════════════════════════
 
-int GameEngine::availableEnergy(PlayerId player, bool for_unit) const {
-    // Energy comes from exhausting ready runes (CR 163.2.a: [E]: Add [1])
-    // Each ready rune in base can be exhausted for 1 Energy
-    int count = 0;
-    auto base_loc = BaseLocation{player};
-    for (auto& [id, obj] : state_.objects) {
-        if (obj.isRune() && obj.controller == player && !obj.is_exhausted &&
-            obj.location.has_value() && *obj.location == LocationId{base_loc}) {
-            count++;
-        }
-    }
-    // Also count Energy already in the pool
-    count += state_.player(player).rune_pool.energy;
-    count += state_.player(player).rune_pool.restrictedEnergy(
-        for_unit ? SpendFor::Unit : SpendFor::Other, showdownUnderway(state_));
-    return count;
-}
-
 int GameEngine::availablePower(PlayerId player, Domain domain) const {
     // Power comes from recycling a rune of matching domain (CR 163.2.b)
     // Each rune in base (exhausted or ready) of matching domain can be recycled for 1 Power
@@ -6462,19 +6428,6 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
     }
 
     return advanceCostPayment();
-}
-
-bool GameEngine::canPayActivationResources(PlayerId player, int energy,
-                                            const ActivationCost& cost,
-                                            bool for_unit) const {
-    return canPayAdditionalCost(player, energy, cost.power,
-        cost.power_any_domain ? Domain::Count : cost.power_domain, for_unit);
-}
-
-bool GameEngine::payActivationResources(PlayerId player, int energy,
-                                         const ActivationCost& cost, bool for_unit) {
-    return payAdditionalCost(player, energy, cost.power,
-        cost.power_any_domain ? Domain::Count : cost.power_domain, for_unit);
 }
 
 // What activating ability `index` of `source` costs in Energy and Power after

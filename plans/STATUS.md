@@ -44,6 +44,10 @@ iteration must apply these.
   multi-step locked work goes in a script file run as `flock <lock> bash <file>`.
   Those shapes raise a permission prompt that stalls the agent.
 
+- **Build jobs (user, 2026-10-10):** every build uses `-j3`, not `-j6`; batch
+  and smoke runs use `--threads 3`. `AGENT_BRIEF.md` and `.worktrees/gate.sh`
+  are updated; say `-j3` in every stream brief.
+
 ## Streams
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
@@ -184,3 +188,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 io-cli (`ae7961b`) merged into the same batch; io-cli sent back for four follow-ups. 6 rows to carry-over.
 - 2026-10-10 batch helpers + search + io-cli verified: 1707 run, 1707 passed, 0 failed, 28 disabled (27 are the 7.1 work-list rows). Baseline failures are gone (7.40). helpers and search worktrees and branches removed; io-cli kept for its follow-up (also fixing a WebSocket-handshake race it found by repeating its server tests).
 - 2026-10-10 early gate run at `c0975fc` all green (see Gates). io-cli follow-ups (`f3e2208`) merged; verification batched with integrity.
+- 2026-10-10 user limited builds to `-j3` (see Run decisions).

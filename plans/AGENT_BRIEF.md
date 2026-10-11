@@ -79,7 +79,7 @@ Fix directions in the plans are suggestions from the reviewer, not decisions.
 
 ## Building — one build at a time
 
-The machine has 8 cores and other work is running. All builds and test runs go
+The machine has 8 cores and other work is running; build with `-j3`, never more (user limit). All builds and test runs go
 through a shared lock so only one runs at once:
 
 ```bash
@@ -91,7 +91,7 @@ flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
 # build + test
-flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j6
+flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j3
 flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_tests --gtest_brief=1
 ```
 

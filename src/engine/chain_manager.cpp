@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 
 namespace riftbound {
 
@@ -68,12 +69,13 @@ ChainItemId ChainManager::addSpell(GameObjectId spell_obj, PlayerId controller,
     // that trigger on them go above it (and resolve first).
     for (auto t : item.targets) {
         if (!state_.objectExists(t)) continue;
+        // "Chosen an enemy unit this turn" and the per-turn count of enemy
+        // units / gear chosen (GameState::noteChosen).
+        state_.noteChosen(controller, t, &item);
         const auto& tobj = state_.getObject(t);
         if (!tobj.isUnit() || !tobj.location.has_value()) continue;
         if (tobj.controller == controller)
             events_.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
-        else
-            state_.player(controller).chose_enemy_unit_this_turn = true;
     }
 
     // Move spell object to chain zone
@@ -145,12 +147,13 @@ ChainItemId ChainManager::addAbility(GameObjectId source, PlayerId controller,
     // that trigger on them go above it (and resolve first).
     for (auto t : item.targets) {
         if (!state_.objectExists(t)) continue;
+        // "Chosen an enemy unit this turn" and the per-turn count of enemy
+        // units / gear chosen (GameState::noteChosen).
+        state_.noteChosen(controller, t, &item);
         const auto& tobj = state_.getObject(t);
         if (!tobj.isUnit() || !tobj.location.has_value()) continue;
         if (tobj.controller == controller)
             events_.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
-        else
-            state_.player(controller).chose_enemy_unit_this_turn = true;
     }
 
     // Source stays on board — do NOT move to Chain zone
@@ -317,6 +320,7 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             current = opponent(current);
         } else if (chosen.type == IntentType::PlayReaction && play_card_) {
             // One play path for every card (see setPlayCard).
+            const ChainItemId before = state_.chain.next_id;
             playing_card_ = true;
             try {
                 play_card_(chosen);
@@ -325,7 +329,10 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
                 throw;
             }
             playing_card_ = false;
-            return true; // Item added → restart FEPR from Finalize
+            if (state_.chain.next_id != before)
+                return true; // Item added → restart FEPR from Finalize
+            // The play did not happen (its cost could not be paid after all):
+            // the same player keeps priority and chooses again.
         } else if (chosen.type == IntentType::PlayReaction) {
             // No engine attached (a ChainManager driven on its own): the bare
             // mechanics — leave the zone, pay the printed cost, go on the chain.
@@ -421,20 +428,20 @@ void ChainManager::runResumable(
     if (!state_.chain.resuming.has_value()) return;
     if (!state_.chain.resuming->is_spell && !state_.chain.resuming->is_ability) return;
 
-    constexpr int kMaxResumeIterations = 64;
+    // A card may ask as many questions as its text needs (one per unit on a
+    // crowded board). The bound only stops a card that never stops asking;
+    // reaching it is an engine error, not a quiet end of the resolution (the
+    // same rule as GameEngine::runFinalizePass).
+    constexpr int kMaxResumeIterations = 1024;
     for (int iter = 0; ; ++iter) {
         if (iter >= kMaxResumeIterations) {
-            // Safety bound — a Card stuck in a yield loop. The answer to its
-            // last request was recorded but will never be read: drop it, or
-            // the next item to resolve would take it for its own.
-            if (executor_) executor_->takeChoice();
             const auto& ri = *state_.chain.resuming;
-            events_.logWarn("ChainManager: resume loop overflow resolving " +
-                            (state_.objectExists(ri.source) ? state_.getObject(ri.source).name
-                                                            : std::string("?")) +
-                            " — resolution abandoned");
-            assert(false && "ChainManager::runResumable: resume loop overflow");
-            return;
+            throw std::logic_error(
+                "ChainManager::runResumable: " +
+                (state_.objectExists(ri.source) ? state_.getObject(ri.source).name
+                                                : std::string("?")) +
+                " asked more than " + std::to_string(kMaxResumeIterations) +
+                " choices while resolving");
         }
 
         // The engine's resolveSpell dispatches through Card::onResolve /

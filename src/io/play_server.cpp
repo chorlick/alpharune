@@ -59,23 +59,6 @@ PlayerId strToPlayer(const std::string& s) {
     return PlayerId::None;
 }
 
-const char* zoneToStr(ZoneType z) {
-    switch (z) {
-        case ZoneType::MainDeck:        return "MainDeck";
-        case ZoneType::RuneDeck:        return "RuneDeck";
-        case ZoneType::Hand:            return "Hand";
-        case ZoneType::Base:            return "Base";
-        case ZoneType::Trash:           return "Trash";
-        case ZoneType::Banishment:      return "Banishment";
-        case ZoneType::ChampionZone:    return "ChampionZone";
-        case ZoneType::LegendZone:      return "LegendZone";
-        case ZoneType::BattlefieldZone: return "BattlefieldZone";
-        case ZoneType::Chain:           return "Chain";
-        case ZoneType::FacedownZone:    return "FacedownZone";
-    }
-    return "?";
-}
-
 std::optional<ZoneType> strToZone(const std::string& s) {
     if (s == "MainDeck")        return ZoneType::MainDeck;
     if (s == "RuneDeck")        return ZoneType::RuneDeck;
@@ -252,6 +235,12 @@ struct PlayServer::Impl {
     void spectatorStep();
     void setSpectatorAutoplay(bool on, int delay_ms);
     void releaseSpectator();
+
+    /// After a god-mode edit, with the engine parked on `agent`'s decision:
+    /// replace the legal actions the agent holds with what the edited state
+    /// offers. Returns false if they were left as they were (see the
+    /// definition for when). Caller holds the state mutex.
+    bool recomputeLegalForParkedHuman(HumanAgent& agent);
 
     /// Where the engine thread is, as far as a server thread may rely on.
     struct Park {
@@ -445,12 +434,19 @@ private:
         if (!requireGodMode()) return;
         std::lock_guard<std::mutex> lock(server_.stateMutex());
         EditResult res;
-        if (impl_.parkedLocked().kind == PlayServer::Impl::Park::Kind::Busy) {
+        const auto park = impl_.parkedLocked();
+        if (park.kind == PlayServer::Impl::Park::Kind::Busy) {
             res = EditResult::fail("engine is busy; edits apply only while it waits at a decision");
         } else {
             res = fn(server_.engineMutableState());
         }
-        replyEdit(res);
+        // The decision being waited on was computed from the state as it was
+        // before the edit.
+        bool recomputed = false;
+        if (res.ok && park.kind == PlayServer::Impl::Park::Kind::Human) {
+            recomputed = impl_.recomputeLegalForParkedHuman(*park.agent);
+        }
+        replyEdit(res, recomputed);
     }
 
     void handleEditMove(const json& m) {
@@ -523,9 +519,11 @@ private:
         });
     }
 
-    /// Caller holds the state mutex.
-    void replyEdit(const EditResult& res) {
-        if (res.ok) send(json{{"type", "edit_ok"}}.dump());
+    /// Caller holds the state mutex. `legal_recomputed`: the pending
+    /// decision's legal actions were rebuilt from the edited state (the frame
+    /// broadcast below then carries a new decision_id).
+    void replyEdit(const EditResult& res, bool legal_recomputed) {
+        if (res.ok) send(json{{"type", "edit_ok"}, {"legal_recomputed", legal_recomputed}}.dump());
         else        send(json{{"type", "edit_err"}, {"msg", res.error}}.dump());
         // Re-broadcast state so the UI re-renders post-edit.
         impl_.broadcastLocked(false);
@@ -1039,6 +1037,33 @@ void PlayServer::Impl::setSpectatorAutoplay(bool on, int delay_ms) {
     spec_cv.notify_all();
 }
 
+bool PlayServer::Impl::recomputeLegalForParkedHuman(HumanAgent& agent) {
+    // The engine asks for a decision from many call sites, each with a list
+    // it built itself, and only one of them can be rebuilt from GameState
+    // alone: the top-level main-phase decision (GameEngine::queryAgent), whose
+    // list is generateLegalActions(). An EndTurn option identifies it
+    // (GameEngine::isResumableDecision). Every other pending decision — a
+    // mulligan, chain priority, a showdown, combat damage, a cost payment, a
+    // card's prompt — keeps its list; the reply says so (`legal_recomputed`).
+    //
+    // CONNECTION POINT: once the engine can rebuild the list of whatever
+    // decision it is parked on (GameEngine::recomputePendingLegalActions,
+    // returning nullopt when it cannot), this function should call that
+    // instead of the two checks below.
+    const GameState& st = parent.engine_.state();
+    const std::vector<Intent> pending = agent.pendingLegal();
+    const bool top_level = std::any_of(pending.begin(), pending.end(),
+        [](const Intent& i) { return i.type == IntentType::EndTurn; });
+    if (!top_level) return false;
+    std::vector<Intent> fresh = parent.engine_.generateLegalActions();
+    // The edit may have left a state that is no longer that decision (the
+    // phase or the turn player was edited): leave the list alone then.
+    if (!GameEngine::isResumableDecision(st, fresh)) return false;
+    if (decidingPlayer(st, fresh) != agent.pendingPlayer()) return false;
+    if (fresh == pending) return false;
+    return agent.replacePendingLegal(std::move(fresh));
+}
+
 void PlayServer::Impl::releaseSpectator() {
     std::lock_guard<std::mutex> lock(spec_mu);
     spec_released = true;
@@ -1207,6 +1232,8 @@ void PlayServer::Impl::armSignalSet() {
 }
 
 void PlayServer::requestShutdown() {
+    // Before anything is woken: an AI seat asked from here on concedes.
+    shutdown_requested_.store(true, std::memory_order_release);
     {
         // The callback aborts the human seats, which wakes the engine:
         // from here on it is never parked for the server again.

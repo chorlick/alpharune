@@ -9,8 +9,8 @@
 
 namespace riftbound {
 
-// Post-refactor: one registration function per card, aggregated by the
-// generated cards_init.cpp. Each card's authoritative class lives in its own
+// One registration function per card, aggregated by the checked-in
+// cards_init.cpp (there is no generator: a new card adds its line by hand). Each card's authoritative class lives in its own
 // translation unit under src/cards/<type>/<id>_<slug>.cpp.
 void registerAllCards(CardRegistry& registry);
 
@@ -55,9 +55,8 @@ std::vector<CardDefId> CardRegistry::classDefIds() const {
 }
 
 void CardRegistry::loadAll() {
-    // One authoritative class per card, each in its own TU; the generated
-    // aggregator registers them all. Precedence (manual-over-generated) was
-    // resolved at split time, so there is no longer an override layer.
+    // One authoritative class per card, each in its own TU; the aggregator
+    // (cards_init.cpp) registers them all. There is no override layer.
     registerAllCards(*this);
 }
 

@@ -15,7 +15,7 @@ namespace riftbound {
 // Strong typedefs via tagged integers for type safety.
 // Using uint32_t for all IDs — 4 billion is plenty.
 
-using CardDefId   = uint32_t;  // Index into CardDB (from registry.json card_id)
+using CardDefId   = uint32_t;  // Index into CardDB (the card class's def().id)
 using GameObjectId = uint32_t; // Runtime game object instance
 using AbilityId   = uint32_t;  // Ability instance
 using ChainItemId = uint32_t;  // Chain item instance

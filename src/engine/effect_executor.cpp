@@ -3,6 +3,7 @@
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "engine/deck_ops.h"
+#include "cards/card_helpers.h"
 
 #include <algorithm>
 #include <cassert>
@@ -216,6 +217,7 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
                 other.location.has_value() && *other.location == *obj.location)
                 lk.other_friendly_units_here.push_back(oid);
     lk.killed_by = killerOf(state_, obj);
+    lk.text_copies = obj.location.has_value() ? textCopiesOn(id) : 0;
     lk.might = obj.current_might;
     lk.empowered = obj.empowered;
     lk.buff_count = obj.buff_count;
@@ -465,19 +467,6 @@ int payableAnyPower(const GameState& state, PlayerId player) {
         if (obj.isRune() && obj.controller == player &&
             obj.location.has_value() && *obj.location == base) ++n;
     return n;
-}
-
-// True when `u` may not MOVE to its base: an effect says it can't (Determined
-// Sentry, Minotaur Reckoner), or it is at a battlefield whose units can't move
-// to base (Vilemaw's Lair) — what the Standard Move generator refuses too. A
-// recall is not a move and is never stopped (CR 458.3).
-static bool cannotMoveToBase(const GameState& state, const GameObject& u) {
-    if (u.cant_move_to_base || u.aura_cant_move_to_base) return true;
-    const auto here = u.battlefieldId();
-    if (!here.has_value()) return false;
-    for (const auto& bf : state.battlefields)
-        if (bf.id == *here) return bf.blocks_move_to_base;
-    return false;
 }
 
 Card* EffectExecutor::cardFor(CardDefId def) const {
@@ -898,9 +887,18 @@ void EffectExecutor::moveToBase(GameObjectId target) {
         events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
         return;
     }
-    // "Units can't move from here to base." / "Units can't move to base." An
-    // effect's move is a move like any other (a recall is not: recallToBase).
-    if (obj.isUnit() && cannotMoveToBase(state_, obj)) {
+    // "They can't move it this turn" (GameObject::cant_move_this_turn): its
+    // controller's spells and abilities don't move it either.
+    if (obj.cant_move_this_turn && state_.chain.resuming.has_value() &&
+        state_.chain.resuming->controller == obj.controller) {
+        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
+        return;
+    }
+    // "Units can't move from here to base." / "Units can't move to base."
+    // (moveToBaseBlocked, card_helpers.h — what the Standard Move generator
+    // refuses too.) An effect's move is a move like any other; a recall is
+    // not (recallToBase, CR 458.3).
+    if (obj.isUnit() && moveToBaseBlocked(state_, obj)) {
         events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't move to base");
         return;
     }
@@ -998,6 +996,23 @@ bool EffectExecutor::attachGear(GameObjectId gear_id, GameObjectId unit_id) {
     return true;
 }
 
+int EffectExecutor::textCopiesOn(GameObjectId unit_id) const {
+    if (!state_.objectExists(unit_id)) return 0;
+    const auto& unit = state_.getObject(unit_id);
+    if (!unit.isUnit()) return 0;
+    if (!unit.location.has_value())
+        return unit.last_known.valid ? unit.last_known.text_copies : 0;
+    int n = 0;
+    for (auto gid : unit.attachments) {
+        if (!state_.objectExists(gid)) continue;
+        const auto& gear = state_.getObject(gid);
+        if (!gear.attached_to.has_value() || *gear.attached_to != unit_id) continue;
+        const Card* card = cardFor(gear.card_def_id);
+        if (card && card->copiesBearerText()) ++n;
+    }
+    return n;
+}
+
 bool EffectExecutor::spendBuff(GameObjectId unit_id, PlayerId spender) {
     if (!state_.objectExists(unit_id)) return false;
     auto& unit = state_.getObject(unit_id);
@@ -1047,6 +1062,13 @@ void EffectExecutor::moveToBattlefield(GameObjectId target, BattlefieldId bf) {
     if (obj.cant_be_moved_by_enemy && state_.chain.resuming.has_value() &&
         state_.chain.resuming->controller != obj.controller) {
         events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved by enemy effects");
+        return;
+    }
+    // "They can't move it this turn" (GameObject::cant_move_this_turn): its
+    // controller's spells and abilities don't move it either.
+    if (obj.cant_move_this_turn && state_.chain.resuming.has_value() &&
+        state_.chain.resuming->controller == obj.controller) {
+        events_.logTrace("MOVE_BLOCKED: " + obj.name + " can't be moved this turn");
         return;
     }
     auto old_loc = obj.location;

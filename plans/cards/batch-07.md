@@ -13,7 +13,7 @@ Engine facts traced for this batch (apply to several cards below):
 - Token def 954 Recruit: might 1, tag `Recruit`, no keywords, `SuperType::Token` - matches every inline `createToken(..., "Recruit", 1, {"Recruit"}, ...)` caller. No defect. (It is the only token def in this batch.)
 
 ## Findings
-- [ ] **879 Renekton, Brute** - `units/0879_renekton_brute.cpp:19` [confirmed] high
+- [x] **879 Renekton, Brute** - `units/0879_renekton_brute.cpp:19` [confirmed] high — FIXED (sweep-triggers): `Card::mightThreshold()` + `TriggerType::WhenMyMightReachesThreshold`, judged on every settled state (`StateSettledEvent`); test: SweepTriggersTest.Renekton_IsEmpoweredWhenAnotherEffectTakesHimToTen, C7Test.RenektonBrute_*
   - Text: "When my Might becomes 10 or more, empower me."
   - Code: the class has only the `[1]: +1 [M]` activation and the `[Empowered][>]` aura. There is no trigger, no aura check and no engine hook for the Might threshold (grep for the card / "might becomes" finds nothing outside the def text).
   - Scenario: Renekton (4 [M]) pumps himself six times to 10 [M] -> never becomes Empowered, so never gains [Deflect] / [Ganking]. He prints no [Empower] cost, so his Empowered text is unreachable without another card.
@@ -44,31 +44,29 @@ Engine facts traced for this batch (apply to several cards below):
   - Text: "[E]: Play two [1] [M] Bird unit tokens with [Deflect]. ..." (the Poro itself has no [Deflect])
   - Code: the def sets `d.deflect_value = 1` and `Keyword::Deflect` on the Poro.
   - Scenario: opponent must pay [A] to choose the 5 [M] Poro with a spell or ability; the printed card has no such protection.
-- [ ] **718 Loyal Poro** - `units/0718_loyal_poro.cpp:28` [confirmed] medium
+- [x] **718 Loyal Poro** - `units/0718_loyal_poro.cpp:28` [confirmed] medium — FIXED (sweep-triggers): `LastKnown::other_friendly_units_here`, taken for a whole batch of deaths before the first unit leaves (`beginDeathBatch`); test: SweepTriggersTest.LoyalPoro_UnitsThatDieTogetherWereNotAlone
   - Text: "[Deathknell][>] If I didn't die alone, draw 1. (... I wasn't alone if there were other friendly units here.)"
   - Code: checks, when the trigger resolves from the chain, whether another friendly unit is currently at `last_location`. Units that died in the same combat/AoE have already left, and units that arrived after the death count.
   - Scenario: Loyal Poro and a friendly unit both die in the same combat -> at resolution nobody is there -> no draw, although the Poro did not die alone.
   - BLOCKED: "alone" has to be read from before the deaths. Needs `GameObject::LastKnown` to carry the other friendly units at the location, snapshotted for the whole batch before any unit of a simultaneous kill leaves (`processLethalDamage` kills one by one; `TriggerManager::onUnitDied` also bypasses `triggerCondition`, so the card cannot judge it at event time). Same engine work as the Battle Mistress 517 carry-over row.
-- [ ] **777 Lonely Poro** - `units/0777_lonely_poro.cpp:32` [confirmed] medium
+- [x] **777 Lonely Poro** - `units/0777_lonely_poro.cpp:32` [confirmed] medium — FIXED (sweep-triggers): as 718; test: SweepTriggersTest.LonelyPoro_UnitsThatDieTogetherDidNotDieAlone, .LonelyPoro_DrawsWhenItDiesAlone
   - Text: "[Deathknell][>] If I died alone, draw 1."
   - Code: same resolve-time scan as Loyal Poro (inverse condition).
   - Scenario: Lonely Poro and another friendly unit die together in combat -> the other unit is already gone at resolution -> draws 1 although it did not die alone. Conversely, it dies alone at base, a token is created there before the trigger resolves -> no draw.
   - BLOCKED: as Loyal Poro 718 above (last-known "other friendly units here" for a batch of deaths).
-- [ ] **712 Vex, Apathetic** - `units/0712_vex_apathetic.cpp:20` [documented] medium
+- [x] **712 Vex, Apathetic** - `units/0712_vex_apathetic.cpp:20` [documented] medium — FIXED: sets `GameObject::cant_move_this_turn` on the played unit: `GameEngine::standardMoveDestinations` offers it no Standard Move, `EffectExecutor::moveToBase` / `moveToBattlefield` refuse a move by its controller's effects, and the Expiration Step clears it; test: SweepFlowTest.Vex_ThePlayedUnitCannotBeMovedThisTurn
   - Text: "[Stun] it. They can't move it this turn."
   - Code: only stuns (TODO comment: can't-move flag not modelled).
   - Scenario: opponent plays a unit with a ready/[Accelerate] entry to base while Vex is at a battlefield -> it is stunned but can still be moved to a battlefield this turn (to contest / conquer an empty one).
-  - BLOCKED: needs a per-unit "can't move this turn" flag read by `generateMainPhaseActions` (only `cant_move_to_base` / `aura_cant_move_to_base` exist) and cleared at end of turn. The card now documents the gap.
 - [ ] **740 Poppy, Defender of the Meek** - `units/0740_poppy_defender_of_the_meek.cpp:24` [documented] medium
   - Text: "You may spend 3 XP as an additional cost to play me. If you do, I cost [3] less."
   - Code: `selfCostReduction` returns 3 whenever XP >= 3 and the WhenYouPlayMe trigger then deducts 3 XP - no choice. The deduction also runs when Poppy is played by an effect that ignores her cost.
   - Scenario: player with exactly 3 XP and plenty of Energy wants to keep the XP for a [Level 3] effect -> forced to spend it. Poppy put into play free by an effect with 3+ XP -> loses 3 XP for no discount.
   - BLOCKED: `Card::OptionalAdditionalCost` has no XP cost, and its `reduce_energy` is only honoured for the discard variant decided before payment in `executePlayCard`. Needs an XP optional cost with a pre-payment reduction (same code path as the Brazen Buccaneer / Kraken Hunter carry-over row); the card then drops `selfCostReduction` and its trigger.
-- [ ] **725 Mageseeker Investigator** - `units/0725_mageseeker_investigator.cpp:25` [documented] medium
+- [x] **725 Mageseeker Investigator** - `units/0725_mageseeker_investigator.cpp:25` [documented] medium — FIXED: a Standard Move can take several units (CR 144.3): after the first unit `executeStandardMove` asks, one unit at a time, which others join; the card sets `BattlefieldState::multi_move_tax[opponent]` and each unit beyond the first costs that [A], paid as it is added (a unit that cannot be paid for is not offered); test: SweepFlowTest.MageseekerInvestigator_TaxesEachUnitBeyondTheFirst, .StandardMove_SeveralUnitsMoveAsOneAction, .StandardMove_DecliningToAddUnitsMovesOne
   - Text: "Opponents must pay [A] for each unit beyond the first to move multiple units to my battlefield at the same time."
   - Code: sets `BattlefieldState::surcharge_enemy_multi_move`, which nothing reads (only the reset at `game_engine.cpp:4445`).
   - Scenario: opponent moves three units to the Investigator's battlefield in one turn -> pays nothing; the card is a vanilla 4/4.
-  - BLOCKED: the engine moves one unit per Standard Move action (`generateMainPhaseActions` emits `{unit_id}` moves only), so "multiple units at the same time" never happens. Needs multi-unit moves and a move-cost payment that reads `BattlefieldState::surcharge_enemy_multi_move`.
 - [x] **734 LeBlanc, Fragmented** - `units/0734_leblanc_fragmented.cpp:20` [confirmed] low — FIXED: 2 only during her controller's own Awaken / Beginning / Scoring step; test: C7Test.LeBlancFragmented_DrawsTwoOnlyInHerControllersBeginningPhase
   - Text: "[Deathknell][>] Draw 1. If it's your Beginning Phase, draw 2 instead."
   - Code: `phase == TurnPhase::BeginningStep` only - no turn-player check, and Awaken / Scoring steps (which the engine itself treats as the Beginning Phase, `effect_executor.cpp:255`) are excluded.
@@ -85,7 +83,7 @@ Engine facts traced for this batch (apply to several cards below):
   - Text: "[Empowered][>][>>][Deathknell][>] ..."
   - Code: `d.keywords` sets only `Keyword::Empower`, not `Keyword::Deathknell`. The death trigger still dispatches and works (see engine facts above); the only effect is the missing keyword in rendered/dumped card data and in `last_known.keywords`.
   - Scenario: none in play today; a future "unit with [Deathknell]" check or the registry dump would not see these two.
-- [ ] **908 Reluctant Leader / 712 Vex, Apathetic** - `units/0908_reluctant_leader.cpp:22`, `units/0712_vex_apathetic.cpp:22` [plausible] low
+- [x] **908 Reluctant Leader / 712 Vex, Apathetic** - `units/0908_reluctant_leader.cpp:22`, `units/0712_vex_apathetic.cpp:22` [plausible] low — FIXED (sweep-triggers): a token is played (`TriggerManager::onTokenCreated` -> `announceUnitPlayed`); test: SweepTriggersTest.TokenUnit_IsAUnitBeingPlayed, .TokenUnit_IsAUnitTheOpponentPlayed
   - Text: "When you play another unit ..." / "When an opponent plays a unit ..."
   - Code: both rely on `CardPlayedEvent`; `createToken` never emits it, so unit tokens that card text says are "played" do not trigger either card.
   - Scenario: Noxian Emissary's Deathknell plays two Recruits with Reluctant Leader on board -> no +2 [M]; opponent plays tokens while Vex is at a battlefield -> not stunned.

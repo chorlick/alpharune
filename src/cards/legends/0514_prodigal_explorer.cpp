@@ -23,14 +23,11 @@ public:
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
     bool isReactionAbility() const override { return true; }
-    // ENGINE-GAP: the engine records only WHETHER the player has chosen an
-    // enemy unit this turn (PlayerState::chose_enemy_unit_this_turn), not how
-    // many times, not enemy gear, and not what did the choosing. Until it
-    // counts those choices the gate is "at least one enemy unit chosen this
-    // turn" — necessary for the printed condition in all but the gear-only
-    // case, but not sufficient.
+    // "Use only if you've chosen enemy units and/or gear twice this turn with
+    // spells or unit abilities." Counted by the engine as each choice is
+    // locked in (GameState::noteChosen).
     bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        return state.player(controller).chose_enemy_unit_this_turn;
+        return state.player(controller).enemy_choices_this_turn >= 2;
     }
 private:
     const CardDef def_ = [] {

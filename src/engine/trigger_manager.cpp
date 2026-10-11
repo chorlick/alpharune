@@ -328,6 +328,24 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
         if (subject != kInvalidId) item.triggering_subject = subject;
         break;
     }
+    // An Equipment on this unit whose effect text is a copy of the unit's
+    // text (Card::copiesBearerText) has this same ability, speaking for the
+    // unit: it triggers once more per such Equipment, each instance its own
+    // pending ability with its own choices.
+    if (obj.isUnit() && effect_executor_) {
+        const int copies = effect_executor_->textCopiesOn(source);
+        ChainItem queued;
+        bool found = false;
+        for (const auto& item : state_.chain.items)
+            if (item.id == item_id) { queued = item; found = true; break; }
+        for (int i = 0; found && i < copies; ++i) {
+            ChainItem copy = queued;
+            copy.id = state_.chain.allocateId();
+            state_.chain.items.push_back(std::move(copy));
+            events_.logDebug("TRIGGER: " + state_.getObject(source).name +
+                             " — the same ability in an Equipment's copied text");
+        }
+    }
     return true;
 }
 
@@ -1080,9 +1098,11 @@ void TriggerManager::onScore(const ScoreEvent& e) {
         for (const auto& [id, obj] : state_.objects) {
             if (obj.controller != e.player || !obj.location.has_value()) continue;
             const Card* card = card_registry_.get(obj.card_def_id);
+            // (Once more per Equipment that copies the unit's text.)
             if (card)
                 extra += std::max(0, card->extraScoreTriggers(
-                    state_, id, e.player, e.battlefield, e.method == ScoreMethod::Hold));
+                    state_, id, e.player, e.battlefield, e.method == ScoreMethod::Hold)) *
+                    (1 + (effect_executor_ ? effect_executor_->textCopiesOn(id) : 0));
         }
         if (extra > 0) {
             std::vector<ChainItem> triggered;

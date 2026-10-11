@@ -31,6 +31,7 @@
 ///
 /// Wire protocol — see docs/play-api.md.
 
+#include "agents/agent_interface.h"
 #include "core/events.h"
 #include "core/types.h"
 
@@ -99,9 +100,9 @@ struct PlayServerConfig {
     /// so it may take locks, allocate, etc. `main.cpp` uses this
     /// to call `HumanAgent::abort()` on each human seat, which wakes
     /// the engine thread out of `selectAction` so the game terminates
-    /// cleanly. A second signal arriving while the callback is still
-    /// processing will be observed by std::signal as well so the user
-    /// can force-quit via `_exit` if shutdown wedges.
+    /// cleanly. (AI seats stop through `ServedAiSeat`.) After the first
+    /// signal the default disposition is restored, so a second one kills
+    /// the process if shutdown wedges.
     std::function<void()> on_shutdown_signal;
 };
 
@@ -128,11 +129,18 @@ public:
     /// Signal shutdown + join the IO worker thread. Idempotent.
     void stop();
 
-    /// Stop holding the game: fires `on_shutdown_signal` (which is expected
-    /// to abort the human seats) and opens the spectator gate for good, so
-    /// the engine runs to the end of the game on its own. What the first
-    /// SIGINT / SIGTERM does. The server keeps serving until stop().
+    /// End the game now: fires `on_shutdown_signal` (which is expected to
+    /// abort the human seats), opens the spectator gate for good and sets
+    /// `shutdownRequested()`, on which every `ServedAiSeat` concedes at its
+    /// next decision. So the engine thread finishes at the next decision
+    /// any seat is asked for, not at the natural end of the game. What the
+    /// first SIGINT / SIGTERM does. The server keeps serving until stop().
     void requestShutdown();
+
+    /// True once requestShutdown() has been called. Any thread.
+    bool shutdownRequested() const noexcept {
+        return shutdown_requested_.load(std::memory_order_acquire);
+    }
 
     /// Push a single log line to every connected WebSocket client — unless
     /// `PlayServerConfig::reveal_hidden` is off, in which case the line is
@@ -200,6 +208,37 @@ private:
     PlayServerConfig config_;
     std::mutex state_mutex_;
     std::atomic<bool> running_{false};
+    std::atomic<bool> shutdown_requested_{false};
+};
+
+/// An AI seat as the web UI sees it. Every AI seat of a game behind a
+/// PlayServer is wrapped in one (`main.cpp`).
+///   - Before the wrapped agent starts choosing — which for a search agent
+///     can take a long time — the engine thread publishes the board as it now
+///     stands, so the browser shows the result of the last action instead of
+///     the position before it.
+///   - After `PlayServer::requestShutdown()` (the first Ctrl-C) it concedes
+///     for whoever is being asked instead of consulting the agent, exactly as
+///     an aborted HumanAgent does. Without this a game with no human seat
+///     (spectator mode) ran to its natural end before the process exited.
+///     A decision the agent is already thinking about is not interrupted.
+class ServedAiSeat : public AgentInterface {
+public:
+    ServedAiSeat(AgentInterface& inner, PlayServer& server)
+        : inner_(inner), server_(server) {}
+
+    Intent selectAction(const GameState& state,
+                        const std::vector<Intent>& legal_actions) override {
+        if (server_.shutdownRequested()) {
+            return Intent::concede(decidingPlayer(state, legal_actions));
+        }
+        server_.publishEngineState();
+        return inner_.selectAction(state, legal_actions);
+    }
+
+private:
+    AgentInterface& inner_;
+    PlayServer& server_;
 };
 
 } // namespace riftbound

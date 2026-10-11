@@ -52,6 +52,9 @@ constexpr CardDefId kBlightedBattleaxe = 581; // "At the end of your turn, if I 
 constexpr CardDefId kCalledShot      = 443;  // "Look at the top 2 cards of your Main Deck. Draw one and recycle the other."
 constexpr CardDefId kDecreeOfInsight = 848;  // "Ignore [Deflect] while paying this spell's cost."
 constexpr CardDefId kShepherdsHeirloom = 720; // "When you play this, gain 1 XP."
+constexpr CardDefId kSvellsongur     = 382;  // "copy that unit's text to this Equipment's effect text"
+constexpr CardDefId kCaptainFarron   = 15;   // "Other friendly units here have [Assault]."
+constexpr CardDefId kChemtechEnforcer = 3;   // printed [Assault 2]
 
 /// Passes priority; reports, each time it is asked while `spell` has a play on
 /// the chain, whether the card is also filed in its owner's trash.
@@ -372,6 +375,20 @@ TEST_F(SweepTriggersTest, TokenUnit_IsAUnitBeingPlayed) {
     EXPECT_EQ(obj(leader).temp_might_bonus, 2);
     EXPECT_EQ(obj(lillia).temp_might_bonus, 1);
     EXPECT_EQ(obj(theirs).temp_might_bonus, 0) << "the other player did not play a unit";
+}
+
+// Vex, Apathetic 712: "When an opponent plays a unit ..., [Stun] it." — a
+// token unit too, and it is the trigger's subject.
+TEST_F(SweepTriggersTest, TokenUnit_IsAUnitTheOpponentPlayed) {
+    addUnit(P2, 712, 4, 0);
+    GameObjectId token = kInvalidId;
+    withEngine([&](GameEngine& e) {
+        token = e.testHook_executor().createToken(P1, CardType::Unit, "Recruit", 1, {},
+                                                  KeywordSet{}, battlefield(0));
+        e.testHook_runChain();
+    });
+    ASSERT_NE(token, kInvalidId);
+    EXPECT_TRUE(obj(token).is_stunned);
 }
 
 // A gear token is not a unit.
@@ -884,6 +901,117 @@ TEST(SweepTriggersLogAudience, SaysExactlyWhichPlayersMayRead) {
     EXPECT_TRUE(seen.includes(p1) && !seen.includes(p2));
     bus.logTraceFor(LogAudience::neither(), "z");
     EXPECT_TRUE(seen.isNeither());
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. Svellsongur 382: "copy that unit's text to this Equipment's effect text"
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The bearer's triggered ability triggers a second time.
+TEST_F(SweepTriggersTest, Svellsongur_TheBearersTriggeredAbilityTriggersTwice) {
+    auto leader = addUnit(P1, kReluctantLeader, 3, -1);   // "When you play another unit, +2 [M]"
+    auto sword = addGear(P1, kSvellsongur);
+    auto plain = addUnit(P1, kReluctantLeader, 3, -1);    // no Equipment: once
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword, leader));
+        e.testHook_executor().createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{},
+                                          base(P1));
+        e.testHook_runChain();
+    });
+    EXPECT_EQ(obj(leader).temp_might_bonus, 4);
+    EXPECT_EQ(obj(plain).temp_might_bonus, 2);
+}
+
+// ... its [Deathknell] too, judged as the unit last existed.
+TEST_F(SweepTriggersTest, Svellsongur_TheBearersDeathknellTriggersTwice) {
+    stockDeck(P1, 4);
+    auto poro = addUnit(P1, kLoyalPoro, 1, 0);
+    addUnit(P1, kInvalidId, 3, 0);                         // it does not die alone
+    auto sword = addGear(P1, kSvellsongur);
+    const int before = handSize(P1);
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword, poro));
+        e.testHook_executor().killObject(poro);
+        e.testHook_runChain();
+    });
+    EXPECT_EQ(handSize(P1) - before, 2);
+    EXPECT_FALSE(obj(sword).attached_to.has_value());
+}
+
+// The bearer's passive ability applies a second time — for that instance
+// only, and to another copy of the same card as well.
+TEST_F(SweepTriggersTest, Svellsongur_TheBearersPassiveAbilityAppliesTwice) {
+    auto farron = addUnit(P1, kCaptainFarron, 3, 0);
+    auto other_farron = addUnit(P1, kCaptainFarron, 3, 0);
+    auto ally = addUnit(P1, kInvalidId, 2, 0);
+    auto sword = addGear(P1, kSvellsongur);
+    auto assaults = [&](GameObjectId id) {
+        int n = 0;
+        for (const auto& ae : obj(id).aura_effects) if (ae.keyword == Keyword::Assault) ++n;
+        return n;
+    };
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword, farron));
+        e.testHook_cleanup();
+    });
+    EXPECT_EQ(assaults(ally), 3) << "the bearer's twice, the other Farron's once";
+    EXPECT_EQ(assaults(other_farron), 2) << "from the bearer, twice";
+    EXPECT_EQ(assaults(farron), 1) << "from the other Farron, once";
+    EXPECT_EQ(obj(other_farron).card_def_id, kCaptainFarron);
+
+    // "for as long as this is attached to it"
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().unattachGear(sword);
+        e.testHook_cleanup();
+    });
+    EXPECT_EQ(assaults(ally), 2);
+}
+
+// A printed [Assault N] is text: it counts again.
+TEST_F(SweepTriggersTest, Svellsongur_ThePrintedAssaultCountsAgain) {
+    auto enforcer = addUnit(P1, kChemtechEnforcer, 0, 0);
+    auto sword = addGear(P1, kSvellsongur);
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword, enforcer));
+        e.testHook_cleanup();
+    });
+    int extra = 0;
+    for (const auto& ae : obj(enforcer).aura_effects)
+        if (ae.keyword == Keyword::Assault) extra += ae.keyword_value;
+    EXPECT_EQ(extra, card_db.get(kChemtechEnforcer).assault_value);
+}
+
+// A second copy of an activated ability allows nothing the first does not:
+// the bearer's ability is offered once.
+TEST_F(SweepTriggersTest, Svellsongur_AnActivatedAbilityIsOfferedOnce) {
+    auto renekton = addUnit(P1, kRenektonBrute, 4, 0);    // "[1]: Give me +1 [M] this turn."
+    auto sword = addGear(P1, kSvellsongur);
+    state.player(P1).rune_pool.energy = 3;
+    int offered = 0;
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword, renekton));
+        e.testHook_cleanup();
+        for (const auto& i : e.generateLegalActions())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == renekton) ++offered;
+    });
+    EXPECT_EQ(offered, 1);
+}
+
+// Blue Sentinel's "trigger an additional time" is in the copied text too.
+TEST_F(SweepTriggersTest, Svellsongur_CountsAnAdditionalTimeEffectAgain) {
+    auto sentinel = addUnit(P1, kBlueSentinel, 0, 0);
+    auto sword = addGear(P1, kSvellsongur);
+    state.battlefields[0].controller = P1;
+    withEngine([&](GameEngine& e) {
+        ASSERT_TRUE(e.testHook_executor().attachGear(sword, sentinel));
+        e.testHook_scoreHold(P1, 0);
+        e.testHook_runChain();
+    });
+    int scheduled = 0;
+    for (const auto& da : state.delayed_abilities) if (da.source == sentinel) ++scheduled;
+    // "When I hold" twice (the card's and the copy's), each two additional times.
+    EXPECT_EQ(scheduled, 6);
 }
 
 }  // namespace

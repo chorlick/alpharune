@@ -11,17 +11,11 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "play me to an open battlefield" matched by generateMainPhaseActions
-
-// "You may play me to an open battlefield."
-// ENGINE-HANDLED: GameEngine::generateMainPhaseActions matches the substring
-// "play me to an open battlefield" in ability_text (registry.json) and emits
-// PlayCard intents to every open battlefield. getPlayLocations() is never
-// consulted by the engine, so no per-card override is needed.
-
 class SneakyDeckhand : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "You may play me to an open battlefield."
+    unsigned extraPlayLocations() const override { return kPlayToOpenBattlefield; }
 private:
     const CardDef def_ = [] {
         CardDef d;

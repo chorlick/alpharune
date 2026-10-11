@@ -2,7 +2,7 @@
 /// @file game_object.h
 /// Runtime representation of a card/token on the board or in a zone.
 ///
-/// CardDef is the static template (from registry.json).
+/// CardDef is the static template (authored in the card's class, Card::def()).
 /// GameObject is the mutable instance that tracks current state
 /// (damage, exhaustion, temporary mods, location, attachments, etc).
 
@@ -105,6 +105,9 @@ struct GameObject {
         // Who killed it: the controller of the spell or ability that did,
         // else the player whose damage was lethal. None if nobody did.
         PlayerId killed_by = PlayerId::None;
+        // Equipment on it whose effect text was a copy of its text
+        // (Card::copiesBearerText): its "When I die" triggers that many more times.
+        int text_copies = 0;
         // Set by beginDeathBatch: the kill that follows keeps this snapshot
         // instead of taking a new one. Cleared by endDeathBatch.
         bool batch_pending = false;
@@ -258,6 +261,11 @@ struct GameObject {
     // cleared at the start of every aura pass and re-asserted by the source's
     // Card::applyPassiveAura, so it ends when the source leaves the board.
     bool aura_cant_move_to_base = false;
+    // "It can't be moved this turn" / "They can't move it this turn" (Vex,
+    // Apathetic): no Standard Move and no move by an effect of its
+    // controller's until the turn ends (cleared with the other "this turn"
+    // statuses in the Expiration Step). Read by the Standard Move generator.
+    bool cant_move_this_turn = false;
 
     // ── Take-control reversion (CR 416, Phase 6q+) ──
     // EffectExecutor::takeControl with `until_end_of_turn=true` snapshots

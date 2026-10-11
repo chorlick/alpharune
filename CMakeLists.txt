@@ -97,9 +97,10 @@ function(riftbound_enable_warnings)
     endif()
 endfunction()
 
-# OpenSpiel is mandatory — the riftbound_openspiel binary's MCTS / ISMCTS /
-# random agents are the engine's first-class AI baselines and the integration
-# surface that lets external tools plug their own agents into Riftbound games.
+# OpenSpiel is mandatory — the riftbound binary's MCTS / ISMCTS agents
+# (src/agents/mcts_agent.cpp) are the engine's first-class AI baselines and
+# the integration surface that lets external tools plug their own agents into
+# Riftbound games.
 # First-time configure clones OpenSpiel + abseil + DDS into build/_deps
 # (~30 sec); subsequent reconfigures are fast.
 set(RIFTBOUND_BUILD_OPENSPIEL ON CACHE INTERNAL "" FORCE)
@@ -234,6 +235,11 @@ if(RIFTBOUND_BUILD_OPENSPIEL)
         add_subdirectory(${open_spiel_SOURCE_DIR}/open_spiel ${open_spiel_BINARY_DIR})
     endif()
 
+    # enable_testing() must come before this directory is added: a directory
+    # only gets a CTestTestfile.cmake if testing was already on when it was
+    # created. With it further down, add_test(riftbound_openspiel_tests) in
+    # src/openspiel was silently dropped and `ctest` never ran that binary.
+    enable_testing()
     add_subdirectory(src/openspiel)
     get_property(_riftbound_openspiel_targets DIRECTORY src/openspiel
         PROPERTY BUILDSYSTEM_TARGETS)
@@ -324,15 +330,27 @@ set(RIFTBOUND_CORE_LIBS
 # change rebuilds a single PCH.
 #
 # With ccache as the compiler launcher, GCC needs -fpch-preprocess and ccache
-# needs `sloppiness = pch_defines,time_macros` (set it on the build dir's
-# launcher, e.g.
-#   -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache"
-# ) or it will not cache compilations that use the PCH.
+# needs `sloppiness = pch_defines,time_macros` or it will not cache
+# compilations that use the PCH. The launcher must be scripts/ccache_pch_safe.sh
+# rather than `ccache` itself:
+#   -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;<checkout>/scripts/ccache_pch_safe.sh"
+# Plain ccache keys a PCH *rebuild* on the stale .gch still in the build
+# directory, not on the headers, and can hand back a .gch built from other
+# header contents (the script's header comment has the mechanism).
 option(RIFTBOUND_USE_PCH "Precompile the common engine headers (src/pch.h)" ON)
 set(RIFTBOUND_PCH_CCACHE_FLAG "")
 if(RIFTBOUND_USE_PCH AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache"
         AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(RIFTBOUND_PCH_CCACHE_FLAG -fpch-preprocess)
+    if(NOT CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache_pch_safe")
+        message(WARNING
+            "CMAKE_CXX_COMPILER_LAUNCHER runs ccache directly while precompiled "
+            "headers are on. After a header in a PCH changes, ccache can restore "
+            "a .gch that was built from different header contents. Use "
+            "scripts/ccache_pch_safe.sh as the launcher (see CLAUDE.md, "
+            "\"ccache\"), or run `cmake --build <dir> --target clean` before a "
+            "build you rely on.")
+    endif()
 endif()
 if(RIFTBOUND_USE_PCH)
     add_library(riftbound_pch OBJECT src/pch_anchor.cpp)
@@ -411,6 +429,10 @@ add_library(riftbound_core
     src/io/state_renderer.cpp
     src/io/replay_writer.cpp
     src/io/state_editor.cpp
+    # The web UI server. In the library (not only in the `riftbound` binary)
+    # so tests link it instead of #including the .cpp files.
+    src/io/play_server.cpp
+    src/io/play_index_html.cpp
     src/cards/card.cpp
     src/cards/card_registry.cpp
     src/cards/cards_init.cpp
@@ -452,8 +474,6 @@ target_link_libraries(riftbound_core PUBLIC ${RIFTBOUND_CORE_LIBS})
 add_executable(riftbound
     src/main.cpp
     src/agents/mcts_agent.cpp
-    src/io/play_server.cpp
-    src/io/play_index_html.cpp
     src/openspiel/riftbound_game.cpp
     src/openspiel/riftbound_state.cpp
     $<TARGET_OBJECTS:algorithms>
@@ -516,12 +536,8 @@ option(RIFTBOUND_UNITY_TESTS "Unity-build the riftbound_tests sources" ON)
 set(RIFTBOUND_TEST_UNITY_BATCH 8 CACHE STRING
     "Test source files per unity compile (with RIFTBOUND_UNITY_TESTS)")
 # Compiled on their own even with RIFTBOUND_UNITY_TESTS (paths relative to the
-# repository root).
+# repository root). Empty: no test file needs it at present.
 set(RIFTBOUND_TEST_UNITY_EXCLUDE
-    # #includes src/io/play_server.cpp and play_index_html.cpp to reach their
-    # file-local functions; those sources' own file-scope names stay out of
-    # the shared units.
-    tests/test_review_fix_io_cli.cpp
 )
 if(RIFTBOUND_UNITY_TESTS)
     set_target_properties(riftbound_tests PROPERTIES

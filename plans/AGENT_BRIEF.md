@@ -77,10 +77,14 @@ Fix directions in the plans are suggestions from the reviewer, not decisions.
   one-line comment citing the card text or CR number. Never delete or weaken a
   test to get green.
 
-## Building — one build at a time
+## Building — two lanes, one build per lane
 
-The machine has 8 cores and other work is running; build with `-j6`, never more (user limit; CMake also caps it, see `RIFTBOUND_BUILD_JOBS`). All builds and test runs go
-through a shared lock so only one runs at once:
+The machine has 8 cores and other work is running. Builds run in two lanes of
+`-j3` each (user decision, 2026-10-11; before that it was one lane at `-j6`).
+Your spawn prompt names your lane: lane A locks `.worktrees/.build.lock`, lane
+B locks `.worktrees/.build-b.lock`. Take only your own lane's lock, for every
+configure, build and test run, and never build with more than `-j3`. The
+commands below show lane A; lane B substitutes its lock file.
 
 ```bash
 REPO=/home/pirateporkchop/code/riftbound-engine
@@ -89,11 +93,11 @@ cd "$REPO/.worktrees/<stream>"
 # namespace keeps your cache private to your stream: a cache shared between
 # worktrees restored precompiled headers built against another stream's headers.
 flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_NAMESPACE=<stream>;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache" \
+  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_NAMESPACE=<stream>;CCACHE_SLOPPINESS=pch_defines,time_macros;$REPO/.worktrees/<stream>/scripts/ccache_pch_safe.sh" \
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
 # build + test
-flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j6
+flock "$REPO/.worktrees/.build.lock" cmake --build build --target riftbound_tests -j3
 flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_tests --gtest_brief=1
 ```
 
@@ -104,13 +108,18 @@ flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_test
   `game_state.h` and friends rebuild everything.
 - Use `--gtest_filter=` while iterating; run the full suite before you finish.
 - Never build in the main checkout's `build/`.
+- The launcher must be `scripts/ccache_pch_safe.sh`, never plain `ccache`: plain
+  ccache can return a precompiled header built from older headers, and every
+  file is then compiled against stale declarations. The script always compiles
+  a precompiled header itself and caches only the files that use it.
 - Do not use `CCACHE_BASEDIR` / `CCACHE_NOHASHDIR` (the cross-worktree launcher
   in `CLAUDE.md`): it is unsafe while several worktrees edit headers. Before
   your final full-suite run, do `cmake --build build --target clean` once so
   nothing stale is linked, and say so in your report.
 - The session scratchpad directory is shared by every stream: keep your scripts
   and logs in a subdirectory named after your stream.
-- CMake caps concurrent jobs at 6 (`RIFTBOUND_BUILD_JOBS`); do not raise it.
+- CMake caps concurrent jobs at 6 (`RIFTBOUND_BUILD_JOBS`); that cap is per build
+  directory, so with two lanes the limit that matters is your own `-j3`.
 - Test files are unity-built (`RIFTBOUND_UNITY_TESTS`, see `CLAUDE.md`): a new
   test file must not define file-scope names that clash with other test files.
   Wrap the whole file body in a namespace named after the file, as the existing
@@ -139,7 +148,17 @@ Rules:
   is ticked only when **every** one is resolved; note per-card outcomes in
   sub-bullets if they differ.
 - "NOT A DEFECT" needs evidence a reviewer can check. "Could not reproduce" is
-  not evidence.
+  not evidence. It also still changes the code: the finding was raised because
+  the code misled a careful reader. Add a test that pins the behaviour the
+  finding questioned, and fix what misled them (a comment at the code site
+  citing the card text or CR number, a rename, or removing the dead or
+  contradictory construct). Write the line as
+  `NOT A DEFECT: <evidence>; pinned by <Test.Name>; clarified in <file>`. The
+  only exception is a finding about code that no longer exists.
+- Nothing is optional. Do not close an item as "partial by design",
+  "documented approximation", "low priority" or "future work". The only
+  deferral allowed is a fix that needs a new action-vocabulary slot or a
+  feature-layout change, which goes to stage 5 by name.
 - If you cannot finish an item, leave it `- [ ]` and add an indented
   `- BLOCKED: <what is needed>` sub-bullet. Do not tick it.
 

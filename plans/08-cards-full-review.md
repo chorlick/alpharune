@@ -58,7 +58,7 @@ cross-referenced.
   - Fix: fold `keyword_value` in the engine, or route every one through `auraKeyword()`.
   - c0: 332 Serrated Dirk, 387 Cloth Armor, 764 Black Flame Altar — verified ALREADY FIXED by this item; Black Flame Altar now uses `auraKeyword`
 
-- [ ] **8.4 Aura-granted keywords the engine never honours**
+- [x] **8.4 Aura-granted keywords the engine never honours** — FIXED: Vision by engine-auras-costs; Weaponmaster by sweep-triggers — both are now keyword abilities queued once per instance of the keyword, printed or granted (`src/engine/keyword_abilities.{h,cpp}`, `TriggerManager::queueKeywordAbilities`, CR 817.2 / 821.1.c.7), and Vision asks its controller; test: SweepTriggersTest.Weaponmaster_ASandSoldierTokenMayEquipAsItIsPlayed, .Weaponmaster_IsAMay, .Vision_TheControllerChoosesWhetherToRecycle, .Vision_EachInstanceTriggersSeparately, .Forecaster_HasOneInstanceOfVision
   - Vision is read from base keywords only, at play time, before any aura exists (`trigger_manager.cpp:317`): Forecaster 388 does nothing.
   - `Keyword::Weaponmaster` is read nowhere: Emperor of the Sands 512.
   - Vision — FIXED by engine-auras-costs (`shared:` commit in `TriggerManager::onCardPlayed`, possible now that 2.12 sets the location before `CardPlayedEvent`): the handler refreshes the continuous effects and asks `hasKeyword(Keyword::Vision)`; test: AuraVisionTest.Forecaster_MechPlayedLooksAtTheTopCard, .NoVisionSource_TopCardStays.
@@ -92,6 +92,7 @@ cross-referenced.
   - c1: 296 Hand of Noxus — FIXED: `onActivate` returns without Legion (`cards_played_this_turn < 1`); the dead `requiresLegion()` override is removed; test: ReviewFixC1Test.HandOfNoxus_NoEnergyWithoutLegion
   - c5: 243 Darius, Executioner gates his trigger himself; his dead `requiresLegion()` override is deleted. Hand of Noxus 296 is `legends/0296_hand_of_noxus.cpp` — outside units/0219..0494 (stream c1's path range); NOT edited by c5.
   - c6: 578 Scorchclaw — FIXED ([Hunt 2] ungated, [Level 3] passive: +1 [M] aura and `entersReadyOnPlay`); 587 Undying Legion — BLOCKED (needs a play-a-unit-from-trash path, see cards/batch-06.md); the `requiresLegion` / `requiresLevel` / `levelThreshold` overrides are removed from every unit in 495–709 (547, 578, 587, 621, 637, 660); test: C6Test.Scorchclaw_HuntIsNotGatedByLevel, .Scorchclaw_LevelThreeGivesMightAndEntersReady
+  - sweep-flow: `Card::requiresLegion` / `requiresLevel` / `levelThreshold` deleted with the last overrides (16, 20, 217, 218, 251, 653, 713); `ChainTestFixture.LegionParsesAsConditionGate` no longer reads one
 
 - [ ] **8.8 Keywords set on the def because the text mentions them**
   - `Keyword::Temporary` on the card itself — the unit is killed at its controller's next Beginning Phase (`game_engine.cpp:761`): Sprite Mother 106, Trevor Snoozebottom 610, Petal Pixie 638, Lillia, Fae Fawn 644, Sprite Queen 646, LeBlanc, Everywhere at Once 652.

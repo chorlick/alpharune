@@ -45,11 +45,12 @@ Files read in full: 83 of 83.
   - Code: the attach happens only when the play intent carries a target (`resolvePermanent`, game_engine.cpp:2195), and only `generateClosedStateActions` emits such intents (3052-3068). The main-phase gear generator (2789-2802) emits a plain `PlayCard` to base with no target, and `generateShowdownActions` has no Quick-Draw branch at all.
   - Scenario: play Long Sword in your main phase -> it lands in base unattached, +2 [M] goes to nobody, and Equip [R] must be paid separately. During a showdown (open state) the gear cannot be played at all.
 
-- [ ] **382 Svellsongur** - `gear/0382_svellsongur.cpp:19` [confirmed] high
+- [x] **382 Svellsongur** - `gear/0382_svellsongur.cpp:19` [confirmed] high — FIXED (sweep-triggers): `Card::copiesBearerText()`; the bearer's own triggered abilities are queued once more per such Equipment (`TriggerManager::fireTrigger`, `EffectExecutor::textCopiesOn`, last-known for a death), its continuous effects and printed [Assault N]/[Shield N]/[Deflect N] apply once more (`GameEngine::recalculateAuras` step 1b', other instances masked so no card hook needed converting), "trigger an additional time" counts again; a second copy of an activated ability adds nothing and is offered once; test: SweepTriggersTest.Svellsongur_* (7 tests)
   - Text: "As this is attached to a unit, copy that unit's text to this Equipment's effect text for as long as this is attached to it."
   - Code: only `hasEquipAbility` / `onEquip` (standardEquip [1][G]). No copy logic in the card and nothing in src/engine or src/core references it; no comment marks it as unimplemented.
   - Scenario: attach Svellsongur to any unit with abilities -> nothing is copied; the 3-energy + [G] Equipment (no Might bonus) has no effect.
   - BLOCKED: needs engine support. An Equipment's effect text is asked of the gear's `Card` through fixed, state-free descriptors (`equippedTriggerType()`, `equippedKeywords()`, `equippedAssault()` ...) and its bearer's own triggers, auras and activated abilities are dispatched by the bearer's card id; "copy that unit's text" needs the trigger / aura / ability dispatch to run the bearer's card a second time on behalf of the gear. The card now says so in a comment; nothing else changed.
+  - sweep-flow: NOT DONE, still BLOCKED. The flow stream's functions cannot carry it alone: "the bearer has each of its abilities twice" needs (1) `TriggerManager` to queue the bearer's own triggered abilities once more per attached text-copying Equipment (trigger_manager.cpp, sweep-triggers — every `fireTrigger` site for a unit's own trigger), and (2) a per-INSTANCE aura hook, because `Card::applyPassiveAura` is called once per (card, controller) and covers every instance, so "apply this one unit's passive twice" cannot be expressed today. Proposed shape: `Card::copiesBearerText()` on the gear; `recalculateAuras` counts such gear into a new `GameObject::text_copies` before the hooks; `forEachSelfOnce` (card_helpers.h) runs its body `1 + text_copies` times for that instance, hand-rolled hooks are converted to it; `TriggerManager::fireTrigger` repeats the queue `1 + text_copies` times. No vocabulary or feature-layout change is needed.
 
 - [x] **775 Vaults of Helia** - `battlefields/0775_vaults_of_helia.cpp:21` [confirmed] high — ALREADY FIXED: `1ae4c88` (`CostModifier::units_only`); test: AurasCostsTest.VaultsOfHelia_ModifierIsUnitsOnly
   - Text: "When you hold here, your non-token units cost [1] more to play this turn."
@@ -81,7 +82,7 @@ Files read in full: 83 of 83.
   - Code: `victoryScoreModifier()` feeds `effectiveVictoryScore()` (used by `checkWinCondition` and `scorePoints`), but the conquer path's `isWinningPointAttempt` still tests `score >= state_.mode.victory_score - 1` (game_engine.cpp:4376).
   - Scenario: with Aspirant's Climb in play (9 to win) a player on 7 conquers one battlefield -> treated as the winning point, blocked unless every battlefield was scored this turn, and they draw 1 instead of going to 8.
 
-- [ ] **290 Vilemaw's Lair** - `battlefields/0290_vilemaw_s_lair.cpp:14` [confirmed] medium
+- [x] **290 Vilemaw's Lair** - `battlefields/0290_vilemaw_s_lair.cpp:14` [confirmed] medium — FIXED (sweep-triggers): `EffectExecutor::moveToBase` refuses a blocked move (`moveToBaseBlocked`); recalls go through the new `recallToBase`; test: SweepTriggersTest.MoveToBase_AnEffectCannotMoveAUnitOutOfVilemawsLair
   - Text: "Units can't move from here to base."
   - Code: `blocks_move_to_base` is read only by the standard-move generator (game_engine.cpp:2642). `EffectExecutor::moveToBase` (effect_executor.cpp:735-752) does not consult it.
   - Scenario: The Syren (184, same batch) "[1], [E]: Move a friendly unit at a battlefield to its base" targets a unit at Vilemaw's Lair -> the unit moves to base.
@@ -133,7 +134,7 @@ Files read in full: 83 of 83.
   - Code: facedown cards are never legal (they have no location; line 51 notes this). The generator-side `enumerateLegalTargets` (29-40) does not exclude the Pack itself, while `onActivate` does.
   - Scenario: Pack of Wonders is the only friendly permanent -> the ability is offered, exhausts the Pack and does nothing. A hidden card can never be returned.
 
-- [ ] **272 Back-Alley Bar** - `battlefields/0272_back_alley_bar.cpp:23` [confirmed] low
+- [x] **272 Back-Alley Bar** - `battlefields/0272_back_alley_bar.cpp:23` [confirmed] low — FIXED (sweep-triggers): recalls no longer emit `UnitMovedEvent` (`EffectExecutor::recallToBase`: death-replacement recalls in both kill paths, the combat-tie recall, every card that prints "recall"); test: SweepTriggersTest.Recall_DeathReplacementOnAnEffectKillKeepsGearAndIsNotAMove, .Recall_DeathReplacementOnLethalDamageKeepsGearAndIsNotAMove, .Soraka_RecallsTheUnitWithoutMovingIt (each with Back-Alley Bar as the battlefield)
   - Text: "When a unit moves from here, give it +1 [M] this turn."
   - Code: fires on every `UnitMovedEvent` leaving the battlefield. Recalls emit the same event (combat-tie recall game_engine.cpp:4192-4201, death-replacement recalls, `moveToBase`), and a recall is not a move.
   - Scenario: attackers are recalled from Back-Alley Bar after a tied combat -> each gets +1 [M] this turn.

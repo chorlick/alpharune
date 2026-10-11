@@ -30,11 +30,11 @@ public:
     /// Number of registered cards.
     size_t size() const { return cards_.size(); }
 
-    /// Register all card implementations (calls generated + manual init code).
+    /// Register all card implementations (calls registerAllCards).
     void loadAll();
 
-    /// The class-owned CardDef for `id`, or nullptr if that card was built with
-    /// the legacy id-only constructor (data still comes from registry.json).
+    /// The class-owned CardDef for `id` (Card::def()), or nullptr if no card
+    /// is registered under that id.
     const CardDef* classDef(CardDefId id) const;
 
     /// Sorted ids of all registered cards (each owns its data via Card::def()).
@@ -45,7 +45,7 @@ private:
 };
 
 /// Registers every card. One authoritative class per card lives in its own TU
-/// under src/cards/<type>/<id>_<slug>.cpp; the generated cards_init.cpp defines
+/// under src/cards/<type>/<id>_<slug>.cpp; the checked-in cards_init.cpp defines
 /// this by calling each card's register_card_<id>().
 void registerAllCards(CardRegistry& registry);
 

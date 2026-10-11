@@ -143,9 +143,11 @@ protected:
         withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, agent, nullptr,
                    act.player);
     }
-    void conquer(int bf, AgentInterface* agent = nullptr) {
+    /// `from`: who controlled the battlefield before P1 conquered it.
+    void conquer(int bf, AgentInterface* agent = nullptr,
+                 std::optional<PlayerId> from = std::nullopt) {
         withEngine([&](GameEngine& e) {
-            e.testHook_scoreConquer(P1, static_cast<BattlefieldId>(bf));
+            e.testHook_scoreConquer(P1, static_cast<BattlefieldId>(bf), from);
             e.testHook_runChain();
         }, agent);
     }
@@ -402,7 +404,7 @@ TEST_F(C6Test, Yone_ConqueringAnEnemyBattlefieldDoesNothing) {
     o(defender).zone = ZoneType::Trash;
     state.battlefields[0].controller = P1;
     EnginePathAgent agent(EnginePathAgent::choosing(e1));
-    conquer(0, &agent);
+    conquer(0, &agent, P2);          // conquered from P2 (the scoring step records it)
     EXPECT_EQ(o(e1).damage_marked, 0);
     EXPECT_TRUE(agent.prompts.empty());
 }

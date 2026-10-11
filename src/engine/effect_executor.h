@@ -132,6 +132,10 @@ public:
     /// 718.2). Emits "attached" / "equipped". Every attach goes through here.
     /// Returns false, and does nothing, when it is not possible.
     bool attachGear(GameObjectId gear, GameObjectId unit);
+    /// How many Equipment attached to `unit` copy its text to their effect
+    /// text (Card::copiesBearerText): the unit has each of its abilities that
+    /// many more times. For a unit that has left the board, as it last existed.
+    int textCopiesOn(GameObjectId unit) const;
     /// Spend a buff (CR 427.2): remove one Buff counter from `unit` as a cost
     /// or effect of `spender`. Returns false (nothing spent) if it has none.
     /// Emits ObjectStateChangedEvent "buff_spent" -> WhenYouSpendABuff.

@@ -136,6 +136,8 @@ struct ScoreEvent {
     BattlefieldId battlefield;
     ScoreMethod method;
     int new_score;
+    // Conquer only: who controlled the battlefield before; nullopt = nobody.
+    std::optional<PlayerId> previous_controller = std::nullopt;
 };
 
 /// A player gained points directly (from card effect).

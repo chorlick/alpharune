@@ -438,8 +438,7 @@ struct IsMctsAgent::Impl {
             /*use_observation_string=*/true,
             /*allow_inconsistent_action_sets=*/false);
         // Minimum-viable resampler: Clone() rather than determinize hidden
-        // info. Same TODO as openspiel_match — proper resampling from the
-        // unseen card pool is queued.
+        // info. TODO: proper resampling from the unseen card pool.
         bot->SetResampler(
             [](const ::open_spiel::State& st,
                ::open_spiel::Player /*pl*/,

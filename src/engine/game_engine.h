@@ -193,6 +193,17 @@ public:
     /// Generate all legal actions for the player who must currently act.
     std::vector<Intent> generateLegalActions() const;
 
+    /// For a caller that edits the state while the engine waits at a decision
+    /// (the play server's god mode): the options of that decision rebuilt
+    /// from the state as it is now, so a stale intent is not applied. Only
+    /// decisions whose options are a function of the state alone can be
+    /// rebuilt — the main-phase decision, a showdown's focus decision and a
+    /// chain priority decision; for every other one (a card's prompt, a cost
+    /// payment, combat damage, the mulligan) and when no decision is pending
+    /// this returns nullopt and the caller keeps the list it has. Any intent
+    /// of the returned list may be handed back as the agent's answer.
+    std::optional<std::vector<Intent>> recomputePendingLegalActions() const;
+
     /// True if `player` may NOT yet score `bf` because of a turn gate
     /// (Forgotten Monument): their turns_taken < bf.min_turn_to_score.
     /// Public so the renderer/UI and tests can query the same rule the
@@ -212,7 +223,11 @@ public:
     // These are normally internal helpers but expose them for unit tests
     // that exercise specific CR clauses (e.g. 466.1.b winning-point cases)
     // without driving a full combat path.
-    void testHook_scoreConquer(PlayerId p, BattlefieldId bf) { scoreConquer(p, bf); }
+    // `from`: who controlled the battlefield before it was conquered.
+    void testHook_scoreConquer(PlayerId p, BattlefieldId bf,
+                               std::optional<PlayerId> from = std::nullopt) {
+        scoreConquer(p, bf, from);
+    }
     void testHook_scoreHold(PlayerId p, BattlefieldId bf) { scoreHold(p, bf); }
     void testHook_drawCards(PlayerId p, int n) { drawCards(p, n); }
     void testHook_processLethalDamage() { processLethalDamage(); }
@@ -243,6 +258,10 @@ public:
         return resolveShowdownDecision(bf, chosen, current_focus, action_count);
     }
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
+    // Exactly ONE aura pass (cleanup repeats it until the state settles).
+    void testHook_recalculateAuras() { recalculateAuras(); }
+    // The top-level main-phase decision, asked of `p`'s agent.
+    Intent testHook_queryAgent(PlayerId p) { return queryAgent(p); }
     // One pass of the main-phase loop up to its next decision: runs any
     // staged showdown / combat. The decision itself is discarded.
     void testHook_advanceMainPhase() { int n = 0; advanceMainPhase(n); }
@@ -306,6 +325,14 @@ private:
     const CardRegistry& card_registry_;
 
     AgentInterface* agents_[2] = {nullptr, nullptr};
+
+    // Which state-derived decision an agent is being asked right now (see
+    // recomputePendingLegalActions). Not game state: it describes the call
+    // stack, and is None whenever no agent is inside selectAction for one of
+    // these three.
+    enum class PendingQuery : uint8_t { None, MainPhase, Showdown, ChainPriority };
+    PendingQuery pending_query_ = PendingQuery::None;
+    PlayerId pending_query_player_ = PlayerId::None;
 
     // Step machine state (Phase 11 C-1, fiber refactor 6w).
     // No more std::thread — the engine runs in a userspace fiber
@@ -567,8 +594,33 @@ private:
     /// units, [Quick-Draw] / [Reaction] gear) at Reaction or Action timing.
     void generateReactionPermanentActions(PlayerId player, IntentType intent_type,
                                           std::vector<Intent>& actions) const;
+    /// Activated abilities `player` may use now — their own and those an aura
+    /// grants them. `timing` filters by the ability's timing permission:
+    /// Any in the Neutral Open State, Action in a showdown ([Action] or
+    /// [Reaction], CR 813.1.b), Reaction in a Closed State; `intent_type` is
+    /// the matching Activate* intent.
+    enum class AbilityTiming : uint8_t { Any, Action, Reaction };
     void generateActivateAbilityActions(PlayerId player,
-                                         std::vector<Intent>& actions) const;
+                                         std::vector<Intent>& actions,
+                                         AbilityTiming timing = AbilityTiming::Any,
+                                         IntentType intent_type = IntentType::ActivateAbility) const;
+    /// Plays of `player`'s facedown cards (CR 811): from the turn after it was
+    /// hidden a card has [Reaction], so it is offered in Closed States and in
+    /// showdowns alike. `intent_type` as for generateReactionPermanentActions.
+    void generateHiddenPlayActions(PlayerId player, IntentType intent_type,
+                                   std::vector<Intent>& actions) const;
+    /// Where `unit` (ready, controlled by `player`) may go with a Standard
+    /// Move right now (CR 144.4). Empty when it cannot move.
+    std::vector<LocationId> standardMoveDestinations(const GameObject& unit,
+                                                     PlayerId player) const;
+    /// Battlefields where exactly one unit stands and it is an enemy of `player`.
+    bool enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const;
+    /// Whether `player` may play the unit `card` to `bf` by the ordinary rule
+    /// (a battlefield they control, CR 355.2) or a permission the card prints
+    /// or another card grants the player. Paid plays ("pay ... to play it
+    /// here") are the caller's.
+    bool unitPlayableAt(const Card* card_obj, PlayerId player,
+                        const BattlefieldState& bf) const;
 
     // ── Queries ──
     Intent queryAgent(PlayerId player);
@@ -607,7 +659,10 @@ private:
     void combatResolutionStep(BattlefieldId bf);
 
     // ── Scoring ──
-    void scoreConquer(PlayerId player, BattlefieldId bf);
+    /// `previous_controller`: who controlled `bf` before `player` took it
+    /// (nullopt = it was uncontrolled).
+    void scoreConquer(PlayerId player, BattlefieldId bf,
+                      std::optional<PlayerId> previous_controller = std::nullopt);
     void scoreHold(PlayerId player, BattlefieldId bf);
     bool isWinningPointAttempt(PlayerId player) const;
     bool canGainWinningPointViaConquer(PlayerId player) const;

@@ -55,6 +55,7 @@ private:
         d.card_type = CardType::Legend;
         d.domains = {Domain::Order, Domain::Chaos};
         d.tags = {R"RB(Yordle)RB", R"RB(Kennen)RB"};
+        d.champion_tag = R"RB(Kennen)RB";  // Yordle is a plain tag (CR 103.3.a.2)
         d.rarity = Rarity::Rare;
         d.ability_text = R"RB(When you play a card from anywhere other than your hand, empower me.
 [Action][>] Disempower me, [E]: Give a unit [Assault 2] this turn. (+2 [M] while it's an attacker.))RB";

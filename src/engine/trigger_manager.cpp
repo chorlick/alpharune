@@ -427,7 +427,7 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     // legend itself has no location, so the loop above skips it. Fire any
     // matching legend on the acting player's side.
     if (e.card_type == CardType::Unit) {
-        fireLegendTrigger(TriggerType::WhenYouPlayAUnit, e.player);
+        fireLegendTrigger(TriggerType::WhenYouPlayAUnit, e.player, 0, /*subject=*/e.object);
     }
 }
 
@@ -566,6 +566,31 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     };
     if (side_attackers.size() == 1) fireAlone(side_attackers[0], e.attacker);
     if (side_defenders.size() == 1) fireAlone(side_defenders[0], e.defender);
+
+    // "When an enemy unit attacks a battlefield you control" — once per
+    // attacking unit (the subject), on the cards and the legend of the player
+    // who controls this battlefield. (Nine-Tailed Fox 252.)
+    for (const auto& bf : state_.battlefields) {
+        if (bf.id != e.battlefield || !bf.controller.has_value()) continue;
+        const PlayerId holder = *bf.controller;
+        if (holder == e.attacker) break;
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != holder || !obj.location.has_value()) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenAnEnemyUnitAttacksYourBattlefield))
+                watchers.push_back(id);
+        }
+        for (auto attacker : side_attackers) {
+            for (auto wid : watchers)
+                fireTrigger(wid, holder, 0,
+                            TriggerType::WhenAnEnemyUnitAttacksYourBattlefield, attacker);
+            fireLegendTrigger(TriggerType::WhenAnEnemyUnitAttacksYourBattlefield, holder, 0,
+                              attacker);
+        }
+        break;
+    }
 
     // "When you defend at a battlefield" — fires on the defending player's
     // on-board cards anywhere (the unit it moves is, by definition, NOT yet at
@@ -748,6 +773,23 @@ void TriggerManager::queueOwnDeathTrigger(GameObjectId object, PlayerId controll
 }
 
 void TriggerManager::onLeftBoard(const LeftBoardEvent& e) {
+    // "When you recycle a rune" — a rune went from the board to its Rune Deck
+    // (recycled for Power, or by an effect). Fires on its controller's cards
+    // and legend. (Battle Mistress 517.)
+    if (e.card_type == CardType::Rune && e.destination == ZoneType::RuneDeck &&
+        e.controller != PlayerId::None) {
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != e.controller) continue;
+            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouRecycleARune))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, e.controller, 0, TriggerType::WhenYouRecycleARune,
+                        /*subject=*/e.object);
+    }
     // A killed gear "dies" like a unit does, but no UnitDiedEvent is emitted
     // for it: this is where its own "When this is killed" / [Deathknell] fires
     // (Scrapheap, Sprite Fountain, Treasure Trove). Units are handled by
@@ -958,6 +1000,27 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
         }
         for (auto wid : opp_watchers)
             fireTrigger(wid, opp, 0, TriggerType::WhenAnOpponentMovesToBattlefield,
+                        /*subject=*/e.object);
+    }
+
+    // "When you move an enemy unit" — a spell or ability moved a unit its
+    // controller does not control; the mover is the controller of the item
+    // that is resolving (as for "can't be moved by enemy spells and
+    // abilities"). The moved unit is the subject. (Blast Cone 695.)
+    if (!e.is_standard_move && state_.chain.resuming.has_value() &&
+        state_.chain.resuming->controller != e.controller) {
+        const PlayerId mover = state_.chain.resuming->controller;
+        std::vector<GameObjectId> watchers;
+        for (auto& [id, obj] : state_.objects) {
+            if (obj.controller != mover) continue;
+            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+            if (obj.card_def_id == kInvalidId) continue;
+            if (cardFiresOn(card_registry_, obj.card_def_id,
+                            TriggerType::WhenYouMoveAnEnemyUnit))
+                watchers.push_back(id);
+        }
+        for (auto wid : watchers)
+            fireTrigger(wid, mover, 0, TriggerType::WhenYouMoveAnEnemyUnit,
                         /*subject=*/e.object);
     }
 

@@ -858,7 +858,9 @@ void GameEngine::beginningStep() {
         if (obj.controller != state_.turn.turn_player) continue;
         if (!obj.location.has_value()) continue;
         if (obj.isUnit()) units_to_kill.push_back(id);
-        else if (obj.isGear()) gear_to_kill.push_back(id);
+        // CR 718.2: an attached Equipment's rules text is inactive, so its
+        // [Temporary] does not trigger ("If this is unattached, kill it ...").
+        else if (obj.isGear() && !obj.attached_to.has_value()) gear_to_kill.push_back(id);
     }
     for (auto id : units_to_kill) {
         killUnit(id);

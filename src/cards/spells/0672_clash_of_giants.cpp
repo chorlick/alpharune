@@ -68,13 +68,7 @@ public:
         ctx.executor.dealDamage(b, might_a, ctx.source);
         ctx.executor.dealDamage(a, might_b, ctx.source);
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, std::vector<GameObjectId>{a, b}, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto tid : {a, b}) {
-                if (ctx.state.objectExists(tid) &&
-                    ctx.state.getObject(tid).hasLethalDamage()) {
-                    ctx.executor.killObject(tid);
-                }
-            }
+            ctx.executor.killLethallyDamagedTogether(std::vector<GameObjectId>{a, b});   // they die at the same time
         }
     }
 private:

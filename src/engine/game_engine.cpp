@@ -3630,15 +3630,8 @@ std::vector<DamageAssignment> lethalCascade(const GameState& state,
 }  // namespace
 
 bool GameEngine::anyDamageIsLethalFor(PlayerId damager) const {
-    // "Any amount of your damage is enough to kill." (CR 142.4.c) — a unit
-    // `damager` has in play says so through Card::anyDamageIsLethal().
-    for (const auto& [id, obj] : state_.objects.onBoard()) {
-        if (!obj.isUnit() || !obj.location.has_value()) continue;
-        if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
-        const Card* card = card_registry_.get(obj.card_def_id);
-        if (card && card->anyDamageIsLethal()) return true;
-    }
-    return false;
+    // "Any amount of your damage is enough to kill." (CR 142.4.c)
+    return effect_executor_->anyDamageIsLethalFor(damager);
 }
 
 void GameEngine::applyCombatDamage(GameObjectId target_id, int assigned) {
@@ -6561,34 +6554,18 @@ void GameEngine::processLethalDamage() {
     // walk over that player's units in play (plans/06 item 6.6). Nothing in
     // the loop below changes the answer (it only reads), so asking late and
     // remembering is the same as asking first.
-    std::optional<bool> any_damage_lethal[2];
-    auto elder = [&](PlayerId damager) {
-        auto& known = any_damage_lethal[playerIndex(damager)];
-        if (!known.has_value()) known = anyDamageIsLethalFor(damager);
-        return *known;
-    };
-
+    // The test itself is EffectExecutor::damageKills, shared with the kills a
+    // card makes after dealing damage (killLethallyDamagedTogether).
+    EffectExecutor::LethalRule rule;
     std::vector<GameObjectId> to_kill;
     for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.damage_marked <= 0) continue;
-
-        bool lethal = obj.hasLethalDamage();
-
-        // Elder Dragon: any amount of that player's damage kills. "Your damage"
-        // is the damage you marked, so damage a unit took from its own side
-        // (or from the other player) does not count.
-        if (!lethal) {
-            PlayerId damager = opponent(obj.controller);
-            const bool has_their_damage =
-                std::min(obj.damage_marked_by[playerIndex(damager)], obj.damage_marked) > 0;
-            if (has_their_damage && elder(damager)) {
-                lethal = true;
-                RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
-            }
-        }
-
-        if (lethal) to_kill.push_back(id);
+        bool by_any_damage = false;
+        if (!effect_executor_->damageKills(obj, rule, &by_any_damage)) continue;
+        if (by_any_damage)
+            RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
+        to_kill.push_back(id);
     }
     // They die at the same time: each one's last-known information is taken
     // while all of them are still on the board.

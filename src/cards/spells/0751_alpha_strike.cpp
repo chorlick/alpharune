@@ -52,14 +52,7 @@ public:
         // per unit this kills.
         int kills = 0;
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, damaged, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : damaged) {
-                if (!ctx.state.objectExists(id)) continue;
-                if (ctx.state.getObject(id).hasLethalDamage()) {
-                    ctx.executor.killObject(id);
-                    ++kills;
-                }
-            }
+            kills += static_cast<int>(ctx.executor.killLethallyDamagedTogether(damaged).size());   // they die at the same time
         }
         // "Then for each unit this kills, do this: Gain 1 XP." — one
         // reflexive trigger per unit killed (CR 388.1.a, 389.2), each a chain

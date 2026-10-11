@@ -72,10 +72,7 @@ public:
         ctx.executor.dealDamage(a, might_b, b);
         // Collect-then-kill (AoE invariant).
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, std::vector<GameObjectId>{a, b}, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : {a, b})
-                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                    ctx.executor.killObject(id);
+            ctx.executor.killLethallyDamagedTogether(std::vector<GameObjectId>{a, b});   // they die at the same time
         }
         RIFT_TRACE(ctx.events, "MARCHING ORDERS: mutual Might damage between friendly + enemy");
     }

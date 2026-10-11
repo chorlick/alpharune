@@ -65,12 +65,7 @@ public:
         ctx.executor.dealDamage(enemy, fm, friendly);
         ctx.executor.dealDamage(friendly, em, enemy);
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, std::vector<GameObjectId>{friendly, enemy}, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : {friendly, enemy}) {
-                if (ctx.state.objectExists(id) &&
-                    ctx.state.getObject(id).hasLethalDamage())
-                    ctx.executor.killObject(id);
-            }
+            ctx.executor.killLethallyDamagedTogether(std::vector<GameObjectId>{friendly, enemy});   // they die at the same time
         }
         RIFT_TRACE(ctx.events, "GENTLEMEN'S DUEL: +3 [M] to friendly, then duel ("
                             + std::to_string(fm) + " vs " + std::to_string(em) + ")");

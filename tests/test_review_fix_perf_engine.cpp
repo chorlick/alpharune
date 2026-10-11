@@ -12,10 +12,13 @@
 #include "cards/card.h"
 #include "cards/card_registry.h"
 #include "cards/card_test_fixture.h"
+#include "core/board_state.h"
 #include "core/card_db.h"
 #include "core/events.h"
 #include "engine/game_engine.h"
 #include "engine/knowledge_tracker.h"
+#include "engine/resource_payment.h"
+#include "io/state_editor.h"
 #include "rules/deck_validator.h"
 
 #include <algorithm>
@@ -805,10 +808,23 @@ TEST_F(PerfEngineCards, AnAuraPassClearsWhatTheLastOneLeftOnACardOffTheBoard) {
         o(id).untargetable_by_enemy = true;
         o(id).empowered = 1;
     }
-    // One of them leaves the board (to a hand) before the next pass.
-    o(gone).location = std::nullopt;
-    o(gone).zone = ZoneType::Hand;
-    state.player(P1).hand.push_back(gone);
+    // One of them leaves the board (returned to hand) before the next pass.
+    withEngine([&](GameEngine& e) { e.testHook_executor().bounceToHand(gone); });
+    ASSERT_FALSE(o(gone).location.has_value());
+    // A hook may still give an effect to a card that is not in play (Jax:
+    // Equipment in a hand): put one back by hand; the pass must clear it.
+    {
+        GameObject::AuraEffect ae;
+        ae.source = stays;
+        ae.might_bonus = 2;
+        ae.keyword = Keyword::Tank;
+        o(gone).aura_effects.push_back(ae);
+        o(gone).aura_might_bonus = 2;
+        o(gone).aura_keywords.set(Keyword::Tank);
+        o(gone).aura_no_combat_damage = true;
+        o(gone).aura_bonus_damage_taken = 1;
+        o(gone).untargetable_by_enemy = true;
+    }
     withEngine([](GameEngine& e) { e.testHook_cleanup(); });
     for (GameObjectId id : {gone, stays}) {
         EXPECT_TRUE(o(id).aura_effects.empty()) << id;
@@ -1257,6 +1273,251 @@ TEST_F(PerfEngineOffBoard, PurifierGivesAssaultOnlyThroughEquipmentOnTheBoard) {
     EXPECT_TRUE(o(sword_c).location.has_value());
     EXPECT_FALSE(o(sword_c).attached_to.has_value());
     EXPECT_TRUE(o(bearer_c).aura_effects.empty());
+}
+
+// ─── 9.LL4: leaving the board, by every path, makes a new object ────────────
+
+/// One fixture per way off the board. Each test dirties an object with every
+/// kind of board state, takes it off the board by ONE path and looks at it
+/// at once — no cleanup, no aura pass in between.
+class PerfEngineLeaveBoard : public PerfEngineOffBoard {
+protected:
+    static constexpr CardDefId kShipyardSkulker = 175;   // unit, 3 [M], no text
+
+    /// A unit of P2's that P1 controls until end of turn, with every status,
+    /// counter and "this turn" modification on it and an Equipment attached.
+    GameObjectId dirtyUnit(bool token = false, GameObjectId* gear_out = nullptr) {
+        const GameObjectId id = addUnit(P2, token ? kInvalidId : kShipyardSkulker, token ? 5 : 0, 0);
+        const GameObjectId sword = addEquipment(P1, kLongSword);
+        o(sword).location = o(id).location;
+        o(sword).zone = ZoneType::BattlefieldZone;
+        withEngine([&](GameEngine& e) { ASSERT_TRUE(e.testHook_executor().attachGear(sword, id)); });
+        GameObject& u = o(id);
+        if (token) { u.is_token = true; u.name = "Test Token"; }
+        u.controller = P1;                       // taken ...
+        u.control_reverts_eot = true;            // ... until end of turn
+        u.original_controller_eot = P2;
+        u.is_exhausted = true;
+        u.is_stunned = true;
+        u.damage_marked = 1;
+        u.damage_marked_by[0] = 1;
+        u.damage_taken_this_turn = 1;
+        u.buff_count = 1;
+        u.empowered = 1;
+        u.temp_might_bonus = 2;
+        u.temp_keywords.set(Keyword::Ganking);
+        u.keywords.set(Keyword::Ganking);
+        u.temp_assault_value = 2;
+        u.assault_value += 2;
+        u.combat_designation = CombatDesignation::Attacker;
+        u.cant_move_this_turn = true;
+        u.untargetable_by_enemy_this_turn = true;
+        u.banish_if_would_die_this_turn = false;
+        u.moves_this_turn = 2;
+        u.recomputeMight();
+        if (gear_out) *gear_out = sword;
+        return id;
+    }
+    /// What CR 124.1 leaves of it.
+    void expectNewObject(GameObjectId id, const char* path, bool has_card = true) {
+        SCOPED_TRACE(path);
+        const GameObject& u = o(id);
+        EXPECT_FALSE(u.location.has_value());
+        EXPECT_FALSE(carriesBoardState(u)) << "something of the board is still on it";
+        EXPECT_FALSE(u.is_stunned) << "Stunned";
+        EXPECT_FALSE(u.is_exhausted) << "Exhausted";
+        EXPECT_EQ(u.damage_marked, 0) << "damage";
+        EXPECT_EQ(u.damage_marked_by[0], 0);
+        EXPECT_EQ(u.damage_taken_this_turn, 0);
+        EXPECT_EQ(u.buff_count, 0) << "Buffed";
+        EXPECT_EQ(u.empowered, 0) << "Empowered";
+        EXPECT_EQ(u.temp_might_bonus, 0) << "this-turn Might";
+        EXPECT_FALSE(u.keywords.has(Keyword::Ganking)) << "a keyword given this turn";
+        EXPECT_EQ(u.temp_keywords.bits, 0u);
+        EXPECT_EQ(u.temp_assault_value, 0);
+        EXPECT_EQ(u.combat_designation, CombatDesignation::None) << "Attacking";
+        EXPECT_FALSE(u.cant_move_this_turn);
+        EXPECT_FALSE(u.untargetable_by_enemy_this_turn);
+        EXPECT_EQ(u.moves_this_turn, 0);
+        EXPECT_FALSE(u.control_reverts_eot) << "Controlled";
+        EXPECT_EQ(u.controller, u.owner) << "off the board a card is its owner's";
+        EXPECT_TRUE(u.attachments.empty()) << "Equipped";
+        EXPECT_EQ(u.attachment_might_bonus, 0);
+        EXPECT_EQ(u.current_might, u.base_might) << "printed Might off the board (CR 711)";
+        if (has_card) {
+            const auto& def = card_db.get(u.card_def_id);
+            EXPECT_EQ(u.keywords.bits, def.keywords.bits);
+            EXPECT_EQ(u.assault_value, def.assault_value);
+        }
+    }
+    void expectGearLeftBehind(GameObjectId gear) {
+        EXPECT_TRUE(o(gear).location.has_value()) << "the Equipment stays on the board (CR 719.5)";
+        EXPECT_FALSE(o(gear).attached_to.has_value());
+    }
+};
+
+TEST_F(PerfEngineLeaveBoard, KilledByAnEffect) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    withEngine([&](GameEngine& e) { e.testHook_executor().killObject(u); });
+    EXPECT_EQ(o(u).zone, ZoneType::Trash);
+    expectNewObject(u, "EffectExecutor::killObject (unit)");
+    expectGearLeftBehind(gear);
+    // What "When I die" abilities read is kept: the unit as it died.
+    EXPECT_TRUE(o(u).last_known.valid);
+    EXPECT_TRUE(o(u).last_known.stunned);
+    EXPECT_EQ(o(u).last_known.buff_count, 1);
+    EXPECT_EQ(o(u).last_known.empowered, 1);
+    EXPECT_GT(o(u).last_known.might, o(u).base_might);
+    EXPECT_TRUE(o(u).last_known.keywords.has(Keyword::Ganking));
+    EXPECT_EQ(o(u).last_known.attachments, std::vector<GameObjectId>{gear});
+    EXPECT_TRUE(o(u).last_location.has_value());
+}
+
+TEST_F(PerfEngineLeaveBoard, KilledByLethalDamage) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    o(u).damage_marked = 99;
+    withEngine([&](GameEngine& e) { e.testHook_processLethalDamage(); });
+    EXPECT_EQ(o(u).zone, ZoneType::Trash);
+    expectNewObject(u, "GameEngine::killUnit");
+    expectGearLeftBehind(gear);
+    EXPECT_TRUE(o(u).last_known.valid);
+    EXPECT_TRUE(o(u).last_known.stunned);
+}
+
+TEST_F(PerfEngineLeaveBoard, AGearKilledByAnEffect) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    o(gear).is_exhausted = true;
+    withEngine([&](GameEngine& e) { e.testHook_executor().killObject(gear); });
+    EXPECT_EQ(o(gear).zone, ZoneType::Trash);
+    EXPECT_FALSE(carriesBoardState(o(gear)));
+    EXPECT_FALSE(o(gear).is_exhausted);
+    EXPECT_FALSE(o(gear).attached_to.has_value());
+    EXPECT_FALSE(o(gear).is_rules_text_inactive);
+    EXPECT_TRUE(o(u).attachments.empty());
+}
+
+TEST_F(PerfEngineLeaveBoard, ReturnedToHand) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    withEngine([&](GameEngine& e) { e.testHook_executor().bounceToHand(u); });
+    EXPECT_EQ(o(u).zone, ZoneType::Hand);
+    expectNewObject(u, "EffectExecutor::bounceToHand");
+    expectGearLeftBehind(gear);
+    EXPECT_EQ(state.player(P2).hand, std::vector<GameObjectId>{u}) << "its owner's hand";
+}
+
+TEST_F(PerfEngineLeaveBoard, ATokenReturnedToHandCeasesToExist) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(true, &gear);
+    withEngine([&](GameEngine& e) { e.testHook_executor().bounceToHand(u); });
+    EXPECT_EQ(o(u).zone, ZoneType::Banishment);
+    expectNewObject(u, "EffectExecutor::bounceToHand (token)", /*has_card=*/false);
+    expectGearLeftBehind(gear);
+}
+
+TEST_F(PerfEngineLeaveBoard, Banished) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    withEngine([&](GameEngine& e) { e.testHook_executor().banishObject(u); });
+    EXPECT_EQ(o(u).zone, ZoneType::Banishment);
+    expectNewObject(u, "EffectExecutor::banishObject");
+    expectGearLeftBehind(gear);
+}
+
+TEST_F(PerfEngineLeaveBoard, Recycled) {
+    GameObjectId gear, token_gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    const GameObjectId t = dirtyUnit(true, &token_gear);
+    const GameObjectId rune = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    withEngine([&](GameEngine& e) { e.testHook_executor().recycleCards(P1, {u, t, rune}); });
+    EXPECT_EQ(o(u).zone, ZoneType::MainDeck);
+    expectNewObject(u, "EffectExecutor::recycleCards (card)");
+    expectGearLeftBehind(gear);
+    EXPECT_EQ(o(t).zone, ZoneType::Banishment);
+    expectNewObject(t, "EffectExecutor::recycleCards (token)", /*has_card=*/false);
+    EXPECT_EQ(o(rune).zone, ZoneType::RuneDeck);
+    EXPECT_FALSE(carriesBoardState(o(rune)));
+    EXPECT_FALSE(o(rune).is_exhausted);
+}
+
+TEST_F(PerfEngineLeaveBoard, PutIntoItsOwnersDeck) {
+    // Keeper's Verdict's move, which the card used to make by hand.
+    GameObjectId gear, gear2, gear3;
+    const GameObjectId top = dirtyUnit(false, &gear);
+    const GameObjectId bottom = dirtyUnit(false, &gear2);
+    const GameObjectId token = dirtyUnit(true, &gear3);
+    int left = 0;
+    auto conn = events.on_left_board.connect([&](const LeftBoardEvent&) { ++left; });
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().putIntoDeckFromBoard(top, /*to_top=*/true);
+        e.testHook_executor().putIntoDeckFromBoard(bottom, /*to_top=*/false);
+        e.testHook_executor().putIntoDeckFromBoard(token, true);
+    });
+    conn.disconnect();
+    EXPECT_EQ(left, 3);
+    expectNewObject(top, "EffectExecutor::putIntoDeckFromBoard (top)");
+    expectNewObject(bottom, "EffectExecutor::putIntoDeckFromBoard (bottom)");
+    expectNewObject(token, "EffectExecutor::putIntoDeckFromBoard (token)", /*has_card=*/false);
+    EXPECT_EQ(o(top).zone, ZoneType::MainDeck);
+    EXPECT_EQ(o(token).zone, ZoneType::Banishment);
+    const auto& deck = state.player(P2).main_deck;   // its owner's
+    ASSERT_EQ(deck.size(), 2u);
+    EXPECT_EQ(deck.back(), top) << "top = back";
+    EXPECT_EQ(deck.front(), bottom);
+    expectGearLeftBehind(gear);
+    expectGearLeftBehind(gear2);
+}
+
+TEST_F(PerfEngineLeaveBoard, ARuneRecycledForPower) {
+    const GameObjectId rune = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    o(rune).is_stunned = true;          // nothing stuns a rune; the rule is not per type
+    o(rune).damage_marked = 1;
+    EXPECT_TRUE(resource::pay(state, events, P1, 0, 1, Domain::Calm));
+    EXPECT_EQ(o(rune).zone, ZoneType::RuneDeck);
+    EXPECT_FALSE(o(rune).location.has_value());
+    EXPECT_FALSE(carriesBoardState(o(rune)));
+    // The engine's own payment of a card's cost recycles through the same rule.
+    const GameObjectId rune2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    o(rune2).is_stunned = true;
+    CardContext* none = nullptr;
+    (void)none;
+    withEngine([&](GameEngine& e) {
+        EXPECT_TRUE(e.testHook_payAdditionalCost(P1, 0, 1, Domain::Calm));
+    });
+    EXPECT_EQ(o(rune2).zone, ZoneType::RuneDeck);
+    EXPECT_FALSE(carriesBoardState(o(rune2)));
+}
+
+TEST_F(PerfEngineLeaveBoard, MovedOffTheBoardByTheStateEditor) {
+    GameObjectId gear;
+    const GameObjectId u = dirtyUnit(false, &gear);
+    StateEditor editor;
+    ASSERT_TRUE(editor.moveObject(state, u, P2, ZoneType::Hand).ok);
+    EXPECT_EQ(o(u).zone, ZoneType::Hand);
+    EXPECT_FALSE(carriesBoardState(o(u)));
+    EXPECT_FALSE(o(u).is_stunned);
+    EXPECT_EQ(o(u).buff_count, 0);
+    EXPECT_EQ(o(u).controller, P2);
+}
+
+// With no path left that forgets something, an aura pass has nothing to mop
+// up off the board: after any of the moves above a cleanup changes nothing on
+// the object that left.
+TEST_F(PerfEngineLeaveBoard, ACleanupFindsNothingLeftToClear) {
+    const GameObjectId u = dirtyUnit();
+    withEngine([&](GameEngine& e) { e.testHook_executor().bounceToHand(u); });
+    const GameObject before = o(u);
+    cleanup();
+    const GameObject& after = o(u);
+    EXPECT_EQ(after.is_stunned, before.is_stunned);
+    EXPECT_EQ(after.empowered, before.empowered);
+    EXPECT_EQ(after.buff_count, before.buff_count);
+    EXPECT_EQ(after.keywords.bits, before.keywords.bits);
+    EXPECT_EQ(after.current_might, before.current_might);
+    EXPECT_FALSE(carriesBoardState(after));
 }
 
 }  // namespace test_review_fix_perf_engine

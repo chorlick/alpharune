@@ -1,3 +1,4 @@
+#include "core/board_state.h"
 #include "state_editor.h"
 
 #include "core/game_state.h"
@@ -170,6 +171,10 @@ EditResult StateEditor::moveObject(GameState& state,
         obj.owner = target_player;
         obj.location.reset();  // off-board zones have no location
         dropAttachments(state, object_id);
+        // Off the board it is a new object (CR 124.1): no status, damage or
+        // temporary modification goes with it. (No card table here: keywords
+        // given "this turn" are dropped, the printed ones stay.)
+        forgetBoardState(obj, nullptr);
     }
     insertIntoZoneVector(state, object_id, target_player, target_zone, to_top);
     return EditResult::success();

@@ -846,6 +846,10 @@ private:
     /// there a complete sequence of its choices that leaves it payable?
     bool prePlayProbe(PlayerId player, GameObjectId card_id,
                       const PlayerState::TrashReplayGrant* grant);
+    /// Set once the turn loop of a game is running (runGame, the step machine,
+    /// a resumed snapshot): the state is then the engine's own work and not a
+    /// position a test built by hand. Read by the checked build's assertions.
+    bool playing_a_game_ = false;
     static constexpr int kPrePlayProbeRuns = 256;
     /// Runs of the last prePlaySequenceExists search, and the most any search
     /// of this engine has made (tests: how near a card comes to the bound).

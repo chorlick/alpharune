@@ -7,6 +7,7 @@
 /// card, a small test-only card registered in a reserved id range stands in,
 /// so the test does not depend on any real card's implementation.
 
+#include "core/board_state.h"
 #include "cards/card_test_fixture.h"
 #include "cards/card_helpers.h"
 #include "engine/chain_manager.h"
@@ -791,6 +792,34 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_GoesToTheOwnersDeckAndAnnouncesLeaving
     EXPECT_EQ(left[0].object, gear);
     EXPECT_EQ(left[0].destination, ZoneType::MainDeck);
     EXPECT_EQ(recycled_announced, 1);
+}
+
+// plans/09 item 9.LL4: the card in the deck is a new object (CR 124.1) the
+// moment the cost is paid — no status or temporary modification goes with it.
+TEST_F(PlayCombatFixTest, RecycleSelfCost_TheCardInTheDeckIsANewObject) {
+    makeEngine();
+    auto gear = onBoard(P1, kTRecycleGear);
+    s().getObject(gear).is_stunned = true;
+    s().getObject(gear).damage_marked = 1;
+    s().getObject(gear).buff_count = 1;
+    s().getObject(gear).empowered = 1;
+    s().getObject(gear).temp_keywords.set(Keyword::Ganking);
+    s().getObject(gear).keywords.set(Keyword::Ganking);
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = gear;
+    act.ability_index = 0;
+    engine_->testHook_executeIntent(act);
+    const auto& g = s().getObject(gear);
+    ASSERT_EQ(g.zone, ZoneType::MainDeck);
+    EXPECT_FALSE(g.location.has_value());
+    EXPECT_FALSE(carriesBoardState(g));
+    EXPECT_FALSE(g.is_stunned);
+    EXPECT_EQ(g.damage_marked, 0);
+    EXPECT_EQ(g.buff_count, 0);
+    EXPECT_EQ(g.empowered, 0);
+    EXPECT_FALSE(g.keywords.has(Keyword::Ganking));
 }
 
 TEST_F(PlayCombatFixTest, RecycleSelfCost_TokenCeasesToExistInstead) {

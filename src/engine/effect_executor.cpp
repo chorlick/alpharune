@@ -1,3 +1,4 @@
+#include "core/board_state.h"
 #include "effect_executor.h"
 
 #include "cards/card.h"
@@ -361,6 +362,10 @@ void EffectExecutor::killObject(GameObjectId target) {
             dead.attachments.clear();
             dead.attachment_might_bonus = 0;
         }
+        // The death is announced and its triggers are queued (they read the
+        // unit as it died from last_known): what is in the trash is a new
+        // object (CR 124.1).
+        leftBoard(target);
     } else if (obj.isGear()) {
         // A gear that dies while attached comes off its unit first.
         if (obj.attached_to.has_value()) unattachGear(target);
@@ -379,6 +384,7 @@ void EffectExecutor::killObject(GameObjectId target) {
         events_.emit(LeftBoardEvent{target, controller, CardType::Gear,
             was_at.value_or(BaseLocation{controller}),
             is_token ? ZoneType::Banishment : ZoneType::Trash, true});
+        leftBoard(target);
     }
 }
 
@@ -635,6 +641,51 @@ std::vector<GameObjectId> EffectExecutor::burn(PlayerId player, int count) {
 
 // CR 719.5: gear attached to a unit that leaves the board is shed first, and
 // gear that itself leaves stops being attached.
+void EffectExecutor::leftBoard(GameObjectId object) {
+    if (!state_.objectExists(object)) return;
+    {
+        auto& obj = state_.getObject(object);
+        if (obj.attached_to.has_value()) unattachGear(object);
+        const auto attached = obj.attachments;          // copy: unattachGear edits it
+        for (auto gid : attached) unattachGear(gid);
+    }
+    auto& obj = state_.getObject(object);
+    obj.attachments.clear();
+    const CardDef* def = nullptr;
+    if (obj.card_def_id != kInvalidId && card_registry_)
+        def = card_registry_->classDef(obj.card_def_id);
+    forgetBoardState(obj, def);
+}
+
+void EffectExecutor::putIntoDeckFromBoard(GameObjectId target, bool to_top) {
+    if (!state_.objectExists(target) || !onBoard(state_.getObject(target))) return;
+    auto& u = state_.getObject(target);
+    const LocationId was_at = *u.location;
+    const PlayerId controller = u.controller;
+    const PlayerId owner = u.owner;
+    const CardType type = u.card_type;
+    const bool token = u.isToken();
+    // Gear comes off first (CR 719.5), while the card is still where it was.
+    {
+        if (u.attached_to.has_value()) unattachGear(target);
+        const auto attached = u.attachments;
+        for (auto gid : attached) unattachGear(gid);
+    }
+    auto& obj = state_.getObject(target);
+    obj.location = std::nullopt;
+    if (token) {
+        obj.zone = ZoneType::Banishment;   // CR 183.1: it ceases to exist
+    } else if (to_top) {
+        deck::putOnTop(state_, owner, target, deck::Place::Public, knowledge::everyone());
+    } else {
+        deck::putOnBottom(state_, owner, target, deck::Place::Public, knowledge::everyone());
+    }
+    events_.emit(LeftBoardEvent{target, controller, type, was_at,
+                                token ? ZoneType::Banishment : ZoneType::MainDeck,
+                                /*was_killed=*/false});
+    leftBoard(target);
+}
+
 static void shedAttachments(GameState& state, EffectExecutor& exec, GameObjectId id) {
     if (!state.objectExists(id)) return;
     auto& obj = state.getObject(id);
@@ -668,24 +719,21 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
                          ") — token ceases to exist (CR 183.1)");
         obj.zone = ZoneType::Banishment;
         obj.location = std::nullopt;
-        obj.damage_marked = 0;
-        obj.combat_designation = CombatDesignation::None;
-        obj.is_exhausted = false;
         events_.emit(LeftBoardEvent{target, controller, obj.card_type,
             was_at.value_or(BaseLocation{controller}), ZoneType::Banishment, false});
+        leftBoard(target);
         return;
     }
 
     RIFT_TRACE(events_, "EFFECT: bounce " + obj.name + " (id=" + std::to_string(target) + ") to hand");
     obj.zone = ZoneType::Hand;
     obj.location = std::nullopt;
-    obj.damage_marked = 0;
-    obj.combat_designation = CombatDesignation::None;
-    obj.is_exhausted = false;
     state_.player(obj.owner).hand.push_back(target);
 
     events_.emit(LeftBoardEvent{target, controller, obj.card_type,
         was_at.value_or(BaseLocation{controller}), ZoneType::Hand, false});
+    // The card in the hand is a new object (CR 124.1).
+    leftBoard(target);
 
     // "When a unit here is returned to hand" (Ripper's Bay). Only fires if
     // the unit was at a battlefield when bounced.
@@ -1295,15 +1343,13 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
                 const PlayerId controller = obj.controller;
                 obj.zone = ZoneType::Banishment;
                 obj.location = std::nullopt;
-                obj.damage_marked = 0;
-                obj.combat_designation = CombatDesignation::None;
                 events_.emit(LeftBoardEvent{cid, controller, obj.card_type, was_at,
                                             ZoneType::Banishment, false});
+                leftBoard(cid);
                 continue;
             }
-            obj.damage_marked = 0;
-            obj.combat_designation = CombatDesignation::None;
-            obj.is_exhausted = false;
+            // (It becomes a new object when it has left: leftBoard, below,
+            // after its LeftBoardEvent.)
             left_board.push_back({cid, obj.controller, obj.card_type, was_at});
         }
         // Where it is for the knowledge tracker, read before it is taken out
@@ -1362,6 +1408,8 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     for (const auto& l : left_board)
         events_.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
             l.type == CardType::Rune ? ZoneType::RuneDeck : ZoneType::MainDeck, false});
+    // In a deck each is a new object (CR 124.1).
+    for (const auto& l : left_board) leftBoard(l.id);
 
     // "When you recycle one or more cards to your Main Deck" (Karma, Channeler
     // 235). Fires once per OWNER who had >=1 non-rune card land in their Main
@@ -1407,9 +1455,11 @@ void EffectExecutor::banishObject(GameObjectId target) {
         state_.player(obj.owner).cards_banished_this_turn++;
     }
 
-    if (was_at.has_value())
+    if (was_at.has_value()) {
         events_.emit(LeftBoardEvent{target, controller, obj.card_type,
             *was_at, ZoneType::Banishment, false});
+        leftBoard(target);
+    }
     // "When you banish a card you own" (Master of Shadows).
     if (!is_token) events_.emit(ObjectStateChangedEvent{target, "banished_owned"});
 }
@@ -2229,7 +2279,7 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
         if (!runeMatches(r, cost.domains)) continue;
         r.location = std::nullopt;
         r.zone = ZoneType::RuneDeck;
-        r.is_exhausted = false;
+        forgetBoardState(r, nullptr);   // CR 124.1 (a rune carries no attachments)
         ps.rune_deck.insert(ps.rune_deck.begin(), rid);
         ps.power_spent_this_turn++;
         --p_need;

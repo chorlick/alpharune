@@ -68,31 +68,13 @@ public:
 
         auto& u = ctx.state.getObject(picked);
         if (!u.location.has_value()) return;   // it left the board meanwhile
-        auto was_at = *u.location;
-        const PlayerId controller = u.controller;
-        // Detach any attached gear first (CR 719.5).
-        for (auto gid : std::vector<GameObjectId>(u.attachments)) {
-            if (ctx.state.objectExists(gid)) ctx.executor.unattachGear(gid);
-        }
-        u.attachments.clear();
-        u.attachment_might_bonus = 0;
-        u.damage_marked = 0;
-        u.combat_designation = CombatDesignation::None;
-        u.location = std::nullopt;
         const bool token = u.isToken();
-        if (token) {
-            // CR 183.1: a token that leaves the board ceases to exist.
-            u.zone = ZoneType::Banishment;
-        } else if (to_top) {
-            // Through deck_ops, so the knowledge tracker sees a known card
-            // land on top / bottom.
-            deck::putOnTop(ctx.state, owner, picked, deck::Place::Public, knowledge::everyone());
-        } else {
-            deck::putOnBottom(ctx.state, owner, picked, deck::Place::Public, knowledge::everyone());
-        }
-        ctx.events.emit(LeftBoardEvent{picked, controller, CardType::Unit, was_at,
-                                       token ? ZoneType::Banishment : ZoneType::MainDeck,
-                                       /*was_killed=*/false});
+        // Through the executor, like every other way off the board: gear
+        // comes off, a token ceases to exist, the deck and the knowledge
+        // tracker see a known card land, and the card in the deck is a new
+        // object (CR 124.1). (`owner` is where it goes: its owner's deck.)
+        (void)owner;
+        ctx.executor.putIntoDeckFromBoard(picked, to_top);
         RIFT_TRACE(ctx.events, "KEEPER'S VERDICT: " + u.name +
                             (token ? " (a token) ceased to exist"
                                    : to_top ? " placed on TOP of deck"

@@ -199,6 +199,19 @@ public:
     /// the gear's attachment state. Per CR 719.5 the detached gear stays at
     /// its current location (on board, unattached). No-op if not attached.
     void unattachGear(GameObjectId gear);
+    /// `object` has just been taken off the board (its zone and location are
+    /// already the new ones, the events of the move are out): it is a new
+    /// object now (CR 124.1). Sheds whatever is still attached to it or it is
+    /// attached to, then drops every status, counter and temporary
+    /// modification (core/board_state.h, forgetBoardState). Every path off the
+    /// board ends here; a card that takes something off the board calls one
+    /// of the executor's operations (killObject, bounceToHand, banishObject,
+    /// recycleCards, putIntoDeckFromBoard), never writes the zone itself.
+    void leftBoard(GameObjectId object);
+    /// "Put it on the top / bottom of its owner's Main Deck" for a permanent
+    /// on the board (Keeper's Verdict): gear comes off, a token ceases to
+    /// exist, a card goes to the deck seen by everyone, LeftBoardEvent.
+    void putIntoDeckFromBoard(GameObjectId target, bool to_top);
     /// Move a unit to the given battlefield. Updates `location` + `zone`,
     /// counts the move (`moves_this_turn`), brings attached gear along (CR
     /// 719.3) and emits UnitMovedEvent. No-op if it is already there. Caller is responsible for any contested-status

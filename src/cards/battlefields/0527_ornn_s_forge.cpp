@@ -16,14 +16,21 @@ class OrnnSForge : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
-        // Find the battlefield this card object backs, and apply the reduction
-        // only while a player controls it.
+        // Each Forge gives ITS controller the reduction, once: the hook runs
+        // once per battlefield slot holding this card and is not told which,
+        // so it walks every such slot and skips one already handled this pass
+        // (the engine drops aura-sourced modifiers at the top of each pass).
         for (auto& bf : state.battlefields) {
             if (!state.objectExists(bf.card_object_id)) continue;
             const auto& bf_obj = state.getObject(bf.card_object_id);
             if (bf_obj.card_def_id != cardDefId()) continue;
             if (!bf.controller.has_value()) continue;
             PlayerId who = *bf.controller;
+            auto& mods = state.player(who).cost_modifiers;
+            bool already = false;
+            for (const auto& have : mods)
+                if (have.source == bf.card_object_id && have.first_gear_per_turn) already = true;
+            if (already) continue;
             PlayerState::CostModifier m;
             m.source = bf.card_object_id;
             m.energy_reduction = 1;
@@ -32,8 +39,7 @@ public:
             m.affects_non_token_only = true;
             m.affects_friendly_only = true;
             m.this_turn_only = false;
-            state.player(who).cost_modifiers.push_back(m);
-            return;
+            mods.push_back(m);
         }
     }
 private:

@@ -24,6 +24,10 @@ public:
         GameObjectId subj = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         if (subj == kInvalidId || !ctx.state.objectExists(subj)) return;
+        // "give it +1 [M]": only while it is still a unit on the board (an id
+        // exists forever; the unit may have died or been bounced in response).
+        const auto& moved = ctx.state.getObject(subj);
+        if (!moved.isUnit() || !moved.location.has_value()) return;
         ctx.executor.giveTemporaryMight(subj, 1);
         ctx.events.logTrace("BACK-ALLEY BAR: unit left -> +1 [M] this turn");
     }

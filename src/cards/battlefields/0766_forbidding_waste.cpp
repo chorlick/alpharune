@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -33,7 +34,8 @@ public:
                     auto obf = o.battlefieldId();
                     if (obf && *obf == bf.id) friendly_here++;
                 }
-                if (friendly_here == 1) {  // alone
+                // Once per Waste (the hook runs once per slot holding this card).
+                if (friendly_here == 1 && !hasAuraFrom(u, bf.card_object_id)) {  // alone
                     GameObject::AuraEffect ae;
                     ae.source = bf.card_object_id;
                     ae.might_bonus = -2;

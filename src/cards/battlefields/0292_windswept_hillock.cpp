@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -23,6 +24,7 @@ public:
                 if (!u.isUnit()) continue;
                 auto ubf = u.battlefieldId();
                 if (!ubf || *ubf != bf.id) continue;
+                if (hasAuraFrom(u, bf.card_object_id)) continue;   // one per slot (see War Camp)
                 GameObject::AuraEffect ae;
                 ae.source = bf.card_object_id;
                 ae.keyword = Keyword::Ganking;

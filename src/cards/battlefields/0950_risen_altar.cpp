@@ -16,14 +16,19 @@ class RisenAltar : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "[Empower] costs of your units here cost [1] or [A] less."
-    // Applied as [1] less Energy for the battlefield controller's units here
-    // (the "or [A]" alternative is not modeled).
-    void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        if (controller == PlayerId::None) return;
+    // "Your" is each Altar's own controller: the hook is called once per slot
+    // holding this card and is not told which, so it sets every Altar's
+    // discount for that Altar's controller (idempotent).
+    // ENGINE-GAP: only the [1] Energy reduction exists (GameObject::
+    // empower_cost_reduction feeds Card::activationCostReductionFor, which is
+    // Energy only), so an [Empower] cost with no Energy — Gangplank, Naval's
+    // [O][O] — is not reduced by the "[A] less" alternative.
+    void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
         for (auto& bf : state.battlefields) {
             if (!state.objectExists(bf.card_object_id)) continue;
             if (state.getObject(bf.card_object_id).card_def_id != cardDefId()) continue;
-            bf.empower_cost_reduction[playerIndex(controller)] = 1;
+            if (!bf.controller.has_value()) continue;
+            bf.empower_cost_reduction[playerIndex(*bf.controller)] = 1;
         }
     }
 private:

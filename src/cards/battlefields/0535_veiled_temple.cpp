@@ -18,26 +18,40 @@ namespace {
 class VeiledTemple : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        ctx.executor.readyObject(targets[0]);
-        // If it's an Equipment, you may detach it.
-        auto& gear = ctx.state.getObject(targets[0]);
-        if (isEquipment(gear) && gear.attached_to.has_value()) {
-            int conf = confirmOptional(ctx, "Veiled Temple: detach the Equipment?",
-                                       [&]() {
-                if (!ctx.state.objectExists(targets[0])) return false;
-                return ctx.state.getObject(targets[0]).attached_to.has_value();
-            });
-            if (conf == 1) {
-                ctx.executor.unattachGear(targets[0]);
-                ctx.events.logTrace("VEILED TEMPLE: detached Equipment");
+    // The conqueror decides everything as the ability is finalized (CR 383.3):
+    // the "may", which gear, and — for an attached Equipment — whether to
+    // detach it. One confirmOptional per callback, so the second "may" is a
+    // two-mode pickMode.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto gears = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (obj.isGear() && obj.controller == ctx.controller && obj.location.has_value())
+                    out.push_back(id);
+            return out;
+        };
+        const int go = confirmOptional(ctx, "Veiled Temple: ready a friendly gear?",
+                                       [&]() { return !gears().empty(); });
+        GameObjectId gear_id = kInvalidId;
+        int detach = 0;
+        if (go == 1) {
+            gear_id = pickTarget(ctx, "Veiled Temple: ready which gear", gears());
+            if (gear_id != kInvalidId && ctx.state.objectExists(gear_id)) {
+                const auto& g = ctx.state.getObject(gear_id);
+                if (isEquipment(g) && g.attached_to.has_value())
+                    detach = pickMode(ctx, "Veiled Temple: detach the Equipment?", 2,
+                                      {"Leave it attached", "Detach it"});
             }
         }
-    }
-    TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_gear = true, .must_be_friendly = true};
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (go < 1 || gear_id == kInvalidId || detach < 0) return;   // declined / none / waiting
+        ctx.executor.readyObject(gear_id);
+        if (detach == 1 && ctx.state.getObject(gear_id).attached_to.has_value()) {
+            ctx.executor.unattachGear(gear_id);
+            ctx.events.logTrace("VEILED TEMPLE: detached Equipment");
+        }
     }
 private:
     const CardDef def_ = [] {

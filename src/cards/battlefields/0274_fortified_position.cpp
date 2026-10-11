@@ -17,22 +17,13 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "When you defend here, choose a unit. It gains [Shield 2] this combat."
+    // "A unit": any unit on the board, either player's (not only a defender).
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Choose a friendly unit (the defender) controlled by the defending
-        // player (ctx.controller).
-        std::vector<GameObjectId> friendly;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
-                friendly.push_back(id);
-        }
-        if (friendly.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "Fortified Position (gain Shield 2)", friendly);
+        const auto units = chooseableUnits(ctx.state, ctx.controller,
+                                           [](const GameObject&) { return true; });
+        GameObjectId picked = pickTarget(ctx, "Fortified Position (gain Shield 2)", units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (picked == kInvalidId) return;     // none / mistarget / waiting
         ctx.executor.giveTemporaryKeyword(picked, Keyword::Shield, 2);
         ctx.events.logTrace("FORTIFIED POSITION: defend -> grant Shield 2");
     }

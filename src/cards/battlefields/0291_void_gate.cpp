@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -18,6 +19,9 @@ public:
     // bonus_damage_taken aura onto units at this battlefield; dealDamage adds it
     // to spell/ability damage.
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
+        // The hook runs once per battlefield slot holding this card and walks
+        // every such slot: hasAuraFrom keeps each slot's effect to one copy
+        // when both players brought it.
         for (auto& bf : state.battlefields) {
             if (!state.objectExists(bf.card_object_id)) continue;
             if (state.getObject(bf.card_object_id).card_def_id != cardDefId()) continue;
@@ -25,6 +29,7 @@ public:
                 if (!obj.isUnit() || !obj.location.has_value()) continue;
                 if (!std::holds_alternative<BattlefieldLocation>(*obj.location)) continue;
                 if (std::get<BattlefieldLocation>(*obj.location).id != bf.id) continue;
+                if (hasAuraFrom(obj, bf.card_object_id)) continue;
                 GameObject::AuraEffect ae;
                 ae.source = bf.card_object_id;
                 ae.bonus_damage_taken = 1;

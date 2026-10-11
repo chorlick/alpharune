@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,6 +17,9 @@ public:
     const CardDef& def() const override { return def_; }
     // "Units here have +1 [M]. (This includes attackers.)" — static aura.
     void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
+        // The hook runs once per battlefield slot holding this card and walks
+        // every such slot: hasAuraFrom keeps each slot's effect to one copy
+        // when both players brought it.
         for (const auto& bf : state.battlefields) {
             if (!state.objectExists(bf.card_object_id)) continue;
             if (state.getObject(bf.card_object_id).card_def_id != cardDefId()) continue;
@@ -23,6 +27,7 @@ public:
                 if (!u.isUnit()) continue;
                 auto ubf = u.battlefieldId();
                 if (!ubf || *ubf != bf.id) continue;
+                if (hasAuraFrom(u, bf.card_object_id)) continue;
                 GameObject::AuraEffect ae;
                 ae.source = bf.card_object_id;
                 ae.might_bonus = 1;

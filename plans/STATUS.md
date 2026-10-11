@@ -79,7 +79,7 @@ iteration must apply these.
 | 2 | cards-c2 | merged | `2fe1205` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 41 of 42 batch-02 boxes + 3 batch-08; Wallop 146 / Call to Glory 207 BLOCKED (spell alternative-cost path); 3 `shared:` commits with engine state and trigger additions |
 | 2 | cards-c3 | merged | `c2def86` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 35 of 39 batch-03 boxes + 9 in batch-08/09; 4 left open (645 facedown, 579, 743 Repeat cost, 931 Flow); 6 `shared:` commits; corrected 7 existing tests |
 | 2 | cards-c4 | merged | `fd00d2c` | batch gate at `e36ffa6`: 2040/2040, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
-| 2 | cards-c5 | running | | | based on `1640e81` |
+| 2 | cards-c5 | returned | `870307e` (merged, gate running) | 2100 passed, 0 failed (clean namespaced build, on its branch) | 33 of 39 batch-05 boxes + 6 batch-09 + 4 batch-10; 7 BLOCKED on engine work; 5 `shared:` commits |
 | 2 | cards-c6 | running | | | based on integration with cards-c0 merged |
 | 2 | cards-c7 | running | | | based on integration with c0–c4 merged |
 | 3 | sweep | pending | | | |
@@ -108,6 +108,17 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c5 | BLOCKED batch-05: Weaponmaster 324 / 414 / 421 / 448 / 407 / 435 and Jax, Unrelenting 440 (Equip cost needs an equip-cost descriptor on `Card`, 7.7); Minotaur Reckoner 337 (effect moves to base not stopped — needs the recall primitive); Commander Ledros 231 (interactive "kill N units" additional cost in the play path); Fae Dragon 423 second sentence (spend-a-buff primitive + trigger type, nine spending cards across streams); Lux, Crownguard 312 (spell-only Energy pool); Irelia, Graceful 462 ([1]-or-[A] choice and deferred-target spells in `executePlaySpell`); Ezreal, Prodigy 470 (optional-additional-cost discount) | sweep | open |
+| cards-c5 | DEPENDENCY: Karthus now repeats only objects with `Keyword::Deathknell` — Baccai Witherclaw 865 and Noxian Emissary 915 must get the keyword on their defs or Karthus stops repeating them | cards-c7 (told in brief via 8.8); verify at stage 2 gate | open |
+| cards-c5 | `shared:` changes to review: `GameObject::aura_cant_move_to_base` (read by the standard-move generator); `EffectExecutor::lookBeforeReveal(player)` (other reveal-from-deck cards should call it); helpers `pickSeveral`, `createGoldExhausted` honouring `tokens_enter_ready`; `CostModifier::max_printed_energy_cost` (Jayce); Karthus repeat filter in `trigger_manager.cpp`; 3 existing tests corrected | sweep (review) | open |
+| cards-c5 | reprints outside its range not edited: Karma 548, Darius 547, Plundering Poro 778 (3.18 defect is here, not 392), Veteran Poro 779 | cards-c6 (547, 548), cards-c7 (778, 779) | open |
+| cards-c5 | Karma, Channeler 235 tags set to `{Karma, Ionia}`; the gallery data itself says "Vi" for OGN-235 and no physical card was checked | user to confirm (final report) | open |
+| cards-c5 | NEW: `CardTestFixture::addUnit` does not copy `shield_value` / `assault_value` / `deflect_value` from the def | sweep (fixture) | open |
+| cards-c5 | NEW: Spectral Matron 226 and Rumble 349 carry a local "base or controlled battlefield" `pickMode`; switch to `pickEffectPlayLocation` | sweep | open |
+| cards-c5 | NEW: Legion Quartermaster 367 / Zaun Punk 481 additional cost is paid at trigger finalization, after the unit has landed — true pre-play cost needs an engine hook (same family as Cruel Patron 208) | sweep | open |
+| cards-c5 | NEW: Aphelios 372 "Ready 2 runes" readies the first two exhausted runes in map order; the player does not choose | sweep | open |
+| cards-c5 | NEW: stale CLAUDE.md pitfall — says `combat_designation` is cleared between trigger fire and resolution; `processContestedBattlefields` keeps designations in step with `combat_in_progress` | sweep (CLAUDE.md) | open |
+| cards-c5 | Fiora, Victorious 232: her own Shield no longer keeps her Mighty, but other auras still lag one pass (no layer system) | sweep (note) | open |
 | cards-c3 | open batch-03: Smoke and Mirrors 645 never offered from facedown — hidden-play generator requires every target at the hidden battlefield, CR 811.1.d.4 frees the second target | sweep | open |
 | cards-c3 | open batch-03: Death Mark 931 `[A][A]` Flow from two domains — engine gap in the any-domain grant payment path (card's `flowCost` is correct) | sweep | open |
 | cards-c3 | open batch-03: Square Up 579, Curtain Call 743 Repeat cost (card-declared Repeat cost, see the 8.9 row); card-side parts fixed | sweep | open |
@@ -276,3 +287,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c3 (`c2def86`) merged into the batch (merge `35bb914`); conflicts mechanical, resolved with `.worktrees/resolve_plans.py` for plan files. Batch awaiting gate: c1, c2, c3, c4. 12 rows to carry-over.
 - 2026-10-10 first batch gate (label c2) FAILED TO BUILD: orchestrator's keep-both resolution in `card_helpers.h` dropped a closing brace (fixed in `e36ffa6`). `gate.sh` had gone on to test stale binaries after the failed build; it now aborts on a failed build. Lesson: compile-check a resolved code conflict before committing the merge.
 - 2026-10-10 batch c1+c2+c3+c4 verified at `e36ffa6` (gate-batch1): 2040 run, 2040 passed (1783 + 67 + 68 + 72 + 50), openspiel 17/17, clone-equiv 10/10, smoke 135 / 65 / 0 rc=0, fault injection rc=1. Worktrees and branches removed. Spawned cards-c7.
+- 2026-10-10 cards-c5 (`870307e`) merged cleanly (merge `b95b4e4`), gate running. 11 rows to carry-over.

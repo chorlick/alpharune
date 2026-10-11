@@ -40,28 +40,55 @@ TEST_F(PerTurnTest, ShadowWatcher_EntersReadyIfFriendlyDiedInBeginning) {
     EXPECT_FALSE(c->entersReadyOnPlay(state, P1));
 }
 
+// Through the engine: real draws, the trigger condition is checked as the
+// cards are drawn, and the controller chooses the friendly unit (card text:
+// "give a friendly unit +2 [M]").
+namespace frigid_jewel_tests {
+GameObjectId addJewel(GameState& state, PlayerId owner) {
+    auto id = state.createObject();
+    auto& g = state.getObject(id);
+    g.owner = g.controller = owner;
+    g.card_type = CardType::Gear;
+    g.card_def_id = 636;
+    g.name = "Frigid Jewel";
+    g.zone = ZoneType::Base;
+    g.location = BaseLocation{owner};
+    return id;
+}
+}  // namespace frigid_jewel_tests
+
 TEST_F(PerTurnTest, FrigidJewel_BuffsAFriendlyUnitOnSecondDraw) {
-    auto jewel = addUnit(P1, 636, 0, 0);   // gear stand-in (skipped as target)
+    frigid_jewel_tests::addJewel(state, P1);
+    auto other = addUnit(P1, 1, 4, 0);
     auto unit = addUnit(P1, 1, 4, 0);
-    state.player(P1).draws_this_turn = 2;
-    int before = state.getObject(unit).current_might;
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(636, P1, jewel, TriggerType::WhenYouDrawACard, exec);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kInvalidId);
+    state.player(P1).draws_this_turn = 1;
+    const int before = state.getObject(unit).current_might;
+
+    EnginePathAgent agent(EnginePathAgent::choosing(unit));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.drawCards(P1, 1); },
+                         &agent);
+    EXPECT_TRUE(agent.wasOffered(other)) << "the controller chooses which friendly unit";
     EXPECT_EQ(state.getObject(unit).current_might, before + 2)
-        << "2nd draw -> a friendly unit +2 [M]";
-    // Once per turn: a 3rd draw fires the trigger again but does nothing more.
-    fireTriggerAs(636, P1, jewel, TriggerType::WhenYouDrawACard, exec);
+        << "2nd draw -> the chosen friendly unit +2 [M]";
+    EXPECT_EQ(state.getObject(other).current_might, before);
+
+    // Once per turn: a 3rd draw does not trigger it again.
+    EnginePathAgent again(EnginePathAgent::choosing(unit));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.drawCards(P1, 1); },
+                         &again);
+    EXPECT_TRUE(again.prompts.empty());
     EXPECT_EQ(state.getObject(unit).current_might, before + 2)
         << "Frigid Jewel only fires on the 2nd draw each turn";
 }
 
 TEST_F(PerTurnTest, FrigidJewel_NoBuffBeforeSecondDraw) {
-    auto jewel = addUnit(P1, 636, 0, 0);
+    frigid_jewel_tests::addJewel(state, P1);
     auto unit = addUnit(P1, 1, 4, 0);
-    state.player(P1).draws_this_turn = 1;   // only one draw so far
-    int before = state.getObject(unit).current_might;
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(636, P1, jewel, TriggerType::WhenYouDrawACard, exec);
+    for (int i = 0; i < 2; ++i) addToDeck(P1, kInvalidId);
+    state.player(P1).draws_this_turn = 0;   // this is the first draw
+    const int before = state.getObject(unit).current_might;
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.drawCards(P1, 1); });
     EXPECT_EQ(state.getObject(unit).current_might, before);
 }
 

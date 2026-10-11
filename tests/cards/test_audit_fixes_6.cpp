@@ -587,7 +587,9 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustsToStunMovedEnemy) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
-    EnginePathAgent yes(EnginePathAgent::script({1}));
+    // "When you move an enemy unit, you may exhaust this to stun it" is its own
+    // triggered ability with its own "may" (card text): yes to both.
+    EnginePathAgent yes(EnginePathAgent::choosing(enemy));
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     EXPECT_TRUE(state.getObject(gear).is_exhausted);

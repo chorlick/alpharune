@@ -1593,7 +1593,10 @@ TEST_F(JhinDeckTest, Virtuoso_OptionalTriggerYes_BanishesSpell) {
         [](const std::vector<Intent>& legal) {
             // Two options: [0]=no (empty chosen_objects), [1]=yes
             return legal.size() > 1 ? legal[1] : legal.front();
-        }, exec);
+        }, exec,
+        // "you may banish it": "it" is the spell that was played, which the
+        // trigger carries as its subject (TriggerManager::onSpellResolved).
+        TriggerType::WhenYouPlayASpell, spell);
 
     EXPECT_FALSE(inTrash(P1, spell));
     auto& bz = state.player(P1).banishment;

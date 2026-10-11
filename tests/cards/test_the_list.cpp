@@ -4,8 +4,11 @@
 ///
 /// "As you play this, name a tag. [E]: Give a unit with the named tag -2 [M]
 ///  this turn."
-///   - onPlay names a tag (heuristic: most common enemy-unit tag) and persists
-///     it on the gear instance via GameObject::string_state["named_tag"].
+///   - "As you play this" the controller names a tag (an AsYouPlayMe ability;
+///     with no chain item to suspend on it defaults to the first tag offered,
+///     the most common enemy-unit tag). It persists on the gear instance via
+///     GameObject::string_state["named_tag"]. The choice itself is tested
+///     through the engine in test_review_fix_c1.cpp.
 ///   - The [E] ability only debuffs units carrying that named tag.
 
 #include "tests/cards/card_test_fixture.h"
@@ -60,7 +63,7 @@ TEST_F(CardTestFixture, TheList_OnPlayNamesMostCommonEnemyTag) {
     CardContext ctx{state, events, exec, P1, gear};
     Card* c = card_registry.get(kTheList);
     ASSERT_NE(c, nullptr);
-    c->onPlay(ctx);
+    c->onTrigger(ctx, {});
 
     // Poro:2, Demacia:2 → tie broken lexically (std::map order) → "Demacia".
     EXPECT_EQ(state.getObject(gear).string_state["named_tag"], "Demacia");
@@ -74,7 +77,7 @@ TEST_F(CardTestFixture, TheList_OnPlayClearWinnerNamed) {
 
     EffectExecutor exec(state, events, card_db, &card_registry);
     CardContext ctx{state, events, exec, P1, gear};
-    card_registry.get(kTheList)->onPlay(ctx);
+    card_registry.get(kTheList)->onTrigger(ctx, {});
 
     EXPECT_EQ(state.getObject(gear).string_state["named_tag"], "Poro");
 }
@@ -83,11 +86,11 @@ TEST_F(CardTestFixture, TheList_OnPlayNoEnemyUnitsNamesNothing) {
     auto gear = makeList(state, P1);
     EffectExecutor exec(state, events, card_db, &card_registry);
     CardContext ctx{state, events, exec, P1, gear};
-    card_registry.get(kTheList)->onPlay(ctx);
+    card_registry.get(kTheList)->onTrigger(ctx, {});
 
     EXPECT_TRUE(state.getObject(gear).string_state.find("named_tag") ==
                 state.getObject(gear).string_state.end())
-        << "no enemy units → no tag named";
+        << "no tag anywhere in public view → no tag named";
 }
 
 TEST_F(CardTestFixture, TheList_AbilityDebuffsOnlyNamedTagUnit) {

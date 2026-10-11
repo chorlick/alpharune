@@ -546,6 +546,12 @@ protected:
         gear_ = onBoardCard(P1, kLastRites);
         attach(gear_, bearer_);
     }
+    /// Floating Energy and [A] to cover the cost of a unit played by an effect
+    /// that does not waive it (Last Rites: "You still pay its costs.").
+    void fundPlay(PlayerId p) {
+        s().player(p).rune_pool.energy += 10;
+        s().player(p).rune_pool.universal_power += 4;
+    }
 };
 
 TEST_F(EquippedTriggerChainTest, IsNotRunInsideEventDispatch) {
@@ -571,6 +577,7 @@ TEST_F(EquippedTriggerChainTest, YouMayIsARealChoice_Declined) {
     // the helpers could only answer yes.
     setUpHold();
     auto in_trash = cardInTrash(P1, kJaeMedarda);
+    fundPlay(P1);   // "(You still pay its costs.)": only offered if it can be paid for
     p1_.say_yes = false;
 
     engine_->testHook_scoringStep();
@@ -584,6 +591,7 @@ TEST_F(EquippedTriggerChainTest, TheControllerChoosesWhichUnit) {
     setUpHold();
     auto first  = cardInTrash(P1, kJaeMedarda);
     auto second = cardInTrash(P1, kIreliaFervent);
+    fundPlay(P1);   // "(You still pay its costs.)"
     p1_.want = {second};
 
     engine_->testHook_scoringStep();
@@ -701,11 +709,12 @@ TEST_F(ChainTriggerFixTest, ChosenUnit_IreliaTriggersOnHerOwnChoice) {
 TEST(TargetlessTriggerAudit, NoNewCardWaitsForEngineSuppliedTriggerTargets) {
     static const std::set<CardDefId> kKnownOffenders = {
         16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 234, 238, 330,
-        361, 384, 453, 479, 539, 589, 618, 695, 738,
+        361, 384, 453, 479, 539, 589, 618, 738,
     };
-    // Declares requirements its trigger never reads (it picks through its
-    // own requestChoice calls); nothing waits on the engine.
-    static const std::set<CardDefId> kRequirementsUnused = {553 /* Void Burrower */};
+    // Cards that declare requirements their trigger never reads; nothing
+    // waits on the engine. (Empty: Void Burrower 553 dropped its dead
+    // getTargetRequirements().)
+    static const std::set<CardDefId> kRequirementsUnused = {};
     CardRegistry registry;
     registry.loadAll();
     std::vector<CardDefId> unexpected;

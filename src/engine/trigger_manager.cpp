@@ -852,6 +852,10 @@ void TriggerManager::onScore(const ScoreEvent& e) {
         fireLegendTrigger(TriggerType::WhenIHold, e.player, 0, scored_bf_card);
     }
     fireLegendTrigger(TriggerType::WhenIConquerOrHold, e.player, 0, scored_bf_card);
+    // "When they hold, ..." as a delayed ability (Ashe, Focused), keyed to the
+    // player who held.
+    if (e.method == ScoreMethod::Hold)
+        checkDelayedAbilities(TriggerType::WhenIHold, e.player, kInvalidId);
 
     // "When you conquer, ... return this from your trash to your hand": a
     // spell whose ability works from the trash (Super Mega Death Rocket!)

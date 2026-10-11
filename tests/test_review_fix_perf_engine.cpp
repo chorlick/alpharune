@@ -17,6 +17,7 @@
 #include "engine/game_engine.h"
 #include "rules/deck_validator.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -690,6 +691,58 @@ TEST_F(PerfEngineGame, BoardQueriesMatchAWalkAtEveryDecisionOfAGame) {
         } while (g.advance(1));
     }
     EXPECT_GT(decisions, 300);
+}
+
+// ─── 6.3: trigger dispatch ──────────────────────────────────────────────────
+
+// Card::firesOn answers from a set built once per card; CardRegistry::get is a
+// table lookup. For every registered card both say what the definitions they
+// replaced say.
+TEST_F(PerfEngineCards, EveryCardFiresOnExactlyItsTriggerTypes) {
+    int cards = 0, with_trigger = 0;
+    for (const CardDefId id : card_registry.classDefIds()) {
+        Card* card = card_registry.get(id);
+        ASSERT_NE(card, nullptr) << id;
+        EXPECT_EQ(card->def().id, id);
+        ++cards;
+        const std::vector<TriggerType> types = card->triggerTypes();
+        if (!types.empty()) ++with_trigger;
+        for (int t = 0; t < 256; ++t) {
+            const auto type = static_cast<TriggerType>(t);
+            const bool listed = std::find(types.begin(), types.end(), type) != types.end();
+            ASSERT_EQ(card->firesOn(type), listed) << card->def().name << ", trigger " << t;
+        }
+    }
+    EXPECT_GT(cards, 900);
+    EXPECT_GT(with_trigger, 300);
+    // Ids nobody registered, small and huge.
+    EXPECT_EQ(card_registry.get(0), nullptr);
+    EXPECT_EQ(card_registry.get(999), nullptr);
+    EXPECT_EQ(card_registry.get(70000), nullptr);
+    EXPECT_EQ(card_registry.get(kInvalidId), nullptr);
+    EXPECT_FALSE(card_registry.has(kInvalidId));
+}
+
+// A card object that was never registered (a test driving it directly)
+// answers the same way.
+TEST(PerfEngineFacts, AnUnregisteredCardAnswersFromItsOwnDeclarations) {
+    TCountingElder lone;
+    EXPECT_FALSE(lone.firesOn(TriggerType::WhenIDie));
+    EXPECT_TRUE(lone.abilities().empty());
+    const TCountingElder copy = lone;   // a copy shares what was built
+    EXPECT_FALSE(copy.firesOn(TriggerType::WhenIDie));
+}
+
+// ObjectStateChangedEvent's key refers to its literal: it compares by text.
+TEST(PerfEngineFacts, AStateChangeKeyComparesByItsText) {
+    const ObjectStateChangedEvent e{7, "chosen_by_controller"};
+    EXPECT_TRUE(e.what_changed == "chosen_by_controller");
+    EXPECT_FALSE(e.what_changed == "chosen_by_controlle");
+    EXPECT_TRUE(e.what_changed != "buffed");
+    EXPECT_EQ(e.what_changed.str(), "chosen_by_controller");
+    const ObjectStateChangedEvent copied = e;   // what a held emission keeps
+    EXPECT_TRUE(copied.what_changed == std::string("chosen_by_controller"));
+    static_assert(sizeof(StateChangeKey) <= 2 * sizeof(void*), "a key is a pointer and a length");
 }
 
 }  // namespace test_review_fix_perf_engine

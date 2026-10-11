@@ -14,6 +14,7 @@
 #include "core/card_db.h"
 #include "effects/effect_types.h"
 
+#include <bitset>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -212,6 +213,19 @@ public:
     /// `onActivate(ctx, ability_index, targets)` to dispatch on the index.
     virtual std::vector<ActivatedAbility> activatedAbilities() const;
 
+    /// activatedAbilities(), built once per card object instead of once per
+    /// question (the generators ask for every object in play at every
+    /// decision, and each answer was a fresh vector — plans/06 item 6.5). The
+    /// descriptors are a property of the card class: activatedAbilities()
+    /// takes no game state. Engine code reads this; a card that overrides
+    /// activatedAbilities() needs to do nothing else.
+    const std::vector<ActivatedAbility>& abilities() const;
+
+    /// Builds what abilities() and firesOn() answer from. CardRegistry calls
+    /// it as a card is registered; a card that is never registered (a test
+    /// that drives a card object directly) builds it on first use.
+    void primeStaticFacts() const;
+
     // ── Triggers ──
     /// What event type triggers this card's ability.
     virtual TriggerType triggerType() const { return TriggerType::None; }
@@ -227,10 +241,13 @@ public:
         return {t};
     }
 
-    /// Whether this card fires on the given trigger event.
+    /// Whether this card fires on the given trigger event: is `t` among
+    /// triggerTypes(). Answered from a set built once per card object (the
+    /// trigger manager asks it of every object in play for every event, and
+    /// each triggerTypes() call was a fresh vector — plans/06 item 6.3).
     bool firesOn(TriggerType t) const {
-        for (auto x : triggerTypes()) if (x == t) return true;
-        return false;
+        if (!static_facts_) primeStaticFacts();
+        return static_facts_->triggers.test(static_cast<size_t>(t));
     }
 
     /// Called when a matching trigger fires. For multi-trigger cards,
@@ -1186,6 +1203,17 @@ public:
         return entersReadyOnPlay(state, controller);
     }
 
+
+private:
+    // Facts about the card class that need no game state, asked very often.
+    // Built by primeStaticFacts(): at registration for every card of a
+    // registry (so before any game thread reads them), lazily for a card
+    // object used on its own. A copy of a card shares them.
+    struct StaticFacts {
+        std::vector<ActivatedAbility> abilities;
+        std::bitset<256> triggers;   // TriggerType is a uint8_t
+    };
+    mutable std::shared_ptr<const StaticFacts> static_facts_;
 };
 
 // ─── Subclasses ─────────────────────────────────────────────────────────────

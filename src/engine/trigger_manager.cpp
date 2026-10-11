@@ -96,7 +96,7 @@ void TriggerManager::onUnitStunned(const UnitStunnedEvent& e) {
     // not stunning an enemy). The stunned unit is the trigger's subject.
     if (e.stunner == e.victim_controller) return;
     std::vector<GameObjectId> watchers;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.inPlay()) {
         if (obj.controller != e.stunner) continue;
         if (obj.card_def_id == kInvalidId) continue;
         if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
@@ -287,7 +287,8 @@ bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
     const std::optional<LocationId> where = dead ? obj.last_known.location : obj.location.get();
     if (!where.has_value() || !std::holds_alternative<BattlefieldLocation>(*where)) return false;
     const BattlefieldId bf = std::get<BattlefieldLocation>(*where).id;
-    for (const auto& [oid, other] : state_.objects) {
+    for (const auto& [oid, other] :
+         state_.objects.atLocation(LocationId{BattlefieldLocation{bf}})) {
         if (oid == source || other.controller != obj.controller) continue;
         const auto obf = other.battlefieldId();
         if (!obf || *obf != bf) continue;
@@ -405,7 +406,7 @@ void TriggerManager::queueKeywordAbilities(GameObjectId object, PlayerId control
 // "When an opponent plays a unit", and the player's legend.
 void TriggerManager::announceUnitPlayed(GameObjectId unit, PlayerId player) {
     std::vector<GameObjectId> watchers;
-    for (auto& [id, other] : state_.objects) {
+    for (auto& [id, other] : state_.objects.onBoard()) {
         if (id == unit || !other.location.has_value()) continue;
         if (other.controller != player) continue;
         if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAUnit))
@@ -429,7 +430,7 @@ void TriggerManager::announceUnitPlayed(GameObjectId unit, PlayerId player) {
     // played unit is the subject (Vex, Apathetic stuns it).
     const PlayerId opp = opponent(player);
     std::vector<GameObjectId> opp_watchers;
-    for (auto& [id, other] : state_.objects) {
+    for (auto& [id, other] : state_.objects.onBoard()) {
         if (other.controller != opp || !other.location.has_value()) continue;
         if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenOpponentPlaysAUnit))
             opp_watchers.push_back(id);
@@ -452,7 +453,7 @@ void TriggerManager::onTokenCreated(const TokenCreatedEvent& e) {
     if (e.card_type == CardType::Unit) {
         // "When you play a token unit" (Lillia, Protector of Dreams).
         std::vector<GameObjectId> watchers;
-        for (auto& [id, other] : state_.objects) {
+        for (auto& [id, other] : state_.objects.inPlay()) {
             if (id == e.object || other.controller != player) continue;
             if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
             if (other.card_def_id == kInvalidId) continue;
@@ -464,7 +465,7 @@ void TriggerManager::onTokenCreated(const TokenCreatedEvent& e) {
         announceUnitPlayed(e.object, player);
     } else if (e.card_type == CardType::Gear) {
         std::vector<std::pair<GameObjectId, TriggerType>> fires;
-        for (auto& [id, other] : state_.objects) {
+        for (auto& [id, other] : state_.objects.onBoard()) {
             if (id == e.object || other.card_def_id == kInvalidId) continue;
             if (!other.location.has_value()) continue;
             if (other.controller == player &&
@@ -506,7 +507,7 @@ void TriggerManager::onTokenCreated(const TokenCreatedEvent& e) {
 void TriggerManager::noteCombatParticipants() {
     for (const auto& bf : state_.battlefields) {
         if (!bf.combat_in_progress) continue;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
             auto here = obj.battlefieldId();
             if (here && *here == bf.id)
@@ -519,7 +520,7 @@ void TriggerManager::onStateSettled() {
     noteCombatParticipants();
     static const std::string kAtThreshold = "__at_might_threshold";
     std::vector<GameObjectId> crossed;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.location.has_value() || !obj.isUnit() || obj.card_def_id == kInvalidId) continue;
         const Card* card = card_registry_.get(obj.card_def_id);
         const int n = card ? card->mightThreshold() : 0;
@@ -568,7 +569,7 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     // and "When an opponent plays a gear" on the other player's cards.
     if (e.card_type != CardType::Spell) {
         std::vector<std::pair<GameObjectId, TriggerType>> fires;
-        for (auto& [id, other] : state_.objects) {
+        for (auto& [id, other] : state_.objects.inPlay()) {
             if (id == e.object || other.card_def_id == kInvalidId) continue;
             if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
             if (other.controller == e.player &&
@@ -614,7 +615,7 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     // "When you play a gear" — the player's OTHER cards in play.
     if (e.card_type == CardType::Gear) {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, other] : state_.objects) {
+        for (auto& [id, other] : state_.objects.onBoard()) {
             if (id == e.object || !other.location.has_value()) continue;
             if (other.controller != e.player) continue;
             if (cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAGear))
@@ -638,7 +639,7 @@ void TriggerManager::onSpellResolved(const SpellResolvedEvent& e) {
         it != spell.card_counters.end()) energy_spent = it->second;
 
     std::vector<std::pair<GameObjectId, TriggerType>> fires;
-    for (auto& [id, other] : state_.objects) {
+    for (auto& [id, other] : state_.objects.inPlay()) {
         if (id == e.spell || other.controller != e.controller) continue;
         if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
         if (other.card_def_id == kInvalidId) continue;
@@ -677,7 +678,7 @@ void TriggerManager::onEnteredBoard(const EnteredBoardEvent& e) {
 void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     // The units here are in this combat from its start (see
     // noteCombatParticipants for those that join it later).
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         auto here = obj.battlefieldId();
         if (here && *here == e.battlefield)
@@ -691,7 +692,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     if (e.defender != PlayerId::None)
         fireBattlefieldTriggers(TriggerType::WhenYouDefendHere, e.defender, e.battlefield);
 
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
         auto unit_bf = obj.battlefieldId();
         if (!unit_bf || *unit_bf != e.battlefield) continue;
@@ -713,7 +714,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
             // attacker that triggered me" can't scan the board — it has
             // to read this captured ID. See `MOverzealousFan::onTrigger`
             // for the consumer.
-            for (auto& [att_id, att_obj] : state_.objects) {
+            for (auto& [att_id, att_obj] : state_.objects.onBoard()) {
                 if (!att_obj.isUnit() || !att_obj.isAtBattlefield()) continue;
                 auto abf = att_obj.battlefieldId();
                 if (!abf || *abf != e.battlefield) continue;
@@ -746,7 +747,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     // friendly unit participates on that side at this BF; the lone unit is the
     // subject. (Mask of Foresight 060.)
     std::vector<GameObjectId> side_attackers, side_defenders;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit() || !obj.isAtBattlefield()) continue;
         auto ubf = obj.battlefieldId();
         if (!ubf || *ubf != e.battlefield) continue;
@@ -757,7 +758,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     }
     auto fireAlone = [&](GameObjectId lone, PlayerId side) {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != side || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -779,7 +780,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
         const PlayerId holder = *bf.controller;
         if (holder == e.attacker) break;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != holder || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -803,7 +804,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
     // defense (>=1 defending unit). (Loyal Pup 447.)
     if (!side_defenders.empty()) {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != e.defender || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -855,7 +856,7 @@ void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
     // because fireTrigger / fireEquippedTriggers mutate the chain and could
     // re-enter the object map during iteration.
     std::vector<GameObjectId> winners;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit()) continue;
         if (obj.controller != winner) continue;
         auto unit_bf = obj.battlefieldId();
@@ -881,7 +882,7 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
     // "When an enemy unit here dies," — watchers at the location it died at.
     {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, other] : state_.objects) {
+        for (auto& [id, other] : state_.objects.onBoard()) {
             if (id == e.object || other.card_def_id == kInvalidId) continue;
             if (other.controller == e.controller) continue;
             if (!other.location.has_value() || *other.location != e.was_at) continue;
@@ -914,7 +915,7 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
     // "When an enemy unit dies" — fire on the OPPONENT's objects (Pyke,
     // Returned: gated "while I'm at a battlefield" + once/turn in the card).
     PlayerId opp = opponent(e.controller);
-    for (auto& [id, other] : state_.objects) {
+    for (auto& [id, other] : state_.objects.onBoard()) {
         if (!other.location.has_value()) continue;
         if (id == e.object) continue;
         if (other.controller == e.controller &&
@@ -993,7 +994,7 @@ void TriggerManager::onLeftBoard(const LeftBoardEvent& e) {
     if (e.card_type == CardType::Rune && e.destination == ZoneType::RuneDeck &&
         e.controller != PlayerId::None) {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != e.controller) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1159,7 +1160,7 @@ void TriggerManager::onScore(const ScoreEvent& e) {
     // its choices are made separately when it is finalized.
     {
         int extra = 0;
-        for (const auto& [id, obj] : state_.objects) {
+        for (const auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != e.player || !obj.location.has_value()) continue;
             const Card* card = card_registry_.get(obj.card_def_id);
             // (Once more per Equipment that copies the unit's text.)
@@ -1189,7 +1190,7 @@ void TriggerManager::onScore(const ScoreEvent& e) {
     // "When an opponent scores" — fires on the non-scoring player's on-board cards.
     PlayerId opp = opponent(e.player);
     std::vector<GameObjectId> opp_watchers;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller != opp || !obj.location.has_value()) continue;
         if (obj.card_def_id == kInvalidId) continue;
         if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1235,7 +1236,7 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
     // Used by cards like Miss Fortune, Captain that watch all friendly moves.
     if (std::holds_alternative<BattlefieldLocation>(e.to)) {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, other] : state_.objects) {
+        for (auto& [id, other] : state_.objects.onBoard()) {
             if (id == e.object) continue;  // skip the moving unit itself
             if (other.controller != e.controller) continue;
             if (!other.location.has_value()) continue;
@@ -1270,7 +1271,7 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
     if (std::holds_alternative<BattlefieldLocation>(e.to)) {
         PlayerId opp = opponent(e.controller);
         std::vector<GameObjectId> opp_watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != opp || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1291,7 +1292,7 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
         state_.chain.resuming->controller != e.controller) {
         const PlayerId mover = state_.chain.resuming->controller;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != mover) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1309,7 +1310,7 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
     // the moved unit is the subject (read its new location to follow it).
     {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (id == e.object) continue;
             if (obj.controller != e.controller || !obj.location.has_value()) continue;
             if (!(*obj.location == e.from)) continue;
@@ -1328,7 +1329,7 @@ void TriggerManager::onUnitMoved(const UnitMovedEvent& e) {
 void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
     // "At the end of your turn"
     if (e.new_phase == TurnPhase::EndingStep) {
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (obj.controller != e.turn_player) continue;
 
@@ -1349,7 +1350,7 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
         // speaks for the unit it is attached to (Blighted Battleaxe).
         {
             std::vector<GameObjectId> bearers;
-            for (auto& [id, obj] : state_.objects)
+            for (auto& [id, obj] : state_.objects.onBoard())
                 if (obj.isUnit() && obj.location.has_value() &&
                     obj.controller == e.turn_player && !obj.attachments.empty())
                     bearers.push_back(id);
@@ -1369,7 +1370,7 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
 
     // "At the start of your Beginning Phase"
     if (e.new_phase == TurnPhase::BeginningStep) {
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (obj.controller != e.turn_player) continue;
 
@@ -1395,7 +1396,7 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
     // "move enemy unit here" and similar. Both static triggers on cards
     // AND delayed abilities (registered via state.delayed_abilities) fire.
     if (e.new_phase == TurnPhase::MainPhase) {
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (!obj.location.has_value()) continue;
             if (obj.controller != e.turn_player) continue;
 
@@ -1441,7 +1442,7 @@ void TriggerManager::onUnitReadied(const UnitReadiedEvent& e) {
     // cards (e.g. Pirate's Haven), with the readied unit as the subject.
     const PlayerId controller = e.controller;
     std::vector<GameObjectId> others;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (id == e.object) continue;
         if (obj.controller != controller || !obj.location.has_value()) continue;
         if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1459,7 +1460,7 @@ void TriggerManager::onCardsDrawn(const CardsDrawnEvent& e) {
     // Fire WhenYouDrawACard on the drawing player's on-board watchers. The card
     // decides "is this my 2nd draw this turn" via PlayerState::draws_this_turn.
     std::vector<GameObjectId> watchers;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller != e.player || !obj.location.has_value()) continue;
         if (obj.card_def_id == kInvalidId) continue;
         if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouDrawACard))
@@ -1477,7 +1478,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     // controller's on-board cards (Prize of Progress).
     if (e.what_changed == "gear_ability_used") {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != controller || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1494,7 +1495,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     // 5+ [M] threshold is the subject. (Fiora, Worthy 500 / Grand Duelist 519.)
     if (e.what_changed == "became_mighty") {
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != controller || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1521,7 +1522,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         // Fervent; Jae Medarda): the subject tells a card which unit it was,
         // and one that only cares about itself says so in triggerCondition.
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != controller) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1560,7 +1561,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         // finalized does not trigger again.
         const PlayerId discarder = dobj.owner;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != discarder || obj.card_def_id == kInvalidId) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (!cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouDiscard)) continue;
@@ -1581,7 +1582,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         if (auto it = state_.getObject(e.object).card_counters.find("__ability_energy_cost");
             it != state_.getObject(e.object).card_counters.end()) energy = it->second;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != controller) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1599,7 +1600,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         // Flow, face down, Champion Zone).
         state_.player(controller).cards_played_not_from_hand_this_turn++;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (id == e.object || obj.controller != controller) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1621,7 +1622,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
                         TriggerType::WhenIBecomeEmpowered))
             fireTrigger(e.object, controller, 0, TriggerType::WhenIBecomeEmpowered);
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (id == e.object || obj.controller != controller) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1641,7 +1642,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         const TriggerType t = e.what_changed == "burned"
             ? TriggerType::WhenYouBurn : TriggerType::WhenYouBanishACard;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != owner) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
@@ -1667,7 +1668,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     if (e.what_changed == "recycled_main") {
         const PlayerId owner = state_.getObject(e.object).owner;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.onBoard()) {
             if (obj.controller != owner || !obj.location.has_value()) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1690,7 +1691,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         }
         if (spender == PlayerId::None) return;
         std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects) {
+        for (auto& [id, obj] : state_.objects.inPlay()) {
             if (obj.controller != spender || obj.card_def_id == kInvalidId) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouSpendABuff))
@@ -1711,7 +1712,7 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     // "When you buff a friendly unit" — fires on the controller's OTHER on-board
     // cards (e.g. Mistfall gear). Snapshot ids first; fireTrigger mutates the chain.
     std::vector<GameObjectId> others;
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (id == e.object) continue;
         if (obj.controller != controller || !obj.location.has_value()) continue;
         if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1743,7 +1744,7 @@ void TriggerManager::onCardHidden(const CardHiddenEvent& e) {
     checkDelayedAbilities(TriggerType::WhenAnOpponentHidesACard, opponent(e.player), e.card);
     // "When you hide a card" — fires on the hiding player's on-board cards
     // (Katarina, Reckless: "ready me").
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller != e.player || !obj.location.has_value()) continue;
         if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouHideACard)) {
             fireTrigger(id, e.player, 0, TriggerType::WhenYouHideACard);
@@ -1754,7 +1755,7 @@ void TriggerManager::onCardHidden(const CardHiddenEvent& e) {
 void TriggerManager::onPlayedFromFacedown(const PlayedFromFacedownEvent& e) {
     // "When you play a card from face down" — fires on the controller's
     // on-board cards (Katarina, Reckless: "deal 2 to an enemy unit").
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (obj.controller != e.player || !obj.location.has_value()) continue;
         if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenYouPlayFromFacedown)) {
             fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayFromFacedown);
@@ -1779,7 +1780,7 @@ void TriggerManager::onUnitReturnedToHand(const UnitReturnedToHandEvent& e) {
 void TriggerManager::onShowdownStarted(const ShowdownStartedEvent& e) {
     // "When a showdown begins here" — fires on units at the showdown's
     // battlefield (Diana, Lunari) and on the battlefield card itself.
-    for (auto& [id, obj] : state_.objects) {
+    for (auto& [id, obj] : state_.objects.onBoard()) {
         if (!obj.isUnit()) continue;
         auto bf = obj.battlefieldId();
         if (!bf || *bf != e.battlefield) continue;

@@ -29,9 +29,17 @@ void CardRegistry::registerCard(CardDefId id, std::unique_ptr<Card> card) {
         throw std::logic_error("registerCard: id " + std::to_string(id) +
                                " is already registered ('" +
                                it->second->def().name + "')");
+    if (id < kTableLimit) {
+        if (by_id_.size() <= id) by_id_.resize(static_cast<size_t>(id) + 1, nullptr);
+        by_id_[id] = it->second.get();
+    }
+    // What the card says about itself without looking at a game (its trigger
+    // types, its activated abilities) is asked once, here, before the registry
+    // is shared between game threads.
+    it->second->primeStaticFacts();
 }
 
-Card* CardRegistry::get(CardDefId id) const {
+Card* CardRegistry::find(CardDefId id) const {
     auto it = cards_.find(id);
     return it != cards_.end() ? it->second.get() : nullptr;
 }

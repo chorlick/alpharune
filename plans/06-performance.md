@@ -21,7 +21,10 @@ yi_rebuild, seed 20261010, 6 threads) does not go through any of the four
   - Also about ten full passes over the object map and a `granted_abilities` copy per object (`:4398`).
   - Removing the text-parsed auras (2.1) removes this; otherwise cache the parse per `CardDefId`.
 
-- [ ] **6.3 Trigger dispatch allocates and rescans on every event**
+- [x] **6.3 Trigger dispatch allocates and rescans on every event** — FIXED, the three bullets below; tests: PerfEngineCards.EveryCardFiresOnExactlyItsTriggerTypes, PerfEngineFacts.AnUnregisteredCardAnswersFromItsOwnDeclarations, PerfEngineFacts.AStateChangeKeyComparesByItsText. Measured together on top of 6.10: random 1000 games 1 thread 2.202 s -> 1.983 s; `mcts:sims=50` 4.62 s -> 4.50 s; `ismcts:sims=20` 3.02 s -> 2.94 s.
+  - `firesOn`: answered from a set of the card's trigger types built once per card object (at registration; `Card::primeStaticFacts`), not from a fresh `triggerTypes()` vector per question. `CardRegistry::get`, which every such question goes through (14.9 million calls per 1000 random games), is a table lookup instead of a hash lookup.
+  - The scans: 48 of the trigger manager's 50 walks over every object are walks over the board or over what is in play (6.10's lists; the filter each loop had is unchanged). The two left look at cards in any zone (a combat-participant mark to clear, a watcher in a trash).
+  - `ObjectStateChangedEvent::what_changed` is a `StateChangeKey`: it refers to its string literal instead of copying it into a `std::string` (no allocation per emit for the long keys) and compares length first. Not an enum: adding a key still needs no header change, as CLAUDE.md promises.
   - `Card::firesOn` calls virtual `triggerTypes()`, which returns a `std::vector` by value (`card.h:217-227`), once per (object, trigger) check from `trigger_manager.cpp:160`.
   - Each handler scans all of `state_.objects` (deck, hand, trash included), often several times: `onCardPlayed` four passes, `onCombatStarted` a nested full scan at `:471-480`.
   - `ObjectStateChangedEvent::what_changed` is a `std::string` matched through up to 12 sequential compares (`trigger_manager.cpp:1064-1265`); keys longer than 15 characters allocate per emit. An interned enum would remove it.

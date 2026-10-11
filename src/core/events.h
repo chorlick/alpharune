@@ -18,6 +18,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace riftbound {
@@ -190,10 +191,29 @@ struct ShowdownEndedEvent {
 /// (WhenMyMightReachesThreshold).
 struct StateSettledEvent {};
 
+/// What an ObjectStateChangedEvent says changed: the text of a string literal
+/// ("exhausted", "buff_spent", ...). It refers to the literal instead of
+/// copying it into a std::string — an event is emitted some 300 times a game,
+/// and every key longer than 15 characters was a heap allocation per emit and
+/// per subscriber copy (plans/06 item 6.3). Compared with `==` as before; a
+/// comparison looks at the length first. Only a literal converts to it, so a
+/// key cannot outlive its text. Adding a key still needs no header change.
+class StateChangeKey {
+public:
+    template <std::size_t N>
+    constexpr StateChangeKey(const char (&literal)[N]) : text_(literal, N - 1) {}   // NOLINT
+    constexpr std::string_view view() const { return text_; }
+    std::string str() const { return std::string(text_); }
+    friend constexpr bool operator==(StateChangeKey a, std::string_view b) { return a.text_ == b; }
+
+private:
+    std::string_view text_;
+};
+
 /// A game object's state changed (exhausted, readied, buffed, etc).
 struct ObjectStateChangedEvent {
     GameObjectId object;
-    std::string what_changed; // "exhausted", "readied", "buffed", "damaged", etc.
+    StateChangeKey what_changed; // "exhausted", "readied", "buffed", "damaged", etc.
 };
 
 /// A unit just became stunned. Emitted by EffectExecutor::stunUnit.

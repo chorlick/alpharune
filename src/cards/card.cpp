@@ -875,6 +875,10 @@ std::vector<GameObjectId> Card::enumerateLegalTargets(
     if (reqs.count == 0) return {};
 
     std::vector<GameObjectId> targets;
+    // What `controller` could pay in [A] for Deflect: asked once, and only if
+    // some candidate has a Deflect cost (it was asked per enemy candidate —
+    // plans/06 item 6.5).
+    std::optional<int> payable_power;
 
     for (auto& [id, obj] : state.objects) {
         // Must be on the board (has a location)
@@ -1125,6 +1129,18 @@ Card::PlayCostAdjust Card::payAdditionalPlayCost(
     PlayCostAdjust adj;
     adj.energy_reduction = oac.reduce_energy;
     return adj;
+}
+
+void Card::primeStaticFacts() const {
+    auto facts = std::make_shared<StaticFacts>();
+    facts->abilities = activatedAbilities();
+    for (auto t : triggerTypes()) facts->triggers.set(static_cast<size_t>(t));
+    static_facts_ = std::move(facts);
+}
+
+const std::vector<ActivatedAbility>& Card::abilities() const {
+    if (!static_facts_) primeStaticFacts();
+    return static_facts_->abilities;
 }
 
 std::vector<ActivatedAbility> Card::activatedAbilities() const {

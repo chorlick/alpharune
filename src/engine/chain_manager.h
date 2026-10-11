@@ -14,6 +14,7 @@
 #include "core/intent.h"
 
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace riftbound {
@@ -116,6 +117,20 @@ private:
     /// Returns true if an item was added (restart from Finalize).
     bool stepExecuteAndPass(AgentQuery query_agent,
                             ClosedActionsGen gen_closed_actions);
+
+    /// Pays the Deflect cost (CR 809) of each object `item` chooses as it is
+    /// played; an object whose cost cannot be paid is removed from the item's
+    /// targets — it was not a legal choice.
+    void payDeflectForChoices(ChainItem& item);
+
+    /// Runs the item held in `state_.chain.resuming` until it stops asking
+    /// for choices (see stepResolve).
+    void runResumable(const AgentQuery& query_agent,
+                      const std::function<void(const ChainItem&)>& resolve_spell);
+
+    /// Gives up on a chain that will not empty (safety bound in processFEPR):
+    /// discards what is on it, reopens the state and emits ChainEmptiedEvent.
+    void abandonChain(const std::string& why);
 
     /// Step 4: Resolve the top item on the chain. Drives a resumable loop:
     /// while the resolving Card publishes a pending choice via

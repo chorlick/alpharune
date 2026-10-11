@@ -48,6 +48,8 @@ void TriggerManager::subscribe() {
         [this](const ObjectStateChangedEvent& e) { onObjectStateChanged(e); }));
     connections_.push_back(events_.on_cards_drawn.connect(
         [this](const CardsDrawnEvent& e) { onCardsDrawn(e); }));
+    connections_.push_back(events_.on_left_board.connect(
+        [this](const LeftBoardEvent& e) { onLeftBoard(e); }));
 }
 
 TriggerManager::~TriggerManager() {
@@ -124,23 +126,40 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
 void TriggerManager::fireEquippedTriggers(GameObjectId unit_id, PlayerId controller,
                                            TriggerType trigger) {
     if (!state_.objectExists(unit_id)) return;
-    auto& unit = state_.getObject(unit_id);
+    // Copy: queueing an ability emits events, and a handler may attach or
+    // detach gear.
+    const std::vector<GameObjectId> attached = state_.getObject(unit_id).attachments;
+    for (auto gear_id : attached)
+        queueEquippedTrigger(gear_id, unit_id, controller, trigger);
+}
 
-    for (auto gear_id : unit.attachments) {
-        if (!state_.objectExists(gear_id)) continue;
-        auto& gear = state_.getObject(gear_id);
+// An Equipment's "When I ..." ability (its effect text, which speaks for the
+// unit it is attached to) is a triggered ability like any other: it goes on
+// the chain (CR 383.3) and resolves through Card::onEquippedTrigger, where the
+// choice helpers and the finalization pass work as they do for onTrigger.
+// `is_rules_text_inactive` is deliberately not consulted — it marks the gear's
+// PRINTED text as inactive while attached (CR 718.2), which is exactly when
+// this ability applies.
+void TriggerManager::queueEquippedTrigger(GameObjectId gear_id, GameObjectId unit_id,
+                                          PlayerId controller, TriggerType trigger) {
+    if (!state_.objectExists(gear_id)) return;
+    const auto& gear = state_.getObject(gear_id);
+    if (gear.card_def_id == kInvalidId) return;
+    const Card* gear_card = card_registry_.get(gear.card_def_id);
+    if (!gear_card || gear_card->equippedTriggerType() != trigger) return;
+    if (!gear_card->triggerCondition(state_, gear_id, controller, trigger, unit_id)) return;
 
-        Card* gear_card = card_registry_.get(gear.card_def_id);
-        if (!gear_card) continue;
-        if (gear_card->equippedTriggerType() != trigger) continue;
-
-        events_.logTrace("EQUIP_TRIGGER: " + gear.name + " fires on " +
-                         unit.name + " (" + toString(controller) + ")");
-
-        if (effect_executor_) {
-            CardContext ctx{state_, events_, *effect_executor_, controller, gear_id};
-            gear_card->onEquippedTrigger(ctx, unit_id, {});
-        }
+    events_.logTrace("EQUIP_TRIGGER: " + gear.name + " fires on " +
+                     (state_.objectExists(unit_id) ? state_.getObject(unit_id).name
+                                                   : std::string("?")) +
+                     " (" + toString(controller) + ")");
+    const ChainItemId item_id = chain_.addAbility(gear_id, controller, gear.card_def_id);
+    for (auto& item : state_.chain.items) {
+        if (item.id != item_id) continue;
+        item.fired_trigger = trigger;
+        item.equipped_unit = unit_id;
+        item.triggering_subject = unit_id;
+        break;
     }
 }
 
@@ -167,7 +186,14 @@ void TriggerManager::fireBattlefieldTriggers(TriggerType t, PlayerId player,
         if (at_battlefield != kInvalidId && bf.id != at_battlefield) continue;
         if (!state_.objectExists(bf.card_object_id)) continue;
         if (cardFiresOn(card_registry_, state_.getObject(bf.card_object_id).card_def_id, t)) {
-            fireTrigger(bf.card_object_id, player, 0, t);
+            // No player named by the event: the battlefield's controller
+            // controls its abilities (CR 190.6.a), the turn player if it is
+            // uncontrolled (CR 190.6.b).
+            PlayerId who = player;
+            if (who == PlayerId::None)
+                who = bf.controller.value_or(state_.turn.turn_player);
+            if (who == PlayerId::None) continue;
+            fireTrigger(bf.card_object_id, who, 0, t);
         }
     }
 }
@@ -627,42 +653,17 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
     }
     // Deathknell an Equipment gave the unit ("[Deathknell] — Draw 1." in the
     // gear's effect text): the gear it had as it died (last-known information).
-    if (state_.objectExists(e.object) && effect_executor_) {
+    if (state_.objectExists(e.object)) {
         const auto& dead = state_.getObject(e.object);
         const auto gear_at_death = dead.last_known.valid ? dead.last_known.attachments
                                                          : dead.attachments;
-        for (auto gear_id : gear_at_death) {
-            if (!state_.objectExists(gear_id)) continue;
-            const auto& gear = state_.getObject(gear_id);
-            Card* gear_card = card_registry_.get(gear.card_def_id);
-            if (!gear_card || gear_card->equippedTriggerType() != TriggerType::WhenIDie) continue;
-            events_.logTrace("EQUIP_TRIGGER: " + gear.name + " fires on the death of " + dead.name);
-            CardContext ctx{state_, events_, *effect_executor_, e.controller, gear_id};
-            gear_card->onEquippedTrigger(ctx, e.object, {});
-        }
+        for (auto gear_id : gear_at_death)
+            queueEquippedTrigger(gear_id, e.object, e.controller, TriggerType::WhenIDie);
     }
-    if (state_.objectExists(e.object)) {
-        auto& obj = state_.getObject(e.object);
-
-        if (cardFiresOn(card_registry_, obj.card_def_id, TriggerType::WhenIDie)) {
-            // Karthus, Eternal: "Your Deathknell effects trigger an
-            // additional time." `deathknell_double_count` is bumped per
-            // controlled Karthus by recalculateAuras. Each unit adds
-            // (1 + count) chain items. Empty in the default case so the
-            // existing single-fire path is unchanged.
-            int extra = state_.player(e.controller).deathknell_double_count;
-            int fires = 1 + std::max(0, extra);
-            for (int i = 0; i < fires; ++i) {
-                chain_.addAbility(e.object, e.controller, obj.card_def_id);
-                if (!state_.chain.items.empty()) {
-                    state_.chain.items.back().fired_trigger = TriggerType::WhenIDie;
-                }
-            }
-            if (extra > 0) {
-                events_.logTrace("DEATHKNELL_DOUBLE: " + obj.name + " fires " +
-                                 std::to_string(fires) + " times (Karthus aura)");
-            }
-        }
+    if (state_.objectExists(e.object) &&
+        cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
+                    TriggerType::WhenIDie)) {
+        queueOwnDeathTrigger(e.object, e.controller);
     }
 
     // "When a friendly unit dies" — fire on other objects the controller owns.
@@ -684,6 +685,10 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
             fireTrigger(id, opp, 0, TriggerType::WhenAnEnemyUnitDies);
         }
     }
+    // Legends have no location, so the sweep above never reaches them
+    // (Battle Mistress: "When one or more enemy units die, ready me.").
+    fireLegendTrigger(TriggerType::WhenAFriendlyUnitDies, e.controller, 0, e.object);
+    fireLegendTrigger(TriggerType::WhenAnEnemyUnitDies, opp, 0, e.object);
 
     // "When you kill a unit with a spell" (Immortal Phoenix 037). Attributed to
     // the controller of the spell currently resolving on the chain. Fans to that
@@ -713,6 +718,42 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
     checkDelayedAbilities(TriggerType::WhenIDie, e.controller, e.object);
     checkDelayedAbilities(TriggerType::WhenIDie,
                            opponent(e.controller), e.object);
+}
+
+// "When I die" / [Deathknell] on the object that died. Karthus, Eternal: "Your
+// Deathknell effects trigger an additional time." — `deathknell_double_count`
+// is bumped per controlled Karthus by recalculateAuras, and each adds one more
+// chain item. Zero in the default case.
+void TriggerManager::queueOwnDeathTrigger(GameObjectId object, PlayerId controller) {
+    const auto& obj = state_.getObject(object);
+    const int extra = state_.player(controller).deathknell_double_count;
+    const int fires = 1 + std::max(0, extra);
+    for (int i = 0; i < fires; ++i) {
+        const ChainItemId item_id = chain_.addAbility(object, controller, obj.card_def_id);
+        for (auto& item : state_.chain.items)
+            if (item.id == item_id) item.fired_trigger = TriggerType::WhenIDie;
+    }
+    if (extra > 0) {
+        events_.logTrace("DEATHKNELL_DOUBLE: " + obj.name + " fires " +
+                         std::to_string(fires) + " times (Karthus aura)");
+    }
+}
+
+void TriggerManager::onLeftBoard(const LeftBoardEvent& e) {
+    // A killed gear "dies" like a unit does, but no UnitDiedEvent is emitted
+    // for it: this is where its own "When this is killed" / [Deathknell] fires
+    // (Scrapheap, Sprite Fountain, Treasure Trove). Units are handled by
+    // onUnitDied.
+    if (!e.was_killed || e.card_type != CardType::Gear) return;
+    if (!state_.objectExists(e.object)) return;
+    const auto& gear = state_.getObject(e.object);
+    if (gear.card_def_id == kInvalidId || e.controller == PlayerId::None) return;
+    if (!cardFiresOn(card_registry_, gear.card_def_id, TriggerType::WhenIDie)) return;
+    const Card* card = card_registry_.get(gear.card_def_id);
+    if (card && !card->triggerCondition(state_, e.object, e.controller,
+                                        TriggerType::WhenIDie, e.object))
+        return;
+    queueOwnDeathTrigger(e.object, e.controller);
 }
 
 void TriggerManager::onScore(const ScoreEvent& e) {
@@ -1107,14 +1148,15 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         return;
     }
 
-    // "When you attach an Equipment to me" — fires on the equipped unit itself
-    // (attachGearToUnit / attachFree emit "equipped"). (Aphelios, Exalted 372.)
     if (e.what_changed == "chosen_by_controller") {
         // "When you choose a friendly unit" — a spell or ability its own
         // controller played chose this unit (at play or at resolution).
+        // The chosen unit is a watcher too ("When you choose me" — Irelia,
+        // Fervent; Jae Medarda): the subject tells a card which unit it was,
+        // and one that only cares about itself says so in triggerCondition.
         std::vector<GameObjectId> watchers;
         for (auto& [id, obj] : state_.objects) {
-            if (id == e.object || obj.controller != controller) continue;
+            if (obj.controller != controller) continue;
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
             if (obj.card_def_id == kInvalidId) continue;
             if (cardFiresOn(card_registry_, obj.card_def_id,
@@ -1242,6 +1284,8 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
         return;
     }
 
+    // "When you attach an Equipment to me" — fires on the equipped unit itself
+    // (attachGearToUnit / attachFree emit "equipped"). (Aphelios, Exalted 372.)
     if (e.what_changed == "equipped") {
         if (cardFiresOn(card_registry_, state_.getObject(e.object).card_def_id,
                         TriggerType::WhenEquipmentAttachedToMe))

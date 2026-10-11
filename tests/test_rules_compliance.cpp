@@ -1402,6 +1402,7 @@ TEST_F(GearOnDeathTest, EquipmentGrantedDeathknellFiresOnAnEffectKill) {
     const auto hand_before = s().player(P1).hand.size();
 
     engine_->testHook_executor().killObject(unit);
+    engine_->testHook_endingStep();   // CR 383.3: the Deathknell resolves from the chain
 
     EXPECT_EQ(s().player(P1).hand.size(), hand_before + 1);
     EXPECT_FALSE(s().getObject(shears).attached_to.has_value()) << "the gear is shed";
@@ -1420,6 +1421,7 @@ TEST_F(GearOnDeathTest, EquipmentGrantedDeathknellFiresOnACombatDeath) {
 
     s().getObject(unit).damage_marked = 5;
     engine_->testHook_processLethalDamage();
+    engine_->testHook_endingStep();   // CR 383.3: the Deathknell resolves from the chain
 
     EXPECT_EQ(s().getObject(unit).zone, ZoneType::Trash);
     EXPECT_EQ(s().player(P1).hand.size(), hand_before + 1);

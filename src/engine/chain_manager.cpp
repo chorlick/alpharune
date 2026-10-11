@@ -11,6 +11,33 @@ ChainManager::ChainManager(GameState& state, EventBus& events,
                            const CardDB& card_db)
     : state_(state), events_(events), card_db_(card_db) {}
 
+// CR 809: choosing an opponent's [Deflect] object costs its Deflect Value in
+// [A], a mandatory additional cost of making that choice. A choice whose cost
+// cannot be paid was never legal, so it is not made: the object is dropped
+// from the item's targets (the instruction that names it then does nothing,
+// like a mistarget) instead of being chosen for free.
+void ChainManager::payDeflectForChoices(ChainItem& item) {
+    if (!executor_) return;
+    std::vector<GameObjectId> chosen;
+    chosen.reserve(item.targets.size());
+    for (auto t : item.targets) {
+        const int deflect = executor_->deflectCostFor(item.controller, t);
+        if (deflect > 0 && !executor_->payAnyPower(item.controller, deflect)) {
+            events_.logTrace("DEFLECT_UNPAID: " + std::string(toString(item.controller)) +
+                             " cannot pay " + std::to_string(deflect) + " [A] to choose " +
+                             state_.getObject(t).name + " — it is not chosen");
+            continue;
+        }
+        if (deflect > 0)
+            events_.logTrace("DEFLECT: " + std::string(toString(item.controller)) + " pays " +
+                             std::to_string(deflect) + " [A] to choose " +
+                             state_.getObject(t).name);
+        chosen.push_back(t);
+    }
+    item.targets = chosen;
+    item.chosen_objects = std::move(chosen);
+}
+
 ChainItemId ChainManager::addSpell(GameObjectId spell_obj, PlayerId controller,
                                     const std::vector<GameObjectId>& targets) {
     auto& chain = state_.chain;
@@ -27,23 +54,13 @@ ChainItemId ChainManager::addSpell(GameObjectId spell_obj, PlayerId controller,
     // [Deflect] object costs its Deflect Value in [A], a mandatory additional
     // cost (resolve-time choices pay in Card::pickTarget instead).
     item.chosen_objects = targets;
-    if (executor_) {
-        for (auto t : targets) {
-            const int deflect = executor_->deflectCostFor(controller, t);
-            if (deflect > 0) {
-                executor_->payAnyPower(controller, deflect);
-                events_.logTrace("DEFLECT: " + std::string(toString(controller)) + " pays " +
-                                 std::to_string(deflect) + " [A] to choose " +
-                                 state_.getObject(t).name);
-            }
-        }
-    }
+    payDeflectForChoices(item);
     item.is_spell = true;
 
     chain.items.push_back(item);
     // Announce the choices only once the item is on the chain, so abilities
     // that trigger on them go above it (and resolve first).
-    for (auto t : targets) {
+    for (auto t : item.targets) {
         if (!state_.objectExists(t)) continue;
         const auto& tobj = state_.getObject(t);
         if (!tobj.isUnit() || !tobj.location.has_value()) continue;
@@ -112,17 +129,7 @@ ChainItemId ChainManager::addAbility(GameObjectId source, PlayerId controller,
     // [Deflect] object costs its Deflect Value in [A], a mandatory additional
     // cost (resolve-time choices pay in Card::pickTarget instead).
     item.chosen_objects = targets;
-    if (executor_) {
-        for (auto t : targets) {
-            const int deflect = executor_->deflectCostFor(controller, t);
-            if (deflect > 0) {
-                executor_->payAnyPower(controller, deflect);
-                events_.logTrace("DEFLECT: " + std::string(toString(controller)) + " pays " +
-                                 std::to_string(deflect) + " [A] to choose " +
-                                 state_.getObject(t).name);
-            }
-        }
-    }
+    payDeflectForChoices(item);
     item.is_ability = true;
     item.is_activated_ability = is_activated;
     item.ability_index = ability_index;
@@ -130,7 +137,7 @@ ChainItemId ChainManager::addAbility(GameObjectId source, PlayerId controller,
     chain.items.push_back(item);
     // Announce the choices only once the item is on the chain, so abilities
     // that trigger on them go above it (and resolve first).
-    for (auto t : targets) {
+    for (auto t : item.targets) {
         if (!state_.objectExists(t)) continue;
         const auto& tobj = state_.getObject(t);
         if (!tobj.isUnit() || !tobj.location.has_value()) continue;
@@ -158,11 +165,17 @@ void ChainManager::processFEPR(
     std::function<void(const ChainItem&)> resolve_spell,
     ClosedActionsGen gen_closed_actions) {
 
-    constexpr int kMaxIterations = 100; // safety
+    // Safety bound on a chain that never empties (abilities that keep
+    // triggering each other). Every pass finalizes, adds or resolves an item,
+    // so an ordinary chain is nowhere near it.
+    constexpr int kMaxIterations = 1000;
     int iterations = 0;
 
-    while (state_.chain.exists() && iterations < kMaxIterations) {
-        iterations++;
+    while (state_.chain.exists()) {
+        if (++iterations > kMaxIterations) {
+            abandonChain("FEPR loop did not empty the chain");
+            return;
+        }
 
         // Step 1: Finalize
         // Permanents resolve immediately here (CR 337.1.c).
@@ -367,6 +380,85 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     return false;
 }
 
+// Runs the item in `state_.chain.resuming` to completion. Resumable cards
+// (discard, predict, the Card::pick* / confirmOptional helpers) publish a
+// pending choice via `EffectExecutor::requestChoice` and set
+// `resuming->resume_point`; we then query the agent, record the choice for the
+// Card to read on re-entry, and re-call resolve_spell until no choice is left.
+void ChainManager::runResumable(
+    const AgentQuery& query_agent,
+    const std::function<void(const ChainItem&)>& resolve_spell) {
+    if (!state_.chain.resuming.has_value()) return;
+    if (!state_.chain.resuming->is_spell && !state_.chain.resuming->is_ability) return;
+
+    constexpr int kMaxResumeIterations = 64;
+    for (int iter = 0; ; ++iter) {
+        if (iter >= kMaxResumeIterations) {
+            // Safety bound — a Card stuck in a yield loop. The answer to its
+            // last request was recorded but will never be read: drop it, or
+            // the next item to resolve would take it for its own.
+            if (executor_) executor_->takeChoice();
+            const auto& ri = *state_.chain.resuming;
+            events_.logWarn("ChainManager: resume loop overflow resolving " +
+                            (state_.objectExists(ri.source) ? state_.getObject(ri.source).name
+                                                            : std::string("?")) +
+                            " — resolution abandoned");
+            assert(false && "ChainManager::runResumable: resume loop overflow");
+            return;
+        }
+
+        // The engine's resolveSpell dispatches through Card::onResolve /
+        // onTrigger / onActivate based on is_spell / is_ability.
+        resolve_spell(state_.chain.resuming.value());
+
+        if (!executor_ || !executor_->hasPendingChoice()) return;
+
+        auto pending = executor_->consumePendingChoice();
+        // Surface the labeled choice request in the trace BEFORE the
+        // agent picks. Pairs with the on_decision-callback-driven CHOSE
+        // logging downstream; gives a reader the WHY of a MakeChoice
+        // decision (e.g. "discard 1 (Lunar Boon)") instead of just the
+        // WHAT (e.g. "pick=[Hard Bargain(id=12)]"). Cards that don't pass
+        // a label fall back to a generic line.
+        events_.logTrace(
+            std::string("CHOICE-REQUEST: ") +
+            (pending.label.empty() ? "MakeChoice" : pending.label) +
+            " [" + std::to_string(pending.legal.size()) + " options] (" +
+            toString(pending.player) + ")");
+        Intent choice = query_agent(pending.player, pending.legal);
+        executor_->recordChoice(std::move(choice));
+        // Loop back — resolve_spell re-invokes the Card, which reads the
+        // recorded choice via `executor.takeChoice()` and continues past
+        // its resume_point.
+    }
+}
+
+// A chain that cannot be brought to an end is given up: what is left on it
+// leaves without resolving, the state opens and the game goes on. Cards still
+// in the Chain zone go to their owner's trash.
+void ChainManager::abandonChain(const std::string& why) {
+    events_.logWarn("ChainManager: " + why + " — abandoning " +
+                    std::to_string(state_.chain.items.size()) + " chain item(s)");
+    for (const auto& item : state_.chain.items) {
+        if (!item.is_spell && !item.is_permanent) continue;
+        if (!state_.objectExists(item.source)) continue;
+        auto& obj = state_.getObject(item.source);
+        if (obj.zone != ZoneType::Chain) continue;
+        obj.zone = ZoneType::Trash;
+        obj.location = std::nullopt;
+        const PlayerId home = obj.owner != PlayerId::None ? obj.owner : item.controller;
+        if (!obj.isToken()) state_.player(home).trash.push_back(item.source);
+    }
+    state_.chain.items.clear();
+    state_.chain.resuming.reset();
+    if (executor_) {
+        if (executor_->hasPendingChoice()) executor_->consumePendingChoice();
+        executor_->takeChoice();
+    }
+    state_.turn.oc_state = OpenClosedState::Open;
+    events_.emit(ChainEmptiedEvent{});
+}
+
 void ChainManager::stepResolve(
     AgentQuery query_agent,
     std::function<void(const ChainItem&)> resolve_spell) {
@@ -383,71 +475,29 @@ void ChainManager::stepResolve(
     state_.chain.items.pop_back();
     state_.chain.resuming = resolved;
 
-    // Resumable resolution loop. Single-shot cards (the common case) loop
-    // exactly once: resolve_spell -> Card::onResolve returns without a
-    // pending choice, the while condition fails, we drop through to
-    // disposal. Resumable cards (e.g. discard, predict, opponentDiscards)
-    // publish a pending choice via `EffectExecutor::requestChoice` and set
-    // `resuming->resume_point`; we then query the agent, record the choice
-    // for the Card to read on re-entry, and re-call resolve_spell.
-    constexpr int kMaxResumeIterations = 16;
-    int iter = 0;
-    while (true) {
-        if (++iter > kMaxResumeIterations) {
-            // Safety bound — a Card stuck in a yield loop should never reach
-            // this. We bail out rather than spinning forever.
-            assert(false && "ChainManager::stepResolve: resume loop overflow");
-            break;
-        }
+    // Single-shot cards (the common case) resolve in one call; resumable
+    // cards publish choices and are re-entered (runResumable).
+    runResumable(query_agent, resolve_spell);
 
-        // Re-invoke resolve_spell from `resuming`. The engine's resolveSpell
-        // dispatches through Card::onResolve / onTrigger based on
-        // is_spell / is_ability — both paths are reachable here.
-        if (resolved.is_spell || resolved.is_ability) {
-            resolve_spell(state_.chain.resuming.value());
-        }
-
-        if (!executor_ || !executor_->hasPendingChoice()) break;
-
-        auto pending = executor_->consumePendingChoice();
-        // Surface the labeled choice request in the trace BEFORE the
-        // agent picks. Pairs with the on_decision-callback-driven CHOSE
-        // logging downstream; gives a reader the WHY of a MakeChoice
-        // decision (e.g. "discard 1 (Lunar Boon)") instead of just the
-        // WHAT (e.g. "pick=[Hard Bargain(id=12)]"). Cards that don't pass
-        // a label fall back to a generic line.
-        events_.logTrace(
-            std::string("CHOICE-REQUEST: ") +
-            (pending.label.empty() ? "MakeChoice" : pending.label) +
-            " [" + std::to_string(pending.legal.size()) + " options] (" +
-            toString(pending.player) + ")");
-        Intent choice = query_agent(pending.player, pending.legal);
-        executor_->recordChoice(std::move(choice));
-        // Loop back — resolve_spell re-invokes onResolve / onTrigger; the
-        // Card reads the recorded choice via `executor.takeChoice()` in its
-        // case ≥1 branch and continues past resume_point.
-    }
-
-    // Repeat (CR 820): if `repeats_paid > 0`, re-run resolve_spell that
-    // many extra times. Each re-run reads the same item from
-    // state_.chain.resuming (still populated) — Cards see the same chain
-    // item and execute their effect again. Choices made during the extra
-    // executions follow the same Make-Relevant-Choices pattern (CR 820.2),
-    // but for now we re-use the original targets/resume_data (the
-    // simplification noted on ChainItem::repeats_paid).
+    // Repeat (CR 820): if `repeats_paid > 0`, execute the item's instructions
+    // that many extra times. Each execution starts the Card afresh (case 0)
+    // and is driven through the same resumable loop, so a repeated effect
+    // that asks for a choice gets its answer and finishes before the item is
+    // disposed of. Its choices may differ from the first execution's
+    // (CR 820.2.a); they are asked here, as the repeat executes, rather than
+    // in the Make-Relevant-Choices step (the simplification noted on
+    // ChainItem::repeats_paid). Play-time `targets` are reused.
     if (state_.chain.resuming.has_value()) {
-        for (int r = 0; r < state_.chain.resuming->repeats_paid; ++r) {
-            // Reset resume_point so a resumable Card starts its case 0
-            // branch fresh on each repeat.
-            state_.chain.resuming->resume_point = 0;
-            state_.chain.resuming->resume_data.clear();
-            state_.chain.resuming->may_answer = -1;
-            state_.chain.resuming->choices_finalized = false;
-            state_.chain.resuming->finalize_costs_paid = false;
-            state_.chain.resuming->finalize_checked = 0;
-            if (state_.chain.resuming->is_spell || state_.chain.resuming->is_ability) {
-                resolve_spell(state_.chain.resuming.value());
-            }
+        const int repeats = state_.chain.resuming->repeats_paid;
+        for (int r = 0; r < repeats && state_.chain.resuming.has_value(); ++r) {
+            auto& ri = *state_.chain.resuming;
+            ri.resume_point = 0;
+            ri.resume_data.clear();
+            ri.may_answer = -1;
+            ri.choices_finalized = false;
+            ri.finalize_costs_paid = false;
+            ri.finalize_checked = 0;
+            runResumable(query_agent, resolve_spell);
         }
     }
 
@@ -455,33 +505,42 @@ void ChainManager::stepResolve(
     resolved = std::move(state_.chain.resuming.value());
     state_.chain.resuming.reset();
 
-    if (resolved.is_spell) {
-        // Spell goes to controller's trash after resolving (CR 359.3)
-        if (state_.objectExists(resolved.source)) {
-            auto& spell_obj = state_.getObject(resolved.source);
+    if (resolved.is_spell && state_.objectExists(resolved.source)) {
+        auto& spell_obj = state_.getObject(resolved.source);
+        // A card always goes to its OWNER's trash / banishment / deck, whoever
+        // controlled the spell (objects built by hand in tests may have none).
+        const PlayerId home = spell_obj.owner != PlayerId::None ? spell_obj.owner
+                                                                 : resolved.controller;
+        auto rit = spell_obj.card_counters.find("__recycle_on_leave_chain");
+        if (spell_obj.zone != ZoneType::Chain) {
+            // The spell's own effect already moved it ("Banish this."): it is
+            // where that put it and is not filed a second time.
+            spell_obj.banish_on_leave_chain = false;
+            if (rit != spell_obj.card_counters.end()) rit->second = 0;
+            events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
+        } else if (rit != spell_obj.card_counters.end() && rit->second != 0 && executor_) {
+            // "Then recycle it" (Fizz, Trickster; Kai'Sa, Evolutionary): a
+            // leaving-the-chain replacement like "then banish it" below. The
+            // spell goes from the chain straight to the bottom of its owner's
+            // deck — it is never put in the trash.
+            rit->second = 0;
+            spell_obj.location = std::nullopt;
+            events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
+            executor_->recycleCards(home, {resolved.source});
+        } else {
+            // The spell goes to its owner's trash after resolving (CR 359.3).
             // [Flow] / "then banish this": banished instead of trashed as it
             // leaves the chain (a replacement effect, Vendetta rules update).
-            // "Then recycle it" (Fizz, Trickster; Kai'Sa, Evolutionary): the
-            // same kind of leaving-the-chain replacement as "then banish it".
-            auto rit = spell_obj.card_counters.find("__recycle_on_leave_chain");
-            if (rit != spell_obj.card_counters.end() && rit->second != 0 && executor_) {
-                rit->second = 0;
-                spell_obj.location = std::nullopt;
-                spell_obj.zone = ZoneType::Trash;   // recycleCards moves it on from here
-                state_.player(spell_obj.owner).trash.push_back(resolved.source);
-                events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
-                executor_->recycleCards(spell_obj.owner, {resolved.source});
-            } else {
             const bool to_banish = spell_obj.banish_on_leave_chain;
             spell_obj.banish_on_leave_chain = false;
             const ZoneType dest = to_banish ? ZoneType::Banishment : ZoneType::Trash;
             spell_obj.zone = dest;
             spell_obj.location = std::nullopt;
             if (to_banish) {
-                state_.player(spell_obj.owner).banishment.push_back(resolved.source);
-                state_.player(spell_obj.owner).cards_banished_this_turn++;
+                state_.player(home).banishment.push_back(resolved.source);
+                state_.player(home).cards_banished_this_turn++;
             } else {
-                state_.player(resolved.controller).trash.push_back(resolved.source);
+                state_.player(home).trash.push_back(resolved.source);
             }
 
             events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
@@ -490,7 +549,6 @@ void ChainManager::stepResolve(
                 dest, false});
             if (to_banish)
                 events_.emit(ObjectStateChangedEvent{resolved.source, "banished_owned"});
-            }
         }
     }
     // Triggered/activated abilities leave their source on the board — no

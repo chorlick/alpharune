@@ -547,6 +547,13 @@ struct ChainItem {
     // acted on (the buffed/readied/moved unit), so the firing card can do "... to
     // it". kInvalidId when the trigger has no relevant subject.
     GameObjectId triggering_subject = kInvalidId;
+
+    // Set for an Equipment's "When I ..." ability (its effect text, speaking
+    // for the unit it is attached to): the unit the event happened to. Such an
+    // item is a triggered ability whose source is the gear; it resolves
+    // through Card::onEquippedTrigger(ctx, equipped_unit, ...) instead of
+    // Card::onTrigger. kInvalidId for every other item.
+    GameObjectId equipped_unit = kInvalidId;
 };
 
 struct ChainState {

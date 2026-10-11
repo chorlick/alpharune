@@ -1202,8 +1202,11 @@ int GameEngine::activationEnergyReduction(const Card& card, PlayerId player,
 void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     if (item.card_def_id == kInvalidId) return;
     if (item.is_ability && !item.is_activated_ability) {
-        // A triggered ability: its "you may", costs and targets (CR 383.3).
-        // (`targets` carries the triggering event's subject, not a choice.)
+        // A triggered ability: its "you may", costs and targets (CR 383.3)
+        // are chosen by the card's own callback, through the choice helpers
+        // (Card::confirmOptional / pickTarget / pickTargetPair), in the
+        // finalize pass. The engine never fills `targets` for a trigger: the
+        // event's subject travels in ChainItem::triggering_subject.
         const Card* tcard = card_registry_.get(item.card_def_id);
         if (tcard && (tcard->choicesAtFinalization() & Card::kFinalizeTrigger))
             runFinalizePass(item);
@@ -1913,8 +1916,11 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         repeat_cost.energy = std::max(0, repeat_cost.energy - ps.repeat_cost_reduction);
     }
     if (repeat_cost.valid) {
-        constexpr int kRepeatSafetyCap = 32;
-        while (repeats < kRepeatSafetyCap &&
+        // CR 820.1.c.3: each Repeat cost can be paid only a single time. One
+        // instance of Repeat is modeled here (the printed one, else a granted
+        // one), so the effect repeats at most once.
+        constexpr int kRepeatPaymentsPerCost = 1;
+        while (repeats < kRepeatPaymentsPerCost &&
                canPayAdditionalCost(intent.player,
                                      repeat_cost.energy,
                                      repeat_cost.power,
@@ -2138,6 +2144,10 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                     events_.emit(ObjectStateChangedEvent{item.source,
                                                          "gear_ability_used"});
                 }
+            } else if (item.equipped_unit != kInvalidId) {
+                // An Equipment's "When I ..." ability (TriggerManager::
+                // queueEquippedTrigger): the gear's card, for the equipped unit.
+                card->onEquippedTrigger(ctx, item.equipped_unit, effective_targets);
             } else {
                 card->onTrigger(ctx, effective_targets);
             }

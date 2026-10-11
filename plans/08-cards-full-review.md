@@ -60,7 +60,7 @@ cross-referenced.
   - Vision is read from base keywords only, at play time, before any aura exists (`trigger_manager.cpp:317`): Forecaster 388 does nothing.
   - `Keyword::Weaponmaster` is read nowhere: Emperor of the Sands 512.
 
-- [ ] **8.5 Gear never gets `WhenIDie`**
+- [x] **8.5 Gear never gets `WhenIDie`** — FIXED: `TriggerManager::onLeftBoard` fires a killed gear's own WhenIDie (with Deathknell doubling); test: ChainTriggerFixTest.GearDeath_TemporaryGearGetsItsDeathknell, ChainTriggerFixTest.GearDeath_KilledGearTriggers. Treasure Trove's "leaves the board" by bounce is still a card gap (batch-00)
   - `UnitDiedEvent` is emitted only for units (`effect_executor.cpp:261`, `game_engine.cpp:6419`); a dying gear emits only `LeftBoardEvent`, which `TriggerManager` does not subscribe to.
   - Treasure Trove 186 does nothing; Scrapheap 182's "killed" branch is dead; Sprite Fountain 640's Deathknell never fires.
 
@@ -90,11 +90,13 @@ cross-referenced.
   - Repeat spells that request a choice lose the repeat and leave a stale pending choice: Frigid Touch 389, Upstage Comedy 571, Existential Dread 696, Rocket Barrage 400 — with Called Shot 443, Hard Bargain 457, Marching Orders 436, Temptation 450 and Bonds of Strength 472 that is nine cards. A granted Repeat (The Academy, Syndra) on any choice-requesting spell hits the same gap [plausible].
   - `parseRepeatCost` rejects costs written as `[Repeat] — ...`: Square Up 579 and Curtain Call 743 never repeat.
   - A Repeat cost can be paid up to 32 times; CR 820.1.c.3 allows once.
+  - chain-triggers stream: bullet 1 FIXED (02 item 2.4; all nine cards go through the same loop; tests ChainTriggerFixTest.Repeat_*). Bullet 3 FIXED (`executePlaySpell` offers the cost once; test ChainTriggerFixTest.Repeat_CostCanBePaidOnlyOnce).
+  - BLOCKED (bullet 2): Square Up's cost is "Discard 1" and Curtain Call has three separate costs; neither fits `parseRepeatCost`'s `[N][D]` shape. Needs a card-declared Repeat cost (e.g. `Card::repeatCosts()` in card.h, read by `executePlaySpell`, with a discard payment that asks the agent) plus the two card files: card.h / game_engine.cpp / cards, outside this stream.
 
 - [x] **8.10 Unit [Reaction] is not implemented** — FIXED: new `Card::hasReactionTiming()` (the def keyword cannot be used: it is also set on ~25 permanents that only have a [Reaction] ability). `generateReactionPermanentActions` offers such units from hand or the Champion Zone in Closed States and showdowns, to the base or a controlled battlefield (CR 813.1.c.1, 813.3.a); `chain_manager.cpp` clears the Champion Zone on such a play. Shen 241, Janna 376, Rengar 348 and Sumpworks Map 647 opt in (`shared:` commit); tests: PlayCombatFixTest.ReactionUnit_IsOfferedInAClosedState_ToBaseAndControlledBattlefields, PlayCombatFixTest.ReactionUnit_IsOfferedAndPlayedInAShowdown, PlayCombatFixTest.ReactionUnit_PlayedFromTheChampionZoneInResponseToASpell
   - `Keyword::Reaction` is consulted only for spells (`game_engine.cpp:3260-3265`, `chain_manager.cpp:510-511`). Shen, Kinkou 241, Janna, Savior 376 and Rengar, Pouncing 348 cannot be played at Reaction timing (see also 02 item 2.7).
 
-- [ ] **8.11 `WhenYouChooseAFriendlyUnit` never fires on the chosen unit**
+- [x] **8.11 `WhenYouChooseAFriendlyUnit` never fires on the chosen unit** — FIXED: the chosen unit is no longer skipped; the subject is the chosen unit. Irelia 380 and Jae Medarda 463 still need `triggerCondition(subject == source)` (batch-05, card streams); test: ChainTriggerFixTest.ChosenUnit_JaeMedardaDrawsWhenChosenWithASpell, ChainTriggerFixTest.ChosenUnit_IreliaTriggersOnHerOwnChoice
   - `trigger_manager.cpp:1105-1119` skips the chosen object. Jae Medarda 463 never draws; Irelia, Fervent 380 gets +1 only when a different unit is chosen.
 
 - [x] **8.12 Quick-Draw gear does not attach when played in the main phase** — FIXED: `resolvePermanent` attaches [Quick-Draw] gear whenever it is played (CR 819.1.d), its controller choosing the unit as it lands; the Closed-State generator emits one play per gear (the per-unit targets it used to emit were dropped by `ChainManager` and never attached), and showdowns offer it too; tests: PlayCombatFixTest.QuickDraw_PlayedInTheMainPhase_AttachesToAUnitYouChoose, PlayCombatFixTest.QuickDraw_AtReactionTiming_IsOneActionAndAttaches
@@ -108,7 +110,7 @@ cross-referenced.
   - Not covered by the guard, still card work (S2): attaching gear to an off-board unit (`attachFree` / hand-rolled attach), and effects the cards apply themselves without the executor. `giveTemporaryMight`, `giveTemporaryKeyword`, `exhaustObject` and `healObject` are left unguarded.
   - `objectExists` is the only guard on about 80 more sites found in this pass (the S2 list below). One on-board guard in the executor's move / bounce / damage / kill / buff / ready functions closes most of them.
 
-- [ ] **8.15 Equipped triggers run outside the chain**
+- [x] **8.15 Equipped triggers run outside the chain** — FIXED: see 02 item 2.17; test: EquippedTriggerChainTest.YouMayIsARealChoice_Declined, EquippedTriggerChainTest.TheControllerChoosesWhichUnit
   - `onEquippedTrigger` is called directly from `fireEquippedTriggers`, so `chain.resuming` is empty and the choice helpers return defaults: Last Rites 471 always says yes and takes the first unit in trash (see 02 item 2.17).
 
 - [ ] **8.16 Smaller engine gaps, one card each**

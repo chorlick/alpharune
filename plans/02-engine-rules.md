@@ -30,12 +30,12 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - A: any paid Repeat with a power component permanently loses the rune. B: `[Repeat] [R]` with only ready runes — gate says yes, payment returns false, no repeat. C: energy spent then return false, no repeat.
   - No `LeftBoardEvent`, no `power_spent_this_turn++`.
 
-- [ ] **2.4 The Repeat loop never services a pending choice** [verified]
+- [x] **2.4 The Repeat loop never services a pending choice** [verified] — FIXED: `ChainManager::stepResolve` runs every repeat through the same resumable loop as the first execution (`runResumable`); test: ChainTriggerFixTest.Repeat_RepeatedEffectGetsItsOwnChoiceAndHappens, ChainTriggerFixTest.Repeat_HandRolledChoiceCardFinishesItsRepeat
   - Where: `chain_manager.cpp:433-447`. Each repeat resets resume state and calls `resolve_spell` once, with no `hasPendingChoice()` loop like `:390-424`.
   - Called Shot (443) with Repeat paid: re-enters case 0, requests a choice, returns; repeated effect never happens. `pending_.active` stays set, so the next chain item (`:405`) sees the stale choice and resolves twice.
   - Also Hard Bargain (457), Marching Orders (436), Temptation (450), Bonds of Strength (472) — all confirmed by the second pass (07 item 7.4). Frigid Touch (389) likely.
 
-- [ ] **2.5 "Then recycle it" leaves the spell in both trash and main deck** [verified]
+- [x] **2.5 "Then recycle it" leaves the spell in both trash and main deck** [verified] — FIXED: the spell goes from the chain straight to its owner's deck, no trash push; test: ChainTriggerFixTest.RecycleOnLeaveChain_SpellEndsUpOnlyInTheDeck
   - Where: `chain_manager.cpp:461-468`. Pushes onto `trash`, then `recycleCards` (`effect_executor.cpp:907-921`) inserts into the deck without removing from the source zone.
   - Fizz, Trickster (461) / Kai'Sa, Evolutionary (112): the id is in `trash` and `main_deck`; a later burn-out or Garbage Grabber pushes it into the deck again and it can be drawn twice.
 
@@ -57,11 +57,11 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Note for engine-auras-costs: the two gates are duplicated from the top of `canAfford` (their function); discounts (CR 356.4) are still not applied to a grant cost.
   - Where: `:3403-3491`. `generateTrashReplayActions` never calls `canAfford` (where `Card::canBePlayed` and `locked_spell_names` live, `:5604-5615`); `payTrashReplayGrant` charges only the grant, so `spell_tax_energy/power` and the Mystic Vortex reaction tax are skipped.
 
-- [ ] **2.10 Safety caps fail silently** [plausible]
+- [x] **2.10 Safety caps fail silently** [plausible] — FIXED (confirmed by reading: the loop exited with the chain populated and the state Closed): a chain that will not empty is abandoned cleanly (`abandonChain`: items discarded, Open, `ChainEmptiedEvent`, warning logged; bound raised to 1000 passes); resume overflow drops the unread recorded choice (bound raised to 64); test: ChainManagerFixTest.SafetyCap_ChainThatNeverEmptiesIsAbandonedCleanly, ChainManagerFixTest.SafetyCap_ResumeOverflowDoesNotLeakAChoice
   - `processFEPR` exits after 100 iterations with the chain populated, `oc_state` Closed, no `ChainEmptiedEvent` (`chain_manager.cpp:161-199`); `runChain` (`:1944`) does not check.
   - Resume overflow is `assert(false)` only (`chain_manager.cpp:391-396`); in Release it leaves the recorded choice in `last_applied_choice_`.
 
-- [ ] **2.11 Deflect payment result is ignored** [not confirmed] — `chain_manager.cpp:34`, `:119`.
+- [x] **2.11 Deflect payment result is ignored** [not confirmed] — `chain_manager.cpp:34`, `:119`. — FIXED (confirmed: the target gate in `Card::enumerateLegalTargets` counts power before the card's own cost is paid, so `payAnyPower` can fail in `addSpell`/`addAbility` and the unit was chosen for free): an object whose Deflect cannot be paid is dropped from the item's targets (`payDeflectForChoices`); test: ChainManagerFixTest.Deflect_ChoiceThatCannotBePaidForIsNotMade, ChainManagerFixTest.Deflect_PaidChoiceIsKept. The play gate itself (combined card + Deflect affordability) is in game_engine.cpp and still open, see report
 
 ## C. Triggers
 
@@ -69,7 +69,7 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Where: `trigger_manager.cpp:362-367` reads `battlefieldId()` during `CardPlayedEvent`, but both play paths emit before setting `card.location` (`:1696` vs `:1703`; `chain_manager.cpp:333` vs `:343`).
   - Star Spring (771), Valley of Idols (774). Only facedown plays and `playIgnoringCost` set location first. Tests call the trigger directly.
 
-- [ ] **2.13 Battle Mistress's legend trigger is never dispatched** [confirmed]
+- [x] **2.13 Battle Mistress's legend trigger is never dispatched** [confirmed] — FIXED: `onUnitDied` sweeps the legend zones for WhenAnEnemyUnitDies / WhenAFriendlyUnitDies; test: ChainTriggerFixTest.Legend_EnemyUnitDeathReachesTheLegend, ChainTriggerFixTest.Legend_OwnUnitDeathDoesNotReadyBattleMistress
   - Where: `trigger_manager.cpp:665-679`. The `WhenAnEnemyUnitDies` sweep requires `location.has_value()`; legends have none (`:326`).
 
 - [x] **2.14 Buff handling violates CR 427.1.b / 702.3** [verified for A] — FIXED: `buffUnit` places a Buff only on a unit that has none (new `Card::canHaveAnyNumberOfBuffs()` exempts Lee Sin, Ascetic 78), returns whether one was placed and emits `"buffed"` only then; `giveTemporaryMight` / `giveTemporaryKeyword` now emit `"might_changed"` / `"keyword_granted"`; test: ExecutorReviewFixTest.Buff_BlindMonkDoesNotStackASecondBuff, ExecutorReviewFixTest.Buff_LeeSinAsceticCanHaveAnyNumber, ExecutorReviewFixTest.Buff_SimianAncestorTriggersOnlyWhenActuallyBuffed, ExecutorReviewFixTest.TemporaryMight_IsNotABuff_FrigidTouchOnSimianAncestor
@@ -81,10 +81,10 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
   - Card streams: cards that recycle with `deck::putOnBottom` directly still announce nothing — Abandon 693 and Scryer's Bloom 698 (hand-rolled Predict), Stacked Deck 183, Baited Hook 242 ("recycle the rest"), Last Rites 471 (Equip cost). Recipe: after the last `putOnBottom`, `ctx.events.emit(ObjectStateChangedEvent{<one recycled id>, "recycled_main"})` once, or hand the ids to `ctx.executor.recycleCards`.
   - Where: `effect_executor.cpp:1438-1441`, `:1530`; `trigger_manager.cpp:327-330`. Karma, Channeler does not trigger off Predict (CR 437.1).
 
-- [ ] **2.16 Showdown battlefield triggers use `PlayerId::None` as controller** [latent]
+- [x] **2.16 Showdown battlefield triggers use `PlayerId::None` as controller** [latent] — FIXED: `fireBattlefieldTriggers` resolves `PlayerId::None` to the battlefield's controller, else the turn player (CR 190.6.a/b); test: ChainTriggerFixTest.ShowdownBattlefieldTrigger_IsControlledByARealPlayer
   - Where: `trigger_manager.cpp:1335`. `state.player(None)` indexes `players[-1]`. No battlefield declares `WhenAShowdownBeginsHere` today.
 
-- [ ] **2.17 Equipped triggers run synchronously inside signal dispatch** [not confirmed]
+- [x] **2.17 Equipped triggers run synchronously inside signal dispatch** [not confirmed] — FIXED (confirmed): equipped abilities are queued as chain items (`TriggerManager::queueEquippedTrigger`, `ChainItem::equipped_unit`, dispatched to `onEquippedTrigger` by `resolveSpell`) and honour `triggerCondition`. `is_rules_text_inactive` is deliberately not checked: it is set while a gear is attached (CR 718.2, printed text), which is exactly when its effect-text ability applies; test: EquippedTriggerChainTest.IsNotRunInsideEventDispatch, EquippedTriggerChainTest.DeathknellFromEquipmentResolvesFromTheChain
   - Where: `trigger_manager.cpp:123-144`. Skip the chain, `is_rules_text_inactive` and `triggerCondition`. Eye of the Herald (474) calls `createToken` inside `UnitMovedEvent` dispatch; a rehash would invalidate any caller iterating `objects`.
 
 ## D. Combat and scoring
@@ -137,4 +137,4 @@ Line numbers are in `src/engine/game_engine.cpp` unless another file is named.
 
 - [x] **2.31 Temporary Deflect may never expire** [not confirmed] — `effect_executor.cpp:667`, `deflect_value += value` with no temp counter. — FIXED: confirmed (expiration cleared the keyword bit but `deflectCostFor` still charged the leftover `deflect_value`, which grew every turn). The grant is now kept in turn-stamped `card_counters` (`__temp_deflect`, `__temp_deflect_turn`) and read only by `deflectCostFor`; test: ExecutorReviewFixTest.TemporaryDeflect_ExpiresAndDoesNotAccumulateAcrossTurns
 
-- [ ] **2.32 Resolved spell is trashed to the controller, not the owner** [not confirmed reachable] — `chain_manager.cpp:479`.
+- [x] **2.32 Resolved spell is trashed to the controller, not the owner** [not confirmed reachable] — `chain_manager.cpp:479`. — FIXED: trash / banishment of the spell's owner (reachability with a real card not shown; the change is correct either way); test: ChainManagerFixTest.ResolvedSpell_GoesToItsOwnersTrash

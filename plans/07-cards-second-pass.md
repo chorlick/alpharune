@@ -64,11 +64,38 @@ subject") describes something nothing implements.
   - No test plays any BROKEN card through the real engine. `card_test_fixture.h:451-459` (`fireTriggerAs(..., {target})`) calls `onTrigger` with hand-fed targets, a path the engine never produces. Blast Cone's tests (`tests/cards/test_audit_fixes_6.cpp:577,590,613`) rely on it.
   - Fix direction: make the fixture queue the trigger through `TriggerManager` / the chain, or drop the `targets` argument from the helper.
 - Decision needed: fix per card (`pickTarget` + `kFinalizeTrigger`), or have the engine choose targets at finalization for any trigger whose `getTargetRequirements().count > 0`.
+  - **DECISION (chain-triggers stream; documented in `515e90b`, enforced by the audit test in `5e163bf`): the card chooses, through `pickTarget` + `kFinalizeTrigger`. The engine does not choose targets for triggers.**
+    - Why: CR 383.3 makes a triggered ability behave like an activated one once its condition is met, and CR 355 puts its choices at finalization. `GameEngine::runFinalizePass` already does exactly that for any card that opts in: it runs `onTrigger` at finalization, the helpers ask the agent, Deflect is paid and "chosen" triggers fire then (`commitChoice`), and at resolution the helpers return the stored answers (a target that is no longer in the list comes back as `kInvalidId`). 91 unit cards use it and `TriggerFinalizationTest` (tests/test_rules_compliance.cpp) covers it through the real engine. An engine-side choice from `getTargetRequirements()` cannot express "here", "another", "from your trash", "up to", or two targets, so it would be right for 7 of the 26 and a second target path for the rest. No engine change was needed; the engine now says so (comment in `chooseTargetsAtFinalize`, CLAUDE.md).
+    - Rule for every card in the table (and 7.2): `onTrigger`'s `targets` argument is always empty. Never read it. Instead:
+      1. Override `unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }`.
+      2. In `onTrigger`, build the legal list yourself from `ctx` (it is rebuilt on every entry, so it is also the resolution-time legality check): on board only (`location.has_value()`), "here" = same `battlefieldId()` as `ctx.source` (for a battlefield card use `battlefieldOfCard(ctx.state, ctx.source)`), "another" = skip `ctx.source`, "from your trash" = iterate `player.trash`, and so on. The event's object, when the text says "it", is `ctx.state.chain.resuming->triggering_subject`.
+      3. "You may" first: `int go = confirmOptional(ctx, label, still_legal);`. Then `pickTarget(ctx, label, legal)` for one target or `pickTargetPair` for two. Costs go under `if (costDueNow(ctx))`.
+      4. Directly after the last choice: `if (finalizingChoices(ctx)) return;` — on every branch of a multi-trigger card, including branches with no choice. Nothing before that line may change game state.
+      5. Then `if (go <= 0) return;` / `if (t == kInvalidId) return;` and the effect. `kInvalidId` covers "no legal target", "mistarget" and "waiting for the agent" alike.
+      6. Delete the `getTargetRequirements()` override unless an activated ability of the same card uses it; it does nothing for a trigger and the audit test keys on it.
+      7. Remove the card's id from `kKnownOffenders` in `tests/test_review_fix_chain_triggers.cpp` (`TargetlessTriggerAudit`), and test the card by playing it through the engine as `TriggerFinalizationTest` does (`testHook_executeIntent` with an agent that picks the target), not with `fireTriggerAs(..., {target})`.
+    - The same applies to an Equipment's `onEquippedTrigger`: it now resolves from the chain too (02 item 2.17), so the helpers and `kFinalizeTrigger` work there.
+    - Worked example, Solari Shieldbearer 51 ("When you play me, stun a unit."):
+      ```cpp
+      unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+      TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+      void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+          std::vector<GameObjectId> units;                       // "a unit": any unit on board
+          for (auto& [id, obj] : ctx.state.objects)
+              if (obj.isUnit() && obj.location.has_value()) units.push_back(id);
+          const GameObjectId t = pickTarget(ctx, "Solari Shieldbearer: stun a unit", units);
+          if (finalizingChoices(ctx)) return;                    // choices end here (CR 383.3)
+          if (t == kInvalidId) return;                           // none / mistarget / waiting
+          ctx.executor.stunUnit(t);
+      }
+      // getTargetRequirements() removed.
+      ```
+      For Yasuo, Remorseful 76 ("an enemy unit here") the loop adds `obj.controller != ctx.controller && obj.battlefieldId() == self.battlefieldId()`; for First Mate 132 ("another unit") it adds `id != ctx.source`.
   - **Corrected by the full review (08 §D):** the engine route is weaker than first stated. Only 16, 51, 82, 92, 97, 234 and 330 have target requirements that match their text. Eight more (76, 130, 132, 188, 191, 199, 238, 361) declare requirements that cannot express "here" / "another" / "from a battlefield", so engine-chosen targets would be wrong. Most of the 26 need card work either way.
 
 ## B. Repeat + choice (extends 02 item 2.4)
 
-- [ ] **7.4 Three more Repeat cards lose the repeat and leak a stale choice** [confirmed]
+- [x] **7.4 Three more Repeat cards lose the repeat and leak a stale choice** [confirmed] — FIXED: in the chain manager's Repeat loop (02 item 2.4); test: ChainTriggerFixTest.Repeat_RepeatedEffectGetsItsOwnChoiceAndHappens (Frigid Touch, `pickTarget`), ChainTriggerFixTest.Repeat_HandRolledChoiceCardFinishesItsRepeat (Called Shot)
   - `spells/0436_marching_orders.cpp:50` (Repeat [3]), `spells/0450_temptation.cpp:62` (Repeat [2]), `spells/0472_bonds_of_strength.cpp:42` (Repeat [2]). All call `pickTargetPair`.
   - With Called Shot 443 and Hard Bargain 457 that is five cards; the fix is in the chain manager's Repeat loop (`chain_manager.cpp:433-447`), not the cards.
 

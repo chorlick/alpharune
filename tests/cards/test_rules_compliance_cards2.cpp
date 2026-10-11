@@ -1242,8 +1242,10 @@ TEST_F(RulesCards2Test, RulesCards2_Deceiver_ControllerChoosesTheUnitToCopy) {
     state.getObject(scored_bf).card_type = CardType::Battlefield;
     state.battlefields[0].card_object_id = scored_bf;
 
-    driveTrigger(kDeceiver, P1, legend, TriggerType::WhenIConquerOrHold,
-                 pickObj(small, &seen), exec, scored_bf);
+    // Through the engine: "Then do this" is a reflexive trigger (CR 387-389),
+    // a chain item of its own that only the engine can queue and resolve.
+    EnginePathAgent engine_agent(pickObj(small, &seen));
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquerOrHold, &engine_agent, scored_bf);
 
     EXPECT_TRUE(state.getObject(legend).is_exhausted);
     EXPECT_TRUE(inTrash(P1, card_in_hand));

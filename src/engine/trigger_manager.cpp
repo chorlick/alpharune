@@ -18,6 +18,25 @@ TriggerManager::TriggerManager(GameState& state, EventBus& events,
     : state_(state), events_(events), card_db_(card_db), chain_(chain),
       card_registry_(card_registry) {}
 
+void TriggerManager::queueReflexive(GameObjectId source, PlayerId controller, int index,
+                                    std::vector<int32_t> data) {
+    if (!state_.objectExists(source) || index < 0) return;
+    const auto& obj = state_.getObject(source);
+    events_.logDebug("TRIGGER: " + obj.name + " (" + toString(controller) +
+                     ") — reflexive trigger goes on the chain");
+    const ChainItemId item_id = chain_.addAbility(source, controller, obj.card_def_id);
+    for (auto& item : state_.chain.items) {
+        if (item.id != item_id) continue;
+        item.reflexive_index = index;
+        item.reflexive_data = std::move(data);
+        if (state_.chain.resuming.has_value()) {
+            item.triggering_subject = state_.chain.resuming->triggering_subject;
+            item.triggering_move = state_.chain.resuming->triggering_move;
+        }
+        break;
+    }
+}
+
 void TriggerManager::subscribe() {
     connections_.push_back(events_.on_spell_resolved.connect(
         [this](const SpellResolvedEvent& e) { onSpellResolved(e); }));

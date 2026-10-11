@@ -21,42 +21,45 @@ public:
     //  [R] Deal 2 to an enemy unit here and 1 to all other enemy units here.
     //  [B] Draw 1.  [Y] Stun an enemy unit."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // The reveal-and-recycle happens once. pickTarget suspends and this
-        // trigger is re-entered from the top, so what the rune was is kept on
-        // the resolving chain item (slot 7: the choice helpers own 0..6) as
-        // kRevealed | domain bits.
-        enum : int32_t { kRevealed = 8, kFury = 1, kMind = 2, kOrder = 4 };
-        constexpr size_t kPayoffSlot = 7;
-        ChainItem* ri = ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming
-                                                             : nullptr;
-        int32_t payoff = (ri && ri->resume_data.size() > kPayoffSlot)
-            ? ri->resume_data[kPayoffSlot] : 0;
-        if (!(payoff & kRevealed)) {
-            auto& ps = ctx.state.player(ctx.controller);
-            if (ps.rune_deck.empty()) return;
-            GameObjectId rune = ps.rune_deck.back();
-            const auto& robj = ctx.state.getObject(rune);
-            payoff = kRevealed;
-            for (auto d : robj.domains) {
-                if (d == Domain::Fury) payoff |= kFury;
-                if (d == Domain::Mind) payoff |= kMind;
-                if (d == Domain::Order) payoff |= kOrder;
-            }
-            // Reveal (public) then recycle the rune to the bottom of the rune deck.
-            ctx.events.emit(CardRevealedEvent{
-                /*card=*/rune, /*card_def_id=*/robj.card_def_id, /*owner=*/robj.owner,
-                /*revealed_to_all=*/true, /*revealed_to=*/PlayerId::None,
-                /*source_zone=*/ZoneType::RuneDeck});
-            ps.rune_deck.pop_back();
-            ctx.executor.recycleCards(ctx.controller, {rune});
-            if (ri) {
-                if (ri->resume_data.size() <= kPayoffSlot) ri->resume_data.resize(kPayoffSlot + 1, 0);
-                ri->resume_data[kPayoffSlot] = payoff;
-            }
+        auto& ps = ctx.state.player(ctx.controller);
+        if (ps.rune_deck.empty()) return;
+        GameObjectId rune = ps.rune_deck.back();
+        const auto& robj = ctx.state.getObject(rune);
+        int32_t payoff = 0;
+        for (auto d : robj.domains) {
+            if (d == Domain::Fury) payoff |= kFury;
+            if (d == Domain::Mind) payoff |= kMind;
+            if (d == Domain::Order) payoff |= kOrder;
         }
+        // Reveal (public) then recycle the rune to the bottom of the rune deck.
+        ctx.events.emit(CardRevealedEvent{
+            /*card=*/rune, /*card_def_id=*/robj.card_def_id, /*owner=*/robj.owner,
+            /*revealed_to_all=*/true, /*revealed_to=*/PlayerId::None,
+            /*source_zone=*/ZoneType::RuneDeck});
+        ps.rune_deck.pop_back();
+        ctx.executor.recycleCards(ctx.controller, {rune});
+        ctx.events.logTrace("TWISTED FATE: revealed and recycled the top rune");
+        // "Do one of the following based on its domain" is a reflexive
+        // trigger (CR 388.1): the one that matches goes on the chain now, as
+        // a pending item of its own (CR 389.1) — its target is chosen when it
+        // is finalized and players may respond before it resolves. A rune of
+        // none of the three domains creates none.
+        if (payoff != 0)
+            ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, kByDomain, {payoff});
+    }
+
+    static constexpr int kByDomain = 0;
+    enum : int32_t { kFury = 1, kMind = 2, kOrder = 4 };
+    // `data[0]`: the revealed rune's domains. The first that matches, in the
+    // printed order ([R], then [B], then [Y]).
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (data.empty() || !ctx.state.objectExists(ctx.source)) return;
+        const int32_t payoff = data[0];
+        // "here" is where I am as this is finalized and resolves.
+        const auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         // Enemy units my controller may choose (not the ones that can't be
         // chosen by enemy spells and abilities).
-        const auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         auto enemies = [&](bool here_only) {
             auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
                 if (o.controller == ctx.controller) return false;
@@ -65,10 +68,10 @@ public:
             std::sort(out.begin(), out.end());
             return out;
         };
-        // Act on the first matching domain (R, then B, then Y).
         if (payoff & kFury) {
             GameObjectId focus = pickTarget(ctx, "Twisted Fate [R] (deal 2 here)", enemies(true));
-            if (focus == kInvalidId) return;   // no enemy unit here / waiting
+            if (finalizingChoices(ctx)) return;    // choices end here (CR 388.4)
+            if (focus == kInvalidId) return;       // no enemy unit here / mistarget
             // "1 to all other enemy units here" is not a choice: every other
             // enemy unit at my battlefield. Collect-then-kill.
             std::vector<GameObjectId> hit;
@@ -87,13 +90,17 @@ public:
                         ctx.executor.killObject(id);
             }
         } else if (payoff & kMind) {
+            if (finalizingChoices(ctx)) return;    // nothing to choose
             ctx.executor.drawCards(ctx.controller, 1);
         } else if (payoff & kOrder) {
             GameObjectId t = pickTarget(ctx, "Twisted Fate [Y] (stun)", enemies(false));
-            if (t == kInvalidId) return;       // no enemy unit / waiting
+            if (finalizingChoices(ctx)) return;    // choices end here (CR 388.4)
+            if (t == kInvalidId) return;           // no enemy unit / mistarget
             ctx.executor.stunUnitBy(t, ctx.source);
+        } else {
+            if (finalizingChoices(ctx)) return;
         }
-        ctx.events.logTrace("TWISTED FATE: revealed rune -> domain payoff");
+        ctx.events.logTrace("TWISTED FATE: domain payoff resolved");
     }
 private:
     const CardDef def_ = [] {

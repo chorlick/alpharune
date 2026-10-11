@@ -821,6 +821,22 @@ public:
     /// e.g., "When I conquer" in effect_text → WhenIConquer on the unit.
     virtual TriggerType equippedTriggerType() const { return TriggerType::None; }
 
+    /// A reflexive trigger of this card (CR 387-389): text after "Do this:",
+    /// "Do the following ...", "Do one of the following ...". The ability the
+    /// phrase sits in puts it on the chain, when the part before the phrase
+    /// has been done, with EffectExecutor::queueReflexiveTrigger(source,
+    /// controller, index, data); `index` says which reflexive trigger of the
+    /// card it is and `data` is what the first part hands over. It is then a
+    /// chain item of its own: its "may", costs and targets are chosen as it
+    /// is finalized (CR 388.4) — the engine always runs the finalize pass for
+    /// it, so this callback follows the choices-at-finalization contract
+    /// (choice helpers, then `if (finalizingChoices(ctx)) return;`, then the
+    /// effect) — and players get priority before it resolves. ctx.source is
+    /// the card's object; the triggering subject and move of the ability that
+    /// created it are carried over.
+    virtual void onReflexiveTrigger(CardContext& /*ctx*/, int /*index*/,
+                                    const std::vector<int32_t>& /*data*/) {}
+
     /// Called when the equipped unit's trigger fires. Gear handles its own
     /// logic. `targets` is always empty, as for onTrigger.
     virtual void onEquippedTrigger(CardContext& /*ctx*/,

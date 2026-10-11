@@ -726,6 +726,17 @@ struct ChainItem {
     struct Move { LocationId from; LocationId to; };
     std::optional<Move> triggering_move;
 
+    // Set for a reflexive trigger (CR 387-389: "Do this: ...", "Do one of the
+    // following ..."): an ability created while another one resolves, when
+    // the first part of its text has been done. Which of the card's reflexive
+    // triggers it is, and what that first part produced for it (the type of
+    // the card discarded, the token just played). It is a chain item like any
+    // other — finalized with its own choices, and players get priority before
+    // it resolves — and resolves through Card::onReflexiveTrigger.
+    // -1 = not a reflexive trigger.
+    int reflexive_index = -1;
+    std::vector<int32_t> reflexive_data;
+
     // Set for a keyword's own triggered ability ([Vision]: "When this is
     // played, [Predict]", CR 817; [Weaponmaster], CR 821). The keyword may
     // come from a continuous effect and the object may be a token with no

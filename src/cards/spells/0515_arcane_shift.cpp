@@ -42,9 +42,23 @@ public:
         std::optional<LocationId> back_to;
         const bool replay = unit != kInvalidId && !ctx.state.getObject(unit).isToken();
         if (replay) {
-            const auto where = playLocations(ctx.state, ctx.state.getObject(unit).owner);
+            const PlayerId unit_owner = ctx.state.getObject(unit).owner;
+            const auto where = playLocations(ctx.state, unit_owner);
+            // CR 355.2.a: not a battlefield units can't be played to (Rockfall
+            // Path), and no battlefield at all for a player who may only play
+            // units to base (Mageseeker Warden). The modes keep their numbers.
+            uint32_t playable = 0;
+            for (int i = 0; i < where.count() && i < 32; ++i) {
+                bool ok = true;
+                if (const auto* at = std::get_if<BattlefieldLocation>(&where.locations[i])) {
+                    ok = !ctx.state.player(unit_owner).units_play_base_only;
+                    for (const auto& bf : ctx.state.battlefields)
+                        if (bf.id == at->id && bf.blocks_unit_play) ok = false;
+                }
+                if (ok) playable |= 1u << i;
+            }
             const int mode = pickMode(ctx, "Arcane Shift: where the unit is played",
-                                      where.count(), where.labels);
+                                      where.count(), where.labels, playable);
             if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
             back_to = where.locations[mode];
         }

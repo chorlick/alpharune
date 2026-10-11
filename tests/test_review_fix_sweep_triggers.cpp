@@ -1257,6 +1257,177 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
     EXPECT_EQ(hidden_lines, 0);
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 16. Second follow-up (plans/09 section H)
+// ═══════════════════════════════════════════════════════════════════════════
+
+constexpr CardDefId kTKillBuffKill = 1099;   // test spell, see below
+
+// A spell that opens one death batch over the enemy units at battlefield 0,
+// kills the first, buffs the second and then kills it too — all in one block,
+// with the batch still open (what 9.H1 guards against).
+class TKillBuffKill : public SpellCard {
+public:
+    const CardDef& def() const override {
+        static const CardDef d = [] {
+            CardDef c;
+            c.id = kTKillBuffKill;
+            c.name = "Test Kill Buff Kill";
+            c.card_type = CardType::Spell;
+            return c;
+        }();
+        return d;
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        std::vector<GameObjectId> units;
+        for (const auto& [id, o] : ctx.state.objects)
+            if (o.isUnit() && o.controller != ctx.controller && o.location.has_value())
+                units.push_back(id);
+        std::sort(units.begin(), units.end());
+        if (units.size() < 2) return;
+        DeathBatch together(ctx.executor, units);
+        ctx.executor.killObject(units[0]);
+        ctx.executor.buffUnit(units[1]);             // the survivor changes
+        ctx.executor.killObject(units[1]);           // ... and dies later, batch still open
+    }
+};
+
+class SweepTriggersCardTest : public SweepTriggersTest {
+protected:
+    void SetUp() override {
+        SweepTriggersTest::SetUp();
+        card_registry.registerCard(kTKillBuffKill, std::make_unique<TKillBuffKill>());
+        card_db.buildFromClasses(card_registry);
+    }
+};
+
+// 9.H1: a unit listed in a batch that survives, is changed and dies later
+// gets last-known information from when it died, not from the batch.
+TEST_F(SweepTriggersCardTest, DeathBatch_ASurvivorThatChangedIsSnapshottedAfresh) {
+    auto first = addUnit(P2, kInvalidId, 2, 0);
+    auto second = addUnit(P2, kInvalidId, 2, 0);
+    ASSERT_LT(first, second);
+    auto spell = addToHand(P1, kTKillBuffKill);
+    playThroughEngine(spell);
+    ASSERT_FALSE(obj(first).location.has_value());
+    ASSERT_FALSE(obj(second).location.has_value());
+    // The first died with the second beside it.
+    EXPECT_EQ(obj(first).last_known.other_friendly_units_here,
+              std::vector<GameObjectId>{second});
+    // The second died later: buffed, and alone.
+    EXPECT_EQ(obj(second).last_known.buff_count, 1);
+    EXPECT_TRUE(obj(second).last_known.other_friendly_units_here.empty());
+}
+
+// 9.H2 (NOT A DEFECT, CR 420.4.a.1 / 420.4.b): when the first card played is
+// countered, Astral Heron 831 does not trigger for it, and the card played
+// after it is the second card, not "your first card".
+TEST_F(SweepTriggersTest, AstralHeron_ACounteredFirstCardStillCountsAsPlayed) {
+    constexpr CardDefId kAstralHeron = 831;
+    auto heron = addUnit(P1, kAstralHeron, 0, 0);
+    auto second = addToHand(P1, kDredgeUp);
+    // The first card was played and countered: it was never announced as
+    // played, but it was the first card of the turn.
+    state.player(P1).cards_played_this_turn = 2;
+    obj(second).card_counters["__play_ordinal"] = 2;
+    obj(second).card_counters["__play_ordinal_turn"] = state.turn.turn_number + 1;
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, second);
+    EXPECT_TRUE(state.player(P1).cost_modifiers.empty());
+}
+
+// 9.H3: "play a Gold gear token exhausted" — exhausted when its play is
+// announced, for Bloodharbor Ripper 746 and Card Sharp 403.
+TEST_F(SweepTriggersTest, GoldToken_PlayedExhaustedIsExhaustedWhenAnnounced) {
+    constexpr CardDefId kBloodharborRipper = 746, kCardSharp = 403;
+    auto legend = addLegend(P1, kBloodharborRipper);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    auto sharp = addToHand(P1, kCardSharp);
+    state.player(P1).rune_pool.energy = 1 + card_db.get(kCardSharp).energy_cost;
+    state.player(P1).rune_pool.universal_power = card_db.get(kCardSharp).power_cost;
+    int announced = 0, ready_when_announced = 0;
+    EnginePathAgent yes1(EnginePathAgent::script({1})), yes2(EnginePathAgent::script({1}));
+    withEngine([&](GameEngine& e) {
+        auto conn = events.on_token_created.connect([&](const TokenCreatedEvent& ev) {
+            if (ev.card_type != CardType::Gear) return;
+            ++announced;
+            if (!e.mutableState().getObject(ev.object).is_exhausted) ++ready_when_announced;
+        });
+        Intent act;
+        act.type = IntentType::ActivateAbility;
+        act.player = P1;
+        act.ability_source = legend;
+        act.targets = {unit};
+        e.testHook_executeIntent(act);
+        EXPECT_EQ(announced, 1) << "Bloodharbor Ripper";
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = sharp;
+        play.play_location = LocationId{BaseLocation{P1}};
+        e.testHook_executeIntent(play);
+        conn.disconnect();
+    }, &yes1, &yes2);
+    EXPECT_EQ(announced, 4) << "the Ripper's, then Card Sharp: mine, theirs, and mine again";
+    EXPECT_EQ(ready_when_announced, 0);
+}
+
+// ... unless "your tokens enter ready" replaces how it enters (CR 184.1).
+TEST_F(SweepTriggersTest, GoldToken_EntersExhaustedYieldsToTokensEnterReady) {
+    GameObjectId plain = kInvalidId, replaced = kInvalidId;
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        plain = exec.createToken(P1, CardType::Gear, "Gold", 0, {}, KeywordSet{}, base(P1),
+                                 false, {}, kGoldGearCardDefId, /*enters_exhausted=*/true);
+        e.mutableState().player(P1).tokens_enter_ready = true;
+        replaced = exec.createToken(P1, CardType::Gear, "Gold", 0, {}, KeywordSet{}, base(P1),
+                                    false, {}, kGoldGearCardDefId, /*enters_exhausted=*/true);
+    });
+    EXPECT_TRUE(obj(plain).is_exhausted);
+    EXPECT_FALSE(obj(replaced).is_exhausted);
+}
+
+// 9.H4: an ability used in response that adds nothing to the chain (a rune's
+// Add) is not a pass — twelve of them, then a real response, in one window.
+TEST_F(SweepTriggersTest, PriorityWindow_CostOnlyActivationsAreNotPasses) {
+    auto source = addUnit(P1, kInvalidId, 2, -1);
+    auto rune = addUnit(P1, kInvalidId, 0, -1);
+    auto reaction = addToHand(P1, kDecreeOfInsight);
+    ChainManager cm(state, events, card_db);
+    int activations = 0, plays = 0;
+    cm.setActivateAbility([&](const Intent&) { ++activations; return false; });   // cost-only
+    cm.setPlayCard([&](const Intent&) { ++plays; cm.addAbility(source, P1, kInvalidId); });
+    cm.addAbility(source, P1, kInvalidId);
+    Intent tap;
+    tap.type = IntentType::ActivateReactionAbility;
+    tap.player = P1;
+    tap.ability_source = rune;
+    Intent play;
+    play.type = IntentType::PlayReaction;
+    play.player = P1;
+    play.card = reaction;
+    constexpr int kTaps = 12;
+    cm.processFEPR(
+        [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
+            if (p == P1 && plays == 0) {
+                const IntentType want = activations < kTaps ? IntentType::ActivateReactionAbility
+                                                            : IntentType::PlayReaction;
+                for (const auto& i : legal) if (i.type == want) return i;
+            }
+            return Intent::passPriority(p);
+        },
+        [](const ChainItem&) {},
+        [](const ChainItem&) {},
+        [&](PlayerId p) {
+            std::vector<Intent> out{Intent::passPriority(p)};
+            if (p == P1) { out.push_back(tap); out.push_back(play); }
+            return out;
+        });
+    EXPECT_EQ(activations, kTaps);
+    EXPECT_EQ(plays, 1) << "the window was still open for the real response";
+    EXPECT_TRUE(state.chain.items.empty());
+}
+
 }  // namespace
 }  // namespace test_review_fix_sweep_triggers
 }  // namespace riftbound::test

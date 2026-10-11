@@ -289,6 +289,12 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     // offered again: choosing one changes nothing, so asking again with the
     // same options would only repeat it.
     std::vector<Intent> failed_plays;
+    // An ability used in response that puts nothing on the chain (a rune's
+    // Add, CR 164.2) is not a pass: the player keeps priority and the window
+    // goes on, however many of them are used. The bound only stops an
+    // activation that keeps being chosen without ever changing anything.
+    constexpr int kMaxCostOnlyActivations = 512;
+    int cost_only_activations = 0;
 
     for (int pass = 0; pass < kMaxPriorityPasses; ++pass) {
         state_.turn.priority_holder = current;
@@ -424,7 +430,9 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
                 return true;   // item added → restart FEPR from Finalize
             }
             // No chain item (cost-only effect or nothing happened): the same
-            // player keeps priority and chooses again.
+            // player keeps priority and chooses again. This did not use up one
+            // of the window's passes.
+            if (++cost_only_activations <= kMaxCostOnlyActivations) --pass;
         }
     }
 

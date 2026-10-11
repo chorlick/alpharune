@@ -315,13 +315,11 @@ inline GameObjectId createGoldExhausted(CardContext& ctx) {
     LocationId loc{BaseLocation{ctx.controller}};
     auto tok = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
                                         0, {}, {}, loc, /*enter_ready=*/false, {},
-                                        kGoldGearCardDefId);   // the Gold card: its "[Reaction] Kill this, [E]: Add"
-    if (ctx.state.objectExists(tok)) {
-        auto& gold = ctx.state.getObject(tok);
-        // "Your tokens enter ready" (Renata Glasc, Industrialist) replaces how
-        // the token enters, the printed "exhausted" included (CR 184.1, 376).
-        gold.is_exhausted = !ctx.state.player(ctx.controller).tokens_enter_ready;
-    }
+                                        kGoldGearCardDefId,   // the Gold card: its "[Reaction] Kill this, [E]: Add"
+                                        // Exhausted as its play is announced; "Your
+                                        // tokens enter ready" (Renata Glasc,
+                                        // Industrialist) replaces that (CR 184.1, 376).
+                                        /*enters_exhausted=*/true);
     return tok;
 }
 

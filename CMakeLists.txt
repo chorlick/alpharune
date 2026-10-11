@@ -5,6 +5,24 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ─── Build parallelism cap ────────────────────────────────────────────────────
+# At most RIFTBOUND_BUILD_JOBS compile and link jobs run at once, whatever -j
+# the build is started with (`cmake --build build -j16` still runs 6). One
+# Ninja job pool is shared by compiling, precompiling headers and linking. It
+# is set here, before any target exists, so it also covers the FetchContent
+# projects (OpenSpiel, abseil, GoogleTest). Ninja generators only; "0" = no cap.
+set(RIFTBOUND_BUILD_JOBS "6" CACHE STRING
+    "Maximum concurrent compile+link jobs (Ninja job pool); 0 = no cap")
+if(NOT RIFTBOUND_BUILD_JOBS MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "RIFTBOUND_BUILD_JOBS must be a non-negative integer, got '${RIFTBOUND_BUILD_JOBS}'")
+endif()
+if(CMAKE_GENERATOR MATCHES "Ninja" AND RIFTBOUND_BUILD_JOBS GREATER 0)
+    set_property(GLOBAL PROPERTY JOB_POOLS riftbound_jobs=${RIFTBOUND_BUILD_JOBS})
+    set(CMAKE_JOB_POOL_COMPILE riftbound_jobs)
+    set(CMAKE_JOB_POOL_PRECOMPILE_HEADER riftbound_jobs)
+    set(CMAKE_JOB_POOL_LINK riftbound_jobs)
+endif()
+
 # ─── Version stamp ────────────────────────────────────────────────────────────
 # Capture the current git commit at configure time so binaries + HTML replays
 # can be tied back to a specific build. Falls back to "unknown" outside a git

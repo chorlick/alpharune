@@ -85,9 +85,11 @@ through a shared lock so only one runs at once:
 ```bash
 REPO=/home/pirateporkchop/code/riftbound-engine
 cd "$REPO/.worktrees/<stream>"
-# configure once (reuses the already-downloaded dependency sources)
+# configure once, from the worktree root (reuses the downloaded dependency sources;
+# the launcher makes ccache share results with the integration worktree, so a
+# first build of unchanged sources is nearly all cache hits)
 flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache" \
+  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_BASEDIR=$PWD;CCACHE_NOHASHDIR=1;CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime;ccache" \
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
 # build + test
@@ -102,6 +104,17 @@ flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_test
   `game_state.h` and friends rebuild everything.
 - Use `--gtest_filter=` while iterating; run the full suite before you finish.
 - Never build in the main checkout's `build/`.
+- CMake caps concurrent jobs at 6 (`RIFTBOUND_BUILD_JOBS`); do not raise it.
+- Test files are unity-built (`RIFTBOUND_UNITY_TESTS`, see `CLAUDE.md`): a new
+  test file must not define file-scope names that clash with other test files.
+  Wrap the whole file body in a namespace named after the file, as the existing
+  `test_review_fix_*.cpp` files do.
+- **Shell commands must not prompt the user.** No `rm`, no `sh -c` / `bash -c` /
+  `eval` wrappers, no commands assembled from a variable (`$CMD`), no busy-wait
+  loops. For several steps under the lock, write a script file and run
+  `flock "$REPO/.worktrees/.build.lock" bash <script>`. Do not start a
+  background wait loop that polls for other builds to finish: run the locked
+  command in the foreground and let `flock` do the waiting.
 
 ## Closing an item
 

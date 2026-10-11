@@ -65,7 +65,7 @@ iteration must apply these.
 | 1 | engine-auras-costs | merged | `3ba5256` (merge `a8af2ef`) | 1631 run, 1628 passed, 2 baseline failures | 10 items closed; 5.4 and 8.4 partly done, remainder in carry-over; edited 25 card files (listed in carry-over) |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
 | 1 | io-cli | returned | `f3e2208` (follow-ups merged, verification batched with integrity) | 1707 passed, 0 failed (on its branch) | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
-| 1 | integrity | running | | | based on `ec13e47`; also carries two build tasks: ccache across worktrees, unity-built tests |
+| 1 | integrity | returned | `fc1f7cb` (merged, gate run in progress) | 1726 passed, 0 failed (on its branch) | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
 | 2 | cards-c0 | pending | | | |
 | 2 | cards-c1 | pending | | | |
 | 2 | cards-c2 | pending | | | |
@@ -100,6 +100,13 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| integrity | 5.12 warnings carry-over (`-Wall -Wextra`): 120 sites — `card.h` 18 unused parameters (fix first, ~400 lines of noise), units 31, gear 18, spells 10, legends 3, battlefields 1, engine 3, io 3, `openspiel_tests.cpp` 1, tests 30, libstdc++ 2 | card streams fix warnings in card files they touch; cleanup takes `card.h`, engine, io, tests | open |
+| integrity | NEW: Karma, Channeler 235 has tags `{Vi, Ionia}`; reprint 548 has `{Karma}` — 235 would be a legal Chosen Champion for a Vi legend | cards-c5 | open |
+| integrity | NEW: token reference cards without `SuperType::Token`: Gold 326 / 564, Reflection 566, Bird 559, Sprite 569, token battlefields Brush 561 and Baron Pit 558 (only Recruit 954 and Shadow Clone 955 carry it); `affects_non_token_only` cost checks read `super_type` | cards-c0 (326, 558, 561), cards-c1 (564), cards-c6 (559, 566, 569) — verify ranges by path | open |
+| integrity | NEW: Allay, Eager Admirer 603 is a champion unit with no champion tag (`{Yordle, Bandle City}`) — check the printed card | cards-c6 | open |
+| integrity | stale docs for 5.14: `card_registry.h` and `card_db.cpp` mention "legacy id-only constructor / registry.json" | cleanup | open |
+| integrity | test PCH: each test file costs ~7.5 s even when nearly empty; anything path- or time-dependent in `card_test_fixture.h` breaks cross-worktree caching again | note for all streams | open |
+| integrity | 25 test files wrapped in a file-named namespace for unity builds (incl. `test_review_fix_executor`, `_auras_costs`, `_chain_triggers`); `tests/test_review_fix_io_cli.cpp` is on `RIFTBOUND_TEST_UNITY_EXCLUDE` | note for all streams | open |
 | io-cli | `scripts/generate_replays.py` is dead (targets the removed `riftbound_openspiel` binary, `decks/*.json`, a registry file); root `README.md` still lists it — delete or rewrite | cleanup | open |
 | io-cli | fair-play mode now forwards no `log` lines, so the UI log panel is empty for a human player until `LogEvent` carries a visibility tag | sweep (with the LogEvent row) | open |
 | io-cli | NEW: `LogEvent` (`src/core/events.h`) has no player / visibility tag — finer fix for the 4.5 trace leak than withholding the stream | sweep | open |
@@ -196,3 +203,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 early gate run at `c0975fc` all green (see Gates). io-cli follow-ups (`f3e2208`) merged; verification batched with integrity.
 - 2026-10-10 user limited builds to `-j3` (see Run decisions).
 - 2026-10-10 user restored `-j6` and asked for CMake to enforce it (integrity adds `RIFTBOUND_BUILD_JOBS`).
+- 2026-10-10 integrity (`fc1f7cb`) merged; integration reconfigured with the shared-ccache launcher; stage 1 gate run started. AGENT_BRIEF.md updated (launcher, job cap, unity-test rule, shell rule). 7 rows to carry-over.

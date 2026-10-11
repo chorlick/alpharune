@@ -34,6 +34,10 @@ constexpr CardDefId kVoidHatchling = 341;    // "If you would reveal cards from 
 constexpr CardDefId kMorbidReturn = 170;     // return a unit from your trash to your hand
 constexpr CardDefId kChallenge = 128;         // a spell (non-unit) to hold in a hand
 constexpr CardDefId kRepulse = 668;
+constexpr CardDefId kThermoBeam = 22;        // a spell with Energy cost 5
+constexpr CardDefId kDecreeOfStrength = 872; // "They reveal their hand and you choose a Mind card from it."
+constexpr CardDefId kInvestigator = 697;     // "They reveal their hand. You may pay 2 XP to choose a card ..."
+constexpr CardDefId kAsheFocused = 731;      // "They reveal their hand. Choose a card revealed this way and banish it."
 constexpr CardDefId kBlindFury = 25;         // "Each opponent reveals the top card of their Main Deck..."
 
 class KnowledgeReveals : public CardTestFixture {
@@ -152,6 +156,60 @@ TEST_F(KnowledgeReveals, ADiscardChosenFromARevealedHandLeavesTheRestKnown) {
     expectConsistent();
 }
 
+// plans/09 item 9.TT1: "They reveal their hand" is a reveal, and revealing is
+// "the act of presenting a card to all players" (CR 425.1). Five cards
+// announced it to the caster alone, and Scuttle Crab its whole Deathknell (the
+// hand, which is revealed, and the facedown cards, which only it may look at).
+TEST_F(KnowledgeReveals, AHandRevealIsAnnouncedToAllPlayers) {
+    struct Case { const char* name; CardDefId card; bool is_unit_kill; };
+    const Case cases[] = {
+        {"Sabotage", kSabotage, false},
+        {"Mindsplitter", kMindsplitter, false},
+        {"Decree of Strength", kDecreeOfStrength, false},
+        {"Insightful Investigator", kInvestigator, false},
+        {"Ashe, Focused", kAsheFocused, false},
+        {"Scuttle Crab", kScuttleCrab, true},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        auto a = addToHand(P2, kChallenge);
+        auto b = addToHand(P2, kRepulse);
+        int hand_reveals = 0, hand_to_all = 0, facedown_to_all = 0;
+        auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
+            if (e.source_zone == ZoneType::Hand) {
+                ++hand_reveals;
+                if (e.revealed_to_all && e.owner == P2) ++hand_to_all;
+            } else if (e.source_zone == ZoneType::FacedownZone && e.revealed_to_all) {
+                ++facedown_to_all;
+            }
+        });
+        const size_t hand_before = state.player(P2).hand.size();
+        if (c.is_unit_kill) {
+            auto crab = addUnit(P1, c.card, 1);
+            resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(crab); });
+        } else {
+            playThroughEngine(addToHand(P1, c.card));
+        }
+        conn.disconnect();
+        EXPECT_EQ(hand_reveals, static_cast<int>(hand_before)) << "every card of the hand";
+        EXPECT_EQ(hand_to_all, hand_reveals) << "CR 425.1: revealed to all players";
+        EXPECT_EQ(facedown_to_all, 0) << "a look at facedown cards is the looker's alone";
+        // Both players' record has what is still in that hand.
+        for (auto id : {a, b}) {
+            if (!inHand(P2, id)) continue;
+            expectKnownInHand(P1, id, "revealed");
+            EXPECT_TRUE(knows(P2, id).identity_known);
+        }
+        // Clear the hand for the next card.
+        state.player(P2).hand.clear();
+        state.knowledge = KnowledgeState{};
+    }
+    // The count of what a player has been shown does not count a player's
+    // own hand (GameState::recordReveal).
+    EXPECT_TRUE(state.player(P2).observed_cards.empty());
+    EXPECT_FALSE(state.player(P1).observed_cards.empty());
+}
+
 // ── Reveals and looks at a deck ─────────────────────────────────────────────
 
 TEST_F(KnowledgeReveals, ATopCardRevealedToAllIsKnownToBothWhereItGoes) {
@@ -165,23 +223,49 @@ TEST_F(KnowledgeReveals, ATopCardRevealedToAllIsKnownToBothWhereItGoes) {
     expectConsistent();
 }
 
-TEST_F(KnowledgeReveals, AnOpponentsRevealedTopCardIsKnownToBoth) {
-    // Blind Fury emitted the reveal and told the tracker nothing.
-    auto fury = addToHand(P1, kBlindFury);
-    deckCard(P2, kRepulse);
-    auto top = deckCard(P2, kChallenge);   // a spell: revealed, not played
-    playThroughEngine(fury);
-    if (inDeck(P2, top)) {
-        for (PlayerId who : {P1, P2}) {
-            const auto k = knows(who, top);
-            EXPECT_TRUE(k.identity_known) << toString(who);
-            EXPECT_EQ(k.deck_position, DeckPosition::Top) << toString(who);
-            EXPECT_EQ(k.deck_rank, 0);
-        }
-    } else {
-        // Wherever the card's text sent it, it is somewhere public or known.
-        EXPECT_TRUE(knows(P1, top).identity_known);
+/// Answers prompts with the first option and passes priority; calls `see`
+/// with the state at every prompt (all options MakeChoice), which is where a
+/// test reads what each player knows WHILE the question is open.
+struct PromptWatcher : AgentInterface {
+    std::function<void(const GameState&, const std::vector<Intent>&)> see;
+    Intent selectAction(const GameState& s, const std::vector<Intent>& legal) override {
+        const bool prompt = !legal.empty() && std::all_of(legal.begin(), legal.end(),
+            [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+        if (prompt && see) see(s, legal);
+        for (const auto& i : legal) if (i.type == IntentType::PassPriority) return i;
+        return legal.front();
     }
+};
+
+TEST_F(KnowledgeReveals, AnOpponentsRevealedTopCardIsKnownToBothWhileItIsOnTop) {
+    // Blind Fury 25: "Each opponent reveals the top card of their Main Deck"
+    // and the caster then chooses where to play it. The card file announced
+    // the reveal and told the tracker nothing, so while that question was
+    // open neither player's record had the card. Read at the prompt (red
+    // before 9.SS1; after the card resolved the old code looked right too,
+    // because playing the card made it public).
+    auto fury = addToHand(P1, kBlindFury);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 2, 0);                 // a battlefield to offer: two places
+    deckCard(P2, kRepulse);
+    auto top = deckCard(P2, kPakaa);               // a unit: "play it to ..."
+    int prompts = 0;
+    bool both_knew = true, still_on_top = true;
+    PromptWatcher p1;
+    p1.see = [&](const GameState& s, const std::vector<Intent>&) {
+        ++prompts;
+        still_on_top = still_on_top && !s.player(P2).main_deck.empty() &&
+                       s.player(P2).main_deck.back() == top;
+        for (PlayerId who : {P1, P2}) {
+            const auto k = knowledge::GameKnowledgeView(s, who).about(top);
+            both_knew = both_knew && k.identity_known &&
+                        k.deck_position == DeckPosition::Top && k.deck_rank == 0;
+        }
+    };
+    playThroughEngine(fury, &p1);
+    ASSERT_GE(prompts, 1) << "the play-location question was asked";
+    EXPECT_TRUE(still_on_top) << "the question is asked with the card still the revealed top card";
+    EXPECT_TRUE(both_knew) << "both players know the revealed top card while the question is open";
     expectConsistent();
 }
 
@@ -248,20 +332,35 @@ TEST_F(KnowledgeReveals, ALookedAtCardLeftOnTopStaysKnownToTheLooker) {
     expectConsistent();
 }
 
-TEST_F(KnowledgeReveals, ALookAtTheTopCardsIsKnownBeforeTheOfferMadeFromThem) {
-    // Fate Weaver looked at the top four without telling the tracker.
+TEST_F(KnowledgeReveals, ALookAtTheTopCardsIsKnownWhileTheOfferMadeFromThemIsOpen) {
+    // Fate Weaver 626: "look at the top 4 cards of your Main Deck. You may
+    // reveal a spell with Energy cost [4] or more from among them and draw
+    // it." The card read the four and asked "reveal one?" without telling
+    // the tracker it had looked. Read at that prompt (red before 9.SS1; by the
+    // time the card had resolved the old code had taken the cards with
+    // deck::take and recorded them).
     auto weaver = addToHand(P1, kFateWeaver);
-    std::vector<GameObjectId> top;
-    for (int i = 0; i < 5; ++i) top.push_back(deckCard(P1, kChallenge));
-    playThroughEngine(weaver);
-    int known = 0;
-    for (auto id : top) {
-        if (!inDeck(P1, id)) continue;
-        const auto k = knows(P1, id);
-        if (k.identity_known && k.deck_position != DeckPosition::Unknown) ++known;
-        expectUnknown(P2, id, "a private look");
-    }
-    EXPECT_EQ(known, 4) << "the four looked at, wherever the look left them";
+    deckCard(P1, kChallenge);                       // fifth from the top: not looked at
+    std::vector<GameObjectId> top4;
+    for (CardDefId def : {kChallenge, kRepulse, kThermoBeam, kChallenge})
+        top4.push_back(deckCard(P1, def));          // Thermo Beam: a spell that costs 5
+    int prompts = 0, known_at_first_prompt = -1;
+    bool opponent_knew_any = false;
+    PromptWatcher p1;
+    p1.see = [&](const GameState& s, const std::vector<Intent>&) {
+        if (prompts++ > 0) return;
+        const knowledge::GameKnowledgeView mine(s, P1), theirs(s, P2);
+        known_at_first_prompt = 0;
+        for (auto id : top4) {
+            const auto k = mine.about(id);
+            if (k.identity_known && k.deck_position == DeckPosition::Top) ++known_at_first_prompt;
+            opponent_knew_any = opponent_knew_any || theirs.about(id).identity_known;
+        }
+    };
+    playThroughEngine(weaver, &p1);
+    ASSERT_GE(prompts, 1) << "\"reveal a spell and draw it?\" was asked";
+    EXPECT_EQ(known_at_first_prompt, 4) << "the looker knows the four it is being asked about";
+    EXPECT_FALSE(opponent_knew_any) << "a look is private";
     expectConsistent();
 }
 

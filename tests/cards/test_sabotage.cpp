@@ -6,8 +6,8 @@
 ///   from it, and recycle that card.
 ///
 /// Mechanics covered here:
-///   1. Opponent's full hand is revealed to the caster (CardRevealedEvent
-///      fires with revealed_to = caster for every hand card).
+///   1. Opponent's full hand is revealed (CardRevealedEvent fires for every
+///      hand card, to all players: CR 425.1).
 ///   2. The reveal lands in the caster's `observed_cards` memory bank
 ///      (PlayerState::observed_cards), indexed by card_def_id.
 ///   3. The CASTER picks the recycle target (not the opponent).
@@ -57,17 +57,20 @@ inline boost::signals2::connection wireObservationBank(EventBus& events,
 
 TEST_F(CardTestFixture, Sabotage_RevealsEveryCardInOpponentsHand) {
     // P1 casts Sabotage; P2 has 3 cards in hand. We expect 3 reveal events
-    // fired, all addressed (revealed_to) to P1.
+    // fired, each to all players: "They reveal their hand", and revealing is
+    // "presenting a card to all players" (CR 425.1). This test used to pin
+    // revealed_to = the caster, revealed_to_all = false (plans/09 item 9.TT1).
     addToHand(P2, kFlurry);
     addToHand(P2, kLunarBoon);
     addToHand(P2, kBaronNashor);
 
     int reveal_count = 0;
-    int revealed_to_caster_count = 0;
+    int revealed_to_all_count = 0;
     auto conn = events.on_card_revealed.connect(
         [&](const CardRevealedEvent& e) {
             ++reveal_count;
-            if (e.revealed_to == P1 && !e.revealed_to_all) ++revealed_to_caster_count;
+            if (e.revealed_to_all && e.source_zone == ZoneType::Hand && e.owner == P2)
+                ++revealed_to_all_count;
         });
 
     auto src = state.createObject();
@@ -84,10 +87,8 @@ TEST_F(CardTestFixture, Sabotage_RevealsEveryCardInOpponentsHand) {
     conn.disconnect();
 
     EXPECT_EQ(reveal_count, 3);
-    EXPECT_EQ(revealed_to_caster_count, 3)
-        << "All reveals must be private to the caster (revealed_to = P1, "
-           "revealed_to_all = false). The opponent does not learn anything "
-           "new about their own hand.";
+    EXPECT_EQ(revealed_to_all_count, 3)
+        << "A reveal is to all players (CR 425.1): revealed_to_all = true.";
 }
 
 // ─── 2. Reveals land in caster's observed_cards memory bank ────────────────
@@ -95,7 +96,8 @@ TEST_F(CardTestFixture, Sabotage_RevealsEveryCardInOpponentsHand) {
 TEST_F(CardTestFixture, Sabotage_RevealedCardsLandInCasterMemoryBank) {
     // P1 casts Sabotage; P2 reveals 3 distinct cards. P1's observed_cards
     // bank should contain +1 for each card_def_id; P2's bank stays empty
-    // (P2 doesn't observe their own hand via this reveal).
+    // (the reveal is to all players, but a player's own hand shows them
+    // nothing: GameState::recordReveal).
     addToHand(P2, kFlurry);
     addToHand(P2, kLunarBoon);
     addToHand(P2, kBaronNashor);
@@ -123,8 +125,7 @@ TEST_F(CardTestFixture, Sabotage_RevealedCardsLandInCasterMemoryBank) {
 
     const auto& p2_bank = state.player(P2).observed_cards;
     EXPECT_TRUE(p2_bank.empty())
-        << "P2 must not observe their own hand cards via Sabotage. The "
-           "reveal is private to the caster, P1.";
+        << "P2 must not observe their own hand cards via Sabotage.";
 }
 
 // ─── 3. Caster (not opponent) is the chooser ───────────────────────────────

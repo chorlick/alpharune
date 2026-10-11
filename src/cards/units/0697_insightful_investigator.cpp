@@ -33,8 +33,8 @@ public:
                 auto& obj = ctx.state.getObject(cid);
                 ctx.events.emit(CardRevealedEvent{
                     cid, obj.card_def_id, obj.owner,
-                    /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller,
-                    ZoneType::Hand});
+                    /*revealed_to_all=*/true /* CR 425.1: to all players */,
+                    /*revealed_to=*/PlayerId::None, ZoneType::Hand});
             }
             RIFT_TRACE(ctx.events, "INSIGHTFUL INVESTIGATOR: opponent reveals hand");
         }

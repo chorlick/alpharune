@@ -7,6 +7,7 @@
 /// Every test drives a real GameEngine: decisions are asked through the
 /// engine's agents, triggers go through TriggerManager and the chain.
 
+#include "ml/feature_extractor.h"
 #include "cards/card_test_fixture.h"
 #include "cards/card_helpers.h"
 #include "engine/chain_manager.h"
@@ -1921,7 +1922,7 @@ TEST_F(VerifyEngineTest, Registry_OnlySpellsDeclareRepeatCosts) {
     };
     std::vector<const Card*> all;
     int spells_with_repeat = 0;
-    for (uint32_t n = 1; n <= 1100; ++n) {
+    for (uint32_t n = 1; n <= static_cast<uint32_t>(ml::kCardVocabSize); ++n) {
         const CardDefId id = CardDefId::fromRaw(n);
         const Card* c = card_registry.get(id);
         if (!c) continue;

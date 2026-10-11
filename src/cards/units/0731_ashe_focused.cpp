@@ -42,8 +42,8 @@ public:
                     /*card=*/cid,
                     /*card_def_id=*/c.card_def_id,
                     /*owner=*/c.owner,
-                    /*revealed_to_all=*/false,
-                    /*revealed_to=*/ctx.controller,
+                    /*revealed_to_all=*/true,   // CR 425.1: to all players
+                    /*revealed_to=*/PlayerId::None,
                     /*source_zone=*/ZoneType::Hand,
                 });
             }

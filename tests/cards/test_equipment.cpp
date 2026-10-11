@@ -797,15 +797,19 @@ protected:
         return id;
     }
 
-    /// Drive a Weaponmaster's WhenYouPlayMe trigger.
+    /// Fire a Weaponmaster's WhenYouPlayMe trigger through the engine (chain,
+    /// finalization, resolution), accepting its "you may". `exec` is unused:
+    /// the engine uses its own executor. This used to call Card::onTrigger
+    /// directly, which skipped finalization.
     void fireWeaponmasterTrigger(GameObjectId weapon_master,
                                   CardDefId def_id,
-                                  EffectExecutor& exec) {
+                                  EffectExecutor& /*exec*/) {
         Card* c = card_registry.get(def_id);
         ASSERT_NE(c, nullptr);
         EXPECT_EQ(c->triggerType(), TriggerType::WhenYouPlayMe);
-        CardContext ctx{state, events, exec, P1, weapon_master};
-        c->onTrigger(ctx, {});
+        AcceptingEnginePathAgent agent;
+        fireTriggerThroughEngine(weapon_master, TriggerType::WhenYouPlayMe, &agent,
+                                 kInvalidId, &agent);
     }
 };
 

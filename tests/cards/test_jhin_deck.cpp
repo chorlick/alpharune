@@ -14,6 +14,7 @@
 ///   - Lotus Trap [575] (Reaction damage)
 
 #include "card_test_fixture.h"
+#include "cards/card_helpers.h"
 #include "engine/game_engine.h"
 #include "engine/trigger_manager.h"
 
@@ -68,17 +69,29 @@ protected:
         return id;
     }
 
-    // Drive a Card's onTrigger directly (the equivalent of fireTrigger →
-    // chain → onTrigger but without spinning the chain). For testing
-    // triggers in isolation — same shape as the fixture's invokeOnResolve.
+    // Fire `source`'s one triggered ability through the engine: it goes on
+    // the chain, is finalized (CR 383.3) and resolved by a real GameEngine
+    // (fireTriggerThroughEngine). Every "may" is accepted. `exec` is unused
+    // (the engine uses its own executor); it stays so call sites read as
+    // before. This used to call Card::onTrigger directly, which skipped
+    // finalization.
     void invokeOnTrigger(GameObjectId source, CardDefId def_id,
                           PlayerId controller,
                           const std::vector<GameObjectId>& targets,
-                          EffectExecutor& exec) {
+                          EffectExecutor& /*exec*/) {
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
-        CardContext ctx{state, events, exec, controller, source};
-        card->onTrigger(ctx, targets);
+        ASSERT_TRUE(targets.empty()) << "the engine never hands a trigger targets";
+        ASSERT_EQ(state.getObject(source).controller, controller);
+        ASSERT_NE(card->triggerType(), TriggerType::None);
+        // "When you play a spell": the trigger's subject is the spell that
+        // was played (TriggerManager::onSpellResolved passes it). Here that
+        // is the spell the test last put in the controller's trash.
+        const GameObjectId subject =
+            card->triggerType() == TriggerType::WhenYouPlayASpell
+                ? findMostRecentlyPlayedSpell(state, controller) : kInvalidId;
+        AcceptingEnginePathAgent agent;
+        fireTriggerThroughEngine(source, card->triggerType(), &agent, subject, &agent);
     }
 };
 
@@ -1699,16 +1712,15 @@ TEST_F(JhinDeckTest, Virtuoso_RevalidationAfterYes_StateShifted_SilentFail) {
 }
 
 TEST_F(JhinDeckTest, Virtuoso_OutsideChain_NoPrompt_FallsBackToYesOrSkip) {
-    // Direct invocation via the legacy invokeOnTrigger path (no chain
-    // resuming context). Documented contract: confirmOptional falls back
-    // to "yes if precondition holds, no otherwise" — useful for older
-    // tests and for in-engine direct-fire paths that bypass the chain.
+    // invokeOnTrigger now goes through the engine (chain, finalization,
+    // resolution) with an agent that accepts every "may": the precondition
+    // holds, the "may" is accepted, the spell is banished.
     auto legend = placeLegend(P1, 782);
     auto spell = emulateSpellResolved(P1, 743);
     EffectExecutor exec(state, events, card_db);
     invokeOnTrigger(legend, 782, P1, {}, exec);
 
-    // Precondition held → fall-back yes. Spell banished.
+    // Precondition held and the "may" was accepted. Spell banished.
     EXPECT_FALSE(inTrash(P1, spell));
     EXPECT_EQ(state.getObject(legend).tracked_objects.size(), 1u);
 }

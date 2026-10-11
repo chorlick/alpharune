@@ -41,7 +41,6 @@ private:
         d.might = 6;
         d.rarity = Rarity::Epic;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 I can [Ambush] to a battlefield where there are enemy units, even if you don't have units there.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8e159fd8aa9bb349e32bda6a10b0178cc28ca8dd-744x1039.png)RB";

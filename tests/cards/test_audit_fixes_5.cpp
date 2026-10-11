@@ -535,7 +535,8 @@ TEST_F(AuditFix5Test, Lillia_MoveCreatesSpriteToken) {
 // location, play a 3 [M] Sprite unit token with [Temporary] there.": "there"
 // is the location she left, wherever she is by the time the ability resolves.
 // The token is in her base only when her base is what she moved from.
-TEST_F(AuditFix5Test, Lillia_NoLocationFallsBackToBase) {
+// (Renamed for 09 item 9.K1: there is no base fallback; the old name described one.)
+TEST_F(AuditFix5Test, Lillia_TheSpriteIsPlayedWhereSheMovedFromEvenAfterSheLeftTheBoard) {
     auto spritesAt = [&](const LocationId& where) {
         int n = 0;
         for (auto& [id, obj] : state.objects)

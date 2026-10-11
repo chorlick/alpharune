@@ -52,7 +52,6 @@ private:
         d.domains = {Domain::Mind};
         d.energy_cost = 3;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB([A], [E]: Give the next spell you play this turn [Repeat] equal to its cost. (You may pay the additional cost to repeat the spell's effect.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a6b8167486d552cc41d10cb9321bae4cef338fa7-744x1039.png)RB";
         return d;

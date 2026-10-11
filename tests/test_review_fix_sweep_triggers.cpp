@@ -1505,6 +1505,52 @@ TEST_F(SweepTriggersTest, MoveTrigger_WithoutAMoveIsAnError) {
     EXPECT_THROW(fireTriggerThroughEngine(lillia, TriggerType::WhenIMove), std::logic_error);
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 18. Third follow-up (plans/09 9.J5, 9.K2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 9.J5: only something on the board can be killed (CR 429.2.a) — a unit that
+// was banished as it died is not killed a second time.
+TEST_F(SweepTriggersTest, KillObject_AUnitBanishedOnDeathIsNotKilledAgain) {
+    auto unit = addUnit(P1, kLoyalPoro, 1, 0);
+    obj(unit).banish_if_would_die_this_turn = true;      // "If it would die this turn, banish it instead."
+    int left = 0, died = 0;
+    auto c1 = events.on_left_board.connect([&](const LeftBoardEvent& e) { if (e.object == unit) ++left; });
+    auto c2 = events.on_unit_died.connect([&](const UnitDiedEvent& e) { if (e.object == unit) ++died; });
+    resolveThroughEngine([&](EffectExecutor& exec, GameState& live) {
+        exec.killObject(unit);
+        EXPECT_EQ(live.getObject(unit).zone, ZoneType::Banishment);
+        EXPECT_FALSE(live.getObject(unit).location.has_value());
+        // Had it kept a location by mistake, only the zone would tell: the
+        // guard is "not on the board", whatever zone that is.
+        exec.killObject(unit);
+    });
+    c1.disconnect(); c2.disconnect();
+    EXPECT_EQ(left, 1);
+    EXPECT_EQ(died, 0) << "banished instead of dying";
+    const auto& banished = state.player(P1).banishment;
+    EXPECT_EQ(std::count(banished.begin(), banished.end(), unit), 1);
+    EXPECT_EQ(obj(unit).zone, ZoneType::Banishment);
+}
+
+// 9.K2: a survivor of an open batch that was only GIVEN a keyword since, and
+// then dies in it, is taken afresh: its last-known keywords include the grant.
+TEST_F(SweepTriggersTest, DeathBatch_ASurvivorGivenAKeywordIsSnapshottedAfresh) {
+    auto first = addUnit(P2, kInvalidId, 2, 0);
+    auto second = addUnit(P2, kInvalidId, 2, 0);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        DeathBatch together(exec, {first, second});
+        exec.killObject(first);
+        exec.giveTemporaryKeyword(second, Keyword::Ganking, 0);
+        exec.killObject(second);
+    });
+    ASSERT_FALSE(obj(second).location.has_value());
+    EXPECT_TRUE(obj(second).last_known.keywords.has(Keyword::Ganking));
+    EXPECT_TRUE(obj(second).last_known.other_friendly_units_here.empty());
+    EXPECT_EQ(obj(first).last_known.other_friendly_units_here, std::vector<GameObjectId>{second});
+}
+
 }  // namespace
 }  // namespace test_review_fix_sweep_triggers
 }  // namespace riftbound::test

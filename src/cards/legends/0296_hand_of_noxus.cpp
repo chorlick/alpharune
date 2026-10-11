@@ -46,7 +46,6 @@ private:
         d.tags = {R"RB(Darius)RB"};
         d.rarity = Rarity::Showcase;
         d.keywords.set(Keyword::Legion);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction], [Legion] — [Add] [1]. (Abilities that add resources can't be reacted to. Get the effect if you've played a card this turn.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/37d43efe09ccfe5d72ce37fdc27599bd5ef736af-1488x2078.png)RB";
         return d;

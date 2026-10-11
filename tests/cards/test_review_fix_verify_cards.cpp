@@ -68,7 +68,42 @@ constexpr CardDefId kAltarOfMemories = 490;
 constexpr CardDefId kSoulSword = 601;
 constexpr CardDefId kAllay = 603;
 constexpr CardDefId kToolsOfEmpire = 864;
+constexpr CardDefId kArmedAssailant = 324;
+constexpr CardDefId kSentinelAdept = 331;
+constexpr CardDefId kSkyfallOfAreion = 353;
+constexpr CardDefId kApheliosExalted = 372;
+constexpr CardDefId kOrnnForgeGod = 407;
+constexpr CardDefId kCombatChef = 414;
+constexpr CardDefId kVeteranPoro421 = 421;
+constexpr CardDefId kLucianMerciless = 435;
+constexpr CardDefId kMasterBingwen = 448;
+constexpr CardDefId kYoneBlademaster = 544;
+constexpr CardDefId kRivenShattered = 828;
+constexpr CardDefId kPoutyPoro = 13;
+constexpr CardDefId kImmortalPhoenix = 37;
+constexpr CardDefId kNocturneHorrifying = 194;
+constexpr CardDefId kTwistedFateGambler = 200;
+constexpr CardDefId kRecurveBow = 339;
+constexpr CardDefId kDoransShield = 356;
+constexpr CardDefId kBrutalizer = 365;
+constexpr CardDefId kGuardianAngel = 374;
+constexpr CardDefId kSteraksGage = 379;
+constexpr CardDefId kSvellsongur = 382;
+constexpr CardDefId kClothArmor = 387;
+constexpr CardDefId kWindsinger = 459;
+constexpr CardDefId kDefiantDance = 511;
+constexpr CardDefId kFaefolk = 674;
+constexpr CardDefId kKhaZixHunter = 681;
+constexpr CardDefId kUndyingLoyalty = 730;
+constexpr CardDefId kPunchFirst = 419;
+constexpr CardDefId kIreliaGraceful = 462;
+constexpr CardDefId kBardMercurial = 540;
+constexpr CardDefId kAtakhan = 732;
+constexpr CardDefId kSkyCrusier = 847;
+constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kVayne035 = 35;
+constexpr CardDefId kBackAlleyBar = 272;
+constexpr CardDefId kSoraka = 550;
 constexpr CardDefId kAssemblyRig = 342;
 constexpr CardDefId kStarSpring = 771;
 constexpr CardDefId kAkshan = 431;
@@ -2682,9 +2717,10 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     playAt(spell, {unit}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
-            if (i.chosen_objects.empty())
+            if (i.chosen_objects.empty()) {
                 EXPECT_TRUE(!i.chosen_value.has_value() || *i.chosen_value == 0)
                     << "a battlefield was offered as a place to play the unit";
+            }
     ASSERT_TRUE(onBoard(unit));
     EXPECT_TRUE(o(unit).isAtBase());
 }
@@ -2845,9 +2881,10 @@ TEST_F(VerifyCardsTest, Guards_HiddenWhereUnitsCannotBePlayed_PlaysNoSandSoldier
     playHidden(hide(0), &agent);
     EXPECT_EQ(countNamed(P1, "Sand Soldier"), 1) << "no second token: not there, not anywhere";
     for (const auto& [id, obj] : state.objects)
-        if (obj.name == "Sand Soldier" && obj.location.has_value())
+        if (obj.name == "Sand Soldier" && obj.location.has_value()) {
             EXPECT_NE(obj.battlefieldId(), std::optional<BattlefieldId>{0})
                 << "\"Units can't be played here.\"";
+        }
     EXPECT_TRUE(agent.prompts.empty()) << "no location to pick, no token to ready";
     EXPECT_EQ(power(P1, Domain::Order), 1) << "[Y] not spent on a token that does not exist";
 }
@@ -2958,6 +2995,878 @@ TEST_F(VerifyCardsTest, Pin_ElderDragon_DoesNotIgnoreDeflect) {
     EXPECT_TRUE(!onBoard(plain) || o(plain).damage_marked >= 1) << "\"Deal 1 to them\"";
     ASSERT_TRUE(onBoard(deflect));
     EXPECT_EQ(o(deflect).damage_marked, 0);
+}
+
+// ═══ Tranche 4: plans/09 items 9.I4 and 9.I5 ════════════════════════════════
+
+// 9.I4: Back-Alley Bar 272 — "When a unit moves from here, give it +1 [M] this
+// turn." A real move out of the Bar, through the move event (the positive
+// control for the "a recall is not a move" tests).
+TEST_F(VerifyCardsTest, BackAlleyBar_AUnitThatReallyMovesFromHereGetsPlusOne) {
+    battlefieldCard(0, kBackAlleyBar);
+    auto to_base = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto to_other = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto stays = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto from_elsewhere = addUnit(P1, kShipyardSkulker, 0, 1);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        exec.moveToBase(to_base);
+        exec.moveToBattlefield(to_other, 1);
+        exec.moveToBase(from_elsewhere);
+    });
+    ASSERT_TRUE(o(to_base).isAtBase());
+    ASSERT_EQ(bfOf(to_other), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(o(to_base).temp_might_bonus, 1) << "moved from here to base";
+    EXPECT_EQ(o(to_other).temp_might_bonus, 1) << "moved from here to another battlefield";
+    EXPECT_EQ(o(stays).temp_might_bonus, 0);
+    EXPECT_EQ(o(from_elsewhere).temp_might_bonus, 0) << "it did not move from the Bar";
+}
+
+// 9.I5: two Sorakas at one battlefield — each has her own "assigned combat
+// damage last" once, and a death there is replaced once.
+TEST_F(VerifyCardsTest, Soraka_TwoCopiesEachHaveBacklineOnceAndReplaceADeathOnce) {
+    auto a = addUnit(P1, kSoraka, 4, 0);
+    auto b = addUnit(P1, kSoraka, 4, 0);
+    auto unit = addUnit(P1, kShipyardSkulker, 1, 0);
+    int recalled = 0, deaths = 0;
+    auto c1 = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == unit && e.what_changed == "recalled") ++recalled;
+    });
+    auto c2 = events.on_unit_died.connect([&](const UnitDiedEvent&) { ++deaths; });
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        e.testHook_executor().killObject(unit);
+        e.testHook_runChain();
+    });
+    c1.disconnect();
+    c2.disconnect();
+    EXPECT_TRUE(o(a).hasKeyword(Keyword::Backline));
+    EXPECT_TRUE(o(b).hasKeyword(Keyword::Backline));
+    EXPECT_EQ(o(a).aura_effects.size(), 1u) << "one effect from her own hook, not one per copy";
+    EXPECT_EQ(o(b).aura_effects.size(), 1u);
+    EXPECT_EQ(deaths, 0) << "instead heal it, exhaust it, and recall it";
+    EXPECT_EQ(recalled, 1) << "replaced once, however many Sorakas are here";
+    ASSERT_TRUE(o(unit).isAtBase());
+    EXPECT_TRUE(o(unit).is_exhausted);
+}
+
+
+// ═══ Last tranche, group V1 ═══════════════════════════════════════════════════
+// ═══ Verifier V1 (last tranche): Aphelios 372, Veteran Poro 421, Weaponmaster ═══
+
+// 03 item 3.13 — 372 Aphelios, Exalted: the mode is claimed when it is chosen
+// (as the trigger is finalized). After "make new choices for it"
+// (GameEngine::makeNewChoicesFor, reached as Rebuttal reaches it) the SAME
+// chain item is asked again, and its own earlier claim must not take its mode
+// away from it.
+TEST_F(VerifyCardsTest, ApheliosExalted_IsAskedAgainAfterNewChoicesAndIsNotBlockedByItsOwnClaim) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 4);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    // Finalization: mode 0 ("Ready 2 runes"). After the new choices: mode 0 again.
+    EnginePathAgent agent(EnginePathAgent::script({0, 0}));
+    GameEngine* live = nullptr;
+    bool rechosen = false;
+    PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+        if (!rechosen && live && !live->mutableState().chain.items.empty()) {
+            rechosen = true;
+            auto& st = live->mutableState();
+            EXPECT_EQ(st.getObject(aphelios).card_counters["__aph_mask"], 1)
+                << "mode 0 is claimed as the ability is finalized";
+            EXPECT_TRUE(st.getObject(r1).is_exhausted) << "nothing readied before it resolves";
+            live->testHook_executor().makeNewChoices(st.chain.items.back().id);
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority) return i;
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_executor().queueTriggeredAbility(aphelios, P1,
+                                                    TriggerType::WhenEquipmentAttachedToMe);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent, &p2);
+    ASSERT_TRUE(rechosen) << "the opponent never got priority";
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the mode, asked at finalization and again";
+    EXPECT_EQ(agent.prompts[0].size(), 3u);
+    EXPECT_EQ(agent.prompts[1].size(), 3u)
+        << "the item's own earlier answer does not count as \"chosen this turn\" against it";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0));
+    EXPECT_FALSE(o(r1).is_exhausted) << "the re-chosen ability still resolved: Ready 2 runes";
+    EXPECT_FALSE(o(r2).is_exhausted);
+
+    // Another trigger this turn: mode 0 has been chosen, once.
+    EnginePathAgent later;
+    fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &later);
+    ASSERT_EQ(later.prompts.size(), 1u);
+    EXPECT_EQ(later.prompts[0].size(), 2u);
+    EXPECT_FALSE(promptOffersValue(later, 0, 0)) << "\"one that hasn't been chosen this turn\"";
+}
+
+// 08 S4 — 372 Aphelios, Exalted: "Buff a friendly unit" goes through
+// EffectExecutor::buffUnit, so a unit that already has a Buff gets no second.
+TEST_F(VerifyCardsTest, ApheliosExalted_BuffModeGivesOneBuffAndNoSecond) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 4);
+    auto friendly = addUnit(P1, kShipyardSkulker, 0);
+    EnginePathAgent first(EnginePathAgent::script({2, static_cast<int>(friendly)}));
+    fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &first);
+    ASSERT_EQ(first.prompts.size(), 2u) << "the mode, then the friendly unit";
+    EXPECT_TRUE(first.wasOffered(aphelios)) << "the unit is a choice, not the first found";
+    ASSERT_EQ(o(friendly).buff_count, 1);
+    EXPECT_EQ(o(aphelios).buff_count, 0);
+
+    // The next turn the mode is free again; the unit still has its Buff.
+    state.turn.turn_number += 1;
+    EnginePathAgent second(EnginePathAgent::script({2, static_cast<int>(friendly)}));
+    fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &second);
+    ASSERT_EQ(second.prompts.size(), 2u);
+    EXPECT_EQ(second.prompts[0].size(), 3u) << "a new turn: every mode is offered";
+    EXPECT_EQ(o(friendly).buff_count, 1) << "a unit holds one Buff (CR 427.1.b)";
+}
+
+// 03 item 3.21 — Veteran Poro 421 carries [Weaponmaster] and, like its
+// reprint 779, no [Equip] of its own.
+TEST_F(VerifyCardsTest, Pin_3_21_VeteranPoro421_HasWeaponmasterAndNoEquip) {
+    const auto& def = card_db.get(kVeteranPoro421);
+    EXPECT_TRUE(def.keywords.has(Keyword::Weaponmaster));
+    EXPECT_FALSE(def.keywords.has(Keyword::Equip))
+        << "a Weaponmaster unit has no Equip ability of its own";
+    const auto& reprint = card_db.get(kVeteranPoro779);
+    EXPECT_EQ(def.keywords.has(Keyword::Weaponmaster), reprint.keywords.has(Keyword::Weaponmaster));
+    EXPECT_EQ(def.keywords.has(Keyword::Equip), reprint.keywords.has(Keyword::Equip));
+}
+
+// 07 item 7.23 — 828 Riven, Shattered overrides onTrigger and hands the play
+// trigger to the Weaponmaster base. Played through the engine with two
+// Equipment on the board: the "may" can be declined, and nothing is charged.
+TEST_F(VerifyCardsTest, RivenShattered_WeaponmasterIsAMay_DecliningAttachesAndChargesNothing) {
+    auto sword = addGear(P1, kLongSword);            // [Equip] [R]    -> free
+    auto skyfall = addGear(P1, kSkyfallOfAreion);    // [Equip] [1][R] -> [1]
+    auto riven = addToHand(P1, kRivenShattered);
+    ps(P1).rune_pool.energy = 1;                     // beyond Riven's own cost
+    EnginePathAgent no(EnginePathAgent::script({0}));
+    playThroughEngine(riven, &no);
+    ASSERT_TRUE(onBoard(riven));
+    ASSERT_EQ(no.prompts.size(), 1u) << "the may is asked, and only the may";
+    EXPECT_EQ(no.prompts[0].size(), 2u) << "yes / no";
+    EXPECT_FALSE(o(sword).attached_to.has_value());
+    EXPECT_FALSE(o(skyfall).attached_to.has_value());
+    EXPECT_TRUE(o(riven).attachments.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1) << "no Equip cost for an Equip that did not happen";
+}
+
+// ... and accepted, the controller chooses which Equipment (here the second,
+// not the first found) and pays its Equip cost with one Power taken off.
+TEST_F(VerifyCardsTest, RivenShattered_WeaponmasterEquipsTheChosenEquipmentForItsCostLessOnePower) {
+    auto sword = addGear(P1, kLongSword);            // [Equip] [R]    -> free
+    auto skyfall = addGear(P1, kSkyfallOfAreion);    // [Equip] [1][R] -> [1]
+    auto riven = addToHand(P1, kRivenShattered);
+    ps(P1).rune_pool.energy = 1;                     // beyond Riven's own cost: the [1]
+    EnginePathAgent yes(EnginePathAgent::choosing(skyfall));
+    playThroughEngine(riven, &yes);
+    ASSERT_TRUE(onBoard(riven));
+    ASSERT_EQ(yes.prompts.size(), 2u) << "the may, then which Equipment";
+    EXPECT_TRUE(yes.wasOffered(sword)) << "every Equipment she could equip is a choice";
+    EXPECT_TRUE(yes.wasOffered(skyfall))
+        << "[1][R] with no Power left: offered only because [A] comes off the cost";
+    EXPECT_EQ(o(skyfall).attached_to, std::optional<GameObjectId>{riven});
+    EXPECT_FALSE(o(sword).attached_to.has_value()) << "not the first Equipment found";
+    EXPECT_EQ(o(riven).attachments.size(), 1u);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "the [1] of the Equip cost was charged";
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
+    EXPECT_FALSE(state.chain.exists());
+}
+
+// 828 Riven, Shattered — her own branch through the engine: "When I attack,
+// choose an enemy unit here. Deal 2 to it for each Equipment attached to me."
+TEST_F(VerifyCardsTest, RivenShattered_AttackDealsTwoPerAttachedEquipmentToTheChosenEnemyHere) {
+    auto riven = addUnit(P1, kRivenShattered, 0, 0);
+    auto sword = addGear(P1, kLongSword, 0);
+    auto dirk = addGear(P1, kSerratedDirk, 0);
+    auto trinket = addGear(P1, kInvalidId, 0);       // a gear that is not an Equipment
+    attach(sword, riven);
+    attach(dirk, riven);
+    attach(trinket, riven);
+    auto first = addUnit(P2, kShipyardSkulker, 9, 0);
+    auto chosen = addUnit(P2, kShipyardSkulker, 9, 0);
+    auto elsewhere = addUnit(P2, kShipyardSkulker, 9, 1);
+    EnginePathAgent agent(EnginePathAgent::choosing(chosen));
+    fireTriggerThroughEngine(riven, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the enemy unit here";
+    EXPECT_TRUE(agent.wasOffered(first));
+    EXPECT_FALSE(agent.wasOffered(elsewhere)) << "an enemy unit HERE";
+    EXPECT_EQ(o(chosen).damage_marked, 4) << "2 for each of the two Equipment";
+    EXPECT_EQ(o(first).damage_marked, 0);
+    EXPECT_EQ(o(elsewhere).damage_marked, 0);
+}
+
+// 09 item 9.B2 (replaces the tail of C5Test.WeaponmasterUnitsUseTheSharedMay,
+// which passed no agent and so declined the may whatever the card did) and
+// 08 S2 / 07 item 7.26: a Weaponmaster unit that is no longer on the board
+// when its play trigger is finalized is not asked anything and gets nothing.
+// The agent accepts and would choose the Equipment; the Equipment has no card
+// behind it, so nothing but the base's own on-board check keeps it off the list.
+TEST_F(VerifyCardsTest, Weaponmaster_AUnitAlreadyOffTheBoardIsNotAskedAndNotEquipped) {
+    auto bare = addGear(P1, kInvalidId);
+    o(bare).tags = {"Equipment"};
+
+    // Control: on the board, the same agent is asked and equips it.
+    auto control = addUnit(P1, kVeteranPoro421, 0);
+    EnginePathAgent asked(EnginePathAgent::choosing(bare));
+    fireTriggerThroughEngine(control, TriggerType::WhenYouPlayMe, &asked);
+    ASSERT_EQ(asked.prompts.size(), 2u) << "the may, then the Equipment";
+    ASSERT_EQ(o(bare).attached_to, std::optional<GameObjectId>{control});
+
+    for (CardDefId def : {kArmedAssailant, kCombatChef, kVeteranPoro421, kMasterBingwen,
+                          kOrnnForgeGod, kLucianMerciless, kSentinelAdept, kYoneBlademaster,
+                          kRivenShattered, kVeteranPoro779}) {
+        auto dead = addUnit(P1, def, 0);
+        sendToTrash(dead);
+        EnginePathAgent agent(EnginePathAgent::choosing(bare));
+        fireTriggerThroughEngine(dead, TriggerType::WhenYouPlayMe, &agent);
+        EXPECT_TRUE(agent.prompts.empty()) << def << ": nothing to offer a unit that left the board";
+        EXPECT_EQ(o(bare).attached_to, std::optional<GameObjectId>{control})
+            << def << ": the Equipment stays where it was (even if it's already attached)";
+        EXPECT_TRUE(onBoard(bare)) << def;
+        EXPECT_TRUE(o(dead).attachments.empty()) << def;
+        EXPECT_EQ(o(control).attachments.size(), 1u) << def;
+    }
+}
+
+// 08 S2 (324, 414, 421, 448, 407, 435) and 07 item 7.26 (331, 544): the may is
+// accepted and the Equipment chosen as the ability is finalized; the unit
+// leaves the board in response. As the ability resolves the Equipment is not
+// attached to the unit in the trash and its Equip cost is not charged.
+TEST_F(VerifyCardsTest, Weaponmaster_AUnitThatLeftInResponseIsNotEquippedAndPaysNothing) {
+    // Control: the unit stays, the [1] is paid and the Equipment attached.
+    auto control_gear = addGear(P1, kSkyfallOfAreion);   // [Equip] [1][R] -> [1]
+    auto control = addUnit(P1, kVeteranPoro421, 0);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent stays(EnginePathAgent::choosing(control_gear));
+    fireTriggerThroughEngine(control, TriggerType::WhenYouPlayMe, &stays);
+    ASSERT_EQ(o(control_gear).attached_to, std::optional<GameObjectId>{control});
+    ASSERT_EQ(ps(P1).rune_pool.energy, 0);
+
+    auto skyfall = addGear(P1, kSkyfallOfAreion);
+    for (CardDefId def : {kArmedAssailant, kCombatChef, kVeteranPoro421, kMasterBingwen,
+                          kOrnnForgeGod, kLucianMerciless, kSentinelAdept, kYoneBlademaster,
+                          kRivenShattered, kVeteranPoro779}) {
+        auto unit = addUnit(P1, def, 0);
+        ps(P1).rune_pool.energy = 1;
+        EnginePathAgent agent(EnginePathAgent::choosing(skyfall));
+        fireAndProbe(unit, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+            EXPECT_FALSE(live.getObject(skyfall).attached_to.has_value())
+                << def << ": attached as the ability resolves, not before";
+            removeFromBoard(live, unit);
+        });
+        ASSERT_EQ(agent.prompts.size(), 2u)
+            << def << ": the may was accepted and the Equipment chosen at finalization";
+        EXPECT_FALSE(onBoard(unit)) << def;
+        EXPECT_FALSE(o(skyfall).attached_to.has_value())
+            << def << ": no Equipment follows a unit to the trash";
+        EXPECT_TRUE(onBoard(skyfall)) << def;
+        EXPECT_TRUE(o(skyfall).isAtBase()) << def << ": it has not moved";
+        EXPECT_TRUE(o(unit).attachments.empty()) << def;
+        EXPECT_EQ(ps(P1).rune_pool.energy, 1) << def << ": no Equip cost for no Equip";
+    }
+}
+
+
+// ═══ Last tranche, group V3 ═══════════════════════════════════════════════════
+// ═══ Last tranche (V3): boxes still open in batch-00 / 08 / 09 / 10 ══════════
+
+// ── batch-00 "Equip cost (332, 339, 345, 353, 356, 365, 374, 379, 382, 387)" ──
+// Each gear's declared Equip cost is the printed one: the Equip is not offered
+// with every resource except the right Power, nor one Energy short; with
+// exactly the printed cost it is offered once, and executing it attaches the
+// gear and spends exactly that.
+TEST_F(VerifyCardsTest, Equip_EachOfTheTenGearsIsOfferedAndPaidAtItsPrintedCost) {
+    struct Row { CardDefId id; int energy; Domain domain; const char* printed; };
+    const std::vector<Row> rows = {
+        {kSerratedDirk, 0, Domain::Fury, "[R]"},
+        {kRecurveBow, 0, Domain::Fury, "[R]"},
+        {kLongSword, 0, Domain::Fury, "[R]"},
+        {kSkyfallOfAreion, 1, Domain::Fury, "[1][R]"},
+        {kDoransShield, 0, Domain::Calm, "[G]"},
+        {kBrutalizer, 0, Domain::Calm, "[G]"},
+        {kGuardianAngel, 0, Domain::Calm, "[G]"},
+        {kSteraksGage, 0, Domain::Calm, "[G]"},
+        {kSvellsongur, 1, Domain::Calm, "[1][G]"},
+        {kClothArmor, 0, Domain::Mind, "[B]"},
+    };
+    auto offers = [&](GameObjectId gear, GameObjectId unit) {
+        std::vector<Intent> out;
+        withEngine([&](GameEngine& e) {
+            e.testHook_cleanup();
+            for (const auto& i : e.generateLegalActions())
+                if (i.type == IntentType::ActivateAbility && i.ability_source == gear &&
+                    !i.targets.empty() && i.targets.front() == unit)
+                    out.push_back(i);
+        });
+        return out;
+    };
+    for (const Row& row : rows) {
+        SCOPED_TRACE("gear " + std::to_string(row.id) + " [Equip] " + row.printed);
+        // The row is the printed cost.
+        EXPECT_NE(card_db.get(row.id).ability_text.find(std::string("[Equip] ") + row.printed + " ("),
+                  std::string::npos);
+        auto unit = addUnit(P1, kShipyardSkulker);
+        auto gear = addGear(P1, row.id);
+
+        // Plenty of Energy and one Power of every OTHER domain: not offered.
+        ps(P1).rune_pool = RunePool{};
+        ps(P1).rune_pool.energy = row.energy + 3;
+        for (int d = 0; d < static_cast<int>(Domain::Count); ++d)
+            if (d != static_cast<int>(row.domain)) ps(P1).rune_pool.power[d] = 1;
+        EXPECT_TRUE(offers(gear, unit).empty()) << "offered without the printed Power";
+
+        // The right Power, one Energy short: not offered.
+        if (row.energy > 0) {
+            ps(P1).rune_pool = RunePool{};
+            power(P1, row.domain) = 1;
+            ps(P1).rune_pool.energy = row.energy - 1;
+            EXPECT_TRUE(offers(gear, unit).empty()) << "offered one Energy short";
+        }
+
+        // Exactly the printed cost: offered once, and paying it attaches.
+        ps(P1).rune_pool = RunePool{};
+        power(P1, row.domain) = 1;
+        ps(P1).rune_pool.energy = row.energy;
+        const auto legal = offers(gear, unit);
+        ASSERT_EQ(legal.size(), 1u);
+        const Intent equip = legal.front();
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(equip); });
+        EXPECT_EQ(o(gear).attached_to, std::optional<GameObjectId>{unit});
+        EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+        EXPECT_EQ(power(P1, row.domain), 0);
+        EXPECT_EQ(ps(P1).rune_pool.totalPower(), 0);
+    }
+}
+
+// ── batch-09 "\"Can't be chosen by enemy spells and abilities\" ignored" ──
+
+// 511 Defiant Dance: the plan named a test that has no unchoosable unit in it.
+TEST_F(VerifyCardsTest, DefiantDance_DoesNotOfferAnEnemyUnitThatCannotBeChosen) {
+    auto spell = addToHand(P1, kDefiantDance);
+    auto mine = addUnit(P1, kInvalidId, 3);
+    auto plain = addUnit(P2, kInvalidId, 5, 0);
+    auto shrouded = addUnit(P2, kInvalidId, 5, 0);
+    o(shrouded).untargetable_by_enemy_this_turn = true;
+    o(shrouded).untargetable_by_enemy = true;
+    // +2 to `mine`; the -2 is tried on the shrouded unit, then on `plain`.
+    int asked = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        const GameObjectId want = asked++ == 0 ? mine : shrouded;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == plain) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "a unit, then another unit";
+    EXPECT_FALSE(agent.wasOffered(shrouded)) << "can't be chosen by enemy spells";
+    EXPECT_TRUE(agent.wasOffered(plain));
+    EXPECT_EQ(o(mine).temp_might_bonus, 2);
+    EXPECT_EQ(o(plain).temp_might_bonus, -2);
+    EXPECT_EQ(o(shrouded).temp_might_bonus, 0);
+}
+
+// 539 Ahri, Inquisitive (the reprint of 119, outside the c4 range).
+TEST_F(VerifyCardsTest, Ahri539_DoesNotOfferAnEnemyUnitThatCannotBeChosen) {
+    auto ahri = addUnit(P1, kAhri539, 0, 0);
+    auto open = addUnit(P2, kInvalidId, 4, 0);
+    auto shrouded = addUnit(P2, kInvalidId, 4, 0);
+    o(shrouded).untargetable_by_enemy_this_turn = true;
+    o(shrouded).untargetable_by_enemy = true;
+    EnginePathAgent agent(EnginePathAgent::choosing(shrouded));
+    fireTriggerThroughEngine(ahri, TriggerType::WhenIAttackOrDefend, &agent);
+    ASSERT_FALSE(agent.prompts.empty());
+    EXPECT_TRUE(agent.wasOffered(open));
+    EXPECT_FALSE(agent.wasOffered(shrouded));
+    EXPECT_EQ(o(open).temp_might_bonus, -2);
+    EXPECT_EQ(o(shrouded).temp_might_bonus, 0);
+}
+
+// 200 Twisted Fate, Gambler: both targeted payoffs. The [R] "1 to all other
+// enemy units here" is not a choice, so the unchoosable unit still takes it.
+TEST_F(VerifyCardsTest, TwistedFateGambler_NeitherPayoffOffersAUnitThatCannotBeChosen) {
+    auto tf = addUnit(P1, kTwistedFateGambler, 0, 0);
+    auto open = addUnit(P2, kInvalidId, 5, 0);
+    auto open2 = addUnit(P2, kInvalidId, 5, 0);
+    auto shrouded = addUnit(P2, kInvalidId, 5, 0);
+    o(shrouded).untargetable_by_enemy_this_turn = true;
+    o(shrouded).untargetable_by_enemy = true;
+    auto away = addUnit(P2, kInvalidId, 5, 1);
+    auto topRune = [&](Domain d) {
+        auto r = addRune(P1, d);
+        o(r).location = std::nullopt;
+        o(r).zone = ZoneType::RuneDeck;
+        ps(P1).rune_deck.clear();
+        ps(P1).rune_deck.push_back(r);
+    };
+
+    // [R] — Deal 2 to an enemy unit here and 1 to all other enemy units here.
+    topRune(Domain::Fury);
+    EnginePathAgent fury([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == shrouded) return i;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == open) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &fury);
+    ASSERT_EQ(fury.prompts.size(), 1u);
+    EXPECT_FALSE(fury.wasOffered(shrouded)) << "[R]";
+    EXPECT_TRUE(fury.wasOffered(open));
+    EXPECT_TRUE(fury.wasOffered(open2));
+    EXPECT_FALSE(fury.wasOffered(away)) << "\"an enemy unit here\"";
+    EXPECT_EQ(o(open).damage_marked, 2);
+    EXPECT_EQ(o(open2).damage_marked, 1);
+    EXPECT_EQ(o(shrouded).damage_marked, 1) << "\"all other enemy units here\" chooses nobody";
+    EXPECT_EQ(o(away).damage_marked, 0);
+
+    // [Y] — Stun an enemy unit.
+    topRune(Domain::Order);
+    EnginePathAgent order([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == shrouded) return i;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == away) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &order);
+    ASSERT_EQ(order.prompts.size(), 1u);
+    EXPECT_FALSE(order.wasOffered(shrouded)) << "[Y]";
+    EXPECT_TRUE(order.wasOffered(open));
+    EXPECT_TRUE(order.wasOffered(away)) << "\"an enemy unit\": anywhere";
+    EXPECT_TRUE(o(away).is_stunned);
+    EXPECT_FALSE(o(shrouded).is_stunned);
+}
+
+// ── batch-10 "459 / 585 / 674 / 681 / 878 ... can't be chosen" ──
+
+// 459 Windsinger: no test had an unchoosable unit.
+TEST_F(VerifyCardsTest, Windsinger_DoesNotOfferAnEnemyUnitThatCannotBeChosen) {
+    auto open = addUnit(P2, kInvalidId, 2, 0);
+    auto shrouded = addUnit(P2, kInvalidId, 2, 0);
+    o(shrouded).untargetable_by_enemy_this_turn = true;
+    o(shrouded).untargetable_by_enemy = true;
+    auto singer = addUnit(P1, kWindsinger);
+    // Yes; then the shrouded unit if it is offered, else `open`.
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == shrouded) return i;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == open) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(singer, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
+    EXPECT_FALSE(agent.wasOffered(shrouded));
+    EXPECT_TRUE(agent.wasOffered(open));
+    EXPECT_TRUE(inHand(P2, open));
+    EXPECT_TRUE(onBoard(shrouded));
+
+    // Only the unchoosable unit is left at a battlefield: nothing to return,
+    // so the "may" is not offered.
+    auto second = addUnit(P1, kWindsinger);
+    AcceptingEnginePathAgent none;
+    fireTriggerThroughEngine(second, TriggerType::WhenYouPlayMe, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_TRUE(onBoard(shrouded));
+}
+
+// 674 Irresistible Faefolk: the plan's test had no unchoosable unit.
+TEST_F(VerifyCardsTest, Faefolk_DoesNotOfferAnEnemyUnitThatCannotBeChosen) {
+    auto fae = addUnit(P1, kFaefolk, 0, 0);
+    auto open = addUnit(P2, kInvalidId, 2, 1);
+    auto shrouded = addUnit(P2, kInvalidId, 2, 1);
+    o(shrouded).untargetable_by_enemy_this_turn = true;
+    o(shrouded).untargetable_by_enemy = true;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == shrouded) return i;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == open) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
+    EXPECT_FALSE(agent.wasOffered(shrouded));
+    EXPECT_TRUE(agent.wasOffered(open));
+    EXPECT_EQ(bfOf(open), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(shrouded), std::optional<BattlefieldId>{1});
+
+    // Only the unchoosable unit is elsewhere now: the "may" is not offered.
+    AcceptingEnginePathAgent none;
+    fireTriggerThroughEngine(fae, TriggerType::WhenIMoveToFB, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_EQ(bfOf(shrouded), std::optional<BattlefieldId>{1});
+}
+
+// 681 Kha'Zix, Evolving Hunter: no test had an unchoosable unit.
+TEST_F(VerifyCardsTest, KhaZix_DoesNotOfferAnEnemyUnitThatCannotBeChosen_AndKeepsTheXp) {
+    auto kha = addUnit(P1, kKhaZixHunter, 0, 0);
+    auto open = addUnit(P2, kInvalidId, 9, 0);
+    auto shrouded = addUnit(P2, kInvalidId, 9, 0);
+    o(shrouded).untargetable_by_enemy_this_turn = true;
+    o(shrouded).untargetable_by_enemy = true;
+    setXp(P1, 3);
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == shrouded) return i;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == open) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(kha, TriggerType::WhenIAttack, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then the unit";
+    EXPECT_FALSE(agent.wasOffered(shrouded));
+    EXPECT_EQ(o(shrouded).damage_marked, 0);
+    EXPECT_EQ(o(open).damage_marked, o(kha).current_might);
+    EXPECT_EQ(ps(P1).xp, 0);
+
+    // Only the unchoosable unit is here: nothing to deal damage to, so the
+    // 3 XP is not asked for and not spent.
+    removeFromBoard(state, open);
+    setXp(P1, 3);
+    AcceptingEnginePathAgent none;
+    fireTriggerThroughEngine(kha, TriggerType::WhenIAttack, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_EQ(ps(P1).xp, 3);
+    EXPECT_EQ(o(shrouded).damage_marked, 0);
+}
+
+// ── batch-09 "Effect-played units always land in base" ──
+
+// 37 Immortal Phoenix: its tests only ever played it to the base (no
+// battlefield was controlled), so "always lands in base" passed them.
+TEST_F(VerifyCardsTest, ImmortalPhoenix_CanBePlayedToAControlledBattlefield) {
+    auto phoenix = addToTrash(P1, kImmortalPhoenix);
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 1);                            // holds battlefield #1
+    ps(P1).rune_pool.energy = 1;
+    power(P1, Domain::Fury) = 1;
+    // Yes; battlefield #1 (pickEffectPlayLocation: mode 0 = base, 1 + i).
+    EnginePathAgent agent(EnginePathAgent::script({1, 2}));
+    fireTriggerThroughEngine(phoenix, TriggerType::WhenYouKillAUnitWithASpell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the may, then where";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 1, 1)) << "battlefield #0 is not controlled";
+    ASSERT_TRUE(onBoard(phoenix));
+    EXPECT_EQ(bfOf(phoenix), std::optional<BattlefieldId>{1});
+    EXPECT_FALSE(inTrash(P1, phoenix));
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+    EXPECT_EQ(power(P1, Domain::Fury), 0);
+}
+
+// 194 Nocturne, Horrifying: builds its own mode list (0 = stay banished,
+// 1 = base, 2 + i = battlefield i); its tests only ever chose the base.
+TEST_F(VerifyCardsTest, Nocturne_CanBePlayedToAControlledBattlefieldButNotWhereUnitsCannotBePlayed) {
+    auto nocturne = addToDeck(P1, kNocturneHorrifying);
+    state.battlefields[0].controller = P1;
+    state.battlefields[0].blocks_unit_play = true;
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
+    addUnit(P1, kInvalidId, 1, 1);
+    ps(P1).rune_pool.universal_power = 1;
+    EnginePathAgent agent(EnginePathAgent::script({1, 3}));   // banish; play to battlefield #1
+    fireTriggerThroughEngine(nocturne, TriggerType::WhenIRevealedFromTop, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u) << "the banish, then whether and where to play";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "stay banished";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 1)) << "base";
+    EXPECT_FALSE(promptOffersValue(agent, 1, 2)) << "units can't be played to battlefield #0";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 3));
+    ASSERT_TRUE(onBoard(nocturne));
+    EXPECT_EQ(bfOf(nocturne), std::optional<BattlefieldId>{1});
+    EXPECT_FALSE(inDeck(P1, nocturne));
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "\"play me for [A]\"";
+}
+
+// 730 Undying Loyalty. Its tests only ever chose the base. The three tests
+// below judge where the unit ends up, not how the modes are numbered: the
+// agent takes the trash unit, then any "where" answer that is not the base.
+TEST_F(VerifyCardsTest, UndyingLoyalty_TheUnitCanBePlayedToAControlledBattlefield) {
+    auto spell = addToHand(P1, kUndyingLoyalty);
+    auto poro = addToTrash(P1, kPoutyPoro);
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 1);                            // holds battlefield #1
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == poro) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value != 0) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    ASSERT_TRUE(onBoard(poro));
+    EXPECT_EQ(bfOf(poro), std::optional<BattlefieldId>{1})
+        << "CR 355.2.a: base or a battlefield you control";
+    EXPECT_FALSE(inTrash(P1, poro));
+}
+
+TEST_F(VerifyCardsTest, UndyingLoyalty_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
+    auto spell = addToHand(P1, kUndyingLoyalty);
+    auto poro = addToTrash(P1, kPoutyPoro);
+    state.battlefields[0].controller = P1;                    // the only one P1 controls
+    state.battlefields[0].blocks_unit_play = true;            // Rockfall Path
+    addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == poro) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value != 0) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    for (const auto& prompt : agent.prompts)
+        for (const auto& i : prompt)
+            EXPECT_FALSE(i.chosen_value.has_value() && *i.chosen_value != 0)
+                << "a place other than the base was offered: " << i.choice_label;
+    ASSERT_TRUE(onBoard(poro));
+    EXPECT_TRUE(o(poro).isAtBase()) << "units can't be played to battlefield #0";
+}
+
+TEST_F(VerifyCardsTest, UndyingLoyalty_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheBase) {
+    auto spell = addToHand(P1, kUndyingLoyalty);
+    auto poro = addToTrash(P1, kPoutyPoro);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
+    addUnit(P2, kMageseekerWarden, 0, 1);                     // "opponents can only play units to their base"
+    ps(P1).units_play_base_only = true;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == poro) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value.has_value() && *i.chosen_value != 0) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    for (const auto& prompt : agent.prompts)
+        for (const auto& i : prompt)
+            EXPECT_FALSE(i.chosen_value.has_value() && *i.chosen_value != 0)
+                << "a place other than the base was offered: " << i.choice_label;
+    ASSERT_TRUE(onBoard(poro));
+    EXPECT_TRUE(o(poro).isAtBase()) << "battlefield #0 is controlled, but units may only go to the base";
+}
+
+// ═══ Last tranche, group V2 ═══════════════════════════════════════════════════
+// ═══ Last tranche (after sweep-costs merged) ═════════════════════════════════
+
+// 08 S3: two Ornn, Forge God under one controller — "I have +1 [M] for each
+// friendly gear" is applied to each of them once (the hook is called once per
+// (card, controller) and visits every instance).
+TEST_F(VerifyCardsTest, OrnnForgeGod_TwoCopiesEachCountTheFriendlyGearOnce) {
+    auto a = addUnit(P1, kOrnnForgeGod, 0);          // printed 4 [M]
+    auto b = addUnit(P1, kOrnnForgeGod, 0);
+    addGear(P1, kInvalidId);
+    addGear(P1, kInvalidId);
+    addGear(P2, kInvalidId);                         // not friendly
+    cleanup();
+    auto fromSelf = [&](GameObjectId id) {
+        int n = 0;
+        for (const auto& ae : o(id).aura_effects) if (ae.source == id) n += ae.might_bonus;
+        return n;
+    };
+    EXPECT_EQ(fromSelf(a), 2);
+    EXPECT_EQ(fromSelf(b), 2);
+    EXPECT_EQ(o(a).aura_effects.size(), 1u) << "one effect from her own hook, not one per copy";
+    EXPECT_EQ(o(b).aura_effects.size(), 1u);
+    EXPECT_EQ(o(a).current_might, 6) << "4 + two friendly gear";
+    EXPECT_EQ(o(b).current_might, 6);
+}
+
+// 08 S3: Risen Altar in both battlefield slots, both controlled by one player
+// — the hook runs once per slot and each run visits every Altar, yet a unit
+// there gets the [Empower] discount once.
+TEST_F(VerifyCardsTest, RisenAltar_InBothSlotsTheDiscountIsOnePerUnit) {
+    battlefieldCard(0, kRisenAltar, P1);
+    battlefieldCard(1, kRisenAltar, P1);
+    auto here0 = addUnit(P1, kInvalidId, 2, 0);
+    auto here1 = addUnit(P1, kInvalidId, 2, 1);
+    auto in_base = addUnit(P1, kInvalidId, 2);
+    cleanup();
+    ASSERT_EQ(state.battlefields[0].controller, std::optional<PlayerId>{P1});
+    ASSERT_EQ(state.battlefields[1].controller, std::optional<PlayerId>{P1});
+    EXPECT_EQ(state.battlefields[0].empower_cost_reduction[0], 1);
+    EXPECT_EQ(state.battlefields[1].empower_cost_reduction[0], 1);
+    EXPECT_EQ(state.battlefields[0].empower_cost_reduction[1], 0) << "\"your units here\"";
+    EXPECT_EQ(o(here0).empower_cost_reduction, 1) << "[1] or [A] less, once";
+    EXPECT_EQ(o(here1).empower_cost_reduction, 1);
+    EXPECT_EQ(o(in_base).empower_cost_reduction, 0) << "\"here\"";
+    cleanup();                                       // a second pass adds nothing
+    EXPECT_EQ(o(here0).empower_cost_reduction, 1);
+    EXPECT_EQ(o(here1).empower_cost_reduction, 1);
+}
+
+// 08 S5: Bard, Mercurial — which open battlefield and which units are the
+// controller's choices: the second of two open battlefields, the second unit,
+// and no more.
+TEST_F(VerifyCardsTest, BardMercurial_TheSecondOpenBattlefieldAndALaterUnitWhenThoseAreThePicks) {
+    auto legend = addLegend(P1, kPurifier);
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    auto bard = addToHand(P1, kBardMercurial);
+    // Yes to the additional cost; battlefield #1 (mode 1); u2; then "None".
+    EnginePathAgent agent(EnginePathAgent::script({1, 1, static_cast<int>(u2), 0}));
+    playThroughEngine(bard, &agent);
+    ASSERT_TRUE(onBoard(bard));
+    EXPECT_TRUE(o(legend).is_exhausted) << "the additional cost";
+    ASSERT_GE(agent.prompts.size(), 4u) << "the cost, the battlefield, a unit, a unit or none";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "both open battlefields are offered";
+    EXPECT_TRUE(promptOffersValue(agent, 1, 1));
+    EXPECT_TRUE(agent.wasOffered(u1));
+    EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{1});
+    EXPECT_TRUE(o(u1).isAtBase()) << "any number: not every unit";
+    EXPECT_TRUE(o(bard).isAtBase());
+}
+
+// 08 S5: the Weaponmaster choice of Equipment (weaponmaster_base.h) — every
+// unit that takes the ability from the base asks which Equipment, and takes
+// the one picked when it is not the first on offer.
+TEST_F(VerifyCardsTest, Weaponmaster_EveryUnitOfTheBaseTakesTheEquipmentThePlayerPicks) {
+    for (CardDefId def : {kArmedAssailant, kCombatChef, kVeteranPoro421, kMasterBingwen,
+                          kOrnnForgeGod, kLucianMerciless, kVeteranPoro779}) {
+        auto first = addGear(P1, kLongSword);        // [Equip] [R]: free, one Power less
+        auto second = addGear(P1, kLongSword);
+        auto unit = addToHand(P1, def);
+        EnginePathAgent agent(EnginePathAgent::choosing(second));
+        playThroughEngine(unit, &agent);
+        ASSERT_TRUE(onBoard(unit)) << def;
+        EXPECT_TRUE(agent.wasOffered(first)) << def << ": a prompt over the player's Equipment";
+        EXPECT_EQ(o(second).attached_to, std::optional<GameObjectId>{unit}) << def;
+        EXPECT_FALSE(o(first).attached_to.has_value()) << def << ": not the first match";
+    }
+}
+
+// 08 S5: Sky Crusier — "Discard a gear, [1], [E]": which gear is discarded is
+// the player's choice (a non-gear card is not on offer), and so is the unit.
+TEST_F(VerifyCardsTest, SkyCrusier_DiscardsTheGearThePlayerPicksAndHitsTheChosenUnit) {
+    auto cruiser = addUnit(P1, kSkyCrusier);
+    auto g1 = addToHand(P1, kLongSword);
+    auto spell = addToHand(P1, kMeditation);
+    auto g2 = addToHand(P1, kSerratedDirk);
+    auto t1 = addUnit(P2, kInvalidId, 6, 0);
+    auto t2 = addUnit(P2, kInvalidId, 6, 0);
+    auto in_base = addUnit(P2, kInvalidId, 6);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (GameObjectId want : {g2, t2})
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        return legal.front();
+    });
+    activate(cruiser, &agent);
+    EXPECT_TRUE(o(cruiser).is_exhausted);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+    EXPECT_TRUE(agent.wasOffered(g1)) << "a prompt over the gear in hand";
+    EXPECT_FALSE(agent.wasOffered(spell)) << "Discard a GEAR";
+    EXPECT_TRUE(inTrash(P1, g2));
+    EXPECT_TRUE(inHand(P1, g1)) << "not the first gear in hand";
+    EXPECT_TRUE(inHand(P1, spell));
+    EXPECT_TRUE(agent.wasOffered(t1));
+    EXPECT_FALSE(agent.wasOffered(in_base)) << "a unit at a battlefield";
+    EXPECT_EQ(o(t2).damage_marked, 4);
+    EXPECT_EQ(o(t1).damage_marked, 0);
+}
+
+// 08 S5 / batch-07 732: Atakhan — which friendly unit is killed as the
+// additional cost is the player's choice, and the discount is that unit's
+// printed cost.
+TEST_F(VerifyCardsTest, Atakhan_TheAdditionalCostKillsTheUnitThePlayerPicks) {
+    auto mech = addUnit(P1, kMegaMech);              // printed [7]
+    auto skulker = addUnit(P1, kShipyardSkulker);    // printed [3]
+    auto atakhan = addToHand(P1, kAtakhan);          // [10] + 3 Power
+    ps(P1).rune_pool = RunePool{};
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(skulker)}));
+    playAt(atakhan, {}, &agent);                     // funded with exactly [10] + 3
+    ASSERT_TRUE(onBoard(atakhan));
+    EXPECT_TRUE(agent.wasOffered(mech));
+    EXPECT_FALSE(agent.wasOffered(atakhan)) << "chosen before I am on the board";
+    EXPECT_FALSE(onBoard(skulker));
+    EXPECT_TRUE(onBoard(mech)) << "not the first friendly unit";
+    EXPECT_EQ(ps(P1).rune_pool.energy, 3) << "[10] less the Skulker's [3]";
+}
+
+// batch-05 462 Irelia, Graceful: "cost [1] or [A] less" — the player picks the
+// half when both apply; the Power half takes one Power off and no Energy.
+TEST_F(VerifyCardsTest, IreliaGraceful_TheDiscountIsTakenAsPowerOrAsEnergy) {
+    auto irelia = addUnit(P1, kIreliaGraceful, 0);
+    cleanup();                                       // her continuous effect
+    {
+        auto spell = addToHand(P1, kPunchFirst);     // [1] + 2 Power
+        ps(P1).rune_pool = RunePool{};
+        EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(irelia), 1}));
+        playAt(spell, {}, &agent);                   // funded with exactly [1] + 2
+        ASSERT_GE(agent.prompts.size(), 2u) << "the target, then [1] or [A]";
+        EXPECT_TRUE(promptOffersValue(agent, 1, 0));
+        EXPECT_TRUE(promptOffersValue(agent, 1, 1));
+        EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "the Energy was paid in full";
+        EXPECT_EQ(ps(P1).rune_pool.universal_power, 1) << "[A] less";
+        EXPECT_EQ(o(irelia).temp_might_bonus, 5) << "the spell resolved";
+    }
+    {
+        auto spell = addToHand(P1, kPunchFirst);
+        ps(P1).rune_pool = RunePool{};
+        EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(irelia), 0}));
+        playAt(spell, {}, &agent);
+        EXPECT_EQ(ps(P1).rune_pool.energy, 1) << "[1] less";
+        EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "the Power was paid in full";
+    }
+}
+
+// 9.J6 / batch-10 728 Stalking Wolf: the kill is a cost of the play. The
+// engine's own [Ambush] offer to the victim's battlefield — where the victim
+// is the player's only unit — is executed as offered: the victim is off the
+// board when the Wolf enters, and the Wolf still lands there.
+TEST_F(VerifyCardsTest, StalkingWolf_AmbushedToItsVictimsBattlefield_TheVictimIsGoneWhenItLands) {
+    auto wolf = addToHand(P1, kStalkingWolf);
+    auto poro = addUnit(P1, kInvalidId, 1, 0);       // my only unit at battlefield #0
+    o(poro).tags = {"Poro"};
+    ps(P1).rune_pool.energy = 10;
+    ps(P1).rune_pool.universal_power = 5;
+    state.turn.phase = TurnPhase::MainPhase;
+    state.turn.turn_player = P1;
+    state.turn.oc_state = OpenClosedState::Closed;
+    state.turn.priority_holder = P1;
+    std::optional<Intent> ambush;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == wolf && i.play_location &&
+                *i.play_location == LocationId{BattlefieldLocation{0}}) ambush = i;
+    });
+    state.turn.oc_state = OpenClosedState::Open;
+    state.turn.priority_holder = std::nullopt;
+    ASSERT_TRUE(ambush.has_value()) << "[Ambush] to its battlefield is offered";
+
+    GameState* live = nullptr;
+    int entered = 0;
+    bool victim_on_board_at_entry = true;
+    auto conn = events.on_entered_board.connect([&](const EnteredBoardEvent& e) {
+        if (e.object != wolf || !live) return;
+        ++entered;
+        victim_on_board_at_entry = live->getObject(poro).location.has_value();
+    });
+    EnginePathAgent agent(EnginePathAgent::choosing(poro));
+    withEngine([&](GameEngine& e) {
+        live = &e.mutableState();
+        e.testHook_executeIntent(*ambush);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent);
+    conn.disconnect();
+    EXPECT_EQ(entered, 1);
+    EXPECT_FALSE(victim_on_board_at_entry) << "killed as I am played, before I enter";
+    EXPECT_FALSE(onBoard(poro));
+    EXPECT_EQ(bfOf(wolf), std::optional<BattlefieldId>{0})
+        << "even if you don't have other units there";
 }
 
 }  // namespace

@@ -62,7 +62,6 @@ private:
         d.energy_cost = 3;
         d.power_cost = 2;
         d.rarity = Rarity::Epic;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(Choose a unit. Play a ready Reflection unit token to your base. Then do this: It becomes a copy of that unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a7ef8a09c0297cd796c4e2dee15922745ede7417-744x1039.png)RB";
         return d;

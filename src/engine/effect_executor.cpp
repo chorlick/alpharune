@@ -187,14 +187,22 @@ static PlayerId killerOf(const GameState& state, const GameObject& obj) {
     return theirs >= own ? other : obj.controller;
 }
 
-// What an effect applied to a unit changes about it. Computed values (Might,
-// keywords) are left out on purpose: another unit of the batch dying can take
-// an aura away mid-batch, and that must not look like the unit was changed.
+// What an effect applied to a unit changes about it, Might and keywords it was
+// GIVEN included ("this turn" grants, buffs, Empowered). The computed totals
+// (current_might, the keyword set with auras folded in) are left out on
+// purpose: another unit of the batch dying can take an aura away mid-batch,
+// and that must not look like the unit was changed.
 static uint64_t deathBatchStamp(const GameObject& obj) {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
     mix(static_cast<uint64_t>(static_cast<int64_t>(obj.damage_marked)));
     mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_might_bonus)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_buff_count)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_assault_value)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_shield_value)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_deflect_value)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.empowered)));
+    mix(obj.temp_keywords.bits);
     mix(static_cast<uint64_t>(static_cast<int64_t>(obj.buff_count)));
     mix(obj.is_stunned ? 1 : 0);
     mix(static_cast<uint64_t>(obj.controller));
@@ -265,10 +273,10 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
 void EffectExecutor::killObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
-    if (obj.zone == ZoneType::Trash) return; // already dead
-    // CR 429.2.a: only something on the board can be killed. A dead token
-    // sits in Banishment, a bounced unit in a hand — killing either again
-    // would announce a second death.
+    // CR 429.2.a: only something on the board can be killed. A dead unit is
+    // in a trash, a dead token or a unit banished as it died (Smite, Endless
+    // Riches) in Banishment, a bounced unit in a hand — killing any of them
+    // again would announce a second death. The test is the board, not a zone.
     if (!onBoard(obj)) return;
     events_.logTrace("EFFECT: kill " + obj.name + " (id=" + std::to_string(target) + ")");
     // Last-known information for "When I die" (CR 383.2.c.3.b).

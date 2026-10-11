@@ -45,7 +45,6 @@ private:
         d.artist = R"RB(Kudos Productions)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Ganking);
         d.ability_text = R"RB(Units here have [Ganking]. (They can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/aba557a4053fd76c6aa95b2b907ec682bad70d9f-1038x744.png)RB";
         return d;

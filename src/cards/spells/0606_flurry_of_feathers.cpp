@@ -73,8 +73,6 @@ private:
         d.energy_cost = 4;
         d.power_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction]
 Choose one —

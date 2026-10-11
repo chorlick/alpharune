@@ -39,7 +39,6 @@ private:
         d.domains = {Domain::Mind};
         d.energy_cost = 3;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction] — [Add] [1]. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f0e0a67e9e9b1d45d12d248df78b4e643b70bdc1-744x1039.png)RB";
         return d;

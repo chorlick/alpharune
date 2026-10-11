@@ -43,7 +43,6 @@ private:
         d.card_type = CardType::Spell;
         d.domains = {Domain::Mind};
         d.energy_cost = 2;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(Give a gear [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/4986c0c2fea96d9a88d736789d604374a64d03fb-744x1039.png)RB";
         return d;

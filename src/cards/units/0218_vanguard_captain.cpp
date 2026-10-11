@@ -16,7 +16,6 @@ class VanguardCaptain : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    bool requiresLegion() const override { return true; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "[Legion] — play two 1 [M] Recruit unit tokens here." Legion (CR
         // 812): only if another card was played this turn (the count

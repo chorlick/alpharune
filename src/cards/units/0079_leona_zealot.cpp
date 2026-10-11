@@ -16,10 +16,11 @@ class LeonaZealot : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "If an opponent's score is within 3 points of the Victory Score, I
-    // enter ready."
+    // enter ready." — the Victory Score in effect, battlefields that raise it
+    // included (GameState::effectiveVictoryScore).
     bool entersReadyOnPlay(const GameState& state,
                            PlayerId controller) const override {
-        int vs = state.mode.victory_score;
+        int vs = state.effectiveVictoryScore();
         return state.player(opponent(controller)).score >= vs - 3;
     }
     // "Stunned enemy units here have -8 [M], to a minimum of 1 [M]."

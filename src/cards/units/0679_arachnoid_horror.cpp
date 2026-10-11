@@ -22,41 +22,20 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
 
     // "I can be played to an occupied battlefield if an enemy unit is alone
-    // there." The unit-play generator has no hook that ADDS a location (it
-    // reads only the narrowing pair below), so this card lists every place it
-    // may be played: the normal ones (CR 355.2: base, battlefields its
-    // controller controls, open ones under a board-wide grant) plus the
-    // battlefields where a lone enemy unit stands.
-    // ENGINE-GAP: "Friendly units can be played to an occupied battlefield if
-    // an enemy unit is alone there." is not implemented: it needs a
-    // PlayerState grant the generator reads for every friendly unit, as
-    // grant_friendly_units_open_bf is. A Dragon Roost paid play of this card
-    // is not offered either (the narrowing hook bypasses it).
-    static bool enemyAloneAt(const GameState& state, PlayerId player, BattlefieldId bf) {
-        int units = 0, enemies = 0;
-        for (const auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.battlefieldId() != bf) continue;
-            ++units;
-            if (obj.controller != player) ++enemies;
-        }
-        return units == 1 && enemies == 1;
-    }
-    bool restrictsPlayLocations() const override { return true; }
-    std::vector<LocationId> getPlayLocations(const GameState& state,
-                                             PlayerId player) const override {
-        std::vector<LocationId> out;
-        out.push_back(BaseLocation{player});
-        const auto& ps = state.player(player);
-        if (ps.units_play_base_only) return out;   // Mageseeker Warden
-        for (const auto& bf : state.battlefields) {
-            if (bf.blocks_unit_play) continue;     // Rockfall Path
-            const bool controlled = bf.controller.has_value() && *bf.controller == player;
-            const bool open = !bf.controller.has_value();
-            if (controlled || (open && ps.grant_friendly_units_open_bf) ||
-                enemyAloneAt(state, player, bf.id))
-                out.push_back(BattlefieldLocation{bf.id});
-        }
-        return out;
+    // there." — a play-location permission the unit-play generator adds to the
+    // ordinary ones.
+    unsigned extraPlayLocations() const override { return kPlayToLoneEnemyBattlefield; }
+    // "Friendly units can be played to an occupied battlefield if an enemy
+    // unit is alone there." — while I'm on the board, every unit my controller
+    // plays has the same permission.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        if (controller == PlayerId::None) return;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
+                obj.isUnit() && obj.location.has_value()) {
+                state.player(controller).grant_units_lone_enemy_bf = true;
+                return;
+            }
     }
 private:
     const CardDef def_ = [] {

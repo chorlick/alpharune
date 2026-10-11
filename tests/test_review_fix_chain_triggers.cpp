@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -408,29 +409,24 @@ TEST_F(ChainManagerFixTest, SafetyCap_ChainThatNeverEmptiesIsAbandonedCleanly) {
     EXPECT_TRUE(inTrash(P1, spell)) << "the spell stranded under the loop leaves the chain zone";
 }
 
-TEST_F(ChainManagerFixTest, SafetyCap_ResumeOverflowDoesNotLeakAChoice) {
-#ifndef NDEBUG
-    GTEST_SKIP() << "the overflow is an assert in debug builds";
-#else
-    // A card that asks for a choice on every re-entry never finishes. The
-    // answer to its last request must not be left for the next item.
+TEST_F(ChainManagerFixTest, SafetyCap_ACardThatNeverStopsAskingIsAnError) {
+    // A card that asks for a choice on every re-entry never finishes. That is
+    // an engine error, reported as one (std::logic_error) — the resolution is
+    // not quietly abandoned with the card half-resolved.
     EffectExecutor exec(state, events, card_db, &card_registry);
     ChainManager cm(state, events, card_db);
     cm.setEffectExecutor(&exec);
     auto spell = spellObject(P1);
     cm.addSpell(spell, P1, {});
 
-    auto r = run(cm, [&](const ChainItem&) {
+    int calls = 0;
+    EXPECT_THROW(run(cm, [&](const ChainItem&) {
+        ++calls;
         exec.takeChoice();
         Intent a; a.type = IntentType::MakeChoice; a.player = P1; a.chosen_value = 0;
         exec.requestChoice(P1, {a}, "again");
-    });
-
-    EXPECT_GT(r.resolve_calls, 16);
-    EXPECT_FALSE(exec.hasRecordedChoice());
-    EXPECT_FALSE(state.chain.exists());
-    EXPECT_EQ(r.chain_emptied, 1);
-#endif
+    }), std::logic_error);
+    EXPECT_GT(calls, 64) << "a card may ask many questions before the bound";
 }
 
 // ─── 2.11 — Deflect is a cost of choosing ───────────────────────────────────

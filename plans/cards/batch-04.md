@@ -99,16 +99,15 @@ Files read in full: 89 of 89. (For 71 of them the uncheckable metadata lines - i
   - Text: "When you play your second card in a turn, give me +2 [M] this turn and ready me."
   - Code: the "second card" test (`cards_played_this_turn != 2`) runs when the trigger resolves, not when it fires.
   - Scenario: play the second card, then a third in response before the trigger resolves -> the count is 3 and Darius gets nothing.
-- [ ] **79 Leona, Zealot** - `units/0079_leona_zealot.cpp:21` [confirmed] low
+- [x] **79 Leona, Zealot** - `units/0079_leona_zealot.cpp:21` [confirmed] low — FIXED: reads `GameState::effectiveVictoryScore()` (mode score + `TurnState::victory_score_bonus`, which `recalculateAuras` rebuilds from every battlefield's `victoryScoreModifier()`); the same call replaces the direct reads in Find Your Center 47, Poppy 678, Corrupted Dragon 878 and Chem-Baroness 556; test: SweepFlowTest.VictoryScore_LeonaReadsTheScoreInEffect, .VictoryScore_ChemBaronessReadsTheScoreInEffect, .VictoryScore_FindYourCenterAndCorruptedDragonReadTheScoreInEffect, .VictoryScore_PoppyReadsTheScoreInEffect
   - Text: "If an opponent's score is within 3 points of the Victory Score, I enter ready."
   - Code: uses `state.mode.victory_score`, ignoring victory-score modifiers (`Card::victoryScoreModifier` / `EffectExecutor::effectiveVictoryScore`).
   - Scenario: with a +1 "points needed to win" battlefield in play and the opponent at 5, Leona enters ready though they are 4 away.
-  - BLOCKED: `entersReadyOnPlay(state, controller[, self])` has no registry or executor, and the Victory Score in effect (`EffectExecutor::effectiveVictoryScore`) needs the registry to ask each battlefield card. Needs a state-visible value (e.g. a per-battlefield bonus set by Aspirant's Climb 271's hook, or an `effectiveVictoryScore(state)` the cards can call). Same defect in Find Your Center 47, Poppy 678, Corrupted Dragon 878. Reported under "Needs another stream".
-- [ ] **939 Rebuttal** - `spells/0939_rebuttal.cpp:24-28` [confirmed] low
+- [x] **939 Rebuttal** - `spells/0939_rebuttal.cpp:24-28` [confirmed] low — FIXED: the "[4] or less" half is checked when the play is offered: the engine calls `Card::hasLegalTargets(state, controller, card_db)` and Rebuttal reads the top spell's printed Energy cost from it (Defy 45 gets both of its cost caps the same way); test: SweepFlowTest.Rebuttal_IsNotOfferedAgainstASpellCostingMoreThanFour, .Rebuttal_IsOfferedAgainstACheapSpell, .Defy_IsNotOfferedAgainstASpellItCannotCounter, .Defy_IsOfferedAgainstACheapSpell
   - Text: "Choose a spell with Energy cost no more than [4]."
   - Code: `hasLegalTargets` accepts any spell anywhere on the chain; `onResolve` needs the top item to be a spell costing 4 or less.
   - Scenario: Rebuttal is offered against a 5-cost spell, or when an ability sits above the spell, and resolves doing nothing.
-  - PARTLY FIXED: `hasLegalTargets` now requires the top chain item to be a spell (no offer when an ability sits above the spell); test: C4Test.Rebuttal_IsNotPlayableAgainstAnAbilityOnTopOfASpell. BLOCKED for the "[4] or less" half: `hasLegalTargets` sees only the `GameState`, and a card's printed Energy cost is in the `CardDB` (same limit as Defy 45) — needs a `CardDB`-aware overload or the printed cost on `GameObject`.
+  - PARTLY FIXED: `hasLegalTargets` now requires the top chain item to be a spell (no offer when an ability sits above the spell); test: C4Test.Rebuttal_IsNotPlayableAgainstAnAbilityOnTopOfASpell.
 
 ## Systemic
 - S2: 27 Darius Trifarian, 36 Vi Destructive, 59 Eclipse Herald, 61 Poro Herder, 78 Lee Sin Ascetic, 91 Pit Crew (no guard at all), 103 Ravenbloom Student, 131 Dune Drake, 139 Cithria of Cloudfield, 157 Udyr Wildman, 164 Sett Brawler, 167 Ember Monk, 197 Teemo Scout, 202 Jinx Rebel, 217 Trifarian Gloryseeker

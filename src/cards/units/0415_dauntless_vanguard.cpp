@@ -10,17 +10,11 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "play me to an occupied enemy battlefield" matched by generateMainPhaseActions
-
-// "You may play me to an occupied enemy battlefield."
-// ENGINE-HANDLED: GameEngine::generateMainPhaseActions matches the substring
-// "play me to an occupied enemy battlefield" in ability_text and emits
-// PlayCard intents to every enemy-occupied battlefield. No per-card override
-// is needed (getPlayLocations is never consulted by the engine).
-
 class DauntlessVanguard : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "You may play me to an occupied enemy battlefield."
+    unsigned extraPlayLocations() const override { return kPlayToOccupiedEnemyBattlefield; }
 private:
     const CardDef def_ = [] {
         CardDef d;

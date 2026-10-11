@@ -18,9 +18,10 @@ public:
     // "[Tank]" is engine-handled.
     // "Your units here with less Might than me can't be chosen by enemy spells
     // and abilities." — set on those units each aura pass (the engine clears
-    // the flag before any hook runs). Might is as of the previous pass, like
-    // every aura that compares Might.
-    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+    // the flag before any hook runs). It compares Might, so it is decided in
+    // the Might-dependent hook, on this pass's Might.
+    bool hasMightDependentAura() const override { return true; }
+    void applyMightDependentAura(GameState& state, PlayerId controller) const override {
         for (auto& [sid, self] : state.objects) {
             if (self.card_def_id != cardDefId() || self.controller != controller) continue;
             const auto here = self.battlefieldId();

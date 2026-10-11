@@ -92,6 +92,7 @@ cross-referenced.
   - c1: 296 Hand of Noxus — FIXED: `onActivate` returns without Legion (`cards_played_this_turn < 1`); the dead `requiresLegion()` override is removed; test: ReviewFixC1Test.HandOfNoxus_NoEnergyWithoutLegion
   - c5: 243 Darius, Executioner gates his trigger himself; his dead `requiresLegion()` override is deleted. Hand of Noxus 296 is `legends/0296_hand_of_noxus.cpp` — outside units/0219..0494 (stream c1's path range); NOT edited by c5.
   - c6: 578 Scorchclaw — FIXED ([Hunt 2] ungated, [Level 3] passive: +1 [M] aura and `entersReadyOnPlay`); 587 Undying Legion — BLOCKED (needs a play-a-unit-from-trash path, see cards/batch-06.md); the `requiresLegion` / `requiresLevel` / `levelThreshold` overrides are removed from every unit in 495–709 (547, 578, 587, 621, 637, 660); test: C6Test.Scorchclaw_HuntIsNotGatedByLevel, .Scorchclaw_LevelThreeGivesMightAndEntersReady
+  - sweep-flow: `Card::requiresLegion` / `requiresLevel` / `levelThreshold` deleted with the last overrides (16, 20, 217, 218, 251, 653, 713); `ChainTestFixture.LegionParsesAsConditionGate` no longer reads one
 
 - [ ] **8.8 Keywords set on the def because the text mentions them**
   - `Keyword::Temporary` on the card itself — the unit is killed at its controller's next Beginning Phase (`game_engine.cpp:761`): Sprite Mother 106, Trevor Snoozebottom 610, Petal Pixie 638, Lillia, Fae Fawn 644, Sprite Queen 646, LeBlanc, Everywhere at Once 652.

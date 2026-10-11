@@ -51,9 +51,8 @@ public:
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};
     }
-    // NOTE: the base spell works without Legion (Legion only UPGRADES it to
-    // an immediate kill), so this is NOT a Legion-gated play.
-    bool requiresLegion() const override { return false; }
+    // The base spell works without Legion: Legion only UPGRADES it to an
+    // immediate kill, so playing it is not gated on Legion.
 private:
     const CardDef def_ = [] {
         CardDef d;

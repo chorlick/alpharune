@@ -11,11 +11,11 @@
 
 namespace riftbound {
 namespace {
-// COVERAGE-OK: engine-handled: "can't move from here to base" -> BattlefieldState::blocks_move_to_base (game_engine.cpp:416,1989)
-
 class VilemawSLair : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Units can't move from here to base." -> BattlefieldState::blocks_move_to_base
+    bool blocksMoveToBase() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

@@ -22,7 +22,6 @@ public:
         ctx.executor.buffUnit(ctx.source);
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    bool requiresLegion() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

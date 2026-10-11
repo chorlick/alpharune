@@ -26,16 +26,10 @@ public:
     // 190.3.a), and the player who applied it is the attacker — the caster,
     // who can only play this (no [Action] / [Reaction]) on their own turn.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // `targets` holds only the targets that are still legal, so which is
-        // which is read from the chain item: friendly first, enemy second.
-        const auto& chosen = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->targets : targets;
-        auto still_legal = [&](GameObjectId id) {
-            return id != kInvalidId && ctx.state.objectExists(id) &&
-                   std::find(targets.begin(), targets.end(), id) != targets.end();
-        };
-        const GameObjectId mine = !chosen.empty() && still_legal(chosen[0]) ? chosen[0] : kInvalidId;
-        const GameObjectId theirs = chosen.size() >= 2 && still_legal(chosen[1]) ? chosen[1] : kInvalidId;
+        // Roles, not positions (Card::chosenTarget): my unit is slot 0, the
+        // enemy unit slot 1; either is kInvalidId once it is no longer legal.
+        const GameObjectId mine = chosenTarget(ctx, targets, 0);
+        const GameObjectId theirs = chosenTarget(ctx, targets, 1);
         if (mine == kInvalidId && theirs == kInvalidId) return;   // nothing left to move
         auto destsOf = [&](GameObjectId u) {
             return u == kInvalidId ? std::vector<int>{}

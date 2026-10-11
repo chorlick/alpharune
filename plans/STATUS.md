@@ -12,16 +12,14 @@ Written 2026-10-11 so a fresh orchestrator context can continue with nothing
 but this file, `README.md` and `AGENT_BRIEF.md`. "Run decisions" below
 override the README where they differ.
 
-**Orchestrator handover (2026-10-11 00:40):** the orchestrator is now Claude
-session `riftbound-engine-d6` (pid 1238504). The earlier process (pid 2329,
-session `riftbound-engine-5e`) is still alive and hosts every stage 3 agent;
-it was told to stop its loop and only host and relay. Completion notices do
-not reach the orchestrator: a stream is finished when
-`.worktrees/reports/<stream>.md` exists and its worktree is clean. To send a
-stream back, message `riftbound-engine-5e` to relay; never message an agent id
-directly while pid 2329 lives (it would start a duplicate). Details in
-`.worktrees/agents.txt`. Before merging anything, check `git log` on
-integration for commits this session did not make.
+**Agents and sessions (2026-10-11 00:52):** the orchestrator is Claude session
+`riftbound-engine-d6` (pid 1238504) and all stage 3 agents are its subagents.
+The earlier host process (pid 2329) hung at about 00:42 with every agent
+silent, and was killed; the six streams were resumed from their transcripts
+by `SendMessage` to their ids (in `.worktrees/agents.txt`). If the session
+dies again, do the same from the new one: worktrees keep uncommitted work,
+in-flight build results are void. A stream is finished when
+`.worktrees/reports/<stream>.md` exists and its worktree is clean.
 
 **Where we are:** stages 0, 1, 2 done and on `master` (`6a3e52b`). Stage 3
 running. 378 of 514 findings ticked. All state is committed on
@@ -449,3 +447,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 user asked for remaining implementation to start early. Spawned sweep-verify-cards (card-only half of sweep-verify) in the sixth slot. perf-engine, strong-ids and checkpoint NOT started early: each rewrites files the running streams are editing (6.1 trace call sites, id types tree-wide, feature layout).
 - 2026-10-11 00:40 orchestrator handover to session riftbound-engine-d6 (see Resume notes); the old session keeps hosting the agents. Monitor armed on `.worktrees/reports/`.
 - 2026-10-11 old session confirmed it stood down (host and relay only). Trainer survey returned (`.worktrees/reports/trainer-survey.md`); its engine-side finding (CMake paths break the trainer's subdirectory build) relayed to cleanup and added to carry-over.
+- 2026-10-11 00:52 old host process (pid 2329) found hung: no agent activity since 00:42, unreachable, no terminal. Killed. sweep-costs, sweep-flow, sweep-triggers, cleanup, perf-search and sweep-verify-cards resumed from their transcripts in this session; about 10 minutes of agent time and any in-flight build lost, no file work lost. CMake trainer-compat item re-sent to cleanup directly.

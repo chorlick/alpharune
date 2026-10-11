@@ -597,7 +597,7 @@ TEST_F(EquippedTriggerChainTest, TheControllerChoosesWhichUnit) {
 
     engine_->testHook_scoringStep();
 
-    EXPECT_EQ(p1_.value_asked, 1);
+    EXPECT_EQ(p1_.value_asked, 2);   // the may, then where to play it (CR 355.2.a)
     EXPECT_EQ(p1_.object_asked, 1);
     EXPECT_TRUE(s().getObject(second).location.has_value()) << "the chosen unit was played";
     EXPECT_FALSE(s().getObject(first).location.has_value()) << "not simply the first in the trash";

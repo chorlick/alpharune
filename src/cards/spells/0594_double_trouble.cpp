@@ -67,6 +67,11 @@ public:
             if (cid != drawn) rest.push_back(cid);
         }
         if (drawn != kInvalidId) {
+            // No EffectExecutor::lookBeforeReveal (Void Hatchling 341) here: the
+            // card revealed was picked from cards already looked at, so a look at
+            // the top card shows nothing new, and recycling it first changes no
+            // zone — "Recycle the rest" puts it on the bottom anyway, and if it is
+            // the picked card it is drawn anyway.
             // Revealed, then drawn as a draw (so "when you draw" sees it).
             const auto& d = ctx.state.getObject(drawn);
             ctx.events.emit(CardRevealedEvent{drawn, d.card_def_id, d.owner,

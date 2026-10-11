@@ -27,11 +27,14 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const EffectExecutor::EffectPlayCost reduced{.energy_reduction = 2};
-        const auto top = topTwo(ctx.state, ctx.controller);
-        if (top.empty()) return;
         // Reveal once — not again when re-entered with an answer.
         const bool first_pass = !ctx.state.chain.resuming.has_value() ||
                                 ctx.state.chain.resuming->resume_point == 0;
+        // Void Hatchling: "If you would reveal cards from a deck, look at the
+        // top card first." — once, before the two are revealed.
+        if (first_pass) ctx.executor.lookBeforeReveal(ctx.controller);
+        const auto top = topTwo(ctx.state, ctx.controller);
+        if (top.empty()) return;
         if (first_pass) {
             int rank = 0;
             for (auto cid : top) {

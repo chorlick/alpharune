@@ -46,7 +46,8 @@ public:
         const GameObjectId unit = pickTarget(ctx, "Edge of Night: attach to which unit here?", here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (unit == kInvalidId) return;       // none / mistarget / waiting
-        // attachFree has no board check of its own: both ends must be there.
+        // Both ends must still be on the board (EffectExecutor::attachGear
+        // checks it too; this is the early out before the attached_to read).
         if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return;
         if (ctx.state.getObject(ctx.source).attached_to.has_value()) return;
         attachFree(ctx, ctx.source, unit);

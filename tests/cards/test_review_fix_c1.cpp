@@ -976,7 +976,9 @@ TEST_F(ReviewFixC1Test, RelentlessStorm_OnlyWhenTheUnitPlayedIsMighty) {
 }
 
 TEST_F(ReviewFixC1Test, HandOfNoxus_NoEnergyWithoutLegion) {
-    // batch-01 / 08 item 8.7: requiresLegion() is read by nothing.
+    // batch-01 / 08 item 8.7: the Card::requiresLegion() virtual nothing read
+    // is deleted; the [Legion] condition ("if you've played a card this turn")
+    // is checked by the card's own onActivate.
     auto darius = addLegend(P1, kHandOfNoxus);
     activate(darius, 0);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0) << "no card played this turn";

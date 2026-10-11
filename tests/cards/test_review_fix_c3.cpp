@@ -440,7 +440,8 @@ TEST_F(C3Test, TricksyTentacles_MovesSeveralUnitsWithinTheMightBudgetToOneLocati
 // Corrected (sweep-costs, 8.9): the Repeat is now offered — its cost is the
 // card's declaration (Card::repeatCosts) — so there is one prompt, and
 // declining it keeps the hand.
-TEST_F(C3Test, SquareUp_DoesNotForceADiscard) {
+// Was: SquareUp_DoesNotForceADiscard.
+TEST_F(C3Test, SquareUp_TheRepeatOfferCanBeDeclined) {
     // "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn." The
     // discard is the Repeat's cost; the base effect used to demand it.
     auto spell = addToHand(P1, kSquareUp);

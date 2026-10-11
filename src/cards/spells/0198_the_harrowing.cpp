@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -32,11 +33,18 @@ public:
             return;  // suspended
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        // CR 355.2.a: no location is printed, so the unit goes to its
+        // controller's base or to a battlefield they control (and may be
+        // played to) — chosen as it is played (as Spectral Matron 226).
+        const int where = pickEffectPlayLocation(*this, ctx, "The Harrowing: play it to");
+        if (where == -1) return;   // waiting for the agent
         // "ignoring its Energy cost. (You must still pay its Power cost.)"
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};
         // Paying is optional (CR 445.2); the play takes the unit out of the
         // trash itself, and only once the Power is paid.
-        if (ctx.executor.playPayingCost(ctx.controller, picked, std::nullopt, power_only))
+        if (ctx.executor.playPayingCost(ctx.controller, picked,
+                                        effectPlayLocation(ctx.state, ctx.controller, where),
+                                        power_only))
             ctx.events.logTrace("THE HARROWING: played a unit from trash for its Power cost");
     }
 private:

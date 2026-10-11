@@ -77,10 +77,17 @@ public:
             return;  // suspended
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        // CR 355.2.a: no location is printed, so the unit goes to its
+        // controller's base or to a battlefield they control (and may be
+        // played to) — chosen as it is played (as Spectral Matron 226).
+        const int where = pickEffectPlayLocation(*this, ctx, "Cursed Sarcophagus: play it to");
+        if (where == -1) return;   // waiting for the agent
         // "(You must pay its costs.)" — CR 356.1.b.2 / 445.2: full cost, optional.
         // playPayingCost takes the card out of banishment itself, and leaves it
         // there — still "banished with this" — if the cost isn't paid.
-        if (!ctx.executor.playPayingCost(ctx.controller, picked)) return;
+        if (!ctx.executor.playPayingCost(ctx.controller, picked,
+                                         effectPlayLocation(ctx.state, ctx.controller, where)))
+            return;
         auto& tr = self.tracked_objects;
         tr.erase(std::remove(tr.begin(), tr.end(), picked), tr.end());
         ctx.events.logTrace("CURSED SARCOPHAGUS: played a banished unit");

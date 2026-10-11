@@ -35,7 +35,8 @@ constexpr CardDefId kDeathFromBelow = 747;
 // Card text: "Then, if it had 3 [M] or less, do this: You may play this from
 // your trash for [A]." — an offer made as the spell resolves, not a standing
 // permission for the rest of the turn (this test used to expect the grant).
-TEST_F(CardTestFixture, DeathFromBelow_GrantsTrashReplayWhenMightLow) {
+// Was: DeathFromBelow_GrantsTrashReplayWhenMightLow.
+TEST_F(CardTestFixture, DeathFromBelow_ReplaysAtResolutionAndLeavesNoGrantWhenMightLow) {
     auto spell = addToHand(P1, kDeathFromBelow);
     auto victim = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/0);
     auto next = addUnit(P2, kInvalidId, /*might=*/5, /*at_bf=*/0);

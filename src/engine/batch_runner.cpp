@@ -2,7 +2,10 @@
 
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
+#include <atomic>
+#include <exception>
 #include <iostream>
+#include <mutex>
 
 namespace riftbound {
 
@@ -40,18 +43,34 @@ void BatchRunner::runBatch(
 
     boost::asio::thread_pool pool(num_threads_);
 
+    // An exception escaping a pool task would terminate the process. Keep
+    // the first one, skip the games not yet started, and rethrow it on the
+    // calling thread — the same thing the single-threaded path does.
+    std::mutex failure_mu;
+    std::exception_ptr failure;
+    std::atomic<bool> failed{false};
+
     for (int i = 0; i < num_games; ++i) {
         boost::asio::post(pool, [&, i]() {
-            GameConfig config = config_template;
-            config.game_index = i;
-            config.total_games = num_games;
-            GameRunner runner(card_db_, card_registry_,
-                            deck1, deck2, config, results);
-            runner.run();
+            if (failed.load()) return;
+            try {
+                GameConfig config = config_template;
+                config.game_index = i;
+                config.total_games = num_games;
+                GameRunner runner(card_db_, card_registry_,
+                                deck1, deck2, config, results);
+                runner.run();
+            } catch (...) {
+                std::lock_guard<std::mutex> lock(failure_mu);
+                if (!failure) failure = std::current_exception();
+                failed.store(true);
+            }
         });
     }
 
     pool.join();  // wait for all games to complete
+
+    if (failure) std::rethrow_exception(failure);
 
     if (num_games > 20) {
         std::cout << "\n"; // newline after progress indicator

@@ -3,6 +3,7 @@
 #include "io/replay_writer.h"
 #include "io/state_renderer.h"
 
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <random>
@@ -53,8 +54,9 @@ GameResult GameRunner::run() {
         game_uuid = uu.str();
     }
 
-    // Set up debug/trace logging
-    std::ostringstream log_buffer; // thread-local buffer
+    // Set up debug/trace logging. Buffered per game and printed in one
+    // piece when the game ends, so parallel games do not interleave.
+    std::ostringstream log_buffer;
     if (config_.debug_mode) {
         events.on_log.connect([&log_buffer, trace = config_.trace_mode](const LogEvent& e) {
             if (e.level == LogLevel::Trace && !trace) return;
@@ -70,6 +72,9 @@ GameResult GameRunner::run() {
     std::unique_ptr<ReplayWriter> replay;
     if (config_.do_render) {
         std::string replay_path = "replay_game" + std::to_string(config_.game_index + 1) + ".html";
+        if (!config_.replay_dir.empty()) {
+            replay_path = (std::filesystem::path(config_.replay_dir) / replay_path).string();
+        }
         replay = std::make_unique<ReplayWriter>(card_db_, replay_path);
         replay->setGameHeader("Game " + std::to_string(config_.game_index + 1) +
             " | UUID: " + game_uuid +
@@ -152,6 +157,12 @@ GameResult GameRunner::run() {
     // Console output (under mutex)
     {
         std::lock_guard<std::mutex> lock(results_.console_mutex);
+
+        if (config_.debug_mode) {
+            std::cout << "\n── Game " << (config_.game_index + 1)
+                      << " [seed=" << game_seed << "] log ──\n"
+                      << log_buffer.str();
+        }
 
         // Per-game result (only for small batches)
         if (config_.total_games <= 20) {

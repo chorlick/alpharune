@@ -577,7 +577,7 @@ protected:
         auto id = makeCard(p, def_id);
         s().getObject(id).zone = ZoneType::Chain;
         ChainItem item;
-        item.id = s().chain.next_id++;
+        item.id = s().chain.allocateId();
         item.source = id;
         item.controller = p;
         item.card_def_id = def_id;

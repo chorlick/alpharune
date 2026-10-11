@@ -3057,7 +3057,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
         RIFT_TRACE(events_, std::string(item.finalizing ? "FINALIZE-CHOICES: " : "RESOLVE: ") +
                          (state_.objectExists(item.source) ? state_.getObject(item.source).name
                                                            : std::string("?")) +
-                         " (chain_item=" + std::to_string(item.id) +
+                         " (chain_item=" + toString(item.id) +
                          ", ability=" + std::to_string(item.is_ability) +
                          ", spell=" + std::to_string(item.is_spell) + ")");
     }

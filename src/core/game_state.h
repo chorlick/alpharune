@@ -745,7 +745,7 @@ struct ChainItem {
 
 struct ChainState {
     std::vector<ChainItem> items;
-    ChainItemId next_id = 1;
+    ChainItemId next_id = ChainItemId::fromRaw(1);  // ids count up from 1
 
     // Phase C-1 commit 6 — the chain item currently being resolved.
     // Populated by ChainManager::stepResolve immediately after popping the
@@ -764,7 +764,11 @@ struct ChainState {
 
     bool exists() const { return !items.empty(); }
 
-    ChainItemId allocateId() { return next_id++; }
+    ChainItemId allocateId() {
+        const ChainItemId id = next_id;
+        next_id = ChainItemId::fromRaw(id.raw() + 1);
+        return id;
+    }
 
     /// Get the newest (top) item on the chain (last added = resolves first).
     ChainItem* newest() {

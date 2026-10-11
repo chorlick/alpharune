@@ -163,7 +163,7 @@ TEST(ActionVocab, ActivateAbility) {
     i.type = IntentType::ActivateAbility;
     i.player = PlayerId::Player1;
     i.ability_source = src;
-    i.ability = 7;
+    i.ability = AbilityId::fromRaw(7);
     i.targets = {tgt};
     expectRoundTrip(i, ms.state);
 }

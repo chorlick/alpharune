@@ -262,7 +262,7 @@ int64_t historyToken(const Intent& intent, const GameState& state) {
     fp.addLocation(intent.play_location);
     fp.addIds(intent.units_to_move);
     fp.addLocation(intent.move_destination);
-    fp.add(static_cast<uint64_t>(intent.ability));
+    fp.add(static_cast<uint64_t>(intent.ability.raw()));
     fp.add(static_cast<uint64_t>(intent.ability_source));
     fp.add(static_cast<uint64_t>(intent.ability_index));
     fp.add(static_cast<uint64_t>(intent.play_source));

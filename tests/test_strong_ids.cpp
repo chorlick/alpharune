@@ -12,6 +12,7 @@
 #include "core/game_state.h"
 #include "core/intent.h"
 #include "core/types.h"
+#include "engine/effect_executor.h"
 #include "openspiel/action_vocab.h"
 #include "rules/deck_validator.h"
 
@@ -79,6 +80,15 @@ static_assert(StrongIdShape<CardDefId>);
 static_assert(StrongIdShape<BattlefieldId>);
 static_assert(TakesNoNumber<BattlefieldId>);
 static_assert(DoNotMix<CardDefId, BattlefieldId>);
+static_assert(StrongIdShape<ChainItemId>);
+static_assert(TakesNoNumber<ChainItemId>);
+static_assert(StrongIdShape<AbilityId>);
+static_assert(TakesNoNumber<AbilityId>);
+static_assert(DoNotMix<CardDefId, ChainItemId>);
+static_assert(DoNotMix<CardDefId, AbilityId>);
+static_assert(DoNotMix<BattlefieldId, ChainItemId>);
+static_assert(DoNotMix<BattlefieldId, AbilityId>);
+static_assert(DoNotMix<ChainItemId, AbilityId>);
 // A location is not an id, and takes a slot number only as a literal spelled
 // with its type (`BattlefieldLocation{0}`), never by itself.
 static_assert(!std::is_convertible_v<int, BattlefieldLocation>);
@@ -156,6 +166,17 @@ TEST(StrongIds, ABattlefieldIdIsItsSlot) {
     EXPECT_EQ(GameObject{}.hidden_at, kInvalidId);
     EXPECT_EQ(Intent{}.chosen_battlefield, kInvalidId);
     EXPECT_EQ(std::hash<BattlefieldId>{}(BattlefieldId::fromRaw(3)), std::hash<uint32_t>{}(3u));
+}
+
+TEST(StrongIds, ChainItemIdsCountUpFromOne) {
+    ChainState chain;
+    EXPECT_EQ(chain.allocateId().raw(), 1u);
+    EXPECT_EQ(chain.allocateId().raw(), 2u);
+    EXPECT_EQ(chain.next_id.raw(), 3u);
+    EXPECT_EQ(ChainItem{}.id, kInvalidId);
+    EXPECT_EQ(Intent{}.ability, kInvalidId);
+    // A death batch that was never begun takes every chain item as its own.
+    EXPECT_EQ(DeathBatchMark{}.first_item.raw(), 0u);
 }
 
 // ── One "none" per kind: the places that used 0 for "no card" ───────────────

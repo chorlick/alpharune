@@ -38,7 +38,7 @@ public:
         // makeNewChoicesFor), is not blocked by its own earlier answer.
         const int turn = ctx.state.turn.turn_number;
         const int item = ctx.state.chain.resuming.has_value()
-            ? static_cast<int>(ctx.state.chain.resuming->id) : -1;
+            ? static_cast<int>(ctx.state.chain.resuming->id.raw()) : -1;
         auto counter = [&me](const char* key) {
             auto it = me.card_counters.find(key);
             return it == me.card_counters.end() ? 0 : it->second;

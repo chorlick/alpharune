@@ -105,12 +105,13 @@ void from_json(const Json& j, StrongId<Tag>& id) {
 
 struct CardDefIdTag { static constexpr bool kNamedByLiteral = true; };
 struct BattlefieldIdTag { static constexpr bool kNamedByLiteral = false; };
+struct AbilityIdTag { static constexpr bool kNamedByLiteral = false; };
+struct ChainItemIdTag { static constexpr bool kNamedByLiteral = false; };
 
 using CardDefId   = StrongId<CardDefIdTag>;  // Index into CardDB (the card class's def().id)
 using GameObjectId = uint32_t; // Runtime game object instance
-using AbilityId   = uint32_t;  // Ability instance
-using ChainItemId = uint32_t;  // Chain item instance
-using ZoneId      = uint32_t;  // Zone instance
+using AbilityId   = StrongId<AbilityIdTag>;    // Ability instance (Intent::ability)
+using ChainItemId = StrongId<ChainItemIdTag>;  // Chain item instance
 using BattlefieldId = StrongId<BattlefieldIdTag>; // Battlefield slot (an index into GameState::battlefields)
 
 // ─── Player ──────────────────────────────────────────────────────────────────

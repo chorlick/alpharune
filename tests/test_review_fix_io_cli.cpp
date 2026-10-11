@@ -658,6 +658,8 @@ TEST(PlayServerProtocol, TerminalFrameIsDeliveredBeforeTheServerStops) {
 // A client takes a seat or is a spectator; frames and log lines are per seat;
 // only the seat being asked may answer.
 
+namespace {
+
 struct SeatedGame {
     EventBus events;
     GameEngine engine{cards().db, events, cards().registry};
@@ -763,6 +765,8 @@ struct SeatClient {
     }
 };
 
+}  // namespace
+
 TEST(PlayServerSeats, EachSeatGetsItsOwnPrivateLinesAndASpectatorNeither) {
     SeatedGame game;
     SeatClient p1, p2, watcher;
@@ -812,8 +816,9 @@ TEST(PlayServerSeats, EachSeatGetsItsOwnPrivateLinesAndASpectatorNeither) {
         for (const auto& line : who.log) {
             if (line == peek || line.rfind("seat-marker", 0) == 0) continue;
             EXPECT_TRUE(game.mayRead(line, seat)) << who.seat << " was sent: " << line;
-            if (other != PlayerId::None)
+            if (other != PlayerId::None) {
                 EXPECT_FALSE(game.onlyFor(line, other)) << who.seat << " was sent: " << line;
+            }
             if (line.find("DREW: ") != std::string::npos) ++draws;
         }
         return draws;

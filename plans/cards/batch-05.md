@@ -194,7 +194,7 @@ Files read in full: 91 of 91.
   - Code: always takes the first gear; no choice among several, no decline; the reveal is private (`revealed_to_all = false`).
   - Scenario: two gear in the top 4 -> the player cannot pick the second.
 
-- [ ] **462 Irelia, Graceful** - `units/0462_irelia_graceful.cpp:27` [documented] low
+- [x] **462 Irelia, Graceful** - `units/0462_irelia_graceful.cpp:27` [documented] low — FIXED (sweep-costs, 9.N2): the discount counts for every way a spell chooses her — play-time targets, a finalize-pass choice (choices now precede payment), trash-replay grants — and for the generators; test: SweepCostsTest.PlayGate_ADiscountFromTheChosenTargetCountsBeforePayment, .PlayGate_TheTargetDiscountTakesAPowerWhereThereIsNoEnergy, .FinalizePassSpell_ADiscountFromWhatItChoosesCountsBeforePayment, .TrashReplayGrant_ATargetsDiscountCountsTowardTheGrantCost
   - Text: "Your spells that choose me cost [1] or [A] less."
   - Code: always [1] energy; no [A] option; deferred-target spells get nothing.
   - Scenario: a [0]-energy [A] spell choosing Irelia gets no discount.

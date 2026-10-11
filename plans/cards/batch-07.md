@@ -101,7 +101,7 @@ Engine facts traced for this batch (apply to several cards below):
 - S4: 724 Enthralling Protector ("[Buff] me" calls buffUnit unconditionally; repeatable with XP)
   - c7: 724 Enthralling Protector — ALREADY FIXED by 02 item 2.14 (`buffUnit`); test: C7Test.EnthrallingProtector_ASecondActivationAddsNoSecondBuff
 - S5: 754 Daisy! (first non-stunned enemy unit here in map order), 732 Atakhan (defender's choice auto-picked as lowest Might; documented), 779 Veteran Poro (WeaponmasterUnit base takes the first Equipment, free), 847 Sky Crusier (engine discards the first gear in hand for "Discard a gear")
-  - c7: 754 Daisy! — FIXED (chosen); 732 Atakhan — FIXED: the defender chooses (`selectObjectAs`; C7Test.Atakhan_TheDefenderChoosesWhichOfTheirUnitsHereDies); 779 Veteran Poro — choice ALREADY FIXED in `weaponmaster_base.h` (helpers), the free Equip is the 7.7 engine gap; 847 Sky Crusier — BLOCKED: the typed discard cost is paid by `payAndQueueAbility` ("the first matching cards in hand"); the engine has to ask which gear
+  - c7: 754 Daisy! — FIXED (chosen); 732 Atakhan — FIXED: the defender chooses (`selectObjectAs`; C7Test.Atakhan_TheDefenderChoosesWhichOfTheirUnitsHereDies); 779 Veteran Poro — choice ALREADY FIXED in `weaponmaster_base.h` (helpers), the free Equip is the 7.7 engine gap; 847 Sky Crusier — FIXED (sweep-costs; this sub-bullet used to say BLOCKED): `payAndQueueAbility` asks which matching card to discard; test: SweepCostsTest.TypedDiscardCost_SkyCrusierDiscardsTheGearThePlayerPicks. Previously: the typed discard cost was paid by `payAndQueueAbility` ("the first matching cards in hand"); the engine had to ask which gear
 
 ## Not read
 None

@@ -719,7 +719,8 @@ TEST_F(VerifyEngineTest, JayceManOfProgress_ThePermissionIsForAGearPlayedFromHan
     auto kill = addGear(P1, kSerratedDirk);
     auto in_hand = addToHand(P1, kSerratedDirk);     // [1], no Power
     auto in_trash = addToTrash(P1, kSerratedDirk);
-    EnginePathAgent agent(EnginePathAgent::choosing(kill));
+    // The may (yes), then the gear to kill.
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(kill)}));
     playThroughEngine(jayce, &agent);
     ASSERT_FALSE(onBoard(kill));
     ASSERT_EQ(ps(P1).cost_modifiers.size(), 1u) << "the permission";

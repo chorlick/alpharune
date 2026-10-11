@@ -6150,9 +6150,16 @@ static int extraAnyPowerCost(const GameState& state, PlayerId player, const Game
                               card.keywords.has(Keyword::Ambush);
     if (has_reaction) {
         int tax = 0;
-        for (const auto& bf : state.battlefields)
-            if ((bf.showdown_in_progress || bf.combat_in_progress) && bf.reaction_tax_power > tax)
-                tax = bf.reaction_tax_power;
+        // "During showdowns here": only while that battlefield's showdown is
+        // open. A combat is a showdown during its Combat Showdown Step only
+        // (CR 316.8.a, 466) — not once it has moved on to damage or resolution.
+        for (const auto& bf : state.battlefields) {
+            const bool showdown_open =
+                bf.showdown_in_progress ||
+                (bf.combat_in_progress && bf.combat_phase != CombatPhase::DamageStep &&
+                 bf.combat_phase != CombatPhase::ResolutionStep);
+            if (showdown_open && bf.reaction_tax_power > tax) tax = bf.reaction_tax_power;
+        }
         extra += tax;
     }
     return std::max(0, extra);

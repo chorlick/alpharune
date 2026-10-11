@@ -15,7 +15,7 @@ States: `pending` → `running` → `returned` → `merged` (or `blocked`).
 | Baseline commit (master at stage 0) | `c7143f1` |
 | Baseline tests | 1511 run: 1508 passed, 2 failed, 1 skipped (1 disabled). Failing at baseline: `CardTestFixture.BaronNashor_IntegrationFullPlayPathCreatesPit`, `ChainTestFixture.FullGameRunsWithSpellsInDecks` (both: deleted deck file, item 7.40) |
 | Last master sync into integration | `c7143f1` (branch point) |
-| Last integration → master merge | — |
+| Last integration → master merge | `1640e81` (stage 1 gate, fast-forward) |
 | Open checkboxes at start | 514 |
 
 ## Run decisions
@@ -66,12 +66,12 @@ iteration must apply these.
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
 | 1 | io-cli | merged | `f3e2208` | gate: 1726 run, 1726 passed | all 21 items of 04 ticked; follow-ups done: decision-id + seat, fair-play log withholding (4.5), batch exits 1 on engine exception, handshake race fixed |
 | 1 | integrity | merged | `fc1f7cb` (merge `b0d329b`) | gate: 1726 run, 1726 passed | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
-| 2 | cards-c0 | pending | | | |
-| 2 | cards-c1 | pending | | | |
-| 2 | cards-c2 | pending | | | |
-| 2 | cards-c3 | pending | | | |
-| 2 | cards-c4 | pending | | | |
-| 2 | cards-c5 | pending | | | |
+| 2 | cards-c0 | running | | | based on `1640e81` |
+| 2 | cards-c1 | running | | | based on `1640e81` |
+| 2 | cards-c2 | running | | | based on `1640e81` |
+| 2 | cards-c3 | running | | | based on `1640e81` |
+| 2 | cards-c4 | running | | | based on `1640e81` |
+| 2 | cards-c5 | running | | | based on `1640e81` |
 | 2 | cards-c6 | pending | | | |
 | 2 | cards-c7 | pending | | | |
 | 3 | sweep | pending | | | |
@@ -205,3 +205,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 user restored `-j6` and asked for CMake to enforce it (integrity adds `RIFTBOUND_BUILD_JOBS`).
 - 2026-10-10 integrity (`fc1f7cb`) merged; integration reconfigured with the shared-ccache launcher; stage 1 gate run started. AGENT_BRIEF.md updated (launcher, job cap, unity-test rule, shell rule). 7 rows to carry-over.
 - 2026-10-10 STAGE 1 GATE PASSED at `b0d329b`. integrity and io-cli marked merged; their worktrees and branches removed.
+- 2026-10-10 master fast-forwarded to `1640e81`. Stage 2: spawned cards-c0..c5 (6 running); c6 and c7 wait for a slot.

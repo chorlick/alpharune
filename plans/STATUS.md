@@ -52,7 +52,7 @@ iteration must apply these.
 | 1 | helpers | returned | `f22d2a4` | 1576 passed, 2 baseline failures (on its branch) | sent back: fix double execution in Thrill of the Hunt 745 and Zenith Blade 258 caused by 3.1, list other cards with that shape; then merge. 3.1, 3.24, 7.30 stay open for card streams |
 | 1 | executor | merged | `ac49a38` (merge `e1eb9b8`) | 1560 run, 1557 passed, 2 baseline failures | all 8 items closed; 2 existing tests corrected (CR 427.1.b.1; temp Deflect) |
 | 1 | chain-triggers | merged | `6d4dd76` (merge `c9ad6b4`) | 1583 run, 1580 passed, 2 baseline failures | 12 items closed; 7.1 decision recorded (cards use `pickTarget` + `kFinalizeTrigger`); 8.9 has one bullet left, in carry-over |
-| 1 | engine-auras-costs | running | | | |
+| 1 | engine-auras-costs | merged | `3ba5256` (merge `a8af2ef`) | 1631 run, 1628 passed, 2 baseline failures | 10 items closed; 5.4 and 8.4 partly done, remainder in carry-over; edited 25 card files (listed in carry-over) |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
 | 1 | io-cli | running | | | gate open at spawn (main checkout clean); based on `bbc995d` |
 | 1 | integrity | running | | | based on `ec13e47`; also carries two build tasks: ccache across worktrees, unity-built tests |
@@ -160,3 +160,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 merged chain-triggers (`c9ad6b4`), suite 1580/1583 with only the 2 baseline failures; 12 boxes ticked and verified; 11 rows to carry-over. Worktree and branch removed.
 - 2026-10-10 helpers returned; sent back for two regressions before merge.
 - 2026-10-10 recorded carry-over from the engine-auras-costs and helpers reports ahead of their merge verification (12 and 9 rows).
+- 2026-10-10 merged engine-auras-costs (`a8af2ef`), suite 1628/1631 with only the 2 baseline failures; 10 boxes ticked and verified. Worktree and branch removed.

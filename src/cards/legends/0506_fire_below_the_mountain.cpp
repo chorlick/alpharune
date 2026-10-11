@@ -40,7 +40,6 @@ private:
         d.domains = {Domain::Calm, Domain::Mind};
         d.tags = {R"RB(Ornn)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([E]: [Reaction] — [Add] [A]. Use only to play gear or use gear abilities. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ed58d654034d545e54c85d836f3a6552772dd75b-744x1039.png)RB";
         return d;

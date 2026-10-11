@@ -30,29 +30,18 @@ public:
         // when played from facedown (CR 811.1.d.5).
         const auto hidden_at = facedownPlayBattlefield(ctx.state, ctx.source);
         const auto where = playLocations(ctx.state, ctx.controller, hidden_at);
-        // CR 355.2.a: not a battlefield units can't be played to (Rockfall
-        // Path), and no battlefield at all for a player who may only play
-        // units to base (Mageseeker Warden). The modes keep their numbers.
-        uint32_t playable = 0;
-        for (int i = 0; i < where.count() && i < 32; ++i) {
-            bool ok = true;
-            if (const auto* at = std::get_if<BattlefieldLocation>(&where.locations[i])) {
-                ok = !ctx.state.player(ctx.controller).units_play_base_only;
-                for (const auto& bf : ctx.state.battlefields)
-                    if (bf.id == at->id && bf.blocks_unit_play) ok = false;
-            }
-            if (ok) playable |= 1u << i;
-        }
-        // Played from facedown that battlefield is the only location (CR
-        // 811.1.d: the choice is "restricted to the battlefield where it was
-        // hidden"), and the mask applies to it too: the rule does not lift a
-        // card's "Units can't be played here." (CR 002, 054.1). Two
-        // restrictions that contradict leave no location, so the unit is not
-        // played at all (Vendetta FAQ, Perched Grimwyrm at Rockfall Path) and
-        // the rest of the text has no "it" to ready (CR 055).
+        // playLocations leaves out a battlefield units can't be played to
+        // (Rockfall Path; a player who may only play units to base). Played
+        // from facedown that battlefield is the only location (CR 811.1.d:
+        // the choice is "restricted to the battlefield where it was hidden"),
+        // and "Units can't be played here." applies to it too (CR 002,
+        // 054.1): two restrictions that contradict leave no location, so the
+        // unit is not played at all (Vendetta FAQ, Perched Grimwyrm at
+        // Rockfall Path) and the rest of the text has no "it" to ready (CR 055).
+        if (where.count() == 0) return;                  // nowhere to play it
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
-                            where.count(), where.labels, playable);
-        if (mode < 0 || mode >= where.count()) return;   // -1 waiting, -2 nowhere to play it
+                            where.count(), where.labels);
+        if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
 
         GameObjectId tok = kInvalidId;
         auto& ri = ctx.state.chain.resuming;

@@ -43,7 +43,6 @@ private:
         d.energy_cost = 3;
         d.keywords.set(Keyword::Action);
         d.keywords.set(Keyword::Hidden);
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB([Hidden] (Hide now for [A] to react with later for .)
 [Action] (Play on your turn or in showdowns.)
 Play a ready 3 [M] Sprite unit token with [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.))RB";

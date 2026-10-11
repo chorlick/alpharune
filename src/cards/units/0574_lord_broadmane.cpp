@@ -49,7 +49,6 @@ private:
         d.might = 5;
         d.rarity = Rarity::Uncommon;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 When you play me, give your other units here [Assault] this turn. (+1 [M] while they're attackers.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f564001228383a27372c0ddc4d8c0ed4e4843dc7-744x1039.png)RB";

@@ -70,7 +70,6 @@ private:
         d.energy_cost = 4;
         d.power_cost = 1;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB(Give a unit at a battlefield or a gear [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a2b366942f1a7ec1f4bd3c1b17e10356214705d7-744x1039.png)RB";
         return d;

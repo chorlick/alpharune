@@ -497,8 +497,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         events_.logTrace("DECISION #" + std::to_string(state_.decision_index) +
                           " (" + toString(player) + " — battlefield setup): " +
                           std::to_string(choices.size()) + " options");
-        auto chosen = getAgent(player).selectAction(state_, choices);
-        recordAppliedIntent(chosen);
+        auto chosen = askAgent(player, choices);
         state_.turn.turn_player = saved_turn;
 
         size_t idx = static_cast<size_t>(chosen.chosen_battlefield);
@@ -620,8 +619,7 @@ void GameEngine::runMulligans() {
                          " (" + toString(player) + "): Mulligan, " +
                          std::to_string(adv.legal.size()) + " options");
 
-        auto chosen = getAgent(player).selectAction(state_, adv.legal);
-        recordAppliedIntent(chosen);
+        auto chosen = askAgent(player, adv.legal);
 
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
@@ -921,13 +919,7 @@ void GameEngine::channelPhase() {
     auto player = state_.turn.turn_player;
     int count = 2;
 
-    // Second player channels an extra rune on first turn (CR 480.7)
-    if (state_.player(player).is_first_turn &&
-        player != state_.turn.turn_player) {
-        // This is the player going second — but wait, on their first turn
-        // they ARE the turn player. The rule is about being the second player.
-    }
-    // Simplified: if this is the second player's first turn, channel 3
+    // The second player channels an extra rune on their first turn (CR 480.7).
     auto first_player = state_.turn.turn_number == 0 ? state_.turn.turn_player
                         : opponent(state_.turn.turn_player);
     // The player who did NOT go first gets the extra channel on their first turn
@@ -1226,7 +1218,6 @@ void GameEngine::doExpirationBody() {
 
         // Temp might is a separate field from buff_count (permanent buffs);
         // just clear it. recomputeMight (below / in cleanup) drops the bonus.
-        bool had_temp_might = (obj.temp_might_bonus != 0);
         obj.temp_might_bonus = 0;
         if (obj.temp_assault_value != 0) {
             obj.assault_value -= obj.temp_assault_value;
@@ -1259,8 +1250,7 @@ void GameEngine::doExpirationBody() {
                 }
             }
         }
-        (void)had_temp_might;  // temp fields cleared above; recompute regardless
-        obj.recomputeMight();
+        obj.recomputeMight();   // the temp fields were cleared above
 
         // Pure-flag keywords granted "this turn" (Bounty Hunter's
         // Ganking, etc.). Delegated to a static helper so tests can
@@ -1410,8 +1400,7 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
                      " [" + std::to_string(options.size()) + " options]");
     const PlayerId chooser = item.controller;
     const ChainItemId item_id = item.id;
-    auto chosen = getAgent(chooser).selectAction(state_, options);
-    recordAppliedIntent(chosen);
+    auto chosen = askAgent(chooser, options);
     if (on_decision) on_decision(state_, options, chosen);
     GameObjectId t = legal.front();
     if (!chosen.chosen_objects.empty() &&
@@ -1452,8 +1441,7 @@ Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options
     events_.logTrace("DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(player) + "): " + what + " [" +
                      std::to_string(options.size()) + " options]");
-    auto chosen = getAgent(player).selectAction(state_, options);
-    recordAppliedIntent(chosen);
+    auto chosen = askAgent(player, options);
     if (on_decision) on_decision(state_, options, chosen);
     return chosen;
 }
@@ -1590,11 +1578,17 @@ void GameEngine::runFinalizePass(ChainItem& item) {
 // the caller then runs or resumes the chain; false if the activation completed
 // without one or was not possible.
 bool GameEngine::payAndQueueAbility(const Intent& intent) {
+    if (!state_.objectExists(intent.ability_source)) return false;
     auto& source = state_.getObject(intent.ability_source);
     // Skip card-def lookup for tokens (no CardDef). The rest of this
     // handler reads from `source` directly; the previous `def` binding
     // was dead and threw std::out_of_range when source was a token.
     if (source.card_def_id == kInvalidId) return false;
+    // Only an object in play has abilities to activate, and only its
+    // controller activates them (the generators' first gate): an activation
+    // of a card in a trash, a hand or a deck is refused, nothing is paid.
+    if (source.controller != intent.player) return false;
+    if (!source.location.has_value() && source.zone != ZoneType::LegendZone) return false;
 
     // Equip (CR 818): the gear's declared cost (Card::equipCost), less what
     // applies to a gear's activated ability, is paid and the gear attached —
@@ -1660,6 +1654,19 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     // out of reach is refused, never put on the chain for free. The generators
     // gate on the same conditions, so this only stops a stale or hand-built
     // intent.
+    // "Use only if ..." and the per-ability gate ([Empower] only if not
+    // Empowered, "use only if unattached", once a turn), asked of the card
+    // the ability comes from, for this source.
+    if (cost_card) {
+        const auto gate_abilities = cost_card->activatedAbilities();
+        int gate_idx = intent.ability_index;
+        if (gate_idx < 0 || gate_idx >= static_cast<int>(gate_abilities.size())) gate_idx = 0;
+        if (!cost_card->canActivateAbility(state_, intent.player)) return false;
+        if (!gate_abilities.empty() &&
+            !cost_card->canActivateAbilityAt(state_, intent.player, intent.ability_source,
+                                             gate_idx))
+            return false;
+    }
     if (act_cost.exhaust && source.is_exhausted) return false;
     const Domain act_domain = act_cost.power_any_domain ? Domain::Count : act_cost.power_domain;
     if ((act_cost.power > 0 || act_cost.energy > 0) &&
@@ -1721,6 +1728,14 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
             was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
         effect_executor_->announceRecycledToMainDeck(intent.ability_source);
+    }
+    // "Banish this" as a cost: the source is gone before anyone can respond
+    // (CR 383.3: costs are paid as the ability is put on the chain). On board
+    // was checked at the top; the ability still resolves from the chain.
+    if (act_cost.banish_self && state_.getObject(intent.ability_source).location.has_value()) {
+        events_.logTrace("ACTIVATE_COST: banish self " +
+                         state_.getObject(intent.ability_source).name);
+        effect_executor_->banishObject(intent.ability_source);
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
@@ -1836,7 +1851,8 @@ void GameEngine::executeIntent(const Intent& intent) {
             executeStandardMove(intent);
             break;
         case IntentType::EndTurn:
-            executeEndTurn(intent);
+            // Nothing to execute: resolveMainPhaseDecision ends the main
+            // phase on this intent.
             break;
         case IntentType::MulliganDecision:
             executeMulligan(intent);
@@ -2277,8 +2293,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                          " (" + toString(intent.player) + "): "
                          "pay Repeat tranche " + std::to_string(repeats + 1) +
                          " for " + card.name + "? [decline|pay] [2 options]");
-        auto chosen = getAgent(intent.player).selectAction(state_, opts);
-        recordAppliedIntent(chosen);
+        auto chosen = askAgent(intent.player, opts);
         if (on_decision) on_decision(state_, opts, chosen);
         if (chosen.chosen_value.value_or(0) != 1) continue;
         if (!payOptionalCost(intent.player, rc.energy, rc.power, rc.domains, SpendFor::Spell))
@@ -2448,6 +2463,7 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     }
 
     // Dispatch through Card object
+    static const std::vector<GameObjectId> kNoTriggerTargets;
     CardContext ctx{state_, events_, *effect_executor_,
                     item.controller, item.source};
     ctx.firing_trigger = item.fired_trigger;
@@ -2492,9 +2508,14 @@ void GameEngine::resolveSpell(const ChainItem& item) {
             } else if (item.equipped_unit != kInvalidId) {
                 // An Equipment's "When I ..." ability (TriggerManager::
                 // queueEquippedTrigger): the gear's card, for the equipped unit.
-                card->onEquippedTrigger(ctx, item.equipped_unit, effective_targets);
+                card->onEquippedTrigger(ctx, item.equipped_unit, kNoTriggerTargets);
             } else {
-                card->onTrigger(ctx, effective_targets);
+                // A triggered ability is never handed targets, whatever the
+                // chain item holds (CR 383.3: it chooses them itself, through
+                // pickTarget / pickTargetPair at finalization; the event's
+                // subject is ChainItem::triggering_subject). Enforced here, so
+                // a card that reads `targets` in onTrigger reads nothing.
+                card->onTrigger(ctx, kNoTriggerTargets);
             }
         } else {
             // Spell resolution
@@ -2563,8 +2584,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                                  "] for Accelerate on " + card.name +
                                  "? [decline|pay] [2 options]");
 
-                auto chosen = getAgent(item.controller).selectAction(state_, opts);
-                recordAppliedIntent(chosen);
+                auto chosen = askAgent(item.controller, opts);
                 if (on_decision) on_decision(state_, opts, chosen);
 
                 bool wants_pay = chosen.chosen_value.value_or(0) == 1;
@@ -2683,13 +2703,8 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // state; a card's prompt asked through this path cannot.
     const bool is_priority = std::any_of(actions.begin(), actions.end(),
         [](const Intent& i) { return i.type == IntentType::PassPriority; });
-    if (is_priority) {
-        pending_query_ = PendingQuery::ChainPriority;
-        pending_query_player_ = player;
-    }
-    auto chosen = getAgent(player).selectAction(state_, actions);
-    pending_query_ = PendingQuery::None;
-    recordAppliedIntent(chosen);
+    auto chosen = askAgent(player, actions,
+        is_priority ? PendingQuery::ChainPriority : PendingQuery::None);
     // Surface the chain-priority decision in the trace so V&V can
     // confirm priority is being passed correctly between players in
     // Closed State (CR 337). Without this, trivial-pass decisions are
@@ -2835,10 +2850,6 @@ void GameEngine::executeStandardMove(const Intent& intent) {
             }
         }
     }
-}
-
-void GameEngine::executeEndTurn(const Intent&) {
-    // Nothing to do — main phase loop handles this
 }
 
 void GameEngine::executeMulligan(const Intent& intent) {
@@ -3915,10 +3926,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
         // the counterspell would resolve against. CR 820 is the same
         // shape as Accelerate's "you may pay additional" — a yes/no at
         // cost time, not a pre-encoded vocab slot.
-        auto emit = [&](Intent play, int /*R*/) {
-            actions.push_back(play);
-        };
-        constexpr int kSingleEmit = 0;  // sentinel arg for emit() readability
+        auto emit = [&](Intent play) { actions.push_back(std::move(play)); };
 
         // Phase 6q — target decoupling. When the card opts in via
         // needsPlayTimeTarget() or needsPlayTimeTargetPair(), emit
@@ -3948,7 +3956,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             play.card = card_id;
             // targets intentionally empty — agent picks via
             // pickTarget / pickTargetPair at resolve time.
-            emit(play, kSingleEmit);
+            emit(play);
             continue;
         }
 
@@ -3959,7 +3967,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             play.type = intent_type;
             play.player = player;
             play.card = card_id;
-            emit(play, kSingleEmit);
+            emit(play);
         } else if (req.optional && legal_targets.empty()) {
             // Optional targeting with no targets — play without targets
             if (!afford_plain) continue;
@@ -3967,7 +3975,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             play.type = intent_type;
             play.player = player;
             play.card = card_id;
-            emit(play, kSingleEmit);
+            emit(play);
         } else {
             // One intent per legal choice of targets (one target, or a set
             // for a multi-target spell — see spellTargetSets).
@@ -3978,7 +3986,7 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
                 play.player = player;
                 play.card = card_id;
                 play.targets = std::move(tset);
-                emit(play, kSingleEmit);
+                emit(play);
             }
         }
     }
@@ -4303,56 +4311,6 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
     }
 }
 
-std::vector<Intent> GameEngine::generateCombatDamageActions(
-    PlayerId player) const {
-    std::vector<Intent> actions;
-    // Phase 1: simplified — assign all damage to one unit at a time,
-    // obeying lethal-before-next rule (CR 460.2.c.3)
-    // For now, generate a single "spread evenly" assignment
-    // TODO: Full damage assignment enumeration
-
-    // Find the battlefield with active combat
-    for (auto& bf : state_.battlefields) {
-        if (!bf.combat_in_progress) continue;
-
-        PlayerId enemy = opponent(player);
-        auto enemy_units = state_.unitsAt(
-            BattlefieldLocation{bf.id}, enemy);
-        auto my_units = state_.unitsAt(
-            BattlefieldLocation{bf.id}, player);
-
-        if (enemy_units.empty() || my_units.empty()) continue;
-
-        // Sum my might
-        int total_might = 0;
-        for (auto uid : my_units) {
-            total_might += state_.getObject(uid).current_might;
-        }
-
-        // Generate one assignment: kill units in order until damage runs out
-        std::vector<DamageAssignment> assignments;
-        int remaining = total_might;
-        for (auto target_id : enemy_units) {
-            if (remaining <= 0) break;
-            auto& target = state_.getObject(target_id);
-            int lethal = target.current_might - target.damage_marked;
-            if (lethal <= 0) continue;
-            int assigned = std::min(remaining, lethal);
-            assignments.push_back({target_id, assigned});
-            remaining -= assigned;
-        }
-        // Dump remaining damage on last unit
-        if (remaining > 0 && !assignments.empty()) {
-            assignments.back().damage += remaining;
-        }
-
-        actions.push_back(Intent::assignCombatDamage(player, assignments));
-        break;
-    }
-
-    return actions;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Combat and Showdown
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4507,11 +4465,7 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
         if (adv.kind == ShowdownAdvance::Kind::Done) return;
 
         state_.decision_index++;
-        pending_query_ = PendingQuery::Showdown;
-        pending_query_player_ = current_focus;
-        auto chosen = getAgent(current_focus).selectAction(state_, adv.legal);
-        pending_query_ = PendingQuery::None;
-        recordAppliedIntent(chosen);
+        auto chosen = askAgent(current_focus, adv.legal, PendingQuery::Showdown);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
         }
@@ -4693,8 +4647,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
         auto adv = advanceCombatDamage(assigner, total_damage, targets);
         if (adv.kind == CombatDamageAdvance::Kind::Skip) return;
         state_.decision_index++;
-        auto chosen = getAgent(assigner).selectAction(state_, adv.legal);
-        recordAppliedIntent(chosen);
+        auto chosen = askAgent(assigner, adv.legal);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
         }
@@ -4753,11 +4706,6 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
         else                                        mids.push_back(tid);
     }
 
-    auto greedyCascade = [&](const std::vector<GameObjectId>& order)
-        -> std::vector<DamageAssignment> {
-        return lethalCascade(state_, order, total_damage, any_damage_lethal);
-    };
-
     auto canonicalKey = [](const std::vector<DamageAssignment>& da) {
         // Order-independent key: sort by (target, damage) so two cascades
         // that produce the same FINAL marked-damage pattern dedupe to one.
@@ -4781,10 +4729,6 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
         }
     };
 
-    // Enumerate permutations within each bucket, then concatenate.
-    // std::next_permutation requires sorted input to traverse all
-    // permutations. For small bucket sizes (typical combat: 0–4 units
-    // per bucket) the permutation counts stay tiny (n! with n≤4 → ≤24).
     // Enumerate the distinct outcomes directly instead of permuting every
     // unit: walk the buckets in order, and at each step choose which remaining
     // unit of the current bucket takes lethal next, until the damage runs out.
@@ -4975,7 +4919,14 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
                          " with both players present -> another combat is staged");
         return;
     }
+    // The battlefield is no longer Contested: nobody is contesting it and no
+    // combat is staged for it (the invariant processContestedBattlefields
+    // keeps — a stale "combat staged" would be reported to agents and to the
+    // feature extractor for every decision asked before the next cleanup,
+    // e.g. the conquer triggers queued just below).
     bf.is_contested = false;
+    bf.contested_by = PlayerId::None;
+    bf.combat_staged = false;
     sole_remaining = PlayerId::None;
     if (!att_remaining.empty()) sole_remaining = attacker;
     else if (!def_remaining.empty()) sole_remaining = defender;
@@ -5474,6 +5425,39 @@ void GameEngine::recalculateAuras() {
         foldAuras();
     }
 
+    // Step 6: "... have [Keyword] if they didn't already" (AuraEffect::
+    // only_if_absent). Decided here, after EVERY hook of the pass — ordinary
+    // and Might-dependent — has added what it adds, so the answer does not
+    // depend on the order the hooks ran in: such an effect is dropped from an
+    // object that has the keyword printed or "this turn" (GameObject::keywords;
+    // a [Deflect N] value given this turn), or from any other continuous
+    // effect, and of several such effects on one object the first is kept.
+    {
+        bool dropped = false;
+        for (auto& [id, obj] : state_.objects) {
+            auto& effects = obj.aura_effects;
+            const auto conditional = [](const GameObject::AuraEffect& ae) {
+                return ae.only_if_absent && ae.keyword != Keyword::Count;
+            };
+            if (std::none_of(effects.begin(), effects.end(), conditional)) continue;
+            KeywordSet kept;   // conditional keywords already granted once
+            const size_t before = effects.size();
+            effects.erase(std::remove_if(effects.begin(), effects.end(),
+                [&](const GameObject::AuraEffect& ae) {
+                    if (!conditional(ae)) return false;
+                    bool has = obj.keywords.has(ae.keyword) || kept.has(ae.keyword) ||
+                               (ae.keyword == Keyword::Deflect &&
+                                obj.deflect_value + obj.temp_deflect_value > 0);
+                    for (const auto& other : effects)
+                        if (!other.only_if_absent && other.keyword == ae.keyword) has = true;
+                    if (!has) kept.set(ae.keyword);
+                    return has;
+                }), effects.end());
+            dropped = dropped || effects.size() != before;
+        }
+        if (dropped) foldAuras();
+    }
+
     // Risen Altar: battlefield-scoped [Empower] discount lands on the units there.
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isUnit()) continue;
@@ -5666,16 +5650,6 @@ void GameEngine::cleanup() {
     }
     // Other "my Might becomes N or more" edges are the trigger manager's.
     events_.emit(StateSettledEvent{});
-}
-
-// C-1 commit 8 — cleanup is naturally yield-free (no agent queries
-// inside its body — triggers fire as events that the trigger manager
-// queues onto the chain for runChain to process LATER, not during
-// cleanup). The split is just a documented entry point for the
-// step-machine dispatch (commit 9) so cleanup looks symmetric with
-// the other phase subroutines.
-void GameEngine::advanceCleanup() {
-    cleanup();
 }
 
 bool GameEngine::checkWinCondition() {
@@ -6066,8 +6040,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
                          toString(player) + "): discard " +
                          std::to_string(cost.discard_cards) + " as additional cost for " +
                          card.name + "? [decline|pay] [2 options]");
-        auto dchosen = getAgent(player).selectAction(state_, dopts);
-        recordAppliedIntent(dchosen);
+        auto dchosen = askAgent(player, dopts);
         if (on_decision) on_decision(state_, dopts, dchosen);
         if (dchosen.chosen_value.value_or(0) == 1) {
             effect_executor_->discardCards(player, cost.discard_cards);
@@ -6092,8 +6065,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     events_.logTrace("DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(player) + "): pay additional cost for " + card.name +
                      "? [decline|pay] [2 options]");
-    auto chosen = getAgent(player).selectAction(state_, opts);
-    recordAppliedIntent(chosen);
+    auto chosen = askAgent(player, opts);
     if (on_decision) on_decision(state_, opts, chosen);
 
     if (chosen.chosen_value.value_or(0) == 1) {
@@ -6149,6 +6121,13 @@ static bool costModifierApplies(const GameState& state, const PlayerState::CostM
     if (mod.units_only && !card.isUnit()) return false;
     if (mod.gear_only && !card.isGear()) return false;
     if (mod.first_gear_per_turn && state.player(payer).gears_played_this_turn > 0) return false;
+    // "... from hand": the card is (or, while it is being paid for, was) in a
+    // hand, and this play is not from the trash, the Champion Zone or an
+    // effect playing it from elsewhere (PlayerState::current_play_source).
+    if (mod.from_hand_only &&
+        (card.zone != ZoneType::Hand ||
+         state.player(payer).current_play_source != Intent::PlaySource::Hand))
+        return false;
     if (mod.affects_non_token_only && card.super_type == SuperType::Token) return false;
     if (mod.combat_active_only && !combat_active) return false;
     if (!mod.required_tag.empty() &&
@@ -6769,8 +6748,7 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
         // returns the only option for trivial cases; HumanAgent
         // auto-passes without surfacing UI, so the player UX is
         // unchanged. The win is training fidelity.
-        auto chosen = getAgent(player).selectAction(state_, adv.legal);
-        recordAppliedIntent(chosen);
+        auto chosen = askAgent(player, adv.legal);
         if (on_decision) on_decision(state_, adv.legal, chosen);
         adv = resolveCostPaymentDecision(chosen);
     }
@@ -6946,6 +6924,123 @@ void GameEngine::recordAppliedIntent(const Intent& chosen) {
         ::riftbound::openspiel::historyToken(chosen, state_));
 }
 
+// ── The one place an agent is asked ─────────────────────────────────────────
+// Every decision of the game — main phase, priority, showdown, mulligan, combat
+// damage, a rune pick, a card's prompt — is asked here, and the answer is
+// checked here before the engine acts on it or records it:
+//
+//   * It must be one of the options offered (Intent::operator==, every field
+//     that carries meaning). An agent that hands back anything else — a
+//     hand-built play, an ability of a card that is not in play, a MakeChoice
+//     value that was not on the list — is a caller error: std::invalid_argument,
+//     the same family as GameEngine::applyChoice's std::out_of_range for an
+//     index outside the list. Nothing of the bad answer is executed. Cards
+//     therefore never see an answer they did not offer.
+//   * Concede is always accepted: a player may concede at any decision, and it
+//     is what agents answer when they have nothing else (StepDriver on an empty
+//     list, HumanAgent on shutdown).
+//   * With nothing offered there is nothing to check an answer against.
+//
+// A caller that edits the state while the engine waits here (the play server's
+// god mode, through mutableState()) is noticed (noteEditWhileParked). The
+// options were built before the edit, so the answer is then held to the state
+// as it is now: for a decision the engine can rebuild from the state alone
+// (`kind`) it must be one of the REBUILT options — also when the caller swapped
+// its list for them (recomputePendingLegalActions) — and for any other decision
+// (a card's prompt, a cost, combat damage) it must be an offered option that
+// names no object the edit moved, removed or handed to another player. A stale
+// answer is refused the same way.
+namespace {
+void appendIntentObjects(const Intent& i, std::vector<GameObjectId>& out) {
+    if (i.card != kInvalidId) out.push_back(i.card);
+    if (i.ability_source != kInvalidId) out.push_back(i.ability_source);
+    out.insert(out.end(), i.units_to_move.begin(), i.units_to_move.end());
+    out.insert(out.end(), i.targets.begin(), i.targets.end());
+    out.insert(out.end(), i.cards_to_mulligan.begin(), i.cards_to_mulligan.end());
+    out.insert(out.end(), i.chosen_objects.begin(), i.chosen_objects.end());
+    for (const auto& da : i.damage_assignments) out.push_back(da.target_unit);
+}
+bool offeredIn(const std::vector<Intent>& legal, const Intent& chosen) {
+    return std::find(legal.begin(), legal.end(), chosen) != legal.end();
+}
+}  // namespace
+
+GameEngine::ParkedRef GameEngine::parkedRefOf(GameObjectId id) const {
+    ParkedRef r;
+    r.id = id;
+    r.exists = state_.objectExists(id);
+    if (r.exists) {
+        const auto& o = state_.getObject(id);
+        r.zone = o.zone;
+        r.controller = o.controller;
+        r.location = o.location;
+        r.hidden = o.is_hidden;
+    }
+    return r;
+}
+
+void GameEngine::noteEditWhileParked() {
+    edited_while_parked_ = true;
+    parked_refs_.clear();
+    if (!parked_legal_ || pending_query_ != PendingQuery::None) return;
+    // A decision that cannot be rebuilt: remember where every object its
+    // options name is right now, before the edit lands.
+    std::vector<GameObjectId> ids;
+    for (const auto& option : *parked_legal_) appendIntentObjects(option, ids);
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    parked_refs_.reserve(ids.size());
+    for (auto id : ids) parked_refs_.push_back(parkedRefOf(id));
+}
+
+Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
+                            PendingQuery kind) {
+    pending_query_ = kind;
+    pending_query_player_ = player;
+    parked_legal_ = &legal;
+    edited_while_parked_ = false;
+    struct Unpark {   // also when the agent throws (a step fault, an abort)
+        GameEngine& e;
+        ~Unpark() {
+            e.parked_legal_ = nullptr;
+            e.pending_query_ = PendingQuery::None;
+        }
+    } unpark{*this};
+
+    Intent chosen = getAgent(player).selectAction(state_, legal);
+    parked_legal_ = nullptr;
+
+    auto refuse = [&](const std::string& why) {
+        throw std::invalid_argument(
+            "GameEngine: " + std::string(toString(player)) + " answered a decision with " +
+            chosen.describe() + ", " + why + " (" + std::to_string(legal.size()) +
+            " options were offered).");
+    };
+    if (chosen.type != IntentType::Concede && !legal.empty()) {
+        if (!edited_while_parked_) {
+            if (!offeredIn(legal, chosen)) refuse("which was not one of the options offered");
+        } else if (auto fresh = recomputePendingLegalActions()) {
+            if (!offeredIn(*fresh, chosen))
+                refuse("which is not legal in the state as it was edited while the "
+                       "decision was pending");
+        } else {
+            if (!offeredIn(legal, chosen)) refuse("which was not one of the options offered");
+            std::vector<GameObjectId> ids;
+            appendIntentObjects(chosen, ids);
+            for (auto id : ids)
+                for (const auto& before : parked_refs_)
+                    if (before.id == id && !(before == parkedRefOf(id)))
+                        refuse("which names an object that was edited while the decision "
+                               "was pending");
+        }
+    }
+    edited_while_parked_ = false;
+    parked_refs_.clear();
+    pending_query_ = PendingQuery::None;
+    recordAppliedIntent(chosen);
+    return chosen;
+}
+
 Intent GameEngine::queryAgent(PlayerId player) {
     auto actions = generateLegalActions();
     state_.decision_index++;
@@ -6956,11 +7051,7 @@ Intent GameEngine::queryAgent(PlayerId player) {
                      " (" + toString(player) + "): " +
                      std::to_string(actions.size()) + " legal actions");
 
-    pending_query_ = PendingQuery::MainPhase;
-    pending_query_player_ = player;
-    auto chosen = getAgent(player).selectAction(state_, actions);
-    pending_query_ = PendingQuery::None;
-    recordAppliedIntent(chosen);
+    auto chosen = askAgent(player, actions, PendingQuery::MainPhase);
 
     {
         std::string choice_str = toString(chosen.type);
@@ -7026,12 +7117,6 @@ AgentInterface& GameEngine::getAgent(PlayerId player) {
     return *agents_[playerIndex(player)];
 }
 
-PlayerId GameEngine::activePlayer() const {
-    if (state_.turn.priority_holder.has_value())
-        return *state_.turn.priority_holder;
-    return state_.turn.turn_player;
-}
-
 BattlefieldState& GameEngine::getBattlefield(BattlefieldId id) {
     for (auto& bf : state_.battlefields) {
         if (bf.id == id) return bf;
@@ -7044,72 +7129,6 @@ const BattlefieldState& GameEngine::getBattlefield(BattlefieldId id) const {
         if (bf.id == id) return bf;
     }
     throw std::runtime_error("Battlefield not found: " + std::to_string(id));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Battlefield Replace/Swap-back (CR 438)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-void GameEngine::replaceBattlefield(BattlefieldId original_bf,
-                                     GameObjectId token_bf_card,
-                                     PlayerId controller) {
-    auto& bf = getBattlefield(original_bf);
-
-    events_.logTrace("BF_REPLACE: BF#" + std::to_string(original_bf) +
-                     " replaced by token (id=" + std::to_string(token_bf_card) + ")");
-
-    // Original BF card goes to Banishment
-    if (state_.objectExists(bf.card_object_id)) {
-        auto& orig = state_.getObject(bf.card_object_id);
-        auto owner = orig.owner;
-        orig.zone = ZoneType::Banishment;
-        orig.location = std::nullopt;
-        state_.player(owner).banishment.push_back(bf.card_object_id);
-    }
-
-    // Token takes the slot
-    bf.replaced_card = bf.card_object_id;
-    bf.was_replaced = true;
-    bf.is_token = true;
-    bf.card_object_id = token_bf_card;
-    bf.contributed_by = controller;
-
-    // Set token card location
-    auto& token_obj = state_.getObject(token_bf_card);
-    token_obj.zone = ZoneType::BattlefieldZone;
-    token_obj.location = BattlefieldLocation{original_bf};
-}
-
-void GameEngine::swapBackBattlefield(BattlefieldId token_bf) {
-    auto& bf = getBattlefield(token_bf);
-    if (!bf.was_replaced || !bf.replaced_card.has_value()) return;
-
-    auto original_card = *bf.replaced_card;
-
-    events_.logTrace("BF_SWAPBACK: BF#" + std::to_string(token_bf) +
-                     " restoring original card (id=" + std::to_string(original_card) + ")");
-
-    // Remove token card
-    auto& token_obj = state_.getObject(bf.card_object_id);
-    token_obj.zone = ZoneType::Trash;
-    token_obj.location = std::nullopt;
-
-    // Restore original from Banishment
-    if (state_.objectExists(original_card)) {
-        auto& orig = state_.getObject(original_card);
-        auto owner = orig.owner;
-        // Remove from banishment
-        auto& ban = state_.player(owner).banishment;
-        ban.erase(std::remove(ban.begin(), ban.end(), original_card), ban.end());
-
-        orig.zone = ZoneType::BattlefieldZone;
-        orig.location = BattlefieldLocation{token_bf};
-    }
-
-    bf.card_object_id = original_card;
-    bf.replaced_card = std::nullopt;
-    bf.was_replaced = false;
-    bf.is_token = false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

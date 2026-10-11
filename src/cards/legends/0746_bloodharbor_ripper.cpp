@@ -59,7 +59,6 @@ private:
         d.domains = {Domain::Fury, Domain::Chaos};
         d.tags = {R"RB(Pyke)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([1], [E]: Return a friendly unit at a battlefield to its owner's hand. Play a Gold gear token exhausted. (It has "[Reaction][>] Kill this, [E]: [Add] [A]."))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/8ca1bfde8d898a11a6abc73bbab8fc7092b0dcb4-744x1039.png?accountingTag=RB)RB";
         return d;

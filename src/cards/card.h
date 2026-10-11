@@ -73,20 +73,20 @@ public:
     /// Called when this spell resolves from the chain. `targets` holds the
     /// play-time targets that are still legal, in chosen order with the
     /// illegal ones removed: positions are not roles (see chosenTarget).
-    virtual void onResolve(CardContext& ctx,
-                           const std::vector<GameObjectId>& targets) {}
+    virtual void onResolve(CardContext& /*ctx*/,
+                           const std::vector<GameObjectId>& /*targets*/) {}
 
     // ── Permanent enters board ──
     /// Called when this permanent (unit/gear) enters the board from play.
-    virtual void onPlay(CardContext& ctx) {}
+    virtual void onPlay(CardContext& /*ctx*/) {}
 
     // ── Activated abilities (single-ability legacy surface) ──
     /// Called when an activated ability ([E]:, [N]:, etc.) is used.
     /// Legacy single-ability hook. Cards with one activated ability still
     /// override this. Cards with N abilities override the indexed variant
     /// below instead.
-    virtual void onActivate(CardContext& ctx,
-                            const std::vector<GameObjectId>& targets) {}
+    virtual void onActivate(CardContext& /*ctx*/,
+                            const std::vector<GameObjectId>& /*targets*/) {}
 
     /// Multi-ability variant. Default impl falls through to the legacy
     /// single-ability `onActivate(ctx, targets)` ignoring the index, so
@@ -233,9 +233,13 @@ public:
     }
 
     /// Called when a matching trigger fires. For multi-trigger cards,
-    /// inspect ctx.firing_trigger to tell which event fired.
-    virtual void onTrigger(CardContext& ctx,
-                           const std::vector<GameObjectId>& targets) {}
+    /// inspect ctx.firing_trigger to tell which event fired. `targets` is
+    /// ALWAYS EMPTY: the engine hands a triggered ability no targets
+    /// (GameEngine::resolveSpell passes an empty list whatever the chain item
+    /// holds). The event's subject is ChainItem::triggering_subject; a target
+    /// is picked with pickTarget / pickTargetPair (kFinalizeTrigger).
+    virtual void onTrigger(CardContext& /*ctx*/,
+                           const std::vector<GameObjectId>& /*targets*/) {}
 
     /// Optional-trigger confirmation helper (CR principle: "you may [X]").
     ///
@@ -310,6 +314,29 @@ public:
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
     static bool costAlreadyPaid(const CardContext& ctx);
+
+    // ── A cost that could not be paid ("[kill X] to [effect]") ──
+    // A cost is attempted once. When the attempt fails — the kill was replaced,
+    // so nothing died (CR 370.1.b) — the ability has not been paid for: it does
+    // nothing, and it must not try again when it resolves. The failure is kept
+    // on the chain item, so the finalize pass and the resolution agree:
+    //
+    //     bool paid = true;
+    //     if (costDueNow(ctx) && !costUnpaid(ctx)) paid = killAsCost(ctx, unit);
+    //     if (finalizingChoices(ctx)) return;      // still reached
+    //     if (!paid || costUnpaid(ctx)) return;    // nothing was paid: no effect
+    //
+    /// Kill `object` (a unit or a gear on the board) as a cost. True iff it
+    /// DIED: a death that a replacement turned into something else — it
+    /// stayed, was recalled, or was banished "instead" — is not a kill,
+    /// wherever the object ends up (a banished token and a dead token are in
+    /// the same place; this tells them apart). On false the failure is
+    /// recorded (costUnpaid).
+    bool killAsCost(CardContext& ctx, GameObjectId object) const;
+    /// Record on the resolving chain item that its cost could not be paid.
+    static void markCostUnpaid(CardContext& ctx);
+    /// Whether an earlier run of this callback recorded that.
+    static bool costUnpaid(const CardContext& ctx);
 
     /// Variable-X cost helper (CR principle: "pay any amount of [X]").
     ///
@@ -582,7 +609,7 @@ public:
     /// Custom play locations (for "play me to an open battlefield" etc.).
     /// Empty = normal play rules (base or controlled BF).
     virtual std::vector<LocationId> getPlayLocations(
-        const GameState& state, PlayerId player) const { return {}; }
+        const GameState& /*state*/, PlayerId /*player*/) const { return {}; }
 
     /// When true, the play-from-hand action generator emits play intents ONLY
     /// for the locations returned by getPlayLocations() — it suppresses the
@@ -645,7 +672,7 @@ public:
     /// them every cleanup cycle. The engine resets the counters it
     /// knows about (e.g., deathknell_double_count) before calling
     /// `applyPassiveAura` on each on-board card.
-    virtual void applyPassiveAura(GameState& state, PlayerId controller) const {}
+    virtual void applyPassiveAura(GameState& /*state*/, PlayerId /*controller*/) const {}
 
     /// A continuous effect whose CONDITION is a unit's Might ("While I'm
     /// [Mighty], I have ..."). Might is only known once every card's
@@ -677,8 +704,8 @@ public:
     /// battlefield card where the unit is dying (ctx.source = the
     /// battlefield's card object, ctx.controller = the dying unit's
     /// controller).
-    virtual bool applyReplacement(CardContext& ctx,
-                                  GameObjectId dying_unit) { return false; }
+    virtual bool applyReplacement(CardContext& /*ctx*/,
+                                  GameObjectId /*dying_unit*/) { return false; }
 
     // ── Equipment / Equip (CR 716-725, 818) ──
     /// Whether this gear has an equip ability.
@@ -747,10 +774,11 @@ public:
     /// e.g., "When I conquer" in effect_text → WhenIConquer on the unit.
     virtual TriggerType equippedTriggerType() const { return TriggerType::None; }
 
-    /// Called when the equipped unit's trigger fires. Gear handles its own logic.
-    virtual void onEquippedTrigger(CardContext& ctx,
-                                   GameObjectId unit,
-                                   const std::vector<GameObjectId>& targets) {}
+    /// Called when the equipped unit's trigger fires. Gear handles its own
+    /// logic. `targets` is always empty, as for onTrigger.
+    virtual void onEquippedTrigger(CardContext& /*ctx*/,
+                                   GameObjectId /*unit*/,
+                                   const std::vector<GameObjectId>& /*targets*/) {}
 
     /// Keywords granted to the equipped unit (from effect_text).
     virtual KeywordSet equippedKeywords() const { return {}; }

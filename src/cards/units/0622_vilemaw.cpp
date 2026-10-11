@@ -60,7 +60,6 @@ private:
         d.might = 8;
         d.rarity = Rarity::Epic;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 Enemy units here with less Might than me don't deal combat damage.
 When I hold, draw 1.)RB";

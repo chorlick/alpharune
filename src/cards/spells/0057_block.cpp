@@ -38,11 +38,8 @@ private:
         d.domains = {Domain::Calm};
         d.energy_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.shield_value = 3;
         d.keywords.set(Keyword::Action);
         d.keywords.set(Keyword::Hidden);
-        d.keywords.set(Keyword::Shield);
-        d.keywords.set(Keyword::Tank);
         d.ability_text = R"RB([Hidden] (Hide now for [A] to react with later for .)
 [Action] (Play on your turn or in showdowns.)
 Give a unit [Shield 3] and [Tank] this turn. (+3 [M] while it's a defender. It must be assigned combat damage first.))RB";

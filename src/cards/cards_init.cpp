@@ -1,4 +1,5 @@
-// Auto-generated aggregator — registers all per-card files.
+// Aggregator: registers every per-card file. Hand-maintained — there is no
+// generator; a new card adds its declaration and its call below.
 #include "cards/card_registry.h"
 
 namespace riftbound {

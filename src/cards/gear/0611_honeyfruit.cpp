@@ -76,7 +76,6 @@ private:
         d.energy_cost = 2;
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Level);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB(This enters exhausted.
 [Reaction][>] [E]: [Add] [A]. (Abilities that add resources can't be reacted to.)
 [Level 6][>] [>>][Reaction][>] [E]: [Add] [1][A]. (Use this ability only while you have 6+ XP.))RB";

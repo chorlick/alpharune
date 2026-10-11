@@ -26,12 +26,9 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto gears = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isGear() && obj.controller == ctx.controller && obj.location.has_value())
-                    out.push_back(id);
-            std::sort(out.begin(), out.end());   // stable option order, not hash order
-            return out;
+            return boardObjects(ctx.state, [&](const GameObject& o) {
+                return o.isGear() && o.controller == ctx.controller;
+            });
         };
         const int go = confirmOptional(ctx, "Veiled Temple: ready a friendly gear?",
                                        [&]() { return !gears().empty(); });

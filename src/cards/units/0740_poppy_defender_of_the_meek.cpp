@@ -63,7 +63,6 @@ private:
         d.might = 5;
         d.rarity = Rarity::Epic;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.keywords.set(Keyword::Tank);
         d.ability_text = R"RB(You may spend 3 XP as an additional cost to play me. If you do, I cost [3] less.
 [Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)

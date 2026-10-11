@@ -129,6 +129,7 @@ private:
     void onLeftBoard(const LeftBoardEvent& e);                    // WhenIDie on a killed gear
     void onTokenCreated(const TokenCreatedEvent& e);              // a token is played (CR 350.2)
     void onStateSettled();                                        // WhenMyMightReachesThreshold
+    void noteCombatParticipants();                                // WhenACombatIWasInEnds
 
     // ── Helpers ──
 

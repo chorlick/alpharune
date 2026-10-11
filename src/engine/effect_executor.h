@@ -143,11 +143,18 @@ public:
     /// The whole of "heal it, exhaust it, and recall it" for a unit whose
     /// death is being replaced.
     void healExhaustRecall(GameObjectId unit);
-    /// Death replacements carried by the dying unit itself: the one-shot
-    /// "next time it would die this turn, heal it, exhaust it, and recall it
-    /// instead" flag and GameObject::pending_death_replacements. Both kill
-    /// paths call this first; true = the death was replaced.
-    bool applyOwnDeathReplacement(GameObjectId unit);
+    /// Every replacement of `unit`'s death, in one place for both kill paths
+    /// (killObject and GameEngine::killUnit). The ones that apply are
+    /// collected first: those the unit carries (the one-shot "next time it
+    /// would die this turn, heal it, exhaust it, and recall it instead",
+    /// GameObject::pending_death_replacements, "banish it instead"), the card
+    /// of the battlefield it is at, and its controller's cards in play
+    /// (Card::replacementApplies), in that order and by object id within the
+    /// last. When more than one applies, the unit's controller chooses which
+    /// is applied (CR 372); one that then does not replace the death (a "may"
+    /// declined) drops out and the choice is offered again among the rest.
+    /// With nobody to ask, the listed order is used. True = it did not die.
+    bool applyDeathReplacements(GameObjectId unit);
     /// Attach `gear` to `unit` (the cost, if any, is already paid): both must
     /// be on the board (CR 716); a gear attached elsewhere comes off first
     /// (its onUnattached runs); its printed rules text goes Inactive (CR

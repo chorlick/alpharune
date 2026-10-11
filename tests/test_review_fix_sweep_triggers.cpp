@@ -438,7 +438,7 @@ TEST_F(SweepTriggersTest, Zilean_AdditionalCopyCanBeDeclined) {
                                           base(P1));
     }, &agent);
     EXPECT_EQ(tokenUnits(P1).size(), 1u);
-    EXPECT_NE(state.player(P1).zilean_double_token_turn, state.turn.turn_number)
+    EXPECT_EQ(state.player(P1).additional_token_copies_used, 0)
         << "declining does not use up the once-each-turn effect";
 }
 
@@ -1293,12 +1293,59 @@ public:
     }
 };
 
+constexpr CardDefId kTRecordsPlaySource = 1098;
+constexpr CardDefId kTDelayedSpawner = 1097;
+
+// A free spell that notes where it was being played from each time its cost
+// is worked out (PlayerState::current_play_source).
+class TRecordsPlaySource : public SpellCard {
+public:
+    static inline std::vector<Intent::PlaySource> seen;
+    const CardDef& def() const override {
+        static const CardDef d = [] {
+            CardDef c;
+            c.id = kTRecordsPlaySource;
+            c.name = "Test Records Play Source";
+            c.card_type = CardType::Spell;
+            return c;
+        }();
+        return d;
+    }
+    int selfCostReduction(const GameState& state, PlayerId player) const override {
+        seen.push_back(state.player(player).current_play_source);
+        return 0;
+    }
+};
+
+// The card behind the delayed abilities of the 9.M18 test; each resolution is
+// counted on the source object.
+class TDelayedSpawner : public UnitCard {
+public:
+    const CardDef& def() const override {
+        static const CardDef d = [] {
+            CardDef c;
+            c.id = kTDelayedSpawner;
+            c.name = "Test Delayed Spawner";
+            c.card_type = CardType::Unit;
+            c.might = 1;
+            return c;
+        }();
+        return d;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        ctx.state.getObject(ctx.source).card_counters["resolved"]++;
+    }
+};
+
 class SweepTriggersCardTest : public SweepTriggersTest {
 protected:
     void SetUp() override {
         SweepTriggersTest::SetUp();
         card_registry.registerCard(kTKillBuffKill, std::make_unique<TKillBuffKill>());
+        card_registry.registerCard(kTRecordsPlaySource, std::make_unique<TRecordsPlaySource>());
+        card_registry.registerCard(kTDelayedSpawner, std::make_unique<TDelayedSpawner>());
         card_db.buildFromClasses(card_registry);
+        TRecordsPlaySource::seen.clear();
     }
 };
 
@@ -1549,6 +1596,385 @@ TEST_F(SweepTriggersTest, DeathBatch_ASurvivorGivenAKeywordIsSnapshottedAfresh) 
     EXPECT_TRUE(obj(second).last_known.keywords.has(Keyword::Ganking));
     EXPECT_TRUE(obj(second).last_known.other_friendly_units_here.empty());
     EXPECT_EQ(obj(first).last_known.other_friendly_units_here, std::vector<GameObjectId>{second});
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 19. Carry-over audit (plans/09 section M, 9.N7)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A chain item to stand in `chain.resuming` for "an effect of `controller`
+/// is resolving".
+static ChainItem resolvingFor(GameState& live, PlayerId controller, bool spell = false) {
+    ChainItem ri;
+    ri.id = live.chain.allocateId();
+    ri.controller = controller;
+    ri.is_spell = spell;
+    ri.is_ability = !spell;
+    return ri;
+}
+
+// 9.M13: "They can't move it this turn" (Vex, Apathetic 712) stops its
+// controller's move effects; an enemy's move effect and a recall still work.
+TEST_F(SweepTriggersTest, CantMoveThisTurn_StopsItsControllersMoveEffectsOnly) {
+    addUnit(P2, 712, 4, 0);
+    GameObjectId token = kInvalidId;
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        auto& live = e.mutableState();
+        token = exec.createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{}, battlefield(1));
+        e.testHook_runChain();                       // Vex: stun it, it can't be moved this turn
+        ASSERT_TRUE(live.getObject(token).cant_move_this_turn);
+
+        live.chain.resuming = resolvingFor(live, P1);
+        exec.moveToBase(token);
+        EXPECT_FALSE(live.getObject(token).isAtBase()) << "its controller's effect";
+        exec.moveToBattlefield(token, state.battlefields[0].id);
+        EXPECT_EQ(live.getObject(token).battlefieldId(),
+                  std::optional<BattlefieldId>{state.battlefields[1].id});
+        EXPECT_EQ(live.getObject(token).moves_this_turn, 0);
+
+        live.chain.resuming = resolvingFor(live, P2);
+        exec.moveToBattlefield(token, state.battlefields[0].id);
+        EXPECT_EQ(live.getObject(token).battlefieldId(),
+                  std::optional<BattlefieldId>{state.battlefields[0].id}) << "an enemy's effect moves it";
+
+        live.chain.resuming = resolvingFor(live, P1);
+        exec.recallToBase(token);
+        EXPECT_TRUE(live.getObject(token).isAtBase()) << "a recall is not a move (CR 458.3)";
+        live.chain.resuming.reset();
+        live.chain.items.clear();
+    });
+}
+
+// 9.M15: Ashe, Focused 731 — "When they hold, return it" is her controller's
+// ability waiting on the opponent's hold; the holder's Blue Sentinel does not
+// repeat it.
+TEST_F(SweepTriggersTest, DelayedAbility_WatchedPlayerIsNotItsController) {
+    constexpr CardDefId kAsheFocused = 731;
+    auto taken = addToHand(P2, kLoyalPoro);
+    auto ashe = addToHand(P1, kAsheFocused);
+    EnginePathAgent agent(EnginePathAgent::choosing(taken));
+    playThroughEngine(ashe, &agent);
+    ASSERT_EQ(obj(taken).zone, ZoneType::Banishment);
+    ASSERT_EQ(state.delayed_abilities.size(), 1u);
+    EXPECT_EQ(state.delayed_abilities[0].controller, P1);
+    EXPECT_EQ(state.delayed_abilities[0].watched_player, P2);
+    EXPECT_EQ(state.delayed_abilities[0].expires_on_turn, DelayedAbility::kUntilFired);
+
+    // P1's own hold does not fire it.
+    state.battlefields[0].controller = P1;
+    withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, 0); e.testHook_runChain(); });
+    EXPECT_EQ(obj(taken).zone, ZoneType::Banishment);
+
+    // P2 holds a battlefield with a Blue Sentinel there.
+    addUnit(P2, kBlueSentinel, 0, 1);
+    state.battlefields[1].controller = P2;
+    int ashe_items = 0;
+    PlayerId item_controller = PlayerId::None;
+    withEngine([&](GameEngine& e) {
+        e.testHook_scoreHold(P2, 1);
+        for (const auto& ci : e.mutableState().chain.items)
+            if (ci.source == ashe) { ++ashe_items; item_controller = ci.controller; }
+        e.testHook_runChain();
+    }, nullptr, nullptr, P2);
+    EXPECT_EQ(ashe_items, 1) << "not one of the holder's hold effects: not repeated";
+    EXPECT_EQ(item_controller, P1) << "Ashe's controller controls it (CR 391-392)";
+    EXPECT_TRUE(inHand(P2, taken));
+    EXPECT_TRUE(state.delayed_abilities.empty() ||
+                state.delayed_abilities[0].source != ashe);
+}
+
+// 9.M16: "Once each turn" is printed on each Zilean, Time Mage 648.
+TEST_F(SweepTriggersTest, Zilean_EachCopyIsOnceEachTurnOnItsOwn) {
+    addUnit(P1, kZilean, 5, 0);
+    addUnit(P1, kZilean, 5, 1);
+    EnginePathAgent yes(EnginePathAgent::script({1, 1, 1}));
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        EXPECT_EQ(e.mutableState().player(P1).additional_token_copy_sources, 2);
+        auto& exec = e.testHook_executor();
+        for (int i = 0; i < 3; ++i)
+            exec.createToken(P1, CardType::Unit, "Recruit", 1, {}, KeywordSet{}, base(P1));
+    }, &yes);
+    EXPECT_EQ(tokenUnits(P1).size(), 5u) << "two of the three plays got an additional copy";
+    EXPECT_EQ(yes.prompts.size(), 2u) << "the third is not offered";
+}
+
+// 9.M17: both Gold helpers make the same token — no tag (CR 187.5), the Gold
+// card, and "exhausted" only where the instruction says so.
+TEST_F(SweepTriggersTest, GoldHelpers_MakeTheSameToken) {
+    GameObjectId ready = kInvalidId, exhausted = kInvalidId;
+    withEngine([&](GameEngine& e) {
+        CardContext ctx{e.mutableState(), events, e.testHook_executor(), P1, kInvalidId};
+        const auto before = e.mutableState().objects.size();
+        createGoldToken(ctx);
+        ASSERT_EQ(e.mutableState().objects.size(), before + 1);
+        ready = e.testHook_executor().lastTokensCreated().front();
+        exhausted = createGoldExhausted(ctx);
+    });
+    EXPECT_TRUE(obj(ready).tags.empty());
+    EXPECT_EQ(obj(ready).tags, obj(exhausted).tags);
+    EXPECT_EQ(obj(ready).card_def_id, kGoldGearCardDefId);
+    EXPECT_EQ(obj(exhausted).card_def_id, kGoldGearCardDefId);
+    EXPECT_FALSE(obj(ready).is_exhausted);
+    EXPECT_TRUE(obj(exhausted).is_exhausted);
+}
+
+// 9.M18: checkDelayedAbilities decides what fires before it queues anything.
+// A delayed ability added while the items are being queued did not see the
+// event; the ones that did each fire exactly once.
+TEST_F(SweepTriggersCardTest, DelayedAbilities_OneAddedWhileQueueingDoesNotFireForThatEvent) {
+    auto a = addUnit(P1, kTDelayedSpawner, 1, -1);
+    auto b = addUnit(P1, kTDelayedSpawner, 1, -1);
+    auto c = addUnit(P1, kTDelayedSpawner, 1, -1);
+    auto make = [&](GameObjectId src) {
+        DelayedAbility da;
+        da.source = src;
+        da.card_def_id = kTDelayedSpawner;
+        da.controller = P1;
+        da.trigger = TriggerType::WhenYouStun;
+        return da;
+    };
+    state.delayed_abilities = {make(a), make(b)};
+    auto enemy = addUnit(P2, kInvalidId, 2, 0);
+    auto stunner = addUnit(P1, kInvalidId, 2, 0);
+    withEngine([&](GameEngine& e) {
+        auto& live = e.mutableState();
+        bool added = false;
+        // The trace line is emitted for each ability as it is queued: add a
+        // third (and force the vector to move) in the middle of that.
+        auto conn = events.on_log.connect([&](const LogEvent& ev) {
+            if (added || ev.message.find("DELAYED_ABILITY: firing") == std::string::npos) return;
+            added = true;
+            live.delayed_abilities.reserve(live.delayed_abilities.capacity() + 64);
+            live.delayed_abilities.push_back(make(c));
+        });
+        e.testHook_executor().stunUnitBy(enemy, stunner);
+        conn.disconnect();
+        ASSERT_TRUE(added);
+        int items = 0;
+        for (const auto& ci : live.chain.items)
+            if (ci.source == a || ci.source == b || ci.source == c) ++items;
+        EXPECT_EQ(items, 2);
+        e.testHook_runChain();
+    });
+    EXPECT_EQ(obj(a).card_counters["resolved"], 1);
+    EXPECT_EQ(obj(b).card_counters["resolved"], 1);
+    EXPECT_EQ(obj(c).card_counters["resolved"], 0) << "added after the event";
+    ASSERT_EQ(state.delayed_abilities.size(), 1u) << "the two that fired are gone, the new one waits";
+    EXPECT_EQ(state.delayed_abilities[0].source, c);
+}
+
+// 9.M19: a card an effect plays off a deck is staged as played from the deck.
+TEST_F(SweepTriggersCardTest, EffectPlay_StagesTheZoneTheCardIsReallyPlayedFrom) {
+    auto from_deck = addToDeck(P1, kTRecordsPlaySource);
+    auto from_hand = addToHand(P1, kTRecordsPlaySource);
+    withEngine([&](GameEngine& e) {
+        auto& exec = e.testHook_executor();
+        TRecordsPlaySource::seen.clear();
+        ASSERT_TRUE(exec.canPlayPayingCost(P1, from_deck));
+        ASSERT_FALSE(TRecordsPlaySource::seen.empty());
+        for (auto src : TRecordsPlaySource::seen) EXPECT_EQ(src, Intent::PlaySource::MainDeck);
+        TRecordsPlaySource::seen.clear();
+        ASSERT_TRUE(exec.canPlayPayingCost(P1, from_hand));
+        for (auto src : TRecordsPlaySource::seen) EXPECT_EQ(src, Intent::PlaySource::Hand);
+        EXPECT_EQ(e.mutableState().player(P1).current_play_source, Intent::PlaySource::Hand)
+            << "restored afterwards";
+    });
+}
+
+// ... and Drag Under 485 ("costs [2] less if played from anywhere other than
+// your hand") still gets its reduction off the deck.
+TEST_F(SweepTriggersTest, DragUnder_PlayedOffTheDeckCostsTwoLess) {
+    constexpr CardDefId kDragUnder = 485;
+    auto in_deck = addToDeck(P1, kDragUnder);
+    auto in_hand = addToHand(P1, kDragUnder);
+    state.player(P1).rune_pool.energy = card_db.get(kDragUnder).energy_cost - 2;
+    state.player(P1).rune_pool.universal_power = card_db.get(kDragUnder).power_cost;
+    withEngine([&](GameEngine& e) {
+        EXPECT_TRUE(e.testHook_executor().canPlayPayingCost(P1, in_deck));
+        EXPECT_FALSE(e.testHook_executor().canPlayPayingCost(P1, in_hand));
+    });
+}
+
+// 9.M20: a unit an effect plays enters ready with Magma Wurm 11 out ("Other
+// friendly units enter ready.") and after Confront 129 ("Units you play this
+// turn enter ready.").
+TEST_F(SweepTriggersTest, PlayIgnoringCost_HonoursEntersReadyEffects) {
+    constexpr CardDefId kMagmaWurm = 11, kConfront = 129;
+    auto plain = addToHand(P1, kLoyalPoro);
+    withEngine([&](GameEngine& e) { e.testHook_executor().playIgnoringCost(P1, plain); });
+    ASSERT_TRUE(obj(plain).is_exhausted) << "baseline: CR 143.4";
+
+    addUnit(P1, kMagmaWurm, 6, -1);
+    auto with_wurm = addToHand(P1, kLoyalPoro);
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();                           // the Wurm's continuous effect
+        e.testHook_executor().playIgnoringCost(P1, with_wurm);
+    });
+    EXPECT_FALSE(obj(with_wurm).is_exhausted);
+
+    // The other player's units are not "friendly" to the Wurm.
+    auto theirs = addToHand(P2, kLoyalPoro);
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        e.testHook_executor().playIgnoringCost(P2, theirs);
+    });
+    EXPECT_TRUE(obj(theirs).is_exhausted);
+
+    stockDeck(P2, 2);
+    playThroughEngine(addToHand(P2, kConfront));
+    auto after_confront = addToHand(P2, kLoyalPoro);
+    withEngine([&](GameEngine& e) { e.testHook_executor().playIgnoringCost(P2, after_confront); },
+               nullptr, nullptr, P2);
+    EXPECT_FALSE(obj(after_confront).is_exhausted);
+}
+
+// 9.M21: "When a combat that I was in ends" (Mournful Witness 815) — a unit
+// recalled out of the combat before it ends was in it; a unit elsewhere was not.
+TEST_F(SweepTriggersTest, CombatParticipants_AUnitRecalledBeforeTheEndWasInTheCombat) {
+    constexpr CardDefId kMournfulWitness = 815;
+    auto recalled = addUnit(P1, kMournfulWitness, 2, 0);
+    auto elsewhere = addUnit(P1, kMournfulWitness, 2, 1);
+    addUnit(P2, kInvalidId, 2, 0);
+    const BattlefieldId bf = state.battlefields[0].id;
+    withEngine([&](GameEngine& e) {
+        auto& live = e.mutableState();
+        live.battlefields[0].combat_in_progress = true;
+        events.emit(CombatStartedEvent{bf, P1, P2});
+        e.testHook_executor().recallToBase(recalled);     // the tie recall
+        live.battlefields[0].combat_in_progress = false;
+        events.emit(CombatEndedEvent{bf, std::nullopt});
+        e.testHook_runChain();
+    });
+    EXPECT_TRUE(obj(recalled).isEmpowered());
+    EXPECT_FALSE(obj(elsewhere).isEmpowered());
+    EXPECT_EQ(obj(recalled).card_counters.count("__combat_participant"), 0u) << "cleared with the combat";
+}
+
+// 9.M21: "When you kill a unit with a spell" (Immortal Phoenix 37) — a unit
+// that dies in the cleanup of lethal damage a spell dealt was killed with it.
+TEST_F(SweepTriggersTest, KillWithASpell_CountsLethalSpellDamageFoundInTheCleanup) {
+    constexpr CardDefId kImmortalPhoenix = 37;
+    auto phoenix = addToHand(P1, kImmortalPhoenix);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), phoenix), h.end());
+        obj(phoenix).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(phoenix);
+    }
+    auto spell = addToHand(P1, kDredgeUp);              // a P1 spell object as the source
+    auto unit_source = addUnit(P1, kInvalidId, 3, 0);
+    auto by_spell = addUnit(P2, kInvalidId, 2, 0);
+    auto by_unit = addUnit(P2, kInvalidId, 2, 1);
+    auto queued_after = [&](GameObjectId victim, GameObjectId source) {
+        int queued = 0;
+        withEngine([&](GameEngine& e) {
+            e.testHook_executor().dealDamage(victim, 5, source);   // nothing is resolving
+            e.testHook_processLethalDamage();
+            for (const auto& ci : e.mutableState().chain.items) if (ci.source == phoenix) ++queued;
+            e.mutableState().chain.items.clear();
+        });
+        return queued;
+    };
+    EXPECT_EQ(queued_after(by_unit, unit_source), 0) << "a unit's damage is not a spell";
+    EXPECT_EQ(queued_after(by_spell, spell), 1);
+    EXPECT_TRUE(obj(by_spell).last_known.killed_with_spell);
+    EXPECT_EQ(obj(by_spell).last_known.killed_by, P1);
+}
+
+// 9.M23: when more than one replacement applies to a death, the unit's
+// controller chooses which is applied (CR 372).
+TEST_F(SweepTriggersTest, DeathReplacements_TheControllerChoosesWhenSeveralApply) {
+    constexpr CardDefId kZhonyas = 77, kGuardianAngel = 374;
+    auto setup = [&](GameObjectId& unit, GameObjectId& zhonya, GameObjectId& angel) {
+        unit = addUnit(P1, kInvalidId, 2, 0);
+        zhonya = addGear(P1, kZhonyas);
+        angel = addAttachedGear(P1, unit, kGuardianAngel);
+    };
+    GameObjectId unit, zhonya, angel;
+
+    // Chooses the second listed (Guardian Angel has the higher id).
+    setup(unit, zhonya, angel);
+    EnginePathAgent second(EnginePathAgent::script({1}));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &second);
+    ASSERT_EQ(second.prompts.size(), 1u);
+    EXPECT_EQ(second.prompts[0].size(), 2u);
+    EXPECT_TRUE(atBase(unit));
+    EXPECT_TRUE(obj(zhonya).location.has_value()) << "Zhonya's Hourglass was not used";
+    EXPECT_FALSE(obj(angel).location.has_value()) << "Guardian Angel was";
+
+    // Chooses the first: Zhonya's Hourglass, on the lethal-damage path.
+    obj(zhonya).location.reset();                  // the unused one from above leaves play
+    obj(zhonya).zone = ZoneType::Trash;
+    setup(unit, zhonya, angel);
+    obj(unit).damage_marked = 5;
+    EnginePathAgent first(EnginePathAgent::script({0}));
+    withEngine([&](GameEngine& e) { e.testHook_processLethalDamage(); e.testHook_runChain(); },
+               &first);
+    ASSERT_EQ(first.prompts.size(), 1u);
+    EXPECT_EQ(first.prompts[0].size(), 2u);
+    EXPECT_TRUE(atBase(unit));
+    EXPECT_FALSE(obj(zhonya).location.has_value());
+    EXPECT_TRUE(obj(angel).location.has_value());
+    EXPECT_EQ(obj(angel).attached_to, std::optional<GameObjectId>{unit}) << "recalled with its gear";
+}
+
+// ... nobody is asked when only one applies, and with nobody to ask the order
+// is the listed one: the unit's own, then cards in play by object id.
+TEST_F(SweepTriggersTest, DeathReplacements_OrderIsStableWithoutAChoice) {
+    constexpr CardDefId kZhonyas = 77, kGuardianAngel = 374;
+    auto lone = addUnit(P1, kInvalidId, 2, 0);
+    auto only = addGear(P1, kZhonyas);
+    EnginePathAgent agent;
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(lone); }, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(atBase(lone));
+    EXPECT_FALSE(obj(only).location.has_value());
+
+    // Guardian Angel created first (lower id) and Zhonya's second, and the
+    // unit also carries "heal, exhaust and recall it instead": the default
+    // (first option) is the unit's own, leaving both gear in play.
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    auto angel = addAttachedGear(P1, unit, kGuardianAngel);
+    auto zhonya = addGear(P1, kZhonyas);
+    obj(unit).death_replacement_recall_pending = true;
+    EnginePathAgent dflt;
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &dflt);
+    ASSERT_EQ(dflt.prompts.size(), 1u);
+    ASSERT_EQ(dflt.prompts[0].size(), 3u);
+    EXPECT_NE(dflt.prompts[0][1].choice_label.find("Guardian Angel"), std::string::npos);
+    EXPECT_NE(dflt.prompts[0][2].choice_label.find("Zhonya"), std::string::npos);
+    EXPECT_TRUE(atBase(unit));
+    EXPECT_TRUE(obj(angel).location.has_value());
+    EXPECT_TRUE(obj(zhonya).location.has_value());
+    EXPECT_FALSE(obj(unit).death_replacement_recall_pending);
+}
+
+// 9.N7: what the two paths emit. A lethally damaged unit beside Soraka 550 is
+// recalled by the cleanup ("recalled", no death); killed later at its base,
+// away from her, it dies (UnitDiedEvent).
+TEST_F(SweepTriggersTest, Soraka_LethalDamageRecallThenALaterKillEmitWhatTheyShould) {
+    addUnit(P1, kSoraka, 4, 0);
+    auto unit = addUnit(P1, kInvalidId, 1, 0);
+    obj(unit).damage_marked = 3;
+    int recalled = 0, died = 0, moved = 0;
+    auto c1 = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == unit && e.what_changed == "recalled") ++recalled;
+    });
+    auto c2 = events.on_unit_died.connect([&](const UnitDiedEvent& e) { if (e.object == unit) ++died; });
+    auto c3 = events.on_unit_moved.connect([&](const UnitMovedEvent& e) { if (e.object == unit) ++moved; });
+    withEngine([&](GameEngine& e) { e.testHook_processLethalDamage(); e.testHook_runChain(); });
+    EXPECT_TRUE(atBase(unit));
+    EXPECT_EQ(recalled, 1);
+    EXPECT_EQ(died, 0);
+    EXPECT_EQ(moved, 0);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); });
+    c1.disconnect(); c2.disconnect(); c3.disconnect();
+    EXPECT_FALSE(obj(unit).location.has_value());
+    EXPECT_EQ(died, 1);
+    EXPECT_EQ(recalled, 1);
 }
 
 }  // namespace

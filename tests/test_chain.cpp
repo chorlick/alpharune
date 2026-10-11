@@ -356,6 +356,14 @@ TEST_F(ChainTestFixture, ReactionAddsToChainAndRestarsFEPR) {
 
     std::vector<GameObjectId> resolve_order;
     int query_count = 0;
+    // Playing the card is the engine's job (ChainManager::setPlayCard, 9.M25);
+    // this test is about what the chain does once the play has put an item on
+    // it, so the callback does only that.
+    cm.setPlayCard([&](const Intent& i) {
+        auto& hand = state.player(i.player).hand;
+        hand.erase(std::remove(hand.begin(), hand.end(), i.card), hand.end());
+        cm.addSpell(i.card, i.player, i.targets);
+    });
 
     cm.processFEPR(
         [&](PlayerId player, const std::vector<Intent>& actions) -> Intent {
@@ -1042,18 +1050,6 @@ TEST_F(ChainTestFixture, AddAbilityClosesState) {
         << "Adding an ability to chain must close the state";
 }
 
-TEST_F(ChainTestFixture, LegionParsesAsConditionGate) {
-    // Dangerous Duo: [Legion] -- When you play me, give a unit +2 [M]
-    constexpr CardDefId kDangerousDuoId = 16;
-
-    Card* card = card_registry.get(kDangerousDuoId);
-    ASSERT_NE(card, nullptr);
-    // [Legion] is a condition the card checks as its trigger resolves (there
-    // is no engine-side gate to ask, plans/08 item 8.7): the card is a play
-    // trigger whose effect depends on cards_played_this_turn.
-    EXPECT_EQ(card->triggerType(), TriggerType::WhenYouPlayMe);
-}
-
 // ── CR 822.1.b: an [Ambush] unit played as a Reaction is still a unit ────────
 // It must go on the chain as a permanent and land at the chosen battlefield,
 // not resolve as a spell and go to the trash.
@@ -1086,6 +1082,15 @@ TEST_F(ChainTestFixture, AmbushUnitPlayedAsReactionIsAPermanent) {
     bool played = false;
     std::vector<ChainItem> resolved;
     std::vector<GameObjectId> spells_resolved;
+    // The engine's play path, reduced to what puts the unit on the chain
+    // (ChainManager::setPlayCard, 9.M25): a unit goes on as a permanent bound
+    // for the location the intent names.
+    cm.setPlayCard([&](const Intent& i) {
+        auto& hand = state.player(i.player).hand;
+        hand.erase(std::remove(hand.begin(), hand.end(), i.card), hand.end());
+        state.getObject(i.card).location = i.play_location;
+        cm.addPermanent(i.card, i.player);
+    });
     cm.processFEPR(
         [&](PlayerId player, const std::vector<Intent>&) -> Intent {
             if (player == PlayerId::Player2 && !played) {

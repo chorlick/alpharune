@@ -20,6 +20,18 @@ public:
     //  the battlefield card: GameEngine::killUnit asks the card of the
     //  battlefield a unit is dying at, on behalf of that unit's controller.
     bool hasReplacementEffect() const override { return true; }
+    // The conditions, before the "may" and the payment.
+    bool replacementApplies(const GameState& state, GameObjectId self, PlayerId /*controller*/,
+                            GameObjectId dying_unit) const override {
+        if (!state.objectExists(dying_unit)) return false;
+        const auto& unit = state.getObject(dying_unit);
+        if (!unit.isUnit()) return false;
+        auto my_bf = battlefieldOfCard(state, self);
+        if (!my_bf || unit.battlefieldId() != my_bf) return false;
+        for (const auto& bf : state.battlefields)
+            if (bf.id == *my_bf && !bf.combat_in_progress) return false;
+        return payableAnyPower(state, unit.controller) >= 3;
+    }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
         if (!ctx.state.objectExists(dying_unit)) return false;
         auto& unit = ctx.state.getObject(dying_unit);

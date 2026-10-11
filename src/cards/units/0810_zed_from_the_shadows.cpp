@@ -46,13 +46,10 @@ public:
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone",
                                  0, std::vector<std::string>{}, KeywordSet{},
                                  destLocation(ctx.controller, std::max(0, dest)), false,
-                                 tokenPlayLocations(ctx.state, ctx.controller));
-            // Carry the Shadow Clone token card so its "When I attack" ability
-            // fires — on an additional copy too (lastTokensCreated).
-            const auto clones = ctx.executor.lastTokensCreated();
-            for (auto clone_id : clones)
-                if (ctx.state.objectExists(clone_id))
-                    ctx.state.getObject(clone_id).card_def_id = 955;
+                                 tokenPlayLocations(ctx.state, ctx.controller),
+                                 // the Shadow Clone token card ("When I attack"),
+                                 // set before the play is announced
+                                 /*token_card=*/955);
         }
         ctx.events.logTrace("ZED: additional cost paid -> 0 [M] Shadow Clone token");
     }

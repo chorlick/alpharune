@@ -67,8 +67,20 @@ public:
             if (!picked.has_value() || *picked == kInvalidId) return;   // waiting / none
             const auto here = unitsHere(ctx);
             if (std::find(here.begin(), here.end(), *picked) == here.end()) return;
+            // "Killed" is the unit dying, not the unit leaving: a replacement
+            // puts another event in the death's place and the death does not
+            // occur (CR 370.1.b, 370.1.c.1; the Deathgrip example of CR
+            // 359.3.e.14.b), wherever the unit ends up — still here, recalled,
+            // or banished by "If it would die this turn, banish it instead."
+            // That last one is read before the kill, because a banished token
+            // is where a dead one is (CR 183.1); a dead card is in the trash.
+            const bool banish_instead =
+                ctx.state.getObject(*picked).banish_if_would_die_this_turn;
             ctx.executor.killObject(*picked);
-            if (ctx.state.getObject(*picked).location.has_value()) {
+            const auto& after = ctx.state.getObject(*picked);
+            const bool died = !after.location.has_value() && !banish_instead &&
+                              (after.isToken() || after.zone == ZoneType::Trash);
+            if (!died) {
                 if (!ctx.state.chain.resuming.has_value()) return;   // direct call: no item
                 auto& data = ctx.state.chain.resuming->resume_data;
                 while (data.size() <= kKillReplacedSlot) data.push_back(0);

@@ -18,11 +18,9 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "When you play me, give a unit +3 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         GameObjectId tgt = kInvalidId;
-        if (!targets.empty()) {
-            tgt = targets[0];
-        } else {
+        {   // the engine never hands a trigger targets: the card picks
             tgt = pickTarget(ctx, "Field Musicians: give a unit +3 [M]",
                              chooseableUnits(ctx.state, ctx.controller,
                                              [](const GameObject&) { return true; }));

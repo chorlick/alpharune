@@ -34,6 +34,7 @@ public:
         std::vector<GameObjectId> damaged;
         if (!splitDamageAmong(ctx, "Volibear, Furious", 5, ctx.source, legal, damaged)) return;
         // Kill only after all of the damage is marked.
+        DeathBatch together(ctx.executor, damaged);   // they die at the same time
         for (auto id : damaged) {
             if (!ctx.state.objectExists(id)) continue;
             if (ctx.state.getObject(id).hasLethalDamage())

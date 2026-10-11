@@ -70,6 +70,7 @@ public:
         for (auto t : hit) {
             if (ctx.state.objectExists(t)) ctx.executor.dealDamage(t, 1, ctx.source);
         }
+        DeathBatch together(ctx.executor, hit);   // they die at the same time
         for (auto t : hit) {
             if (ctx.state.objectExists(t) &&
                 ctx.state.getObject(t).hasLethalDamage()) {

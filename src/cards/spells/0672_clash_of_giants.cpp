@@ -62,6 +62,7 @@ public:
                              " (" + std::to_string(might_b) + "M)");
         ctx.executor.dealDamage(b, might_a, ctx.source);
         ctx.executor.dealDamage(a, might_b, ctx.source);
+        DeathBatch together(ctx.executor, std::vector<GameObjectId>{a, b});   // they die at the same time
         for (auto tid : {a, b}) {
             if (ctx.state.objectExists(tid) &&
                 ctx.state.getObject(tid).hasLethalDamage()) {

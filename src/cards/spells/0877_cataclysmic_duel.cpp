@@ -78,6 +78,7 @@ public:
         std::sort(doomed.begin(), doomed.end());
         ctx.events.logTrace("CATACLYSMIC DUEL: killing " + std::to_string(doomed.size()) +
                             " unchosen unit(s)");
+        DeathBatch together(ctx.executor, doomed);   // they die at the same time
         for (auto id : doomed) ctx.executor.killObject(id);
     }
 private:

@@ -37,6 +37,7 @@ public:
             return out;
         };
         auto pay_and_score = [&](const std::vector<GameObjectId>& victims) {
+            DeathBatch together(ctx.executor, victims);   // they die at the same time
             for (auto id : victims) {
                 if (!ctx.state.objectExists(id)) continue;
                 if (ctx.state.getObject(id).isGear()) ctx.executor.unattachGear(id);

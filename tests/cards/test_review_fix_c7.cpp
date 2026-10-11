@@ -65,6 +65,7 @@ constexpr CardDefId kIllaoiProphet = 896;
 constexpr CardDefId kKharox = 901;
 constexpr CardDefId kNoxianEmissary = 915;
 constexpr CardDefId kShadowClone = 955;
+constexpr CardDefId kDredgeUpForOrdinal = 836;   // any spell
 
 /// Passes / takes the first option. The first time it is asked, it shows the
 /// state to `look` — what a player given priority can see before responding.
@@ -85,6 +86,14 @@ class C7Test : public CardTestFixture {
 protected:
     GameObject& o(GameObjectId id) { return state.getObject(id); }
 
+    /// A P1 spell that was played as the `ordinal`-th card of this turn (as
+    /// TriggerManager::onCardPlayed stamps it).
+    GameObjectId playedAs(int ordinal) {
+        auto id = inTrashOf(P1, kDredgeUpForOrdinal);
+        o(id).card_counters["__play_ordinal"] = ordinal;
+        o(id).card_counters["__play_ordinal_turn"] = state.turn.turn_number + 1;
+        return id;
+    }
     /// A card of `def` in `p`'s trash.
     GameObjectId inTrashOf(PlayerId p, CardDefId def) {
         auto id = addToHand(p, def);
@@ -776,30 +785,52 @@ TEST_F(C7Test, AstralHeron_DiscountsOnceForTheFirstCardOfTheTurn) {
     EXPECT_EQ(discounts(), 0);
 }
 
+// "Your first card each turn" is the card played first (its play ordinal,
+// stamped by TriggerManager::onCardPlayed), whatever order the plays are
+// announced in: a spell is announced when it resolves (CR 420.4.a), after the
+// Reaction played in response to it.
 TEST_F(C7Test, AstralHeron_AFirstSpellAnsweredByYourOwnReactionStillCounts) {
-    // A spell is announced as played when it resolves (CR 420.4.a): the
-    // Reaction played in response to the first card is announced first, with
-    // two cards already played this turn.
     auto heron = addUnit(P1, kAstralHeron, 0, 0);
+    auto first = playedAs(1), reaction = playedAs(2), third = playedAs(3);
     state.player(P1).cards_played_this_turn = 2;
-    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard);
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, reaction);
     EXPECT_TRUE(state.player(P1).cost_modifiers.empty()) << "the Reaction is the second card";
-    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard);
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, first);
     EXPECT_EQ(state.player(P1).cost_modifiers.size(), 1u) << "the first card, now resolved";
     state.player(P1).cards_played_this_turn = 3;
-    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard);
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, third);
     EXPECT_EQ(state.player(P1).cost_modifiers.size(), 1u);
+}
+
+// 9.D1: the response to the first card is countered, so it is never announced
+// as played — the first card is still the first card.
+TEST_F(C7Test, AstralHeron_AFirstSpellWhoseResponseWasCounteredStillCounts) {
+    auto heron = addUnit(P1, kAstralHeron, 0, 0);
+    auto first = playedAs(1);
+    state.player(P1).cards_played_this_turn = 2;       // the countered Reaction was the second
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, first);
+    EXPECT_EQ(state.player(P1).cost_modifiers.size(), 1u);
+}
+
+// A card stamped on an earlier turn is not this turn's first card.
+TEST_F(C7Test, AstralHeron_APlayOrdinalFromAnEarlierTurnDoesNotCount) {
+    auto heron = addUnit(P1, kAstralHeron, 0, 0);
+    auto old_card = playedAs(1);
+    o(old_card).card_counters["__play_ordinal_turn"] = state.turn.turn_number;   // last turn
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, old_card);
+    EXPECT_TRUE(state.player(P1).cost_modifiers.empty());
 }
 
 TEST_F(C7Test, AstralHeron_InBaseForTheFirstCardGivesNoDiscountLater) {
     auto heron = addUnit(P1, kAstralHeron);
+    auto first = playedAs(1), second = playedAs(2);
     state.player(P1).cards_played_this_turn = 1;
-    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard);
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, first);
     EXPECT_TRUE(state.player(P1).cost_modifiers.empty()) << "\"if I'm at a battlefield\"";
     o(heron).location = BattlefieldLocation{0};
     o(heron).zone = ZoneType::BattlefieldZone;
     state.player(P1).cards_played_this_turn = 2;
-    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard);
+    fireTriggerThroughEngine(heron, TriggerType::WhenYouPlayACard, nullptr, second);
     EXPECT_TRUE(state.player(P1).cost_modifiers.empty()) << "the second card is not the first";
 }
 

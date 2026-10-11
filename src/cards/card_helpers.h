@@ -250,22 +250,21 @@ inline void counterChainTop(CardContext& ctx) {
 inline void createGoldToken(CardContext& ctx) {
     auto loc = BaseLocation{ctx.controller};
     auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
-                                        0, {"Gold"}, KeywordSet{}, loc, false);
-    if (ctx.state.objectExists(tid))
-        ctx.state.getObject(tid).card_def_id = kGoldGearCardDefId;
+                                        0, {"Gold"}, KeywordSet{}, loc, false, {},
+                                        kGoldGearCardDefId);
+    (void)tid;
 }
 
 inline GameObjectId createGoldExhausted(CardContext& ctx) {
     LocationId loc{BaseLocation{ctx.controller}};
     auto tok = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
-                                        0, {}, {}, loc, /*enter_ready=*/false);
+                                        0, {}, {}, loc, /*enter_ready=*/false, {},
+                                        kGoldGearCardDefId);   // the Gold card: its "[Reaction] Kill this, [E]: Add"
     if (ctx.state.objectExists(tok)) {
         auto& gold = ctx.state.getObject(tok);
         // "Your tokens enter ready" (Renata Glasc, Industrialist) replaces how
         // the token enters, the printed "exhausted" included (CR 184.1, 376).
         gold.is_exhausted = !ctx.state.player(ctx.controller).tokens_enter_ready;
-        // Bind the Gold token card so its "[Reaction] Kill this, [E]: Add" ability exists.
-        gold.card_def_id = kGoldGearCardDefId;
     }
     return tok;
 }

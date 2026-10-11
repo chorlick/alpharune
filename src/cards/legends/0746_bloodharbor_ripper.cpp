@@ -39,10 +39,9 @@ public:
         auto loc = BaseLocation{ctx.controller};
         auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
                                             0, {}, KeywordSet{}, loc,
-                                            /*enter_ready=*/false);
+                                            /*enter_ready=*/false, {}, kGoldGearCardDefId);
         if (ctx.state.objectExists(tid)) {
             auto& tok = ctx.state.getObject(tid);
-            tok.card_def_id = kGoldGearCardDefId;
             tok.is_exhausted = true;  // "exhausted"
         }
         ctx.events.logTrace("BLOODHARBOR RIPPER: created exhausted Gold gear token");

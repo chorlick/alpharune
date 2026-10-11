@@ -18,6 +18,21 @@ public:
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true, .optional = true};
     }
+    // "up to two units": no unit at all is always a choice (CR 355.13), not
+    // only when the board has none. Then every set of one or two units, in
+    // the order the engine lists them by default.
+    std::optional<std::vector<std::vector<GameObjectId>>>
+    enumerateLegalTargetSets(const GameState& state, PlayerId controller) const override {
+        std::vector<std::vector<GameObjectId>> sets;
+        sets.push_back({});
+        const auto units = enumerateLegalTargets(state, controller);
+        for (size_t a = 0; a < units.size(); ++a) {
+            sets.push_back({units[a]});
+            for (size_t b = a + 1; b < units.size(); ++b)
+                sets.push_back({units[a], units[b]});
+        }
+        return sets;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         for (auto t : targets) {
             if (ctx.state.objectExists(t)) ctx.executor.dealDamage(t, 6, ctx.source);

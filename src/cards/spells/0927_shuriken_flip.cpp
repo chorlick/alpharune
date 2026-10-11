@@ -54,6 +54,7 @@ public:
             if (foes.empty()) { promptMove(); return; }
             std::vector<Intent> opts;
             for (auto u : foes) opts.push_back(objChoice(ctx.controller, u));
+            // "up to one" includes none (CR 355.13); the move happens either way.
             opts.push_back(valChoice(ctx.controller, 0, "No damage"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                                        "Shuriken Flip: deal 2 to up to one enemy unit");

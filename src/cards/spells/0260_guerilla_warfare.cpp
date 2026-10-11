@@ -60,6 +60,8 @@ public:
             const auto cards = hidden_in_trash();
             if (!cards.empty()) {
                 std::vector<Intent> options;
+                // "up to two" includes none (CR 355.13), on the first prompt
+                // too; the second sentence happens either way.
                 options.push_back(valChoice(ctx.controller, 0, "Return no more"));
                 for (auto cid : cards) options.push_back(objChoice(ctx.controller, cid));
                 ctx.executor.requestChoice(ctx.controller, std::move(options),

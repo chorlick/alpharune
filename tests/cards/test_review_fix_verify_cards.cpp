@@ -128,6 +128,19 @@ constexpr CardDefId kRiftHerald = 741;
 constexpr CardDefId kPakaaProtector = 820;
 constexpr CardDefId kInferna = 560;
 constexpr CardDefId kMysticVortex = 947;
+constexpr CardDefId kSingularity = 105;
+constexpr CardDefId kGuerillaWarfare = 260;
+constexpr CardDefId kFlash = 309;
+constexpr CardDefId kPiercingLight = 346;
+constexpr CardDefId kEmperorsDivide = 366;
+constexpr CardDefId kRelentlessPursuit = 503;
+constexpr CardDefId kTricksyTentacles = 616;
+constexpr CardDefId kDisposalOrder = 665;
+constexpr CardDefId kMoonfall = 755;
+constexpr CardDefId kShadowsOfThePast = 890;
+constexpr CardDefId kDecreeOfDiscord = 894;
+constexpr CardDefId kShurikenFlip = 927;
+constexpr CardDefId kAccelerationGate = 937;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kBackAlleyBar = 272;
 constexpr CardDefId kSoraka = 550;
@@ -508,6 +521,35 @@ protected:
             if (!i.chosen_objects.empty()) out.push_back(i.chosen_objects.front());
         std::sort(out.begin(), out.end());
         return out;
+    }
+    /// Every play of `card` the generator offers its controller right now,
+    /// with the printed cost covered.
+    std::vector<Intent> playsOffered(GameObjectId card) {
+        const PlayerId player = o(card).controller;
+        const auto& def = card_db.get(o(card).card_def_id);
+        const auto pool = ps(player).rune_pool;
+        ps(player).rune_pool.energy += def.energy_cost;
+        ps(player).rune_pool.universal_power += def.power_cost;
+        std::vector<Intent> out;
+        withEngine([&](GameEngine& e) {
+            for (const auto& i : e.generateLegalActions())
+                if (i.card == card && (i.type == IntentType::PlayCard ||
+                                       i.type == IntentType::PlayActionCard ||
+                                       i.type == IntentType::PlayReaction))
+                    out.push_back(i);
+        }, nullptr, nullptr, player);
+        ps(player).rune_pool = pool;
+        return out;
+    }
+    /// True if one of `plays` has exactly `targets` (in any order).
+    static bool offersTargets(const std::vector<Intent>& plays, std::vector<GameObjectId> targets) {
+        std::sort(targets.begin(), targets.end());
+        for (const auto& p : plays) {
+            auto t = p.targets;
+            std::sort(t.begin(), t.end());
+            if (t == targets) return true;
+        }
+        return false;
     }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
@@ -5233,6 +5275,420 @@ TEST_F(VerifyCardsTest, FoxFire_UnchangedBoard_KillsTheChosenUnitsWithNoFurtherP
     EXPECT_FALSE(onBoard(a));
     EXPECT_FALSE(onBoard(b));
     EXPECT_TRUE(onBoard(spared));
+}
+
+// ═══ Tranche 7: 9.T3 zero targets (CR 355.13) ════════════════════════════════
+// ═══ 9.T3: "any number of" / "up to N" objects may be zero (CR 355.13) ══════
+// "If a card specifies that a player chooses 'any number' or 'up to' some
+// number of Game Objects to be affected, they may choose any number of
+// available targets, including zero. If they choose zero, the spell or ability
+// can be played without any targets."
+
+// ─── Fox-Fire 253 (fixed) ───────────────────────────────────────────────────
+// Fails on the old code: hasLegalTargets refused the play with no unit at a
+// battlefield.
+TEST_F(VerifyCardsTest, FoxFire_PlayableFromHandWithNoUnitAtABattlefield) {
+    auto in_base = addUnit(P2, kInvalidId, 1);
+    auto fox = addToHand(P1, kFoxFire);
+    ASSERT_EQ(playsOffered(fox).size(), 1u) << "zero units is a legal choice (CR 355.13)";
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(fox, &agent);
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to choose from";
+    EXPECT_TRUE(inTrash(P1, fox)) << "it was played and resolved";
+    EXPECT_TRUE(onBoard(in_base));
+}
+
+// Fails on the old code: the first prompt had no "Stop here", so the script's
+// 0 matched nothing and the first unit was taken.
+TEST_F(VerifyCardsTest, FoxFire_FirstPromptOffersChoosingNoUnit) {
+    auto a = addUnit(P2, kInvalidId, 2, 0);
+    auto b = addUnit(P2, kInvalidId, 1, 0);
+    auto fox = addToHand(P1, kFoxFire);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "Stop here"
+    playThroughEngine(fox, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "'Stop here' on the first prompt";
+    ASSERT_FALSE(agent.prompts[0].empty());
+    EXPECT_TRUE(agent.prompts[0].front().chosen_value.has_value()) << "listed first";
+    EXPECT_TRUE(onBoard(a));
+    EXPECT_TRUE(onBoard(b));
+    EXPECT_TRUE(inTrash(P1, fox));
+}
+
+// ─── Flash 309 (fixed) ──────────────────────────────────────────────────────
+// Fails on the old code: "No more units" was offered only after the first unit.
+TEST_F(VerifyCardsTest, Flash_FirstPromptOffersMovingNoUnit) {
+    auto unit = addUnit(P1, kInvalidId, 3, 0);
+    auto flash = addToHand(P1, kFlash);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "No more units"
+    playThroughEngine(flash, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0));
+    ASSERT_FALSE(agent.prompts[0].empty());
+    EXPECT_TRUE(agent.prompts[0].front().chosen_value.has_value()) << "listed first";
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0}) << "up to 2: none was chosen";
+    EXPECT_TRUE(inTrash(P1, flash));
+}
+
+TEST_F(VerifyCardsTest, Pin_Flash_PlayableWithNoFriendlyUnitAtABattlefield) {
+    auto in_base = addUnit(P1, kInvalidId, 3);
+    auto flash = addToHand(P1, kFlash);
+    ASSERT_EQ(playsOffered(flash).size(), 1u);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(flash, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, flash));
+    EXPECT_TRUE(o(in_base).isAtBase());
+}
+
+// ─── Singularity 105 (fixed) ────────────────────────────────────────────────
+// "Deal 6 to each of up to two units." Fails on the old code: with a unit on
+// the board every offered play had at least one target.
+TEST_F(VerifyCardsTest, Singularity_MayBePlayedChoosingNoUnitWhileUnitsAreAvailable) {
+    auto e1 = addUnit(P2, kInvalidId, 7, 0);
+    auto e2 = addUnit(P2, kInvalidId, 7);
+    auto spell = addToHand(P1, kSingularity);
+    const auto plays = playsOffered(spell);
+    EXPECT_TRUE(offersTargets(plays, {})) << "zero of 'up to two' (CR 355.13)";
+    EXPECT_TRUE(offersTargets(plays, {e1}));
+    EXPECT_TRUE(offersTargets(plays, {e2}));
+    EXPECT_TRUE(offersTargets(plays, {e1, e2}));
+    EXPECT_EQ(plays.size(), 4u);
+
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(spell, &agent);   // the play with no targets
+    EXPECT_TRUE(inTrash(P1, spell));
+    EXPECT_EQ(o(e1).damage_marked, 0);
+    EXPECT_EQ(o(e2).damage_marked, 0);
+}
+
+TEST_F(VerifyCardsTest, Pin_Singularity_PlayableWithNoUnitOnTheBoard) {
+    auto spell = addToHand(P1, kSingularity);
+    const auto plays = playsOffered(spell);
+    ASSERT_EQ(plays.size(), 1u);
+    EXPECT_TRUE(plays[0].targets.empty());
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(spell, &agent);
+    EXPECT_TRUE(inTrash(P1, spell));
+}
+
+// ─── Bellows Breath 402 (fixed) ─────────────────────────────────────────────
+// "Deal 1 to up to three units at the same location." Fails on the old code:
+// the card's own target sets had no empty one.
+TEST_F(VerifyCardsTest, BellowsBreath_MayBePlayedChoosingNoUnitWhileUnitsAreAvailable) {
+    auto a = addUnit(P2, kInvalidId, 3, 0);
+    auto b = addUnit(P2, kInvalidId, 3, 0);
+    auto spell = addToHand(P1, kBellowsBreath);
+    const auto plays = playsOffered(spell);
+    EXPECT_TRUE(offersTargets(plays, {})) << "zero of 'up to three' (CR 355.13)";
+    EXPECT_TRUE(offersTargets(plays, {a}));
+    EXPECT_TRUE(offersTargets(plays, {a, b}));
+    EXPECT_EQ(plays.size(), 4u) << "none, a, b, a+b";
+
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(spell, &agent);   // the play with no targets
+    EXPECT_TRUE(inTrash(P1, spell));
+    EXPECT_EQ(o(a).damage_marked, 0);
+    EXPECT_EQ(o(b).damage_marked, 0);
+}
+
+// ─── Emperor's Divide 366 (fixed) ───────────────────────────────────────────
+// "Move any number of friendly units at a battlefield to their base." Fails on
+// the old code: the mandatory play-time target refused the play from hand with
+// no friendly unit at a battlefield.
+TEST_F(VerifyCardsTest, EmperorsDivide_PlayableFromHandWithNoFriendlyUnitAtABattlefield) {
+    auto in_base = addUnit(P1, kInvalidId, 2);
+    auto enemy = addUnit(P2, kInvalidId, 2, 0);
+    auto spell = addToHand(P1, kEmperorsDivide);
+    const auto plays = playsOffered(spell);
+    ASSERT_EQ(plays.size(), 1u) << "zero units is a legal choice (CR 355.13)";
+    EXPECT_TRUE(plays[0].targets.empty());
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(spell, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, spell));
+    EXPECT_TRUE(o(in_base).isAtBase());
+    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{0});
+}
+
+// With units to choose, "done" is on the first prompt: none has to move.
+TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FirstPromptOffersMovingNoUnit) {
+    auto u1 = addUnit(P1, kInvalidId, 2, 0);
+    auto u2 = addUnit(P1, kInvalidId, 2, 0);
+    auto spell = addToHand(P1, kEmperorsDivide);
+    EXPECT_TRUE(offersTargets(playsOffered(spell), {u1}));
+    // "done": the option with no object.
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.chosen_objects.empty()) return i;
+        ADD_FAILURE() << "no 'done' option";
+        return legal.front();
+    });
+    playAt(spell, {u1}, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(bfOf(u1), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{0});
+}
+
+// ─── Disposal Order 665 (fixed) ─────────────────────────────────────────────
+// "Choose one — Choose up to 3 cards from opponents' trashes. Their owners
+// recycle them. / Draw 1." Fails on the old code: the first mode was masked out
+// while the opposing trash was empty, so only "Draw 1" was offered.
+TEST_F(VerifyCardsTest, DisposalOrder_RecycleModeCanBeChosenWithAnEmptyOpposingTrash) {
+    ASSERT_TRUE(ps(P2).trash.empty());
+    addToDeck(P1, kMeditation);
+    auto spell = addToHand(P1, kDisposalOrder);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // mode 0: recycle up to 3
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the mode; then there is no card to ask about";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "up to 3 includes none (CR 355.13)";
+    EXPECT_TRUE(promptOffersValue(agent, 0, 1));
+    EXPECT_TRUE(inTrash(P1, spell));
+    EXPECT_EQ(handSize(P1), 0) << "the other mode's 'Draw 1' did not happen";
+    EXPECT_EQ(deckSize(P1), 1);
+}
+
+TEST_F(VerifyCardsTest, Pin_DisposalOrder_DoneOnTheFirstCardPromptRecyclesNothing) {
+    auto theirs = addToTrash(P2, kShipyardSkulker);
+    auto spell = addToHand(P1, kDisposalOrder);
+    EnginePathAgent agent(EnginePathAgent::script({0, 0}));   // mode 0, then "Done"
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "'Done' on the first card prompt";
+    EXPECT_TRUE(inTrash(P2, theirs));
+}
+
+// ─── Not a defect: playable with nothing to choose, and "none" is on offer ──
+
+// 224 Salvage: "You may kill up to one gear. Draw 1."
+TEST_F(VerifyCardsTest, Pin_Salvage_NoGearChosen_StillDraws) {
+    addToDeck(P1, kMeditation);
+    addToDeck(P1, kMeditation);
+    auto first = addToHand(P1, kSalvage);
+    auto plays = playsOffered(first);
+    ASSERT_EQ(plays.size(), 1u) << "no gear on the board";
+    EXPECT_TRUE(plays[0].targets.empty());
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playThroughEngine(first, &agent);
+    EXPECT_TRUE(inTrash(P1, first));
+    EXPECT_EQ(handSize(P1), 1) << "Draw 1 does not depend on the gear";
+
+    // With a gear on the board, killing none is still a play.
+    auto gear = addGear(P2, kSerratedDirk);
+    auto second = addToHand(P1, kSalvage);
+    plays = playsOffered(second);
+    EXPECT_TRUE(offersTargets(plays, {}));
+    EXPECT_TRUE(offersTargets(plays, {gear}));
+    EnginePathAgent agent2(EnginePathAgent::script({}));
+    playThroughEngine(second, &agent2);
+    EXPECT_TRUE(onBoard(gear));
+    EXPECT_EQ(handSize(P1), 2);
+}
+
+// 346 Piercing Light: "Deal 2 to a unit at a battlefield, then deal 2 to up to
+// one other unit." The first unit is mandatory; the other may be left out.
+TEST_F(VerifyCardsTest, Pin_PiercingLight_NeedsTheFirstUnit_TheOtherIsOptional) {
+    auto spell = addToHand(P1, kPiercingLight);
+    auto in_base = addUnit(P2, kInvalidId, 5);
+    EXPECT_TRUE(playsOffered(spell).empty()) << "'a unit at a battlefield' is not 'up to'";
+    auto at_bf = addUnit(P2, kInvalidId, 5, 0);
+    const auto plays = playsOffered(spell);
+    EXPECT_TRUE(offersTargets(plays, {at_bf})) << "no other unit chosen";
+    EXPECT_TRUE(offersTargets(plays, {at_bf, in_base}));
+    EXPECT_FALSE(offersTargets(plays, {}));
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    playAt(spell, {at_bf}, &agent);
+    EXPECT_EQ(o(at_bf).damage_marked, 2);
+    EXPECT_EQ(o(in_base).damage_marked, 0);
+}
+
+// 513 Arise!: "Then do this: Ready up to two of them."
+TEST_F(VerifyCardsTest, Pin_Arise_ReadyingNoneOfTheSandSoldiers) {
+    auto spell = addToHand(P1, kArise);
+    for (int i = 0; i < 2; ++i) ASSERT_TRUE(isEquipment(o(addGear(P1, kSerratedDirk))));
+    // "ready no more" on the first ready prompt; the first location otherwise.
+    int stops = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Arise!: ready no more") { ++stops; return i; }
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    EXPECT_EQ(stops, 1) << "asked once, stopped at once";
+    int soldiers = 0;
+    for (const auto& [id, obj] : state.objects) {
+        if (obj.name != "Sand Soldier" || !obj.location.has_value()) continue;
+        ++soldiers;
+        EXPECT_TRUE(obj.is_exhausted) << "none was readied";
+    }
+    EXPECT_EQ(soldiers, 2) << "the tokens are played all the same";
+}
+
+// 894 Decree of Discord: "Return any number of enemy Order units with total
+// Might 5 or less to their owners' hands."
+TEST_F(VerifyCardsTest, Pin_DecreeOfDiscord_PlayableWithNoneAndMayChooseNone) {
+    auto first = addToHand(P1, kDecreeOfDiscord);
+    ASSERT_EQ(playsOffered(first).size(), 1u) << "no enemy Order unit";
+    EnginePathAgent none(EnginePathAgent::script({}));
+    playThroughEngine(first, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, first));
+
+    auto order_unit = addUnit(P2, kInvalidId, 2, 0);
+    o(order_unit).domains = {Domain::Order};
+    auto second = addToHand(P1, kDecreeOfDiscord);
+    EnginePathAgent done(EnginePathAgent::script({0}));   // "Done"
+    playThroughEngine(second, &done);
+    ASSERT_EQ(done.prompts.size(), 1u);
+    EXPECT_TRUE(done.wasOffered(order_unit));
+    EXPECT_TRUE(promptOffersValue(done, 0, 0));
+    EXPECT_TRUE(onBoard(order_unit));
+}
+
+// 260 Guerilla Warfare: "Return up to two cards with [Hidden] from your trash
+// to your hand. You can hide cards ignoring costs this turn."
+TEST_F(VerifyCardsTest, Pin_GuerillaWarfare_NoCardReturned_StillHidesIgnoringCosts) {
+    auto first = addToHand(P1, kGuerillaWarfare);
+    ASSERT_EQ(playsOffered(first).size(), 1u) << "no [Hidden] card in the trash";
+    EnginePathAgent none(EnginePathAgent::script({}));
+    playThroughEngine(first, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_TRUE(ps(P1).hide_ignoring_costs_this_turn) << "the second sentence stands alone";
+
+    ps(P1).hide_ignoring_costs_this_turn = false;
+    auto hidden_card = addToTrash(P1, kFoxFire);
+    auto second = addToHand(P1, kGuerillaWarfare);
+    EnginePathAgent stop(EnginePathAgent::script({0}));   // "Return no more"
+    playThroughEngine(second, &stop);
+    ASSERT_EQ(stop.prompts.size(), 1u);
+    EXPECT_TRUE(stop.wasOffered(hidden_card));
+    EXPECT_TRUE(inTrash(P1, hidden_card));
+    EXPECT_TRUE(ps(P1).hide_ignoring_costs_this_turn);
+}
+
+// 755 Moonfall: "Choose a battlefield where you have units. You may move up to
+// one enemy unit to that battlefield. Then give enemy units there -2 [M] this
+// turn." The battlefield is mandatory; the enemy unit is not.
+TEST_F(VerifyCardsTest, Pin_Moonfall_NoEnemyUnitMoved_StillGivesMinusTwo) {
+    addUnit(P1, kInvalidId, 3, 0);
+    auto there = addUnit(P2, kInvalidId, 6, 0);
+    auto first = addToHand(P1, kMoonfall);
+    ASSERT_EQ(playsOffered(first).size(), 1u);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // battlefield slot 0
+    playThroughEngine(first, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "no enemy unit elsewhere: the move is not asked";
+    EXPECT_EQ(o(there).current_might, 4) << "the last sentence does not depend on a move";
+
+    // An enemy unit elsewhere may be left where it is.
+    auto elsewhere = addUnit(P2, kInvalidId, 3, 1);
+    auto second = addToHand(P1, kMoonfall);
+    EnginePathAgent decline(EnginePathAgent::script({0, 0}));   // slot 0; no move
+    playThroughEngine(second, &decline);
+    EXPECT_EQ(decline.prompts.size(), 2u);
+    EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(o(elsewhere).current_might, 3);
+}
+
+// 616 Tricksy Tentacles: "Move any number of enemy units with the same
+// controller and a total Might of 8 or less to a single location."
+TEST_F(VerifyCardsTest, Pin_TricksyTentacles_PlayableWithNoneAndMayChooseNone) {
+    auto first = addToHand(P1, kTricksyTentacles);
+    ASSERT_EQ(playsOffered(first).size(), 1u) << "no enemy unit";
+    EnginePathAgent none(EnginePathAgent::script({}));
+    playThroughEngine(first, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, first));
+
+    auto enemy = addUnit(P2, kInvalidId, 2, 0);
+    auto second = addToHand(P1, kTricksyTentacles);
+    EnginePathAgent done(EnginePathAgent::script({0}));   // "Done"
+    playThroughEngine(second, &done);
+    EXPECT_EQ(done.prompts.size(), 1u) << "nothing chosen: no location is asked";
+    EXPECT_TRUE(done.wasOffered(enemy));
+    EXPECT_EQ(bfOf(enemy), std::optional<BattlefieldId>{0});
+}
+
+// 890 Shadows of the Past: "Return up to 2 units from trashes to their owners'
+// hands."
+TEST_F(VerifyCardsTest, Pin_ShadowsOfThePast_PlayableWithNoneAndMayChooseNone) {
+    auto first = addToHand(P1, kShadowsOfThePast);
+    ASSERT_EQ(playsOffered(first).size(), 1u) << "no unit in a trash";
+    EnginePathAgent none(EnginePathAgent::script({}));
+    playThroughEngine(first, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, first));
+
+    auto dead = addToTrash(P2, kShipyardSkulker);
+    auto second = addToHand(P1, kShadowsOfThePast);
+    EnginePathAgent done(EnginePathAgent::script({0}));   // "Done"
+    playThroughEngine(second, &done);
+    ASSERT_EQ(done.prompts.size(), 1u);
+    EXPECT_TRUE(done.wasOffered(dead));
+    EXPECT_TRUE(inTrash(P2, dead));
+}
+
+// 503 Relentless Pursuit: "Move a friendly unit. You may attach up to one
+// Equipment with the same controller to it. This turn, that unit has ..."
+// The unit is mandatory; the Equipment is not.
+TEST_F(VerifyCardsTest, Pin_RelentlessPursuit_NoEquipment_StillMovesAndGrants) {
+    auto spell = addToHand(P1, kRelentlessPursuit);
+    EXPECT_TRUE(playsOffered(spell).empty()) << "'a friendly unit' is not 'up to'";
+    auto unit = addUnit(P1, kInvalidId, 3);
+    const auto plays = playsOffered(spell);
+    ASSERT_EQ(plays.size(), 1u);
+    EXPECT_TRUE(offersTargets(plays, {unit}));
+    const size_t delayed_before = state.delayed_abilities.size();
+    EnginePathAgent agent(EnginePathAgent::script({1}));   // destination 1 = battlefield #0
+    playAt(spell, {unit}, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u) << "no Equipment: the attach is not asked";
+    EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{0});
+    EXPECT_EQ(state.delayed_abilities.size(), delayed_before + 1)
+        << "\"When I conquer, you may move me to my base.\"";
+}
+
+// 927 Shuriken Flip: "Deal 2 to up to one enemy unit at a battlefield, then
+// move a friendly unit."
+TEST_F(VerifyCardsTest, Pin_ShurikenFlip_NoEnemyUnitChosen_StillMovesAFriendlyUnit) {
+    state.battlefields[0].controller = P1;
+    auto mine = addUnit(P1, kInvalidId, 3);
+    auto first = addToHand(P1, kShurikenFlip);
+    ASSERT_EQ(playsOffered(first).size(), 1u) << "no enemy unit at a battlefield";
+    // The friendly unit, then destination 1 = battlefield #0.
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine), 1}));
+    playThroughEngine(first, &agent);
+    EXPECT_EQ(agent.prompts.size(), 2u) << "the damage is not asked";
+    EXPECT_EQ(bfOf(mine), std::optional<BattlefieldId>{0});
+
+    // With an enemy unit at a battlefield, "No damage" is on that prompt.
+    auto enemy = addUnit(P2, kInvalidId, 5, 1);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto second = addToHand(P1, kShurikenFlip);
+    // "No damage"; the friendly unit; destination 1 = battlefield #0.
+    EnginePathAgent decline(EnginePathAgent::script({0, static_cast<int>(other), 1}));
+    playThroughEngine(second, &decline);
+    ASSERT_EQ(decline.prompts.size(), 3u);
+    EXPECT_TRUE(promptOffersValue(decline, 0, 0));
+    EXPECT_EQ(o(enemy).damage_marked, 0);
+    EXPECT_EQ(bfOf(other), std::optional<BattlefieldId>{0});
+}
+
+// 937 Acceleration Gate: "Ready up to 4 units, gear, and/or runes."
+TEST_F(VerifyCardsTest, Pin_AccelerationGate_PlayableWithNoneAndMayChooseNone) {
+    auto first = addToHand(P1, kAccelerationGate);
+    ASSERT_EQ(playsOffered(first).size(), 1u) << "nothing is exhausted";
+    EnginePathAgent none(EnginePathAgent::script({}));
+    playThroughEngine(first, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_TRUE(inTrash(P1, first));
+
+    auto tired = addUnit(P1, kInvalidId, 3);
+    o(tired).is_exhausted = true;
+    auto second = addToHand(P1, kAccelerationGate);
+    EnginePathAgent done(EnginePathAgent::script({0}));   // "Done"
+    playThroughEngine(second, &done);
+    ASSERT_EQ(done.prompts.size(), 1u);
+    EXPECT_TRUE(done.wasOffered(tired));
+    EXPECT_TRUE(o(tired).is_exhausted);
 }
 
 }  // namespace

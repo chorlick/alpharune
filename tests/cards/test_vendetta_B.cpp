@@ -709,8 +709,14 @@ TEST_F(VendettaB, Vendetta_Dame_MatchesBiggestUnitHereThenPlusOne) {
         return legal.front();
     };
 
-    driveResumableTrigger(kDameTheDespoiler, P1, dame, pick_giant, exec,
-                          TriggerType::WhenIAttackOrDefend);
+    // "[Empowered][>]" is the trigger's condition (CR 828.1.b.1): asked by
+    // TriggerManager when she attacks, so this half goes through the engine —
+    // a direct onTrigger call would skip the question.
+    {
+        EnginePathAgent none(EnginePathAgent::script({}));
+        fireTriggerThroughEngine(dame, TriggerType::WhenIAttackOrDefend, &none);
+        EXPECT_TRUE(none.prompts.empty());
+    }
     EXPECT_EQ(state.getObject(dame).current_might, 5) << "not Empowered -> nothing";
 
     exec.empower(dame);

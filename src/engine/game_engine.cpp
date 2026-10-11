@@ -3923,6 +3923,7 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
                 ref.ability_index >= static_cast<int>(gabs.size())) continue;
             const auto& gab = gabs[ref.ability_index];
             const auto& gcost = gab.cost;
+            if (ref.exhaust_cost_only && !gcost.exhaust) continue;     // not an [E] ability
             // The same gates as an own ability above, asked of the granting
             // card for the bearer: "Use only if ...", the per-ability gate,
             // the state-aware Energy reduction payAndQueueAbility applies, the

@@ -147,6 +147,9 @@ struct GameObject {
     struct GrantedAbilityRef {
         CardDefId source_def_id = 0;  // 0 = none; else the granting card
         int ability_index = 0;
+        // Granted only if that ability's cost includes [E] (Heimerdinger:
+        // "I have all [E] abilities of ...").
+        bool exhaust_cost_only = false;
     };
     std::vector<GrantedAbilityRef> granted_abilities;
     // Abilities granted "this turn" by a resolved effect (Dominus: `give it

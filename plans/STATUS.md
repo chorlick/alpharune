@@ -204,6 +204,12 @@ iteration must apply these.
   the old encoding and close 1.9, 1.12 and 7.33 against v6 if so; new state
   fields go into the v6 token layout.
 
+- **Findings found during the run are plan items (user, 2026-10-11):** every
+  new defect a stream reports is written as a checkbox in
+  `plans/09-found-during-fix-run.md` when its report is read, not only as a
+  carry-over row, so the final gate's open-box count includes it. Stream
+  reports are copied to `plans/reports/` and committed. The stream that fixes a
+  9.x item ticks it there.
 - **Sweep split (orchestrator, 2026-10-11):** stage 2 left ~90 carry-over rows,
   67 open boxes in 03/07/08 and 43 BLOCKED card items for the sweep — too much
   for one stream. It runs as sweep-costs, sweep-flow and sweep-triggers in
@@ -514,3 +520,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 cleanup gate: first run FAILED TO BUILD (`types.h` redefinitions in every unit): after cleanup's comment-only edit to `types.h`, ccache returned the previous precompiled header on a preprocessed-text hit and `#pragma once` no longer matched. Fixed in `f3670f3` (the launcher always compiles a PCH itself). Re-run gate-cleanup2 green: 2206/2206. cleanup marked merged; worktree kept for its follow-up.
 - 2026-10-11 sweep-flow returned (`1dad1be`), merged as `1559f29`, gate green: 2248/2248. Worktree and branch removed. sweep-costs and sweep-triggers told to merge integration into their worktrees and resolve conflicts before reporting; Svellsongur 382 handed to sweep-triggers. sweep-verify-cards moved to lane B.
 - 2026-10-11 sweep-verify-cards wrote its first report (48 + 2 boxes ticked, about 30 new card defects found). Not merged yet: sent back to merge integration, re-check boxes sweep-flow unblocked, and fix its own new card defects; second report expected as `sweep-verify-cards-2.md`.
+- 2026-10-11 user: make sure findings are recorded. Created `plans/09-found-during-fix-run.md` (44 boxes: 25 new card / helper defects and 13 unsound tests from sweep-verify-cards, 6 from cleanup and sweep-flow) and `plans/reports/` (four reports). Open boxes now 128 + 44 = 172.

@@ -52,8 +52,6 @@ private:
         d.domains = {Domain::Body};
         d.energy_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
         d.keywords.set(Keyword::Temporary);
         d.ability_text = R"RB([Temporary] (Kill this at the start of its controller's Beginning Phase, before scoring.)
 Friendly units have [Deflect]. (Opponents must pay [A] to choose them with a spell or ability.))RB";

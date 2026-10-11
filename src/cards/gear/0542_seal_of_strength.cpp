@@ -24,7 +24,8 @@ public:
         return TargetRequirements{.count = 0};
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        ctx.executor.addFloatingPower(ctx.controller, Domain::Order, 1);
+        // [O] is Body (CR 134.2), this card's own domain.
+        ctx.executor.addFloatingPower(ctx.controller, Domain::Body, 1);
         ctx.events.logTrace("SEAL OF STRENGTH: Add [O]");
     }
 private:

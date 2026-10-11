@@ -67,8 +67,6 @@ private:
         d.domains = {Domain::Mind};
         d.energy_cost = 4;
         d.rarity = Rarity::Epic;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
         d.ability_text = R"RB(At the start of your Beginning Phase, if you have exactly 4 cards in hand and exactly 4 units at battlefields, you win the game.
 Discard 1, [E]: Play a 1 [M] Bird unit token with [Deflect]. (Opponents must pay [A] to choose it with a spell or ability.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/f1addf7bb3925871cbcf4615f5a449dc61f762da-744x1039.png)RB";

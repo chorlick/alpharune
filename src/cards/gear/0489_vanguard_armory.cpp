@@ -19,16 +19,66 @@ public:
     ActivationCost getActivationCost() const override {
         return ActivationCost{.exhaust = true};
     }
+    // "[E]: Play three 1 [M] Recruit unit tokens. (You may play them to
+    // different locations.)" Each token goes where a unit may be played: the
+    // controller's base or a battlefield they control. With more than one
+    // such location the controller is asked once per token; the tokens are
+    // played together once all three are placed.
+    // resume_point kAsking / kDone; the picks are resume_data[kFirstPick..].
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        LocationId loc{BaseLocation{ctx.controller}};
-        for (int i = 0; i < 3; ++i) {
-            ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
-                                     /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
-                                     loc, /*enter_ready=*/false);
+        auto dests = [&]() {
+            std::vector<int> out{0};   // 0 = base, 1 + i = battlefield i (as destLabel)
+            for (const auto& bf : ctx.state.battlefields)
+                if (bf.controller.has_value() && *bf.controller == ctx.controller)
+                    out.push_back(1 + static_cast<int>(bf.id));
+            return out;
+        };
+        auto play_all = [&](const std::vector<int>& where) {
+            for (int d : where) {
+                const LocationId loc = d <= 0
+                    ? LocationId{BaseLocation{ctx.controller}}
+                    : LocationId{BattlefieldLocation{static_cast<BattlefieldId>(d - 1)}};
+                ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
+                                         /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
+                                         loc, /*enter_ready=*/false);
+            }
+            ctx.events.logTrace("VANGUARD ARMORY: [E] -> three 1[M] Recruit tokens");
+        };
+        const auto options = dests();
+        if (!ctx.state.chain.resuming.has_value() || options.size() == 1) {
+            // Nothing to choose (or no chain item to suspend on): all to base.
+            if (ctx.state.chain.resuming.has_value()) {
+                if (ctx.state.chain.resuming->resume_point == kDone) return;
+                ctx.state.chain.resuming->resume_point = kDone;
+            }
+            play_all({0, 0, 0});
+            return;
         }
-        ctx.events.logTrace("VANGUARD ARMORY: [E] -> three 1[M] Recruit tokens");
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point == kDone) return;
+        while (ri.resume_data.size() < kFirstPick) ri.resume_data.push_back(0);
+        if (ri.resume_point == kAsking) {
+            int d = takenValue(ctx, 0);
+            if (std::find(options.begin(), options.end(), d) == options.end()) d = 0;
+            ri.resume_data.push_back(d);
+        }
+        const size_t placed = ri.resume_data.size() - kFirstPick;
+        if (placed < 3) {
+            std::vector<Intent> opts;
+            for (int d : options) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
+            ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                "Vanguard Armory: play Recruit " + std::to_string(placed + 1) + " of 3 where?");
+            ri.resume_point = kAsking;
+            return;
+        }
+        ri.resume_point = kDone;
+        play_all({ri.resume_data[kFirstPick], ri.resume_data[kFirstPick + 1],
+                  ri.resume_data[kFirstPick + 2]});
     }
 private:
+    static constexpr int kAsking = 20;
+    static constexpr int kDone = 21;
+    static constexpr size_t kFirstPick = 7;   // slots 0..6 belong to the choice helpers
     const CardDef def_ = [] {
         CardDef d;
         d.id = 489;

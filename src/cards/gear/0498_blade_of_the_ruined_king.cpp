@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -16,27 +17,15 @@ public:
     const CardDef& def() const override { return def_; }
     bool hasEquipAbility() const override { return true; }
 
+    // "[Equip] — [Y], Kill a friendly unit". All-or-nothing: both parts of
+    // the cost are checked before either is paid. Equip resolves outside the
+    // chain, so which unit dies is a direct agent decision
+    // (EffectExecutor::chooseObjectNow), not a default first pick.
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
         auto& state = ctx.state;
-        auto player = ctx.controller;
-        auto& ps = state.player(player);
-        auto base_loc = BaseLocation{player};
-
-        // PRE-CHECK both portions of the additional cost before committing
-        // anything (mirror standardEquip's all-or-nothing discipline):
-        //   1) an Order ([Y]) power rune to recycle, and
-        //   2) a killable friendly unit OTHER than the equip target.
-        GameObjectId order_rune = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isRune() || obj.controller != player) continue;
-            if (!obj.location.has_value() ||
-                *obj.location != LocationId{base_loc}) continue;
-            for (auto d : obj.domains) {
-                if (d == Domain::Order) { order_rune = id; break; }
-            }
-            if (order_rune != kInvalidId) break;
-        }
-        if (order_rune == kInvalidId) return false;
+        const PlayerId player = ctx.controller;
+        if (!equipEndsOnBoard(state, ctx.source, unit)) return false;
+        if (!payableOnePower(state, player, Domain::Order)) return false;
 
         std::vector<GameObjectId> killable;
         for (auto& [id, obj] : state.objects) {
@@ -46,40 +35,17 @@ public:
             killable.push_back(id);
         }
         if (killable.empty()) return false;
+        std::sort(killable.begin(), killable.end());
 
-        // Commit cost 1: kill a friendly unit (agent choice).
-        GameObjectId victim = pickTarget(ctx, "Blade of the Ruined King: "
-                                              "kill a friendly unit", killable);
-        if (victim == kInvalidId) {
-            // Suspended for the agent choice — re-entry will resume.
-            return false;
-        }
-        if (!state.objectExists(victim)) return false;
+        const GameObjectId victim = ctx.executor.chooseObjectNow(player, killable);
+        if (victim == kInvalidId) return false;
+        // Pay: [Y] (floating Power or a recycled Order rune), then the kill.
+        if (!payOnePower(ctx, player, Domain::Order)) return false;
         ctx.executor.killObject(victim);
 
-        // Commit cost 2: recycle the Order power rune for [Y].
-        {
-            auto& dr = state.getObject(order_rune);
-            ctx.events.logTrace("  EQUIP_COST: recycled " + dr.name + " for [Y]");
-            dr.location = std::nullopt;
-            dr.zone = ZoneType::RuneDeck;
-            ps.rune_deck.insert(ps.rune_deck.begin(), order_rune);
-        }
-
-        // Attach.
-        if (!state.objectExists(unit)) return false;
-        auto& gear = state.getObject(ctx.source);
-        auto& unit_obj = state.getObject(unit);
-        ctx.events.logTrace("EQUIP: " + gear.name + " -> " + unit_obj.name +
-                             " (might_bonus=" + std::to_string(gear.might_bonus) + ")");
-        gear.attached_to = unit;
-        unit_obj.attachments.push_back(ctx.source);
-        gear.location = unit_obj.location;
-        gear.zone = unit_obj.zone;
-        unit_obj.attachment_might_bonus += gear.might_bonus;
-        unit_obj.recomputeMight();
-        ctx.events.emit(ObjectStateChangedEvent{ctx.source, "attached"});
-        ctx.events.emit(ObjectStateChangedEvent{unit, "equipped"});
+        // The kill can have consequences; attach only if both ends are still here.
+        if (!equipEndsOnBoard(state, ctx.source, unit)) return false;
+        attachEquipped(ctx, ctx.source, unit);
         return true;
     }
 private:

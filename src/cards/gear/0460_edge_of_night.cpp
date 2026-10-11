@@ -24,25 +24,35 @@ public:
                                          /*energy_cost=*/0, Domain::Chaos);
     }
 
+    // "When you play this from face down, attach it to a unit you control
+    // (here)." Played face down means played at the battlefield it was hidden
+    // at; from hand it lands in base and nothing happens. The controller
+    // chooses which of their units here (CR 383.3: at finalization).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override {
         return TriggerType::WhenYouPlayThis;
     }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // Only the play-from-facedown case: unattached gear sitting at a BF.
-        if (self.attached_to.has_value()) return;
-        if (!self.isAtBattlefield()) return;
-        if (!self.location.has_value()) return;
-        const auto here = *self.location;
-        // Attach to a friendly unit "here" (same battlefield).
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || *obj.location != here) continue;
-            attachFree(ctx, ctx.source, id);
-            return;
+        std::vector<GameObjectId> here;
+        if (ctx.state.objectExists(ctx.source)) {
+            const auto& self = ctx.state.getObject(ctx.source);
+            if (!self.attached_to.has_value() && self.isAtBattlefield()) {
+                for (const auto& [id, obj] : ctx.state.objects) {
+                    if (!obj.isUnit() || obj.controller != ctx.controller) continue;
+                    if (!obj.location.has_value() || *obj.location != *self.location) continue;
+                    here.push_back(id);
+                }
+            }
         }
+        std::sort(here.begin(), here.end());
+        const GameObjectId unit = pickTarget(ctx, "Edge of Night: attach to which unit here?", here);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (unit == kInvalidId) return;       // none / mistarget / waiting
+        // attachFree has no board check of its own: both ends must be there.
+        if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return;
+        if (ctx.state.getObject(ctx.source).attached_to.has_value()) return;
+        attachFree(ctx, ctx.source, unit);
     }
 private:
     const CardDef def_ = [] {

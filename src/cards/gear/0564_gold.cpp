@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -27,6 +28,13 @@ public:
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
+        // "Your Gold [ADD] an additional [1]" (Chem-Baroness).
+        if (ctx.state.objectExists(ctx.source)) {
+            const auto& counters = ctx.state.getObject(ctx.source).card_counters;
+            auto extra = counters.find(kGoldExtraEnergyCounter);
+            if (extra != counters.end() && extra->second > 0)
+                ctx.executor.addFloatingEnergy(ctx.controller, extra->second);
+        }
         ctx.events.logTrace("GOLD: kill+[E] -> +1 [A]");
         ctx.executor.killObject(ctx.source);
     }
@@ -42,6 +50,7 @@ private:
         d.collector_number = 5;
         d.artist = R"RB(Kudos Productions)RB";
         d.card_type = CardType::Gear;
+        d.super_type = SuperType::Token;   // a token's reference card (CR 187.5)
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction][>] Kill this, [E]: [Add] [A]. (Abilities that add resources can't be reacted to.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/e566605fa989e12e91cd3d3e0b7985f7a8be8e74-744x1039.png)RB";

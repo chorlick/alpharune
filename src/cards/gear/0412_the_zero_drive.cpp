@@ -19,134 +19,77 @@ public:
     // ── Equip [1][B] ──
     bool hasEquipAbility() const override { return true; }
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
-        return payEquipAndAttach(ctx, ctx.source, unit, /*energy=*/1, Domain::Mind);
+        return standardEquip(ctx, ctx.source, unit, /*energy_cost=*/1, Domain::Mind);
     }
 
-    // ── Deathknell — Banish me (death replacement on the bearer) ──
-    bool hasReplacementEffect() const override { return true; }
-    bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
-        if (!ctx.state.objectExists(ctx.source)) return false;
+    // ── Equipped: "[Deathknell] — Banish me." ──
+    // A Deathknell, not a replacement: the bearer dies like any unit (its own
+    // Deathknells and "when a friendly unit dies" abilities trigger), and this
+    // ability then banishes its card from the trash. A token bearer ceased to
+    // exist as it died (CR 183.1): nothing is banished, nothing is recorded.
+    TriggerType equippedTriggerType() const override { return TriggerType::WhenIDie; }
+    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
+                           const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(unit) || !ctx.state.objectExists(ctx.source)) return;
+        const auto& dead = ctx.state.getObject(unit);
+        if (dead.isToken() || dead.zone != ZoneType::Trash) return;   // no longer where it died to
+        ctx.executor.banishObject(unit);
+        // "banished with this": only a Drive still on the board can play it back.
         auto& gear = ctx.state.getObject(ctx.source);
-        // Only intercept the death of the unit we're attached to.
-        if (!gear.attached_to.has_value() || *gear.attached_to != dying_unit) {
-            return false;
-        }
-        if (!ctx.state.objectExists(dying_unit)) return false;
-        ctx.events.logTrace("THE ZERO DRIVE: Deathknell — banish bearer + record");
-
-        // Detach the gear (refund might bonus, clear attachment), so the gear
-        // remains on board UNATTACHED — enabling the replay ability.
-        ctx.executor.unattachGear(ctx.source);
-
-        // Banish the bearer instead of letting it trash. Record it so the
-        // replay ability ("all units banished with this") can replay it.
-        ctx.executor.banishObject(dying_unit);
-        gear.tracked_objects.push_back(dying_unit);
-        return true;  // replacement consumed — unit does not die normally
+        if (gear.location.has_value()) gear.tracked_objects.push_back(unit);
+        ctx.events.logTrace("THE ZERO DRIVE: Deathknell — banished " +
+                            ctx.state.getObject(unit).name);
     }
 
-    // ── Replay ability: [3][B], Banish this — only if unattached ──
+    // ── "[3][B], Banish this: Play all units banished with this, ignoring
+    //     their costs. (Use only if unattached.)" ──
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        // [3][B] energy/power. The [B] power isn't separately enforced by the
-        // activation cost path (engine limitation); banish-this is performed
-        // manually in onActivate (no banish_self cost flag exists).
-        return {.exhaust = false, .energy = 3};
+        // ENGINE-GAP: ActivationCost has no "banish this" field, so that part
+        // of the cost is paid as the ability resolves (onActivate).
+        return {.exhaust = false, .energy = 3, .power = 1, .power_domain = Domain::Mind};
     }
-    // "(Use only if unattached.)" — legality gate. For a single-ability card
-    // with no targets, generateActivateAbilityActions consults hasLegalTargets.
-    bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        // Find this gear's on-board instance and require it to be unattached
-        // with at least one recorded banished unit to replay.
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId()) continue;
-            if (!obj.location.has_value()) continue;
-            if (obj.attached_to.has_value()) return false;  // attached → illegal
-            if (obj.tracked_objects.empty()) return false;  // nothing to replay
-            return true;
-        }
-        return false;
+    // "(Use only if unattached.)" — asked of the copy that is activating. Not
+    // offered with nothing to play back (the activation would only banish it).
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!GearCard::canActivateAbilityAt(state, controller, source, ability_index))
+            return false;
+        if (!state.objectExists(source)) return false;
+        const auto& gear = state.getObject(source);
+        return gear.location.has_value() && !gear.attached_to.has_value() &&
+               !banishedWithThis(state, gear).empty();
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& gear = ctx.state.getObject(ctx.source);
-        if (gear.attached_to.has_value()) return;  // guard: only if unattached
-
-        // Snapshot the recorded units; play each ignoring costs.
-        std::vector<GameObjectId> to_play = gear.tracked_objects;
+        // Left the board or was attached in response: the cost can't be paid.
+        if (!gear.location.has_value() || gear.attached_to.has_value()) return;
+        const std::vector<GameObjectId> to_play = banishedWithThis(ctx.state, gear);
         gear.tracked_objects.clear();
-        for (auto uid : to_play) {
-            if (!ctx.state.objectExists(uid)) continue;
-            auto& u = ctx.state.getObject(uid);
-            // Remove the duplicate banishment-vector entry before re-zoning,
-            // mirroring Dazzling Aurora's banish→play handoff.
-            auto& bz = ctx.state.player(u.owner).banishment;
-            bz.erase(std::remove(bz.begin(), bz.end(), uid), bz.end());
-            ctx.executor.playIgnoringCost(ctx.controller, uid);
-            ctx.events.logTrace("THE ZERO DRIVE: replayed banished unit " + u.name);
-        }
-
-        // "Banish this" cost — route the gear itself to banishment.
+        // "Banish this" (cost), then the effect.
         ctx.executor.banishObject(ctx.source);
-    }
-
-private:
-    // Pay [energy] ready runes + recycle one matching-domain rune for power,
-    // then attach. Mirrors equip_cards.cpp::standardEquip with an upfront
-    // affordability pre-check so an unaffordable equip never half-pays.
-    static bool payEquipAndAttach(CardContext& ctx, GameObjectId gear_id,
-                                   GameObjectId unit_id, int energy_cost,
-                                   Domain domain) {
-        auto& state = ctx.state;
-        auto player = ctx.controller;
-        auto& ps = state.player(player);
-        auto base_loc = BaseLocation{player};
-
-        int ready_count = 0;
-        GameObjectId domain_rune = kInvalidId;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isRune() || obj.controller != player) continue;
-            if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-            if (!obj.is_exhausted) ready_count++;
-            if (domain_rune == kInvalidId) {
-                for (auto d : obj.domains) {
-                    if (d == domain) { domain_rune = id; break; }
-                }
-            }
+        for (auto uid : to_play) {
+            // playIgnoringCost takes the card out of the banishment zone itself.
+            ctx.executor.playIgnoringCost(ctx.controller, uid);
+            ctx.events.logTrace("THE ZERO DRIVE: replayed banished unit " +
+                                ctx.state.getObject(uid).name);
         }
-        if (ready_count < energy_cost) return false;
-        if (domain_rune == kInvalidId) return false;
-
-        if (energy_cost > 0) {
-            int remaining = energy_cost;
-            for (auto& [id, obj] : state.objects) {
-                if (remaining <= 0) break;
-                if (!obj.isRune() || obj.controller != player || obj.is_exhausted) continue;
-                if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-                obj.is_exhausted = true;
-                remaining--;
-            }
-        }
-        {
-            auto& dr = state.getObject(domain_rune);
-            dr.location = std::nullopt;
-            dr.zone = ZoneType::RuneDeck;
-            ps.rune_deck.insert(ps.rune_deck.begin(), domain_rune);
-        }
-
-        auto& gear = state.getObject(gear_id);
-        auto& unit = state.getObject(unit_id);
-        gear.attached_to = unit_id;
-        unit.attachments.push_back(gear_id);
-        gear.location = unit.location;
-        gear.zone = unit.zone;
-        unit.attachment_might_bonus += gear.might_bonus;
-        unit.recomputeMight();
-        ctx.events.emit(ObjectStateChangedEvent{gear_id, "attached"});
-        ctx.events.emit(ObjectStateChangedEvent{unit_id, "equipped"});
-        return true;
     }
 private:
+    /// The units this Drive banished that are still in banishment.
+    static std::vector<GameObjectId> banishedWithThis(const GameState& state,
+                                                      const GameObject& gear) {
+        std::vector<GameObjectId> out;
+        for (auto uid : gear.tracked_objects) {
+            if (!state.objectExists(uid)) continue;
+            const auto& u = state.getObject(uid);
+            if (u.zone != ZoneType::Banishment || u.isToken()) continue;
+            const auto& bz = state.player(u.owner).banishment;
+            if (std::find(bz.begin(), bz.end(), uid) != bz.end()) out.push_back(uid);
+        }
+        return out;
+    }
     const CardDef def_ = [] {
         CardDef d;
         d.id = 412;

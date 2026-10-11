@@ -16,30 +16,26 @@ public:
     const CardDef& def() const override { return def_; }
 
     // "[A], [E]: Give the next spell you play this turn [Repeat] equal to its
-    // cost."
-    // The activation cost ([A] = 1 power + [E] = exhaust) is fully modeled. The
-    // EFFECT — granting the *next* spell played this turn the Repeat keyword
-    // with a magnitude equal to its own cost — has no engine primitive: there
-    // is no "grant Repeat to the next spell" hook, and the play-action
-    // generator does not emit Repeat-cost variants for player choice
-    // (game_state.h notes "the play-action generator does NOT emit Repeat
-    // intents"). Granting it here would be a no-op, so we surface the gap
-    // rather than fake it.
-    // ESCALATE(next-spell-Repeat-grant): need a per-player "next spell played
-    // this turn gains [Repeat] with magnitude = its cost" deferred modifier
-    // plus action-generator support for paying the optional Repeat cost.
+    // cost." The engine's one-shot grant (PlayerState::
+    // grant_repeat_base_to_next_spell, also The Academy's) gives the next
+    // spell without a printed [Repeat] a Repeat cost equal to its Energy cost;
+    // it is consumed by that spell and cleared at end of turn.
+    // ENGINE-GAP: the grant carries the spell's Energy cost only, so a spell
+    // that also costs Power repeats for its Energy alone.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        // [A] = one power of any domain (encoded as the card's domain, Mind)
-        // plus [E] = exhaust this gear.
-        return {.exhaust = true, .power = 1, .power_domain = Domain::Mind};
+        // [A] = one power of any domain, plus [E] = exhaust this gear.
+        ActivationCost c;
+        c.exhaust = true;
+        c.power = 1;
+        c.power_any_domain = true;
+        return c;
     }
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        // Effect unimplemented — see ESCALATE note above. Cost is still paid by
-        // the engine via getActivationCost(); we only lack the grant primitive.
-        ctx.events.logTrace("TEMPORAL PORTAL: [A][E] activated — next-spell "
-                            "[Repeat] grant not engine-supported (ESCALATE)");
+        ctx.state.player(ctx.controller).grant_repeat_base_to_next_spell = true;
+        ctx.events.logTrace("TEMPORAL PORTAL: next spell this turn has [Repeat] "
+                            "equal to its cost");
     }
 private:
     const CardDef def_ = [] {

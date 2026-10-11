@@ -16,69 +16,63 @@ class LastRites : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "[Equip] — [P], Recycle 2 cards from your trash". All-or-nothing: the
+    // whole cost is checked before any of it is paid. Equip resolves outside
+    // the chain, so which two cards are recycled is a direct agent decision
+    // (EffectExecutor::chooseObjectNow).
     bool hasEquipAbility() const override { return true; }
     bool onEquip(CardContext& ctx, GameObjectId unit) override {
         auto& ps = ctx.state.player(ctx.controller);
+        if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
         if (ps.trash.size() < 2) return false;
+        if (!payableOnePower(ctx.state, ctx.controller, Domain::Chaos)) return false;
 
-        // Pre-check a Chaos power rune is available before committing.
-        bool has_chaos = false;
-        auto base_loc = BaseLocation{ctx.controller};
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isRune() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || *obj.location != LocationId{base_loc}) continue;
-            for (auto d : obj.domains) {
-                if (d == Domain::Chaos) { has_chaos = true; break; }
-            }
-            if (has_chaos) break;
-        }
-        if (!has_chaos) return false;
-
-        // Pay the additional cost: recycle 2 cards from trash (back-of-trash;
-        // which-2 is auto, an agent-choice refinement for later).
+        GameObjectId last_recycled = kInvalidId;
         for (int i = 0; i < 2; ++i) {
-            auto card_id = ps.trash.back();
-            ps.trash.pop_back();
+            std::vector<GameObjectId> in_trash(ps.trash.begin(), ps.trash.end());
+            const GameObjectId card_id = ctx.executor.chooseObjectNow(ctx.controller, in_trash);
+            if (card_id == kInvalidId) break;
+            ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), card_id), ps.trash.end());
             ctx.events.logTrace("  EQUIP_COST: recycled " +
                                  ctx.state.getObject(card_id).name + " from trash");
             deck::putOnBottom(ctx.state, ctx.controller, card_id, deck::Place::Public);
+            last_recycled = card_id;
         }
+        // "When you recycle one or more cards to your Main Deck" (once).
+        if (last_recycled != kInvalidId)
+            ctx.events.emit(ObjectStateChangedEvent{last_recycled, "recycled_main"});
         return standardEquip(ctx, ctx.source, unit, /*energy=*/0, Domain::Chaos);
     }
 
+    // Equipped: "When I conquer or hold, you may play a unit from your trash.
+    // (You still pay its costs.)" The "may" and the unit are chosen as the
+    // ability is finalized (CR 383.3); the unit's cost is paid as it is played.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquerOrHold; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                            const std::vector<GameObjectId>& /*targets*/) override {
-        auto units_in_trash = [&]() {
+        // Units in the trash whose cost could be paid right now.
+        auto playable_units = [&]() {
             std::vector<GameObjectId> out;
-            auto& ps = ctx.state.player(ctx.controller);
-            for (auto card_id : ps.trash) {
+            for (auto card_id : ctx.state.player(ctx.controller).trash) {
                 if (!ctx.state.objectExists(card_id)) continue;
-                if (ctx.state.getObject(card_id).isUnit()) out.push_back(card_id);
+                if (!ctx.state.getObject(card_id).isUnit()) continue;
+                if (ctx.executor.canPlayPayingCost(ctx.controller, card_id)) out.push_back(card_id);
             }
             return out;
         };
-
-        // "you may play a unit from your trash"
-        int answer = confirmOptional(ctx, "Last Rites: play a unit from trash",
-            [&]() { return !units_in_trash().empty(); });
-        if (answer == -1) return;     // yielded for agent input
-        if (answer == 0) return;      // declined
-
-        GameObjectId picked = pickTarget(ctx, "Last Rites: which unit from trash",
-                                         units_in_trash());
-        if (picked == kInvalidId) return;  // yielded / no legal target
-
-        auto& ps = ctx.state.player(ctx.controller);
-        ctx.events.logTrace("LAST RITES: plays " +
-                             ctx.state.getObject(picked).name +
-                             " from trash (cost-payment not yet wired — engine limitation)");
-        // NOTE: text says "You still pay its costs", but EffectExecutor cannot
-        // drive the engine's payCardCost cursor from inside a chain-resolving
-        // trigger, so we play it for free for now (documented engine gap).
-        ctx.executor.playIgnoringCost(ctx.controller, picked);
-        ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), picked),
-                       ps.trash.end());
+        const int answer = confirmOptional(ctx, "Last Rites: play a unit from trash",
+            [&]() { return !playable_units().empty(); });
+        GameObjectId picked = kInvalidId;
+        if (answer == 1)
+            picked = pickTarget(ctx, "Last Rites: which unit from trash", playable_units());
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (answer != 1 || picked == kInvalidId) return;
+        // CR 356.1.b.2: the cost is not waived. playPayingCost takes the card
+        // out of the trash itself, and leaves it there if the cost isn't paid.
+        const std::string name = ctx.state.getObject(picked).name;
+        if (ctx.executor.playPayingCost(ctx.controller, picked))
+            ctx.events.logTrace("LAST RITES: played " + name + " from trash");
     }
 private:
     const CardDef def_ = [] {

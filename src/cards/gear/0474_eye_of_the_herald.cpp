@@ -18,10 +18,15 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIMove; }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
-                            const std::vector<GameObjectId>& targets) override {
-        auto loc = ctx.state.getObject(unit).location.value_or(BaseLocation{ctx.controller});
+                            const std::vector<GameObjectId>& /*targets*/) override {
+        // "play a 1 [M] Recruit unit token here": where the bearer is now. A
+        // bearer that has left the board has no "here".
+        if (!ctx.state.objectExists(unit)) return;
+        const auto here = ctx.state.getObject(unit).location;
+        if (!here.has_value()) return;
+        // Units enter exhausted (CR 143.4); the text does not say "ready".
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit", 1,
-                                  {"Recruit"}, {}, loc, true);
+                                  {"Recruit"}, {}, *here, /*enter_ready=*/false);
     }
 private:
     const CardDef def_ = [] {

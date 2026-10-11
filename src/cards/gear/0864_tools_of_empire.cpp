@@ -31,6 +31,8 @@ public:
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        const auto& unit = ctx.state.getObject(targets[0]);
+        if (!unit.isUnit() || !unit.location.has_value()) return;   // left the board
         const bool empowered = ctx.state.objectExists(ctx.source) &&
                                ctx.state.getObject(ctx.source).isEmpowered();
         ctx.executor.giveTemporaryMight(targets[0], empowered ? 4 : 2);

@@ -44,11 +44,7 @@ public:
         for (auto id : to_damage)
             ctx.executor.dealDamage(id, 3, ctx.source);
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, to_damage, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : to_damage) {
-                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                    ctx.executor.killObject(id);
-            }
+            ctx.executor.killLethallyDamagedTogether(to_damage);   // they die at the same time
         }
         RIFT_TRACE(ctx.events, "FIRESTORM: 3 to all enemy units at one battlefield");
     }

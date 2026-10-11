@@ -2219,31 +2219,200 @@ TEST_F(PerfEngineDeathBatch, ALethalOnlyBatchLeavesTheUnitsThatDoNotDieAlone) {
 }
 
 TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
-    // Source scan: a DeathBatch in card code is followed by a loop that kills
-    // every listed unit, or it is LethalOnly and the loop tests
-    // hasLethalDamage. (28 batches in 27 files; 21 are LethalOnly.)
+    // Source scan. A card that kills "what the damage killed" calls
+    // EffectExecutor::killLethallyDamagedTogether (21 sites) and has no loop
+    // or lethal test of its own; a DeathBatch in card code is followed by a
+    // loop that kills every listed unit (7 sites in 6 files).
     namespace fs = std::filesystem;
     const char* root = std::getenv("RIFTBOUND_ROOT");
     ASSERT_NE(root, nullptr);
-    int lethal = 0, everyone = 0;
+    int helper = 0, everyone = 0;
     for (const auto& entry : fs::recursive_directory_iterator(fs::path(root) / "src" / "cards")) {
         if (entry.path().extension() != ".cpp") continue;
         std::ifstream in(entry.path());
         std::vector<std::string> lines;
         for (std::string l; std::getline(in, l);) lines.push_back(l);
         for (size_t i = 0; i < lines.size(); ++i) {
+            if (lines[i].find("killLethallyDamagedTogether(") != std::string::npos) ++helper;
+            EXPECT_EQ(lines[i].find("DeathBatch::LethalOnly"), std::string::npos)
+                << entry.path().filename().string() << ":" << (i + 1)
+                << " — call killLethallyDamagedTogether";
             if (lines[i].find("DeathBatch together(") == std::string::npos) continue;
-            bool loop_tests_lethal = false;
+            ++everyone;
             for (size_t j = i + 1; j < std::min(lines.size(), i + 7); ++j)
-                if (lines[j].find("hasLethalDamage") != std::string::npos) loop_tests_lethal = true;
-            const bool lethal_only = lines[i].find("DeathBatch::LethalOnly") != std::string::npos;
-            EXPECT_EQ(lethal_only, loop_tests_lethal)
-                << entry.path().filename().string() << ":" << (i + 1);
-            (lethal_only ? lethal : everyone)++;
+                EXPECT_EQ(lines[j].find("hasLethalDamage"), std::string::npos)
+                    << entry.path().filename().string() << ":" << (j + 1)
+                    << " — a lethal test of its own after a DeathBatch";
         }
     }
-    EXPECT_EQ(lethal, 21);
+    EXPECT_EQ(helper, 21);
     EXPECT_EQ(everyone, 7);
+}
+
+// ─── 9.OO1: which dying unit a single replacement saves ─────────────────────
+// CR 373: "Replacement Effects with the same controller are applied in the
+// order of their controller's choosing. Example: Two units controlled by the
+// same player die in the same cleanup. That player also controls Zhonya's
+// Hourglass. They must decide which event to apply Zhonya's Hourglass to
+// first." The player is asked once, options named by unit; the unit named is
+// saved, the other dies. Before, the first unit in table order was saved and
+// nobody was asked.
+TEST_F(PerfEngineDeathBatch, ZhonyasHourglass_ItsControllerDecidesWhichDeathItReplaces) {
+    constexpr CardDefId kZhonyasHourglass = 77;
+    for (bool save_the_second : {false, true}) {
+        SCOPED_TRACE(save_the_second ? "the second unit is named" : "the first unit is named");
+        const GameObjectId hourglass = addEquipment(P1, kZhonyasHourglass);
+        const GameObjectId first = addUnit(P1, kShipyardSkulker, 0, 0);
+        const GameObjectId second = addUnit(P1, kShipyardSkulker, 0, 1);
+        const GameObjectId enemy = addUnit(P2, kShipyardSkulker, 0, 0);   // dies too; not P1's to order
+        const GameObjectId saved = save_the_second ? second : first;
+        const GameObjectId lost = save_the_second ? first : second;
+        EnginePathAgent p1(EnginePathAgent::script({static_cast<int>(saved)}));
+        EnginePathAgent p2(EnginePathAgent::script({}));
+        withEngine([&](GameEngine& e) {
+            for (auto id : {first, second, enemy}) e.mutableState().getObject(id).damage_marked = 99;
+            e.testHook_processLethalDamage();
+            settleLikeTheEngine(e);
+        }, &p1, &p2);
+        ASSERT_EQ(p1.prompts.size(), 1u) << "one prompt: which death first";
+        ASSERT_EQ(p1.prompts[0].size(), 2u);
+        EXPECT_TRUE(p1.wasOffered(first));
+        EXPECT_TRUE(p1.wasOffered(second));
+        EXPECT_FALSE(p1.wasOffered(enemy));
+        EXPECT_TRUE(p2.prompts.empty());
+        expectRecalled(saved);
+        EXPECT_EQ(o(lost).zone, ZoneType::Trash);
+        EXPECT_EQ(o(hourglass).zone, ZoneType::Trash) << "killed instead";
+        EXPECT_EQ(o(enemy).zone, ZoneType::Trash);
+    }
+}
+
+// One dying unit with something to replace its death: nothing to decide.
+TEST_F(PerfEngineDeathBatch, Pin_OneReplaceableDeathAsksNothing) {
+    constexpr CardDefId kZhonyasHourglass = 77;
+    const GameObjectId hourglass = addEquipment(P1, kZhonyasHourglass);
+    const GameObjectId only = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId enemy = addUnit(P2, kShipyardSkulker, 0, 0);
+    EnginePathAgent p1(EnginePathAgent::script({}));
+    withEngine([&](GameEngine& e) {
+        for (auto id : {only, enemy}) e.mutableState().getObject(id).damage_marked = 99;
+        e.testHook_processLethalDamage();
+        settleLikeTheEngine(e);
+    }, &p1);
+    EXPECT_TRUE(p1.prompts.empty());
+    expectRecalled(only);
+    EXPECT_EQ(o(hourglass).zone, ZoneType::Trash);
+    EXPECT_EQ(o(enemy).zone, ZoneType::Trash);
+}
+
+// ─── 9.OO3: one test for "this damage kills this unit" ──────────────────────
+// With an Elder Dragon ("any amount of your damage is enough to kill") a
+// card's damage that is short of lethal still kills. The card's own kill step
+// (EffectExecutor::killLethallyDamagedTogether) uses the cleanup's test, so
+// those units die with the card's other kills, as one batch — before, the
+// card killed only the lethally damaged one and the rest died alone in the
+// next cleanup.
+TEST_F(PerfEngineDeathBatch, DamageThatKillsByTheElderDragonRuleKillsInTheCardsBatch) {
+    constexpr CardDefId kElderDragon = 680;
+    const GameObjectId dragon = addUnit(P1, kElderDragon, 0, 1);
+    const GameObjectId frail = addUnit(P2, kTWitness, 0, 0);        // 2 [M]: 2 damage is lethal
+    const GameObjectId sturdy = addUnit(P2, kTWitness, 9, 0);       // 9 [M]: 2 damage is not
+    const GameObjectId watcher = addUnit(P2, kTWatcher, 0, 1);      // lives, sees both
+    const GameObjectId own = addUnit(P1, kShipyardSkulker, 9, 0);   // P1's own unit: the rule is about
+                                                                     // damage to the OTHER player's
+    TWitness::other[frail] = sturdy;
+    TWitness::other[sturdy] = frail;
+    std::vector<GameObjectId> died;
+    withEngine([&](GameEngine& e) {
+        auto& x = e.testHook_executor();
+        EXPECT_FALSE(x.damageKills(sturdy));
+        for (auto id : {frail, sturdy, own}) x.dealDamage(id, 2, dragon);
+        EXPECT_TRUE(x.damageKills(frail));
+        EXPECT_TRUE(x.damageKills(sturdy)) << "any amount of P1's damage";
+        EXPECT_FALSE(x.damageKills(own)) << "its own side's damage does not count";
+        died = x.killLethallyDamagedTogether({frail, sturdy, own});
+        // Before any cleanup: the card's step killed both.
+        EXPECT_FALSE(e.mutableState().getObject(sturdy).location.has_value());
+        EXPECT_FALSE(e.mutableState().getObject(frail).location.has_value());
+        settleLikeTheEngine(e);
+    });
+    EXPECT_EQ(died, (std::vector<GameObjectId>{frail, sturdy}));
+    ASSERT_TRUE(onBoard(own));
+    // They died together: each was beside the other as it died ...
+    ASSERT_EQ(TWitness::the_other.count(frail), 1u);
+    ASSERT_EQ(TWitness::the_other.count(sturdy), 1u);
+    EXPECT_TRUE(TWitness::the_other[frail].listed_with_me) << "it did not die alone";
+    EXPECT_TRUE(TWitness::the_other[sturdy].listed_with_me);
+    EXPECT_EQ(TWitness::myself[sturdy].might_then, 9);
+    // ... and a friendly watcher that lived saw both deaths.
+    EXPECT_EQ(TWatcher::resolved[watcher], 2);
+}
+
+// The cleanup asks the same question (it did already): pinned so the two
+// cannot drift apart again.
+TEST_F(PerfEngineDeathBatch, Pin_TheCleanupAndTheCardStepAgreeOnWhatDamageKills) {
+    constexpr CardDefId kElderDragon = 680;
+    const GameObjectId dragon = addUnit(P1, kElderDragon, 0, 1);
+    const GameObjectId sturdy = addUnit(P2, kShipyardSkulker, 9, 0);
+    const GameObjectId untouched = addUnit(P2, kShipyardSkulker, 9, 0);
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().dealDamage(sturdy, 1, dragon);
+        EXPECT_TRUE(e.testHook_executor().damageKills(sturdy));
+        EXPECT_FALSE(e.testHook_executor().damageKills(untouched));
+        e.testHook_processLethalDamage();
+    });
+    EXPECT_EQ(o(sturdy).zone, ZoneType::Trash);
+    EXPECT_TRUE(onBoard(untouched));
+}
+
+// ─── 9.OO2: the Main Deck Void Hatchling look ───────────────────────────────
+// The card looked at is named on one trace line that only the player who
+// looked may read; the two options are labelled and do not name it; no line
+// the other player may read names it — whether it is left or recycled.
+TEST_F(PerfEngineDeathBatch, TheMainDeckHatchlingLookIsNamedToTheLookerOnly) {
+    constexpr CardDefId kVoidHatchling = 341;
+    constexpr CardDefId kSecret = 37;          // Immortal Phoenix: a name nothing else here has
+    addUnit(P1, kVoidHatchling, 0, -1);
+    for (bool recycle : {false, true}) {
+        SCOPED_TRACE(recycle ? "recycled" : "left on top");
+        addToDeck(P1, kShipyardSkulker);
+        const GameObjectId top = addToDeck(P1, kSecret);
+        const std::string name = o(top).name;
+        ASSERT_EQ(state.player(P1).main_deck.back(), top);
+        struct Line { std::string text; LogEvent event; };
+        std::vector<LogEvent> lines;
+        auto conn = events.on_log.connect([&](const LogEvent& e) { lines.push_back(e); });
+        std::vector<std::string> labels;
+        EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+            for (const auto& i : legal) labels.push_back(i.choice_label);
+            for (const auto& i : legal)
+                if (i.chosen_value == std::optional<int>{recycle ? 1 : 0}) return i;
+            return legal.front();
+        });
+        withEngine([&](GameEngine& e) {
+            e.testHook_cleanup();
+            ASSERT_TRUE(e.mutableState().player(P1).has_reveal_peek);
+            lines.clear();
+            e.testHook_executor().lookBeforeReveal(P1);
+        }, &agent);
+        conn.disconnect();
+        ASSERT_EQ(labels.size(), 2u);
+        for (const auto& l : labels) {
+            EXPECT_FALSE(l.empty()) << "the options are labelled";
+            EXPECT_EQ(l.find(name), std::string::npos) << "and do not name the card: " << l;
+        }
+        int for_the_looker = 0;
+        for (const auto& e : lines) {
+            if (e.message.find(name) == std::string::npos) continue;
+            EXPECT_TRUE(e.visibleTo(P1)) << e.message;
+            EXPECT_FALSE(e.visibleTo(P2)) << "named to the other player: " << e.message;
+            ++for_the_looker;
+        }
+        EXPECT_GE(for_the_looker, 1) << "the looker's log names the card";
+        EXPECT_EQ(state.player(P1).main_deck.back() == top, !recycle);
+        // Clear the deck for the next round.
+        state.player(P1).main_deck.clear();
+    }
 }
 
 // ─── 9.NN2: the snapshot travels with the chain item ────────────────────────

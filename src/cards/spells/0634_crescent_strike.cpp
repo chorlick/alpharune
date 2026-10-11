@@ -31,10 +31,7 @@ public:
         }
         for (auto id : hit) ctx.executor.dealDamage(id, id == main ? 4 : 1, ctx.source);
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, hit, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : hit)
-                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                    ctx.executor.killObject(id);
+            ctx.executor.killLethallyDamagedTogether(hit);   // they die at the same time
         }
     }
     TargetRequirements getTargetRequirements() const override {

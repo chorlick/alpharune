@@ -87,14 +87,12 @@ public:
             ctx.executor.dealDamage(id, 1, ctx.source);
             hit.push_back(id);
         }
-        // Units this 1 damage is lethal for by itself. The rest die in the
-        // cleanup that follows, where "any amount of your damage is enough"
-        // applies (GameEngine::processLethalDamage).
+        // The units this damage kills die together, here: the ones it is
+        // lethal for and — "any amount of your damage is enough to kill" —
+        // every other one it marked (EffectExecutor::damageKills, the test
+        // the cleanup uses too).
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, hit, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : hit)
-                if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
-                    ctx.executor.killObject(id);
+            ctx.executor.killLethallyDamagedTogether(hit);   // they die at the same time
         }
     }
 private:

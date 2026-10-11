@@ -30,12 +30,7 @@ public:
         for (auto id : to_damage)
             ctx.executor.dealDamage(id, 3, ctx.source);
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, to_damage, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto id : to_damage) {
-                const auto& o = ctx.state.getObject(id);
-                if (o.location.has_value() && o.hasLethalDamage())
-                    ctx.executor.killObject(id);
-            }
+            ctx.executor.killLethallyDamagedTogether(to_damage);   // they die at the same time
         }
     }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }

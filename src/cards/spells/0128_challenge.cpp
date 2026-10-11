@@ -81,13 +81,7 @@ public:
         ctx.executor.dealDamage(friendly, enemy_might, ctx.source);
         // Inline kill-on-lethal (test fixture bypasses cleanup).
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, std::vector<GameObjectId>{enemy, friendly}, DeathBatch::LethalOnly);   // they die at the same time
-            for (auto tid : {enemy, friendly}) {
-                if (ctx.state.objectExists(tid) &&
-                    ctx.state.getObject(tid).hasLethalDamage()) {
-                    ctx.executor.killObject(tid);
-                }
-            }
+            ctx.executor.killLethallyDamagedTogether(std::vector<GameObjectId>{enemy, friendly});   // they die at the same time
         }
     }
 private:

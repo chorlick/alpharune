@@ -90,11 +90,7 @@ public:
             std::sort(hit.begin(), hit.end());
             for (auto id : hit) ctx.executor.dealDamage(id, id == focus ? 2 : 1, ctx.source);
             {   // the batch is for these kills only
-                DeathBatch together(ctx.executor, hit, DeathBatch::LethalOnly);   // they die at the same time
-                for (auto id : hit)
-                    if (ctx.state.getObject(id).location.has_value() &&
-                        ctx.state.getObject(id).hasLethalDamage())
-                        ctx.executor.killObject(id);
+                ctx.executor.killLethallyDamagedTogether(hit);   // they die at the same time
             }
         } else if (payoff & kMind) {
             if (finalizingChoices(ctx)) return;    // nothing to choose

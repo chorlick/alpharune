@@ -219,12 +219,38 @@ public:
     /// ones: endDeathBatch takes those back. Pass it what beginDeathBatch
     /// returned.
     DeathBatchMark beginDeathBatch(const std::vector<GameObjectId>& units);
-    /// Drop from `units` what a "kill what has lethal damage" loop would not
-    /// kill: units no longer on the board or without lethal damage.
+    // ── "This damage kills this unit" — the one test (plans/09 9.OO3) ──
+    /// "Any amount of your damage is enough to kill" (CR 142.4.c): a unit
+    /// `damager` has in play says so (Card::anyDamageIsLethal, Elder Dragon).
+    bool anyDamageIsLethalFor(PlayerId damager) const;
+    /// The answers of anyDamageIsLethalFor for one pass over several units
+    /// (the question is a walk over that player's units; plans/06 item 6.6).
+    struct LethalRule { std::optional<bool> any_damage_lethal[2]; };
+    /// True if the damage marked on `obj`, a unit on the board, kills it:
+    /// lethal damage (CR 142.4), or any damage marked by a player whose
+    /// damage is always lethal. The cleanup (GameEngine::processLethalDamage),
+    /// DeathBatch::LethalOnly and killLethallyDamagedTogether all ask this, so
+    /// a unit a card's damage kills by the Elder Dragon rule dies with that
+    /// card's other kills, not in the next cleanup. `by_any_damage`: set when
+    /// only that rule makes it lethal.
+    bool damageKills(const GameObject& obj, LethalRule& rule,
+                     bool* by_any_damage = nullptr) const;
+    bool damageKills(GameObjectId unit) const;
+    /// Drop from `units` what a "kill what has lethal damage" step would not
+    /// kill: objects no longer on the board or whose damage does not kill.
     void keepLethallyDamaged(std::vector<GameObjectId>& units) const;
+    /// "Deal damage to these, then kill what that killed": the units of
+    /// `damaged` whose damage kills them die together, as one death batch
+    /// (replacements first, CR 373.1.a; snapshots before the first kill).
+    /// Returns the ones that died (a replaced death is not one). Every card
+    /// that kills after dealing damage calls this instead of a loop of its own.
+    std::vector<GameObjectId> killLethallyDamagedTogether(std::vector<GameObjectId> damaged);
     /// True while `unit` is a member of an open death batch whose replacements
     /// were applied as the batch began (GameEngine::killUnit asks).
     bool deathReplacementsSettled(GameObjectId unit) const;
+    /// True if something could replace `unit`'s death right now (the list
+    /// applyDeathReplacements would offer is not empty).
+    bool couldReplaceDeath(GameObjectId unit) const;
     void endDeathBatch(const std::vector<GameObjectId>& units, const DeathBatchMark& mark);
 
     /// Announce that `card` was recycled into its owner's Main Deck by a path

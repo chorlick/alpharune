@@ -511,15 +511,17 @@ protected:
         };
     }
     /// True if `agent` was asked Void Hatchling's look (EffectExecutor::
-    /// lookBeforeReveal): the only prompt made of two unlabelled int answers.
+    /// lookBeforeReveal): two int answers, 0 and 1, labelled "Void Hatchling:
+    /// leave / recycle the top card ..." (the labels came with plans/09 item
+    /// 9.OO2; before, it was the only prompt made of two unlabelled answers).
     static bool askedHatchlingLook(const EnginePathAgent& agent) {
         for (const auto& p : agent.prompts) {
             if (p.size() != 2) continue;
-            bool plain = true;
+            bool look = true;
             for (const auto& i : p)
-                if (!i.chosen_value.has_value() || !i.choice_label.empty() ||
-                    !i.chosen_objects.empty()) plain = false;
-            if (plain) return true;
+                if (!i.chosen_value.has_value() || !i.chosen_objects.empty() ||
+                    i.choice_label.rfind("Void Hatchling: ", 0) != 0) look = false;
+            if (look) return true;
         }
         return false;
     }

@@ -238,19 +238,18 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     // Replacements first, for every member, while none of them has died: a
     // card that dies in this batch still replaces the deaths of the others
     // (CR 370.4), and one that is put in a trash by this batch is not there
-    // yet to replace anything (the CR 370 example). Turn player's units first
-    // (CR 373.1); within a player, the order the units were listed in.
-    std::vector<GameObjectId> order;
-    for (int pass = 0; pass < 2; ++pass)
-        for (auto id : units) {
-            if (!on_board(id) || !state_.getObject(id).isUnit()) continue;
-            const bool turn_players = state_.getObject(id).controller == state_.turn.turn_player;
-            if (turn_players == (pass == 0) &&
-                std::find(order.begin(), order.end(), id) == order.end())
-                order.push_back(id);
-        }
-    for (auto id : order) {
-        if (!on_board(id)) continue;                 // left through another one's replacement
+    // yet to replace anything (the CR 370 example).
+    //
+    // Order (CR 373, 373.1): the turn player's dying units, then the other
+    // player's. Within one player the PLAYER decides which death is taken
+    // first — "Two units controlled by the same player die in the same
+    // cleanup. That player also controls Zhonya's Hourglass. They must decide
+    // which event to apply Zhonya's Hourglass to first." — so when two or
+    // more of that player's dying units each have something that could
+    // replace their death, the player is asked which unit goes next. With one
+    // such unit, or none, there is nothing to decide.
+    auto settle = [&](GameObjectId id) {
+        if (!on_board(id)) return;                   // left through another one's replacement
         auto& lk = state_.getObject(id).last_known;
         lk.batch_pending = false;
         lk.batch_replaced = false;
@@ -260,6 +259,47 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
         if (applyDeathReplacements(id)) {
             if (state_.objectExists(id)) state_.getObject(id).last_known.batch_replaced = true;
         }
+    };
+    for (int pass = 0; pass < 2; ++pass) {
+        std::vector<GameObjectId> mine;
+        PlayerId chooser = PlayerId::None;
+        for (auto id : units) {
+            if (!on_board(id) || !state_.getObject(id).isUnit()) continue;
+            const PlayerId controller = state_.getObject(id).controller;
+            if ((controller == state_.turn.turn_player) != (pass == 0)) continue;
+            if (std::find(mine.begin(), mine.end(), id) != mine.end()) continue;
+            mine.push_back(id);
+            chooser = controller;
+        }
+        while (!mine.empty()) {
+            std::vector<GameObjectId> replaceable;
+            for (auto id : mine)
+                if (on_board(id) && couldReplaceDeath(id)) replaceable.push_back(id);
+            if (replaceable.empty()) break;
+            GameObjectId next = replaceable.front();
+            if (replaceable.size() > 1 && agent_query_ && chooser != PlayerId::None) {
+                std::vector<Intent> options;
+                for (auto id : replaceable) {
+                    Intent o;
+                    o.type = IntentType::MakeChoice;
+                    o.player = chooser;
+                    o.chosen_objects = {id};
+                    o.choice_label = state_.getObject(id).name +
+                                     " would die — decide what replaces this death first";
+                    options.push_back(std::move(o));
+                }
+                const Intent chosen = agent_query_(chooser, options);
+                if (!chosen.chosen_objects.empty() &&
+                    std::find(replaceable.begin(), replaceable.end(),
+                              chosen.chosen_objects.front()) != replaceable.end())
+                    next = chosen.chosen_objects.front();
+            }
+            settle(next);
+            mine.erase(std::remove(mine.begin(), mine.end(), next), mine.end());
+        }
+        // The rest have nothing that could replace their death; this uses up
+        // "the next time it would die" effects that no longer apply.
+        for (auto id : mine) settle(id);
     }
     for (auto id : units) {
         if (!on_board(id)) continue;
@@ -291,12 +331,72 @@ bool EffectExecutor::deathReplacementsSettled(GameObjectId unit) const {
     return state_.objectExists(unit) && replacementsSettledByBatch(state_.getObject(unit));
 }
 
+bool EffectExecutor::anyDamageIsLethalFor(PlayerId damager) const {
+    for (const auto& [id, obj] : state_.objects.onBoard()) {
+        if (!obj.isUnit() || !obj.location.has_value()) continue;
+        if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
+        const Card* card = cardFor(obj.card_def_id);
+        if (card && card->anyDamageIsLethal()) return true;
+    }
+    return false;
+}
+
+bool EffectExecutor::damageKills(const GameObject& obj, LethalRule& rule,
+                                 bool* by_any_damage) const {
+    if (by_any_damage) *by_any_damage = false;
+    if (!obj.isUnit() || !obj.location.has_value() || obj.damage_marked <= 0) return false;
+    if (obj.hasLethalDamage()) return true;
+    // Elder Dragon: any amount of that player's damage kills. "Your damage"
+    // is the damage you marked, so damage a unit took from its own side does
+    // not count. Asked only for a unit carrying damage short of lethal, and
+    // once per player per `rule`.
+    if (obj.controller == PlayerId::None) return false;
+    const PlayerId damager = opponent(obj.controller);
+    if (std::min(obj.damage_marked_by[playerIndex(damager)], obj.damage_marked) <= 0) return false;
+    auto& known = rule.any_damage_lethal[playerIndex(damager)];
+    if (!known.has_value()) known = anyDamageIsLethalFor(damager);
+    if (!*known) return false;
+    if (by_any_damage) *by_any_damage = true;
+    return true;
+}
+
+bool EffectExecutor::damageKills(GameObjectId unit) const {
+    LethalRule rule;
+    return state_.objectExists(unit) && damageKills(state_.getObject(unit), rule);
+}
+
 void EffectExecutor::keepLethallyDamaged(std::vector<GameObjectId>& units) const {
+    LethalRule rule;
     units.erase(std::remove_if(units.begin(), units.end(), [&](GameObjectId id) {
-        if (!state_.objectExists(id)) return true;
-        const auto& obj = state_.getObject(id);
-        return !obj.location.has_value() || !obj.hasLethalDamage();
+        return !state_.objectExists(id) || !damageKills(state_.getObject(id), rule);
     }), units.end());
+}
+
+std::vector<GameObjectId>
+EffectExecutor::killLethallyDamagedTogether(std::vector<GameObjectId> damaged) {
+    // Each unit once, in the order given.
+    std::vector<GameObjectId> dying;
+    LethalRule rule;
+    for (auto id : damaged) {
+        if (!state_.objectExists(id)) continue;
+        if (std::find(dying.begin(), dying.end(), id) != dying.end()) continue;
+        bool by_any_damage = false;
+        if (!damageKills(state_.getObject(id), rule, &by_any_damage)) continue;
+        if (by_any_damage)
+            RIFT_TRACE(events_, "ELDER_DRAGON: " + state_.getObject(id).name +
+                             " killed by any-damage rule");
+        dying.push_back(id);
+    }
+    std::vector<GameObjectId> died;
+    const DeathBatchMark mark = beginDeathBatch(dying);
+    for (auto id : dying) {
+        if (!state_.objectExists(id) || !state_.getObject(id).location.has_value()) continue;
+        killObject(id);
+        if (!state_.objectExists(id) || !state_.getObject(id).location.has_value())
+            died.push_back(id);
+    }
+    endDeathBatch(dying, mark);
+    return died;
 }
 
 void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
@@ -1074,61 +1174,80 @@ void EffectExecutor::healExhaustRecall(GameObjectId unit) {
     recallToBase(unit);
 }
 
+namespace {
+// What could replace one unit's death, in the order it is offered.
+enum class DeathReplacementKind { RecallPending, Pending, BanishInstead, Card };
+struct DeathReplacementCandidate {
+    DeathReplacementKind kind;
+    GameObjectId card_object = kInvalidId;                 // Kind::Card
+    GameObject::PendingDeathReplacement pending{};         // Kind::Pending
+    std::string label;
+};
+// Read-only: applyDeathReplacements uses up the unit's pending ones itself.
+std::vector<DeathReplacementCandidate>
+deathReplacementCandidates(const GameState& state, const EffectExecutor& exec,
+                           GameObjectId unit_id) {
+    using Kind = DeathReplacementKind;
+    std::vector<DeathReplacementCandidate> candidates;
+    if (!state.objectExists(unit_id)) return candidates;
+    const auto& unit = state.getObject(unit_id);
+    if (!unit.isUnit() || !unit.location.has_value()) return candidates;
+    const PlayerId controller = unit.controller;
+    // "The next time it would die this turn, heal it, exhaust it, and
+    // recall it instead." (Tactical Retreat, Highlander)
+    if (unit.death_replacement_recall_pending)
+        candidates.push_back({Kind::RecallPending, kInvalidId, {},
+                              "heal it, exhaust it and recall it instead"});
+    // Replacements an effect put on this unit.
+    for (const auto& r : unit.pending_death_replacements) {
+        if (r.turn != state.turn.turn_number) continue;   // its turn is over
+        const Card* card = exec.cardFor(r.card);
+        if (!card) continue;
+        candidates.push_back({Kind::Pending, kInvalidId, r, card->def().name});
+    }
+    // "If it would die this turn, banish it instead." (Smite)
+    if (unit.banish_if_would_die_this_turn)
+        candidates.push_back({Kind::BanishInstead, kInvalidId, {}, "banish it instead"});
+    // "If a unit here would die ..." on the battlefield it is at (Altar of
+    // Blood); then its controller's cards in play, by object id.
+    std::vector<GameObjectId> sources;
+    if (const auto dying_bf = unit.battlefieldId())
+        for (const auto& bf : state.battlefields)
+            if (bf.id == *dying_bf && state.objectExists(bf.card_object_id))
+                sources.push_back(bf.card_object_id);
+    std::vector<GameObjectId> in_play;
+    for (const auto& [id, other] : state.objects.inPlay()) {
+        if (other.controller != controller || id == unit_id) continue;
+        if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
+        in_play.push_back(id);
+    }
+    std::sort(in_play.begin(), in_play.end());
+    sources.insert(sources.end(), in_play.begin(), in_play.end());
+    for (auto sid : sources) {
+        const Card* card = exec.cardFor(state.getObject(sid).card_def_id);
+        if (!card || !card->hasReplacementEffect()) continue;
+        if (!card->replacementApplies(state, sid, controller, unit_id)) continue;
+        candidates.push_back({Kind::Card, sid, {}, state.getObject(sid).name});
+    }
+    return candidates;
+}
+}  // namespace
+
+bool EffectExecutor::couldReplaceDeath(GameObjectId unit) const {
+    return !deathReplacementCandidates(state_, *this, unit).empty();
+}
+
 bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
     if (!state_.objectExists(unit_id)) return false;
     if (!state_.getObject(unit_id).isUnit() || !onBoard(state_.getObject(unit_id))) return false;
     const PlayerId controller = state_.getObject(unit_id).controller;
 
-    enum class Kind { RecallPending, Pending, BanishInstead, Card };
-    struct Candidate {
-        Kind kind;
-        GameObjectId card_object = kInvalidId;                 // Kind::Card
-        GameObject::PendingDeathReplacement pending{};         // Kind::Pending
-        std::string label;
-    };
-    std::vector<Candidate> candidates;
-    {
-        auto& unit = state_.getObject(unit_id);
-        // "The next time it would die this turn, heal it, exhaust it, and
-        // recall it instead." (Tactical Retreat, Highlander)
-        if (unit.death_replacement_recall_pending)
-            candidates.push_back({Kind::RecallPending, kInvalidId, {},
-                                  "heal it, exhaust it and recall it instead"});
-        // Replacements an effect put on this unit. "The next time it would
-        // die": this death uses each one up, applied or not.
-        const auto pending = std::move(unit.pending_death_replacements);
-        unit.pending_death_replacements.clear();
-        for (const auto& r : pending) {
-            if (r.turn != state_.turn.turn_number) continue;   // its turn is over
-            const Card* card = cardFor(r.card);
-            if (!card) continue;
-            candidates.push_back({Kind::Pending, kInvalidId, r, card->def().name});
-        }
-        // "If it would die this turn, banish it instead." (Smite)
-        if (unit.banish_if_would_die_this_turn)
-            candidates.push_back({Kind::BanishInstead, kInvalidId, {}, "banish it instead"});
-        // "If a unit here would die ..." on the battlefield it is at (Altar of
-        // Blood); then its controller's cards in play, by object id.
-        std::vector<GameObjectId> sources;
-        if (const auto dying_bf = unit.battlefieldId())
-            for (const auto& bf : state_.battlefields)
-                if (bf.id == *dying_bf && state_.objectExists(bf.card_object_id))
-                    sources.push_back(bf.card_object_id);
-        std::vector<GameObjectId> in_play;
-        for (const auto& [id, other] : state_.objects.inPlay()) {
-            if (other.controller != controller || id == unit_id) continue;
-            if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
-            in_play.push_back(id);
-        }
-        std::sort(in_play.begin(), in_play.end());
-        sources.insert(sources.end(), in_play.begin(), in_play.end());
-        for (auto sid : sources) {
-            const Card* card = cardFor(state_.getObject(sid).card_def_id);
-            if (!card || !card->hasReplacementEffect()) continue;
-            if (!card->replacementApplies(state_, sid, controller, unit_id)) continue;
-            candidates.push_back({Kind::Card, sid, {}, state_.getObject(sid).name});
-        }
-    }
+    using Kind = DeathReplacementKind;
+    using Candidate = DeathReplacementCandidate;
+    std::vector<Candidate> candidates = deathReplacementCandidates(state_, *this, unit_id);
+    // "The next time it would die": this death uses each pending one up,
+    // applied or not.
+    state_.getObject(unit_id).pending_death_replacements.clear();
 
     auto apply = [&](const Candidate& c) -> bool {
         auto& unit = state_.getObject(unit_id);
@@ -2062,10 +2181,17 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     if (!ps.has_reveal_peek || ps.main_deck.empty() || !agent_query_) return;
     GameObjectId top = ps.main_deck.back();
     if (!state_.objectExists(top)) return;
-    // A private look at the top card.
+    // A private look at the top card. The card is named on one line only,
+    // readable by the player who looked (LogEvent::visibleTo); the options
+    // do not name it, because option labels are not audience-limited
+    // (plans/09 9.OO2 — the same form as the Rune Deck look above).
     knowledge::seenInDeck(state_, top, knowledge::only(player), DeckEnd::Top, 0);
+    RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
+                     std::to_string(top) + ") on top of the Main Deck [Void Hatchling]");
     Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
     Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
+    keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
+    recyc.choice_label = "Void Hatchling: recycle the top card of your Main Deck";
     auto chosen = agent_query_(player, {keep, recyc});
     if (chosen.chosen_value.value_or(0) == 1) {
         deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));

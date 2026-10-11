@@ -1,8 +1,11 @@
 #include "step_driver.h"
 
+#include <boost/context/detail/exception.hpp>
 #include <boost/context/protected_fixedsize_stack.hpp>
 
+#include <cstdlib>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace riftbound {
@@ -14,6 +17,17 @@ namespace {
 // guard page so stack overflow segfaults cleanly instead of corrupting
 // the heap.
 constexpr size_t kFiberStackBytes = 256 * 1024;
+
+// Fault injection for checking that an engine failure is reported as a
+// failure: RIFTBOUND_STEP_FAULT_AT=<n> makes every step-machine engine throw
+// from inside its fiber at its n-th decision. 0 / unset = off.
+long stepFaultAt() {
+    static const long at = [] {
+        const char* v = std::getenv("RIFTBOUND_STEP_FAULT_AT");
+        return v ? std::atol(v) : 0L;
+    }();
+    return at;
+}
 }
 
 StepDriver::~StepDriver() {
@@ -50,10 +64,15 @@ void StepDriver::runInFiber(std::function<void()> game_fn) {
             yield_target_ = std::move(caller);
             try {
                 game_fn();
+            } catch (const boost::context::detail::forced_unwind&) {
+                // Boost unwinding a suspended fiber that is being destroyed:
+                // not an error, and it must reach the fiber's own entry point.
+                throw;
             } catch (...) {
-                // Stash the exception so the caller can rethrow when
-                // they next call provideChoice / waitForDecision.
-                // For now, just mark done and let the fiber unwind.
+                // The game did not finish. Keep the exception: GameEngine
+                // rethrows it to the caller (applyChoice / currentStep) so a
+                // crashed game is never mistaken for a completed one.
+                failure_ = std::current_exception();
             }
             done_.store(true, std::memory_order_release);
             // Returning the yield_target hands control back to the
@@ -68,6 +87,22 @@ void StepDriver::runInFiber(std::function<void()> game_fn) {
 Intent StepDriver::selectAction(
     const GameState& state,
     const std::vector<Intent>& legal_actions) {
+    return selectActionFor(decidingPlayer(state, legal_actions), state,
+                           legal_actions);
+}
+
+Intent StepDriver::selectActionFor(
+    PlayerId decider,
+    const GameState& state,
+    const std::vector<Intent>& legal_actions) {
+
+    ++decisions_served_;
+    if (stepFaultAt() > 0 && decisions_served_ == stepFaultAt()) {
+        throw std::runtime_error(
+            "RIFTBOUND_STEP_FAULT_AT: injected engine fault at decision " +
+            std::to_string(decisions_served_));
+    }
+    (void)state;
 
     // Always present a non-empty action list to the caller. The engine
     // *should* guard against empty legal-action lists at each call site,
@@ -75,13 +110,13 @@ Intent StepDriver::selectAction(
     std::vector<Intent> normalized;
     const std::vector<Intent>* effective = &legal_actions;
     if (legal_actions.empty()) {
-        normalized.push_back(Intent::concede(state.turn.turn_player));
+        normalized.push_back(Intent::concede(decider));
         effective = &normalized;
     }
 
     // Publish the decision snapshot for the caller, then yield.
     paused_legal_   = *effective;
-    paused_player_  = state.turn.turn_player;
+    paused_player_  = decider;
     at_decision_    = true;
     pending_choice_.reset();
 

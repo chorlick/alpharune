@@ -125,24 +125,58 @@ public:
     /// the worker thread which dispatches to the appropriate phase based
     /// on `state_.turn.phase` — no setup, no mulligans, no replay.
     ///
-    /// Currently supports resuming from the post-mulligan phases
-    /// (AwakenPhase through ExpirationStep). Resuming during Setup or
-    /// Mulligan throws — those paths still go through `beginGame` +
-    /// replay (rare in practice — clones during mulligan are at most a
-    /// few per game vs. hundreds during main phases).
+    /// Only a snapshot taken at a top-level main-phase decision can be
+    /// resumed (`isResumableDecision`); anything else throws
+    /// std::invalid_argument. Snapshots taken elsewhere — mulligan, chain
+    /// priority, showdown, combat, cost payment, a card's play-time prompt
+    /// — have to be rebuilt by `beginGame` + replaying the exact choices
+    /// (`GameState::action_history`).
+    ///
+    /// `rng_state` is the snapshotted engine's `rngState()`. The RNG is
+    /// part of the position: without it the resumed engine would shuffle
+    /// differently from the engine it was copied from.
+    ///
+    /// `snapshot_step` is the decision the snapshot was taken at (who
+    /// decides, and the legal list). It is how the engine tells a
+    /// resumable snapshot from one that only looks like it, and the
+    /// resumed engine is checked against it: std::logic_error if it does
+    /// not arrive at the same decision.
     StepResult resumeFromSnapshot(GameState snapshot_state,
-                                    uint64_t engine_seed);
+                                    const std::mt19937_64& rng_state,
+                                    const StepResult& snapshot_step);
+
+    /// True iff a snapshot of `state`, taken while an agent is being asked
+    /// to choose from `legal`, can be handed to `resumeFromSnapshot`.
+    static bool isResumableDecision(const GameState& state,
+                                    const std::vector<Intent>& legal);
+
+    /// The engine's RNG stream at this moment (for `resumeFromSnapshot`).
+    const std::mt19937_64& rngState() const { return rng_; }
 
     /// Inspect what the engine is currently waiting on without advancing.
+    /// Throws the engine's exception if the game failed (see applyChoice).
     StepResult currentStep() const;
 
     /// Apply the chosen decision (index into the prior step's `legal`),
     /// then advance until the next NeedDecision or terminal. Returns the
-    /// new step.
+    /// new step. Throws std::out_of_range for an index outside `legal`.
+    ///
+    /// If the engine throws while advancing, the exception is rethrown
+    /// here, and again by every later applyChoice / currentStep: a game
+    /// that failed is never reported as a finished one. `isStepDone()` is
+    /// true afterwards and `stepResult().termination_reason` is
+    /// "engine_error" with no winner.
     StepResult applyChoice(int legal_index);
 
-    /// True iff `currentStep().kind == StepKind::Done`.
+    /// True iff the engine is no longer waiting on a decision: the game
+    /// finished, or it failed (`stepFailed()`).
     bool isStepDone() const;
+
+    /// True iff the step-machine game ended by an engine exception.
+    bool stepFailed() const;
+
+    /// Rethrows the engine's exception if `stepFailed()`; otherwise no-op.
+    void rethrowIfStepFailed() const;
 
     /// After the game has terminated under the step-machine flow,
     /// the GameResult. Undefined before isStepDone() returns true.
@@ -151,11 +185,9 @@ public:
     /// Access the current game state (for external inspection).
     const GameState& state() const { return state_; }
 
-    /// Mutable access. Phase C-1: needed by the OpenSpiel wrapper to
-    /// record applied action IDs on `GameState::action_history`. Will be
-    /// the single state-mutation entry point once the engine is driven
-    /// as a step machine (see Phase 11 Phase C-1 in CLAUDE.md). Do not
-    /// use from BatchRunner / agent code — they should see state as read-only.
+    /// Mutable access, for tests that build a position by hand. Not for
+    /// the OpenSpiel wrapper, BatchRunner or agents: `action_history` is
+    /// written by the engine itself (`recordAppliedIntent`).
     GameState& mutableState() { return state_; }
 
     /// Generate all legal actions for the player who must currently act.
@@ -316,7 +348,7 @@ private:
     /// runTurnFromPhase when resuming a snapshot that was already mid-
     /// MainPhase — the snapshot already reflects the entry effects, so
     /// running them again would clobber it.
-    void mainPhaseLoop();
+    void mainPhaseLoop(int action_count = 0);
     void endingStep();
 
     void expirationStep();
@@ -539,15 +571,12 @@ private:
     // ── Queries ──
     Intent queryAgent(PlayerId player);
 
-    /// Encode the chosen Intent via action_vocab and append the slot ID
-    /// to GameState::action_history. Called from every selectAction
-    /// dispatch site so that MCTS-style agents (which reconstruct an
-    /// OpenSpiel state by replaying action_history) see the same
-    /// sequence of decisions the live engine just applied. Without this,
-    /// engine-driven games (`GameEngine::runGame` with AgentInterface
-    /// agents) leave action_history empty and MCTS plans against the
-    /// initial game state for every decision — silently degrading the
-    /// agent to legal_actions[0].
+    /// Append the chosen Intent's history token (action_vocab.h) to
+    /// GameState::action_history. Called from every selectAction dispatch
+    /// site, in both runGame and step-machine games, so the history is the
+    /// one exact record of the decisions applied: replaying it from the
+    /// same decks and seed rebuilds this game (RiftboundState, MctsAgent).
+    /// This is the only writer.
     void recordAppliedIntent(const Intent& chosen);
     AgentInterface& getAgent(PlayerId player);
 

@@ -24,6 +24,21 @@ uint64_t computeInfoSetId(const std::vector<float>& features, int player) {
     return h;
 }
 
+uint64_t mixDecisionIntoInfoSetId(uint64_t info_set_id, int deciding_player,
+                                  const std::vector<int64_t>& offered_actions) {
+    uint64_t h = info_set_id;
+    auto mix = [&h](uint64_t v) {
+        for (int b = 0; b < 8; ++b) {
+            h ^= (v >> (b * 8)) & 0xFF;
+            h *= 1099511628211ULL;
+        }
+    };
+    mix(static_cast<uint64_t>(static_cast<int64_t>(deciding_player)));
+    mix(offered_actions.size());
+    for (int64_t a : offered_actions) mix(static_cast<uint64_t>(a));
+    return h;
+}
+
 std::vector<double>
 regretMatching(const std::vector<double>& cumulative_regrets) {
     std::vector<double> out;

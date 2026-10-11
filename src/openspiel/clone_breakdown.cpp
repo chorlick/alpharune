@@ -1,9 +1,16 @@
 // Clone-cost breakdown. Walks the same checkpoint as the existing
-// microbench, then runs three timed loops:
+// microbench, then runs two timed loops:
 //
 //   (A) Full Clone()         — measures the cost of the public API
 //   (B) GameState alone      — raw deep-copy of just engineState()
-//   (C) Clone + EnsureLive   — what an MCTS leaf that DOES descend pays
+//
+// (What a clone that IS advanced pays on top — building its engine — is
+// measured by clone_advance_microbench.)
+//
+// Note on (A): repeated Clone() calls on a state that has not been advanced
+// share one immutable snapshot, so only the first call pays the GameState
+// copy and the rest are a pointer copy. The median therefore shows the
+// shared-snapshot cost and the max shows the copy.
 //
 // Gives an apples-to-apples view of whether Clone() is already pinned
 // at the GameState deep-copy floor (in which case "memcpy Clone" — i.e.
@@ -11,10 +18,10 @@
 // without GameState-level optimizations) or whether there's wrapper
 // overhead worth shaving.
 //
-// Build:  cmake --build build-release --target riftbound_clone_breakdown
-// Run:    ./build-release/src/openspiel/riftbound_clone_breakdown
+// Build:  cmake --build build --target riftbound_clone_breakdown
+// Run:    ./build/src/openspiel/riftbound_clone_breakdown
 //
-// Same env vars as clone_microbench: RIFTBOUND_DECK1/2, RIFTBOUND_REGISTRY,
+// Same env vars as clone_microbench: RIFTBOUND_DECK1/2,
 // RIFTBOUND_CHECKPOINT, RIFTBOUND_NUM_CLONES, RIFTBOUND_SEED.
 
 #include "open_spiel/spiel.h"
@@ -70,16 +77,14 @@ void print(const std::string& label, const Stats& s) {
 } // namespace
 
 int main() {
-    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/leblanc_test.txt");
-    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/leblanc_test.txt");
-    const std::string registry = getenvOr("RIFTBOUND_REGISTRY", "cards/ban-list.csv");
+    const std::string deck1    = getenvOr("RIFTBOUND_DECK1",    "decks/yi_rebuild.txt");
+    const std::string deck2    = getenvOr("RIFTBOUND_DECK2",    "decks/yi_rebuild.txt");
     const int checkpoint       = std::max(1, getenvInt("RIFTBOUND_CHECKPOINT", 100));
     const int num_clones       = std::max(1, getenvInt("RIFTBOUND_NUM_CLONES", 200));
     const int seed             = getenvInt("RIFTBOUND_SEED", 42);
 
     const std::string game_str = "riftbound(deck1=" + deck1 +
                                   ",deck2=" + deck2 +
-                                  ",registry=" + registry +
                                   ",seed=" + std::to_string(seed) + ")";
 
     std::cout << "Loading: " << game_str << "\n";

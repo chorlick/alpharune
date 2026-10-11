@@ -5,25 +5,35 @@
 /// All threading + halting machinery lives inside `GameEngine`
 /// (`beginGame` / `applyChoice` / `currentStep` — see game_engine.h).
 /// This wrapper holds the engine + its EventBus, plus the seed it was
-/// constructed with so `Clone()` can replay deterministically.
+/// constructed with so a clone can be rebuilt deterministically.
 ///
-/// ── Lazy-clone mode (Phase C-1 mini-commit 9 / lazy-thread) ──
+/// ── Clones ──
 ///
-/// `Clone()` does NOT spawn a worker thread. Instead, the clone snapshots
-/// the original's `GameState`, `StepResult`, and `GameResult` into private
-/// fields and defers engine construction. Read-only methods
-/// (LegalActions / CurrentPlayer / IsTerminal / Returns /
-/// ObservationTensor / engineState) serve answers from the snapshot
-/// directly. The first `DoApplyAction` call on the clone — or anything
-/// that hands out the EventBus / sets a decision callback — triggers
-/// `ensureLive()`, which builds the engine, calls `beginGame`, and
-/// replays `action_history` so the engine reaches the snapshotted
-/// decision point. From there normal `applyChoice` takes over.
+/// `Clone()` does not build an engine. The clone holds a shared, immutable
+/// snapshot of the original (`GameState`, the pending decision, the result,
+/// the engine's RNG stream) and serves the read-only methods from it. The
+/// first `DoApplyAction` on the clone — or anything that hands out the
+/// EventBus / sets a decision callback — calls `ensureLive()`, which builds
+/// an engine that is in exactly the original's position:
 ///
-/// MCTS in particular produces many clones that are never advanced
-/// (search-tree leaves, rollout heads that terminate early). Each such
-/// clone now costs a GameState copy (~tens of μs) instead of the full
-/// thread spawn + history replay (~5 ms in mid-game).
+///   * Snapshot taken at a top-level main-phase decision
+///     (`GameEngine::isResumableDecision`): the engine is resumed straight
+///     from the snapshot. This is the common case and costs one GameState
+///     copy.
+///   * Snapshot taken anywhere else (mulligan, chain priority, showdown,
+///     combat, cost payment, a card's play-time prompt): the engine is in
+///     the middle of a call that GameState does not capture, so it is
+///     rebuilt from the nearest resumable ancestor snapshot (or from
+///     `beginGame`) by replaying the exact choices made since —
+///     `GameState::action_history` holds one history token per decision
+///     (action_vocab.h), which identifies the chosen Intent, not just its
+///     lossy vocab slot.
+///
+/// Either way the rebuilt engine is checked against the snapshot's pending
+/// decision; a mismatch throws instead of silently playing a different game.
+///
+/// MCTS produces many clones that are never advanced (search-tree leaves,
+/// rollout heads that terminate early). Those cost a pointer copy.
 ///
 /// Action IDs are dense vocab slots in [0, kVocabSize) (see action_vocab.h)
 /// keyed by CardDefId — stable across clones, sized for AlphaZero policy
@@ -36,6 +46,7 @@
 #include "engine/game_engine.h"
 
 #include <memory>
+#include <random>
 
 namespace riftbound::openspiel {
 
@@ -44,48 +55,71 @@ class RiftboundGame;
 class RiftboundState : public ::open_spiel::State {
 public:
     explicit RiftboundState(std::shared_ptr<const ::open_spiel::Game> game);
-    /// Internal: construct with an explicit engine seed. Used by Clone()
-    /// so the replayed state plays the same game as the original (the
-    /// public constructor draws random_device seed when the Game's seed
-    /// param is 0).
+    /// Construct with an explicit engine seed (the one-argument constructor
+    /// draws a random_device seed when the Game's seed param is 0).
     RiftboundState(std::shared_ptr<const ::open_spiel::Game> game,
                     uint64_t engine_seed);
     RiftboundState(const RiftboundState&) = delete;
     RiftboundState& operator=(const RiftboundState&) = delete;
     ~RiftboundState() override = default;
 
-    /// Build a RiftboundState from an externally-supplied GameState
-    /// snapshot. Bypasses the lossy action_history replay path: the
-    /// cloned engine is memcpy-restored from `snap_state` rather than
-    /// reconstructed by replaying encoded slots (which collapse many
-    /// distinct Intents — set-aside-card-X vs Y at mulligan, target-A
-    /// vs target-B for a MakeChoice — into the same slot, so replay
-    /// can land on the wrong specific Intent and diverge from the live
-    /// engine).
+    /// Build a state that is in exactly the position of a game being run
+    /// elsewhere (a `GameEngine::runGame` game an agent is deciding in), by
+    /// replaying `live_state.action_history` from `beginGame` with
+    /// `engine_seed`. Returns nullptr when the history does not reproduce
+    /// `live_state` / `live_step` — a wrong seed, or a state edited behind
+    /// the engine's back. Engine exceptions propagate.
+    ///
+    /// `live_step.perspective` may be PlayerId::None when the caller does
+    /// not know which seat is being asked (an agent is not told); the
+    /// rebuilt state's CurrentPlayer() then says who it is.
+    ///
+    /// The result is exact, RNG stream included, so clones of it play the
+    /// live game's future. Its OpenSpiel move number starts at 0: the
+    /// IsTerminal() length cap then bounds a search from this position
+    /// rather than counting the live game's past.
+    static std::unique_ptr<RiftboundState> rebuildFromHistory(
+        std::shared_ptr<const ::open_spiel::Game> game,
+        uint64_t engine_seed,
+        const ::riftbound::GameState& live_state,
+        const ::riftbound::StepResult& live_step);
+
+    /// Bring a state made by `rebuildFromHistory` forward to the live
+    /// game's current decision by replaying only the history tokens it has
+    /// not applied yet. Returns false (and leaves this state unusable — make
+    /// a new one) if this state's history is not a prefix of the live one or
+    /// the replay does not arrive at `live_step`.
+    bool syncToHistory(const ::riftbound::GameState& live_state,
+                       const ::riftbound::StepResult& live_step);
+
+    /// Build a state directly from a GameState snapshot, without a replay.
+    /// For callers that cannot reproduce the game from its history
+    /// (`rebuildFromHistory` returned nullptr).
+    ///
+    /// NOT exact: the engine's RNG stream is not part of GameState, so the
+    /// clone shuffles with a stream seeded from `rng_seed`, not the live
+    /// game's. And only a snapshot at a resumable decision
+    /// (`GameEngine::isResumableDecision(snap_state, snap_step.legal)`) can
+    /// be advanced this way; for any other, the first ApplyAction falls back
+    /// to replaying the history from `engine_seed` and throws if that does
+    /// not reproduce the snapshot.
     ///
     /// `snap_step.kind` should be NeedDecision (if the game isn't over),
-    /// `snap_step.perspective` the acting player, `snap_step.legal` the
+    /// `snap_step.perspective` the deciding player, `snap_step.legal` the
     /// engine's full Intent list at that decision. `snap_result` is a
     /// default-constructed GameResult unless `snap_state.game_over`.
-    ///
-    /// Intended caller: MctsAgent / IsMctsAgent, which use this to take
-    /// a per-decision clone of the live engine and run MCTSBot on it.
-    /// One deep copy of `snap_state` is performed internally to hand
-    /// ownership to the lazy-cloned engine; we can't elide it because
-    /// resumeFromSnapshot consumes the GameState by value. The
-    /// `const&` signature is documentation: this factory will not
-    /// outlive `snap_state` and will not mutate it before copying.
     static std::unique_ptr<RiftboundState> makeFromSnapshot(
         std::shared_ptr<const ::open_spiel::Game> game,
         uint64_t engine_seed,
         const ::riftbound::GameState& snap_state,
         ::riftbound::StepResult        snap_step,
-        ::riftbound::GameResult        snap_result);
+        ::riftbound::GameResult        snap_result,
+        uint64_t                       rng_seed);
 
     /// Inspect the underlying engine's GameResult after the game is terminal.
     /// Defined only when IsTerminal() — values are zero/None before then.
     const ::riftbound::GameResult& engineResult() const {
-        return is_lazy_ ? lazy_result_ : engine_->stepResult();
+        return lazy_ ? lazy_->result : engine_->stepResult();
     }
 
     ::open_spiel::Player CurrentPlayer() const override;
@@ -130,17 +164,16 @@ public:
     /// FNV-1a on uniform-ish inputs.
     uint64_t InfoSetId(::open_spiel::Player player) const;
 
-    /// Sequence of action_ids applied so far, in order. Lives on the
-    /// engine's GameState — Clone() preserves it via deep copy.
-    const std::vector<int64_t>& actionHistory() const {
-        return engineState().action_history;
-    }
+    /// Sequence of action ids (vocab slots) applied so far, in order, one
+    /// per decision; -1 for a decision whose Intent had no slot. Derived
+    /// from the engine's `GameState::action_history` tokens.
+    std::vector<int64_t> actionHistory() const;
 
     /// Underlying engine GameState. Used by future Intent-aware agents
     /// (LibTorch when C++ AlphaZero training lands) to score the current
     /// decision point. Caller must NOT mutate.
     const ::riftbound::GameState& engineState() const {
-        return is_lazy_ ? lazy_state_ : engine_->state();
+        return lazy_ ? lazy_->state : engine_->state();
     }
 
     /// Mutable access to the per-game EventBus. Lets the OpenSpiel match
@@ -164,11 +197,11 @@ public:
     /// LegalActions() returns the bit-packed int64 ActionID variant for
     /// OpenSpiel's tree algorithms; this method returns the matching
     /// Intent objects so an Intent-aware agent can score them directly.
-    /// Aligned 1:1 with LegalActions() before the dedup-by-encoding
-    /// pass — so use this for scoring, then map the chosen Intent's
-    /// encoded id back to LegalActions() to apply.
+    /// In the engine's order, not LegalActions()' (which is deduplicated
+    /// by slot and sorted) — so use this for scoring, then map the chosen
+    /// Intent's encoded id back to LegalActions() to apply.
     std::vector<::riftbound::Intent> legalIntents() const {
-        if (is_lazy_) return lazy_step_.legal;
+        if (lazy_) return lazy_->step.legal;
         return engine_->currentStep().legal;
     }
 
@@ -182,49 +215,74 @@ protected:
     void DoApplyAction(::open_spiel::Action action) override;
 
 private:
-    /// Private tag-dispatch constructor used by Clone() to build a
-    /// snapshot-only state with no live engine. The clone's read-only
-    /// methods read from `snap_state` / `snap_step` / `snap_result`
-    /// until the first mutating call lazy-spawns the engine.
+    /// An immutable copy of a position: everything a clone needs to answer
+    /// read-only queries, and to build an engine in that position.
+    struct Snapshot {
+        ::riftbound::GameState  state;
+        ::riftbound::StepResult step;      // the pending decision (or Done)
+        ::riftbound::GameResult result;
+        std::mt19937_64         rng;       // engine RNG stream at this point
+        /// GameEngine::isResumableDecision(state, step.legal): an engine can
+        /// be resumed straight from this snapshot.
+        bool resumable = false;
+    };
+
+    /// Private tag-dispatch constructor: a snapshot-only state with no
+    /// engine. `base` is the snapshot's nearest resumable ancestor (itself
+    /// if it is resumable; null = the start of the game).
     struct SnapshotTag {};
     RiftboundState(std::shared_ptr<const ::open_spiel::Game> game,
                     uint64_t engine_seed,
-                    ::riftbound::GameState snap_state,
-                    ::riftbound::StepResult snap_step,
-                    ::riftbound::GameResult snap_result,
+                    std::shared_ptr<const Snapshot> snapshot,
+                    std::shared_ptr<const Snapshot> base,
                     SnapshotTag);
 
-    /// Build engine + EventBus, run beginGame(), replay action_history
-    /// to reach the snapshotted decision point, then clear lazy fields.
-    /// No-op if already live. Idempotent.
+    /// Build the engine a snapshot-only state stands for (see the file
+    /// comment). No-op if already live. Throws std::runtime_error if the
+    /// engine cannot be brought to the snapshot's decision.
     void ensureLive() const;
+
+    /// Copy the live engine's position (cached until the next action).
+    std::shared_ptr<const Snapshot> snapshotLive() const;
+
+    /// Apply the legal action at `legal_index` to the live engine.
+    void applyLegalIndex(int legal_index);
+
+    /// Replay `tokens[from..)` on `engine`. Throws std::runtime_error if a
+    /// token matches no legal action. If `refresh_base`, keeps `base_` at
+    /// the last resumable decision passed.
+    void replayTokens(::riftbound::GameEngine& engine,
+                      const std::vector<int64_t>& tokens, size_t from,
+                      bool refresh_base) const;
 
     const RiftboundGame& rb_game_;
 
     // Per-game engine resources. `event_bus_` must outlive `engine_`
     // (engine holds a reference to it). Both are heap-allocated via
-    // unique_ptr so a lazy clone can leave them null until the first
-    // mutating call — `ensureLive` populates them at that point.
-    // `mutable` because lazy initialization happens via `ensureLive()`
-    // which is logically a const operation from OpenSpiel's perspective
-    // (LegalActions/CurrentPlayer are const but may need to materialize
-    // the engine for paths beyond plain snapshot read).
+    // unique_ptr so a snapshot-only clone can leave them null until the
+    // first mutating call — `ensureLive` populates them at that point.
+    // `mutable` because that happens via `ensureLive()`, which is logically
+    // a const operation from OpenSpiel's perspective.
     mutable std::unique_ptr<::riftbound::EventBus> event_bus_;
     mutable std::unique_ptr<::riftbound::GameEngine> engine_;
 
-    // Lazy-clone snapshot fields. When `is_lazy_` is true, the engine
-    // is null and read-only methods serve these. After `ensureLive()`
-    // they are cleared and lose their authoritative role.
-    mutable bool is_lazy_ = false;
-    mutable ::riftbound::GameState lazy_state_;
-    mutable ::riftbound::StepResult lazy_step_;
-    mutable ::riftbound::GameResult lazy_result_;
+    // Non-null while this state is snapshot-only (no engine). Shared with
+    // the state it was cloned from and with its own clones.
+    mutable std::shared_ptr<const Snapshot> lazy_;
+
+    // Nearest resumable ancestor of this state's position, or null for the
+    // start of the game. A position that is not itself resumable is rebuilt
+    // from here by replaying the history tokens recorded since.
+    mutable std::shared_ptr<const Snapshot> base_;
+
+    // Snapshot of the live engine's current position, made by the first
+    // Clone() at it and reused by later ones. Reset by every action.
+    mutable std::shared_ptr<const Snapshot> live_snapshot_;
 
     /// Concrete seed used by the engine. Resolved once in the constructor —
     /// if the Game's seed param is 0 ("nondeterministic"), we still pick
-    /// a deterministic random seed for THIS state so Clone() can replay it
-    /// faithfully. Without this, Clone()'s fresh engine would seed itself
-    /// with `std::random_device{}()` and play a different game.
+    /// a concrete seed for THIS state so a clone that has to be rebuilt
+    /// from `beginGame` replays the same game.
     uint64_t engine_seed_;
 };
 

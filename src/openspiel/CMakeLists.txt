@@ -97,4 +97,33 @@ target_include_directories(riftbound_parity_baseline PRIVATE
     ${open_spiel_SOURCE_DIR}
 )
 
+# GoogleTest suite for the OpenSpiel wrapper and the MCTS agents: Clone
+# equivalence at every kind of decision, CurrentPlayer / LegalActions
+# contract, engine-failure reporting, info-set keys, MctsAgent / IsMctsAgent
+# end to end. Separate from riftbound_tests because that binary links only
+# riftbound_core; this one needs OpenSpiel and the game registration.
+#   RIFTBOUND_ROOT=. ./build/src/openspiel/riftbound_openspiel_tests
+add_executable(riftbound_openspiel_tests
+    openspiel_tests.cpp
+    riftbound_game.cpp
+    riftbound_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/agents/mcts_agent.cpp
+    $<TARGET_OBJECTS:algorithms>
+    $<TARGET_OBJECTS:game_transforms>
+    $<TARGET_OBJECTS:utils>
+)
+target_link_libraries(riftbound_openspiel_tests PRIVATE
+    riftbound_core open_spiel_core GTest::gtest_main
+    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
+    absl::optional absl::random_random absl::str_format absl::strings absl::time
+)
+target_include_directories(riftbound_openspiel_tests PRIVATE
+    ${open_spiel_SOURCE_DIR}
+)
+add_test(NAME riftbound_openspiel_tests
+    COMMAND riftbound_openspiel_tests
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(riftbound_openspiel_tests PROPERTIES
+    ENVIRONMENT "RIFTBOUND_ROOT=${CMAKE_SOURCE_DIR}")
+
 # Kuhn Poker CFR validation moved to riftbound-trainer alongside cfr_tabular.

@@ -122,9 +122,9 @@ TEST_F(DeckValidatorTest, ValidDeckPasses) {
 }
 
 TEST_F(DeckValidatorTest, LoadFromDeckListAndValidate) {
-    auto path = deckPath("leblanc_test.txt");
+    auto path = deckPath("yi_rebuild.txt");
     if (!std::filesystem::exists(path)) {
-        GTEST_SKIP() << "leblanc_test.txt not found";
+        GTEST_SKIP() << "yi_rebuild.txt not found";
     }
 
     auto deck = DeckValidator::loadFromDeckList(path, db);

@@ -22,9 +22,16 @@
 ///
 /// Thread safety: `setChosenAction` and the snapshot accessors are
 /// thread-safe with `selectAction`. Only one engine thread should
-/// call `selectAction`; multiple UI threads can call setters, but
-/// only one choice is meaningful per decision (last writer wins
-/// before the engine wakes).
+/// call `selectAction`; multiple UI threads can call setters.
+///
+/// A choice is only ever applied to the decision it was made for:
+/// `setChosenAction` is refused (returns false) when the engine is not
+/// waiting, when the index is not one of the pending legal actions, when
+/// a choice for this decision has already been accepted, or — for the
+/// two-argument form — when `decision_id` is not the pending decision's.
+/// A UI that shows the user a decision should send back the `decisionId()`
+/// it rendered, so a click that arrives after the engine has moved on is
+/// dropped instead of answering a later, different question.
 
 #include "agent_interface.h"
 
@@ -38,7 +45,12 @@ namespace riftbound {
 
 class HumanAgent : public AgentInterface {
 public:
-    HumanAgent() = default;
+    /// `seat` is the player this agent answers for. When given, it is what
+    /// `pendingPlayer()` reports and whom an abort concedes for. Without it
+    /// the agent goes by the player named on the offered Intents
+    /// (`decidingPlayer`), which is the same player except where the engine
+    /// offers a seat another player's options.
+    explicit HumanAgent(PlayerId seat = PlayerId::None) : seat_(seat) {}
 
     /// Engine-side entry point. Publishes the pause-point snapshot
     /// for the UI to read, then blocks on `pending_choice_`. When the
@@ -47,15 +59,18 @@ public:
     ///
     /// Defensive fallback: if the engine reaches a decision with an
     /// empty legal-action list (engine bug), returns Intent::concede
-    /// for the current turn player without blocking — otherwise the
-    /// UI would have nothing to choose from and the engine would
-    /// hang forever.
+    /// without blocking — otherwise the UI would have nothing to choose
+    /// from and the engine would hang forever. A concede (here, or after
+    /// `abort()`) is made for the player being asked, who is not always
+    /// the turn player.
     Intent selectAction(
         const GameState& state,
         const std::vector<Intent>& legal_actions
     ) override {
+        const PlayerId decider = seat_ != PlayerId::None
+            ? seat_ : decidingPlayer(state, legal_actions);
         if (legal_actions.empty() || aborted_.load(std::memory_order_acquire)) {
-            return Intent::concede(state.turn.turn_player);
+            return Intent::concede(decider);
         }
         // Every decision — including 1-option "forced" steps like the
         // final rune-exhaust in an exactly-affordable cost payment —
@@ -70,8 +85,11 @@ public:
         int chosen;
         {
             std::unique_lock<std::mutex> lock(mu_);
+            // A click that raced in after the previous decision was answered
+            // belongs to that decision, not this one.
+            pending_choice_.reset();
             paused_legal_  = legal_actions;
-            paused_player_ = state.turn.turn_player;
+            paused_player_ = decider;
             decision_id_.fetch_add(1, std::memory_order_release);
             at_decision_   = true;
             cv_ui_.notify_all();
@@ -81,16 +99,15 @@ public:
             });
             if (aborted_.load(std::memory_order_acquire)) {
                 at_decision_ = false;
-                return Intent::concede(state.turn.turn_player);
+                pending_choice_.reset();
+                return Intent::concede(decider);
             }
             chosen = *pending_choice_;
             pending_choice_.reset();
             at_decision_ = false;
         }
-        if (chosen < 0 || static_cast<size_t>(chosen) >= legal_actions.size()) {
-            chosen = 0;   // out-of-range → safe fallback
-        }
-        return legal_actions[chosen];
+        // setChosenAction only accepts an index into paused_legal_.
+        return legal_actions[static_cast<size_t>(chosen)];
     }
 
     /// Wake the engine thread with a forced concede. Used by the UI
@@ -103,15 +120,34 @@ public:
         cv_engine_.notify_all();
     }
 
-    /// UI-side: wake the engine with the chosen legal-action index.
-    /// Idempotent up until the engine consumes it; subsequent calls
-    /// before the next `selectAction` overwrite the pending choice.
-    void setChosenAction(int legal_index) {
+    /// UI-side: answer the pending decision with a legal-action index.
+    /// Returns true if the choice was accepted and the engine woken; false
+    /// if it was dropped — the engine is not waiting on a decision, the
+    /// index is out of range, or this decision already has an answer.
+    bool setChosenAction(int legal_index) {
         {
             std::lock_guard<std::mutex> lock(mu_);
+            if (!acceptsLocked(legal_index)) return false;
             pending_choice_ = legal_index;
         }
         cv_engine_.notify_one();
+        return true;
+    }
+
+    /// As above, and additionally refused unless `decision_id` is the
+    /// pending decision's `decisionId()` — i.e. unless the choice was made
+    /// for the decision the engine is actually waiting on.
+    bool setChosenAction(int legal_index, uint64_t decision_id) {
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            if (decision_id != decision_id_.load(std::memory_order_acquire)) {
+                return false;
+            }
+            if (!acceptsLocked(legal_index)) return false;
+            pending_choice_ = legal_index;
+        }
+        cv_engine_.notify_one();
+        return true;
     }
 
     /// UI-side: block until the engine is paused at a decision. Useful
@@ -144,12 +180,20 @@ public:
         return decision_id_.load(std::memory_order_acquire);
     }
 
-    /// UI-side: lock-free check.
+    /// UI-side: is the engine parked in `selectAction` right now?
     bool atDecision() const {
+        std::lock_guard<std::mutex> lock(mu_);
         return at_decision_;
     }
 
 private:
+    /// Caller holds `mu_`.
+    bool acceptsLocked(int legal_index) const {
+        return at_decision_ && !pending_choice_.has_value() &&
+               legal_index >= 0 &&
+               static_cast<size_t>(legal_index) < paused_legal_.size();
+    }
+
     mutable std::mutex      mu_;
     std::condition_variable cv_engine_;   // engine thread waits here
     mutable std::condition_variable cv_ui_; // UI threads wait here
@@ -160,6 +204,7 @@ private:
     bool                    at_decision_   = false;
     std::atomic<uint64_t>   decision_id_{0};
     std::atomic<bool>       aborted_{false};
+    const PlayerId          seat_;
 };
 
 } // namespace riftbound

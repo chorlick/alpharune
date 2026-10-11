@@ -7,10 +7,11 @@
 /// reuses these via const references.
 ///
 /// Game parameters (settable via LoadGame("riftbound(deck1=..., deck2=...)")):
-///   - deck1     : path to player-1 deck list .txt (default: decks/leblanc_test.txt)
-///   - deck2     : path to player-2 deck list .txt (default: decks/leblanc_test.txt)
-///   - registry  : path used only to locate ban-list.csv (default: cards/ban-list.csv);
-///                 card data is compiled into the engine, not read from JSON
+///   - deck1     : path to player-1 deck list .txt (default: decks/yi_rebuild.txt)
+///   - deck2     : path to player-2 deck list .txt (default: decks/yi_rebuild.txt)
+///   - registry  : ignored (default: empty). Card data and ban status are
+///                 compiled into the engine; the parameter is accepted only so
+///                 older game strings still parse
 ///   - seed      : RNG seed for the engine; 0 = nondeterministic (default: 0)
 
 #include "open_spiel/spiel.h"
@@ -23,6 +24,11 @@
 
 namespace riftbound::openspiel {
 
+/// Longest game OpenSpiel will see, in applied actions. RiftboundState is
+/// terminal (a draw) once MoveNumber() reaches it — the bound that keeps
+/// random rollouts finite (see RiftboundState::IsTerminal).
+inline constexpr int kMaxGameLength = 600;
+
 class RiftboundGame : public ::open_spiel::Game {
 public:
     explicit RiftboundGame(const ::open_spiel::GameParameters& params);
@@ -34,7 +40,7 @@ public:
     double MinUtility() const override { return -1.0; }
     double MaxUtility() const override { return  1.0; }
     absl::optional<double> UtilitySum() const override { return  0.0; }
-    int MaxGameLength() const override { return 10000; }
+    int MaxGameLength() const override { return kMaxGameLength; }
     int MaxChanceOutcomes() const override { return 0; }
 
     std::vector<int> ObservationTensorShape() const override;

@@ -320,24 +320,37 @@ TEST_F(CardTestFixture, BaronNashor_IntegrationFullPlayPathCreatesPit) {
         if (e.message.find("BF_TOKEN: added 'Baron Pit'") != std::string::npos) ++pit_tokens;
     });
 
+    // No deck on disk runs Baron Nashor (the Miss Fortune test deck this used
+    // to load was deleted), so build one: the Fiora list with three Barons
+    // swapped in and a Body/Chaos rune deck that can pay his [10][CCC].
     auto registry_root = findRegistryPath();
     std::string root = registry_root.substr(0, registry_root.rfind('/')) + "/..";
     DeckSubmission deck1 = DeckValidator::loadFromDeckList(
-        root + "/decks/miss_fortune_test.txt", card_db);
-    DeckSubmission deck2 = DeckValidator::loadFromDeckList(
-        root + "/decks/miss_fortune_test.txt", card_db);
+        root + "/decks/fiora.txt", card_db);
+    const CardDef* body_rune  = card_db.findByName("Body Rune");
+    const CardDef* chaos_rune = card_db.findByName("Chaos Rune");
+    ASSERT_NE(body_rune, nullptr);
+    ASSERT_NE(chaos_rune, nullptr);
+    ASSERT_GE(deck1.main_deck.size(), 3u);
+    for (size_t i = 0; i < 3; ++i) deck1.main_deck[i] = 709;   // Baron Nashor
+    ASSERT_EQ(deck1.rune_deck.size(), 12u);
+    for (size_t i = 0; i < deck1.rune_deck.size(); ++i) {
+        deck1.rune_deck[i] = (i < 6) ? body_rune->id : chaos_rune->id;
+    }
+    DeckSubmission deck2 = deck1;
 
     // Fixed seed so any future engine-side regression that breaks Baron
-    // Pit creation is deterministic to reproduce. 12345 plays Baron at
+    // Pit creation is deterministic to reproduce. kSeed plays Baron at
     // least once with this deck pair.
-    auto result = engine.runGame(deck1, deck2, p1, p2, 12345);
+    constexpr uint64_t kSeed = 12345;
+    auto result = engine.runGame(deck1, deck2, p1, p2, kSeed);
     conn.disconnect();
 
     // The agent prefers Baron — at least one play should land over a
     // full game. If this assertion is false, the test fixture itself
     // needs adjusting (different seed); not a bug.
     ASSERT_GT(baron_plays, 0)
-        << "Test scaffold: P1 never got to play Baron Nashor with seed 12345 — "
+        << "Test scaffold: P1 never got to play Baron Nashor with seed " << kSeed << " — "
            "adjust seed or deck to make Baron playable.";
 
     // The integration invariant: every Baron play must trigger a Pit

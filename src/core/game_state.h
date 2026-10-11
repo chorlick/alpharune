@@ -651,12 +651,12 @@ struct GameState {
     // Decision counter (for training data indexing)
     int decision_index = 0;
 
-    // Sequence of opaque action IDs applied to this game, in order.
-    // Engine-agnostic: the producer (e.g., OpenSpiel wrapper) defines the
-    // encoding. Lives here so that a future memcpy-based Clone() carries the
-    // full apply-history with the rest of the state — no out-of-band copy.
-    // Read-only from the engine's perspective today; written by the harness
-    // that applies actions (currently RiftboundState::DoApplyAction).
+    // One history token per decision applied to this game, in order
+    // (openspiel/action_vocab.h: the vocab slot plus a fingerprint that
+    // identifies the chosen Intent). Written only by
+    // GameEngine::recordAppliedIntent, in runGame and step-machine games
+    // alike. Replaying the tokens from the same decks and seed rebuilds the
+    // game exactly; lives here so a state copy carries its own history.
     std::vector<int64_t> action_history;
 
     // ── Cost payment cursor (Phase C-1 commit 8) ──

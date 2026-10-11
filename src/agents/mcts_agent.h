@@ -3,24 +3,25 @@
 /// AgentInterface adapter for OpenSpiel's MCTSBot / ISMCTSBot.
 ///
 /// MCTS works on a clone-able `open_spiel::State` that wraps the
-/// engine; this agent keeps one OpenSpiel game handle for the
-/// duration of its life and, on each `selectAction` call, builds a
-/// fresh state by replaying `state.action_history` from the start.
-/// That's O(history-length) per decision — fine for an interactive
-/// UI and modest sim counts; for high-throughput batch use the
-/// dedicated openspiel match runner remains the better path until a
-/// snapshot-based fast-clone agent lands.
+/// engine. The agent keeps one such state as a mirror of the game it is
+/// playing in: at each `selectAction` it replays the choices the live
+/// game has made since the agent's previous decision
+/// (`GameState::action_history`, one exact token per decision) onto the
+/// mirror, then searches from it. The mirror is built from the same
+/// decks and engine seed, so it is the live position exactly — RNG stream
+/// included — at every kind of decision, mid-chain and mid-combat too.
 ///
-/// Caveats:
-///   • `StateEditor` god-mode edits do NOT participate in MCTS — the
-///     OpenSpiel state is reconstructed from `action_history` alone.
-///     MCTS will plan against the engine-implied state, not the
-///     edited one. Documented in docs/play-api.md.
-///   • The agent is single-threaded internally. Constructing two
-///     MctsAgent instances on the same OpenSpiel Game is safe; the
-///     bots own their own search trees.
+/// If the history cannot reproduce the live state (wrong `engine_seed`,
+/// or `StateEditor` god-mode edits, which bypass the engine and its
+/// history), the agent falls back to resuming a copy of the live
+/// GameState. That works only at top-level main-phase decisions, and the
+/// copy's future shuffles are not the live game's; any other decision is
+/// then answered with a uniformly random legal action instead of a search.
 ///
-/// Wiring: see `src/main_play.cpp`'s `buildAgent("mcts:sims=N", ...)`.
+/// The agent is single-threaded internally. Two instances in the same
+/// game are independent: each owns its mirror and its search tree.
+///
+/// Wiring: see `buildAgent` in `src/main.cpp` (`mcts:sims=N`).
 
 #include "agent_interface.h"
 
@@ -32,16 +33,14 @@ namespace riftbound {
 
 class MctsAgent : public AgentInterface {
 public:
-    /// `deck1_path` / `deck2_path` / `registry_path` MUST match the
-    /// values passed to the engine running this game.
+    /// `deck1_path` / `deck2_path` MUST match the decks of the engine
+    /// running this game. `registry_path` is ignored (card data is
+    /// compiled in); the parameter is kept for source compatibility.
     /// `engine_seed` MUST equal the seed passed to GameEngine::runGame
-    /// for this game — the OpenSpiel game spec forwards it into the
-    /// cloned state's internal engine, and replaying action_history
-    /// only reproduces the live state when both engines use the same
-    /// RNG seed. Passing a different seed here yields a phantom state
-    /// where `decodeAction` can't map MCTS's chosen action into the
-    /// real `legal_actions` vector and the agent silently degrades to
-    /// `legal_actions[0]` every turn.
+    /// for this game: the mirror replays the live game's choices on an
+    /// engine seeded with it. With a different seed the replay does not
+    /// reproduce the live state; the agent detects that and degrades as
+    /// described above rather than planning in a phantom game.
     /// `mcts_seed` drives MCTSBot's internal exploration RNG — it
     /// affects tiebreak order in the search tree but not the game
     /// state. Distinct per-seat so two MctsAgent instances in the
@@ -70,8 +69,7 @@ private:
 
 /// Information-set MCTS variant — same wiring shape as MctsAgent but
 /// uses `ISMCTSBot`. Currently behaves like perfect-info MCTS because
-/// the resampler is a Clone (no hidden-info determinization yet — see
-/// CLAUDE.md "Phase 6b" backlog).
+/// the resampler is a Clone (no hidden-info determinization yet).
 class IsMctsAgent : public AgentInterface {
 public:
     IsMctsAgent(std::string deck1_path,

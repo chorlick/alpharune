@@ -343,6 +343,7 @@ add_library(riftbound_core
     src/engine/game_runner.cpp
     src/engine/batch_runner.cpp
     src/engine/step_driver.cpp
+    src/agents/scripted_agent.cpp
     src/ml/feature_extractor.cpp
     src/ml/cfr_util.cpp
     src/openspiel/action_vocab.cpp

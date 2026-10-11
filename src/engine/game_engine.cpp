@@ -158,6 +158,12 @@ void GameEngine::refreshStepFromDriver() {
         current_step_.kind = StepKind::Done;
         current_step_.legal.clear();
         current_step_.perspective = PlayerId::None;
+        if (step_driver_->failure()) {
+            // The fiber ended by exception: there is no game result. Make
+            // sure nothing reads the default "no winner" as a draw.
+            step_result_ = GameResult{};
+            step_result_.termination_reason = "engine_error";
+        }
         return;
     }
     // The driver is parked at a decision: tidy what each player knows before
@@ -189,7 +195,8 @@ StepResult GameEngine::beginGame(
     auto d2 = deck2;
     StepDriver* driver = step_driver_.get();
     driver->runInFiber([this, d1, d2, seed, driver]() {
-        step_result_ = runGame(d1, d2, *driver, *driver, seed);
+        step_result_ = runGame(d1, d2, driver->seat(PlayerId::Player1),
+                               driver->seat(PlayerId::Player2), seed);
         driver->markDone();
     });
 
@@ -197,20 +204,73 @@ StepResult GameEngine::beginGame(
     // us here). Kept for API symmetry with the old thread backend.
     step_driver_->waitForDecision();
     refreshStepFromDriver();
+    rethrowIfStepFailed();
     return current_step_;
 }
 
+void GameEngine::rethrowIfStepFailed() const {
+    if (step_driver_ && step_driver_->failure()) {
+        std::rethrow_exception(step_driver_->failure());
+    }
+}
+
+bool GameEngine::isResumableDecision(const GameState& state,
+                                     const std::vector<Intent>& legal) {
+    // Only the top-level main-phase decision (mainPhaseLoop -> queryAgent) is
+    // resumable: everything the engine was doing is in GameState and the
+    // loop can simply be entered again. Every other decision is asked from
+    // inside a call that is not captured by the state -- a chain being
+    // resolved, a showdown, combat, a cost being paid, a card's play-time
+    // prompt (the card has left its zone but is on no chain yet).
+    //
+    // generateMainPhaseActions is the only producer of EndTurn, and always
+    // offers it, so an EndTurn option identifies that decision. The state
+    // checks below are implied by it; they stay as a guard.
+    bool offers_end_turn = false;
+    for (const auto& intent : legal) {
+        if (intent.type == IntentType::EndTurn) { offers_end_turn = true; break; }
+    }
+    if (!offers_end_turn) return false;
+    if (state.game_over) return false;
+    if (state.turn.phase != TurnPhase::MainPhase) return false;
+    if (!state.turn.isNeutralOpen()) return false;
+    if (state.chain.exists() || state.cost_cursor.has_value()) return false;
+    for (const auto& bf : state.battlefields) {
+        if (bf.combat_in_progress || bf.showdown_in_progress ||
+            bf.combat_staged || bf.showdown_staged) {
+            return false;
+        }
+    }
+    return true;
+}
+
 StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
-                                            uint64_t engine_seed) {
+                                            const std::mt19937_64& rng_state,
+                                            const StepResult& snapshot_step) {
     if (step_driver_) {
         throw std::logic_error(
             "GameEngine::resumeFromSnapshot called on an engine that already "
             "has a step-machine session. Construct a fresh GameEngine.");
     }
 
-    // Substitute the snapshotted state.
+    if (snapshot_step.kind != StepKind::NeedDecision ||
+        !isResumableDecision(snapshot_state, snapshot_step.legal)) {
+        throw std::invalid_argument(
+            "GameEngine::resumeFromSnapshot: the snapshot is not at a "
+            "top-level main-phase decision (see isResumableDecision).");
+    }
+
+    // Substitute the snapshotted state, and the RNG stream with it: the
+    // engine's randomness (shuffles) is part of the position.
     state_ = std::move(snapshot_state);
-    rng_.seed(engine_seed == 0 ? std::random_device{}() : engine_seed);
+    rng_ = rng_state;
+
+    // The snapshot was taken inside queryAgent, after it had counted this
+    // decision. mainPhaseLoop asks the same question again; un-count it so
+    // the resumed engine's counters match the engine it was copied from.
+    state_.decision_index--;
+    if (state_.turn.turn_player == PlayerId::Player1) state_.turn.turn_decisions_p1--;
+    else state_.turn.turn_decisions_p2--;
 
     // Initialise subsystems (parallel to runGame's first block). These
     // hold references into `state_` and `events_`, which are now
@@ -220,8 +280,8 @@ StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
     step_driver_ = std::make_unique<StepDriver>();
     step_result_ = GameResult{};
     StepDriver* driver = step_driver_.get();
-    agents_[0] = driver;
-    agents_[1] = driver;
+    agents_[0] = &driver->seat(PlayerId::Player1);
+    agents_[1] = &driver->seat(PlayerId::Player2);
 
     // Capture the resume point — the phase the snapshot was at. The
     // dispatcher below uses this to skip already-completed phases.
@@ -231,8 +291,9 @@ StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
     driver->runInFiber([this, resume_at, turn_player, driver]() {
         // Finish the current turn from where it paused, then continue
         // the normal turn loop. Mirrors the body of runTurnLoop minus
-        // the first-turn entry.
-        try {
+        // the first-turn entry. An exception leaves through the fiber
+        // (StepDriver keeps it) and is rethrown to the step API's caller.
+        {
             if (!state_.game_over) {
                 runTurnFromPhase(turn_player, resume_at);
             }
@@ -267,20 +328,27 @@ StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
             step_result_.total_turns     = state_.turn.turn_number;
             step_result_.total_decisions = state_.decision_index;
             step_result_.termination_reason = state_.game_over_reason;
-        } catch (...) {
-            // Defensive — must always reach markDone, otherwise the
-            // caller hangs (fiber backend: it doesn't hang per se,
-            // but isDone() never becomes true and the fiber leaks).
         }
         driver->markDone();
     });
 
     step_driver_->waitForDecision();
     refreshStepFromDriver();
+    rethrowIfStepFailed();
+    // The resumed engine must be asking the question the snapshot was taken
+    // at. Anything else means the snapshot was not a faithful copy.
+    if (current_step_.kind != StepKind::NeedDecision ||
+        current_step_.perspective != snapshot_step.perspective ||
+        current_step_.legal != snapshot_step.legal) {
+        throw std::logic_error(
+            "GameEngine::resumeFromSnapshot: the resumed engine did not "
+            "reach the snapshotted decision.");
+    }
     return current_step_;
 }
 
 StepResult GameEngine::currentStep() const {
+    rethrowIfStepFailed();
     return current_step_;
 }
 
@@ -289,18 +357,31 @@ StepResult GameEngine::applyChoice(int legal_index) {
         throw std::logic_error(
             "GameEngine::applyChoice called before beginGame.");
     }
+    rethrowIfStepFailed();
     if (current_step_.kind == StepKind::Done) {
         return current_step_;
+    }
+    if (legal_index < 0 ||
+        static_cast<size_t>(legal_index) >= current_step_.legal.size()) {
+        throw std::out_of_range(
+            "GameEngine::applyChoice: legal_index " +
+            std::to_string(legal_index) + " is not one of the " +
+            std::to_string(current_step_.legal.size()) + " legal actions.");
     }
     step_driver_->provideChoice(legal_index);
     step_driver_->waitForDecision();
     refreshStepFromDriver();
+    rethrowIfStepFailed();
     return current_step_;
 }
 
 bool GameEngine::isStepDone() const {
     if (!step_driver_) return false;
     return step_driver_->isDone();
+}
+
+bool GameEngine::stepFailed() const {
+    return step_driver_ && step_driver_->failure();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -697,7 +778,17 @@ void GameEngine::runTurnFromPhase(PlayerId player, TurnPhase resume_at) {
             // and emits PhaseChangedEvent — both clobber the snapshot).
             // Just re-enter the action loop. Once the loop drains, fall
             // through to endingStep as normal.
-            mainPhaseLoop();
+            //
+            // The loop's action counter (the per-turn safety cap) is the one
+            // piece of main-phase progress that lives on the stack, not in
+            // GameState. It equals the number of main-phase decisions the
+            // turn player has completed this turn, which queryAgent counts
+            // in turn_decisions_pN (resumeFromSnapshot has already un-counted
+            // the decision being re-asked).
+            mainPhaseLoop(resume_at == TurnPhase::MainPhase
+                ? (player == PlayerId::Player1 ? state_.turn.turn_decisions_p1
+                                               : state_.turn.turn_decisions_p2)
+                : 0);
             if (state_.game_over) return;
             [[fallthrough]];
         case TurnPhase::EndingStep:
@@ -974,8 +1065,7 @@ void GameEngine::mainPhase() {
 // the action loop without firing the entry side effects (which reset
 // ns_state/oc_state/priority_holder and re-emit PhaseChangedEvent).
 // Those resets would corrupt a snapshot taken mid-chain or mid-showdown.
-void GameEngine::mainPhaseLoop() {
-    int action_count = 0;
+void GameEngine::mainPhaseLoop(int action_count) {
     while (true) {
         auto adv = advanceMainPhase(action_count);
         if (adv.kind == MainPhaseAdvance::Kind::Done) return;
@@ -6408,14 +6498,12 @@ void GameEngine::emptyRunePools() {
 }
 
 void GameEngine::recordAppliedIntent(const Intent& chosen) {
-    int slot = ::riftbound::openspiel::encodeAction(chosen, state_);
-    if (slot >= 0) {
-        state_.action_history.push_back(static_cast<int64_t>(slot));
-    }
-    // Negative slot means the Intent couldn't be encoded — should be rare
-    // (action_vocab covers the full live legal set). Leaving the history
-    // entry off is the safest fallback; the OpenSpiel state replay would
-    // diverge anyway if there were a real encoding hole.
+    // One token per decision, always: a replay consumes exactly one token at
+    // each decision, so skipping one (an Intent with no vocab slot) would
+    // shift every later decision. The token identifies the Intent exactly,
+    // not just its lossy vocab slot — see action_vocab.h.
+    state_.action_history.push_back(
+        ::riftbound::openspiel::historyToken(chosen, state_));
 }
 
 Intent GameEngine::queryAgent(PlayerId player) {

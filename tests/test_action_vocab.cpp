@@ -385,3 +385,74 @@ TEST(ActionVocab, VocabSizeIsReasonable) {
     EXPECT_GT(kVocabSize, 1000);
     EXPECT_LT(kVocabSize, 100000);
 }
+
+// ── History tokens (multi-element legal lists) ──────────────────────────────
+//
+// The round-trip tests above use one-element legal lists, so they cannot see
+// two legal Intents landing on one slot. These build the lists the engine
+// really offers and check the two things a caller relies on: decodeAction is
+// "first Intent with this slot" (lossy), and a history token is not.
+
+TEST(ActionVocab, HistoryTokenTellsApartIntentsThatShareASlot) {
+    MiniState ms;
+    auto c1 = ms.addObject(/*def_id=*/700);
+    auto c2 = ms.addObject(/*def_id=*/701);
+    auto c3 = ms.addObject(/*def_id=*/700);   // second copy of c1's card
+    auto bf = ms.addBattlefield();
+
+    Intent play1; play1.type = IntentType::PlayCard;
+    play1.player = PlayerId::Player1; play1.card = c1;
+    Intent play3 = play1; play3.card = c3;               // other copy, same slot
+    Intent play1_at_bf = play1;
+    play1_at_bf.play_location = LocationId{BattlefieldLocation{bf}};
+    Intent alt = play1; alt.use_alt_play_cost = true;    // champion alt cost
+
+    Intent target1; target1.type = IntentType::MakeChoice;
+    target1.player = PlayerId::Player1; target1.chosen_objects = {c1};
+    Intent target3 = target1; target3.chosen_objects = {c3};
+
+    const std::vector<Intent> legal = {
+        Intent::mulligan(PlayerId::Player1, {}),
+        Intent::mulligan(PlayerId::Player1, {c1}),
+        Intent::mulligan(PlayerId::Player1, {c2}),     // same slot as {c1}
+        Intent::standardMove(PlayerId::Player1, {c1}, BattlefieldLocation{bf}),
+        Intent::standardMove(PlayerId::Player1, {c1, c2}, BattlefieldLocation{bf}),
+        play1, play3, play1_at_bf, alt, target1, target3,
+    };
+
+    // The slot collisions are real (1.12 tracks removing them)...
+    EXPECT_EQ(encodeAction(legal[1], ms.state), encodeAction(legal[2], ms.state));
+    EXPECT_EQ(encodeAction(legal[3], ms.state), encodeAction(legal[4], ms.state));
+    EXPECT_EQ(encodeAction(play1, ms.state), encodeAction(play3, ms.state));
+    EXPECT_EQ(encodeAction(target1, ms.state), encodeAction(target3, ms.state));
+    // ...so decoding the second Intent's slot hands back the first.
+    EXPECT_EQ(decodeAction(encodeAction(legal[2], ms.state), legal, ms.state),
+              &legal[1]);
+
+    // Every Intent in the list has its own token, and the token finds it.
+    for (size_t i = 0; i < legal.size(); ++i) {
+        const int64_t token = historyToken(legal[i], ms.state);
+        EXPECT_GE(token, 0);
+        EXPECT_EQ(historyTokenSlot(token), encodeAction(legal[i], ms.state));
+        EXPECT_EQ(findHistoryToken(token, legal, ms.state), static_cast<int>(i))
+            << "legal[" << i << "]";
+    }
+    // A token for something not on offer matches nothing.
+    EXPECT_EQ(findHistoryToken(
+                  historyToken(Intent::endTurn(PlayerId::Player1), ms.state),
+                  legal, ms.state),
+              -1);
+}
+
+TEST(ActionVocab, HistoryTokenIgnoresTheDisplayLabel) {
+    MiniState ms;
+    Intent yes; yes.type = IntentType::MakeChoice;
+    yes.player = PlayerId::Player1; yes.chosen_value = 1;
+    Intent labelled = yes; labelled.choice_label = "Yes";
+    EXPECT_EQ(historyToken(yes, ms.state), historyToken(labelled, ms.state));
+    Intent no = yes; no.chosen_value = 0;
+    EXPECT_NE(historyToken(yes, ms.state), historyToken(no, ms.state));
+    // "no value" and "value 0" are different answers.
+    Intent none = yes; none.chosen_value.reset();
+    EXPECT_NE(historyToken(none, ms.state), historyToken(no, ms.state));
+}

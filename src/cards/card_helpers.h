@@ -890,6 +890,84 @@ inline PlayLocations playLocations(const GameState& state, PlayerId player,
     return out;
 }
 
+// ── A target locked in as the spell was played ──────────────────────────────
+/// For a spell that takes its single target through Card::pickTarget
+/// (needsPlayTimeTarget): the target it was played with — from hand by the
+/// engine's play-time choice, from facedown by the play itself, among the
+/// objects at that battlefield (CR 811.1.d.2). The engine hands it to
+/// onResolve in `targets` while it is still legal. Returns that target;
+/// kInvalidId if one was locked and is no longer legal (a mistarget);
+/// std::nullopt if none was locked, and the card asks with pickTarget:
+///
+///     auto locked = lockedPlayTarget(ctx, targets);
+///     GameObjectId t = locked ? *locked : pickTarget(ctx, label, legal);
+inline std::optional<GameObjectId> lockedPlayTarget(const CardContext& ctx,
+                                                    const std::vector<GameObjectId>& targets) {
+    if (!targets.empty()) return targets[0];
+    const auto& ri = ctx.state.chain.resuming;
+    if (ri.has_value() && !ri->targets.empty()) return kInvalidId;
+    return std::nullopt;
+}
+
+// ── Playing several unit tokens (CR 355.2.a) ────────────────────────────────
+// "Play N ... unit tokens" with no location printed: each token goes to its
+// controller's base or a battlefield they control, chosen token by token.
+// `make(location)` creates one token there and returns its id. The card is
+// re-entered after every answer, so progress lives on the resolving chain
+// item: resume_point kTokenPlayAwait while a location is being asked, and
+// resume_data[kTokenPlaySlot] = tokens played so far followed by their ids
+// (clear of the slots the Card::pick* helpers use). Returns true once all
+// `count` tokens are played (`made` holds them), false while waiting. When
+// there is nothing to choose (no battlefield controlled, or no chain item to
+// resume) the tokens go to the only / first location without a prompt.
+constexpr int kTokenPlayAwait = 110;
+constexpr size_t kTokenPlaySlot = 8;
+template <typename MakeFn>
+bool playTokensChoosingLocations(CardContext& ctx, const std::string& label, int count,
+                                 MakeFn&& make, std::vector<GameObjectId>& made,
+                                 std::optional<BattlefieldId> only_bf = std::nullopt) {
+    made.clear();
+    const auto where = playLocations(ctx.state, ctx.controller, only_bf);
+    if (count <= 0 || where.count() == 0) return true;
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) {
+        for (int i = 0; i < count; ++i) made.push_back(make(where.locations[0]));
+        return true;
+    }
+    auto& data = ri_opt->resume_data;
+    while (data.size() <= kTokenPlaySlot) data.push_back(0);
+    auto collect = [&]() {
+        made.clear();
+        for (size_t i = kTokenPlaySlot + 1; i < data.size(); ++i)
+            made.push_back(static_cast<GameObjectId>(data[i]));
+    };
+    auto play_one = [&](int option) {
+        if (option < 0 || option >= where.count()) option = 0;
+        const GameObjectId tok = make(where.locations[option]);
+        data.push_back(static_cast<int32_t>(tok));
+        ++data[kTokenPlaySlot];
+    };
+    if (ri_opt->resume_point == kTokenPlayAwait) {
+        play_one(takenValue(ctx, 0));
+        ri_opt->resume_point = 0;
+    }
+    while (data[kTokenPlaySlot] < count) {
+        if (where.count() > 1) {
+            std::vector<Intent> options;
+            for (int i = 0; i < where.count(); ++i)
+                options.push_back(valChoice(ctx.controller, i, label + ": " + where.labels[i]));
+            ctx.executor.requestChoice(ctx.controller, std::move(options),
+                label + " (token " + std::to_string(data[kTokenPlaySlot] + 1) + " of " +
+                std::to_string(count) + ")");
+            ri_opt->resume_point = kTokenPlayAwait;
+            return false;
+        }
+        play_one(0);
+    }
+    collect();
+    return true;
+}
+
 /// Destinations a card effect may move `u` to, int-coded for valChoice:
 /// 0 = its controller's base, 1 + i = battlefield i. Excludes where it is now.
 inline std::vector<int> moveDests(const GameState& state, const GameObject& u) {

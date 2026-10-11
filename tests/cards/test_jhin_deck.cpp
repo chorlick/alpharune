@@ -1598,7 +1598,7 @@ TEST_F(JhinDeckTest, HextechAnomaly_VariableX_ZeroIsLegalNoOp) {
         Intent zero = pending.legal.front();
         for (const auto& it : pending.legal) {
             if (!it.chosen_objects.empty() &&
-                static_cast<int>(it.chosen_objects[0]) == 1) {
+                static_cast<int>(it.chosen_objects[0].raw()) == 1) {
                 zero = it; break;
             }
         }

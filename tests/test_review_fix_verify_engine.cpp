@@ -796,7 +796,7 @@ TEST_F(VerifyEngineTest, JayceManOfProgress_ThePermissionIsForAGearPlayedFromHan
     auto in_hand = addToHand(P1, kSerratedDirk);     // [1], no Power
     auto in_trash = addToTrash(P1, kSerratedDirk);
     // The may (yes), then the gear to kill.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(kill)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(kill.raw())}));
     playThroughEngine(jayce, &agent);
     ASSERT_FALSE(onBoard(kill));
     ASSERT_EQ(ps(P1).cost_modifiers.size(), 1u) << "the permission";
@@ -962,7 +962,7 @@ TEST_F(VerifyEngineTest, OverzealousFan_BanishedInsteadOfDyingMovesNobody) {
     auto attacker = addVanilla(P2, 3, 0);
     o(fan).combat_designation = CombatDesignation::Defender;
     o(attacker).combat_designation = CombatDesignation::Attacker;
-    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
+    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker.raw());
     o(fan).banish_if_would_die_this_turn = true;
     state.battlefields[0].combat_in_progress = true;
     state.battlefields[0].attacker = P2;
@@ -984,7 +984,7 @@ TEST_F(VerifyEngineTest, OverzealousFan_DyingMovesTheAttacker) {
     auto attacker = addVanilla(P2, 3, 0);
     o(fan).combat_designation = CombatDesignation::Defender;
     o(attacker).combat_designation = CombatDesignation::Attacker;
-    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
+    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker.raw());
     state.battlefields[0].combat_in_progress = true;
     state.battlefields[0].attacker = P2;
     state.battlefields[0].defender = P1;
@@ -1008,13 +1008,13 @@ TEST_F(VerifyEngineTest, ListHelpers_ReturnAscendingIdsWhateverTheMapOrder) {
         st.players[0].id = P1;
         st.players[1].id = P2;
         std::vector<GameObjectId> ids;
-        for (GameObjectId id = 10; id < 50; ++id) ids.push_back(id);
+        for (uint32_t n = 10; n < 50; ++n) ids.push_back(GameObjectId::fromRaw(n));
         if (!ascending) std::reverse(ids.begin(), ids.end());
         for (auto id : ids) {
             GameObject obj;
             obj.id = id;
-            obj.owner = obj.controller = (id % 2 == 0) ? P1 : P2;
-            obj.card_type = (id % 5 == 0) ? CardType::Gear : CardType::Unit;
+            obj.owner = obj.controller = (id.raw() % 2 == 0) ? P1 : P2;
+            obj.card_type = (id.raw() % 5 == 0) ? CardType::Gear : CardType::Unit;
             obj.zone = ZoneType::Base;
             obj.location = BaseLocation{obj.controller};
             st.objects.emplace(id, obj);

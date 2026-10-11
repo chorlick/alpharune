@@ -67,7 +67,12 @@ struct Intent {
     // MulliganDecision — cards to set aside
     std::vector<GameObjectId> cards_to_mulligan;
 
-    // ChooseBattlefield — for setup
+    // HideCard: the battlefield slot. ChooseBattlefield (setup): NOT a slot
+    // but the position of the chosen card in the player's battlefield list
+    // (GameEngine::setupBattlefields makes it with fromRaw and reads it back
+    // with raw(); no battlefield exists yet). One field for both because the
+    // action slot and the history token encode it as one number (plans/05
+    // item 5.5: a field of its own would change both).
     BattlefieldId chosen_battlefield = kInvalidId;
 
     // PlayFirstDecision — true = go first, false = go second

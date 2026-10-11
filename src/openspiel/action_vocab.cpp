@@ -61,7 +61,7 @@ struct Fingerprint {
     }
     void addIds(const std::vector<GameObjectId>& ids) {
         add(ids.size());
-        for (auto id : ids) add(static_cast<uint64_t>(id));
+        for (auto id : ids) add(static_cast<uint64_t>(id.raw()));
     }
 };
 
@@ -111,7 +111,7 @@ int encodeAction(const Intent& intent, const GameState& state) {
             for (const auto& da : intent.damage_assignments) {
                 hash ^= static_cast<uint32_t>(da.damage);
                 hash *= 16777619u;
-                hash ^= static_cast<uint32_t>(da.target_unit);
+                hash ^= static_cast<uint32_t>(da.target_unit.raw());
                 hash *= 16777619u;
             }
             return verbBase(ActionVerb::AssignCombatDamage)
@@ -258,18 +258,18 @@ int64_t historyToken(const Intent& intent, const GameState& state) {
     Fingerprint fp;
     fp.add(static_cast<uint64_t>(intent.type));
     fp.add(static_cast<uint64_t>(intent.player));
-    fp.add(static_cast<uint64_t>(intent.card));
+    fp.add(static_cast<uint64_t>(intent.card.raw()));
     fp.addLocation(intent.play_location);
     fp.addIds(intent.units_to_move);
     fp.addLocation(intent.move_destination);
     fp.add(static_cast<uint64_t>(intent.ability.raw()));
-    fp.add(static_cast<uint64_t>(intent.ability_source));
+    fp.add(static_cast<uint64_t>(intent.ability_source.raw()));
     fp.add(static_cast<uint64_t>(intent.ability_index));
     fp.add(static_cast<uint64_t>(intent.play_source));
     fp.addIds(intent.targets);
     fp.add(intent.damage_assignments.size());
     for (const auto& da : intent.damage_assignments) {
-        fp.add(static_cast<uint64_t>(da.target_unit));
+        fp.add(static_cast<uint64_t>(da.target_unit.raw()));
         fp.add(static_cast<uint64_t>(da.damage));
     }
     fp.addIds(intent.cards_to_mulligan);
@@ -277,8 +277,8 @@ int64_t historyToken(const Intent& intent, const GameState& state) {
     fp.add(intent.choose_first ? 1 : 0);
     fp.add(intent.sideboard_swaps.size());
     for (const auto& [out, in] : intent.sideboard_swaps) {
-        fp.add(static_cast<uint64_t>(out));
-        fp.add(static_cast<uint64_t>(in));
+        fp.add(static_cast<uint64_t>(out.raw()));
+        fp.add(static_cast<uint64_t>(in.raw()));
     }
     fp.addIds(intent.chosen_objects);
     fp.add(intent.chosen_value.has_value() ? 1 : 0);

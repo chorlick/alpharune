@@ -106,7 +106,7 @@ public:
         if (!ctx.state.objectExists(gear_id)) return;
         auto& gear = ctx.state.getObject(gear_id);
         auto it = gear.card_counters.find(kBearer);
-        if (it == gear.card_counters.end() || it->second != static_cast<int>(unit) + 1) return;
+        if (it == gear.card_counters.end() || it->second != static_cast<int>(unit.raw()) + 1) return;
         gear.card_counters.erase(it);
         if (!ctx.state.objectExists(unit)) return;
         auto& u = ctx.state.getObject(unit);
@@ -132,8 +132,8 @@ public:
         {
             auto& gear = ctx.state.getObject(ctx.source);
             auto it = gear.card_counters.find(kBearer);
-            if (it != gear.card_counters.end() && it->second != static_cast<int>(unit) + 1)
-                endCopy(ctx, ctx.source, static_cast<GameObjectId>(it->second - 1));
+            if (it != gear.card_counters.end() && it->second != static_cast<int>(unit.raw()) + 1)
+                endCopy(ctx, ctx.source, GameObjectId::fromRaw(it->second - 1));
         }
         std::vector<GameObjectId> others;
         for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
@@ -149,7 +149,7 @@ public:
             auto& u = ctx.state.getObject(unit);
             if (u.card_counters[kCopies]++ == 0) remember(u);
             ctx.state.getObject(ctx.source).card_counters[kBearer] =
-                static_cast<int>(unit) + 1;
+                static_cast<int>(unit.raw()) + 1;
             ctx.executor.copyUnit(unit, chosen);
         }
     }

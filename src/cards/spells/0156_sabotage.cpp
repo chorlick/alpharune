@@ -40,7 +40,7 @@ public:
                     /*source_zone=*/ZoneType::Hand,
                 });
                 RIFT_TRACE(ctx.events, "SABOTAGE: revealed " + obj.name +
-                                     " (id=" + std::to_string(card_id) +
+                                     " (id=" + toString(card_id) +
                                      ") to " + std::string(toString(ctx.controller)));
             }
             // Build choice set: non-unit cards only.
@@ -79,7 +79,7 @@ public:
             if (it == hand.end()) return;
             const auto& obj = ctx.state.getObject(card_id);
             RIFT_TRACE(ctx.events, "SABOTAGE: recycling " + obj.name + " (id=" +
-                                 std::to_string(card_id) + ") to bottom of " +
+                                 toString(card_id) + ") to bottom of " +
                                  std::string(toString(opp)) + "'s deck");
             hand.erase(it);
             ctx.executor.recycleCards(opp, {card_id});

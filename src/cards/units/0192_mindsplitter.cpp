@@ -40,7 +40,7 @@ public:
                     /*source_zone=*/ZoneType::Hand,
                 });
                 RIFT_TRACE(ctx.events, "MINDSPLITTER: revealed " + obj.name +
-                                     " (id=" + std::to_string(card_id) +
+                                     " (id=" + toString(card_id) +
                                      ") to " + std::string(toString(ctx.controller)));
             }
             // CR: the CONTROLLER chooses the card; the opponent then

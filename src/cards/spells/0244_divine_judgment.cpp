@@ -55,7 +55,7 @@ public:
             for (size_t i = 0; keep.size() < 2 && i < in_category.size(); ++i)
                 if (std::find(keep.begin(), keep.end(), in_category[i]) == keep.end())
                     keep.push_back(in_category[i]);
-            for (auto id : keep) ri.resume_data.push_back(static_cast<int32_t>(id));
+            for (auto id : keep) ri.resume_data.push_back(static_cast<int32_t>(id.raw()));
             ++ri.resume_data[0];
         } else if (ri.resume_point != kChoosing) {
             ri.resume_data.assign(1, 0);
@@ -66,7 +66,7 @@ public:
             const int step = ri.resume_data[0];
             const auto in_category = category(step);
             if (in_category.size() <= 2) {
-                for (auto id : in_category) ri.resume_data.push_back(static_cast<int32_t>(id));
+                for (auto id : in_category) ri.resume_data.push_back(static_cast<int32_t>(id.raw()));
                 continue;
             }
             const PlayerId p = players[step / 4];
@@ -86,7 +86,7 @@ public:
 
         auto kept = [&ri](GameObjectId id) {
             return std::find(ri.resume_data.begin() + 1, ri.resume_data.end(),
-                             static_cast<int32_t>(id)) != ri.resume_data.end();
+                             static_cast<int32_t>(id.raw())) != ri.resume_data.end();
         };
         for (const PlayerId p : players) {
             std::vector<GameObjectId> rest;

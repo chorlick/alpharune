@@ -512,7 +512,7 @@ TEST_F(C4Test, UdyrWildman_SpendsItsBuffAndHonoursCantBeChosen) {
     EXPECT_TRUE(canActivate(legal, udyr));
     EXPECT_FALSE(canActivate(legal, plain)) << "the unbuffed copy has no buff to spend";
 
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(target)}));  // "Deal 2"
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(target.raw())}));  // "Deal 2"
     activate(udyr, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the mode, then the unit";
     EXPECT_TRUE(agent.wasOffered(target));
@@ -583,7 +583,7 @@ TEST_F(C4Test, DrMundoExpert_ChoosesWhichThreeCardsToRecycle) {
     for (int i = 0; i < 5; ++i) trash.push_back(inTrashOf(P1, kIncinerate));
     // Keep the two oldest: pick the three newest.
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(trash[4]), static_cast<int>(trash[3]), static_cast<int>(trash[2])}));
+        {static_cast<int>(trash[4].raw()), static_cast<int>(trash[3].raw()), static_cast<int>(trash[2].raw())}));
     fireTriggerThroughEngine(mundo, TriggerType::AtStartOfBeginning, &agent);
     EXPECT_EQ(agent.prompts.size(), 3u);
     EXPECT_TRUE(inTrash(P1, trash[0]));
@@ -818,9 +818,9 @@ TEST_F(C4Test, Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses) {
     // yes; the unit; battlefield 1 (mode 2).
     EnginePathAgent agent(EnginePathAgent::script({
         1,                        // Soulgorger: "may play a unit from your trash": yes
-        static_cast<int>(dead),   // which unit (First Mate, the only one)
+        static_cast<int>(dead.raw()),   // which unit (First Mate, the only one)
         2,                        // where: mode 2 = battlefield #1 (mode 0 = base)
-        static_cast<int>(card),   // the played First Mate's "ready another unit": Soulgorger,
+        static_cast<int>(card.raw()),   // the played First Mate's "ready another unit": Soulgorger,
                                   // the only other unit on the board
     }));
     playThroughEngine(card, &agent);

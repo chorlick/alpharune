@@ -29,7 +29,7 @@ public:
                 if (id == ctx.source || obj.controller != ctx.controller) continue;
                 if (!obj.location.has_value()) continue;
                 if (!obj.isUnit() && !obj.isGear()) continue;
-                if (std::find(taken.begin(), taken.end(), static_cast<int32_t>(id)) !=
+                if (std::find(taken.begin(), taken.end(), static_cast<int32_t>(id.raw())) !=
                     taken.end()) continue;
                 out.push_back(id);
             }
@@ -85,11 +85,11 @@ public:
         auto legal = fodder(ri.resume_data);
         if (legal.empty()) { ri.resume_point = 21; return; }
         if (std::find(legal.begin(), legal.end(), picked) == legal.end()) picked = legal.front();
-        ri.resume_data.push_back(static_cast<int32_t>(picked));
+        ri.resume_data.push_back(static_cast<int32_t>(picked.raw()));
         if (ri.resume_data.size() < 3) { prompt(); return; }
         ri.resume_point = 21;
         std::vector<GameObjectId> victims;
-        for (auto v : ri.resume_data) victims.push_back(static_cast<GameObjectId>(v));
+        for (auto v : ri.resume_data) victims.push_back(GameObjectId::fromRaw(v));
         pay_and_score(victims);
     }
 private:

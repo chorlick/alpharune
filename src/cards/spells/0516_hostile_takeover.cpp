@@ -51,7 +51,7 @@ public:
         // from [Hidden] on an opponent's turn.)
         if (ctx.state.objectExists(ctx.source)) {
             ctx.state.getObject(ctx.source).card_counters[kSeizedKey] =
-                static_cast<int>(picked) + 1;
+                static_cast<int>(picked.raw()) + 1;
             DelayedAbility da;
             da.source = ctx.source;
             da.card_def_id = cardDefId();
@@ -70,7 +70,7 @@ public:
         auto& me = ctx.state.getObject(ctx.source);
         auto it = me.card_counters.find(kSeizedKey);
         if (it == me.card_counters.end() || it->second <= 0) return;
-        const auto seized = static_cast<GameObjectId>(it->second - 1);
+        const auto seized = GameObjectId::fromRaw(it->second - 1);
         me.card_counters.erase(it);
         if (!ctx.state.objectExists(seized)) return;
         auto& unit = ctx.state.getObject(seized);

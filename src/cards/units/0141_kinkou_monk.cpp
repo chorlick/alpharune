@@ -50,8 +50,8 @@ public:
         auto& ri = *ri_opt;
         if (ri.resume_data.size() <= kSecond) {
             ri.resume_data.resize(kSecond + 1, 0);
-            ri.resume_data[kFirst] = static_cast<int32_t>(kInvalidId);
-            ri.resume_data[kSecond] = static_cast<int32_t>(kInvalidId);
+            ri.resume_data[kFirst] = static_cast<int32_t>(kInvalidId.raw());
+            ri.resume_data[kSecond] = static_cast<int32_t>(kInvalidId.raw());
         }
         // Publishes one prompt over `units`; false when there is none to offer.
         auto ask = [&](const std::vector<GameObjectId>& units, int stage) {
@@ -70,13 +70,13 @@ public:
             ri.resume_data[kStage] = 3;
         } else if (ri.resume_data[kStage] == 1 || ri.resume_data[kStage] == 2) {
             const bool first = ri.resume_data[kStage] == 1;
-            const auto prior = static_cast<GameObjectId>(ri.resume_data[kFirst]);
+            const auto prior = GameObjectId::fromRaw(ri.resume_data[kFirst]);
             const auto units = offerableChoices(ctx, others(first ? kInvalidId : prior));
             const GameObjectId picked = takenObject(ctx);
             ri.resume_data[kStage] = 3;
             if (std::find(units.begin(), units.end(), picked) != units.end()) {
                 commitChosenObject(ctx, picked);
-                ri.resume_data[first ? kFirst : kSecond] = static_cast<int32_t>(picked);
+                ri.resume_data[first ? kFirst : kSecond] = static_cast<int32_t>(picked.raw());
                 if (first && ask(offerableChoices(ctx, others(picked)), 2)) return;
             }   // else "Done"
         }
@@ -85,7 +85,7 @@ public:
         // this resolves is not buffed (CR 359.3.e.5).
         const auto still = others(kInvalidId);
         for (size_t slot : {kFirst, kSecond}) {
-            const auto id = static_cast<GameObjectId>(ri.resume_data[slot]);
+            const auto id = GameObjectId::fromRaw(ri.resume_data[slot]);
             if (std::find(still.begin(), still.end(), id) != still.end()) buff_if_unbuffed(id);
         }
     }

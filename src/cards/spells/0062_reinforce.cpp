@@ -42,7 +42,7 @@ public:
         std::optional<LocationId> where_to;
         const bool placing = ri.resume_point == kAwaitWhere;
         if (placing && !ri.resume_data.empty()) {
-            chosen = static_cast<GameObjectId>(ri.resume_data.back());
+            chosen = GameObjectId::fromRaw(ri.resume_data.back());
             ri.resume_data.pop_back();
             const int v = takenValue(ctx, 0);
             if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
@@ -61,14 +61,14 @@ public:
                     cid, obj.card_def_id, obj.owner,
                     /*revealed_to_all=*/false, ctx.controller, ZoneType::MainDeck});
                 knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller), DeckEnd::Top, i);
-                ri.resume_data.push_back(static_cast<int32_t>(cid));
+                ri.resume_data.push_back(static_cast<int32_t>(cid.raw()));
             }
         }
 
         // The units among them.
         std::vector<GameObjectId> units;
         for (auto v : ri.resume_data) {
-            const auto cid = static_cast<GameObjectId>(v);
+            const auto cid = GameObjectId::fromRaw(v);
             if (ctx.state.objectExists(cid) && ctx.state.getObject(cid).isUnit())
                 units.push_back(cid);
         }
@@ -93,7 +93,7 @@ public:
                                                   "Reinforce: play to battlefield " + std::to_string(i)));
                 if (!where.empty()) {
                     where.insert(where.begin(), valChoice(ctx.controller, 0, "Reinforce: play to base"));
-                    ri.resume_data.push_back(static_cast<int32_t>(chosen));
+                    ri.resume_data.push_back(static_cast<int32_t>(chosen.raw()));
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
                                                "Reinforce: where to play it");
                     ri.resume_point = kAwaitWhere;
@@ -116,7 +116,7 @@ public:
         // taking all of them out of the deck first.
         std::vector<GameObjectId> rest;
         for (auto v : ri.resume_data) {
-            const auto cid = static_cast<GameObjectId>(v);
+            const auto cid = GameObjectId::fromRaw(v);
             if (!ctx.state.objectExists(cid)) continue;
             deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
             if (cid != chosen) rest.push_back(cid);

@@ -65,7 +65,7 @@ public:
         auto picked = [&]() {
             std::vector<GameObjectId> out;
             for (size_t i = kCountSlot + 1; i < ri.resume_data.size(); ++i)
-                out.push_back(static_cast<GameObjectId>(ri.resume_data[i]));
+                out.push_back(GameObjectId::fromRaw(ri.resume_data[i]));
             return out;
         };
         auto candidates = [&]() {
@@ -94,7 +94,7 @@ public:
                 finish();   // "Done"
                 return;
             }
-            ri.resume_data.push_back(static_cast<int32_t>(card));
+            ri.resume_data.push_back(static_cast<int32_t>(card.raw()));
             ++ri.resume_data[kCountSlot];
         }
         const auto cands = candidates();

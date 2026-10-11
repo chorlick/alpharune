@@ -43,14 +43,14 @@ public:
             ri.resume_point != kRechooseAwait) {
             auto picked_before = [&ri](GameObjectId id) {
                 return std::find(ri.resume_data.begin(), ri.resume_data.end(),
-                                 static_cast<int32_t>(id)) != ri.resume_data.end();
+                                 static_cast<int32_t>(id.raw())) != ri.resume_data.end();
             };
             auto candidates = [&]() {
                 int budget = kTotalMight;
                 // Played from facedown: units at that battlefield (CR 811.1.d.2).
                 std::optional<BattlefieldId> bf = facedownPlayBattlefield(ctx.state, ctx.source);
                 for (auto id : ri.resume_data) {
-                    const auto& u = ctx.state.getObject(static_cast<GameObjectId>(id));
+                    const auto& u = ctx.state.getObject(GameObjectId::fromRaw(id));
                     budget -= std::max(0, u.current_might);
                     bf = u.battlefieldId();
                 }
@@ -69,7 +69,7 @@ public:
                     stop = true;   // "stop here", or the unit is no longer available
                 } else {
                     commitChosenObject(ctx, unit);
-                    ri.resume_data.push_back(static_cast<int32_t>(unit));
+                    ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
                 }
             } else if (ri.resume_point != kPicking) {
                 ri.resume_data.clear();   // first entry
@@ -109,7 +109,7 @@ public:
             const auto legal = chooseableUnits(ctx.state, ctx.controller, [&ri](const GameObject& u) {
                 return u.isAtBattlefield() &&
                        std::find(ri.resume_data.begin(), ri.resume_data.end(),
-                                 static_cast<int32_t>(u.id)) != ri.resume_data.end();
+                                 static_cast<int32_t>(u.id.raw())) != ri.resume_data.end();
             });
             if (fitsTogether(ctx.state, legal)) { kill(legal); return; }
             // They no longer fit (a unit gained Might, or they are at different
@@ -117,7 +117,7 @@ public:
             // ORIGINAL targets to affect (CR 355.11.b). resume_data becomes
             // [n, the n originals still legal, the subset picked so far].
             ri.resume_data.assign(1, static_cast<int32_t>(legal.size()));
-            for (auto id : legal) ri.resume_data.push_back(static_cast<int32_t>(id));
+            for (auto id : legal) ri.resume_data.push_back(static_cast<int32_t>(id.raw()));
             ri.resume_point = kRechoose;
         }
         // One original per prompt, from those at the subset's battlefield that
@@ -127,7 +127,7 @@ public:
         if (ri.resume_data.empty()) { ri.resume_point = kDone; return; }
         const size_t n = static_cast<size_t>(ri.resume_data[0]);
         auto subset = [&]() {
-            return std::vector<GameObjectId>(
+            return objectIdsFromRaw(
                 ri.resume_data.begin() + static_cast<std::ptrdiff_t>(1 + n), ri.resume_data.end());
         };
         auto can_add = [&]() {
@@ -141,7 +141,7 @@ public:
             }
             std::vector<GameObjectId> out;
             for (size_t i = 1; i <= n; ++i) {
-                const auto id = static_cast<GameObjectId>(ri.resume_data[i]);
+                const auto id = GameObjectId::fromRaw(ri.resume_data[i]);
                 if (std::find(sub.begin(), sub.end(), id) != sub.end()) continue;
                 const auto& u = ctx.state.getObject(id);
                 if ((!bf.has_value() || u.battlefieldId() == bf) && u.current_might <= budget)
@@ -154,14 +154,14 @@ public:
             GameObjectId unit = takenObject(ctx);
             if (std::find(options.begin(), options.end(), unit) == options.end())
                 unit = options.empty() ? kInvalidId : options.front();
-            if (unit != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(unit));
+            if (unit != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
             ri.resume_point = kRechoose;
         }
         for (;;) {
             const auto options = can_add();
             if (options.empty()) break;
             if (options.size() == 1) {
-                ri.resume_data.push_back(static_cast<int32_t>(options.front()));
+                ri.resume_data.push_back(static_cast<int32_t>(options.front().raw()));
                 continue;
             }
             std::vector<Intent> choices;

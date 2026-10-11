@@ -331,7 +331,7 @@ TEST_F(C0Test, TargonsPeak_ThePlayerPicksWhichTwoRunesReady) {
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3.raw()), static_cast<int>(r2.raw())}));
     fireTriggerThroughEngine(peak, TriggerType::AtEndOfTurn, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(o(r1).is_exhausted);
@@ -506,7 +506,7 @@ TEST_F(C0Test, ForgeOfTheFluft_MovesAnAttachedEquipment) {
     ASSERT_EQ(o(lg).granted_abilities.size(), 1u);
     ASSERT_TRUE(card_registry.get(kForgeOfTheFluft)->hasLegalTargets(state, P1));
 
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword), static_cast<int>(b)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword.raw()), static_cast<int>(b.raw())}));
     activate(lg, &agent, {}, kForgeOfTheFluft);
     EXPECT_TRUE(o(lg).is_exhausted);
     ASSERT_TRUE(o(sword).attached_to.has_value());
@@ -699,7 +699,7 @@ TEST_F(C0Test, TheAcademy_GrantedRepeatCostsTheWholeBaseCost) {
         pool.power[static_cast<int>(Domain::Body)] = 2;
         EnginePathAgent agent(EnginePathAgent::script({
             1,                        // pay the granted Repeat ([4][O])? yes
-            static_cast<int>(unit),   // the additional execution's target: the same unit
+            static_cast<int>(unit.raw()),   // the additional execution's target: the same unit
                                       // (the only unit on the board)
         }));
         playAt(spell, unit, &agent);
@@ -936,7 +936,7 @@ TEST_F(C0Test, GarbageGrabber_RecyclesThePickedCardsAsACost) {
     auto t3 = trashCard(P1, kRecruit);
     auto t4 = trashCard(P1, kRecruit);
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(t4), static_cast<int>(t2), static_cast<int>(t3)}));
+        {static_cast<int>(t4.raw()), static_cast<int>(t2.raw()), static_cast<int>(t3.raw())}));
     activate(grabber, &agent);
     EXPECT_EQ(agent.prompts.size(), 3u);
     EXPECT_TRUE(inTrash(P1, t1)) << "the one not picked stays";
@@ -1145,7 +1145,7 @@ TEST_F(C0Test, ForgeOfTheFuture_KillThisRecyclesUpToFourFromTrashes) {
     auto theirs = trashCard(P2, kRecruit);
     auto kept = trashCard(P2, kRecruit);
     // Two picks, then "None".
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine), static_cast<int>(theirs), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine.raw()), static_cast<int>(theirs.raw()), 0}));
     activate(forge, &agent);
     EXPECT_TRUE(inTrash(P1, forge)) << "\"Kill this\" is the cost";
     EXPECT_TRUE(inDeck(P1, mine));

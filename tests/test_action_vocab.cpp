@@ -32,7 +32,7 @@ struct MiniState {
     GameState state;
 
     GameObjectId addObject(CardDefId def_id, PlayerId owner = PlayerId::Player1) {
-        GameObjectId id = next_id_++;
+        const GameObjectId id = GameObjectId::fromRaw(next_id_++);
         state.objects[id] = GameObject{};
         auto& o = state.objects[id];
         o.id = id;
@@ -50,7 +50,7 @@ struct MiniState {
     }
 
 private:
-    GameObjectId next_id_ = 1;
+    uint32_t next_id_ = 1;
     uint32_t next_bf_ = 0;
 };
 

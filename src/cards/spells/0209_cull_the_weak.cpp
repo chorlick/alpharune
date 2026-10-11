@@ -53,7 +53,7 @@ public:
             GameObjectId unit = takenObject(ctx);
             if (std::find(units.begin(), units.end(), unit) == units.end())
                 unit = units.empty() ? kInvalidId : units.front();
-            if (unit != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(unit));
+            if (unit != kInvalidId) ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
             next = who + 1;
         } else {
             ri.resume_data.clear();
@@ -70,9 +70,9 @@ public:
         }
         ri.resume_point = kDone;
         {   // the batch is for these kills only
-            DeathBatch together(ctx.executor, std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
+            DeathBatch together(ctx.executor, objectIdsFromRaw(ri.resume_data));   // they die at the same time
             for (auto id : ri.resume_data)
-                ctx.executor.killObject(static_cast<GameObjectId>(id));
+                ctx.executor.killObject(GameObjectId::fromRaw(id));
         }
     }
 private:

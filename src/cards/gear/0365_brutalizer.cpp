@@ -39,8 +39,8 @@ public:
                 continue;
             }
             const GameObjectId unit_id = *gear.attached_to;
-            if (gear.card_counters[kBearer] != static_cast<int>(unit_id) + 1) {
-                gear.card_counters[kBearer] = static_cast<int>(unit_id) + 1;
+            if (gear.card_counters[kBearer] != static_cast<int>(unit_id.raw()) + 1) {
+                gear.card_counters[kBearer] = static_cast<int>(unit_id.raw()) + 1;
                 gear.card_counters[kTurn] = this_turn;
             }
             if (gear.card_counters[kTurn] != this_turn) continue;  // not attached this turn

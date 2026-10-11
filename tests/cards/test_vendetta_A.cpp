@@ -698,7 +698,7 @@ TEST_F(VendettaA, Vendetta_Barbara_KillsEnemyGearAtSevenRunes) {
     EXPECT_TRUE(state.getObject(gear).location.has_value()) << "6 runes: no effect";
 
     runes(P1, 1);
-    EnginePathAgent seven(EnginePathAgent::script({static_cast<int>(gear)}));
+    EnginePathAgent seven(EnginePathAgent::script({static_cast<int>(gear.raw())}));
     fireTriggerThroughEngine(barbara, TriggerType::WhenYouPlayMe, &seven);
     ASSERT_EQ(seven.prompts.size(), 1u) << "\"choose an enemy gear\"";
     EXPECT_TRUE(seven.wasOffered(gear));

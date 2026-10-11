@@ -1329,7 +1329,7 @@ void GameEngine::doExpirationBody() {
             auto restored = obj.original_controller_eot;
             if (restored != PlayerId::None && restored != obj.controller) {
                 RIFT_TRACE(events_, std::string("REVERT_CONTROL: ") + obj.name +
-                                 " (id=" + std::to_string(id) + ") " +
+                                 " (id=" + toString(id) + ") " +
                                  toString(obj.controller) + " -> " +
                                  toString(restored));
                 obj.controller = restored;
@@ -2538,7 +2538,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
     int trace_cost = (card.card_def_id != kInvalidId)
         ? card_db_.get(card.card_def_id).energy_cost : 0;
-    RIFT_TRACE(events_, "PLAY: " + card.name + " (id=" + std::to_string(intent.card) +
+    RIFT_TRACE(events_, "PLAY: " + card.name + " (id=" + toString(intent.card) +
                      ", " + toString(card.card_type) + ", cost=" +
                      std::to_string(trace_cost) + "E)");
 
@@ -2669,9 +2669,9 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         for (auto t : intent.targets) {
             if (!tgt_str.empty()) tgt_str += ",";
             tgt_str += state_.objectExists(t) ? state_.getObject(t).name : "?";
-            tgt_str += "(id=" + std::to_string(t) + ")";
+            tgt_str += "(id=" + toString(t) + ")";
         }
-        RIFT_TRACE(events_, "SPELL: " + card.name + " (id=" + std::to_string(intent.card) +
+        RIFT_TRACE(events_, "SPELL: " + card.name + " (id=" + toString(intent.card) +
                          ") targets=[" + tgt_str + "]");
     }
 
@@ -3474,7 +3474,7 @@ void GameEngine::executeStandardMove(const Intent& intent) {
 
     for (auto unit_id : moving) {
         auto& unit_obj = state_.getObject(unit_id);
-        RIFT_TRACE(events_, "MOVE: " + unit_obj.name + " (id=" + std::to_string(unit_id) +
+        RIFT_TRACE(events_, "MOVE: " + unit_obj.name + " (id=" + toString(unit_id) +
                          ") -> " +
                          (std::holds_alternative<BattlefieldLocation>(dest)
                               ? "BF#" + toString(std::get<BattlefieldLocation>(dest).id)
@@ -3560,7 +3560,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
             RIFT_TRACE_PRIVATE(events_, intent.player,
                              "  MULLIGAN: " + std::string(toString(intent.player)) +
                              " set aside " + state_.getObject(card_id).name +
-                             " (id=" + std::to_string(card_id) + ")");
+                             " (id=" + toString(card_id) + ")");
         }
     }
 
@@ -3575,7 +3575,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
         RIFT_TRACE_PRIVATE(events_, intent.player,
                          "  MULLIGAN: " + std::string(toString(intent.player)) +
                          " drew replacement " + state_.getObject(did).name +
-                         " (id=" + std::to_string(did) +
+                         " (id=" + toString(did) +
                          ") — PRIVATE to " + toString(intent.player));
     }
 
@@ -6434,7 +6434,7 @@ void GameEngine::revertLapsedControl() {
         if (source_in_play) continue;
         if (obj.controller != obj.control_revert_to) {
             RIFT_TRACE(events_, "CONTROL REVERTS: " + obj.name + " (id=" +
-                             std::to_string(id) + ") returns to " +
+                             toString(id) + ") returns to " +
                              toString(obj.control_revert_to) +
                              " (source left the board)");
             obj.controller = obj.control_revert_to;
@@ -6482,7 +6482,7 @@ void GameEngine::cleanup() {
                 (static_cast<uint64_t>(obj.controller) << 8) |
                 (obj.untargetable_by_enemy ? 1ULL << 16 : 0) |
                 (obj.is_exhausted ? 1ULL << 17 : 0);
-            mix(static_cast<uint64_t>(id) * 0x9E3779B97F4A7C15ULL ^
+            mix(static_cast<uint64_t>(id.raw()) * 0x9E3779B97F4A7C15ULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.damage_marked)) * 0xC2B2AE3D27D4EB4FULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
@@ -6677,7 +6677,7 @@ void GameEngine::recallMisplacedObjects() {
     std::sort(misplaced.begin(), misplaced.end());
     for (auto id : misplaced) {
         RIFT_TRACE(events_, "RECALL (CR 323.6): " + state_.getObject(id).name +
-                         " (id=" + std::to_string(id) + ")");
+                         " (id=" + toString(id) + ")");
         effect_executor_->recallToBase(id);
     }
 }
@@ -6812,7 +6812,7 @@ void GameEngine::channelRunes(PlayerId player, int count) {
         rune.location = BaseLocation{player};
 
         RIFT_TRACE(events_, "  CHANNELED: " + rune.name + " (id=" +
-                         std::to_string(rune_id) + ", ready)");
+                         toString(rune_id) + ", ready)");
         events_.emit(RuneChanneledEvent{rune_id, player});
         events_.emit(EnteredBoardEvent{
             rune_id, player, CardType::Rune, BaseLocation{player}, false});
@@ -7513,14 +7513,14 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
 
     if (cur.phase == Phase::PayingEnergy) {
         RIFT_TRACE(events_, "  EXHAUST_RUNE: " + rune.name + " (id=" +
-                         std::to_string(rune_id) +
+                         toString(rune_id) +
                          ") for energy [agent choice]");
         rune.is_exhausted = true;
         events_.emit(ObjectStateChangedEvent{rune_id, "exhausted"});
         cur.energy_remaining--;
     } else if (cur.phase == Phase::PayingPower) {
         RIFT_TRACE(events_, "  RECYCLE_RUNE: " + rune.name + " (id=" +
-                         std::to_string(rune_id) + ", " +
+                         toString(rune_id) + ", " +
                          (rune.is_exhausted ? "exhausted" : "ready") +
                          ") for power [agent choice]");
         auto base_loc = BaseLocation{cur.player};
@@ -7642,7 +7642,7 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
 
     if (ok) {
         RIFT_TRACE(events_, "TRASH_REPLAY: " + std::string(toString(player)) +
-                         " replayed card id=" + std::to_string(card_id) +
+                         " replayed card id=" + toString(card_id) +
                          " for [" + std::to_string(grant.energy) + "]+power");
     }
     return ok;
@@ -7728,7 +7728,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     // Last-known information for "When I die" (CR 383.2.c.3.b): captured now,
     // before gear is shed and the designation and statuses are cleared.
     effect_executor_->snapshotLastKnown(unit_id);
-    RIFT_TRACE(events_, "KILL: " + unit.name + " (id=" + std::to_string(unit_id) +
+    RIFT_TRACE(events_, "KILL: " + unit.name + " (id=" + toString(unit_id) +
                      ", " + std::to_string(unit.current_might) + "M, dmg=" +
                      std::to_string(unit.damage_marked) + ")");
 
@@ -7763,7 +7763,7 @@ void GameEngine::killUnit(GameObjectId unit_id) {
         settleInTrash(state_, events_, unit_id);
     } else {
         RIFT_TRACE(events_, "  TOKEN CEASES TO EXIST (CR 183.1): " + unit.name +
-                         " (id=" + std::to_string(unit_id) + ")");
+                         " (id=" + toString(unit_id) + ")");
     }
 
     state_.turn.any_unit_died_this_turn = true;
@@ -7922,7 +7922,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
                 options += " [" + i.choice_label;
                 if (i.chosen_value.has_value()) options += " value=" + std::to_string(*i.chosen_value);
                 for (auto o : i.chosen_objects) {
-                    options += " object=" + std::to_string(o);
+                    options += " object=" + toString(o);
                     if (state_.objectExists(o)) options += "(" + state_.getObject(o).name + ")";
                 }
                 options += "]";
@@ -8001,7 +8001,7 @@ Intent GameEngine::queryAgent(PlayerId player) {
                 if (state_.objectExists(chosen.targets[i]))
                     choice_str += state_.getObject(chosen.targets[i]).name;
                 else
-                    choice_str += "?" + std::to_string(chosen.targets[i]);
+                    choice_str += "?" + toString(chosen.targets[i]);
             }
             choice_str += "]";
         }
@@ -8025,9 +8025,9 @@ Intent GameEngine::queryAgent(PlayerId player) {
                 auto oid = chosen.chosen_objects[i];
                 if (state_.objectExists(oid))
                     choice_str += state_.getObject(oid).name +
-                                  "(id=" + std::to_string(oid) + ")";
+                                  "(id=" + toString(oid) + ")";
                 else
-                    choice_str += "?" + std::to_string(oid);
+                    choice_str += "?" + toString(oid);
             }
             choice_str += "]";
         }

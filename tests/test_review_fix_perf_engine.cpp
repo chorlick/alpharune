@@ -566,8 +566,8 @@ GameState scatteredState(int objects) {
 TEST(PerfEngineTable, EveryWayOfMovingAnObjectIsSeenByTheNextQuery) {
     GameState st = scatteredState(40);
     expectIndexMatchesAWalk(st, "as built");
-    GameObject& a = st.getObject(3);
-    GameObject& b = st.getObject(10);
+    GameObject& a = st.getObject(GameObjectId::fromRaw(3));
+    GameObject& b = st.getObject(GameObjectId::fromRaw(10));
 
     a.location = BattlefieldLocation{1};
     a.zone = ZoneType::BattlefieldZone;
@@ -590,17 +590,17 @@ TEST(PerfEngineTable, EveryWayOfMovingAnObjectIsSeenByTheNextQuery) {
     expectIndexMatchesAWalk(st, "one object's zone assigned to another");
 
     // Whole objects: assigned from a local copy, swapped, replaced.
-    GameObject local = st.getObject(5);
+    GameObject local = st.getObject(GameObjectId::fromRaw(5));
     local.location = BattlefieldLocation{0};
     local.zone = ZoneType::BattlefieldZone;
     expectIndexMatchesAWalk(st, "a local copy edited: nothing in the table changed");
-    st.getObject(5) = local;
+    st.getObject(GameObjectId::fromRaw(5)) = local;
     expectIndexMatchesAWalk(st, "an object assigned from a local copy");
-    std::swap(st.getObject(6), st.getObject(9));
-    std::swap(st.getObject(6).id, st.getObject(9).id);
+    std::swap(st.getObject(GameObjectId::fromRaw(6)), st.getObject(GameObjectId::fromRaw(9)));
+    std::swap(st.getObject(GameObjectId::fromRaw(6)).id, st.getObject(GameObjectId::fromRaw(9)).id);
     expectIndexMatchesAWalk(st, "two objects swapped");
-    st.objects[8] = GameObject{};
-    st.objects[8].id = 8;
+    st.objects[GameObjectId::fromRaw(8)] = GameObject{};
+    st.objects[GameObjectId::fromRaw(8)].id = GameObjectId::fromRaw(8);
     expectIndexMatchesAWalk(st, "an object replaced by a blank one");
 
     // New and removed objects.
@@ -610,15 +610,15 @@ TEST(PerfEngineTable, EveryWayOfMovingAnObjectIsSeenByTheNextQuery) {
     st.getObject(fresh).location = BattlefieldLocation{1};
     expectIndexMatchesAWalk(st, "an object created and placed");
     GameObject built;
-    built.id = 999;
+    built.id = GameObjectId::fromRaw(999);
     built.card_type = CardType::Unit;
     built.controller = PlayerId::Player2;
     built.location = BaseLocation{PlayerId::Player2};
-    st.objects.emplace(GameObjectId{999}, built);
+    st.objects.emplace(GameObjectId::fromRaw(999), built);
     expectIndexMatchesAWalk(st, "an object emplaced already placed");
-    st.getObject(999).location = BattlefieldLocation{0};
+    st.getObject(GameObjectId::fromRaw(999)).location = BattlefieldLocation{0};
     expectIndexMatchesAWalk(st, "... and moved afterwards");
-    st.objects.erase(GameObjectId{999});
+    st.objects.erase(GameObjectId::fromRaw(999));
     expectIndexMatchesAWalk(st, "an object erased");
 
     // A field that is not tracked is read when the query is asked.
@@ -632,36 +632,36 @@ TEST(PerfEngineTable, ACopyOfAStateHasAnIndexOfItsOwn) {
     expectIndexMatchesAWalk(original, "original");
     GameState copy = original;
     expectIndexMatchesAWalk(copy, "copy");
-    copy.getObject(2).location = BattlefieldLocation{1};
-    copy.getObject(4).location.reset();
+    copy.getObject(GameObjectId::fromRaw(2)).location = BattlefieldLocation{1};
+    copy.getObject(GameObjectId::fromRaw(4)).location.reset();
     expectIndexMatchesAWalk(copy, "copy, after moving two of its objects");
     expectIndexMatchesAWalk(original, "original, untouched by the copy");
     EXPECT_NE(Walk::ids(copy.objects.onBoard()), Walk::ids(original.objects.onBoard()));
 
-    original.getObject(2).location = BattlefieldLocation{2};
+    original.getObject(GameObjectId::fromRaw(2)).location = BattlefieldLocation{2};
     expectIndexMatchesAWalk(original, "original, moved after the copy was taken");
     expectIndexMatchesAWalk(copy, "copy, untouched by the original");
 
     // Assigned over an existing state (the engine's `state_ = snapshot`).
     copy = original;
     expectIndexMatchesAWalk(copy, "assigned");
-    copy.getObject(2).location.reset();
+    copy.getObject(GameObjectId::fromRaw(2)).location.reset();
     expectIndexMatchesAWalk(copy, "assigned, then moved");
     expectIndexMatchesAWalk(original, "source of the assignment");
 
     // Moved: the objects and their index travel together.
     GameState moved = std::move(copy);
     expectIndexMatchesAWalk(moved, "moved-to");
-    moved.getObject(7).location = BattlefieldLocation{0};
-    moved.getObject(7).zone = ZoneType::BattlefieldZone;
+    moved.getObject(GameObjectId::fromRaw(7)).location = BattlefieldLocation{0};
+    moved.getObject(GameObjectId::fromRaw(7)).zone = ZoneType::BattlefieldZone;
     expectIndexMatchesAWalk(moved, "moved-to, then an object moved");
     GameState target = scatteredState(5);
     target = std::move(moved);
-    target.getObject(7).location.reset();
+    target.getObject(GameObjectId::fromRaw(7)).location.reset();
     expectIndexMatchesAWalk(target, "move-assigned, then an object moved");
     std::swap(target, original);
-    target.getObject(1).location = BattlefieldLocation{1};
-    original.getObject(1).location = BattlefieldLocation{2};
+    target.getObject(GameObjectId::fromRaw(1)).location = BattlefieldLocation{1};
+    original.getObject(GameObjectId::fromRaw(1)).location = BattlefieldLocation{2};
     expectIndexMatchesAWalk(target, "swapped (a)");
     expectIndexMatchesAWalk(original, "swapped (b)");
 }
@@ -674,16 +674,16 @@ TEST(PerfEngineTable, QueriesBetweenTwoMovesShareOneWalk) {
         (void)st.unitsAt(LocationId{BattlefieldLocation{BattlefieldId::fromRaw(i % 3)}}, PlayerId::Player2);
         (void)st.allUnitsControlledBy(PlayerId::Player1);
         (void)st.runesInBase(PlayerId::Player2);
-        st.getObject(4).is_exhausted = !st.getObject(4).is_exhausted;   // not a move
-        st.getObject(4).controller = PlayerId::Player1;
+        st.getObject(GameObjectId::fromRaw(4)).is_exhausted = !st.getObject(GameObjectId::fromRaw(4)).is_exhausted;   // not a move
+        st.getObject(GameObjectId::fromRaw(4)).controller = PlayerId::Player1;
     }
     EXPECT_EQ(st.objects.indexRebuilds(), built) << "150 queries, no object moved";
     // Writing the value a field already has is not a move either.
-    st.getObject(2).location = st.getObject(2).location;
-    st.getObject(2).zone = st.getObject(2).zone.get();
+    st.getObject(GameObjectId::fromRaw(2)).location = st.getObject(GameObjectId::fromRaw(2)).location;
+    st.getObject(GameObjectId::fromRaw(2)).zone = st.getObject(GameObjectId::fromRaw(2)).zone.get();
     (void)st.objects.onBoard();
     EXPECT_EQ(st.objects.indexRebuilds(), built);
-    st.getObject(2).location = BattlefieldLocation{1};
+    st.getObject(GameObjectId::fromRaw(2)).location = BattlefieldLocation{1};
     (void)st.objects.onBoard();
     (void)st.objects.inPlay();
     EXPECT_EQ(st.objects.indexRebuilds(), built + 1);
@@ -781,7 +781,7 @@ TEST(PerfEngineFacts, AnUnregisteredCardAnswersFromItsOwnDeclarations) {
 
 // ObjectStateChangedEvent's key refers to its literal: it compares by text.
 TEST(PerfEngineFacts, AStateChangeKeyComparesByItsText) {
-    const ObjectStateChangedEvent e{7, "chosen_by_controller"};
+    const ObjectStateChangedEvent e{GameObjectId::fromRaw(7), "chosen_by_controller"};
     EXPECT_TRUE(e.what_changed == "chosen_by_controller");
     EXPECT_FALSE(e.what_changed == "chosen_by_controlle");
     EXPECT_TRUE(e.what_changed != "buffed");
@@ -1003,7 +1003,7 @@ TEST(PerfEngineTable, AConstStateCanBeQueriedFromSeveralThreadsAtOnce) {
     std::atomic<long> asked{0};
     for (int round = 0; round < 400; ++round) {
         // A move by the only writer, before the readers start.
-        const GameObjectId mover = static_cast<GameObjectId>(1 + round % 100);
+        const GameObjectId mover = GameObjectId::fromRaw(1 + round % 100);
         if (state.getObject(mover).location.has_value()) state.getObject(mover).location.reset();
         else state.getObject(mover).location = BattlefieldLocation{BattlefieldId::fromRaw(round % 3)};
         const auto board = Walk::where(shared, [](const GameObject& o) { return o.location.has_value(); });
@@ -2268,7 +2268,7 @@ TEST_F(PerfEngineDeathBatch, ZhonyasHourglass_ItsControllerDecidesWhichDeathItRe
         const GameObjectId enemy = addUnit(P2, kShipyardSkulker, 0, 0);   // dies too; not P1's to order
         const GameObjectId saved = save_the_second ? second : first;
         const GameObjectId lost = save_the_second ? first : second;
-        EnginePathAgent p1(EnginePathAgent::script({static_cast<int>(saved)}));
+        EnginePathAgent p1(EnginePathAgent::script({static_cast<int>(saved.raw())}));
         EnginePathAgent p2(EnginePathAgent::script({}));
         withEngine([&](GameEngine& e) {
             for (auto id : {first, second, enemy}) e.mutableState().getObject(id).damage_marked = 99;
@@ -2753,7 +2753,7 @@ TEST_F(PerfEngineDecisionHeaders, WhichDeathIsReplacedFirst) {
     addEquipment(P1, kZhonyasHourglass);
     const GameObjectId first = addUnit(P1, kShipyardSkulker, 0, 0);
     const GameObjectId second = addUnit(P1, kShipyardSkulker, 0, 1);
-    EnginePathAgent p1(EnginePathAgent::script({static_cast<int>(second)}));
+    EnginePathAgent p1(EnginePathAgent::script({static_cast<int>(second.raw())}));
     listen();
     withEngine([&](GameEngine& e) {
         for (auto id : {first, second}) e.mutableState().getObject(id).damage_marked = 99;

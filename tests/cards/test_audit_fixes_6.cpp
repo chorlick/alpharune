@@ -595,7 +595,7 @@ TEST_F(AuditFix6Test, BlastCone_PlayMovesEnemyToBase) {
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
     EnginePathAgent yes(EnginePathAgent::script({
         1,                          // "may move an enemy unit": yes
-        static_cast<int>(enemy),    // which enemy unit (the only one)
+        static_cast<int>(enemy.raw()),    // which enemy unit (the only one)
         0,                          // where: mode 0 = its base (mode 2 = battlefield #1 is the other)
         0,                          // the move triggers "you may exhaust this to [Stun] it": no
     }));
@@ -648,7 +648,7 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustedCannotStun) {
     // fails the strict script).
     EnginePathAgent yes(EnginePathAgent::script({
         1,                          // "may move an enemy unit": yes
-        static_cast<int>(enemy),    // which enemy unit (the only one)
+        static_cast<int>(enemy.raw()),    // which enemy unit (the only one)
         0,                          // where: mode 0 = its base
     }));
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);

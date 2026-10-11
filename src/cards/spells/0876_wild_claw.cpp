@@ -128,7 +128,7 @@ public:
                 deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
                 if (cid != chosen) rest.push_back(cid);
             }
-            ri.resume_data = {static_cast<int32_t>(chosen)};
+            ri.resume_data = {static_cast<int32_t>(chosen.raw())};
             if (chosen != kInvalidId) {
                 // It stays listed in banishment until it is actually played:
                 // playPayingCost takes it out on success, and a payment that
@@ -164,7 +164,7 @@ public:
 
         if (ri.resume_point == 2) {
             auto choice = ctx.executor.takeChoice();
-            const GameObjectId chosen = static_cast<GameObjectId>(ri.resume_data[0]);
+            const GameObjectId chosen = GameObjectId::fromRaw(ri.resume_data[0]);
             LocationId loc = BaseLocation{ctx.controller};
             const int v = (choice && choice->chosen_value.has_value()) ? *choice->chosen_value : 0;
             if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(ctx, bfs[v - 1]))
@@ -174,7 +174,7 @@ public:
         }
 
         if (ri.resume_point == 3) {
-            const GameObjectId chosen = static_cast<GameObjectId>(ri.resume_data[0]);
+            const GameObjectId chosen = GameObjectId::fromRaw(ri.resume_data[0]);
             ri.resume_point = 5;
             // "Then you may do this: Empower it." — a reflexive trigger (CR
             // 388): with the card played it goes on the chain as an item of
@@ -183,7 +183,7 @@ public:
             if (ctx.state.objectExists(chosen) &&
                 ctx.state.getObject(chosen).location.has_value())
                 ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
-                                                   {static_cast<int32_t>(chosen)});
+                                                   {static_cast<int32_t>(chosen.raw())});
         }
     }
     bool hasReflexiveTrigger() const override { return true; }
@@ -191,7 +191,7 @@ public:
     void onReflexiveTrigger(CardContext& ctx, int /*index*/,
                             const std::vector<int32_t>& data) override {
         if (data.empty()) return;
-        const auto played = static_cast<GameObjectId>(data[0]);
+        const auto played = GameObjectId::fromRaw(data[0]);
         auto can_empower = [&]() {
             return ctx.state.objectExists(played) &&
                    ctx.state.getObject(played).location.has_value() &&

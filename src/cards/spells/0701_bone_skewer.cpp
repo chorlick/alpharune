@@ -94,7 +94,7 @@ public:
         if (ctx.state.objectExists(chosen) &&
             ctx.state.getObject(chosen).location.has_value())
             ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
-                                               {static_cast<int32_t>(chosen)});
+                                               {static_cast<int32_t>(chosen.raw())});
     }
     bool hasReflexiveTrigger() const override { return true; }
     // `data[0]`: the unit they played.
@@ -102,7 +102,7 @@ public:
                             const std::vector<int32_t>& data) override {
         if (finalizingChoices(ctx)) return;   // nothing to choose
         if (data.empty()) return;
-        const auto unit = static_cast<GameObjectId>(data[0]);
+        const auto unit = GameObjectId::fromRaw(data[0]);
         if (!ctx.state.objectExists(unit) || !ctx.state.getObject(unit).location.has_value())
             return;                           // it left in response
         ctx.executor.stunUnitBy(unit, ctx.source);

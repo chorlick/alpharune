@@ -63,7 +63,7 @@ TEST_F(AuditFix7Test, Stupefy_MinusOneMightAndDraw) {
     addToDeck(P1, kInvalidId);  // something to draw
     int before = handSize(P1);
 
-    invokeOnResolve(/*source=*/0, 95, P1, {u}, exec);
+    invokeOnResolve(/*source=*/GameObjectId::fromRaw(0), 95, P1, {u}, exec);
 
     EXPECT_EQ(state.getObject(u).current_might, 4);   // 5 - 1
     EXPECT_EQ(handSize(P1), before + 1);              // drew 1
@@ -75,7 +75,7 @@ TEST_F(AuditFix7Test, Stupefy_FloorMinimumOne) {
     auto u = addUnit(P1, kInvalidId, /*might=*/1, /*at_bf=*/0);
     addToDeck(P1, kInvalidId);
 
-    invokeOnResolve(0, 95, P1, {u}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 95, P1, {u}, exec);
 
     // -1 from 1 would be 0, but floored to minimum 1.
     EXPECT_EQ(state.getObject(u).current_might, 1);
@@ -87,7 +87,7 @@ TEST_F(AuditFix7Test, Stupefy_NoTargetStillDraws) {
     addToDeck(P1, kInvalidId);
     int before = handSize(P1);
 
-    invokeOnResolve(0, 95, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 95, P1, {}, exec);
 
     EXPECT_EQ(handSize(P1), before + 1);  // draw 1 fires even with no target
 }
@@ -231,7 +231,7 @@ TEST_F(AuditFix7Test, Switcheroo_SwapsMight) {
     auto b = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
     // Direct invoke: pickTargetPair defaults to first legal a + first legal b.
-    invokeOnResolve(0, 466, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 466, P1, {}, exec);
 
     // The two units at BF 0 have their Might swapped.
     int ma = state.getObject(a).current_might;
@@ -246,7 +246,7 @@ TEST_F(AuditFix7Test, Switcheroo_NoOpWithFewerThanTwoUnits) {
     exec.setCardRegistry(&card_registry);
     auto a = addUnit(P1, kInvalidId, /*might=*/6, /*at_bf=*/0);
 
-    invokeOnResolve(0, 466, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 466, P1, {}, exec);
 
     EXPECT_EQ(state.getObject(a).current_might, 6);  // unchanged, no pair
 }
@@ -258,7 +258,7 @@ TEST_F(AuditFix7Test, Switcheroo_SecondMustBeSameBattlefield) {
     auto a = addUnit(P1, kInvalidId, /*might=*/6, /*at_bf=*/0);
     auto b = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/1);
 
-    invokeOnResolve(0, 466, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 466, P1, {}, exec);
 
     // No second target at the same BF as `a` -> no swap performed.
     EXPECT_EQ(state.getObject(a).current_might, 6);
@@ -427,7 +427,7 @@ TEST_F(AuditFix7Test, Conscription_TakesControlExhaustRecall_LowMight) {
     setXp(P1, 0);  // can't pay 5 XP -> 3M cap applies
     auto enemy = addUnit(P2, kInvalidId, /*might=*/3, /*at_bf=*/0);
 
-    invokeOnResolve(0, 702, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 702, P1, {}, exec);
 
     auto& e = state.getObject(enemy);
     EXPECT_EQ(e.controller, P1);          // took control
@@ -442,7 +442,7 @@ TEST_F(AuditFix7Test, Conscription_RespectsThreeMightCapWhenUnpaid) {
     setXp(P1, 0);  // can't pay -> cap at 3M
     auto big = addUnit(P2, kInvalidId, /*might=*/5, /*at_bf=*/0);
 
-    invokeOnResolve(0, 702, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 702, P1, {}, exec);
 
     // 5M unit exceeds the 3M cap and isn't a legal target -> unchanged.
     EXPECT_EQ(state.getObject(big).controller, P2);
@@ -455,7 +455,7 @@ TEST_F(AuditFix7Test, Conscription_FiveXpWidensToAnyUnit) {
     setXp(P1, 5);  // confirmOptional defaults YES in direct call -> pay & widen
     auto big = addUnit(P2, kInvalidId, /*might=*/9, /*at_bf=*/0);
 
-    invokeOnResolve(0, 702, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 702, P1, {}, exec);
 
     EXPECT_EQ(state.getObject(big).controller, P1);  // widened cap -> 9M legal
     EXPECT_TRUE(state.getObject(big).is_exhausted);
@@ -469,7 +469,7 @@ TEST_F(AuditFix7Test, Conscription_OnlyEnemyUnitsAtBattlefield) {
     auto friendly = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);  // friendly, ignored
     auto enemyBase = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/-1); // enemy at base, ignored
 
-    invokeOnResolve(0, 702, P1, {}, exec);
+    invokeOnResolve(GameObjectId::fromRaw(0), 702, P1, {}, exec);
 
     EXPECT_EQ(state.getObject(friendly).controller, P1);
     EXPECT_EQ(state.getObject(enemyBase).controller, P2);  // not at BF -> untouched

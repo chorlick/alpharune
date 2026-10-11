@@ -128,7 +128,7 @@ EditResult StateEditor::moveObject(GameState& state,
                                    ZoneType target_zone,
                                    bool to_top) {
     if (state.objects.find(object_id) == state.objects.end()) {
-        return EditResult::fail("object not found: " + std::to_string(static_cast<int>(object_id)));
+        return EditResult::fail("object not found: " + std::to_string(static_cast<int>(object_id.raw())));
     }
     if (target_player != PlayerId::Player1 && target_player != PlayerId::Player2) {
         return EditResult::fail("target_player must be Player1 or Player2");

@@ -52,7 +52,7 @@ public:
             }
             PlayerId target_controller = top.controller;
             GameObjectId target_source = top.source;
-            ri.resume_data = {static_cast<int32_t>(target_source),
+            ri.resume_data = {static_cast<int32_t>(target_source.raw()),
                               static_cast<int32_t>(target_controller)};
 
             // [2] is Energy: floating Energy and ready runes both pay it.
@@ -90,7 +90,7 @@ public:
             auto choice = ctx.executor.takeChoice();
             ri.resume_point = 2;
             if (ri.resume_data.size() < 2) return;
-            auto target_source = static_cast<GameObjectId>(ri.resume_data[0]);
+            auto target_source = GameObjectId::fromRaw(ri.resume_data[0]);
             auto target_controller = static_cast<PlayerId>(ri.resume_data[1]);
             if (!ctx.state.objectExists(target_source)) return;
 

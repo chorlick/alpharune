@@ -859,7 +859,7 @@ struct GameState {
     // engine's hot loops read instead of walking every object
     // (core/object_table.h).
     ObjectTable objects;
-    GameObjectId next_object_id = 1;
+    GameObjectId next_object_id = GameObjectId::fromRaw(1);  // ids count up from 1
     // How many times cleanup has looked for units that became [Mighty]
     // (GameObject::mighty_seen is compared with it).
     uint32_t mighty_checks = 0;
@@ -915,7 +915,8 @@ struct GameState {
     // ── Object management ──
 
     GameObjectId createObject() {
-        GameObjectId id = next_object_id++;
+        const GameObjectId id = next_object_id;
+        next_object_id = GameObjectId::fromRaw(id.raw() + 1);
         objects[id] = GameObject{};
         objects[id].id = id;
         return id;

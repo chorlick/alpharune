@@ -1067,21 +1067,21 @@ GameState editorState() {
         return s.objects[id] = o;
     };
     // 1: P2's unit at the battlefield, carrying gear 3.
-    auto& unit = add(1, PlayerId::Player2, ZoneType::BattlefieldZone);
+    auto& unit = add(GameObjectId::fromRaw(1), PlayerId::Player2, ZoneType::BattlefieldZone);
     unit.location = BattlefieldLocation{0};
-    unit.attachments = {3};
-    auto& gear = add(3, PlayerId::Player2, ZoneType::BattlefieldZone);
+    unit.attachments = {GameObjectId::fromRaw(3)};
+    auto& gear = add(GameObjectId::fromRaw(3), PlayerId::Player2, ZoneType::BattlefieldZone);
     gear.location = BattlefieldLocation{0};
-    gear.attached_to = 1;
+    gear.attached_to = GameObjectId::fromRaw(1);
     // 2: P1's facedown card at the battlefield.
-    auto& hidden = add(2, PlayerId::Player1, ZoneType::FacedownZone);
+    auto& hidden = add(GameObjectId::fromRaw(2), PlayerId::Player1, ZoneType::FacedownZone);
     hidden.is_hidden = true;
-    s.battlefields[0].facedown.push_back(2);
+    s.battlefields[0].facedown.push_back(GameObjectId::fromRaw(2));
     // 4: a spell on the chain.
-    add(4, PlayerId::Player1, ZoneType::Chain);
+    add(GameObjectId::fromRaw(4), PlayerId::Player1, ZoneType::Chain);
     // 5: a card in P1's hand.
-    add(5, PlayerId::Player1, ZoneType::Hand);
-    s.player(PlayerId::Player1).hand.push_back(5);
+    add(GameObjectId::fromRaw(5), PlayerId::Player1, ZoneType::Hand);
+    s.player(PlayerId::Player1).hand.push_back(GameObjectId::fromRaw(5));
     return s;
 }
 
@@ -1094,24 +1094,24 @@ bool contains(const std::vector<GameObjectId>& v, GameObjectId id) {
 TEST(StateEditorReviewFix, MovingAFacedownCardTakesItOffTheBattlefield) {
     GameState s = editorState();
     StateEditor ed;
-    ASSERT_TRUE(ed.moveObject(s, 2, PlayerId::Player1, ZoneType::Trash).ok);
+    ASSERT_TRUE(ed.moveObject(s, GameObjectId::fromRaw(2), PlayerId::Player1, ZoneType::Trash).ok);
     EXPECT_TRUE(s.battlefields[0].facedown.empty());   // was left behind as an orphan
-    EXPECT_FALSE(s.getObject(2).is_hidden);
-    EXPECT_TRUE(contains(s.player(PlayerId::Player1).trash, 2));
+    EXPECT_FALSE(s.getObject(GameObjectId::fromRaw(2)).is_hidden);
+    EXPECT_TRUE(contains(s.player(PlayerId::Player1).trash, GameObjectId::fromRaw(2)));
 }
 
 TEST(StateEditorReviewFix, MovingAUnitOffBoardDropsItsGearAndKeepsOwnership) {
     GameState s = editorState();
     StateEditor ed;
     // The UI sends the unit's own owner, not the battlefield's controller.
-    ASSERT_TRUE(ed.moveObject(s, 1, PlayerId::Player2, ZoneType::Hand).ok);
-    const auto& unit = s.getObject(1);
+    ASSERT_TRUE(ed.moveObject(s, GameObjectId::fromRaw(1), PlayerId::Player2, ZoneType::Hand).ok);
+    const auto& unit = s.getObject(GameObjectId::fromRaw(1));
     EXPECT_EQ(unit.owner, PlayerId::Player2);
     EXPECT_EQ(unit.controller, PlayerId::Player2);
-    EXPECT_TRUE(contains(s.player(PlayerId::Player2).hand, 1));
-    EXPECT_FALSE(contains(s.player(PlayerId::Player1).hand, 1));
+    EXPECT_TRUE(contains(s.player(PlayerId::Player2).hand, GameObjectId::fromRaw(1)));
+    EXPECT_FALSE(contains(s.player(PlayerId::Player1).hand, GameObjectId::fromRaw(1)));
     EXPECT_TRUE(unit.attachments.empty());
-    const auto& gear = s.getObject(3);
+    const auto& gear = s.getObject(GameObjectId::fromRaw(3));
     EXPECT_FALSE(gear.attached_to.has_value());
     EXPECT_EQ(gear.zone, ZoneType::Base);
     ASSERT_TRUE(gear.location.has_value());
@@ -1121,33 +1121,33 @@ TEST(StateEditorReviewFix, MovingAUnitOffBoardDropsItsGearAndKeepsOwnership) {
 TEST(StateEditorReviewFix, GivingACardToTheOtherPlayerChangesOwnerAndController) {
     GameState s = editorState();
     StateEditor ed;
-    ASSERT_TRUE(ed.moveObject(s, 5, PlayerId::Player2, ZoneType::Hand).ok);
-    EXPECT_EQ(s.getObject(5).owner, PlayerId::Player2);
-    EXPECT_EQ(s.getObject(5).controller, PlayerId::Player2);
-    EXPECT_FALSE(contains(s.player(PlayerId::Player1).hand, 5));
-    EXPECT_TRUE(contains(s.player(PlayerId::Player2).hand, 5));
+    ASSERT_TRUE(ed.moveObject(s, GameObjectId::fromRaw(5), PlayerId::Player2, ZoneType::Hand).ok);
+    EXPECT_EQ(s.getObject(GameObjectId::fromRaw(5)).owner, PlayerId::Player2);
+    EXPECT_EQ(s.getObject(GameObjectId::fromRaw(5)).controller, PlayerId::Player2);
+    EXPECT_FALSE(contains(s.player(PlayerId::Player1).hand, GameObjectId::fromRaw(5)));
+    EXPECT_TRUE(contains(s.player(PlayerId::Player2).hand, GameObjectId::fromRaw(5)));
 }
 
 TEST(StateEditorReviewFix, MovingAttachedGearDetachesItFromItsUnit) {
     GameState s = editorState();
     StateEditor ed;
-    ASSERT_TRUE(ed.moveObject(s, 3, PlayerId::Player2, ZoneType::Trash).ok);
-    EXPECT_TRUE(s.getObject(1).attachments.empty());
-    EXPECT_FALSE(s.getObject(3).attached_to.has_value());
+    ASSERT_TRUE(ed.moveObject(s, GameObjectId::fromRaw(3), PlayerId::Player2, ZoneType::Trash).ok);
+    EXPECT_TRUE(s.getObject(GameObjectId::fromRaw(1)).attachments.empty());
+    EXPECT_FALSE(s.getObject(GameObjectId::fromRaw(3)).attached_to.has_value());
 }
 
 TEST(StateEditorReviewFix, ChainAndFacedownMovesAreRefused) {
     GameState s = editorState();
     StateEditor ed;
     // To a zone that needs a container entry the editor cannot build.
-    EXPECT_FALSE(ed.moveObject(s, 5, PlayerId::Player1, ZoneType::Chain).ok);
-    EXPECT_FALSE(ed.moveObject(s, 5, PlayerId::Player1, ZoneType::FacedownZone).ok);
-    EXPECT_EQ(s.getObject(5).zone, ZoneType::Hand);
-    EXPECT_TRUE(contains(s.player(PlayerId::Player1).hand, 5));
+    EXPECT_FALSE(ed.moveObject(s, GameObjectId::fromRaw(5), PlayerId::Player1, ZoneType::Chain).ok);
+    EXPECT_FALSE(ed.moveObject(s, GameObjectId::fromRaw(5), PlayerId::Player1, ZoneType::FacedownZone).ok);
+    EXPECT_EQ(s.getObject(GameObjectId::fromRaw(5)).zone, ZoneType::Hand);
+    EXPECT_TRUE(contains(s.player(PlayerId::Player1).hand, GameObjectId::fromRaw(5)));
     // Out of the chain, which would keep an item pointing at it.
-    EXPECT_FALSE(ed.moveObject(s, 4, PlayerId::Player1, ZoneType::Hand).ok);
-    EXPECT_FALSE(ed.moveObjectToBattlefield(s, 4, BattlefieldId::fromRaw(0)).ok);
-    EXPECT_EQ(s.getObject(4).zone, ZoneType::Chain);
+    EXPECT_FALSE(ed.moveObject(s, GameObjectId::fromRaw(4), PlayerId::Player1, ZoneType::Hand).ok);
+    EXPECT_FALSE(ed.moveObjectToBattlefield(s, GameObjectId::fromRaw(4), BattlefieldId::fromRaw(0)).ok);
+    EXPECT_EQ(s.getObject(GameObjectId::fromRaw(4)).zone, ZoneType::Chain);
 }
 
 TEST(StateEditorReviewFix, SetPhaseRejectsValuesOutsideTheEnum) {

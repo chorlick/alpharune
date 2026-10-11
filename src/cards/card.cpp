@@ -113,7 +113,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         mix(ps.hand.size()); mix(ps.trash.size()); mix(ps.banishment.size());
         mix(ps.main_deck.size()); mix(ps.rune_deck.size());
         mix(static_cast<uint64_t>(ps.xp)); mix(static_cast<uint64_t>(ps.score));
-        mix(static_cast<uint64_t>(ps.champion_zone));
+        mix(static_cast<uint64_t>(ps.champion_zone.raw()));
         const auto& pool = ps.rune_pool;
         mix(static_cast<uint64_t>(pool.energy));
         mix(static_cast<uint64_t>(pool.universal_power));
@@ -136,7 +136,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
     for (const auto& [id, obj] : state.objects) {
         uint64_t o = 1469598103934665603ull;
         auto omix = [&o](uint64_t v) { o = (o ^ v) * 1099511628211ull; };
-        omix(static_cast<uint64_t>(id));
+        omix(static_cast<uint64_t>(id.raw()));
         omix(static_cast<uint64_t>(obj.zone.get()));
         if (!obj.location.has_value()) omix(0u);
         else if (const auto* base = std::get_if<BaseLocation>(&*obj.location))
@@ -149,7 +149,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         omix(static_cast<uint64_t>(obj.buff_count));
         omix(static_cast<uint64_t>(obj.damage_marked));
         omix(static_cast<uint64_t>(obj.empowered));
-        omix(obj.attached_to.has_value() ? static_cast<uint64_t>(*obj.attached_to) + 1 : 0u);
+        omix(obj.attached_to.has_value() ? static_cast<uint64_t>((*obj.attached_to).raw()) + 1 : 0u);
         objects += o;
     }
     mix(objects);
@@ -617,7 +617,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     const uint32_t st = choiceState(ri);
     auto store = [&ri](GameObjectId t) {
         while (ri.resume_data.size() < 3) ri.resume_data.push_back(0);
-        ri.resume_data[2] = static_cast<int32_t>(t);
+        ri.resume_data[2] = static_cast<int32_t>(t.raw());
         setChoiceState(ri, kTgtAwait, kTgtDone);
         ri.resume_point = 8;
     };
@@ -630,14 +630,14 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
         // target that is no longer legal is a mistarget (CR 359.3.e.6).
         if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 1)) {
             ri.finalize_checked |= 1;
-            const auto t = static_cast<GameObjectId>(ri.resume_data[2]);
+            const auto t = GameObjectId::fromRaw(ri.resume_data[2]);
             if (t != kInvalidId &&
                 std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end()) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
-                ri.resume_data[2] = static_cast<int32_t>(kInvalidId);
+                ri.resume_data[2] = static_cast<int32_t>(kInvalidId.raw());
             }
         }
-        return static_cast<GameObjectId>(ri.resume_data[2]);
+        return GameObjectId::fromRaw(ri.resume_data[2]);
     }
 
     if (!(st & kTgtAwait)) {
@@ -713,7 +713,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     RIFT_TRACE(ctx.events, "TGT_PICKED: " + label + " = " +
                          (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
                                                     : std::string("?")) +
-                         " (id=" + std::to_string(t) + ")");
+                         " (id=" + toString(t) + ")");
     commitChoice(ctx, *this, t);
     store(t);
     return t;
@@ -753,8 +753,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     const uint32_t st = choiceState(ri);
     while (ri.resume_data.size() < 5) ri.resume_data.push_back(0);
     auto finish = [&ri](GameObjectId a, GameObjectId b) {
-        ri.resume_data[3] = static_cast<int32_t>(a);
-        ri.resume_data[4] = static_cast<int32_t>(b);
+        ri.resume_data[3] = static_cast<int32_t>(a.raw());
+        ri.resume_data[4] = static_cast<int32_t>(b.raw());
         if (a == kInvalidId || b == kInvalidId) nothingToDecide(ri);
         setChoiceState(ri, kPairAwaitA | kPairAwaitB, kPairDone);
         ri.resume_point = 13;
@@ -788,23 +788,23 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         // resolves; one that is no longer legal is unaffected (CR 359.3.e.5).
         if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 2)) {
             ri.finalize_checked |= 2;
-            const auto a = static_cast<GameObjectId>(ri.resume_data[3]);
-            const auto b = static_cast<GameObjectId>(ri.resume_data[4]);
+            const auto a = GameObjectId::fromRaw(ri.resume_data[3]);
+            const auto b = GameObjectId::fromRaw(ri.resume_data[4]);
             if (b != kInvalidId) {
                 const auto lb = legal_b_in_fn(a);
                 if (std::find(lb.begin(), lb.end(), b) == lb.end()) {
                     RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the second target is no longer legal");
-                    ri.resume_data[4] = static_cast<int32_t>(kInvalidId);
+                    ri.resume_data[4] = static_cast<int32_t>(kInvalidId.raw());
                 }
             }
             if (a != kInvalidId &&
                 std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end()) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the first target is no longer legal");
-                ri.resume_data[3] = static_cast<int32_t>(kInvalidId);
+                ri.resume_data[3] = static_cast<int32_t>(kInvalidId.raw());
             }
         }
-        return {static_cast<GameObjectId>(ri.resume_data[3]),
-                static_cast<GameObjectId>(ri.resume_data[4])};
+        return {GameObjectId::fromRaw(ri.resume_data[3]),
+                GameObjectId::fromRaw(ri.resume_data[4])};
     }
 
     // ── Step 1: publish first target ──
@@ -831,9 +831,9 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         RIFT_TRACE(ctx.events, "TGT_PAIR_PICKED_A: " + label + " = " +
                              (ctx.state.objectExists(a) ? ctx.state.getObject(a).name
                                                         : std::string("?")) +
-                             " (id=" + std::to_string(a) + ")");
+                             " (id=" + toString(a) + ")");
         commitChoice(ctx, *this, a);
-        ri.resume_data[3] = static_cast<int32_t>(a);
+        ri.resume_data[3] = static_cast<int32_t>(a.raw());
 
         // ── Step 2: publish second target, filtered by picked_a ──
         auto legal_b = legal_b_fn(a);
@@ -854,7 +854,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     }
 
     // Waiting for the second target.
-    GameObjectId a = static_cast<GameObjectId>(ri.resume_data[3]);
+    GameObjectId a = GameObjectId::fromRaw(ri.resume_data[3]);
     auto picked = ctx.executor.takeChoice();
     auto legal_b = legal_b_fn(a);
     GameObjectId b = legal_b.empty() ? kInvalidId : legal_b.front();
@@ -864,7 +864,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     RIFT_TRACE(ctx.events, "TGT_PAIR_PICKED_B: " + label + " = " +
                          (ctx.state.objectExists(b) ? ctx.state.getObject(b).name
                                                     : std::string("?")) +
-                         " (id=" + std::to_string(b) + ")");
+                         " (id=" + toString(b) + ")");
     commitChoice(ctx, *this, b);
     return finish(a, b);
 }

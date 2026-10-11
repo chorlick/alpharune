@@ -121,7 +121,7 @@ public:
                 for (const auto& i : legal) {
                     if (s.object) {
                         if (!i.chosen_objects.empty() &&
-                            i.chosen_objects.front() == static_cast<GameObjectId>(s.value))
+                            i.chosen_objects.front() == GameObjectId::fromRaw(s.value))
                             return i;
                     } else if (i.chosen_objects.empty() && i.chosen_value.has_value() &&
                                *i.chosen_value == s.value) {
@@ -153,7 +153,7 @@ public:
 private:
     size_t next_ = 0;
 };
-StepAgent::Step O(GameObjectId id) { return {true, static_cast<int>(id)}; }
+StepAgent::Step O(GameObjectId id) { return {true, static_cast<int>(id.raw())}; }
 StepAgent::Step V(int v) { return {false, v}; }
 
 class C3Test : public CardTestFixture {

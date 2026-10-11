@@ -30,7 +30,7 @@ bool BattlefieldState::hasUnitsFrom(
 // ─── GameState queries ───────────────────────────────────────────────────────
 
 void GameState::throwInvalidObjectId(GameObjectId id) {
-    throw std::logic_error("Invalid game object ID: " + std::to_string(id));
+    throw std::logic_error("Invalid game object ID: " + toString(id));
 }
 
 std::vector<GameObjectId> GameState::objectsAt(LocationId loc) const {

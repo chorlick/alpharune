@@ -1079,7 +1079,7 @@ TEST_F(VendettaCTest, Vendetta_Ambessa_AttackKillsWeakerEnemyHereOnlyWhileEmpowe
     EXPECT_TRUE(state.getObject(weaker).location.has_value()) << "not Empowered: no trigger";
 
     exec.empower(ambessa);
-    EnginePathAgent empowered(EnginePathAgent::script({static_cast<int>(weaker)}));
+    EnginePathAgent empowered(EnginePathAgent::script({static_cast<int>(weaker.raw())}));
     fireTriggerThroughEngine(ambessa, TriggerType::WhenIAttack, &empowered);
     ASSERT_EQ(empowered.prompts.size(), 1u);
     EXPECT_EQ(empowered.prompts[0].size(), 1u)

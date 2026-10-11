@@ -47,7 +47,7 @@ public:
         if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         if (ri.resume_point == kDone) return;
 
-        auto card_at = [&](int i) { return static_cast<GameObjectId>(ri.resume_data[1 + i]); };
+        auto card_at = [&](int i) { return GameObjectId::fromRaw(ri.resume_data[1 + i]); };
         auto ask_recycle = [&](int i) {
             std::vector<Intent> choices;
             choices.push_back(objChoice(ctx.controller, card_at(i)));   // recycle it
@@ -120,12 +120,12 @@ public:
             ri.resume_data[0] = actual;
             for (int i = 0; i < actual; ++i) {
                 auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
-                ri.resume_data[1 + i] = static_cast<int32_t>(cid);
+                ri.resume_data[1 + i] = static_cast<int32_t>(cid.raw());
                 if (ctx.state.objectExists(cid)) {
                     auto& obj = ctx.state.getObject(cid);
                     RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
                                          "  PEEKED: " + obj.name + " (id=" +
-                                         std::to_string(cid) +
+                                         toString(cid) +
                                          ") — PRIVATE to " + toString(ctx.controller));
                     ctx.events.emit(CardRevealedEvent{
                         cid, obj.card_def_id, obj.owner,

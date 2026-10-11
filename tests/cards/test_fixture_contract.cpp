@@ -115,51 +115,51 @@ std::vector<Intent> objectPrompt(std::initializer_list<GameObjectId> ids) {
 TEST(FixtureContractPickers, ScriptAnswersByValueThenByObject) {
     auto pick = EnginePathAgent::script({1, 9});
     EXPECT_EQ(pick(mayPrompt()).chosen_value.value_or(-1), 1);
-    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 9u);
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7), GameObjectId::fromRaw(9)})).chosen_objects.front(), GameObjectId::fromRaw(9));
 }
 
 TEST(FixtureContractPickers, ScriptFailsTheTestWhenAnEntryMatchesNothing) {
     auto pick = EnginePathAgent::script({8});
     Intent answer;
-    EXPECT_NONFATAL_FAILURE(answer = pick(objectPrompt({3, 7, 9})), "matches no option");
-    EXPECT_EQ(answer.chosen_objects.front(), 3u);
+    EXPECT_NONFATAL_FAILURE(answer = pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7), GameObjectId::fromRaw(9)})), "matches no option");
+    EXPECT_EQ(answer.chosen_objects.front(), GameObjectId::fromRaw(3));
 }
 
 TEST(FixtureContractPickers, ScriptFailsTheTestAtAPromptAfterItRanOut) {
     auto pick = EnginePathAgent::script({7});
-    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 7u);
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7), GameObjectId::fromRaw(9)})).chosen_objects.front(), GameObjectId::fromRaw(7));
     EXPECT_NONFATAL_FAILURE(pick(mayPrompt()), "after the script ran out");
 }
 
 TEST(FixtureContractPickers, ScriptTakesTheFirstOptionOnlyWhenToldTo) {
     auto pick = EnginePathAgent::script({EnginePathAgent::kFirst, 7, EnginePathAgent::kRest});
-    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 3u) << "kFirst";
-    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 7u);
-    EXPECT_EQ(pick(objectPrompt({5, 6})).chosen_objects.front(), 5u) << "kRest";
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7), GameObjectId::fromRaw(9)})).chosen_objects.front(), GameObjectId::fromRaw(3)) << "kFirst";
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7), GameObjectId::fromRaw(9)})).chosen_objects.front(), GameObjectId::fromRaw(7));
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(5), GameObjectId::fromRaw(6)})).chosen_objects.front(), GameObjectId::fromRaw(5)) << "kRest";
     EXPECT_EQ(pick(mayPrompt()).chosen_value.value_or(-1), 0) << "kRest goes on";
 }
 
 TEST(FixtureContractPickers, ChoosingPicksTheObjectWhenOffered) {
-    auto pick = EnginePathAgent::choosing(7);
-    EXPECT_EQ(pick(objectPrompt({3, 7, 9})).chosen_objects.front(), 7u);
+    auto pick = EnginePathAgent::choosing(GameObjectId::fromRaw(7));
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7), GameObjectId::fromRaw(9)})).chosen_objects.front(), GameObjectId::fromRaw(7));
 }
 
 TEST(FixtureContractPickers, ChoosingFailsTheTestAtAnUnannouncedMay) {
-    auto pick = EnginePathAgent::choosing(7);
+    auto pick = EnginePathAgent::choosing(GameObjectId::fromRaw(7));
     Intent answer;
     EXPECT_NONFATAL_FAILURE(answer = pick(mayPrompt()), "did not announce");
     EXPECT_EQ(answer.chosen_value.value_or(-1), 0) << "and it does not take the yes branch";
 }
 
 TEST(FixtureContractPickers, ChoosingAnswersAnAnnouncedMay) {
-    EXPECT_EQ(EnginePathAgent::choosing(7, EnginePathAgent::May::Yes)(mayPrompt())
+    EXPECT_EQ(EnginePathAgent::choosing(GameObjectId::fromRaw(7), EnginePathAgent::May::Yes)(mayPrompt())
                   .chosen_value.value_or(-1), 1);
-    EXPECT_EQ(EnginePathAgent::choosing(7, EnginePathAgent::May::No)(mayPrompt())
+    EXPECT_EQ(EnginePathAgent::choosing(GameObjectId::fromRaw(7), EnginePathAgent::May::No)(mayPrompt())
                   .chosen_value.value_or(-1), 0);
 }
 
 TEST(FixtureContractPickers, ChoosingFailsTheTestAtAModeOrUnlabelledYesNo) {
-    auto pick = EnginePathAgent::choosing(7, EnginePathAgent::May::Yes);
+    auto pick = EnginePathAgent::choosing(GameObjectId::fromRaw(7), EnginePathAgent::May::Yes);
     Intent zero, one;
     zero.type = one.type = IntentType::MakeChoice;
     zero.chosen_value = 0;
@@ -182,23 +182,23 @@ std::vector<Intent> noneOr(std::initializer_list<GameObjectId> ids) {
 // "Choose a target ... choose another or stop": once the object has been
 // chosen, the picker stops.
 TEST(FixtureContractPickers, ChoosingStopsAtANoneOptionAfterItsObjectWasChosen) {
-    auto pick = EnginePathAgent::choosing(7);
-    EXPECT_EQ(pick(noneOr({3, 7})).chosen_objects.front(), 7u) << "offered: chosen";
-    EXPECT_TRUE(pick(noneOr({3, 9})).chosen_objects.empty()) << "7 was chosen: no more";
+    auto pick = EnginePathAgent::choosing(GameObjectId::fromRaw(7));
+    EXPECT_EQ(pick(noneOr({GameObjectId::fromRaw(3), GameObjectId::fromRaw(7)})).chosen_objects.front(), GameObjectId::fromRaw(7)) << "offered: chosen";
+    EXPECT_TRUE(pick(noneOr({GameObjectId::fromRaw(3), GameObjectId::fromRaw(9)})).chosen_objects.empty()) << "7 was chosen: no more";
 }
 
 // The negative case: the object was never offered and "none" is available.
 // Choosing nothing would let a test pass whose target is wrongly not offered,
 // so this fails the test.
 TEST(FixtureContractPickers, ChoosingFailsAtANoneOptionWhenItsObjectWasNeverOffered) {
-    auto pick = EnginePathAgent::choosing(7);
-    EXPECT_NONFATAL_FAILURE(pick(noneOr({3, 9})), "did not announce");
+    auto pick = EnginePathAgent::choosing(GameObjectId::fromRaw(7));
+    EXPECT_NONFATAL_FAILURE(pick(noneOr({GameObjectId::fromRaw(3), GameObjectId::fromRaw(9)})), "did not announce");
 }
 
 TEST(FixtureContractPickers, ChoosingTakesTheOnlyOptionAndTheFirstOfOtherObjects) {
-    auto pick = EnginePathAgent::choosing(7);
-    EXPECT_EQ(pick(objectPrompt({3})).chosen_objects.front(), 3u);
-    EXPECT_EQ(pick(objectPrompt({3, 9})).chosen_objects.front(), 3u)
+    auto pick = EnginePathAgent::choosing(GameObjectId::fromRaw(7));
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3)})).chosen_objects.front(), GameObjectId::fromRaw(3));
+    EXPECT_EQ(pick(objectPrompt({GameObjectId::fromRaw(3), GameObjectId::fromRaw(9)})).chosen_objects.front(), GameObjectId::fromRaw(3))
         << "7 is not offered: a test of that asserts on wasOffered";
 }
 

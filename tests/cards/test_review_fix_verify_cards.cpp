@@ -259,7 +259,7 @@ public:
         auto& counters = ctx.state.getObject(ctx.source).card_counters;
         counters["__probe_count"] = static_cast<int>(chosen->size());
         for (size_t k = 0; k < chosen->size(); ++k)
-            counters["__probe_" + std::to_string(k)] = static_cast<int>((*chosen)[k]);
+            counters["__probe_" + std::to_string(k)] = static_cast<int>(((*chosen)[k]).raw());
     }
 private:
     const CardDef def_ = [] {
@@ -296,7 +296,7 @@ public:
         auto& counters = ctx.state.getObject(ctx.source).card_counters;
         counters["__probe_count"] = static_cast<int>(chosen->size());
         for (size_t k = 0; k < chosen->size(); ++k)
-            counters["__probe_" + std::to_string(k)] = static_cast<int>((*chosen)[k]);
+            counters["__probe_" + std::to_string(k)] = static_cast<int>(((*chosen)[k]).raw());
     }
 private:
     const CardDef def_ = [] {
@@ -785,7 +785,7 @@ TEST_F(VerifyCardsTest, SpectralMatron_DoesNotOfferABattlefieldUnitsCannotBePlay
     state.battlefields[0].controller = P1;
     state.battlefields[0].blocks_unit_play = true;
     state.battlefields[1].controller = P1;
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap), 2}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap.raw()), 2}));
     playThroughEngine(matron, &agent);
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the unit, where";
     EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
@@ -803,7 +803,7 @@ TEST_F(VerifyCardsTest, RumbleHotheaded_DoesNotOfferABattlefieldUnitsCannotBePla
     state.battlefields[0].blocks_unit_play = true;
     state.battlefields[1].controller = P1;
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(fodder), static_cast<int>(mech), 2}));
+        {1, static_cast<int>(fodder.raw()), static_cast<int>(mech.raw()), 2}));
     fireTriggerThroughEngine(rumble, TriggerType::WhenIConquer, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     const size_t last = agent.prompts.size() - 1;
@@ -920,7 +920,7 @@ TEST_F(VerifyCardsTest, Vayne537_AcceptingPaysOneAndReturnsHerToHand) {
 TEST_F(VerifyCardsTest, VexMocking_OffTheBoardIsNotOfferedTheMove) {
     auto vex = addUnit(P1, kVexMocking, 0);
     auto enemy = addUnit(P2, kShipyardSkulker, 0, 1);
-    o(vex).card_counters["__stunned_unit_id"] = static_cast<int>(enemy);
+    o(vex).card_counters["__stunned_unit_id"] = static_cast<int>(enemy.raw());
     sendToTrash(vex);
     EnginePathAgent agent(EnginePathAgent::script({1}));
     fireTriggerThroughEngine(vex, TriggerType::WhenYouStun, &agent);
@@ -1033,7 +1033,7 @@ TEST_F(VerifyCardsTest, Pin_Batch01_DarkChild315_ReadiesUpToTwoRunesItsControlle
     auto r2 = addRune(P1, Domain::Chaos, true);
     auto r3 = addRune(P1, Domain::Mind, true);
     auto theirs = addRune(P2, Domain::Fury, true);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1.raw()), static_cast<int>(r2.raw())}));
     fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u) << "one prompt per rune, no third";
     EXPECT_TRUE(agent.wasOffered(theirs)) << "\"runes\": any rune on the board (no \"friendly\" in the text)";
@@ -1263,7 +1263,7 @@ TEST_F(VerifyCardsTest, RumbleHotheaded_TheUnitIsRecycledBeforeTheOpponentCanRes
     auto fodder = addUnit(P1, kShipyardSkulker, 7);
     auto mech = addToTrash(P1, kMegaMech);
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(fodder), static_cast<int>(mech)}));
+        {1, static_cast<int>(fodder.raw()), static_cast<int>(mech.raw())}));
     fireAndProbe(rumble, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         EXPECT_FALSE(live.getObject(fodder).location.has_value()) << "recycled as the cost";
         EXPECT_FALSE(live.getObject(mech).location.has_value()) << "not played yet";
@@ -1281,7 +1281,7 @@ TEST_F(VerifyCardsTest, OverzealousFan_IsDeadBeforeTheOpponentCanRespond) {
     b.defender = P1;
     o(fan).combat_designation = CombatDesignation::Defender;
     o(attacker).combat_designation = CombatDesignation::Attacker;
-    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
+    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker.raw());
     EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
     fireAndProbe(fan, TriggerType::WhenIDefend, &agent, [&](GameState& live) {
         EXPECT_FALSE(live.getObject(fan).location.has_value()) << "\"kill me\" is the cost";
@@ -1857,7 +1857,7 @@ TEST_F(VerifyCardsTest, ForgeOfTheFluft_TheEquipmentAndUnitAreChosenAtActivation
     act.player = P1;
     act.ability_source = lg;
     act.granted_ability_def = kForgeOfTheFluft;
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword), static_cast<int>(b)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword.raw()), static_cast<int>(b.raw())}));
     executeAndProbe(act, &agent, [&](GameState& live) {
         ASSERT_FALSE(live.chain.items.empty());
         const auto& chosen = live.chain.items.back().chosen_objects;
@@ -1997,7 +1997,7 @@ TEST_F(VerifyCardsTest, BlastCone_DoesNotOfferAnEnemyUnitItCannotMove) {
     // Yes, the unit, to its base (mode 0); the stun "may" that follows is declined.
     EnginePathAgent agent(EnginePathAgent::script({
         1,                              // "may move an enemy unit": yes
-        static_cast<int>(free_unit),    // which enemy unit
+        static_cast<int>(free_unit.raw()),    // which enemy unit
         0,                              // where: mode 0 = its base (mode 2 = battlefield #1)
         0,                              // the move triggers "you may exhaust this to [Stun] it": no
     }));
@@ -2031,7 +2031,7 @@ TEST_F(VerifyCardsTest, WildclawShaman_SpendingABuffDoesNotChooseTheUnit) {
     o(plain).buff_count = 1;
     o(plain).recomputeMight();
     auto shaman = addToHand(P1, kWildclawShaman);
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(irelia)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(irelia.raw())}));
     playThroughEngine(shaman, &agent);
     EXPECT_TRUE(agent.wasOffered(plain)) << "the controller picks whose buff is spent";
     EXPECT_EQ(o(irelia).buff_count, 0) << "\"spend a buff\"";
@@ -2075,7 +2075,7 @@ TEST_F(VerifyCardsTest, OverzealousFan_SurvivingTheKillMovesNobody) {
     b.defender = P1;
     o(fan).combat_designation = CombatDesignation::Defender;
     o(attacker).combat_designation = CombatDesignation::Attacker;
-    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker);
+    o(fan).card_counters["__defend_attacker_id"] = static_cast<int>(attacker.raw());
     o(fan).death_replacement_recall_pending = true;      // recalled instead of dying
     EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fan, TriggerType::WhenIDefend, &agent);
@@ -2136,7 +2136,7 @@ TEST_F(VerifyCardsTest, ElderDragon_DeflectIsCountedAcrossLocations) {
     auto at_bf = addUnit(P2, kIreliaFervent, 0, 0);
     power(P1, Domain::Body) = 1;                          // all P1 can pay
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(in_base), static_cast<int>(at_bf)}));
+        {static_cast<int>(in_base.raw()), static_cast<int>(at_bf.raw())}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u) << "after the first pick nothing is left to pay with";
     EXPECT_TRUE(agent.wasOffered(in_base));
@@ -2204,7 +2204,7 @@ TEST_F(VerifyCardsTest, JayceBrilliantInventor_IsAskedAgainAfterNewChoicesAndSti
     auto gear = addGear(P1, kSerratedDirk);
     // Finalization: yes, `first`. After the new choices: yes, `second`.
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(first), 1, static_cast<int>(second)}));
+        {1, static_cast<int>(first.raw()), 1, static_cast<int>(second.raw())}));
     GameEngine* live = nullptr;
     bool rechosen = false;
     PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
@@ -2458,7 +2458,7 @@ TEST_F(VerifyCardsTest, Deceiver_ThroughTheEngine_TheCostIsPaidBeforeTheOpponent
     auto keep = addToHand(P1, kMeditation);
     auto discard = addToHand(P1, kMeditation);
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(discard), static_cast<int>(model)}));
+        {1, static_cast<int>(discard.raw()), static_cast<int>(model.raw())}));
     fireAndProbe(legend, TriggerType::WhenIConquerOrHold, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 2u) << "the may and the discard: at finalization";
         EXPECT_TRUE(live.getObject(legend).is_exhausted) << "\"exhaust me\" (CR 383.3.b)";
@@ -2512,7 +2512,7 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheRevealIsDecidedBeforeTheOpponentCanR
         // the top card. Meditation is a [2] spell P1 has nothing to pay for,
         // so it stays banished and nothing more is asked. (Declining:
         // RekSaiSwarmQueen_BanishNoneRecyclesBothRevealedCards.)
-        static_cast<int>(top),
+        static_cast<int>(top.raw()),
     }));
     fireAndProbe(reksai, TriggerType::WhenIAttack, &agent, [&](GameState&) {
         EXPECT_EQ(agent.prompts.size(), 1u)
@@ -2534,7 +2534,7 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheUnitMayGoToBaseAndNotWhereUnitsCanno
     addToDeck(P1, kMeditation);
     auto unit = addToDeck(P1, kShipyardSkulker);              // top
     ps(P1).rune_pool.energy = card_db.get(kShipyardSkulker).energy_cost;
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit.raw()), 0}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &agent);
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the card, where";
     EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
@@ -2550,7 +2550,7 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheUnitCanBePlayedHere) {
     addToDeck(P1, kMeditation);
     auto unit = addToDeck(P1, kShipyardSkulker);
     ps(P1).rune_pool.energy = card_db.get(kShipyardSkulker).energy_cost;
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(unit.raw()), 1}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &agent);
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_FALSE(inBanishment(P1, unit));
@@ -2618,7 +2618,7 @@ TEST_F(VerifyCardsTest, GlascMixologist_ChoosesWhereAndIsNotOfferedABattlefieldU
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap), 2}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap.raw()), 2}));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(glasc); },
                          &agent);
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the unit, where";
@@ -2641,7 +2641,7 @@ TEST_F(VerifyCardsTest, HeedlessResurrection_DoesNotOfferABattlefieldUnitsCannot
     // The unit to kill, the unit to play, where (mode 0 = base, then the
     // battlefields units can be played to, in order).
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(victim), static_cast<int>(corpse), 1}));
+        {static_cast<int>(victim.raw()), static_cast<int>(corpse.raw()), 1}));
     playThroughEngine(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 3u);
     EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
@@ -2754,7 +2754,7 @@ TEST_F(VerifyCardsTest, WildClaw_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) 
     addUnit(P1, kInvalidId, 1, 1);
     ps(P1).rune_pool.energy = 2;
     // The card, where (0 = base, 1 + i = battlefield i), then "yes" to Empower.
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mech), 2, 1}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mech.raw()), 2, 1}));
     playThroughEngine(spell, &agent);
     ASSERT_GE(agent.prompts.size(), 2u);
     EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "base";
@@ -3020,7 +3020,7 @@ TEST_F(VerifyCardsTest, Udyr_OffTheBoardSpendsNoBuffAndDoesNothing) {
     act.type = IntentType::ActivateAbility;
     act.player = P1;
     act.ability_source = udyr;
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(enemy)}));   // Deal 2
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(enemy.raw())}));   // Deal 2
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); }, &agent);
     EXPECT_EQ(o(udyr).buff_count, 1) << "the buff of a card in the trash is not spent";
     EXPECT_EQ(o(udyr).card_counters.count("__udyr_modes_mask"), 0u) << "no mode used up";
@@ -3144,7 +3144,7 @@ TEST_F(VerifyCardsTest, HeedlessResurrection_APlayerWhoMayOnlyPlayUnitsToBaseIsO
     addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(victim), static_cast<int>(corpse), EnginePathAgent::kFirst}));   // only "Base" is offered (asserted below)
+        {static_cast<int>(victim.raw()), static_cast<int>(corpse.raw()), EnginePathAgent::kFirst}));   // only "Base" is offered (asserted below)
     playThroughEngine(spell, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     EXPECT_FALSE(promptOffersValue(agent, agent.prompts.size() - 1, 1))
@@ -3163,7 +3163,7 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     // Two prompts, both asked as the spell resolves (the friendly unit is the
     // play-time target handed to playAt).
     EnginePathAgent agent(EnginePathAgent::script({
-        static_cast<int>(warden),   // "Deal 3 to an enemy unit at a battlefield": the Warden,
+        static_cast<int>(warden.raw()),   // "Deal 3 to an enemy unit at a battlefield": the Warden,
                                     // the only enemy unit
         0,                          // where the banished unit is played: option 0 = base,
                                     // the only place on offer (asserted below)
@@ -3364,7 +3364,7 @@ TEST_F(VerifyCardsTest, Pin_Udyr_LeftInResponse_DealTwoAndStunStillResolve) {
         act.type = IntentType::ActivateAbility;
         act.player = P1;
         act.ability_source = udyr;
-        EnginePathAgent agent(EnginePathAgent::script({mode, static_cast<int>(enemy)}));
+        EnginePathAgent agent(EnginePathAgent::script({mode, static_cast<int>(enemy.raw())}));
         executeAndProbe(act, &agent, [&](GameState& live) {
             EXPECT_EQ(live.getObject(udyr).buff_count, 0) << "spent as the ability was activated";
             EXPECT_EQ(live.getObject(enemy).damage_marked, 0) << "not resolved yet";
@@ -3446,7 +3446,7 @@ TEST_F(VerifyCardsTest, Pin_ElderDragon_DoesNotIgnoreDeflect) {
     auto plain = addUnit(P2, kShipyardSkulker, 0);        // in P2's base
     auto deflect = addUnit(P2, kIreliaFervent, 0, 0);     // [Deflect]: [A] to choose
     // P1 has no Power and no rune: the [A] can't be paid.
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(plain)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(plain.raw())}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u) << "only the location with a unit that can be chosen";
     EXPECT_TRUE(agent.wasOffered(plain));
@@ -3567,7 +3567,7 @@ TEST_F(VerifyCardsTest, ApheliosExalted_IsAskedAgainAfterNewChoicesAndIsNotBlock
 TEST_F(VerifyCardsTest, ApheliosExalted_BuffModeGivesOneBuffAndNoSecond) {
     auto aphelios = addUnit(P1, kApheliosExalted, 4);
     auto friendly = addUnit(P1, kShipyardSkulker, 0);
-    EnginePathAgent first(EnginePathAgent::script({2, static_cast<int>(friendly)}));
+    EnginePathAgent first(EnginePathAgent::script({2, static_cast<int>(friendly.raw())}));
     fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &first);
     ASSERT_EQ(first.prompts.size(), 2u) << "the mode, then the friendly unit";
     EXPECT_TRUE(first.wasOffered(aphelios)) << "the unit is a choice, not the first found";
@@ -3576,7 +3576,7 @@ TEST_F(VerifyCardsTest, ApheliosExalted_BuffModeGivesOneBuffAndNoSecond) {
 
     // The next turn the mode is free again; the unit still has its Buff.
     state.turn.turn_number += 1;
-    EnginePathAgent second(EnginePathAgent::script({2, static_cast<int>(friendly)}));
+    EnginePathAgent second(EnginePathAgent::script({2, static_cast<int>(friendly.raw())}));
     fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &second);
     ASSERT_EQ(second.prompts.size(), 2u);
     EXPECT_EQ(second.prompts[0].size(), 3u) << "a new turn: every mode is offered";
@@ -4178,7 +4178,7 @@ TEST_F(VerifyCardsTest, BardMercurial_TheSecondOpenBattlefieldAndALaterUnitWhenT
     auto u2 = addUnit(P1, kInvalidId, 2);
     auto bard = addToHand(P1, kBardMercurial);
     // Yes to the additional cost; battlefield #1 (mode 1); u2; then "None".
-    EnginePathAgent agent(EnginePathAgent::script({1, 1, static_cast<int>(u2), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, 1, static_cast<int>(u2.raw()), 0}));
     playThroughEngine(bard, &agent);
     ASSERT_TRUE(onBoard(bard));
     EXPECT_TRUE(o(legend).is_exhausted) << "the additional cost";
@@ -4248,7 +4248,7 @@ TEST_F(VerifyCardsTest, Atakhan_TheAdditionalCostKillsTheUnitThePlayerPicks) {
     auto skulker = addUnit(P1, kShipyardSkulker);    // printed [3]
     auto atakhan = addToHand(P1, kAtakhan);          // [10] + 3 Power
     ps(P1).rune_pool = RunePool{};
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(skulker)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(skulker.raw())}));
     playAt(atakhan, {}, &agent);                     // funded with exactly [10] + 3
     ASSERT_TRUE(onBoard(atakhan));
     EXPECT_TRUE(agent.wasOffered(mech));
@@ -4266,7 +4266,7 @@ TEST_F(VerifyCardsTest, IreliaGraceful_TheDiscountIsTakenAsPowerOrAsEnergy) {
     {
         auto spell = addToHand(P1, kPunchFirst);     // [1] + 2 Power
         ps(P1).rune_pool = RunePool{};
-        EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(irelia), 1}));
+        EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(irelia.raw()), 1}));
         playAt(spell, {}, &agent);                   // funded with exactly [1] + 2
         ASSERT_GE(agent.prompts.size(), 2u) << "the target, then [1] or [A]";
         EXPECT_TRUE(promptOffersValue(agent, 1, 0));
@@ -4278,7 +4278,7 @@ TEST_F(VerifyCardsTest, IreliaGraceful_TheDiscountIsTakenAsPowerOrAsEnergy) {
     {
         auto spell = addToHand(P1, kPunchFirst);
         ps(P1).rune_pool = RunePool{};
-        EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(irelia), 0}));
+        EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(irelia.raw()), 0}));
         playAt(spell, {}, &agent);
         EXPECT_EQ(ps(P1).rune_pool.energy, 1) << "[1] less";
         EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "the Power was paid in full";
@@ -4484,7 +4484,7 @@ TEST_F(VerifyCardsTest, SafetyInspector_DecliningTheXpKillsYourUnitToo) {
     auto card = addToHand(P1, kSafetyInspector);
     setXp(P1, 3);
     // No to the XP; then which of my units dies (the Inspector is one of them).
-    EnginePathAgent me(EnginePathAgent::script({0, static_cast<int>(mine)}));
+    EnginePathAgent me(EnginePathAgent::script({0, static_cast<int>(mine.raw())}));
     playThroughEngine(card, &me);
     EXPECT_EQ(ps(P1).xp, 3);
     EXPECT_FALSE(onBoard(mine));
@@ -4648,7 +4648,7 @@ TEST_F(VerifyCardsTest, AngleShot_TheAttachedEquipmentsTextGoesInactive) {
     attach(sword, old_bearer);
     addToDeck(P1, kShipyardSkulker);                     // "Draw 1."
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(unit), static_cast<int>(sword)}));
+        {static_cast<int>(unit.raw()), static_cast<int>(sword.raw())}));
     playThroughEngine(addToHand(P1, kAngleShot), &agent);
     EXPECT_EQ(o(sword).attached_to, std::optional<GameObjectId>{unit});
     EXPECT_TRUE(o(sword).is_rules_text_inactive) << "CR 718.2";
@@ -4671,7 +4671,7 @@ TEST_F(VerifyCardsTest, AngleShot_AttachesNothingToAUnitThatLeftInResponse) {
     play.player = P1;
     play.card = shot;
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(unit), static_cast<int>(sword)}));
+        {static_cast<int>(unit.raw()), static_cast<int>(sword.raw())}));
     executeAndProbe(play, &agent, [&](GameState& live) { removeFromBoard(live, unit); });
     EXPECT_TRUE(agent.wasOffered(unit));
     EXPECT_TRUE(agent.wasOffered(sword));
@@ -4721,7 +4721,7 @@ TEST_F(VerifyCardsTest, DefenderOfTomorrow_EmpoweredMayStillReadyJustOneGear) {
     o(theirs).is_exhausted = true;
     ps(P1).rune_pool.energy = 1;
     // "[1], [E]: Ready a gear." (mode 0), then the gear.
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(mine)}));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(mine.raw())}));
     activate(legend, &agent);
     ASSERT_GE(agent.prompts.size(), 2u) << "which ability, then which gear";
     EXPECT_EQ(agent.prompts[0].size(), 2u);
@@ -4747,7 +4747,7 @@ TEST_F(VerifyCardsTest, DefenderOfTomorrow_EmpoweredReadyTwoGearReadiesTwo) {
     for (auto g : {g1, g2, g3}) o(g).is_exhausted = true;
     ps(P1).rune_pool.energy = 1;
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(g3), static_cast<int>(g1)}));
+        {1, static_cast<int>(g3.raw()), static_cast<int>(g1.raw())}));
     activate(legend, &agent);
     EXPECT_EQ(agent.prompts.size(), 3u) << "which ability, then the two gear";
     EXPECT_FALSE(o(g3).is_exhausted);
@@ -5901,7 +5901,7 @@ TEST_F(VerifyCardsTest, Pin_ShurikenFlip_NoEnemyUnitChosen_StillMovesAFriendlyUn
     auto first = addToHand(P1, kShurikenFlip);
     ASSERT_EQ(playsOffered(first).size(), 1u) << "no enemy unit at a battlefield";
     // The friendly unit, then destination 1 = battlefield #0.
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine.raw()), 1}));
     playThroughEngine(first, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u) << "the damage is not asked";
     EXPECT_EQ(bfOf(mine), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
@@ -5911,7 +5911,7 @@ TEST_F(VerifyCardsTest, Pin_ShurikenFlip_NoEnemyUnitChosen_StillMovesAFriendlyUn
     auto other = addUnit(P1, kInvalidId, 3);
     auto second = addToHand(P1, kShurikenFlip);
     // "No damage"; the friendly unit; destination 1 = battlefield #0.
-    EnginePathAgent decline(EnginePathAgent::script({0, static_cast<int>(other), 1}));
+    EnginePathAgent decline(EnginePathAgent::script({0, static_cast<int>(other.raw()), 1}));
     playThroughEngine(second, &decline);
     ASSERT_EQ(decline.prompts.size(), 3u);
     EXPECT_TRUE(promptOffersValue(decline, 0, 0));
@@ -6352,7 +6352,7 @@ TEST_F(VerifyCardsTest, GentleGemdragon_ThePlayerPicksTheRunesAndMayReadyFewer) 
     auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto theirs = addRune(P2, Domain::Body, /*exhausted=*/true);
     // The third rune, then "None".
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3.raw()), 0}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "\"None\" is on the first prompt";
@@ -6381,7 +6381,7 @@ TEST_F(VerifyCardsTest, DarkChild315_ThePlayerPicksTheRunesAndMayReadyFewer) {
     auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
     auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
     auto theirs = addRune(P2, Domain::Fury, /*exhausted=*/true);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r3.raw()), 0}));
     fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "\"None\" is on the first prompt";
@@ -6411,7 +6411,7 @@ TEST_F(VerifyCardsTest, TargonsPeak_MayReadyFewerThanTwoRunes) {
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     // The second rune, then "None".
-    EnginePathAgent one(EnginePathAgent::script({static_cast<int>(r2), 0}));
+    EnginePathAgent one(EnginePathAgent::script({static_cast<int>(r2.raw()), 0}));
     fireTriggerThroughEngine(peak, TriggerType::AtEndOfTurn, &one);
     ASSERT_EQ(one.prompts.size(), 2u);
     EXPECT_TRUE(promptOffersValue(one, 0, 0)) << "\"None\" is on the first prompt";
@@ -6434,7 +6434,7 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_MayReadyFewerThanTwoRunes) {
     auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto src = addUnit(P1, kInvalidId, 3);
     // Yes; the second rune; "None".
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r2), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r2.raw()), 0}));
     resolveThroughEngine([&](EffectExecutor&, GameState& st) {
         st.getObject(src).card_counters["__ability_energy_cost"] = 7;
         events.emit(ObjectStateChangedEvent{src, "ability_activated"});
@@ -6614,7 +6614,7 @@ TEST_F(VerifyCardsTest, EmperorsDivide_FromFacedownWithNoFriendlyUnitThereIsPlay
     ASSERT_EQ(plays.size(), 1u) << "this setup does offer a hidden Emperor's Divide";
     EXPECT_EQ(plays[0].targets, std::vector<GameObjectId>{here});
 
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(here)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(here.raw())}));
     withEngine([&](GameEngine& e) {
         e.testHook_executeIntent(plays[0]);
         e.testHook_runChain();
@@ -6891,7 +6891,7 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_MayCostAndRunesAreDecidedBeforeTheOppo
     auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto src = addUnit(P1, kInvalidId, 3);
     // Yes; the third rune; the first rune.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r3), static_cast<int>(r1)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r3.raw()), static_cast<int>(r1.raw())}));
     size_t asked_at_response = 99;
     bool cost_paid_at_response = false;
     bool readied_at_response = true;
@@ -6930,7 +6930,7 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped)
     auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
     auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto src = addUnit(P1, kInvalidId, 3);
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r1), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r1.raw()), static_cast<int>(r2.raw())}));
     causeAndProbe([&](GameState& live) {
         live.getObject(src).card_counters["__ability_energy_cost"] = 7;
         events.emit(ObjectStateChangedEvent{src, "ability_activated"});
@@ -7049,7 +7049,7 @@ TEST_F(VerifyCardsTest, CuratorOfTheSands_AnOpponentsExhaustedRuneMayBeReadied) 
     auto theirs = addRune(P2, Domain::Calm, /*exhausted=*/true);
     auto src = addUnit(P1, kInvalidId, 3);
     // Yes; their rune; "None".
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(theirs), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(theirs.raw()), 0}));
     resolveThroughEngine([&](EffectExecutor&, GameState& st) {
         st.getObject(src).card_counters["__ability_energy_cost"] = 7;
         events.emit(ObjectStateChangedEvent{src, "ability_activated"});
@@ -7106,7 +7106,7 @@ TEST_F(VerifyCardsTest, DarkChild315_TheFirstOfTwoNamedRunesGone_TheSecondIsStil
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
     auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1.raw()), static_cast<int>(r2.raw())}));
     fireAndProbe(annie, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 2u) << "both runes are named at finalization";
         removeFromBoard(live, r1);                 // in response: the first pick leaves
@@ -7125,7 +7125,7 @@ TEST_F(VerifyCardsTest, DarkChild315_ARuneExhaustedInResponseIsNotNamedAsItResol
     auto annie = addLegend(P1, kDarkChild);
     auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Chaos);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1.raw())}));
     fireAndProbe(annie, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 1u);
         live.getObject(r2).is_exhausted = true;    // in response: a new candidate
@@ -7146,7 +7146,7 @@ TEST_F(VerifyCardsTest, Sona_StoppedEarly_TheFirstNamedRuneGone_TheSecondIsStill
     auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r4 = addRune(P1, Domain::Calm);
     // r1; r2; "None".
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1.raw()), static_cast<int>(r2.raw()), 0}));
     fireAndProbe(sona, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 3u);
         removeFromBoard(live, r1);
@@ -7260,7 +7260,7 @@ TEST_F(VerifyCardsTest, ApheliosExalted_NamesHisRunesBeforeTheOpponentCanRespond
     auto their_ready = addRune(P2, Domain::Calm);
     // Mode 0 ("Ready 2 runes"); their rune; my second rune.
     EnginePathAgent agent(EnginePathAgent::script(
-        {0, static_cast<int>(theirs), static_cast<int>(mine2)}));
+        {0, static_cast<int>(theirs.raw()), static_cast<int>(mine2.raw())}));
     size_t asked_at_response = 99;
     bool readied_at_response = true;
     fireAndProbe(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
@@ -7289,7 +7289,7 @@ TEST_F(VerifyCardsTest, ApheliosExalted_ARuneGoneInResponseIsSkipped) {
     auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(r1), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(r1.raw()), static_cast<int>(r2.raw())}));
     fireAndProbe(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
         removeFromBoard(live, r1);                 // in response: the first named rune leaves
     });
@@ -7339,7 +7339,7 @@ TEST_F(VerifyCardsTest, Pin_AccelerationGate_OffersAnOpponentsExhaustedRuneUnitA
     o(their_gear).is_exhausted = true;
     auto gate = addToHand(P1, kAccelerationGate);
     // Their rune, then "Done".
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(their_rune), 0}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(their_rune.raw()), 0}));
     playThroughEngine(gate, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_EQ(promptObjects(agent, 0),
@@ -7971,7 +7971,7 @@ TEST_F(VerifyCardsTest, DefenderOfTomorrow_EmpoweredInResponse_AsksNothingMoreAt
     act.player = P1;
     act.ability_source = legend;
     act.ability_index = 0;
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(g2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(g2.raw())}));
     size_t asked_at_response = 99;
     executeAndProbe(act, &agent, [&](GameState& live) {
         asked_at_response = agent.prompts.size();
@@ -8020,7 +8020,7 @@ TEST_F(VerifyCardsTest, ElderDragon_ABattlefieldAddedInResponse_IsNotAskedAboutA
     auto late = addUnit(P2, kInvalidId, 5);
     sendToTrash(late);                                  // not on the board yet
     // The opponent's base is the only location with an enemy unit: one prompt.
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(at_base)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(at_base.raw())}));
     size_t asked_at_response = 99;
     fireAndProbe(dragon, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         asked_at_response = agent.prompts.size();
@@ -8045,7 +8045,7 @@ TEST_F(VerifyCardsTest, ImposingChallenger_ABattlefieldAddedInResponse_NoDestina
     auto imp = addUnit(P1, kImposingChallenger, 0, 0);
     auto foe = addUnit(P2, kInvalidId, 2, 0);
     // Yes; the enemy unit. Battlefield 1 is the only "different battlefield".
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(foe)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(foe.raw())}));
     size_t asked_at_response = 99;
     fireAndProbe(imp, TriggerType::WhenIMove, &agent, [&](GameState& live) {
         asked_at_response = agent.prompts.size();
@@ -8076,7 +8076,7 @@ TEST_F(VerifyCardsTest, VeiledTemple_DetachIsDecidedOnResolutionNotAtFinalizatio
     attach(sword, unit);
     o(sword).is_exhausted = true;
     // Yes; the sword; "Detach it" (mode 1).
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword.raw()), 1}));
     size_t asked_at_response = 99;
     bool exhausted_at_response = false, attached_at_response = false;
     fireAndProbe(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
@@ -8105,7 +8105,7 @@ TEST_F(VerifyCardsTest, VeiledTemple_EquipmentDetachedInResponse_DetachIsNotAske
     auto sword = addGear(P1, kLongSword);
     attach(sword, unit);
     o(sword).is_exhausted = true;
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword.raw())}));
     fireAndProbe(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
         auto& g = live.getObject(sword);
         auto& u = live.getObject(unit);
@@ -8130,7 +8130,7 @@ TEST_F(VerifyCardsTest, TombRaiderBarbara_ARuneLeavesInResponse_TheChosenGearIsS
     GameObjectId last_rune = kInvalidId;
     for (int i = 0; i < 7; ++i) last_rune = addRune(P1, Domain::Fury);
     auto gear = addGear(P2, kInvalidId);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(gear)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(gear.raw())}));
     fireAndProbe(barbara, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         removeFromBoard(live, last_rune);               // six runes as it resolves
     });
@@ -8144,7 +8144,7 @@ TEST_F(VerifyCardsTest, Ambessa_DisempoweredInResponse_TheChosenUnitIsStillKille
     auto ambessa = addUnit(P1, kAmbessaRespectedAndFeared, 0, 0);
     o(ambessa).empowered = 1;
     auto foe = addUnit(P2, kInvalidId, 1, 0);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(foe)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(foe.raw())}));
     fireAndProbe(ambessa, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
         live.getObject(ambessa).empowered = 0;
     });
@@ -8159,7 +8159,7 @@ TEST_F(VerifyCardsTest, DameTheDespoiler_DisempoweredInResponse_HerMightIsStillR
     auto giant = addUnit(P2, kInvalidId, 9, 0);
     const int before = o(dame).current_might;
     ASSERT_LT(before, 9);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(giant)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(giant.raw())}));
     fireAndProbe(dame, TriggerType::WhenIAttackOrDefend, &agent, [&](GameState& live) {
         live.getObject(dame).empowered = 0;
     });
@@ -8219,12 +8219,12 @@ TEST_F(VerifyCardsTest, Pin_MischievousMarai_MovedToBaseInResponse_HereIsGoneAnd
     auto marai = addUnit(P1, kMischievousMarai, 0, 0);
     auto foe = addUnit(P2, kInvalidId, 9, 0);
     // She stays: 2 to the chosen unit.
-    EnginePathAgent stays(EnginePathAgent::script({static_cast<int>(foe)}));
+    EnginePathAgent stays(EnginePathAgent::script({static_cast<int>(foe.raw())}));
     fireAndProbe(marai, TriggerType::WhenYouPlayMe, &stays, [](GameState&) {});
     ASSERT_EQ(stays.prompts.size(), 1u);
     EXPECT_EQ(o(foe).damage_marked, 2);
     // She is moved to her base in response: the unit is no longer "here".
-    EnginePathAgent moved(EnginePathAgent::script({static_cast<int>(foe)}));
+    EnginePathAgent moved(EnginePathAgent::script({static_cast<int>(foe.raw())}));
     fireAndProbe(marai, TriggerType::WhenYouPlayMe, &moved, [&](GameState& live) {
         putOnBoard(live, marai);                        // -1: her controller's base
     });
@@ -8246,7 +8246,7 @@ TEST_F(VerifyCardsTest, SelectSeveral_AStoredPickNoLongerInTheListIsDroppedAndNo
     GameObjectId late = kInvalidId;
     size_t prompts_at_priority = 0;
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(a), static_cast<int>(b), static_cast<int>(c)}));
+        {static_cast<int>(a.raw()), static_cast<int>(b.raw()), static_cast<int>(c.raw())}));
     fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         prompts_at_priority = agent.prompts.size();
         EXPECT_EQ(live.getObject(probe).card_counters.count("__probe_count"), 0u)
@@ -8268,8 +8268,8 @@ TEST_F(VerifyCardsTest, SelectSeveral_AStoredPickNoLongerInTheListIsDroppedAndNo
     ASSERT_EQ(counters.count("__probe_count"), 1u) << "the ability resolved";
     EXPECT_EQ(counters.at("__probe_count"), 2) << "the stale pick is dropped, not kept";
     ASSERT_EQ(counters.count("__probe_1"), 1u);
-    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(a));
-    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(c)) << "pick order kept, no gap";
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(a.raw()));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(c.raw())) << "pick order kept, no gap";
     EXPECT_EQ(counters.count("__probe_2"), 0u);
 }
 
@@ -8292,7 +8292,7 @@ TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceWithOneInstanceGoneCoun
     o(y).buff_count = 1;
     size_t prompts_at_priority = 0;
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(x), static_cast<int>(x), static_cast<int>(y)}));
+        {static_cast<int>(x.raw()), static_cast<int>(x.raw()), static_cast<int>(y.raw())}));
     fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         prompts_at_priority = agent.prompts.size();
         live.getObject(x).buff_count = 1;       // one of X's two buffs is gone
@@ -8307,8 +8307,8 @@ TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceWithOneInstanceGoneCoun
     ASSERT_EQ(counters.count("__probe_count"), 1u) << "the ability resolved";
     EXPECT_EQ(counters.at("__probe_count"), 2) << "X once, Y once";
     ASSERT_EQ(counters.count("__probe_1"), 1u);
-    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
-    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(y));
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x.raw()));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(y.raw()));
     EXPECT_EQ(counters.count("__probe_2"), 0u);
 }
 
@@ -8324,15 +8324,15 @@ TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceIsReturnedTwiceWhenBoth
     o(x).buff_count = 2;
     o(y).buff_count = 1;
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(x), static_cast<int>(x), static_cast<int>(y)}));
+        {static_cast<int>(x.raw()), static_cast<int>(x.raw()), static_cast<int>(y.raw())}));
     fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [](GameState&) {});
     EXPECT_EQ(agent.prompts.size(), 3u);
     const auto& counters = o(probe).card_counters;
     ASSERT_EQ(counters.count("__probe_count"), 1u);
     EXPECT_EQ(counters.at("__probe_count"), 3);
-    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
-    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(x));
-    EXPECT_EQ(counters.at("__probe_2"), static_cast<int>(y));
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x.raw()));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(x.raw()));
+    EXPECT_EQ(counters.at("__probe_2"), static_cast<int>(y.raw()));
 }
 
 
@@ -8471,7 +8471,7 @@ TEST_F(VerifyCardsTest, TwistedFateGambler_VoidHatchlingMayLeaveTheTopRune) {
     addRuneToRuneDeck(P1, Domain::Mind);
     auto top = addRuneToRuneDeck(P1, Domain::Order);
     // The look: leave it; then [Y] "Stun an enemy unit".
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(enemy)}));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(enemy.raw())}));
     fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(o(enemy).is_stunned);

@@ -83,6 +83,33 @@ inline void strongIdCase(GameState& state, const CardDB& db, GameObject& obj) {
     (void)db.get(obj.hidden_at);
 #elif STRONG_ID_CASE == 15
     (void)state.battlefields[obj.card_def_id];
+#elif STRONG_ID_CASE == 16
+    // THE mix-up: a card-template id where a runtime object id is expected.
+    (void)state.getObject(obj.card_def_id);
+#elif STRONG_ID_CASE == 17
+    // ... and the reverse.
+    (void)db.get(obj.id);
+#elif STRONG_ID_CASE == 18
+    obj.card_def_id = obj.id;
+#elif STRONG_ID_CASE == 19
+    if (obj.id == obj.card_def_id) return;
+#elif STRONG_ID_CASE == 20
+    // An object id takes no number, and is none only as kInvalidId.
+    (void)state.getObject(1);
+#elif STRONG_ID_CASE == 21
+    if (obj.id == 0) return;
+#elif STRONG_ID_CASE == 22
+    obj.attachments.push_back(runtimeNumber());
+#elif STRONG_ID_CASE == 23
+    // A battlefield slot is not an object.
+    (void)state.getObject(obj.hidden_at);
+#elif STRONG_ID_CASE == 24
+    // kInvalidId is not a number by itself (kInvalidId.raw() is).
+    const uint32_t n = kInvalidId;
+    (void)n;
+#elif STRONG_ID_CASE == 25
+    int slot = 3;
+    if (slot == kInvalidId) return;
 #else
 #error "unknown STRONG_ID_CASE"
 #endif

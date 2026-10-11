@@ -439,7 +439,7 @@ std::vector<std::string> check(const GameState& state) {
     std::vector<std::string> out;
     auto say = [&](PlayerId o, GameObjectId id, const std::string& what) {
         out.push_back("P" + std::to_string(static_cast<int>(o)) + " object " +
-                      std::to_string(id) + ": " + what);
+                      toString(id) + ": " + what);
     };
     for (PlayerId o : kPlayers) {
         GameKnowledgeView view(state, o);

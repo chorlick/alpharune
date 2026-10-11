@@ -72,8 +72,8 @@ public:
             int n = static_cast<int>(ps.main_deck.size());
             if (n >= 1) a = ps.main_deck[ps.main_deck.size() - 1];
             if (n >= 2) b = ps.main_deck[ps.main_deck.size() - 2];
-            ri.resume_data[1] = static_cast<int32_t>(a);
-            ri.resume_data[2] = static_cast<int32_t>(b);
+            ri.resume_data[1] = static_cast<int32_t>(a.raw());
+            ri.resume_data[2] = static_cast<int32_t>(b.raw());
 
             std::vector<GameObjectId> revealed;
             for (auto cid : {a, b}) {
@@ -106,8 +106,8 @@ public:
         }
 
         // phase == 1: consume the banish choice and finish.
-        GameObjectId a = static_cast<GameObjectId>(ri.resume_data[1]);
-        GameObjectId b = static_cast<GameObjectId>(ri.resume_data[2]);
+        GameObjectId a = GameObjectId::fromRaw(ri.resume_data[1]);
+        GameObjectId b = GameObjectId::fromRaw(ri.resume_data[2]);
         GameObjectId banished = kInvalidId;
         // CR 355.2.a: no location is printed, so a unit goes to its
         // controller's base or to a battlefield they control (and may be
@@ -121,7 +121,7 @@ public:
         std::optional<LocationId> where_to;
         if (phase == 2) {
             // Re-entered with the location (0 = base, 1 + i = battlefield slot i).
-            banished = static_cast<GameObjectId>(ri.resume_data[0]);
+            banished = GameObjectId::fromRaw(ri.resume_data[0]);
             const int v = takenValue(ctx, 0);
             if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
                 where_to = LocationId{BattlefieldLocation{bfs[v - 1].id}};
@@ -144,7 +144,7 @@ public:
                 if (!where.empty()) {
                     where.insert(where.begin(),
                                  valChoice(ctx.controller, 0, "Void Burrower: play to base"));
-                    ri.resume_data[0] = static_cast<int32_t>(banished);
+                    ri.resume_data[0] = static_cast<int32_t>(banished.raw());
                     ri.resume_data[3] = 2;   // phase = awaiting the location
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
                                                "Void Burrower: where to play it");

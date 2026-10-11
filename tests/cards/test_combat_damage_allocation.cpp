@@ -317,7 +317,7 @@ TEST_F(DamageAllocationTest, DistinctOptionsHaveDistinctOutcomes) {
         std::sort(kv.begin(), kv.end());
         std::string key;
         for (auto& [t, d] : kv) {
-            key += std::to_string(t); key += ':'; key += std::to_string(d); key += ',';
+            key += toString(t); key += ':'; key += std::to_string(d); key += ',';
         }
         EXPECT_TRUE(seen.insert(key).second) << "duplicate outcome: " << key;
     }

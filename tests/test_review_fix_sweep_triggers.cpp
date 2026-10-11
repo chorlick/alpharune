@@ -2540,7 +2540,7 @@ TEST_F(SweepTriggersTest, Reflexive_DeceiverTheCopyIsAChainItem) {
     auto asked = std::make_shared<int>(0);
     int asked_then = -1;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        const auto token = static_cast<GameObjectId>(ci.reflexive_data.at(0));
+        const auto token = GameObjectId::fromRaw(ci.reflexive_data.at(0));
         token_name_then = st.getObject(token).name;
         temporary_then = st.getObject(token).keywords.has(Keyword::Temporary);
         asked_then = *asked;
@@ -2720,7 +2720,7 @@ TEST_F(ReflexiveCardsTest, Guards) {
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Order)] = 1;
     bool exhausted_then = false; int power_then = -1;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        exhausted_then = st.getObject(static_cast<GameObjectId>(ci.reflexive_data.at(0))).is_exhausted;
+        exhausted_then = st.getObject(GameObjectId::fromRaw(ci.reflexive_data.at(0))).is_exhausted;
         power_then = st.player(P1).rune_pool.power[static_cast<int>(Domain::Order)];
     };
     cast(spell, {}, answers({}, {0}));
@@ -2738,7 +2738,7 @@ TEST_F(ReflexiveCardsTest, Arise) {
     bool exhausted_then = false;
     GameObjectId token = kInvalidId;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        token = static_cast<GameObjectId>(ci.reflexive_data.at(0));
+        token = GameObjectId::fromRaw(ci.reflexive_data.at(0));
         exhausted_then = st.getObject(token).is_exhausted;
     };
     // The one token is the first (lowest-id) object offered; answered by a
@@ -2834,7 +2834,7 @@ TEST_F(ReflexiveCardsTest, MirrorImage) {
     auto spell = addToHand(P1, 757);
     std::string name_then; bool temporary_then = true;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
-        const auto& t = st.getObject(static_cast<GameObjectId>(ci.reflexive_data.at(0)));
+        const auto& t = st.getObject(GameObjectId::fromRaw(ci.reflexive_data.at(0)));
         name_then = t.name;
         temporary_then = t.keywords.has(Keyword::Temporary);
     };
@@ -2902,7 +2902,7 @@ TEST_F(ReflexiveCardsTest, KeeperOfMasks) {
     int blank_then = 0;
     p2.look = [&](const GameState& st, const ChainItem& ci) {
         for (auto v : ci.reflexive_data)
-            if (st.getObject(static_cast<GameObjectId>(v)).card_def_id != kKeeper) ++blank_then;
+            if (st.getObject(GameObjectId::fromRaw(v)).card_def_id != kKeeper) ++blank_then;
     };
     trigger(keeper, TriggerType::WhenYouPlayMe, answers({}));
     EXPECT_EQ(blank_then, 2) << "two Reflections, not yet copies";

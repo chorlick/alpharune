@@ -643,7 +643,7 @@ gtest_discover_tests(riftbound_tests)
 # tests/compile_fail/strong_id_mix.cc is compiled on its own, syntax only:
 # case 0 must compile, every other case must be rejected by the compiler.
 # RIFTBOUND_STRONG_ID_FAIL_CASES is the number of the last case.
-set(RIFTBOUND_STRONG_ID_FAIL_CASES 15)
+set(RIFTBOUND_STRONG_ID_FAIL_CASES 25)
 foreach(_case RANGE 0 ${RIFTBOUND_STRONG_ID_FAIL_CASES})
     add_test(NAME riftbound_strong_id_case_${_case}
         COMMAND ${CMAKE_CXX_COMPILER} -std=c++20 -fsyntax-only

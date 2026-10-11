@@ -745,7 +745,7 @@ TEST_F(C5Test, SpectralMatronLimitsThePrintedCostAndAsksWhere) {
     auto cheap = addToTrash(P1, kShipyardSkulker);     // [3]
     auto powered = addToTrash(P1, kKrakenHunter);      // [3][O][O]: more than [A]
     state.battlefields[0].controller = P1;
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap.raw()), 1}));
     playThroughEngine(matron, &agent);
     EXPECT_FALSE(agent.wasOffered(powered)) << "no more than [3] AND no more than [A]";
     ASSERT_TRUE(onBoard(cheap));
@@ -844,7 +844,7 @@ TEST_F(C5Test, RumbleHotheadedLetsThePlayerChooseBothCards) {
     auto mech = addToTrash(P1, kMegaMech);               // [7]
     state.player(P1).rune_pool.energy = 2;               // 7 - 5
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(big), static_cast<int>(mech)}));
+        {1, static_cast<int>(big.raw()), static_cast<int>(mech.raw())}));
     fireTriggerThroughEngine(rumble, TriggerType::WhenIConquer, &agent);
     EXPECT_TRUE(agent.wasOffered(small));
     EXPECT_TRUE(onBoard(mech)) << "its Energy cost is reduced by the recycled unit's Might";
@@ -927,7 +927,7 @@ TEST_F(C5Test, AzirMayLeaveTheEquipmentWhereItIs) {
         }, &agent);
     };
     auto azir = addUnit(P1, kAzir, 0);
-    EnginePathAgent no(EnginePathAgent::script({0, static_cast<int>(swap_with)}));
+    EnginePathAgent no(EnginePathAgent::script({0, static_cast<int>(swap_with.raw())}));
     activate(azir, no);
     EXPECT_EQ(state.getObject(azir).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(state.getObject(swap_with).isAtBase());
@@ -936,7 +936,7 @@ TEST_F(C5Test, AzirMayLeaveTheEquipmentWhereItIs) {
 
     auto azir2 = addUnit(P1, kAzir, 0, 0);
     EnginePathAgent yes(EnginePathAgent::script(
-        {1, static_cast<int>(swap_with), static_cast<int>(gear)}));
+        {1, static_cast<int>(swap_with.raw()), static_cast<int>(gear.raw())}));
     activate(azir2, yes);
     EXPECT_EQ(state.getObject(gear).attached_to, std::optional<GameObjectId>{azir2});
     EXPECT_TRUE(state.getObject(azir2).isAtBase());
@@ -1077,7 +1077,7 @@ TEST_F(C5Test, OverzealousFanMovesTheAttackerToItsBase) {
     auto other = addUnit(P2, kShipyardSkulker, 0, 0);
     startCombat(BattlefieldId::fromRaw(0), P2, P1);
     state.getObject(attacker).buff_count = 1;
-    state.getObject(fan).card_counters["__defend_attacker_id"] = static_cast<int>(other);
+    state.getObject(fan).card_counters["__defend_attacker_id"] = static_cast<int>(other.raw());
     EnginePathAgent agent(EnginePathAgent::choosing(attacker, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(fan, TriggerType::WhenIDefend, &agent);
     EXPECT_TRUE(agent.wasOffered(other)) << "AN attacking unit: the controller chooses";
@@ -1094,7 +1094,7 @@ TEST_F(C5Test, FizzPlaysTheSpellThePlayerChooses) {
     auto newer = addToTrash(P1, kMeditation);
     addToTrash(P1, kFallingComet);   // [5]: too dear
     for (int i = 0; i < 3; ++i) addToDeck(P1, kShipyardSkulker);   // Mobilize draws 1
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(older)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(older.raw())}));
     playThroughEngine(fizz, &agent);
     EXPECT_TRUE(agent.wasOffered(newer));
     EXPECT_TRUE(inTrash(P1, newer));
@@ -1109,7 +1109,7 @@ TEST_F(C5Test, ZaunPunkKillsTheCostAndTheChosenGear) {
     auto mine = addGear(P1, kSerratedDirk);
     auto theirs = addGear(P2, kDoransShield);
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(mine), static_cast<int>(theirs)}));
+        {1, static_cast<int>(mine.raw()), static_cast<int>(theirs.raw())}));
     playThroughEngine(punk, &agent);
     EXPECT_FALSE(onBoard(mine));
     EXPECT_FALSE(onBoard(theirs));
@@ -1132,7 +1132,7 @@ TEST_F(C5Test, RekSaiRevealIsAMayAndTheBanishIsCounted) {
 
     state.player(P1).rune_pool.energy = 3;
     // "you may play it here": where it goes is asked (mode 1 = battlefield #0, here).
-    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit), 1}));
+    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(unit.raw()), 1}));
     fireTriggerThroughEngine(reksai, TriggerType::WhenIAttack, &yes);
     EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
         << "If it is a unit, you may play it here.";

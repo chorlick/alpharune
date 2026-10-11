@@ -253,7 +253,7 @@ TEST_F(ReviewFixC1Test, ZeroDrive_BearerDiesAndItsOwnDeathTriggersFire) {
     // The Altar's prompts (the Drive's Deathknell asks nothing).
     EnginePathAgent yes(EnginePathAgent::script({
         1,                            // Altar: "may exhaust me to draw 1": yes
-        static_cast<int>(top_card),   // which hand card goes back: the card just drawn
+        static_cast<int>(top_card.raw()),   // which hand card goes back: the card just drawn
                                       // (the hand was empty, it is the only one)
         0,                            // top or bottom: mode 0 = top
     }));
@@ -390,7 +390,7 @@ TEST_F(ReviewFixC1Test, LastRites_EquipRecyclesTheTwoCardsTheControllerChooses) 
         [&](const ObjectStateChangedEvent& e) {
             if (e.what_changed == "recycled_main") ++recycled_events;
         });
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1.raw()), static_cast<int>(r2.raw())}));
     activate(rites, 0, &agent, {unit});
     conn.disconnect();
 
@@ -458,7 +458,7 @@ TEST_F(ReviewFixC1Test, AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst) {
 
     EnginePathAgent yes1(EnginePathAgent::script({
         1,                        // "may exhaust me to draw 1": yes
-        static_cast<int>(held),   // which hand card goes back: the one held before the draw
+        static_cast<int>(held.raw()),   // which hand card goes back: the one held before the draw
         0,                        // top or bottom: mode 0 = top
     }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(first); }, &yes1);
@@ -471,7 +471,7 @@ TEST_F(ReviewFixC1Test, AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst) {
     // the hand and it can be named again.
     EnginePathAgent yes2(EnginePathAgent::script({
         1,                        // "may exhaust me to draw 1": yes
-        static_cast<int>(held),   // which hand card goes back: `held`, drawn again just now
+        static_cast<int>(held.raw()),   // which hand card goes back: `held`, drawn again just now
         0,                        // top or bottom: mode 0 = top
     }));
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(second); }, &yes2);
@@ -596,8 +596,8 @@ TEST_F(ReviewFixC1Test, ForgottenSignpost_ExhaustsOneUnitAndMovesADifferentOne) 
     auto third = addUnit(P1, kInvalidId, 2, 0);
     auto post = addGear(P1, kForgottenSignpost);
 
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(anchor),
-                                                   static_cast<int>(mover)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(anchor.raw()),
+                                                   static_cast<int>(mover.raw())}));
     activate(post, 0, &agent);
 
     ASSERT_EQ(agent.prompts.size(), 2u);
@@ -671,7 +671,7 @@ TEST_F(ReviewFixC1Test, BlastCone_TheControllerChoosesTheUnitAndWhereItGoes) {
     auto other = addUnit(P2, kInvalidId, 2, 0);
     auto enemy = addUnit(P2, kInvalidId, 2, 0);
     // May: yes. Unit: `enemy`. Destination: battlefield 1 (mode 2). Stun: no.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(enemy), 2, 0}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(enemy.raw()), 2, 0}));
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
 
     EXPECT_TRUE(agent.wasOffered(other));
@@ -1145,8 +1145,8 @@ TEST_F(ReviewFixC1Test, GrandmasterAtArms_OnlyEquipmentOnTheBoardAndTheControlle
     auto blade = addGear(P1, kDoransBlade);
     auto sword = addGear(P1, kBFSword);
     ASSERT_TRUE(offered(jax, 0));
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword),
-                                                   static_cast<int>(unit)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword.raw()),
+                                                   static_cast<int>(unit.raw())}));
     activate(jax, 0, &agent);
 
     EXPECT_TRUE(agent.wasOffered(blade));
@@ -1163,8 +1163,8 @@ TEST_F(ReviewFixC1Test, GrandmasterAtArms_MovesAnAttachedEquipmentToAnotherUnit)
     auto to = addUnit(P1, kInvalidId, 2, 1);
     auto sword = addGear(P1, kBFSword);
     attach(sword, from);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword),
-                                                   static_cast<int>(to)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(sword.raw()),
+                                                   static_cast<int>(to.raw())}));
     activate(jax, 1, &agent);
 
     EXPECT_FALSE(agent.wasOffered(from)) << "not the unit it is already on";

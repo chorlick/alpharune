@@ -242,7 +242,7 @@ TEST(IntegrityFixIds, GetObjectThrowsOnUnknownId) {
     GameState state;
     GameObjectId id = state.createObject();
     EXPECT_NO_THROW(state.getObject(id));
-    EXPECT_THROW(state.getObject(id + 1), std::logic_error);
+    EXPECT_THROW(state.getObject(GameObjectId::fromRaw(id.raw() + 1)), std::logic_error);
     EXPECT_THROW(state.getObject(kInvalidId), std::logic_error);
     const GameState& cstate = state;
     EXPECT_THROW(cstate.getObject(kInvalidId), std::logic_error);
@@ -269,7 +269,7 @@ TEST(IntegrityFixIntent, EqualityDistinguishesAltCostAndGrantedAbilityTwins) {
     Intent play;
     play.type = IntentType::PlayCard;
     play.player = PlayerId::Player1;
-    play.card = 7;
+    play.card = GameObjectId::fromRaw(7);
     Intent alt = play;
     EXPECT_TRUE(play == alt);
     alt.use_alt_play_cost = true;   // Jhin: same card, alternative cost
@@ -278,7 +278,7 @@ TEST(IntegrityFixIntent, EqualityDistinguishesAltCostAndGrantedAbilityTwins) {
     Intent own;
     own.type = IntentType::ActivateAbility;
     own.player = PlayerId::Player1;
-    own.ability_source = 9;
+    own.ability_source = GameObjectId::fromRaw(9);
     Intent granted = own;
     EXPECT_TRUE(own == granted);
     granted.granted_ability_def = 506;  // same source, aura-granted ability

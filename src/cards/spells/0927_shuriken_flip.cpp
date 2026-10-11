@@ -79,7 +79,7 @@ public:
             if (mine.empty()) { ri.resume_point = 4; return; }
             if (std::find(mine.begin(), mine.end(), u) == mine.end()) u = mine.front();
             commitChosenObject(ctx, u);   // "when you choose a friendly unit"
-            ri.resume_data = {static_cast<int32_t>(u)};
+            ri.resume_data = {static_cast<int32_t>(u.raw())};
             std::vector<Intent> opts;
             for (int d : moveDests(ctx.state, ctx.state.getObject(u)))
                 opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
@@ -91,7 +91,7 @@ public:
         case 3: {
             ri.resume_point = 4;
             if (ri.resume_data.empty()) return;
-            auto u = static_cast<GameObjectId>(ri.resume_data[0]);
+            auto u = GameObjectId::fromRaw(ri.resume_data[0]);
             if (!ctx.state.objectExists(u)) return;
             auto dests = moveDests(ctx.state, ctx.state.getObject(u));
             if (dests.empty()) return;

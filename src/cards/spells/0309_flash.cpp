@@ -35,7 +35,7 @@ public:
         if (ri.resume_point == kDone) return;
         auto picked_before = [&ri](GameObjectId id) {
             return std::find(ri.resume_data.begin(), ri.resume_data.end(),
-                             static_cast<int32_t>(id)) != ri.resume_data.end();
+                             static_cast<int32_t>(id.raw())) != ri.resume_data.end();
         };
         auto movable = [&](GameObjectId id) {
             const auto& obj = ctx.state.getObject(id);
@@ -58,7 +58,7 @@ public:
                     stop = true;   // "No more units"
                 } else {
                     commitChosenObject(ctx, unit);
-                    ri.resume_data.push_back(static_cast<int32_t>(unit));
+                    ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
                 }
             } else {
                 ri.resume_data.clear();
@@ -82,7 +82,7 @@ public:
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         ri.resume_point = kDone;
         for (auto v : ri.resume_data) {
-            const auto id = static_cast<GameObjectId>(v);
+            const auto id = GameObjectId::fromRaw(v);
             if (!movable(id)) continue;   // no longer a legal target
             ctx.executor.moveToBase(id);
             RIFT_TRACE(ctx.events, "FLASH: moved " + ctx.state.getObject(id).name + " to base");

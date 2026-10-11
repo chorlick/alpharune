@@ -91,7 +91,7 @@ public:
         if (resumed) {
             next = static_cast<size_t>(ri->resume_data[0]);
             for (size_t i = 1; i < ri->resume_data.size(); ++i)
-                to_play.push_back(static_cast<GameObjectId>(ri->resume_data[i]));
+                to_play.push_back(GameObjectId::fromRaw(ri->resume_data[i]));
             if (ri->resume_point == kAwaitWhere && next < to_play.size()) {
                 // The answer: 0 = base, 1 + i = battlefield slot i.
                 std::optional<LocationId> where;
@@ -111,7 +111,7 @@ public:
             gear.tracked_objects.clear();
             if (ri.has_value()) {
                 ri->resume_data.assign(1, 0);
-                for (auto uid : to_play) ri->resume_data.push_back(static_cast<int32_t>(uid));
+                for (auto uid : to_play) ri->resume_data.push_back(static_cast<int32_t>(uid.raw()));
                 ri->resume_point = kPlaying;
             }
         }

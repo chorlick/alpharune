@@ -23,7 +23,7 @@ public:
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
         const PlayerId opp = opponent(ctx.controller);
-        const auto none = static_cast<int32_t>(kInvalidId);
+        const auto none = static_cast<int32_t>(kInvalidId.raw());
         auto unitsOf = [&](PlayerId p) {
             std::vector<GameObjectId> out;
             for (const auto& [id, obj] : ctx.state.objects.onBoard())
@@ -49,7 +49,7 @@ public:
             auto units = unitsOf(p);
             if (std::find(units.begin(), units.end(), picked) == units.end())
                 picked = units.empty() ? kInvalidId : units.front();
-            return static_cast<int32_t>(picked);
+            return static_cast<int32_t>(picked.raw());
         };
         switch (ri.resume_point) {
         case 0:
@@ -71,8 +71,8 @@ public:
         std::vector<GameObjectId> doomed;
         for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || !obj.location.has_value()) continue;
-            if (static_cast<int32_t>(id) == ri.resume_data[0] ||
-                static_cast<int32_t>(id) == ri.resume_data[1]) continue;
+            if (static_cast<int32_t>(id.raw()) == ri.resume_data[0] ||
+                static_cast<int32_t>(id.raw()) == ri.resume_data[1]) continue;
             doomed.push_back(id);
         }
         std::sort(doomed.begin(), doomed.end());

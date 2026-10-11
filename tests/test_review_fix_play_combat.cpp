@@ -166,7 +166,7 @@ public:
         auto& self = ctx.state.getObject(ctx.source);
         self.card_counters["n"] = static_cast<int>(targets.size());
         for (size_t i = 0; i < targets.size(); ++i)
-            self.card_counters["t" + std::to_string(i)] = static_cast<int>(targets[i]);
+            self.card_counters["t" + std::to_string(i)] = static_cast<int>(targets[i].raw());
     }
 };
 
@@ -953,8 +953,8 @@ TEST_F(PlayCombatFixTest, MultiTarget_TwoFriendlyTargets_AreOfferedAsOrderedPair
         if (i.targets == std::vector<GameObjectId>{b, a}) { engine_->testHook_executeIntent(i); settleLikeTheEngine(*engine_); }
     const auto& sp = s().getObject(spell);
     EXPECT_EQ(sp.card_counters.at("n"), 2);
-    EXPECT_EQ(sp.card_counters.at("t0"), static_cast<int>(b));
-    EXPECT_EQ(sp.card_counters.at("t1"), static_cast<int>(a));
+    EXPECT_EQ(sp.card_counters.at("t0"), static_cast<int>(b.raw()));
+    EXPECT_EQ(sp.card_counters.at("t1"), static_cast<int>(a.raw()));
 }
 
 TEST_F(PlayCombatFixTest, MultiTarget_UpToThree_OffersEverySetOnce) {

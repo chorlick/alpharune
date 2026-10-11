@@ -30,7 +30,7 @@ public:
         if (ri.resume_point == kDone) return;
         auto picked_before = [&ri](GameObjectId id) {
             return std::find(ri.resume_data.begin(), ri.resume_data.end(),
-                             static_cast<int32_t>(id)) != ri.resume_data.end();
+                             static_cast<int32_t>(id.raw())) != ri.resume_data.end();
         };
         // A unit already picked stays available: its Deflect was paid then.
         auto offered = [&]() {
@@ -55,7 +55,7 @@ public:
                 ri.resume_point = kDone;   // nothing left to choose
             } else {
                 if (!picked_before(unit)) commitChosenObject(ctx, unit);
-                ri.resume_data.push_back(static_cast<int32_t>(unit));
+                ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
                 ri.resume_point = kPicking;
             }
         } else if (ri.resume_point != kPicking) {
@@ -67,7 +67,7 @@ public:
             ri.resume_data.clear();
             if (const auto locked = lockedPlayTarget(ctx, targets))
                 ri.resume_data.push_back(*locked == kInvalidId ? kLost
-                                                               : static_cast<int32_t>(*locked));
+                                                               : static_cast<int32_t>((*locked).raw()));
             ri.resume_point = kPicking;
         }
         if (ri.resume_point == kPicking && ri.resume_data.size() < kInstances) {
@@ -85,16 +85,16 @@ public:
         ri.resume_point = kDone;
         // The executor skips a unit that has left the board (CR 359.3.e.5).
         for (auto id : ri.resume_data)
-            if (id != kLost) ctx.executor.dealDamage(static_cast<GameObjectId>(id), 2, ctx.source);
+            if (id != kLost) ctx.executor.dealDamage(GameObjectId::fromRaw(id), 2, ctx.source);
         {   // the batch is for these kills only
-            ctx.executor.killLethallyDamagedTogether(std::vector<GameObjectId>(ri.resume_data.begin(), ri.resume_data.end()));   // they die at the same time
+            ctx.executor.killLethallyDamagedTogether(objectIdsFromRaw(ri.resume_data));   // they die at the same time
         }
     }
 private:
     static constexpr size_t kInstances = 6;
     enum : int { kPicking = 20, kAwait = 21, kDone = 22 };
     // resume_data entry for an instance whose play-time unit became illegal.
-    static constexpr int32_t kLost = static_cast<int32_t>(kInvalidId);
+    static constexpr int32_t kLost = static_cast<int32_t>(kInvalidId.raw());
 private:
     const CardDef def_ = [] {
         CardDef d;

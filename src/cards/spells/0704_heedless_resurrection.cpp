@@ -63,12 +63,12 @@ public:
                                      ctx.state.getObject(victim).name + " (additional cost)");
                 ctx.executor.killObject(victim);
                 while (ri.resume_data.size() <= kRevivedSlot) ri.resume_data.push_back(0);
-                ri.resume_data[kKilledSlot] = static_cast<int32_t>(victim) + 1;
+                ri.resume_data[kKilledSlot] = static_cast<int32_t>(victim.raw()) + 1;
             }
         }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (ri.resume_data[kKilledSlot] == 0) return;   // the cost was not paid
-        const auto killed = static_cast<GameObjectId>(ri.resume_data[kKilledSlot] - 1);
+        const auto killed = GameObjectId::fromRaw(ri.resume_data[kKilledSlot] - 1);
 
         // "Play a unit from your trash that costs no more Energy and no more
         //  Power than the killed unit."
@@ -94,7 +94,7 @@ public:
                 if (std::find(cands.begin(), cands.end(), pick) == cands.end())
                     pick = cands.empty() ? kInvalidId : cands.front();
                 ri.resume_data[kRevivedSlot] = pick == kInvalidId ? -1
-                    : static_cast<int32_t>(pick) + 1;
+                    : static_cast<int32_t>(pick.raw()) + 1;
                 ri.resume_point = 0;
             } else if (cands.empty()) {
                 ri.resume_data[kRevivedSlot] = -1;
@@ -108,7 +108,7 @@ public:
             }
         }
         if (ri.resume_data[kRevivedSlot] <= 0) return;   // nothing to play
-        const auto revived = static_cast<GameObjectId>(ri.resume_data[kRevivedSlot] - 1);
+        const auto revived = GameObjectId::fromRaw(ri.resume_data[kRevivedSlot] - 1);
         // Its controller's base or a battlefield they control (CR 355.2.a).
         const auto where = playLocations(ctx.state, ctx.controller);
         // playLocations leaves out a battlefield units can't be played to

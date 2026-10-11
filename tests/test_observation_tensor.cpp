@@ -60,7 +60,7 @@ struct ObsState {
 private:
     GameObjectId addInZone(PlayerId player, CardDefId def_id, ZoneType zone,
                             std::vector<GameObjectId>& zone_vec) {
-        GameObjectId id = next_id_++;
+        const GameObjectId id = GameObjectId::fromRaw(next_id_++);
         state.objects[id] = GameObject{};
         auto& o = state.objects[id];
         o.id = id;
@@ -72,7 +72,7 @@ private:
         return id;
     }
 
-    GameObjectId next_id_ = 1;
+    uint32_t next_id_ = 1;
 };
 
 } // namespace

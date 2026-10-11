@@ -30,7 +30,7 @@ public:
                 if (o.controller == ctx.controller) return false;
                 if (o.current_might > ri.resume_data[0]) return false;
                 for (size_t i = 1; i < ri.resume_data.size(); ++i)
-                    if (static_cast<GameObjectId>(ri.resume_data[i]) == o.id) return false;
+                    if (GameObjectId::fromRaw(ri.resume_data[i]) == o.id) return false;
                 return true;
             });
             std::sort(out.begin(), out.end());
@@ -77,7 +77,7 @@ public:
             }
             commitChosenObject(ctx, picked);   // Deflect, "chosen" bookkeeping
             ri.resume_data[0] -= ctx.state.getObject(picked).current_might;
-            ri.resume_data.push_back(static_cast<int32_t>(picked));
+            ri.resume_data.push_back(static_cast<int32_t>(picked.raw()));
             if (!promptUnit()) promptLocation();
             return;
         }
@@ -86,7 +86,7 @@ public:
             int d = takenValue(ctx, 0);
             if (d < 0 || d >= n) d = 0;
             for (size_t i = 1; i < ri.resume_data.size(); ++i) {
-                auto id = static_cast<GameObjectId>(ri.resume_data[i]);
+                auto id = GameObjectId::fromRaw(ri.resume_data[i]);
                 if (!ctx.state.objectExists(id)) continue;
                 const auto& u = ctx.state.getObject(id);
                 if (!u.location.has_value()) continue;

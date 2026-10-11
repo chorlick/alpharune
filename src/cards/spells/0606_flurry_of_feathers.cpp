@@ -39,7 +39,7 @@ public:
             auto victim = chain.items.back();
             chain.items.pop_back();
             RIFT_TRACE(ctx.events, "FLURRY OF FEATHERS: countered spell (id=" +
-                                 std::to_string(victim.source) + ")");
+                                 toString(victim.source) + ")");
             disposeCounteredCard(ctx, victim.source);
             return;
         }

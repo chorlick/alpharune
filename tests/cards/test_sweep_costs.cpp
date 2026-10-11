@@ -574,8 +574,8 @@ TEST_F(SweepCostsTest, ZaunPunk_OptionalKillIsPaidDuringThePlay) {
     // Paid: my gear dies as the cost, then "kill a gear" picks the enemy one.
     auto punk2 = addToHand(P1, kZaunPunk);
     setPool(P1, 3, 0);
-    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(mine),
-                                                 static_cast<int>(theirs)}));
+    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(mine.raw()),
+                                                 static_cast<int>(theirs.raw())}));
     play(punk2, &yes);
     EXPECT_TRUE(onBoard(punk2));
     EXPECT_FALSE(onBoard(mine)) << "the additional cost";
@@ -651,7 +651,7 @@ TEST_F(SweepCostsTest, Ledros_KillsUnitsOfThePlayersChoiceForPowerOff) {
     ASSERT_TRUE(playOffered(ledros));
     // Two kills are forced; then a third is offered and declined.
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(c), static_cast<int>(a), 0}));
+        {static_cast<int>(c.raw()), static_cast<int>(a.raw()), 0}));
     play(ledros, &agent);
     EXPECT_TRUE(onBoard(ledros));
     EXPECT_FALSE(onBoard(c));
@@ -728,7 +728,7 @@ TEST_F(SweepCostsTest, Wallop_SpendingABuffIgnoresTheCost) {
     o(unit).buff_count = 1;
     o(unit).is_exhausted = true;
     setPool(P1, 2, 0);
-    EnginePathAgent no(EnginePathAgent::script({0, static_cast<int>(unit)}));
+    EnginePathAgent no(EnginePathAgent::script({0, static_cast<int>(unit.raw())}));
     play(wallop2, &no, {unit});
     EXPECT_EQ(o(unit).buff_count, 1);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
@@ -756,7 +756,7 @@ TEST_F(SweepCostsTest, UndyingLoyalty_TheDiscountFollowsTheUnitChosenAsItIsPlaye
     auto poro = addToTrash(P1, kPoutyPoro);          // a Poro: [2] less
     ASSERT_TRUE(playOffered(spell)) << "[2] less with a Poro leaves only the Power";
     // Where it is played (the spell's finalize-pass choice), then the unit.
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(poro)}));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(poro.raw())}));
     play(spell, &agent);
     EXPECT_TRUE(onBoard(poro));
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
@@ -773,7 +773,7 @@ TEST_F(SweepCostsTest, CurtainCall_EachRepeatCostIsOfferedOnceAndRunsAnotherMode
     // Mode 0 (Draw 1) for the first execution; pay the [1] Repeat; then the
     // repeated execution's mode 1 (Deal 2) on the unit.
     EnginePathAgent agent(EnginePathAgent::script(
-        {0, 1, 1, static_cast<int>(at_bf)}));
+        {0, 1, 1, static_cast<int>(at_bf.raw())}));
     play(spell, &agent);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
     EXPECT_EQ(handSize(P1), hand_before - 1 + 1) << "Draw 1 ran once";
@@ -785,7 +785,7 @@ TEST_F(SweepCostsTest, Ezreal_OptionalAdditionalCostsCostOneLess) {
     auto enemy = addUnit(P2, kInvalidId, 9, 0);
     auto spell = addToHand(P1, kFrigidTouch);
     setPool(P1, 3, 0);
-    EnginePathAgent plain(EnginePathAgent::script({static_cast<int>(enemy)}));
+    EnginePathAgent plain(EnginePathAgent::script({static_cast<int>(enemy.raw())}));
     play(spell, &plain, {enemy});
     EXPECT_EQ(state.player(P1).rune_pool.energy, 1) << "the Repeat could not be paid";
 
@@ -1133,7 +1133,7 @@ TEST_F(SweepCostsTest, Aphelios_ReadiesTheTwoRunesThePlayerChooses) {
     auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
     auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
     EnginePathAgent agent(EnginePathAgent::script(
-        {0, static_cast<int>(r3), static_cast<int>(r2), 0}));   // mode; two runes; "None"
+        {0, static_cast<int>(r3.raw()), static_cast<int>(r2.raw()), 0}));   // mode; two runes; "None"
     fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent);
     EXPECT_TRUE(o(r1).is_exhausted);
     EXPECT_FALSE(o(r2).is_exhausted);
@@ -1257,7 +1257,7 @@ TEST_F(SweepCostsTest, PlayGate_ATargetWhoseDeflectCannotBePaidWithTheCostIsNotO
     auto rune = addRune(P1, Domain::Mind);
     // The target; then the rune to exhaust for the second Energy of the cost.
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(one), static_cast<int>(rune)}));
+        {static_cast<int>(one.raw()), static_cast<int>(rune.raw())}));
     play(spell, &agent);
     EXPECT_TRUE(agent.wasOffered(one));
     EXPECT_FALSE(agent.wasOffered(two)) << "cost + Deflect 2 is more than there is";
@@ -1585,7 +1585,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ADiscountFromWhatItChoosesCountsBeforeP
     auto spell = addToHand(P1, kResonatingStrike);
     setPool(P1, 1, 1);
     ASSERT_TRUE(playOffered(spell)) << "the generator counts a choice that makes it payable";
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(irelia)}));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(irelia.raw())}));
     play(spell, &agent);
     EXPECT_TRUE(agent.wasOffered(irelia));
     EXPECT_FALSE(agent.wasOffered(other)) << "[2] is out of reach for any other unit";
@@ -1604,7 +1604,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_WithoutADiscountItPaysItsFullCostAndIsN
     EXPECT_FALSE(playOffered(spell)) << "nothing it can choose takes anything off";
     setPool(P1, 2, 1);
     ASSERT_TRUE(playOffered(spell));
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(other)}));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(other.raw())}));
     play(spell, &agent);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
     EXPECT_EQ(o(other).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(0));
@@ -1629,7 +1629,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AUnitIsOfferedOnlyIfItsDeflectCanBePaid
     auto only_rune = addRune(P1, Domain::Mind);
     // Mode 0; the unit; then the rune to recycle for the [B].
     EnginePathAgent short_agent(EnginePathAgent::script(
-        {0, static_cast<int>(plain), static_cast<int>(only_rune)}));
+        {0, static_cast<int>(plain.raw()), static_cast<int>(only_rune.raw())}));
     play(spell, &short_agent);
     EXPECT_TRUE(short_agent.wasOffered(plain));
     EXPECT_FALSE(short_agent.wasOffered(guarded)) << "[4][B] + its Deflect is more than there is";
@@ -1643,7 +1643,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AUnitIsOfferedOnlyIfItsDeflectCanBePaid
     // Mode 0; the guarded unit (its Deflect takes the floating Power); then
     // the rune to recycle for the [B].
     EnginePathAgent agent(EnginePathAgent::script(
-        {0, static_cast<int>(guarded), static_cast<int>(rune)}));
+        {0, static_cast<int>(guarded.raw()), static_cast<int>(rune.raw())}));
     play(again, &agent);
     EXPECT_TRUE(agent.wasOffered(guarded));
     EXPECT_EQ(o(guarded).damage_marked, 4);
@@ -1723,7 +1723,7 @@ TEST_F(SweepCostsTest, TypedDiscardCost_SkyCrusierDiscardsTheGearThePlayerPicks)
     auto act = offers();
     ASSERT_FALSE(act.empty());
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(gear2), static_cast<int>(enemy)}));
+        {static_cast<int>(gear2.raw()), static_cast<int>(enemy.raw())}));
     execute(act.front(), &agent);
     EXPECT_TRUE(agent.wasOffered(gear1));
     EXPECT_FALSE(agent.wasOffered(not_gear)) << "only gear pays a \"Discard a gear\" cost";
@@ -1750,7 +1750,7 @@ TEST_F(SweepCostsTest, TypedDiscardCost_MelEmpowersByDiscardingTheSpellThePlayer
     auto spell2 = addToHand(P1, kFrigidTouch);
     auto act = offers();
     ASSERT_FALSE(act.empty());
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(spell2)}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(spell2.raw())}));
     execute(act.front(), &agent);
     EXPECT_TRUE(agent.wasOffered(spell1));
     EXPECT_FALSE(agent.wasOffered(not_spell));
@@ -1821,7 +1821,7 @@ TEST_F(SweepCostsTest, PaidFlag_ZaunPunkReplayedWithoutPayingDoesNotKillAGear) {
     // Pay; which gear; then the play trigger's own "kill a gear" pick, made
     // as the trigger is finalized (it is countered before it resolves).
     EnginePathAgent pays(EnginePathAgent::script(
-        {1, static_cast<int>(mine), static_cast<int>(theirs)}));
+        {1, static_cast<int>(mine.raw()), static_cast<int>(theirs.raw())}));
     CountersOnceAgent counters;
     counters.counter_card = addToHand(P2, kTCounter);
     playThroughEngine(punk, &pays, std::nullopt, &counters, /*fund=*/false);
@@ -1897,7 +1897,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ASecondSpellIsOfferedThroughADiscount) 
     setPool(P1, 1, 1);
     ASSERT_TRUE(playOffered(spell)) << "[2] - [1] for choosing Irelia";
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(irelia), static_cast<int>(enemy)}));
+        {static_cast<int>(irelia.raw()), static_cast<int>(enemy.raw())}));
     play(spell, &agent);
     EXPECT_FALSE(agent.wasOffered(other)) << "no discount for choosing any other unit";
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
@@ -1914,7 +1914,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ASpellWithNoDeclaredTargetsIsOfferedThr
     ASSERT_TRUE(playOffered(spell)) << "[4] - [1] for choosing Irelia";
     // Mode 2: "Deal 3 to a unit at a base"; then Irelia.
     EnginePathAgent agent(EnginePathAgent::script(
-        {2, static_cast<int>(irelia)}));
+        {2, static_cast<int>(irelia.raw())}));
     play(spell, &agent);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
     EXPECT_EQ(o(irelia).damage_marked, 3);
@@ -1946,7 +1946,7 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AChoiceThatWouldLeaveItUnpayableIsNotOf
     auto spell = addToHand(P1, kResonatingStrike);
     setPool(P1, 1, 1);
     ASSERT_TRUE(playOffered(spell));
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(irelia)}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(irelia.raw())}));
     play(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     ASSERT_EQ(agent.prompts[0].size(), 1u) << "battlefield 0 would strand the spell";
@@ -2185,7 +2185,7 @@ TEST_F(SweepCostsTest, TrashReplayGrant_ALaterChoiceKeepsTheDiscountOfAnEarlierO
         if (i.card == spell && i.play_source == Intent::PlaySource::Trash) offer = i;
     ASSERT_TRUE(offer.has_value());
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(irelia), static_cast<int>(other)}));
+        {static_cast<int>(irelia.raw()), static_cast<int>(other.raw())}));
     execute(*offer, &agent);
     EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
     EXPECT_EQ(o(irelia).temp_might_bonus, 1);
@@ -2608,13 +2608,13 @@ TEST_F(SweepCostsTest, CostFingerprint_SeesEachPoolAndTheChampionZone) {
     EXPECT_NE(Card::costStateFingerprint(state), spell);
     state.player(P1).rune_pool.gear_power = 0;
     ASSERT_EQ(Card::costStateFingerprint(state), before);
-    state.player(P1).champion_zone = 7;
+    state.player(P1).champion_zone = GameObjectId::fromRaw(7);
     EXPECT_NE(Card::costStateFingerprint(state), before);
 }
 
 TEST_F(SweepCostsTest, CostFingerprint_SeesABattlefieldsFacedownCardsAndController) {
     const uint64_t before = Card::costStateFingerprint(state);
-    state.battlefields[0].facedown.push_back(42);
+    state.battlefields[0].facedown.push_back(GameObjectId::fromRaw(42));
     EXPECT_NE(Card::costStateFingerprint(state), before);
     state.battlefields[0].facedown.clear();
     state.battlefields[0].controller = P1;
@@ -2689,7 +2689,7 @@ TEST_F(SweepCostsTest, EffectPlayLocation_SoulgorgerDoesNotAskAtResolution) {
     setPool(P1, def.energy_cost, def.power_cost);
     // Yes; the unit; then the revived First Mate's own trigger (whatever it asks).
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(dead), EnginePathAgent::kRest}));
+        {1, static_cast<int>(dead.raw()), EnginePathAgent::kRest}));
     GivesABattlefieldAgent them;
     Intent play_it;
     play_it.type = IntentType::PlayCard;

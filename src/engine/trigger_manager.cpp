@@ -736,7 +736,7 @@ void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
                 if (att_obj.controller != e.attacker) continue;
                 if (att_obj.combat_designation != CombatDesignation::Attacker) continue;
                 obj.card_counters["__defend_attacker_id"] =
-                    static_cast<int>(att_id);
+                    static_cast<int>(att_id.raw());
                 break;
             }
             fireTrigger(id, obj.controller, 0, TriggerType::WhenIDefend);

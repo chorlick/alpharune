@@ -677,7 +677,7 @@ TEST_F(C7Test, Kharox_PlaysTheUnitWhereItsNewControllerChooses) {
     for (int i = 0; i < 3; ++i) addToDeck(P2, kIncinerate);
     auto corpse = inTrashOf(P2, kLoyalPoro);
     // yes; the unit; battlefield #0
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(corpse), 1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(corpse.raw()), 1}));
     fireTriggerThroughEngine(kharox, TriggerType::WhenIBecomeEmpowered, &agent);
     EXPECT_EQ(trashSize(P2), 3) << "burned 3 exactly once; the unit left the trash";
     EXPECT_FALSE(inTrash(P2, corpse));
@@ -694,7 +694,7 @@ TEST_F(C7Test, TailCloakedMatriarch_PlaysTheUnitToBaseAndOutOfTheTrash) {
     // prompt fails the strict script).
     EnginePathAgent agent(EnginePathAgent::script({
         1,                          // "may choose a unit in your trash": yes
-        static_cast<int>(corpse),   // which unit (Loyal Poro, the only one)
+        static_cast<int>(corpse.raw()),   // which unit (Loyal Poro, the only one)
     }));
     fireTriggerThroughEngine(matriarch, TriggerType::WhenIBecomeEmpowered, &agent);
     EXPECT_TRUE(o(corpse).isAtBase()) << "\"Play it to your base\"";

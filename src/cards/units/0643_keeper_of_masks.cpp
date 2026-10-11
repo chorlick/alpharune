@@ -35,7 +35,7 @@ public:
         // (CR 388): with the tokens played it goes on the chain as an item of
         // its own, carrying them.
         std::vector<int32_t> tokens;
-        for (auto tok : reflections) tokens.push_back(static_cast<int32_t>(tok));
+        for (auto tok : reflections) tokens.push_back(static_cast<int32_t>(tok.raw()));
         ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0, std::move(tokens));
     }
     bool hasReflexiveTrigger() const override { return true; }
@@ -45,7 +45,7 @@ public:
         if (finalizingChoices(ctx)) return;   // nothing to choose
         if (!ctx.state.objectExists(ctx.source)) return;
         for (auto v : data) {
-            const auto tok = static_cast<GameObjectId>(v);
+            const auto tok = GameObjectId::fromRaw(v);
             if (!ctx.state.objectExists(tok) || !ctx.state.getObject(tok).location.has_value())
                 continue;                     // it left in response
             // Become a copy of me (base traits — copyUnit inherits

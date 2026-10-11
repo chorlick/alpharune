@@ -175,6 +175,7 @@ TEST_F(AuditFix7Test, Ornn_WeaponmasterEquipsEquipmentGear) {
     // A friendly gear tagged "Equipment" with a might bonus.
     auto gear = addGear(P1, kInvalidId, /*might_bonus=*/3, /*at_bf=*/0);
     state.getObject(gear).tags = {"Equipment"};
+    withEquipmentCard(gear);   // CR 821.1.c.4: see the fixture
 
     fireTriggerAs(407, P1, ornn, TriggerType::WhenYouPlayMe, exec);
 

@@ -47,6 +47,7 @@ protected:
         if (equipment_tag) obj.tags.push_back("Equipment");
         obj.zone = ZoneType::Base;
         obj.location = BaseLocation{owner};
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
 

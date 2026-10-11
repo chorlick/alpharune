@@ -148,6 +148,7 @@ protected:
         obj.might_bonus = might_bonus;
         obj.zone = ZoneType::Base;
         obj.location = BaseLocation{owner};
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
     GameObjectId installBattlefieldCard(int bf, CardDefId def_id) {

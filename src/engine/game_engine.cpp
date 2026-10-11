@@ -1377,7 +1377,36 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     std::vector<GameObjectId> legal;
     if (item.is_spell) {
         if (!card->needsPlayTimeTarget()) {
-            if (card->choicesAtFinalization() & Card::kFinalizeResolve) runFinalizePass(item);
+            if (!(card->choicesAtFinalization() & Card::kFinalizeResolve)) return;
+            if (prefinalized_spell_.has_value() && prefinalized_spell_->source == item.source) {
+                // Its choices were made before its cost was paid
+                // (executePlaySpell): take them over, and announce them now
+                // that the spell is on the chain.
+                ChainItem done = std::move(*prefinalized_spell_);
+                prefinalized_spell_.reset();
+                const ChainItemId item_id = item.id;
+                const PlayerId controller = item.controller;
+                std::vector<GameObjectId> chosen = done.chosen_objects;
+                for (auto& ci : state_.chain.items) {
+                    if (ci.id != item_id) continue;
+                    ci.resume_point = done.resume_point;
+                    ci.resume_data = std::move(done.resume_data);
+                    ci.chosen_objects = std::move(done.chosen_objects);
+                    ci.may_answer = done.may_answer;
+                    ci.finalize_costs_paid = done.finalize_costs_paid;
+                    ci.finalize_checked = 0;
+                    ci.choices_finalized = true;
+                    break;
+                }
+                for (auto t : chosen) {
+                    if (!state_.objectExists(t)) continue;
+                    const auto& tobj = state_.getObject(t);
+                    if (tobj.isUnit() && tobj.location.has_value() && tobj.controller == controller)
+                        events_.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
+                }
+                return;
+            }
+            runFinalizePass(item);
             return;
         }
         legal = card->enumerateLegalTargets(state_, item.controller);
@@ -1528,7 +1557,22 @@ void GameEngine::runFinalizePass(ChainItem& item) {
     // resume slot is taken, so this item decides as it resolves instead.
     if (state_.chain.resuming.has_value()) return;
     const ChainItemId item_id = item.id;
-    state_.chain.resuming = item;
+    ChainItem done = collectFinalizeChoices(item);
+    for (auto& ci : state_.chain.items) {
+        if (ci.id != item_id) continue;
+        ci.resume_point = done.resume_point;
+        ci.resume_data = std::move(done.resume_data);
+        ci.chosen_objects = std::move(done.chosen_objects);
+        ci.may_answer = done.may_answer;
+        ci.finalize_costs_paid = done.finalize_costs_paid;
+        ci.finalize_checked = 0;
+        ci.choices_finalized = true;
+        break;
+    }
+}
+
+ChainItem GameEngine::collectFinalizeChoices(ChainItem item) {
+    state_.chain.resuming = std::move(item);
     state_.chain.resuming->finalizing = true;
 
     // A card may ask as many questions as its text needs (one per unit on a
@@ -1572,17 +1616,7 @@ void GameEngine::runFinalizePass(ChainItem& item) {
 
     ChainItem done = std::move(*state_.chain.resuming);
     state_.chain.resuming.reset();
-    for (auto& ci : state_.chain.items) {
-        if (ci.id != item_id) continue;
-        ci.resume_point = done.resume_point;
-        ci.resume_data = std::move(done.resume_data);
-        ci.chosen_objects = std::move(done.chosen_objects);
-        ci.may_answer = done.may_answer;
-        ci.finalize_costs_paid = done.finalize_costs_paid;
-        ci.finalize_checked = 0;
-        ci.choices_finalized = true;
-        break;
-    }
+    return done;
 }
 
 // Pay an activated ability's costs and put it on the chain. Returns true if a
@@ -2087,6 +2121,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     }
 
     // Remove from the source zone.
+    const ZoneType played_from = card.zone;
     if (card.zone == ZoneType::Hand) {
         auto it = std::find(ps.hand.begin(), ps.hand.end(), intent.card);
         if (it != ps.hand.end()) ps.hand.erase(it);
@@ -2144,11 +2179,75 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         }
     }
 
+    // A spell that chooses in its finalize pass (kFinalizeResolve) makes those
+    // choices here too, before its cost is determined (CR 355 -> 356), so a
+    // discount from what it chooses counts. Only objects it can still be paid
+    // for with are on offer; the choices are announced, and adopted by the
+    // chain item, when the spell goes on the chain (chooseTargetsAtFinalize).
+    // `cost_targets` is what the cost is judged on; Deflect for these choices
+    // is paid by the choice helper as each is made.
+    // Done only while something in play would change the cost of a spell
+    // that chooses it: otherwise choosing first or paying first comes to the
+    // same thing, and the choices are made as the spell goes on the chain.
+    std::vector<GameObjectId> cost_targets = play_targets;
+    const std::vector<GameObjectId> deflect_targets = play_targets;
+    prefinalized_spell_.reset();
+    if (play_targets.empty() && card.card_def_id != kInvalidId &&
+        !state_.chain.resuming.has_value()) {
+        const Card* sc = card_registry_.get(card.card_def_id);
+        if (sc && !sc->needsPlayTimeTarget() &&
+            (sc->choicesAtFinalization() & Card::kFinalizeResolve) &&
+            aChoiceCouldChangeTheCost(intent.player)) {
+            const PlayerState::TrashReplayGrant* grant =
+                intent.play_source == Intent::PlaySource::Trash
+                    ? trashGrantFor(intent.player, intent.card) : nullptr;
+            ChainItem pre;
+            pre.id = state_.chain.allocateId();
+            pre.status = ChainItemStatus::Pending;
+            pre.source = intent.card;
+            pre.card_def_id = card.card_def_id;
+            pre.controller = intent.player;
+            pre.is_spell = true;
+            pre.pre_play_choices = true;
+            const PlayerId who = intent.player;
+            const GameObjectId what = intent.card;
+            effect_executor_->setChoiceFilter([this, who, what, grant](GameObjectId t) {
+                return grant ? canPayTrashGrant(who, what, *grant, {t})
+                             : canAffordChoosing(who, what, {t});
+            });
+            ChainItem done;
+            try {
+                done = collectFinalizeChoices(std::move(pre));
+            } catch (...) {
+                effect_executor_->setChoiceFilter(nullptr);
+                throw;
+            }
+            effect_executor_->setChoiceFilter(nullptr);
+            done.pre_play_choices = false;
+            cost_targets = done.chosen_objects;
+            // Not payable with what was chosen (it was offered on the strength
+            // of a discount no choice then earned): the play does not happen.
+            const bool payable = grant
+                ? canPayTrashGrant(intent.player, intent.card, *grant, cost_targets)
+                : (cost_targets.empty() ? canAfford(intent.player, intent.card)
+                                        : canAffordChoosing(intent.player, intent.card,
+                                                            cost_targets));
+            if (!payable) {
+                events_.logTrace("SPELL: " + card.name +
+                                 " not played — its cost could not be paid with what it chose");
+                if (played_from == ZoneType::Hand) ps.hand.push_back(intent.card);
+                else if (played_from == ZoneType::Trash) ps.trash.push_back(intent.card);
+                return;
+            }
+            prefinalized_spell_ = std::move(done);
+        }
+    }
+
     // Pay cost. A trash-replay grant overrides the printed cost (and its own
     // additional costs); otherwise the normal play_source-aware path runs.
     bool paid_via_grant = false;
     if (intent.play_source == Intent::PlaySource::Trash) {
-        paid_via_grant = payTrashReplayGrant(intent.player, intent.card, play_targets);
+        paid_via_grant = payTrashReplayGrant(intent.player, intent.card, cost_targets);
     }
     if (!paid_via_grant) {
         ps.current_play_source = intent.play_source;
@@ -2160,15 +2259,15 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             const Card* sc = card.card_def_id != kInvalidId
                 ? card_registry_.get(card.card_def_id) : nullptr;
             if (!sc || !sc->ignoresDeflect())
-                for (auto t : play_targets) deflect += deflectCostFor(state_, intent.player, t);
+                for (auto t : deflect_targets) deflect += deflectCostFor(state_, intent.player, t);
         }
         // An additional cost the spell prints (CR 356.2), chosen and paid
         // before the cost: "you may spend a buff ... If you do, ignore this
         // spell's cost." It may be declined only if the spell is affordable
         // without it — with the target discount at its better half.
         bool has_choice = false;
-        const auto disc_energy = targetCostDiscount(intent.player, play_targets, false, &has_choice);
-        const auto disc_power = targetCostDiscount(intent.player, play_targets, true, nullptr);
+        const auto disc_energy = targetCostDiscount(intent.player, cost_targets, false, &has_choice);
+        const auto disc_power = targetCostDiscount(intent.player, cost_targets, true, nullptr);
         auto plus = [](Card::PlayCostAdjust a, const Card::PlayCostAdjust& b) {
             a.energy_reduction += b.energy_reduction;
             a.power_reduction += b.power_reduction;
@@ -3151,7 +3250,21 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
             card.card_type, ps.cards_played_this_turn, /*energy_spent=*/0});
         // Played from face down = from somewhere other than hand.
         events_.emit(ObjectStateChangedEvent{intent.card, "played_not_from_hand"});
-        chain_manager_->addSpell(intent.card, intent.player, intent.targets);
+        const auto chain_id =
+            chain_manager_->addSpell(intent.card, intent.player, intent.targets);
+        // A spell that takes its target through Card::pickTarget was played
+        // with that target already chosen (the hidden-play intent names it):
+        // tell pickTarget, as executePlaySpell does, or the card asks again
+        // and the unit the Deflect was paid for is not the one affected.
+        const Card* hc = card.card_def_id != kInvalidId
+            ? card_registry_.get(card.card_def_id) : nullptr;
+        if (hc && hc->needsPlayTimeTarget() && !intent.targets.empty())
+            for (auto& added : state_.chain.items) {
+                if (added.id != chain_id) continue;
+                while (added.resume_data.size() < 6) added.resume_data.push_back(0);
+                added.resume_data[5] = 1;
+                break;
+            }
         runChain();
     }
 }
@@ -3965,8 +4078,11 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
         }
 
         if (req.count == 0) {
-            // No targeting needed
-            if (!afford_plain) continue;
+            // No play-time target. A spell that chooses in its finalize pass
+            // is still paid for after those choices: offered when one of them
+            // would make it payable.
+            if (!afford_plain && !payableThroughAFinalizeChoice(player, card_id, nullptr))
+                continue;
             Intent play;
             play.type = intent_type;
             play.player = player;
@@ -4028,6 +4144,34 @@ const PlayerState::TrashReplayGrant* GameEngine::trashGrantFor(PlayerId player,
     for (const auto& g : state_.player(player).trash_replay_grants)
         if (g.card == card_id) return &g;
     return nullptr;
+}
+
+bool GameEngine::aChoiceCouldChangeTheCost(PlayerId player) const {
+    for (const auto& [id, obj] : state_.objects) {
+        if (!obj.location.has_value()) continue;
+        if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction > 0 ||
+            targetCostDiscount(player, {id}, true, nullptr).power_reduction > 0) return true;
+    }
+    return false;
+}
+
+bool GameEngine::payableThroughAFinalizeChoice(
+    PlayerId player, GameObjectId card_id, const PlayerState::TrashReplayGrant* grant) const {
+    const auto& card = state_.getObject(card_id);
+    const Card* cc = card.card_def_id != kInvalidId ? card_registry_.get(card.card_def_id)
+                                                    : nullptr;
+    if (!cc || cc->needsPlayTimeTarget() ||
+        !(cc->choicesAtFinalization() & Card::kFinalizeResolve)) return false;
+    // Only an object that takes something off the cost can change the answer.
+    for (const auto& [id, obj] : state_.objects) {
+        if (!obj.location.has_value()) continue;
+        if (targetCostDiscount(player, {id}, false, nullptr).energy_reduction <= 0 &&
+            targetCostDiscount(player, {id}, true, nullptr).power_reduction <= 0) continue;
+        if (!cc->mayChooseAtFinalization(state_, player, id)) continue;
+        if (grant ? canPayTrashGrant(player, card_id, *grant, {id})
+                  : canAffordChoosing(player, card_id, {id})) return true;
+    }
+    return false;
 }
 
 bool GameEngine::canPayTrashGrant(PlayerId player, GameObjectId card_id,
@@ -4168,7 +4312,8 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
         } else if (spell_card && req.count > 0 && spell_card->needsPlayTimeTargetPair()) {
             if (affordable({})) make(intent_type, {}, std::nullopt);   // picked at resolve
         } else if (req.count == 0 || (req.optional && legal_targets.empty())) {
-            if (affordable({})) make(intent_type, {}, std::nullopt);
+            if (affordable({}) || payableThroughAFinalizeChoice(player, card_id, grant))
+                make(intent_type, {}, std::nullopt);
         } else {
             for (auto& tset : spellTargetSets(spell_card, state_, player, req, legal_targets))
                 if (affordable(tset)) make(intent_type, std::move(tset), std::nullopt);

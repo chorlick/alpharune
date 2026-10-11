@@ -91,6 +91,7 @@ protected:
         g.card_type = CardType::Gear;
         g.name = "TestGear";
         if (equipment) g.tags = {"Equipment"};
+        withEquipmentCard(id);   // CR 821.1.c.4: see the fixture
         return id;
     }
     void clearAuras() {

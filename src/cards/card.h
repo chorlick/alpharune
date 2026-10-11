@@ -307,6 +307,16 @@ public:
     /// it across a finalize-pass run to catch a card that paid a cost and
     /// then asked for a choice before its marker.
     static uint64_t costStateFingerprint(const GameState& state);
+
+    /// For the play gate of a spell that chooses in its finalize pass
+    /// (kFinalizeResolve): whether it could choose `object`. Such a spell is
+    /// paid for after those choices (CR 355 -> 356), so one that is too dear
+    /// on its own is still offered when choosing `object` makes it payable
+    /// ("your spells that choose me cost [1] or [A] less"). Default: `object`
+    /// is one of enumerateLegalTargets(); a card that builds its own pick
+    /// list overrides this to match it.
+    virtual bool mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                         GameObjectId object) const;
     /// True at resolution when the cost was paid at finalization: checks like
     /// "can I afford it" / "am I ready to exhaust" no longer apply.
     static bool costAlreadyPaid(const CardContext& ctx);

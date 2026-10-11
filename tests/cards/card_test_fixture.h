@@ -614,6 +614,21 @@ protected:
         }, p1_agent, p2_agent, controller);
     }
 
+    /// A fixture-built Equipment (the "Equipment" tag on an object with no
+    /// card) has no Equip ability, so nothing can equip it — Weaponmaster
+    /// included (CR 821.1.c.4). Tests that want an Equipment a unit can take
+    /// give it this card: Long Sword, "[Equip] [R]", which Weaponmaster's
+    /// "[A] less" makes free. The object keeps the name and Might bonus the
+    /// test gave it.
+    static constexpr CardDefId kFixtureEquipmentDef = 345;
+    GameObjectId withEquipmentCard(GameObjectId gear) {
+        auto& g = state.getObject(gear);
+        if (g.card_def_id == kInvalidId &&
+            std::find(g.tags.begin(), g.tags.end(), "Equipment") != g.tags.end())
+            g.card_def_id = kFixtureEquipmentDef;
+        return gear;
+    }
+
     /// Activate `gear`'s [Equip] on `unit` the way a game does: the intent the
     /// generator emits, executed by the engine (the gear's declared cost after
     /// the engine's discounts is paid, the gear attached, and any trigger that

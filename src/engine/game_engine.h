@@ -753,6 +753,21 @@ private:
     /// Make the choices the rules place at finalization for `item` (targets).
     void chooseTargetsAtFinalize(ChainItem& item);
     void runFinalizePass(ChainItem& item);
+    /// The finalize pass itself: runs `item`'s callback with `finalizing` set
+    /// until it asks nothing more, and returns the item with its choices.
+    ChainItem collectFinalizeChoices(ChainItem item);
+    /// Whether a spell that chooses in its finalize pass could be paid for by
+    /// choosing something that takes enough off its cost (the generators'
+    /// half of executePlaySpell's choices-before-payment).
+    /// Whether anything in play takes something off the cost of a spell
+    /// that chooses it (targetCostDiscount) — when a spell's choices have to
+    /// come before its payment to get the cost right.
+    bool aChoiceCouldChangeTheCost(PlayerId player) const;
+    bool payableThroughAFinalizeChoice(PlayerId player, GameObjectId card_id,
+                                       const PlayerState::TrashReplayGrant* grant) const;
+    /// A spell's finalize-pass choices made before its cost was paid; adopted
+    /// by chooseTargetsAtFinalize when the spell goes on the chain.
+    std::optional<ChainItem> prefinalized_spell_;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
     /// One agent decision among `options` for `player`, logged like any other.

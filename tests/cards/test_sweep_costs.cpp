@@ -58,6 +58,9 @@ constexpr CardDefId kTCostThenPromptFinal = 1053;  // the same, choices at final
 constexpr CardDefId kTPlaysFromHand = 1054;        // spell: play a card from hand, ignoring its cost
 constexpr CardDefId kTPowerTouch = 1055;           // spell costing one Fury Power: buff a unit
 constexpr CardDefId kRisenAltar = 950;
+constexpr CardDefId kSkyCrusier = 847;
+constexpr CardDefId kResonatingStrike = 821;   // [2] + 1 Power; chooses in its finalize pass
+constexpr CardDefId kMelDefiantSoul = 897;
 
 /// "Spend 1 XP. Buff a unit." The XP is a cost that is not idempotent, and a
 /// prompt follows it, so the callback is re-entered after the payment.
@@ -1273,6 +1276,145 @@ TEST_F(SweepCostsTest, HiddenPlay_HasNoCostGateAndATargetIsOfferedOnlyIfItsDefle
     execute(*offer);
     EXPECT_EQ(o(guarded).buff_count, 1);
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "the Deflect, and nothing else";
+}
+
+// ─── 9.N2: a spell that chooses in its finalize pass pays after choosing ────
+
+TEST_F(SweepCostsTest, FinalizePassSpell_ADiscountFromWhatItChoosesCountsBeforePayment) {
+    // Resonating Strike ([2] + 1 Power; kFinalizeResolve): "Choose a
+    // battlefield you control and a unit you control at a different location."
+    // Irelia, Graceful: "Your spells that choose me cost [1] or [A] less."
+    // With [1] and one Power the spell is payable only by choosing Irelia.
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 2, 0);                       // holds the battlefield
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);       // in base
+    auto other = addUnit(P1, kInvalidId, 3);             // in base
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kResonatingStrike);
+    setPool(P1, 1, 1);
+    ASSERT_TRUE(playOffered(spell)) << "the generator counts a choice that makes it payable";
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(irelia)}));
+    play(spell, &agent);
+    EXPECT_TRUE(agent.wasOffered(irelia));
+    EXPECT_FALSE(agent.wasOffered(other)) << "[2] is out of reach for any other unit";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+    EXPECT_EQ(o(irelia).battlefieldId().value_or(99), 0u) << "it was played and resolved";
+    EXPECT_TRUE(inTrash(P1, spell));
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_WithoutADiscountItPaysItsFullCostAndIsNotOfferedShort) {
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 2, 0);
+    auto other = addUnit(P1, kInvalidId, 3);
+    auto spell = addToHand(P1, kResonatingStrike);
+    setPool(P1, 1, 1);
+    EXPECT_FALSE(playOffered(spell)) << "nothing it can choose takes anything off";
+    setPool(P1, 2, 1);
+    ASSERT_TRUE(playOffered(spell));
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(other)}));
+    play(spell, &agent);
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(o(other).battlefieldId().value_or(99), 0u);
+}
+
+// ─── 9.N5: Weaponmaster needs an Equip cost to pay (CR 821.1.c.4) ───────────
+
+TEST_F(SweepCostsTest, Weaponmaster_AnEquipmentWithNoEquipCostCannotBeEquippedThisWay) {
+    auto bare = addGear(P1, kInvalidId, /*equipment=*/true);   // no card, so no Equip cost
+    auto wm = addToHand(P1, kArmedAssailant);
+    EnginePathAgent agent(EnginePathAgent::choosing(bare));
+    playThroughEngine(wm, &agent);
+    ASSERT_TRUE(onBoard(wm));
+    EXPECT_TRUE(agent.prompts.empty()) << "nothing to offer";
+    EXPECT_FALSE(o(bare).attached_to.has_value());
+}
+
+// ─── 9.M26: a typed discard as an activation cost is the player's choice ────
+
+TEST_F(SweepCostsTest, TypedDiscardCost_SkyCrusierDiscardsTheGearThePlayerPicks) {
+    // "Discard a gear, [1], [E]: Deal 4 to a unit at a battlefield."
+    auto crusier = addUnit(P1, kSkyCrusier, 3);
+    auto enemy = addUnit(P2, kInvalidId, 9, 0);
+    auto not_gear = addToHand(P1, kPoutyPoro);
+    setPool(P1, 1, 0);
+    auto offers = [&] {
+        std::vector<Intent> out;
+        for (const auto& i : legal())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == crusier)
+                out.push_back(i);
+        return out;
+    };
+    EXPECT_TRUE(offers().empty()) << "no gear in hand: the cost can't be paid";
+    auto gear1 = addToHand(P1, kLongSword);
+    auto gear2 = addToHand(P1, kSkyfallOfAreion);
+    auto act = offers();
+    ASSERT_FALSE(act.empty());
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(gear2), static_cast<int>(enemy)}));
+    execute(act.front(), &agent);
+    EXPECT_TRUE(agent.wasOffered(gear1));
+    EXPECT_FALSE(agent.wasOffered(not_gear)) << "only gear pays a \"Discard a gear\" cost";
+    EXPECT_TRUE(inTrash(P1, gear2)) << "the one the player picked";
+    EXPECT_TRUE(inHand(P1, gear1));
+    EXPECT_TRUE(inHand(P1, not_gear));
+    EXPECT_EQ(o(enemy).damage_marked, 4);
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+}
+
+TEST_F(SweepCostsTest, TypedDiscardCost_MelEmpowersByDiscardingTheSpellThePlayerPicks) {
+    // Mel, Defiant Soul: "[Empower] — Discard a spell".
+    auto mel = addUnit(P1, kMelDefiantSoul, 3);
+    auto not_spell = addToHand(P1, kPoutyPoro);
+    auto offers = [&] {
+        std::vector<Intent> out;
+        for (const auto& i : legal())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == mel)
+                out.push_back(i);
+        return out;
+    };
+    EXPECT_TRUE(offers().empty()) << "no spell in hand";
+    auto spell1 = addToHand(P1, kWallop);
+    auto spell2 = addToHand(P1, kFrigidTouch);
+    auto act = offers();
+    ASSERT_FALSE(act.empty());
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(spell2)}));
+    execute(act.front(), &agent);
+    EXPECT_TRUE(agent.wasOffered(spell1));
+    EXPECT_FALSE(agent.wasOffered(not_spell));
+    EXPECT_TRUE(inTrash(P1, spell2));
+    EXPECT_TRUE(inHand(P1, spell1));
+    EXPECT_EQ(o(mel).empowered, 1);
+}
+
+// ─── 9.M27: Energy comes from runes in the player's base, lowest id first ───
+
+TEST_F(SweepCostsTest, PayEnergy_ExhaustsTheLowestIdBaseRuneAndNoRuneOutsideTheBase) {
+    // Jax, Unrelenting: "When you attach an Equipment to me, you may pay [1]
+    // to draw 1." pays through payEnergy (card_helpers.h).
+    auto jax = addUnit(P1, kJaxUnrelenting, 3);
+    auto stray = addRune(P1, Domain::Calm);          // lowest id, but not in the base
+    o(stray).zone = ZoneType::BattlefieldZone;
+    o(stray).location = BattlefieldLocation{0};
+    addToDeck(P1, kPoutyPoro);
+    addToDeck(P1, kPoutyPoro);
+    setPool(P1, 0, 0);
+
+    // Only the stray rune: nothing to pay with, so the may is not offered.
+    EnginePathAgent none(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(jax, TriggerType::WhenEquipmentAttachedToMe, &none);
+    EXPECT_TRUE(none.prompts.empty());
+    EXPECT_FALSE(o(stray).is_exhausted);
+    EXPECT_EQ(handSize(P1), 0);
+
+    auto first = addRune(P1, Domain::Fury);
+    auto second = addRune(P1, Domain::Mind);
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(jax, TriggerType::WhenEquipmentAttachedToMe, &yes);
+    EXPECT_EQ(handSize(P1), 1);
+    EXPECT_TRUE(o(first).is_exhausted) << "the lowest-id rune in the base";
+    EXPECT_FALSE(o(second).is_exhausted);
+    EXPECT_FALSE(o(stray).is_exhausted) << "a rune outside the base gives no Energy";
 }
 
 }  // namespace riftbound::test::sweep_costs

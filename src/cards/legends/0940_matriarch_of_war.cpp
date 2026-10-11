@@ -29,6 +29,7 @@ public:
             .needs_activation_time_target = true,
         }};
     }
+    // "Ready a unit.": any unit, either player's — the text has no "friendly".
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller, int /*ability_index*/) const override {
         return chooseableUnits(state, controller, [](const GameObject&) { return true; });

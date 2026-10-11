@@ -18,7 +18,10 @@ public:
     // "Counter an enemy spell or ability that chooses a friendly unit or gear."
     // Peek-and-pop: the item answered is the top of the chain. What it chooses
     // is ChainItem::chosen_objects (everything it has chosen) together with its
-    // play-time targets.
+    // play-time targets. A triggered ability is never handed targets by the
+    // engine: its event's subject is ChainItem::triggering_subject, which is not
+    // a choice and is deliberately not read here (CR 355: choosing is an action
+    // of the spell or ability, not a property of the event that triggered it).
     static bool choosesFriendlyUnitOrGear(const GameState& state, PlayerId controller) {
         if (state.chain.items.empty()) return false;
         const auto& top = state.chain.items.back();

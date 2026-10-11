@@ -15,7 +15,8 @@ namespace {
 class PlunderingPoro_392 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "When I conquer, play a Gold gear token exhausted."
+    // "When I conquer, play a Gold gear token exhausted." — createGoldExhausted,
+    // not createGoldToken (which enters ready); reprint 778 does the same.
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         createGoldExhausted(ctx);

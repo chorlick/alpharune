@@ -49,6 +49,8 @@ private:
         d.card_type = CardType::Unit;
         d.super_type = SuperType::Champion;
         d.domains = {Domain::Mind};
+        // Tags as printed on SFD-227 (cards/raw/gallery_raw.json): the Spiritforged
+        // reprint is not a copy of the Origins def — OGN-119 (card 119) also prints Ionia.
         d.tags = {R"RB(Ahri)RB"};
         d.energy_cost = 3;
         d.power_cost = 1;

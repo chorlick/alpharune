@@ -24,6 +24,22 @@ namespace riftbound::test {
 namespace test_review_fix_verify_cards {  // file-unique: test sources are unity-built
 namespace {
 
+constexpr CardDefId kFallingStar = 29;
+constexpr CardDefId kVolibearFurious = 41;
+constexpr CardDefId kPiratesHaven = 143;
+constexpr CardDefId kSnapvine = 149;
+constexpr CardDefId kSalvage = 224;
+constexpr CardDefId kCandlelitSanctum = 286;
+constexpr CardDefId kRelentlessStorm = 295;
+constexpr CardDefId kAzirAscendant = 373;
+constexpr CardDefId kArise = 513;
+constexpr CardDefId kVoidBurrower = 553;
+constexpr CardDefId kBloodRose = 671;
+constexpr CardDefId kElderDragon = 680;
+constexpr CardDefId kScryersBloom = 698;
+constexpr CardDefId kAlphaStrike = 751;
+constexpr CardDefId kRavenbloomPrefect = 889;
+constexpr CardDefId kRecruit = 954;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kMeditation = 48;          // spell, [2]
 constexpr CardDefId kBlitzcrank = 67;
@@ -204,6 +220,52 @@ protected:
             live = nullptr;
         }, p1_agent, &p2);
         EXPECT_TRUE(probed) << "the opponent never got priority";
+    }
+    /// Execute `intent` for P1; `probe` is handed the live state the first
+    /// time the opponent gets priority (the spell or ability is on the chain,
+    /// finalized, not resolved).
+    void executeAndProbe(const Intent& intent, AgentInterface* p1_agent,
+                         const std::function<void(GameState&)>& probe) {
+        GameState* live = nullptr;
+        bool probed = false;
+        PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+            if (!probed && live) { probed = true; probe(*live); }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) return i;
+            return legal.front();
+        });
+        withEngine([&](GameEngine& e) {
+            live = &e.mutableState();
+            e.testHook_executeIntent(intent);
+            e.testHook_runChain();
+            live = nullptr;
+        }, p1_agent, &p2);
+        EXPECT_TRUE(probed) << "the opponent never got priority";
+    }
+    static void removeFromBoard(GameState& live, GameObjectId id) {
+        auto& x = live.getObject(id);
+        x.location = std::nullopt;
+        x.zone = ZoneType::Trash;
+        live.player(x.owner).trash.push_back(id);
+    }
+    /// A battlefield card of `def_id` in slot `bf`, controlled by `controller`.
+    GameObjectId battlefieldCard(int bf, CardDefId def_id, PlayerId controller = P1) {
+        auto id = state.createObject();
+        auto& b = o(id);
+        b.card_def_id = def_id;
+        b.card_type = CardType::Battlefield;
+        b.name = card_db.get(def_id).name;
+        b.owner = b.controller = controller;
+        b.zone = ZoneType::BattlefieldZone;
+        state.battlefields[bf].card_object_id = id;
+        state.battlefields[bf].controller = controller;
+        return id;
+    }
+    GameObjectId unitInHand(PlayerId owner, CardDefId def_id) {
+        auto id = addToHand(owner, def_id);
+        o(id).base_might = card_db.get(def_id).might;
+        o(id).current_might = o(id).base_might;
+        return id;
     }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
@@ -915,6 +977,377 @@ TEST_F(VerifyCardsTest, ShadowClone_DecliningBanishesNothingAndGivesNoAssault) {
     EXPECT_EQ(agent.prompts.size(), 1u);
     EXPECT_TRUE(inTrash(P1, corpse));
     EXPECT_FALSE(o(clone).hasKeyword(Keyword::Assault));
+}
+
+// ═══ Round 2: tests that could not fail, and accept paths never taken ═══════
+
+// 03 item 3.14: Azir, Ascendant — he left the board in response: nobody moves.
+TEST_F(VerifyCardsTest, AzirAscendant_KilledInResponseSwapsNobody) {
+    auto azir = addUnit(P1, kAzirAscendant, 0);
+    auto other = addUnit(P1, kShipyardSkulker, 0, 1);
+    power(P1, Domain::Calm) = 1;
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = azir;
+    executeAndProbe(act, nullptr, [&](GameState& live) { removeFromBoard(live, azir); });
+    EXPECT_EQ(power(P1, Domain::Calm), 0) << "activated and paid for";
+    EXPECT_FALSE(onBoard(azir));
+    EXPECT_EQ(o(azir).zone, ZoneType::Trash);
+    EXPECT_EQ(bfOf(other), std::optional<BattlefieldId>{1}) << "it stays where it was";
+}
+
+TEST_F(VerifyCardsTest, AzirAscendant_SwapsPlacesWithTheChosenUnit) {
+    auto azir = addUnit(P1, kAzirAscendant, 0);
+    auto other = addUnit(P1, kShipyardSkulker, 0, 1);
+    power(P1, Domain::Calm) = 1;
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = azir;
+    executeAndProbe(act, nullptr, [](GameState&) {});
+    EXPECT_EQ(bfOf(azir), std::optional<BattlefieldId>{1});
+    EXPECT_TRUE(o(other).isAtBase());
+}
+
+// 03 item 3.15: Pirate's Haven — the readied unit must still be on the board.
+TEST_F(VerifyCardsTest, PiratesHaven_AUnitThatLeftTheBoardGetsNoMight) {
+    auto haven = addGear(P1, kPiratesHaven);
+    auto here = addUnit(P1, kShipyardSkulker, 0);
+    fireTriggerThroughEngine(haven, TriggerType::WhenYouReadyAFriendlyUnit, nullptr, here);
+    EXPECT_EQ(o(here).temp_might_bonus, 1);
+    auto gone = addUnit(P1, kShipyardSkulker, 0);
+    sendToTrash(gone);
+    fireTriggerThroughEngine(haven, TriggerType::WhenYouReadyAFriendlyUnit, nullptr, gone);
+    EXPECT_EQ(o(gone).temp_might_bonus, 0);
+}
+
+// 03 item 3.24: the shared splitDamageAmong, through the engine.
+TEST_F(VerifyCardsTest, AlphaStrike_ThroughTheEngine_AllTheDamageWhereTheControllerPutsIt) {
+    auto striker = addUnit(P1, kInvalidId, 4);
+    auto e1 = addUnit(P2, kInvalidId, 3, 0);
+    auto e2 = addUnit(P2, kInvalidId, 5, 1);
+    auto in_base = addUnit(P2, kInvalidId, 2);
+    auto spell = addToHand(P1, kAlphaStrike);
+    EnginePathAgent agent(EnginePathAgent::choosing(e1));
+    playAt(spell, {striker}, &agent);
+    EXPECT_FALSE(agent.wasOffered(in_base)) << "enemy units at battlefields";
+    EXPECT_FALSE(onBoard(e1)) << "all 4 on the 3 [M] unit kills it";
+    EXPECT_EQ(o(e2).damage_marked, 0);
+    EXPECT_EQ(ps(P1).xp, 1);
+}
+
+TEST_F(VerifyCardsTest, VolibearFurious_ThroughTheEngine_AllTheDamageWhereTheControllerPutsIt) {
+    auto voli = addUnit(P1, kVolibearFurious, 0, 0);
+    auto big = addUnit(P2, kInvalidId, 6, 0);
+    auto small = addUnit(P2, kInvalidId, 2, 0);
+    auto elsewhere = addUnit(P2, kInvalidId, 2, 1);
+    EnginePathAgent agent(EnginePathAgent::choosing(big));
+    fireTriggerThroughEngine(voli, TriggerType::WhenIAttack, &agent);
+    EXPECT_FALSE(agent.wasOffered(elsewhere)) << "here";
+    EXPECT_EQ(o(big).damage_marked, 5);
+    EXPECT_EQ(o(small).damage_marked, 0);
+}
+
+// 07 item 7.5: Ravenbloom Prefect — "banish me" is paid as the trigger is
+// finalized: there is a moment when she is banished and the gear is not yet.
+TEST_F(VerifyCardsTest, RavenbloomPrefect_IsBanishedBeforeTheGearIs) {
+    auto prefect = addUnit(P2, kRavenbloomPrefect, 0, 0);
+    auto gear = addToHand(P1, kSealOfStrength163);
+    GameEngine* live = nullptr;
+    bool seen_cost_paid_first = false;
+    PickByPredicateAgent me([&](int, const std::vector<Intent>& legal) {
+        if (live) {
+            const auto& st = live->mutableState();
+            if (!st.getObject(prefect).location.has_value() &&
+                st.getObject(gear).location.has_value()) seen_cost_paid_first = true;
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority) return i;
+        return legal.front();
+    });
+    EnginePathAgent them(EnginePathAgent::script({1}));
+    const auto& def = card_db.get(kSealOfStrength163);
+    ps(P1).rune_pool.energy += def.energy_cost;
+    ps(P1).rune_pool.universal_power += def.power_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = gear;
+    play.play_location = LocationId{BaseLocation{P1}};
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_executeIntent(play);
+        live = nullptr;
+    }, &me, &them);
+    ASSERT_EQ(them.prompts.size(), 1u);
+    EXPECT_TRUE(seen_cost_paid_first) << "the cost is paid before anyone can respond";
+    EXPECT_TRUE(inBanishment(P2, prefect));
+    EXPECT_TRUE(inBanishment(P1, gear));
+}
+
+// 07 item 7.8: Relentless Storm — the Mighty check is made when the unit is
+// played; losing the unit in response does not cost the rune.
+TEST_F(VerifyCardsTest, RelentlessStorm_StillChannelsWhenTheMightyUnitLeavesInResponse) {
+    auto voli = addLegend(P1, kRelentlessStorm);
+    auto rune = addRune(P1, Domain::Fury);
+    o(rune).location = std::nullopt;
+    o(rune).zone = ZoneType::RuneDeck;
+    ps(P1).rune_deck.push_back(rune);
+    auto mighty = unitInHand(P1, kMegaMech);
+    ps(P1).rune_pool.energy += card_db.get(kMegaMech).energy_cost;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = mighty;
+    play.play_location = LocationId{BaseLocation{P1}};
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    executeAndProbe(play, &yes, [&](GameState& live) {
+        EXPECT_TRUE(live.getObject(voli).is_exhausted) << "exhausted as the cost";
+        removeFromBoard(live, mighty);
+    });
+    EXPECT_TRUE(ps(P1).rune_deck.empty()) << "the rune is channeled all the same";
+    EXPECT_TRUE(onBoard(rune));
+}
+
+// 07 item 7.25: Scryer's Bloom — "Kill this" is a cost: paid before the
+// opponent can respond, before any card is looked at.
+TEST_F(VerifyCardsTest, ScryersBloom_IsKilledBeforeTheOpponentCanRespond) {
+    auto bloom = addGear(P1, kScryersBloom);
+    for (int i = 0; i < 3; ++i) addToDeck(P1, kInvalidId);
+    ps(P1).rune_pool.energy = 1;
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = bloom;
+    executeAndProbe(act, nullptr, [&](GameState& live) {
+        EXPECT_FALSE(live.getObject(bloom).location.has_value()) << "Kill this: the cost";
+        EXPECT_TRUE(live.player(P1).hand.empty()) << "nothing drawn yet";
+        EXPECT_EQ(live.player(P1).xp, 0);
+    });
+    EXPECT_EQ(handSize(P1), 1);
+}
+
+// 07 item 7.26: Vayne, Hunter 35 — as reprint 537.
+TEST_F(VerifyCardsTest, Vayne035_OffTheBoardIsNotOfferedTheReturnAndPaysNothing) {
+    auto vayne = addUnit(P1, kVayne035, 0, 0);
+    sendToTrash(vayne);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(vayne, TriggerType::WhenIConquer, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+    EXPECT_FALSE(inHand(P1, vayne));
+}
+
+TEST_F(VerifyCardsTest, Vayne035_KilledInResponseStaysInTheTrash) {
+    auto vayne = addUnit(P1, kVayne035, 0, 0);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    fireAndProbe(vayne, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        EXPECT_EQ(live.player(P1).rune_pool.energy, 0);
+        removeFromBoard(live, vayne);
+    });
+    EXPECT_FALSE(inHand(P1, vayne));
+    EXPECT_EQ(o(vayne).zone, ZoneType::Trash);
+}
+
+// 07 item 7.27: Carnivorous Snapvine — a Snapvine that went back to hand
+// neither damages nor kills. (The enemy has more Might than the Snapvine, so
+// "damage 0" cannot be a killed-and-reset unit.)
+TEST_F(VerifyCardsTest, Snapvine_ReturnedToHandInResponseFightsNobody) {
+    auto enemy = addUnit(P2, kInvalidId, 9, 0);
+    auto vine = addUnit(P1, kSnapvine);
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().queueTriggeredAbility(vine, P1, TriggerType::WhenYouPlayMe);
+        e.testHook_executor().bounceToHand(vine);
+        e.testHook_runChain();
+    }, &agent);
+    EXPECT_TRUE(onBoard(enemy));
+    EXPECT_EQ(o(enemy).damage_marked, 0);
+    EXPECT_TRUE(inHand(P1, vine));
+    EXPECT_FALSE(inTrash(P1, vine));
+}
+
+// 07 item 7.28: Falling Star — both hits on one token: it dies once.
+TEST_F(VerifyCardsTest, FallingStar_BothHitsOnOneTokenKillItOnce) {
+    auto spell = addToHand(P1, kFallingStar);
+    auto token = addUnit(P2, kInvalidId, 3, 0);
+    o(token).is_token = true;
+    o(token).super_type = SuperType::Token;
+    int deaths = 0;
+    auto conn = events.on_unit_died.connect([&](const UnitDiedEvent&) { ++deaths; });
+    EnginePathAgent agent(EnginePathAgent::choosing(token));
+    playThroughEngine(spell, &agent);
+    conn.disconnect();
+    EXPECT_EQ(agent.prompts.size(), 2u) << "two picks";
+    EXPECT_FALSE(onBoard(token));
+    EXPECT_EQ(deaths, 1) << "the second hit finds nothing on the board";
+    EXPECT_FALSE(inTrash(P2, token)) << "a token ceases to exist";
+}
+
+// 07 item 7.31: Void Burrower — the banish goes through the executor.
+TEST_F(VerifyCardsTest, VoidBurrower_ThroughTheEngine_TheBanishIsCountedAndAnnounced) {
+    auto legend = addLegend(P1, kVoidBurrower);
+    auto below = addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kShipyardSkulker);
+    o(top).base_might = o(top).current_might = 3;
+    ps(P1).rune_pool.energy = card_db.get(kShipyardSkulker).energy_cost;
+    int announced = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.what_changed == "banished_owned") ++announced;
+    });
+    EnginePathAgent agent(EnginePathAgent::choosing(top));
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
+    conn.disconnect();
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_EQ(ps(P1).cards_banished_this_turn, 1);
+    EXPECT_EQ(announced, 1);
+    EXPECT_TRUE(onBoard(top)) << "banish one, then play it";
+    EXPECT_FALSE(inBanishment(P1, top));
+    EXPECT_TRUE(inDeck(P1, below)) << "recycle the rest";
+}
+
+// 07 item 7.36: Elder Dragon — every chosen unit is damaged before any dies.
+TEST_F(VerifyCardsTest, ElderDragon_DamagesEveryChosenUnitBeforeAnyDies) {
+    auto dragon = addUnit(P1, kElderDragon, 0, 0);
+    auto in_base = addUnit(P2, kInvalidId, 1);
+    auto at_bf = addUnit(P2, kInvalidId, 1, 0);
+    GameEngine* live = nullptr;
+    int deaths = 0;
+    bool all_damaged_at_first_death = false;
+    auto conn = events.on_unit_died.connect([&](const UnitDiedEvent&) {
+        if (++deaths != 1 || !live) return;
+        const auto& st = live->mutableState();
+        all_damaged_at_first_death =
+            (!st.getObject(in_base).location.has_value() || st.getObject(in_base).damage_marked >= 1) &&
+            (!st.getObject(at_bf).location.has_value() || st.getObject(at_bf).damage_marked >= 1);
+    });
+    // One prompt per location: take the unit offered each time.
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty()) return i;
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_executor().queueTriggeredAbility(dragon, P1, TriggerType::WhenYouPlayMe);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent);
+    conn.disconnect();
+    EXPECT_EQ(deaths, 2);
+    EXPECT_FALSE(onBoard(in_base));
+    EXPECT_FALSE(onBoard(at_bf));
+    EXPECT_TRUE(all_damaged_at_first_death) << "damage first, kills in a second pass";
+}
+
+// 07 item 7.6: Stalking Wolf — the engine consults the gate for a unit play.
+TEST_F(VerifyCardsTest, StalkingWolf_TheEngineRefusesThePlayWithNothingToKill) {
+    auto wolf = addToHand(P1, kStalkingWolf);
+    addUnit(P1, kShipyardSkulker, 0);                 // a Pirate: not a Bird, Cat, Dog or Poro
+    ps(P1).rune_pool.energy = 10;
+    ps(P1).rune_pool.universal_power = 5;
+    auto offered = [&]() {
+        bool found = false;
+        withEngine([&](GameEngine& e) {
+            for (const auto& i : e.generateLegalActions())
+                if (i.type == IntentType::PlayCard && i.card == wolf) found = true;
+            EXPECT_EQ(e.testHook_canAfford(P1, wolf), found);
+        });
+        return found;
+    };
+    EXPECT_FALSE(offered()) << "the additional cost can't be paid";
+    auto poro = addUnit(P1, kInvalidId, 1);
+    o(poro).tags = {"Poro"};
+    EXPECT_TRUE(offered());
+}
+
+// ── Accept paths the stage 2 tests never took ──
+
+// 513 Arise!: "Ready up to two of them."
+TEST_F(VerifyCardsTest, Arise_ReadyingTwoOfThreeSandSoldiers) {
+    auto spell = addToHand(P1, kArise);
+    for (int i = 0; i < 3; ++i) {
+        auto g = addGear(P1, kSerratedDirk);
+        ASSERT_TRUE(isEquipment(o(g)));
+    }
+    // Take a Sand Soldier whenever one is offered.
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty()) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    int ready = 0, exhausted = 0;
+    for (const auto& [id, obj] : state.objects) {
+        if (obj.name != "Sand Soldier" || !obj.location.has_value()) continue;
+        if (obj.is_exhausted) ++exhausted; else ++ready;
+    }
+    EXPECT_EQ(ready, 2) << "up to two";
+    EXPECT_EQ(exhausted, 1);
+}
+
+// 224 Salvage: "You may kill up to one gear. Draw 1."
+TEST_F(VerifyCardsTest, Salvage_KillingTheChosenGearAndDrawing) {
+    auto my_gear = addGear(P1, kSerratedDirk);
+    auto other = addGear(P1, kSerratedDirk);
+    addToDeck(P1, kMeditation);
+    auto spell = addToHand(P1, kSalvage);
+    playAt(spell, {my_gear});
+    EXPECT_FALSE(onBoard(my_gear));
+    EXPECT_TRUE(onBoard(other));
+    EXPECT_EQ(handSize(P1), 1);
+}
+
+// 286 The Candlelit Sanctum: "You may recycle one or both of them."
+TEST_F(VerifyCardsTest, CandlelitSanctum_RecyclingOneOfTheTwo) {
+    auto sanctum = battlefieldCard(0, kCandlelitSanctum);
+    auto third = addToDeck(P1, kRecruit);
+    auto second = addToDeck(P1, kRecruit);
+    auto top = addToDeck(P1, kRecruit);
+    int recycled_events = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.what_changed == "recycled_main") ++recycled_events;
+    });
+    // Recycle the first card asked about, keep the second.
+    int asked = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        const bool recycle = asked++ == 0;
+        for (const auto& i : legal)
+            if (i.chosen_objects.empty() != recycle) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(sanctum, TriggerType::WhenYouConquerHere, &agent);
+    conn.disconnect();
+    ASSERT_EQ(deckSize(P1), 3);
+    EXPECT_EQ(recycled_events, 1);
+    const auto& deck = ps(P1).main_deck;
+    const GameObjectId recycled = deck.front();
+    EXPECT_TRUE(recycled == top || recycled == second) << "one of the two looked at";
+    EXPECT_EQ(deck.back(), recycled == top ? second : top) << "the kept one is back on top";
+    EXPECT_EQ(deck[1], third);
+}
+
+// 671 Blood Rose: "When you play a unit, you may pay [1] to gain 1 XP."
+TEST_F(VerifyCardsTest, BloodRose_PayingOneForAnXpWhenAUnitIsPlayed) {
+    addGear(P1, kBloodRose);
+    auto unit = unitInHand(P1, kShipyardSkulker);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    playThroughEngine(unit, &yes);
+    EXPECT_EQ(yes.prompts.size(), 1u);
+    EXPECT_EQ(ps(P1).xp, 1);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+
+    auto second = unitInHand(P1, kShipyardSkulker);
+    ps(P1).rune_pool.energy = 1;
+    EnginePathAgent no(EnginePathAgent::script({0}));
+    playThroughEngine(second, &no);
+    EXPECT_EQ(no.prompts.size(), 1u);
+    EXPECT_EQ(ps(P1).xp, 1) << "declined: no XP";
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1) << "and nothing paid";
 }
 
 }  // namespace

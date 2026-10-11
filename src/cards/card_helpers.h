@@ -625,6 +625,7 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     auto answer = [&ri, slot](GameObjectId id) {
         ri.resume_data[slot] = 2;
         ri.resume_data[slot + 1] = static_cast<int32_t>(id);
+        if (id == kInvalidId) Card::nothingToDecide(ri);
         return id;
     };
     if (ri.resume_data[slot] == 2) return static_cast<GameObjectId>(ri.resume_data[slot + 1]);
@@ -747,7 +748,11 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
                       ri.resume_point == kSplitDamageCeaseAwait;
     if (!ours) {
         if (total <= 0 || legal.empty()) {
+            // Nothing to choose: the item is marked done, which is this
+            // helper's stored "nothing to decide" — a finalize pass may end
+            // here (the rule is at Card::finalizingChoices).
             ri.resume_point = kSplitDamageDone;
+            Card::nothingToDecide(ri);
             return true;
         }
         ri.resume_data = {0, 0};
@@ -1296,6 +1301,7 @@ inline std::optional<GameObjectId> selectObjectAs(CardContext& ctx, PlayerId cho
     auto answer = [&ri, slot](GameObjectId id) {
         ri.resume_data[slot] = 2;
         ri.resume_data[slot + 1] = static_cast<int32_t>(id);
+        if (id == kInvalidId) Card::nothingToDecide(ri);
         return id;
     };
     if (ri.resume_data[slot] == 2) return static_cast<GameObjectId>(ri.resume_data[slot + 1]);

@@ -268,9 +268,6 @@ public:
     // Card::canActivateAbility / canActivateAbilityAt first — an activation
     // "from" a trash, a hand, or of another player's card does nothing.
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
-    /// Make a card-contract violation (GameEngine::cardContractViolation) an
-    /// error instead of a logged warning.
-    void setStrictCardContracts(bool strict) { strict_card_contracts_ = strict; }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
     // The top-level main-phase decision, asked of `p`'s agent.
@@ -808,13 +805,18 @@ private:
     ScriptedPass runScriptedPass(const GameState& from, const ChainItem& pre,
                                  const std::vector<int>& script, bool stop_after_script);
     /// Whether some continuation of `script` completes the pass and leaves
-    /// the spell payable. Bounded (kPrePlayProbeRuns); leaves `state_` as
-    /// `from`. Nothing it does is seen: no event, no log line, no agent asked.
+    /// the spell payable. Leaves `state_` as `from`. Nothing it does is seen:
+    /// no event, no log line, no agent asked. Bounded: after kPrePlayProbeRuns
+    /// runs with sequences left and none found it throws a std::logic_error
+    /// naming the card (the answer is unknown; "none" would withhold a play).
+    /// A throw of the card's pass (a contract error) is passed on.
     bool prePlaySequenceExists(const GameState& from, const ChainItem& pre,
                                const std::vector<int>& script, const PrePlayPayable& payable);
     /// The real pass for a spell that is too dear on its own: at every prompt
     /// only the options from which a payable completion exists are offered,
-    /// so the play, once offered, cannot end unpaid.
+    /// so the play, once offered, cannot end unpaid. Requires the pass to be
+    /// repeatable (same state and answers -> same prompts); throws a
+    /// std::logic_error naming the card when it is not.
     ChainItem choosePrePlayViable(const ChainItem& pre, const PrePlayPayable& payable);
     /// The generators' question: with `card_id` leaving its zone now, is
     /// there a complete sequence of its choices that leaves it payable?
@@ -829,8 +831,6 @@ private:
     /// A spell's finalize-pass choices made before its cost was paid; adopted
     /// by chooseTargetsAtFinalize when the spell goes on the chain.
     std::optional<ChainItem> prefinalized_spell_;
-    void cardContractViolation(const std::string& what);
-    bool strict_card_contracts_ = false;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
     /// One agent decision among `options` for `player`, logged like any other.

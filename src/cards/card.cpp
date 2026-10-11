@@ -24,6 +24,23 @@ namespace riftbound {
 // finalize_checked bit 4: a cost was asked for during the finalize pass.
 // finalize_checked bit 16: a cost was asked for while resolving.
 // finalize_checked bit 8: that cost was paid while resolving (marker reached).
+// WHERE A FINALIZE PASS MAY END (one rule, checked by the engine in
+// GameEngine::collectFinalizeChoices — a pass that ends anywhere else is a
+// std::logic_error naming the card):
+//   1. at this marker; or
+//   2. at a return taken because a choice helper said there is nothing to
+//      decide and stored that as the answer: a "may" that was declined, not
+//      available, or no longer possible (confirmOptional -> 0), no legal mode
+//      (pickMode -> -2), nothing to choose (pickTarget / pickTargetPair /
+//      selectObject -> kInvalidId, with an empty list; splitDamageAmong
+//      with no unit to target). The stored answer
+//      takes the card down the same path as it resolves, so nothing is asked
+//      then.
+// A return for any other reason — a state test of the card's own ("am I still
+// in the trash?") — leaves nothing stored: if the test comes out differently
+// as the item resolves, the card goes on and its helpers ask then, after
+// everyone has had the chance to respond. Such a test belongs after the
+// marker, or inside a helper's still_legal.
 bool Card::finalizingChoices(const CardContext& ctx) {
     auto& r = ctx.state.chain.resuming;
     if (!r.has_value()) return false;
@@ -145,6 +162,10 @@ bool Card::costAlreadyPaid(const CardContext& ctx) {
     return (r->choices_finalized && r->finalize_costs_paid) || (r->finalize_checked & 8);
 }
 
+void Card::nothingToDecide(ChainItem& item) {
+    if (item.finalizing) item.finalize_checked |= 128;
+}
+
 // ── Choice-helper progress ──────────────────────────────────────────────────
 // Each helper keeps its own "waiting for the agent" / "answered" flags on the
 // resolving item (resume_data[Card::kChoiceStateSlot]), so the helpers compose
@@ -245,6 +266,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
                                  " (precondition failed at prompt time)");
             ri.resume_point = 2;  // mark "done, do not re-enter"
             ri.may_answer = 0;
+            nothingToDecide(ri);
             return 0;
         }
         // Publish a 2-option choice via Intent::chosen_value (no = 0, yes = 1).
@@ -290,6 +312,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
             ctx.events.logTrace("MAY_DECLINED: " + label);
             ri.resume_point = 2;
             ri.may_answer = 0;
+            nothingToDecide(ri);
             return 0;
         }
         // Re-validate at use time. State may have shifted while the
@@ -301,6 +324,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
                                  "and execution; silent fail)");
             ri.resume_point = 2;
             ri.may_answer = 0;
+            nothingToDecide(ri);
             return 0;
         }
         ctx.events.logTrace("MAY_ACCEPTED: " + label);
@@ -321,6 +345,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         if (!ri.finalize_costs_paid && !still_legal()) {
             ctx.events.logTrace("MAY_INVALIDATED: " + label + " (no longer possible at resolution)");
             ri.may_answer = 0;
+            nothingToDecide(ri);
             return 0;
         }
         ri.may_answer = 2;
@@ -448,6 +473,7 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
             ctx.events.logTrace("MODE_NOT_OFFERED: " + label +
                                  " (no legal modes after filtering)");
             store(-2);
+            nothingToDecide(ri);
             return -2;
         }
         // Always publish a choice, even if only one mode is legal. The
@@ -631,6 +657,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             ctx.events.logTrace("TGT_NOT_OFFERED: " + label +
                                  " (no legal targets at resolve time)");
             store(kInvalidId);
+            nothingToDecide(ri);
             return kInvalidId;
         }
         // Always publish a choice, even if only one target is legal —
@@ -722,6 +749,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     auto finish = [&ri](GameObjectId a, GameObjectId b) {
         ri.resume_data[3] = static_cast<int32_t>(a);
         ri.resume_data[4] = static_cast<int32_t>(b);
+        if (a == kInvalidId || b == kInvalidId) nothingToDecide(ri);
         setChoiceState(ri, kPairAwaitA | kPairAwaitB, kPairDone);
         ri.resume_point = 13;
         return std::pair<GameObjectId, GameObjectId>{a, b};

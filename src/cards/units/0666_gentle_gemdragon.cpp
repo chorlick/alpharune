@@ -15,6 +15,9 @@ namespace {
 class GentleGemdragon : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // Which runes is this ability's choice: it is made as the ability is
+    // finalized (CR 355.5, 383.3), so the opponent responds knowing them.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouPlayAUnit};
     }
@@ -32,17 +35,43 @@ public:
         // controller's choice — one prompt per rune, "None" on each (CR
         // 355.13). The rune matters: a rune that will be recycled for its
         // Power is better left exhausted and another one readied.
-        std::vector<GameObjectId> exhausted;
-        for (const auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isRune() || obj.controller != ctx.controller) continue;
-            if (!obj.is_exhausted || !obj.location.has_value()) continue;
-            exhausted.push_back(id);
+        //
+        // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
+        // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
+        // printed restriction narrows a choice (CR 355.9.b), so an opponent's
+        // exhausted rune may be named too.
+        auto readiable = [&](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isRune() && obj.is_exhausted && obj.location.has_value();
+        };
+        const std::string label = "Gentle Gemdragon: ready a rune (up to 2)";
+        const auto& item = ctx.state.chain.resuming;
+        std::vector<GameObjectId> picks;
+        if (item.has_value() && item->choices_finalized && !item->finalizing) {
+            // Resolving: the runes named at finalization, as selectSeveral
+            // kept them on the item (two slots per pick from slot 7). Nothing
+            // is offered, so nothing is asked and nothing new can be named.
+            for (size_t k = 0; k < 2; ++k) {
+                const auto one = selectObject(ctx, label, {}, 7 + 2 * k, /*may_decline=*/true);
+                if (!one.has_value() || *one == kInvalidId) break;
+                picks.push_back(*one);
+            }
+        } else {
+            std::vector<GameObjectId> exhausted;
+            for (const auto& [id, obj] : ctx.state.objects)
+                if (readiable(id)) exhausted.push_back(id);
+            const auto chosen = selectSeveral(ctx, label, exhausted, 2);
+            if (!chosen.has_value()) return;   // waiting on the agent
+            picks = *chosen;
         }
-        const auto picks = selectSeveral(ctx, "Gentle Gemdragon: ready a rune (up to 2)",
-                                         exhausted, 2);
-        if (!picks.has_value()) return;   // waiting on the agent
-        const int readied = static_cast<int>(picks->size());
-        for (auto id : *picks) ctx.executor.readyObject(id);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        int readied = 0;
+        for (auto id : picks) {
+            if (!readiable(id)) continue;   // readied or off the board since it was named
+            ctx.executor.readyObject(id);
+            ++readied;
+        }
         if (readied > 0) {
             ctx.events.logTrace("GENTLE GEMDRAGON: readied " +
                                 std::to_string(readied) + " rune(s)");

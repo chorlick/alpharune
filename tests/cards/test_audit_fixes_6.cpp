@@ -152,19 +152,40 @@ TEST_F(AuditFix6Test, TargonsPeak_EndOfTurnReadiesUpToTwoRunes) {
     EXPECT_EQ(exhaustedRuneCount(P1), 1);
 }
 
-// Only the controller's runes are readied, and enemy exhausted runes untouched.
-TEST_F(AuditFix6Test, TargonsPeak_EndOfTurnIgnoresEnemyRunes) {
+// Was TargonsPeak_EndOfTurnIgnoresEnemyRunes (a direct call asserting only the
+// controller's runes can be readied). The text is "ready up to 2 runes" with no
+// "friendly" (plans/09 item 9.Z3): any exhausted rune may be named, and only
+// the runes named are readied.
+TEST_F(AuditFix6Test, TargonsPeak_EndOfTurnReadiesOnlyTheRunesNamed) {
     auto bf_obj = state.createObject();
     state.getObject(bf_obj).card_type = CardType::Battlefield;
-    addRune(P1, Domain::Calm, /*exhausted=*/true);
-    addRune(P2, Domain::Calm, /*exhausted=*/true);
+    state.getObject(bf_obj).card_def_id = kTargonsPeak;
+    state.getObject(bf_obj).controller = P1;
+    state.battlefields[0].card_object_id = bf_obj;
+    state.battlefields[0].controller = P1;
+    auto mine = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto theirs_a = addRune(P2, Domain::Calm, /*exhausted=*/true);
     addRune(P2, Domain::Calm, /*exhausted=*/true);
 
-    EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kTargonsPeak, P1, bf_obj, TriggerType::None, exec);
+    // Name my own rune, then "None".
+    int asked = 0;
+    bool enemy_offered = false;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        ++asked;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == theirs_a) enemy_offered = true;
+        if (asked == 1)
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == mine) return i;
+        for (const auto& i : legal)
+            if (i.chosen_objects.empty()) return i;
+        return legal.front();
+    });
+    fireTriggerThroughEngine(bf_obj, TriggerType::AtEndOfTurn, &agent);
 
-    EXPECT_EQ(readyRuneCount(P1), 1);          // only friendly rune readied
-    EXPECT_EQ(exhaustedRuneCount(P2), 2);      // enemy runes untouched
+    EXPECT_TRUE(enemy_offered) << "bare \"runes\": an opponent's rune may be named";
+    EXPECT_EQ(readyRuneCount(P1), 1);
+    EXPECT_EQ(exhaustedRuneCount(P2), 2) << "not named, not readied";
 }
 
 // ─── [402] Bellows Breath ───────────────────────────────────────────────────

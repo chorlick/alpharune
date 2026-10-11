@@ -564,16 +564,27 @@ TEST_F(AuditFix3Test, Hwei_DiscardGearReadiesRunes) {
     auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
     auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
 
+    // Three prompts, each answered by name: the discard, then one per rune
+    // ("Ready up to 2 runes": the controller names them, CR 355.13).
+    const std::vector<GameObjectId> answers = {gear_in_hand, r1, r2};
+    size_t asked = 0;
     driveResumableTrigger(kHwei, P1, hwei,
         [&](const std::vector<Intent>& legal) -> Intent {
-            for (auto& i : legal) {
-                if (!i.chosen_objects.empty() && i.chosen_objects[0] == gear_in_hand)
-                    return i;
+            if (asked < answers.size()) {
+                const GameObjectId want = answers[asked++];
+                for (auto& i : legal) {
+                    if (!i.chosen_objects.empty() && i.chosen_objects[0] == want)
+                        return i;
+                }
+                ADD_FAILURE() << "prompt " << asked << ": object " << want << " was not offered";
+            } else {
+                ADD_FAILURE() << "a prompt the test did not expect";
             }
             return legal.empty() ? Intent{} : legal.front();
         },
         exec, TriggerType::WhenIMove);
 
+    EXPECT_EQ(asked, answers.size()) << "the discard and two rune prompts";
     EXPECT_FALSE(state.getObject(r1).is_exhausted);
     EXPECT_FALSE(state.getObject(r2).is_exhausted);
 }

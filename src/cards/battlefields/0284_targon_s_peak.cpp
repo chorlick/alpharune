@@ -21,8 +21,13 @@ public:
     // dispatch leaves fired_trigger unset), which falls through to the ready
     // branch below.
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
+    // The runes are the delayed trigger's choice: they are named when IT is
+    // finalized at the end of the turn, not when the conquer ability is (CR
+    // 355.5.b, whose example is this card).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenYouConquerHere) {
+            if (finalizingChoices(ctx)) return;   // the conquer ability has no choice
             // Schedule the ready-up for end of this turn.
             DelayedAbility da;
             da.source = ctx.source;
@@ -34,23 +39,48 @@ public:
             ctx.events.logTrace("TARGON'S PEAK: scheduled ready-2-runes for end of turn");
             return;
         }
-        // AtEndOfTurn fire: ready up to 2 of the controller's exhausted runes.
+        // AtEndOfTurn fire: ready up to 2 exhausted runes.
         // The player says which (a ready rune of one domain is not the same
         // as a ready rune of another once Power has to be paid) and how many:
         // one prompt per rune, "None" on each (CR 355.13).
-        auto exhausted = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isRune() && obj.controller == ctx.controller && obj.is_exhausted &&
-                    obj.location.has_value()) out.push_back(id);
-            return out;
+        //
+        // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
+        // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
+        // printed restriction narrows a choice (CR 355.9.b), so an opponent's
+        // exhausted rune may be named too.
+        auto readiable = [&](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isRune() && obj.is_exhausted && obj.location.has_value();
         };
-        const auto picks = selectSeveral(ctx, "Targon's Peak: ready a rune (up to 2)",
-                                         exhausted(), 2);
-        if (!picks.has_value()) return;       // waiting on the agent
-        const std::vector<GameObjectId>& to_ready = *picks;
-        for (auto id : to_ready) ctx.executor.readyObject(id);
-        ctx.events.logTrace("TARGON'S PEAK: readied " + std::to_string(to_ready.size()) +
+        const std::string label = "Targon's Peak: ready a rune (up to 2)";
+        const auto& item = ctx.state.chain.resuming;
+        std::vector<GameObjectId> picks;
+        if (item.has_value() && item->choices_finalized && !item->finalizing) {
+            // Resolving: the runes named at finalization, as selectSeveral
+            // kept them on the item (two slots per pick from slot 7). Nothing
+            // is offered, so nothing is asked and nothing new can be named.
+            for (size_t k = 0; k < 2; ++k) {
+                const auto one = selectObject(ctx, label, {}, 7 + 2 * k, /*may_decline=*/true);
+                if (!one.has_value() || *one == kInvalidId) break;
+                picks.push_back(*one);
+            }
+        } else {
+            std::vector<GameObjectId> exhausted;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (readiable(id)) exhausted.push_back(id);
+            const auto chosen = selectSeveral(ctx, label, exhausted, 2);
+            if (!chosen.has_value()) return;       // waiting on the agent
+            picks = *chosen;
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        int readied = 0;
+        for (auto id : picks) {
+            if (!readiable(id)) continue;   // readied or off the board since it was named
+            ctx.executor.readyObject(id);
+            ++readied;
+        }
+        ctx.events.logTrace("TARGON'S PEAK: readied " + std::to_string(readied) +
                              " runes at end of turn");
     }
 private:

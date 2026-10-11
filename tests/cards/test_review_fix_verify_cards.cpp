@@ -585,6 +585,29 @@ protected:
                 if (i.choice_label.find(text) != std::string::npos) return true;
         return false;
     }
+
+    /// fireAndProbe for a trigger that is easier to cause than to name:
+    /// `cause` is run on the live state with the engine's event bus listening,
+    /// then the chain is run. `probe` is handed the live state the first time
+    /// the opponent gets priority.
+    void causeAndProbe(const std::function<void(GameState&)>& cause, AgentInterface* p1_agent,
+                       const std::function<void(GameState&)>& probe) {
+        GameState* live = nullptr;
+        bool probed = false;
+        PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+            if (!probed && live) { probed = true; probe(*live); }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) return i;
+            return legal.front();
+        });
+        withEngine([&](GameEngine& e) {
+            live = &e.mutableState();
+            cause(*live);
+            e.testHook_runChain();
+            live = nullptr;
+        }, p1_agent, &p2);
+        EXPECT_TRUE(probed) << "the opponent never got priority";
+    }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
         for (const auto& [id, obj] : state.objects)
@@ -862,7 +885,7 @@ TEST_F(VerifyCardsTest, Pin_3_21_VeteranPoro779_HasWeaponmasterAndNoEquip) {
 // batch-01 Systemic S5: Dark Child 315 "ready up to 2 runes" — the controller
 // chooses which, and may ready fewer (CR 355.13; the earlier "asks nothing"
 // closure was wrong: which rune is ready matters when one is recycled for Power).
-TEST_F(VerifyCardsTest, Pin_Batch01_DarkChild315_ReadiesUpToTwoOfItsControllersRunes) {
+TEST_F(VerifyCardsTest, Pin_Batch01_DarkChild315_ReadiesUpToTwoRunesItsControllerPicks) {
     auto annie = addLegend(P1, kDarkChild);
     auto r1 = addRune(P1, Domain::Fury, true);
     auto r2 = addRune(P1, Domain::Chaos, true);
@@ -871,7 +894,7 @@ TEST_F(VerifyCardsTest, Pin_Batch01_DarkChild315_ReadiesUpToTwoOfItsControllersR
     EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
     fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
     EXPECT_EQ(agent.prompts.size(), 2u) << "one prompt per rune, no third";
-    EXPECT_FALSE(agent.wasOffered(theirs)) << "only its controller's runes";
+    EXPECT_TRUE(agent.wasOffered(theirs)) << "\"runes\": any rune on the board (no \"friendly\" in the text)";
     EXPECT_FALSE(o(r1).is_exhausted);
     EXPECT_FALSE(o(r2).is_exhausted);
     EXPECT_TRUE(o(r3).is_exhausted);
@@ -6148,7 +6171,7 @@ TEST_F(VerifyCardsTest, GentleGemdragon_ThePlayerPicksTheRunesAndMayReadyFewer) 
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "\"None\" is on the first prompt";
-    EXPECT_FALSE(agent.wasOffered(theirs));
+    EXPECT_TRUE(agent.wasOffered(theirs));   // bare "runes": an opponent's too
     EXPECT_TRUE(o(r1).is_exhausted);
     EXPECT_TRUE(o(r2).is_exhausted);
     EXPECT_FALSE(o(r3).is_exhausted);
@@ -6177,7 +6200,7 @@ TEST_F(VerifyCardsTest, DarkChild315_ThePlayerPicksTheRunesAndMayReadyFewer) {
     fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "\"None\" is on the first prompt";
-    EXPECT_FALSE(agent.wasOffered(theirs)) << "only its controller's runes";
+    EXPECT_TRUE(agent.wasOffered(theirs)) << "\"runes\": any rune on the board (no \"friendly\" in the text)";
     EXPECT_TRUE(o(r1).is_exhausted);
     EXPECT_TRUE(o(r2).is_exhausted);
     EXPECT_FALSE(o(r3).is_exhausted);
@@ -6404,6 +6427,415 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FromFacedownNeedsAFriendlyUnitAtItsBa
     EXPECT_TRUE(o(here).isAtBase());
     EXPECT_EQ(bfOf(elsewhere), std::optional<BattlefieldId>{1});
     EXPECT_TRUE(inTrash(P1, spell));
+}
+
+// ═══ Tranche 9: 9.Z2 rune picks at finalization, 9.Z3 whose runes ═══════════
+// ═══ 9.Z2: "ready up to N runes" — the runes are named at finalization ══════
+// CR 355.5 / 355.5.b (the Targon's Peak example) / 383.3: a triggered
+// ability's choices are made as it is finalized, before anyone can respond.
+// Each *_NamedBeforeTheOpponentCanRespond test fails on the old code: at the
+// opponent's first priority no prompt had been asked yet (the runes were
+// picked as the ability resolved).
+// Each *_ReadiedOrGoneInResponseIsSkipped test fails on the old code: asked at
+// resolution, the two named runes were no longer on offer and the third rune
+// was readied in their place.
+
+// ─── Dark Child 315 ─────────────────────────────────────────────────────────
+TEST_F(VerifyCardsTest, DarkChild315_RunesAreNamedBeforeTheOpponentCanRespond) {
+    auto annie = addLegend(P1, kDarkChild);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r3, r1}));
+    size_t asked_at_response = 99;
+    bool readied_at_response = true;
+    fireAndProbe(annie, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        readied_at_response = !live.getObject(r1).is_exhausted || !live.getObject(r3).is_exhausted;
+    });
+    EXPECT_EQ(asked_at_response, 2u) << "both runes are named as the ability is finalized";
+    EXPECT_FALSE(readied_at_response) << "they are readied only as it resolves";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "nothing is asked again at resolution";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, DarkChild315_ARuneReadiedOrGoneInResponseIsSkipped) {
+    auto annie = addLegend(P1, kDarkChild);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r1, r2}));
+    fireAndProbe(annie, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        live.getObject(r1).is_exhausted = false;   // in response: readied by something else
+        removeFromBoard(live, r2);                 // in response: off the board
+    });
+    EXPECT_EQ(agent.prompts.size(), 2u) << "no new choice as it resolves";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_FALSE(onBoard(r2));
+    EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// ─── Targon's Peak 284 ──────────────────────────────────────────────────────
+TEST_F(VerifyCardsTest, TargonsPeak_RunesAreNamedBeforeTheOpponentCanRespond) {
+    auto peak = battlefieldCard(0, kTargonsPeak);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r3, r1}));
+    size_t asked_at_response = 99;
+    bool readied_at_response = true;
+    // The delayed end-of-turn trigger (CR 355.5.b: its choices are made when
+    // IT is finalized).
+    fireAndProbe(peak, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        readied_at_response = !live.getObject(r1).is_exhausted || !live.getObject(r3).is_exhausted;
+    });
+    EXPECT_EQ(asked_at_response, 2u) << "both runes are named as the delayed trigger is finalized";
+    EXPECT_FALSE(readied_at_response) << "they are readied only as it resolves";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "nothing is asked again at resolution";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, TargonsPeak_ARuneReadiedOrGoneInResponseIsSkipped) {
+    auto peak = battlefieldCard(0, kTargonsPeak);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r1, r2}));
+    fireAndProbe(peak, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        live.getObject(r1).is_exhausted = false;
+        removeFromBoard(live, r2);
+    });
+    EXPECT_EQ(agent.prompts.size(), 2u) << "no new choice as it resolves";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_FALSE(onBoard(r2));
+    EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// The conquer ability itself has no choice (CR 355.5.b): its finalize pass
+// must not schedule the delayed trigger — it is scheduled once, as the conquer
+// ability resolves. Guards the end-of-choices marker of the conquer branch
+// (without it: one delayed ability at the opponent's priority, two afterwards).
+TEST_F(VerifyCardsTest, TargonsPeak_ConquerSchedulesTheDelayedTriggerOnceAsItResolves) {
+    auto peak = battlefieldCard(0, kTargonsPeak);
+    addRune(P1, Domain::Fury, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    size_t scheduled_at_response = 99;
+    fireAndProbe(peak, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        scheduled_at_response = live.delayed_abilities.size();
+    });
+    EXPECT_EQ(scheduled_at_response, 0u) << "nothing happens while the conquer ability is finalized";
+    EXPECT_EQ(state.delayed_abilities.size(), 1u);
+    EXPECT_TRUE(agent.prompts.empty()) << "no rune is named for the conquer ability";
+    EXPECT_EQ(exhaustedRuneCount(P1), 1);
+}
+
+// ─── Gentle Gemdragon 666 ───────────────────────────────────────────────────
+TEST_F(VerifyCardsTest, GentleGemdragon_RunesAreNamedBeforeTheOpponentCanRespond) {
+    auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
+    auto r1 = addRune(P1, Domain::Body, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r3, r1}));
+    size_t asked_at_response = 99;
+    bool readied_at_response = true;
+    fireAndProbe(dragon, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        readied_at_response = !live.getObject(r1).is_exhausted || !live.getObject(r3).is_exhausted;
+    });
+    EXPECT_EQ(asked_at_response, 2u) << "both runes are named as the ability is finalized";
+    EXPECT_FALSE(readied_at_response) << "they are readied only as it resolves";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "nothing is asked again at resolution";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, GentleGemdragon_ARuneReadiedOrGoneInResponseIsSkipped) {
+    auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
+    auto r1 = addRune(P1, Domain::Body, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r1, r2}));
+    fireAndProbe(dragon, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        live.getObject(r1).is_exhausted = false;
+        removeFromBoard(live, r2);
+    });
+    EXPECT_EQ(agent.prompts.size(), 2u) << "no new choice as it resolves";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_FALSE(onBoard(r2));
+    EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// ─── Sona, Harmonious 73 ────────────────────────────────────────────────────
+TEST_F(VerifyCardsTest, Sona_RunesAreNamedBeforeTheOpponentCanRespond) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r3, r1, kInvalidId}));   // two, then "None"
+    size_t asked_at_response = 99;
+    bool readied_at_response = true;
+    fireAndProbe(sona, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        readied_at_response = !live.getObject(r1).is_exhausted || !live.getObject(r3).is_exhausted;
+    });
+    EXPECT_EQ(asked_at_response, 3u) << "the runes are named as the ability is finalized";
+    EXPECT_FALSE(readied_at_response) << "they are readied only as it resolves";
+    EXPECT_EQ(agent.prompts.size(), 3u) << "nothing is asked again at resolution";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, Sona_ARuneReadiedOrGoneInResponseIsSkipped) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r1, r2, kInvalidId}));
+    fireAndProbe(sona, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        live.getObject(r1).is_exhausted = false;
+        removeFromBoard(live, r2);
+    });
+    EXPECT_EQ(agent.prompts.size(), 3u) << "no new choice as it resolves";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_FALSE(onBoard(r2));
+    EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// CR 383 (the Sona example): "if I'm at a battlefield" is asked when the
+// ability goes on the chain; "If she is removed in reaction to the triggered
+// ability, it will still resolve." Fails on the old code: the condition (and
+// the rune prompts) came at resolution, so with Sona gone nothing was readied.
+TEST_F(VerifyCardsTest, Sona_RemovedInResponse_TheAbilityStillReadiesTheNamedRunes) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({r2, kInvalidId}));
+    fireAndProbe(sona, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        removeFromBoard(live, sona);
+    });
+    EXPECT_EQ(agent.prompts.size(), 2u);
+    EXPECT_FALSE(onBoard(sona));
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_FALSE(o(r2).is_exhausted) << "the ability resolves without its source";
+}
+
+// Not at a battlefield when the ability would go on the chain: nothing is
+// asked and nothing readied (unchanged; the condition is still checked once).
+TEST_F(VerifyCardsTest, Pin_Sona_NotAtABattlefield_NothingAskedNothingReadied) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, -1);   // at base
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(sona, TriggerType::AtEndOfTurn, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(o(r1).is_exhausted);
+}
+
+// ─── Curator of the Sands 932 ───────────────────────────────────────────────
+// Fails on the old code: the card had no finalize pass at all — at the
+// opponent's first priority nothing had been asked and the legend was ready.
+TEST_F(VerifyCardsTest, CuratorOfTheSands_MayCostAndRunesAreDecidedBeforeTheOpponentCanRespond) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto src = addUnit(P1, kInvalidId, 3);
+    // Yes; the third rune; the first rune.
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r3), static_cast<int>(r1)}));
+    size_t asked_at_response = 99;
+    bool cost_paid_at_response = false;
+    bool readied_at_response = true;
+    causeAndProbe([&](GameState& live) {
+        live.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        cost_paid_at_response = live.getObject(legend).is_exhausted;
+        readied_at_response = !live.getObject(r1).is_exhausted || !live.getObject(r3).is_exhausted;
+    });
+    EXPECT_EQ(asked_at_response, 3u) << "the may and both runes, as the ability is finalized";
+    EXPECT_TRUE(cost_paid_at_response) << "\"exhaust me\" is paid at finalization (CR 383.3.b)";
+    EXPECT_FALSE(readied_at_response) << "the runes are readied only as it resolves";
+    EXPECT_EQ(agent.prompts.size(), 3u) << "nothing is asked again at resolution";
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+// Fails on the old code: asked at resolution, the two named runes were no
+// longer on offer and the third rune was readied in their place.
+TEST_F(VerifyCardsTest, CuratorOfTheSands_ARuneReadiedOrGoneInResponseIsSkipped) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto src = addUnit(P1, kInvalidId, 3);
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(r1), static_cast<int>(r2)}));
+    causeAndProbe([&](GameState& live) {
+        live.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent, [&](GameState& live) {
+        live.getObject(r1).is_exhausted = false;
+        removeFromBoard(live, r2);
+    });
+    EXPECT_EQ(agent.prompts.size(), 3u) << "no new choice as it resolves";
+    EXPECT_TRUE(o(legend).is_exhausted) << "the cost stays paid";
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_FALSE(onBoard(r2));
+    EXPECT_TRUE(o(r2).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// Declined at finalization: no cost, no rune prompt, nothing at resolution.
+TEST_F(VerifyCardsTest, Pin_CuratorOfTheSands_DeclinedAtFinalization_NothingIsPaidOrAsked) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto src = addUnit(P1, kInvalidId, 3);
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // No
+    resolveThroughEngine([&](EffectExecutor&, GameState& st) {
+        st.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent);
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_FALSE(o(legend).is_exhausted);
+    EXPECT_TRUE(o(r1).is_exhausted);
+}
+
+// ─── Hwei, Brooding Painter 642 (not a defect) ──────────────────────────────
+// "When I move, draw 1, then discard 1. Then, do the following based on the
+// discarded card's type: ... Gear — Ready up to 2 runes." The rune choice
+// belongs to the reflexive trigger the discard creates (CR 388.1.b, 389.1),
+// not to the move ability: when the move ability is finalized there is nothing
+// to name yet (which card is discarded is only known while it resolves).
+TEST_F(VerifyCardsTest, Pin_Hwei_TheRunesAreNamedAfterTheDiscardNotAtFinalization) {
+    auto hwei = addUnit(P1, kHwei, 0, 0);
+    addToDeck(P1, kMeditation);                        // the card drawn
+    auto gear = addToHand(P1, kSealOfStrength163);
+    auto r1 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({gear, r3, r2}));   // the discard, then two runes
+    size_t asked_at_response = 99;
+    bool gear_in_hand_at_response = false;
+    int deck_at_response = -1;
+    fireAndProbe(hwei, TriggerType::WhenIMove, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        gear_in_hand_at_response = live.getObject(gear).zone == ZoneType::Hand;
+        deck_at_response = static_cast<int>(live.player(P1).main_deck.size());
+    });
+    EXPECT_EQ(asked_at_response, 0u) << "the move ability has no choice of its own to finalize";
+    EXPECT_TRUE(gear_in_hand_at_response) << "nothing is discarded before it resolves";
+    EXPECT_EQ(deck_at_response, 1) << "nothing is drawn before it resolves";
+    ASSERT_EQ(agent.prompts.size(), 3u) << "the discard, then the two runes";
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{r1, r2, r3}))
+        << "the runes are offered once the discarded card's type is known";
+    EXPECT_TRUE(inTrash(P1, gear));
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_FALSE(o(r2).is_exhausted);
+    EXPECT_FALSE(o(r3).is_exhausted);
+}
+
+// ═══ 9.Z3: whose runes ══════════════════════════════════════════════════════
+// "ready up to 2 runes" (315, 284, 666, 932, 642) prints no "friendly" /
+// "your": "rune" refers to any rune on the board (CR 133.3.a, 355.9.a.1) and
+// only a printed restriction narrows a choice (CR 355.9.b), so an opponent's
+// exhausted rune may be named. Each test fails on the old code: only the
+// controller's runes were offered. Sona 73 prints "friendly runes": pinned.
+
+TEST_F(VerifyCardsTest, DarkChild315_AnOpponentsExhaustedRuneMayBeReadied) {
+    auto annie = addLegend(P1, kDarkChild);
+    auto mine = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Fury, /*exhausted=*/true);
+    auto their_ready = addRune(P2, Domain::Fury);
+    EnginePathAgent agent(pickingInOrder({theirs, kInvalidId}));   // theirs, then "None"
+    fireTriggerThroughEngine(annie, TriggerType::AtEndOfTurn, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{mine, theirs}))
+        << "every exhausted rune on the board, whoever controls it";
+    EXPECT_FALSE(agent.wasOffered(their_ready));
+    EXPECT_FALSE(o(theirs).is_exhausted);
+    EXPECT_TRUE(o(mine).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, TargonsPeak_AnOpponentsExhaustedRuneMayBeReadied) {
+    auto peak = battlefieldCard(0, kTargonsPeak);
+    auto mine = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Fury, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({theirs, kInvalidId}));
+    fireTriggerThroughEngine(peak, TriggerType::AtEndOfTurn, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{mine, theirs}));
+    EXPECT_FALSE(o(theirs).is_exhausted);
+    EXPECT_TRUE(o(mine).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, GentleGemdragon_AnOpponentsExhaustedRuneMayBeReadied) {
+    auto dragon = addUnit(P1, kGentleGemdragon, 0, 0);
+    auto mine = addRune(P1, Domain::Body, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Body, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({theirs, kInvalidId}));
+    fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{mine, theirs}));
+    EXPECT_FALSE(o(theirs).is_exhausted);
+    EXPECT_TRUE(o(mine).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, CuratorOfTheSands_AnOpponentsExhaustedRuneMayBeReadied) {
+    auto legend = addLegend(P1, kCuratorOfTheSands);
+    auto mine = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Calm, /*exhausted=*/true);
+    auto src = addUnit(P1, kInvalidId, 3);
+    // Yes; their rune; "None".
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(theirs), 0}));
+    resolveThroughEngine([&](EffectExecutor&, GameState& st) {
+        st.getObject(src).card_counters["__ability_energy_cost"] = 7;
+        events.emit(ObjectStateChangedEvent{src, "ability_activated"});
+    }, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{mine, theirs}));
+    EXPECT_TRUE(o(legend).is_exhausted);
+    EXPECT_FALSE(o(theirs).is_exhausted);
+    EXPECT_TRUE(o(mine).is_exhausted);
+}
+
+TEST_F(VerifyCardsTest, Hwei_DiscardingAGear_AnOpponentsExhaustedRuneMayBeReadied) {
+    auto hwei = addUnit(P1, kHwei, 0, 0);
+    addToDeck(P1, kMeditation);
+    auto gear = addToHand(P1, kSealOfStrength163);
+    auto mine = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(pickingInOrder({gear, theirs, kInvalidId}));
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{mine, theirs}));
+    EXPECT_FALSE(o(theirs).is_exhausted);
+    EXPECT_TRUE(o(mine).is_exhausted);
+}
+
+// Sona prints "ready up to 4 FRIENDLY runes": an opponent's exhausted rune is
+// not offered, and with no friendly exhausted rune nothing is asked.
+TEST_F(VerifyCardsTest, Pin_Sona_FriendlyRunesOnly_AnOpponentsRuneIsNotOffered) {
+    EXPECT_NE(card_db.get(kSonaHarmonious).ability_text.find("friendly runes"), std::string::npos);
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto mine_ready = addRune(P1, Domain::Calm);
+    auto theirs = addRune(P2, Domain::Calm, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(sona, TriggerType::AtEndOfTurn, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(o(theirs).is_exhausted);
+    EXPECT_FALSE(o(mine_ready).is_exhausted);
 }
 
 }  // namespace

@@ -80,12 +80,26 @@ private:
     // time and may stop at any prompt, the first included (CR 355.13): which
     // runes matters when more than two are exhausted (a rune left exhausted is
     // the one to recycle for Power). With no exhausted rune nothing is asked.
+    //
+    // Timing: unlike the other "ready up to N runes" cards this is NOT a
+    // choice of the move ability's finalization (no kFinalizeTrigger). "Do the
+    // following based on the discarded card's type" is a reflexive trigger (CR
+    // 388.1.b; Vendetta FAQ on Hwei, rule 387.1.b): it comes into being while
+    // the move ability resolves, after the discard, and its choices are made
+    // when IT is finalized (CR 389.1, 355.5.b) — at once, before anyone has
+    // priority. So the runes are named here, right after the discard. (The
+    // engine has no chain item of its own for a reflexive trigger — cf.
+    // Twisted Fate 200, Deceiver 756 — so the readying follows inline.)
+    //
+    // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
+    // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
+    // printed restriction narrows a choice (CR 355.9.b), so an opponent's
+    // exhausted rune may be named too.
     static void readyUpToTwoRunes(CardContext& ctx) {
         auto readiable = [&](GameObjectId id) {
             if (!ctx.state.objectExists(id)) return false;
             const auto& obj = ctx.state.getObject(id);
-            return obj.isRune() && obj.controller == ctx.controller && obj.is_exhausted &&
-                   obj.location.has_value();
+            return obj.isRune() && obj.is_exhausted && obj.location.has_value();
         };
         std::vector<GameObjectId> exhausted;
         for (auto& [id, obj] : ctx.state.objects)

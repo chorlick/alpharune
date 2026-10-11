@@ -261,7 +261,11 @@ public:
     // is not checked against the legal list of any decision: a test that
     // hand-builds one is responsible for it being a play the engine would
     // offer. (An activation is still refused by payAndQueueAbility when its
-    // source is not in play or its "use only if" gate fails.)
+    // source is not in play or its "use only if" gate fails.) For a test
+    // that activates an ability this means: put the source on the board (or
+    // in the Legend Zone) under intent.player's control and satisfy
+    // Card::canActivateAbility / canActivateAbilityAt first — an activation
+    // "from" a trash, a hand, or of another player's card does nothing.
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }

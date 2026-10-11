@@ -217,6 +217,82 @@ TEST(RiftboundStateTest, CurrentPlayerIsTheDeciderAndLegalActionsAreSorted) {
     RecordProperty("stale_closed_main_phase_decisions", stale_closed);
 }
 
+// plans/09 item 9.R3 (07 item 7.33): the answers of one int-coded MakeChoice
+// decision must land in distinct action slots, or a policy cannot tell them
+// apart. Checked on a real prompt: Party Favors 71 asks the opponent "Cards or
+// Runes" (chosen_value 0 / 1).
+TEST(ActionVocabTest, TheAnswersOfOneMakeChoiceDecisionGetDistinctActionIds) {
+    using namespace ::riftbound;
+    constexpr CardDefId kPartyFavors = 71;
+    CardRegistry registry;
+    registry.loadAll();
+    CardDB db;
+    db.buildFromClasses(registry);
+    EventBus bus;
+    GameEngine engine(db, bus, registry);
+    auto& st = engine.mutableState();
+    st.mode = ModeOfPlay{};
+    st.players[0].id = PlayerId::Player1;
+    st.players[1].id = PlayerId::Player2;
+    st.turn.phase = TurnPhase::MainPhase;
+    st.turn.turn_player = PlayerId::Player1;
+    const auto spell = st.createObject();
+    {
+        auto& o = st.getObject(spell);
+        const auto& def = db.get(kPartyFavors);
+        o.card_def_id = kPartyFavors;
+        o.owner = o.controller = PlayerId::Player1;
+        o.name = def.name;
+        o.card_type = def.card_type;
+        o.keywords = def.keywords;
+        o.domains = def.domains;
+        o.zone = ZoneType::Hand;
+        st.player(PlayerId::Player1).hand.push_back(spell);
+        st.player(PlayerId::Player1).rune_pool.energy = def.energy_cost;
+        st.player(PlayerId::Player1).rune_pool.universal_power = def.power_cost;
+    }
+    struct Recorder : AgentInterface {
+        std::vector<std::vector<Intent>> value_prompts;
+        std::vector<std::vector<int>> slots;
+        Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
+            const bool values = !legal.empty() &&
+                std::all_of(legal.begin(), legal.end(), [](const Intent& i) {
+                    return i.type == IntentType::MakeChoice && i.chosen_value.has_value();
+                });
+            if (values) {
+                value_prompts.push_back(legal);
+                slots.emplace_back();
+                for (const auto& i : legal)
+                    slots.back().push_back(::riftbound::openspiel::encodeAction(i, state));
+            }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) return i;
+            return legal.front();
+        }
+    } p1, p2;
+    engine.testHook_setAgents(&p1, &p2);
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = PlayerId::Player1;
+    play.card = spell;
+    engine.testHook_executeIntent(play);
+
+    ASSERT_EQ(p2.value_prompts.size(), 1u) << "the opponent is asked Cards or Runes";
+    const auto& prompt = p2.value_prompts[0];
+    ASSERT_EQ(prompt.size(), 2u);
+    EXPECT_NE(*prompt[0].chosen_value, *prompt[1].chosen_value);
+    EXPECT_NE(p2.slots[0][0], p2.slots[0][1])
+        << "two answers, two action ids";
+    // And in general: every int answer the vocabulary encodes has a slot of its own.
+    std::set<int> ids;
+    for (int v = 0; v < ::riftbound::openspiel::kNumIntChoices; ++v) {
+        Intent i = prompt[0];
+        i.chosen_value = v;
+        ids.insert(::riftbound::openspiel::encodeAction(i, engine.state()));
+    }
+    EXPECT_EQ(static_cast<int>(ids.size()), ::riftbound::openspiel::kNumIntChoices);
+}
+
 TEST(RiftboundStateTest, ApplyingAnActionThatIsNotLegalThrows) {
     auto game = loadGame(3);
     auto state = game->NewInitialState();

@@ -161,6 +161,12 @@ public:
     /// 718.2). Emits "attached" / "equipped". Every attach goes through here.
     /// Returns false, and does nothing, when it is not possible.
     bool attachGear(GameObjectId gear, GameObjectId unit);
+    /// Whose damage is marked on `obj` and whether a spell dealt any of it:
+    /// forgotten when its damage is healed, and by both damage paths
+    /// (dealDamage, GameEngine::applyCombatDamage) when they add damage to an
+    /// object that has none — which covers every way damage is removed,
+    /// cards that zero `damage_marked` themselves included.
+    static void forgetDamageSources(GameObject& obj);
     /// How many Equipment attached to `unit` copy its text to their effect
     /// text (Card::copiesBearerText): the unit has each of its abilities that
     /// many more times. For a unit that has left the board, as it last existed.

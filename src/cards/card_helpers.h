@@ -646,136 +646,55 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     return std::nullopt;
 }
 
-// ── Several objects, one at a time ("up to N", "any number of") ─────────────
-// "buff up to four friendly units", "spend any number of buffs": the
-// controller picks one object per prompt and may stop at any prompt. For the
-// controller's OWN objects, chosen as the effect resolves: no Deflect is
-// charged and no "chosen" bookkeeping is done (use Card::pickTarget /
-// offerableChoices for anything that can be an opponent's).
-//
-// The card is re-entered after every answer, so progress lives on the
-// resolving chain item: resume_point kPickSeveralAsk / Await / Done and
-// resume_data = the objects picked so far — so, like splitDamageAmong, a card
-// that uses this must not also call a Card::pick* helper in the same callback.
-// One prompt per pick, as many as `max_picks` and the objects on offer allow:
-// "any number" passes the size of its list. (ChainManager::stepResolve and
-// GameEngine::runFinalizePass allow 1024 re-entries per item, far more than a
-// board can offer.)
-constexpr int kPickSeveralAsk = 110;
-constexpr int kPickSeveralAwait = 111;
-constexpr int kPickSeveralDone = 112;
-
-/// Returns true once the selection is finished (`picked` holds it, in pick
-/// order), false while a prompt is pending. `legal` are the objects on offer;
-/// one listed k times can be picked k times (a unit with two buffs to spend).
-/// The "stop" option is offered last and carries chosen_value 0.
-inline bool pickSeveral(CardContext& ctx, const std::string& label, int max_picks,
-                        std::vector<GameObjectId> legal, std::vector<GameObjectId>& picked) {
-    std::sort(legal.begin(), legal.end());
-    picked.clear();
-    auto& ri_opt = ctx.state.chain.resuming;
-    if (!ri_opt.has_value()) {
-        // Direct invocation (no chain item to resume): no agent can be asked,
-        // so take the first objects on offer, like the other choice helpers
-        // default to their first option.
-        for (auto id : legal)
-            if (static_cast<int>(picked.size()) < max_picks) picked.push_back(id);
-        return true;
-    }
-    auto& ri = *ri_opt;
-    auto load = [&]() {
-        picked.clear();
-        for (auto v : ri.resume_data) picked.push_back(static_cast<GameObjectId>(v));
-    };
-    // What can still be picked: each object as often as it is listed.
-    auto remaining = [&]() {
-        std::vector<GameObjectId> left = legal;
-        for (auto v : ri.resume_data) {
-            auto it = std::find(left.begin(), left.end(), static_cast<GameObjectId>(v));
-            if (it != left.end()) left.erase(it);
-        }
-        left.erase(std::unique(left.begin(), left.end()), left.end());
-        return left;
-    };
-    if (ri.resume_point == kPickSeveralDone) { load(); return true; }
-    if (ri.resume_point == kPickSeveralAwait) {
-        const GameObjectId t = takenObject(ctx);
-        const auto left = remaining();
-        if (t == kInvalidId || std::find(left.begin(), left.end(), t) == left.end()) {
-            ri.resume_point = kPickSeveralDone;   // "stop" (or an answer that is no longer on offer)
-            load();
-            return true;
-        }
-        ri.resume_data.push_back(static_cast<int32_t>(t));
-        ri.resume_point = kPickSeveralAsk;
-    } else if (ri.resume_point != kPickSeveralAsk) {
-        ri.resume_data.clear();   // first entry
-        ri.resume_point = kPickSeveralAsk;
-    }
-    const auto left = remaining();
-    if (static_cast<int>(ri.resume_data.size()) >= max_picks || left.empty()) {
-        ri.resume_point = kPickSeveralDone;
-        load();
-        return true;
-    }
-    std::vector<Intent> options;
-    options.reserve(left.size() + 1);
-    for (auto id : left) options.push_back(objChoice(ctx.controller, id));
-    options.push_back(valChoice(ctx.controller, 0, "stop"));
-    ctx.events.logTrace("PICK_SEVERAL_PROMPT: " + label + " (" +
-                        std::to_string(ri.resume_data.size()) + " picked)");
-    ctx.executor.requestChoice(ctx.controller, std::move(options), label);
-    ri.resume_point = kPickSeveralAwait;
-    return false;
-}
-
 // ── Split damage (CR 355.14) ────────────────────────────────────────────────
-// "Deal N damage split among <units>": the controller decides the division at
-// resolution (CR 355.14.e), every unit that takes part receives at least 1
-// (355.14.f-g), and at most N units can take part (355.14.c). The division is
-// built one damage at a time: each prompt assigns the next point to a unit the
-// controller picks, which can express every legal split and nothing else.
-// Damage is marked only after the whole division is known.
+// "Deal N damage split among <units>". Two separate decisions, at the two
+// moments the rules give them:
 //
-// The card is re-entered after every answer, so progress lives on the
-// resolving chain item: resume_point kSplitDamageAssign / Await / Done (clear
-// of the values the Card::pick* / confirmOptional helpers leave there) and
-// resume_data = [total, damage per pick, picked unit, picked unit, ...] — so a
-// card that splits damage must not also call a Card::pick* helper in the same
-// callback (they keep their answers in resume_data[0..6]).
+//   * WHO (CR 355.14.a-b): every unit that takes part is a Target, chosen when
+//     the spell or ability is finalized on the chain — one prompt per target,
+//     "No more targets" (offered first) from the second on, at most N of them (355.14.c).
+//     Each is chosen like any target: a unit that can't be chosen is not
+//     offered, Deflect (CR 809) is paid as it is picked, and it counts as
+//     chosen. The opponent responds knowing the targets.
+//   * HOW MUCH (CR 355.14.e): decided as the effect resolves. Every target
+//     gets at least 1 (355.14.f-g); the rest is assigned one point per prompt,
+//     so every legal division can be expressed. A target that is no longer
+//     legal is dropped (CR 359.3.e.5); if the damage has shrunk below the
+//     number of targets the controller says which cease to be targets
+//     (355.14.h).
 //
-// ENGINE-GAP: CR 355.14.a-b make every unit in a split a Target chosen when
-// the spell or ability is finalized on the chain. The play/trigger path can
-// only lock a fixed TargetRequirements::count of targets, so a variable
-// number (1..N) of split targets cannot be declared there; they are chosen at
-// resolution instead.
-// Every point is its own pick, whatever the total (a single legal unit takes
-// everything in one): the re-entry bound per item is 1024.
-constexpr int kSplitDamageAssign = 100;
-constexpr int kSplitDamageAwait = 101;
+// The card opts its callback into choices at finalization (kFinalizeResolve /
+// kFinalizeTrigger) and calls this helper where its choices end: the helper is
+// the callback's end-of-choices marker (it calls Card::finalizingChoices), so
+// the card needs none of its own for the split. Without a finalize pass (an
+// item an effect put on the chain) both decisions are made at resolution.
+//
+// Progress lives on the resolving chain item: resume_point kSplit* (clear of
+// the values the Card::pick* / confirmOptional helpers leave there) and
+// resume_data = [number of targets, targets locked, target ..., one target per
+// extra point assigned ...] — so a card that splits damage must not also call
+// a Card::pick* helper in the same callback (they keep their answers in
+// resume_data[0..6]).
+constexpr int kSplitDamageTargets = 100;
+constexpr int kSplitDamageTargetsAwait = 101;
 constexpr int kSplitDamageDone = 102;
+constexpr int kSplitDamageAssign = 103;
+constexpr int kSplitDamageAssignAwait = 104;
+constexpr int kSplitDamageCeaseAwait = 105;
 
 /// Returns true once the damage has been dealt (or there was nothing to do),
-/// false while a pick is pending. `legal` are the units the controller may
-/// choose; `damaged` receives the units that were dealt damage.
+/// false while a prompt is pending or the finalize pass has ended. `legal` are
+/// the units the controller may choose right now; `total` the damage to divide
+/// right now; `damaged` receives the units that were dealt damage.
 inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int total,
                              GameObjectId damage_source, std::vector<GameObjectId> legal,
                              std::vector<GameObjectId>& damaged) {
     std::sort(legal.begin(), legal.end());
-    std::vector<std::pair<GameObjectId, int>> alloc;
-    auto add = [&alloc](GameObjectId id, int n) {
-        for (auto& a : alloc) if (a.first == id) { a.second += n; return; }
-        alloc.emplace_back(id, n);
-    };
-    auto deal = [&]() {
+    auto dealAll = [&](const std::vector<std::pair<GameObjectId, int>>& alloc) {
         for (const auto& [id, n] : alloc) {
             if (n <= 0 || !ctx.state.objectExists(id)) continue;
-            const auto& o = ctx.state.getObject(id);
-            // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
-            ctx.state.noteChosen(ctx.controller, id,
-                ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr);
             ctx.events.logTrace("SPLIT: " + label + " -> " + std::to_string(n) +
-                                " to " + o.name);
+                                " to " + ctx.state.getObject(id).name);
             ctx.executor.dealDamage(id, n, damage_source);
             damaged.push_back(id);
         }
@@ -787,92 +706,167 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
         // so default to an even spread over the legal units, like the other
         // choice helpers default to their first option.
         if (total <= 0 || legal.empty()) return true;
-        for (int i = 0; i < total; ++i) add(legal[i % legal.size()], 1);
-        deal();
+        std::vector<std::pair<GameObjectId, int>> alloc;
+        for (int i = 0; i < total; ++i) {
+            const GameObjectId id = legal[i % legal.size()];
+            auto it = std::find_if(alloc.begin(), alloc.end(),
+                                   [id](const auto& a) { return a.first == id; });
+            if (it == alloc.end()) alloc.emplace_back(id, 1); else ++it->second;
+        }
+        dealAll(alloc);
         return true;
     }
     auto& ri = *ri_opt;
     if (ri.resume_point == kSplitDamageDone) return true;
-
-    // Deflect (CR 809): choosing an opponent's Deflect unit costs [A] per
-    // Deflect, once per unit chosen — charged when the unit first joins the
-    // split, the way Card::pickTarget charges it. A unit whose Deflect cost
-    // can't be paid is not offered; one already in the split stays available.
-    auto alreadyPicked = [&ri](GameObjectId id) {
-        for (size_t i = 2; i < ri.resume_data.size(); ++i)
-            if (static_cast<GameObjectId>(ri.resume_data[i]) == id) return true;
-        return false;
-    };
-    auto offered = [&]() {
-        const int payable = ctx.executor.payableAnyPower(ctx.controller);
-        std::vector<GameObjectId> out;
-        for (auto t : legal)
-            if (alreadyPicked(t) || ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
-                out.push_back(t);
-        return out;
-    };
-
-    if (ri.resume_point == kSplitDamageAwait) {
-        auto picked = ctx.executor.takeChoice();
-        auto can_pick = offered();
-        GameObjectId t = can_pick.empty() ? kInvalidId : can_pick.front();
-        if (picked.has_value() && !picked->chosen_objects.empty() &&
-            std::find(can_pick.begin(), can_pick.end(),
-                      picked->chosen_objects.front()) != can_pick.end())
-            t = picked->chosen_objects.front();
-        if (t != kInvalidId && !alreadyPicked(t)) {
-            const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
-            if (cost > 0) {
-                ctx.executor.payAnyPower(ctx.controller, cost);
-                ctx.events.logTrace("DEFLECT: pays " + std::to_string(cost) +
-                                    " [A] to choose " + ctx.state.getObject(t).name);
-            }
-            ri.chosen_objects.push_back(t);
-        }
-        ri.resume_data.push_back(static_cast<int32_t>(t));
-        ri.resume_point = kSplitDamageAssign;
-    } else if (ri.resume_point != kSplitDamageAssign) {
-        // First entry: latch the amount to divide.
+    const bool ours = ri.resume_point == kSplitDamageTargets ||
+                      ri.resume_point == kSplitDamageTargetsAwait ||
+                      ri.resume_point == kSplitDamageAssign ||
+                      ri.resume_point == kSplitDamageAssignAwait ||
+                      ri.resume_point == kSplitDamageCeaseAwait;
+    if (!ours) {
         if (total <= 0 || legal.empty()) {
             ri.resume_point = kSplitDamageDone;
             return true;
         }
-        // One legal unit: a single pick takes everything. Otherwise one
-        // damage per pick, so every legal split can be expressed.
-        const int per_pick = legal.size() == 1 ? total : 1;
-        ri.resume_data = {total, per_pick};
-        ri.resume_point = kSplitDamageAssign;
-        if (offered().empty()) {   // nothing the controller can afford to choose
-            ri.resume_point = kSplitDamageDone;
-            return true;
+        ri.resume_data = {0, 0};
+        ri.resume_point = kSplitDamageTargets;
+    }
+    auto& data = ri.resume_data;
+    auto targetCount = [&]() { return static_cast<size_t>(data[0]); };
+    auto isTarget = [&](GameObjectId id) {
+        for (size_t i = 0; i < targetCount(); ++i)
+            if (static_cast<GameObjectId>(data[2 + i]) == id) return true;
+        return false;
+    };
+
+    // ── Who: the targets (at finalization when there is a finalize pass) ──
+    if (data[1] == 0) {
+        // Units not yet targeted whose Deflect the controller can pay.
+        auto offered = [&]() {
+            const int payable = ctx.executor.payableAnyPower(ctx.controller);
+            std::vector<GameObjectId> out;
+            for (auto t : legal)
+                if (!isTarget(t) && ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
+                    out.push_back(t);
+            return out;
+        };
+        bool stop = false;
+        if (ri.resume_point == kSplitDamageTargetsAwait) {
+            const GameObjectId t = takenObject(ctx);
+            const auto can_pick = offered();
+            if (t != kInvalidId &&
+                std::find(can_pick.begin(), can_pick.end(), t) != can_pick.end()) {
+                const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
+                if (cost > 0) {
+                    ctx.executor.payAnyPower(ctx.controller, cost);
+                    ctx.events.logTrace("DEFLECT: pays " + std::to_string(cost) +
+                                        " [A] to choose " + ctx.state.getObject(t).name);
+                }
+                ri.chosen_objects.push_back(t);
+                // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
+                ctx.state.noteChosen(ctx.controller, t, &ri);
+                data.insert(data.begin() + 2 + static_cast<long>(targetCount()),
+                            static_cast<int32_t>(t));
+                ++data[0];
+                ctx.events.logTrace("SPLIT_TARGET: " + label + " -> " +
+                                    ctx.state.getObject(t).name);
+            } else {
+                stop = true;   // "No more targets"
+            }
+            ri.resume_point = kSplitDamageTargets;
         }
+        const auto can_pick = offered();
+        if (!stop && static_cast<int>(targetCount()) < total && !can_pick.empty()) {
+            std::vector<Intent> options;
+            options.reserve(can_pick.size() + 1);
+            // "No more targets" first, as "Move no more units" is: an agent
+            // that takes the first option stops at one target.
+            if (targetCount() >= 1)
+                options.push_back(valChoice(ctx.controller, 0, "No more targets"));
+            for (auto t : can_pick) options.push_back(objChoice(ctx.controller, t));
+            ctx.events.logTrace("SPLIT_PROMPT: " + label + " (target " +
+                                std::to_string(targetCount() + 1) + ")");
+            ctx.executor.requestChoice(ctx.controller, std::move(options),
+                                       "split damage: " + label + " — choose a target");
+            ri.resume_point = kSplitDamageTargetsAwait;
+            return false;
+        }
+        data[1] = 1;   // locked
+        ri.resume_point = kSplitDamageAssign;
     }
 
-    total = ri.resume_data[0];
-    const int per_pick = std::max(1, ri.resume_data[1]);
-    int remaining = total;
-    for (size_t i = 2; i < ri.resume_data.size() && remaining > 0; ++i) {
-        int n = std::min(per_pick, remaining);
-        add(static_cast<GameObjectId>(ri.resume_data[i]), n);
-        remaining -= n;
-    }
+    // ── End of the choices made at finalization (CR 355.14.b) ──
+    if (Card::finalizingChoices(ctx)) return false;
 
-    const auto can_pick = remaining > 0 ? offered() : std::vector<GameObjectId>{};
-    if (remaining > 0 && !can_pick.empty()) {
+    // ── How much: the division (at resolution, CR 355.14.e) ──
+    // Targets that are still legal, in the order they were chosen.
+    std::vector<GameObjectId> live;
+    for (size_t i = 0; i < targetCount(); ++i) {
+        const auto t = static_cast<GameObjectId>(data[2 + i]);
+        if (t != kInvalidId && std::find(legal.begin(), legal.end(), t) != legal.end())
+            live.push_back(t);
+    }
+    if (total <= 0 || live.empty()) {
+        ri.resume_point = kSplitDamageDone;
+        return true;
+    }
+    // CR 355.14.h: more targets than damage — the controller says which cease
+    // to be targets, one at a time, down to one target per point.
+    if (ri.resume_point == kSplitDamageCeaseAwait) {
+        const GameObjectId t = takenObject(ctx);
+        const GameObjectId drop =
+            std::find(live.begin(), live.end(), t) != live.end() ? t : live.back();
+        for (size_t i = 0; i < targetCount(); ++i)
+            if (static_cast<GameObjectId>(data[2 + i]) == drop)
+                data[2 + i] = static_cast<int32_t>(kInvalidId);
+        live.erase(std::find(live.begin(), live.end(), drop));
+        ri.resume_point = kSplitDamageAssign;
+    }
+    if (static_cast<int>(live.size()) > total) {
         std::vector<Intent> options;
-        options.reserve(can_pick.size());
-        for (auto t : can_pick) options.push_back(objChoice(ctx.controller, t));
+        for (auto t : live) options.push_back(objChoice(ctx.controller, t));
+        ctx.executor.requestChoice(ctx.controller, std::move(options),
+            "split damage: " + label + " — more targets than damage: which one is dropped");
+        ri.resume_point = kSplitDamageCeaseAwait;
+        return false;
+    }
+    // Every target gets 1; each further point goes where the controller says.
+    const size_t extras_at = 2 + targetCount();
+    if (ri.resume_point == kSplitDamageAssignAwait) {
+        const GameObjectId t = takenObject(ctx);
+        data.push_back(static_cast<int32_t>(
+            std::find(live.begin(), live.end(), t) != live.end() ? t : live.front()));
+        ri.resume_point = kSplitDamageAssign;
+    }
+    std::vector<std::pair<GameObjectId, int>> alloc;
+    for (auto t : live) alloc.emplace_back(t, 1);
+    int remaining = total - static_cast<int>(live.size());
+    if (live.size() == 1) {
+        alloc.front().second += remaining;   // nothing to decide
+        remaining = 0;
+    }
+    for (size_t i = extras_at; i < data.size() && remaining > 0; ++i) {
+        const auto t = static_cast<GameObjectId>(data[i]);
+        auto it = std::find_if(alloc.begin(), alloc.end(),
+                               [t](const auto& a) { return a.first == t; });
+        if (it == alloc.end()) it = alloc.begin();   // that target has since dropped out
+        ++it->second;
+        --remaining;
+    }
+    if (remaining > 0) {
+        std::vector<Intent> options;
+        options.reserve(live.size());
+        for (auto t : live) options.push_back(objChoice(ctx.controller, t));
         ctx.events.logTrace("SPLIT_PROMPT: " + label + " (" + std::to_string(remaining) +
                             " of " + std::to_string(total) + " damage left to assign)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
                                    "split damage: " + label + " (" +
                                    std::to_string(remaining) + " left)");
-        ri.resume_point = kSplitDamageAwait;
+        ri.resume_point = kSplitDamageAssignAwait;
         return false;
     }
-
     ri.resume_point = kSplitDamageDone;
-    deal();
+    dealAll(alloc);
     return true;
 }
 
@@ -1174,23 +1168,35 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
     return card.pickMode(ctx, label, modes, labels, mask);
 }
 
-/// "Any number of <objects>": one selectObject prompt per pick, each with a
-/// "None" option that ends the list, until the controller stops or nothing is
-/// left to pick. Returns the picks (possibly none), or nullopt while a prompt
-/// is pending. Uses two resume_data slots per pick from `first_slot` on (as
-/// many as there were options); the caller checks at the end that each pick
-/// is still what the effect needs.
-inline std::optional<std::vector<GameObjectId>> selectAnyNumber(
+// ── Several objects, one prompt each ("up to N", "any number of") ───────────
+/// "Buff up to four friendly units", "spend any number of buffs", "move any
+/// number of your token units": one selectObject prompt per pick, each with a
+/// "None" option that ends the list, until the controller stops, `max_picks`
+/// are made (-1 = no limit: "any number") or nothing is left to pick. An
+/// object listed k times in `options` can be picked k times (a unit with two
+/// buffs to spend). For objects the controller picks without "choosing" them
+/// in the rules sense — no Deflect, no "chosen" bookkeeping (selectObject).
+///
+/// Returns the picks in pick order (possibly none), or nullopt while a prompt
+/// is pending. It keeps its answers in two resume_data slots per pick from
+/// `first_slot` on and does not touch resume_point, so it composes with the
+/// Card::pick* helpers and confirmOptional in one callback; the caller checks
+/// at the end that each pick is still what the effect needs. There is no cap
+/// of its own: the re-entry bound per chain item is 1024.
+inline std::optional<std::vector<GameObjectId>> selectSeveral(
         CardContext& ctx, const std::string& label, std::vector<GameObjectId> options,
-        size_t first_slot = 7) {
+        int max_picks = -1, size_t first_slot = 7) {
+    std::sort(options.begin(), options.end());
     std::vector<GameObjectId> picked;
-    for (int k = 0; !options.empty(); ++k) {
-        auto one = selectObject(ctx, label, options, first_slot + 2 * static_cast<size_t>(k),
+    for (int k = 0; !options.empty() && (max_picks < 0 || k < max_picks); ++k) {
+        std::vector<GameObjectId> offer = options;
+        offer.erase(std::unique(offer.begin(), offer.end()), offer.end());
+        auto one = selectObject(ctx, label, offer, first_slot + 2 * static_cast<size_t>(k),
                                 /*may_decline=*/true);
         if (!one.has_value()) return std::nullopt;
         if (*one == kInvalidId) break;
         picked.push_back(*one);
-        options.erase(std::remove(options.begin(), options.end(), *one), options.end());
+        options.erase(std::find(options.begin(), options.end(), *one));   // one instance
     }
     return picked;
 }

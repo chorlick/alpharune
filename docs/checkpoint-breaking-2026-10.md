@@ -275,9 +275,48 @@ twice, same output).
 | `mcts:sims=50`, 5 games, seed 20261010 | P1 4 / P2 1, 296 decisions per game, 2.9 s | P1 5 / P2 0, 232 decisions per game, 2.8 s |
 | `ismcts:sims=20`, 8 games, seed 1 | P1 5 / P2 3, 274 decisions per game, 2.1 s | P1 4 / P2 4, 290 decisions per game, 2.9 s |
 
-Clone and `ApplyAction` cost per call is unchanged
-(`riftbound_clone_advance_microbench`); the batch times differ because the
-games and the trees do. Five and eight games say nothing about strength.
+Where the time goes, measured with counters in the agent and the wrapper (a
+build of each commit with the same instrumentation; not in the tree):
+
+| `ismcts:sims=20`, 8 games | Before | After |
+|---|---|---|
+| decisions the agent was asked | 1,148 | 1,196 |
+| of which searched (2 or more actions) | 584 | 772 |
+| actions at a searched decision, mean / max | 2.66 / 19 | 5.27 / 31 |
+| actions per node visited, mean | 2.06 | 4.15 |
+| simulations | 11,680 | 15,440 |
+| tree nodes created | 11,596 | 15,327 |
+| `ApplyAction` calls / per simulation / each | 39,582 / 3.39 / 30.1 us | 53,060 / 3.44 / 31.7 us |
+| `InfoSetId` calls / each | 51,762 / 6.3 us | 69,159 / 6.7 us |
+| `LegalActions` encoding (slots, twins, sort): calls / each / total | 104,088 / 108 ns / 0.011 s | 138,742 / 223 ns / 0.031 s |
+| search time / per simulation | 2.07 s / 177 us | 2.85 s / 185 us |
+
+- The batch takes 38% longer because it runs 32% more simulations: 188
+  decisions that used to offer one action id (several legal intents on one
+  slot, so the agent answered without searching) are now searched.
+- A simulation costs 5% more: the actions applied are heavier on average and
+  the info-set key hashes a longer list of offered ids.
+- Working out the ids (slots, the twin order, the sort) is 1% of the search
+  time. Nothing there was worth caching.
+
+| `mcts:sims=50`, 5 games | Before | After |
+|---|---|---|
+| decisions searched | 826 | 648 |
+| actions at a decision, mean / max | 1.70 / 8 | 3.40 / 21 |
+| simulations | 41,300 | 32,400 |
+| `ApplyAction` calls / per simulation / each | 104,362 / 2.53 / 19.2 us | 70,400 / 2.17 / 27.5 us |
+| search time / per simulation | 2.84 s / 69 us | 2.72 s / 84 us |
+
+- The games are shorter (232 decisions against 296), so fewer searches; each
+  simulation costs 22% more because an applied action is 43% dearer on
+  average. With one action per node most applies were forced single steps;
+  the tree now applies plays and moves with their follow-up prompts. The cost
+  of one clone and one `ApplyAction` at a fixed position is unchanged
+  (`riftbound_clone_advance_microbench`: 4.4 / 75 / 33 us before, 4.5 / 74 /
+  34 us after). I did not split the 27.5 us further (how much is the replay
+  of a clone taken at a prompt).
+
+Five and eight games say nothing about strength.
 
 ## 7. Checklist for the trainer
 

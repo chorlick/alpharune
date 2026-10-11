@@ -69,6 +69,8 @@ constexpr CardDefId kSoulSword = 601;
 constexpr CardDefId kAllay = 603;
 constexpr CardDefId kToolsOfEmpire = 864;
 constexpr CardDefId kVayne035 = 35;
+constexpr CardDefId kBackAlleyBar = 272;
+constexpr CardDefId kSoraka = 550;
 constexpr CardDefId kAssemblyRig = 342;
 constexpr CardDefId kStarSpring = 771;
 constexpr CardDefId kAkshan = 431;
@@ -2950,6 +2952,58 @@ TEST_F(VerifyCardsTest, Pin_ElderDragon_DoesNotIgnoreDeflect) {
     EXPECT_TRUE(!onBoard(plain) || o(plain).damage_marked >= 1) << "\"Deal 1 to them\"";
     ASSERT_TRUE(onBoard(deflect));
     EXPECT_EQ(o(deflect).damage_marked, 0);
+}
+
+// ═══ Tranche 4: plans/09 items 9.I4 and 9.I5 ════════════════════════════════
+
+// 9.I4: Back-Alley Bar 272 — "When a unit moves from here, give it +1 [M] this
+// turn." A real move out of the Bar, through the move event (the positive
+// control for the "a recall is not a move" tests).
+TEST_F(VerifyCardsTest, BackAlleyBar_AUnitThatReallyMovesFromHereGetsPlusOne) {
+    battlefieldCard(0, kBackAlleyBar);
+    auto to_base = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto to_other = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto stays = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto from_elsewhere = addUnit(P1, kShipyardSkulker, 0, 1);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        exec.moveToBase(to_base);
+        exec.moveToBattlefield(to_other, 1);
+        exec.moveToBase(from_elsewhere);
+    });
+    ASSERT_TRUE(o(to_base).isAtBase());
+    ASSERT_EQ(bfOf(to_other), std::optional<BattlefieldId>{1});
+    EXPECT_EQ(o(to_base).temp_might_bonus, 1) << "moved from here to base";
+    EXPECT_EQ(o(to_other).temp_might_bonus, 1) << "moved from here to another battlefield";
+    EXPECT_EQ(o(stays).temp_might_bonus, 0);
+    EXPECT_EQ(o(from_elsewhere).temp_might_bonus, 0) << "it did not move from the Bar";
+}
+
+// 9.I5: two Sorakas at one battlefield — each has her own "assigned combat
+// damage last" once, and a death there is replaced once.
+TEST_F(VerifyCardsTest, Soraka_TwoCopiesEachHaveBacklineOnceAndReplaceADeathOnce) {
+    auto a = addUnit(P1, kSoraka, 4, 0);
+    auto b = addUnit(P1, kSoraka, 4, 0);
+    auto unit = addUnit(P1, kShipyardSkulker, 1, 0);
+    int recalled = 0, deaths = 0;
+    auto c1 = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == unit && e.what_changed == "recalled") ++recalled;
+    });
+    auto c2 = events.on_unit_died.connect([&](const UnitDiedEvent&) { ++deaths; });
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        e.testHook_executor().killObject(unit);
+        e.testHook_runChain();
+    });
+    c1.disconnect();
+    c2.disconnect();
+    EXPECT_TRUE(o(a).hasKeyword(Keyword::Backline));
+    EXPECT_TRUE(o(b).hasKeyword(Keyword::Backline));
+    EXPECT_EQ(o(a).aura_effects.size(), 1u) << "one effect from her own hook, not one per copy";
+    EXPECT_EQ(o(b).aura_effects.size(), 1u);
+    EXPECT_EQ(deaths, 0) << "instead heal it, exhaust it, and recall it";
+    EXPECT_EQ(recalled, 1) << "replaced once, however many Sorakas are here";
+    ASSERT_TRUE(o(unit).isAtBase());
+    EXPECT_TRUE(o(unit).is_exhausted);
 }
 
 }  // namespace

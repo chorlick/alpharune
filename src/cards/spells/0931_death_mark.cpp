@@ -41,10 +41,8 @@ public:
         };
         playTokensChoosingLocations(ctx, "Death Mark: play the Shadow Clone", 1, make, made);
     }
-    // "[Flow] [1][A][A]"
-    // ENGINE-GAP: the engine's any-domain grant path pays the whole [A][A]
-    // from ONE domain, so the Flow play is not offered to a player whose two
-    // Power can only come from different domains.
+    // "[Flow] [1][A][A]" — each [A] is Power of any domain: the two need not
+    // share one (GameEngine::trashGrantCost / resource::payIn).
     FlowCost flowCost() const override { return flow(1, 2, Domain::Fury, /*any_domain=*/true); }
 private:
     const CardDef def_ = [] {

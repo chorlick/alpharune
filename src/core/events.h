@@ -184,9 +184,6 @@ struct ShowdownEndedEvent {
     BattlefieldId battlefield;
 };
 
-/// Game state change requiring cleanup (CR 319).
-struct CleanupNeededEvent {};
-
 /// A cleanup has run to its fixed point: continuous effects, Might and
 /// control are final for the current state. Emitted by GameEngine::cleanup.
 /// Drives triggers that watch a computed value cross a line
@@ -357,7 +354,13 @@ struct CardRevealedEvent {
 // file's compile time.
 class EventBus {
 public:
-    // Signals — subscribers connect to these
+    // Signals — subscribers connect to these. Every signal here has an
+    // emitter in src/. Several have no subscriber in src/ (on_cards_discarded,
+    // on_rune_channeled, on_control_changed, on_contested, on_points_gained,
+    // on_priority_granted, on_showdown_ended, on_game_over, the on_chain_*
+    // four): they are the published event surface for tests, loggers and
+    // external tools, not dead code. A signal nothing emits does not belong
+    // here.
     boost::signals2::signal<void(const UnitMovedEvent&)>          on_unit_moved;
     boost::signals2::signal<void(const EnteredBoardEvent&)>       on_entered_board;
     boost::signals2::signal<void(const TokenCreatedEvent&)>      on_token_created;
@@ -378,7 +381,6 @@ public:
     boost::signals2::signal<void(const CombatEndedEvent&)>        on_combat_ended;
     boost::signals2::signal<void(const ShowdownStartedEvent&)>    on_showdown_started;
     boost::signals2::signal<void(const ShowdownEndedEvent&)>      on_showdown_ended;
-    boost::signals2::signal<void(const CleanupNeededEvent&)>      on_cleanup_needed;
     boost::signals2::signal<void(const StateSettledEvent&)>       on_state_settled;
     boost::signals2::signal<void(const ObjectStateChangedEvent&)> on_object_state_changed;
     boost::signals2::signal<void(const UnitStunnedEvent&)>        on_unit_stunned;
@@ -421,7 +423,6 @@ public:
     void emit(const ShowdownStartedEvent& e);
     void emit(const ShowdownEndedEvent& e);
     void emit(const StateSettledEvent& e);
-    void emit(const CleanupNeededEvent& e);
     void emit(const ObjectStateChangedEvent& e);
     void emit(const UnitStunnedEvent& e);
     void emit(const UnitReadiedEvent& e);

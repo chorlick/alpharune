@@ -39,9 +39,7 @@ private:
         d.card_type = CardType::Spell;
         d.domains = {Domain::Fury};
         d.energy_cost = 1;
-        d.assault_value = 2;
         d.keywords.set(Keyword::Action);
-        d.keywords.set(Keyword::Assault);
         d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB([Action] (Play on your turn or in showdowns.)
 [Repeat] [1] (You may pay the additional cost to repeat this spell's effect.)

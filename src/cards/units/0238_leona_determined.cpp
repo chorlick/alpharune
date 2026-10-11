@@ -27,7 +27,6 @@ public:
             enemies_here = chooseableUnits(ctx.state, me, [&](const GameObject& o) {
                 return o.controller != me && o.battlefieldId() == here;
             });
-        std::sort(enemies_here.begin(), enemies_here.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Leona, Determined: stun an enemy unit here",
                                           enemies_here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

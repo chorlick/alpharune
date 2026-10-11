@@ -119,9 +119,10 @@ private:
     FinalizeChoices finalize_choices_;
     EffectExecutor* executor_ = nullptr;
 
-    /// Step 1: Finalize all pending items in order.
-    /// Returns true if any items were finalized.
-    bool stepFinalize(
+    /// Step 1: Finalize all pending items in order. (processFEPR reads the
+    /// chain itself afterwards — exists / hasPending — so there is nothing
+    /// to return.)
+    void stepFinalize(
         std::function<void(const ChainItem&)> resolve_permanent
     );
 

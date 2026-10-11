@@ -28,7 +28,6 @@ public:
                 return u.isAtBattlefield() && !moveToBaseBlocked(ctx.state, u) &&
                        !(u.controller != ctx.controller && u.cant_be_moved_by_enemy);
             });
-            std::sort(out.begin(), out.end());   // stable option order, not hash order
             return out;
         };
         const int go = confirmOptional(ctx, "Amateur Recital: move a unit at a battlefield "

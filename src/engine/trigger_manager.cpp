@@ -656,7 +656,6 @@ void TriggerManager::onEnteredBoard(const EnteredBoardEvent& e) {
 }
 
 void TriggerManager::onCombatStarted(const CombatStartedEvent& e) {
-    auto bf_loc = BattlefieldLocation{e.battlefield};
     // The units here are in this combat from its start (see
     // noteCombatParticipants for those that join it later).
     for (auto& [id, obj] : state_.objects) {

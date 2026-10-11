@@ -28,11 +28,6 @@
 #include <functional>
 #include <memory>
 #include <random>
-// <thread> no longer needed — step machine uses a userspace fiber
-// (see step_driver.h). Kept commented for hg-archaeology; remove
-// later once we're sure nothing else in this header transitively
-// depended on the include.
-// #include <thread>
 #include <vector>
 
 namespace riftbound {
@@ -46,17 +41,13 @@ struct GameResult {
     std::string termination_reason;
 };
 
-// ─── Step machine (Phase 11 C-1) ──────────────────────────────────────────────
-// Pull-driven engine API. Replaces the push-driven `runGame` recursion with
-// `beginGame()` + a `currentStep()`/`applyChoice()` loop owned by the caller.
-// Lets `Clone()` collapse to memcpy(GameState) — no worker thread, no halting
-// agent. See Phase 11 Phase C-1 in CLAUDE.md.
-//
-// Methods are stubbed in step (2) of the rollout; subsequent commits fill in
-// the subroutine conversions (main phase, chain, combat, cleanup). External
-// callers can start adopting the surface now; the existing `runGame` path
-// remains the implementation behind the BatchRunner / Agent flow until the
-// step machine is fully wired.
+// ─── Step machine ─────────────────────────────────────────────────────────────
+// Pull-driven engine API: `beginGame()` + a `currentStep()` / `applyChoice()`
+// loop owned by the caller, beside the push-driven `runGame(agent1, agent2)`.
+// Both run the same game code. In step mode `runGame` executes inside a
+// userspace fiber (step_driver.h) whose two agent seats yield to the caller at
+// every decision — no OS thread, no condition variable. The OpenSpiel wrapper
+// (RiftboundState) and the search agents drive the engine through it.
 
 enum class StepKind : uint8_t {
     Done,            // Game terminated. state.game_over is true.
@@ -87,7 +78,7 @@ public:
         uint64_t seed = 0
     );
 
-    // ── Step machine API (Phase 11 C-1, in progress) ────────────────────────
+    // ── Step machine API ─────────────────────────────────────────────────────
     //
     // Pull-driven alternative to runGame(). Caller drives a loop:
     //
@@ -98,15 +89,10 @@ public:
     //   }
     //   const GameResult& r = engine.stepResult();
     //
-    // Once implemented, this entire loop runs without any worker threads or
-    // condition variables — Clone() = memcpy(GameState). Phase C-1's remaining
-    // commits replace each subroutine that currently calls
-    // `agent.selectAction(...)` with a resumable step that returns control
-    // here instead.
-    //
-    // Currently stubbed (throws std::logic_error). Old runGame remains the
-    // production path until step (7) of the rollout flips OpenSpiel + Batch
-    // Runner over.
+    // Implemented on a fiber (see above): each `agent.selectAction(...)` inside
+    // the engine suspends the fiber and returns control here; applyChoice
+    // resumes it with the chosen option. The answer is always one of the
+    // options offered (applyChoice takes an index into them).
 
     /// Begin a game in step-machine mode. Loads decks, initialises state,
     /// runs until the first NeedDecision or terminal.
@@ -122,8 +108,8 @@ public:
     /// (~5ms for a 100-action game), the clone constructs a fresh engine,
     /// substitutes the snapshotted GameState, and calls this method. The
     /// engine initialises subsystems (ChainManager, EffectExecutor,
-    /// TriggerManager subscriptions on the supplied EventBus), then spawns
-    /// the worker thread which dispatches to the appropriate phase based
+    /// TriggerManager subscriptions on the supplied EventBus), then starts
+    /// the engine fiber, which dispatches to the appropriate phase based
     /// on `state_.turn.phase` — no setup, no mulligans, no replay.
     ///
     /// Only a snapshot taken at a top-level main-phase decision can be
@@ -191,10 +177,18 @@ public:
     /// Access the current game state (for external inspection).
     const GameState& state() const { return state_; }
 
-    /// Mutable access, for tests that build a position by hand. Not for
-    /// the OpenSpiel wrapper, BatchRunner or agents: `action_history` is
-    /// written by the engine itself (`recordAppliedIntent`).
-    GameState& mutableState() { return state_; }
+    /// Mutable access, for tests that build a position by hand and for the
+    /// play server's god mode. Not for the OpenSpiel wrapper, BatchRunner or
+    /// agents: `action_history` is written by the engine itself
+    /// (`recordAppliedIntent`). Taking it while the engine is waiting on an
+    /// agent's answer counts as an edit of the position that decision was
+    /// offered for: the answer is then checked against the edited state (see
+    /// askAgent in game_engine.cpp), and a stale one is refused with
+    /// std::invalid_argument.
+    GameState& mutableState() {
+        if (parked_legal_ && !edited_while_parked_) noteEditWhileParked();
+        return state_;
+    }
 
     /// Generate all legal actions for the player who must currently act.
     std::vector<Intent> generateLegalActions() const;
@@ -263,6 +257,11 @@ public:
         int& action_count) {
         return resolveShowdownDecision(bf, chosen, current_focus, action_count);
     }
+    // Executes `i` as given. It does NOT pass through askAgent, so the intent
+    // is not checked against the legal list of any decision: a test that
+    // hand-builds one is responsible for it being a play the engine would
+    // offer. (An activation is still refused by payAndQueueAbility when its
+    // source is not in play or its "use only if" gate fails.)
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
@@ -337,6 +336,30 @@ private:
     PendingQuery pending_query_ = PendingQuery::None;
     PlayerId pending_query_player_ = PlayerId::None;
 
+    // What askAgent is waiting on, and whether the state was edited meanwhile
+    // (mutableState() during a decision). Like pending_query_, this describes
+    // the call stack, not the game.
+    struct ParkedRef {
+        GameObjectId id = kInvalidId;
+        bool exists = false;
+        ZoneType zone = ZoneType::MainDeck;
+        PlayerId controller = PlayerId::None;
+        std::optional<LocationId> location;
+        bool hidden = false;
+        bool operator==(const ParkedRef&) const = default;
+    };
+    const std::vector<Intent>* parked_legal_ = nullptr;
+    bool edited_while_parked_ = false;
+    std::vector<ParkedRef> parked_refs_;
+    ParkedRef parkedRefOf(GameObjectId id) const;
+    void noteEditWhileParked();
+    /// Ask `player`'s agent to choose from `legal`, check the answer is one
+    /// of them (std::invalid_argument otherwise) and record it in
+    /// action_history. Every decision goes through here. `kind`: which
+    /// state-derived decision this is, if any (recomputePendingLegalActions).
+    Intent askAgent(PlayerId player, const std::vector<Intent>& legal,
+                    PendingQuery kind = PendingQuery::None);
+
     // Step machine state (Phase 11 C-1, fiber refactor 6w).
     // No more std::thread — the engine runs in a userspace fiber
     // owned by step_driver_. See step_driver.h for why (TL;DR:
@@ -405,17 +428,14 @@ private:
     /// can loop the body per CR 317.2.f.1.
     void doExpirationBody();
 
-    // ── Main phase, structured for step-machine resumability (C-1 commit 5) ──
+    // ── Main phase: advance to the decision, then resolve it ──
     //
-    // `mainPhase()` above wraps these two halves with the legacy
-    // queryAgent() bridge in the middle. Once C-1's later commits wire
-    // the step machine through, the engine's outer loop will call these
-    // directly: advanceMainPhase() to reach the next decision point,
-    // resolveMainPhaseDecision() to apply the chosen Intent and continue
-    // through chain/cleanup. The split here is purely structural — every
-    // line of behavior matches the prior mainPhase() body. Sub-calls
-    // (runShowdown, runCombat, runChain, cleanup) still use the in-place
-    // recursive path until C-1 commits 6+7 convert them.
+    // mainPhaseLoop() alternates the two halves with queryAgent() in the
+    // middle: advanceMainPhase() runs to the next decision point,
+    // resolveMainPhaseDecision() applies the chosen Intent and continues
+    // through chain and cleanup. Showdowns, combats and the chain run inside
+    // them and ask their own decisions (in step mode each one suspends the
+    // engine fiber).
     struct MainPhaseAdvance {
         enum class Kind : uint8_t { NeedDecision, Done };
         Kind kind = Kind::Done;
@@ -433,14 +453,10 @@ private:
     /// game ended during resolution.
     bool resolveMainPhaseDecision(const Intent& intent, int& action_count);
 
-    // ── Showdown loop, structured for step-machine resumability (C-1 commit 7) ──
+    // ── Showdown loop: advance to the focus decision, then resolve it ──
     //
-    // Same shape as the main-phase split above. The legacy
-    // runShowdownLoop() body is the in-place recursive path; this
-    // advance/resolve pair is the surface that the future step machine
-    // (C-1 commit 9) will call directly. Currently runShowdownLoop()
-    // itself is the only caller — the bridge through queryAgent / focus
-    // alternation lives there until commit 9 flips the runtime.
+    // Same shape as the main-phase split above; runShowdownLoop() is the
+    // only caller and asks the focus holder in between.
     struct ShowdownAdvance {
         enum class Kind : uint8_t { NeedDecision, Done };
         Kind kind = Kind::Done;
@@ -460,11 +476,11 @@ private:
                                                      PlayerId current_focus,
                                                      int& action_count);
 
-    // ── Combat damage assignment, structured for step-machine resumability ──
+    // ── Combat damage assignment ──
     //
     // The damage step has TWO agent queries — one for each side's
-    // assignment. The step-machine path will surface these one at a
-    // time. Each side's split has the same advance/resolve shape:
+    // assignment, asked one at a time by combatDamageStep. Each side's
+    // split has the same advance/resolve shape:
     // advance computes the legal options, resolve applies the picked one.
     // CombatDamageAdvance is declared up in the public test-seams block
     // (so testHook_advanceCombatDamage can return it).
@@ -488,20 +504,7 @@ private:
     /// path does: emits per-unit DamageDealtEvent for each assignment.
     void resolveCombatDamageDecision(const Intent& intent);
 
-    // ── Cleanup, structured for step-machine resumability (C-1 commit 8) ──
-    //
-    // Cleanup has NO agent-query sites — the SBA pass is purely
-    // state-derived (lethal damage, BF control changes, aura recalc,
-    // win check). Triggers fired by killUnit are queued onto the chain
-    // by TriggerManager and resolved in a SEPARATE runChain pass by
-    // the caller (see resolveMainPhaseDecision). So cleanup itself
-    // never yields — its "advance" always returns Done.
-    //
-    // The split is documented for symmetry with the other phase
-    // subroutines; in practice callers can keep using cleanup() too.
-    void advanceCleanup();
-
-    // ── Mulligan, structured for step-machine resumability (C-1 commit 8) ──
+    // ── Mulligan ──
     //
     // Per CR 118, each player gets one mulligan decision in turn order.
     // No reentrancy (a single decision per player, executed atomically
@@ -520,21 +523,11 @@ private:
     /// Apply the chosen mulligan intent. No-op if not a MulliganDecision.
     void resolveMulliganDecision(const Intent& chosen);
 
-    // ── Cost payment, structured for step-machine resumability ──
+    // ── Cost payment ──
     //
-    // Splits payCardCost into a cursor-based state machine so the
-    // step-machine dispatch (commit 9) can drive it without going
-    // through the legacy threaded queryAgent path. Currently
-    // payCardCost itself remains the production entry point — it
-    // wraps the begin/advance/resolve methods in a queryAgent loop
-    // (the bridge — same shape as runShowdownLoop / mainPhase).
-    //
-    // After commit 9, the step-machine dispatch uses begin/advance/
-    // resolve directly: when an executePlayCard / executePlaySpell /
-    // ActivateAbility intent enters the engine, the dispatch calls
-    // beginCostPayment, yields each rune-pick decision via
-    // applyChoice, and resumes the original operation once
-    // cost_cursor->phase == Done.
+    // payCardCost is a cursor-based state machine (GameState::cost_cursor):
+    // it wraps begin / advance / resolve in a loop that asks the paying
+    // player for each rune pick.
     struct CostPaymentAdvance {
         enum class Kind : uint8_t { NeedDecision, Done };
         Kind kind = Kind::Done;
@@ -565,7 +558,6 @@ private:
     void executePlayCard(const Intent& intent);
     void executePlaySpell(const Intent& intent);
     void executeStandardMove(const Intent& intent);
-    void executeEndTurn(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);
     void executePassFocus(const Intent& intent);
@@ -584,7 +576,6 @@ private:
     std::vector<Intent> generateMulliganActions(PlayerId player) const;
     std::vector<Intent> generateShowdownActions(PlayerId player) const;
     std::vector<Intent> generateClosedStateActions(PlayerId player) const;
-    std::vector<Intent> generateCombatDamageActions(PlayerId player) const;
     void generateSpellActions(PlayerId player, bool action_ok, bool reaction_ok,
                                std::vector<Intent>& actions) const;
     /// Emits Play intents (play_source=Trash) for spells the player has a
@@ -630,8 +621,8 @@ private:
     Intent queryAgent(PlayerId player);
 
     /// Append the chosen Intent's history token (action_vocab.h) to
-    /// GameState::action_history. Called from every selectAction dispatch
-    /// site, in both runGame and step-machine games, so the history is the
+    /// GameState::action_history. Called by askAgent, the one selectAction
+    /// dispatch site, in both runGame and step-machine games, so the history is the
     /// one exact record of the decisions applied: replaying it from the
     /// same decks and seed rebuilds this game (RiftboundState, MctsAgent).
     /// This is the only writer.
@@ -796,16 +787,12 @@ private:
     void killUnit(GameObjectId unit);
     void healAllUnits();
     void emptyRunePools();
-    PlayerId activePlayer() const;
     BattlefieldState& getBattlefield(BattlefieldId id);
     const BattlefieldState& getBattlefield(BattlefieldId id) const;
 
-    // ── Battlefield Replace/Swap-back (CR 438) ──
-    /// Replace a battlefield with a token battlefield. Original goes to Banishment.
-    void replaceBattlefield(BattlefieldId original_bf, GameObjectId token_bf_card,
-                            PlayerId controller);
-    /// Swap back: when token BF leaves, restore original from Banishment.
-    void swapBackBattlefield(BattlefieldId token_bf);
+    // Replacing a battlefield with a token and swapping the original back are
+    // EffectExecutor::replaceBattlefieldWithToken and the token battlefield's
+    // own card (Brush): the engine has no second copy of either.
 
     // ── Equip/Attach (CR 716-725) ──
     // Attaching goes through EffectExecutor::attachGear (the one attach path).

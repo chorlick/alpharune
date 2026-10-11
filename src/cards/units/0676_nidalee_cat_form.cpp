@@ -39,7 +39,6 @@ private:
         d.might = 4;
         d.rarity = Rarity::Rare;
         d.keywords.set(Keyword::Ambush);
-        d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
 When I win a combat, draw 1. (I win if I remain after combat.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0e51e39dfe4f922b2c8c9bff785d170350e9b803-744x1039.png)RB";

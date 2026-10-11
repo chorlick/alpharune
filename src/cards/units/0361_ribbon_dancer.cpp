@@ -19,12 +19,9 @@ public:
 
     // "When I move to a battlefield, give another friendly unit +1 [M] this turn."
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> others;
-        for (auto& [id, obj] : ctx.state.objects)
-            if (id != ctx.source && obj.isUnit() && obj.controller == ctx.controller &&
-                obj.location.has_value())
-                others.push_back(id);
-        std::sort(others.begin(), others.end());   // stable option order, not hash order
+        const auto others = boardObjects(ctx.state, [&](const GameObject& o) {
+            return o.id != ctx.source && o.isUnit() && o.controller == ctx.controller;
+        });
         const GameObjectId t = pickTarget(ctx, "Ribbon Dancer: give another friendly unit +1 [M]",
                                           others);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

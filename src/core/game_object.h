@@ -310,6 +310,11 @@ struct GameObject {
         int keyword_value = 0;             // e.g. Assault 1, Shield 2
         bool suppress_combat_damage = false; // Vilemaw: "doesn't deal combat damage"
         int bonus_damage_taken = 0;        // +N to spell/ability damage dealt to me (Void Gate)
+        // "... have [Keyword] if they didn't already": dropped by
+        // GameEngine::recalculateAuras, once every hook of the pass has run,
+        // from an object that has `keyword` from any other source (see
+        // auraKeywordIfAbsent in card_helpers.h).
+        bool only_if_absent = false;
     };
     std::vector<AuraEffect> aura_effects;  // active auras affecting this object
     int aura_might_bonus = 0;              // cached sum of aura might bonuses

@@ -75,7 +75,6 @@ private:
         d.domains = {Domain::Body, Domain::Chaos};
         d.tags = {R"RB(Miss Fortune)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Ganking);
         d.ability_text = R"RB([E]: Give a unit [Ganking] this turn. (It can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/cc11261fcdbf0851525030bd9e835b718efad3bc-744x1040.png?accountingTag=RB)RB";
         return d;

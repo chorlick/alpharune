@@ -19,11 +19,10 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> friendly;   // "a friendly unit": any of mine on board
-        for (auto& [id, obj] : ctx.state.objects)
-            if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
-                friendly.push_back(id);
-        std::sort(friendly.begin(), friendly.end());   // stable option order, not hash order
+        // "a friendly unit": any of mine on board
+        const auto friendly = boardObjects(ctx.state, [&](const GameObject& o) {
+            return o.isUnit() && o.controller == ctx.controller;
+        });
         const GameObjectId t = pickTarget(ctx, "Inviolus Vox: give a friendly unit +8 [M]",
                                           friendly);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

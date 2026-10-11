@@ -22,7 +22,6 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto units = chooseableUnits(ctx.state, ctx.controller,
                                      [](const GameObject&) { return true; });
-        std::sort(units.begin(), units.end());   // stable option order, not hash order
         const GameObjectId t = pickTarget(ctx, "Gem Jammer: give a unit [Ganking]", units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (t == kInvalidId) return;          // none / mistarget / waiting

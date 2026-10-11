@@ -91,7 +91,6 @@ private:
         d.domains = {Domain::Mind, Domain::Chaos};
         d.tags = {R"RB(Teemo)RB"};
         d.rarity = Rarity::Rare;
-        d.keywords.set(Keyword::Hidden);
         d.ability_text = R"RB(You may pay [1] to hide a card with [Hidden] instead of [A].
 [1], [E]: Put a Teemo unit you own into your hand from your Champion Zone or the board.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9723181e3392bb61c2aabc804a44f7b0558cedf1-744x1039.png)RB";

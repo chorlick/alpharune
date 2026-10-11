@@ -93,7 +93,7 @@ cd "$REPO/.worktrees/<stream>"
 # namespace keeps your cache private to your stream: a cache shared between
 # worktrees restored precompiled headers built against another stream's headers.
 flock "$REPO/.worktrees/.build.lock" cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_NAMESPACE=<stream>;CCACHE_SLOPPINESS=pch_defines,time_macros;ccache" \
+  -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_NAMESPACE=<stream>;CCACHE_SLOPPINESS=pch_defines,time_macros;$REPO/.worktrees/<stream>/scripts/ccache_pch_safe.sh" \
   -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$REPO/build/_deps/open_spiel-src" \
   -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$REPO/build/_deps/googletest-src"
 # build + test
@@ -108,6 +108,10 @@ flock "$REPO/.worktrees/.build.lock" env RIFTBOUND_ROOT=. ./build/riftbound_test
   `game_state.h` and friends rebuild everything.
 - Use `--gtest_filter=` while iterating; run the full suite before you finish.
 - Never build in the main checkout's `build/`.
+- The launcher must be `scripts/ccache_pch_safe.sh`, never plain `ccache`: plain
+  ccache can return a precompiled header built from older headers, and every
+  file is then compiled against stale declarations. The script always compiles
+  a precompiled header itself and caches only the files that use it.
 - Do not use `CCACHE_BASEDIR` / `CCACHE_NOHASHDIR` (the cross-worktree launcher
   in `CLAUDE.md`): it is unsafe while several worktrees edit headers. Before
   your final full-suite run, do `cmake --build build --target clean` once so

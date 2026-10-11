@@ -232,6 +232,7 @@ public:
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
     void testHook_endingStep() { endingStep(); }
+    void testHook_expirationStep() { expirationStep(); }
     // Phase 6q+ engine-audit CRITICAL #2 + #3 — exposed so tests can
     // exercise the showdown / combat trigger drain + action-type
     // dispatch in isolation without driving a full turn.

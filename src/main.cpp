@@ -847,7 +847,7 @@ int main(int argc, char* argv[]) {
                 if (e.level == LogLevel::Debug)   level = "DBG";
                 if (e.level == LogLevel::Info)    level = "INF";
                 if (e.level == LogLevel::Warning) level = "WRN";
-                s->broadcastLog(level, e.message);
+                s->broadcastLog(level, e.message, e.audience);
             });
         }
     }

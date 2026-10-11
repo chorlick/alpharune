@@ -1237,6 +1237,12 @@ void PlayServer::stop() {
 }
 
 void PlayServer::broadcastLog(const std::string& level, const std::string& message) {
+    // No audience given: nobody but an all-seeing viewer may read it.
+    broadcastLog(level, message, LogAudience::neither());
+}
+
+void PlayServer::broadcastLog(const std::string& level, const std::string& message,
+                              LogAudience audience) {
     if (!running_.load()) return;
 
     // Capture *_PROMPT trace lines into impl_->last_prompt so the next
@@ -1258,12 +1264,15 @@ void PlayServer::broadcastLog(const std::string& level, const std::string& messa
         impl_->last_prompt = std::move(prompt);
     }
 
-    // Engine log lines name cards as they are drawn, mulliganed, hidden or
-    // looked at, whoever they belong to, and carry nothing that says who
-    // may see them. When frames withhold hidden information the stream is
-    // withheld with it — all of it, rather than a guess at which lines
-    // are public.
-    if (!config_.reveal_hidden) return;
+    // A line that names a card as it is drawn, mulliganed, hidden or looked
+    // at is tagged with the players who may read it (LogEvent::audience).
+    // When frames withhold hidden information a line is sent only if every
+    // human seat may read it: all clients get the same stream.
+    if (!config_.reveal_hidden) {
+        if (config_.p1_human && !audience.includes(PlayerId::Player1)) return;
+        if (config_.p2_human && !audience.includes(PlayerId::Player2)) return;
+        if (!config_.p1_human && !config_.p2_human && !audience.isBoth()) return;
+    }
 
     json frame = {
         {"type", "log"},

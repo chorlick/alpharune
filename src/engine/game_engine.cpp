@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include "engine/deck_ops.h"
 #include "game_engine.h"
+#include "engine/keyword_abilities.h"
 #include "cards/card.h"
 #include "openspiel/action_vocab.h"
 
@@ -71,6 +72,7 @@ void GameEngine::initSubsystems() {
     chain_manager_->setFinalizeChoices([this](ChainItem& item) { chooseTargetsAtFinalize(item); });
     chain_manager_->setActivateAbility(
         [this](const Intent& i) { return payAndQueueAbility(i); });
+    chain_manager_->setPlayCard([this](const Intent& i) { executeIntent(i); });
     trigger_manager_ = std::make_unique<TriggerManager>(
         state_, events_, card_db_, *chain_manager_, card_registry_);
     trigger_manager_->setEffectExecutor(effect_executor_.get());
@@ -1112,6 +1114,7 @@ void GameEngine::endingStep() {
 }
 
 void GameEngine::expireTemporaryKeywords(GameObject& obj, const CardDB& db) {
+    obj.temp_deflect_value = 0;   // [Deflect N] given "this turn"
     if (obj.temp_keywords.bits == 0) return;
     KeywordSet base_keywords;
     if (obj.card_def_id != kInvalidId) {
@@ -1266,7 +1269,7 @@ void GameEngine::doExpirationBody() {
     state_.delayed_abilities.erase(
         std::remove_if(state_.delayed_abilities.begin(), state_.delayed_abilities.end(),
             [&](const DelayedAbility& da) {
-                return da.expires_on_turn == state_.turn.turn_number;
+                return da.expiresAtEndOf(state_.turn.turn_number);
             }),
         state_.delayed_abilities.end());
 }
@@ -1607,6 +1610,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
         }
         events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
             was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
+        effect_executor_->announceRecycledToMainDeck(intent.ability_source);
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
@@ -2162,7 +2166,8 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     // Cards that defer target choice to resolve time via
     // pickTarget/pickTargetPair (Phase 6q opt-in) are unaffected —
     // they re-enumerate legal targets at resolve time themselves.
-    Card* card = card_registry_.get(item.card_def_id);
+    Card* card = item.keyword_ability ? keywordAbilityCard(*item.keyword_ability)
+                                      : card_registry_.get(item.card_def_id);
     std::vector<GameObjectId> effective_targets = item.targets;
     if (card && !item.targets.empty()) {
         // An activated ability is re-validated against ITS OWN requirements
@@ -2549,7 +2554,8 @@ void GameEngine::executeMulligan(const Intent& intent) {
         if (it != ps.hand.end()) {
             set_aside.push_back(*it);
             ps.hand.erase(it);
-            events_.logTrace("  MULLIGAN: " + std::string(toString(intent.player)) +
+            events_.logTracePrivate(intent.player,
+                             "  MULLIGAN: " + std::string(toString(intent.player)) +
                              " set aside " + state_.getObject(card_id).name +
                              " (id=" + std::to_string(card_id) + ")");
         }
@@ -2563,7 +2569,8 @@ void GameEngine::executeMulligan(const Intent& intent) {
     drawCards(intent.player, static_cast<int>(set_aside.size()));
     for (size_t i = before_draw; i < ps.hand.size(); ++i) {
         auto did = ps.hand[i];
-        events_.logTrace("  MULLIGAN: " + std::string(toString(intent.player)) +
+        events_.logTracePrivate(intent.player,
+                         "  MULLIGAN: " + std::string(toString(intent.player)) +
                          " drew replacement " + state_.getObject(did).name +
                          " (id=" + std::to_string(did) +
                          ") — PRIVATE to " + toString(intent.player));
@@ -2578,6 +2585,7 @@ void GameEngine::executeMulligan(const Intent& intent) {
         placed.push_back({card_id, deck::Place::Hand, knowledge::nobody()});
     }
     deck::putOnBottomTogether(state_, intent.player, placed);
+    if (!set_aside.empty()) effect_executor_->announceRecycledToMainDeck(set_aside.front());
 }
 
 // ── Combat damage and replacement effects (CR 467.2.c.5) ─────────────────────
@@ -2696,7 +2704,11 @@ void GameEngine::executeHideCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
 
-    events_.logTrace("HIDE: " + card.name + " at BF#" +
+    // Which card it is, is the hiding player's to know (LogAudience); that a
+    // card was hidden, and where, both players see.
+    events_.logTrace(std::string("HIDE: ") + toString(intent.player) + " hides a card at BF#" +
+                     std::to_string(intent.chosen_battlefield));
+    events_.logTracePrivate(intent.player, "HIDE: " + card.name + " at BF#" +
                      std::to_string(intent.chosen_battlefield) +
                      " by " + toString(intent.player));
 
@@ -2705,7 +2717,8 @@ void GameEngine::executeHideCard(const Intent& intent) {
     // rune (exhausted before ready). Unpaid, the card is not hidden.
     if (!ps.hide_ignoring_costs_this_turn &&
         !payAdditionalCost(intent.player, 0, 1, Domain::Count)) {
-        events_.logTrace("HIDE: " + card.name + " not hidden — [A] could not be paid");
+        events_.logTracePrivate(intent.player,
+                                "HIDE: " + card.name + " not hidden — [A] could not be paid");
         return;
     }
 
@@ -2724,8 +2737,9 @@ void GameEngine::executeHideCard(const Intent& intent) {
     card.hidden_at = bf_id;
     card.hidden_on_turn = state_.turn.turn_number;
 
-    events_.logDebug(std::string("HIDDEN: ") + card.name + " hidden at BF#" +
-                     std::to_string(bf_id) + " by " + toString(intent.player));
+    events_.logFor(LogLevel::Debug, LogAudience::only(intent.player),
+                   std::string("HIDDEN: ") + card.name + " hidden at BF#" +
+                   std::to_string(bf_id) + " by " + toString(intent.player));
 
     // "When you hide a card" (Katarina, Reckless).
     events_.emit(CardHiddenEvent{intent.card, intent.player});
@@ -4563,17 +4577,10 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         // (CR 461.1.a.2). Symbol of the Solari (227): if the attacker controls
         // it, recall ALL units (attackers AND defenders) instead.
         const bool recall_all = state_.player(*bf.attacker).recall_all_on_attacker_tie;
-        for (auto uid : att_remaining) {
-            moveUnit(uid, BaseLocation{*bf.attacker});
-            events_.emit(UnitMovedEvent{uid, *bf.attacker,
-                BattlefieldLocation{bf_id}, BaseLocation{*bf.attacker}, false});
-        }
+        // A recall is not a move (CR 458): no UnitMovedEvent, no move count.
+        for (auto uid : att_remaining) effect_executor_->recallToBase(uid);
         if (recall_all) {
-            for (auto uid : def_remaining) {
-                moveUnit(uid, BaseLocation{*bf.defender});
-                events_.emit(UnitMovedEvent{uid, *bf.defender,
-                    BattlefieldLocation{bf_id}, BaseLocation{*bf.defender}, false});
-            }
+            for (auto uid : def_remaining) effect_executor_->recallToBase(uid);
             events_.logTrace("SYMBOL OF THE SOLARI: attacker tie -> recall ALL units");
         }
     }
@@ -5195,6 +5202,8 @@ void GameEngine::cleanup() {
             obj.card_counters["__was_mighty"] = 0;
         }
     }
+    // Other "my Might becomes N or more" edges are the trigger manager's.
+    events_.emit(StateSettledEvent{});
 }
 
 // C-1 commit 8 — cleanup is naturally yield-free (no agent queries
@@ -5255,9 +5264,13 @@ void GameEngine::processLethalDamage() {
 
         if (lethal) to_kill.push_back(id);
     }
+    // They die at the same time: each one's last-known information is taken
+    // while all of them are still on the board.
+    effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);
     }
+    effect_executor_->endDeathBatch(to_kill);
 }
 
 void GameEngine::updateBattlefieldControl() {
@@ -6443,23 +6456,9 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     // (Tactical Retreat 737: "the next time it would die this turn, heal it,
     // exhaust it, and recall it instead"). Consulted before any source-based
     // replacement; consumes the flag and aborts the death.
-    if (unit.death_replacement_recall_pending) {
-        unit.death_replacement_recall_pending = false;
-        events_.logDebug("REPLACEMENT (self): " + unit.name +
-                         " heals/exhausts/recalls instead of dying");
-        detachAllGear(unit_id);                // CR 719.5 — recall sheds gear
-        auto old_loc = unit.location;
-        unit.damage_marked = 0;
-        unit.is_exhausted = true;
-        unit.combat_designation = CombatDesignation::None;
-        unit.location = BaseLocation{controller};
-        unit.zone = ZoneType::Base;
-        events_.emit(ObjectStateChangedEvent{unit_id, "healed"});
-        events_.emit(UnitMovedEvent{unit_id, controller,
-            old_loc.value_or(BaseLocation{controller}),
-            BaseLocation{controller}, false});
-        return;  // replacement consumed — unit does NOT die
-    }
+    // The unit keeps its gear: a recall is not a move and what is attached
+    // goes with it (CR 458, 719.3.a) — EffectExecutor::recallToBase.
+    if (effect_executor_->applyOwnDeathReplacement(unit_id)) return;
 
     // "If it would die this turn, banish it instead." (Smite) The unit is
     // banished and does not die.
@@ -6550,7 +6549,8 @@ void GameEngine::killUnit(GameObjectId unit_id) {
             state_.player(controller).unit_died_in_beginning_this_turn = true;
     }
     events_.emit(UnitDiedEvent{unit_id, controller,
-        was_at.value_or(BaseLocation{controller}), might});
+        was_at.value_or(BaseLocation{controller}), might,
+        state_.getObject(unit_id).last_known.killed_by});
     events_.emit(LeftBoardEvent{unit_id, controller, CardType::Unit,
         was_at.value_or(BaseLocation{controller}),
         is_token ? ZoneType::Banishment : ZoneType::Trash, true});

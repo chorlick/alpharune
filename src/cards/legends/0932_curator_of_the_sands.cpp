@@ -17,6 +17,9 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you play a unit, gear, or activated ability with Energy cost [7] or
     // more, you may exhaust me to ready up to 2 runes."
+    // The "may", the exhaust (a cost within instructions, CR 383.3.b) and the
+    // runes are all decided as the ability is finalized (CR 355.5, 383.3).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayACard, TriggerType::WhenYouActivateAnAbility};
     }
@@ -30,12 +33,19 @@ public:
         }
         if (ri.triggering_spell_energy_spent < 7) return;
 
-        auto exhausted_runes = [&ctx]() {
+        // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
+        // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
+        // printed restriction narrows a choice (CR 355.9.b), so an opponent's
+        // exhausted rune may be named too.
+        auto readiable = [&ctx](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isRune() && obj.is_exhausted && obj.location.has_value();
+        };
+        auto exhausted_runes = [&]() {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects)
-                if (obj.isRune() && obj.controller == ctx.controller &&
-                    obj.is_exhausted && obj.location.has_value())
-                    out.push_back(id);
+                if (readiable(id)) out.push_back(id);
             std::sort(out.begin(), out.end());
             return out;
         };
@@ -52,12 +62,29 @@ public:
         // Which runes, and how many, is the controller's choice (they differ
         // by Domain): one prompt per rune, "None" on each. The legend is
         // exhausted only after the picks are known: the callback is
-        // re-entered from the top with each answer.
-        const auto picks = selectSeveral(ctx, "Curator of the Sands: ready a rune (up to 2)",
-                                         exhausted_runes(), 2);
-        if (!picks.has_value()) return;    // waiting for the choice
-        ctx.executor.exhaustObject(ctx.source);
-        for (auto id : *picks) ctx.executor.readyObject(id);
+        // re-entered from the top with each answer, and a cost is paid
+        // immediately before the end-of-choices marker.
+        const std::string label = "Curator of the Sands: ready a rune (up to 2)";
+        std::vector<GameObjectId> picks;
+        if (ri.choices_finalized && !ri.finalizing) {
+            // Resolving: the runes named at finalization, as selectSeveral
+            // kept them on the item (two slots per pick from slot 7). Nothing
+            // is offered, so nothing is asked and nothing new can be named.
+            for (size_t k = 0; k < 2; ++k) {
+                const auto one = selectObject(ctx, label, {}, 7 + 2 * k, /*may_decline=*/true);
+                if (!one.has_value() || *one == kInvalidId) break;
+                picks.push_back(*one);
+            }
+        } else {
+            const auto chosen = selectSeveral(ctx, label, exhausted_runes(), 2);
+            if (!chosen.has_value()) return;    // waiting for the choice
+            picks = *chosen;
+        }
+        if (costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        // A rune readied or off the board since it was named is skipped.
+        for (auto id : picks)
+            if (readiable(id)) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

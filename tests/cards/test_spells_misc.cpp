@@ -770,6 +770,8 @@ TEST_F(LilliaFaeFawnTest, OnMoveCreatesSpriteTokenWithTemporary) {
     Card* c = card_registry.get(kLilliaFaeFawn);
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->triggerType(), TriggerType::WhenIMove);
+    // The move that triggered it travels with the trigger (ChainItem::triggering_move).
+    AnnouncedMove moved(state, LocationId{BaseLocation{P1}}, LocationId{BattlefieldLocation{0}});
     c->onTrigger(ctx, {});
 
     EXPECT_EQ(countTokensNamed(state, P1, "Sprite"), 1);

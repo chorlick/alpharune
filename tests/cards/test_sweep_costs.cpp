@@ -56,6 +56,8 @@ constexpr CardDefId kIreliaGraceful = 462;
 constexpr CardDefId kTCostThenPrompt = 1052;       // spell: spend 1 XP, then choose a unit
 constexpr CardDefId kTCostThenPromptFinal = 1053;  // the same, choices at finalization
 constexpr CardDefId kTPlaysFromHand = 1054;        // spell: play a card from hand, ignoring its cost
+constexpr CardDefId kTPowerTouch = 1055;           // spell costing one Fury Power: buff a unit
+constexpr CardDefId kRisenAltar = 950;
 
 /// "Spend 1 XP. Buff a unit." The XP is a cost that is not idempotent, and a
 /// prompt follows it, so the callback is re-entered after the payment.
@@ -84,6 +86,33 @@ public:
 private:
     CardDefId id_;
     bool finalize_;
+    CardDef def_;
+};
+
+/// A targeted spell whose whole cost is one Power: "[R] — Buff a unit." No
+/// printed card fits the "[A] less" half of Irelia, Graceful's discount this
+/// cleanly (a cheap spell with a Power cost and one unit target), so the test
+/// uses this one.
+class TPowerTouch : public SpellCard {
+public:
+    TPowerTouch() {
+        def_.id = kTPowerTouch;
+        def_.name = "Test Power Touch";
+        def_.card_type = CardType::Spell;
+        def_.domains = {Domain::Fury};
+        def_.power_cost = 1;
+    }
+    const CardDef& def() const override { return def_; }
+    TargetRequirements getTargetRequirements() const override {
+        return TargetRequirements{.count = 1, .must_be_unit = true};
+    }
+    bool needsPlayTimeTarget() const override { return true; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const GameObjectId t = pickTarget(ctx, "Test Power Touch",
+                                          enumerateLegalTargets(ctx.state, ctx.controller));
+        if (t != kInvalidId) ctx.executor.buffUnit(t);
+    }
+private:
     CardDef def_;
 };
 
@@ -117,6 +146,7 @@ protected:
         card_registry.registerCard(kTCostThenPromptFinal,
             std::make_unique<TCostThenPrompt>(kTCostThenPromptFinal, true));
         card_registry.registerCard(kTPlaysFromHand, std::make_unique<TPlaysFromHand>());
+        card_registry.registerCard(kTPowerTouch, std::make_unique<TPowerTouch>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -946,6 +976,7 @@ TEST_F(SweepCostsTest, PlayGate_ADiscountFromTheChosenTargetCountsBeforePayment)
     withEngine([](GameEngine& e) { e.testHook_cleanup(); });   // her continuous effect
     auto spell = addToHand(P1, kFrigidTouch);
     setPool(P1, 1, 0);
+    ASSERT_TRUE(playOffered(spell)) << "the generator counts the discount of a target it can choose";
     EnginePathAgent agent(EnginePathAgent::choosing(irelia));
     play(spell, &agent);
     EXPECT_TRUE(agent.wasOffered(irelia));
@@ -973,11 +1004,10 @@ TEST_F(SweepCostsTest, CostDueNow_IsPaidOnceWhenAPromptFollowsIt) {
 }
 
 TEST_F(SweepCostsTest, CostDueNow_IsPaidOnceWhenTheCardIsPlayedByAnEffect) {
-    // The same card, opted into choices at finalization, played by another
-    // spell's effect.
+    // The same card played by another spell's effect.
     auto unit = addUnit(P1, kInvalidId, 2);
     addUnit(P1, kInvalidId, 2);
-    auto inner = addToHand(P1, kTCostThenPromptFinal);
+    auto inner = addToHand(P1, kTCostThenPrompt);
     auto outer = addToHand(P1, kTPlaysFromHand);
     setXp(P1, 5);
     EnginePathAgent agent(EnginePathAgent::choosing(unit));
@@ -1038,6 +1068,119 @@ TEST_F(SweepCostsTest, Weaponmaster_TakingAnAttachedEquipmentAnnouncesTheUnattac
     EXPECT_TRUE(o(holder).attachments.empty());
     EXPECT_EQ(o(holder).attachment_might_bonus, 0);
     EXPECT_EQ(unattached, 1) << "EffectExecutor::unattachGear, not a hand-edited vector";
+}
+
+// ─── The cost contract is enforced (9.J2) ───────────────────────────────────
+
+TEST_F(SweepCostsTest, CostContract_APromptAfterAPaidCostBeforeTheMarkerIsAnEngineError) {
+    // kTCostThenPromptFinal opts into choices at finalization, pays under
+    // costDueNow and then asks for a unit before its end-of-choices marker.
+    // Re-entered after the prompt, it would find the cost due again; the
+    // engine reports the card instead of charging the player twice.
+    auto unit = addUnit(P1, kInvalidId, 2);
+    addUnit(P1, kInvalidId, 2);
+    auto spell = addToHand(P1, kTCostThenPromptFinal);
+    setXp(P1, 5);
+    EnginePathAgent agent(EnginePathAgent::choosing(unit));
+    try {
+        play(spell, &agent);
+        ADD_FAILURE() << "the finalize pass accepted a prompt after a paid cost";
+    } catch (const std::logic_error& e) {
+        EXPECT_NE(std::string(e.what()).find("Test Cost Then Prompt (finalized)"),
+                  std::string::npos) << e.what();
+    }
+}
+
+// ─── 9.J4: the tests the first report said were missing ─────────────────────
+
+TEST_F(SweepCostsTest, PlayGate_TheTargetDiscountTakesAPowerWhereThereIsNoEnergy) {
+    // Irelia, Graceful: "Your spells that choose me cost [1] or [A] less."
+    // Test Power Touch costs one Fury Power and no Energy (a test card: see
+    // TPowerTouch), so the discount can only be the "[A] less" half.
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);
+    auto other = addUnit(P1, kInvalidId, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });   // her continuous effect
+    auto spell = addToHand(P1, kTPowerTouch);
+    setPool(P1, 0, 0);                                         // no Power at all
+    ASSERT_TRUE(playOffered(spell)) << "free when it chooses Irelia";
+    EnginePathAgent agent(EnginePathAgent::choosing(irelia));
+    play(spell, &agent);
+    EXPECT_TRUE(agent.wasOffered(irelia));
+    EXPECT_FALSE(agent.wasOffered(other)) << "the Power is still owed for any other unit";
+    EXPECT_EQ(o(irelia).buff_count, 1) << "it was played and resolved";
+}
+
+TEST_F(SweepCostsTest, RisenAltar_EmpowerCostsOnePowerLessThroughARealActivation) {
+    // Risen Altar: "[Empower] costs of your units here cost [1] or [A] less."
+    // Gangplank, Naval at the Altar: [Empower] [O][O] is paid with one [O].
+    auto altar = state.createObject();
+    o(altar).card_def_id = kRisenAltar;
+    o(altar).card_type = CardType::Battlefield;
+    o(altar).name = card_db.get(kRisenAltar).name;
+    state.battlefields[0].card_object_id = altar;
+    state.battlefields[0].controller = P1;
+    auto here = addUnit(P1, kGangplankNaval, 4, 0);
+    auto elsewhere = addUnit(P1, kGangplankNaval, 4);
+    setPool(P1, 0, 0);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Body)] = 1;
+    auto empowerOffer = [&](GameObjectId unit) -> std::optional<Intent> {
+        for (const auto& i : legal())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == unit) return i;
+        return std::nullopt;
+    };
+    EXPECT_FALSE(empowerOffer(elsewhere).has_value()) << "not at the Altar: [O][O]";
+    auto offer = empowerOffer(here);
+    ASSERT_TRUE(offer.has_value());
+    execute(*offer);
+    EXPECT_EQ(o(here).empowered, 1);
+    EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Body)], 0);
+}
+
+TEST_F(SweepCostsTest, PayAnyPower_SpendsFloatingPowerThenRecyclesExhaustedRunesFirst) {
+    setPool(P1, 0, 1);
+    auto ready = addRune(P1, Domain::Calm);
+    auto exhausted = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    bool paid = false, refused = true;
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        refused = !exec.payAnyPower(P1, 4);     // 1 floating + 2 runes: not enough
+    });
+    EXPECT_TRUE(refused);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1) << "all or nothing";
+    EXPECT_TRUE(onBoard(ready));
+    EXPECT_TRUE(onBoard(exhausted));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        paid = exec.payAnyPower(P1, 2);
+    });
+    EXPECT_TRUE(paid);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "floating Power first";
+    EXPECT_FALSE(onBoard(exhausted)) << "then the exhausted rune is recycled";
+    EXPECT_TRUE(onBoard(ready)) << "the ready rune can still give Energy";
+    EXPECT_EQ(o(exhausted).zone, ZoneType::RuneDeck);
+    EXPECT_EQ(state.player(P1).power_spent_this_turn, 1);
+}
+
+TEST_F(SweepCostsTest, TrashReplayGrant_ADiscountAppliesToTheGrantCost) {
+    // CR 356.4: a discount applies to whatever cost is being paid. Undying
+    // Legion's "[3][R] from your trash" under "your cards cost [1] less".
+    auto legion = addToTrash(P1, kUndyingLegion);
+    state.player(P1).cards_played_this_turn = 1;
+    setPool(P1, 2, 0);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    auto trashPlay = [&]() -> std::optional<Intent> {
+        for (const auto& i : legal())
+            if (i.card == legion && i.play_source == Intent::PlaySource::Trash) return i;
+        return std::nullopt;
+    };
+    EXPECT_FALSE(trashPlay().has_value()) << "[3] with [2]";
+    PlayerState::CostModifier less;
+    less.energy_reduction = 1;
+    less.this_turn_only = true;
+    state.player(P1).cost_modifiers.push_back(less);
+    auto offer = trashPlay();
+    ASSERT_TRUE(offer.has_value()) << "[3] - [1] = [2]";
+    execute(*offer);
+    EXPECT_TRUE(onBoard(legion));
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
 }
 
 }  // namespace riftbound::test::sweep_costs

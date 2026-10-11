@@ -23,8 +23,10 @@ public:
                 if (!obj.isUnit()) continue;
                 to_kill.push_back(id);
             }
-            DeathBatch together(ctx.executor, to_kill);   // they die at the same time
-            for (auto id : to_kill) ctx.executor.killObject(id);
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, to_kill);   // they die at the same time
+                for (auto id : to_kill) ctx.executor.killObject(id);
+            }
         }
     }
 private:

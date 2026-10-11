@@ -59,11 +59,13 @@ public:
         int em = ctx.state.getObject(enemy).current_might;
         ctx.executor.dealDamage(enemy, fm, friendly);
         ctx.executor.dealDamage(friendly, em, enemy);
-        DeathBatch together(ctx.executor, std::vector<GameObjectId>{friendly, enemy});   // they die at the same time
-        for (auto id : {friendly, enemy}) {
-            if (ctx.state.objectExists(id) &&
-                ctx.state.getObject(id).hasLethalDamage())
-                ctx.executor.killObject(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, std::vector<GameObjectId>{friendly, enemy});   // they die at the same time
+            for (auto id : {friendly, enemy}) {
+                if (ctx.state.objectExists(id) &&
+                    ctx.state.getObject(id).hasLethalDamage())
+                    ctx.executor.killObject(id);
+            }
         }
         ctx.events.logTrace("GENTLEMEN'S DUEL: +3 [M] to friendly, then duel ("
                             + std::to_string(fm) + " vs " + std::to_string(em) + ")");

@@ -155,6 +155,32 @@ iteration must apply these.
   `flock .worktrees/.build.lock flock .worktrees/.build-b.lock bash .worktrees/gate.sh <label>`
   (same for `fixcache.sh`). This overrides README "one build at a time".
 
+- **After the final merge: build the v6 ML tooling (user, 2026-10-11).** Once
+  the final gate has passed, `master` holds the final commit and the section 7
+  report is written, the orchestrator goes on to build out the v6 tooling
+  described in the trainer repo's `plans/README.md`, without waiting: the rest
+  of the knowledge tracker, the action encoding and its collision test, the
+  observation extractor and leak test, the `prompt` field on decisions, the v6
+  model, the data harness, the `policy:` agent, and the trainer housekeeping.
+  Engine edits for it are made in worktrees with tests, as in this run.
+  Limits set by the user: **no training of real checkpoints and no baseline
+  runs** (no self-play, no data generation at scale, no rented compute). Tests
+  that run a few optimiser steps on synthetic data are at the orchestrator's
+  discretion. The user's decisions for the design: the observation **must**
+  encode the action history (what each player did, in order, masked per
+  observer, with labels) and both players' public zones including trash and
+  banishment — the model cannot play without them. The eventual acceptance
+  test, done later with the user, is basic checkpoints that beat random or
+  MCTS. libtorch: PyTorch 2.5.1 (CUDA 12.1) is already installed in the conda
+  env `riftbound` (`~/miniconda3/envs/riftbound/lib/python3.12/site-packages/torch`,
+  with `share/cmake/Torch/TorchConfig.cmake`); try that before downloading
+  anything. Every design call made on the user's behalf is listed for review.
+- **Stage 5 and v6 (user, 2026-10-11):** the trainer plan does not run until
+  the engine fixes are merged, and every finding is required first. If stage 5
+  is reached unattended, follow README stage 5: check whether v6 has replaced
+  the old encoding and close 1.9, 1.12 and 7.33 against v6 if so; new state
+  fields go into the v6 token layout.
+
 - **Sweep split (orchestrator, 2026-10-11):** stage 2 left ~90 carry-over rows,
   67 open boxes in 03/07/08 and 43 BLOCKED card items for the sweep — too much
   for one stream. It runs as sweep-costs, sweep-flow and sweep-triggers in
@@ -448,3 +474,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 00:40 orchestrator handover to session riftbound-engine-d6 (see Resume notes); the old session keeps hosting the agents. Monitor armed on `.worktrees/reports/`.
 - 2026-10-11 old session confirmed it stood down (host and relay only). Trainer survey returned (`.worktrees/reports/trainer-survey.md`); its engine-side finding (CMake paths break the trainer's subdirectory build) relayed to cleanup and added to carry-over.
 - 2026-10-11 00:52 old host process (pid 2329) found hung: no agent activity since 00:42, unreachable, no terminal. Killed. sweep-costs, sweep-flow, sweep-triggers, cleanup, perf-search and sweep-verify-cards resumed from their transcripts in this session; about 10 minutes of agent time and any in-flight build lost, no file work lost. CMake trainer-compat item re-sent to cleanup directly.
+- 2026-10-11 user: after the final merge, build the v6 ML tooling without waiting (no real training, no baselines); action history and public zones are required in the observation (see Run decisions).

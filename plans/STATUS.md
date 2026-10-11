@@ -77,7 +77,7 @@ iteration must apply these.
 | 2 | cards-c0 | merged | `0c82974` (merge `7ad4269`) | clean build: 1783/1783, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 31 boxes ticked; 6 batch-00 items BLOCKED on engine work (in carry-over); 3 `shared:` commits incl. engine changes |
 | 2 | cards-c1 | returned | `7e89826` (merged in batch with c2, c4; gate running) | 1850 passed, 0 failed (clean namespaced build, on its branch) | 35 of 40 batch-01 boxes + 5 batch-08; 6 BLOCKED on engine work; corrected tests in 12 existing files; did not build `riftbound` or run the smoke |
 | 2 | cards-c2 | returned | `2fe1205` (merged, gate running) | 1851 passed, 0 failed (clean namespaced build, on its branch) | 41 of 42 batch-02 boxes + 3 batch-08; Wallop 146 / Call to Glory 207 BLOCKED (spell alternative-cost path); 3 `shared:` commits with engine state and trigger additions |
-| 2 | cards-c3 | running | | | based on `1640e81` |
+| 2 | cards-c3 | returned | `c2def86` (merged in batch with c1, c2, c4; gate running) | 1855 passed, 0 failed (clean namespaced build, on its branch) | 35 of 39 batch-03 boxes + 9 in batch-08/09; 4 left open (645 facedown, 579, 743 Repeat cost, 931 Flow); 6 `shared:` commits; corrected 7 existing tests |
 | 2 | cards-c4 | returned | `fd00d2c` (merged in batch with c2, gate running) | 1833 passed, 0 failed (clean namespaced build, on its branch) | 21 of 25 batch-04 boxes + 2 batch-09; 4 BLOCKED on engine work; 42 of 50 new tests shown red on the unfixed cards; merge conflict with c2 in two engine lines resolved by OR-ing both conditions |
 | 2 | cards-c5 | running | | | based on `1640e81` |
 | 2 | cards-c6 | running | | | based on integration with cards-c0 merged |
@@ -108,6 +108,18 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c3 | open batch-03: Smoke and Mirrors 645 never offered from facedown — hidden-play generator requires every target at the hidden battlefield, CR 811.1.d.4 frees the second target | sweep | open |
+| cards-c3 | open batch-03: Death Mark 931 `[A][A]` Flow from two domains — engine gap in the any-domain grant payment path (card's `flowCost` is correct) | sweep | open |
+| cards-c3 | open batch-03: Square Up 579, Curtain Call 743 Repeat cost (card-declared Repeat cost, see the 8.9 row); card-side parts fixed | sweep | open |
+| cards-c3 | Wild Claw 876 fixed without a regression test (could not construct a failing-payment path) | sweep (add test) | open |
+| cards-c3 | DUPLICATE: `DelayedAbility::repeats` (c3) and `DelayedAbility::every_time` (c2) are the same flag added twice; `checkDelayedAbilities` honours both — unify | sweep | open |
+| cards-c3 | `shared:` changes to review: `GameObject::banish_if_would_die_this_turn` (both kill paths, Smite); `__facedown_play_bf` / `__facedown_play_turn` counters stamped in both hidden-play paths; `playPayingCost` / `canPlayPayingCost` stage `current_play_source` from the card's zone (changes what `grantsAccelerateTo` sees as "played from hand" for effect plays); `checkDelayedAbilities` called on unit plays and conquers; helpers `facedownPlayBattlefield`, `playLocations`, `lockedPlayTarget`, `playTokensChoosingLocations`; 7 existing tests corrected | sweep (review) | open |
+| cards-c3 | Dancing Grenade 582 and Death from Below 747 replay through `playIgnoringCost`, so the card sits in its owner's trash while the replay is on the chain — needs a "spell replayed while it resolves" state (ENGINE-GAP comments in both cards) | sweep | open |
+| cards-c3 | NEW: `resolveSpell` drops illegal play-time targets and the rest shift position, so a multi-target card reading `targets[0]` / `targets[1]` as roles can swap them (fixed in Deathgrip and Void Assault by reading roles from the chain item; audit the others) | sweep | open |
+| cards-c3 | NEW: Called Shot 443 "draw one" moves the card to hand by hand, emitting no draw event (same class as Double Trouble) | cards-c5 (443 is a unit? verify path) / sweep | open |
+| cards-c3 | NEW (latent): `checkDelayedAbilities` iterates `state_.delayed_abilities` by reference while `addAbility` can run a finalize pass that pushes a delayed ability | sweep | open |
+| cards-c3 | NEW: spell defs carrying a keyword only mentioned in their text — `Keyword::Temporary` on 632, 645, 727; `Keyword::Assault` with `assault_value` on 579 (extends 8.8) | sweep (with 8.8) | open |
+| cards-c3 | NEW: Undying Loyalty 730 `selfCostReduction` cannot see printed costs; discount keys on tag and the card settles the difference when the unit is chosen — a cost hook that sees the chosen target would be cleaner | sweep (optional) | open |
 | cards-c1 | BLOCKED batch-01: Prodigal Explorer 514 (needs a counter instead of bool `chose_enemy_unit_this_turn`, set at five engine sites); Emperor of the Sands 512 (Weaponmaster for tokens, 8.4); Endless Riches 809 (play-from-trash for every card type + trash-to-banish replacement); 294 / 506 / 786 (restricted resource pools in `RunePool`: spell-only, gear-only, showdown-only); Swift Scout 259 (hide cost has no card hook in `executeHideCard`) | sweep | open |
 | cards-c1 | Wuju Master 784 Level 11 — one line in the aura hook now that `PlayerState::units_enter_ready_by` (c4) is merged | sweep | open |
 | cards-c1 | Battle Mistress 517 once-per-batch is in c1's range, not c6's, and was NOT done: needs engine batching of simultaneous deaths | sweep | open |
@@ -261,3 +273,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 cards-c2 (`2fe1205`) returned and merged, gate running. 10 rows to carry-over.
 - 2026-10-10 cards-c4 (`fd00d2c`) merged into the batch with c2; two-line engine conflict resolved by keeping both conditions (see merge commit `12c4935`). 11 rows to carry-over. Decision: mechanical both-sides conflicts (appended helpers, appended plan sub-bullets, independent conditions) are resolved by the orchestrator and verified by the gate; anything else goes back to the stream.
 - 2026-10-10 cards-c1 (`7e89826`) merged into the batch with c2 and c4 (merge `faa7516`); conflicts were appended enum values, appended plan sub-bullets and the kKnownOffenders list, resolved mechanically. 12 rows to carry-over.
+- 2026-10-10 cards-c3 (`c2def86`) merged into the batch (merge `35bb914`); conflicts mechanical, resolved with `.worktrees/resolve_plans.py` for plan files. Batch awaiting gate: c1, c2, c3, c4. 12 rows to carry-over.

@@ -69,6 +69,17 @@ iteration must apply these.
   engine stream also unblocks the BLOCKED card items that depend on its piece.
   perf-engine still waits for all sweep parts and cleanup.
 
+- **Nothing optional (user, 2026-10-11):** the goal is a clean engine before
+  the v6 training tooling. No carry-over row and no plan item may be closed as
+  "optional", "low", "note" or "future work". Every row ends as fixed with a
+  test, or NOT A DEFECT with evidence a reviewer can check, or — only where the
+  fix changes the feature layout or action vocabulary — moved to stage 5 by
+  name. Residuals recorded as "partial by design", "documented approximation"
+  or "future work" in stage 1 and 2 (Defy 45, Defender of Tomorrow 936, Solari
+  Shrine 72, Unlicensed Armory 23, Bard 540, Scuttle Crab 615, Astral Heron
+  831, the fair-play log panel, Yone 544, Fiora 232 aura lag) are reopened and
+  belong to the sweep.
+
 ## Streams
 
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
@@ -118,6 +129,7 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| orchestrator | REOPENED under "nothing optional": residuals that earlier streams closed as partial or documented — Solari Shrine 72 (killer not tracked), Unlicensed Armory 23 (rescue needs an Armory still in play), Scuttle Crab 615 (shows only cards facedown now), Astral Heron 831 (a countered response hides the first spell), Yone 544 (previous-controller field on `ScoreEvent`), Renekton 879 exact threshold edge, Defender of Tomorrow 936 (two abilities as one activation → stage 5 if it needs a vocab slot) | sweep-verify (936 → checkpoint) | open |
 | cards-c7 | BLOCKED batch-07: Renekton, Brute 879 (engine event for Might crossing a threshold; only 5 is announced); Atakhan 732 (additional-cost hook that picks a unit to kill before payment and reads its printed cost); Loyal Poro 718 / Lonely Poro 777 (last-known "other friendly units here" snapshot for a batch of deaths — same work as Battle Mistress 517); Vex 712 (per-unit can't-move-this-turn flag read by the move generator); Poppy, Defender of the Meek 740 (XP optional additional cost with pre-payment reduction — Buccaneer path); Mageseeker Investigator 725 (multi-unit moves and a move cost); Reluctant Leader 908 / Vex 712 token plays (`createToken` does not announce a play, CR 350.2); Sky Crusier 847 (typed discard cost takes the first gear in hand; engine must ask) | sweep | open |
 | cards-c7 | `shared:` commit `e52e52a` to review: `selectObjectAs(ctx, chooser, ...)` helper; `TriggerManager::onScore` fires delayed abilities with trigger `WhenIHold` on their controller's hold (Ashe registers hers with the opponent as controller and a far-future `expires_on_turn`); 4 existing test files corrected | sweep (review) | open |
 | cards-c7 | Corrupted Dragon 878 uses `mode.victory_score + turn.victory_score_bonus` because `entersReadyOnPlay` has no executor — fold into the effective-victory-score row; Astral Heron 831 documented limit (a countered response hides the first spell); Black Rose Dignitary 714 still has a warning | sweep / cleanup | open |
@@ -132,19 +144,19 @@ and who picked them up. Every row must end `done` before the final gate.
 | cards-c6 | residuals on ticked items: Bard 540 pays "exhaust your legend" at trigger finalization, not during the play (`OptionalAdditionalCost` cannot express it); Scuttle Crab 615 shows only cards facedown now; Yone 544 tracks "battlefield that was uncontrolled" by a note in `applyPassiveAura` (a previous-controller field on `ScoreEvent` would be cleaner) | sweep | open |
 | cards-c6 | NEW: Ambush units carry `Keyword::Reaction` from reminder text (560, 574, 583, 622, 633, 676, 682, 705) — decide whether intended (extends the `Keyword::Reaction` row and 8.8) | sweep (with 8.8) | open |
 | cards-c6 | on-board guards added without their own test: Vayne 537, Vex 617, Hwei 642 | sweep (add tests) | open |
-| cards-c6 | NEW: Crowd Favorite 664 can be activated while already buffed (legal, but costs 2 XP for nothing; random rollouts will do it) | sweep (note) | open |
+| cards-c6 | NEW: Crowd Favorite 664 can be activated while already buffed (legal, but costs 2 XP for nothing; random rollouts will do it) | sweep (required: fix, or close with evidence) | open |
 | cards-c6 | reprint region tags (539, 543, 546, 547, 537, 548) closed NOT A DEFECT: each def matches its own printing in `cards/raw/gallery_raw.json`; gallery lists OGN-235 Karma as `Vi, Ionia` — see the c5 Karma row | user to confirm (final report) | open |
 | cards-c5 | BLOCKED batch-05: Weaponmaster 324 / 414 / 421 / 448 / 407 / 435 and Jax, Unrelenting 440 (Equip cost needs an equip-cost descriptor on `Card`, 7.7); Minotaur Reckoner 337 (effect moves to base not stopped — needs the recall primitive); Commander Ledros 231 (interactive "kill N units" additional cost in the play path); Fae Dragon 423 second sentence (spend-a-buff primitive + trigger type, nine spending cards across streams); Lux, Crownguard 312 (spell-only Energy pool); Irelia, Graceful 462 ([1]-or-[A] choice and deferred-target spells in `executePlaySpell`); Ezreal, Prodigy 470 (optional-additional-cost discount) | sweep | open |
 | cards-c5 | DEPENDENCY: Karthus now repeats only objects with `Keyword::Deathknell` — Baccai Witherclaw 865 and Noxian Emissary 915 must get the keyword on their defs or Karthus stops repeating them | cards-c7 (told in brief via 8.8); verify at stage 2 gate | done (c7: keyword added, Karthus engine-path test) |
 | cards-c5 | `shared:` changes to review: `GameObject::aura_cant_move_to_base` (read by the standard-move generator); `EffectExecutor::lookBeforeReveal(player)` (other reveal-from-deck cards should call it); helpers `pickSeveral`, `createGoldExhausted` honouring `tokens_enter_ready`; `CostModifier::max_printed_energy_cost` (Jayce); Karthus repeat filter in `trigger_manager.cpp`; 3 existing tests corrected | sweep (review) | open |
 | cards-c5 | reprints outside its range not edited: Karma 548, Darius 547, Plundering Poro 778 (3.18 defect is here, not 392), Veteran Poro 779 | cards-c6 (547, 548), cards-c7 (778, 779) | done (c6: 547, 548; c7: 778, 779) |
 | cards-c5 | Karma, Channeler 235 tags set to `{Karma, Ionia}`; the gallery data itself says "Vi" for OGN-235 and no physical card was checked | user to confirm (final report) | open |
-| cards-c5 | NEW: `CardTestFixture::addUnit` does not copy `shield_value` / `assault_value` / `deflect_value` from the def | sweep (fixture) | open |
+| cards-c5 | NEW: `CardTestFixture::addUnit` does not copy `shield_value` / `assault_value` / `deflect_value` from the def | cleanup (fixture) | open |
 | cards-c5 | NEW: Spectral Matron 226 and Rumble 349 carry a local "base or controlled battlefield" `pickMode`; switch to `pickEffectPlayLocation` | sweep | open |
 | cards-c5 | NEW: Legion Quartermaster 367 / Zaun Punk 481 additional cost is paid at trigger finalization, after the unit has landed — true pre-play cost needs an engine hook (same family as Cruel Patron 208) | sweep | open |
 | cards-c5 | NEW: Aphelios 372 "Ready 2 runes" readies the first two exhausted runes in map order; the player does not choose | sweep | open |
 | cards-c5 | NEW: stale CLAUDE.md pitfall — says `combat_designation` is cleared between trigger fire and resolution; `processContestedBattlefields` keeps designations in step with `combat_in_progress` | sweep (CLAUDE.md) | open |
-| cards-c5 | Fiora, Victorious 232: her own Shield no longer keeps her Mighty, but other auras still lag one pass (no layer system) | sweep (note) | open |
+| cards-c5 | Fiora, Victorious 232: her own Shield no longer keeps her Mighty, but other auras still lag one pass (no layer system) | sweep (required: fix, or close with evidence) | open |
 | cards-c3 | open batch-03: Smoke and Mirrors 645 never offered from facedown — hidden-play generator requires every target at the hidden battlefield, CR 811.1.d.4 frees the second target | sweep | open |
 | cards-c3 | open batch-03: Death Mark 931 `[A][A]` Flow from two domains — engine gap in the any-domain grant payment path (card's `flowCost` is correct) | sweep | open |
 | cards-c3 | open batch-03: Square Up 579, Curtain Call 743 Repeat cost (card-declared Repeat cost, see the 8.9 row); card-side parts fixed | sweep | open |
@@ -156,7 +168,7 @@ and who picked them up. Every row must end `done` before the final gate.
 | cards-c3 | NEW: Called Shot 443 "draw one" moves the card to hand by hand, emitting no draw event (same class as Double Trouble) | cards-c5 (443 is a unit? verify path) / sweep | open — sweep-triggers item 9 |
 | cards-c3 | NEW (latent): `checkDelayedAbilities` iterates `state_.delayed_abilities` by reference while `addAbility` can run a finalize pass that pushes a delayed ability | sweep | open |
 | cards-c3 | NEW: spell defs carrying a keyword only mentioned in their text — `Keyword::Temporary` on 632, 645, 727; `Keyword::Assault` with `assault_value` on 579 (extends 8.8) | sweep (with 8.8) | open |
-| cards-c3 | NEW: Undying Loyalty 730 `selfCostReduction` cannot see printed costs; discount keys on tag and the card settles the difference when the unit is chosen — a cost hook that sees the chosen target would be cleaner | sweep (optional) | open |
+| cards-c3 | NEW: Undying Loyalty 730 `selfCostReduction` cannot see printed costs; discount keys on tag and the card settles the difference when the unit is chosen — a cost hook that sees the chosen target would be cleaner | sweep (required) | open |
 | cards-c1 | BLOCKED batch-01: Prodigal Explorer 514 (needs a counter instead of bool `chose_enemy_unit_this_turn`, set at five engine sites); Emperor of the Sands 512 (Weaponmaster for tokens, 8.4); Endless Riches 809 (play-from-trash for every card type + trash-to-banish replacement); 294 / 506 / 786 (restricted resource pools in `RunePool`: spell-only, gear-only, showdown-only); Swift Scout 259 (hide cost has no card hook in `executeHideCard`) | sweep | open |
 | cards-c1 | Wuju Master 784 Level 11 — one line in the aura hook now that `PlayerState::units_enter_ready_by` (c4) is merged | sweep | open |
 | cards-c1 | Battle Mistress 517 once-per-batch is in c1's range, not c6's, and was NOT done: needs engine batching of simultaneous deaths | sweep | open |
@@ -167,7 +179,7 @@ and who picked them up. Every row must end `done` before the final gate.
 | cards-c1 | NEW: `is_rules_text_inactive` is set by only one attach path, not `attachEquipped` / `attachFree`, while `fireTrigger` skips triggers on gear with it — behaviour depends on how the gear was attached; Blighted Battleaxe 581 end-of-turn ability would be suppressed | sweep | open |
 | cards-c1 | NEW: `TriggerManager::onUnitStunned` queues with `addAbility` directly: no `fired_trigger`, no `triggerCondition`, reads `triggerType()` not `triggerTypes()` | sweep | open |
 | cards-c1 | NEW: a trigger queued while an Equip is being paid sits on the chain until something else runs it (`executeIntent` runs the chain only when `payAndQueueAbility` returns true) — same family as the search "item on chain, state Closed" row | sweep | open |
-| cards-c1 | NEW: `CardTestFixture::addToHand` leaves a unit's `base_might` at 0, so a unit played through `playThroughEngine` has 0 Might unless the test sets it | sweep (fixture) | open |
+| cards-c1 | NEW: `CardTestFixture::addToHand` leaves a unit's `base_might` at 0, so a unit played through `playThroughEngine` has 0 Might unless the test sets it | cleanup (fixture) | open |
 | cards-c1 | NEW: Chem-Baroness 556 reads `state.mode.victory_score` (ignores `victoryScoreModifier()`), same as the Leona 79 row | sweep (with the victory-score row) | open |
 | cards-c4 | BLOCKED batch-04: Brazen Buccaneer 2 (`canAfford` ignores the optional discard discount; `executePlayCard` must force the discard when full cost is unaffordable) and Kraken Hunter 150 (variable additional cost needs a prompt before payment) — same pre-payment code path | sweep | open |
 | cards-c4 | BLOCKED batch-04: Leona, Zealot 79 victory score — `entersReadyOnPlay` cannot see the effective Victory Score; Find Your Center 47, Poppy 678, Corrupted Dragon 878 read `mode.victory_score` directly too. Needs a state-visible effective Victory Score (c2 added `TurnState::victory_score_bonus` — use it) | sweep | open |
@@ -188,7 +200,7 @@ and who picked them up. Every row must end `done` before the final gate.
 | cards-c2 | NEW: `EffectExecutor::recycleCards` on a board permanent emits no `LeftBoardEvent`, puts tokens into the deck and leaves attachments linked (Divine Judgment works around it) | sweep | open |
 | cards-c2 | NEW: `Card::hasLegalTargets` has no CardDB / registry, so cost-based target restrictions cannot be checked at offer time | sweep | open |
 | cards-c2 | NEW: hand-built multi-prompt cards cap at 12 prompts (16 re-entry limit in the resolve loop): Fox-Fire with many 0-Might units, Overt Operation with more than 12 buffed units | sweep (with the `runFinalizePass` 16 cap row) | open |
-| cards-c2 | fixture note: `testHook_executeIntent` does not run the cleanup that kills lethally damaged units; damage-only spell tests assert on `damage_marked` | sweep (fixture) | open |
+| cards-c2 | fixture note: `testHook_executeIntent` does not run the cleanup that kills lethally damaged units; damage-only spell tests assert on `damage_marked` | cleanup (fixture) | open |
 | cards-c2 | trainer note: several spells now ask more or different `MakeChoice` prompts | final report | open |
 | cards-c0 | BUILD: the shared-ccache launcher documented in `CLAUDE.md` (integrity) restores PCHs across worktrees with different header contents — find the cause (direct-mode manifest? `-fmacro-prefix-map`?) or remove the launcher from `CLAUDE.md` | sweep | open |
 | cards-c0 | BLOCKED batch-00 items needing engine work: Svellsongur 382 (dispatch bearer's abilities through the gear); Vilemaw's Lair 290 and Back-Alley Bar 272 (need a recall primitive distinct from `moveToBase`); Equip generator offers an unaffordable Equip, and Piltovan Forge 948 Equip branch bypasses discount and per-turn counter (need an equip-cost descriptor); Risen Altar 950 (needs a Power-side activation reduction) | sweep | open |
@@ -210,8 +222,8 @@ and who picked them up. Every row must end `done` before the final gate.
 | io-cli | fair-play mode now forwards no `log` lines, so the UI log panel is empty for a human player until `LogEvent` carries a visibility tag | sweep (with the LogEvent row) | open |
 | io-cli | NEW: `LogEvent` (`src/core/events.h`) has no player / visibility tag — finer fix for the 4.5 trace leak than withholding the stream | sweep | open |
 | io-cli | NEW: god-mode edits do not recompute the pending decision's legal actions (stale intent can be applied); documented, not fixed | sweep | open |
-| io-cli | NEW: spectator mode first Ctrl-C runs the AI game to completion before exit | sweep (low) | open |
-| io-cli | optional: move `play_server.cpp` / `play_index_html.cpp` into `riftbound_core` so tests need not `#include` the .cpp files | sweep (optional) | open |
+| io-cli | NEW: spectator mode first Ctrl-C runs the AI game to completion before exit | cleanup (required; `src/io`) | open |
+| io-cli | move `play_server.cpp` / `play_index_html.cpp` into `riftbound_core` so tests need not `#include` the .cpp files | sweep (required) | open |
 | io-cli | deleted `src/openspiel/openspiel_match.cpp` (in no target) and `src/io/progress_bar.h`; 4.16, 4.17, 4.20 closed as obsolete — check nothing else referenced them | orchestrator (stage 1 gate) | done (checked at the stage 1 gate: only a code comment referenced them) |
 | io-cli | not verified in a browser: page JS for `decision_id`, token query on the WebSocket, per-unit owner/controller on moves, hidden-zone counts; no TSAN run | final report | open |
 | search | GATE: also build and run `riftbound_openspiel_tests` (`build/src/openspiel/riftbound_openspiel_tests`, `RIFTBOUND_ROOT=.`) — not part of `riftbound_tests`. 1.7 check: `RIFTBOUND_STEP_FAULT_AT=40 ./build/riftbound --deck1 decks/yi_rebuild.txt --deck2 decks/fiora.txt --agent1 mcts:sims=8 --agent2 random --games 4 --seed 7` must abort with the injected-fault message (exit 134), and exit 0 without the variable | orchestrator (every gate) | done (built into `.worktrees/gate.sh`, run at every gate) |
@@ -265,7 +277,7 @@ and who picked them up. Every row must end `done` before the final gate.
 | executor | NEW: Blind Fury 25 and Void Rush 505 edit `main_deck` directly, bypassing `deck_ops` and the knowledge tracker | cards-c2 (25), cards-c3 (505) | done (c2: 25; c3: 505) |
 | executor | NEW: `recycle_self` cost and the mulligan recycle in `game_engine.cpp` do not announce `"recycled_main"` | sweep | open |
 | executor | NEW: `EffectExecutor::moveToBase` is used for recalls too and now counts a move; CR 458 says a recall is not a move — needs a recall primitive and a caller audit | sweep | open |
-| executor | temp Deflect lives in turn-stamped `card_counters`; a `temp_deflect_value` field expired in `expirationStep` would be cleaner | sweep (optional) | open |
+| executor | temp Deflect lives in turn-stamped `card_counters`; a `temp_deflect_value` field expired in `expirationStep` would be cleaner | sweep (required) | open |
 | engine-play-combat | 8.7: engine half NOT A DEFECT; cards still to fix per the recipe under the item — Hand of Noxus 296, Vanguard Captain 218, Sun Disc 21, Scorchclaw 578, Undying Legion 587 (needs play-unit-from-trash) | cards-c0 (21), cards-c4 (218), cards-c5 (296), cards-c6 (578, 587); sweep ticks 8.7 | card work done (c0: 21, c1: 296, c4: 218, c6: 578); 587 is in the c6 BLOCKED row; sweep-verify ticks 8.7 |
 | engine-play-combat | 8.6 card recipes: Bellows Breath 402, Piercing Light 346, Deathgrip 484, Smoke and Mirrors 645 need `enumerateLegalTargetSets` | cards-c2 (346), cards-c3 (402, 484, 645) | done (c2: 346; c3: 402, 484, 645 from hand); 645 facedown is a separate row |
 | engine-play-combat | 2.27 card recipes: Baited Hook 242 and Poro Snax 369 misuse `recycle_self` | cards-c0 (242, 369) | done (c0) |
@@ -321,3 +333,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-11 STAGE 2 GATE PASSED at `76ab21f` (clean rebuild). cards-c7 worktree and branch removed.
 - 2026-10-11 master fast-forwarded to `6a3e52b`. Stage 3: spawned sweep-costs, sweep-flow, sweep-triggers, cleanup, perf-search (5 running).
 - 2026-10-11 carry-over reconciled against the stage 1 and stage 2 stream reports: 41 rows marked done, 3 annotated; the rest are open and assigned to stage 3 streams, the final report, or the user.
+- 2026-10-11 user: nothing may be left optional (see Run decisions). Relabelled 10 rows, reopened the documented residuals, messaged the five running stage 3 streams.

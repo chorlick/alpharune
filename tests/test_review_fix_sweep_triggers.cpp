@@ -874,23 +874,65 @@ TEST_F(SweepTriggersTest, GainXp_IsCountedForTheTurn) {
 // 12. Chain
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Death from Below 747 played again while it resolves: the card is on the
-// chain for the new play, not in the trash, and is filed once at the end.
+// Dancing Grenade 582: "Its controller may play this spell again for [A]."
+// has no "do this" — it is not a reflexive trigger (CR 388.1) but a play made
+// as part of the spell's resolution (CR 420.3), while the card is still on the
+// chain (it goes to the trash only once its effect has been executed, CR
+// 359.3.d). So the card is on the chain for the new play, never in a trash
+// meanwhile, and is filed once, in its owner's trash, when that play resolves.
 TEST_F(SweepTriggersTest, ReplayedSpell_StaysOnTheChainUntilTheNewPlayResolves) {
-    auto a = addUnit(P2, kInvalidId, 1, 0);
-    auto b = addUnit(P2, kInvalidId, 1, 0);
-    auto spell = addToHand(P1, kDeathFromBelow);
-    state.player(P1).rune_pool.universal_power += 1;      // the [A] for the replay
-    EnginePathAgent p1(objectOrYes(a));     // a, then yes, then what is left
-    TrashWatcher p2;
+    constexpr CardDefId kDancingGrenade = 582;
+    EXPECT_FALSE(card_registry.get(kDancingGrenade)->hasReflexiveTrigger());
+    auto theirs = addUnit(P2, kInvalidId, 6, 0);
+    auto mine = addUnit(P1, kInvalidId, 6, 0);
+    auto spell = addToHand(P1, kDancingGrenade);
+    state.player(P2).rune_pool.universal_power = 1;        // their [A] for the replay
+    // P1: the first target. P2: yes to the replay, then its target; passes
+    // otherwise, and notes where the card is whenever it has a play on the chain.
+    EnginePathAgent p1([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == theirs) return i;
+        ADD_FAILURE() << "P1 was asked something other than its target";
+        return legal.front();
+    });
+    struct Replayer : AgentInterface {
+        GameObjectId spell = kInvalidId, target = kInvalidId;
+        int seen_on_chain = 0, seen_in_a_trash = 0, answered = 0;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            bool on_chain = false;
+            for (const auto& ci : st.chain.items) if (ci.is_spell && ci.source == spell) on_chain = true;
+            if (on_chain) {
+                ++seen_on_chain;
+                for (const auto& ps : st.players)
+                    if (std::find(ps.trash.begin(), ps.trash.end(), spell) != ps.trash.end())
+                        ++seen_in_a_trash;
+            }
+            const bool choice = !legal.empty() && legal.front().type == IntentType::MakeChoice;
+            if (choice) {
+                ++answered;
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects.front() == target) return i;
+                for (const auto& i : legal) if (i.chosen_value && *i.chosen_value == 1) return i;
+                ADD_FAILURE() << "P2 was asked something the test did not expect";
+                return legal.front();
+            }
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+            return legal.empty() ? Intent{} : legal.front();
+        }
+    } p2;
     p2.spell = spell;
+    p2.target = mine;
     playThroughEngine(spell, &p1, std::nullopt, &p2);
-    EXPECT_FALSE(obj(a).location.has_value());
-    EXPECT_FALSE(obj(b).location.has_value()) << "the replay killed the second unit";
+    EXPECT_EQ(obj(theirs).damage_marked, 2);
+    EXPECT_EQ(obj(mine).damage_marked, 3) << "the replay: 2, +1 Bonus Damage for the earlier hit";
+    EXPECT_EQ(state.player(P2).rune_pool.universal_power, 0);
+    EXPECT_EQ(p2.answered, 2) << "the may, then the replay's target";
     EXPECT_GT(p2.seen_on_chain, 0);
-    EXPECT_EQ(p2.seen_in_trash_while_on_chain, 0);
+    EXPECT_EQ(p2.seen_in_a_trash, 0) << "on the chain for the new play, not filed in between";
     const auto& trash = state.player(P1).trash;
-    EXPECT_EQ(std::count(trash.begin(), trash.end(), spell), 1);
+    EXPECT_EQ(std::count(trash.begin(), trash.end(), spell), 1) << "filed once, in its owner's trash";
+    EXPECT_TRUE(state.player(P2).trash.empty());
     EXPECT_EQ(obj(spell).zone, ZoneType::Trash);
 }
 
@@ -2841,36 +2883,72 @@ TEST_F(ReflexiveCardsTest, Kharox) {
 
 // Every card whose text has one of the reflexive-trigger phrases (CR 388.1)
 // either implements a reflexive trigger or says why its phrase is not one.
+/// The rule the registry test applies to one card: "" when it is fine, else
+/// what is wrong. CR 388.1: "Do this:", "Do the following", "Do one / X of the
+/// following". ("for each of the following tags" — Friendship 608, Ivern 739,
+/// Daisy! 754 — is a list, not one of the phrases.)
+static std::string reflexiveDeclarationProblem(const Card& card) {
+    const CardDef& def = card.def();
+    std::string text = def.ability_text + " " + def.effect_text;
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    static const std::regex of_the_following(R"(\bdo (one|two|three|\d+|x) of the following)");
+    const bool phrase = text.find("do this") != std::string::npos ||
+                        text.find("do the following") != std::string::npos ||
+                        std::regex_search(text, of_the_following);
+    if (phrase && !card.hasReflexiveTrigger() && card.notReflexiveBecause() == nullptr)
+        return "prints a reflexive-trigger phrase and neither implements onReflexiveTrigger "
+               "nor says why it is not one";
+    if (phrase && card.hasReflexiveTrigger() && card.notReflexiveBecause() != nullptr)
+        return "both implements a reflexive trigger and says it has none";
+    if (!phrase && card.hasReflexiveTrigger())
+        return "claims a reflexive trigger its text does not have";
+    return "";
+}
+
 TEST_F(SweepTriggersTest, Reflexive_EveryCardWithThePhraseDeclaresItself) {
-    auto lower = [](std::string t) {
-        std::transform(t.begin(), t.end(), t.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return t;
-    };
     int with_phrase = 0;
     for (CardDefId id = 1; id <= 1100; ++id) {
         const Card* c = card_registry.get(id);
         if (!c) continue;
-        const auto& def = card_db.get(id);
-        const std::string text = lower(def.ability_text + " " + def.effect_text);
-        // CR 388.1: "Do this:", "Do the following", "Do one / X of the
-        // following". ("for each of the following tags" — Friendship 608,
-        // Ivern 739, Daisy! 754 — is a list, not one of the phrases.)
-        static const std::regex of_the_following(R"(\bdo (one|two|three|\d+|x) of the following)");
-        const bool phrase = text.find("do this") != std::string::npos ||
-                            text.find("do the following") != std::string::npos ||
-                            std::regex_search(text, of_the_following);
-        if (phrase) {
-            ++with_phrase;
-            EXPECT_TRUE(c->hasReflexiveTrigger() || c->notReflexiveBecause() != nullptr)
-                << def.name << " (" << id << ") prints a reflexive-trigger phrase and neither "
-                   "implements onReflexiveTrigger nor says why it is not one";
-        } else {
-            EXPECT_FALSE(c->hasReflexiveTrigger())
-                << def.name << " (" << id << ") claims a reflexive trigger its text does not have";
-        }
+        EXPECT_EQ(reflexiveDeclarationProblem(*c), "") << c->def().name << " (" << id << ")";
+        if (c->hasReflexiveTrigger()) ++with_phrase;
     }
-    EXPECT_GE(with_phrase, 17);
+    EXPECT_EQ(with_phrase, 17);
+}
+
+// The rule itself, on test cards: the "not reflexive because ..." marker is
+// accepted, and each way of getting it wrong is caught.
+TEST(SweepTriggersReflexiveRule, AcceptsTheMarkerAndCatchesEachMistake) {
+    struct TCard : SpellCard {
+        CardDef d;
+        bool reflexive = false;
+        const char* because = nullptr;
+        TCard(const char* text, bool r, const char* b) : reflexive(r), because(b) {
+            d.id = 1096;
+            d.name = "Test Phrase Card";
+            d.card_type = CardType::Spell;
+            d.ability_text = text;
+        }
+        const CardDef& def() const override { return d; }
+        bool hasReflexiveTrigger() const override { return reflexive; }
+        const char* notReflexiveBecause() const override { return because; }
+    };
+    const char* kPhrase = "Deal 1 to a unit. Then do this: draw 1.";
+    const char* kList = "Give it +1 [M] for each of the following tags among your units.";
+    EXPECT_EQ(reflexiveDeclarationProblem(TCard(kPhrase, true, nullptr)), "");
+    EXPECT_EQ(reflexiveDeclarationProblem(
+                  TCard(kPhrase, false, "\"do this\" here is reminder text, not an ability")), "");
+    EXPECT_NE(reflexiveDeclarationProblem(TCard(kPhrase, false, nullptr)), "")
+        << "the phrase with neither declaration";
+    EXPECT_NE(reflexiveDeclarationProblem(TCard(kPhrase, true, "but also not")), "");
+    EXPECT_EQ(reflexiveDeclarationProblem(TCard(kList, false, nullptr)), "");
+    EXPECT_NE(reflexiveDeclarationProblem(TCard(kList, true, nullptr)), "")
+        << "a claim without the phrase";
+    EXPECT_EQ(reflexiveDeclarationProblem(TCard("Do one of the following: draw 1; or burn 1.",
+                                                true, nullptr)), "");
+    EXPECT_NE(reflexiveDeclarationProblem(TCard("Do the following based on its type: draw 1.",
+                                                false, nullptr)), "");
 }
 
 }  // namespace

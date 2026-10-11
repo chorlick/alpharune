@@ -26,6 +26,7 @@ comment at `game_engine.cpp:1193` ("`targets` carries the triggering event's
 subject") describes something nothing implements.
 
 - [ ] **7.1 26 cards whose triggered effect never happens** [confirmed by reading every file]
+  - c4: 16 Dangerous Duo, 51 Solari Shieldbearer, 76 Yasuo Remorseful, 82 Whiteflame Protector, 92 Riptide Rex, 97 Blastcone Fae, 130 Crackshot Corsair, 132 First Mate, 188 Zaunite Bouncer, 191 Maddened Marauder, 199 Tideturner — FIXED: `kFinalizeTrigger` + `pickTarget` over a card-built list ("here", "another", "from a battlefield", "at another location"; Duo only with Legion; Solari stuns with `stunUnitBy`); ids removed from `kKnownOffenders`, rows removed from `Plan07Item71/DISABLED_TargetedTriggerTest` (each card has its own engine-path test); test: C4Test.SolariShieldbearer_*, WhiteflameProtector_*, RiptideRex_*, BlastconeFae_*, DangerousDuo_*, FirstMate_*, ZauniteBouncer_*, MaddenedMarauder_*, YasuoRemorseful_*, CrackshotCorsair_*, Tideturner_*
   - c0: 278 Navori Fighting Pit — FIXED: `pickTarget` over the chooseable units here + `kFinalizeTrigger`; `getTargetRequirements()` removed; test: C0Test.NavoriFightingPit_BuffsTheUnitHereThePlayerPicks
   - c0: 535 Veiled Temple — FIXED: `confirmOptional` (the may), `pickTarget` (a friendly gear), two-mode `pickMode` (detach an attached Equipment or not), all at finalization; test: C0Test.VeiledTemple_ReadiesAGearAndMayDetachIt
   - c0: 763 Amateur Recital — FIXED: `confirmOptional` + `pickTarget` over every chooseable unit at a battlefield (not one at a battlefield units can't leave for base) + `kFinalizeTrigger`; test: C0Test.AmateurRecital_MovesTheChosenUnitToItsBase
@@ -107,6 +108,7 @@ subject") describes something nothing implements.
 ## C. Costs paid at resolution instead of finalization (replaces 03 item 3.12)
 
 - [ ] **7.5 Complete list — 14 cards** [confirmed]
+  - c4: 107 Ava Achiever — FIXED: [C] is paid at finalization (`costDueNow`, once, after the card is picked); test: C4Test.AvaAchiever_PaysAsTheAbilityGoesOnTheChain
   - c0: 277 Monastery of Hirana, 765 Dusk Rose Lab — FIXED: the buff is spent / the unit is killed under `costDueNow` at finalization, from the unit the player picks (`selectObject`); test: C0Test.MonasteryOfHirana_TheBuffIsSpentBeforeAnyoneCanRespond, .MonasteryOfHirana_SpendsTheBuffThePlayerPicks, .DuskRoseLab_KillsThePickedUnitAsTheCost
 
 | File:line of late payment | Cost | Payability tested in `still_legal`? |
@@ -129,10 +131,12 @@ subject") describes something nothing implements.
 - [ ] **7.6 Additional play costs folded into a `WhenYouPlayMe` trigger, paid after the marker** [confirmed; documented in-code as approximations]
   - Legion Quartermaster's playability gate (`hasLegalTargets`) is never consulted for a unit play, so it is also free with no gear on board (08 §D).
   - `units/0481_zaun_punk.cpp:63`, `units/0367_legion_quartermaster.cpp:50`, `units/0208_cruel_patron.cpp:39` (free with an empty board), `units/0728_stalking_wolf.cpp:54` (free if no Bird/Cat/Dog/Poro).
+  - c4: 208 Cruel Patron — FIXED (as far as a card can): `canBePlayed` requires a friendly unit on the board, and the kill is chosen and paid at the trigger's finalization (`costDueNow`), not at resolution; still a trigger, not a play cost — a real additional-cost hook is engine work; test: C4Test.CruelPatron_NeedsAFriendlyUnitAndKillsTheChosenOne
 - [ ] **7.7 Costs never charged** [confirmed]
   - `units/0194_nocturne_horrifying.cpp:43` — "play me for [A]" uses `playIgnoringCost` (TODO in file).
   - `units/0331_sentinel_adept.cpp:62-68` and `units/weaponmaster_base.h:60-70` (reached from `units/0828_riven_shattered.cpp:34`) — Weaponmaster equip is always free.
   - `units/0406_jayce_man_of_progress.cpp:68`, `units/0741_rift_herald.cpp:80` — `playIgnoringCost` for an effect that ignores only Energy; Power should still be paid. Soulgorger (196:48) does it correctly with `EffectPlayCost{.ignore_energy = true}`.
+  - c4: 194 Nocturne, Horrifying — FIXED: "play me for [A]" pays one Power (`payAnyPower`) at finalization; the banish and the play are separate decisions (banish alone is allowed); test: C4Test.Nocturne_PlayingCostsOnePower_AndBanishingAloneIsAllowed
 - [ ] **7.8 Cost paid, effect denied** [confirmed]
   - `battlefields/0532_sunken_temple.cpp:36` — `if (!has_mighty) return;` runs at resolution before the `costAlreadyPaid` guard; pay [1], lose the Mighty unit in response, no draw.
   - `legends/0295_relentless_storm.cpp:32` — legend exhausted at finalization, no rune channeled.
@@ -143,6 +147,7 @@ subject") describes something nothing implements.
 - [ ] **7.9** `spells/0727_shadow_s_call.cpp:39` — grants [Temporary] via `giveTemporaryKeyword`, which `expireTemporaryKeywords` (`game_engine.cpp:1006`, called `:1125`) strips the same turn, so the unit is never killed. Line 25 also offers units that already have [Temporary]. `spells/0632_turn_to_dust.cpp:20` uses the same call (not reviewed). [confirmed]
 - [ ] **7.10** `units/0741_rift_herald.cpp:80` — Deathknell plays a hand unit without erasing it from `ps.hand`; `playIgnoringCost` (`effect_executor.cpp:1686`) never touches the source zone. The unit is on board and in hand. Ava Achiever 107:61 and Jayce 406:67 erase first. [confirmed]
 - [ ] **7.11** `spells/0892_twilight_step.cpp:24,28-37`, `spells/0935_shadow_dash.cpp:55,63-71` — set `needsPlayTimeTarget()` so the engine picks a target at play, then hand-roll a second choice at resolution and ignore the first. [confirmed]
+  - c4: 935 Shadow Dash — FIXED: `onResolve` takes the unit chosen at play through `pickTarget` (no second, hand-rolled unit prompt); the battlefield is a `pickMode` at resolution; test: C4Test.ShadowDash_AsksForTheEnemyUnitOnceAndPaysItsDeflect, C4Test.ShadowDash_ExactlyTwoUnitsThereEachGetPlusOne
 - [ ] **7.12** `gear/0021_sun_disc.cpp:42-50`, `units/0614_nami_headstrong.cpp:74-83` — "next unit you play" readies any exhausted friendly unit; the trigger carries no subject (`trigger_manager.cpp:352`). [confirmed]
   - c0: 21 Sun Disc — FIXED: `WhenYouPlayAUnit` now carries the played unit as its subject (`shared:` 776a84b; Nami 614 can use the same) and Sun Disc readies exactly that unit, with no choice; test: C0Test.SunDisc_NeedsAnotherCardPlayedThisTurn, .SunDisc_ReadiesThePlayedUnitAndIsUsedUpByIt
 - [ ] **7.13** `legends/0295_relentless_storm.cpp:26-32` — fires on any unit play while any Mighty friendly unit is on board. [confirmed]
@@ -161,6 +166,7 @@ subject") describes something nothing implements.
   - `units/0674_irresistible_faefolk.cpp:28-38,48`, `units/0067_blitzcrank_impassive.cpp:41-51,60`, `units/0583_grim_apothecary.cpp:21-29,39`.
   - `units/0461_fizz_trickster.cpp:25-38`, `units/0112_kai_sa_evolutionary.cpp:26-38` — most recent eligible spell; fizzles if its Power is unaffordable even when an older one is.
   - `units/0349_rumble_hotheaded.cpp:48-67`, `spells/0258_zenith_blade.cpp:45,68-75`, `spells/0429_strike_down.cpp:72-76`, `units/0680_elder_dragon.cpp` (`enemies.front()` instead of "choose up to one").
+  - c4: 67 Blitzcrank, Impassive — FIXED: `pickTarget` among enemy units elsewhere (`chooseableUnits`); 112 Kai'Sa, Evolutionary — FIXED: the controller picks among the spells whose Power can be paid (at resolution); test: C4Test.Blitzcrank_PullsTheEnemyUnitItsControllerChooses, C4Test.KaiSaEvolutionary_PlaysTheSpellItsControllerChooses
 - [ ] **7.25 Plausible mismatches**
   - `legends/0782_virtuoso.cpp:39,53` — rescans the trash at resolution instead of using `triggering_subject`; a Reaction played in response is banished instead.
   - `units/0613_ivern_nurturer.cpp:49-51` — the "may" is asked at finalization about cards only looked at during resolution; first unit auto-drafted (`:67-75`).
@@ -184,7 +190,9 @@ in those executor functions would close most of this section.
   - `units/0331_sentinel_adept.cpp:62-66`, `units/weaponmaster_base.h:61-68`, `units/0347_rell_magnetic.cpp:51-52` — Equipment leaves the board attached to a unit in trash.
   - Lower impact: Adaptatron 56:41, Kato 434:34.
   - Already listed in 03 item 3.14: Ezreal Dashing 404, Blitzcrank 67, Azir 373.
+  - c4: 177 Stealthy Pursuer, 35 Vayne, Hunter, 56 Adaptatron — ALREADY FIXED by the executor guards (02 item 2.28: move / bounce / buff do nothing for an off-board object); 177 and 35 also test `location.has_value()` in their own `still_legal` now. Reprint Vayne 537 is outside this range.
 - [ ] **7.27** `units/0149_carnivorous_snapvine.cpp:23,41,45-47` — bounced in response, it damages and "kills" itself in hand; the card ends in hand and trash with a death event. [plausible]
+  - c4: 149 Carnivorous Snapvine — ALREADY FIXED by the executor guards (`dealDamage` / `killObject` on an off-board object are no-ops: the test passes against the un-fixed card); the card now also returns when it has left the board; test: C4Test.CarnivorousSnapvine_ThatLeftTheBoardFightsNobody
 - [ ] **7.28** `spells/0029_falling_star.cpp:37,50-59` — both hits on one token: the second `killObject` runs on a dead token (Banishment, not Trash) and re-emits death events. [plausible]
 
 ## F. Shared-helper and bookkeeping gaps
@@ -195,6 +203,7 @@ in those executor functions would close most of this section.
   - `spells/0927_shuriken_flip.cpp:54,65`, `spells/0894_decree_of_discord.cpp:44`, `spells/0937_acceleration_gate.cpp:42`, plus the two in 7.11. `objChoice` / `takenObject` do not charge Deflect, push to `chosen_objects` or set `chose_enemy_unit_this_turn`.
   - HELPER DONE (stream helpers): `Card::offerableChoices(ctx, candidates)` and `Card::commitChosenObject(ctx, id)` expose exactly what `pickTarget` does; test: `ChoiceHelperTest.HandBuiltChoicesCanChargeDeflectAndRecordTheChoice`. `takenObject` cannot do it by itself: it is also used for picks that are not the controller choosing an object (sorting cards, the opponent's own pick).
   - STILL OPEN, card streams — recipe for the 5 cards (927, 894, 937, 892, 935): prefer `pickTarget`; if the hand-built prompt stays, build the options from `offerableChoices(ctx, list)` and call `commitChosenObject(ctx, picked)` once, in the branch that consumes the answer (`takenObject`).
+  - c4: 937 Acceleration Gate — FIXED: options from `offerableChoices`, each pick through `commitChosenObject`; 935 Shadow Dash — FIXED: `pickTarget` (see 7.11); test: C4Test.AccelerationGate_ChargesDeflectForAnEnemyUnitItReadies, C4Test.ShadowDash_AsksForTheEnemyUnitOnceAndPaysItsDeflect
 - [ ] **7.31 Banish by direct zone write** [confirmed]
   - `spells/0115_promising_future.cpp:75-80`, `units/0491_rek_sai_swarm_queen.cpp:63-65`, `legends/0553_void_burrower.cpp:118-121` — skip `cards_banished_this_turn` and the `"banished_owned"` event.
 - [x] **7.32 `pickTargetPair` partial result treated as complete** [plausible, latent] — FIXED: confirmed in the helper; while waiting for the second pick `pickTargetPair` now returns `{kInvalidId, kInvalidId}` (as its doc always said), so Azir and Flash are correct without edits; `{a, kInvalidId}` only comes back finished (`resume_point` 13); test: `ChoiceHelperTest.PickTargetPairReturnsNothingWhileWaitingForTheSecondPick`, `.PickTargetPairWithNoSecondTargetIsAFinishedPartialPair`
@@ -214,6 +223,7 @@ in those executor functions would close most of this section.
   - `spells/0258_zenith_blade.cpp` — `stunUnitBy` runs before `confirmOptional` unguarded; fixing 3.1 will make the stun fire twice unless this is guarded first.
   - c0: 152 Mistfall — FIXED: offered only when [O] is payable (floating Power or a Body rune, `payableOnePower`) and Mistfall is ready; exhausts through the executor; test: C0Test.Mistfall_NotOfferedWithoutThePowerAndPaysFromThePool
   - c0: 72 Solari Shrine — FIXED for "stunned": `WhenAnEnemyUnitDies` now carries the dead unit as its subject (`shared:` 776a84b) and `triggerCondition` requires it to be stunned. Still an approximation, documented in the card: who killed it is not tracked; test: C0Test.SolariShrine_OnlyAStunnedEnemyUnitsDeathTriggers
+  - c4: 37 Immortal Phoenix — FIXED: affordability and payment through `payableEnergy` / `payEnergy` + `payableOnePower` / `payOnePower` (floating Energy and Power count; one Fury rune covers both); 121 Teemo, Strategist — FIXED: the reveal and recycle happen even with no unit to choose; test: C4Test.ImmortalPhoenix_PaysFromThePoolAndOneRuneCoversBothHalves, C4Test.TeemoStrategist_StillRevealsWhenThereIsNoUnitToChoose
 
 ## G. Loop mutation and AoE
 

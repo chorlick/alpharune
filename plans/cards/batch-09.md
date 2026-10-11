@@ -19,7 +19,7 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: "Your Mechs each have [Assault]. (+1 [M] while we're attackers.)"
   - Code: pushes a raw `AuraEffect{keyword = Assault}` with `keyword_value = 0` and `might_bonus = 0`. The aura fold only sums `might_bonus` and sets the keyword bit; `recomputeMight` adds `assault_value` only (base/temp). `auraKeyword()` in card_helpers.h exists exactly for this and is not used. The engine's legacy text match for "your mechs each have" (`game_engine.cpp:4619-4623`) adds a second, equally Might-less effect.
   - Scenario: Rumble plus another Mech attack -> the other Mech gets the Assault keyword bit but no +1 Might; only Rumble (printed `assault_value = 1` in the def) gets +1. Also: the hook is not `forEachSelfOnce`, and no `location` check on `u`, so once Might is added two Rumbles + the engine text aura will stack three times, and Rumble himself (def `assault_value = 1` + aura) will have Assault 2.
-- [ ] **107 Ava Achiever** - `units/0107_ava_achiever.cpp:88` [confirmed] high
+- [x] **107 Ava Achiever** - `units/0107_ava_achiever.cpp:88` [confirmed] high — FIXED: `Keyword::Hidden` removed from the def; test: C4Test.Defs_DoNotCarryKeywordsTheTextOnlyMentions
   - Text: "When I attack, you may pay [C] to play a card with [Hidden] from your hand, ignoring its cost. If it's a unit, play it here." (no printed [Hidden]; `cards/json/ogn_107_ava_achiever.json` has no keywords)
   - Code: `d.keywords.set(Keyword::Hidden)` - the keyword is only referenced by the text.
   - Scenario: the hide generator (`game_engine.cpp:2858-2860`) offers to hide Ava for [A] and play her later as a Reaction for [0] instead of paying 5 Energy. She also counts as a Hidden card for Teemo, Strategist's reveal and for another Ava's "play a card with [Hidden]".
@@ -35,7 +35,8 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: "As an additional cost to play me, return a friendly gear to its owner's hand."
   - Code: gates playability with a `hasLegalTargets` override, but the engine consults `hasLegalTargets` only for spells and activated abilities, never for a unit play (the unit gate is `Card::canBePlayed`, `game_engine.cpp:5608`). The file comment claims the gate works.
   - Scenario: no friendly gear on board -> Quartermaster is still offered and played; `pickTarget` finds nothing and the 3-cost 4-Might unit enters with no cost paid. (Extends 7.6, which only lists the late payment.) Cruel Patron 208 has the same hole and no gate at all.
-- [ ] **162 Miss Fortune, Captain** - `units/0162_miss_fortune_captain.cpp:38-48` [confirmed] medium
+  - c4: 208 Cruel Patron — FIXED: `canBePlayed` gates the play on a friendly unit to kill; see 07 item 7.6; test: C4Test.CruelPatron_NeedsAFriendlyUnitAndKillsTheChosenOne
+- [x] **162 Miss Fortune, Captain** - `units/0162_miss_fortune_captain.cpp:38-48` [confirmed] medium — FIXED: candidates are everything exhausted other than her — on-board objects and legends in their Legend Zone, either side (not enemy objects that can't be chosen); test: C4Test.MissFortuneCaptain_FirstMoveOnly_AndLegendsCount
   - Text: "you may ready something else that's exhausted."
   - Code: candidates need `obj.location.has_value()` and `controller == ctx.controller`. Legends live in `ZoneType::LegendZone` with no location (`game_engine.cpp:4464`).
   - Scenario: your legend is exhausted and it is the only exhausted thing you have -> the trigger is not offered at all; with other exhausted objects the legend is never among the choices. (Text is also not limited to friendly objects.)
@@ -55,14 +56,17 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Text: "an enemy unit here" (76, 130, 238); "another unit" / "another friendly unit" (132, 188, 361); "a unit from a battlefield" (191); "a unit you control at another location" (199)
   - Code: `TargetRequirements` has no "here" / "not me" field; 76/130/238 say only `must_be_at_battlefield`, 132/188/361 allow the source itself, 191 allows units already in base, 199's override allows the Tideturner itself and units at its own location.
   - Scenario: if 7.1 is fixed by letting the engine choose trigger targets from `getTargetRequirements()`, Yasuo/Corsair/Leona hit units at other battlefields, First Mate readies itself, Bouncer bounces itself, Marauder "moves" a unit already in base. These need `pickTarget` with a card-built list.
+  - c4: 76, 130, 132, 188, 191, 199 — FIXED: `getTargetRequirements()` deleted; each builds its own list ("here", "another", "from a battlefield", "at another location"); see 07 item 7.1; test: C4Test.YasuoRemorseful_HitsOnlyAnEnemyUnitHere, CrackshotCorsair_*, FirstMate_*, ZauniteBouncer_*, MaddenedMarauder_*, Tideturner_*
 - [ ] **"Can't be chosen by enemy spells and abilities" ignored** - `spells/0511_defiant_dance.cpp:20-37`, `units/0119_ahri_inquisitive.cpp:27-31`, `units/0121_teemo_strategist.cpp:28-33`, `units/0149_carnivorous_snapvine.cpp:25-29`, `units/0200_twisted_fate_gambler.cpp:52-56,87-91`, `units/0067_blitzcrank_impassive.cpp:42-49` [confirmed] low
   - Text: each chooses "a unit" / "an enemy unit"
   - Code: hand-built legal lists with no `untargetable_by_enemy` test; `pickTarget` / `pickTargetPair` do not add one (only `enumerateLegalTargets` and `chooseableUnits` do).
   - Scenario: opponent controls Baron Nashor / Ruin Runner / a Twilight Shroud unit -> Defiant Dance can give it -2 [M], Snapvine can fight it, Ahri can shrink it, Blitzcrank can pull it.
+  - c4: 119 Ahri, 121 Teemo Strategist, 149 Snapvine, 200 Twisted Fate, 67 Blitzcrank — FIXED: lists built with `chooseableUnits`; test: C4Test.CantBeChosenUnitsAreNotOfferedToAhriTeemoOrSnapvine, C4Test.Blitzcrank_PullsTheEnemyUnitItsControllerChooses. Reprint Ahri 539 is outside this range.
 - [ ] **Effect-played units always land in base** - `units/0006_flame_chompers.cpp:35`, `units/0037_immortal_phoenix.cpp:68`, `units/0196_soulgorger.cpp:53`, `units/0226_spectral_matron.cpp:72`, `units/0194_nocturne_horrifying.cpp:43`, `units/0349_rumble_hotheaded.cpp:92`, `spells/0704_heedless_resurrection.cpp:86`, `spells/0730_undying_loyalty.cpp:73`, `spells/0515_arcane_shift.cpp:31`, `spells/0513_arise.cpp:103` [confirmed; Arise documented] low
   - Text: "play me" / "play a unit from your trash" / "play a ... token"
   - Code: `playIgnoringCost` / `playPayingCost` called with no location or a hard-coded base. CR 355.2.a lets the controller choose base or a battlefield they control; Wild Claw 876:138-151 shows the prompt.
   - Scenario: you control a battlefield and revive a unit with Soulgorger -> it can only go to base, never to the battlefield to hold/defend.
+  - c4: 6 Flame Chompers, 37 Immortal Phoenix, 196 Soulgorger, 194 Nocturne — FIXED: the controller chooses base or a battlefield they control through new `pickEffectPlayLocation` / `effectPlayLocation` in `card_helpers.h` (`shared:` commit `1b7c181`; other streams can use it); test: C4Test.FlameChompers_PaysAndChoosesItsLandingPlace, C4Test.Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses, C4Test.Nocturne_*, C4Test.ImmortalPhoenix_*
 - [ ] **704 Heedless Resurrection** - `spells/0704_heedless_resurrection.cpp:75-80` [documented] low
   - Text: "As an additional cost to play this, kill a friendly unit."
   - Code: the kill happens in `onResolve` (no `kFinalizeResolve`, no cost hook).
@@ -81,14 +85,17 @@ Only findings NOT already in 03-cards.md / 07-cards-second-pass.md are listed. E
   - Scenario: two buffed units, spend 1 -> the engine picks which unit loses its buff.
 - [ ] **playPayingCost result ignored after the card left its zone** - `spells/0876_wild_claw.cpp:153,165`, `units/0196_soulgorger.cpp:52-53`, `units/0112_kai_sa_evolutionary.cpp:53,62`, `units/0349_rumble_hotheaded.cpp:91-92` [plausible] low
   - Code: the card is erased from trash / deck+banishment, then `playPayingCost` is called and its `false` return is not handled (the header says the caller must leave the card where it was). Extends the 7.35 list (491, 553, 710); as there, `canPlayPayingCost` is checked just before, so no failing path was found today. Wild Claw is the most exposed: an agent decision sits between the check (resume point 1) and the payment (resume point 2).
+  - c4: 196 Soulgorger, 112 Kai'Sa — FIXED: neither erases the card first (`playPayingCost` removes it only when paid, 08 item 8.13) and both handle a `false` return; only units / spells whose Power can be paid are offered.
 - [ ] **890 Shadows of the Past** - `spells/0890_shadows_of_the_past.cpp:86` [confirmed] low
   - Code: `d.effect_text = "1"` - stray data; no other spell in the batch sets `effect_text`.
 
 ## Systemic
 - S1: none new (16, 51, 76, 82, 92, 97, 130, 132, 188, 191, 199, 234, 238, 330, 361 are all already in 7.1; see the requirements finding above for what else is wrong with eight of them).
 - S2: 147 Wildclaw Shaman (`:30-33` buffs and readies `ctx.source` after only `objectExists`), 343 Draven, Vanquisher (`:53`, no visible effect). Others in this batch (35, 56, 67, 149, 177, 331, 347) are already in 3.14 / 7.26 / 7.27.
+  - c4: 147 — FIXED with 03 item 3.9 (`buffUnit` / `readyObject` refuse an off-board Shaman).
 - S3: 349 Rumble, Hotheaded (first-instance scan inside the per-instance hook, plus the engine text aura; see finding).
 - S4: 56 Adaptatron (`:42`), 235 Karma, Channeler (`:40`).
+  - c4: 56 — ALREADY FIXED by `EffectExecutor::buffUnit` (02 item 2.14).
 - S5: 230 Albus Ferros (which buffs are spent). 67, 112, 349 already in 7.24.
 - S7: none new (727 Shadow's Call is 7.9).
 

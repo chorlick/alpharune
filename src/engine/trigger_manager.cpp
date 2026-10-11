@@ -100,7 +100,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         if (da.target_filter != kInvalidId &&
             da.target_filter != event_object) continue;
 
-        da.fired = true;
+        if (!da.repeats) da.fired = true;
         events_.logTrace("DELAYED_ABILITY: firing for " +
                          (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
         chain_.addAbility(da.source, da.controller, da.card_def_id);
@@ -109,6 +109,8 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         // Targon's Peak's AtEndOfTurn ready-runes).
         if (!state_.chain.items.empty()) {
             state_.chain.items.back().fired_trigger = trigger;
+            // The event's object ("buff IT", "move ME"), as for any trigger.
+            state_.chain.items.back().triggering_subject = event_object;
         }
     }
 
@@ -396,6 +398,10 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
             fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAGear, /*subject=*/e.object);
         }
     }
+
+    // "When a friendly unit is played this turn, ..." (Rally the Troops).
+    if (e.card_type == CardType::Unit)
+        checkDelayedAbilities(TriggerType::WhenYouPlayAUnit, e.player, e.object);
 
     // Battlefield cards with "When you play a unit here" (e.g. Star Spring).
     // Fire only on the battlefield the just-played unit landed at.
@@ -808,6 +814,10 @@ void TriggerManager::onScore(const ScoreEvent& e) {
             cardFiresOn(card_registry_, def, TriggerType::WhenIConquer)) {
             fireTrigger(uid, e.player, 0, TriggerType::WhenIConquer);
         }
+        // 'This turn, that unit has "When I conquer, ..."' (Relentless Pursuit):
+        // a delayed ability scoped to this unit.
+        if (e.method == ScoreMethod::Conquer)
+            checkDelayedAbilities(TriggerType::WhenIConquer, e.player, uid);
         if (e.method == ScoreMethod::Hold &&
             cardFiresOn(card_registry_, def, TriggerType::WhenIHold)) {
             fireTrigger(uid, e.player, 0, TriggerType::WhenIHold);

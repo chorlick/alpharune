@@ -74,6 +74,13 @@ public:
 
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         const GameObjectId source = ctx.source;
+        // "Use only once per turn": activating is the use, whether or not the
+        // ability then does anything (the chosen unit may leave in response).
+        // Stamped as the ability goes on the chain, with its cost (store
+        // turn_number+1 so 0 = never).
+        if (ctx.state.objectExists(source))
+            ctx.state.getObject(source).card_counters["azir_used_turn"] =
+                ctx.state.turn.turn_number + 1;
         std::vector<GameObjectId> legal_a = legalTargets(ctx.state, ctx.controller, source);
         if (!targets.empty() &&
             std::find(legal_a.begin(), legal_a.end(), targets[0]) != legal_a.end())
@@ -108,9 +115,6 @@ public:
         // Both must still be on the board to trade places: a unit that left
         // is not moved back from wherever it went.
         if (!azir.location.has_value() || !other.location.has_value()) return;
-
-        // Mark once-per-turn used (store turn_number+1 so 0 = never).
-        azir.card_counters["azir_used_turn"] = ctx.state.turn.turn_number + 1;
 
         // Swap locations. Capture before moving.
         auto azir_loc = azir.location;

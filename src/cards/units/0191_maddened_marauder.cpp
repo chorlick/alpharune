@@ -21,8 +21,11 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto units = chooseableUnits(ctx.state, ctx.controller, [](const GameObject& o) {
-            return o.isAtBattlefield();
+        auto units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+            // Not from a battlefield units can't move to base from, and not
+            // a unit enemy effects can't move (as Amateur Recital, 763).
+            return o.isAtBattlefield() && !moveToBaseBlocked(ctx.state, o) &&
+                   !(o.controller != ctx.controller && o.cant_be_moved_by_enemy);
         });
         std::sort(units.begin(), units.end());
         const GameObjectId t = pickTarget(ctx, "Maddened Marauder: move a unit to its base",

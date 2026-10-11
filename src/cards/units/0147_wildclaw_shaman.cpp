@@ -37,11 +37,13 @@ public:
                                    [&]() { return !buffed().empty(); });
         if (conf < 1) return;    // waiting / declined / no buff to spend
         if (!costAlreadyPaid(ctx)) {
-            const GameObjectId from = pickTarget(ctx, "Wildclaw Shaman: spend which unit's buff",
-                                                 buffed());
-            if (from == kInvalidId) return;   // waiting / no buff left to spend
+            // Paying a cost, not choosing a unit: no Deflect, no "chosen"
+            // bookkeeping, no "when you choose a friendly unit" trigger.
+            const auto from = selectObject(ctx, "Wildclaw Shaman: spend which unit's buff",
+                                           buffed());
+            if (!from.has_value() || *from == kInvalidId) return;   // waiting / no buff to spend
             if (costDueNow(ctx)) {
-                auto& unit = ctx.state.getObject(from);
+                auto& unit = ctx.state.getObject(*from);
                 unit.buff_count -= 1;
                 unit.recomputeMight();
                 ctx.events.logTrace("WILDCLAW SHAMAN: spent " + unit.name + "'s buff");

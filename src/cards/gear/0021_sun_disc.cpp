@@ -46,6 +46,16 @@ public:
     }
 
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
+    // "The next unit you play this turn": only while an activation this turn
+    // has armed it (as Nami, Headstrong 614). Unarmed, playing a unit puts
+    // nothing on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& counters = state.getObject(source).card_counters;
+        auto it = counters.find("__sundisc_arm_turn");
+        return it != counters.end() && it->second == state.turn.turn_number;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);

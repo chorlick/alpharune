@@ -30,6 +30,23 @@
 #          unit never built before compiles against that PCH (with a cached
 #          PCH this is "redefinition of kInvalidId")
 #        5 the original bytes again, clean               unit from the cache
+#   C. (plans/09 item 9.X1) The PCH is rebuilt by something that is not this
+#      launcher (an older version of it, plain ccache, the bare compiler) after
+#      a header changed, beside the .gch.sum the launcher wrote for the previous
+#      headers. A unit compiled next must be compiled, not taken from the cache
+#      on that stale .sum, and the stale .sum must be gone.
+#   D. `cmake --build --target clean` removes the .gch but not the .gch.sum
+#      (ninja does not know the file). Whoever builds the next PCH:
+#        1 not the launcher, a header changed            unit compiled
+#        2 the launcher, a header changed                unit compiled, new .sum
+#   E. A PCH compile that fails leaves neither a .gch nor a .gch.sum, and the
+#      build after the header is repaired is taken from the cache as before.
+#
+# How "something that is not this launcher" is staged: the copies are
+# configured with a shim as their launcher. It hands every compile to the
+# launcher under test, except that while <work>/pch_mode says "bare" a compile
+# that creates a PCH runs the compiler directly. Ninja then rebuilds the PCH
+# itself, as it did in the incident, and nothing writes or removes a .sum.
 set -u
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -51,6 +68,23 @@ mkdir -p "$work/cc" || exit 2
 echo "launcher: $launcher"
 echo "work dir: $work"
 
+# The shim (see the header). $launcher may be a bare command name (`ccache`).
+shim="$work/launcher_shim.sh"
+{
+    echo '#!/usr/bin/env bash'
+    echo "mode=\$(cat '$work/pch_mode' 2>/dev/null)"
+    echo 'if [ "$mode" = bare ]; then'
+    echo '    prev=""'
+    echo '    for a in "$@"; do'
+    echo '        if [ "$prev" = "-x" ] && [ "$a" = "c++-header" ]; then exec "$@"; fi'
+    echo '        prev=$a'
+    echo '    done'
+    echo 'fi'
+    echo "exec '$launcher' \"\$@\""
+} > "$shim"
+chmod +x "$shim" || exit 2
+echo launcher > "$work/pch_mode"
+
 failures=0
 ok()   { echo "  ok    $1"; }
 fail() { echo "  FAIL  $1"; failures=$((failures + 1)); }
@@ -67,7 +101,7 @@ copy() { # name
     mkdir -p "$work/$1" &&
     git -C "$here" archive HEAD | tar -x -C "$work/$1" &&
     ( cd "$work/$1" && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_DIR=$work/cc;CCACHE_BASEDIR=$work/$1;CCACHE_NOHASHDIR=1;CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime;$launcher" \
+        -DCMAKE_CXX_COMPILER_LAUNCHER="env;CCACHE_DIR=$work/cc;CCACHE_BASEDIR=$work/$1;CCACHE_NOHASHDIR=1;CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime;$shim" \
         -DFETCHCONTENT_SOURCE_DIR_OPEN_SPIEL="$deps/open_spiel-src" \
         -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$deps/googletest-src" > "$work/configure_$1.log" 2>&1 )
 }
@@ -127,6 +161,68 @@ else fail "4 a unit never built before does not compile: $(grep -m1 'error' "$wo
 cp "$work/types_orig.h" "$work/A/src/core/types.h"
 clean A
 expect "5 the original bytes again, clean" hit "$(unit_result s5)"
+
+PCH_TARGET="CMakeFiles/riftbound_pch.dir/cmake_pch.hxx.gch"
+marker() { # name value: append a declaration to copy A's core/types.h
+    printf '\nnamespace riftbound { inline int pch_check_marker_%s() { return %s; } }\n' "$1" "$2" >> "$work/A/src/core/types.h"
+}
+
+echo "C. a PCH rebuilt by something other than the launcher, beside a .gch.sum"
+if [ ! -f "$work/A/$GCH.sum" ]; then
+    # Plain ccache writes no .sum: there is nothing to go stale (and nothing
+    # that makes a PCH-using unit cacheable either).
+    echo "  skip  this launcher writes no .gch.sum"
+else
+    cp -p "$work/A/$GCH.sum" "$work/sum_c0"
+    echo bare > "$work/pch_mode"
+    marker d 13
+    build A "$PCH_TARGET" c1
+    echo launcher > "$work/pch_mode"
+    if grep -q pch_check_marker_d "$work/A/$GCH"; then ok "setup: the PCH was rebuilt, with the change, without the launcher"
+    else fail "setup: the PCH was not rebuilt without the launcher"; fi
+    if cmp -s "$work/sum_c0" "$work/A/$GCH.sum" && [ "$work/A/$GCH" -nt "$work/A/$GCH.sum" ]; then
+        ok "setup: the previous headers' .gch.sum is still beside it, older than the .gch"
+    else fail "setup: the stale .gch.sum is not in place"; fi
+    expect "1 a unit compiled against that PCH" miss "$(unit_result c2)"
+    if [ ! -f "$work/A/$GCH.sum" ]; then ok "1 the stale .gch.sum was dropped before the unit was compiled"
+    else fail "1 the stale .gch.sum is still there"; fi
+fi
+
+echo "D. after 'clean' (which removes the .gch and leaves the .gch.sum)"
+cp "$work/types_orig.h" "$work/A/src/core/types.h"
+build A "$PCH_TARGET" d0
+[ -f "$work/A/$GCH.sum" ] && cp -p "$work/A/$GCH.sum" "$work/sum_d0"
+clean A
+if [ ! -f "$work/A/$GCH" ]; then ok "clean removed the .gch"; else fail "clean left the .gch"; fi
+if [ -f "$work/A/$GCH.sum" ]; then echo "  note  clean left the .gch.sum behind"
+else echo "  note  clean removed the .gch.sum too (or the launcher writes none)"; fi
+echo bare > "$work/pch_mode"
+marker e 14
+build A "$PCH_TARGET" d1
+echo launcher > "$work/pch_mode"
+expect "1 PCH rebuilt without the launcher, a declaration added" miss "$(unit_result d2)"
+cp "$work/types_orig.h" "$work/A/src/core/types.h"
+build A "$PCH_TARGET" d3
+clean A
+marker f 15
+expect "2 PCH rebuilt by the launcher, a declaration added" miss "$(unit_result d4)"
+if [ -f "$work/sum_d0" ]; then
+    if [ -f "$work/A/$GCH.sum" ] && ! cmp -s "$work/sum_d0" "$work/A/$GCH.sum"; then
+        ok "2 the launcher replaced the .gch.sum left behind"
+    else fail "2 the .gch.sum left behind by clean was not replaced"; fi
+fi
+
+echo "E. a PCH compile that fails"
+cp "$work/types_orig.h" "$work/A/src/core/types.h"
+build A "$PCH_TARGET" e0
+printf '\n#error pch_check_broken_header\n' >> "$work/A/src/core/types.h"
+if build A "$PCH_TARGET" e1; then fail "setup: the broken header compiled"
+else
+    if [ ! -f "$work/A/$GCH" ] && [ ! -f "$work/A/$GCH.sum" ]; then ok "leaves neither a .gch nor a .gch.sum"
+    else fail "left a .gch or a .gch.sum behind"; fi
+fi
+cp "$work/types_orig.h" "$work/A/src/core/types.h"
+expect "the header repaired (original bytes): unit from the cache" hit "$(unit_result e2)"
 
 if [ "$failures" = 0 ]; then
     echo "all checks passed (work dir left at $work)"

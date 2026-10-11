@@ -491,7 +491,11 @@ TEST_F(VendettaCTest, Vendetta_Kharox_BurnsThreeThenStealsUnit) {
     addToDeck(P2, kOnslaught);
     auto unit = addToDeck(P2, kPunchingPoro);         // top of deck
 
-    fireTriggerAs(kKharox, P1, kharox, TriggerType::WhenIBecomeEmpowered, exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    // "Then you MAY do this": yes, and that unit.
+    EnginePathAgent engine_agent(answer(1, unit));
+    fireTriggerThroughEngine(kharox, TriggerType::WhenIBecomeEmpowered, &engine_agent);
     EXPECT_EQ(deckSize(P2), 3);
     EXPECT_EQ(state.player(P2).cards_burned_this_turn, 3);
     EXPECT_FALSE(inTrash(P2, unit));
@@ -519,8 +523,10 @@ TEST_F(VendettaCTest, Vendetta_Kharox_AcceptThroughResumeLoop) {
     for (int i = 0; i < 5; ++i) addToDeck(P2, kOnslaught);
     auto unit = addToDeck(P2, kPunchingPoro);
 
-    driveResumableTrigger(kKharox, P1, kharox, answer(1, unit), exec,
-                          TriggerType::WhenIBecomeEmpowered);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    EnginePathAgent engine_agent(answer(1, unit));
+    fireTriggerThroughEngine(kharox, TriggerType::WhenIBecomeEmpowered, &engine_agent);
     EXPECT_EQ(deckSize(P2), 3);
     EXPECT_EQ(state.getObject(unit).controller, P1);
     EXPECT_TRUE(state.getObject(unit).isAtBase());

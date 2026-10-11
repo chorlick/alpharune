@@ -481,12 +481,23 @@ TEST_F(AuditFix5Test, IvernNurturer_DeclineRecyclesAll) {
 TEST_F(AuditFix5Test, IvernNurturer_ThemedDraftBuffs) {
     EffectExecutor exec(state, events, card_db);
     auto ivern = addUnit(P1, kIvernNurturer, 4);  // friendly unit to receive buff
-    addToDeck(P1, kRengar);  // top: a Cat-tagged unit -> themed
+    auto cat = addToDeck(P1, kRengar);  // top: a Cat-tagged unit -> themed
 
     int buff_before = state.getObject(ivern).buff_count;
-    // First option = the Cat unit (the last one is "None").
-    driveResumableTrigger(kIvernNurturer, P1, ivern, &AuditFix5Test::pickNo, exec,
-                          TriggerType::WhenYouPlayMe);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    // Two prompts: the unit to reveal and draw, then — for the reflexive
+    // trigger — the friendly unit to buff.
+    int asked = 0;
+    EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) {
+        const GameObjectId want = asked++ == 0 ? cat : ivern;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects[0] == want) return i;
+        ADD_FAILURE() << "prompt " << asked << " did not offer the expected object";
+        return legal.front();
+    });
+    fireTriggerThroughEngine(ivern, TriggerType::WhenYouPlayMe, &engine_agent);
+    EXPECT_EQ(asked, 2);
 
     EXPECT_EQ(state.getObject(ivern).buff_count, buff_before + 1)
         << "themed (Cat) draft buffs a friendly unit";

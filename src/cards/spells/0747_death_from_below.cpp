@@ -17,12 +17,13 @@ public:
     const CardDef& def() const override { return def_; }
     // "Kill a unit at a battlefield. Then, if it had 3 [M] or less, do this:
     //  You may play this from your trash for [A]."
-    // The replay is offered as this resolves — not as a standing permission
-    // for the rest of the turn, and whatever the timing: paying [A] plays the
-    // spell again right away (EffectExecutor::playIgnoringCost puts it back on
-    // the chain, where its new target is chosen).
-    // The card is on the chain for the new play: ChainManager does not file a
-    // spell that was played again while it resolved; the new play files it.
+    // "do this: You may play this from your trash for [A]." is a reflexive
+    // trigger — the rule book's own example (CR 388.4): it "is added to the
+    // chain when the spell is resolving, and then on finalization of the
+    // reflexive trigger its controller will decide if they want to perform
+    // the effect". By then this spell has resolved and is in the trash; the
+    // "may" and the [A] are settled at that finalization, and the item plays
+    // the card from the trash when it resolves (a new play, with a new target).
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_at_battlefield = true};
@@ -57,15 +58,32 @@ public:
             }
         }
         if (had < 0 || had > 3) return;
-        // "You may play this from your trash for [A]."
-        const int again = confirmOptional(ctx, "Death from Below: play it again for [A]",
+        if (ri.has_value() && ri->resume_data.size() > kKilledSlot + 1 &&
+            ri->resume_data[kKilledSlot + 1] != 0)
+            return;                                   // already queued
+        if (ri.has_value()) {
+            while (ri->resume_data.size() <= kKilledSlot + 1) ri->resume_data.push_back(0);
+            ri->resume_data[kKilledSlot + 1] = 1;
+        }
+        ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& /*data*/) override {
+        auto in_trash = [&]() {
+            return ctx.state.objectExists(ctx.source) &&
+                   ctx.state.getObject(ctx.source).zone == ZoneType::Trash;
+        };
+        const int again = confirmOptional(ctx, "Death from Below: play it from your trash for [A]",
             [&]() {
-                return ctx.executor.payableAnyPower(ctx.controller) >= 1 &&
-                       !enumerateLegalTargets(ctx.state, ctx.controller).empty();
+                return costAlreadyPaid(ctx) ||
+                       (in_trash() && ctx.executor.payableAnyPower(ctx.controller) >= 1 &&
+                        !enumerateLegalTargets(ctx.state, ctx.controller).empty());
             });
-        if (again <= 0) return;
-        if (!ctx.executor.payAnyPower(ctx.controller, 1)) return;
-        ctx.events.logTrace("DEATH FROM BELOW: paid [A] to play it again");
+        if (again == 1 && costDueNow(ctx) && !ctx.executor.payAnyPower(ctx.controller, 1)) return;
+        if (finalizingChoices(ctx)) return;   // the "may" and the [A] end here (CR 388.4)
+        if (again < 1 || !in_trash()) return; // declined, or it left the trash in response
+        ctx.events.logTrace("DEATH FROM BELOW: paid [A] -> played from the trash");
         ctx.executor.playIgnoringCost(ctx.controller, ctx.source);
     }
 private:

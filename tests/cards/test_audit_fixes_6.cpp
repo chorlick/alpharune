@@ -593,7 +593,12 @@ TEST_F(AuditFix6Test, BlastCone_PlayMovesEnemyToBase) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
-    EnginePathAgent yes(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    EnginePathAgent yes(EnginePathAgent::script({
+        1,                          // "may move an enemy unit": yes
+        static_cast<int>(enemy),    // which enemy unit (the only one)
+        0,                          // where: mode 0 = its base (mode 2 = battlefield #1 is the other)
+        0,                          // the move triggers "you may exhaust this to [Stun] it": no
+    }));
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     // Enemy moved to its own base (moveToBase uses controller's base).
@@ -638,7 +643,14 @@ TEST_F(AuditFix6Test, BlastCone_ExhaustedCannotStun) {
     auto enemy = addUnit(P2, kInvalidId, /*might=*/2, /*at_bf=*/0);
 
     // Through the engine: a trigger is never handed targets (plans/07 item 7.3).
-    EnginePathAgent yes(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    // The script ends after the destination: an exhausted Blast Cone can't pay
+    // "exhaust this", so the stun "may" must not be offered (a fourth prompt
+    // fails the strict script).
+    EnginePathAgent yes(EnginePathAgent::script({
+        1,                          // "may move an enemy unit": yes
+        static_cast<int>(enemy),    // which enemy unit (the only one)
+        0,                          // where: mode 0 = its base
+    }));
     fireTriggerThroughEngine(gear, TriggerType::WhenYouPlayThis, &yes);
 
     EXPECT_TRUE(state.getObject(enemy).isAtBase());     // still moved

@@ -15,6 +15,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cctype>
+#include <regex>
 #include <functional>
 #include <cstdlib>
 #include <fstream>
@@ -2487,6 +2489,388 @@ TEST_F(SweepTriggersTest, Reflexive_CannotBeQueuedOutsideAGame) {
     EffectExecutor exec(state, events, card_db);
     EXPECT_FALSE(exec.queueReflexiveTrigger(hwei, P1, 0, {1}));
     EXPECT_TRUE(state.chain.items.empty());
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 23. The other reflexive-trigger cards (plans/09 9.DD4; CR 387-389)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Fixture for the tests below: one play or trigger, P1 answering from a
+/// declared list, P2 watching for the reflexive trigger on the chain.
+class ReflexiveCardsTest : public SweepTriggersTest {
+protected:
+    ReflexiveWatcher p2;
+    std::shared_ptr<int> unexpected = std::make_shared<int>(0);
+
+    /// P1's answers: an object from `objects` when one is offered (each used
+    /// once), else "yes" to a yes/no, else an option whose value is in
+    /// `values`. A prompt that matches none of those fails the test.
+    EnginePathAgent::Picker answers(std::vector<GameObjectId> objects,
+                                    std::vector<int> values = {}) {
+        auto left = std::make_shared<std::vector<GameObjectId>>(std::move(objects));
+        auto bad = unexpected;
+        return [left, values, bad](const std::vector<Intent>& legal) {
+            for (const auto& i : legal) {
+                if (i.chosen_objects.empty()) continue;
+                auto it = std::find(left->begin(), left->end(), i.chosen_objects.front());
+                if (it != left->end()) { left->erase(it); return i; }
+            }
+            bool yes_no = legal.size() == 2;
+            for (const auto& i : legal) if (!i.chosen_objects.empty()) yes_no = false;
+            if (yes_no)
+                for (const auto& i : legal)
+                    if (i.chosen_value && *i.chosen_value == 1) return i;
+            for (const auto& i : legal)
+                if (i.chosen_value &&
+                    std::find(values.begin(), values.end(), *i.chosen_value) != values.end())
+                    return i;
+            ++*bad;
+            ADD_FAILURE() << "a prompt the test did not declare an answer for ("
+                          << legal.size() << " options, first label: "
+                          << legal.front().choice_label << ")";
+            return legal.front();
+        };
+    }
+    /// Play `spell` from P1's hand with `targets` locked in, cost funded.
+    void cast(GameObjectId spell, std::vector<GameObjectId> targets,
+              EnginePathAgent::Picker picker) {
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = spell;
+        play.targets = std::move(targets);
+        const auto& def = card_db.get(obj(spell).card_def_id);
+        state.player(P1).rune_pool.energy += def.energy_cost;
+        state.player(P1).rune_pool.universal_power += def.power_cost;
+        EnginePathAgent p1(std::move(picker));
+        p2.source = spell;
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &p1, &p2);
+    }
+    void trigger(GameObjectId source, TriggerType t, EnginePathAgent::Picker picker) {
+        EnginePathAgent p1(std::move(picker));
+        p2.source = source;
+        fireTriggerThroughEngine(source, t, &p1, kInvalidId, &p2);
+    }
+    void TearDown() override {
+        EXPECT_GT(p2.seen, 0) << "the opponent never had priority with the reflexive "
+                                 "trigger on the chain";
+        EXPECT_EQ(*unexpected, 0);
+    }
+    GameObjectId inTrashOf(PlayerId p, CardDefId def) {
+        auto id = addToHand(p, def);
+        auto& h = state.player(p).hand;
+        h.erase(std::remove(h.begin(), h.end(), id), h.end());
+        obj(id).zone = ZoneType::Trash;
+        state.player(p).trash.push_back(id);
+        return id;
+    }
+};
+
+// Forgotten Relic 895: "When you burn a unit this way, do this: Give a
+// friendly unit +[M] equal to the burned card's Might this turn."
+TEST_F(ReflexiveCardsTest, ForgottenRelic) {
+    auto relic = addGear(P1, 895);
+    auto unit = addUnit(P1, kInvalidId, 1, 0);
+    auto top = addToDeck(P1, kLoyalPoro);
+    int might_then = -1; bool burned_then = false;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        might_then = st.getObject(unit).temp_might_bonus;
+        const auto& tr = st.player(P1).trash;
+        burned_then = std::find(tr.begin(), tr.end(), top) != tr.end();
+    };
+    trigger(relic, TriggerType::AtStartOfBeginning, answers({unit}));
+    EXPECT_TRUE(burned_then);
+    EXPECT_EQ(might_then, 0);
+    EXPECT_EQ(obj(unit).temp_might_bonus, card_db.get(kLoyalPoro).might);
+}
+
+// Disintegrate 5: "If this kills it, do this: draw 1."
+TEST_F(ReflexiveCardsTest, Disintegrate) {
+    stockDeck(P1, 2);
+    auto enemy = addUnit(P2, kInvalidId, 3, 0);
+    auto spell = addToHand(P1, 5);
+    int hand_then = -1; bool dead_then = false;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        hand_then = static_cast<int>(st.player(P1).hand.size());
+        dead_then = !st.getObject(enemy).location.has_value();
+    };
+    cast(spell, {enemy}, answers({}));
+    EXPECT_TRUE(dead_then);
+    EXPECT_EQ(hand_then, 0);
+    EXPECT_EQ(handSize(P1), 1);
+}
+
+// Dragon's Rage 255: "Move an enemy unit. Then do this: Choose another enemy
+// unit at its destination. They deal damage equal to their Mights ..."
+TEST_F(ReflexiveCardsTest, DragonsRage) {
+    auto mover = addUnit(P2, kInvalidId, 2, 0);
+    auto other = addUnit(P2, kInvalidId, 5, 1);
+    auto spell = addToHand(P1, 255);
+    bool moved_then = false; int damage_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        moved_then = st.getObject(mover).battlefieldId() ==
+                     std::optional<BattlefieldId>{state.battlefields[1].id};
+        damage_then = st.getObject(other).damage_marked;
+    };
+    // The mover is locked in as it is played; then where it goes (battlefield
+    // 1 = destination code 2), then — the reflexive trigger — the other unit.
+    cast(spell, {mover}, answers({other}, {2}));
+    EXPECT_TRUE(moved_then);
+    EXPECT_EQ(damage_then, 0);
+    EXPECT_EQ(obj(other).damage_marked, 2);
+    EXPECT_FALSE(obj(mover).location.has_value()) << "5 damage to a 2 [M] unit";
+}
+
+// Guards! 475: "Play a 2 [M] Sand Soldier unit token. Then do this: You may
+// pay [C] to ready it." — the may and the [C] at the trigger's finalization.
+TEST_F(ReflexiveCardsTest, Guards) {
+    auto spell = addToHand(P1, 475);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Order)] = 1;
+    bool exhausted_then = false; int power_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem& ci) {
+        exhausted_then = st.getObject(static_cast<GameObjectId>(ci.reflexive_data.at(0))).is_exhausted;
+        power_then = st.player(P1).rune_pool.power[static_cast<int>(Domain::Order)];
+    };
+    cast(spell, {}, answers({}, {0}));
+    EXPECT_TRUE(exhausted_then) << "not readied yet";
+    EXPECT_EQ(power_then, 0) << "the [C] was paid as the trigger was finalized";
+    const auto tokens = tokenUnits(P1);
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_FALSE(obj(tokens[0]).is_exhausted);
+}
+
+// Arise! 513: "... Then do this: Ready up to two of them."
+TEST_F(ReflexiveCardsTest, Arise) {
+    addGear(P1, kInvalidId, /*equipment=*/true);
+    auto spell = addToHand(P1, 513);
+    bool exhausted_then = false;
+    GameObjectId token = kInvalidId;
+    p2.look = [&](const GameState& st, const ChainItem& ci) {
+        token = static_cast<GameObjectId>(ci.reflexive_data.at(0));
+        exhausted_then = st.getObject(token).is_exhausted;
+    };
+    // The one token is the first (lowest-id) object offered; answered by a
+    // picker that takes the only object option.
+    EnginePathAgent::Picker only_object = [](const std::vector<Intent>& legal) {
+        for (const auto& i : legal) if (!i.chosen_objects.empty()) return i;
+        ADD_FAILURE() << "no token was offered";
+        return legal.front();
+    };
+    cast(spell, {}, only_object);
+    EXPECT_TRUE(exhausted_then);
+    ASSERT_NE(token, kInvalidId);
+    EXPECT_FALSE(obj(token).is_exhausted);
+}
+
+// Bone Skewer 701: "... They play that unit to that battlefield ... If they
+// do, then do this: [Stun] it."
+TEST_F(ReflexiveCardsTest, BoneSkewer) {
+    auto theirs = addToHand(P2, kLoyalPoro);
+    auto spell = addToHand(P1, 701);
+    bool on_board_then = false, stunned_then = true;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        on_board_then = st.getObject(theirs).location.has_value();
+        stunned_then = st.getObject(theirs).is_stunned;
+    };
+    // The battlefield (mode 0), the may (yes), the unit.
+    cast(spell, {}, answers({theirs}, {0}));
+    EXPECT_TRUE(on_board_then);
+    EXPECT_FALSE(stunned_then);
+    EXPECT_TRUE(obj(theirs).is_stunned);
+}
+
+// Death from Below 747 — the rule book's example (CR 388.4): the trigger is on
+// the chain with the spell already in the trash, the may and the [A] settled
+// at its finalization; then the card is played from the trash.
+TEST_F(ReflexiveCardsTest, DeathFromBelow) {
+    auto a = addUnit(P2, kInvalidId, 1, 0);
+    auto b = addUnit(P2, kInvalidId, 1, 0);
+    auto spell = addToHand(P1, kDeathFromBelow);
+    state.player(P1).rune_pool.universal_power += 1;       // the [A]
+    bool in_trash_then = false, b_alive_then = false; int power_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        const auto& tr = st.player(P1).trash;
+        in_trash_then = std::find(tr.begin(), tr.end(), spell) != tr.end();
+        b_alive_then = st.getObject(b).location.has_value();
+        power_then = st.player(P1).rune_pool.universal_power;
+    };
+    // In order: the unit to kill (a), the reflexive trigger's "may" (yes),
+    // then the target of the play from the trash (b).
+    auto n = std::make_shared<int>(0);
+    cast(spell, {}, [=](const std::vector<Intent>& legal) {
+        const int k = (*n)++;
+        if (k == 1) {
+            for (const auto& i : legal) if (i.chosen_value && *i.chosen_value == 1) return i;
+        } else if (k == 0 || k == 2) {
+            const GameObjectId want = k == 0 ? a : b;
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        }
+        ADD_FAILURE() << "prompt " << k + 1 << " was not the expected one";
+        return legal.front();
+    });
+    EXPECT_TRUE(in_trash_then) << "the spell had resolved and was in the trash";
+    EXPECT_TRUE(b_alive_then);
+    EXPECT_EQ(power_then, 0) << "[A] paid as the trigger was finalized";
+    EXPECT_FALSE(obj(a).location.has_value());
+    EXPECT_FALSE(obj(b).location.has_value()) << "played again from the trash";
+    const auto& trash = state.player(P1).trash;
+    EXPECT_EQ(std::count(trash.begin(), trash.end(), spell), 1);
+}
+
+// Alpha Strike 751: "Then for each unit this kills, do this: Gain 1 XP."
+TEST_F(ReflexiveCardsTest, AlphaStrike) {
+    auto striker = addUnit(P1, kInvalidId, 4, -1);
+    auto enemy = addUnit(P2, kInvalidId, 3, 0);
+    auto spell = addToHand(P1, 751);
+    int xp_then = -1; bool dead_then = false;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        xp_then = st.player(P1).xp;
+        dead_then = !st.getObject(enemy).location.has_value();
+    };
+    // The split: that unit, then "no more targets" (value 0).
+    cast(spell, {striker}, answers({enemy}, {0}));
+    EXPECT_TRUE(dead_then);
+    EXPECT_EQ(xp_then, 0);
+    EXPECT_EQ(state.player(P1).xp, 1);
+}
+
+// Mirror Image 757: "... Then do this: It becomes a copy of that unit. Give it
+// [Temporary]."
+TEST_F(ReflexiveCardsTest, MirrorImage) {
+    auto original = addUnit(P2, kLoyalPoro, 3, 0);
+    auto spell = addToHand(P1, 757);
+    std::string name_then; bool temporary_then = true;
+    p2.look = [&](const GameState& st, const ChainItem& ci) {
+        const auto& t = st.getObject(static_cast<GameObjectId>(ci.reflexive_data.at(0)));
+        name_then = t.name;
+        temporary_then = t.keywords.has(Keyword::Temporary);
+    };
+    cast(spell, {original}, answers({}));
+    EXPECT_EQ(name_then, "Reflection");
+    EXPECT_FALSE(temporary_then);
+    const auto tokens = tokenUnits(P1);
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(obj(tokens[0]).card_def_id, kLoyalPoro);
+    EXPECT_TRUE(obj(tokens[0]).keywords.has(Keyword::Temporary));
+}
+
+// Wild Claw 876: "... Then you may do this: Empower it."
+TEST_F(ReflexiveCardsTest, WildClaw) {
+    constexpr CardDefId kPunchingPoro = 794;
+    auto poro = addToDeck(P1, kPunchingPoro);
+    auto spell = addToHand(P1, 876);
+    bool played_then = false, empowered_then = true;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        played_then = st.getObject(poro).location.has_value();
+        empowered_then = st.getObject(poro).isEmpowered();
+    };
+    cast(spell, {}, answers({poro}));
+    EXPECT_TRUE(played_then);
+    EXPECT_FALSE(empowered_then);
+    EXPECT_TRUE(obj(poro).isEmpowered());
+}
+
+// Rell, Magnetic 347: "... If you do, then do this: Attach it to me."
+TEST_F(ReflexiveCardsTest, Rell) {
+    auto rell = addUnit(P1, 347, 4, 0);
+    auto gear = addToHand(P1, kShepherdsHeirloom);         // an Equipment, [2]
+    bool on_board_then = false, attached_then = true;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        on_board_then = st.getObject(gear).location.has_value();
+        attached_then = st.getObject(gear).attached_to.has_value();
+    };
+    trigger(rell, TriggerType::WhenIAttack, answers({gear}));
+    EXPECT_TRUE(on_board_then);
+    EXPECT_FALSE(attached_then);
+    EXPECT_EQ(obj(gear).attached_to, std::optional<GameObjectId>{rell});
+}
+
+// Ivern, Nurturer 613: "Then if you revealed a Bird, Cat, Dog, or Poro, do
+// this: [Buff] a friendly unit."
+TEST_F(ReflexiveCardsTest, Ivern) {
+    auto ivern = addUnit(P1, 613, 4, 0);
+    auto poro = addToDeck(P1, kLoyalPoro);
+    bool drawn_then = false; int buff_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        const auto& h = st.player(P1).hand;
+        drawn_then = std::find(h.begin(), h.end(), poro) != h.end();
+        buff_then = st.getObject(ivern).buff_count;
+    };
+    trigger(ivern, TriggerType::WhenIHold, answers({poro, ivern}));
+    EXPECT_TRUE(drawn_then);
+    EXPECT_EQ(buff_then, 0);
+    EXPECT_EQ(obj(ivern).buff_count, 1);
+}
+
+// Keeper of Masks 643: "... Then do this: They become copies of me."
+TEST_F(ReflexiveCardsTest, KeeperOfMasks) {
+    constexpr CardDefId kKeeper = 643;
+    auto keeper = addUnit(P1, kKeeper, 2, 0);
+    int blank_then = 0;
+    p2.look = [&](const GameState& st, const ChainItem& ci) {
+        for (auto v : ci.reflexive_data)
+            if (st.getObject(static_cast<GameObjectId>(v)).card_def_id != kKeeper) ++blank_then;
+    };
+    trigger(keeper, TriggerType::WhenYouPlayMe, answers({}));
+    EXPECT_EQ(blank_then, 2) << "two Reflections, not yet copies";
+    const auto tokens = tokenUnits(P1);
+    ASSERT_EQ(tokens.size(), 2u);
+    for (auto t : tokens) EXPECT_EQ(obj(t).card_def_id, kKeeper);
+}
+
+// Kharox 901: "They [Burn 3]. Then you may do this: Choose a unit in their
+// trash and play it, ignoring its cost."
+TEST_F(ReflexiveCardsTest, Kharox) {
+    auto kharox = addUnit(P1, 901, 5, 0);
+    for (int i = 0; i < 2; ++i) addToDeck(P2, kDredgeUp);
+    auto unit = addToDeck(P2, kLoyalPoro);                 // top: burned
+    int deck_then = -1; bool in_trash_then = false;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        deck_then = static_cast<int>(st.player(P2).main_deck.size());
+        const auto& tr = st.player(P2).trash;
+        in_trash_then = std::find(tr.begin(), tr.end(), unit) != tr.end();
+    };
+    trigger(kharox, TriggerType::WhenIBecomeEmpowered, answers({unit}, {0}));
+    EXPECT_EQ(deck_then, 0) << "burned 3";
+    EXPECT_TRUE(in_trash_then) << "chosen, not yet played";
+    EXPECT_TRUE(obj(unit).location.has_value());
+    EXPECT_EQ(obj(unit).controller, P1);
+}
+
+// Every card whose text has one of the reflexive-trigger phrases (CR 388.1)
+// either implements a reflexive trigger or says why its phrase is not one.
+TEST_F(SweepTriggersTest, Reflexive_EveryCardWithThePhraseDeclaresItself) {
+    auto lower = [](std::string t) {
+        std::transform(t.begin(), t.end(), t.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return t;
+    };
+    int with_phrase = 0;
+    for (CardDefId id = 1; id <= 1100; ++id) {
+        const Card* c = card_registry.get(id);
+        if (!c) continue;
+        const auto& def = card_db.get(id);
+        const std::string text = lower(def.ability_text + " " + def.effect_text);
+        // CR 388.1: "Do this:", "Do the following", "Do one / X of the
+        // following". ("for each of the following tags" — Friendship 608,
+        // Ivern 739, Daisy! 754 — is a list, not one of the phrases.)
+        static const std::regex of_the_following(R"(\bdo (one|two|three|\d+|x) of the following)");
+        const bool phrase = text.find("do this") != std::string::npos ||
+                            text.find("do the following") != std::string::npos ||
+                            std::regex_search(text, of_the_following);
+        if (phrase) {
+            ++with_phrase;
+            EXPECT_TRUE(c->hasReflexiveTrigger() || c->notReflexiveBecause() != nullptr)
+                << def.name << " (" << id << ") prints a reflexive-trigger phrase and neither "
+                   "implements onReflexiveTrigger nor says why it is not one";
+        } else {
+            EXPECT_FALSE(c->hasReflexiveTrigger())
+                << def.name << " (" << id << ") claims a reflexive trigger its text does not have";
+        }
+    }
+    EXPECT_GE(with_phrase, 17);
 }
 
 }  // namespace

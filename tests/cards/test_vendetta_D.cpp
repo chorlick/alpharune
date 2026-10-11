@@ -717,14 +717,19 @@ TEST_F(VendettaD, Vendetta_WildClaw_PlaysUnitFromTopFiveAndEmpowersIt) {
 
     std::vector<GameObjectId> offered;
     int prompts = 0;
-    driveResumable(kWildClaw, P1, spell, [&](const std::vector<Intent>& legal) {
-        if (prompts++ == 0) {
-            for (const auto& i : legal)
-                if (!i.chosen_objects.empty()) offered.push_back(i.chosen_objects[0]);
-            return pickObject(legal, poro);
-        }
-        return pickValue(legal, 1);   // "Empower it" — yes
-    }, exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    {
+        EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) {
+            if (prompts++ == 0) {
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty()) offered.push_back(i.chosen_objects[0]);
+                return pickObject(legal, poro);
+            }
+            return pickValue(legal, 1);   // "Empower it" — yes
+        });
+        playThroughEngine(spell, &engine_agent);
+    }
 
     EXPECT_EQ(offered, std::vector<GameObjectId>{poro}) << "spells aren't unit or gear";
     EXPECT_EQ(prompts, 2) << "no battlefield controlled, so no location prompt";
@@ -741,21 +746,30 @@ TEST_F(VendettaD, Vendetta_WildClaw_MayDeclineAndMayPlayToControlledBattlefield)
     auto poro = addToDeck(P1, kPunchingPoro);
     auto spell = addToHand(P1, kWildClaw);
 
-    driveResumable(kWildClaw, P1, spell, [&](const std::vector<Intent>& legal) {
-        return pickValue(legal, 0);   // play nothing
-    }, exec);
+    // Through the engine: the text after "do this" is a reflexive trigger (CR
+    // 387-389), a chain item of its own that only the engine queues and resolves.
+    {
+        EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) {
+            return pickValue(legal, 0);   // play nothing
+        });
+        playThroughEngine(spell, &engine_agent);
+    }
     EXPECT_TRUE(inDeck(P1, poro));
     EXPECT_FALSE(state.getObject(poro).location.has_value());
 
     state.battlefields[1].controller = P1;
     int prompts = 0;
-    driveResumable(kWildClaw, P1, spell, [&](const std::vector<Intent>& legal) {
-        switch (prompts++) {
-            case 0: return pickObject(legal, poro);
-            case 1: return pickValue(legal, 2);   // battlefield index 1
-            default: return pickValue(legal, 0);  // don't Empower
-        }
-    }, exec);
+    auto second_spell = addToHand(P1, kWildClaw);     // the first one was played above
+    {
+        EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) {
+            switch (prompts++) {
+                case 0: return pickObject(legal, poro);
+                case 1: return pickValue(legal, 2);   // battlefield index 1
+                default: return pickValue(legal, 0);  // don't Empower (the reflexive trigger's "may")
+            }
+        });
+        playThroughEngine(second_spell, &engine_agent);
+    }
     EXPECT_EQ(prompts, 3);
     ASSERT_TRUE(state.getObject(poro).battlefieldId().has_value());
     EXPECT_EQ(*state.getObject(poro).battlefieldId(), 1u);

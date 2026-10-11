@@ -43,16 +43,6 @@ public:
         if (drafted != kInvalidId)
             for (const auto& t : ctx.state.getObject(drafted).tags)
                 if (t == "Bird" || t == "Cat" || t == "Dog" || t == "Poro") themed = true;
-        // "[Buff] a friendly unit." — the controller's pick.
-        GameObjectId to_buff = kInvalidId;
-        if (themed) {
-            std::vector<GameObjectId> friendly;
-            for (auto& [oid, u] : ctx.state.objects)
-                if (u.isUnit() && u.controller == ctx.controller && u.location.has_value())
-                    friendly.push_back(oid);
-            to_buff = pickTarget(ctx, "Ivern, Nurturer: buff a friendly unit", friendly);
-            if (to_buff == kInvalidId && !friendly.empty()) return;   // waiting for the agent
-        }
 
         for (size_t i = 0; i < top3.size(); ++i)
             deck::takeTop(ctx.state, ctx.controller, deck::Place::Held,
@@ -78,11 +68,27 @@ public:
             ctx.events.logTrace("IVERN NURTURER: revealed and drew " + obj.name);
         }
         if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
-        if (to_buff != kInvalidId) {
-            ctx.executor.buffUnit(to_buff);
-            ctx.events.logTrace("IVERN NURTURER: themed reveal -> buff " +
-                                ctx.state.getObject(to_buff).name);
-        }
+        // "Then if you revealed a Bird, Cat, Dog, or Poro, do this: [Buff] a
+        // friendly unit." — a reflexive trigger (CR 388): it goes on the chain
+        // as an item of its own, and the unit is chosen as that item is
+        // finalized.
+        if (themed) ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& /*data*/) override {
+        std::vector<GameObjectId> friendly;
+        for (auto& [oid, u] : ctx.state.objects)
+            if (u.isUnit() && u.controller == ctx.controller && u.location.has_value())
+                friendly.push_back(oid);
+        std::sort(friendly.begin(), friendly.end());
+        const GameObjectId to_buff =
+            pickTarget(ctx, "Ivern, Nurturer: buff a friendly unit", friendly);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 388.4)
+        if (to_buff == kInvalidId || !ctx.state.objectExists(to_buff)) return;
+        ctx.executor.buffUnit(to_buff);
+        ctx.events.logTrace("IVERN NURTURER: themed reveal -> buff " +
+                            ctx.state.getObject(to_buff).name);
     }
 private:
     const CardDef def_ = [] {

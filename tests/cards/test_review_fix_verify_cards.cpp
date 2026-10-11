@@ -1853,7 +1853,12 @@ TEST_F(VerifyCardsTest, BlastCone_DoesNotOfferAnEnemyUnitItCannotMove) {
     o(guarded).cant_be_moved_by_enemy = true;            // what the Cutlass's aura sets
     auto free_unit = addUnit(P2, kShipyardSkulker, 0, 0);
     // Yes, the unit, to its base (mode 0); the stun "may" that follows is declined.
-    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(free_unit), 0, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                              // "may move an enemy unit": yes
+        static_cast<int>(free_unit),    // which enemy unit
+        0,                              // where: mode 0 = its base (mode 2 = battlefield #1)
+        0,                              // the move triggers "you may exhaust this to [Stun] it": no
+    }));
     fireTriggerThroughEngine(cone, TriggerType::WhenYouPlayThis, &agent);
     ASSERT_GE(agent.prompts.size(), 2u);
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
@@ -2271,7 +2276,13 @@ TEST_F(VerifyCardsTest, VoidBurrower_IsExhaustedBeforeTheOpponentCanRespondAndRe
         ++shown;
         if (e.revealed_to_all) ++to_all;
     });
-    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));   // yes; then banish none
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                         // "may exhaust me to reveal 2": yes
+        // "You may banish one": banish none. That is the prompt's first option,
+        // on purpose: it carries no value and no object, so kFirst is the only
+        // way a script can name it (the two revealed cards follow it).
+        EnginePathAgent::kFirst,
+    }));
     fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         EXPECT_EQ(agent.prompts.size(), 1u) << "the may was decided at finalization";
         EXPECT_TRUE(live.getObject(legend).is_exhausted) << "\"exhaust me\" is the cost (CR 383.3.b)";
@@ -2353,10 +2364,18 @@ TEST_F(VerifyCardsTest, Deceiver_ThroughTheEngine_DecliningPaysNothingAndPlaysNo
 TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheRevealIsDecidedBeforeTheOpponentCanRespond) {
     auto reksai = addUnit(P1, kRekSaiSwarmQueen, 0, 0);
     addToDeck(P1, kMeditation);
-    addToDeck(P1, kMeditation);
+    auto top = addToDeck(P1, kMeditation);
     int shown = 0;
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent&) { ++shown; });
-    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                       // "may reveal the top 2 cards": yes
+        // "You may banish one" (the two cards, then a decline option): the top
+        // card. The decline carries no value and no object and is not first,
+        // so a script cannot name it; this test is about the reveal, not the
+        // pick. Meditation is a [2] spell P1 has nothing to pay for, so it
+        // stays banished and nothing more is asked.
+        static_cast<int>(top),
+    }));
     fireAndProbe(reksai, TriggerType::WhenIAttack, &agent, [&](GameState&) {
         EXPECT_EQ(agent.prompts.size(), 1u)
             << "CR 383.3.a: a \"you may\" that opens the effect is decided at finalization";
@@ -2527,7 +2546,11 @@ TEST_F(VerifyCardsTest, Arise_DoesNotOfferABattlefieldUnitsCannotBePlayedTo) {
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,   // where the one Sand Soldier goes: option 1 = battlefield #1 (0 = base)
+        0,   // "Ready up to two of them" (the new token, then "ready no more" = 0):
+             // ready no more — readying is not what this test is about
+    }));
     playThroughEngine(spell, &agent);
     ASSERT_FALSE(agent.prompts.empty());
     EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
@@ -2569,7 +2592,11 @@ TEST_F(VerifyCardsTest, Guards_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnlyTheB
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
     addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kRest}));
+    // One prompt only: the [3] is paid from the pool, so there is no [Y] left
+    // and the "pay [Y] to ready it" may is not offered.
+    EnginePathAgent agent(EnginePathAgent::script({
+        0,   // where the Sand Soldier goes: mode 0 = base, the only place on offer
+    }));
     playThroughEngine(spell, &agent);
     ASSERT_EQ(agent.prompts.size(), 1u);
     EXPECT_EQ(agent.prompts[0].size(), 1u) << "the base, nothing else";
@@ -2993,9 +3020,16 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     auto unit = addUnit(P1, kShipyardSkulker, 0);
     state.battlefields[0].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
-    addUnit(P2, kMageseekerWarden, 0, 1);
+    auto warden = addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kFirst, EnginePathAgent::kFirst, 1, EnginePathAgent::kRest}));
+    // Two prompts, both asked as the spell resolves (the friendly unit is the
+    // play-time target handed to playAt).
+    EnginePathAgent agent(EnginePathAgent::script({
+        static_cast<int>(warden),   // "Deal 3 to an enemy unit at a battlefield": the Warden,
+                                    // the only enemy unit
+        0,                          // where the banished unit is played: option 0 = base,
+                                    // the only place on offer (asserted below)
+    }));
     playAt(spell, {unit}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
@@ -4704,8 +4738,14 @@ TEST_F(VerifyCardsTest, VoidBurrower_VoidHatchlingLooksBeforeTheReveal) {
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
         if (e.revealed_to_all) shown.push_back(e.card);
     });
-    // Yes to "exhaust me"; recycle the top card at the look; then banish none.
-    EnginePathAgent agent(EnginePathAgent::script({1, 1, EnginePathAgent::kRest}));
+    EnginePathAgent agent(EnginePathAgent::script({
+        1,                         // "may exhaust me to reveal 2": yes
+        1,                         // Void Hatchling's look at the top card: 1 = recycle it (0 = keep)
+        // "You may banish one": banish none. That is the prompt's first option,
+        // on purpose: it carries no value and no object, so kFirst is the only
+        // way a script can name it (the two revealed cards follow it).
+        EnginePathAgent::kFirst,
+    }));
     fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, &agent);
     conn.disconnect();
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the look, the banish";
@@ -5571,11 +5611,12 @@ TEST_F(VerifyCardsTest, Pin_PiercingLight_NeedsTheFirstUnit_TheOtherIsOptional) 
 TEST_F(VerifyCardsTest, Pin_Arise_ReadyingNoneOfTheSandSoldiers) {
     auto spell = addToHand(P1, kArise);
     for (int i = 0; i < 2; ++i) ASSERT_TRUE(isEquipment(o(addGear(P1, kSerratedDirk))));
-    // "ready no more" on the first ready prompt; the first location otherwise.
+    // "None" on the first ready prompt (the reflexive trigger's "up to
+    // two", asked as it is finalized); the first location otherwise.
     int stops = 0;
     EnginePathAgent agent([&](const std::vector<Intent>& legal) {
         for (const auto& i : legal)
-            if (i.choice_label == "Arise!: ready no more") { ++stops; return i; }
+            if (i.choice_label.rfind("None — Arise!", 0) == 0) { ++stops; return i; }
         return legal.front();
     });
     playThroughEngine(spell, &agent);
@@ -6721,7 +6762,7 @@ TEST_F(VerifyCardsTest, Pin_CuratorOfTheSands_DeclinedAtFinalization_NothingIsPa
 // belongs to the reflexive trigger the discard creates (CR 388.1.b, 389.1),
 // not to the move ability: when the move ability is finalized there is nothing
 // to name yet (which card is discarded is only known while it resolves).
-TEST_F(VerifyCardsTest, Pin_Hwei_TheRunesAreNamedAfterTheDiscardNotAtFinalization) {
+TEST_F(VerifyCardsTest, Pin_Hwei_TheRunesAreNamedAtTheReflexiveTriggersFinalizationNotTheMoveAbilitys) {
     auto hwei = addUnit(P1, kHwei, 0, 0);
     addToDeck(P1, kMeditation);                        // the card drawn
     auto gear = addToHand(P1, kSealOfStrength163);
@@ -6839,6 +6880,268 @@ TEST_F(VerifyCardsTest, Pin_Sona_FriendlyRunesOnly_AnOpponentsRuneIsNotOffered) 
     EXPECT_TRUE(agent.prompts.empty());
     EXPECT_TRUE(o(theirs).is_exhausted);
     EXPECT_FALSE(o(mine_ready).is_exhausted);
+}
+
+// ═══ Tranche 10: 9.BB1 selectSeveral re-entry, 9.BB2 Aphelios 372 / Acceleration Gate 937 ═══
+// ═══ Tranche 10: 9.BB1 selectSeveral is finalize-safe, 9.BB2 Aphelios 372 / Acceleration Gate 937 ═══
+
+// ─── 9.BB1: selectSeveral, entered again with a list that has changed ───────
+// A pick already stored is returned only while it is still in the caller's
+// current list; one that is not is dropped, nothing takes its place and
+// nothing is asked again. The five "ready up to N runes" cards now go through
+// selectSeveral at resolution too (their own read-back loops are gone), so
+// these run the helper's re-entry path; the *_ARuneReadiedOrGoneInResponseIsSkipped
+// tests above cover "first readied, second gone".
+
+// The FIRST of the two named runes is gone: the second is still readied.
+TEST_F(VerifyCardsTest, DarkChild315_TheFirstOfTwoNamedRunesGone_TheSecondIsStillReadied) {
+    auto annie = addLegend(P1, kDarkChild);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Chaos, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2)}));
+    fireAndProbe(annie, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 2u) << "both runes are named at finalization";
+        removeFromBoard(live, r1);                 // in response: the first pick leaves
+    });
+    ASSERT_EQ(agent.prompts.size(), 2u) << "no new choice as it resolves";
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{r1, r2, r3}));
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{r2, r3}));
+    EXPECT_TRUE(o(r1).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_FALSE(o(r2).is_exhausted) << "the other named rune is still readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// The list ran out at finalization (one exhausted rune, "up to 2"): a rune
+// that becomes exhausted in response is not asked for as the ability resolves.
+TEST_F(VerifyCardsTest, DarkChild315_ARuneExhaustedInResponseIsNotNamedAsItResolves) {
+    auto annie = addLegend(P1, kDarkChild);
+    auto r1 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Chaos);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1)}));
+    fireAndProbe(annie, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 1u);
+        live.getObject(r2).is_exhausted = true;    // in response: a new candidate
+    });
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the choice ended at finalization";
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{r1}));
+    EXPECT_FALSE(o(r1).is_exhausted);
+    EXPECT_TRUE(o(r2).is_exhausted) << "it was not a rune named at finalization";
+}
+
+// "Up to 4", stopped after two with "None": at resolution the stop is kept
+// (no prompt for the runes left over), the first pick is gone and dropped,
+// the second is readied.
+TEST_F(VerifyCardsTest, Sona_StoppedEarly_TheFirstNamedRuneGone_TheSecondIsStillReadied) {
+    auto sona = addUnit(P1, kSonaHarmonious, 0, 0);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r4 = addRune(P1, Domain::Calm);
+    // r1; r2; "None".
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(r1), static_cast<int>(r2), 0}));
+    fireAndProbe(sona, TriggerType::AtEndOfTurn, &agent, [&](GameState& live) {
+        EXPECT_EQ(agent.prompts.size(), 3u);
+        removeFromBoard(live, r1);
+        live.getObject(r4).is_exhausted = true;
+    });
+    ASSERT_EQ(agent.prompts.size(), 3u) << "no new choice as it resolves";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "the third prompt was answered \"None\"";
+    EXPECT_TRUE(o(r1).is_exhausted);
+    EXPECT_FALSE(o(r2).is_exhausted);
+    EXPECT_TRUE(o(r3).is_exhausted);
+    EXPECT_TRUE(o(r4).is_exhausted);
+}
+
+// A caller that asks only as it resolves: Fae Dragon 423 ("buff up to four
+// friendly units"). The unit picked first leaves the board while the second
+// prompt is open. The old helper then looked the first pick up in the rebuilt
+// list and erased end() — undefined behaviour (this test crashes or corrupts
+// the list there; it cannot be relied on to fail cleanly).
+TEST_F(VerifyCardsTest, FaeDragon_AUnitPickedEarlierLeavesBetweenTwoPrompts_TheOtherPickIsBuffed) {
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    auto u3 = addUnit(P1, kInvalidId, 2);
+    auto dragon = addUnit(P1, kFaeDragon, 3);
+    GameEngine* live = nullptr;
+    int n = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        auto object = [&](GameObjectId id) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+            ADD_FAILURE() << "prompt " << n << ": object " << id << " was not offered";
+            return legal.front();
+        };
+        switch (n++) {
+        case 0: return object(u1);
+        case 1:
+            if (live) removeFromBoard(live->mutableState(), u1);   // u1 is gone before the answer
+            return object(u2);
+        default: return legal.back();                              // "None"
+        }
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_executor().queueTriggeredAbility(dragon, P1, TriggerType::WhenYouPlayMe);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u) << "u1, u2, then one more prompt answered \"None\"";
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{u1, u2, u3, dragon}));
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{u2, u3, dragon}));
+    EXPECT_EQ(promptObjects(agent, 2), (std::vector<GameObjectId>{u3, dragon}))
+        << "what the current list still holds, without the stored picks";
+    EXPECT_FALSE(onBoard(u1));
+    EXPECT_EQ(o(u1).buff_count, 0) << "a pick that is no longer in the list is dropped";
+    EXPECT_EQ(o(u2).buff_count, 1) << "the other pick still takes effect";
+    EXPECT_EQ(o(u3).buff_count, 0);
+    EXPECT_EQ(o(dragon).buff_count, 0);
+}
+
+// The same for Albus Ferros 230 ("spend any number of buffs"), whose list has
+// one entry per buff: the unit picked first loses its buff while the second
+// prompt is open. Old helper: erase(end()), undefined behaviour.
+TEST_F(VerifyCardsTest, AlbusFerros_ABuffPickedEarlierIsGoneBetweenTwoPrompts_TheOtherIsSpent) {
+    auto u1 = addUnit(P1, kInvalidId, 2);
+    auto u2 = addUnit(P1, kInvalidId, 2);
+    o(u1).buff_count = 1;
+    o(u2).buff_count = 1;
+    addRuneToRuneDeck(P1, Domain::Order);
+    addRuneToRuneDeck(P1, Domain::Order);
+    auto albus = addUnit(P1, kAlbusFerros, 3);
+    GameEngine* live = nullptr;
+    int n = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        auto object = [&](GameObjectId id) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+            ADD_FAILURE() << "prompt " << n << ": object " << id << " was not offered";
+            return legal.front();
+        };
+        switch (n++) {
+        case 0: return object(u1);
+        case 1:
+            if (live) live->mutableState().getObject(u1).buff_count = 0;   // its buff is gone
+            return object(u2);
+        default:
+            ADD_FAILURE() << "a third prompt: nothing was left to pick";
+            return legal.back();
+        }
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_executor().queueTriggeredAbility(albus, P1, TriggerType::WhenYouPlayMe);
+        e.testHook_runChain();
+        live = nullptr;
+    }, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(promptObjects(agent, 0), (std::vector<GameObjectId>{u1, u2}));
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{u2}));
+    EXPECT_EQ(o(u2).buff_count, 0) << "the buff that is still there is spent";
+    EXPECT_EQ(ps(P1).rune_deck.size(), 1u) << "one buff spent: one rune channeled, not two";
+}
+
+// ─── 9.BB2: Aphelios, Exalted 372 — "Ready 2 runes" ─────────────────────────
+// Fails on the old code: the runes were asked for as the ability resolved (one
+// prompt at the opponent's first priority) and only the controller's runes in
+// its base were offered.
+TEST_F(VerifyCardsTest, ApheliosExalted_NamesHisRunesBeforeTheOpponentCanRespond_AnOpponentsToo) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 4);
+    auto mine1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto mine2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Calm, /*exhausted=*/true);
+    auto their_ready = addRune(P2, Domain::Calm);
+    // Mode 0 ("Ready 2 runes"); their rune; my second rune.
+    EnginePathAgent agent(EnginePathAgent::script(
+        {0, static_cast<int>(theirs), static_cast<int>(mine2)}));
+    size_t asked_at_response = 99;
+    bool readied_at_response = true;
+    fireAndProbe(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        readied_at_response = !live.getObject(theirs).is_exhausted ||
+                              !live.getObject(mine2).is_exhausted;
+    });
+    EXPECT_EQ(asked_at_response, 3u) << "the mode and both runes are chosen at finalization";
+    EXPECT_FALSE(readied_at_response) << "they are readied only as it resolves";
+    ASSERT_EQ(agent.prompts.size(), 3u) << "nothing is asked again at resolution";
+    EXPECT_EQ(promptObjects(agent, 1), (std::vector<GameObjectId>{mine1, mine2, theirs}))
+        << "every exhausted rune on the board, whoever controls it";
+    EXPECT_EQ(promptObjects(agent, 2), (std::vector<GameObjectId>{mine1, mine2}));
+    EXPECT_EQ(agent.prompts[1].size(), 3u) << "\"Ready 2 runes\" is not \"up to\": no \"None\"";
+    EXPECT_EQ(agent.prompts[2].size(), 2u);
+    EXPECT_FALSE(agent.wasOffered(their_ready));
+    EXPECT_FALSE(o(theirs).is_exhausted);
+    EXPECT_FALSE(o(mine2).is_exhausted);
+    EXPECT_TRUE(o(mine1).is_exhausted);
+}
+
+// Fails on the old code: asked at resolution, with r1 gone the two runes left
+// were readied — r3 in the place of the one that left.
+TEST_F(VerifyCardsTest, ApheliosExalted_ARuneGoneInResponseIsSkipped) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 4);
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(r1), static_cast<int>(r2)}));
+    fireAndProbe(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
+        removeFromBoard(live, r1);                 // in response: the first named rune leaves
+    });
+    EXPECT_EQ(agent.prompts.size(), 3u) << "no new choice as it resolves";
+    EXPECT_TRUE(o(r1).is_exhausted) << "a rune that left the board is not readied";
+    EXPECT_FALSE(o(r2).is_exhausted) << "the other named rune is still readied";
+    EXPECT_TRUE(o(r3).is_exhausted) << "no other rune takes the place of a named one";
+}
+
+// Exactly two exhausted runes: both are readied and there is nothing to ask.
+// Fails on the old code: the opponent's rune was not one of "runes".
+TEST_F(VerifyCardsTest, ApheliosExalted_TwoExhaustedRunes_BothAreReadiedWithoutAsking) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 4);
+    auto mine = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto theirs = addRune(P2, Domain::Calm, /*exhausted=*/true);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the mode only";
+    EXPECT_FALSE(o(mine).is_exhausted);
+    EXPECT_FALSE(o(theirs).is_exhausted);
+}
+
+// Fewer than two exhausted runes: the one there is is readied (CR 055).
+TEST_F(VerifyCardsTest, Pin_ApheliosExalted_OneExhaustedRune_ItIsReadiedWithoutAsking) {
+    auto aphelios = addUnit(P1, kApheliosExalted, 4);
+    auto only = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto ready = addRune(P1, Domain::Calm);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    fireTriggerThroughEngine(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the mode only";
+    EXPECT_FALSE(o(only).is_exhausted);
+    EXPECT_FALSE(o(ready).is_exhausted);
+}
+
+// ─── 9.BB2: Acceleration Gate 937 — not a defect ────────────────────────────
+// "Ready up to 4 units, gear, and/or runes.": no "friendly" / "your", so the
+// opponent's exhausted rune, unit and gear are offered beside the player's.
+TEST_F(VerifyCardsTest, Pin_AccelerationGate_OffersAnOpponentsExhaustedRuneUnitAndGear) {
+    EXPECT_EQ(card_db.get(kAccelerationGate).ability_text,
+              "Ready up to 4 units, gear, and/or runes.");
+    auto my_rune = addRune(P1, Domain::Mind, /*exhausted=*/true);
+    auto their_rune = addRune(P2, Domain::Mind, /*exhausted=*/true);
+    auto their_ready_rune = addRune(P2, Domain::Mind);
+    auto their_unit = addUnit(P2, kInvalidId, 2);
+    auto their_gear = addGear(P2, kInvalidId);
+    o(their_unit).is_exhausted = true;
+    o(their_gear).is_exhausted = true;
+    auto gate = addToHand(P1, kAccelerationGate);
+    // Their rune, then "Done".
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(their_rune), 0}));
+    playThroughEngine(gate, &agent);
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(promptObjects(agent, 0),
+              (std::vector<GameObjectId>{my_rune, their_rune, their_unit, their_gear}));
+    EXPECT_FALSE(agent.wasOffered(their_ready_rune));
+    EXPECT_FALSE(o(their_rune).is_exhausted);
+    EXPECT_TRUE(o(my_rune).is_exhausted);
+    EXPECT_TRUE(o(their_unit).is_exhausted);
+    EXPECT_TRUE(o(their_gear).is_exhausted);
 }
 
 }  // namespace

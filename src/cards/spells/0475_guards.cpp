@@ -59,15 +59,43 @@ public:
             }
             ctx.events.logTrace("GUARDS!: play 2[M] Sand Soldier token");
         }
-        auto can_pay = [&]() {
+        // "Then do this: You may pay [C] to ready it." — a reflexive trigger
+        // (CR 388): with the token played it goes on the chain as an item of
+        // its own; the "may" and the [C] are settled as that item is
+        // finalized (CR 388.4).
+        if (ri.has_value() && ri->resume_data.size() > kTokenSlot + 1 &&
+            ri->resume_data[kTokenSlot + 1] != 0)
+            return;                                   // already queued
+        if (ri.has_value()) {
+            while (ri->resume_data.size() <= kTokenSlot + 1) ri->resume_data.push_back(0);
+            ri->resume_data[kTokenSlot + 1] = 1;
+        }
+        ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0,
+                                           {static_cast<int32_t>(tok)});
+    }
+    bool hasReflexiveTrigger() const override { return true; }
+    // `data[0]`: the Sand Soldier token. [C] = one Power of this card's
+    // Domain (Order).
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (data.empty()) return;
+        const auto tok = static_cast<GameObjectId>(data[0]);
+        auto can_ready = [&]() {
             if (!ctx.state.objectExists(tok)) return false;
             const auto& t = ctx.state.getObject(tok);
-            return t.location.has_value() && t.is_exhausted &&
-                   payableOnePower(ctx.state, ctx.controller, Domain::Order);
+            return t.location.has_value() && t.is_exhausted;
+        };
+        auto can_pay = [&]() {
+            return costAlreadyPaid(ctx) ||
+                   (can_ready() && payableOnePower(ctx.state, ctx.controller, Domain::Order));
         };
         int conf = confirmOptional(ctx, "Guards!: pay [Y] to ready the Sand Soldier?", can_pay);
-        if (conf <= 0) return;   // waiting on the agent, declined, or not possible
-        if (!payOnePower(ctx, ctx.controller, Domain::Order)) return;
+        if (conf == 1 && costDueNow(ctx) && !payOnePower(ctx, ctx.controller, Domain::Order))
+            return;
+        if (finalizingChoices(ctx)) return;   // the "may" and the cost end here (CR 388.4)
+        if (conf < 1) return;                 // declined, or could not pay
+        if (!ctx.state.objectExists(tok) || !ctx.state.getObject(tok).location.has_value())
+            return;                           // the token left in response
         ctx.executor.readyObject(tok);
         ctx.events.logTrace("GUARDS!: paid [Y] -> readied Sand Soldier");
     }

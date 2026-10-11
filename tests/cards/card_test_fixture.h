@@ -80,6 +80,7 @@
 #include "engine/effect_executor.h"
 #include "engine/game_engine.h"
 
+#include <limits>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -312,20 +313,58 @@ public:
             return legal.front();
         };
     }
+    /// script() entries that are not a value or an object id:
+    ///   kFirst  this prompt: its first option, said out loud
+    ///   kRest   this prompt and every later one: the first option (the test
+    ///           does not care what else is asked)
+    static constexpr int kFirst = std::numeric_limits<int>::min();
+    static constexpr int kRest = std::numeric_limits<int>::min() + 1;
+
     /// Answer the n-th MakeChoice prompt with the option whose chosen_value is
     /// values[n] (a yes/no: 1/0; a mode or an X: its number), or — for a
-    /// prompt of objects — whose object id is values[n]. First option once the
-    /// script runs out or nothing matches.
+    /// prompt of objects — whose object id is values[n].
+    /// Nothing is answered by accident: an entry that matches no option of
+    /// its prompt FAILS the test, and so does a prompt that arrives after the
+    /// script has run out. A test that means "the first option" writes kFirst
+    /// for that prompt, or ends the script with kRest.
+    /// (It used to take the first option in both cases, so a script written
+    /// for one sequence of prompts silently answered a different one.)
     static Picker script(std::vector<int> values) {
         auto n = std::make_shared<size_t>(0);
-        return [values = std::move(values), n](const std::vector<Intent>& legal) {
-            if (*n >= values.size()) return legal.front();
+        auto rest = std::make_shared<bool>(false);
+        return [values = std::move(values), n, rest](const std::vector<Intent>& legal) {
+            if (*rest) return legal.front();
+            auto describe = [&legal]() {
+                std::string options;
+                for (const auto& i : legal) {
+                    options += " [" + i.choice_label;
+                    if (i.chosen_value.has_value())
+                        options += " value=" + std::to_string(*i.chosen_value);
+                    if (!i.chosen_objects.empty())
+                        options += " object=" + std::to_string(i.chosen_objects.front());
+                    options += "]";
+                }
+                return options;
+            };
+            if (*n >= values.size()) {
+                ADD_FAILURE() << "EnginePathAgent::script: prompt #" << (*n + 1)
+                              << " arrived after the script ran out (" << values.size()
+                              << " entries; end it with kRest if the rest does not matter)."
+                              << " Options:" << describe();
+                ++*n;
+                return legal.front();
+            }
             const int want = values[(*n)++];
+            if (want == kRest) { *rest = true; return legal.front(); }
+            if (want == kFirst) return legal.front();
             for (const auto& i : legal)
                 if (i.chosen_value.has_value() && *i.chosen_value == want) return i;
             for (const auto& i : legal)
                 if (!i.chosen_objects.empty() &&
                     i.chosen_objects.front() == static_cast<GameObjectId>(want)) return i;
+            ADD_FAILURE() << "EnginePathAgent::script: entry #" << *n << " (" << want
+                          << ") matches no option of its prompt (kFirst takes the first"
+                          << " option on purpose). Options:" << describe();
             return legal.front();
         };
     }

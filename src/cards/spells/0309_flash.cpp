@@ -16,6 +16,14 @@ class Flash : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // A friendly unit that is not already in its base.
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+            [&](const GameObject& u) {
+                return !u.isAtBase();
+            });
+    }
     // "Move up to 2 friendly units to base." The units are chosen one prompt
     // at a time as the spell is played; at each, the first included, the
     // controller may stop ("up to"). Progress lives on the item: resume_point kAwait while a

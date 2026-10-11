@@ -1268,7 +1268,6 @@ TEST_F(VendettaE, Vendetta_ShadySpectacles_BearerBecomesACopy) {
 
 TEST_F(VendettaE, Vendetta_ShadySpectacles_NoOtherUnitJustAttaches) {
     EffectExecutor exec(state, events, card_db, &card_registry);
-    Card* card = card_registry.get(kShadySpectacles);
     auto bearer = addUnit(P1, kInvalidId, 5, 0);
     addUnit(P2, kPunchingPoro, 0, 0);               // enemy: not "another friendly unit"
     auto gear = addGear(P1, kShadySpectacles);

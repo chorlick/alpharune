@@ -16,6 +16,11 @@ class LastBreath : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     // "Ready a friendly unit. It deals damage equal to its Might to an enemy
     //  unit at a battlefield." — two targets: the friendly unit, then the
     //  enemy unit (left out when no enemy unit is at a battlefield).

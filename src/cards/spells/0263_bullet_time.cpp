@@ -22,6 +22,12 @@ public:
     // dealt before both are known: the callback is re-entered from the top
     // with each answer.
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It chooses no unit of its controller's (the play gate, CR 355 -> 356).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        (void)state; (void)controller; (void)object;
+        return FinalizeChoice::No;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const auto& bfs = ctx.state.battlefields;
         const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));

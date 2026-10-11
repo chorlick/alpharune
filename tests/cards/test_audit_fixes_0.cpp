@@ -332,7 +332,6 @@ TEST_F(AuditFix0Test, ZeroDrive_EquipFailsWhenCantAfford) {
     auto gear = addGear(P1, kZeroDrive, /*at_bf=*/0);
     // No Mind runes at all — both the energy and the domain-rune check fail.
 
-    Card* c = card_registry.get(kZeroDrive);
     EffectExecutor exec(state, events, card_db);
     bool ok = equipThroughEngine(gear, unit);
 

@@ -16,6 +16,11 @@ class DefiantDance : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     bool needsPlayTimeTargetPair() const override { return true; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // chooseableUnits honours "can't be chosen by enemy spells and

@@ -720,6 +720,11 @@ private:
     bool canPayTrashGrant(PlayerId player, GameObjectId card_id,
                           const PlayerState::TrashReplayGrant& grant,
                           const std::vector<GameObjectId>& targets) const;
+    /// The same, when some of the targets' Deflect is already paid.
+    bool canPayTrashGrant(PlayerId player, GameObjectId card_id,
+                          const PlayerState::TrashReplayGrant& grant,
+                          const std::vector<GameObjectId>& targets,
+                          const std::vector<GameObjectId>& unpaid_deflect) const;
     /// The standing or pushed grant for `card_id`, if `player` has one.
     const PlayerState::TrashReplayGrant* trashGrantFor(PlayerId player,
                                                        GameObjectId card_id) const;

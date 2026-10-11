@@ -16,6 +16,11 @@ class BackToBack : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     // "Give two friendly units each +2 [M] this turn." — two different units.
     bool needsPlayTimeTargetPair() const override { return true; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {

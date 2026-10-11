@@ -90,8 +90,11 @@ public:
     }
 private:
     static constexpr int kTotalMight = 4;
-    // 0-Might units fit any total; the resolve loop allows 16 re-entries.
-    static constexpr size_t kMaxPicks = 12;
+    // 0-Might units fit any total, so the number of picks has no limit of its
+    // own. ChainManager::runResumable allows 1024 re-entries per resolution
+    // (kMaxResumeIterations) and throws beyond that; no board comes near it,
+    // this only keeps the spell under the bound.
+    static constexpr size_t kMaxPicks = 1000;
     enum : int { kPicking = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {

@@ -85,8 +85,10 @@ public:
         buff_all();
     }
 private:
-    // The resolve loop allows 16 re-entries; later buffed units keep theirs.
-    static constexpr size_t kMaxAsked = 12;
+    // One question per buffed friendly unit. ChainManager::runResumable allows
+    // 1024 re-entries per resolution (kMaxResumeIterations) and throws beyond
+    // that; no board comes near it, this only keeps the spell under the bound.
+    static constexpr size_t kMaxAsked = 1000;
     enum : int { kAsking = 20, kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {

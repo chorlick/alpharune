@@ -298,6 +298,13 @@ struct PlayerState {
     };
     std::vector<TrashReplayGrant> trash_replay_grants;
 
+    // Plays that were attempted and undone because the choices made did not
+    // make the card payable (GameEngine::executePlaySpell): the card and the
+    // state it was attempted in (Card::costStateFingerprint). Such a play is
+    // not offered again until the state has changed, so it cannot be picked
+    // over and over to no effect.
+    std::vector<std::pair<GameObjectId, uint64_t>> undone_play_attempts;
+
     // Karthus, Eternal (and similar): "Your Deathknell effects trigger
     // an additional time." Counted from board via aura recalculation —
     // bumped per controlled Karthus. TriggerManager::onUnitDied adds
@@ -370,6 +377,7 @@ struct PlayerState {
     int first_gear_ability_discount = 0;  // Piltovan Forge: first friendly gear ability each turn costs [N] less
 
     void resetTurnTracking() {
+        undone_play_attempts.clear();
         cards_burned_this_turn = 0;
         cards_banished_this_turn = 0;
         chose_enemy_unit_this_turn = false;

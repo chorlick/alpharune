@@ -2279,6 +2279,39 @@ void GameEngine::executePlayCard(const Intent& intent) {
 }
 
 void GameEngine::executePlaySpell(const Intent& intent) {
+    // A spell that chooses in its finalize pass and is too dear on its own
+    // was offered on the strength of a choice (payableThroughAFinalizeChoice).
+    // If the choices then made do not earn it, the play does not happen and
+    // must leave nothing behind: the state is kept to go back to, and nothing
+    // this attempt emits — events, log lines — reaches a subscriber until it
+    // is known to go through.
+    std::optional<GameState> before_attempt;
+    struct HeldEvents {
+        EventBus& bus;
+        bool active = false;
+        void start() { bus.hold(); active = true; }
+        void deliver() { if (active) { active = false; bus.release(); } }
+        void drop() { if (active) { active = false; bus.discardHeld(); } }
+        ~HeldEvents() { deliver(); }
+    } held{events_};
+    if (intent.targets.empty() && !state_.chain.resuming.has_value() &&
+        state_.objectExists(intent.card)) {
+        const auto& c0 = state_.getObject(intent.card);
+        const Card* sc0 = c0.card_def_id != kInvalidId ? card_registry_.get(c0.card_def_id)
+                                                       : nullptr;
+        if (sc0 && !sc0->needsPlayTimeTarget() &&
+            (sc0->choicesAtFinalization() & Card::kFinalizeResolve)) {
+            const PlayerState::TrashReplayGrant* g0 =
+                intent.play_source == Intent::PlaySource::Trash
+                    ? trashGrantFor(intent.player, intent.card) : nullptr;
+            const bool too_dear = g0 ? !canPayTrashGrant(intent.player, intent.card, *g0, {})
+                                     : !canAfford(intent.player, intent.card);
+            if (too_dear && !events_.holding()) {
+                before_attempt = state_;
+                held.start();
+            }
+        }
+    }
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
@@ -2373,15 +2406,6 @@ void GameEngine::executePlaySpell(const Intent& intent) {
             const PlayerState::TrashReplayGrant* grant =
                 intent.play_source == Intent::PlaySource::Trash
                     ? trashGrantFor(intent.player, intent.card) : nullptr;
-            // If the spell is too dear on its own it was offered on the
-            // strength of a choice; should the choices made not earn it, the
-            // whole pass is undone (below). The state is kept for that case
-            // only.
-            const bool may_need_undo = grant
-                ? !canPayTrashGrant(intent.player, intent.card, *grant, {})
-                : !canAfford(intent.player, intent.card);
-            std::optional<GameState> before_choices;
-            if (may_need_undo) before_choices = state_;
             ChainItem pre;
             pre.id = state_.chain.allocateId();
             pre.status = ChainItemStatus::Pending;
@@ -2421,25 +2445,30 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                                         : canAffordChoosing(intent.player, intent.card,
                                                             cost_targets, {}));
             if (!payable) {
-                // Not played, and nothing of the attempt is left: whatever the
-                // choices paid (Deflect) or recorded is undone with the state.
-                // Only the record of the decisions made stays, so a replay of
-                // this game asks the same questions.
-                if (before_choices.has_value()) {
+                // Not played, and nothing of the attempt is left: the state
+                // goes back to what it was (the card to its zone, whatever
+                // the choices paid or recorded), and what the attempt emitted
+                // is dropped unseen. Only the record of the decisions made
+                // stays, so a replay of this game asks the same questions —
+                // and a note of the attempt, so the play is not offered again
+                // while nothing has changed.
+                held.drop();
+                if (before_attempt.has_value()) {
                     auto history = std::move(state_.action_history);
                     const int decisions = state_.decision_index;
-                    state_ = std::move(*before_choices);
+                    state_ = std::move(*before_attempt);
                     state_.action_history = std::move(history);
                     state_.decision_index = decisions;
+                } else {
+                    auto& back = state_.player(intent.player);
+                    if (played_from == ZoneType::Hand) back.hand.push_back(intent.card);
+                    else if (played_from == ZoneType::Trash) back.trash.push_back(intent.card);
                 }
-                auto& back = state_.player(intent.player);
-                if (played_from == ZoneType::Hand) back.hand.push_back(intent.card);
-                else if (played_from == ZoneType::Trash) back.trash.push_back(intent.card);
-                events_.logTrace("SPELL: " + state_.getObject(intent.card).name +
-                                 " not played — its cost could not be paid with what it"
-                                 " chose; the choices are undone");
+                state_.player(intent.player).undone_play_attempts.emplace_back(
+                    intent.card, Card::costStateFingerprint(state_));
                 return;
             }
+            held.deliver();   // it goes through: what was held is seen now
             prefinalized_spell_ = std::move(done);
         }
     }
@@ -4360,6 +4389,13 @@ bool GameEngine::payableThroughAFinalizeChoice(
                                                     : nullptr;
     if (!cc || cc->needsPlayTimeTarget() ||
         !(cc->choicesAtFinalization() & Card::kFinalizeResolve)) return false;
+    // Attempted in this very state and undone: not again until it changes.
+    const auto& undone = state_.player(player).undone_play_attempts;
+    if (!undone.empty()) {
+        const uint64_t now = Card::costStateFingerprint(state_);
+        for (const auto& [attempted, in_state] : undone)
+            if (attempted == card_id && in_state == now) return false;
+    }
     // Only an object that takes something off the cost can change the answer.
     for (const auto& [id, obj] : state_.objects) {
         if (!obj.location.has_value()) continue;

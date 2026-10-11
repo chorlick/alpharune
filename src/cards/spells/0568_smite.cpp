@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -16,18 +17,14 @@ public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         // "Deal 3 to a unit at a battlefield. If it would die this turn,
-        // banish it instead." The lingering turn-long death-replacement has
-        // no engine hook; we apply the banish on the immediate lethal damage
-        // (the common case), banishing rather than killing to trash.
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 3, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.banishObject(targets[0]);
-                ctx.events.logTrace("SMITE: lethal -> banish instead of kill "
-                                    "(lingering turn-long replacement not engine-wired)");
-            }
-        }
+        // banish it instead." The replacement lasts for the turn: the unit
+        // carries it (GameObject::banish_if_would_die_this_turn) and both
+        // kill paths apply it, whatever kills the unit later this turn.
+        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        ctx.state.getObject(targets[0]).banish_if_would_die_this_turn = true;
+        ctx.executor.dealDamage(targets[0], 3, ctx.source);
+        if (ctx.state.getObject(targets[0]).hasLethalDamage())
+            ctx.executor.killObject(targets[0]);   // banished by the replacement
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_at_battlefield = true};

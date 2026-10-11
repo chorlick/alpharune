@@ -83,7 +83,6 @@ private:
         d.power_cost = 1;
         d.rarity = Rarity::Uncommon;
         d.ability_text = R"RB(Return up to 2 units from trashes to their owners' hands.)RB";
-        d.effect_text = R"RB(1)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/25e2130938a893833fcb8e29287adbd230c3b67f-744x1039.png)RB";
         return d;
     }();

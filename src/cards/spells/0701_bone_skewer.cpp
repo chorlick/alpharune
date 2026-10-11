@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -15,12 +16,41 @@ class BoneSkewer : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    // "Choose a battlefield. An opponent reveals their hand. You may choose a
+    //  unit from it. They play that unit to that battlefield, ignoring any and
+    //  all costs. If they do, then do this: [Stun] it."
+    static constexpr size_t kRevealedSlot = 7;   // resume_data: the hand was revealed
+
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         PlayerId opp = opponent(ctx.controller);
 
-        // Reveal opponent's hand (public) up front.
-        if (!ctx.state.chain.resuming.has_value() ||
-            ctx.state.chain.resuming->resume_point < 9) {
+        // The battlefield: any of them — played from facedown, the one this
+        // was hidden at (CR 811.1.d.2).
+        const auto& bfs = ctx.state.battlefields;
+        const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        const auto hidden_at = facedownPlayBattlefield(ctx.state, ctx.source);
+        std::vector<std::string> labels;
+        uint32_t mask = 0;
+        for (int i = 0; i < n; ++i) {
+            labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+                ? ctx.state.getObject(bfs[i].card_object_id).name
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+            if (!hidden_at.has_value() || *hidden_at == bfs[i].id) mask |= (1u << i);
+        }
+        const int mode = pickMode(ctx, "Bone Skewer: choose a battlefield", n, labels, mask);
+        if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield
+        const BattlefieldId dest_bf = bfs[mode].id;
+
+        // "An opponent reveals their hand" — once, after the battlefield is
+        // chosen, not again when this is re-entered with an answer.
+        auto& ri = ctx.state.chain.resuming;
+        bool revealed = false;
+        if (ri.has_value()) {
+            while (ri->resume_data.size() <= kRevealedSlot) ri->resume_data.push_back(0);
+            revealed = ri->resume_data[kRevealedSlot] != 0;
+            ri->resume_data[kRevealedSlot] = 1;
+        }
+        if (!revealed) {
             for (auto cid : ctx.state.player(opp).hand) {
                 if (!ctx.state.objectExists(cid)) continue;
                 const auto& c = ctx.state.getObject(cid);
@@ -35,46 +65,23 @@ public:
             }
         }
 
-        // Pair pick: (A) the battlefield (BF card object), (B) a unit from the
-        // opponent's hand. GAP: "You may choose a unit" optionality is lost —
-        // pickTargetPair forces a choice if any hand unit exists; if none exist
-        // the second pick fizzles and nothing is played.
-        std::vector<GameObjectId> bf_cards;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (ctx.state.objectExists(bf.card_object_id)) {
-                bf_cards.push_back(bf.card_object_id);
-            }
-        }
-        auto handUnits = [&ctx, opp](GameObjectId /*picked_bf*/) {
+        auto hand_units = [&]() {
             std::vector<GameObjectId> out;
-            for (auto cid : ctx.state.player(opp).hand) {
-                if (!ctx.state.objectExists(cid)) continue;
-                if (ctx.state.getObject(cid).card_type == CardType::Unit) {
+            for (auto cid : ctx.state.player(opp).hand)
+                if (ctx.state.objectExists(cid) &&
+                    ctx.state.getObject(cid).card_type == CardType::Unit)
                     out.push_back(cid);
-                }
-            }
             return out;
         };
-        auto pair = pickTargetPair(ctx, "Bone Skewer: choose BF + enemy unit",
-                                   bf_cards, handUnits);
-        GameObjectId bf_card = pair.first;
-        GameObjectId chosen = pair.second;
-        if (bf_card == kInvalidId) return;  // suspended or no BFs
+        // "You may choose a unit from it": whether, then which. Both before
+        // anything is played.
+        const int go = confirmOptional(ctx, "Bone Skewer: choose a unit from the revealed hand",
+                                       [&]() { return !hand_units().empty(); });
+        if (go <= 0) return;                 // waiting, declined, or no unit there
+        const GameObjectId chosen = pickTarget(ctx, "Bone Skewer: unit they play", hand_units());
         if (chosen == kInvalidId || !ctx.state.objectExists(chosen)) return;
 
-        // Resolve BattlefieldId from the chosen BF card object.
-        BattlefieldId dest_bf = kInvalidId;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == bf_card) { dest_bf = bf.id; break; }
-        }
-        if (dest_bf == kInvalidId) return;
-
-        // They play it to that battlefield, ignoring all costs. Remove it
-        // from the opponent's hand vector first (playIgnoringCost re-zones the
-        // object but does not detach it from the source zone's id list).
-        auto& opp_hand = ctx.state.player(opp).hand;
-        opp_hand.erase(std::remove(opp_hand.begin(), opp_hand.end(), chosen),
-                       opp_hand.end());
+        // They play it to that battlefield, ignoring all costs.
         ctx.executor.playIgnoringCost(opp, chosen,
                                       LocationId{BattlefieldLocation{dest_bf}});
         ctx.events.logTrace("BONE SKEWER: opponent forced to play " +

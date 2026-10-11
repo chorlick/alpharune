@@ -15,16 +15,12 @@ namespace {
 class LiltingLullaby : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // Audit follow-up: Lullaby is a pure counter for legality purposes.
-    // Its lockout is scoped to "Its controller" — the controller of the
-    // countered spell — so without a counter target the lockout has no
-    // owner and the entire effect no-ops. Same shape as Hard Bargain /
-    // Wind Wall: not playable when the chain has no spell to counter.
+    // Lullaby is a pure counter for legality purposes: its lockout is scoped
+    // to "Its controller" — the controller of the countered spell. Peek-and-
+    // pop: the spell countered is the top of the chain, so a spell under an
+    // ability cannot be reached and does not make this playable.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it) {
-            if (it->is_spell) return true;
-        }
-        return false;
+        return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.state.chain.items.empty()) return;

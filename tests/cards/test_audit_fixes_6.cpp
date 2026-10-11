@@ -554,7 +554,8 @@ TEST_F(AuditFix6Test, SmokeMirrors_SameLocationNoSwapStillDraws) {
     EXPECT_EQ(handSize(P1), 1);
 }
 
-// Fewer than two targets → no-op (and importantly no draw).
+// Fewer than two targets → no swap, but "Draw 1." is its own sentence and
+// still happens (CR 359.3.e.5: only the missing target's part is lost).
 TEST_F(AuditFix6Test, SmokeMirrors_FewerThanTwoTargetsNoOp) {
     auto a = addUnit(P1, kInvalidId, /*might=*/2, /*at_bf=*/0);
     addToDeck(P1, kInvalidId);
@@ -563,7 +564,8 @@ TEST_F(AuditFix6Test, SmokeMirrors_FewerThanTwoTargetsNoOp) {
     EffectExecutor exec(state, events, card_db);
     invokeOnResolve(src, kSmokeMirrors, P1, {a}, exec);
 
-    EXPECT_EQ(handSize(P1), 0);  // early return before Draw 1
+    EXPECT_EQ(state.getObject(a).battlefieldId(), std::optional<BattlefieldId>(0));
+    EXPECT_EQ(handSize(P1), 1);  // card text: "... Draw 1." does not depend on the units
 }
 
 // ─── [695] Blast Cone ───────────────────────────────────────────────────────

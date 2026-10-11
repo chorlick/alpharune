@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -17,28 +18,23 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     bool needsPlayTimeTargetPair() const override { return true; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto all_units = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isUnit() || !obj.location.has_value()) continue;
-                out.push_back(id);
-            }
-            return out;
-        };
-        auto legal_a = all_units();
+        // chooseableUnits honours "can't be chosen by enemy spells and
+        // abilities" for both picks.
+        auto legal_a = chooseableUnits(ctx.state, ctx.controller,
+                                       [](const GameObject&) { return true; });
         auto pair = pickTargetPair(ctx, "Defiant Dance", legal_a,
             [&](GameObjectId picked_a) {
-                std::vector<GameObjectId> out;
-                for (auto& [id, obj] : ctx.state.objects) {
-                    if (id == picked_a) continue;  // "another unit"
-                    if (!obj.isUnit() || !obj.location.has_value()) continue;
-                    out.push_back(id);
-                }
-                return out;
+                // "another unit"
+                return chooseableUnits(ctx.state, ctx.controller,
+                    [picked_a](const GameObject& o) { return o.id != picked_a; });
             });
-            if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (pair.first == kInvalidId) return;  // suspend / fizzle
-        if (ctx.state.objectExists(pair.first)) {
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (ctx.state.chain.resuming.has_value() &&
+            (ctx.state.chain.resuming->resume_point == 10 ||
+             ctx.state.chain.resuming->resume_point == 12)) return;   // waiting for the agent
+        // Each target is handled by itself: one that is no longer legal is
+        // unaffected, the other still gets its part (CR 359.3.e.5).
+        if (pair.first != kInvalidId && ctx.state.objectExists(pair.first)) {
             ctx.executor.giveTemporaryMight(pair.first, 2);
         }
         if (pair.second != kInvalidId && ctx.state.objectExists(pair.second)) {

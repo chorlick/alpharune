@@ -21,9 +21,12 @@ public:
     // Phase 6q — defer target selection so the policy head gets
     // distinct vocab slots per target choice.
     bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-        GameObjectId picked = pickTarget(ctx, "Lotus Trap", legal);
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // The unit locked in as the spell was played (from facedown: one at
+        // that battlefield, CR 811.1.d.2), else asked now.
+        const auto locked = lockedPlayTarget(ctx, targets);
+        GameObjectId picked = locked ? *locked
+            : pickTarget(ctx, "Lotus Trap", enumerateLegalTargets(ctx.state, ctx.controller));
         if (picked == kInvalidId) return;
         if (!ctx.state.objectExists(picked)) return;
         auto& target = ctx.state.getObject(picked);

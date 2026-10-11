@@ -33,6 +33,13 @@ public:
                 return true;
         return false;
     }
+    static std::vector<GameObjectId> equipmentOn(const GameState& state, GameObjectId unit) {
+        std::vector<GameObjectId> out;
+        if (!state.objectExists(unit)) return out;
+        for (auto gid : state.getObject(unit).attachments)
+            if (state.objectExists(gid) && isEquipment(state.getObject(gid))) out.push_back(gid);
+        return out;
+    }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects)
             if (isEquippedFriendly(obj, controller, state)) return true;
@@ -59,6 +66,16 @@ public:
                            ctx.state.chain.resuming->resume_point == 12);
         if (suspending) return;
         if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
+        // "Then detach an Equipment from it": which one is the controller's
+        // choice when it carries more than one. Asked before anything happens
+        // (this callback is re-entered with the answer); nothing between here
+        // and the damage changes what the unit carries.
+        const auto carried = equipmentOn(ctx.state, unit);
+        GameObjectId detach = carried.empty() ? kInvalidId : carried.front();
+        if (carried.size() > 1) {
+            detach = pickTarget(ctx, "Strike Down: detach an Equipment", carried);
+            if (detach == kInvalidId) return;   // waiting for the agent
+        }
         // It deals damage equal to its Might to the enemy unit.
         if (enemy != kInvalidId && ctx.state.objectExists(enemy)) {
             int dmg = ctx.state.getObject(unit).current_might;
@@ -68,14 +85,9 @@ public:
                 ctx.executor.killObject(enemy);
         }
         // Then detach an Equipment from it.
-        if (ctx.state.objectExists(unit)) {
-            for (auto gid : ctx.state.getObject(unit).attachments) {
-                if (ctx.state.objectExists(gid) && isEquipment(ctx.state.getObject(gid))) {
-                    ctx.executor.unattachGear(gid);
-                    break;
-                }
-            }
-        }
+        if (detach != kInvalidId && ctx.state.objectExists(detach) &&
+            ctx.state.getObject(detach).attached_to == std::optional<GameObjectId>(unit))
+            ctx.executor.unattachGear(detach);
         ctx.events.logTrace("STRIKE DOWN: equipped unit dealt Might damage, detached an Equipment");
     }
 private:

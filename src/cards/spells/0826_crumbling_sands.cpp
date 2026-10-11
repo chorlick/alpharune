@@ -16,10 +16,10 @@ class CrumblingSands : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Counter a spell if an opponent has played another spell this turn."
+    // Peek-and-pop: the spell countered is the top of the chain, so a spell
+    // under an ability cannot be reached and does not make this playable.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (const auto& item : state.chain.items)
-            if (item.is_spell) return true;
-        return false;
+        return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }
     /// Has an opponent of `me` played a spell this turn OTHER than the spell
     /// being countered (the top of the chain)? The target itself counts toward

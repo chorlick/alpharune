@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,9 +15,13 @@ namespace {
 class Eclipse : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Give a unit -4 [M] this turn. [Predict]."
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (!targets.empty())
             ctx.executor.giveTemporaryMight(targets[0], -4);
+        // [Predict]: look at the top card of your Main Deck; you may recycle
+        // it. It happens whether or not the unit is still a legal target.
+        ctx.executor.predict(ctx.controller, 1);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};

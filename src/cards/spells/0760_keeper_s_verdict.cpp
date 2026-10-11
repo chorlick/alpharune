@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,6 +15,8 @@ namespace {
 class KeeperSVerdict : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Choose an enemy unit at a battlefield. Its owner places it on the top or
+    //  bottom of their Main Deck."
     bool needsPlayTimeTarget() const override { return true; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
@@ -31,19 +34,40 @@ public:
         }
         return out;
     }
+    // resume_point while the unit's OWNER is being asked top or bottom (clear
+    // of the Card::pick* helpers' values).
+    static constexpr int kAwaitOwner = 30;
+    static constexpr int kDone = 31;
+
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId picked = kInvalidId;
-        if (!targets.empty()) picked = targets[0];
-        else picked = pickTarget(ctx, "Keeper's Verdict: place enemy unit on deck",
-                                 enumerateLegalTargets(ctx.state, ctx.controller));
+        auto& ri = ctx.state.chain.resuming;
+        if (ri.has_value() && ri->resume_point == kDone) return;
+        const auto locked = lockedPlayTarget(ctx, targets);
+        const GameObjectId picked = locked ? *locked
+            : pickTarget(ctx, "Keeper's Verdict: place enemy unit on deck",
+                         enumerateLegalTargets(ctx.state, ctx.controller));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        int mode = pickMode(ctx, "Keeper's Verdict: top or bottom of deck", 2,
-                            {"Top", "Bottom"});
-        if (mode < 0) return;  // suspended
+        const PlayerId owner = ctx.state.getObject(picked).owner;
+
+        // "Its owner places it": the owner decides, not this spell's controller.
+        bool to_top = true;
+        if (ri.has_value()) {
+            if (ri->resume_point != kAwaitOwner) {
+                ctx.executor.requestChoice(owner,
+                    {valChoice(owner, 0, "Keeper's Verdict: top of your Main Deck"),
+                     valChoice(owner, 1, "Keeper's Verdict: bottom of your Main Deck")},
+                    "Keeper's Verdict: top or bottom of your Main Deck");
+                ri->resume_point = kAwaitOwner;
+                return;
+            }
+            to_top = takenValue(ctx, 0) != 1;
+            ri->resume_point = kDone;
+        }
 
         auto& u = ctx.state.getObject(picked);
-        PlayerId owner = u.owner;
-        auto was_at = u.location.value_or(BaseLocation{owner});
+        if (!u.location.has_value()) return;   // it left the board meanwhile
+        auto was_at = *u.location;
+        const PlayerId controller = u.controller;
         // Detach any attached gear first (CR 719.5).
         for (auto gid : std::vector<GameObjectId>(u.attachments)) {
             if (ctx.state.objectExists(gid)) ctx.executor.unattachGear(gid);
@@ -53,14 +77,22 @@ public:
         u.damage_marked = 0;
         u.combat_designation = CombatDesignation::None;
         u.location = std::nullopt;
-        u.zone = ZoneType::MainDeck;
-        auto& deck = ctx.state.player(owner).main_deck;
-        if (mode == 0) deck.push_back(picked);            // top = back
-        else           deck.insert(deck.begin(), picked); // bottom = front
-        ctx.events.emit(LeftBoardEvent{picked, owner, CardType::Unit, was_at,
-                                       ZoneType::MainDeck, /*was_killed=*/false});
+        const bool token = u.isToken();
+        if (token) {
+            // CR 183.1: a token that leaves the board ceases to exist.
+            u.zone = ZoneType::Banishment;
+        } else if (to_top) {
+            // Through deck_ops, so the knowledge tracker sees a known card
+            // land on top / bottom.
+            deck::putOnTop(ctx.state, owner, picked, deck::Place::Public, knowledge::everyone());
+        } else {
+            deck::putOnBottom(ctx.state, owner, picked, deck::Place::Public, knowledge::everyone());
+        }
+        ctx.events.emit(LeftBoardEvent{picked, controller, CardType::Unit, was_at,
+                                       token ? ZoneType::Banishment : ZoneType::MainDeck,
+                                       /*was_killed=*/false});
         ctx.events.logTrace("KEEPER'S VERDICT: placed " + u.name +
-                            (mode == 0 ? " on TOP" : " on BOTTOM") + " of deck");
+                            (to_top ? " on TOP" : " on BOTTOM") + " of deck");
     }
 private:
     const CardDef def_ = [] {

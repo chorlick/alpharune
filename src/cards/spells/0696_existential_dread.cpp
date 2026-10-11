@@ -15,10 +15,21 @@ namespace {
 class ExistentialDread : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "[Stun] an attacking enemy unit. If it's already stunned, return it to
+    //  its owner's hand instead."
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_enemy = true,
                                    .must_be_at_battlefield = true};
+    }
+    // Only an ATTACKING enemy unit is a legal target (so with no attacker on
+    // the board the spell is not playable).
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller) const override {
+        return chooseableUnits(state, controller, [&](const GameObject& o) {
+            return o.controller != controller && o.isAtBattlefield() &&
+                   o.combat_designation == CombatDesignation::Attacker;
+        });
     }
     // Phase 6q — defer target selection so the policy head gets
     // distinct vocab slots per target choice.
@@ -28,11 +39,11 @@ public:
         GameObjectId picked = pickTarget(ctx, "Existential Dread", legal);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto& tgt = ctx.state.getObject(picked);
-        if (tgt.combat_designation != CombatDesignation::Attacker) return;
         if (tgt.is_stunned) {
             ctx.executor.bounceToHand(picked);
         } else {
-            ctx.executor.stunUnit(picked);
+            // Attributed to this spell's controller ("when you stun").
+            ctx.executor.stunUnitBy(picked, ctx.source);
         }
     }
 private:

@@ -17,37 +17,50 @@ public:
     const CardDef& def() const override { return def_; }
     // "Move a friendly unit, then move an enemy unit. (If they both move to a
     //  battlefield you don't control, you're the attacker.)"
-    // The agent now picks a destination (the controller's base, or any
-    // battlefield) that both moved units go to, instead of always forcing base.
-    // ENGINE GAP: the parenthetical "you're the attacker" designation when both
-    // units land on an enemy battlefield is NOT applied — there is no per-card
-    // hook to designate the controller as the attacker / open a showdown
-    // mid-resolution. Movement itself is faithful; only the attacker-status
-    // rider is unimplemented.
+    // Each unit has its own destination (its controller's base or any other
+    // battlefield); one prompt offers every combination. A unit that is no
+    // longer a legal target is simply not moved — the other still is (CR
+    // 359.3.e.5).
+    // The parenthetical needs no code: at a battlefield the caster does not
+    // control, cleanup applies Contested for the turn player first (CR
+    // 190.3.a), and the player who applied it is the attacker — the caster,
+    // who can only play this (no [Action] / [Reaction]) on their own turn.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.size() < 2) return;
-        // Build destination menu: base + each battlefield.
-        std::vector<std::optional<BattlefieldId>> dests;  // nullopt = base
-        std::vector<std::string> labels;
-        dests.push_back(std::nullopt); labels.push_back("Your base");
-        for (const auto& bf : ctx.state.battlefields) {
-            dests.push_back(bf.id);
-            labels.push_back("BF#" + std::to_string(static_cast<int>(bf.id)));
-        }
-        uint32_t mask = (dests.size() >= 32) ? 0xFFFFFFFFu : ((1u << dests.size()) - 1);
-        int chosen = pickMode(ctx, "Void Assault: move both units to where?",
-                              static_cast<int>(dests.size()), labels, mask);
-        if (chosen == -1) return;  // waiting on agent
-        if (chosen < 0 || static_cast<size_t>(chosen) >= dests.size()) chosen = 0;
-        auto move = [&](GameObjectId u) {
-            if (!ctx.state.objectExists(u)) return;
-            if (dests[chosen].has_value()) ctx.executor.moveToBattlefield(u, *dests[chosen]);
-            else ctx.executor.moveToBase(u);
+        // `targets` holds only the targets that are still legal, so which is
+        // which is read from the chain item: friendly first, enemy second.
+        const auto& chosen = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->targets : targets;
+        auto still_legal = [&](GameObjectId id) {
+            return id != kInvalidId && ctx.state.objectExists(id) &&
+                   std::find(targets.begin(), targets.end(), id) != targets.end();
         };
-        move(targets[0]);   // friendly
-        move(targets[1]);   // enemy
-        ctx.events.logTrace("VOID ASSAULT: moved both units (attacker designation "
-                            "not engine-applied)");
+        const GameObjectId mine = !chosen.empty() && still_legal(chosen[0]) ? chosen[0] : kInvalidId;
+        const GameObjectId theirs = chosen.size() >= 2 && still_legal(chosen[1]) ? chosen[1] : kInvalidId;
+        if (mine == kInvalidId && theirs == kInvalidId) return;   // nothing left to move
+        auto destsOf = [&](GameObjectId u) {
+            return u == kInvalidId ? std::vector<int>{}
+                                   : moveDests(ctx.state, ctx.state.getObject(u));
+        };
+        // A unit with nowhere to go (or no longer a target) contributes the
+        // single "stays" option -1.
+        auto mine_dests = destsOf(mine);
+        auto their_dests = destsOf(theirs);
+        if (mine_dests.empty()) mine_dests.push_back(-1);
+        if (their_dests.empty()) their_dests.push_back(-1);
+        const int n = static_cast<int>(mine_dests.size() * their_dests.size());
+        if (n > 32) return;   // more battlefields than a mode mask can list
+        std::vector<std::string> labels;
+        for (int a : mine_dests)
+            for (int b : their_dests)
+                labels.push_back("yours: " + (a < 0 ? std::string("stays") : destLabel(a)) +
+                                 " / theirs: " + (b < 0 ? std::string("stays") : destLabel(b)));
+        const int picked = pickMode(ctx, "Void Assault: move the units where?", n, labels);
+        if (picked < 0 || picked >= n) return;  // -1 waiting on agent
+        const int my_dest = mine_dests[picked / their_dests.size()];
+        const int their_dest = their_dests[picked % their_dests.size()];
+        if (mine != kInvalidId && my_dest >= 0) moveTo(ctx, mine, my_dest);       // friendly
+        if (theirs != kInvalidId && their_dest >= 0) moveTo(ctx, theirs, their_dest);   // then enemy
+        ctx.events.logTrace("VOID ASSAULT: moved the chosen units");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true};

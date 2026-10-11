@@ -19,44 +19,59 @@ namespace {
 class DoubleTrouble : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    static std::vector<GameObjectId> topThree(const GameState& state, PlayerId p) {
+        const auto& deck = state.player(p).main_deck;   // top = back
+        std::vector<GameObjectId> out;
+        for (size_t i = 0; i < 3 && i < deck.size(); ++i) out.push_back(deck[deck.size() - 1 - i]);
+        return out;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ps = ctx.state.player(ctx.controller);
-        // Look at the top 3 (top = back of vector).
-        std::vector<GameObjectId> top3;
-        for (int i = (int)ps.main_deck.size() - 1;
-             i >= 0 && (int)top3.size() < 3; --i) {
-            top3.push_back(ps.main_deck[i]);
-        }
-        if (top3.empty()) return;
-
-        // Reveal + draw a unit from among them (first unit found).
-        GameObjectId drawn_unit = kInvalidId;
-        for (auto cid : top3) {
-            if (ctx.state.objectExists(cid) && ctx.state.getObject(cid).isUnit()) {
-                drawn_unit = cid;
-                break;
+        const auto top = topThree(ctx.state, ctx.controller);
+        if (top.empty()) return;
+        // Look once — not again when re-entered with an answer.
+        const bool first_pass = !ctx.state.chain.resuming.has_value() ||
+                                ctx.state.chain.resuming->resume_point == 0;
+        std::vector<GameObjectId> units;
+        int rank = 0;
+        for (auto cid : top) {
+            const auto& c = ctx.state.getObject(cid);
+            if (first_pass) {
+                knowledge::seenInDeck(ctx.state, cid, knowledge::only(ctx.controller),
+                                      DeckEnd::Top, rank);
+                ctx.events.emit(CardRevealedEvent{cid, c.card_def_id, c.owner,
+                                                  /*revealed_to_all=*/false, ctx.controller,
+                                                  ZoneType::MainDeck});
             }
+            ++rank;
+            if (c.isUnit()) units.push_back(cid);
         }
-        if (drawn_unit != kInvalidId) {
-            auto& deck = ps.main_deck;
-            deck.erase(std::remove(deck.begin(), deck.end(), drawn_unit), deck.end());
-            auto& obj = ctx.state.getObject(drawn_unit);
-            obj.zone = ZoneType::Hand;
-            obj.location = std::nullopt;
-            ps.hand.push_back(drawn_unit);
-            ctx.events.logTrace("DOUBLE TROUBLE: drew unit " + obj.name);
+        // "You may reveal a unit from among them and draw it": whether, and
+        // which one. Both answers come before any card moves.
+        const int go = confirmOptional(ctx, "Double Trouble: reveal a unit and draw it",
+                                       [&]() { return !units.empty(); });
+        if (go == -1) return;
+        GameObjectId drawn = kInvalidId;
+        if (go == 1) {
+            drawn = pickTarget(ctx, "Double Trouble: unit to draw", units);
+            if (drawn == kInvalidId) return;   // waiting
         }
 
-        // Recycle the rest (the remaining looked-at cards) to bottom of deck.
         std::vector<GameObjectId> rest;
-        for (auto cid : top3) {
-            if (cid == drawn_unit) continue;
-            auto& deck = ps.main_deck;
-            auto it = std::find(deck.begin(), deck.end(), cid);
-            if (it != deck.end()) {
-                deck.erase(it);
-                rest.push_back(cid);
-            }
+        for (auto cid : top) {
+            deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller),
+                       /*slot_public=*/false);
+            if (cid != drawn) rest.push_back(cid);
+        }
+        if (drawn != kInvalidId) {
+            // Revealed, then drawn as a draw (so "when you draw" sees it).
+            const auto& d = ctx.state.getObject(drawn);
+            ctx.events.emit(CardRevealedEvent{drawn, d.card_def_id, d.owner,
+                                              /*revealed_to_all=*/true, PlayerId::None,
+                                              ZoneType::MainDeck});
+            deck::putOnTop(ctx.state, ctx.controller, drawn, deck::Place::Held,
+                           knowledge::everyone());
+            ctx.executor.drawCards(ctx.controller, 1);
+            ctx.events.logTrace("DOUBLE TROUBLE: drew unit " + ctx.state.getObject(drawn).name);
         }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);

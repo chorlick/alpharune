@@ -15,11 +15,16 @@ namespace {
 class TurnToDust : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Give a gear [Temporary]." Not a "this turn" grant: the gear keeps the
+    // keyword until its controller's Beginning Phase kills it (the sweep in
+    // GameEngine::beginningStep reads GameObject::keywords). A grant through
+    // giveTemporaryKeyword would be stripped at the end of this turn.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (!targets.empty() && ctx.state.objectExists(targets[0])) {
-            ctx.executor.giveTemporaryKeyword(targets[0], Keyword::Temporary, 0);
-            ctx.events.logTrace("TURN TO DUST: gave gear [Temporary]");
-        }
+        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        auto& gear = ctx.state.getObject(targets[0]);
+        if (!gear.isGear() || !gear.location.has_value()) return;
+        gear.keywords.set(Keyword::Temporary);
+        ctx.events.logTrace("TURN TO DUST: " + gear.name + " gains [Temporary]");
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true};

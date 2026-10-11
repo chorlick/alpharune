@@ -15,16 +15,26 @@ namespace {
 class HardBargain : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // Pure counter — no secondary effect. Not playable unless there's a
-    // spell on the chain to potentially counter.
+    // "Counter a spell unless its controller pays [2]."
+    // Peek-and-pop: the spell answered is the top of the chain, so that is
+    // also what makes this playable — a spell further down, under an ability,
+    // cannot be reached.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it) {
-            if (it->is_spell) return true;
-        }
-        return false;
+        return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         auto& ri = ctx.state.chain.resuming.value();
+        // Counters the spell `target_source` if it is still the chain top.
+        auto counter = [&](GameObjectId target_source, const std::string& why) {
+            if (ctx.state.chain.items.empty() ||
+                ctx.state.chain.items.back().source != target_source) return;
+            revertCounteredPlay(ctx, ctx.state.chain.items.back());  // CR 425.1.b
+            ctx.state.chain.items.pop_back();
+            if (!ctx.state.objectExists(target_source)) return;
+            ctx.events.logTrace("HARD BARGAIN: countered " +
+                                ctx.state.getObject(target_source).name + " (" + why + ")");
+            disposeCounteredCard(ctx, target_source);
+        };
         switch (ri.resume_point) {
         case 0: {
             if (ctx.state.chain.items.empty()) {
@@ -38,33 +48,14 @@ public:
             }
             PlayerId target_controller = top.controller;
             GameObjectId target_source = top.source;
-            ri.resume_data = {static_cast<int32_t>(target_source)};
+            ri.resume_data = {static_cast<int32_t>(target_source),
+                              static_cast<int32_t>(target_controller)};
 
-            // Count target controller's ready runes — they need 2 to save.
-            auto& tps = ctx.state.player(target_controller);
-            int ready_runes = 0;
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (!obj.isRune() || obj.controller != target_controller) continue;
-                if (!obj.location.has_value()) continue;
-                if (!std::holds_alternative<BaseLocation>(*obj.location)) continue;
-                if (std::get<BaseLocation>(*obj.location).player != target_controller) continue;
-                if (!obj.is_exhausted) ++ready_runes;
-            }
-            (void)tps;
-
-            if (ready_runes < 2) {
-                // Can't afford the rescue cost — counter immediately.
-                if (!ctx.state.chain.items.empty()) {
-                    revertCounteredPlay(ctx, ctx.state.chain.items.back());  // CR 425.1.b
-                }
-                ctx.state.chain.items.pop_back();
-                if (ctx.state.objectExists(target_source)) {
-                    auto& obj = ctx.state.getObject(target_source);
-                    ctx.events.logTrace("HARD BARGAIN: countered " + obj.name +
-                                         " (" + toString(target_controller) +
-                                         " can't afford 2E to save)");
-                    disposeCounteredCard(ctx, target_source);
-                }
+            // [2] is Energy: floating Energy and ready runes both pay it.
+            if (payableEnergy(ctx.state, target_controller) < 2) {
+                counter(target_source, std::string(toString(target_controller)) +
+                                       " can't pay [2] to save it");
+                ri.resume_point = 2;
                 return;
             }
 
@@ -91,52 +82,27 @@ public:
         }
         case 1: {
             auto choice = ctx.executor.takeChoice();
-            if (ri.resume_data.empty()) return;
+            ri.resume_point = 2;
+            if (ri.resume_data.size() < 2) return;
             auto target_source = static_cast<GameObjectId>(ri.resume_data[0]);
+            auto target_controller = static_cast<PlayerId>(ri.resume_data[1]);
             if (!ctx.state.objectExists(target_source)) return;
 
-            // Determine target controller from the (still on-chain) item.
-            // The top of `items` is still our target — case 0 didn't pop it.
-            PlayerId target_controller = ctx.state.objectExists(target_source)
-                ? ctx.state.getObject(target_source).controller
-                : opponent(ctx.controller);
-
-            bool paid = (choice && !choice->chosen_objects.empty() &&
-                          choice->chosen_objects[0] == target_source);
-
-            if (paid) {
-                // Exhaust 2 ready runes from target_controller's base.
-                int exhausted = 0;
-                for (auto& [id, obj] : ctx.state.objects) {
-                    if (exhausted >= 2) break;
-                    if (!obj.isRune() || obj.controller != target_controller) continue;
-                    if (!obj.location.has_value()) continue;
-                    if (!std::holds_alternative<BaseLocation>(*obj.location)) continue;
-                    if (std::get<BaseLocation>(*obj.location).player != target_controller) continue;
-                    if (obj.is_exhausted) continue;
-                    obj.is_exhausted = true;
-                    ++exhausted;
-                    ctx.events.logTrace("  HARD BARGAIN COST: exhaust " + obj.name +
-                                         " (id=" + std::to_string(id) + ")");
-                }
+            bool wants_to_pay = (choice && !choice->chosen_objects.empty() &&
+                                 choice->chosen_objects[0] == target_source);
+            if (wants_to_pay && payEnergy(ctx, target_controller, 2)) {
                 ctx.events.logTrace(std::string("HARD BARGAIN: ") +
                                      toString(target_controller) +
-                                     " paid 2E to save " +
+                                     " paid [2] to save " +
                                      ctx.state.getObject(target_source).name);
                 // Spell stays on chain — no pop.
             } else {
-                // Counter — pop + trash.
-                if (!ctx.state.chain.items.empty()) {
-                    revertCounteredPlay(ctx, ctx.state.chain.items.back());  // CR 425.1.b
-                    ctx.state.chain.items.pop_back();
-                }
-                auto& obj = ctx.state.getObject(target_source);
-                ctx.events.logTrace("HARD BARGAIN: countered " + obj.name +
-                                     " (controller declined to pay)");
-                disposeCounteredCard(ctx, target_source);
+                counter(target_source, "its controller did not pay [2]");
             }
             return;
         }
+        default:
+            return;
         }
     }
 private:

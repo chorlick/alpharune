@@ -15,13 +15,16 @@ namespace {
 class SpriteBurst : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        KeywordSet kw; kw.set(Keyword::Temporary);
-        auto loc = BaseLocation{ctx.controller};
-        ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
-                                  {"Fae"}, kw, loc, true);
-        ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
-                                  {"Fae"}, kw, loc, true);
+    // "Play two ready 3 [M] Sprite unit tokens with [Temporary]." Each is
+    // played to the controller's base or a battlefield they control.
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> made;
+        auto make = [&](LocationId loc) {
+            KeywordSet kw; kw.set(Keyword::Temporary);
+            return ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
+                                            {"Fae"}, kw, loc, /*enter_ready=*/true);
+        };
+        playTokensChoosingLocations(ctx, "Sprite Burst: play a Sprite", 2, make, made);
     }
 private:
     const CardDef def_ = [] {

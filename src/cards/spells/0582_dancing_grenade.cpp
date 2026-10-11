@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -17,29 +18,81 @@ public:
     // "Deal 2 to a unit. Its controller may play this spell again for [A]. If
     //  they do, this deals 1 additional Bonus Damage for each time this spell
     //  has dealt damage this turn."
-    // The recast-for-[A] loop has no engine "may play this again + charge [A]"
-    // replay hook; it is not wired. The escalating Bonus Damage IS modeled:
-    // each time this specific spell deals damage in a turn, the count is
-    // tracked on the source object so a re-play (by any means) escalates.
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty()) return;
-        int prior_hits = 0;
-        if (ctx.state.objectExists(ctx.source)) {
-            auto& src = ctx.state.getObject(ctx.source);
-            prior_hits = src.card_counters["__dancing_grenade_hits"];
-            src.card_counters["__dancing_grenade_hits"] = prior_hits + 1;
-        }
-        int dmg = 2 + prior_hits;  // +1 Bonus Damage per prior hit this turn
-        ctx.executor.dealDamage(targets[0], dmg, ctx.source);
-        ctx.events.logTrace("DANCING GRENADE: deal " + std::to_string(dmg) +
-                            " (recast-for-[A] loop not engine-wired)");
-        if (ctx.state.objectExists(targets[0]) &&
-            ctx.state.getObject(targets[0]).hasLethalDamage()) {
-            ctx.executor.killObject(targets[0]);
-        }
-    }
+    //
+    // The offer goes to the damaged unit's controller as this resolves. If
+    // they pay [A] the spell is played again under their control
+    // (EffectExecutor::playIgnoringCost puts it back on the chain, where they
+    // choose its target), and that play makes the same offer in turn.
+    // ENGINE-GAP: the card object is filed in its owner's trash when this
+    // resolution ends while the new play is still on the chain; the engine has
+    // no "a spell replayed while it resolves" state.
+    //
+    // "Each time this spell has dealt damage this turn" is counted on the card
+    // object, stamped with the turn so an old count never carries over.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};
+    }
+    bool needsPlayTimeTarget() const override { return true; }
+
+    // resume_data (clear of the Card::pick* helpers' slots):
+    static constexpr size_t kPhaseSlot = 7;      // 0 = not dealt yet, 1 = offer made, 2 = done
+    static constexpr size_t kPlayerSlot = 8;     // who was offered the replay
+    static constexpr const char* kHitsKey = "__dancing_grenade_hits";
+    static constexpr const char* kTurnKey = "__dancing_grenade_turn";
+
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        auto& ri = ctx.state.chain.resuming;
+        auto slot = [&](size_t i) -> int32_t& {
+            while (ri->resume_data.size() <= i) ri->resume_data.push_back(0);
+            return ri->resume_data[i];
+        };
+        const int phase = ri.has_value() ? slot(kPhaseSlot) : 0;
+        if (phase >= 2) return;
+        if (phase == 1) {
+            // The unit's controller answered the replay offer.
+            slot(kPhaseSlot) = 2;
+            const PlayerId who = static_cast<PlayerId>(slot(kPlayerSlot));
+            if (takenValue(ctx, 0) != 1) return;
+            if (!ctx.executor.payAnyPower(who, 1)) return;
+            ctx.events.logTrace(std::string("DANCING GRENADE: ") + toString(who) +
+                                " pays [A] to play it again");
+            ctx.executor.playIgnoringCost(who, ctx.source);
+            return;
+        }
+
+        const auto locked = lockedPlayTarget(ctx, targets);
+        const GameObjectId picked = locked ? *locked
+            : pickTarget(ctx, "Dancing Grenade", enumerateLegalTargets(ctx.state, ctx.controller));
+        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;   // waiting, or no target
+
+        int prior_hits = 0;
+        if (ctx.state.objectExists(ctx.source)) {
+            auto& counters = ctx.state.getObject(ctx.source).card_counters;
+            if (counters[kTurnKey] != ctx.state.turn.turn_number) {
+                counters[kTurnKey] = ctx.state.turn.turn_number;
+                counters[kHitsKey] = 0;
+            }
+            prior_hits = counters[kHitsKey];
+            counters[kHitsKey] = prior_hits + 1;
+        }
+        const PlayerId unit_controller = ctx.state.getObject(picked).controller;
+        const int dmg = 2 + prior_hits;  // +1 Bonus Damage per prior hit this turn
+        ctx.executor.dealDamage(picked, dmg, ctx.source);
+        ctx.events.logTrace("DANCING GRENADE: deal " + std::to_string(dmg));
+        if (ctx.state.objectExists(picked) && ctx.state.getObject(picked).hasLethalDamage())
+            ctx.executor.killObject(picked);
+
+        // "Its controller may play this spell again for [A]."
+        if (!ri.has_value()) return;
+        slot(kPhaseSlot) = 2;
+        if (ctx.executor.payableAnyPower(unit_controller) < 1) return;
+        if (enumerateLegalTargets(ctx.state, unit_controller).empty()) return;
+        slot(kPhaseSlot) = 1;
+        slot(kPlayerSlot) = static_cast<int32_t>(unit_controller);
+        ctx.executor.requestChoice(unit_controller,
+            {valChoice(unit_controller, 0, "No — Dancing Grenade: play it again for [A]"),
+             valChoice(unit_controller, 1, "Yes — Dancing Grenade: play it again for [A]")},
+            "may: Dancing Grenade: play it again for [A]");
     }
 private:
     const CardDef def_ = [] {

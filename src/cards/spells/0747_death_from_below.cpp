@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,29 +15,59 @@ namespace {
 class DeathFromBelow : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Kill a unit at a battlefield. Then, if it had 3 [M] or less, do this:
+    //  You may play this from your trash for [A]."
+    // The replay is offered as this resolves — not as a standing permission
+    // for the rest of the turn, and whatever the timing: paying [A] plays the
+    // spell again right away (EffectExecutor::playIgnoringCost puts it back on
+    // the chain, where its new target is chosen).
+    // ENGINE-GAP: the card object reaches its owner's trash when this
+    // resolution ends, while the new play is already on the chain; the engine
+    // has no "a spell replayed while it resolves" state.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                    .must_be_at_battlefield = true};
     }
+    bool needsPlayTimeTarget() const override { return true; }
+    // resume_data, clear of the Card::pick* helpers' slots: the killed unit's
+    // Might + 1 once the kill has happened (-1: there was nothing to kill).
+    static constexpr size_t kKilledSlot = 7;
+
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        int might = ctx.state.getObject(targets[0]).current_might;
-        ctx.executor.killObject(targets[0]);
-        ctx.events.logTrace("DEATH FROM BELOW: killed unit (might=" +
-                             std::to_string(might) + ")");
-        if (might <= 3) {
-            // "You may play this from your trash for [A]." ctx.source is this
-            // spell's own object; it lands in trash right after onResolve
-            // returns. Grant the controller a this-turn replay for [A]
-            // (one power of any single domain).
-            PlayerState::TrashReplayGrant grant;
-            grant.card = ctx.source;
-            grant.energy = 0;
-            grant.power = 1;
-            grant.any_domain = true;   // [A]
-            ctx.state.player(ctx.controller).trash_replay_grants.push_back(grant);
-            ctx.events.logTrace("DEATH FROM BELOW: granted [A] trash-replay");
+        auto& ri = ctx.state.chain.resuming;
+        int had = -1;
+        if (ri.has_value() && ri->resume_data.size() > kKilledSlot &&
+            ri->resume_data[kKilledSlot] != 0) {
+            had = ri->resume_data[kKilledSlot] - 1;   // re-entered after the kill
+        } else {
+            const auto locked = lockedPlayTarget(ctx, targets);
+            const GameObjectId picked = locked ? *locked
+                : pickTarget(ctx, "Death from Below",
+                             enumerateLegalTargets(ctx.state, ctx.controller));
+            if (picked == kInvalidId && ri.has_value() && ri->resume_point == 7)
+                return;   // waiting for the agent
+            if (picked != kInvalidId && ctx.state.objectExists(picked)) {
+                had = ctx.state.getObject(picked).current_might;
+                ctx.executor.killObject(picked);
+                ctx.events.logTrace("DEATH FROM BELOW: killed unit (might=" +
+                                     std::to_string(had) + ")");
+            }
+            if (ri.has_value()) {
+                while (ri->resume_data.size() <= kKilledSlot) ri->resume_data.push_back(0);
+                ri->resume_data[kKilledSlot] = had < 0 ? -1 : had + 1;
+            }
         }
+        if (had < 0 || had > 3) return;
+        // "You may play this from your trash for [A]."
+        const int again = confirmOptional(ctx, "Death from Below: play it again for [A]",
+            [&]() {
+                return ctx.executor.payableAnyPower(ctx.controller) >= 1 &&
+                       !enumerateLegalTargets(ctx.state, ctx.controller).empty();
+            });
+        if (again <= 0) return;
+        if (!ctx.executor.payAnyPower(ctx.controller, 1)) return;
+        ctx.events.logTrace("DEATH FROM BELOW: paid [A] to play it again");
+        ctx.executor.playIgnoringCost(ctx.controller, ctx.source);
     }
 private:
     const CardDef def_ = [] {

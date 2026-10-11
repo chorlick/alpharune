@@ -14,7 +14,7 @@ namespace {
 class TheRuination : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // AoE kill
         {
             std::vector<GameObjectId> to_kill;

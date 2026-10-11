@@ -19,13 +19,14 @@ public:
         return TargetRequirements{.count = 1, .must_be_unit = true};
     }
     // Phase 6q — defer target selection so the policy head gets
-    // distinct vocab slots per target choice. Draw-1 rider is a
-    // partial-fizzle that fires whether or not the stun target is
-    // legal at resolve time (matches existing "always-draw" reading).
+    // distinct vocab slots per target choice.
     bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-        GameObjectId picked = pickTarget(ctx, "Back Off", legal);
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        // The unit locked in as the spell was played (from facedown: one at
+        // that battlefield, CR 811.1.d.2), else asked now.
+        const auto locked = lockedPlayTarget(ctx, targets);
+        GameObjectId picked = locked ? *locked
+            : pickTarget(ctx, "Back Off", enumerateLegalTargets(ctx.state, ctx.controller));
         // Distinguish "suspending for agent" (resume_point==7) from
         // "definitive no-target" (resume_point>=8). For suspends,
         // return without firing the draw rider.
@@ -34,12 +35,13 @@ public:
             return;
         }
         if (picked != kInvalidId) {
-            ctx.executor.stunUnit(picked);
+            // Attributed to this spell's controller ("when you stun").
+            ctx.executor.stunUnitBy(picked, ctx.source);
         }
-        // "If you played this from your hand, draw 1." Always-draw
-        // (more generous reading); rider fires whether or not the
-        // stun target was legal.
-        ctx.executor.drawCards(ctx.controller, 1);
+        // "If you played this from your hand, draw 1." — not when it was
+        // played from facedown. The rider does not depend on the stun target.
+        if (!facedownPlayBattlefield(ctx.state, ctx.source).has_value())
+            ctx.executor.drawCards(ctx.controller, 1);
     }
 private:
     const CardDef def_ = [] {

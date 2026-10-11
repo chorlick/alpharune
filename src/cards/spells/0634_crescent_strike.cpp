@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,18 +15,28 @@ namespace {
 class CrescentStrike : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Choose a battlefield and an enemy unit there. Deal 4 to that unit and 1
+    //  to each other enemy unit there." The battlefield is the one the chosen
+    //  unit is at, so the unit must be at a battlefield.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // Choose target — targeting handled by getTargetRequirements()
-        if (!targets.empty()) {
-            ctx.executor.dealDamage(targets[0], 4, ctx.source);
-            if (ctx.state.objectExists(targets[0]) &&
-                ctx.state.getObject(targets[0]).hasLethalDamage()) {
-                ctx.executor.killObject(targets[0]);
-            }
+        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
+        const GameObjectId main = targets[0];
+        const auto bf = ctx.state.getObject(main).battlefieldId();
+        if (!bf.has_value()) return;
+        // Collect first, damage, then kill (AoE: never kill inside the loop).
+        std::vector<GameObjectId> hit = {main};
+        for (const auto& [id, obj] : ctx.state.objects) {
+            if (id == main || !obj.isUnit() || obj.controller == ctx.controller) continue;
+            if (obj.battlefieldId() == bf) hit.push_back(id);
         }
+        for (auto id : hit) ctx.executor.dealDamage(id, id == main ? 4 : 1, ctx.source);
+        for (auto id : hit)
+            if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
+                ctx.executor.killObject(id);
     }
     TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true};
+        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_enemy = true,
+                                  .must_be_at_battlefield = true};
     }
 private:
     const CardDef def_ = [] {

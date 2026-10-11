@@ -19,50 +19,72 @@ class VoidRush : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
 
+    static std::vector<GameObjectId> topTwo(const GameState& state, PlayerId p) {
+        const auto& deck = state.player(p).main_deck;   // top = back
+        std::vector<GameObjectId> out;
+        for (size_t i = 0; i < 2 && i < deck.size(); ++i) out.push_back(deck[deck.size() - 1 - i]);
+        return out;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ps = ctx.state.player(ctx.controller);
-        // Top of deck = back of vector. Reveal up to top 2.
-        std::vector<GameObjectId> top2;
-        int n = (int)ps.main_deck.size();
-        if (n >= 1) top2.push_back(ps.main_deck[n - 1]);
-        if (n >= 2) top2.push_back(ps.main_deck[n - 2]);
-        if (top2.empty()) return;
-        ctx.events.logTrace("VOID RUSH: revealed top " +
-                            std::to_string(top2.size()) + " card(s)");
-
-        // Choose which (if any) to banish-and-play: prefer a playable card.
-        GameObjectId to_play = kInvalidId;
-        for (auto cid : top2) {
-            if (!ctx.state.objectExists(cid)) continue;
-            const auto& c = ctx.state.getObject(cid);
-            if (c.isUnit() || c.isGear() || c.isSpell()) { to_play = cid; break; }
-        }
-
-        if (to_play != kInvalidId && ctx.state.objectExists(to_play)) {
-            // Remove from deck, banish, then play ignoring cost. The printed
-            // "reduce its cost by [2]" has no partial-reduction play API, so
-            // we play it for free (over-generous by at most [2]; documented).
-            auto& deck = ps.main_deck;
-            deck.erase(std::remove(deck.begin(), deck.end(), to_play), deck.end());
-            ctx.executor.banishObject(to_play);
-            const EffectExecutor::EffectPlayCost reduced{.energy_reduction = 2};
-            if (ctx.executor.canPlayPayingCost(ctx.controller, to_play, reduced)) {
-                auto& bz = ps.banishment;
-                bz.erase(std::remove(bz.begin(), bz.end(), to_play), bz.end());
-                ctx.executor.playPayingCost(ctx.controller, to_play,
-                                            LocationId{BaseLocation{ctx.controller}}, reduced);
+        const EffectExecutor::EffectPlayCost reduced{.energy_reduction = 2};
+        const auto top = topTwo(ctx.state, ctx.controller);
+        if (top.empty()) return;
+        // Reveal once — not again when re-entered with an answer.
+        const bool first_pass = !ctx.state.chain.resuming.has_value() ||
+                                ctx.state.chain.resuming->resume_point == 0;
+        if (first_pass) {
+            int rank = 0;
+            for (auto cid : top) {
+                const auto& c = ctx.state.getObject(cid);
+                knowledge::seenInDeck(ctx.state, cid, knowledge::everyone(), DeckEnd::Top, rank++);
+                ctx.events.emit(CardRevealedEvent{cid, c.card_def_id, c.owner,
+                                                  /*revealed_to_all=*/true, PlayerId::None,
+                                                  ZoneType::MainDeck});
             }
-            ctx.events.logTrace("VOID RUSH: banished + played top card "
-                                "(cost reduction [2] approximated as free)");
+            ctx.events.logTrace("VOID RUSH: revealed top " + std::to_string(top.size()) + " card(s)");
+        }
+        // "You may banish one, then play it": offered for the cards that can
+        // be played at the reduced cost, so nothing is banished and then left
+        // there unplayed.
+        auto playable = [&]() {
+            std::vector<GameObjectId> out;
+            for (auto cid : top) {
+                const auto& c = ctx.state.getObject(cid);
+                if (!c.isUnit() && !c.isGear() && !c.isSpell()) continue;
+                if (ctx.executor.canPlayPayingCost(ctx.controller, cid, reduced)) out.push_back(cid);
+            }
+            return out;
+        };
+        // Choices first (the callback is re-entered with each answer): whether,
+        // which card, and — for a unit — where it is played.
+        const int go = confirmOptional(ctx, "Void Rush: banish one and play it",
+                                       [&]() { return !playable().empty(); });
+        if (go == -1) return;
+        GameObjectId chosen = kInvalidId;
+        std::optional<LocationId> where_to;
+        if (go == 1) {
+            chosen = pickTarget(ctx, "Void Rush: card to banish and play", playable());
+            if (chosen == kInvalidId) return;   // waiting
+            if (ctx.state.getObject(chosen).isUnit()) {
+                const auto where = playLocations(ctx.state, ctx.controller);
+                const int mode = pickMode(ctx, "Void Rush: where to play it",
+                                          where.count(), where.labels);
+                if (mode < 0 || mode >= where.count()) return;   // waiting
+                where_to = where.locations[mode];
+            }
         }
 
-        // Draw any of the revealed cards not banished (they are still on top).
-        for (auto cid : top2) {
-            if (cid == to_play) continue;
-            auto& deck = ps.main_deck;
-            if (std::find(deck.begin(), deck.end(), cid) != deck.end())
-                ctx.executor.drawCards(ctx.controller, 1);
+        int to_draw = static_cast<int>(top.size());
+        if (chosen != kInvalidId) {
+            --to_draw;
+            // banishObject takes the card out of the deck through deck_ops.
+            ctx.executor.banishObject(chosen);
+            if (ctx.executor.playPayingCost(ctx.controller, chosen, where_to, reduced))
+                ctx.events.logTrace("VOID RUSH: banished and played " +
+                                    ctx.state.getObject(chosen).name + ", its cost reduced by [2]");
         }
+        // "Draw any you didn't banish": they are still the top cards.
+        if (to_draw > 0) ctx.executor.drawCards(ctx.controller, to_draw);
     }
 private:
     const CardDef def_ = [] {

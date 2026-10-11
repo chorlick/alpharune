@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -14,57 +15,65 @@ namespace {
 class Conscription : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // Broad play-time requirement; the 3M cap / "any" widening is applied at
-    // resolve based on whether 5 XP was paid.
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_enemy = true,
-                                   .must_be_at_battlefield = true};
+    // "You may spend 5 XP as an additional cost to play this.
+    //  Choose an enemy unit at a battlefield with 3 [M] or less. If you paid the
+    //  additional cost, choose any enemy unit at a battlefield instead. Take
+    //  control of it, exhaust it, and recall it."
+    // The additional cost is decided and paid, and the unit chosen from the
+    // matching set, as the spell is played (CR 355).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    static std::vector<GameObjectId> candidates(const GameState& state, PlayerId me,
+                                                bool any_might) {
+        return chooseableUnits(state, me, [&](const GameObject& o) {
+            return o.controller != me && o.isAtBattlefield() &&
+                   (any_might || o.current_might <= 3);
+        });
     }
-    bool needsPlayTimeTarget() const override { return true; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        // Legal if any enemy unit sits at a battlefield (might cap is checked
-        // at resolve; if 5 XP would be paid the cap is irrelevant).
-        auto opp = opponent(controller);
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.isAtBattlefield()) continue;
-            if (obj.untargetable_by_enemy) continue;
-            return true;
-        }
-        return false;
+        return !candidates(state, controller, state.player(controller).xp >= 5).empty();
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
         // Optional additional cost: spend 5 XP (only offered if affordable).
-        int paid = confirmOptional(ctx, "Conscription: spend 5 XP (any enemy unit)",
+        const int paid = confirmOptional(ctx, "Conscription: spend 5 XP (any enemy unit)",
             [&]() { return ps.xp >= 5; });
         if (paid == -1) return;  // waiting on agent
+        const bool widened = (paid == 1);
 
-        bool widened = (paid == 1);
-        if (widened) ps.xp -= 5;
-
-        // Build the legal enemy-unit set under the current restriction.
-        auto opp = opponent(ctx.controller);
-        std::vector<GameObjectId> legal;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.isAtBattlefield()) continue;
-            if (obj.untargetable_by_enemy) continue;
-            if (!widened && obj.current_might > 3) continue;
-            legal.push_back(id);
-        }
-        GameObjectId picked = pickTarget(ctx, "Conscription target", legal);
+        GameObjectId picked = pickTarget(ctx, "Conscription target",
+                                         candidates(ctx.state, ctx.controller, widened));
         if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7) {
             return;  // suspended for agent decision
         }
+        // The cost is paid once, after the last choice (this callback is
+        // re-entered from the top with each answer).
+        if (widened && costDueNow(ctx)) {
+            if (ps.xp < 5) return;
+            ps.xp -= 5;
+            ctx.events.logTrace("CONSCRIPTION: spent 5 XP");
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
 
-        // Take control of it, exhaust it, and recall it (to its base).
+        // Take control of it, exhaust it, and recall it.
         ctx.executor.takeControl(picked, ctx.controller, /*until_end_of_turn=*/false);
         ctx.executor.exhaustObject(picked);
-        ctx.executor.moveToBase(picked);
+        // Recall (CR 457-458): relocated to its controller's base. Not a Move,
+        // so no UnitMovedEvent and no "when I move" triggers. Attached gear
+        // goes with it; damage and statuses are unaffected.
+        auto& unit = ctx.state.getObject(picked);
+        if (unit.location.has_value()) {
+            unit.location = BaseLocation{unit.controller};
+            unit.zone = ZoneType::Base;
+            unit.combat_designation = CombatDesignation::None;
+            for (auto gid : unit.attachments) {
+                if (!ctx.state.objectExists(gid)) continue;
+                auto& g = ctx.state.getObject(gid);
+                g.location = unit.location;
+                g.zone = ZoneType::Base;
+            }
+        }
         ctx.events.logTrace("CONSCRIPTION: take control + exhaust + recall (paid="
                             + std::to_string(widened) + ")");
     }

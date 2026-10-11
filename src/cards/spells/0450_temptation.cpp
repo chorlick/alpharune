@@ -13,63 +13,57 @@ namespace riftbound {
 namespace {
 
 // "[Repeat] [2] ... Move an enemy unit to a location where there's a unit with
-//  the same controller." Destination = a location occupied by ANOTHER unit
-//  with the moved unit's controller. ([Repeat] is engine-handled.)
+//  the same controller." The enemy unit is the target; the destination is a
+//  choice among the locations holding ANOTHER unit of its controller (not a
+//  second target, so no Deflect is owed for it). ([Repeat] is engine-handled.)
 
 class Temptation : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 2, .must_be_unit = true};
-    }
-    bool needsPlayTimeTargetPair() const override { return true; }
-    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        // Need an enemy unit whose controller has a second unit elsewhere.
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller == controller) continue;
-            if (!obj.location.has_value() || obj.untargetable_by_enemy) continue;
-            for (auto& [oid, other] : state.objects) {
-                if (oid == id) continue;
-                if (!other.isUnit() || other.controller != obj.controller) continue;
-                if (!other.location.has_value()) continue;
-                if (other.location != obj.location) return true;  // distinct location
+    /// Where `a` may be moved (int-coded as moveDests): each other location
+    /// holding another unit of its controller.
+    static std::vector<int> destinations(const GameState& state, GameObjectId a) {
+        std::vector<int> out;
+        if (!state.objectExists(a)) return out;
+        const auto& av = state.getObject(a);
+        if (!av.isUnit() || !av.location.has_value()) return out;
+        for (int d : moveDests(state, av)) {
+            const LocationId loc = d <= 0
+                ? LocationId{BaseLocation{av.controller}}
+                : LocationId{BattlefieldLocation{static_cast<BattlefieldId>(d - 1)}};
+            for (const auto& [id, obj] : state.objects) {
+                if (id == a || !obj.isUnit() || obj.controller != av.controller) continue;
+                if (!obj.location.has_value() || !(*obj.location == loc)) continue;
+                out.push_back(d);
+                break;
             }
         }
-        return false;
+        return out;
+    }
+    static std::vector<GameObjectId> movable(const GameState& state, PlayerId me) {
+        return chooseableUnits(state, me, [&](const GameObject& o) {
+            return o.controller != me && !destinations(state, o.id).empty();
+        });
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !movable(state, controller).empty();
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> enemies;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            if (!obj.location.has_value() || obj.untargetable_by_enemy) continue;
-            enemies.push_back(id);
-        }
-        // B = a unit with the SAME controller as A, at a DIFFERENT location
-        // (its location is the destination).
-        auto dest_units = [&](GameObjectId a) {
-            std::vector<GameObjectId> out;
-            if (!ctx.state.objectExists(a)) return out;
-            auto& av = ctx.state.getObject(a);
-            for (auto& [id, obj] : ctx.state.objects) {
-                if (id == a) continue;
-                if (!obj.isUnit() || obj.controller != av.controller) continue;
-                if (!obj.location.has_value() || obj.location == av.location) continue;
-                out.push_back(id);
-            }
-            return out;
-        };
-        auto [a, b] = pickTargetPair(ctx, "Temptation", enemies, dest_units);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        bool suspending = (a == kInvalidId || b == kInvalidId) &&
-                          ctx.state.chain.resuming.has_value() &&
-                          (ctx.state.chain.resuming->resume_point == 10 ||
-                           ctx.state.chain.resuming->resume_point == 12);
-        if (suspending) return;
-        if (a == kInvalidId || b == kInvalidId ||
-            !ctx.state.objectExists(a) || !ctx.state.objectExists(b)) return;
-        auto dest = ctx.state.getObject(b).location;
-        moveToLocation(ctx.executor, a, dest);
+        GameObjectId a = pickTarget(ctx, "Temptation", movable(ctx.state, ctx.controller));
+        if (a == kInvalidId) return;         // waiting, nothing to move, or a mistarget
+        const auto dests = destinations(ctx.state, a);
+        const int n = 1 + static_cast<int>(ctx.state.battlefields.size());
+        std::vector<std::string> labels;
+        uint32_t mask = 0;
+        for (int d = 0; d < n; ++d) labels.push_back(destLabel(d));
+        for (int d : dests) if (d >= 0 && d < 32) mask |= (1u << d);
+        int dest = pickMode(ctx, "Temptation: move it where?", n, labels, mask);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (dest < 0) return;
+        // The destination must still hold another unit of its controller.
+        if (std::find(dests.begin(), dests.end(), dest) == dests.end()) return;
+        moveTo(ctx, a, dest);
         ctx.events.logTrace("TEMPTATION: moved enemy unit to a location with another of its units");
     }
 private:

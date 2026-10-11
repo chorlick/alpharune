@@ -18,26 +18,46 @@ public:
 
     // "Play a 2 [M] Sand Soldier unit token. Then do this: You may pay [C] to
     //  ready it." [C] = one Power of this card's Domain (Order/[Y]).
+    //
+    // The token is created once per execution: its id is kept on the resolving
+    // chain item (resume_data[kTokenSlot], clear of the slots the choice
+    // helpers use), not on the card, so a later cast of the same card object
+    // makes a new token.
+    static constexpr size_t kTokenSlot = 7;
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // Create the token once (survives the confirmOptional resume loop).
-        if (!self.card_counters.count("__guards_token")) {
+        // No location is printed, so the token is played like any unit: base
+        // or a battlefield you control — the battlefield this was hidden at
+        // when played from facedown (CR 811.1.d.5).
+        const auto where = playLocations(ctx.state, ctx.controller,
+                                         facedownPlayBattlefield(ctx.state, ctx.source));
+        int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
+                            where.count(), where.labels);
+        if (mode < 0 || mode >= where.count()) return;   // -1 waiting for the agent
+
+        GameObjectId tok = kInvalidId;
+        auto& ri = ctx.state.chain.resuming;
+        if (ri.has_value() && ri->resume_data.size() > kTokenSlot &&
+            ri->resume_data[kTokenSlot] != 0) {
+            tok = static_cast<GameObjectId>(ri->resume_data[kTokenSlot] - 1);
+        } else {
             // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
-            auto tok = ctx.executor.createToken(ctx.controller, CardType::Unit,
+            tok = ctx.executor.createToken(ctx.controller, CardType::Unit,
                 "Sand Soldier", 2, {"Shurima"}, KeywordSet{},
-                LocationId{BaseLocation{ctx.controller}}, /*enter_ready=*/false);
-            self.card_counters["__guards_token"] = static_cast<int>(tok);
+                where.locations[mode], /*enter_ready=*/false);
+            if (ri.has_value()) {
+                while (ri->resume_data.size() <= kTokenSlot) ri->resume_data.push_back(0);
+                ri->resume_data[kTokenSlot] = static_cast<int32_t>(tok) + 1;
+            }
             ctx.events.logTrace("GUARDS!: play 2[M] Sand Soldier token");
         }
-        GameObjectId tok = static_cast<GameObjectId>(self.card_counters["__guards_token"]);
         auto can_pay = [&]() {
-            return ctx.state.objectExists(tok) &&
-                   ctx.state.getObject(tok).is_exhausted;
+            if (!ctx.state.objectExists(tok)) return false;
+            const auto& t = ctx.state.getObject(tok);
+            return t.location.has_value() && t.is_exhausted &&
+                   payableOnePower(ctx.state, ctx.controller, Domain::Order);
         };
         int conf = confirmOptional(ctx, "Guards!: pay [Y] to ready the Sand Soldier?", can_pay);
-        if (conf == -1) return;  // waiting on agent
-        if (conf == 0) return;   // declined / not legal
+        if (conf <= 0) return;   // waiting on the agent, declined, or not possible
         if (!payOnePower(ctx, ctx.controller, Domain::Order)) return;
         ctx.executor.readyObject(tok);
         ctx.events.logTrace("GUARDS!: paid [Y] -> readied Sand Soldier");

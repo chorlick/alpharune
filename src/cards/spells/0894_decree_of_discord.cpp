@@ -20,7 +20,8 @@ public:
     //  to their owners' hands."
     // Resumable: repeated picks (each with a "Done" option) against a Might
     // budget of 5; all chosen units are returned together at the end.
-    // resume_data = {remaining budget, picked ids...}.
+    // resume_data = {remaining budget, picked ids...}. The picks are built by
+    // hand, so each goes through offerableChoices / commitChosenObject.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
@@ -35,7 +36,8 @@ public:
                 return true;
             });
             std::sort(out.begin(), out.end());
-            return out;
+            // Deflect (CR 809): only units whose cost the controller can pay.
+            return offerableChoices(ctx, out);
         };
         auto prompt = [&]() {
             auto c = candidates();
@@ -74,6 +76,9 @@ public:
             finish();   // "Done"
             return;
         }
+        // The unit is chosen: Deflect is paid and the choice recorded, as
+        // Card::pickTarget would.
+        commitChosenObject(ctx, picked);
         ri.resume_data[0] -= ctx.state.getObject(picked).current_might;
         ri.resume_data.push_back(static_cast<int32_t>(picked));
         if (!prompt()) finish();

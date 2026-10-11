@@ -17,6 +17,11 @@ public:
     const CardDef& def() const override { return def_; }
     // "Choose a battlefield you control and a unit you control at a different
     //  location. Move that unit to that battlefield and give it +2 [M] this turn."
+    // The battlefield, then a unit that is not there, are chosen as the spell
+    // is played (CR 355). Played from facedown, the battlefield is the one it
+    // was hidden at (CR 811.1.d.2); the unit, which by its own restriction
+    // cannot be there, is chosen freely (811.1.d.4).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     static bool controls(const BattlefieldState& bf, PlayerId p) {
         return bf.controller.has_value() && *bf.controller == p;
     }
@@ -32,10 +37,6 @@ public:
         }
         return out;
     }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .must_be_friendly = true};
-    }
-    bool needsPlayTimeTarget() const override { return true; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         for (const auto& bf : state.battlefields)
             if (controls(bf, controller) && !unitsElsewhere(state, controller, bf.id).empty())
@@ -43,10 +44,9 @@ public:
         return false;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // Battlefield first (pickMode, one mode per battlefield slot), then the
-        // unit (pickTarget) — the helpers' resume slots only compose in that order.
         const auto& bfs = ctx.state.battlefields;
         const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        const auto hidden_at = facedownPlayBattlefield(ctx.state, ctx.source);
         uint32_t mask = 0;
         std::vector<std::string> labels;
         for (int i = 0; i < n; ++i) {
@@ -54,6 +54,7 @@ public:
             if (ctx.state.objectExists(bfs[i].card_object_id))
                 name = ctx.state.getObject(bfs[i].card_object_id).name;
             labels.push_back(name);
+            if (hidden_at.has_value() && *hidden_at != bfs[i].id) continue;
             if (controls(bfs[i], ctx.controller) &&
                 !unitsElsewhere(ctx.state, ctx.controller, bfs[i].id).empty())
                 mask |= (1u << i);
@@ -63,6 +64,7 @@ public:
         const BattlefieldId dest = bfs[mode].id;
         GameObjectId unit = pickTarget(ctx, "Resonating Strike: unit to move",
                                        unitsElsewhere(ctx.state, ctx.controller, dest));
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
         ctx.executor.moveToBattlefield(unit, dest);
         ctx.executor.giveTemporaryMight(unit, 2);

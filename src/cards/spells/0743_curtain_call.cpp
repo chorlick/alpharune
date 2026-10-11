@@ -15,31 +15,56 @@ namespace {
 class CurtainCall : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true, .optional = true};
-    }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        auto& src = ctx.state.getObject(ctx.source);
-        int& used_mask = src.card_counters["curtain_call_used_mask"];
+    // "Choose one you haven't already chosen — Draw 1. / Deal 2 to a unit at a
+    //  battlefield. / Deal 3 to a unit at a base. / Give a unit at a
+    //  battlefield -4 [M] this turn."
+    // The mode and then that mode's target are chosen as the spell is played.
+    //
+    // ENGINE-GAP: "[Repeat] — [1] / [A] / [1][A]" (three separate Repeat
+    // costs) is a shape GameEngine::parseRepeatCost cannot express, so no
+    // Repeat is offered and one mode is chosen per play. The "haven't already
+    // chosen" memory below is ready for it: it belongs to ONE play of the
+    // card (keyed by the chain item), so a later cast starts fresh.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    static constexpr const char* kMaskKey = "curtain_call_used_mask";
+    static constexpr const char* kPlayKey = "curtain_call_play";
 
-        // Compute legal-mode bitmask. Mode 0 (Draw) always legal if not
-        // used. Modes 1, 2, 3 require a compatible target.
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        // Modes used by earlier executions of THIS play (none unless
+        // repeated). Direct invocations with no chain item count as one play.
+        const int play = ctx.state.chain.resuming.has_value()
+            ? static_cast<int>(ctx.state.chain.resuming->id) + 1 : 0;
+        const int used_mask = counters[kPlayKey] == play ? counters[kMaskKey] : 0;
+
+        const auto at_bf = chooseableUnits(ctx.state, ctx.controller,
+            [](const GameObject& o) { return o.isAtBattlefield(); });
+        const auto at_base = chooseableUnits(ctx.state, ctx.controller,
+            [](const GameObject& o) { return o.isAtBase(); });
+        // Mode 0 (Draw) needs no target; 1 and 3 a unit at a battlefield, 2 a
+        // unit at a base.
         uint32_t legal = 0;
-        if (!(used_mask & (1 << 0))) legal |= (1u << 0);  // Draw 1 — no target needed
-        bool has_target = !targets.empty() && ctx.state.objectExists(targets[0]);
-        bool tgt_at_bf  = has_target && ctx.state.getObject(targets[0]).isAtBattlefield();
-        bool tgt_at_base = has_target && ctx.state.getObject(targets[0]).isAtBase();
-        if (!(used_mask & (1 << 1)) && tgt_at_bf)   legal |= (1u << 1);
-        if (!(used_mask & (1 << 2)) && tgt_at_base) legal |= (1u << 2);
-        if (!(used_mask & (1 << 3)) && tgt_at_bf)   legal |= (1u << 3);
+        if (!(used_mask & (1 << 0))) legal |= (1u << 0);
+        if (!(used_mask & (1 << 1)) && !at_bf.empty())   legal |= (1u << 1);
+        if (!(used_mask & (1 << 2)) && !at_base.empty()) legal |= (1u << 2);
+        if (!(used_mask & (1 << 3)) && !at_bf.empty())   legal |= (1u << 3);
 
         int mode = pickMode(ctx, "Curtain Call", 4,
                              {"Draw 1", "Deal 2 (BF)",
                               "Deal 3 (base)", "-4M (BF)"},
                              legal);
         if (mode < 0) return;  // -1 pending, -2 no legal mode
+        GameObjectId target = kInvalidId;
+        if (mode != 0) {
+            target = pickTarget(ctx, "Curtain Call", mode == 2 ? at_base : at_bf);
+            if (target == kInvalidId && ctx.state.chain.resuming.has_value() &&
+                ctx.state.chain.resuming->resume_point == 7) return;   // waiting
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
 
-        used_mask |= (1 << mode);
+        counters[kPlayKey] = play;
+        counters[kMaskKey] = used_mask | (1 << mode);
+        const bool has_target = target != kInvalidId && ctx.state.objectExists(target);
         switch (mode) {
             case 0:
                 ctx.events.logTrace("CURTAIN CALL: Draw 1");
@@ -47,15 +72,15 @@ public:
                 break;
             case 1:
                 ctx.events.logTrace("CURTAIN CALL: Deal 2 (BF)");
-                ctx.executor.dealDamage(targets[0], 2, ctx.source);
+                if (has_target) ctx.executor.dealDamage(target, 2, ctx.source);
                 break;
             case 2:
                 ctx.events.logTrace("CURTAIN CALL: Deal 3 (base)");
-                ctx.executor.dealDamage(targets[0], 3, ctx.source);
+                if (has_target) ctx.executor.dealDamage(target, 3, ctx.source);
                 break;
             case 3:
                 ctx.events.logTrace("CURTAIN CALL: -4M (BF)");
-                ctx.executor.giveTemporaryMight(targets[0], -4, /*minimum=*/0);
+                if (has_target) ctx.executor.giveTemporaryMight(target, -4, /*minimum=*/0);
                 break;
         }
     }

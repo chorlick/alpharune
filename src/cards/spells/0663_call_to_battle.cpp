@@ -24,57 +24,102 @@ public:
     }
     bool needsPlayTimeTarget() const override { return true; }
 
-    std::vector<GameObjectId> friendlyUnits(CardContext& ctx) const {
+    /// Battlefields `p` controls other than the one `unit` is at, as a
+    /// pickMode mask over the battlefield slots.
+    static uint32_t destinationMask(const GameState& state, PlayerId p, GameObjectId unit) {
+        uint32_t mask = 0;
+        if (!state.objectExists(unit)) return mask;
+        const auto here = state.getObject(unit).battlefieldId();
+        for (size_t i = 0; i < state.battlefields.size() && i < 32; ++i) {
+            const auto& bf = state.battlefields[i];
+            if (!bf.controller.has_value() || *bf.controller != p) continue;
+            if (here.has_value() && *here == bf.id) continue;
+            mask |= (1u << i);
+        }
+        return mask;
+    }
+    // A unit you control that has a battlefield you control to move to.
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller) const override {
         std::vector<GameObjectId> out;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
+        for (const auto& [id, obj] : state.objects) {
+            if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
+            if (destinationMask(state, controller, id) != 0) out.push_back(id);
+        }
+        return out;
+    }
+
+    // resume_data (clear of the Card::pick* helpers' slots):
+    static constexpr size_t kPhaseSlot = 7;   // 0 = nothing moved yet, 1 = opponent asked, 2 = done
+    static constexpr size_t kBfSlot = 8;      // the battlefield, once the first unit has moved
+
+    static std::vector<GameObjectId> unitsNotAt(const GameState& state, PlayerId p, BattlefieldId bf) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects) {
+            if (!obj.isUnit() || obj.controller != p || !obj.location.has_value()) continue;
+            const auto at = obj.battlefieldId();
+            if (at.has_value() && *at == bf) continue;
             out.push_back(id);
         }
         return out;
     }
 
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        GameObjectId unit = pickTarget(ctx, "Call to Battle: move a unit you control",
-                                       friendlyUnits(ctx));
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        auto& ri = ctx.state.chain.resuming;
+        auto slot = [&](size_t i) -> int32_t& {
+            while (ri->resume_data.size() <= i) ri->resume_data.push_back(0);
+            return ri->resume_data[i];
+        };
+        const PlayerId opp = opponent(ctx.controller);
+        if (ri.has_value() && slot(kPhaseSlot) >= 2) return;
+        if (ri.has_value() && slot(kPhaseSlot) == 1) {
+            // "They move a unit they control to the same battlefield": the
+            // opponent's pick.
+            slot(kPhaseSlot) = 2;
+            const auto bf = static_cast<BattlefieldId>(slot(kBfSlot));
+            const auto theirs = unitsNotAt(ctx.state, opp, bf);
+            GameObjectId mover = takenObject(ctx);
+            if (theirs.empty()) return;
+            if (std::find(theirs.begin(), theirs.end(), mover) == theirs.end())
+                mover = theirs.front();
+            ctx.executor.moveToBattlefield(mover, bf);
+            ctx.events.logTrace("CALL TO BATTLE: opponent moved a unit to the same BF");
+            return;
+        }
+
+        const auto locked = lockedPlayTarget(ctx, targets);
+        const GameObjectId unit = locked ? *locked
+            : pickTarget(ctx, "Call to Battle: move a unit you control",
+                         enumerateLegalTargets(ctx.state, ctx.controller));
         if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
 
-        // Destination: a battlefield you control that this unit isn't already at.
-        auto unit_bf = ctx.state.getObject(unit).battlefieldId();
-        std::optional<BattlefieldId> dest;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (!bf.controller || *bf.controller != ctx.controller) continue;
-            if (unit_bf && *unit_bf == bf.id) continue;
-            dest = bf.id;
-            break;
-        }
-        // Fall back to any battlefield you control (even if already there).
-        if (!dest) {
-            for (const auto& bf : ctx.state.battlefields) {
-                if (bf.controller && *bf.controller == ctx.controller) { dest = bf.id; break; }
-            }
-        }
-        if (!dest) return;  // no controlled battlefield to move to
-        ctx.executor.moveToBattlefield(unit, *dest);
+        // Which battlefield you control it moves to.
+        const auto& bfs = ctx.state.battlefields;
+        const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        std::vector<std::string> labels;
+        for (int i = 0; i < n; ++i)
+            labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+                ? ctx.state.getObject(bfs[i].card_object_id).name
+                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id)));
+        const int mode = pickMode(ctx, "Call to Battle: battlefield", n, labels,
+                                  destinationMask(ctx.state, ctx.controller, unit));
+        if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield to move to
+        const BattlefieldId dest = bfs[mode].id;
+        ctx.executor.moveToBattlefield(unit, dest);
         ctx.events.logTrace("CALL TO BATTLE: moved a friendly unit to a controlled BF");
 
         // "Then, choose an opponent. They move a unit they control to the same
-        //  battlefield." Opponent's choice isn't surfaced through the caster's
-        //  agent; approximate their rational pick (highest-Might unit not
-        //  already there).
-        PlayerId opp = opponent(ctx.controller);
-        GameObjectId opp_unit = kInvalidId;
-        int best_might = -1;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != opp || !obj.location.has_value()) continue;
-            auto obf = obj.battlefieldId();
-            if (obf && *obf == *dest) continue;   // already there
-            if (obj.current_might > best_might) { opp_unit = id; best_might = obj.current_might; }
-        }
-        if (opp_unit != kInvalidId && ctx.state.objectExists(opp_unit)) {
-            ctx.executor.moveToBattlefield(opp_unit, *dest);
-            ctx.events.logTrace("CALL TO BATTLE: opponent moved a unit to the same BF");
-        }
+        //  battlefield." — their choice among their units that are not there.
+        if (!ri.has_value()) return;
+        slot(kPhaseSlot) = 2;
+        const auto theirs = unitsNotAt(ctx.state, opp, dest);
+        if (theirs.empty()) return;
+        std::vector<Intent> opts;
+        for (auto id : theirs) opts.push_back(objChoice(opp, id));
+        slot(kPhaseSlot) = 1;
+        slot(kBfSlot) = static_cast<int32_t>(dest);
+        ctx.executor.requestChoice(opp, std::move(opts),
+                                   "Call to Battle: move a unit you control to that battlefield");
     }
 private:
     const CardDef def_ = [] {

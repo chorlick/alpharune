@@ -57,6 +57,7 @@ public:
                 return !(at.has_value() && *at == bf);   // not already there
             });
         };
+        // "No" is zero units (CR 355.13); the -2 [M] below does not depend on it.
         const int conf = confirmOptional(ctx,
             "Moonfall: move an enemy unit to that battlefield?",
             [&]() { return !movable().empty(); });

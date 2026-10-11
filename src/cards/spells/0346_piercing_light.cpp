@@ -27,6 +27,8 @@ public:
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true, .optional = true};
     }
+    // "A unit at a battlefield" is mandatory; only the other unit is "up to
+    // one" (CR 355.13), and the sets below list the first unit alone.
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         for (auto id : enumerateLegalTargets(state, controller))
             if (state.getObject(id).isAtBattlefield()) return true;

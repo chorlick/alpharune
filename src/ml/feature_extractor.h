@@ -72,7 +72,8 @@ inline constexpr int kNumZoneVectors      = 5;    // self deck/trash/banish, opp
 inline constexpr int kStateFeatureDim     =
     kZoneVectorOffset + kNumZoneVectors * kCardVocabSize + 2 + 192 + 24;
 
-/// Build a 354-dim state feature vector from `perspective`'s point of view.
+/// Build the state feature vector (kStateFeatureDim = 6188 dims; the first 354
+/// are the historical base layout) from `perspective`'s point of view.
 /// Opponent-private information (hand, hidden cards) is masked.
 std::vector<float> extractStateFeatures(const GameState& state,
                                         PlayerId perspective,
@@ -86,7 +87,8 @@ void extractStateFeatures(const GameState& state,
                           const CardDB& card_db,
                           std::vector<float>& out);
 
-/// Build a 25-dim feature vector describing a single legal action.
+/// Build a kActionFeatureDim-dim (25) feature vector describing a single legal
+/// action.
 /// The chosen intent vs the legal-action slot share the same featurization.
 std::vector<float> featurizeAction(const Intent& intent,
                                    const GameState& state);

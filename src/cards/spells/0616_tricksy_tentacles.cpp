@@ -42,6 +42,8 @@ public:
             if (c.empty()) return false;
             std::vector<Intent> opts;
             for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
+            // "any number" includes zero (CR 355.13): "Done" is on every
+            // prompt, and with no unit to choose the spell still resolves.
             opts.push_back(valChoice(ctx.controller, 0, "Done"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                 "Tricksy Tentacles: move an enemy unit (Might left: " +

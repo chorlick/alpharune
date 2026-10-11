@@ -452,7 +452,7 @@ TEST_F(PlayCombatFixTest, SpellMetadata_LandsOnTheSpell_NotOnATriggerPushedAbove
         }
     };
 
-    engine_->testHook_executeIntent(playIntent(P1, spell));
+    engine_->testHook_executeIntent(playIntent(P1, spell)); settleLikeTheEngine(*engine_);
 
     EXPECT_EQ(s().getObject(watcher).card_counters["fired"], 1)
         << "the watcher's trigger did go on the chain";
@@ -532,7 +532,7 @@ TEST_F(PlayCombatFixTest, ActivatedAbility_UnpayableCostIsRefused_NotQueuedForFr
         act.player = P1;
         act.ability_source = unit;
         act.ability_index = ability;
-        engine_->testHook_executeIntent(act);
+        engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
     }
 
     EXPECT_EQ(s().getObject(unit).card_counters["resolved_0"], 0);
@@ -585,7 +585,7 @@ TEST_F(PlayCombatFixTest, TrashReplay_PaysTheSpellTaxOnTopOfTheGrant) {
     s().player(P1).rune_pool.energy = 3;
     auto offer = replay();
     ASSERT_TRUE(offer.has_value());
-    engine_->testHook_executeIntent(*offer);
+    engine_->testHook_executeIntent(*offer); settleLikeTheEngine(*engine_);
     EXPECT_EQ(s().player(P1).rune_pool.energy, 1) << "the [2] tax was charged";
 }
 
@@ -598,13 +598,13 @@ TEST_F(PlayCombatFixTest, PlayUnitToBattlefield_FiresPlayHereTrigger_AndSetsBatt
     auto bf_card = setBattlefieldCard(0, kTPlayHereBf);
 
     auto to_base = inHand(P1, kTVanilla);
-    engine_->testHook_executeIntent(playIntent(P1, to_base, BaseLocation{P1}));
+    engine_->testHook_executeIntent(playIntent(P1, to_base, BaseLocation{P1})); settleLikeTheEngine(*engine_);
     EXPECT_EQ(s().getObject(bf_card).card_counters["fired"], 0)
         << "a unit played to base was not played 'here'";
     EXPECT_EQ(s().getObject(to_base).zone, ZoneType::Base);
 
     auto to_bf = inHand(P1, kTVanilla);
-    engine_->testHook_executeIntent(playIntent(P1, to_bf, BattlefieldLocation{0}));
+    engine_->testHook_executeIntent(playIntent(P1, to_bf, BattlefieldLocation{0})); settleLikeTheEngine(*engine_);
     EXPECT_EQ(s().getObject(bf_card).card_counters["fired"], 1)
         << "\"when you play a unit here\" fires on a normal play from hand";
     const auto& u = s().getObject(to_bf);
@@ -778,7 +778,7 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_GoesToTheOwnersDeckAndAnnouncesLeaving
     act.type = IntentType::ActivateAbility;
     act.player = P1;
     act.ability_source = gear;
-    engine_->testHook_executeIntent(act);
+    engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
 
     const auto& g = s().getObject(gear);
     EXPECT_EQ(g.zone, ZoneType::MainDeck);
@@ -807,7 +807,7 @@ TEST_F(PlayCombatFixTest, RecycleSelfCost_TokenCeasesToExistInstead) {
     act.type = IntentType::ActivateAbility;
     act.player = P1;
     act.ability_source = gear;
-    engine_->testHook_executeIntent(act);
+    engine_->testHook_executeIntent(act); settleLikeTheEngine(*engine_);
 
     EXPECT_EQ(s().getObject(gear).zone, ZoneType::Banishment) << "CR 183.1";
     EXPECT_TRUE(s().player(P1).main_deck.empty()) << "a token is never shuffled into a deck";
@@ -893,7 +893,7 @@ TEST_F(PlayCombatFixTest, MultiTarget_TwoFriendlyTargets_AreOfferedAsOrderedPair
 
     // And the chosen pair reaches the card in that order.
     for (const auto& i : plays)
-        if (i.targets == std::vector<GameObjectId>{b, a}) engine_->testHook_executeIntent(i);
+        if (i.targets == std::vector<GameObjectId>{b, a}) { engine_->testHook_executeIntent(i); settleLikeTheEngine(*engine_); }
     const auto& sp = s().getObject(spell);
     EXPECT_EQ(sp.card_counters.at("n"), 2);
     EXPECT_EQ(sp.card_counters.at("t0"), static_cast<int>(b));
@@ -1002,7 +1002,7 @@ TEST_F(PlayCombatFixTest, ReactionUnit_PlayedFromTheChampionZoneInResponseToASpe
         return nullptr;
     };
 
-    engine_->testHook_executeIntent(playIntent(P2, spell));
+    engine_->testHook_executeIntent(playIntent(P2, spell)); settleLikeTheEngine(*engine_);
 
     ASSERT_TRUE(response.has_value()) << "the response was offered";
     const auto& c = s().getObject(champ);
@@ -1026,7 +1026,7 @@ TEST_F(PlayCombatFixTest, QuickDraw_PlayedInTheMainPhase_AttachesToAUnitYouChoos
 
     auto plays = playsOf(engine_->generateLegalActions(), gear);
     ASSERT_EQ(plays.size(), 1u);
-    engine_->testHook_executeIntent(plays.front());
+    engine_->testHook_executeIntent(plays.front()); settleLikeTheEngine(*engine_);
 
     const auto& g = s().getObject(gear);
     ASSERT_TRUE(g.attached_to.has_value()) << "played in the main phase, it still attaches";
@@ -1054,7 +1054,7 @@ TEST_F(PlayCombatFixTest, QuickDraw_AtReactionTiming_IsOneActionAndAttaches) {
         return response.has_value() ? &*response : nullptr;
     };
 
-    engine_->testHook_executeIntent(playIntent(P2, spell));
+    engine_->testHook_executeIntent(playIntent(P2, spell)); settleLikeTheEngine(*engine_);
 
     EXPECT_EQ(offers, 1u) << "one play, not one identical play per friendly unit";
     const auto& g = s().getObject(gear);

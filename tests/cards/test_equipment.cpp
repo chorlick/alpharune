@@ -737,7 +737,14 @@ TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
     // the ability goes on the chain and the controller says yes. "(You still
     // pay its costs.)" — this unit card costs [0].
     state.battlefields[0].controller = P1;
-    EnginePathAgent yes(EnginePathAgent::choosing(trash_unit));
+    // Yes to the "may", the unit in the trash, and the base as where it is
+    // played (the destination prompt is a mode: stated here).
+    EnginePathAgent yes([inner = EnginePathAgent::choosing(trash_unit, EnginePathAgent::May::Yes)](
+                              const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Base") return i;
+        return inner(legal);
+    });
     withEngine([&](GameEngine& e) {
         e.testHook_scoreHold(P1, e.mutableState().battlefields[0].id);
         e.testHook_runChain();
@@ -749,6 +756,7 @@ TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
         << "Trigger should consume the unit from trash";
     EXPECT_NE(state.getObject(trash_unit).zone, ZoneType::Trash)
         << "Trash unit should have left the trash zone";
+    EXPECT_TRUE(state.getObject(trash_unit).isAtBase()) << "played where the controller said";
 }
 
 TEST_F(LastRitesTest, ConquerOrHoldTriggerNoopWhenTrashHasNoUnit) {

@@ -1,3 +1,4 @@
+#include <atomic>
 #include "card_db.h"
 
 #include "cards/card_registry.h"
@@ -10,7 +11,13 @@
 
 namespace riftbound {
 
+namespace {
+std::atomic<int> g_tables_built{0};
+}
+int CardDB::tablesBuilt() { return g_tables_built.load(); }
+
 void CardDB::buildFromClasses(const CardRegistry& registry) {
+    g_tables_built.fetch_add(1);
     cards_.clear();
     name_index_.clear();
     for (CardDefId id : registry.classDefIds()) {

@@ -38,9 +38,9 @@ iteration must apply these.
 | Stage | Stream | State | Branch head | Tests at merge | Notes |
 |---|---|---|---|---|---|
 | 1 | search | running | | | |
-| 1 | helpers | running | | | |
+| 1 | helpers | returned | `f22d2a4` | 1576 passed, 2 baseline failures (on its branch) | sent back: fix double execution in Thrill of the Hunt 745 and Zenith Blade 258 caused by 3.1, list other cards with that shape; then merge. 3.1, 3.24, 7.30 stay open for card streams |
 | 1 | executor | merged | `ac49a38` (merge `e1eb9b8`) | 1560 run, 1557 passed, 2 baseline failures | all 8 items closed; 2 existing tests corrected (CR 427.1.b.1; temp Deflect) |
-| 1 | chain-triggers | running | | | stopped by mistake and resumed by the user, same agent and worktree |
+| 1 | chain-triggers | merged | `6d4dd76` (merge `c9ad6b4`) | 1583 run, 1580 passed, 2 baseline failures | 12 items closed; 7.1 decision recorded (cards use `pickTarget` + `kFinalizeTrigger`); 8.9 has one bullet left, in carry-over |
 | 1 | engine-auras-costs | running | | | |
 | 1 | engine-play-combat | merged | `3df9c9b` (merge `ec13e47`) | 1537 run, 1534 passed, 2 baseline failures | 16 of 17 items closed; 8.7 left open, moved to carry-over (card work) |
 | 1 | io-cli | running | | | gate open at spawn (main checkout clean); based on `bbc995d` |
@@ -79,6 +79,17 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| chain-triggers | 7.1: 26 cards to convert per the rule under the item; remove each id from `kKnownOffenders` in `tests/test_review_fix_chain_triggers.cpp` and enable its row in `Plan07Item71/DISABLED_TargetedTriggerTest` | card streams (each in its range); sweep ticks 7.1 | open |
+| chain-triggers | 8.9 last bullet: Square Up ("Discard 1") and Curtain Call (three costs) need a card-declared Repeat cost in `card.h` read by `executePlaySpell`, plus the two card files | sweep | open |
+| chain-triggers | Irelia 380 and Jae Medarda 463 need `triggerCondition(subject == source)` | cards-c5 | open |
+| chain-triggers | Treasure Trove 186 triggers only on a kill, not on a bounce | cards-c0 | open |
+| chain-triggers | 8.16 bullet "spell that banishes itself is also filed in trash" is fixed in `chain_manager.cpp`; note it when ticking 8.16 | sweep | open |
+| chain-triggers | 2.11 root cause: the play gate should check card cost plus Deflect together | sweep | open |
+| chain-triggers | NEW: `ChainManager::addSpell` / `addAbility` charge Deflect without consulting `Card::ignoresDeflect()` | sweep | open |
+| chain-triggers | NEW: `TriggerManager::onUnitDied` queues a unit's own death ability directly, bypassing `triggerCondition` and the LeBlanc Temporary suppression | sweep | open |
+| chain-triggers | NEW: `GameEngine::runFinalizePass` caps at 16 choices and stops silently | sweep | open |
+| chain-triggers | NEW: Battle Mistress 517 triggers once per dead enemy unit instead of once per "one or more" | cards-c6 | open |
+| chain-triggers | NEW: Void Burrower 553 declares `getTargetRequirements()` that nothing reads (allow-listed in the audit test) | cards-c1 | open |
 | executor | 2.15 card recipes: Abandon 693, Scryer's Bloom 698, Stacked Deck 183, Baited Hook 242, Last Rites 471 recycle via `deck::putOnBottom` without announcing `"recycled_main"` | cards-c3 (693, 698), cards-c2 (183), cards-c0 (242), cards-c1 (471) | open |
 | executor | 2.14: cards printing "if it was buffed this way" must branch on `buffUnit`'s returned bool | card streams (each in its range) | open |
 | executor | 8.13: manual erase before `playIgnoringCost` / `playPayingCost` is redundant, drop it | card streams (each in its range) | open |
@@ -114,3 +125,5 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 user approved batched merges (see Run decisions).
 - 2026-10-10 merged executor, suite 1557/1560 with only the 2 baseline failures; 8 boxes ticked and verified; 9 rows to carry-over. Worktree and branch removed.
 - 2026-10-10 spawned io-cli from `bbc995d`.
+- 2026-10-10 merged chain-triggers (`c9ad6b4`), suite 1580/1583 with only the 2 baseline failures; 12 boxes ticked and verified; 11 rows to carry-over. Worktree and branch removed.
+- 2026-10-10 helpers returned; sent back for two regressions before merge.

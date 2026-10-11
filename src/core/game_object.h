@@ -203,6 +203,11 @@ struct GameObject {
     // the flag (one-shot). Expires at end of turn if unused.
     bool death_replacement_recall_pending = false;
 
+    // "If it would die this turn, banish it instead." (Smite 568) Both kill
+    // paths consult this before the death happens: the unit is banished, so it
+    // does not die (no death triggers, no trash). Lasts until end of turn.
+    bool banish_if_would_die_this_turn = false;
+
     // ── One-shot damage prevention (Counter Strike 510) ──
     // "The next time that unit would be dealt damage this turn, prevent it."
     // EffectExecutor::dealDamage consults this BEFORE applying damage: when set

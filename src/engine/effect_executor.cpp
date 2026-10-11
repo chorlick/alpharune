@@ -247,6 +247,16 @@ void EffectExecutor::killObject(GameObjectId target) {
             return;
         }
 
+        // "If it would die this turn, banish it instead." (Smite) — as in
+        // GameEngine::killUnit.
+        if (obj.banish_if_would_die_this_turn) {
+            obj.banish_if_would_die_this_turn = false;
+            events_.logTrace("  REPLACEMENT (self): " + obj.name +
+                             " is banished instead of dying");
+            banishObject(target);
+            return;
+        }
+
         // "If a unit here would die ..." on the battlefield the unit is at
         // (Altar of Blood): the battlefield's card is asked first, for the
         // dying unit's controller, as GameEngine::killUnit asks it.

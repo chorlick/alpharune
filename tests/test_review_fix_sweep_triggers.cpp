@@ -155,6 +155,23 @@ protected:
                 out.push_back(id);
         return out;
     }
+    /// This file's own picker, so its tests do not depend on what the shared
+    /// fixture's pickers do with a prompt they were not told about: choose
+    /// object `id` when it is offered, say yes (1) to a yes/no, else the
+    /// first option.
+    static EnginePathAgent::Picker objectOrYes(GameObjectId id) {
+        return [id](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == id) return i;
+            for (const auto& i : legal)
+                if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
+            return legal.front();
+        };
+    }
+    static Intent recycleIt(const std::vector<Intent>& legal) {      // a Predict prompt
+        for (const auto& i : legal) if (!i.chosen_objects.empty()) return i;
+        return legal.front();
+    }
     static Intent keepOnTop(const std::vector<Intent>& legal) {      // a Predict prompt
         for (const auto& i : legal) if (i.chosen_objects.empty() && !i.chosen_value) return i;
         return legal.front();
@@ -520,7 +537,7 @@ TEST_F(SweepTriggersTest, Vision_TheControllerChoosesWhetherToRecycle) {
     EXPECT_EQ(state.player(P1).main_deck.back(), top) << "kept on top";
 
     auto card2 = addToHand(P1, kLoyalPoro);
-    EnginePathAgent recycle;                        // first option: recycle it
+    EnginePathAgent recycle(&SweepTriggersTest::recycleIt);
     playThroughEngine(card2, &recycle);
     EXPECT_EQ(state.player(P1).main_deck.front(), top) << "recycled to the bottom";
 }
@@ -551,7 +568,7 @@ TEST_F(SweepTriggersTest, Forecaster_HasOneInstanceOfVision) {
 TEST_F(SweepTriggersTest, Weaponmaster_ASandSoldierTokenMayEquipAsItIsPlayed) {
     addLegend(P1, kEmperor);
     auto gear = addGear(P1, kInvalidId, /*equipment=*/true);
-    EnginePathAgent agent(EnginePathAgent::choosing(gear));   // yes, then the gear
+    EnginePathAgent agent(objectOrYes(gear));   // yes, then the gear
     withEngine([&](GameEngine& e) {
         e.testHook_executor().createToken(P1, CardType::Unit, "Sand Soldier", 2, {"Shurima"},
                                           KeywordSet{}, base(P1));
@@ -829,7 +846,7 @@ TEST_F(SweepTriggersTest, RevealAndDrawIt_CountsAsADraw) {
         auto conn = events.on_cards_drawn.connect([&](const CardsDrawnEvent& e) {
             if (e.player == P1) drawn_events += e.count;
         });
-        EnginePathAgent agent(EnginePathAgent::choosing(wanted));   // yes, and that card
+        EnginePathAgent agent(objectOrYes(wanted));   // yes, and that card
         fireTriggerThroughEngine(source, c.trigger, &agent);
         conn.disconnect();
         EXPECT_TRUE(inHand(P1, wanted));
@@ -857,7 +874,7 @@ TEST_F(SweepTriggersTest, ReplayedSpell_StaysOnTheChainUntilTheNewPlayResolves) 
     auto b = addUnit(P2, kInvalidId, 1, 0);
     auto spell = addToHand(P1, kDeathFromBelow);
     state.player(P1).rune_pool.universal_power += 1;      // the [A] for the replay
-    EnginePathAgent p1(EnginePathAgent::choosing(a));     // a, then yes, then what is left
+    EnginePathAgent p1(objectOrYes(a));     // a, then yes, then what is left
     TrashWatcher p2;
     p2.spell = spell;
     playThroughEngine(spell, &p1, std::nullopt, &p2);
@@ -885,7 +902,7 @@ TEST_F(SweepTriggersTest, IgnoresDeflect_IsHonouredForATargetChosenAsTheSpellIsP
     play.player = P1;
     play.card = spell;
     play.targets = {enemy};
-    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    EnginePathAgent agent(objectOrYes(enemy));
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
     EXPECT_EQ(obj(enemy).temp_might_bonus, -5) << "no [A] was needed for its [Deflect]";
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1) << "[Deflect] was not charged";
@@ -1095,7 +1112,7 @@ TEST_F(SweepTriggersTest, Mulligan_AnnouncesTheRecycleOnce) {
     auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
         if (e.what_changed == "recycled_main") ++announced;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(karma));
+    EnginePathAgent agent(objectOrYes(karma));
     withEngine([&](GameEngine& e) {
         e.testHook_executeIntent(Intent::mulligan(P1, {a, b}));
         e.testHook_runChain();
@@ -1235,7 +1252,7 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
         if (e.message.find(name) == std::string::npos) return;
         if (e.visibleTo(P1) && !e.visibleTo(P2)) ++private_lines; else ++leaked;
     });
-    EnginePathAgent agent(EnginePathAgent::choosing(spell));
+    EnginePathAgent agent(objectOrYes(spell));
     fireTriggerThroughEngine(weaver, TriggerType::WhenYouPlayMe, &agent);
     conn.disconnect();
     EXPECT_GE(private_lines, 1);
@@ -1515,7 +1532,7 @@ TEST_F(SweepTriggersTest, MoveTrigger_FaePorterUsesTheDestinationOfItsMove) {
     auto porter = addUnit(P1, kFaePorter, 2, -1);
     auto ally = addUnit(P1, kInvalidId, 2, -1);
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
-    EnginePathAgent agent(EnginePathAgent::choosing(ally));
+    EnginePathAgent agent(objectOrYes(ally));
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
         exec.moveToBattlefield(porter, state.battlefields[1].id);
@@ -1535,7 +1552,7 @@ TEST_F(SweepTriggersTest, MoveTrigger_AkaliChoosesAtTheEndsOfThatMove) {
     constexpr CardDefId kAkali = 808;
     auto akali = addUnit(P1, kAkali, 3, 0);
     auto left_behind = addUnit(P2, kInvalidId, 9, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(left_behind));
+    EnginePathAgent agent(objectOrYes(left_behind));
     withEngine([&](GameEngine& e) {
         auto& exec = e.testHook_executor();
         exec.moveToBase(akali);                    // 0 -> base: only battlefield 0 qualifies
@@ -1654,7 +1671,7 @@ TEST_F(SweepTriggersTest, DelayedAbility_WatchedPlayerIsNotItsController) {
     constexpr CardDefId kAsheFocused = 731;
     auto taken = addToHand(P2, kLoyalPoro);
     auto ashe = addToHand(P1, kAsheFocused);
-    EnginePathAgent agent(EnginePathAgent::choosing(taken));
+    EnginePathAgent agent(objectOrYes(taken));
     playThroughEngine(ashe, &agent);
     ASSERT_EQ(obj(taken).zone, ZoneType::Banishment);
     ASSERT_EQ(state.delayed_abilities.size(), 1u);
@@ -1946,7 +1963,7 @@ TEST_F(SweepTriggersTest, DeathReplacements_OrderIsStableWithoutAChoice) {
     auto angel = addAttachedGear(P1, unit, kGuardianAngel);
     auto zhonya = addGear(P1, kZhonyas);
     obj(unit).death_replacement_recall_pending = true;
-    EnginePathAgent dflt;
+    EnginePathAgent dflt(EnginePathAgent::script({0}));   // the first listed
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(unit); }, &dflt);
     ASSERT_EQ(dflt.prompts.size(), 1u);
     ASSERT_EQ(dflt.prompts[0].size(), 3u);

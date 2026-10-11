@@ -330,4 +330,242 @@ still matches.
 
 ## Appendix A. Cards whose prompt surface changed
 
-<!-- APPENDIX-A -->
+Generated mechanically: for every card file, the prompt helpers its class
+calls at the baseline of the fix run (`c7143f1`) and now, comments stripped.
+A card is listed when the two differ. It shows **that** a card's decisions
+changed and in which direction, not the order of its prompts — read the card
+for that. `xN` is the number of call sites, not of prompts at run time.
+
+Reading the columns: `confirmOptional` / `confirmNow` — a yes/no; `pickMode` —
+a numbered choice; `pickXAmount` — an X; `pickTarget` / `pickTargetPair` /
+`selectObject` / `selectObjectAs` / `chooseObjectNow` — an object (`...As`:
+asked of another player; `...Now`: asked while the card is being played, before
+payment); `selectAnyNumber` / `pickSeveral` / `splitDamageAmong` — a sequence
+of object prompts; `pickEffectPlayLocation` / `pickTokenDest` /
+`playTokensChoosingLocations` / `pickMoveDest` — where something goes;
+`requestChoice` — a hand-built prompt; `predict` — Predict's keep / recycle
+and ordering prompts; `kFinalizeTrigger` / `kFinalizeResolve` /
+`kFinalizeActivate` — the choices are made at finalization; `additionalPlayCost`
+— asked before the cost is paid; `repeatCosts` — printed Repeat offers;
+`needsPlayTimeTarget(Pair)` / `needs_activation_time_target` — one Intent per
+card, target asked as a follow-up; `WeaponmasterUnit` — the shared
+Weaponmaster "may" and Equipment choice.
+
+Not visible here: prompts that come from the engine or a shared helper without
+a call in the card file (the Standard Move follow-ups, [Vision], Zilean's token
+copy, the optional additional cost declared as data, Equip payment choices).
+
+| Id | Type | Card | Before (`c7143f1`) | Now |
+|---|---|---|---|---|
+| 6 | units | Flame Chompers | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickEffectPlayLocation |
+| 16 | units | Dangerous Duo | - | kFinalizeTrigger, pickTarget |
+| 21 | gear | Sun Disc | kFinalizeTrigger, pickTarget | - |
+| 23 | gear | Unlicensed Armory | needs_activation_time_target, pickTarget | confirmNow, needs_activation_time_target, pickTarget |
+| 33 | spells | Shakedown | - | requestChoice |
+| 36 | units | Vi, Destructive | - | kFinalizeActivate, pickTarget |
+| 37 | units | Immortal Phoenix | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickEffectPlayLocation |
+| 41 | units | Volibear, Furious | requestChoice | splitDamageAmong |
+| 43 | spells | Charm | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickMoveDest, pickTarget |
+| 48 | spells | Meditation | confirmOptional | confirmOptional, kFinalizeResolve, pickTarget |
+| 51 | units | Solari Shieldbearer | - | kFinalizeTrigger, pickTarget |
+| 62 | spells | Reinforce | pickTarget | requestChoice |
+| 63 | gear | Spirit's Refuge | - | kFinalizeTrigger, pickTarget |
+| 67 | units | Blitzcrank, Impassive | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 76 | units | Yasuo, Remorseful | - | kFinalizeTrigger, pickTarget |
+| 82 | units | Whiteflame Protector | - | kFinalizeTrigger, pickTarget |
+| 92 | units | Riptide Rex | - | kFinalizeTrigger, pickTarget |
+| 94 | spells | Sprite Call | - | pickTokenDest |
+| 97 | units | Blastcone Fae | - | kFinalizeTrigger, pickTarget |
+| 99 | gear | Garbage Grabber | - | kFinalizeActivate, selectObject |
+| 109 | units | Dr. Mundo, Expert | - | requestChoice |
+| 112 | units | Kai'Sa, Evolutionary | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 130 | units | Crackshot Corsair | - | kFinalizeTrigger, pickTarget |
+| 132 | units | First Mate | - | kFinalizeTrigger, pickTarget |
+| 136 | units | Pit Rookie | - | kFinalizeTrigger, pickTarget |
+| 146 | spells | Wallop | - | additionalPlayCost, chooseObjectNow, confirmNow |
+| 147 | units | Wildclaw Shaman | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, selectObject |
+| 150 | units | Kraken Hunter | - | additionalPlayCost, chooseObjectNow, confirmNow |
+| 153 | spells | Overt Operation | confirmOptional | requestChoice |
+| 157 | units | Udyr, Wildman | pickMode, pickTargetx2 | kFinalizeActivate, pickMode, pickTarget |
+| 164 | units | Sett, Brawler | - | kFinalizeActivate |
+| 173 | spells | Ride the Wind | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickMoveDest, pickTarget |
+| 187 | spells | Whirlwind | requestChoice | offerableChoices, requestChoice |
+| 188 | units | Zaunite Bouncer | - | kFinalizeTrigger, pickTarget |
+| 191 | units | Maddened Marauder | - | kFinalizeTrigger, pickTarget |
+| 194 | units | Nocturne, Horrifying | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickMode |
+| 196 | units | Soulgorger | confirmOptional, kFinalizeTrigger, pickTarget | confirmOptional, kFinalizeTrigger, pickEffectPlayLocation, pickTarget |
+| 199 | units | Tideturner | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 206 | spells | Back to Back | - | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair |
+| 207 | spells | Call to Glory | - | additionalPlayCost, chooseObjectNow, confirmNow |
+| 208 | units | Cruel Patron | kFinalizeTrigger, pickTarget | additionalPlayCost, chooseObjectNow |
+| 209 | spells | Cull the Weak | pickTarget | requestChoice |
+| 212 | gear | Forge of the Future | - | kFinalizeActivate, selectObject |
+| 226 | units | Spectral Matron | confirmOptional, kFinalizeTrigger, pickTarget | confirmOptional, kFinalizeTrigger, pickEffectPlayLocation, pickTarget |
+| 230 | units | Albus Ferros | kFinalizeTrigger, pickXAmount | pickSeveral |
+| 231 | units | Commander Ledros | - | additionalPlayCost, chooseObjectNow, confirmNow |
+| 234 | units | Harnessed Dragon | - | kFinalizeTrigger, pickTarget |
+| 237 | spells | King's Edict | - | requestChoice |
+| 238 | units | Leona, Determined | - | kFinalizeTrigger, pickTarget |
+| 242 | gear | Baited Hook | pickTarget | selectObject |
+| 244 | spells | Divine Judgment | - | requestChoice |
+| 247 | spells | Icathian Rain | - | needsPlayTimeTarget, offerableChoices, requestChoice |
+| 248 | spells | Stormbringer | pickTarget | pickMoveDest, pickTarget |
+| 250 | spells | Super Mega Death Rocket! | - | confirmOptional, kFinalizeTrigger, pickTarget |
+| 253 | spells | Fox-Fire | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, offerableChoices, requestChoice |
+| 255 | spells | Dragon's Rage | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, offerableChoices, pickMoveDest, pickTarget, requestChoice |
+| 256 | legends | Unforgiven | - | pickMode |
+| 257 | spells | Last Breath | - | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair |
+| 258 | spells | Zenith Blade | confirmOptional, needsPlayTimeTarget, pickTarget | confirmOptional, needsPlayTimeTarget, pickTarget, requestChoice |
+| 260 | spells | Guerilla Warfare | - | requestChoice |
+| 263 | spells | Bullet Time | needsPlayTimeTarget, pickTarget, pickXAmount | kFinalizeResolve, pickMode, pickXAmount |
+| 264 | legends | The Boss | - | confirmNow |
+| 265 | spells | Showstopper | - | pickMoveDest |
+| 276 | battlefields | Hallowed Tomb | - | confirmOptional, kFinalizeTrigger |
+| 277 | battlefields | Monastery of Hirana | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, selectObject |
+| 278 | battlefields | Navori Fighting Pit | - | kFinalizeTrigger, pickTarget |
+| 282 | battlefields | Sigil of the Storm | - | selectObject |
+| 284 | battlefields | Targon's Peak | - | selectObjectx2 |
+| 297 | legends | Radiant Dawn | - | kFinalizeTrigger, pickTarget |
+| 309 | spells | Flash | kFinalizeResolve, pickTargetPair | kFinalizeResolve, requestChoice |
+| 313 | spells | Recruit the Vanguard | - | requestChoice |
+| 325 | spells | Blood Rush | - | repeatCosts |
+| 330 | units | Gem Jammer | - | kFinalizeTrigger, pickTarget |
+| 331 | units | Sentinel Adept | confirmOptional, kFinalizeTrigger, pickTarget | WeaponmasterUnit |
+| 339 | gear | Recurve Bow | - | kFinalizeTrigger, pickTarget |
+| 342 | gear | Assembly Rig | - | kFinalizeActivate, selectObject |
+| 346 | spells | Piercing Light | - | repeatCosts |
+| 349 | units | Rumble, Hotheaded | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickEffectPlayLocation, pickTargetPair |
+| 354 | spells | Desert's Call | - | pickTokenDest, repeatCosts |
+| 357 | spells | Feral Strength | - | repeatCosts |
+| 361 | units | Ribbon Dancer | - | kFinalizeTrigger, pickTarget |
+| 363 | spells | Thwonk! | - | needsPlayTimeTarget, pickTarget, repeatCosts |
+| 367 | units | Legion Quartermaster | kFinalizeTrigger, pickTarget | additionalPlayCost, chooseObjectNow |
+| 369 | gear | Poro Snax | - | kFinalizeActivate |
+| 372 | units | Aphelios, Exalted | kFinalizeTrigger, pickMode, pickTarget | kFinalizeTrigger, pickMode, pickTarget, selectAnyNumber |
+| 373 | units | Azir, Ascendant | kFinalizeActivate, pickTargetPair | confirmOptional, kFinalizeActivate, pickTarget, pickTargetPair |
+| 376 | units | Janna, Savior | pickTarget | confirmOptional, kFinalizeTrigger, pickTarget |
+| 381 | units | Ornn, Blacksmith | - | confirmOptional, pickTarget |
+| 384 | units | Aspiring Engineer | - | kFinalizeTrigger, pickTarget |
+| 385 | units | Bubble Bot | - | kFinalizeTrigger, pickTarget |
+| 389 | spells | Frigid Touch | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickTarget, repeatCosts |
+| 400 | spells | Rocket Barrage | pickMode | kFinalizeResolve, pickMode, pickTarget, repeatCosts |
+| 402 | spells | Bellows Breath | - | repeatCosts |
+| 403 | units | Card Sharp | - | confirmOptional, requestChoice |
+| 406 | units | Jayce, Man of Progress | confirmOptional, pickTarget | confirmOptional, kFinalizeTrigger, pickTarget |
+| 407 | units | Ornn, Forge God | - | WeaponmasterUnit |
+| 413 | units | Buhru Captain | - | kFinalizeTrigger, pickMode |
+| 423 | units | Fae Dragon | - | pickSeveral |
+| 429 | spells | Strike Down | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair | kFinalizeResolve, needsPlayTimeTargetPair, pickTarget, pickTargetPair |
+| 431 | units | Akshan, Mischievous | - | WeaponmasterUnit, pickTarget |
+| 433 | spells | Here to Help | requestChoice | confirmOptional, pickMode, pickTarget |
+| 435 | units | Lucian, Merciless | - | WeaponmasterUnit |
+| 436 | spells | Marching Orders | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair, repeatCosts |
+| 440 | units | Jax, Unrelenting | confirmOptional, requestChoice | WeaponmasterUnit, confirmOptional |
+| 441 | units | Sivir, Ambitious | - | confirmOptional, kFinalizeTrigger, pickTarget |
+| 443 | spells | Called Shot | requestChoice | repeatCosts, requestChoice |
+| 444 | units | Corrupt Enforcer | requestChoicex2 | - |
+| 449 | units | Overzealous Fan | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 450 | spells | Temptation | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair | kFinalizeResolve, pickMode, pickTarget, repeatCosts |
+| 453 | units | Beast Below | - | kFinalizeTrigger, pickTargetx2, pickTargetPair |
+| 457 | spells | Hard Bargain | requestChoice | repeatCosts, requestChoice |
+| 460 | gear | Edge of Night | - | kFinalizeTrigger, pickTarget |
+| 461 | units | Fizz, Trickster | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 471 | gear | Last Rites | confirmOptional, pickTarget | chooseObjectNow, confirmOptional, kFinalizeTrigger, pickTarget |
+| 472 | spells | Bonds of Strength | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair | kFinalizeResolve, needsPlayTimeTargetPair, pickTargetPair, repeatCosts |
+| 475 | spells | Guards! | confirmOptional | confirmOptional, pickMode |
+| 479 | units | Sandshifter | - | kFinalizeTrigger, pickTarget |
+| 481 | units | Zaun Punk | confirmOptional, kFinalizeTrigger, pickTargetPair | additionalPlayCost, chooseObjectNow, confirmNow, kFinalizeTrigger, pickTarget |
+| 486 | units | Glasc Mixologist | confirmOptional, kFinalizeTrigger, pickTarget | confirmOptional, kFinalizeTrigger, pickEffectPlayLocation, pickTarget |
+| 489 | gear | Vanguard Armory | - | requestChoice |
+| 490 | gear | Altar of Memories | confirmOptional, pickMode, pickTarget | confirmOptional, kFinalizeTrigger, pickMode, pickTarget |
+| 491 | units | Rek'Sai, Swarm Queen | requestChoice | confirmOptional, kFinalizeTrigger, pickMode, requestChoice |
+| 497 | units | Azir, Sovereign | - | selectAnyNumber |
+| 498 | gear | Blade of the Ruined King | pickTarget | chooseObjectNow |
+| 501 | spells | Danger Zone | - | repeatCosts |
+| 503 | spells | Relentless Pursuit | - | confirmOptionalx2, pickMode, pickTarget |
+| 505 | spells | Void Rush | - | confirmOptional, pickMode, pickTarget |
+| 513 | spells | Arise! | requestChoice | requestChoicex2 |
+| 515 | spells | Arcane Shift | pickTarget | pickMode, pickTarget |
+| 517 | legends | Battle Mistress | - | confirmOptional, kFinalizeTrigger |
+| 522 | battlefields | Forge of the Fluft | kFinalizeActivate, needs_activation_time_target, pickTargetPair | kFinalizeActivate, pickTargetPair |
+| 535 | battlefields | Veiled Temple | confirmOptional | confirmOptional, kFinalizeTrigger, pickMode, pickTarget |
+| 539 | units | Ahri, Inquisitive | - | kFinalizeTrigger, pickTarget |
+| 540 | units | Bard, Mercurial | confirmOptional | additionalPlayCost, confirmNow, kFinalizeTrigger, pickMode, selectAnyNumber |
+| 543 | units | Sett, Brawler | - | kFinalizeActivate |
+| 544 | units | Yone, Blademaster | - | WeaponmasterUnit, pickTarget |
+| 548 | units | Karma, Channeler | - | kFinalizeTrigger, pickTarget |
+| 553 | legends | Void Burrower | confirmOptional, requestChoice | confirmOptional, kFinalizeTrigger, requestChoice |
+| 554 | legends | Grandmaster at Arms | needs_activation_time_target, pickTarget | kFinalizeActivate, pickTargetPair |
+| 571 | spells | Upstage Comedy | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickTarget, repeatCosts |
+| 579 | spells | Square Up | - | repeatCosts |
+| 582 | spells | Dancing Grenade | - | needsPlayTimeTarget, pickTarget, requestChoice |
+| 583 | units | Grim Apothecary | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 589 | units | Inviolus Vox | - | kFinalizeTrigger, pickTarget |
+| 594 | spells | Double Trouble | - | confirmOptional, pickTarget, repeatCosts |
+| 600 | spells | Skyward Strike | needsPlayTimeTarget, pickTarget | kFinalizeResolve, pickMode, pickTargetPair |
+| 606 | spells | Flurry of Feathers | pickMode | pickMode, playTokensChoosingLocations |
+| 607 | gear | Forgotten Signpost | needs_activation_time_target, pickTargetx2 | kFinalizeActivate, pickTargetPair |
+| 613 | units | Ivern, Nurturer | confirmOptional, kFinalizeTrigger | pickTarget, selectObject |
+| 614 | units | Nami, Headstrong | kFinalizeTrigger, pickTargetx2 | kFinalizeTrigger, pickTarget |
+| 616 | spells | Tricksy Tentacles | - | offerableChoices, requestChoicex2 |
+| 618 | units | Yuumi, Magical Cat | - | kFinalizeTrigger, pickTarget |
+| 623 | spells | Downstage Dramatics | - | repeatCosts |
+| 625 | spells | Eclipse | - | predict |
+| 629 | units | Ruined Rex | - | kFinalizeTrigger, pickTarget |
+| 631 | spells | Sprite Burst | - | playTokensChoosingLocations |
+| 636 | gear | Frigid Jewel | - | kFinalizeTrigger, pickTarget |
+| 663 | spells | Call to Battle | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickMode, pickTarget, requestChoice |
+| 665 | spells | Disposal Order | pickMode | pickMode, requestChoice |
+| 667 | units | Imposing Challenger | confirmOptional, kFinalizeTrigger, pickTarget | confirmOptional, kFinalizeTrigger, pickMode, pickTarget |
+| 669 | spells | Stare Down | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickMode, pickTarget |
+| 674 | units | Irresistible Faefolk | confirmOptional, kFinalizeTrigger | confirmOptional, kFinalizeTrigger, pickTarget |
+| 680 | units | Elder Dragon | - | kFinalizeTrigger, selectObject |
+| 695 | gear | Blast Cone | confirmOptionalx2 | confirmOptionalx2, kFinalizeTrigger, pickMode, pickTarget |
+| 696 | spells | Existential Dread | needsPlayTimeTarget, pickTarget | needsPlayTimeTarget, pickTarget, repeatCosts |
+| 698 | gear | Scryer's Bloom | requestChoice | kFinalizeActivate, requestChoicex2 |
+| 700 | gear | The List | needs_activation_time_target, pickTarget | needs_activation_time_target, pickTarget, requestChoice |
+| 701 | spells | Bone Skewer | pickTargetPair | confirmOptional, pickMode, pickTarget |
+| 702 | spells | Conscription | confirmOptional, needsPlayTimeTarget, pickTarget | confirmOptional, kFinalizeResolve, pickTarget |
+| 704 | spells | Heedless Resurrection | needsPlayTimeTargetPair, pickTargetPair | kFinalizeResolve, pickMode, pickTarget, requestChoice |
+| 722 | units | Ultrasoft Poro | - | playTokensChoosingLocations |
+| 726 | units | Safety Inspector | confirmOptional, pickTarget | confirmOptional, kFinalizeTrigger, selectObjectAsx2 |
+| 728 | units | Stalking Wolf | kFinalizeTrigger, pickTarget | additionalPlayCost, chooseObjectNow |
+| 730 | spells | Undying Loyalty | needsPlayTimeTarget, pickTarget | additionalPlayCost, chooseObjectNow, kFinalizeResolve, pickMode |
+| 732 | units | Atakhan | - | additionalPlayCost, chooseObjectNow, confirmNow, selectObjectAs |
+| 735 | spells | Sacrifice | needsPlayTimeTarget, pickTarget | kFinalizeResolve, pickTarget |
+| 736 | gear | Shard of Undoing | - | requestChoice |
+| 738 | units | Vi, Peacekeeper | - | kFinalizeTrigger, pickTarget |
+| 740 | units | Poppy, Defender of the Meek | - | additionalPlayCost, confirmNow |
+| 741 | units | Rift Herald | pickTarget | confirmOptional, pickTargetx2 |
+| 743 | spells | Curtain Call | pickMode | kFinalizeResolve, pickMode, pickTarget, repeatCosts |
+| 744 | legends | Pridestalker | - | kFinalizeTrigger, pickTarget |
+| 747 | spells | Death from Below | - | confirmOptional, needsPlayTimeTarget, pickTarget |
+| 751 | spells | Alpha Strike | requestChoice | splitDamageAmong |
+| 754 | units | Daisy! | - | kFinalizeTrigger, pickTarget |
+| 755 | spells | Moonfall | confirmOptional | confirmOptional, kFinalizeResolve, pickMode, pickTarget |
+| 756 | legends | Deceiver | confirmOptional, pickTarget, requestChoice | confirmOptional, kFinalizeTrigger, pickTarget, requestChoice |
+| 760 | spells | Keeper's Verdict | needsPlayTimeTarget, pickMode, pickTarget | needsPlayTimeTarget, pickTarget, requestChoice |
+| 762 | battlefields | Altar of Blood | - | confirmNow |
+| 763 | battlefields | Amateur Recital | - | confirmOptional, kFinalizeTrigger, pickTarget |
+| 765 | battlefields | Dusk Rose Lab | confirmOptional, kFinalizeTrigger, pickTarget | confirmOptional, kFinalizeTrigger, selectObject |
+| 771 | battlefields | Star Spring | confirmOptional | confirmOptional, kFinalizeTrigger, pickTarget |
+| 810 | units | Zed, From the Shadows | - | pickTokenDest |
+| 821 | spells | Resonating Strike | needsPlayTimeTarget, pickMode, pickTarget | kFinalizeResolve, pickMode, pickTarget |
+| 822 | spells | Sanction | needsPlayTimeTarget, pickMode, pickTarget | kFinalizeResolve, pickMode, pickTarget |
+| 839 | spells | Mesmerize | needsPlayTimeTarget, pickMode, pickTarget | kFinalizeResolve, pickMode, pickTarget |
+| 869 | units | Profiteer | confirmOptional, kFinalizeTrigger, pickTargetPair | confirmOptional, kFinalizeTrigger, pickTarget, selectObject |
+| 878 | units | Corrupted Dragon | requestChoice | offerableChoices, requestChoice |
+| 887 | spells | Up from the Deep | - | playTokensChoosingLocations |
+| 888 | units | Gust Monk | kFinalizeTrigger, pickTargetPair | kFinalizeTrigger, pickTarget, selectObject |
+| 892 | spells | Twilight Step | needsPlayTimeTarget, requestChoicex2 | needsPlayTimeTarget, pickMode, pickTarget |
+| 894 | spells | Decree of Discord | requestChoice | offerableChoices, requestChoice |
+| 896 | units | Illaoi, Prophet of the Great Kraken | - | pickTokenDest |
+| 901 | units | Kharox | confirmOptional, pickTarget | confirmOptional, pickEffectPlayLocation, pickTarget |
+| 927 | spells | Shuriken Flip | requestChoicex3 | offerableChoices, requestChoicex3 |
+| 931 | spells | Death Mark | - | playTokensChoosingLocations |
+| 932 | legends | Curator of the Sands | confirmOptional | confirmOptional, pickTargetPair |
+| 935 | spells | Shadow Dash | needsPlayTimeTarget, requestChoicex2 | needsPlayTimeTarget, pickMode, pickTarget |
+| 936 | legends | Defender of Tomorrow | - | kFinalizeActivate, pickTarget, pickTargetPair |
+| 937 | spells | Acceleration Gate | requestChoice | offerableChoicesx2, requestChoice |
+
+210 card files changed their prompt surface.

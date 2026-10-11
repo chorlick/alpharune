@@ -76,7 +76,7 @@ iteration must apply these.
 | 1 | integrity | merged | `fc1f7cb` (merge `b0d329b`) | gate: 1726 run, 1726 passed | 8 items closed; build tasks done: shared-ccache launcher + `-fmacro-prefix-map`, unity tests default ON (204.8 s → 110.1 s full rebuild), `RIFTBOUND_BUILD_JOBS` cap verified at `-j16` |
 | 2 | cards-c0 | merged | `0c82974` (merge `7ad4269`) | clean build: 1783/1783, openspiel 17/17, clone-equiv 10/10, smoke rc=0 | 31 boxes ticked; 6 batch-00 items BLOCKED on engine work (in carry-over); 3 `shared:` commits incl. engine changes |
 | 2 | cards-c1 | running | | | based on `1640e81` |
-| 2 | cards-c2 | running | | | based on `1640e81` |
+| 2 | cards-c2 | returned | `2fe1205` (merged, gate running) | 1851 passed, 0 failed (clean namespaced build, on its branch) | 41 of 42 batch-02 boxes + 3 batch-08; Wallop 146 / Call to Glory 207 BLOCKED (spell alternative-cost path); 3 `shared:` commits with engine state and trigger additions |
 | 2 | cards-c3 | running | | | based on `1640e81` |
 | 2 | cards-c4 | running | | | based on `1640e81` |
 | 2 | cards-c5 | running | | | based on `1640e81` |
@@ -108,6 +108,16 @@ and who picked them up. Every row must end `done` before the final gate.
 
 | From | Item | Assigned to | State |
 |---|---|---|---|
+| cards-c2 | BLOCKED: Wallop 146 / Call to Glory 207 "spend a buff to ignore this spell's cost" need an alternative cost on the spell play path (`Card::alternativePlayCost` is read only for permanents; `generateSpellActions` drops an unaffordable spell; `executePlaySpell` always charges printed cost) | sweep | open |
+| cards-c2 | `shared:` engine changes to review: `PlayerState::units_enter_ready_this_turn`, `unit_died_this_turn`, `buff_might_bonus_this_turn`, `hide_ignoring_costs_this_turn`; `TurnState::victory_score_bonus`; `TriggerType::WhenAUnitTakesDamage` + `TriggerManager::onDamageDealt`; `DelayedAbility::every_time`; delayed-ability chain items carry `triggering_subject`; `onScore` fires `WhenIConquer` for spells in the conquerer's trash; helpers `pickMoveDest`, `tokenPlayDests`, `destLocation`, `pickTokenDest` | sweep (review), checkpoint (new state fields → feature layout?) | open |
+| cards-c2 | partial by design: Defy 45 cost caps checked at resolution only (`hasLegalTargets` has no CardDB, so it can be offered and do nothing); Defender of Tomorrow 936 keeps two printed abilities as one activation (splitting renumbers the Empower vocab slot) | sweep (45), checkpoint (936) | open |
+| cards-c2 | batch-08 Falling Star 29 / Angle Shot 334 / Whirlwind 187 fixed; Switcheroo 466 remains for that box | cards-c5 (466) | open |
+| cards-c2 | NEW: delayed-ability expiry compares `expires_on_turn == turn_number` but the header says `-1` means end of current turn — Deadly Flourish 635 and others that leave the default never expire | sweep | open |
+| cards-c2 | NEW: `EffectExecutor::recycleCards` on a board permanent emits no `LeftBoardEvent`, puts tokens into the deck and leaves attachments linked (Divine Judgment works around it) | sweep | open |
+| cards-c2 | NEW: `Card::hasLegalTargets` has no CardDB / registry, so cost-based target restrictions cannot be checked at offer time | sweep | open |
+| cards-c2 | NEW: hand-built multi-prompt cards cap at 12 prompts (16 re-entry limit in the resolve loop): Fox-Fire with many 0-Might units, Overt Operation with more than 12 buffed units | sweep (with the `runFinalizePass` 16 cap row) | open |
+| cards-c2 | fixture note: `testHook_executeIntent` does not run the cleanup that kills lethally damaged units; damage-only spell tests assert on `damage_marked` | sweep (fixture) | open |
+| cards-c2 | trainer note: several spells now ask more or different `MakeChoice` prompts | final report | open |
 | cards-c0 | BUILD: the shared-ccache launcher documented in `CLAUDE.md` (integrity) restores PCHs across worktrees with different header contents — find the cause (direct-mode manifest? `-fmacro-prefix-map`?) or remove the launcher from `CLAUDE.md` | sweep | open |
 | cards-c0 | BLOCKED batch-00 items needing engine work: Svellsongur 382 (dispatch bearer's abilities through the gear); Vilemaw's Lair 290 and Back-Alley Bar 272 (need a recall primitive distinct from `moveToBase`); Equip generator offers an unaffordable Equip, and Piltovan Forge 948 Equip branch bypasses discount and per-turn counter (need an equip-cost descriptor); Risen Altar 950 (needs a Power-side activation reduction) | sweep | open |
 | cards-c0 | `shared:` engine changes to review in the sweep: `predict` asks an extra ordering prompt per kept card beyond the first (all Predict users: 834, 624, 843); `recalculateAuras` grants Equipment keywords before card hooks; `killObject` asks the dying unit's battlefield for a replacement; Academy's granted Repeat charges Power; new `TriggerType::WhenILeaveTheBoard`; `PlayerState::chosen_champion` | sweep (review), checkpoint (new state field → feature layout?) | open |
@@ -225,3 +235,4 @@ One line per orchestrator action that changed state (merge, gate, respawn).
 - 2026-10-10 master fast-forwarded to `1640e81`. Stage 2: spawned cards-c0..c5 (6 running); c6 and c7 wait for a slot.
 - 2026-10-10 cards-c0 returned and merged; it found the shared-ccache launcher restoring a foreign PCH. All running streams told to use a private cache namespace and clean-build before their final run; integration reconfigured the same way and rebuilt from clean. 9 rows to carry-over.
 - 2026-10-10 cards-c0 verified on a clean private-cache build (gate-c0-clean, 4.5 min cold): all checks green. Worktree and branch removed. Spawned cards-c6.
+- 2026-10-10 cards-c2 (`2fe1205`) returned and merged, gate running. 10 rows to carry-over.

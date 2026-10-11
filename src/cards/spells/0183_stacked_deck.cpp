@@ -79,7 +79,11 @@ public:
                 if (cid == keeper) {
                     obj.zone = ZoneType::Hand;
                     obj.location = std::nullopt;
+                    // "Put 1 into your hand" — not "draw": no draw event and
+                    // no draws_this_turn (compare Called Shot 443, "Draw one").
                     ps.hand.push_back(cid);
+                    knowledge::moved(ctx.state, cid, deck::Place::Held, deck::Place::Hand,
+                                     knowledge::only(ctx.controller));
                     ctx.events.logTracePrivate(ctx.controller, "STACKED DECK: drew " + obj.name);
                 } else {
                     rest.push_back(cid);

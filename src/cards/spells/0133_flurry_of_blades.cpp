@@ -26,6 +26,7 @@ public:
             if (ctx.state.objectExists(id))
                 ctx.executor.dealDamage(id, 1, ctx.source);
         }
+        DeathBatch together(ctx.executor, to_damage);   // they die at the same time
         for (auto id : to_damage) {
             if (ctx.state.objectExists(id) &&
                 ctx.state.getObject(id).hasLethalDamage()) {

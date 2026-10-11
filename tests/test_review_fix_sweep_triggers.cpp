@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -2261,6 +2262,231 @@ TEST_F(SweepTriggersTest, KillWithASpell_SpellDamageStillMarkedCountsInCombat) {
     });
     ASSERT_FALSE(obj(defender).location.has_value());
     EXPECT_TRUE(obj(defender).last_known.killed_with_spell);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 22. Reflexive triggers are chain items (plans/09 9.BB3; CR 387-389)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The other player's agent: passes, and the first time it is given priority
+/// while a reflexive trigger of `source` is on the chain it calls `look`
+/// with the state — what a player who may respond sees between the two parts.
+class ReflexiveWatcher : public AgentInterface {
+public:
+    GameObjectId source = kInvalidId;
+    std::function<void(const GameState&, const ChainItem&)> look;
+    int seen = 0;
+    Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+        for (const auto& ci : st.chain.items)
+            if (ci.source == source && ci.reflexive_index >= 0) {
+                if (seen++ == 0 && look) look(st, ci);
+                break;
+            }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+        return legal.empty() ? Intent{} : legal.front();
+    }
+};
+
+/// Answers each prompt, in order, with the object named for it; fails the
+/// test on a prompt it was not told about or that does not offer the object.
+static EnginePathAgent::Picker inOrder(std::vector<GameObjectId> answers,
+                                       std::shared_ptr<int> asked = std::make_shared<int>(0)) {
+    return [answers = std::move(answers), asked](const std::vector<Intent>& legal) {
+        const size_t n = static_cast<size_t>((*asked)++);
+        if (n >= answers.size()) {
+            ADD_FAILURE() << "prompt " << n + 1 << " was not expected";
+            return legal.front();
+        }
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == answers[n]) return i;
+        ADD_FAILURE() << "prompt " << n + 1 << " did not offer object " << answers[n];
+        return legal.front();
+    };
+}
+
+constexpr CardDefId kHwei = 642;            // "... Then, do the following based on the discarded card's type"
+constexpr CardDefId kTwistedFate = 200;     // "... Do one of the following based on its domain"
+constexpr CardDefId kDeceiver = 756;        // "... Then do this: It becomes a copy of another unit there."
+
+// Hwei 642: after the discard, "Unit — Give me +3 [M] this turn" is on the
+// chain as its own item, and the opponent has priority before it resolves.
+TEST_F(SweepTriggersTest, Reflexive_HweiTheOpponentHasPriorityAfterTheDiscard) {
+    auto hwei = addUnit(P1, kHwei, 5, 0);
+    stockDeck(P1, 1);
+    auto discard = addToHand(P1, kLoyalPoro);                 // a unit card
+    const GameObjectId drawn = state.player(P1).main_deck.back();
+    (void)drawn;
+    ReflexiveWatcher p2;
+    p2.source = hwei;
+    bool discarded_then = false;
+    int might_then = -1, data_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem& ci) {
+        const auto& trash = st.player(P1).trash;
+        discarded_then = std::find(trash.begin(), trash.end(), discard) != trash.end();
+        might_then = st.getObject(hwei).temp_might_bonus;
+        data_then = ci.reflexive_data.empty() ? -1 : ci.reflexive_data[0];
+    };
+    auto asked = std::make_shared<int>(0);
+    EnginePathAgent p1(inOrder({discard}, asked));
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &p1, kInvalidId, &p2);
+    EXPECT_EQ(p2.seen > 0, true) << "the opponent got priority with the reflexive trigger on the chain";
+    EXPECT_TRUE(discarded_then) << "the first part was done";
+    EXPECT_EQ(might_then, 0) << "the second part had not happened yet";
+    EXPECT_EQ(data_then, static_cast<int>(CardType::Unit));
+    EXPECT_EQ(obj(hwei).temp_might_bonus, 3) << "and then it resolved";
+    EXPECT_EQ(*asked, 1);
+}
+
+// Its choices are made as it is finalized (CR 388.4): "Gear — Ready up to 2
+// runes" names its runes after the discard and before anyone has priority.
+TEST_F(SweepTriggersTest, Reflexive_HweiChoosesItsRunesAtFinalization) {
+    auto hwei = addUnit(P1, kHwei, 5, 0);
+    stockDeck(P1, 1);
+    auto gear = addToHand(P1, kShepherdsHeirloom);            // a gear card
+    auto r1 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r2 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto r3 = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    ReflexiveWatcher p2;
+    p2.source = hwei;
+    auto asked = std::make_shared<int>(0);
+    int asked_when_p2_could_respond = -1;
+    bool runes_still_exhausted = false;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        asked_when_p2_could_respond = *asked;
+        runes_still_exhausted = st.getObject(r1).is_exhausted && st.getObject(r3).is_exhausted;
+    };
+    EnginePathAgent p1(inOrder({gear, r3, r1}, asked));
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &p1, kInvalidId, &p2);
+    EXPECT_EQ(asked_when_p2_could_respond, 3) << "the discard, then both runes, already chosen";
+    EXPECT_TRUE(runes_still_exhausted) << "chosen, not yet readied";
+    EXPECT_FALSE(obj(r1).is_exhausted);
+    EXPECT_FALSE(obj(r3).is_exhausted);
+    EXPECT_TRUE(obj(r2).is_exhausted) << "the one that was not named";
+    EXPECT_EQ(*asked, 3);
+}
+
+// Twisted Fate, Gambler 200: the rune is revealed and recycled, then the
+// payoff for its domain is a chain item — its target chosen at finalization,
+// the opponent with priority before the stun.
+TEST_F(SweepTriggersTest, Reflexive_TwistedFateThePayoffIsAChainItem) {
+    auto tf = addUnit(P1, kTwistedFate, 4, 0);
+    auto enemy = addUnit(P2, kInvalidId, 3, 1);
+    auto rune = state.createObject();
+    {
+        auto& r = state.getObject(rune);
+        r.owner = r.controller = P1;
+        r.card_type = CardType::Rune;
+        r.name = "Order Rune";
+        r.domains = {Domain::Order};
+        r.zone = ZoneType::RuneDeck;
+        state.player(P1).rune_deck.push_back(rune);
+    }
+    auto bottom = state.createObject();
+    {
+        auto& r = state.getObject(bottom);
+        r.owner = r.controller = P1;
+        r.card_type = CardType::Rune;
+        r.name = "Calm Rune";
+        r.domains = {Domain::Calm};
+        r.zone = ZoneType::RuneDeck;
+        state.player(P1).rune_deck.insert(state.player(P1).rune_deck.begin(), bottom);
+    }
+    ReflexiveWatcher p2;
+    p2.source = tf;
+    auto asked = std::make_shared<int>(0);
+    bool recycled_then = false, stunned_then = true;
+    int asked_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem&) {
+        recycled_then = st.player(P1).rune_deck.front() == rune;
+        stunned_then = st.getObject(enemy).is_stunned;
+        asked_then = *asked;
+    };
+    EnginePathAgent p1(inOrder({enemy}, asked));
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &p1, kInvalidId, &p2);
+    EXPECT_GT(p2.seen, 0);
+    EXPECT_TRUE(recycled_then) << "revealed and recycled before the payoff";
+    EXPECT_FALSE(stunned_then);
+    EXPECT_EQ(asked_then, 1) << "the unit to stun was chosen as the payoff was finalized";
+    EXPECT_TRUE(obj(enemy).is_stunned);
+}
+
+// A rune of none of the three domains creates no reflexive trigger.
+TEST_F(SweepTriggersTest, Reflexive_TwistedFateNoPayoffForAnotherDomain) {
+    auto tf = addUnit(P1, kTwistedFate, 4, 0);
+    auto rune = state.createObject();
+    auto& r = state.getObject(rune);
+    r.owner = r.controller = P1;
+    r.card_type = CardType::Rune;
+    r.name = "Calm Rune";
+    r.domains = {Domain::Calm};
+    r.zone = ZoneType::RuneDeck;
+    state.player(P1).rune_deck.push_back(rune);
+    ReflexiveWatcher p2;
+    p2.source = tf;
+    EnginePathAgent p1(inOrder({}));
+    fireTriggerThroughEngine(tf, TriggerType::WhenIAttack, &p1, kInvalidId, &p2);
+    EXPECT_EQ(p2.seen, 0);
+    EXPECT_EQ(state.player(P1).rune_deck.size(), 1u) << "revealed and recycled all the same";
+}
+
+// Deceiver 756: the Reflection is in play — still a blank Reflection, without
+// [Temporary] — while "Then do this: It becomes a copy of another unit there.
+// Give it [Temporary]." waits on the chain with the opponent able to respond.
+TEST_F(SweepTriggersTest, Reflexive_DeceiverTheCopyIsAChainItem) {
+    auto legend = addLegend(P1, kDeceiver);
+    state.battlefields[0].controller = P1;
+    auto scored_bf = setBattlefieldCard(0, kBackAlleyBar, P1);
+    auto model = addUnit(P1, kLoyalPoro, 1, 0);
+    auto card = addToHand(P1, kDredgeUp);
+    ReflexiveWatcher p2;
+    p2.source = legend;
+    std::string token_name_then;
+    bool temporary_then = true;
+    auto asked = std::make_shared<int>(0);
+    int asked_then = -1;
+    p2.look = [&](const GameState& st, const ChainItem& ci) {
+        const auto token = static_cast<GameObjectId>(ci.reflexive_data.at(0));
+        token_name_then = st.getObject(token).name;
+        temporary_then = st.getObject(token).keywords.has(Keyword::Temporary);
+        asked_then = *asked;
+    };
+    // Prompts: the "may" (yes), the card to discard, then — for the reflexive
+    // trigger, as it is finalized — the unit to copy.
+    EnginePathAgent p1([&, asked](const std::vector<Intent>& legal) {
+        const int n = (*asked)++;
+        if (n == 0) {
+            for (const auto& i : legal) if (i.chosen_value && *i.chosen_value == 1) return i;
+            ADD_FAILURE() << "prompt 1 was not the may";
+        } else if (n == 1 || n == 2) {
+            const GameObjectId want = n == 1 ? card : model;
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+            ADD_FAILURE() << "prompt " << n + 1 << " did not offer the expected object";
+        } else {
+            ADD_FAILURE() << "an unexpected prompt";
+        }
+        return legal.front();
+    });
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquerOrHold, &p1, scored_bf, &p2);
+    EXPECT_GT(p2.seen, 0);
+    EXPECT_EQ(token_name_then, "Reflection") << "not yet a copy";
+    EXPECT_FALSE(temporary_then) << "[Temporary] is given by the reflexive trigger";
+    EXPECT_EQ(asked_then, 3) << "what it copies was chosen as the reflexive trigger was finalized";
+    const auto tokens = tokenUnits(P1);
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(obj(tokens[0]).card_def_id, kLoyalPoro);
+    EXPECT_TRUE(obj(tokens[0]).keywords.has(Keyword::Temporary));
+    EXPECT_FALSE(obj(tokens[0]).is_exhausted);
+}
+
+// With no engine attached there is nothing to put a reflexive trigger on.
+TEST_F(SweepTriggersTest, Reflexive_CannotBeQueuedOutsideAGame) {
+    auto hwei = addUnit(P1, kHwei, 5, 0);
+    EffectExecutor exec(state, events, card_db);
+    EXPECT_FALSE(exec.queueReflexiveTrigger(hwei, P1, 0, {1}));
+    EXPECT_TRUE(state.chain.items.empty());
 }
 
 }  // namespace

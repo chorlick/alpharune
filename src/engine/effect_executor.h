@@ -426,6 +426,21 @@ public:
     using QueueTriggerFn = std::function<void(GameObjectId, PlayerId, TriggerType, GameObjectId)>;
     void setQueueTrigger(QueueTriggerFn fn) { queue_trigger_ = std::move(fn); }
     bool canQueueTriggers() const { return static_cast<bool>(queue_trigger_); }
+    /// Put a reflexive trigger of `source`'s card on the chain (CR 389.1: "a
+    /// new ability is created and added to the chain as a Pending Item") —
+    /// called by the ability that contains it, when the part before "do
+    /// this" has been done. It resolves through Card::onReflexiveTrigger(ctx,
+    /// index, data). Returns false when nothing can put it there (an executor
+    /// driven on its own, outside a game).
+    using QueueReflexiveFn =
+        std::function<void(GameObjectId, PlayerId, int, std::vector<int32_t>)>;
+    void setQueueReflexive(QueueReflexiveFn fn) { queue_reflexive_ = std::move(fn); }
+    bool queueReflexiveTrigger(GameObjectId source, PlayerId controller, int index,
+                               std::vector<int32_t> data = {}) {
+        if (!queue_reflexive_) return false;
+        queue_reflexive_(source, controller, index, std::move(data));
+        return true;
+    }
     void queueTriggeredAbility(GameObjectId source, PlayerId controller, TriggerType trigger,
                                GameObjectId subject = kInvalidId) {
         if (queue_trigger_) queue_trigger_(source, controller, trigger, subject);
@@ -511,6 +526,7 @@ private:
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;
+    QueueReflexiveFn queue_reflexive_;
     RechooseFn rechoose_;
     PayCostFn pay_cost_;
     const CardRegistry* card_registry_ = nullptr;  // optional; needed for playIgnoringCost onPlay dispatch

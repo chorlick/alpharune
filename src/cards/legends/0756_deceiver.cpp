@@ -30,9 +30,9 @@ public:
     }
 
     // Progress is kept on the resolving chain item in resume_data slots past
-    // the ones the choice helpers own (0..6): [kPhase] = where we are,
-    // [kToken] = the Reflection token, [kBf] = its battlefield + 1 (0 = none).
-    // confirmOptional asks the "may"; pickTarget chooses what the token copies.
+    // the ones the choice helpers own (0..6): [kPhase] = where we are.
+    // confirmOptional asks the "may"; what the token copies is the reflexive
+    // trigger's choice (onReflexiveTrigger).
     static constexpr size_t kPhase = 7;
     static constexpr size_t kToken = 8;
     static constexpr size_t kBf = 9;
@@ -93,47 +93,57 @@ public:
                 ? LocationId{BattlefieldLocation{*bf}}
                 : LocationId{BaseLocation{ctx.controller}};
             // CR 187.6: a 0 [M] Reflection token; played ready, "there".
-            KeywordSet kw;
-            kw.set(Keyword::Temporary);
+            // ([Temporary] is given by the reflexive trigger below, not here.)
             GameObjectId token = ctx.executor.createToken(
-                ctx.controller, CardType::Unit, "Reflection", 0, {}, kw, loc,
+                ctx.controller, CardType::Unit, "Reflection", 0, {}, KeywordSet{}, loc,
                 /*enter_ready=*/true);
             ctx.events.logTrace("DECEIVER: created ready Reflection token there");
-            slot(kToken) = static_cast<int32_t>(token);
-            slot(kBf) = bf.has_value() ? static_cast<int32_t>(*bf) + 1 : 0;
-            slot(kPhase) = kCopy;
-        }
-        if (slot(kPhase) != kCopy) return;
-
-        // "Then do this: It becomes a copy of another unit there." Which unit
-        // is the controller's choice (any controller's unit; units that can't
-        // be chosen by enemy spells and abilities are not offered). "Do this"
-        // is a reflexive trigger (CR 388): it goes on the chain as this
-        // ability resolves, so its unit is chosen then, with the token in
-        // play — not when the conquer / hold ability was finalized.
-        if (slot(kBf) == 0) { slot(kPhase) = kFinished; return; }
-        const auto token = static_cast<GameObjectId>(slot(kToken));
-        const auto bf = static_cast<BattlefieldId>(slot(kBf) - 1);
-        if (!ctx.state.objectExists(token) ||
-            !ctx.state.getObject(token).location.has_value()) {
             slot(kPhase) = kFinished;
-            return;
+            // "Then do this: It becomes a copy of another unit there. Give it
+            // [Temporary]." — a reflexive trigger (CR 388): it goes on the
+            // chain now, with the token in play, as a pending item of its own
+            // (CR 389.1). Which unit is chosen when it is finalized, and
+            // players may respond before it resolves.
+            ctx.executor.queueReflexiveTrigger(
+                ctx.source, ctx.controller, kBecomeACopy,
+                {static_cast<int32_t>(token), bf.has_value() ? static_cast<int32_t>(*bf) + 1 : 0});
         }
-        auto models = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-            return o.id != token && o.battlefieldId() == bf;
-        });
-        std::sort(models.begin(), models.end());
-        GameObjectId model = pickTarget(ctx, "Deceiver: copy which unit there?", models);
-        if (model == kInvalidId) return;   // waiting for the agent, or nobody to copy
-        if (ctx.state.objectExists(model)) {
+    }
+
+    // `data` = {the Reflection token, its battlefield + 1 (0 = none)}.
+    static constexpr int kBecomeACopy = 0;
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (data.size() < 2) return;
+        const auto token = static_cast<GameObjectId>(data[0]);
+        auto token_in_play = [&]() {
+            return ctx.state.objectExists(token) &&
+                   ctx.state.getObject(token).location.has_value();
+        };
+        // "another unit there": any controller's unit at that battlefield
+        // (units that can't be chosen by enemy spells and abilities are not
+        // offered).
+        std::vector<GameObjectId> models;
+        if (data[1] != 0 && token_in_play()) {
+            const auto bf = static_cast<BattlefieldId>(data[1] - 1);
+            models = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.id != token && o.battlefieldId() == bf;
+            });
+            std::sort(models.begin(), models.end());
+        }
+        GameObjectId model = kInvalidId;
+        if (!models.empty()) {
+            model = pickTarget(ctx, "Deceiver: copy which unit there?", models);
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 388.4)
+        if (!token_in_play()) return;         // the token left in response
+        if (model != kInvalidId && ctx.state.objectExists(model) &&
+            ctx.state.getObject(model).location.has_value()) {
             ctx.executor.copyUnit(token, model);
-            // "Give it [Temporary]." copyUnit overwrites keywords with the
-            // copied ones, so it is (re)granted afterwards.
-            if (ctx.state.objectExists(token))
-                ctx.state.getObject(token).keywords.set(Keyword::Temporary);
-            ctx.events.logTrace("DECEIVER: token copied a unit there, kept [Temporary]");
+            ctx.events.logTrace("DECEIVER: token became a copy of a unit there");
         }
-        slot(kPhase) = kFinished;
+        // "Give it [Temporary]." — after the copy, which overwrites keywords.
+        if (token_in_play()) ctx.state.getObject(token).keywords.set(Keyword::Temporary);
     }
 private:
     const CardDef def_ = [] {

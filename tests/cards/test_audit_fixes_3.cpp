@@ -531,15 +531,16 @@ TEST_F(AuditFix3Test, Hwei_DiscardSpellDrawsExtra) {
 
     int hand_before = handSize(P1);  // = 1 (just the spell)
     // Picker: discard the spell.
-    driveResumableTrigger(kHwei, P1, hwei,
-        [&](const std::vector<Intent>& legal) -> Intent {
+    // Through the engine: the second half is a reflexive trigger (CR 387-389),
+    // a chain item of its own that only the engine can queue and resolve.
+    EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) -> Intent {
             for (auto& i : legal) {
                 if (!i.chosen_objects.empty() && i.chosen_objects[0] == spell_in_hand)
                     return i;
             }
             return legal.empty() ? Intent{} : legal.front();
-        },
-        exec, TriggerType::WhenIMove);
+        });
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &engine_agent);
 
     EXPECT_TRUE(inTrash(P1, spell_in_hand));  // discarded
     // draw 1 (initial) - 1 (discard) + 1 (Spell branch) => net +1 over start.
@@ -569,8 +570,9 @@ TEST_F(AuditFix3Test, Hwei_DiscardGearReadiesRunes) {
     // ("Ready up to 2 runes": the controller names them, CR 355.13).
     const std::vector<GameObjectId> answers = {gear_in_hand, r1, r2};
     size_t asked = 0;
-    driveResumableTrigger(kHwei, P1, hwei,
-        [&](const std::vector<Intent>& legal) -> Intent {
+    // Through the engine: the second half is a reflexive trigger (CR 387-389),
+    // a chain item of its own that only the engine can queue and resolve.
+    EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) -> Intent {
             if (asked < answers.size()) {
                 const GameObjectId want = answers[asked++];
                 for (auto& i : legal) {
@@ -582,8 +584,8 @@ TEST_F(AuditFix3Test, Hwei_DiscardGearReadiesRunes) {
                 ADD_FAILURE() << "a prompt the test did not expect";
             }
             return legal.empty() ? Intent{} : legal.front();
-        },
-        exec, TriggerType::WhenIMove);
+        });
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &engine_agent);
 
     EXPECT_EQ(asked, answers.size()) << "the discard and two rune prompts";
     EXPECT_FALSE(state.getObject(r1).is_exhausted);
@@ -598,15 +600,16 @@ TEST_F(AuditFix3Test, Hwei_DiscardUnitGivesPlus3Might) {
 
     int might_before = state.getObject(hwei).current_might;
 
-    driveResumableTrigger(kHwei, P1, hwei,
-        [&](const std::vector<Intent>& legal) -> Intent {
+    // Through the engine: the second half is a reflexive trigger (CR 387-389),
+    // a chain item of its own that only the engine can queue and resolve.
+    EnginePathAgent engine_agent([&](const std::vector<Intent>& legal) -> Intent {
             for (auto& i : legal) {
                 if (!i.chosen_objects.empty() && i.chosen_objects[0] == unit_in_hand)
                     return i;
             }
             return legal.empty() ? Intent{} : legal.front();
-        },
-        exec, TriggerType::WhenIMove);
+        });
+    fireTriggerThroughEngine(hwei, TriggerType::WhenIMove, &engine_agent);
 
     EXPECT_TRUE(inTrash(P1, unit_in_hand));
     EXPECT_EQ(state.getObject(hwei).current_might, might_before + 3);

@@ -105,6 +105,10 @@ void GameEngine::initSubsystems() {
         [this](GameObjectId source, PlayerId controller, TriggerType t, GameObjectId subject) {
             trigger_manager_->queueTrigger(source, controller, t, subject);
         });
+    effect_executor_->setQueueReflexive(
+        [this](GameObjectId source, PlayerId controller, int index, std::vector<int32_t> data) {
+            trigger_manager_->queueReflexive(source, controller, index, std::move(data));
+        });
     trigger_manager_->subscribe();
 }
 
@@ -1438,8 +1442,11 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         // (Card::confirmOptional / pickTarget / pickTargetPair), in the
         // finalize pass. The engine never fills `targets` for a trigger: the
         // event's subject travels in ChainItem::triggering_subject.
+        // A reflexive trigger's choices are always made as it is finalized
+        // (CR 388.4): Card::onReflexiveTrigger follows that contract.
         const Card* tcard = card_registry_.get(item.card_def_id);
-        if (tcard && (tcard->choicesAtFinalization() & Card::kFinalizeTrigger))
+        if (tcard && (item.reflexive_index >= 0 ||
+                      (tcard->choicesAtFinalization() & Card::kFinalizeTrigger)))
             runFinalizePass(item);
         return;
     }
@@ -2772,6 +2779,10 @@ void GameEngine::resolveSpell(const ChainItem& item) {
                     events_.emit(ObjectStateChangedEvent{item.source,
                                                          "gear_ability_used"});
                 }
+            } else if (item.reflexive_index >= 0) {
+                // A reflexive trigger (CR 387-389), put on the chain by the
+                // ability that contains it.
+                card->onReflexiveTrigger(ctx, item.reflexive_index, item.reflexive_data);
             } else if (item.equipped_unit != kInvalidId) {
                 // An Equipment's "When I ..." ability (TriggerManager::
                 // queueEquippedTrigger): the gear's card, for the equipped unit.

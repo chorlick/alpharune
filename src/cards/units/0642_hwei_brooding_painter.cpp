@@ -53,69 +53,68 @@ public:
             CardType dtype = ctx.state.getObject(cid).card_type;
             ctx.executor.applyDiscard(ctx.controller, cid);
 
-            // Branch on the discarded card's type.
-            if (dtype == CardType::Spell) {
-                ctx.executor.drawCards(ctx.controller, 1);
-                ctx.events.logTrace("HWEI: discarded Spell -> draw 1");
-            } else if (dtype == CardType::Gear) {
-                // "Ready up to 2 runes": asked below, once the discard is done.
-                ri.resume_point = 2;
-                readyUpToTwoRunes(ctx);
-            } else if (dtype == CardType::Unit) {
-                if (ctx.state.objectExists(ctx.source) &&
-                    ctx.state.getObject(ctx.source).location.has_value()) {
-                    ctx.executor.giveTemporaryMight(ctx.source, 3);
-                    ctx.events.logTrace("HWEI: discarded Unit -> +3 [M] this turn");
-                }
-            }
+            // "Then, do the following based on the discarded card's type" is
+            // a reflexive trigger (CR 388.1.b): it is created now and goes on
+            // the chain as a pending item of its own (CR 389.1), so its
+            // choices are made when it is finalized and players may respond
+            // before it resolves.
+            if (dtype == CardType::Spell || dtype == CardType::Gear || dtype == CardType::Unit)
+                ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, kByType,
+                                                   {static_cast<int32_t>(dtype)});
             return;
         }
-        case 2:   // re-entered with the answer to a rune prompt
-            readyUpToTwoRunes(ctx);
+        }
+    }
+
+    // "Spell — Draw 1. Gear — Ready up to 2 runes. Unit — Give me +3 [M] this
+    // turn." `data[0]` is the discarded card's type.
+    static constexpr int kByType = 0;
+    void onReflexiveTrigger(CardContext& ctx, int /*index*/,
+                            const std::vector<int32_t>& data) override {
+        if (data.empty()) return;
+        const auto dtype = static_cast<CardType>(data[0]);
+        if (dtype == CardType::Gear) {
+            // "Ready up to 2 runes.": the controller names the runes one at a
+            // time and may stop at any prompt, the first included (CR
+            // 355.13), as this trigger is finalized (CR 388.4). "runes", with
+            // no "friendly" or "your": any rune on the board (CR 133.3.a,
+            // 355.9.a.1), an opponent's exhausted rune included.
+            auto readiable = [&](GameObjectId id) {
+                if (!ctx.state.objectExists(id)) return false;
+                const auto& obj = ctx.state.getObject(id);
+                return obj.isRune() && obj.is_exhausted && obj.location.has_value();
+            };
+            std::vector<GameObjectId> exhausted;
+            for (auto& [id, obj] : ctx.state.objects)
+                if (readiable(id)) exhausted.push_back(id);
+            const auto chosen = selectSeveral(ctx, "Hwei: ready a rune (up to two)", exhausted,
+                                              /*max_picks=*/2);
+            if (!chosen.has_value()) return;       // waiting for the agent
+            if (finalizingChoices(ctx)) return;    // choices end here (CR 388.4)
+            int readied = 0;
+            for (auto id : *chosen) {
+                if (!readiable(id)) continue;      // no longer exhausted / on the board
+                ctx.executor.readyObject(id);
+                ++readied;
+            }
+            ctx.events.logTrace("HWEI: discarded Gear -> readied " + std::to_string(readied) +
+                                " rune(s)");
             return;
+        }
+        if (finalizingChoices(ctx)) return;        // nothing to choose
+        if (dtype == CardType::Spell) {
+            ctx.executor.drawCards(ctx.controller, 1);
+            ctx.events.logTrace("HWEI: discarded Spell -> draw 1");
+        } else if (dtype == CardType::Unit) {
+            // "Give me": only while I'm still on the board.
+            if (ctx.state.objectExists(ctx.source) &&
+                ctx.state.getObject(ctx.source).location.has_value()) {
+                ctx.executor.giveTemporaryMight(ctx.source, 3);
+                ctx.events.logTrace("HWEI: discarded Unit -> +3 [M] this turn");
+            }
         }
     }
 private:
-    // "Gear — Ready up to 2 runes." The controller names the runes one at a
-    // time and may stop at any prompt, the first included (CR 355.13): which
-    // runes matters when more than two are exhausted (a rune left exhausted is
-    // the one to recycle for Power). With no exhausted rune nothing is asked.
-    //
-    // Timing: unlike the other "ready up to N runes" cards this is NOT a
-    // choice of the move ability's finalization (no kFinalizeTrigger). "Do the
-    // following based on the discarded card's type" is a reflexive trigger (CR
-    // 388.1.b; Vendetta FAQ on Hwei, rule 387.1.b): it comes into being while
-    // the move ability resolves, after the discard, and its choices are made
-    // when IT is finalized (CR 389.1, 355.5.b) — at once, before anyone has
-    // priority. So the runes are named here, right after the discard. (The
-    // engine has no chain item of its own for a reflexive trigger — cf.
-    // Twisted Fate 200, Deceiver 756 — so the readying follows inline.)
-    //
-    // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
-    // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
-    // printed restriction narrows a choice (CR 355.9.b), so an opponent's
-    // exhausted rune may be named too.
-    static void readyUpToTwoRunes(CardContext& ctx) {
-        auto readiable = [&](GameObjectId id) {
-            if (!ctx.state.objectExists(id)) return false;
-            const auto& obj = ctx.state.getObject(id);
-            return obj.isRune() && obj.is_exhausted && obj.location.has_value();
-        };
-        std::vector<GameObjectId> exhausted;
-        for (auto& [id, obj] : ctx.state.objects)
-            if (readiable(id)) exhausted.push_back(id);
-        const auto chosen = selectSeveral(ctx, "Hwei: ready a rune (up to two)", exhausted,
-                                          /*max_picks=*/2);
-        if (!chosen.has_value()) return;   // waiting for the agent
-        int readied = 0;
-        for (auto id : *chosen) {
-            if (!readiable(id)) continue;
-            ctx.executor.readyObject(id);
-            ++readied;
-        }
-        ctx.events.logTrace("HWEI: discarded Gear -> readied " + std::to_string(readied) +
-                            " rune(s)");
-    }
     const CardDef def_ = [] {
         CardDef d;
         d.id = 642;

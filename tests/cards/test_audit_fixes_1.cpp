@@ -589,15 +589,17 @@ TEST_F(AuditFix1Test, Deceiver_CreatesCopyTokenWithTemporary) {
 
     int objs_before = state.objects.size();
 
-    driveResumableTrigger(kDeceiver, P1, legend,
-        /*picker=*/[](const std::vector<Intent>& legal) {
+    // Through the engine: the second half is a reflexive trigger (CR 387-389),
+    // a chain item of its own that only the engine can queue and resolve.
+    EnginePathAgent engine_agent([](const std::vector<Intent>& legal) {
             // "You MAY discard 1 and exhaust me" is a choice (CR 383.3.a):
             // answer yes to it, then take the first option of the others
             // (card to discard, unit to copy).
             for (const auto& i : legal)
                 if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
             return legal.empty() ? Intent{} : legal.front();
-        }, exec, TriggerType::WhenIConquerOrHold, scored_bf);
+        });
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquerOrHold, &engine_agent, scored_bf);
 
     // Legend exhausted (cost paid).
     EXPECT_TRUE(state.getObject(legend).is_exhausted);
@@ -678,15 +680,17 @@ TEST_F(AuditFix1Test, Deceiver_NoUnitToCopyStillMakesTemporaryToken) {
     EffectExecutor exec(state, events, card_db);
     exec.setCardRegistry(&card_registry);
 
-    driveResumableTrigger(kDeceiver, P1, legend,
-        /*picker=*/[](const std::vector<Intent>& legal) {
+    // Through the engine: the second half is a reflexive trigger (CR 387-389),
+    // a chain item of its own that only the engine can queue and resolve.
+    EnginePathAgent engine_agent([](const std::vector<Intent>& legal) {
             // "You MAY discard 1 and exhaust me" is a choice (CR 383.3.a):
             // answer yes to it, then take the first option of the others
             // (card to discard, unit to copy).
             for (const auto& i : legal)
                 if (i.chosen_value.has_value() && *i.chosen_value == 1) return i;
             return legal.empty() ? Intent{} : legal.front();
-        }, exec, TriggerType::WhenIConquerOrHold, scored_bf);
+        });
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquerOrHold, &engine_agent, scored_bf);
 
     EXPECT_TRUE(inTrash(P1, discard_me));
     // Token exists at BF 0, still a Reflection token with Temporary.

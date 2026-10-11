@@ -41,6 +41,11 @@ public:
 
     /// Put `source`'s triggered ability for `trigger` on the chain as if the
     /// event had happened (EffectExecutor::queueTriggeredAbility).
+    /// Put a reflexive trigger on the chain (EffectExecutor::
+    /// queueReflexiveTrigger; CR 389.1). The subject and move of the ability
+    /// that is resolving — the one that created it — are carried over.
+    void queueReflexive(GameObjectId source, PlayerId controller, int index,
+                        std::vector<int32_t> data);
     void queueTrigger(GameObjectId source, PlayerId controller, TriggerType trigger,
                       GameObjectId subject = kInvalidId) {
         fireTrigger(source, controller, 0, trigger, subject);

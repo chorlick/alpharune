@@ -707,6 +707,19 @@ public:
     virtual bool applyReplacement(CardContext& /*ctx*/,
                                   GameObjectId /*dying_unit*/) { return false; }
 
+    /// Whether this card's replacement could apply to `dying_unit`'s death —
+    /// its conditions, without asking a "may" or taking a payment (`self` is
+    /// this card's object, `controller` the dying unit's controller). When
+    /// more than one replacement applies, that controller chooses the order
+    /// (CR 372; EffectExecutor::applyDeathReplacements), so the engine needs
+    /// to know which do before it applies any. A card that leaves the default
+    /// is listed whenever it is in play.
+    virtual bool replacementApplies(const GameState& /*state*/, GameObjectId /*self*/,
+                                    PlayerId /*controller*/,
+                                    GameObjectId /*dying_unit*/) const {
+        return hasReplacementEffect();
+    }
+
     // ── Equipment / Equip (CR 716-725, 818) ──
     /// Whether this gear has an equip ability.
     virtual bool hasEquipAbility() const { return false; }

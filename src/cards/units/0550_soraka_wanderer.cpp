@@ -31,6 +31,18 @@ public:
     }
 
     bool hasReplacementEffect() const override { return true; }
+    bool replacementApplies(const GameState& state, GameObjectId self_id, PlayerId controller,
+                            GameObjectId dying_unit) const override {
+        if (!state.objectExists(self_id) || !state.objectExists(dying_unit)) return false;
+        if (dying_unit == self_id) return false;             // "another unit"
+        const auto& self = state.getObject(self_id);
+        const auto& dying = state.getObject(dying_unit);
+        if (!dying.isUnit() || dying.controller != controller) return false;
+        auto my_bf = self.battlefieldId();
+        auto dy_bf = dying.battlefieldId();
+        if (!my_bf || !dy_bf || *my_bf != *dy_bf) return false;
+        return dying.current_might < self.current_might;
+    }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
         if (!ctx.state.objectExists(ctx.source)) return false;
         if (!ctx.state.objectExists(dying_unit)) return false;

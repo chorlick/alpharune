@@ -250,7 +250,9 @@ inline void counterChainTop(CardContext& ctx) {
 inline void createGoldToken(CardContext& ctx) {
     auto loc = BaseLocation{ctx.controller};
     auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",
-                                        0, {"Gold"}, KeywordSet{}, loc, false, {},
+                                        // CR 187.5: a domainless gear token with its
+                                        // ability and no tag ("Gold" is its name).
+                                        0, {}, KeywordSet{}, loc, false, {},
                                         kGoldGearCardDefId);
     (void)tid;
 }

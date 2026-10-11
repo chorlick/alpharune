@@ -11,6 +11,12 @@
 
 namespace riftbound {
 
+// Counter on a unit: the turn (+1) a spell of `by` last dealt it damage.
+static const char* spellDamageKey(PlayerId by) {
+    return by == PlayerId::Player1 ? "__spell_damage_turn_p1" : "__spell_damage_turn_p2";
+}
+
+
 EffectExecutor::EffectExecutor(GameState& state, EventBus& events,
                                const CardDB& card_db,
                                const CardRegistry* card_registry)
@@ -169,7 +175,13 @@ void EffectExecutor::dealDamage(GameObjectId target, int amount,
     // "Your damage" is the damage you marked: credit the source's controller.
     if (state_.objectExists(source)) {
         const PlayerId by = state_.getObject(source).controller;
-        if (by != PlayerId::None) obj.damage_marked_by[playerIndex(by)] += dealt;
+        if (by != PlayerId::None) {
+            obj.damage_marked_by[playerIndex(by)] += dealt;
+            // Remembered for a death this damage causes later, in a cleanup
+            // ("When you kill a unit with a spell"): turn-stamped.
+            if (dealt > 0 && state_.getObject(source).isSpell())
+                obj.card_counters[spellDamageKey(by)] = state_.turn.turn_number + 1;
+        }
     }
     events_.emit(DamageDealtEvent{target, dealt, source, false});
 }
@@ -255,6 +267,18 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
                 other.location.has_value() && *other.location == *obj.location)
                 lk.other_friendly_units_here.push_back(oid);
     lk.killed_by = killerOf(state_, obj);
+    if (state_.chain.resuming.has_value()) {
+        lk.killed_with_spell = state_.chain.resuming->is_spell;
+    } else {
+        // Lethal damage found in a cleanup: with a spell if that player's
+        // spell dealt damage that is still marked on it.
+        lk.killed_with_spell = false;
+        if (lk.killed_by != PlayerId::None && obj.damage_marked > 0) {
+            auto it = obj.card_counters.find(spellDamageKey(lk.killed_by));
+            lk.killed_with_spell = it != obj.card_counters.end() &&
+                                   it->second == state_.turn.turn_number + 1;
+        }
+    }
     lk.text_copies = obj.location.has_value() ? textCopiesOn(id) : 0;
     lk.might = obj.current_might;
     lk.empowered = obj.empowered;
@@ -286,67 +310,10 @@ void EffectExecutor::killObject(GameObjectId target) {
     auto controller = obj.controller;
 
     if (obj.isUnit()) {
-        // Deferred one-shot death replacement on the unit itself (Tactical
-        // Retreat 737) — applies to effect/ability kills too, not just combat
-        // lethal (GameEngine::killUnit has the parallel check).
-        if (applyOwnDeathReplacement(target)) return;
-
-        // "If it would die this turn, banish it instead." (Smite) — as in
-        // GameEngine::killUnit.
-        if (obj.banish_if_would_die_this_turn) {
-            obj.banish_if_would_die_this_turn = false;
-            events_.logTrace("  REPLACEMENT (self): " + obj.name +
-                             " is banished instead of dying");
-            banishObject(target);
-            return;
-        }
-
-        // "If a unit here would die ..." on the battlefield the unit is at
-        // (Altar of Blood): the battlefield's card is asked first, for the
-        // dying unit's controller, as GameEngine::killUnit asks it.
-        if (card_registry_) {
-            if (const auto dying_bf = obj.battlefieldId()) {
-                GameObjectId bf_card_id = kInvalidId;
-                for (const auto& bf : state_.battlefields)
-                    if (bf.id == *dying_bf) bf_card_id = bf.card_object_id;
-                if (state_.objectExists(bf_card_id)) {
-                    const CardDefId bf_def = state_.getObject(bf_card_id).card_def_id;
-                    Card* bf_card = bf_def != kInvalidId ? card_registry_->get(bf_def) : nullptr;
-                    if (bf_card && bf_card->hasReplacementEffect()) {
-                        CardContext rctx{state_, events_, *this, controller, bf_card_id};
-                        if (bf_card->applyReplacement(rctx, target)) {
-                            events_.logDebug(std::string("REPLACEMENT: ") +
-                                             state_.getObject(bf_card_id).name + " prevents " +
-                                             state_.getObject(target).name + " from dying");
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Card-defined death replacements (The Boss, Zhonya's Hourglass,
-        // Guardian Angel, Soraka, ...). Effect kills consult them exactly as
-        // combat deaths do (GameEngine::killUnit): a kill is a kill.
-        if (card_registry_) {
-            std::vector<GameObjectId> replacers;
-            for (auto& [id, other] : state_.objects) {
-                if (other.controller != controller || id == target) continue;
-                if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
-                if (other.card_def_id == kInvalidId) continue;
-                const Card* c = card_registry_->get(other.card_def_id);
-                if (c && c->hasReplacementEffect()) replacers.push_back(id);
-            }
-            for (auto rid : replacers) {
-                Card* c = card_registry_->get(state_.getObject(rid).card_def_id);
-                CardContext rctx{state_, events_, *this, controller, rid};
-                if (c && c->applyReplacement(rctx, target)) {
-                    events_.logDebug(std::string("REPLACEMENT: ") + state_.getObject(rid).name +
-                                     " prevents " + state_.getObject(target).name + " from dying");
-                    return;
-                }
-            }
-        }
+        // Everything that can replace this death — on the unit, on its
+        // battlefield, among its controller's cards — in the order its
+        // controller chooses (CR 372). GameEngine::killUnit makes the same call.
+        if (applyDeathReplacements(target)) return;
         // Its gear is shed (CR 719.5) after the death is announced, so abilities
         // that trigger on it see the unit as it died — including what it was
         // a copy of while an Equipment made it one.
@@ -949,34 +916,121 @@ void EffectExecutor::healExhaustRecall(GameObjectId unit) {
     recallToBase(unit);
 }
 
-bool EffectExecutor::applyOwnDeathReplacement(GameObjectId unit_id) {
+bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
     if (!state_.objectExists(unit_id)) return false;
-    auto& unit = state_.getObject(unit_id);
-    if (!unit.isUnit() || !onBoard(unit)) return false;
-    // "The next time it would die this turn, heal it, exhaust it, and recall
-    // it instead." (Tactical Retreat, Highlander)
-    if (unit.death_replacement_recall_pending) {
-        unit.death_replacement_recall_pending = false;
-        events_.logDebug("REPLACEMENT (self): " + unit.name +
-                         " heals/exhausts/recalls instead of dying");
-        healExhaustRecall(unit_id);
-        return true;
-    }
-    // Replacements an effect put on this unit. "The next time it would die":
-    // this death uses each one up, applied or not.
-    if (unit.pending_death_replacements.empty()) return false;
-    const auto pending = std::move(unit.pending_death_replacements);
-    unit.pending_death_replacements.clear();
-    for (const auto& r : pending) {
-        if (r.turn != state_.turn.turn_number) continue;      // its turn is over
-        Card* card = cardFor(r.card);
-        if (!card) continue;
-        CardContext rctx{state_, events_, *this, r.controller, r.source};
-        if (card->applyReplacement(rctx, unit_id)) {
-            events_.logDebug("REPLACEMENT (self): " + state_.getObject(unit_id).name +
-                             " does not die");
-            return true;
+    if (!state_.getObject(unit_id).isUnit() || !onBoard(state_.getObject(unit_id))) return false;
+    const PlayerId controller = state_.getObject(unit_id).controller;
+
+    enum class Kind { RecallPending, Pending, BanishInstead, Card };
+    struct Candidate {
+        Kind kind;
+        GameObjectId card_object = kInvalidId;                 // Kind::Card
+        GameObject::PendingDeathReplacement pending{};         // Kind::Pending
+        std::string label;
+    };
+    std::vector<Candidate> candidates;
+    {
+        auto& unit = state_.getObject(unit_id);
+        // "The next time it would die this turn, heal it, exhaust it, and
+        // recall it instead." (Tactical Retreat, Highlander)
+        if (unit.death_replacement_recall_pending)
+            candidates.push_back({Kind::RecallPending, kInvalidId, {},
+                                  "heal it, exhaust it and recall it instead"});
+        // Replacements an effect put on this unit. "The next time it would
+        // die": this death uses each one up, applied or not.
+        const auto pending = std::move(unit.pending_death_replacements);
+        unit.pending_death_replacements.clear();
+        for (const auto& r : pending) {
+            if (r.turn != state_.turn.turn_number) continue;   // its turn is over
+            const Card* card = cardFor(r.card);
+            if (!card) continue;
+            candidates.push_back({Kind::Pending, kInvalidId, r, card->def().name});
         }
+        // "If it would die this turn, banish it instead." (Smite)
+        if (unit.banish_if_would_die_this_turn)
+            candidates.push_back({Kind::BanishInstead, kInvalidId, {}, "banish it instead"});
+        // "If a unit here would die ..." on the battlefield it is at (Altar of
+        // Blood); then its controller's cards in play, by object id.
+        std::vector<GameObjectId> sources;
+        if (const auto dying_bf = unit.battlefieldId())
+            for (const auto& bf : state_.battlefields)
+                if (bf.id == *dying_bf && state_.objectExists(bf.card_object_id))
+                    sources.push_back(bf.card_object_id);
+        std::vector<GameObjectId> in_play;
+        for (const auto& [id, other] : state_.objects) {
+            if (other.controller != controller || id == unit_id) continue;
+            if (!other.location.has_value() && other.zone != ZoneType::LegendZone) continue;
+            in_play.push_back(id);
+        }
+        std::sort(in_play.begin(), in_play.end());
+        sources.insert(sources.end(), in_play.begin(), in_play.end());
+        for (auto sid : sources) {
+            const Card* card = cardFor(state_.getObject(sid).card_def_id);
+            if (!card || !card->hasReplacementEffect()) continue;
+            if (!card->replacementApplies(state_, sid, controller, unit_id)) continue;
+            candidates.push_back({Kind::Card, sid, {}, state_.getObject(sid).name});
+        }
+    }
+
+    auto apply = [&](const Candidate& c) -> bool {
+        auto& unit = state_.getObject(unit_id);
+        switch (c.kind) {
+            case Kind::RecallPending:
+                unit.death_replacement_recall_pending = false;
+                events_.logDebug("REPLACEMENT (self): " + unit.name +
+                                 " heals/exhausts/recalls instead of dying");
+                healExhaustRecall(unit_id);
+                return true;
+            case Kind::BanishInstead:
+                unit.banish_if_would_die_this_turn = false;
+                events_.logDebug("REPLACEMENT (self): " + unit.name +
+                                 " is banished instead of dying");
+                banishObject(unit_id);
+                return true;
+            case Kind::Pending: {
+                Card* card = cardFor(c.pending.card);
+                CardContext rctx{state_, events_, *this, c.pending.controller, c.pending.source};
+                if (!card || !card->applyReplacement(rctx, unit_id)) return false;
+                events_.logDebug("REPLACEMENT (self): " + state_.getObject(unit_id).name +
+                                 " does not die");
+                return true;
+            }
+            case Kind::Card: {
+                if (!state_.objectExists(c.card_object)) return false;
+                Card* card = cardFor(state_.getObject(c.card_object).card_def_id);
+                CardContext rctx{state_, events_, *this, controller, c.card_object};
+                if (!card || !card->applyReplacement(rctx, unit_id)) return false;
+                events_.logDebug("REPLACEMENT: " + state_.getObject(c.card_object).name +
+                                 " prevents " + state_.getObject(unit_id).name + " from dying");
+                return true;
+            }
+        }
+        return false;
+    };
+
+    while (!candidates.empty()) {
+        // The unit may have left the board through an earlier candidate's
+        // side effects without that counting as a replacement.
+        if (!state_.objectExists(unit_id) || !onBoard(state_.getObject(unit_id))) return true;
+        size_t pick = 0;
+        if (candidates.size() > 1 && agent_query_ && controller != PlayerId::None) {
+            std::vector<Intent> options;
+            for (size_t i = 0; i < candidates.size(); ++i) {
+                Intent o;
+                o.type = IntentType::MakeChoice;
+                o.player = controller;
+                o.chosen_value = static_cast<int>(i);
+                o.choice_label = state_.getObject(unit_id).name + " would die — apply: " +
+                                 candidates[i].label;
+                options.push_back(std::move(o));
+            }
+            const int chosen = agent_query_(controller, options).chosen_value.value_or(0);
+            if (chosen >= 0 && chosen < static_cast<int>(candidates.size()))
+                pick = static_cast<size_t>(chosen);
+        }
+        const Candidate c = candidates[pick];
+        candidates.erase(candidates.begin() + static_cast<ptrdiff_t>(pick));
+        if (apply(c)) return true;
     }
     return false;
 }
@@ -1364,6 +1418,8 @@ void EffectExecutor::healObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
     obj.damage_marked = 0;
+    obj.card_counters.erase(spellDamageKey(PlayerId::Player1));
+    obj.card_counters.erase(spellDamageKey(PlayerId::Player2));
     events_.emit(ObjectStateChangedEvent{target, "healed"});
 }
 
@@ -1655,7 +1711,8 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
 
     // "Once each turn, if you would play a token unit ..., you may play that
     // token and an additional copy of it instead." (Zilean, Time Mage; the
-    // card sets PlayerState::plays_additional_token_copy while its condition holds.) A
+    // card counts itself in PlayerState::additional_token_copy_sources while
+    // its condition holds; each source is once each turn on its own.) A
     // "may": the controller is asked. The copy is played by the same
     // instruction, so it goes where that instruction allows: the named
     // location, or — when the controller chose among several — a location
@@ -1665,10 +1722,14 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
         auto& ps = state_.player(controller);
         // With no agent attached (an executor driven on its own) the "may" is
         // taken, as Card::confirmOptional does outside the chain.
-        if (ps.plays_additional_token_copy && ps.additional_token_copy_used_turn != state_.turn.turn_number &&
+        if (ps.additional_token_copies_turn != state_.turn.turn_number) {
+            ps.additional_token_copies_turn = state_.turn.turn_number;
+            ps.additional_token_copies_used = 0;
+        }
+        if (ps.additional_token_copies_used < ps.additional_token_copy_sources &&
             (!agent_query_ ||
              confirmNow(controller, "play an additional copy of " + name + "?"))) {
-            ps.additional_token_copy_used_turn = state_.turn.turn_number;
+            ++ps.additional_token_copies_used;
             const std::vector<LocationId>& choices =
                 location_choices.empty() ? token_location_choices_ : location_choices;
             LocationId copy_at = location;
@@ -1851,7 +1912,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
     for (int i = 0; i < actual; ++i) {
         peeked.push_back(deck::takeTop(state_, player, deck::Place::Held, looker));
     }
-    // Per CR 436.1, Predict is a PRIVATE look — only the predicting
+    // Per CR 437.1, Predict is a PRIVATE look — only the predicting
     // player sees the cards. Log each peeked card with a "PRIVATE" tag
     // so V&V can verify what the agent saw (the engine doesn't yet
     // persist this — see Phase 10 ObservationTracker — but the trace
@@ -1874,9 +1935,8 @@ void EffectExecutor::predict(PlayerId player, int count) {
         });
     }
 
-    // Agent chooses which to recycle via MakeChoice
-    // For now: random agent recycles all (keeps top of deck fresh)
-    // Future: proper MakeChoice with multiple selections
+    // The player decides, card by card, whether to recycle it (CR 437.1), and
+    // then the order of the cards that stay.
     if (agent_query_) {
         // Offer choice: recycle each card or keep it
         GameObjectId recycled = kInvalidId;
@@ -2044,8 +2104,17 @@ struct StagedEffectCost {
         ps.transient_ignore_power = c.ignore_power;
         ps.transient_play_discount += c.energy_reduction;
         reduction_ = c.energy_reduction;
-        if (from == ZoneType::Trash) ps.current_play_source = Intent::PlaySource::Trash;
-        else if (from != ZoneType::Hand) ps.current_play_source = Intent::PlaySource::Banishment;
+        // The zone it is really played from (every reader today only asks
+        // "not from hand", but the value must be true).
+        switch (from) {
+            case ZoneType::Hand: break;
+            case ZoneType::Trash:        ps.current_play_source = Intent::PlaySource::Trash; break;
+            case ZoneType::ChampionZone: ps.current_play_source = Intent::PlaySource::ChampionZone; break;
+            case ZoneType::FacedownZone: ps.current_play_source = Intent::PlaySource::Hidden; break;
+            case ZoneType::Chain:        ps.current_play_source = Intent::PlaySource::ChainZone; break;
+            case ZoneType::MainDeck:     ps.current_play_source = Intent::PlaySource::MainDeck; break;
+            default:                     ps.current_play_source = Intent::PlaySource::Banishment; break;
+        }
     }
     ~StagedEffectCost() {
         ps.transient_ignore_energy = false;

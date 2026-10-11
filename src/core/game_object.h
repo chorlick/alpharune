@@ -105,6 +105,9 @@ struct GameObject {
         // Who killed it: the controller of the spell or ability that did,
         // else the player whose damage was lethal. None if nobody did.
         PlayerId killed_by = PlayerId::None;
+        // "kill a unit with a spell": the spell that is resolving killed it,
+        // or it died of lethal damage that `killed_by`'s spell dealt this turn.
+        bool killed_with_spell = false;
         // Equipment on it whose effect text was a copy of its text
         // (Card::copiesBearerText): its "When I die" triggers that many more times.
         int text_copies = 0;
@@ -234,7 +237,7 @@ struct GameObject {
     // instead" — Unlicensed Armory). It belongs to the unit, so it applies
     // whether or not the card that made it is still in play: both kill paths
     // ask `card`'s Card::applyReplacement, for `controller`, before any other
-    // replacement (EffectExecutor::applyOwnDeathReplacement). One-shot;
+    // replacement (EffectExecutor::applyDeathReplacements). One-shot;
     // ignored once `turn` is over.
     struct PendingDeathReplacement {
         CardDefId card = kInvalidId;

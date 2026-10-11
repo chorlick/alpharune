@@ -15,6 +15,12 @@ class ZhonyaSHourglass : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     bool hasReplacementEffect() const override { return true; }
+    bool replacementApplies(const GameState& state, GameObjectId self, PlayerId /*controller*/,
+                            GameObjectId dying_unit) const override {
+        if (!state.objectExists(self) || !state.objectExists(dying_unit)) return false;
+        const auto& victim = state.getObject(dying_unit);
+        return victim.isUnit() && victim.controller == state.getObject(self).controller;
+    }
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
         if (!ctx.state.objectExists(ctx.source)) return false;
         if (!ctx.state.objectExists(dying_unit)) return false;

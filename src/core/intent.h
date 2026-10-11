@@ -41,6 +41,7 @@ struct Intent {
         ChampionZone,
         Hidden,
         ChainZone,
+        MainDeck,   // only staged for a card an effect plays off a deck; no intent carries it
     };
     PlaySource play_source = PlaySource::Hand;
 

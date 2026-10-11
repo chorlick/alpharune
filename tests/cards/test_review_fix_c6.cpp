@@ -798,7 +798,7 @@ TEST_F(C6Test, PetalPixie_CountsTemporaryUnitsNotHerself) {
 
 TEST_F(C6Test, KeeperOfMasks_ZileansExtraReflectionBecomesACopyToo) {
     addUnit(P1, kZilean, 0, 0);
-    cleanup();                       // plays_additional_token_copy
+    cleanup();                       // counts the Zilean as a source
     auto keeper = addToHand(P1, kKeeperOfMasks);
     // Zilean 648: "you MAY play that token and an additional copy" — say yes.
     EnginePathAgent yes(EnginePathAgent::script({1}));

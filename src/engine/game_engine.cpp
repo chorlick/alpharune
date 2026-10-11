@@ -5981,7 +5981,7 @@ void GameEngine::recalculateAuras() {
             !obj.location.has_value() && obj.zone != ZoneType::LegendZone &&
             obj.zone != ZoneType::BattlefieldZone && carriesBoardState(obj))
             throw std::logic_error("GameEngine::recalculateAuras: " + obj.name + " (id=" +
-                                   std::to_string(id) + ", zone " +
+                                   toString(id) + ", zone " +
                                    std::to_string(static_cast<int>(obj.zone.get())) +
                                    ") is off the board and still carries board state: it "
                                    "left the board by a path that does not call "

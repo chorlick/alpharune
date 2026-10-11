@@ -44,7 +44,7 @@ public:
     static constexpr const char* kBearer = "__spectacles_bearer";
 
     static void remember(GameObject& u) {
-        u.card_counters["__spectacles_def"] = static_cast<int>(u.card_def_id);
+        u.card_counters["__spectacles_def"] = static_cast<int>(u.card_def_id.raw());
         u.card_counters["__spectacles_might"] = u.base_might;
         u.card_counters["__spectacles_kw"] =
             static_cast<int>(u.keywords.bits & ~u.temp_keywords.bits);
@@ -66,7 +66,7 @@ public:
         u.string_state["__spectacles_domains"] = doms;
     }
     static void restore(GameObject& u) {
-        u.card_def_id = static_cast<CardDefId>(u.card_counters["__spectacles_def"]);
+        u.card_def_id = CardDefId::fromRaw(u.card_counters["__spectacles_def"]);
         u.base_might = u.card_counters["__spectacles_might"];
         // Keep whatever is granted "this turn" right now; drop the copied rest.
         u.keywords.bits = static_cast<uint32_t>(u.card_counters["__spectacles_kw"]) |

@@ -1877,7 +1877,7 @@ TEST_F(VerifyCardsTest, S2_ASourceThatLeftTheBoardDoesNothingToItself) {
     const CardDefId ids[] = {27, 36, 56, 59, 103, 131, 167, 177, 197, 202, 304, 343,
                              380, 398, 434, 458, 590, 681};
     for (CardDefId def_id : ids) {
-        SCOPED_TRACE("card " + std::to_string(def_id) + " " + card_db.get(def_id).name);
+        SCOPED_TRACE("card " + toString(def_id) + " " + card_db.get(def_id).name);
         Card* card = card_registry.get(def_id);
         ASSERT_NE(card, nullptr);
         for (TriggerType t : card->triggerTypes()) {
@@ -2803,7 +2803,7 @@ TEST_F(VerifyCardsTest, OptionLists_AreOfferedInAscendingObjectIdOrder) {
         {63, TriggerType::WhenYouPlayThis, Kind::Gear},          // Spirit's Refuge
     };
     for (const Case& c : cases) {
-        SCOPED_TRACE("card " + std::to_string(c.id) + " " + card_db.get(c.id).name);
+        SCOPED_TRACE("card " + toString(c.id) + " " + card_db.get(c.id).name);
         // Everything at battlefield #0 (the gear in base), interleaved, with
         // the source in the middle. Shipyard Skulker: 3 [M], no text.
         std::vector<GameObjectId> made;
@@ -3059,7 +3059,7 @@ TEST_F(VerifyCardsTest, Udyr_LeftInResponse_IsNeitherReadiedNorGivenGanking) {
 // board in response — the card in the trash gets no +4 [M].
 TEST_F(VerifyCardsTest, SettBrawler_LeftInResponse_GetsNoMightInTheTrash) {
     for (CardDefId def_id : {kSett164, kSett543}) {
-        SCOPED_TRACE("card " + std::to_string(def_id));
+        SCOPED_TRACE("card " + toString(def_id));
         auto sett = addUnit(P1, def_id);
         o(sett).buff_count = 1;
         Intent act;
@@ -3769,7 +3769,7 @@ TEST_F(VerifyCardsTest, Equip_EachOfTheTenGearsIsOfferedAndPaidAtItsPrintedCost)
         return out;
     };
     for (const Row& row : rows) {
-        SCOPED_TRACE("gear " + std::to_string(row.id) + " [Equip] " + row.printed);
+        SCOPED_TRACE("gear " + toString(row.id) + " [Equip] " + row.printed);
         // The row is the printed cost.
         EXPECT_NE(card_db.get(row.id).ability_text.find(std::string("[Equip] ") + row.printed + " ("),
                   std::string::npos);
@@ -8243,7 +8243,7 @@ TEST_F(VerifyCardsTest, SelectSeveral_AStoredPickNoLongerInTheListIsDroppedAndNo
     auto a = addUnit(P1, kShipyardSkulker, 0, 0);
     auto b = addUnit(P1, kShipyardSkulker, 0, 0);
     auto c = addUnit(P1, kShipyardSkulker, 0, 0);
-    auto late = kInvalidId;
+    GameObjectId late = kInvalidId;
     size_t prompts_at_priority = 0;
     EnginePathAgent agent(EnginePathAgent::script(
         {static_cast<int>(a), static_cast<int>(b), static_cast<int>(c)}));

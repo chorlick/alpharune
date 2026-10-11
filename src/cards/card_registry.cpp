@@ -18,20 +18,20 @@ void CardRegistry::registerCard(CardDefId id, std::unique_ptr<Card> card) {
     // Registration runs once at startup, so these are checked in every build
     // type: a slip here would otherwise silently drop or mis-key a card.
     if (!card)
-        throw std::logic_error("registerCard: null card for id " + std::to_string(id));
+        throw std::logic_error("registerCard: null card for id " + toString(id));
     if (card->def().id != id)
-        throw std::logic_error("registerCard: id " + std::to_string(id) +
+        throw std::logic_error("registerCard: id " + toString(id) +
                                " does not match def().id " +
-                               std::to_string(card->def().id) + " ('" +
+                               toString(card->def().id) + " ('" +
                                card->def().name + "')");
     auto [it, inserted] = cards_.emplace(id, std::move(card));
     if (!inserted)
-        throw std::logic_error("registerCard: id " + std::to_string(id) +
+        throw std::logic_error("registerCard: id " + toString(id) +
                                " is already registered ('" +
                                it->second->def().name + "')");
-    if (id < kTableLimit) {
-        if (by_id_.size() <= id) by_id_.resize(static_cast<size_t>(id) + 1, nullptr);
-        by_id_[id] = it->second.get();
+    if (const uint32_t n = id.raw(); n < kTableLimit) {
+        if (by_id_.size() <= n) by_id_.resize(static_cast<size_t>(n) + 1, nullptr);
+        by_id_[n] = it->second.get();
     }
     // What the card says about itself without looking at a game (its trigger
     // types, its activated abilities) is asked once, here, before the registry

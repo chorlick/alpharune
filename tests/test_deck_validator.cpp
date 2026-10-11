@@ -138,7 +138,7 @@ TEST_F(DeckValidatorTest, LoadFromDeckListAndValidate) {
 
 TEST_F(DeckValidatorTest, MissingLegend) {
     auto deck = makeValidDeck();
-    deck.legend = 0;
+    deck.legend = kInvalidId;
     DeckValidator validator(db);
     auto result = validator.validate(deck);
     EXPECT_FALSE(result.is_legal);
@@ -147,7 +147,7 @@ TEST_F(DeckValidatorTest, MissingLegend) {
 
 TEST_F(DeckValidatorTest, MissingChampion) {
     auto deck = makeValidDeck();
-    deck.chosen_champion = 0;
+    deck.chosen_champion = kInvalidId;
     DeckValidator validator(db);
     auto result = validator.validate(deck);
     EXPECT_FALSE(result.is_legal);

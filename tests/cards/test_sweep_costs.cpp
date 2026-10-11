@@ -2852,9 +2852,9 @@ TEST_F(SweepCostsTest, CardContract_NoRegisteredCardEndsItsFinalizePassAnywhereE
                 body();
             } catch (const std::logic_error& ex) {
                 if (std::string(ex.what()).find("end-of-choices marker") != std::string::npos)
-                    trips.push_back(def.name + " (" + std::to_string(id) + "), " + what);
+                    trips.push_back(def.name + " (" + toString(id) + "), " + what);
             } catch (const std::exception& ex) {
-                other.push_back(def.name + " (" + std::to_string(id) + "), " + what + ": " +
+                other.push_back(def.name + " (" + toString(id) + "), " + what + ": " +
                                 ex.what());
             }
         };

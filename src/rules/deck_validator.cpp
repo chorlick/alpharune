@@ -35,7 +35,7 @@ ValidationResult DeckValidator::validate(const DeckSubmission& deck) const {
 
 void DeckValidator::checkLegend(const DeckSubmission& deck,
                                  ValidationResult& result) const {
-    if (deck.legend == 0) {
+    if (deck.legend == kInvalidId) {
         result.addError("Missing legend");
         return;
     }
@@ -48,7 +48,7 @@ void DeckValidator::checkLegend(const DeckSubmission& deck,
 void DeckValidator::checkChampion(const DeckSubmission& deck,
                                    ValidationResult& result,
                                    const CardDef& legend) const {
-    if (deck.chosen_champion == 0) {
+    if (deck.chosen_champion == kInvalidId) {
         result.addError("Missing chosen champion");
         return;
     }
@@ -101,7 +101,7 @@ void DeckValidator::checkMainDeckSize(const DeckSubmission& deck,
                                        ValidationResult& result) const {
     // Main deck (39) + champion (1) = 40 total (CR 402.1)
     int total = static_cast<int>(deck.main_deck.size()) +
-                (deck.chosen_champion != 0 ? 1 : 0);
+                (deck.chosen_champion != kInvalidId ? 1 : 0);
     if (total != 40) {
         result.addError("Main deck must be exactly 40 cards (including champion), got " +
                         std::to_string(total));
@@ -175,7 +175,7 @@ void DeckValidator::checkDomainIdentity(const DeckSubmission& deck,
     }
 
     // Check champion
-    if (deck.chosen_champion != 0) {
+    if (deck.chosen_champion != kInvalidId) {
         checkCard(deck.chosen_champion, "Champion");
     }
 
@@ -217,7 +217,7 @@ void DeckValidator::checkCopyLimits(const DeckSubmission& deck,
     };
 
     for (auto id : deck.main_deck) countCard(id);
-    if (deck.chosen_champion != 0) countCard(deck.chosen_champion);
+    if (deck.chosen_champion != kInvalidId) countCard(deck.chosen_champion);
     for (auto id : deck.sideboard) countCard(id);
 
     for (auto& [name, count] : name_counts) {
@@ -248,7 +248,7 @@ void DeckValidator::checkSignatureLimits(const DeckSubmission& deck,
     };
 
     for (auto id : deck.main_deck) checkSig(id);
-    if (deck.chosen_champion != 0) checkSig(deck.chosen_champion);
+    if (deck.chosen_champion != kInvalidId) checkSig(deck.chosen_champion);
     for (auto id : deck.sideboard) checkSig(id);
 
     if (sig_count > 3) {
@@ -313,10 +313,10 @@ DeckSubmission DeckValidator::loadFromDeckList(const std::string& path,
         CardDefId id = resolve(name);
 
         if (section == "legend") {
-            if (deck.legend != 0) fail("multiple legends");
+            if (deck.legend != kInvalidId) fail("multiple legends");
             deck.legend = id;
         } else if (section == "champion") {
-            if (deck.chosen_champion != 0) fail("multiple champions");
+            if (deck.chosen_champion != kInvalidId) fail("multiple champions");
             deck.chosen_champion = id;
         } else if (section == "maindeck") {
             for (int i = 0; i < count; ++i) deck.main_deck.push_back(id);
@@ -331,9 +331,9 @@ DeckSubmission DeckValidator::loadFromDeckList(const std::string& path,
         }
     }
 
-    if (deck.legend == 0) throw std::runtime_error("Deck list " + path +
+    if (deck.legend == kInvalidId) throw std::runtime_error("Deck list " + path +
                                                    ": no Legend section");
-    if (deck.chosen_champion == 0) throw std::runtime_error("Deck list " + path +
+    if (deck.chosen_champion == kInvalidId) throw std::runtime_error("Deck list " + path +
                                                             ": no Champion section");
     return deck;
 }
@@ -389,7 +389,7 @@ void DeckValidator::checkBanList(const DeckSubmission& deck,
     // own CardDef::banned flag (class-owned, post-refactor). isBanned() honors
     // both sources.
     auto checkCard = [&](CardDefId id, const std::string& zone) {
-        if (id != 0 && isBanned(id)) {
+        if (id != kInvalidId && isBanned(id)) {
             auto& def = db_.get(id);
             result.addError("Banned card in " + zone + ": " + def.name);
         }

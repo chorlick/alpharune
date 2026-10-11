@@ -422,7 +422,7 @@ TEST_F(RulesCardsTest, RulesCards_CR164_BladeDancer_PaysPowerByRecyclingARune) {
 
 TEST_F(RulesCardsTest, RulesCards_CR445_VayneHunter_BothPrintings_PayWithAReadyRune) {
     for (CardDefId vayne_id : {kVayneHunter35, kVayneHunter537}) {
-        SCOPED_TRACE("Vayne, Hunter id " + std::to_string(vayne_id));
+        SCOPED_TRACE("Vayne, Hunter id " + toString(vayne_id));
         EffectExecutor exec(state, events, card_db, &card_registry);
         auto vayne = addUnit(P1, vayne_id, 0, /*at_bf=*/0);
         auto rune = addRune(P1, Domain::Fury);

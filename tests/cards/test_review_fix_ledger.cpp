@@ -276,11 +276,11 @@ TEST_F(LedgerTest, Defs_AKeywordTheTextGivesToSomethingElseIsNotOnTheCard) {
     }
     // The printed number of a keyword the card does not have is not its own
     // either (GameEngine::instantiateCard copies it onto the card's object).
-    for (CardDefId id : {4, 325, 572, 579, 502})
+    for (CardDefId id : std::initializer_list<CardDefId>{4, 325, 572, 579, 502})
         EXPECT_EQ(card_db.get(id).assault_value, 0) << id << " " << card_db.get(id).name;
-    for (CardDefId id : {57, 551, 274, 764})
+    for (CardDefId id : std::initializer_list<CardDefId>{57, 551, 274, 764})
         EXPECT_EQ(card_db.get(id).shield_value, 0) << id << " " << card_db.get(id).name;
-    for (CardDefId id : {606, 773})
+    for (CardDefId id : std::initializer_list<CardDefId>{606, 773})
         EXPECT_EQ(card_db.get(id).deflect_value, 0) << id << " " << card_db.get(id).name;
 
     // What these cards do print for themselves stays.

@@ -639,6 +639,25 @@ endif()
 include(GoogleTest)
 gtest_discover_tests(riftbound_tests)
 
+# Id kinds do not mix (plan item 5.5). Each case of
+# tests/compile_fail/strong_id_mix.cc is compiled on its own, syntax only:
+# case 0 must compile, every other case must be rejected by the compiler.
+# RIFTBOUND_STRONG_ID_FAIL_CASES is the number of the last case.
+set(RIFTBOUND_STRONG_ID_FAIL_CASES 9)
+foreach(_case RANGE 0 ${RIFTBOUND_STRONG_ID_FAIL_CASES})
+    add_test(NAME riftbound_strong_id_case_${_case}
+        COMMAND ${CMAKE_CXX_COMPILER} -std=c++20 -fsyntax-only
+                -I${PROJECT_SOURCE_DIR}/src -DSTRONG_ID_CASE=${_case}
+                ${PROJECT_SOURCE_DIR}/tests/compile_fail/strong_id_mix.cc)
+    if(NOT _case EQUAL 0)
+        # "error:" from the compiler and no "#error": the case was reached
+        # and its own line was refused.
+        set_tests_properties(riftbound_strong_id_case_${_case} PROPERTIES
+            PASS_REGULAR_EXPRESSION "error: "
+            FAIL_REGULAR_EXPRESSION "#error")
+    endif()
+endforeach()
+
 # One card table per process (plan item 9.E3): a game with a search agent in
 # the `riftbound` binary must build the registry + database once. main.cpp
 # used to build its own next to openspiel::sharedCards(). `--debug` prints the

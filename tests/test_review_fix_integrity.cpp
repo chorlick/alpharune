@@ -70,7 +70,7 @@ protected:
     CardDefId idOf(const char* name) {
         const CardDef* c = db.findByName(name);
         EXPECT_NE(c, nullptr) << name;
-        return c ? c->id : 0;
+        return c ? c->id : CardDefId{};
     }
 
     /// Heart of the Tempest (942): tags {Yordle, Kennen}, champion tag Kennen.

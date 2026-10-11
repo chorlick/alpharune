@@ -90,10 +90,11 @@ struct Intent {
     // battlefield's additional cost (BattlefieldState::paid_play_power; Dragon
     // Roost). Only offered where the unit could not otherwise be played.
     bool pay_location_cost = false;
-    // Aura-granted activated ability (Forge/Gardens/Heimerdinger): when nonzero,
+    // Aura-granted activated ability (Forge/Gardens/Heimerdinger): when set,
     // this ActivateAbility invokes ability_source's GRANTED ability whose logic
-    // lives on card def `granted_ability_def` (0 = the source's own ability).
-    CardDefId granted_ability_def = 0;
+    // lives on card def `granted_ability_def` (kInvalidId = the source's own
+    // ability).
+    CardDefId granted_ability_def = kInvalidId;
 
     // Display-only human-readable label for an int-coded MakeChoice
     // option (yes/no, mode index, X amount). The Intent itself only

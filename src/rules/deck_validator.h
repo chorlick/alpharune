@@ -29,8 +29,8 @@ namespace riftbound {
 inline constexpr std::size_t kMaxSideboardSize = 10;
 
 struct DeckSubmission {
-    CardDefId legend = 0;
-    CardDefId chosen_champion = 0;
+    CardDefId legend = kInvalidId;           // kInvalidId = none named
+    CardDefId chosen_champion = kInvalidId;
     std::vector<CardDefId> main_deck;     // 39 cards (champion is separate)
     std::vector<CardDefId> rune_deck;     // 12 runes
     std::vector<CardDefId> battlefields;  // 3 battlefields

@@ -367,7 +367,7 @@ public:
             for (const auto& i : legal)
                 if (!i.chosen_value.has_value() && i.chosen_objects.empty() &&
                     i.chosen_card_def != kInvalidId &&
-                    i.chosen_card_def == static_cast<CardDefId>(want)) return i;
+                    i.chosen_card_def == CardDefId::fromRaw(want)) return i;
             ADD_FAILURE() << "EnginePathAgent::script: entry #" << *n << " (" << want
                           << ") matches no option of its prompt (kFirst takes the first"
                           << " option on purpose). Options:" << describe();

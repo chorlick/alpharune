@@ -748,7 +748,7 @@ static std::string formatActionShort(const GameState& state,
     // would be too verbose like "ogn-164-298").
     auto nameWithDefId = [&](const GameObject& obj) -> std::string {
         if (obj.card_def_id == kInvalidId) return obj.name;  // tokens
-        return obj.name + " #" + std::to_string(obj.card_def_id);
+        return obj.name + " #" + toString(obj.card_def_id);
     };
 
     auto cardLabel = [&](GameObjectId id) -> std::string {

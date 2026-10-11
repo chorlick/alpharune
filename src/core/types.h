@@ -3,7 +3,10 @@
 /// Core type definitions, enums, and type aliases for the Riftbound engine.
 /// This is the foundational header — almost everything includes this.
 
+#include <compare>
+#include <concepts>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <string>
 #include <variant>
@@ -12,17 +15,102 @@
 namespace riftbound {
 
 // ─── ID types ────────────────────────────────────────────────────────────────
-// Strong typedefs via tagged integers for type safety.
-// Using uint32_t for all IDs — 4 billion is plenty.
+// Every kind of id is a type of its own (plans/05 item 5.5). Mixing two kinds
+// (a card-template id where a runtime object id is expected: `cardDefId()` vs
+// `ctx.source`), or handing a plain integer to something that takes an id,
+// does not compile; tests/test_strong_ids.cpp and the
+// `riftbound_strong_id_case_*` ctests keep it that way.
+//
+// An id is one uint32_t: trivially copyable, the same size and the same
+// numeric value as when ids were plain integers, ordered and hashed by that
+// value (so map order, option order and everything written to a log, a replay
+// or a feature are what they were).
+//
+// To and from a plain integer, always by name:
+//   id.raw()              the number (for a log line, an int slot, an index)
+//   X::fromRaw(n)         the id that number names (from an int slot)
+// Every id kind has exactly ONE "none" value, kInvalidId, which is also what
+// a default-constructed id is. `id == kInvalidId` / `id.valid()` test for it.
 
-using CardDefId   = uint32_t;  // Index into CardDB (the card class's def().id)
+/// "No id", for every id kind (and UINT32_MAX in a plain integer slot that
+/// holds an id's raw value, e.g. `resume_data`).
+struct InvalidId {
+    constexpr operator uint32_t() const noexcept {
+        return std::numeric_limits<uint32_t>::max();
+    }
+};
+inline constexpr InvalidId kInvalidId{};
+
+template <class Tag>
+class StrongId {
+public:
+    /// Default: none.
+    constexpr StrongId() noexcept = default;
+    constexpr StrongId(InvalidId) noexcept {}
+
+    /// A kind the SOURCE names by number (a card id: `d.id = 235`,
+    /// `registry.get(235)`) converts from an integer LITERAL and from nothing
+    /// else: the constructor is consteval, so a value only known at run time
+    /// (an int variable, a counter, a resume slot) does not compile, and
+    /// neither does 0 or UINT32_MAX (there is one "none", kInvalidId).
+    consteval StrongId(int literal) requires Tag::kNamedByLiteral
+        : v_(static_cast<uint32_t>(literal)) {
+        if (literal <= 0) throw "an id literal must be positive: 'none' is kInvalidId";
+    }
+
+    /// The id a plain integer names. The integer is taken as stored: -1 in a
+    /// signed slot is kInvalidId.
+    template <std::integral I>
+    static constexpr StrongId fromRaw(I raw) noexcept {
+        StrongId s;
+        s.v_ = static_cast<uint32_t>(raw);
+        return s;
+    }
+    /// The number, for a log line, an integer slot or an index.
+    constexpr uint32_t raw() const noexcept { return v_; }
+    /// Not kInvalidId.
+    constexpr bool valid() const noexcept {
+        return v_ != std::numeric_limits<uint32_t>::max();
+    }
+
+    friend constexpr bool operator==(StrongId, StrongId) noexcept = default;
+    friend constexpr auto operator<=>(StrongId, StrongId) noexcept = default;
+    friend constexpr bool operator==(StrongId a, InvalidId) noexcept { return !a.valid(); }
+
+    /// Prints the number, as a plain integer id did.
+    template <class Stream>
+        requires requires(Stream& os, uint32_t n) { os << n; }
+    friend Stream& operator<<(Stream& os, StrongId id) {
+        os << id.v_;
+        return os;
+    }
+
+private:
+    uint32_t v_ = std::numeric_limits<uint32_t>::max();
+};
+
+/// The number as text: what std::to_string gave for a plain integer id.
+template <class Tag>
+inline std::string toString(StrongId<Tag> id) { return std::to_string(id.raw()); }
+
+/// JSON (nlohmann, found by ADL): an id is its number.
+template <class Json, class Tag>
+    requires requires(Json& j, uint32_t n) { j = n; }
+void to_json(Json& j, StrongId<Tag> id) { j = id.raw(); }
+template <class Json, class Tag>
+    requires requires(const Json& j) { j.template get<uint32_t>(); }
+void from_json(const Json& j, StrongId<Tag>& id) {
+    id = StrongId<Tag>::fromRaw(j.template get<uint32_t>());
+}
+
+struct CardDefIdTag { static constexpr bool kNamedByLiteral = true; };
+
+using CardDefId   = StrongId<CardDefIdTag>;  // Index into CardDB (the card class's def().id)
 using GameObjectId = uint32_t; // Runtime game object instance
 using AbilityId   = uint32_t;  // Ability instance
 using ChainItemId = uint32_t;  // Chain item instance
 using ZoneId      = uint32_t;  // Zone instance
 using BattlefieldId = uint32_t; // Battlefield slot
-
-constexpr uint32_t kInvalidId = std::numeric_limits<uint32_t>::max();
 
 // ─── Player ──────────────────────────────────────────────────────────────────
 
@@ -308,3 +396,12 @@ const char* toString(ScoreMethod m);
 const char* toString(Keyword k);
 
 } // namespace riftbound
+
+template <class Tag>
+struct std::hash<riftbound::StrongId<Tag>> {
+    // The hash of the number: an unordered container keyed by an id iterates
+    // in the order it did when ids were plain integers.
+    std::size_t operator()(riftbound::StrongId<Tag> id) const noexcept {
+        return std::hash<uint32_t>{}(id.raw());
+    }
+};

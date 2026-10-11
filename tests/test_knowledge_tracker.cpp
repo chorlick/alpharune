@@ -50,7 +50,7 @@ struct Table {
     std::vector<GameObjectId> deck(PlayerId owner, int n, CardDefId first_card = 100) {
         std::vector<GameObjectId> ids;
         for (int i = 0; i < n; ++i) {
-            ids.push_back(make(owner, first_card + i, ZoneType::MainDeck));
+            ids.push_back(make(owner, CardDefId::fromRaw(first_card.raw() + i), ZoneType::MainDeck));
         }
         std::reverse(ids.begin(), ids.end());
         return ids;
@@ -103,7 +103,7 @@ TEST(KnowledgeTracker, OwnHandAndPublicCardsAreSimplyKnown) {
     GameKnowledgeView v(t.s, P1);
 
     EXPECT_TRUE(v.about(mine).identity_known);
-    EXPECT_EQ(v.about(mine).card_def_id, 7u);
+    EXPECT_EQ(v.about(mine).card_def_id, CardDefId{7});
     EXPECT_FALSE(v.about(theirs).identity_known);
     EXPECT_EQ(v.about(theirs).last_known_zone, ZoneType::Hand);
     EXPECT_TRUE(v.about(trashed).identity_known);
@@ -257,7 +257,7 @@ TEST(KnowledgeTracker, APublicCardRecycledAloneIsKnownToBothPlayers) {
         GameKnowledgeView v(t.s, p);
         const auto k = v.about(card);
         EXPECT_TRUE(k.identity_known);
-        EXPECT_EQ(k.card_def_id, 55u);
+        EXPECT_EQ(k.card_def_id, CardDefId{55});
         EXPECT_EQ(k.deck_position, DeckPosition::Bottom);
         EXPECT_EQ(k.deck_rank, 0);
     }
@@ -291,7 +291,7 @@ TEST(KnowledgeTracker, AShuffleKeepsIdentitiesAndDropsPositions) {
 TEST(KnowledgeTracker, BurnOutMakesTheWholeTrashKnownButUnordered) {
     Table t;
     std::vector<GameObjectId> trash;
-    for (int i = 0; i < 3; ++i) trash.push_back(t.make(P2, 60 + i, ZoneType::Trash));
+    for (int i = 0; i < 3; ++i) trash.push_back(t.make(P2, CardDefId::fromRaw(60 + i), ZoneType::Trash));
     auto& ps = t.s.player(P2);
     for (auto id : trash) {
         ps.main_deck.push_back(id);
@@ -412,10 +412,11 @@ TEST(KnowledgeTracker, AFacedownCardIsFollowedOnceSeen) {
 
 TEST(KnowledgeTracker, OwnDeckCompositionCountsCopiesAndHidesOrder) {
     Table t;
-    for (CardDefId card : {5u, 3u, 5u, 9u, 3u, 5u}) t.make(P1, card, ZoneType::MainDeck);
+    for (CardDefId card : std::initializer_list<CardDefId>{5, 3, 5, 9, 3, 5}) t.make(P1, card, ZoneType::MainDeck);
     GameKnowledgeView v(t.s, P1);
     const auto comp = v.ownDeckComposition();
-    const std::vector<std::pair<CardDefId, int>> want = {{3, 2}, {5, 3}, {9, 1}};
+    const std::vector<std::pair<CardDefId, int>> want = {
+        {CardDefId{3}, 2}, {CardDefId{5}, 3}, {CardDefId{9}, 1}};
     EXPECT_EQ(comp, want);
 }
 

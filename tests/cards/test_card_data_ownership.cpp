@@ -44,7 +44,7 @@ TEST_F(DataOwnershipTest, CardAnswersDefAndCardDefId) {
 
     const Card* c = reg.get(999001);
     ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->cardDefId(), 999001u);     // derived from def().id
+    EXPECT_EQ(c->cardDefId(), CardDefId{999001});     // derived from def().id
     EXPECT_EQ(c->def().name, "Fake Unit");
     EXPECT_EQ(c->def().energy_cost, 3);
 

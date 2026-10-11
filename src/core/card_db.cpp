@@ -60,7 +60,7 @@ const CardDef& CardDB::get(CardDefId id) const {
     auto it = cards_.find(id);
     if (it == cards_.end()) {
         throw std::out_of_range(
-            "Card ID not found: " + std::to_string(id));
+            "Card ID not found: " + toString(id));
     }
     return it->second;
 }

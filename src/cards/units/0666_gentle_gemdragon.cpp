@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -17,10 +18,16 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouPlayAUnit};
     }
+    // "When you play me or another Dragon": WhenYouPlayAUnit fires for every
+    // other unit its controller plays, with that unit as the subject.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/,
+                          PlayerId /*controller*/, TriggerType trigger,
+                          GameObjectId subject) const override {
+        if (trigger != TriggerType::WhenYouPlayAUnit) return true;
+        return subject != kInvalidId && state.objectExists(subject) &&
+               hasTag(state.getObject(subject), "Dragon");
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // NOTE: WhenYouPlayAUnit doesn't surface the played unit's tags, so the
-        // "another Dragon" qualifier can't be checked precisely; we ready on any
-        // friendly unit play (documented approximation).
         int readied = 0;
         for (auto& [id, obj] : ctx.state.objects) {
             if (readied >= 2) break;

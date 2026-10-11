@@ -70,6 +70,48 @@ public:
         return {val, -val};
     }
 
+    /// Prior weight of one Intent, before normalisation (see Prior()).
+    static double intentWeight(const Intent& it) {
+        double w = 1.0;  // default
+        switch (it.type) {
+            case IntentType::PlayCard:
+            case IntentType::PlayReaction:
+            case IntentType::PlayActionCard:
+                w = 4.0; break;
+            case IntentType::AssignCombatDamage:
+                w = 4.0; break;
+            case IntentType::StandardMove:
+                // Move to a battlefield is meaningful; move to
+                // base is usually retreating / shuffling.
+                if (it.move_destination.has_value() &&
+                    std::holds_alternative<BattlefieldLocation>(*it.move_destination)) {
+                    w = 3.0;
+                } else {
+                    w = 0.6;
+                }
+                break;
+            case IntentType::ActivateAbility:
+            case IntentType::ActivateReactionAbility:
+            case IntentType::ActivateActionAbility:
+                w = 2.5; break;
+            case IntentType::MakeChoice:
+                w = 1.5; break;
+            case IntentType::MulliganDecision:
+            case IntentType::ChooseBattlefield:
+            case IntentType::PlayFirstDecision:
+                w = 1.0; break;
+            case IntentType::EndTurn:
+            case IntentType::PassPriority:
+            case IntentType::PassFocus:
+                w = 0.3; break;
+            case IntentType::Concede:
+                w = 0.01; break;
+            default:
+                w = 1.0; break;
+        }
+        return w;
+    }
+
     ::open_spiel::ActionsAndProbs Prior(const ::open_spiel::State& state) override {
         // Strategically-biased prior. The point at sims=5 isn't to be
         // CORRECT about action quality (5 sims aren't enough for that)
@@ -93,69 +135,55 @@ public:
         //   EndTurn / Pass*         low (passive)
         //   Concede                 ~0 (never voluntarily)
         const auto* rb = dynamic_cast<const openspiel::RiftboundState*>(&state);
-        auto legal = state.LegalActions();
         ::open_spiel::ActionsAndProbs out;
-        if (legal.empty()) return out;
 
         // If we can't cast or there's no Intent metadata, fall back
         // to uniform — never worse than the default.
         if (!rb) {
+            auto legal = state.LegalActions();
+            if (legal.empty()) return out;
             double p = 1.0 / static_cast<double>(legal.size());
             out.reserve(legal.size());
             for (auto a : legal) out.emplace_back(a, p);
             return out;
         }
+        if (rb->IsTerminal()) return out;   // LegalActions() is empty
 
-        const auto intents = rb->legalIntents();
+        // One encode per Intent. The legal action ids are the Intents' vocab
+        // slots, deduplicated and ascending (RiftboundState::LegalActions);
+        // a slot shared by several Intents takes the weight of the first
+        // one in the engine's order — hence the stable sort. (This used to
+        // call LegalActions() and then re-encode every Intent for every
+        // action to match them up: L + L*L/2 encodes per expanded node.)
+        const auto& intents = rb->legalIntents();
         const auto& engine_state = rb->engineState();
-        std::vector<double> weights(legal.size(), 0.0);
-        double total = 0.0;
+        std::vector<std::pair<::open_spiel::Action, double>> weighted;
+        weighted.reserve(intents.size());
+        for (const auto& it : intents) {
+            weighted.emplace_back(
+                static_cast<::open_spiel::Action>(
+                    openspiel::encodeAction(it, engine_state)),
+                intentWeight(it));
+        }
+        std::stable_sort(weighted.begin(), weighted.end(),
+                         [](const auto& a, const auto& b) {
+                             return a.first < b.first;
+                         });
+        weighted.erase(std::unique(weighted.begin(), weighted.end(),
+                                   [](const auto& a, const auto& b) {
+                                       return a.first == b.first;
+                                   }),
+                       weighted.end());
+        if (weighted.empty()) return out;
 
-        for (size_t i = 0; i < legal.size(); ++i) {
-            // Match legal[i] back to an intent via encode.
-            double w = 1.0;  // default
-            for (const auto& it : intents) {
-                if (openspiel::encodeAction(it, engine_state) !=
-                    static_cast<int>(legal[i])) continue;
-                switch (it.type) {
-                    case IntentType::PlayCard:
-                    case IntentType::PlayReaction:
-                    case IntentType::PlayActionCard:
-                        w = 4.0; break;
-                    case IntentType::AssignCombatDamage:
-                        w = 4.0; break;
-                    case IntentType::StandardMove:
-                        // Move to a battlefield is meaningful; move to
-                        // base is usually retreating / shuffling.
-                        if (it.move_destination.has_value() &&
-                            std::holds_alternative<BattlefieldLocation>(*it.move_destination)) {
-                            w = 3.0;
-                        } else {
-                            w = 0.6;
-                        }
-                        break;
-                    case IntentType::ActivateAbility:
-                    case IntentType::ActivateReactionAbility:
-                    case IntentType::ActivateActionAbility:
-                        w = 2.5; break;
-                    case IntentType::MakeChoice:
-                        w = 1.5; break;
-                    case IntentType::MulliganDecision:
-                    case IntentType::ChooseBattlefield:
-                    case IntentType::PlayFirstDecision:
-                        w = 1.0; break;
-                    case IntentType::EndTurn:
-                    case IntentType::PassPriority:
-                    case IntentType::PassFocus:
-                        w = 0.3; break;
-                    case IntentType::Concede:
-                        w = 0.01; break;
-                    default:
-                        w = 1.0; break;
-                }
-                break;
-            }
-            weights[i] = w;
+        std::vector<::open_spiel::Action> legal;
+        std::vector<double> weights;
+        legal.reserve(weighted.size());
+        weights.reserve(weighted.size());
+        double total = 0.0;
+        for (const auto& [action, w] : weighted) {
+            legal.push_back(action);
+            weights.push_back(w);
             total += w;
         }
 

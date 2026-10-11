@@ -46,6 +46,7 @@
 #include "engine/game_engine.h"
 
 #include <memory>
+#include <mutex>
 #include <random>
 
 namespace riftbound::openspiel {
@@ -200,7 +201,10 @@ public:
     /// In the engine's order, not LegalActions()' (which is deduplicated
     /// by slot and sorted) — so use this for scoring, then map the chosen
     /// Intent's encoded id back to LegalActions() to apply.
-    std::vector<::riftbound::Intent> legalIntents() const {
+    ///
+    /// A view, not a copy: valid until this state is next advanced (or
+    /// destroyed). Copy it to keep it across an ApplyAction.
+    const std::vector<::riftbound::Intent>& legalIntents() const {
         if (lazy_) return lazy_->step.legal;
         return engine_->currentStep().legal;
     }
@@ -210,6 +214,12 @@ public:
     /// header record the actual seed used so a "nondeterministic" run
     /// is still reproducible by re-running with --seed <value>.
     uint64_t engineSeed() const { return engine_seed_; }
+
+    /// Diagnostic: how many recorded decisions were replayed to build this
+    /// state's engine, the one time a clone is first advanced. 0 for a state
+    /// that never was a clone, is still snapshot-only, or resumed straight
+    /// from its snapshot.
+    size_t decisionsReplayedToBuild() const { return replayed_to_build_; }
 
 protected:
     void DoApplyAction(::open_spiel::Action action) override;
@@ -225,7 +235,38 @@ private:
         /// GameEngine::isResumableDecision(state, step.legal): an engine can
         /// be resumed straight from this snapshot.
         bool resumable = false;
+
+        /// A resumable ancestor of this (non-resumable) position that is
+        /// nearer than the `base_` its holders were handed. The first clone
+        /// that has to replay a long way to get here leaves it for the
+        /// others, which then replay only the last few decisions. Locked:
+        /// clones of one position may be advanced on different threads.
+        std::shared_ptr<const Snapshot> nearerBase() const {
+            std::lock_guard<std::mutex> lock(nearer_mutex_);
+            return nearer_base_;
+        }
+        void offerNearerBase(std::shared_ptr<const Snapshot> found) const {
+            std::lock_guard<std::mutex> lock(nearer_mutex_);
+            if (!nearer_base_ ||
+                found->state.action_history.size() >
+                    nearer_base_->state.action_history.size()) {
+                nearer_base_ = std::move(found);
+            }
+        }
+
+    private:
+        mutable std::mutex nearer_mutex_;
+        mutable std::shared_ptr<const Snapshot> nearer_base_;
     };
+
+    /// The later of two resumable ancestors (either may be null).
+    static std::shared_ptr<const Snapshot> laterBase(
+        std::shared_ptr<const Snapshot> a, std::shared_ptr<const Snapshot> b) {
+        if (!a) return b;
+        if (!b) return a;
+        return b->state.action_history.size() > a->state.action_history.size()
+            ? b : a;
+    }
 
     /// Private tag-dispatch constructor: a snapshot-only state with no
     /// engine. `base` is the snapshot's nearest resumable ancestor (itself
@@ -249,11 +290,13 @@ private:
     void applyLegalIndex(int legal_index);
 
     /// Replay `tokens[from..)` on `engine`. Throws std::runtime_error if a
-    /// token matches no legal action. If `refresh_base`, keeps `base_` at
-    /// the last resumable decision passed.
+    /// token matches no legal action. Leaves in `newest_base` a snapshot of
+    /// the last resumable decision passed among the final `refresh_window`
+    /// tokens (untouched if there is none; a window of 0 takes no snapshot).
     void replayTokens(::riftbound::GameEngine& engine,
                       const std::vector<int64_t>& tokens, size_t from,
-                      bool refresh_base) const;
+                      size_t refresh_window,
+                      std::shared_ptr<const Snapshot>& newest_base) const;
 
     const RiftboundGame& rb_game_;
 
@@ -278,6 +321,8 @@ private:
     // Snapshot of the live engine's current position, made by the first
     // Clone() at it and reused by later ones. Reset by every action.
     mutable std::shared_ptr<const Snapshot> live_snapshot_;
+
+    mutable size_t replayed_to_build_ = 0;   // see decisionsReplayedToBuild()
 
     /// Concrete seed used by the engine. Resolved once in the constructor —
     /// if the Game's seed param is 0 ("nondeterministic"), we still pick

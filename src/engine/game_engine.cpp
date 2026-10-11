@@ -90,10 +90,10 @@ GameEngine::~GameEngine() {
     // Without this, a successor engine on the same EventBus would
     // emit reveals into a dangling `this`.
     if (card_revealed_conn_.connected()) card_revealed_conn_.disconnect();
-    // Fiber refactor: StepDriver's destructor drains the fiber by
-    // feeding choice=0 until done. No separate thread to join — the
-    // fiber lives in the same call stack as this destructor.
-    // step_driver_'s unique_ptr destruction handles it.
+    // A step-machine game still in progress is abandoned: StepDriver's
+    // destructor unwinds the engine fiber (it does not play the game out).
+    // Do that first, while everything the parked frames refer to is intact.
+    step_driver_.reset();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -177,7 +177,7 @@ void GameEngine::refreshStepFromDriver() {
     current_step_.perspective = step_driver_->currentPlayerSnapshot();
 }
 
-StepResult GameEngine::beginGame(
+const StepResult& GameEngine::beginGame(
     const DeckSubmission& deck1,
     const DeckSubmission& deck2,
     uint64_t seed) {
@@ -247,7 +247,7 @@ bool GameEngine::isResumableDecision(const GameState& state,
     return true;
 }
 
-StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
+const StepResult& GameEngine::resumeFromSnapshot(GameState snapshot_state,
                                             const std::mt19937_64& rng_state,
                                             const StepResult& snapshot_step) {
     if (step_driver_) {
@@ -350,12 +350,12 @@ StepResult GameEngine::resumeFromSnapshot(GameState snapshot_state,
     return current_step_;
 }
 
-StepResult GameEngine::currentStep() const {
+const StepResult& GameEngine::currentStep() const {
     rethrowIfStepFailed();
     return current_step_;
 }
 
-StepResult GameEngine::applyChoice(int legal_index) {
+const StepResult& GameEngine::applyChoice(int legal_index) {
     if (!step_driver_) {
         throw std::logic_error(
             "GameEngine::applyChoice called before beginGame.");

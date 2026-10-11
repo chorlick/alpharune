@@ -20,7 +20,7 @@ public:
         // there is no such battlefield and nothing is dealt.
         if (!ctx.state.objectExists(ctx.source)) return;
         const auto& self = ctx.state.getObject(ctx.source);
-        const auto& where = self.location.has_value() ? self.location : self.last_location;
+        const auto& where = self.location.has_value() ? self.location.get() : self.last_location;
         if (!where.has_value() || !std::holds_alternative<BattlefieldLocation>(*where)) return;
         const LocationId my_bf = *where;
         {

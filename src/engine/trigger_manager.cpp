@@ -284,7 +284,7 @@ bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
     const bool temporary = dead ? obj.last_known.keywords.has(Keyword::Temporary)
                                 : obj.hasKeyword(Keyword::Temporary);
     if (!temporary) return false;
-    const std::optional<LocationId> where = dead ? obj.last_known.location : obj.location;
+    const std::optional<LocationId> where = dead ? obj.last_known.location : obj.location.get();
     if (!where.has_value() || !std::holds_alternative<BattlefieldLocation>(*where)) return false;
     const BattlefieldId bf = std::get<BattlefieldLocation>(*where).id;
     for (const auto& [oid, other] : state_.objects) {

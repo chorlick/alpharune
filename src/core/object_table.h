@@ -1,0 +1,338 @@
+#pragma once
+/// @file object_table.h
+/// The object pool of a game (GameObjectId -> GameObject) and its board index.
+///
+/// ObjectTable is the `GameState::objects` container. It behaves as the
+/// `std::unordered_map<GameObjectId, GameObject>` it wraps — same lookups, same
+/// iteration order, references to objects stay valid for the life of the
+/// object — and adds lists of the objects that are in play, kept by where they
+/// are (plans/06-performance.md item 6.10). Before, every board query ("the
+/// units at this battlefield", "this player's runes", "anything in play that
+/// triggers on this") walked all ~150 objects of a game, deck and trash
+/// included, and a single cleanup or legal-action pass asked dozens of them.
+///
+/// How the index stays right
+/// -------------------------
+/// It is not maintained by the code that moves objects; that would be one
+/// forgotten call away from a stale answer (there are over a thousand places,
+/// tests included, that write `obj.zone` or `obj.location`). Instead the two
+/// fields the index is built from, GameObject::zone and GameObject::location,
+/// are TrackedField / TrackedLocation (tracked_field.h): assigning either one,
+/// by any route, raises the "stale" flag of the table the object lives in, and
+/// the next query rebuilds the lists with one walk over the table. Between
+/// two changes of a zone or a location any number of queries share one walk.
+/// Everything else a query filters on (controller, card type, exhausted, ...)
+/// is read from the object when the query is asked, so it cannot be stale.
+///
+/// The lists are in the table's iteration order, so a query returns what the
+/// walk it replaces returned, in the same order.
+///
+/// Using a range
+/// -------------
+/// `onBoard()`, `inPlay()`, `atLocation()` return a BoardRange: the objects
+/// that were there when the range was taken. It iterates like the table itself
+/// (`for (auto& [id, obj] : objects.onBoard())`), so a walk over every object
+/// that skipped the ones not on the board becomes a walk over the board by
+/// naming the range. Use it for loops whose body cannot move an object (reads,
+/// flag updates, aura bookkeeping). A loop that kills, moves, plays or creates
+/// objects must collect ids first, as it had to before: a range does not
+/// follow such changes (it stays safe to iterate — the lists it views are kept
+/// until it is done — but it is the board as it was). Building with
+/// -DRIFTBOUND_CHECK_BOARD_INDEX=ON turns that case into an error and makes
+/// every query recompute the lists and compare them with the index.
+///
+/// Not thread-safe, like the rest of a GameState: a query on a `const`
+/// table may rebuild the lists. Each game owns its state; a state shared
+/// between threads may only be copied.
+///
+/// The index holds nothing about what an id IS (it stores pointers to the
+/// table's entries and compares LocationId values), so making GameObjectId /
+/// BattlefieldId strong types (plans/05 item 5.5) changes nothing here but
+/// the spelling of the key type.
+
+#include "game_object.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
+#include <memory>
+#include <stdexcept>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace riftbound {
+
+/// A run of objects out of the board index. `Entry` is the table's
+/// (id, object) pair, const or not: iterating gives what iterating the table
+/// gives, for the objects of the run only.
+template <class Entry>
+class BoardRange {
+public:
+    class const_iterator {
+    public:
+        using value_type = Entry;
+        using reference = Entry&;
+        using pointer = Entry*;
+        using difference_type = std::ptrdiff_t;
+        using iterator_category = std::forward_iterator_tag;
+        const_iterator() = default;
+        explicit const_iterator(Entry* const* at) : at_(at) {}
+        Entry& operator*() const { return **at_; }
+        Entry* operator->() const { return *at_; }
+        const_iterator& operator++() { ++at_; return *this; }
+        const_iterator operator++(int) { const_iterator was = *this; ++at_; return was; }
+        bool operator==(const const_iterator& o) const { return at_ == o.at_; }
+        bool operator!=(const const_iterator& o) const { return at_ != o.at_; }
+    private:
+        Entry* const* at_ = nullptr;
+    };
+    using iterator = const_iterator;
+    using value_type = Entry;
+
+    BoardRange() = default;
+    BoardRange(const BoardRange& o) : first_(o.first_), last_(o.last_), pins_(o.pins_) {
+        if (pins_) ++*pins_;
+    }
+    BoardRange& operator=(const BoardRange& o) {
+        if (o.pins_) ++*o.pins_;
+        if (pins_) --*pins_;
+        first_ = o.first_;
+        last_ = o.last_;
+        pins_ = o.pins_;
+        return *this;
+    }
+    ~BoardRange() { if (pins_) --*pins_; }
+
+    const_iterator begin() const { return const_iterator(first_); }
+    const_iterator end() const { return const_iterator(last_); }
+    std::size_t size() const { return static_cast<std::size_t>(last_ - first_); }
+    bool empty() const { return first_ == last_; }
+    Entry& operator[](std::size_t i) const { return *first_[i]; }
+
+private:
+    friend class ObjectTable;
+    BoardRange(Entry* const* f, Entry* const* l, int* pins) : first_(f), last_(l), pins_(pins) {
+        if (pins_) ++*pins_;
+    }
+    Entry* const* first_ = nullptr;
+    Entry* const* last_ = nullptr;
+    // The lists this range views are in use while it lives: a rebuild leaves
+    // them alone and makes new ones (ObjectTable::lists).
+    int* pins_ = nullptr;
+};
+
+class ObjectTable {
+public:
+    using Map = std::unordered_map<GameObjectId, GameObject>;
+    using key_type = Map::key_type;
+    using mapped_type = Map::mapped_type;
+    using value_type = Map::value_type;
+    using size_type = Map::size_type;
+    using iterator = Map::iterator;
+    using const_iterator = Map::const_iterator;
+    using Range = BoardRange<value_type>;
+    using ConstRange = BoardRange<const value_type>;
+
+    ObjectTable() = default;
+    // A copy has objects of its own: they report to the copy's index.
+    ObjectTable(const ObjectTable& other) : map_(other.map_) { adoptAll(); }
+    ObjectTable& operator=(const ObjectTable& other) {
+        if (this != &other) {
+            map_ = other.map_;
+            adoptAll();
+        }
+        return *this;
+    }
+    // A move takes the objects and the index they report to together.
+    ObjectTable(ObjectTable&&) noexcept = default;
+    ObjectTable& operator=(ObjectTable&&) noexcept = default;
+
+    // ── The map ──
+    iterator begin() { return map_.begin(); }
+    iterator end() { return map_.end(); }
+    const_iterator begin() const { return map_.begin(); }
+    const_iterator end() const { return map_.end(); }
+    const_iterator cbegin() const { return map_.cbegin(); }
+    const_iterator cend() const { return map_.cend(); }
+    size_type size() const { return map_.size(); }
+    bool empty() const { return map_.empty(); }
+    iterator find(GameObjectId id) { return map_.find(id); }
+    const_iterator find(GameObjectId id) const { return map_.find(id); }
+    size_type count(GameObjectId id) const { return map_.count(id); }
+    bool contains(GameObjectId id) const { return map_.find(id) != map_.end(); }
+    GameObject& at(GameObjectId id) { return map_.at(id); }
+    const GameObject& at(GameObjectId id) const { return map_.at(id); }
+
+    /// The object `id`, created (default) if there is none.
+    GameObject& operator[](GameObjectId id) {
+        auto [it, inserted] = map_.try_emplace(id);
+        if (inserted) adopt(it->second);
+        return it->second;
+    }
+    template <class... Args>
+    std::pair<iterator, bool> emplace(Args&&... args) {
+        auto r = map_.emplace(std::forward<Args>(args)...);
+        if (r.second) adopt(r.first->second);
+        return r;
+    }
+    size_type erase(GameObjectId id) {
+        const size_type n = map_.erase(id);
+        if (n > 0) markStale();
+        return n;
+    }
+    iterator erase(const_iterator pos) {
+        markStale();
+        return map_.erase(pos);
+    }
+    void clear() {
+        map_.clear();
+        markStale();
+    }
+
+    // ── The board index ──
+    /// Every object with a location: units, gear and runes at a base or a
+    /// battlefield (attached and facedown ones included).
+    Range onBoard() { return range<value_type>(lists().board); }
+    ConstRange onBoard() const { return range<const value_type>(lists().board); }
+    /// The board and each player's Legend Zone: everything whose card can
+    /// have an ability or a continuous effect working.
+    Range inPlay() { return range<value_type>(lists().in_play); }
+    ConstRange inPlay() const { return range<const value_type>(lists().in_play); }
+    /// The objects at one location.
+    Range atLocation(const LocationId& loc) { return range<value_type>(lists().at(loc)); }
+    ConstRange atLocation(const LocationId& loc) const {
+        return range<const value_type>(lists().at(loc));
+    }
+
+    /// How often the lists were rebuilt (for tests and benchmarks).
+    std::size_t indexRebuilds() const { return index_ ? index_->rebuilds : 0; }
+
+private:
+    using List = std::vector<value_type*>;
+
+    /// One build of the lists.
+    struct Lists {
+        int pins = 0;             // BoardRanges viewing these lists
+        List board;
+        List in_play;
+        // One entry per location that holds, or held, an object. A game has
+        // two bases and a handful of battlefields: a linear search beats a map.
+        std::vector<std::pair<LocationId, List>> by_location;
+        List none;                // what at() answers for a location never used
+
+        const List& at(const LocationId& loc) const {
+            for (const auto& [l, list] : by_location)
+                if (l == loc) return list;
+            return none;
+        }
+        List& slot(const LocationId& loc) {
+            for (auto& [l, list] : by_location)
+                if (l == loc) return list;
+            by_location.emplace_back(loc, List{});
+            return by_location.back().second;
+        }
+        void fill(const Map& map) {
+            board.clear();
+            in_play.clear();
+            for (auto& entry : by_location) entry.second.clear();
+            for (const value_type& centry : map) {
+                // The table is not const to whoever asks through a non-const
+                // accessor; a const accessor hands out const entries.
+                value_type* entry = const_cast<value_type*>(&centry);
+                const GameObject& obj = centry.second;
+                const bool located = obj.location.has_value();
+                if (located) {
+                    board.push_back(entry);
+                    slot(*obj.location).push_back(entry);
+                }
+                if (located || obj.zone == ZoneType::LegendZone) in_play.push_back(entry);
+            }
+        }
+        bool sameAs(const Lists& o) const {
+            if (board != o.board || in_play != o.in_play) return false;
+            for (const auto& [loc, list] : by_location)
+                if (o.at(loc) != list) return false;
+            for (const auto& [loc, list] : o.by_location)
+                if (at(loc) != list) return false;
+            return true;
+        }
+    };
+
+    struct Index {
+        bool stale = true;        // TrackedField / TrackedLocation write here
+        std::size_t rebuilds = 0;
+        std::unique_ptr<Lists> current;
+        // Lists a BoardRange was still iterating when the board changed and
+        // was asked again: kept until that range is done.
+        std::vector<std::unique_ptr<Lists>> retired;
+    };
+
+    Index& ensureIndex() const {
+        if (!index_) index_ = std::make_unique<Index>();
+        return *index_;
+    }
+    void markStale() {
+        if (index_) index_->stale = true;
+    }
+    void adopt(GameObject& obj) {
+        Index& ix = ensureIndex();
+        obj.zone.reportTo(&ix.stale);
+        obj.location.reportTo(&ix.stale);
+        ix.stale = true;
+    }
+    void adoptAll() {
+        Index& ix = ensureIndex();
+        for (auto& [id, obj] : map_) {
+            obj.zone.reportTo(&ix.stale);
+            obj.location.reportTo(&ix.stale);
+        }
+        ix.stale = true;
+    }
+
+    const Lists& lists() const {
+        Index& ix = ensureIndex();
+        if (ix.stale || !ix.current) {
+            if (ix.current && ix.current->pins > 0) {
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+                throw std::logic_error("ObjectTable: an object changed zone or location inside a "
+                                       "loop over a BoardRange, and the board was asked again");
+#endif
+                ix.retired.push_back(std::move(ix.current));
+            }
+            ix.retired.erase(std::remove_if(ix.retired.begin(), ix.retired.end(),
+                                 [](const std::unique_ptr<Lists>& l) { return l->pins == 0; }),
+                             ix.retired.end());
+            if (!ix.current) ix.current = std::make_unique<Lists>();
+            ix.current->fill(map_);
+            ix.stale = false;
+            ++ix.rebuilds;
+        }
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+        else {
+            // The index says it is current: recompute and compare, and check
+            // that every object of the table reports to this index.
+            Lists fresh;
+            fresh.fill(map_);
+            bool ok = fresh.sameAs(*ix.current);
+            for (const auto& [id, obj] : map_)
+                ok = ok && obj.zone.reportsTo(&ix.stale) && obj.location.reportsTo(&ix.stale);
+            if (!ok)
+                throw std::logic_error("ObjectTable: the board index is stale (an object's zone "
+                                       "or location changed without the table being told)");
+        }
+#endif
+        return *ix.current;
+    }
+
+    template <class Entry>
+    BoardRange<Entry> range(const List& list) const {
+        value_type* const* first = list.data();
+        return BoardRange<Entry>(first, first + list.size(), &index_->current->pins);
+    }
+
+    Map map_;
+    mutable std::unique_ptr<Index> index_;
+};
+
+}  // namespace riftbound

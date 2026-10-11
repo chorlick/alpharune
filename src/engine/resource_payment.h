@@ -65,9 +65,8 @@ inline bool runePays(const GameObject& rune, DomainMask mask) {
 inline std::vector<GameObjectId> runesInBase(const GameState& state, PlayerId player) {
     std::vector<GameObjectId> out;
     const LocationId base{BaseLocation{player}};
-    for (const auto& [id, obj] : state.objects)
-        if (obj.isRune() && obj.controller == player &&
-            obj.location.has_value() && *obj.location == base) out.push_back(id);
+    for (const auto& [id, obj] : state.objects.atLocation(base))
+        if (obj.isRune() && obj.controller == player) out.push_back(id);
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -77,8 +76,9 @@ inline int payableEnergy(const GameState& state, PlayerId player,
                          SpendFor f = SpendFor::Other) {
     const auto& pool = state.player(player).rune_pool;
     int n = pool.energy + pool.restrictedEnergy(f, showdownUnderway(state));
-    for (auto rid : runesInBase(state, player))
-        if (!state.getObject(rid).is_exhausted) ++n;
+    // (A count: the base is read as it stands, no list of ids is built.)
+    for (const auto& [id, obj] : state.objects.atLocation(LocationId{BaseLocation{player}}))
+        if (obj.isRune() && obj.controller == player && !obj.is_exhausted) ++n;
     return n;
 }
 
@@ -89,8 +89,8 @@ inline int payablePowerIn(const GameState& state, PlayerId player, DomainMask ma
     int n = pool.universal_power + pool.restrictedPower(f);
     for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
         if (mask & (1u << di)) n += pool.power[di];
-    for (auto rid : runesInBase(state, player))
-        if (runePays(state.getObject(rid), mask)) ++n;
+    for (const auto& [id, obj] : state.objects.atLocation(LocationId{BaseLocation{player}}))
+        if (obj.isRune() && obj.controller == player && runePays(obj, mask)) ++n;
     return n;
 }
 /// Power of `domain` (Domain::Count = any) `player` could pay for `f`.

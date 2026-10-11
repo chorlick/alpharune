@@ -8,6 +8,7 @@
 
 #include "effects/effect_types.h"
 #include "game_object.h"
+#include "object_table.h"
 #include "intent.h"
 #include "knowledge_state.h"
 #include "types.h"
@@ -509,13 +510,11 @@ struct BattlefieldState {
 
     /// Get all unit IDs at this battlefield belonging to a player.
     std::vector<GameObjectId> unitsControlledBy(
-        PlayerId player,
-        const std::unordered_map<GameObjectId, GameObject>& objects) const;
+        PlayerId player, const ObjectTable& objects) const;
 
     /// Check if any player has units here.
     bool hasUnitsFrom(
-        PlayerId player,
-        const std::unordered_map<GameObjectId, GameObject>& objects) const;
+        PlayerId player, const ObjectTable& objects) const;
 };
 
 // ─── Turn State ──────────────────────────────────────────────────────────────
@@ -830,8 +829,12 @@ struct GameState {
     // Board
     std::vector<BattlefieldState> battlefields;
 
-    // All game objects (the object pool)
-    std::unordered_map<GameObjectId, GameObject> objects;
+    // All game objects (the object pool). An ObjectTable: the unordered_map it
+    // always was — same iteration order, stable references — plus an index of
+    // the objects in play by location, which the board queries below and the
+    // engine's hot loops read instead of walking every object
+    // (core/object_table.h).
+    ObjectTable objects;
     GameObjectId next_object_id = 1;
 
     // Turn

@@ -19,9 +19,12 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <random>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace test_review_fix_perf_engine {
@@ -417,6 +420,276 @@ TEST_F(PerfEngineCards, BecomingMightyIsAnnouncedOncePerCrossing) {
     EXPECT_EQ(announced, 3);
     EXPECT_TRUE(o(unit).card_counters.empty()) << "the edge no longer lives in card_counters";
     conn.disconnect();
+}
+
+// ─── 6.10: the object table's board index ───────────────────────────────────
+
+/// What the board queries answered before there was an index: a walk over
+/// every object, in the table's order.
+struct Walk {
+    static std::vector<GameObjectId> where(const GameState& st,
+                                           const std::function<bool(const GameObject&)>& pred) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : st.objects)
+            if (pred(obj)) out.push_back(id);
+        return out;
+    }
+    template <class Range>
+    static std::vector<GameObjectId> ids(const Range& range) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : range) out.push_back(id);
+        return out;
+    }
+};
+
+/// Every board query against the walk it replaced: same ids, same order.
+void expectIndexMatchesAWalk(const GameState& st, const std::string& when) {
+    SCOPED_TRACE(when);
+    EXPECT_EQ(Walk::ids(st.objects.onBoard()),
+              Walk::where(st, [](const GameObject& o) { return o.location.has_value(); }));
+    EXPECT_EQ(Walk::ids(st.objects.inPlay()), Walk::where(st, [](const GameObject& o) {
+        return o.location.has_value() || o.zone == ZoneType::LegendZone;
+    }));
+    std::vector<LocationId> locations = {LocationId{BaseLocation{PlayerId::Player1}},
+                                         LocationId{BaseLocation{PlayerId::Player2}},
+                                         LocationId{BattlefieldLocation{77}}};   // never used
+    for (const auto& bf : st.battlefields) locations.push_back(LocationId{BattlefieldLocation{bf.id}});
+    for (const auto& loc : locations) {
+        EXPECT_EQ(Walk::ids(st.objects.atLocation(loc)), Walk::where(st, [&](const GameObject& o) {
+            return o.location.has_value() && *o.location == loc;
+        }));
+        EXPECT_EQ(st.objectsAt(loc), Walk::where(st, [&](const GameObject& o) {
+            return o.location.has_value() && *o.location == loc;
+        }));
+        for (PlayerId p : {PlayerId::Player1, PlayerId::Player2})
+            EXPECT_EQ(st.unitsAt(loc, p), Walk::where(st, [&](const GameObject& o) {
+                return o.isUnit() && o.controller == p && o.location.has_value() &&
+                       *o.location == loc;
+            }));
+    }
+    for (PlayerId p : {PlayerId::Player1, PlayerId::Player2}) {
+        EXPECT_EQ(st.allUnitsControlledBy(p), Walk::where(st, [&](const GameObject& o) {
+            return o.isUnit() && o.controller == p && o.location.has_value();
+        }));
+        const LocationId base{BaseLocation{p}};
+        EXPECT_EQ(st.runesInBase(p), Walk::where(st, [&](const GameObject& o) {
+            return o.isRune() && o.location.has_value() && *o.location == base;
+        }));
+        EXPECT_EQ(st.objectsInBase(p), Walk::where(st, [&](const GameObject& o) {
+            return o.location.has_value() && *o.location == base;
+        }));
+        for (const auto& bf : st.battlefields) {
+            const auto here = Walk::where(st, [&](const GameObject& o) {
+                return o.isUnit() && o.controller == p && o.battlefieldId() == bf.id;
+            });
+            EXPECT_EQ(bf.unitsControlledBy(p, st.objects), here);
+            EXPECT_EQ(bf.hasUnitsFrom(p, st.objects), !here.empty());
+        }
+    }
+}
+
+/// A state with objects in every kind of place.
+GameState scatteredState(int objects) {
+    GameState st;
+    for (BattlefieldId b = 0; b < 3; ++b) {
+        BattlefieldState bf;
+        bf.id = b;
+        st.battlefields.push_back(bf);
+    }
+    for (int i = 0; i < objects; ++i) {
+        const GameObjectId id = st.createObject();
+        GameObject& o = st.getObject(id);
+        o.controller = o.owner = (i % 2) ? PlayerId::Player1 : PlayerId::Player2;
+        o.card_type = (i % 5 == 0) ? CardType::Rune : (i % 5 == 1) ? CardType::Gear : CardType::Unit;
+        switch (i % 7) {
+            case 0: o.zone = ZoneType::Hand; break;
+            case 1: o.zone = ZoneType::Base; o.location = BaseLocation{o.controller}; break;
+            case 2: o.zone = ZoneType::BattlefieldZone; o.location = BattlefieldLocation{0}; break;
+            case 3: o.zone = ZoneType::BattlefieldZone; o.location = BattlefieldLocation{2}; break;
+            case 4: o.zone = ZoneType::Trash; break;
+            case 5: o.zone = ZoneType::LegendZone; break;
+            default: break;   // MainDeck
+        }
+    }
+    return st;
+}
+
+// 6.10 — however a zone or a location is written, the next query is right.
+// There is no call that tells the table: the fields do.
+TEST(PerfEngineTable, EveryWayOfMovingAnObjectIsSeenByTheNextQuery) {
+    GameState st = scatteredState(40);
+    expectIndexMatchesAWalk(st, "as built");
+    GameObject& a = st.getObject(3);
+    GameObject& b = st.getObject(10);
+
+    a.location = BattlefieldLocation{1};
+    a.zone = ZoneType::BattlefieldZone;
+    expectIndexMatchesAWalk(st, "a location assigned");
+    a.location = std::nullopt;
+    expectIndexMatchesAWalk(st, "nullopt assigned");
+    a.location = LocationId{BaseLocation{PlayerId::Player2}};
+    expectIndexMatchesAWalk(st, "a LocationId assigned");
+    a.location.reset();
+    expectIndexMatchesAWalk(st, "reset()");
+    a.location = std::optional<LocationId>{BattlefieldLocation{2}};
+    expectIndexMatchesAWalk(st, "an optional assigned");
+    b.location = a.location;
+    expectIndexMatchesAWalk(st, "one object's location assigned to another");
+    a.zone = ZoneType::LegendZone;
+    a.location.reset();
+    expectIndexMatchesAWalk(st, "into the Legend Zone");
+    b.zone = a.zone;
+    b.location = a.location;
+    expectIndexMatchesAWalk(st, "one object's zone assigned to another");
+
+    // Whole objects: assigned from a local copy, swapped, replaced.
+    GameObject local = st.getObject(5);
+    local.location = BattlefieldLocation{0};
+    local.zone = ZoneType::BattlefieldZone;
+    expectIndexMatchesAWalk(st, "a local copy edited: nothing in the table changed");
+    st.getObject(5) = local;
+    expectIndexMatchesAWalk(st, "an object assigned from a local copy");
+    std::swap(st.getObject(6), st.getObject(9));
+    std::swap(st.getObject(6).id, st.getObject(9).id);
+    expectIndexMatchesAWalk(st, "two objects swapped");
+    st.objects[8] = GameObject{};
+    st.objects[8].id = 8;
+    expectIndexMatchesAWalk(st, "an object replaced by a blank one");
+
+    // New and removed objects.
+    const GameObjectId fresh = st.createObject();
+    st.getObject(fresh).card_type = CardType::Unit;
+    st.getObject(fresh).controller = PlayerId::Player1;
+    st.getObject(fresh).location = BattlefieldLocation{1};
+    expectIndexMatchesAWalk(st, "an object created and placed");
+    GameObject built;
+    built.id = 999;
+    built.card_type = CardType::Unit;
+    built.controller = PlayerId::Player2;
+    built.location = BaseLocation{PlayerId::Player2};
+    st.objects.emplace(GameObjectId{999}, built);
+    expectIndexMatchesAWalk(st, "an object emplaced already placed");
+    st.getObject(999).location = BattlefieldLocation{0};
+    expectIndexMatchesAWalk(st, "... and moved afterwards");
+    st.objects.erase(GameObjectId{999});
+    expectIndexMatchesAWalk(st, "an object erased");
+
+    // A field that is not tracked is read when the query is asked.
+    st.getObject(fresh).controller = PlayerId::Player2;
+    st.getObject(fresh).card_type = CardType::Gear;
+    expectIndexMatchesAWalk(st, "controller and type changed in place");
+}
+
+TEST(PerfEngineTable, ACopyOfAStateHasAnIndexOfItsOwn) {
+    GameState original = scatteredState(30);
+    expectIndexMatchesAWalk(original, "original");
+    GameState copy = original;
+    expectIndexMatchesAWalk(copy, "copy");
+    copy.getObject(2).location = BattlefieldLocation{1};
+    copy.getObject(4).location.reset();
+    expectIndexMatchesAWalk(copy, "copy, after moving two of its objects");
+    expectIndexMatchesAWalk(original, "original, untouched by the copy");
+    EXPECT_NE(Walk::ids(copy.objects.onBoard()), Walk::ids(original.objects.onBoard()));
+
+    original.getObject(2).location = BattlefieldLocation{2};
+    expectIndexMatchesAWalk(original, "original, moved after the copy was taken");
+    expectIndexMatchesAWalk(copy, "copy, untouched by the original");
+
+    // Assigned over an existing state (the engine's `state_ = snapshot`).
+    copy = original;
+    expectIndexMatchesAWalk(copy, "assigned");
+    copy.getObject(2).location.reset();
+    expectIndexMatchesAWalk(copy, "assigned, then moved");
+    expectIndexMatchesAWalk(original, "source of the assignment");
+
+    // Moved: the objects and their index travel together.
+    GameState moved = std::move(copy);
+    expectIndexMatchesAWalk(moved, "moved-to");
+    moved.getObject(7).location = BattlefieldLocation{0};
+    moved.getObject(7).zone = ZoneType::BattlefieldZone;
+    expectIndexMatchesAWalk(moved, "moved-to, then an object moved");
+    GameState target = scatteredState(5);
+    target = std::move(moved);
+    target.getObject(7).location.reset();
+    expectIndexMatchesAWalk(target, "move-assigned, then an object moved");
+    std::swap(target, original);
+    target.getObject(1).location = BattlefieldLocation{1};
+    original.getObject(1).location = BattlefieldLocation{2};
+    expectIndexMatchesAWalk(target, "swapped (a)");
+    expectIndexMatchesAWalk(original, "swapped (b)");
+}
+
+TEST(PerfEngineTable, QueriesBetweenTwoMovesShareOneWalk) {
+    GameState st = scatteredState(60);
+    (void)st.unitsAt(LocationId{BattlefieldLocation{0}}, PlayerId::Player1);
+    const std::size_t built = st.objects.indexRebuilds();
+    for (int i = 0; i < 50; ++i) {
+        (void)st.unitsAt(LocationId{BattlefieldLocation{static_cast<BattlefieldId>(i % 3)}}, PlayerId::Player2);
+        (void)st.allUnitsControlledBy(PlayerId::Player1);
+        (void)st.runesInBase(PlayerId::Player2);
+        st.getObject(4).is_exhausted = !st.getObject(4).is_exhausted;   // not a move
+        st.getObject(4).controller = PlayerId::Player1;
+    }
+    EXPECT_EQ(st.objects.indexRebuilds(), built) << "150 queries, no object moved";
+    // Writing the value a field already has is not a move either.
+    st.getObject(2).location = st.getObject(2).location;
+    st.getObject(2).zone = st.getObject(2).zone.get();
+    (void)st.objects.onBoard();
+    EXPECT_EQ(st.objects.indexRebuilds(), built);
+    st.getObject(2).location = BattlefieldLocation{1};
+    (void)st.objects.onBoard();
+    (void)st.objects.inPlay();
+    EXPECT_EQ(st.objects.indexRebuilds(), built + 1);
+}
+
+// A range is the board as it was when it was taken. Moving an object while
+// one is being walked does not invalidate it (the lists it views are kept
+// until it is done); a checked build (-DRIFTBOUND_CHECK_BOARD_INDEX=ON) makes
+// asking the board again inside such a loop an error instead.
+TEST(PerfEngineTable, ARangeBeingWalkedSurvivesAMove) {
+    GameState st = scatteredState(40);
+    const auto before = Walk::ids(st.objects.onBoard());
+    ASSERT_GE(before.size(), 6u);
+    std::vector<GameObjectId> walked;
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+    bool threw = false;
+    try {
+        for (auto& [id, obj] : st.objects.onBoard()) {
+            obj.location.reset();
+            (void)st.allUnitsControlledBy(PlayerId::Player1);
+        }
+    } catch (const std::logic_error&) {
+        threw = true;
+    }
+    EXPECT_TRUE(threw) << "a checked build reports the loop";
+    (void)walked;
+#else
+    for (auto& [id, obj] : st.objects.onBoard()) {
+        walked.push_back(id);
+        obj.location.reset();                                  // off the board
+        EXPECT_TRUE(st.allUnitsControlledBy(obj.controller).size() < before.size());
+    }
+    EXPECT_EQ(walked, before) << "the walk saw the board as it was when it began";
+    EXPECT_TRUE(st.objects.onBoard().empty());
+#endif
+    expectIndexMatchesAWalk(st, "after the loop");
+}
+
+// 6.10 — over whole games: at every decision of three random games every
+// board query answers what a walk over all objects answers, in that order.
+TEST_F(PerfEngineGame, BoardQueriesMatchAWalkAtEveryDecisionOfAGame) {
+    int decisions = 0;
+    for (const uint64_t seed : {2u, 9u, 20261010u}) {
+        Game g(seed, seed * 3 + 5);
+        do {
+            expectIndexMatchesAWalk(g.engine->state(),
+                                    "seed " + std::to_string(seed) + ", decision " +
+                                        std::to_string(g.applied));
+            ++decisions;
+            if (::testing::Test::HasFailure()) return;
+        } while (g.advance(1));
+    }
+    EXPECT_GT(decisions, 300);
 }
 
 }  // namespace test_review_fix_perf_engine

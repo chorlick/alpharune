@@ -136,7 +136,7 @@ uint64_t Card::costStateFingerprint(const GameState& state) {
         uint64_t o = 1469598103934665603ull;
         auto omix = [&o](uint64_t v) { o = (o ^ v) * 1099511628211ull; };
         omix(static_cast<uint64_t>(id));
-        omix(static_cast<uint64_t>(obj.zone));
+        omix(static_cast<uint64_t>(obj.zone.get()));
         if (!obj.location.has_value()) omix(0u);
         else if (const auto* base = std::get_if<BaseLocation>(&*obj.location))
             omix(1u + static_cast<uint64_t>(base->player));

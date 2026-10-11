@@ -6285,7 +6285,7 @@ void GameEngine::cleanup() {
         mix(state_.objects.size());
         for (auto& [id, obj] : state_.objects) {
             mix(id);
-            mix(static_cast<uint64_t>(obj.zone));
+            mix(static_cast<uint64_t>(obj.zone.get()));
             mix(static_cast<uint64_t>(obj.damage_marked));
             mix(static_cast<uint64_t>(obj.current_might));
             mix(static_cast<uint64_t>(obj.aura_might_bonus));

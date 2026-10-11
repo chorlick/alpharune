@@ -194,6 +194,9 @@ enum class TriggerType : uint8_t {
     WhenYouActivateAnAbility,    // "When you play ... an activated ability" (Curator of the
                                  // Sands); triggering_subject = the ability's source, and the
                                  // ability's Energy cost rides in triggering_spell_energy_spent
+    WhenILeaveTheBoard,          // "When this leaves the board," (Treasure Trove) — fires on the
+                                 // permanent itself however it left: killed, returned to hand,
+                                 // recycled, banished (TriggerManager::onLeftBoard)
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

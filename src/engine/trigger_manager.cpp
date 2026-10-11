@@ -181,7 +181,8 @@ static bool cardFiresOn(const CardRegistry& reg, CardDefId def_id, TriggerType t
 }
 
 void TriggerManager::fireBattlefieldTriggers(TriggerType t, PlayerId player,
-                                              BattlefieldId at_battlefield) {
+                                              BattlefieldId at_battlefield,
+                                              GameObjectId subject) {
     for (auto& bf : state_.battlefields) {
         if (at_battlefield != kInvalidId && bf.id != at_battlefield) continue;
         if (!state_.objectExists(bf.card_object_id)) continue;
@@ -193,7 +194,7 @@ void TriggerManager::fireBattlefieldTriggers(TriggerType t, PlayerId player,
             if (who == PlayerId::None)
                 who = bf.controller.value_or(state_.turn.turn_player);
             if (who == PlayerId::None) continue;
-            fireTrigger(bf.card_object_id, who, 0, t);
+            fireTrigger(bf.card_object_id, who, 0, t, subject);
         }
     }
 }
@@ -388,11 +389,11 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
 
         if (e.card_type == CardType::Unit &&
             cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAUnit)) {
-            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAUnit);
+            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAUnit, /*subject=*/e.object);
         }
         if (e.card_type == CardType::Gear &&
             cardFiresOn(card_registry_, other.card_def_id, TriggerType::WhenYouPlayAGear)) {
-            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAGear);
+            fireTrigger(id, e.player, 0, TriggerType::WhenYouPlayAGear, /*subject=*/e.object);
         }
     }
 
@@ -401,7 +402,8 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     if (e.card_type == CardType::Unit && state_.objectExists(e.object)) {
         auto played_bf = state_.getObject(e.object).battlefieldId();
         if (played_bf) {
-            fireBattlefieldTriggers(TriggerType::WhenYouPlayAUnit, e.player, *played_bf);
+            fireBattlefieldTriggers(TriggerType::WhenYouPlayAUnit, e.player, *played_bf,
+                                    /*subject=*/e.object);
         }
     }
 
@@ -688,7 +690,7 @@ void TriggerManager::onUnitDied(const UnitDiedEvent& e) {
         if (other.controller == opp &&
             cardFiresOn(card_registry_, other.card_def_id,
                         TriggerType::WhenAnEnemyUnitDies)) {
-            fireTrigger(id, opp, 0, TriggerType::WhenAnEnemyUnitDies);
+            fireTrigger(id, opp, 0, TriggerType::WhenAnEnemyUnitDies, /*subject=*/e.object);
         }
     }
     // Legends have no location, so the sweep above never reaches them
@@ -750,10 +752,14 @@ void TriggerManager::onLeftBoard(const LeftBoardEvent& e) {
     // for it: this is where its own "When this is killed" / [Deathknell] fires
     // (Scrapheap, Sprite Fountain, Treasure Trove). Units are handled by
     // onUnitDied.
-    if (!e.was_killed || e.card_type != CardType::Gear) return;
     if (!state_.objectExists(e.object)) return;
     const auto& gear = state_.getObject(e.object);
     if (gear.card_def_id == kInvalidId || e.controller == PlayerId::None) return;
+    // "When this leaves the board," — any departure, a kill included
+    // (Treasure Trove). The card is already in its new zone.
+    if (cardFiresOn(card_registry_, gear.card_def_id, TriggerType::WhenILeaveTheBoard))
+        fireTrigger(e.object, e.controller, 0, TriggerType::WhenILeaveTheBoard, e.object);
+    if (!e.was_killed || e.card_type != CardType::Gear) return;
     if (!cardFiresOn(card_registry_, gear.card_def_id, TriggerType::WhenIDie)) return;
     const Card* card = card_registry_.get(gear.card_def_id);
     if (card && !card->triggerCondition(state_, e.object, e.controller,
@@ -1174,7 +1180,8 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
                         /*subject=*/e.object);
         // Battlefield cards: "when a friendly unit is chosen here".
         if (auto bf = state_.getObject(e.object).battlefieldId())
-            fireBattlefieldTriggers(TriggerType::WhenAFriendlyUnitChosenHere, controller, *bf);
+            fireBattlefieldTriggers(TriggerType::WhenAFriendlyUnitChosenHere, controller, *bf,
+                                    /*subject=*/e.object);
         return;
     }
 

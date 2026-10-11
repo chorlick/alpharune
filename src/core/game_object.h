@@ -6,6 +6,8 @@
 /// GameObject is the mutable instance that tracks current state
 /// (damage, exhaustion, temporary mods, location, attachments, etc).
 
+#include "interned.h"
+#include "keyed_slots.h"
 #include "tracked_field.h"
 #include "types.h"
 
@@ -60,9 +62,12 @@ struct GameObject {
     uint32_t mighty_seen = 0;
 
     // ── Identity (copied from CardDef, may be modified by layers) ──
-    std::string name;
-    std::vector<std::string> tags;
-    std::vector<Domain> domains;
+    // One pointer each to a shared constant value (core/interned.h): they read
+    // as a std::string / a vector, are written by assignment or push_back, and
+    // cost nothing to copy with the object.
+    Interned<std::string> name;
+    Interned<std::vector<std::string>> tags;
+    Interned<std::vector<Domain>> domains;
 
     // ── State ── (is_exhausted, is_stunned, is_hidden and the unit stats are
     // declared with the other often-read fields at the top)
@@ -250,14 +255,16 @@ struct GameObject {
     // their own state without ballooning this struct. Used by Virtuoso
     // (spells_banished_with_me). Survives across turns; only reset on
     // explicit Card subclass reset.
-    std::unordered_map<std::string, int> card_counters;
+    // (core/keyed_slots.h: read and written like the map of name -> int it
+    // was; an object with no counter holds one null pointer.)
+    KeyedSlots<int> card_counters;
 
     // String-valued per-card state, keyed by purpose. For cards that "name"
     // something at play time and act on the named value later (The List 700:
     // "name a tag" → string_state["named_tag"]). Parallel to card_counters
     // (which only holds ints). Survives across turns; reset by the owning
     // Card subclass if needed.
-    std::unordered_map<std::string, std::string> string_state;
+    KeyedSlots<std::string> string_state;
 
     // ── Damage-modifying turn-scoped flags ──
     // Lotus Trap and similar cards set `damage_doubled_this_turn` on a

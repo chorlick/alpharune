@@ -456,6 +456,7 @@ add_library(riftbound_core
     src/core/game_state.cpp
     src/core/card_db.cpp
     src/core/events.cpp
+    src/core/keyed_slots.cpp
     src/rules/deck_validator.cpp
     src/engine/game_engine.cpp
     src/engine/chain_manager.cpp

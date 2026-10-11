@@ -2668,7 +2668,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
         std::string tgt_str;
         for (auto t : intent.targets) {
             if (!tgt_str.empty()) tgt_str += ",";
-            tgt_str += state_.objectExists(t) ? state_.getObject(t).name : "?";
+            tgt_str += state_.objectExists(t) ? state_.getObject(t).name.get() : "?";
             tgt_str += "(id=" + toString(t) + ")";
         }
         RIFT_TRACE(events_, "SPELL: " + card.name + " (id=" + toString(intent.card) +

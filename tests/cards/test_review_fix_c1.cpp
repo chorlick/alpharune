@@ -199,6 +199,29 @@ TEST_F(ReviewFixC1Test, ExperimentalHexplate_BearerIsAMechWhileItIsAttached) {
     EXPECT_FALSE(has(state.getObject(unit), "Mech")) << "only while it is attached";
 }
 
+TEST_F(ReviewFixC1Test, ExperimentalHexplate_OnlyTheBearerBecomesAMech) {
+    // 9.KK1: units with equal tags share one stored value. The tag an effect
+    // adds to one of them must not show on the other, nor on a copy of the
+    // state taken before.
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    auto other = addUnit(P1, kInvalidId, 2, 0);
+    ASSERT_EQ(&state.getObject(unit).tags.get(), &state.getObject(other).tags.get());
+    auto plate = addGear(P1, kExperimentalHexplate);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;
+    const GameState before = state;
+
+    activate(plate, 0, nullptr, {unit});   // Equip [B]
+    ASSERT_TRUE(has(state.getObject(unit), "Mech"));
+    EXPECT_FALSE(has(state.getObject(other), "Mech"));
+    EXPECT_FALSE(has(before.getObject(unit), "Mech"));
+
+    const GameState equipped = state;
+    withEngine([&](GameEngine& e) { e.testHook_executor().unattachGear(plate); });
+    EXPECT_FALSE(has(state.getObject(unit), "Mech"));
+    EXPECT_TRUE(has(equipped.getObject(unit), "Mech")) << "the copy keeps what it had";
+    EXPECT_EQ(&state.getObject(unit).tags.get(), &state.getObject(other).tags.get());
+}
+
 TEST_F(ReviewFixC1Test, ExperimentalHexplate_AttachedByAnotherEffectStillMakesAMech) {
     // Attached without going through onEquip (Weaponmaster, Grandmaster at
     // Arms): the aura pass puts the tag on.

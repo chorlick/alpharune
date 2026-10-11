@@ -790,7 +790,7 @@ json objToJson(const CardDB& db, const GameState& state, GameObjectId oid) {
     if (obj.card_def_id != kInvalidId) {
         name = db.get(obj.card_def_id).name;
     } else {
-        name = obj.name.empty() ? "(token)" : obj.name;
+        name = obj.name.empty() ? "(token)" : obj.name.get();
     }
     return json{
         {"id", static_cast<int>(oid.raw())},

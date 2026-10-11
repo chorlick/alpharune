@@ -158,7 +158,7 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
 
     for (const auto& da : firing) {
         RIFT_TRACE(events_, "DELAYED_ABILITY: firing for " +
-                         (state_.objectExists(da.source) ? state_.getObject(da.source).name : "?"));
+                         (state_.objectExists(da.source) ? state_.getObject(da.source).name.get() : "?"));
         const ChainItemId item_id = chain_.addAbility(da.source, da.controller, da.card_def_id);
         // Stamp the originating trigger so the card's onTrigger can branch on
         // ctx.firing_trigger (e.g. Grim Resolve's WhenIWinCombat XP rider,

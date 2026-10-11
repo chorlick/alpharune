@@ -117,7 +117,7 @@ std::string StateRenderer::renderPlayerSummary(const GameState& state,
                                                 PlayerId player) const {
     auto& ps = state.player(player);
     auto legend_name = state.objectExists(ps.legend_zone)
-        ? state.getObject(ps.legend_zone).name : "???";
+        ? state.getObject(ps.legend_zone).name.get() : "???";
 
     std::ostringstream ss;
     ss << toString(player) << " [Score:" << ps.score
@@ -275,7 +275,7 @@ std::string StateRenderer::renderChain(const GameState& state) const {
     for (int i = static_cast<int>(state.chain.items.size()) - 1; i >= 0; --i) {
         auto& item = state.chain.items[i];
         std::string source_name = state.objectExists(item.source)
-            ? state.getObject(item.source).name : "ability";
+            ? state.getObject(item.source).name.get() : "ability";
         ss << "    [" << (i + 1) << "] " << source_name
            << " (" << toString(item.controller) << ") "
            << (item.status == ChainItemStatus::Pending ? "Pending" : "Finalized")
@@ -386,7 +386,7 @@ std::string StateRenderer::renderPlayerSection(const GameState& state,
 
     // Player info line
     auto legend_name = state.objectExists(ps.legend_zone)
-        ? state.getObject(ps.legend_zone).name : "???";
+        ? state.getObject(ps.legend_zone).name.get() : "???";
 
     // Resource summary line. The "Runes" count is split into ready (can
     // be exhausted to pay 1E each) vs exhausted (can be recycled to pay
@@ -688,7 +688,7 @@ std::string StateRenderer::render(const GameState& state,
         if (state.chain.resuming.has_value()) {
             auto& r = state.chain.resuming.value();
             std::string n = state.objectExists(r.source)
-                ? state.getObject(r.source).name : "ability";
+                ? state.getObject(r.source).name.get() : "ability";
             std::ostringstream rl;
             rl << "    >>> RESOLVING: " << n
                << " (" << toString(r.controller) << ")"
@@ -699,7 +699,7 @@ std::string StateRenderer::render(const GameState& state,
         for (int i = static_cast<int>(state.chain.items.size()) - 1; i >= 0; --i) {
             auto& item = state.chain.items[i];
             std::string source_name = state.objectExists(item.source)
-                ? state.getObject(item.source).name : "ability";
+                ? state.getObject(item.source).name.get() : "ability";
             std::ostringstream il;
             // ┌── for top, ├── for middle, └── for bottom
             const char* corner =

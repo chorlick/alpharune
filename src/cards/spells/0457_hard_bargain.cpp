@@ -79,7 +79,7 @@ public:
             decline.choice_label = "Hard Bargain: don't pay";
             choices.push_back(decline);
             std::string spell_name = ctx.state.objectExists(target_source)
-                ? ctx.state.getObject(target_source).name : "spell";
+                ? ctx.state.getObject(target_source).name.get() : "spell";
             ctx.executor.requestChoice(target_controller, std::move(choices),
                                         "Hard Bargain: pay 2 to save " + spell_name +
                                         "? [pay | decline]");

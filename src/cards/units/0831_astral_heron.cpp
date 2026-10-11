@@ -23,6 +23,11 @@ public:
     // has resolved (CR 420.4.a), after any cards played in response, and a
     // response that was countered is never announced at all. The Heron itself
     // can be that first card (WhenYouPlayMe). A token is not a card.
+    // If the first card is itself countered this does not trigger at all
+    // (CR 420.4.a.1: an ability that triggers on playing a card does not
+    // trigger for a countered card), and the next card is not "your first
+    // card" either: the countered card was played (CR 420.4.b and its Defy
+    // examples — it still counts for Legion and "no other cards this turn").
     // The [A][A] half is CostModifier::power_reduction, which the engine's
     // cost path subtracts from the card's Power cost (clamped at 0).
     std::vector<TriggerType> triggerTypes() const override {

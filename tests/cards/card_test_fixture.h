@@ -237,6 +237,22 @@ public:
     AcceptingEnginePathAgent() : EnginePathAgent(EnginePathAgent::accepting()) {}
 };
 
+/// For a test that fires a "when ... move(s)" trigger without making the
+/// move: while it lives, the fixture's state says this move is being
+/// announced, so the queued ability gets it as ChainItem::triggering_move and
+/// cards read it with triggeringMove(). Prefer a real move
+/// (resolveThroughEngine + moveToBattlefield / moveToBase) where the test can
+/// make one.
+struct AnnouncedMove {
+    GameState& state;
+    AnnouncedMove(GameState& s, LocationId from, LocationId to) : state(s) {
+        state.chain.move_being_announced = ChainItem::Move{from, to};
+    }
+    ~AnnouncedMove() { state.chain.move_being_announced.reset(); }
+    AnnouncedMove(const AnnouncedMove&) = delete;
+    AnnouncedMove& operator=(const AnnouncedMove&) = delete;
+};
+
 // ─── Fixture base ───────────────────────────────────────────────────────────
 
 class CardTestFixture : public ::testing::Test {

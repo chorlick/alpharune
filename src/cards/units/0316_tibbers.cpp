@@ -24,11 +24,13 @@ public:
             }
             for (auto id : to_damage)
                 ctx.executor.dealDamage(id, 3, ctx.source);
-            DeathBatch together(ctx.executor, to_damage);   // they die at the same time
-            for (auto id : to_damage) {
-                if (ctx.state.objectExists(id) &&
-                    ctx.state.getObject(id).hasLethalDamage()) {
-                    ctx.executor.killObject(id);
+            {   // the batch is for these kills only
+                DeathBatch together(ctx.executor, to_damage);   // they die at the same time
+                for (auto id : to_damage) {
+                    if (ctx.state.objectExists(id) &&
+                        ctx.state.getObject(id).hasLethalDamage()) {
+                        ctx.executor.killObject(id);
+                    }
                 }
             }
         }

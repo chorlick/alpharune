@@ -187,12 +187,32 @@ static PlayerId killerOf(const GameState& state, const GameObject& obj) {
     return theirs >= own ? other : obj.controller;
 }
 
+// What an effect applied to a unit changes about it. Computed values (Might,
+// keywords) are left out on purpose: another unit of the batch dying can take
+// an aura away mid-batch, and that must not look like the unit was changed.
+static uint64_t deathBatchStamp(const GameObject& obj) {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.damage_marked)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.temp_might_bonus)));
+    mix(static_cast<uint64_t>(static_cast<int64_t>(obj.buff_count)));
+    mix(obj.is_stunned ? 1 : 0);
+    mix(static_cast<uint64_t>(obj.controller));
+    mix(obj.attachments.size());
+    if (obj.location.has_value()) {
+        mix(obj.location->index() + 1);
+        if (auto bf = obj.battlefieldId()) mix(static_cast<uint64_t>(*bf) + 17);
+    }
+    return h;
+}
+
 void EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& units) {
     for (auto id : units) {
         if (!state_.objectExists(id) || !state_.getObject(id).location.has_value()) continue;
         state_.getObject(id).last_known.batch_pending = false;
         snapshotLastKnown(id);
         state_.getObject(id).last_known.batch_pending = true;
+        state_.getObject(id).last_known.batch_stamp = deathBatchStamp(state_.getObject(id));
     }
 }
 
@@ -213,7 +233,10 @@ void EffectExecutor::snapshotLastKnown(GameObjectId id) {
     auto& lk = obj.last_known;
     // Taken with the rest of its batch while they were all on the board
     // (beginDeathBatch): that is the state "as it died" for every one of them.
-    if (lk.batch_pending && lk.valid) return;
+    // A unit that survived its batch and was changed since (buffed, moved,
+    // stunned, damaged again) is not "as it was then": take it afresh.
+    if (lk.batch_pending && lk.valid && lk.batch_stamp == deathBatchStamp(obj)) return;
+    lk.batch_pending = false;
     lk.valid = true;
     lk.stunned = obj.is_stunned;
     lk.location = obj.location;
@@ -1575,7 +1598,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
                                           KeywordSet keywords, LocationId location,
                                           bool enter_ready,
                                           const std::vector<LocationId>& location_choices,
-                                          CardDefId token_card) {
+                                          CardDefId token_card, bool enters_exhausted) {
     if (token_depth_ == 0) last_tokens_.clear();
     const bool asked_enter_ready = enter_ready;
     auto id = state_.createObject();
@@ -1603,7 +1626,10 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
         (state_.player(controller).units_enter_ready_this_turn ||
          state_.player(controller).otherUnitsEnterReady(obj.id)))
         enter_ready = true;
-    obj.is_exhausted = !enter_ready && type == CardType::Unit; // units enter exhausted unless ready
+    // Units enter exhausted unless ready; anything enters exhausted when its
+    // instruction says so and "your tokens enter ready" does not replace that.
+    obj.is_exhausted = (!enter_ready && type == CardType::Unit) ||
+                       (enters_exhausted && !state_.player(controller).tokens_enter_ready);
 
     if (std::holds_alternative<BaseLocation>(location)) {
         obj.zone = ZoneType::Base;
@@ -1644,7 +1670,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
             events_.logTrace("TOKEN: an additional copy of " + name + " is played");
             ++token_depth_;
             createToken(controller, type, name, might, tags, keywords, copy_at,
-                        asked_enter_ready, location_choices, token_card);
+                        asked_enter_ready, location_choices, token_card, enters_exhausted);
             --token_depth_;
         }
     }

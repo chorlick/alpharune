@@ -84,8 +84,7 @@ ids are in `.worktrees/agents.txt` (untracked), not here:
   background wait loops that keep them showing as active after they finish:
   `pgrep -af 'until |sleep'` and kill the stray shell.
 
-**Open questions for the user (not blocking):** WSL sees 8 of 24 hardware
-threads (raising it needs `wsl --shutdown`); Karma, Channeler 235 tag changed
+**Open questions for the user (not blocking):** Karma, Channeler 235 tag changed
 Vi → Karma against the gallery data, printed card unchecked; smoke win split
 drifted 128 / 72 → 138 / 62 and has not been examined.
 
@@ -132,7 +131,11 @@ iteration must apply these.
   stream adds a `RIFTBOUND_BUILD_JOBS` cache variable (default 6) implemented
   with Ninja job pools, so a larger `-j` cannot exceed it. Batch and smoke runs
   use `--threads 6`.
-- **WSL cores (open, user to decide):** the host is a 12-core / 24-thread CPU
+- **WSL cores: decided, leave as is (user, 2026-10-11).** The 8-thread limit
+  stays: the user has hit out-of-memory and CPU thrashing on this machine and
+  wants load kept limited. Do not raise `-j`, the lane count or the thread
+  count, and do not propose a WSL restart. Earlier note, for the record:
+- **WSL cores (closed):** the host is a 12-core / 24-thread CPU
   but WSL sees 8 threads (likely `processors=8` in `.wslconfig`). Raising it
   needs `wsl --shutdown`, which ends the session; the stage 1 gate is the clean
   point. If the user does it, raise `RIFTBOUND_BUILD_JOBS` and `-j` to match.

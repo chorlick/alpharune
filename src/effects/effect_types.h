@@ -200,6 +200,13 @@ enum class TriggerType : uint8_t {
     WhenAUnitTakesDamage,        // delayed abilities only ("the next time it takes damage this
                                  // turn", "when any unit takes damage this turn");
                                  // triggering_subject = the damaged unit
+    WhenAnEnemyUnitAttacksYourBattlefield, // "When an enemy unit attacks a battlefield you
+                                 // control," (Nine-Tailed Fox) — fires on the defender's cards
+                                 // and legend, once per attacking unit (the subject)
+    WhenYouMoveAnEnemyUnit,      // "When you move an enemy unit," (Blast Cone) — a spell or
+                                 // ability you control moved it; triggering_subject = the unit
+    WhenYouRecycleARune,         // "When you recycle a rune," (Battle Mistress) — a rune you
+                                 // control went from the board to your Rune Deck
 };
 
 // ─── Conditions ─────────────────────────────────────────────────────────────

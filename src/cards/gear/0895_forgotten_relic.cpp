@@ -19,9 +19,10 @@ public:
     // "When you play this or at the start of your Beginning Phase, [Burn 1].
     //  When you burn a unit this way, do this: Give a friendly unit +[M] equal
     //  to the burned card's Might this turn."
-    // Resumable: the burn happens exactly once (resume_point 0); the burned
-    // unit's Might is parked in resume_data[0] while pickTarget (resume_points
-    // 6-8, resume_data[2]) asks which friendly unit gets it.
+    // Resumable: the burn happens exactly once per resolution — a flag and the
+    // burned unit's Might are kept on the resolving chain item, in resume_data
+    // slots past the ones the choice helpers own — while pickTarget asks which
+    // friendly unit gets the Might.
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayThis, TriggerType::AtStartOfBeginning};
     }
@@ -50,23 +51,25 @@ public:
             if (might > 0 && !mine.empty()) ctx.executor.giveTemporaryMight(mine.front(), might);
             return;
         }
-        auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == 0) {
-            const int might = burn_one();
-            if (might <= 0) { ri.resume_point = 9; return; }
-            ri.resume_data = {might, 0, 0};
-            ri.resume_point = 6;
+        {
+            auto& rd = ctx.state.chain.resuming->resume_data;
+            while (rd.size() <= kMightSlot) rd.push_back(0);
+            if (rd[kBurnedSlot] == 0) {
+                rd[kBurnedSlot] = 1;
+                rd[kMightSlot] = burn_one();
+            }
         }
-        if (ri.resume_point < 6 || ri.resume_point > 8 || ri.resume_data.empty()) return;
-        const int might = ri.resume_data[0];
+        const int might = ctx.state.chain.resuming->resume_data[kMightSlot];
+        if (might <= 0) return;
         GameObjectId picked = pickTarget(
             ctx, "Forgotten Relic: give a friendly unit +" + std::to_string(might) + " [M]",
             friendly());
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        ri.resume_point = 9;
         ctx.executor.giveTemporaryMight(picked, might);
     }
 private:
+    static constexpr size_t kBurnedSlot = 7;   // resume_data slots 0..6 belong to the choice helpers
+    static constexpr size_t kMightSlot = 8;
     const CardDef def_ = [] {
         CardDef d;
         d.id = 895;

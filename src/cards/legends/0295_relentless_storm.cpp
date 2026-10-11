@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -16,32 +17,28 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayAUnit; }
+    // "When you play a [Mighty] unit": the unit that was played — the
+    // trigger's subject — has 5+ [M] as it is played. Checked when the event
+    // happens, so a cost paid at finalization is never left without its effect.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType, GameObjectId subject) const override {
+        if (subject == kInvalidId || !state.objectExists(subject)) return false;
+        const auto& played = state.getObject(subject);
+        return played.isUnit() && played.location.has_value() && isMighty(played);
+    }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        // Gate: a [Mighty] (5+ [M]) friendly unit was just played. The trigger
-        // carries no played-object id, so scan friendly units for any Mighty
-        // one currently in play (best-effort identification of the play that
-        // fired this).
-        bool any_mighty = false;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value()) continue;
-            if (obj.current_might >= 5) { any_mighty = true; break; }
-        }
-        if (!any_mighty) return;
         auto still_legal = [&]() -> bool {
             return ctx.state.objectExists(ctx.source) &&
                    !ctx.state.getObject(ctx.source).is_exhausted;
         };
-        int conf = confirmOptional(ctx,
+        const int conf = confirmOptional(ctx,
             "Relentless Storm: exhaust me to channel 1 rune exhausted?",
             still_legal);
-        if (conf == -1) return;  // waiting on agent
-        if (conf == 0) return;   // declined / already exhausted
-        if (!costAlreadyPaid(ctx) && !still_legal()) return;
-        if (costDueNow(ctx)) ctx.state.getObject(ctx.source).is_exhausted = true;
+        if (conf == 1 && costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1) return;                // waiting on the agent / declined / exhausted
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
         ctx.events.logTrace("RELENTLESS STORM: played Mighty unit -> exhaust me, "
                             "channel 1 rune exhausted");

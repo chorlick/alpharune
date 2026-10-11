@@ -14,7 +14,10 @@ namespace {
 class LooseCannon : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    // "draw 1 if you have one or fewer cards in your hand": checked as the
+    // ability resolves.
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (ctx.state.player(ctx.controller).hand.size() > 1) return;
         ctx.executor.drawCards(ctx.controller, 1);
     }
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }

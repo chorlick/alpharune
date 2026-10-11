@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -21,50 +22,68 @@ public:
         return TriggerType::WhenAFriendlyUnitDies;
     }
 
+    // "during your Beginning Phase": the Awaken, Beginning and Scoring steps
+    // of the controller's own turn. Checked as the unit dies.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType, GameObjectId /*subject*/) const override {
+        if (state.turn.turn_player != controller) return false;
+        const TurnPhase ph = state.turn.phase;
+        return ph == TurnPhase::AwakenPhase || ph == TurnPhase::BeginningStep ||
+               ph == TurnPhase::ScoringStep;
+    }
+
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& state = ctx.state;
         if (!state.objectExists(ctx.source)) return;
+        ChainItem* ri = state.chain.resuming.has_value() ? &*state.chain.resuming : nullptr;
+        if (ri && ri->resume_point == kDone) return;
 
-        // Gate: must be the controller's own Beginning Phase. The "Beginning
-        // Phase" spans the Awaken, Beginning, and Scoring steps (CR turn
-        // structure); the dying-unit event fires within those steps.
-        if (state.turn.turn_player != ctx.controller) return;
-        TurnPhase ph = state.turn.phase;
-        if (ph != TurnPhase::AwakenPhase && ph != TurnPhase::BeginningStep &&
-            ph != TurnPhase::ScoringStep)
-            return;
-
-        // Gate: "the first time ... each turn". Track per-turn via a counter
-        // on this gear object keyed by the current turn number.
-        auto& self = state.getObject(ctx.source);
-        const std::string key = "__shard_undoing_turn";
-        if (self.card_counters.count(key) &&
-            self.card_counters[key] == state.turn.turn_number)
-            return;  // already fired this turn
-        self.card_counters[key] = state.turn.turn_number;
-
-        // "each opponent must kill one of their units." In 1v1 the opponent
-        // selects which of their own units dies; their choice isn't surfaced
-        // through this controller's agent, so approximate the rational pick
-        // (lowest-Might unit they control) — same convention as King's Edict.
-        PlayerId opp = opponent(ctx.controller);
-        GameObjectId victim = kInvalidId;
-        int best_might = 0;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.location.has_value()) continue;
-            if (victim == kInvalidId || obj.current_might < best_might) {
-                victim = id;
-                best_might = obj.current_might;
+        // "The first time ... each turn": several units can die together (the
+        // [Temporary] ones), each putting this ability on the chain; only the
+        // first to resolve does anything. Tracked per turn on this gear.
+        if (!ri || ri->resume_point != kAsking) {
+            auto& counters = state.getObject(ctx.source).card_counters;
+            auto it = counters.find(kFiredTurn);
+            if (it != counters.end() && it->second == state.turn.turn_number) {
+                if (ri) ri->resume_point = kDone;
+                return;  // already fired this turn
             }
+            counters[kFiredTurn] = state.turn.turn_number;
         }
-        if (victim != kInvalidId) {
-            ctx.executor.killObject(victim);
-            ctx.events.logTrace("SHARD OF UNDOING: opponent kills a unit "
-                                "(first friendly death of their Beginning Phase)");
+
+        // "each opponent must kill one of their units." The opponent chooses
+        // which (it is their kill, of their own unit — no targeting, so no
+        // Deflect and no "can't be chosen").
+        const PlayerId opp = opponent(ctx.controller);
+        std::vector<GameObjectId> theirs;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.isUnit() && obj.controller == opp && obj.location.has_value())
+                theirs.push_back(id);
+        std::sort(theirs.begin(), theirs.end());
+        if (theirs.empty()) { if (ri) ri->resume_point = kDone; return; }
+
+        GameObjectId victim = theirs.front();
+        if (ri && theirs.size() > 1) {
+            if (ri->resume_point != kAsking) {
+                std::vector<Intent> options;
+                for (auto id : theirs) options.push_back(objChoice(opp, id));
+                ctx.executor.requestChoice(opp, std::move(options),
+                                           "Shard of Undoing: kill one of your units");
+                ri->resume_point = kAsking;
+                return;
+            }
+            const GameObjectId picked = takenObject(ctx);
+            if (std::find(theirs.begin(), theirs.end(), picked) != theirs.end()) victim = picked;
         }
+        if (ri) ri->resume_point = kDone;
+        ctx.executor.killObject(victim);
+        ctx.events.logTrace("SHARD OF UNDOING: opponent kills a unit "
+                            "(first friendly death of their Beginning Phase)");
     }
 private:
+    static constexpr const char* kFiredTurn = "__shard_undoing_turn";
+    static constexpr int kAsking = 20;   // clear of the choice helpers' resume points
+    static constexpr int kDone = 21;
     const CardDef def_ = [] {
         CardDef d;
         d.id = 736;

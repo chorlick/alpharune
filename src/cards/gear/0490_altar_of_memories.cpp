@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "engine/deck_ops.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -17,26 +18,36 @@ namespace {
 class AltarOfMemories : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
+    // The "may" and the exhaust (the cost) are decided as the ability is
+    // finalized (CR 383.3). The card to put back is chosen as it resolves,
+    // after the draw: it may be the card just drawn.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenAFriendlyUnitDies; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        // "you may exhaust me" — gate on Altar being ready (and on board).
+        // "you may exhaust me": the Altar must be on the board and ready.
         auto still_legal = [&]() {
-            return ctx.state.objectExists(ctx.source) &&
-                   !ctx.state.getObject(ctx.source).is_exhausted;
+            if (!ctx.state.objectExists(ctx.source)) return false;
+            const auto& self = ctx.state.getObject(ctx.source);
+            return self.location.has_value() && !self.is_exhausted;
         };
-        int conf = confirmOptional(ctx, "Altar of Memories: exhaust me to draw 1?", still_legal);
-        if (conf == -1) return;  // waiting on agent
-        if (conf == 0) return;   // declined / not legal
+        const int conf = confirmOptional(ctx, "Altar of Memories: exhaust me to draw 1?", still_legal);
+        if (conf == 1 && costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1) return;                // waiting on the agent / declined / not legal
 
-        auto& self = ctx.state.getObject(ctx.source);
-        // Exhaust me + draw 1 (do this once, guarded by a counter so the later
-        // resume passes for hand-card / mode picks don't repeat it).
-        if (!self.card_counters.count("__altar_drew")) {
-            ctx.executor.exhaustObject(ctx.source);
+        // Draw 1 — once per resolution. The two picks below suspend and
+        // re-enter this callback from the top; the guard lives on the
+        // resolving chain item, so every trigger gets its own draw.
+        if (ctx.state.chain.resuming.has_value()) {
+            auto& rd = ctx.state.chain.resuming->resume_data;
+            while (rd.size() <= kDrewSlot) rd.push_back(0);
+            if (rd[kDrewSlot] == 0) {
+                rd[kDrewSlot] = 1;
+                ctx.executor.drawCards(ctx.controller, 1);
+                ctx.events.logTrace("ALTAR OF MEMORIES: exhausted -> draw 1");
+            }
+        } else {
             ctx.executor.drawCards(ctx.controller, 1);
-            self.card_counters["__altar_drew"] = 1;
-            ctx.events.logTrace("ALTAR OF MEMORIES: exhausted -> draw 1");
         }
         auto& ps = ctx.state.player(ctx.controller);
         if (ps.hand.empty()) return;
@@ -44,12 +55,10 @@ public:
         std::vector<GameObjectId> hand(ps.hand.begin(), ps.hand.end());
         GameObjectId card = pickTarget(ctx, "Altar: put which hand card onto deck?", hand);
         if (card == kInvalidId) return;  // suspend or empty
-        if (!ctx.state.objectExists(card)) return;
+        if (std::find(ps.hand.begin(), ps.hand.end(), card) == ps.hand.end()) return;
         int mode = pickMode(ctx, "Altar: top or bottom of deck?", 2, {"top", "bottom"});
-        if (mode == -1) return;   // suspend
-        if (mode == -2) return;   // no legal mode
-        auto it = std::find(ps.hand.begin(), ps.hand.end(), card);
-        if (it != ps.hand.end()) ps.hand.erase(it);
+        if (mode < 0) return;   // suspend / no legal mode
+        ps.hand.erase(std::find(ps.hand.begin(), ps.hand.end(), card));
         // The owner knows where it went; the opponent sees only that a hand card did.
         if (mode == 0) deck::putOnTop(ctx.state, ctx.controller, card, deck::Place::Hand);
         else           deck::putOnBottom(ctx.state, ctx.controller, card, deck::Place::Hand);
@@ -57,6 +66,7 @@ public:
                             (mode == 0 ? "top" : "bottom") + " of deck");
     }
 private:
+    static constexpr size_t kDrewSlot = 7;   // resume_data slots 0..6 belong to the choice helpers
     const CardDef def_ = [] {
         CardDef d;
         d.id = 490;

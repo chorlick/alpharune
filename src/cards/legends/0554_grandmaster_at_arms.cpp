@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,71 +16,78 @@ class GrandmasterAtArms : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // Both abilities choose a unit (the default target enumeration reads this).
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
-    }
+    // "[1], [E]: Attach a detached Equipment you control to a unit you control."
+    // "[E]: Attach an attached Equipment you control to a unit you control."
+    // Both choose an Equipment and then a unit, as the ability is activated
+    // (CR 355) — pickTargetPair in the finalize pass.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     std::vector<ActivatedAbility> activatedAbilities() const override {
         ActivatedAbility a0;  // [1],[E]: attach a detached Equipment
         a0.cost = ActivationCost{.exhaust = true, .energy = 1};
-        a0.targets = TargetRequirements{.count = 1, .must_be_unit = true};
-        a0.needs_activation_time_target = true;
         ActivatedAbility a1;  // [E]: move an attached Equipment
         a1.cost = ActivationCost{.exhaust = true};
-        a1.targets = TargetRequirements{.count = 1, .must_be_unit = true};
-        a1.needs_activation_time_target = true;
         return {a0, a1};
     }
-
-    static bool isEquipment(const GameObject& g) {
-        if (!g.isGear()) return false;
-        for (const auto& t : g.tags) if (t == "Equipment") return true;
-        return false;
+    // Offered only with something to do: an Equipment of the right kind on
+    // the board and a unit to put it on.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!LegendCard::canActivateAbilityAt(state, controller, source, ability_index))
+            return false;
+        return !equipmentFor(state, controller, ability_index).empty();
     }
 
     void onActivate(CardContext& ctx, int ability_index,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        PlayerId me = ctx.controller;
-        // Find an eligible friendly Equipment: detached (idx0) or attached (idx1).
-        GameObjectId gear = kInvalidId;
-        for (auto& [id, g] : ctx.state.objects) {
-            if (g.controller != me || !isEquipment(g)) continue;
-            bool attached = g.attached_to.has_value();
-            if (ability_index == 0 && attached) continue;   // need detached
-            if (ability_index == 1 && !attached) continue;  // need attached
-            gear = id; break;
-        }
-        if (gear == kInvalidId) return;
-        // Pick a friendly unit to attach it to.
-        std::vector<GameObjectId> units;
-        for (auto& [id, u] : ctx.state.objects) {
-            if (u.isUnit() && u.controller == me && u.location.has_value())
-                units.push_back(id);
-        }
-        GameObjectId unit = pickTarget(ctx, "Grandmaster: attach Equipment to unit",
-                                       units);
-        if (unit == kInvalidId || !ctx.state.objectExists(unit) ||
-            !ctx.state.objectExists(gear)) return;
-        auto& g = ctx.state.getObject(gear);
-        // Detach from current bearer first (refund its might bonus).
-        if (g.attached_to.has_value()) {
-            ctx.executor.unattachGear(gear);
-        }
-        // Attach to the chosen unit (mirror Akshan's inline attach).
-        auto& tgt = ctx.state.getObject(unit);
-        g.attached_to = unit;
-        tgt.attachments.push_back(gear);
-        g.location = tgt.location;
-        g.zone = tgt.zone;
-        g.controller = me;
-        tgt.attachment_might_bonus += g.might_bonus;
-        tgt.recomputeMight();
-        ctx.events.emit(ObjectStateChangedEvent{gear, "attached"});
-        ctx.events.emit(ObjectStateChangedEvent{unit, "equipped"});
-        ctx.events.logTrace("GRANDMASTER AT ARMS: attached " + g.name +
-                            " to " + tgt.name);
+        const PlayerId me = ctx.controller;
+        const auto [gear, unit] = pickTargetPair(
+            ctx, "Grandmaster at Arms: an Equipment, then the unit to attach it to",
+            equipmentFor(ctx.state, me, ability_index),
+            [&](GameObjectId g) { return unitsFor(ctx.state, me, g); });
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (gear == kInvalidId || unit == kInvalidId) return;
+        // attachFree has no board check of its own: both ends must be there,
+        // and still mine.
+        if (!equipEndsOnBoard(ctx.state, gear, unit)) return;
+        if (ctx.state.getObject(gear).controller != me ||
+            ctx.state.getObject(unit).controller != me) return;
+        // Through unattachGear first, so the old bearer's "for as long as this
+        // is attached" effects end (attachFree alone would skip the hook).
+        ctx.executor.unattachGear(gear);
+        attachFree(ctx, gear, unit);
+        ctx.events.logTrace("GRANDMASTER AT ARMS: attached " + ctx.state.getObject(gear).name +
+                            " to " + ctx.state.getObject(unit).name);
     }
 private:
+    /// Equipment `me` controls ON THE BOARD (a card in a hand, deck or trash
+    /// is not an Equipment you control): detached for ability 0, attached for
+    /// ability 1 — with at least one unit it could go on.
+    static std::vector<GameObjectId> equipmentFor(const GameState& state, PlayerId me,
+                                                  int ability_index) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, g] : state.objects) {
+            if (g.controller != me || !g.location.has_value() || !isEquipment(g)) continue;
+            if (g.attached_to.has_value() != (ability_index == 1)) continue;
+            if (!unitsFor(state, me, id).empty()) out.push_back(id);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    /// Units `me` controls that `gear` could be attached to: any but the one
+    /// it is already on.
+    static std::vector<GameObjectId> unitsFor(const GameState& state, PlayerId me,
+                                              GameObjectId gear) {
+        std::vector<GameObjectId> out;
+        if (!state.objectExists(gear)) return out;
+        const auto bearer = state.getObject(gear).attached_to;
+        for (const auto& [id, u] : state.objects) {
+            if (!u.isUnit() || u.controller != me || !u.location.has_value()) continue;
+            if (bearer.has_value() && *bearer == id) continue;
+            out.push_back(id);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
     const CardDef def_ = [] {
         CardDef d;
         d.id = 554;

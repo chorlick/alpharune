@@ -86,15 +86,26 @@ TEST_F(WaveABatch3Test, ZhonyasIgnoresEnemyDeath) {
 
 // ── Shard of Undoing (736): beginning-phase first-death trigger ─────────────
 
-TEST_F(WaveABatch3Test, ShardKillsOpponentUnitInBeginningPhase) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    auto gear = addUnit(P1, kInvalidId, 1, 0);
-    auto& g = state.getObject(gear);
+// Through the engine: a friendly unit really dies, and "each opponent must
+// kill one of their units" is the OPPONENT's choice (card text), so P2's agent
+// answers.
+namespace shard_tests {
+GameObjectId addShard(GameState& state, PlayerId owner) {
+    auto id = state.createObject();
+    auto& g = state.getObject(id);
+    g.owner = g.controller = owner;
     g.card_type = CardType::Gear;
     g.card_def_id = kShardUndoing;
-    g.location = BaseLocation{P1};
+    g.name = "Shard of Undoing";
+    g.zone = ZoneType::Base;
+    g.location = BaseLocation{owner};
+    return id;
+}
+}  // namespace shard_tests
 
-    // P2 has two units; rational pick = lowest might (the 2M one).
+TEST_F(WaveABatch3Test, ShardKillsOpponentUnitInBeginningPhase) {
+    shard_tests::addShard(state, P1);
+    auto doomed = addUnit(P1, kInvalidId, 1, 0);
     auto weak   = addUnit(P2, kInvalidId, 2, 1);
     auto strong = addUnit(P2, kInvalidId, 7, 1);
 
@@ -102,19 +113,20 @@ TEST_F(WaveABatch3Test, ShardKillsOpponentUnitInBeginningPhase) {
     state.turn.phase = TurnPhase::BeginningStep;
     state.turn.turn_number = 4;
 
-    fireTriggerAs(kShardUndoing, P1, gear, TriggerType::WhenAFriendlyUnitDies, exec);
+    // The opponent chooses — here the 7 [M] unit, not "the lowest Might".
+    EnginePathAgent p2(EnginePathAgent::choosing(strong));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(doomed); },
+                         nullptr, &p2);
 
-    EXPECT_EQ(state.getObject(weak).zone, ZoneType::Trash);     // lowest might killed
-    EXPECT_NE(state.getObject(strong).zone, ZoneType::Trash);   // stronger survives
+    EXPECT_TRUE(p2.wasOffered(weak));
+    EXPECT_EQ(state.getObject(strong).zone, ZoneType::Trash);
+    EXPECT_NE(state.getObject(weak).zone, ZoneType::Trash);
 }
 
 TEST_F(WaveABatch3Test, ShardOnlyFiresOncePerTurn) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    auto gear = addUnit(P1, kInvalidId, 1, 0);
-    auto& g = state.getObject(gear);
-    g.card_type = CardType::Gear;
-    g.card_def_id = kShardUndoing;
-
+    shard_tests::addShard(state, P1);
+    auto d1 = addUnit(P1, kInvalidId, 1, 0);
+    auto d2 = addUnit(P1, kInvalidId, 1, 0);
     auto u1 = addUnit(P2, kInvalidId, 2, 1);
     auto u2 = addUnit(P2, kInvalidId, 3, 1);
 
@@ -122,8 +134,12 @@ TEST_F(WaveABatch3Test, ShardOnlyFiresOncePerTurn) {
     state.turn.phase = TurnPhase::BeginningStep;
     state.turn.turn_number = 4;
 
-    fireTriggerAs(kShardUndoing, P1, gear, TriggerType::WhenAFriendlyUnitDies, exec);
-    fireTriggerAs(kShardUndoing, P1, gear, TriggerType::WhenAFriendlyUnitDies, exec);
+    // Two friendly units die together: both deaths put the ability on the
+    // chain, only "the first time ... each turn" does anything.
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) {
+        exec.killObject(d1);
+        exec.killObject(d2);
+    });
 
     int dead = (state.getObject(u1).zone == ZoneType::Trash ? 1 : 0) +
                (state.getObject(u2).zone == ZoneType::Trash ? 1 : 0);
@@ -131,34 +147,27 @@ TEST_F(WaveABatch3Test, ShardOnlyFiresOncePerTurn) {
 }
 
 TEST_F(WaveABatch3Test, ShardSilentOutsideBeginningPhase) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    auto gear = addUnit(P1, kInvalidId, 1, 0);
-    auto& g = state.getObject(gear);
-    g.card_type = CardType::Gear;
-    g.card_def_id = kShardUndoing;
-
+    shard_tests::addShard(state, P1);
+    auto doomed = addUnit(P1, kInvalidId, 1, 0);
     auto u = addUnit(P2, kInvalidId, 2, 1);
     state.turn.turn_player = P1;
     state.turn.phase = TurnPhase::MainPhase;   // NOT a beginning-phase step
     state.turn.turn_number = 4;
 
-    fireTriggerAs(kShardUndoing, P1, gear, TriggerType::WhenAFriendlyUnitDies, exec);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(doomed); });
     EXPECT_NE(state.getObject(u).zone, ZoneType::Trash);
 }
 
 TEST_F(WaveABatch3Test, ShardSilentOnOpponentTurn) {
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    auto gear = addUnit(P1, kInvalidId, 1, 0);
-    auto& g = state.getObject(gear);
-    g.card_type = CardType::Gear;
-    g.card_def_id = kShardUndoing;
-
+    shard_tests::addShard(state, P1);
+    auto doomed = addUnit(P1, kInvalidId, 1, 0);
     auto u = addUnit(P2, kInvalidId, 2, 1);
     state.turn.turn_player = P2;               // not the gear controller's turn
     state.turn.phase = TurnPhase::BeginningStep;
     state.turn.turn_number = 4;
 
-    fireTriggerAs(kShardUndoing, P1, gear, TriggerType::WhenAFriendlyUnitDies, exec);
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(doomed); },
+                         nullptr, nullptr, P2);
     EXPECT_NE(state.getObject(u).zone, ZoneType::Trash);
 }
 

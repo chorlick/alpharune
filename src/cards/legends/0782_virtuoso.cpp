@@ -18,17 +18,20 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // Validation closure: "you may banish it" is legal iff the
-        // most-recently-played spell exists, is in trash, and its
-        // play-time energy spend was ≥4. Re-checked before AND after
-        // the agent's yes/no via confirmOptional.
+        // "it" is the spell that was played: the trigger's subject
+        // (TriggerManager::onSpellResolved) — not whichever spell is newest in
+        // the trash by the time this resolves.
+        const GameObjectId spell_id = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject
+            : findMostRecentlyPlayedSpell(ctx.state, ctx.controller);
+        // Validation closure: "you may banish it" is legal iff that spell is
+        // in a trash and its play-time energy spend was ≥4. Re-checked before
+        // AND after the agent's yes/no via confirmOptional.
         auto still_legal = [&]() -> bool {
-            // Read the snapshot stored on this trigger's chain item
-            // (Phase 6q+: TriggerManager captures the triggering
-            // spell's spent at trigger-add time so we don't read a
-            // clobbered PlayerState::last_spell_energy_spent at
-            // resume time). Fall back to the PlayerState field for
-            // legacy code paths that don't snapshot.
+            // The spend is snapshotted on this trigger's chain item
+            // (TriggerManager captures it at trigger-add time, so a later
+            // spell can't clobber it). Fall back to the PlayerState field
+            // for paths that don't snapshot.
             int spent = ctx.state.chain.resuming.has_value()
                 ? ctx.state.chain.resuming->triggering_spell_energy_spent
                 : 0;
@@ -36,11 +39,8 @@ public:
                 spent = ctx.state.player(ctx.controller).last_spell_energy_spent;
             }
             if (spent < 4) return false;
-            GameObjectId sid = findMostRecentlyPlayedSpell(
-                ctx.state, ctx.controller);
-            if (sid == kInvalidId) return false;
-            if (!ctx.state.objectExists(sid)) return false;
-            return ctx.state.getObject(sid).zone == ZoneType::Trash;
+            if (spell_id == kInvalidId || !ctx.state.objectExists(spell_id)) return false;
+            return ctx.state.getObject(spell_id).zone == ZoneType::Trash;
         };
 
         int conf = confirmOptional(ctx, "Virtuoso: banish 4-cost spell?",
@@ -49,20 +49,13 @@ public:
         if (conf == -1) return;     // waiting for agent
         if (conf == 0) return;      // declined or invalidated
         // conf == 1: confirmed, proceed.
-
-        GameObjectId spell_id = findMostRecentlyPlayedSpell(ctx.state, ctx.controller);
-        if (spell_id == kInvalidId) return;  // should be live per validation
+        if (!still_legal()) return;
         auto& spell = ctx.state.getObject(spell_id);
 
         // The spell is already in trash (resolved before this trigger's
-        // ability did). Reroute it from trash → banishment.
-        auto& owner_ps = ctx.state.player(spell.owner);
-        auto& tr = owner_ps.trash;
-        auto it = std::find(tr.begin(), tr.end(), spell_id);
-        if (it == tr.end()) return;  // shouldn't happen
-        tr.erase(it);
-        spell.zone = ZoneType::Banishment;
-        owner_ps.banishment.push_back(spell_id);
+        // ability did). Banish it through the executor, so it counts as a
+        // card banished this turn and "when you banish a card" abilities see it.
+        ctx.executor.banishObject(spell_id);
 
         auto& legend = ctx.state.getObject(ctx.source);
         legend.tracked_objects.push_back(spell_id);  // "banished with me"

@@ -14,8 +14,21 @@ namespace {
 class NineTailedFox : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    // No engine trigger fires for "enemy unit attacks a BF you control"; see
-    // header comment. Intentionally no triggerType() / onTrigger() wiring.
+    // "When an enemy unit attacks a battlefield you control, give it -1 [M]
+    // this turn, to a minimum of 1 [M]." One trigger per attacking unit; "it"
+    // is the trigger's subject.
+    TriggerType triggerType() const override {
+        return TriggerType::WhenAnEnemyUnitAttacksYourBattlefield;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId attacker = ctx.state.chain.resuming.has_value()
+            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
+        if (attacker == kInvalidId || !ctx.state.objectExists(attacker)) return;
+        const auto& unit = ctx.state.getObject(attacker);
+        if (!unit.isUnit() || !unit.location.has_value()) return;   // left the board
+        ctx.executor.giveTemporaryMight(attacker, -1, /*minimum=*/1);
+        ctx.events.logTrace("NINE-TAILED FOX: " + unit.name + " attacks -> -1 [M] (min 1)");
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

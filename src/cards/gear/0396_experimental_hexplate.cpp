@@ -16,7 +16,46 @@ class ExperimentalHexplate : public SimpleEquipGear {
 public:
     ExperimentalHexplate() : SimpleEquipGear(Domain::Mind) {}
     const CardDef& def() const override { return def_; }
+    // Equipped: "I am a Mech." The bearer has the Mech tag for as long as this
+    // is attached. The tag is put on as the gear is attached (so "your Mechs"
+    // effects see it at once), re-asserted every aura pass for attach paths
+    // that do not go through onEquip (Weaponmaster, Grandmaster at Arms), and
+    // taken off again in onUnattached — only if this gear is what added it:
+    // card_counters[kGaveMech] on the gear holds that bearer's id + 1.
+    bool onEquip(CardContext& ctx, GameObjectId unit) override {
+        if (!SimpleEquipGear::onEquip(ctx, unit)) return false;
+        grantMech(ctx.state, ctx.source);
+        return true;
+    }
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        for (auto& [gid, gear] : state.objects) {
+            if (gear.card_def_id != cardDefId() || gear.controller != controller) continue;
+            if (!gear.location.has_value()) continue;
+            grantMech(state, gid);
+        }
+    }
+    void onUnattached(CardContext& ctx, GameObjectId unit) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        auto& gear = ctx.state.getObject(ctx.source);
+        auto it = gear.card_counters.find(kGaveMech);
+        if (it == gear.card_counters.end()) return;
+        const bool mine = it->second == static_cast<int>(unit) + 1;
+        gear.card_counters.erase(it);
+        if (!mine || !ctx.state.objectExists(unit)) return;
+        auto& tags = ctx.state.getObject(unit).tags;
+        tags.erase(std::remove(tags.begin(), tags.end(), std::string("Mech")), tags.end());
+    }
 private:
+    static constexpr const char* kGaveMech = "__hexplate_gave_mech";
+    static void grantMech(GameState& state, GameObjectId gear_id) {
+        auto& gear = state.getObject(gear_id);
+        if (!gear.attached_to.has_value() || !state.objectExists(*gear.attached_to)) return;
+        auto& bearer = state.getObject(*gear.attached_to);
+        if (!bearer.isUnit() || !bearer.location.has_value()) return;
+        if (hasTag(bearer, "Mech")) return;   // already a Mech (printed, or another Hexplate)
+        bearer.tags.push_back("Mech");
+        gear.card_counters[kGaveMech] = static_cast<int>(*gear.attached_to) + 1;
+    }
     const CardDef def_ = [] {
         CardDef d;
         d.id = 396;

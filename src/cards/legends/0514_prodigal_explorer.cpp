@@ -14,13 +14,24 @@ namespace {
 class ProdigalExplorer : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+    // "[E]: [Reaction] — Draw 1. Use only if you've chosen enemy units and/or
+    // gear twice this turn with spells or unit abilities."
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 1);
     }
     TriggerType triggerType() const override { return TriggerType::Activated; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
-    bool isActionAbility() const override { return true; }
+    bool isReactionAbility() const override { return true; }
+    // ENGINE-GAP: the engine records only WHETHER the player has chosen an
+    // enemy unit this turn (PlayerState::chose_enemy_unit_this_turn), not how
+    // many times, not enemy gear, and not what did the choosing. Until it
+    // counts those choices the gate is "at least one enemy unit chosen this
+    // turn" — necessary for the printed condition in all but the gear-only
+    // case, but not sufficient.
+    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
+        return state.player(controller).chose_enemy_unit_this_turn;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

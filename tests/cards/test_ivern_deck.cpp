@@ -1007,13 +1007,18 @@ TEST_F(CardTestFixture, GreenFather_OnConquerOrHoldReplacesABFWithBrush) {
     state.getObject(legend).zone = ZoneType::LegendZone;
     state.players[0].legend_zone = legend;
 
-    // Mark BF#0 as controlled by P1 (the hold/conquer just happened).
+    // Mark BF#0 as controlled by P1 (the hold/conquer just happened). "That
+    // battlefield" is the trigger's subject — its card object — as
+    // TriggerManager::onScore supplies it (card text: "replace that
+    // battlefield"), so the trigger goes through the engine.
     state.battlefields[0].controller = P1;
+    auto bf_card = state.createObject();
+    state.getObject(bf_card).card_type = CardType::Battlefield;
+    state.getObject(bf_card).name = "TestBattlefield";
+    state.battlefields[0].card_object_id = bf_card;
 
-    EffectExecutor exec(state, events, card_db);
-    auto* card = card_registry.get(kGreenFather);
-    CardContext ctx{state, events, exec, P1, legend};
-    card->onTrigger(ctx, {});
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquerOrHold, &yes, bf_card);
 
     EXPECT_TRUE(state.getObject(legend).is_exhausted);
     auto& bf = state.battlefields[0];

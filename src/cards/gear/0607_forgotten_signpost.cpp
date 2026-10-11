@@ -19,64 +19,76 @@ public:
     // "[Action][>] Exhaust a unit you control, [E]: Move a different unit you
     //  control to the location of the unit you exhausted to pay for this
     //  ability."
-    // [>]/[E] = exhaust the gear. The target is the friendly unit to exhaust as
-    // an additional cost; onActivate then moves a DIFFERENT friendly unit to
-    // that unit's location.
+    // Two units are chosen as the ability is activated (CR 355): the one to
+    // exhaust — a cost, paid then — and a different one to move. They go
+    // through pickTargetPair in the finalize pass; two pickTarget calls in one
+    // callback would return the same unit twice.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {{
             .cost = {.exhaust = true},
-            .targets = TargetRequirements{.count = 1, .must_be_unit = true,
-                                          .must_be_friendly = true},
+            .targets = {},
             .is_action = true, .is_reaction = false,
-            .needs_activation_time_target = true,
         }};
     }
-    std::vector<GameObjectId> enumerateLegalTargets(
-        const GameState& state, PlayerId controller,
-        int /*ability_index*/) const override {
-        // Eligible exhaust targets: ready friendly units; also require a second
-        // friendly unit to exist (the one to move).
-        std::vector<GameObjectId> out;
-        int friendly_units = 0;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
-            friendly_units++;
-        }
-        if (friendly_units < 2) return out;
-        for (auto& [id, obj] : state.objects) {
-            if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
-            if (obj.is_exhausted) continue;  // can only exhaust a ready unit
-            out.push_back(id);
-        }
-        return out;
+    // Offered only when the cost can be paid for an effect: a ready unit to
+    // exhaust and a different unit of yours that is somewhere else.
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !exhaustable(state, controller, /*must_be_ready=*/true).empty();
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
-                    const std::vector<GameObjectId>& targets) override {
-        GameObjectId to_exhaust = kInvalidId;
-        if (!targets.empty()) to_exhaust = targets[0];
-        else to_exhaust = pickTarget(ctx, "Forgotten Signpost: exhaust a friendly unit",
-                                     enumerateLegalTargets(ctx.state, ctx.controller, 0));
-        if (to_exhaust == kInvalidId || !ctx.state.objectExists(to_exhaust)) return;
-        auto dest = ctx.state.getObject(to_exhaust).location;
-        if (!dest) return;
-        // Pay the additional cost: exhaust the chosen unit.
-        ctx.executor.exhaustObject(to_exhaust);
-
-        // "Move a different unit you control to the location of the exhausted unit."
-        std::vector<GameObjectId> movers;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (id == to_exhaust) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller || !obj.location.has_value()) continue;
-            if (obj.location == *dest) continue;  // already there
-            movers.push_back(id);
+                    const std::vector<GameObjectId>& /*targets*/) override {
+        // Once the cost has been paid the exhausted unit is no longer ready:
+        // it stays the legal first choice it was.
+        const bool paid = costAlreadyPaid(ctx);
+        const auto [to_exhaust, mover] = pickTargetPair(
+            ctx, "Forgotten Signpost: exhaust a unit, then move a different unit to it",
+            exhaustable(ctx.state, ctx.controller, /*must_be_ready=*/!paid),
+            [&](GameObjectId a) { return moversTo(ctx.state, ctx.controller, a); });
+        if (to_exhaust != kInvalidId && mover != kInvalidId && costDueNow(ctx)) {
+            // "Exhaust a unit you control" — only a ready unit can pay it.
+            if (ctx.state.getObject(to_exhaust).is_exhausted) return;
+            ctx.executor.exhaustObject(to_exhaust);
         }
-        if (movers.empty()) return;
-        GameObjectId mover = pickTarget(ctx, "Forgotten Signpost: move a different unit", movers);
-        if (mover == kInvalidId || !ctx.state.objectExists(mover)) return;
-        moveToLocation(ctx.executor, mover, dest);
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 355)
+        if (to_exhaust == kInvalidId || mover == kInvalidId) return;
+        const auto& anchor = ctx.state.getObject(to_exhaust);
+        const auto& moved = ctx.state.getObject(mover);
+        if (!anchor.location.has_value() || !moved.location.has_value()) return;
+        if (moved.controller != ctx.controller) return;
+        moveToLocation(ctx.executor, mover, anchor.location);
         ctx.events.logTrace("FORGOTTEN SIGNPOST: moved a friendly unit to the exhausted unit's location");
     }
 private:
+    /// Units `controller` has on board, other than `anchor`, that are not
+    /// already where `anchor` is.
+    static std::vector<GameObjectId> moversTo(const GameState& state, PlayerId controller,
+                                              GameObjectId anchor) {
+        std::vector<GameObjectId> out;
+        if (!state.objectExists(anchor) || !state.getObject(anchor).location.has_value())
+            return out;
+        const LocationId dest = *state.getObject(anchor).location;
+        for (const auto& [id, obj] : state.objects) {
+            if (id == anchor || !obj.isUnit() || obj.controller != controller) continue;
+            if (!obj.location.has_value() || *obj.location == dest) continue;
+            out.push_back(id);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    /// Units `controller` could exhaust for the cost: on board, with a
+    /// different unit that could be moved to them.
+    static std::vector<GameObjectId> exhaustable(const GameState& state, PlayerId controller,
+                                                 bool must_be_ready) {
+        std::vector<GameObjectId> out;
+        for (const auto& [id, obj] : state.objects) {
+            if (!obj.isUnit() || obj.controller != controller || !obj.location.has_value()) continue;
+            if (must_be_ready && obj.is_exhausted) continue;
+            if (!moversTo(state, controller, id).empty()) out.push_back(id);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
     const CardDef def_ = [] {
         CardDef d;
         d.id = 607;

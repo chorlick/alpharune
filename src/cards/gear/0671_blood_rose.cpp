@@ -44,11 +44,19 @@ public:
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {{
             .cost = {.exhaust = true, .xp_cost = 3},
-            .targets = TargetRequirements{.count = 1, .must_be_unit = true,
-                                           .must_be_friendly = true},
+            .targets = TargetRequirements{.count = 1, .must_be_unit = true},
             .is_action = false, .is_reaction = false,
             .needs_activation_time_target = true,
         }};
+    }
+    // "Ready a unit." — any unit on the board, not only a friendly one. The
+    // engine gates the ability and validates the chosen target against this
+    // list (without it the default enumeration reads the card-wide
+    // getTargetRequirements(), finds none, and the ability is never offered).
+    std::vector<GameObjectId> enumerateLegalTargets(
+        const GameState& state, PlayerId controller,
+        int /*ability_index*/) const override {
+        return chooseableUnits(state, controller, [](const GameObject&) { return true; });
     }
     void onActivate(CardContext& ctx, int /*ability_idx*/,
                     const std::vector<GameObjectId>& targets) override {
@@ -60,6 +68,7 @@ public:
             picked = pickTarget(ctx, "Blood Rose", legal);
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        if (!ctx.state.getObject(picked).location.has_value()) return;   // left the board
         ctx.executor.readyObject(picked);
         ctx.events.logTrace("BLOOD ROSE: spent 3 XP -> ready " +
                              ctx.state.getObject(picked).name);

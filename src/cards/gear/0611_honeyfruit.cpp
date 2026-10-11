@@ -15,11 +15,8 @@ class Honeyfruit : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    // "This enters exhausted."
-    void onPlay(CardContext& ctx) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        ctx.executor.exhaustObject(ctx.source);
-    }
+    // "This enters exhausted." (read by GameEngine::resolvePermanent)
+    bool entersExhausted() const override { return true; }
 
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {
@@ -43,15 +40,20 @@ public:
         int /*ability_index*/) const override {
         return {};
     }
-    // NOTE: [Level 6] gates ONLY ability 1. The engine does not consult
-    // requiresLevel()/levelThreshold() for activated-ability legality, so the
-    // 6+ XP gate is enforced inline in onActivate for ability 1.
+    // "[Level 6] ... (Use this ability only while you have 6+ XP.)" gates
+    // ONLY ability 1: it is not offered below 6 XP.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (ability_index == 1 && state.player(controller).xp < 6) return false;
+        return GearCard::canActivateAbilityAt(state, controller, source, ability_index);
+    }
     void onActivate(CardContext& ctx, int ability_index,
                     const std::vector<GameObjectId>& /*targets*/) override {
         if (ability_index == 1) {
-            // [Level 6] gate: only with 6+ XP.
-            if (ctx.state.player(ctx.controller).xp < 6) return;
-            ctx.executor.addFloatingUniversalPower(ctx.controller, 2);  // [1][A]
+            if (ctx.state.player(ctx.controller).xp < 6) return;   // lost the Level in response
+            // "[Add] [1][A]": one Energy and one Power of any domain.
+            ctx.executor.addFloatingEnergy(ctx.controller, 1);
+            ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
             ctx.events.logTrace("HONEYFRUIT: [Add] [1][A]");
         } else {
             ctx.executor.addFloatingUniversalPower(ctx.controller, 1);  // [A]

@@ -27,9 +27,6 @@ namespace {
 class VoidBurrower : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true};
-    }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
@@ -100,7 +97,6 @@ public:
         if (choice && !choice->chosen_objects.empty())
             banished = choice->chosen_objects[0];
 
-        auto& ps = ctx.state.player(ctx.controller);
         // Remove the top-2 from the deck (those we revealed).
         std::vector<GameObjectId> top;
         for (auto cid : {a, b}) {
@@ -114,25 +110,17 @@ public:
             if (cid == banished) continue;
             rest.push_back(cid);
         }
-        if (banished != kInvalidId && ctx.state.objectExists(banished)) {
-            auto& bobj = ctx.state.getObject(banished);
-            // "banish one" — momentarily route to banishment.
-            bobj.zone = ZoneType::Banishment;
-            bobj.location = std::nullopt;
-            auto& bz = ctx.state.player(bobj.owner).banishment;
-            bz.push_back(banished);
-            ctx.events.logTrace("VOID BURROWER: banished " + bobj.name + " then play it");
-            // "then play it" — leave banishment and play ignoring its cost.
-            // playIgnoringCost does not remove the card from the banishment
-            // vector, so erase it here first. Per CR 355.2.a permanents land
-            // at base by default.
-            // The text does not waive the cost (CR 356.1.b.2): pay it, or the
-            // card simply stays banished.
-            if (ctx.executor.canPlayPayingCost(ctx.controller, banished)) {
-                auto it = std::find(bz.begin(), bz.end(), banished);
-                if (it != bz.end()) bz.erase(it);
-                ctx.executor.playPayingCost(ctx.controller, banished);
-            }
+        if (banished != kInvalidId && ctx.state.objectExists(banished) &&
+            std::find(top.begin(), top.end(), banished) != top.end()) {
+            // "banish one" — through the executor, so it counts as a card
+            // banished this turn and "when you banish a card" abilities see it.
+            ctx.events.logTrace("VOID BURROWER: banished " +
+                                ctx.state.getObject(banished).name + " then play it");
+            ctx.executor.banishObject(banished);
+            // "then play it". The text does not waive the cost (CR 356.1.b.2):
+            // playPayingCost takes the card out of banishment once it is paid
+            // for; otherwise it simply stays banished.
+            ctx.executor.playPayingCost(ctx.controller, banished);
         }
         if (!rest.empty()) {
             ctx.executor.recycleCards(ctx.controller, rest);

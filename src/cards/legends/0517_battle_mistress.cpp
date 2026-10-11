@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -14,16 +15,34 @@ namespace {
 class BattleMistress : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    TriggerType triggerType() const override { return TriggerType::WhenAnEnemyUnitDies; }
+    // Two triggered abilities:
+    //   "When you recycle a rune, you may exhaust me to play a Gold gear
+    //    token exhausted."
+    //   "When one or more enemy units die, ready me."
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    std::vector<TriggerType> triggerTypes() const override {
+        return {TriggerType::WhenYouRecycleARune, TriggerType::WhenAnEnemyUnitDies};
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (ctx.firing_trigger == TriggerType::WhenYouRecycleARune) {
+            auto still_legal = [&]() {
+                return ctx.state.objectExists(ctx.source) &&
+                       !ctx.state.getObject(ctx.source).is_exhausted;
+            };
+            const int go = confirmOptional(
+                ctx, "Battle Mistress: exhaust me to play a Gold token exhausted?", still_legal);
+            if (go == 1 && costDueNow(ctx)) ctx.executor.exhaustObject(ctx.source);
+            if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+            if (go != 1) return;
+            createGoldExhausted(ctx);
+            ctx.events.logTrace("BATTLE MISTRESS: recycled a rune -> Gold token (exhausted)");
+            return;
+        }
         // "When one or more enemy units die, ready me."
+        if (finalizingChoices(ctx)) return;       // no choices in this ability
         if (!ctx.state.objectExists(ctx.source)) return;
         ctx.executor.readyObject(ctx.source);
         ctx.events.logTrace("BATTLE MISTRESS: enemy unit died -> ready me");
-        // NOTE: the "When you recycle a rune, you may exhaust me to play a Gold
-        // gear token exhausted" clause has no engine trigger event and is not
-        // wired. The token spawn would be:
-        //   createToken(Gear, "Gold", ...) with card_def_id=326, exhausted.
     }
 private:
     const CardDef def_ = [] {

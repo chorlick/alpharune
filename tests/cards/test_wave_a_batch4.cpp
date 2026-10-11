@@ -168,10 +168,14 @@ TEST_F(CardTestFixture, MightOfDemacia_DrawsTwoOnConquerWith4Units) {
     for (int i = 0; i < 4; ++i) addUnit(P1, kInvalidId, 2, /*at_bf=*/0);
     for (int i = 0; i < 3; ++i) addToDeck(P1, kInvalidId);
     state.player(P1).battlefields_scored_this_turn.insert(0);
+    // "that battlefield" is the trigger's subject: the conquered
+    // battlefield's card object (TriggerManager::onScore).
+    auto bf_card = state.createObject();
+    state.getObject(bf_card).card_type = CardType::Battlefield;
+    state.battlefields[0].card_object_id = bf_card;
 
-    EffectExecutor exec(state, events, card_db);
     int hand_before = handSize(P1);
-    fireTriggerAs(kMightOfDemacia, P1, legend, TriggerType::WhenIConquer, exec);
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, nullptr, bf_card);
     EXPECT_EQ(handSize(P1), hand_before + 2);
 }
 
@@ -181,10 +185,14 @@ TEST_F(CardTestFixture, MightOfDemacia_NoDrawUnderFourUnits) {
     for (int i = 0; i < 3; ++i) addUnit(P1, kInvalidId, 2, /*at_bf=*/0);  // only 3
     for (int i = 0; i < 3; ++i) addToDeck(P1, kInvalidId);
     state.player(P1).battlefields_scored_this_turn.insert(0);
+    // "that battlefield" is the trigger's subject: the conquered
+    // battlefield's card object (TriggerManager::onScore).
+    auto bf_card = state.createObject();
+    state.getObject(bf_card).card_type = CardType::Battlefield;
+    state.battlefields[0].card_object_id = bf_card;
 
-    EffectExecutor exec(state, events, card_db);
     int hand_before = handSize(P1);
-    fireTriggerAs(kMightOfDemacia, P1, legend, TriggerType::WhenIConquer, exec);
+    fireTriggerThroughEngine(legend, TriggerType::WhenIConquer, nullptr, bf_card);
     EXPECT_EQ(handSize(P1), hand_before) << "fewer than 4 units -> no draw";
 }
 

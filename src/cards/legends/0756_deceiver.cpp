@@ -25,18 +25,24 @@ public:
         return battlefieldOfCard(state, state.chain.resuming->triggering_subject);
     }
 
-    // Resume points: 0-2 confirmOptional ("you may"), kAwaitDiscard the card
-    // to discard, kCopy.. the token exists and pickTarget (6-8) chooses what
-    // it copies. resume_data[3] = the token, [4] = its battlefield + 1 (0 =
-    // none); [2] belongs to pickTarget.
-    static constexpr int kAwaitDiscard = 3;
-    static constexpr int kCopy = 5;
-    static constexpr int kFinished = 30;
+    // Progress is kept on the resolving chain item in resume_data slots past
+    // the ones the choice helpers own (0..6): [kPhase] = where we are,
+    // [kToken] = the Reflection token, [kBf] = its battlefield + 1 (0 = none).
+    // confirmOptional asks the "may"; pickTarget chooses what the token copies.
+    static constexpr size_t kPhase = 7;
+    static constexpr size_t kToken = 8;
+    static constexpr size_t kBf = 9;
+    enum : int32_t { kConfirm = 0, kAwaitDiscard = 1, kCopy = 2, kFinished = 3 };
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.chain.resuming.has_value()) return;
-        auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == kFinished) return;
+        // (Re-fetched on every use: the helpers may grow resume_data.)
+        auto slot = [&](size_t i) -> int32_t& {
+            auto& rd = ctx.state.chain.resuming->resume_data;
+            while (rd.size() <= kBf) rd.push_back(0);
+            return rd[i];
+        };
+        if (slot(kPhase) == kFinished) return;
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& ps = ctx.state.player(ctx.controller);
         // Both halves of the cost must be payable: discard 1 and exhaust me.
@@ -45,28 +51,23 @@ public:
                    !ctx.state.getObject(ctx.source).is_exhausted && !ps.hand.empty();
         };
 
-        if (ri.resume_point <= 2) {
+        if (slot(kPhase) == kConfirm) {
             // "you may discard 1 and exhaust me": optional (CR 383.3.a).
             const int go = confirmOptional(
                 ctx, "Deceiver: discard 1 and exhaust me to play a Reflection", can_pay);
-            if (go != 1) return;            // waiting, declined, or can't pay
+            if (go == -1) return;           // waiting
+            if (go != 1) { slot(kPhase) = kFinished; return; }   // declined, or can't pay
             std::vector<Intent> choices;
-            for (auto card_id : ps.hand) {
-                Intent c;
-                c.type = IntentType::MakeChoice;
-                c.player = ctx.controller;
-                c.chosen_objects = {card_id};
-                choices.push_back(c);
-            }
+            for (auto card_id : ps.hand) choices.push_back(objChoice(ctx.controller, card_id));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                        "discard 1 (Deceiver)");
-            ri.resume_point = kAwaitDiscard;
+            slot(kPhase) = kAwaitDiscard;
             return;
         }
 
-        if (ri.resume_point == kAwaitDiscard) {
+        if (slot(kPhase) == kAwaitDiscard) {
             auto choice = ctx.executor.takeChoice();
-            if (!can_pay()) { ri.resume_point = kFinished; return; }
+            if (!can_pay()) { slot(kPhase) = kFinished; return; }
             GameObjectId discard = ps.hand.front();
             if (choice && !choice->chosen_objects.empty() &&
                 std::find(ps.hand.begin(), ps.hand.end(), choice->chosen_objects[0]) !=
@@ -87,38 +88,28 @@ public:
                 ctx.controller, CardType::Unit, "Reflection", 0, {}, kw, loc,
                 /*enter_ready=*/true);
             ctx.events.logTrace("DECEIVER: created ready Reflection token there");
-            while (ri.resume_data.size() < 5) ri.resume_data.push_back(0);
-            ri.resume_data[3] = static_cast<int32_t>(token);
-            ri.resume_data[4] = bf.has_value() ? static_cast<int32_t>(*bf) + 1 : 0;
-            ri.resume_point = kCopy;
+            slot(kToken) = static_cast<int32_t>(token);
+            slot(kBf) = bf.has_value() ? static_cast<int32_t>(*bf) + 1 : 0;
+            slot(kPhase) = kCopy;
         }
 
         // "Then do this: It becomes a copy of another unit there." Which unit
         // is the controller's choice (any controller's unit; units that can't
         // be chosen by enemy spells and abilities are not offered).
-        if (ri.resume_data.size() < 5 || ri.resume_data[4] == 0) {
-            ri.resume_point = kFinished;
-            return;
-        }
-        const auto token = static_cast<GameObjectId>(ri.resume_data[3]);
-        const auto bf = static_cast<BattlefieldId>(ri.resume_data[4] - 1);
+        if (slot(kBf) == 0) { slot(kPhase) = kFinished; return; }
+        const auto token = static_cast<GameObjectId>(slot(kToken));
+        const auto bf = static_cast<BattlefieldId>(slot(kBf) - 1);
         if (!ctx.state.objectExists(token) ||
             !ctx.state.getObject(token).location.has_value()) {
-            ri.resume_point = kFinished;
+            slot(kPhase) = kFinished;
             return;
         }
         auto models = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
             return o.id != token && o.battlefieldId() == bf;
         });
         std::sort(models.begin(), models.end());
-        const bool first_ask = ri.resume_point < 6;
         GameObjectId model = pickTarget(ctx, "Deceiver: copy which unit there?", models);
-        if (model == kInvalidId) {
-            // Either suspended for the agent (resume_point 7) or, when asked
-            // for the first time, there was nobody to copy.
-            if (first_ask && ri.resume_point != 7) ri.resume_point = kFinished;
-            return;
-        }
+        if (model == kInvalidId) return;   // waiting for the agent, or nobody to copy
         if (ctx.state.objectExists(model)) {
             ctx.executor.copyUnit(token, model);
             // "Give it [Temporary]." copyUnit overwrites keywords with the
@@ -127,7 +118,7 @@ public:
                 ctx.state.getObject(token).keywords.set(Keyword::Temporary);
             ctx.events.logTrace("DECEIVER: token copied a unit there, kept [Temporary]");
         }
-        ri.resume_point = kFinished;
+        slot(kPhase) = kFinished;
     }
 private:
     const CardDef def_ = [] {

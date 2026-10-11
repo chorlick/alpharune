@@ -27,22 +27,21 @@ public:
         ctx.events.logTrace("SHURELYA'S REQUIEM: ready your units");
     }
 
+    // Equipped: "Your units here have [Ganking]." "Here" is where the unit
+    // wearing this is — read from the bearer, not from the gear's own
+    // location, so it cannot lag behind a bearer that was moved by an effect.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        // Locate this gear instance (attached, controlled by `controller`)
-        // and grant [Ganking] to the controller's units at its battlefield.
         for (auto& [gid, gear] : state.objects) {
             if (gear.card_def_id != cardDefId()) continue;
             if (gear.controller != controller || !gear.attached_to.has_value()) continue;
-            auto bf = gear.battlefieldId();
+            if (!state.objectExists(*gear.attached_to)) continue;
+            auto bf = state.getObject(*gear.attached_to).battlefieldId();
             if (!bf) continue;
             for (auto& [tid, tgt] : state.objects) {
                 if (!tgt.isUnit() || tgt.controller != controller) continue;
                 auto tbf = tgt.battlefieldId();
                 if (!tbf || *tbf != *bf) continue;
-                GameObject::AuraEffect ae;
-                ae.source = gid;
-                ae.keyword = Keyword::Ganking;
-                tgt.aura_effects.push_back(ae);
+                auraKeyword(tgt, gid, Keyword::Ganking);
             }
         }
     }

@@ -701,6 +701,7 @@ TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
     auto trash_unit = state.createObject();
     state.getObject(trash_unit).owner = P1; state.getObject(trash_unit).controller = P1;
     state.getObject(trash_unit).card_type = CardType::Unit;
+    state.getObject(trash_unit).card_def_id = 266;   // a real card (Recruit, costs [0]): it is paid for
     state.getObject(trash_unit).zone = ZoneType::Trash;
     state.player(P1).trash.push_back(trash_unit);
     auto t_filler1 = state.createObject();
@@ -712,6 +713,10 @@ TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
     state.getObject(t_filler2).zone = ZoneType::Trash;
     state.player(P1).trash.push_back(t_filler2);
 
+    // Which two cards are recycled is the controller's choice; with no agent
+    // to ask (a bare executor) the first card offered is taken each time, so
+    // put the fillers ahead of the unit.
+    state.player(P1).trash = {t_filler1, t_filler2, trash_unit};
     EffectExecutor exec(state, events, card_db);
     ASSERT_TRUE(runEquip(gear, unit, exec));
     // After equip, only `trash_unit` should remain in trash (the two
@@ -719,13 +724,18 @@ TEST_F(LastRitesTest, ConquerOrHoldTriggerPlaysUnitFromTrash) {
     ASSERT_EQ(trashSize(P1), 1);
     ASSERT_EQ(state.player(P1).trash.front(), trash_unit);
 
-    // Fire the trigger.
-    Card* c = card_registry.get(kLastRites);
-    CardContext ctx{state, events, exec, P1, gear};
-    c->onEquippedTrigger(ctx, unit, {});
+    // Fire the trigger through the engine: the bearer holds its battlefield,
+    // the ability goes on the chain and the controller says yes. "(You still
+    // pay its costs.)" — this unit card costs [0].
+    state.battlefields[0].controller = P1;
+    EnginePathAgent yes(EnginePathAgent::choosing(trash_unit));
+    withEngine([&](GameEngine& e) {
+        e.testHook_scoreHold(P1, e.mutableState().battlefields[0].id);
+        e.testHook_runChain();
+    }, &yes);
 
-    // Trash should now be empty — the unit was removed and placed on
-    // the board via the trigger's (cost-ignored) play.
+    // Trash should now be empty — the unit was removed and placed on the
+    // board by the trigger's play.
     EXPECT_EQ(trashSize(P1), 0)
         << "Trigger should consume the unit from trash";
     EXPECT_NE(state.getObject(trash_unit).zone, ZoneType::Trash)

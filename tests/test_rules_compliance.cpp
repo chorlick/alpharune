@@ -99,6 +99,12 @@ TEST_F(RulesComplianceTest, DeathReplacement_TheBoss_SavesABuffedUnit) {
     s().getObject(unit).buff_count = 1;
     s().getObject(unit).recomputeMight();
     s().getObject(unit).damage_marked = 5;      // lethal
+    // "you may pay [C], exhaust me, and spend its buff": a real "may" (the
+    // controller says yes here) and a real payment — [C] is one Power of the
+    // legend's Domains, Body or Order.
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    engine_->testHook_setAgents(&yes, &a2_);
+    s().player(P1).rune_pool.power[static_cast<int>(Domain::Order)] = 1;
 
     engine_->testHook_processLethalDamage();
 
@@ -106,6 +112,8 @@ TEST_F(RulesComplianceTest, DeathReplacement_TheBoss_SavesABuffedUnit) {
     EXPECT_TRUE(s().getObject(unit).isAtBase()) << "recalled to base";
     EXPECT_EQ(s().getObject(unit).buff_count, 0) << "its buff is spent";
     EXPECT_TRUE(s().getObject(boss).is_exhausted) << "The Boss exhausts to pay";
+    EXPECT_EQ(s().player(P1).rune_pool.power[static_cast<int>(Domain::Order)], 0)
+        << "[C] was paid";
 }
 
 TEST_F(RulesComplianceTest, DeathReplacement_AppliesToEffectKillsToo) {
@@ -117,9 +125,13 @@ TEST_F(RulesComplianceTest, DeathReplacement_AppliesToEffectKillsToo) {
     auto unit = engineUnit(P1, 2, 0);
     s().getObject(unit).buff_count = 1;
     s().getObject(unit).recomputeMight();
+    // The Boss's replacement is a paid "may" (card text): P1 says yes and has
+    // the [C]. The engine's executor is the one that can ask.
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    engine_->testHook_setAgents(&yes, &a2_);
+    s().player(P1).rune_pool.power[static_cast<int>(Domain::Body)] = 1;
 
-    EffectExecutor exec(s(), events, card_db, &card_registry);
-    exec.killObject(unit);
+    engine_->testHook_executor().killObject(unit);
 
     EXPECT_TRUE(onBoard(unit)) << "saved by The Boss";
     EXPECT_TRUE(s().getObject(unit).isAtBase());

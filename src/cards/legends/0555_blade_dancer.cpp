@@ -75,6 +75,10 @@ public:
             }
             if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
             if (chosen == kInvalidId || !ctx.state.objectExists(chosen)) return;
+            // "ready it": only a unit that is still on the board (readyObject
+            // itself would ready a card that has gone to a hand or the trash).
+            if (!ctx.state.getObject(chosen).isUnit() ||
+                !ctx.state.getObject(chosen).location.has_value()) return;
             ctx.executor.readyObject(chosen);
             ctx.events.logTrace("BLADE DANCER: exhaust me + [A] -> ready " +
                                  ctx.state.getObject(chosen).name);

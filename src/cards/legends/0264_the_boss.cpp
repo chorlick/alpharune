@@ -3,8 +3,10 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,28 +32,42 @@ public:
 
     // ── Part 1: buffed-unit death replacement ──
     bool hasReplacementEffect() const override { return true; }
+    // "If a buffed unit you control would die, you may pay [C], exhaust me,
+    // and spend its buff to heal it, exhaust it, and recall it instead."
+    // A replacement is not on the chain, so the "may" is a direct agent
+    // decision (EffectExecutor::confirmNow); it is only asked when the whole
+    // cost can be paid. [C] is one Power of this card's Domains — Body or
+    // Order (CR 135.2.e.6.c).
     bool applyReplacement(CardContext& ctx, GameObjectId dying_unit) override {
         if (!ctx.state.objectExists(ctx.source)) return false;
         if (!ctx.state.objectExists(dying_unit)) return false;
         auto& self = ctx.state.getObject(ctx.source);
         auto& victim = ctx.state.getObject(dying_unit);
-        // Only a BUFFED FRIENDLY unit, and only while I'm ready (must "exhaust
-        // me" to pay).
-        if (!victim.isUnit()) return false;
+        // Only a BUFFED unit I control that is on the board, and only while
+        // I'm ready (must "exhaust me" to pay).
+        if (!victim.isUnit() || !victim.location.has_value()) return false;
         if (victim.controller != self.controller) return false;
         if (victim.buff_count <= 0) return false;
-        if (self.is_exhausted) return false;  // can't exhaust me again
-        // Pay: exhaust me, spend one of its buffs ([C] cost not charged here —
-        // see header note).
-        self.is_exhausted = true;
+        if (self.is_exhausted) return false;
+        const PlayerId me = self.controller;
+        std::optional<Domain> pay_with;
+        for (Domain d : def().domains)
+            if (payableOnePower(ctx.state, me, d)) { pay_with = d; break; }
+        if (!pay_with.has_value()) return false;
+        if (!ctx.executor.confirmNow(me, "The Boss: pay [C], exhaust me and spend " +
+                                         victim.name + "'s buff to recall it instead of dying"))
+            return false;
+        if (!payOnePower(ctx, me, *pay_with)) return false;
+        ctx.executor.exhaustObject(ctx.source);
         victim.buff_count -= 1;
         victim.recomputeMight();
         ctx.events.logTrace("THE BOSS: save buffed unit " + victim.name +
-                            " (exhaust me, spend buff) -> heal/exhaust/recall");
-        // Heal, exhaust, recall to base.
+                            " (pay [C], exhaust me, spend buff) -> heal/exhaust/recall");
+        // Heal, exhaust, recall to base — out of the combat it was in.
         ctx.executor.healObject(dying_unit);
         ctx.executor.exhaustObject(dying_unit);
         ctx.executor.moveToBase(dying_unit);
+        ctx.state.getObject(dying_unit).combat_designation = CombatDesignation::None;
         return true;  // replacement consumed — the unit does not die
     }
 private:

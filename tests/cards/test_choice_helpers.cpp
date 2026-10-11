@@ -783,8 +783,7 @@ INSTANTIATE_TEST_SUITE_P(
         TargetedTrigger{539, TriggerType::WhenIAttackOrDefend, CardType::Unit, "Ahri, Inquisitive"},
         TargetedTrigger{589, TriggerType::WhenIConquer, CardType::Unit, "Inviolus Vox"},
         TargetedTrigger{618, TriggerType::WhenIAttackOrDefend, CardType::Unit, "Yuumi, Magical Cat"},
-        TargetedTrigger{738, TriggerType::WhenIAttack, CardType::Unit, "Vi, Peacekeeper"},
-        TargetedTrigger{695, TriggerType::WhenYouPlayThis, CardType::Gear, "Blast Cone"}),
+        TargetedTrigger{738, TriggerType::WhenIAttack, CardType::Unit, "Vi, Peacekeeper"}),
     [](const ::testing::TestParamInfo<TargetedTrigger>& info) {
         return "card_" + std::to_string(info.param.def);
     });

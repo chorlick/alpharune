@@ -28,6 +28,7 @@ Two engine facts drive several findings:
     - `spells/0263_bullet_time.cpp` — delete the "they don't collide" comment; pay with `ctx.executor.payAnyPower` (03 item 3.24).
     - Rule for every card: a helper that follows another helper now suspends, so nothing between two helper calls may change game state unless it is guarded to run once.
   - c2: 258 Zenith Blade — ALREADY FIXED by stream helpers (`f892d67`: the stun runs after the "may" is answered); re-read and kept while fixing 7.24 (the stun now runs after the unit prompt too); tests still green: EnginePathTest.ZenithBladeStunsOnce, EnginePathTest.SpellMayAfterTargetCanBeDeclinedThroughTheEngine. 263 Bullet Time — the wrong "they don't collide" comment is deleted.
+  - c1: 490 Altar of Memories — ALREADY FIXED by the helper change (bottom is choosable), run-once draw guard fixed under 3.7; 695 Blast Cone — FIXED: the stun is its own triggered ability (`WhenYouMoveAnEnemyUnit`) with its own `confirmOptional`; 607 Forgotten Signpost — FIXED: `pickTargetPair` in the finalize pass (`kFinalizeActivate`); test: ReviewFixC1Test.BlastCone_TheControllerChoosesTheUnitAndWhereItGoes, ReviewFixC1Test.BlastCone_StunsAUnitMovedByAnotherOfYourAbilities, ReviewFixC1Test.ForgottenSignpost_ExhaustsOneUnitAndMovesADifferentOne
 
 ## B. Triggers that act only on `targets`
 
@@ -51,10 +52,12 @@ The callback re-runs from the top after a choice, so anything before the helper 
 - [ ] **3.6** `gear/0242_baited_hook.cpp:33-36` — kills `targets[0]` then suspends (`:59`); on re-entry returns early, the chosen unit is never played. [confirmed]
   - c0: 242 Baited Hook — FIXED: the kill is recorded on the chain item (`resume_data[7]` = 1 + the killed unit's Might) so the re-entry after the pick neither kills again nor returns early; the picked unit is played; test: C0Test.BaitedHook_PaysPowerStaysOnBoardAndPlaysThePickedUnit
 - [ ] **3.7** `gear/0490_altar_of_memories.cpp:35-38` — once-guard `__altar_drew` is never erased; from the second friendly death "yes" neither exhausts nor draws but still forces a hand card onto the deck. `spells/0475_guards.cpp:25-33` has the same permanent guard (`__guards_token`) [plausible]. [confirmed]
+  - c1: 490 Altar of Memories — FIXED: the permanent `__altar_drew` counter is gone; the exhaust is a cost paid at finalization and the draw is guarded per resolving chain item (`resume_data` slot 7); test: ReviewFixC1Test.AltarOfMemories_WorksOnEveryDeathNotOnlyTheFirst (475 Guards! is not in c1's range)
 
 ## D. Choices at finalization
 
 - [ ] **3.8** `legends/0556_chem_baroness.cpp:23-27` — `still_legal` is `return true` and the exhaust cost has no ready check; two holds make two Gold. [confirmed]
+  - c1: 556 Chem-Baroness — FIXED: `still_legal` requires a ready legend and the exhaust goes through `exhaustObject` under `costDueNow`; test: ReviewFixC1Test.ChemBaroness_OnlyAReadyLegendCanPay
 - [ ] **3.9** `units/0147_wildclaw_shaman.cpp:24-33` — "spend a buff" never spends one; free buff and ready. [confirmed]
   - c4: 147 Wildclaw Shaman — FIXED: offered only with a buffed friendly unit; the controller picks whose buff and it is spent at finalization (`costDueNow`); test: C4Test.WildclawShaman_SpendsABuffToBuffAndReadyItself, C4Test.WildclawShaman_WithNoBuffToSpendIsNotOffered
 - [ ] **3.10** `units/0449_overzealous_fan.cpp:40,51-52` — "kill me" cost paid after the marker and never verified; if the Fan was killed in response, the effect still happens. The effect itself is also wrong: the code bounces the attacker to hand, the text says move it to its base (08 §D). [confirmed]
@@ -85,6 +88,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
 
 - [ ] **3.17** `gear/0542_seal_of_strength.cpp:25` — adds `Domain::Order`; reprint 163 adds `Domain::Body`. [verified]
   - c0: 163 Seal of Strength — NOT A DEFECT: `gear/0163_seal_of_strength.cpp` adds `Domain::Body`, matching its text "[Add] [O]" and its Body domain; the wrong one is 542 (c1)
+  - c1: 542 Seal of Strength — FIXED: adds `Domain::Body`, as reprint 163 does; test: ReviewFixC1Test.SealOfStrength_AddsBodyPower
 - [ ] **3.18** `units/0778_plundering_poro.cpp:18` — `createGoldToken` (ready); text says exhausted, reprint 392 uses `createGoldExhausted`. [confirmed]
 - [ ] **3.19** `units/0548_karma_channeler.cpp:15-30` — only a `WhenYouPlayMe` Vision (the engine already does Vision, `trigger_manager.cpp:317`, so it runs twice) and no recycle trigger. `units/0235_karma_channeler.cpp:57` has tags `{"Vi", "Ionia"}`. [confirmed]
 - [ ] **3.20** `units/0543_sett_brawler.cpp` lacks the `canActivateAbility` buff gate that `units/0164_sett_brawler.cpp:27` has. [confirmed]
@@ -107,6 +111,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
     - `units/0444_corrupt_enforcer.cpp`: delete the private `discardThenAct`; call `discardThenAct(ctx, 1, label, [](CardContext&) {})` from `card_helpers.h`.
     - `gear/0405_hextech_anomaly.cpp`, `gear/0412_the_zero_drive.cpp`, `gear/0498_blade_of_the_ruined_king.cpp`, `gear/0748_hextech_gauntlets.cpp`, `spells/0263_bullet_time.cpp`: replace every hand-written `rune_deck.insert(...)` recycle with `payOnePower(ctx, player, domain)` (one Power of a Domain; `std::nullopt` = [A]), `ctx.executor.payAnyPower(player, n)` (n [A]), or — where the card picks the rune itself — `recycleRuneForPower(ctx, player, rune)`. Check affordability first with `payableOnePower` / `ctx.executor.payableAnyPower`. An Equip that is "[N] + one Power" is `standardEquip(ctx, ctx.source, unit, N, domain)`.
   - c4: 41 Volibear, Furious — FIXED: local `splitDamage` and `kSplit*` deleted, calls `splitDamageAmong`; test: existing Volibear tests and ChoiceHelperTest.SplitDamageAmongLetsTheControllerDivideTheDamage
+  - c1: 405 Hextech Anomaly, 412 The Zero Drive, 498 Blade of the Ruined King, 748 Hextech Gauntlets — FIXED: no hand-written rune recycle left (`payAnyPower` / `standardEquip` / `payOnePower`); test: ReviewFixC1Test.HextechAnomaly_IsAReactionAndReadyRunesCanPayX, AuditFix0Test.ZeroDrive_EquipPaysAndAttaches, ReviewFixC1Test.BladeOfTheRuinedKing_TheControllerChoosesWhichUnitDies, ReviewFixC1Test.HextechGauntlets_EquipIsPaidWithFloatingResources
 
 ## See also
 

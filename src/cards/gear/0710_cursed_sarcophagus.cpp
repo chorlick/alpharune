@@ -15,9 +15,8 @@ namespace {
 // "When you play this, banish all units from your trash.
 //  [E]: Play a unit banished with this. (You must pay its costs.)"
 // Units banished by this are recorded in the gear's tracked_objects so the
-// activated ability knows which banished units it may re-play. Power/Energy
-// cost payment for the replayed unit is approximated as free (playIgnoringCost)
-// — no structured "play from banishment while paying full cost" hook exists.
+// activated ability knows which banished units it may re-play. The replayed
+// unit's full cost is paid through EffectExecutor::playPayingCost.
 
 class CursedSarcophagus : public GearCard {
 public:
@@ -79,13 +78,11 @@ public:
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         // "(You must pay its costs.)" — CR 356.1.b.2 / 445.2: full cost, optional.
-        if (!ctx.executor.canPlayPayingCost(ctx.controller, picked)) return;
-        // Remove from owner's banishment zone before re-playing.
-        auto& bz = ctx.state.player(ctx.state.getObject(picked).owner).banishment;
-        bz.erase(std::remove(bz.begin(), bz.end(), picked), bz.end());
+        // playPayingCost takes the card out of banishment itself, and leaves it
+        // there — still "banished with this" — if the cost isn't paid.
+        if (!ctx.executor.playPayingCost(ctx.controller, picked)) return;
         auto& tr = self.tracked_objects;
         tr.erase(std::remove(tr.begin(), tr.end(), picked), tr.end());
-        ctx.executor.playPayingCost(ctx.controller, picked);
         ctx.events.logTrace("CURSED SARCOPHAGUS: played a banished unit");
     }
 private:

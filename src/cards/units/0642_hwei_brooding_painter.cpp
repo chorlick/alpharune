@@ -58,20 +58,9 @@ public:
                 ctx.executor.drawCards(ctx.controller, 1);
                 ctx.events.logTrace("HWEI: discarded Spell -> draw 1");
             } else if (dtype == CardType::Gear) {
-                // Ready up to 2 runes (channelRunes brings runes in ready;
-                // here we ready up to 2 already-exhausted runes belonging to
-                // the controller).
-                int readied = 0;
-                for (auto& [id, obj] : ctx.state.objects) {
-                    if (readied >= 2) break;
-                    if (obj.isRune() && obj.controller == ctx.controller &&
-                        obj.is_exhausted && obj.location.has_value()) {
-                        ctx.executor.readyObject(id);
-                        ++readied;
-                    }
-                }
-                ctx.events.logTrace("HWEI: discarded Gear -> readied " +
-                                     std::to_string(readied) + " rune(s)");
+                // "Ready up to 2 runes": asked below, once the discard is done.
+                ri.resume_point = 2;
+                readyUpToTwoRunes(ctx);
             } else if (dtype == CardType::Unit) {
                 if (ctx.state.objectExists(ctx.source) &&
                     ctx.state.getObject(ctx.source).location.has_value()) {
@@ -81,9 +70,38 @@ public:
             }
             return;
         }
+        case 2:   // re-entered with the answer to a rune prompt
+            readyUpToTwoRunes(ctx);
+            return;
         }
     }
 private:
+    // "Gear — Ready up to 2 runes." The controller names the runes one at a
+    // time and may stop at any prompt, the first included (CR 355.13): which
+    // runes matters when more than two are exhausted (a rune left exhausted is
+    // the one to recycle for Power). With no exhausted rune nothing is asked.
+    static void readyUpToTwoRunes(CardContext& ctx) {
+        auto readiable = [&](GameObjectId id) {
+            if (!ctx.state.objectExists(id)) return false;
+            const auto& obj = ctx.state.getObject(id);
+            return obj.isRune() && obj.controller == ctx.controller && obj.is_exhausted &&
+                   obj.location.has_value();
+        };
+        std::vector<GameObjectId> exhausted;
+        for (auto& [id, obj] : ctx.state.objects)
+            if (readiable(id)) exhausted.push_back(id);
+        const auto chosen = selectSeveral(ctx, "Hwei: ready a rune (up to two)", exhausted,
+                                          /*max_picks=*/2);
+        if (!chosen.has_value()) return;   // waiting for the agent
+        int readied = 0;
+        for (auto id : *chosen) {
+            if (!readiable(id)) continue;
+            ctx.executor.readyObject(id);
+            ++readied;
+        }
+        ctx.events.logTrace("HWEI: discarded Gear -> readied " + std::to_string(readied) +
+                            " rune(s)");
+    }
     const CardDef def_ = [] {
         CardDef d;
         d.id = 642;

@@ -347,6 +347,36 @@ TEST_F(C6Test, Sett543_NeedsItsOwnBuffToActivate) {
     EXPECT_FALSE(canActivate(plain));
 }
 
+TEST_F(C6Test, Sett543_SpendsTheBuffAsTheAbilityIsActivated) {
+    auto sett = addUnit(P1, kSett, 0, 0);
+    o(sett).buff_count = 1;
+    o(sett).recomputeMight();
+    GameState* live = nullptr;
+    bool probed = false;
+    PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+        if (!probed && live) {
+            probed = true;
+            EXPECT_EQ(live->getObject(sett).buff_count, 0) << "the buff is the cost";
+            EXPECT_EQ(live->getObject(sett).temp_might_bonus, 0) << "not resolved yet";
+        }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority) return i;
+        return legal.front();
+    });
+    Intent act;
+    act.type = IntentType::ActivateAbility;
+    act.player = P1;
+    act.ability_source = sett;
+    withEngine([&](GameEngine& e) {
+        live = &e.mutableState();
+        e.testHook_executeIntent(act);
+        live = nullptr;
+    }, nullptr, &p2);
+    EXPECT_TRUE(probed);
+    EXPECT_EQ(o(sett).buff_count, 0);
+    EXPECT_EQ(o(sett).temp_might_bonus, 4);
+}
+
 // ── 544 Yone, Blademaster ───────────────────────────────────────────────────
 
 TEST_F(C6Test, Yone_ConqueringAnUncontrolledBattlefieldHitsTheChosenBaseUnit) {

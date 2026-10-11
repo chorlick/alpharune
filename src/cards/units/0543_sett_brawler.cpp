@@ -15,42 +15,38 @@ namespace {
 class SettBrawler_543 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-
-    // Fix: fire on play AND conquer (NOT hold — the old impl over-fired via
-    // WhenIConquerOrHold).
+    // "When I'm played and when I conquer, buff me. (If I don't have a buff, I
+    // get a +1 [M] buff.)" — play and conquer, not hold.
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer};
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // "If I don't have a buff, I get a +1 [M] buff." So only buff while
-        // unbuffed (a buff is a persistent +1M counter; engine models it via
-        // buff_count).
-        if (self.buff_count > 0) return;
-        ctx.executor.buffUnit(ctx.source);
-        ctx.events.logTrace("SETT: buff me (+1M buff)");
+        // Nothing happens to a Sett that left the board or already has a buff
+        // (EffectExecutor::buffUnit).
+        if (ctx.executor.buffUnit(ctx.source))
+            ctx.events.logTrace("SETT: buff me (+1M buff)");
     }
-
-    // Activated: "Spend my buff: Give me +4 [M] this turn." Spending a buff
-    // is the whole cost; no exhaust / rune cost. Gated on having a buff.
+    // "Spend my buff: Give me +4 [M] this turn." Spending the buff is the
+    // activation cost: paid as the ability is activated (CR 355), by the Sett
+    // that activates it, so only a buffed Sett is offered the ability. Same as
+    // the original printing (164).
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {}; }
-    // The buff is the cost: without one the ability can't be activated. Per
-    // instance, so one buffed Sett does not unlock an unbuffed copy.
     bool canActivateAbilityAt(const GameState& state, PlayerId controller,
                               GameObjectId source, int ability_index) const override {
-        if (!UnitCard::canActivateAbilityAt(state, controller, source, ability_index))
-            return false;
-        return state.objectExists(source) && state.getObject(source).location.has_value() &&
+        return Card::canActivateAbilityAt(state, controller, source, ability_index) &&
                state.getObject(source).buff_count > 0;
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        if (!self.location.has_value()) return;  // left the board in response
-        if (self.buff_count <= 0) return;  // no buff to spend
-        self.buff_count -= 1;
+        if (costDueNow(ctx)) {
+            if (!self.location.has_value() || self.buff_count <= 0) return;
+            self.buff_count -= 1;
+            self.recomputeMight();
+        }
+        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
+        if (!self.location.has_value()) return;   // left the board
         ctx.executor.giveTemporaryMight(ctx.source, 4);
         ctx.events.logTrace("SETT: spent a buff for +4M this turn");
     }

@@ -175,7 +175,7 @@ Engine facts traced for this batch (used by the findings below):
   - Text: "Use this ability only while I'm at a battlefield."
   - Code: `canActivateAbility` returns true if ANY friendly Xerath is at a battlefield.
   - Scenario: one Xerath at a battlefield, a second in base -> the base Xerath can activate.
-- [x] **543 Sett, Brawler (reprint of 164)** - `units/0543_sett_brawler.cpp:36` [confirmed] low — FIXED: `canActivateAbilityAt` requires a buff on this Sett. Tags — NOT A DEFECT: SFD-232/221 prints `Sett` only (`cards/raw/gallery_raw.json`); test: C6Test.Sett543_NeedsItsOwnBuffToActivate
+- [x] **543 Sett, Brawler (reprint of 164)** - `units/0543_sett_brawler.cpp:36` [confirmed] low — FIXED: same code as 164 now — `canActivateAbilityAt` requires a buff on this Sett and the buff is spent as the ability is activated (`kFinalizeActivate` + `costDueNow`). Tags — NOT A DEFECT: SFD-232/221 prints `Sett` only (`cards/raw/gallery_raw.json`); test: C6Test.Sett543_NeedsItsOwnBuffToActivate, .Sett543_SpendsTheBuffAsTheAbilityIsActivated
   - Text: "Spend my buff: Give me +4 [M] this turn."
   - Code: no `canActivateAbility` gate (164 has one), so the zero-cost ability is offered with no buff and does nothing.
   - Scenario: unbuffed Sett always shows a legal no-op activation (random rollouts can spam it).

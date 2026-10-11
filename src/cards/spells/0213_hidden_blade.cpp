@@ -41,8 +41,11 @@ public:
         }
         ctx.executor.killObject(picked);
         // "Its controller": who controlled it as it died (a unit taken from
-        // its owner is in its OWNER's trash now, and its owner's again).
-        const PlayerId target_controller = controllerWhenItLeft(ctx.state, picked);
+        // its owner is in its OWNER's trash now, and its owner's again); its
+        // controller now if the death was replaced and it is still on the
+        // board; nobody if the death was replaced by a banish (Smite) — the
+        // Vendetta FAQ's four Hidden Blade examples (controllerAfterKill).
+        const PlayerId target_controller = controllerAfterKill(ctx.state, picked);
         if (target_controller != PlayerId::None) {
             RIFT_TRACE(ctx.events, "HIDDEN BLADE: its controller (" +
                                  std::string(toString(target_controller)) +

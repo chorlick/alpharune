@@ -1774,6 +1774,12 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
             continue;
         }
         try {
+            const EffectExecutor::Asking named(*effect_executor_, pending.label.empty()
+                ? (state_.chain.resuming.has_value() &&
+                   state_.objectExists(state_.chain.resuming->source)
+                       ? state_.getObject(state_.chain.resuming->source).name + ": a choice"
+                       : std::string("a choice"))
+                : pending.label);
             Intent choice = queryAgentForChain(pending.player, pending.legal);
             effect_executor_->recordChoice(std::move(choice));
         } catch (...) {
@@ -2440,6 +2446,9 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
                          std::to_string(offered.size()) + " of " +
                          std::to_string(options.size()) + " options keep the spell payable] (" +
                          toString(asked_player) + ")");
+        const EffectExecutor::Asking named(*effect_executor_,
+            (state_.objectExists(pre.source) ? state_.getObject(pre.source).name : std::string("?")) +
+            ": a choice made as it is played");
         const Intent chosen = queryAgentForChain(asked_player, offered);
         int picked = viable.front();
         for (size_t v = 0; v < offered.size(); ++v)
@@ -3373,6 +3382,8 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // state; a card's prompt asked through this path cannot.
     const bool is_priority = std::any_of(actions.begin(), actions.end(),
         [](const Intent& i) { return i.type == IntentType::PassPriority; });
+    // Read before asking: the name lives only while the prompt does.
+    const std::string asked = effect_executor_ ? effect_executor_->asking() : std::string();
     auto chosen = askAgent(player, actions,
         is_priority ? PendingQuery::ChainPriority : PendingQuery::None);
     // Surface the chain-priority decision in the trace so V&V can
@@ -3381,9 +3392,20 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // invisible — the renderer suppresses the panel for single-option
     // decisions, leaving no marker at all that the engine offered
     // priority to player N. Format mirrors the main DECISION trace lines.
-    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
-                     " (" + std::string(toString(player)) + " — chain priority): " +
-                     std::to_string(actions.size()) + " legal actions");
+    // The header says what was asked, not where in the turn the game is
+    // (plans/09 9.PP1): "chain priority" only for a priority decision; a
+    // prompt carries its own text (EffectExecutor::asking — a card's prompt
+    // label, or the executor's name for one it asks itself).
+    if (is_priority) {
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                         " (" + std::string(toString(player)) + " — chain priority): " +
+                         std::to_string(actions.size()) + " legal actions");
+    } else {
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                         " (" + std::string(toString(player)) + "): " +
+                         (asked.empty() ? std::string("a choice") : asked) + " [" +
+                         std::to_string(actions.size()) + " options]");
+    }
     RIFT_TRACE(events_, "CHOSE: [" + std::string(toString(player)) + "] " +
                      std::string(toString(chosen.type)));
     if (on_decision) {
@@ -4472,6 +4494,13 @@ void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_ty
     for (auto& bf : state_.battlefields) {
         // "Your opponents' [Hidden] cards can't be revealed here."
         if (bf.opp_hidden_unrevealable[playerIndex(player)]) continue;
+        // A facedown card belongs to the battlefield's controller (CR 107.3,
+        // 811): once that player no longer controls it the card is on its
+        // way to the trash (the next cleanup, CR 107.3.d / 323.6.a) and is
+        // not played from there. In a game the cleanup that takes control
+        // away removes the card at once; this is the same rule for a state
+        // reached any other way (plans/09 9.PP3 d).
+        if (!bf.controller.has_value() || *bf.controller != player) continue;
         for (auto card_id : bf.facedown) {
             if (!state_.objectExists(card_id)) continue;
             auto& card = state_.getObject(card_id);
@@ -6589,7 +6618,15 @@ void GameEngine::updateBattlefieldControl() {
             }
         }
 
-        // Remove facedown cards that belong to a player who doesn't control this BF (CR 323.7.5)
+        // Remove facedown cards that belong to a player who doesn't control
+        // this battlefield: "Remove all Hidden cards from all Battlefields
+        // that are not controlled by the same player and place them in their
+        // owner's Trash." (CR 323.6.a; CR 107.3.d). EVERY hidden card, with no
+        // split by card type — a hidden unit or gear goes to the trash like a
+        // hidden spell.
+        // (Pinned by PerfEngineHiddenHourglass.NotPlayed_TheFacedownCardGoesToItsOwnersTrash;
+        // a card that WAS played from facedown is a permanent on the board
+        // and is recalled instead, CR 149.3 / 323.6 — recallMisplacedObjects.)
         std::vector<GameObjectId> to_remove;
         for (auto card_id : bf.facedown) {
             if (!state_.objectExists(card_id)) continue;

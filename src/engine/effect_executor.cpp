@@ -288,7 +288,8 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
                                      " would die — decide what replaces this death first";
                     options.push_back(std::move(o));
                 }
-                const Intent chosen = agent_query_(chooser, options);
+                const Intent chosen = ask(chooser, options,
+                    "which death is replaced first (CR 373)");
                 if (!chosen.chosen_objects.empty() &&
                     std::find(replaceable.begin(), replaceable.end(),
                               chosen.chosen_objects.front()) != replaceable.end())
@@ -1301,7 +1302,9 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                                  candidates[i].label;
                 options.push_back(std::move(o));
             }
-            const int chosen = agent_query_(controller, options).chosen_value.value_or(0);
+            const int chosen = ask(controller, options,
+                state_.getObject(unit_id).name + " would die — which replacement applies first (CR 372)")
+                .chosen_value.value_or(0);
             if (chosen >= 0 && chosen < static_cast<int>(candidates.size()))
                 pick = static_cast<size_t>(chosen);
         }
@@ -1485,7 +1488,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
                 choice.chosen_objects = {card_id};
                 choices.push_back(choice);
             }
-            auto chosen = agent_query_(player, choices);
+            auto chosen = ask(player, choices, "discard a card");
             if (!chosen.chosen_objects.empty()) {
                 to_discard = chosen.chosen_objects[0];
             }
@@ -1758,7 +1761,7 @@ bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
     Intent yes = no;
     yes.chosen_value = 1;
     yes.choice_label = "Yes — " + label;
-    return agent_query_(player, {no, yes}).chosen_value.value_or(0) == 1;
+    return ask(player, {no, yes}, label).chosen_value.value_or(0) == 1;
 }
 
 GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
@@ -1774,7 +1777,7 @@ GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
         i.chosen_objects = {id};
         options.push_back(std::move(i));
     }
-    const Intent chosen = agent_query_(player, options);
+    const Intent chosen = ask(player, options, "choose one");
     if (!chosen.chosen_objects.empty() &&
         std::find(objects.begin(), objects.end(), chosen.chosen_objects.front()) != objects.end())
         return chosen.chosen_objects.front();
@@ -1799,7 +1802,7 @@ LocationId EffectExecutor::chooseLocationNow(PlayerId player,
             : " battlefield #" + std::to_string(std::get<BattlefieldLocation>(loc).id));
         options.push_back(std::move(o));
     }
-    const int pick = agent_query_(player, options).chosen_value.value_or(0);
+    const int pick = ask(player, options, label).chosen_value.value_or(0);
     if (pick < 0 || pick >= static_cast<int>(locations.size())) return locations.front();
     return locations[static_cast<size_t>(pick)];
 }
@@ -2170,7 +2173,8 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
         keep.choice_label = "Void Hatchling: leave the top rune of your Rune Deck";
         recyc.choice_label = "Void Hatchling: recycle the top rune of your Rune Deck";
-        const auto chosen = agent_query_(player, {keep, recyc});
+        const auto chosen = ask(player, {keep, recyc},
+            "Void Hatchling: look at the top rune of your Rune Deck");
         if (chosen.chosen_value.value_or(0) == 1) {
             ps.rune_deck.pop_back();
             recycleCards(player, {top});
@@ -2192,7 +2196,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
     keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
     recyc.choice_label = "Void Hatchling: recycle the top card of your Main Deck";
-    auto chosen = agent_query_(player, {keep, recyc});
+    auto chosen = ask(player, {keep, recyc}, "Void Hatchling: look at the top card of your Main Deck");
     if (chosen.chosen_value.value_or(0) == 1) {
         deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));
         recycleCards(player, {top});
@@ -2306,7 +2310,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
             keep_choice.choice_label = "Keep it";
             choices.push_back(keep_choice);
 
-            auto chosen = agent_query_(player, choices);
+            auto chosen = ask(player, choices, "Predict: recycle the top card or keep it");
             if (!chosen.chosen_objects.empty()) {
                 // Recycle: put on bottom
                 deck::putOnBottom(state_, player, card_id, deck::Place::Held, looker);
@@ -2331,7 +2335,7 @@ void EffectExecutor::predict(PlayerId player, int count) {
                 c.choice_label = "Predict: put on top";
                 choices.push_back(std::move(c));
             }
-            auto chosen = agent_query_(player, choices);
+            auto chosen = ask(player, choices, "Predict: which card goes on top");
             GameObjectId top = kept.front();
             if (!chosen.chosen_objects.empty() &&
                 std::find(kept.begin(), kept.end(), chosen.chosen_objects.front()) != kept.end())
@@ -2412,7 +2416,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
             skip_it.choice_label = "Leave it";
             choices.push_back(skip_it);
 
-            auto chosen = agent_query_(player, choices);
+            auto chosen = ask(player, choices, "reveal: take a card or leave it");
             if (!chosen.chosen_objects.empty()) {
                 ps.hand.push_back(card_id);
                 obj.zone = ZoneType::Hand;

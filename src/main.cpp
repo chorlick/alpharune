@@ -382,6 +382,12 @@ int main(int argc, char* argv[]) {
          "Number of games (>= 1). > 1 runs via BatchRunner: no human seats, no web UI.")
         ("threads,t", po::value<int>()->default_value(1),
          "Parallel workers for --games > 1 (0 = hardware concurrency).")
+        ("hot-seat", po::bool_switch()->default_value(false),
+            "Two human seats on ONE screen: every browser gets the same stream and\n"
+            "shows the hand of whoever is deciding (the behaviour before seats).\n"
+            "Without it, two human seats are seat-bound: each browser opens the\n"
+            "page with ?seat=P1 or ?seat=P2 and sees only its own hand and log;\n"
+            "a browser with no seat is a spectator.")
         ("show-hand", po::bool_switch()->default_value(false),
          "Name facedown cards in replay renders, and show every hand in the "
          "web UI even with god mode off (debug aid).")
@@ -428,6 +434,7 @@ int main(int argc, char* argv[]) {
     int  num_games     = vm["games"].as<int>();
     int  num_threads   = vm["threads"].as<int>();
     bool show_hand     = vm["show-hand"].as<bool>();
+    const bool hot_seat = vm["hot-seat"].as<bool>();
 
     AgentSpec spec1, spec2;
     try {
@@ -764,6 +771,9 @@ int main(int argc, char* argv[]) {
         server_config.p1_human         = p1_human_ptr;
         server_config.p2_human         = p2_human_ptr;
         server_config.spectator        = !any_human;
+        // Two human seats: each client is bound to a seat (or is a
+        // spectator) unless they share one screen. One human seat: as ever.
+        server_config.seat_bound       = p1_human && p2_human && !hot_seat;
         server_config.version_tag      = kVersionTag;
         server_config.build_date       = kBuildDate;
         server_config.seed             = game_seed;

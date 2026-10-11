@@ -108,6 +108,28 @@ public:
     /// Set agent query callback for effects that require player choice (discard).
     using AgentChoiceQuery = std::function<Intent(PlayerId, const std::vector<Intent>&)>;
     void setAgentQuery(AgentChoiceQuery query) { agent_query_ = std::move(query); }
+    /// What the prompt being asked right now is about, in words ("Zhonya's
+    /// Hourglass would die — which replacement applies", a card's own prompt
+    /// label): the engine heads the decision's trace line with it instead of
+    /// with the phase the game happens to be in (plans/09 9.PP1). Empty when
+    /// nothing is being asked through the executor.
+    const std::string& asking() const { return asking_; }
+    /// Names the prompt for as long as it lives. The executor's own prompts
+    /// use it through ask(); the engine and the chain manager use it around
+    /// a card's pending choice (PendingChoice::label).
+    class Asking {
+    public:
+        Asking(const EffectExecutor& executor, std::string what)
+            : executor_(executor), before_(std::move(executor.asking_)) {
+            executor_.asking_ = std::move(what);
+        }
+        ~Asking() { executor_.asking_ = std::move(before_); }
+        Asking(const Asking&) = delete;
+        Asking& operator=(const Asking&) = delete;
+    private:
+        const EffectExecutor& executor_;
+        std::string before_;
+    };
 
     /// Ask `player` to choose one of `objects` right now, for an effect that
     /// is not resolving from the chain and so cannot suspend (an Equip
@@ -616,6 +638,16 @@ private:
     const CardRegistry* card_registry_ = nullptr;  // optional; needed for playIgnoringCost onPlay dispatch
     std::mt19937_64* rng_ = nullptr;
     AgentChoiceQuery agent_query_;
+    mutable std::string asking_;
+    /// Ask `player` through the engine, naming the prompt (see asking()).
+    /// The "ASK_PROMPT:" line is what the play server shows above the options
+    /// (it titles a decision from the last "*_PROMPT:" trace line; a card's
+    /// own prompt helpers write MAY_PROMPT / MODE_PROMPT / TGT_PROMPT).
+    Intent ask(PlayerId player, const std::vector<Intent>& options, std::string what) const {
+        RIFT_TRACE(events_, "ASK_PROMPT: " + what);
+        const Asking named(*this, std::move(what));
+        return agent_query_(player, options);
+    }
     PendingChoice pending_;
     std::optional<Intent> last_applied_choice_;
     // Scratch result of the createToken call in progress / just finished; not

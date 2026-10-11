@@ -200,8 +200,9 @@ struct PlayServer::Impl {
     // "finished"); the watcher broadcasts when this changes.
     std::string last_key;
     // The board part of the most recent frame built from GameState. Sent
-    // again, marked engine_busy, while GameState may not be read.
-    json last_snapshot;
+    // again, marked engine_busy, while GameState may not be read. One per
+    // audience (see Audience): only [Shared] is used unless seat-bound.
+    json last_snapshot[4];
 
     StateEditor editor;
 
@@ -255,7 +256,23 @@ struct PlayServer::Impl {
     Park parkedLocked();
     static std::string keyOf(const Park& park);
     RenderVisibility visibilityFor(const Park& park) const;
-    json buildSnapshotLocked(const Park& park);
+    json buildSnapshotLocked(const Park& park, const RenderVisibility& vis);
+
+    /// Who a frame or a log line is for. Shared: every client gets the same
+    /// (the server is not seat-bound). Otherwise one per kind of client.
+    enum Audience { Shared = 0, SeatP1 = 1, SeatP2 = 2, Spectators = 3 };
+    static Audience audienceOf(PlayerId seat) {
+        return seat == PlayerId::Player1 ? SeatP1
+             : seat == PlayerId::Player2 ? SeatP2 : Spectators;
+    }
+    bool seatBound() const { return parent.config_.seat_bound; }
+    /// Frames differ per seat only while hidden information is withheld.
+    bool perSeatViews() const { return seatBound() && !parent.config_.reveal_hidden; }
+    json buildFrameLocked(const Park& park, bool can_read, Audience audience);
+    bool hasClients(Audience audience);
+    /// True if a connected client other than `asking` holds `seat`.
+    bool seatTaken(PlayerId seat, const WsSession* asking);
+    void sendTo(Audience audience, const std::string& text);
     void broadcastLocked(bool on_engine_thread);
     void broadcast(bool on_engine_thread = false);
     void clearPrompt();
@@ -286,6 +303,10 @@ public:
                 self->onAccept();
             });
     }
+
+    /// The seat this client holds (PlayerId::None: none — a spectator when
+    /// the server is seat-bound). Read from the engine and watcher threads.
+    PlayerId seat() const { return static_cast<PlayerId>(seat_.load()); }
 
     /// Thread-safe send. Posts onto the ws's executor so that the
     /// write queue and async_write call run on the IO thread.
@@ -350,6 +371,7 @@ private:
         }
         auto type = strField(m, "type");
         if      (type == "choose")             handleChoose(m);
+        else if (type == "seat")               handleSeat(m);
         else if (type == "edit_move")          handleEditMove(m);
         else if (type == "edit_object")        handleEditObject(m);
         else if (type == "edit_player")        handleEditPlayer(m);
@@ -367,6 +389,37 @@ private:
         }
     }
 
+    /// `{"type":"seat","player":"P1"|"P2"|""}`: take a seat (or give it up
+    /// with ""). Only on a seat-bound server; only a human seat; only a seat
+    /// no other connected client holds. The seat is released when this
+    /// client disconnects.
+    void handleSeat(const json& m) {
+        const std::string player_str = strField(m, "player");
+        auto refuse = [&](const std::string& why) {
+            send(json{{"type", "seat"}, {"ok", false}, {"player", playerToStr(seat())},
+                      {"msg", why}}.dump());
+        };
+        if (!impl_.seatBound()) {
+            refuse("this server is not seat-bound: every client plays the human seat");
+            return;
+        }
+        PlayerId want = PlayerId::None;
+        if (!player_str.empty()) {
+            want = strToPlayer(player_str);
+            HumanAgent* agent = want == PlayerId::Player1 ? server_.config_p1()
+                              : want == PlayerId::Player2 ? server_.config_p2() : nullptr;
+            if (!agent) { refuse("'" + player_str + "' is not a human seat"); return; }
+            if (impl_.seatTaken(want, this)) {
+                refuse("seat " + player_str + " is taken by another client");
+                return;
+            }
+        }
+        seat_.store(static_cast<uint8_t>(want));
+        send(json{{"type", "seat"}, {"ok", true}, {"player", playerToStr(want)}}.dump());
+        // Its view changed: send it (and everyone) the current frame.
+        impl_.broadcast();
+    }
+
     /// A `choose` answers exactly the decision it names. Anything else —
     /// a click that arrives after the engine moved on, a second click, an
     /// index that is not on offer — is refused, never guessed at.
@@ -378,6 +431,14 @@ private:
         if (pid == PlayerId::Player2) agent = server_.config_p2();
         if (!agent) {
             sendErr("no human agent for '" + player_str + "'");
+            return;
+        }
+        // Seat-bound: only the client seated as that player answers for it.
+        if (impl_.seatBound() && seat() != pid) {
+            sendErr(seat() == PlayerId::None
+                ? "a spectator cannot answer for " + player_str + " (take the seat first)"
+                : "this client is seated as " + playerToStr(seat()) +
+                  " and cannot answer for " + player_str);
             return;
         }
         auto idx = intField(m, "index");
@@ -549,6 +610,7 @@ private:
     }
 
     ws::stream<tcp::socket>      ws_;
+    std::atomic<uint8_t>         seat_{static_cast<uint8_t>(PlayerId::None)};
     PlayServer::Impl&            impl_;
     PlayServer&                  server_;
     beast::flat_buffer           read_buf_;
@@ -883,10 +945,9 @@ RenderVisibility PlayServer::Impl::visibilityFor(const Park& park) const {
     return v;
 }
 
-json PlayServer::Impl::buildSnapshotLocked(const Park& park) {
+json PlayServer::Impl::buildSnapshotLocked(const Park& /*park*/, const RenderVisibility& vis) {
     const auto& st = parent.engine_.state();
     const auto& cfg = parent.config_;
-    const RenderVisibility vis = visibilityFor(park);
 
     json snap = json::object();
     snap["render_text"] = parent.renderer_.render(st, vis);
@@ -928,21 +989,26 @@ json PlayServer::Impl::buildSnapshotLocked(const Park& park) {
     return snap;
 }
 
-void PlayServer::Impl::broadcastLocked(bool on_engine_thread) {
-    const Park park = parkedLocked();
-    // GameState may be read on the engine thread itself, or while the
-    // engine is parked (and this lock keeps it parked). Otherwise clients
-    // get the last snapshot again.
-    const bool can_read = on_engine_thread || park.kind != Park::Kind::Busy;
+json PlayServer::Impl::buildFrameLocked(const Park& park, bool can_read, Audience audience) {
     const bool at_decision = park.kind == Park::Kind::Human ||
                              park.kind == Park::Kind::Spectator;
+    // What this audience may see. Shared: as the server always did. A seat:
+    // its own hand. Spectators: neither hand.
+    RenderVisibility vis = visibilityFor(park);
+    if (audience == SeatP1) vis = RenderVisibility{true, false};
+    if (audience == SeatP2) vis = RenderVisibility{false, true};
+    if (audience == Spectators) vis = RenderVisibility{false, false};
+    // The options (their labels name cards in a hand) and the prompt belong
+    // to the seat that is being asked.
+    const bool asked_here = audience == Shared ||
+        (park.kind == Park::Kind::Human && audience == audienceOf(park.player));
 
     json frame;
     if (can_read) {
-        frame = buildSnapshotLocked(park);
-        last_snapshot = frame;
-    } else if (!last_snapshot.is_null()) {
-        frame = last_snapshot;
+        frame = buildSnapshotLocked(park, vis);
+        last_snapshot[audience] = frame;
+    } else if (!last_snapshot[audience].is_null()) {
+        frame = last_snapshot[audience];
     } else {
         // Nothing snapshotted yet (client connected before the first decision).
         json empty_zone = {
@@ -965,9 +1031,13 @@ void PlayServer::Impl::broadcastLocked(bool on_engine_thread) {
     frame["player"] = playerToStr(park.player);
     frame["god_mode"] = parent.config_.god_mode_enabled;
     frame["engine_busy"] = park.kind == Park::Kind::Busy;
+    // Only seat-bound frames say whose they are: a Shared frame is exactly
+    // what it was before sessions had seats.
+    if (audience != Shared)
+        frame["your_seat"] = audience == SeatP1 ? "P1" : audience == SeatP2 ? "P2" : "";
 
     std::vector<Intent> legal;
-    if (park.kind == Park::Kind::Human) legal = park.agent->pendingLegal();
+    if (park.kind == Park::Kind::Human && asked_here) legal = park.agent->pendingLegal();
 
     // Spectator mode: the "decision" is the one an AI seat just made,
     // held at the gate until the viewer steps.
@@ -990,13 +1060,35 @@ void PlayServer::Impl::broadcastLocked(bool on_engine_thread) {
                                parent.engine_.state(), legal)
         : json::array();
 
-    if (at_decision) {
+    if (at_decision && asked_here) {
         std::lock_guard<std::mutex> lock(prompt_mu);
         if (!last_prompt.empty()) frame["prompt"] = last_prompt;
     }
+    return frame;
+}
 
+void PlayServer::Impl::broadcastLocked(bool on_engine_thread) {
+    const Park park = parkedLocked();
+    // GameState may be read on the engine thread itself, or while the
+    // engine is parked (and this lock keeps it parked). Otherwise clients
+    // get the last snapshot again.
+    const bool can_read = on_engine_thread || park.kind != Park::Kind::Busy;
+
+    if (!perSeatViews()) {
+        const json frame = buildFrameLocked(park, can_read, Shared);
+        last_key = keyOf(park);
+        sendAll(frame.dump());
+        return;
+    }
+    // Seat-bound: each seat its own view, spectators theirs. A view nobody
+    // is connected for is still built while the state can be read, so a
+    // client that connects while the engine is busy has a board to show.
+    for (Audience audience : {SeatP1, SeatP2, Spectators}) {
+        if (!can_read && !hasClients(audience)) continue;
+        const json frame = buildFrameLocked(park, can_read, audience);
+        if (hasClients(audience)) sendTo(audience, frame.dump());
+    }
     last_key = keyOf(park);
-    sendAll(frame.dump());
 }
 
 void PlayServer::Impl::broadcast(bool on_engine_thread) {
@@ -1019,6 +1111,38 @@ void PlayServer::Impl::sendAll(const std::string& text) {
         }
     }
     for (auto& s : live) s->send(text);
+}
+
+void PlayServer::Impl::sendTo(Audience audience, const std::string& text) {
+    std::vector<std::shared_ptr<WsSession>> live;
+    {
+        std::lock_guard<std::mutex> lock(sessions_mu);
+        for (auto it = sessions.begin(); it != sessions.end();) {
+            if (auto s = it->lock()) {
+                if (audienceOf(s->seat()) == audience) live.push_back(std::move(s));
+                ++it;
+            } else {
+                it = sessions.erase(it);
+            }
+        }
+    }
+    for (auto& s : live) s->send(text);
+}
+
+bool PlayServer::Impl::hasClients(Audience audience) {
+    std::lock_guard<std::mutex> lock(sessions_mu);
+    for (auto& weak : sessions)
+        if (auto s = weak.lock())
+            if (audienceOf(s->seat()) == audience) return true;
+    return false;
+}
+
+bool PlayServer::Impl::seatTaken(PlayerId seat, const WsSession* asking) {
+    std::lock_guard<std::mutex> lock(sessions_mu);
+    for (auto& weak : sessions)
+        if (auto s = weak.lock())
+            if (s.get() != asking && s->seat() == seat) return true;
+    return false;
 }
 
 void PlayServer::Impl::spectatorStep() {
@@ -1292,17 +1416,26 @@ void PlayServer::broadcastLog(const std::string& level, const std::string& messa
     // at is tagged with the players who may read it (LogEvent::audience).
     // When frames withhold hidden information a line is sent only if every
     // human seat may read it: all clients get the same stream.
+    json frame = {
+        {"type", "log"},
+        {"level", level},
+        {"msg", message},
+    };
+    // Seat-bound: a line goes to each seat that may read it, and to the
+    // spectators when both players may (plans/09 9.PP2).
+    if (config_.seat_bound && !config_.reveal_hidden) {
+        const std::string text = frame.dump();
+        if (audience.includes(PlayerId::Player1)) impl_->sendTo(Impl::SeatP1, text);
+        if (audience.includes(PlayerId::Player2)) impl_->sendTo(Impl::SeatP2, text);
+        if (audience.isBoth()) impl_->sendTo(Impl::Spectators, text);
+        return;
+    }
     if (!config_.reveal_hidden) {
         if (config_.p1_human && !audience.includes(PlayerId::Player1)) return;
         if (config_.p2_human && !audience.includes(PlayerId::Player2)) return;
         if (!config_.p1_human && !config_.p2_human && !audience.isBoth()) return;
     }
 
-    json frame = {
-        {"type", "log"},
-        {"level", level},
-        {"msg", message},
-    };
     impl_->sendAll(frame.dump());
 }
 

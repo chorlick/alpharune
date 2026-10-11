@@ -653,6 +653,370 @@ TEST(PlayServerProtocol, TerminalFrameIsDeliveredBeforeTheServerStops) {
 
 // ─── 4.7 — a prompt heads the decision it was asked for, and only that one ───
 
+// ─── plans/09 9.PP2: seat-bound sessions ────────────────────────────────────
+// Two human seats, hidden information withheld, PlayServerConfig::seat_bound.
+// A client takes a seat or is a spectator; frames and log lines are per seat;
+// only the seat being asked may answer.
+
+namespace {
+
+struct SeatedGame {
+    EventBus events;
+    GameEngine engine{cards().db, events, cards().registry};
+    StateRenderer renderer{cards().db};
+    HumanAgent human1{PlayerId::Player1};
+    HumanAgent human2{PlayerId::Player2};
+    std::unique_ptr<PlayServer> server;
+    std::thread game_thread;
+    std::mutex log_mu;
+    std::vector<std::pair<std::string, LogAudience>> logged;   // every engine line, with who may read it
+
+    explicit SeatedGame(bool seat_bound = true) {
+        renderer.show_hand = true;
+        PlayServerConfig cfg;
+        cfg.port = 0;
+        cfg.god_mode_enabled = false;
+        cfg.reveal_hidden = false;
+        cfg.p1_human = &human1;
+        cfg.p2_human = &human2;
+        cfg.seat_bound = seat_bound;
+        cfg.on_shutdown_signal = [this] { human1.abort(); human2.abort(); };
+        server = std::make_unique<PlayServer>(engine, renderer, cards().db, std::move(cfg));
+        server->start();
+        events.on_log.connect([this](const LogEvent& e) {
+            {
+                std::lock_guard<std::mutex> lock(log_mu);
+                logged.emplace_back(e.message, e.audience);
+            }
+            server->broadcastLog(e.level == LogLevel::Trace ? "TRC" : "DBG", e.message,
+                                 e.audience);
+        });
+        engine.on_decision = [this](const GameState&, const std::vector<Intent>&, const Intent&) {
+            server->notifyDecisionMade();
+        };
+        game_thread = std::thread([this] {
+            engine.runGame(cards().deck1, cards().deck2, human1, human2, 20261010);
+        });
+    }
+    uint16_t port() const { return server->port(); }
+    /// True if some logged line with this text may be read by `who` (both
+    /// players for PlayerId::None).
+    bool mayRead(const std::string& text, PlayerId who) {
+        std::lock_guard<std::mutex> lock(log_mu);
+        for (const auto& [msg, audience] : logged)
+            if (msg == text && (who == PlayerId::None ? audience.isBoth() : audience.includes(who)))
+                return true;
+        return false;
+    }
+    /// True if every logged line with this text is for `who` alone.
+    bool onlyFor(const std::string& text, PlayerId who) {
+        std::lock_guard<std::mutex> lock(log_mu);
+        bool any = false;
+        for (const auto& [msg, audience] : logged) {
+            if (msg != text) continue;
+            any = true;
+            if (!audience.includes(who) || audience.isBoth()) return false;
+        }
+        return any;
+    }
+    ~SeatedGame() {
+        server->requestShutdown();
+        if (game_thread.joinable()) game_thread.join();
+        server->stop();
+    }
+};
+
+/// One connected client of a SeatedGame and what it has been sent.
+struct SeatClient {
+    Client c;
+    std::string seat;                       // "P1", "P2" or "" (spectator)
+    std::vector<std::string> log;
+    json last_frame;
+    uint64_t answered = 0;
+
+    /// Connects and, for a seat, takes it. Returns the server's reply (null
+    /// for a spectator).
+    json join(uint16_t port, const std::string& want) {
+        EXPECT_TRUE(c.connect(port));
+        if (want.empty()) return json();
+        c.send({{"type", "seat"}, {"player", want}});
+        json reply = c.readUntil([](const json& m) { return m["type"] == "seat"; });
+        if (!reply.is_null() && reply["ok"].get<bool>()) seat = want;
+        return reply;
+    }
+    /// Reads what has arrived; answers its own seat's decision with option 0
+    /// when `play`. Returns true if anything was read.
+    bool pump(bool play, std::chrono::milliseconds wait = 30ms) {
+        bool any = false;
+        while (auto m = c.read(wait)) {
+            any = true;
+            const std::string type = (*m)["type"].get<std::string>();
+            if (type == "log") log.push_back((*m)["msg"].get<std::string>());
+            if (type != "decision" && type != "state") continue;
+            last_frame = *m;
+            if (!play || type != "decision" || seat.empty()) continue;
+            if ((*m)["player"] != seat || (*m)["legal"].empty()) continue;
+            const uint64_t id = (*m)["decision_id"].get<uint64_t>();
+            if (id == answered) continue;
+            answered = id;
+            c.send({{"type", "choose"}, {"player", seat}, {"index", 0}, {"decision_id", id}});
+        }
+        return any;
+    }
+};
+
+}  // namespace
+
+TEST(PlayServerSeats, EachSeatGetsItsOwnPrivateLinesAndASpectatorNeither) {
+    SeatedGame game;
+    SeatClient p1, p2, watcher;
+    ASSERT_TRUE(p1.join(game.port(), "P1")["ok"].get<bool>());
+    ASSERT_TRUE(p2.join(game.port(), "P2")["ok"].get<bool>());
+    watcher.join(game.port(), "");
+
+    // Play (option 0 for whoever is asked) until each seat has been sent a
+    // line that is for it alone — the engine's draws ("DREW: <card>").
+    auto hasPrivate = [&](SeatClient& who, PlayerId seat) {
+        for (const auto& line : who.log) if (game.onlyFor(line, seat)) return true;
+        return false;
+    };
+    const auto deadline = std::chrono::steady_clock::now() + 20s;
+    while (std::chrono::steady_clock::now() < deadline &&
+           !(hasPrivate(p1, PlayerId::Player1) && hasPrivate(p2, PlayerId::Player2))) {
+        p1.pump(true);
+        p2.pump(true);
+        watcher.pump(false);
+    }
+    ASSERT_TRUE(hasPrivate(p1, PlayerId::Player1)) << "P1 was sent no private line";
+    ASSERT_TRUE(hasPrivate(p2, PlayerId::Player2)) << "P2 was sent no private line";
+
+    // A Void Hatchling look: the line EffectExecutor::lookBeforeReveal writes
+    // for the looker (RIFT_TRACE_PRIVATE), handed to the server as the
+    // engine's log hook would.
+    const std::string peek = "  PEEKED: Immortal Phoenix (id=7) on top of the Main Deck [Void Hatchling]";
+    game.server->broadcastLog("TRC", peek, LogAudience::only(PlayerId::Player1));
+    game.server->broadcastLog("TRC", "seat-marker: public", LogAudience::both());
+    game.server->broadcastLog("TRC", "seat-marker: nobody", LogAudience::neither());
+    for (int i = 0; i < 10; ++i) { p1.pump(false, 50ms); p2.pump(false, 50ms); watcher.pump(false, 50ms); }
+    auto got = [](const SeatClient& who, const std::string& text) {
+        return std::find(who.log.begin(), who.log.end(), text) != who.log.end();
+    };
+    EXPECT_TRUE(got(p1, peek)) << "the looker reads what they looked at";
+    EXPECT_FALSE(got(p2, peek));
+    EXPECT_FALSE(got(watcher, peek));
+    for (SeatClient* who : {&p1, &p2, &watcher}) {
+        EXPECT_TRUE(got(*who, "seat-marker: public"));
+        EXPECT_FALSE(got(*who, "seat-marker: nobody"));
+    }
+
+    // Everything each client was sent, it may read; and no client was sent a
+    // line that is for the other seat alone.
+    auto check = [&](SeatClient& who, PlayerId seat, PlayerId other) {
+        int draws = 0;
+        for (const auto& line : who.log) {
+            if (line == peek || line.rfind("seat-marker", 0) == 0) continue;
+            EXPECT_TRUE(game.mayRead(line, seat)) << who.seat << " was sent: " << line;
+            if (other != PlayerId::None) {
+                EXPECT_FALSE(game.onlyFor(line, other)) << who.seat << " was sent: " << line;
+            }
+            if (line.find("DREW: ") != std::string::npos) ++draws;
+        }
+        return draws;
+    };
+    EXPECT_GT(check(p1, PlayerId::Player1, PlayerId::Player2), 0) << "P1's own draws";
+    EXPECT_GT(check(p2, PlayerId::Player2, PlayerId::Player1), 0) << "P2's own draws";
+    EXPECT_EQ(check(watcher, PlayerId::None, PlayerId::None), 0) << "a spectator sees no draw by name";
+    for (const auto& line : watcher.log) {
+        EXPECT_FALSE(game.onlyFor(line, PlayerId::Player1)) << line;
+        EXPECT_FALSE(game.onlyFor(line, PlayerId::Player2)) << line;
+    }
+    EXPECT_FALSE(watcher.log.empty()) << "public lines do reach a spectator";
+}
+
+TEST(PlayServerSeats, FramesAreBuiltPerSeat) {
+    SeatedGame game;
+    SeatClient p1, p2, watcher;
+    ASSERT_TRUE(p1.join(game.port(), "P1")["ok"].get<bool>());
+    ASSERT_TRUE(p2.join(game.port(), "P2")["ok"].get<bool>());
+    watcher.join(game.port(), "");
+    // Until both players hold cards and someone is being asked.
+    auto ready = [](const json& f) {
+        return !f.is_null() && f["type"] == "decision" &&
+               f["zones"]["P1"]["hand_count"].get<int>() > 0 &&
+               f["zones"]["P2"]["hand_count"].get<int>() > 0;
+    };
+    const auto deadline = std::chrono::steady_clock::now() + 20s;
+    auto answer = [](SeatClient& who) {
+        const json& f = who.last_frame;
+        if (f.is_null() || f["type"] != "decision" || f["player"] != who.seat || f["legal"].empty())
+            return;
+        const uint64_t id = f["decision_id"].get<uint64_t>();
+        if (id == who.answered) return;
+        who.answered = id;
+        who.c.send({{"type", "choose"}, {"player", who.seat}, {"index", 0}, {"decision_id", id}});
+    };
+    while (std::chrono::steady_clock::now() < deadline) {
+        // Look before answering: the three frames must be of one decision.
+        for (int i = 0; i < 3; ++i) { p1.pump(false); p2.pump(false); watcher.pump(false); }
+        if (ready(p1.last_frame) && ready(p2.last_frame) && ready(watcher.last_frame) &&
+            p1.last_frame["decision_id"] == p2.last_frame["decision_id"] &&
+            p1.last_frame["decision_id"] == watcher.last_frame["decision_id"] &&
+            p1.last_frame["decision_id"].get<uint64_t>() != p1.answered &&
+            p1.last_frame["decision_id"].get<uint64_t>() != p2.answered)
+            break;
+        answer(p1);
+        answer(p2);
+    }
+    ASSERT_TRUE(ready(p1.last_frame) && ready(p2.last_frame) && ready(watcher.last_frame));
+    const json &f1 = p1.last_frame, &f2 = p2.last_frame, &fw = watcher.last_frame;
+    EXPECT_EQ(f1["your_seat"], "P1");
+    EXPECT_EQ(f2["your_seat"], "P2");
+    EXPECT_EQ(fw["your_seat"], "");
+    auto handShown = [](const json& f, const char* zone) {
+        return static_cast<int>(f["zones"][zone]["hand"].size()) ==
+               f["zones"][zone]["hand_count"].get<int>();
+    };
+    EXPECT_TRUE(handShown(f1, "P1"));
+    EXPECT_TRUE(f1["zones"]["P2"]["hand"].empty());
+    EXPECT_TRUE(handShown(f2, "P2"));
+    EXPECT_TRUE(f2["zones"]["P1"]["hand"].empty());
+    EXPECT_TRUE(fw["zones"]["P1"]["hand"].empty());
+    EXPECT_TRUE(fw["zones"]["P2"]["hand"].empty());
+    for (const json* f : {&f1, &f2, &fw})
+        for (const char* zone : {"P1", "P2"}) {
+            EXPECT_TRUE((*f)["zones"][zone]["main_deck"].empty());
+            EXPECT_TRUE((*f)["zones"][zone]["rune_deck"].empty());
+        }
+    // The options go to the seat that is asked, and to nobody else.
+    const std::string asked = f1["player"].get<std::string>();
+    ASSERT_TRUE(asked == "P1" || asked == "P2");
+    const json& mine = asked == "P1" ? f1 : f2;
+    const json& theirs = asked == "P1" ? f2 : f1;
+    EXPECT_FALSE(mine["legal"].empty());
+    EXPECT_TRUE(theirs["legal"].empty());
+    EXPECT_TRUE(fw["legal"].empty());
+    EXPECT_FALSE(theirs.contains("prompt"));
+    EXPECT_FALSE(fw.contains("prompt"));
+    // The text board follows the same rule.
+    auto hiddenHands = [](const json& f) {
+        const std::string board = f["render_text"].get<std::string>();
+        return countOf(board, "cards, hidden)") + countOf(board, "card, hidden)");
+    };
+    EXPECT_EQ(hiddenHands(f1), 1);
+    EXPECT_EQ(hiddenHands(f2), 1);
+    EXPECT_EQ(hiddenHands(fw), 2);
+}
+
+TEST(PlayServerSeats, OnlyTheSeatBeingAskedMayAnswerAndASeatIsHeldByOneClient) {
+    SeatedGame game;
+    SeatClient p1, p2, watcher, late;
+    ASSERT_TRUE(p1.join(game.port(), "P1")["ok"].get<bool>());
+    ASSERT_TRUE(p2.join(game.port(), "P2")["ok"].get<bool>());
+    watcher.join(game.port(), "");
+
+    // A taken seat cannot be taken again; a seat that does not exist, never.
+    json taken = late.join(game.port(), "P1");
+    ASSERT_FALSE(taken.is_null());
+    EXPECT_FALSE(taken["ok"].get<bool>());
+    EXPECT_NE(taken["msg"].get<std::string>().find("taken"), std::string::npos);
+    late.c.send({{"type", "seat"}, {"player", "P3"}});
+    json none = late.c.readUntil([](const json& m) { return m["type"] == "seat"; });
+    EXPECT_FALSE(none["ok"].get<bool>());
+
+    // The first decision: find who is asked.
+    const auto deadline = std::chrono::steady_clock::now() + 10s;
+    auto asked_frame = [&]() -> const json* {
+        for (SeatClient* who : {&p1, &p2})
+            if (!who->last_frame.is_null() && who->last_frame["type"] == "decision" &&
+                who->last_frame["player"] == who->seat && !who->last_frame["legal"].empty())
+                return &who->last_frame;
+        return nullptr;
+    };
+    while (std::chrono::steady_clock::now() < deadline && !asked_frame()) {
+        p1.pump(false); p2.pump(false); watcher.pump(false);
+    }
+    const json* f = asked_frame();
+    ASSERT_NE(f, nullptr);
+    const std::string asked = (*f)["player"].get<std::string>();
+    const uint64_t id = (*f)["decision_id"].get<uint64_t>();
+    SeatClient& right = asked == "P1" ? p1 : p2;
+    SeatClient& wrong = asked == "P1" ? p2 : p1;
+    const json choose = {{"type", "choose"}, {"player", asked}, {"index", 0}, {"decision_id", id}};
+
+    wrong.c.send(choose);
+    json refused = wrong.c.readUntil([](const json& m) { return m["type"] == "err"; });
+    EXPECT_NE(refused["msg"].get<std::string>().find("seated as " + wrong.seat), std::string::npos)
+        << refused.dump();
+    watcher.c.send(choose);
+    refused = watcher.c.readUntil([](const json& m) { return m["type"] == "err"; });
+    EXPECT_NE(refused["msg"].get<std::string>().find("spectator"), std::string::npos)
+        << refused.dump();
+    late.c.send(choose);
+    refused = late.c.readUntil([](const json& m) { return m["type"] == "err"; });
+    EXPECT_NE(refused["msg"].get<std::string>().find("spectator"), std::string::npos);
+    // Nothing was answered: the same decision is still pending ...
+    right.c.send({{"type", "request_state"}});
+    json still = right.c.readUntil([&](const json& m) {
+        return m["type"] == "decision" && m["player"] == asked;
+    });
+    EXPECT_EQ(still["decision_id"].get<uint64_t>(), id);
+    // ... and the seat that is asked answers it.
+    right.c.send(choose);
+    json next = right.c.readUntil([&](const json& m) {
+        return (m["type"] == "decision" || m["type"] == "state") &&
+               m["decision_id"].get<uint64_t>() != id;
+    });
+    EXPECT_FALSE(next.is_null());
+
+    // A seat is released when its client disconnects.
+    late.c.send({{"type", "seat"}, {"player", wrong.seat}});
+    json busy = late.c.readUntil([](const json& m) { return m["type"] == "seat"; });
+    EXPECT_FALSE(busy["ok"].get<bool>());
+}
+
+// Not seat-bound (one human seat, or two with --hot-seat): nothing changes.
+// A frame has no `your_seat`, a `seat` request is refused, and any client
+// answers — what the tests above this section have always exercised.
+TEST(PlayServerSeats, Pin_AServerThatIsNotSeatBoundBehavesAsBefore) {
+    LiveGame game([](PlayServerConfig& cfg) {
+        cfg.god_mode_enabled = false;
+        cfg.reveal_hidden = false;
+    });
+    Client c;
+    ASSERT_TRUE(c.connect(game.port()));
+    json f = c.nextDecision("P1");
+    ASSERT_FALSE(f.is_null());
+    EXPECT_FALSE(f.contains("your_seat"));
+    EXPECT_FALSE(f["legal"].empty());
+    c.send({{"type", "seat"}, {"player", "P1"}});
+    json reply = c.readUntil([](const json& m) { return m["type"] == "seat"; });
+    EXPECT_FALSE(reply["ok"].get<bool>());
+    // An unseated client answers, as ever.
+    const uint64_t id = f["decision_id"].get<uint64_t>();
+    c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", id}});
+    json next = c.nextDecision("P1", id);
+    EXPECT_FALSE(next.is_null());
+}
+
+// Two human seats on one screen (--hot-seat: not seat-bound): one stream,
+// the hand of whoever is deciding — the frames the server built before.
+TEST(PlayServerSeats, Pin_HotSeatSharesOneStream) {
+    SeatedGame game(/*seat_bound=*/false);
+    Client a, b;
+    ASSERT_TRUE(a.connect(game.port()));
+    ASSERT_TRUE(b.connect(game.port()));
+    a.send({{"type", "request_state"}});
+    auto decision = [](const json& m) { return m["type"] == "decision" && !m["legal"].empty(); };
+    json fa = a.readUntil(decision);
+    json fb = b.readUntil([&](const json& m) {
+        return decision(m) && m["decision_id"] == fa["decision_id"];
+    });
+    ASSERT_FALSE(fa.is_null());
+    ASSERT_FALSE(fb.is_null());
+    EXPECT_EQ(fa.dump(), fb.dump()) << "every client is sent the same frame";
+    EXPECT_FALSE(fa.contains("your_seat"));
+}
+
 TEST(PlayServerProtocol, PromptStaysWithItsDecision) {
     LiveGame game;
     Client c;

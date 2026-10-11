@@ -406,7 +406,12 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
     while (feed.childElementCount > 12) feed.lastChild.remove();
   }
 
+  // Seat-bound servers (two human seats): the page takes the seat named in
+  // its own URL (?seat=P1 or ?seat=P2). Without one it is a spectator.
+  const wantSeat = new URLSearchParams(location.search).get('seat');
   ws.onopen  = () => { $('conn').textContent = 'connected'; $('conn').classList.remove('bad');
+                       if (wantSeat === 'P1' || wantSeat === 'P2')
+                         ws.send(JSON.stringify({type:'seat', player: wantSeat}));
                        ws.send(JSON.stringify({type:'request_state'})); };
   ws.onclose = () => { $('conn').textContent = 'disconnected'; $('conn').classList.add('bad'); };
   ws.onerror = () => log('WebSocket error', 'err');
@@ -418,6 +423,10 @@ const CARD_IMAGES = /*__RIFTBOUND_CARD_IMAGES__*/;
     else if (m.type === 'edit_err') { log('edit err: ' + m.msg, 'err'); }
     else if (m.type === 'err')      { log('server: ' + m.msg, 'err'); }
     else if (m.type === 'log')      { logTrace(m.level, m.msg); }
+    else if (m.type === 'seat')     {
+      if (m.ok) { $('conn').textContent = 'connected as ' + (m.player === 'none' ? 'spectator' : m.player); }
+      else if (wantSeat) { log('seat: ' + m.msg, 'err'); }
+    }
   };
 
   function levelClass(level) {

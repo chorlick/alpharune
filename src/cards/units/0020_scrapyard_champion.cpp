@@ -21,7 +21,6 @@ public:
             [](CardContext& c) { c.executor.drawCards(c.controller, 2); });
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    bool requiresLegion() const override { return true; }
 private:
     const CardDef def_ = [] {
         CardDef d;

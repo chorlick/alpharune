@@ -42,18 +42,14 @@ public:
         return sets;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // The engine hands over only the targets that are still legal, which
-        // loses the slot a survivor was chosen for; read the slots as chosen.
-        const auto& chosen = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->targets : targets;
-        auto stillLegal = [&](GameObjectId id) {
-            return std::find(targets.begin(), targets.end(), id) != targets.end();
-        };
-        if (!chosen.empty() && stillLegal(chosen[0]) &&
-            ctx.state.getObject(chosen[0]).isAtBattlefield())
-            ctx.executor.dealDamage(chosen[0], 2, ctx.source);
-        if (chosen.size() >= 2 && chosen[1] != chosen[0] && stillLegal(chosen[1]))
-            ctx.executor.dealDamage(chosen[1], 2, ctx.source);
+        // Roles, not positions (Card::chosenTarget): slot 0 is the unit at a
+        // battlefield, slot 1 the other one; kInvalidId once no longer legal.
+        const GameObjectId first = chosenTarget(ctx, targets, 0);
+        const GameObjectId second = chosenTarget(ctx, targets, 1);
+        if (first != kInvalidId && ctx.state.getObject(first).isAtBattlefield())
+            ctx.executor.dealDamage(first, 2, ctx.source);
+        if (second != kInvalidId && second != first)
+            ctx.executor.dealDamage(second, 2, ctx.source);
     }
 private:
     const CardDef def_ = [] {

@@ -17,8 +17,6 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.drawCards(ctx.controller, 2);
     }
-    bool requiresLevel() const override { return true; }
-    int levelThreshold() const override { return 6; }
     // "[Level 6] This costs [2] less. [Level 11] This costs [4] less instead."
     // Level hooks are not consumed by the engine; implement the tiered cost
     // reduction inline via selfCostReduction (consulted by canAfford/payCardCost).

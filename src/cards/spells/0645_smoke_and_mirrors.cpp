@@ -35,6 +35,10 @@ public:
                     sets.push_back({a, b});
         return sets;
     }
+    // CR 811.1.d.4: played from facedown, the first unit is chosen at that
+    // battlefield; the second is "at a different location", which rules that
+    // battlefield out, so it is chosen freely.
+    bool hiddenTargetFreeOfBattlefield(int slot) const override { return slot == 1; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         auto sets = enumerateLegalTargetSets(state, controller);
         return sets.has_value() && !sets->empty();
@@ -42,18 +46,19 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         // The swap needs both chosen units to still be legal targets; the
         // draw does not depend on them.
-        if (targets.size() >= 2 && ctx.state.objectExists(targets[0]) &&
-            ctx.state.objectExists(targets[1])) {
-            auto& a = ctx.state.getObject(targets[0]);
-            auto& b = ctx.state.getObject(targets[1]);
+        const GameObjectId first = chosenTarget(ctx, targets, 0);
+        const GameObjectId second = chosenTarget(ctx, targets, 1);
+        if (first != kInvalidId && second != kInvalidId) {
+            auto& a = ctx.state.getObject(first);
+            auto& b = ctx.state.getObject(second);
             auto la = a.location;
             auto lb = b.location;
             // "If at least one of them has [Temporary]" — gate the move.
             bool has_temp = a.hasKeyword(Keyword::Temporary) ||
                             b.hasKeyword(Keyword::Temporary);
             if (has_temp && la != lb) {
-                moveToLocation(ctx.executor, targets[0], lb);
-                moveToLocation(ctx.executor, targets[1], la);
+                moveToLocation(ctx.executor, first, lb);
+                moveToLocation(ctx.executor, second, la);
                 ctx.events.logTrace("SMOKE AND MIRRORS: swapped two friendly units (Temporary gate met)");
             } else {
                 ctx.events.logTrace("SMOKE AND MIRRORS: no swap (Temporary gate not met / same loc)");

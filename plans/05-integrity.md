@@ -23,6 +23,7 @@
   - `:2681-2684` — "play me to an open battlefield" and variants.
   - `:1837` — `parseRepeatCost`.
   - `std::tolower(char)` at `:4515` / `:4703` is called on raw UTF-8 bytes (text contains `\xe2\x80\x99`); a negative argument is formally UB.
+  - sweep-flow: the two sites in flow functions are gone. `setupBattlefields` asks `BattlefieldCard::blocksMoveToBase()` / `blocksUnitPlay()` (Vilemaw's Lair 290, Rockfall Path 530); `generateMainPhaseActions` asks `Card::extraPlayLocations()` (Sneaky Deckhand 176, Sai Scout 174, Miss Fortune 193, Ocean Drake 902: open; Deadbloom Predator 161, Dauntless Vanguard 415: occupied enemy). The "play me to a battlefield" match had also given Blitzcrank 67, Mischievous Marai 562 and Shadow 752 a play-anywhere permission their text does not print (it is a trigger condition) — gone with it. `killUnit` has no text match left (stale comment removed). Only `parseRepeatCost` (sweep-costs) remains; test: SweepFlowTest.PlayLocation_OpenBattlefieldPermissionComesFromTheCard, .PlayLocation_OccupiedEnemyBattlefieldPermissionComesFromTheCard, .PlayLocation_ATriggerThatMentionsPlayingToABattlefieldGrantsNothing, .BattlefieldRestrictions_AreReadFromTheCardAtSetup
 
 ## Types and invariants
 

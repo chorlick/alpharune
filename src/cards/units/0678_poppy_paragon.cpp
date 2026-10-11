@@ -21,7 +21,7 @@ public:
     //  force (a battlefield can raise it).
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const int victory = ctx.executor.effectiveVictoryScore();
+        const int victory = ctx.state.effectiveVictoryScore();
         if (ctx.state.player(opponent(ctx.controller)).score < victory - 3) return;
         ctx.executor.readyObject(ctx.source);   // no-op if I left the board
         gainXp(ctx, ctx.controller, 3);

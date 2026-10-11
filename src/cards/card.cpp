@@ -366,8 +366,8 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     // unit on the board (CR 141.1.a): a unit card picked out of a hand, deck
     // or trash is a card, not an enemy unit.
     const auto& tobj = ctx.state.getObject(t);
-    if (tobj.isUnit() && tobj.location.has_value() && tobj.controller != ctx.controller)
-        ctx.state.player(ctx.controller).chose_enemy_unit_this_turn = true;
+    ctx.state.noteChosen(ctx.controller, t,
+        ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr);
     if (tobj.isUnit() && tobj.location.has_value() && tobj.controller == ctx.controller)
         ctx.events.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
 }
@@ -702,7 +702,27 @@ bool Card::hasLegalTargets(const GameState& state,
     auto reqs = getTargetRequirements();
     if (reqs.count == 0) return true;
     if (reqs.optional) return true;
+    // Several targets locked in as the card is played (the generator offers
+    // one intent per whole choice of them): there must be such a choice — a
+    // spell that needs two units is not playable with one on the board.
+    if (reqs.count >= 2 && !needsPlayTimeTarget() && !needsPlayTimeTargetPair()) {
+        if (auto sets = enumerateLegalTargetSets(state, controller)) return !sets->empty();
+        return static_cast<int>(enumerateLegalTargets(state, controller).size()) >= reqs.count;
+    }
     return !enumerateLegalTargets(state, controller).empty();
+}
+
+GameObjectId Card::chosenTarget(const CardContext& ctx,
+                                const std::vector<GameObjectId>& targets, size_t role) {
+    // The slots as chosen are on the resolving chain item; `targets` is what
+    // is left of them. (Called outside a resolution, `targets` is all there is.)
+    const auto& chosen = ctx.state.chain.resuming.has_value()
+        ? ctx.state.chain.resuming->targets : targets;
+    if (role >= chosen.size()) return kInvalidId;
+    const GameObjectId id = chosen[role];
+    if (id == kInvalidId ||
+        std::find(targets.begin(), targets.end(), id) == targets.end()) return kInvalidId;
+    return id;
 }
 
 // Multi-ability default: wrap the legacy single-ability surface into a

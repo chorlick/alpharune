@@ -24,9 +24,18 @@ public:
     // Playable only against what it can act on: the item on top of the chain
     // (the one Rebuttal would be played above) must be a spell, as onResolve
     // requires — not an ability sitting above a spell.
-    // ENGINE-GAP: the "[4] or less" half can't be tested here: hasLegalTargets
-    // sees only the GameState, and a card's printed Energy cost lives in the
-    // CardDB (same limit as Defy). It is checked as Rebuttal resolves.
+    // "Energy cost no more than [4]" is the spell's printed cost, read from
+    // the card table the engine hands the gate (as Defy does); checked again
+    // as Rebuttal resolves.
+    bool hasLegalTargets(const GameState& state, PlayerId /*controller*/,
+                         const CardDB& db) const override {
+        if (state.chain.items.empty()) return false;
+        const auto& top = state.chain.items.back();
+        if (!top.is_spell) return false;
+        return top.card_def_id == kInvalidId || db.get(top.card_def_id).energy_cost <= 4;
+    }
+    // Without the card table only the half the state shows can be answered:
+    // the item on top must be a spell.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
         return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }

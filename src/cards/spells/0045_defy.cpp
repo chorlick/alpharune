@@ -27,12 +27,17 @@ public:
         const auto& d = db.get(top.card_def_id);
         return d.energy_cost <= 4 && d.power_cost <= 1;
     }
+    // Not playable unless the spell it would counter qualifies (the printed
+    // costs come from the card table the engine hands the gate). Checked
+    // again as Defy resolves: the chain may have changed.
+    bool hasLegalTargets(const GameState& state, PlayerId /*controller*/,
+                         const CardDB& db) const override {
+        return counterable(state, db);
+    }
+    // Without the card table only the half the state shows can be answered:
+    // there must be a spell directly beneath.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        if (state.chain.items.empty()) return false;
-        const auto& top = state.chain.items.back();
-        // The cost caps need the CardDB, which is not reachable from here:
-        // they are checked as Defy resolves (counterable).
-        return top.is_spell && top.card_def_id != kInvalidId;
+        return !state.chain.items.empty() && state.chain.items.back().is_spell;
     }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

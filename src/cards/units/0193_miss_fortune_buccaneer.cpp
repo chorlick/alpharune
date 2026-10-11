@@ -14,10 +14,8 @@ namespace {
 class MissFortuneBuccaneer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "You may play me to an open battlefield." — ENGINE-HANDLED via the
-    // "play me to an open battlefield" ability_text substring match in
-    // GameEngine::generateMainPhaseActions.
-    //
+    // "You may play me to an open battlefield."
+    unsigned extraPlayLocations() const override { return kPlayToOpenBattlefield; }
     // "Friendly units may be played to open battlefields." — board-wide grant.
     // Wired via applyPassiveAura: while Miss Fortune is on board, set the
     // controller's grant_friendly_units_open_bf flag (reset+recomputed each

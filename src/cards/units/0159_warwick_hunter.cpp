@@ -30,6 +30,7 @@ public:
             if (obj.damage_marked <= 0) continue;  // "damaged"
             victims.push_back(id);
         }
+        DeathBatch together(ctx.executor, victims);   // they die at the same time
         for (auto id : victims)
             if (ctx.state.objectExists(id)) ctx.executor.killObject(id);
         if (!victims.empty())

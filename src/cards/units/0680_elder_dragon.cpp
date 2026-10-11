@@ -75,6 +75,7 @@ public:
         // Units this 1 damage is lethal for by itself. The rest die in the
         // cleanup that follows, where "any amount of your damage is enough"
         // applies (GameEngine::processLethalDamage).
+        DeathBatch together(ctx.executor, hit);   // they die at the same time
         for (auto id : hit)
             if (ctx.state.objectExists(id) && ctx.state.getObject(id).hasLethalDamage())
                 ctx.executor.killObject(id);

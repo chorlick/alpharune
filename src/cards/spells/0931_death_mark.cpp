@@ -34,10 +34,9 @@ public:
         auto make = [&](LocationId loc) {
             auto clone_id = ctx.executor.createToken(ctx.controller, CardType::Unit,
                                                      "Shadow Clone", 0, {}, KeywordSet{}, loc,
-                                                     /*enter_ready=*/false);
-            // Carry the Shadow Clone token card so its "When I attack" ability fires.
-            if (ctx.state.objectExists(clone_id))
-                ctx.state.getObject(clone_id).card_def_id = 955;
+                                                     /*enter_ready=*/false, {},
+                                                     // the Shadow Clone token card ("When I attack")
+                                                     /*token_card=*/955);
             return clone_id;
         };
         playTokensChoosingLocations(ctx, "Death Mark: play the Shadow Clone", 1, make, made);

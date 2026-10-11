@@ -93,8 +93,12 @@ public:
             if (!chosen.has_value()) return;       // waiting for the agent
             if (finalizingChoices(ctx)) return;    // choices end here (CR 388.4)
             int readied = 0;
+            // No second readiable() check: every id selectSeveral returns is in
+            // the list built above in this entry (a rune named at finalization
+            // that has been readied or has left the board since is dropped by
+            // the helper), and nothing changes a rune between there and here
+            // (readying one rune does not touch another).
             for (auto id : *chosen) {
-                if (!readiable(id)) continue;      // no longer exhausted / on the board
                 ctx.executor.readyObject(id);
                 ++readied;
             }

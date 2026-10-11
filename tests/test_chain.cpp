@@ -418,7 +418,7 @@ TEST_F(ChainTestFixture, HextechRayDeals3Damage) {
     EXPECT_EQ(state.getObject(target).damage_marked, 3);
 }
 
-TEST_F(ChainTestFixture, DisintegrateKillsAndDraws) {
+TEST_F(ChainTestFixture, DisintegrateKillsItsTargetAndDrawsNothingWithoutAnEngine) {
     auto state = makeMinimalState();
     EffectExecutor exec(state, events, card_db);
 

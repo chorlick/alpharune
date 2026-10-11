@@ -220,9 +220,12 @@ Sent only when frames carry everything (god mode on, no human seat, or
 Sent in reply to any `edit_*` message from the client:
 
 ```json
-{"type": "edit_ok"}
+{"type": "edit_ok", "legal_recomputed": true}
 {"type": "edit_err", "msg": "object not found: 137"}
 ```
+
+`legal_recomputed` says whether the pending decision's legal actions
+were rebuilt from the edited state (see "God-mode edits" below).
 
 A `decision` / `state` frame is broadcast immediately afterwards so the
 UI updates even if the edit reply is dropped.
@@ -283,9 +286,19 @@ again when the next `decision` frame arrives.
 
 Edits bypass engine validation. They can leave the game in a state
 the engine cannot reach via normal play (e.g., a phase out of
-sequence), and the legal actions of the decision being waited on are
-not recomputed after an edit. Use them deliberately for testing,
-reproduction setups, or "I changed my mind" rewinds.
+sequence). Use them deliberately for testing, reproduction setups, or
+"I changed my mind" rewinds.
+
+An edit made while a human seat is at its **main-phase decision** (the
+one that offers End Turn) rebuilds that decision's legal actions from
+the edited state: `edit_ok` carries `"legal_recomputed": true` and the
+`decision` frame that follows has a new `decision_id` and the new list.
+A `choose` sent for the old id is refused as stale. At any other
+decision (mulligan, chain priority, showdown, combat damage, a cost
+payment, a card's prompt) and at the spectator gate (where the AI seat
+has already chosen) the list is the one computed before the edit and
+`edit_ok` carries `"legal_recomputed": false`: an action in it may no
+longer make sense.
 
 #### `edit_move` — move a card between zones
 

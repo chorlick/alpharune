@@ -82,9 +82,8 @@ public:
         // identically to multi-option ones — the WS frame is still
         // pushed, the UI still renders a button, the player still
         // clicks (or watches the agent click in spectator mode).
-        int chosen;
+        std::unique_lock<std::mutex> lock(mu_);
         {
-            std::unique_lock<std::mutex> lock(mu_);
             // A click that raced in after the previous decision was answered
             // belongs to that decision, not this one.
             pending_choice_.reset();
@@ -102,12 +101,30 @@ public:
                 pending_choice_.reset();
                 return Intent::concede(decider);
             }
-            chosen = *pending_choice_;
+            const int chosen = *pending_choice_;
             pending_choice_.reset();
             at_decision_ = false;
+            // setChosenAction only accepts an index into paused_legal_, which
+            // is `legal_actions` unless replacePendingLegal swapped it.
+            return paused_legal_[static_cast<size_t>(chosen)];
         }
-        // setChosenAction only accepts an index into paused_legal_.
-        return legal_actions[static_cast<size_t>(chosen)];
+    }
+
+    /// UI-side: the state was edited while the engine waits here, and
+    /// `legal_actions` is what the engine would offer now. Replaces the
+    /// pending list and starts a new decision id, so an answer made for the
+    /// old list is refused as stale; `selectAction` then returns an Intent
+    /// from the new list. Returns false (nothing changed) unless the engine
+    /// is waiting on an unanswered decision and the list is not empty.
+    bool replacePendingLegal(std::vector<Intent> legal_actions) {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (!at_decision_ || pending_choice_.has_value() || legal_actions.empty()) {
+            return false;
+        }
+        paused_legal_ = std::move(legal_actions);
+        decision_id_.fetch_add(1, std::memory_order_release);
+        cv_ui_.notify_all();
+        return true;
     }
 
     /// Wake the engine thread with a forced concede. Used by the UI

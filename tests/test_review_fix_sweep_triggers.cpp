@@ -879,6 +879,7 @@ TEST_F(SweepTriggersTest, IgnoresDeflect_IsHonouredForATargetChosenAsTheSpellIsP
     obj(enemy).deflect_value = 1;
     auto spell = addToHand(P1, kDecreeOfInsight);
     state.player(P1).rune_pool.energy += card_db.get(kDecreeOfInsight).energy_cost;
+    state.player(P1).rune_pool.universal_power = 1;      // could pay for [Deflect]; must not
     Intent play;
     play.type = IntentType::PlayCard;
     play.player = P1;
@@ -887,6 +888,7 @@ TEST_F(SweepTriggersTest, IgnoresDeflect_IsHonouredForATargetChosenAsTheSpellIsP
     EnginePathAgent agent(EnginePathAgent::choosing(enemy));
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &agent);
     EXPECT_EQ(obj(enemy).temp_might_bonus, -5) << "no [A] was needed for its [Deflect]";
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1) << "[Deflect] was not charged";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1143,22 +1145,30 @@ TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayI
 }
 
 // 9.D4: the same through the real engine — a [Reaction] spell played in
-// response is played like any other card (counted, paid, resolved, trashed).
+// response is played like any other card: Feral Strength 357's [Repeat] [2]
+// is offered and paid as it is played (only the engine's play path does that).
 TEST_F(SweepTriggersTest, ReactionPlay_ThroughTheEngineIsAFullPlay) {
-    auto target = addUnit(P1, kInvalidId, 6, 0);
-    obj(target).domains = {Domain::Body};
+    constexpr CardDefId kFeralStrength = 357;   // "[Reaction] [Repeat] [2] Give a unit +2 [M] this turn."
+    auto target = addUnit(P2, kInvalidId, 3, 0);
     auto first = addToHand(P1, kDredgeUp);
     stockDeck(P1, 2);
-    auto reaction = addToHand(P2, kDecreeOfInsight);
-    state.player(P2).rune_pool.energy = card_db.get(kDecreeOfInsight).energy_cost;
+    auto reaction = addToHand(P2, kFeralStrength);
+    state.player(P2).rune_pool.energy = card_db.get(kFeralStrength).energy_cost + 2;
     struct Responder : AgentInterface {
         GameObjectId card = kInvalidId, target = kInvalidId;
+        int repeat_prompts = 0;
         Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
             for (const auto& i : legal)
-                if (i.type == IntentType::PlayReaction && i.card == card) return i;
+                if (i.type == IntentType::PlayReaction && i.card == card &&
+                    (i.targets.empty() || i.targets.front() == target)) return i;
             for (const auto& i : legal)
                 if (i.type == IntentType::MakeChoice && !i.chosen_objects.empty() &&
                     i.chosen_objects.front() == target) return i;
+            for (const auto& i : legal)
+                if (i.type == IntentType::MakeChoice && i.chosen_value && *i.chosen_value == 1) {
+                    ++repeat_prompts;
+                    return i;
+                }
             for (const auto& i : legal)
                 if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
             return legal.empty() ? Intent{} : legal.front();
@@ -1169,10 +1179,9 @@ TEST_F(SweepTriggersTest, ReactionPlay_ThroughTheEngineIsAFullPlay) {
     playThroughEngine(first, nullptr, std::nullopt, &p2);
     EXPECT_TRUE(inTrash(P2, reaction));
     EXPECT_EQ(state.player(P2).cards_played_this_turn, 1);
-    EXPECT_EQ(state.player(P2).spells_played_this_turn, 1);
-    EXPECT_EQ(state.player(P2).rune_pool.energy, 0) << "its cost was paid";
-    EXPECT_EQ(obj(target).temp_might_bonus, -5);
-    EXPECT_EQ(playOrdinalThisTurn(state, reaction), 1) << "stamped by the engine's play path";
+    EXPECT_GE(p2.repeat_prompts, 1) << "[Repeat] was offered as the card was played";
+    EXPECT_EQ(state.player(P2).rune_pool.energy, 0) << "its cost and the Repeat cost were paid";
+    EXPECT_EQ(obj(target).temp_might_bonus, 4) << "the effect was repeated";
 }
 
 // 9.D7: Stacked Deck 183 says "Put 1 into your hand" — not a draw.

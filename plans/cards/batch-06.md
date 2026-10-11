@@ -49,7 +49,7 @@ Engine facts traced for this batch (used by the findings below):
   - Text: "[Hunt 2] (When I conquer or hold, gain 2 XP.) [Level 3][>] I have +1 [M] and enter ready."
   - Code: on conquer/hold, returns if XP < 3; otherwise gains 2 XP and readies itself. No +1 [M] aura, no `entersReadyOnPlay`. `requiresLevel()` is not read by the engine.
   - Scenario: at 0 XP Scorchclaw conquers -> gains 0 XP (should be 2). At 3+ XP it is played exhausted with 3 Might (should enter ready with 4), and readies after every conquer/hold (not on the card).
-- [ ] **587 Undying Legion** - `units/0587_undying_legion.cpp:17` [confirmed] high
+- [x] **587 Undying Legion** - `units/0587_undying_legion.cpp:17` [confirmed] high — FIXED (sweep-costs): `Card::trashPlayCost` keeps a standing play-from-trash permission at [3][R] while Legion holds; test: SweepCostsTest.UndyingLegion_IsPlayedFromTheTrashForItsLegionCost
   - BLOCKED: needs a play-a-unit-from-trash path in the engine. `PlayerState::TrashReplayGrant` and the trash-replay generator / payment are spell-only; a unit needs a generator entry that offers it from the trash at an alternative cost ([3][R]) to the normal unit play locations, gated by the card (`cards_played_this_turn >= 1`). The card now documents this; its unread `requiresLegion()` override is removed.
   - Text: "[Legion][>] You may play me from your trash for [3][R]."
   - Code: only `requiresLegion()` (unread by the engine). No trash-replay grant, no alternative play path; the engine's trash-replay generator is spell-only.

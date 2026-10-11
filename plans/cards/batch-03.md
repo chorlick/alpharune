@@ -48,13 +48,13 @@ Engine facts traced for this batch (referenced below):
   - Text: "Move any number of enemy units with the same controller and a total Might of 8 or less to a single location."
   - Code: moves exactly one enemy unit with Might <= 8 to its own base.
   - Scenario: four enemy 2 [M] units -> only one moves, and it can only go to base, never to a battlefield.
-- [ ] **579 Square Up** - `spells/0579_square_up.cpp:18-25` [confirmed] high
+- [x] **579 Square Up** - `spells/0579_square_up.cpp:18-25` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the discard; test: C3Test.SquareUp_DoesNotForceADiscard, C3Test.SquareUp_RepeatIsPaidWithADiscard
   - Text: "[Repeat] — Discard 1 ... Give a unit [Assault 4] this turn."
   - Code: the Repeat cost is not parsed, so no repeat exists; instead `discardThenAct` makes the base resolution discard a card (mandatory whenever the hand is non-empty) and grants a single Assault 4.
   - Scenario: cast with two cards in hand -> forced to discard one for one Assault 4; the printed option (keep the cards for one effect, or discard for a second effect) is unavailable.
   - c3: FIXED the forced discard: the base effect is only "Give a unit [Assault 4] this turn"; test: C3Test.SquareUp_DoesNotForceADiscard
   - BLOCKED: the Repeat itself ("[Repeat] — Discard 1") needs a card-declared Repeat cost read by `executePlaySpell` (STATUS carry-over, chain-triggers 8.9 last bullet; assigned to sweep).
-- [ ] **743 Curtain Call** - `spells/0743_curtain_call.cpp:21-60` [confirmed] high
+- [x] **743 Curtain Call** - `spells/0743_curtain_call.cpp:21-60` [confirmed] high — FIXED (sweep-costs): `repeatCosts()` declares the three costs, each offered once; test: SweepCostsTest.CurtainCall_EachRepeatCostIsOfferedOnceAndRunsAnotherMode
   - Text: "[Repeat] — [1] / [A] / [1][A] (You may pay each additional cost to repeat this spell's effect.) Choose one you haven't already chosen —"
   - Code: `parseRepeatCost` rejects this text and the card has no payment or loop of its own (the engine comment says the card handles it; it does not). The spell resolves one mode only. `card_counters["curtain_call_used_mask"]` is never cleared.
   - Scenario: with [1][A] spare the player can never get a second or third mode; if the same card object is cast again later (recycled and redrawn), the mode used earlier is still masked out.
@@ -160,7 +160,7 @@ Engine facts traced for this batch (referenced below):
   - Text: "I cost [2] less to play from anywhere other than your hand."
   - Code: keys on `current_play_source`, which `executePlaySpell` sets only around its own `payCardCost`; effect-driven plays (`playPayingCost`, e.g. Void Rush from the deck) leave it at Hand.
   - Scenario: Void Rush plays Drag Under off the deck -> no [2] reduction.
-- [ ] **931 Death Mark** - `spells/0931_death_mark.cpp:34` [confirmed] low
+- [x] **931 Death Mark** - `spells/0931_death_mark.cpp:34` [confirmed] low — FIXED (sweep-costs): a grant's Power is paid by Domain mask (`resource::payIn`), so [A][A] may come from two Domains; test: SweepCostsTest.DeathMark_FlowPaysTwoAnyPowerFromTwoDomains
   - Text: "[Flow] [1][A][A]"
   - Code: wired correctly as `flow(1, 2, any_domain)`, but the engine's any-domain grant path tries one single domain for the whole power amount (game_engine.cpp:3437-3443, 6172-6181).
   - Scenario: one Fury rune and one Chaos rune available for power -> the Flow play is not offered.

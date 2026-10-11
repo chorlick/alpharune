@@ -14,12 +14,12 @@ namespace {
 class IreliaGraceful : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Your spells that choose me cost [1] or [A] less." Wired via
-    // GameObject::spells_targeting_me_cost_reduction (set here): executePlaySpell
-    // stages the largest such value among a spell's chosen targets into
-    // PlayerState::transient_play_discount, which canAfford / beginCostPayment
-    // subtract. APPROX: only play-time-targeted spells benefit (deferred-target
-    // spells choose at chain time, after cost is paid).
+    // "Your spells that choose me cost [1] or [A] less." Declared through
+    // GameObject::spells_targeting_me_cost_reduction (set here). A spell's
+    // targets are chosen as it is played, before its cost is paid (CR 355 ->
+    // 356), so GameEngine::targetCostDiscount takes [1] off — or one Power,
+    // the player's choice when both apply — for a spell that chose me, and the
+    // play gate (canAffordChoosing) counts it.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects) {
             if (obj.card_def_id == cardDefId() && obj.controller == controller &&

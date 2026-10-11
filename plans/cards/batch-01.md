@@ -85,7 +85,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: only onEquip is implemented; nothing sets `PlayerState::bonus_damage_dealt` (the field dealDamage reads), so the effect text does nothing.
   - Scenario: equipped Deathcrown, controller casts a 2-damage spell -> deals 2, not 5.
 
-- [ ] **809 Endless Riches** - `gear/0809_endless_riches.cpp:50` [confirmed] high
+- [x] **809 Endless Riches** - `gear/0809_endless_riches.cpp:50` [confirmed] high — FIXED (sweep-costs): cards of every type are offered from the trash at their own cost (`generateTrashReplayActions`), and `settleInTrash` (`engine/trash_replacement.h`) banishes what would go to the trash from anywhere but the Main Deck (kills, discards, resolved / countered spells, removed facedown cards); test: SweepCostsTest.EndlessRiches_CardsArePlayedFromTheTrashAtTheirOwnCost, SweepCostsTest.EndlessRiches_WhatWouldGoToTheTrashIsBanishedExceptFromTheDeck
   - Text: "You may play cards from your trash. If a card would go to your trash from anywhere other than your Main Deck, banish it instead."
   - Code: sets `may_play_from_trash` and `trash_goes_to_banish`, but neither flag is read anywhere in src/ (only reset in recalculateAuras).
   - Scenario: player plays Endless Riches -> hand and trash banished, draw phase skipped, 7 cards burned to trash, and none of them can be played; the player is locked out of cards for the rest of the game.
@@ -161,7 +161,7 @@ Legend trigger dispatch check (src/engine/trigger_manager.cpp): AtStartOfBeginni
   - Code: nothing adds the Mech tag to the bearer (no hook in the card, no engine handling of the effect_text).
   - Scenario: equipped unit is ignored by Mechanized Menace, Rumble Hotheaded, Bubble Bot, Breakneck Mech and "Your Mechs each have".
 
-- [ ] **294 Daughter of the Void / 506 Fire Below the Mountain / 786 Scorn of the Moon** - `legends/0294_daughter_of_the_void.cpp:24`, `legends/0506_fire_below_the_mountain.cpp:24`, `legends/0786_scorn_of_the_moon.cpp:22` [confirmed; 506 and 786 documented] medium
+- [x] **294 Daughter of the Void / 506 Fire Below the Mountain / 786 Scorn of the Moon** - `legends/0294_daughter_of_the_void.cpp:24`, `legends/0506_fire_below_the_mountain.cpp:24`, `legends/0786_scorn_of_the_moon.cpp:22` [confirmed; 506 and 786 documented] medium — FIXED (sweep-costs): restricted pools `RunePool::spell_power` / `gear_power` / `showdown_energy`, spent only for the matching `SpendFor` (`engine/resource_payment.h`); test: SweepCostsTest.RestrictedPower_SpellOnlyPaysForSpellsOnly, SweepCostsTest.RestrictedPower_GearOnlyPaysForGearAndGearAbilities, SweepCostsTest.RestrictedEnergy_ShowdownOnlyIsUnusableOutsideAShowdown
   - Text: "Use only to play spells." / "Use only to play gear or use gear abilities." / "Spend this Energy only during showdowns."
   - Code: plain addFloatingUniversalPower / addFloatingEnergy with no spend restriction (only unit-only Energy has a restricted pool).
   - Scenario: Kai'Sa's [A] pays for a unit; Ornn's [A] pays for a spell; Diana's [1] is spent in the main phase.

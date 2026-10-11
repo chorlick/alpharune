@@ -17,47 +17,55 @@ namespace {
 //  control. You may play me to its battlefield (even if you don't have other
 //  units there)."
 //
-// The engine has no hook for a "kill a unit" additional play cost, so:
-//  - canBePlayed gates the play on having a Bird, Cat, Dog or Poro to kill;
-//  - the kill is the cost of my WhenYouPlayMe ability, chosen and paid as
-//    that ability goes on the chain (CR 383.3), before anyone can respond.
-// APPROX: the kill happens just after I enter the board, not before. "Its
-// battlefield, even if you don't have other units there" needs nothing more:
-// the unit to be killed is still at its battlefield while the Ambush
-// locations are offered, so a battlefield where it is the only friendly unit
-// is offered like any other.
+// The kill is an additional cost chosen and paid as I am played
+// (Card::additionalPlayCost / payAdditionalPlayCost). "Its battlefield, even
+// if you don't have other units there" needs nothing more: the unit to be
+// killed is still at its battlefield while the Ambush locations are offered,
+// so a battlefield where it is the only friendly unit is offered like any
+// other.
 
 class StalkingWolf : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    // A mandatory additional cost (CR 356.2.a): without a Bird, Cat, Dog or
+    // Poro to kill I cannot be played, and the one the player chooses dies as
+    // I am played — before my cost is paid and before I enter the board.
+    // Paying a cost is not choosing a unit: no Deflect, no "chosen" trigger.
     static bool isFodder(const GameObject& obj, PlayerId player) {
         return obj.isUnit() && obj.controller == player && obj.location.has_value() &&
                (hasTag(obj, "Bird") || hasTag(obj, "Cat") ||
                 hasTag(obj, "Dog") || hasTag(obj, "Poro"));
     }
-    bool canBePlayed(const GameState& state, PlayerId player) const override {
+    static std::vector<GameObjectId> fodder(const GameState& state, PlayerId player) {
+        std::vector<GameObjectId> out;
         for (const auto& [id, obj] : state.objects)
-            if (isFodder(obj, player)) return true;
-        return false;
+            if (isFodder(obj, player)) out.push_back(id);
+        std::sort(out.begin(), out.end());
+        return out;
     }
-    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!costAlreadyPaid(ctx)) {
-            std::vector<GameObjectId> legal;
-            for (auto& [id, obj] : ctx.state.objects)
-                if (id != ctx.source && isFodder(obj, ctx.controller)) legal.push_back(id);
-            std::sort(legal.begin(), legal.end());
-            // Paying a cost, not choosing a unit: no Deflect, no "chosen" trigger.
-            auto victim = selectObject(
-                ctx, "Stalking Wolf: kill a Bird/Cat/Dog/Poro you control", legal);
-            if (!victim.has_value() || *victim == kInvalidId) return;   // waiting / none
-            if (costDueNow(ctx)) {
-                ctx.executor.killObject(*victim);
-                ctx.events.logTrace("STALKING WOLF: killed a Bird/Cat/Dog/Poro (additional cost)");
-            }
+    bool canBePlayed(const GameState& state, PlayerId player) const override {
+        return !fodder(state, player).empty();
+    }
+    AdditionalPlayCost additionalPlayCost(const GameState& state, const CardDB& db,
+                                          PlayerId player, GameObjectId self) const override {
+        (void)db; (void)self;
+        AdditionalPlayCost c;
+        c.exists = true;
+        c.mandatory = true;
+        c.payable = !fodder(state, player).empty();
+        return c;
+    }
+    PlayCostAdjust payAdditionalPlayCost(
+        CardContext& ctx,
+        const std::function<bool(const PlayCostAdjust&)>& affordable) override {
+        (void)affordable;
+        const GameObjectId victim = ctx.executor.chooseObjectNow(
+            ctx.controller, fodder(ctx.state, ctx.controller));
+        if (victim != kInvalidId) {
+            ctx.executor.killObject(victim);
+            ctx.events.logTrace("STALKING WOLF: killed a Bird/Cat/Dog/Poro (additional cost)");
         }
-        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        return {};
     }
 private:
     const CardDef def_ = [] {

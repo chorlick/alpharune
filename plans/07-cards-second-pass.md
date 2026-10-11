@@ -136,13 +136,14 @@ subject") describes something nothing implements.
 | `units/0449_overzealous_fan.cpp:51-52` | kill me | not verified (03 item 3.10) |
 | `units/0230_albus_ferros.cpp:28-44` | spend X buffs | X fixed early (03 item 3.11) |
 
-- [ ] **7.6 Additional play costs folded into a `WhenYouPlayMe` trigger, paid after the marker** [confirmed; documented in-code as approximations]
+- [x] **7.6 Additional play costs folded into a `WhenYouPlayMe` trigger, paid after the marker** [confirmed; documented in-code as approximations]
   - Legion Quartermaster's playability gate (`hasLegalTargets`) is never consulted for a unit play, so it is also free with no gear on board (08 §D).
   - `units/0481_zaun_punk.cpp:63`, `units/0367_legion_quartermaster.cpp:50`, `units/0208_cruel_patron.cpp:39` (free with an empty board), `units/0728_stalking_wolf.cpp:54` (free if no Bird/Cat/Dog/Poro).
   - c4: 208 Cruel Patron — FIXED (as far as a card can): `canBePlayed` requires a friendly unit on the board, and the kill is chosen and paid at the trigger's finalization (`costDueNow`), not at resolution; still a trigger, not a play cost — a real additional-cost hook is engine work; test: C4Test.CruelPatron_NeedsAFriendlyUnitAndKillsTheChosenOne
   - c5: 367 Legion Quartermaster (gate moved to `canBePlayed`; gear returned under `costDueNow`) and 481 Zaun Punk (friendly gear killed under `costDueNow`) — FIXED: paid when the play trigger is finalized, before anyone can respond. Still a trigger, not a true cost paid before the unit lands (no engine hook for a non-rune additional cost); test: C5Test.LegionQuartermasterNeedsAGearAndReturnsIt, .ZaunPunkKillsTheCostAndTheChosenGear
   - c7: 728 Stalking Wolf — FIXED (as far as a card can): `canBePlayed` needs a Bird/Cat/Dog/Poro; the kill is a `selectObject` cost paid at finalization; test: C7Test.StalkingWolf_NeedsABirdCatDogOrPoroAndKillsTheChosenOne
-- [ ] **7.7 Costs never charged** [confirmed]
+  - sweep-costs: 208 Cruel Patron, 367 Legion Quartermaster, 481 Zaun Punk and 728 Stalking Wolf now pay through `Card::additionalPlayCost` / `payAdditionalPlayCost`: chosen and paid as the card is played, before its cost and before it enters the board; a mandatory cost that cannot be paid keeps the card out of the legal actions — FIXED; test: SweepCostsTest.CruelPatron_KillIsPaidBeforeItEntersAndGatesThePlay, SweepCostsTest.LegionQuartermaster_ReturnsAGearAsItIsPlayed, SweepCostsTest.ZaunPunk_OptionalKillIsPaidDuringThePlay, C7Test.StalkingWolf_NeedsABirdCatDogOrPoroAndKillsTheChosenOne
+- [x] **7.7 Costs never charged** [confirmed]
   - `units/0194_nocturne_horrifying.cpp:43` — "play me for [A]" uses `playIgnoringCost` (TODO in file).
   - `units/0331_sentinel_adept.cpp:62-68` and `units/weaponmaster_base.h:60-70` (reached from `units/0828_riven_shattered.cpp:34`) — Weaponmaster equip is always free.
   - `units/0406_jayce_man_of_progress.cpp:68`, `units/0741_rift_herald.cpp:80` — `playIgnoringCost` for an effect that ignores only Energy; Power should still be paid. Soulgorger (196:48) does it correctly with `EffectPlayCost{.ignore_energy = true}`.
@@ -150,6 +151,7 @@ subject") describes something nothing implements.
   - c5: 331 Sentinel Adept — now the shared `WeaponmasterUnit` (its own copy deleted); the Equip cost is still not charged there (needs the equip-cost descriptor, sweep). 406 Jayce — FIXED: the permission is a this-turn Energy-only `CostModifier`, so the gear's Power is paid by the normal play; test: C5Test.JayceKillsTheChosenGearAndGrantsAPlayThisTurn
   - c6: 544 Yone, Blademaster — now uses `WeaponmasterUnit` (no private copy); the Equip cost is still not charged there, for the reason given in `weaponmaster_base.h` (needs an equip-cost descriptor on `Card`)
   - c7: 741 Rift Herald — FIXED: `playPayingCost` with `EffectPlayCost{.ignore_energy = true}`, only units whose Power can be paid are offered; test: C7Test.RiftHerald_DeathknellPlaysAHandUnitThatStillPaysItsPower. 828 Riven, Shattered — Weaponmaster Equip cost still not charged (engine: equip-cost descriptor)
+  - sweep-costs: Weaponmaster (base, 331, 544, 828 and Jax 440) charges the Equipment's declared Equip cost (`Card::equipCost`) one Power less — FIXED; test: SweepCostsTest.Weaponmaster_ChargesTheEquipCostLessOnePower, SweepCostsTest.Weaponmaster_MovesAnAttachedEquipmentAndPaysANonResourceCost
 - [ ] **7.8 Cost paid, effect denied** [confirmed]
   - `battlefields/0532_sunken_temple.cpp:36` — `if (!has_mighty) return;` runs at resolution before the `costAlreadyPaid` guard; pay [1], lose the Mighty unit in response, no draw.
   - `legends/0295_relentless_storm.cpp:32` — legend exhausted at finalization, no rune channeled.

@@ -49,6 +49,8 @@ constexpr CardDefId kGangplankNaval = 873;    // [Empower] [O][O]
 constexpr CardDefId kDeathMark = 931;         // [Flow] [1][A][A]
 constexpr CardDefId kProgressDay = 114;       // [6][B]: Draw 4.
 constexpr CardDefId kEndlessRiches = 809;
+constexpr CardDefId kFaeDragon = 423;
+constexpr CardDefId kIreliaGraceful = 462;
 
 // ── Test cards (ids above the registered range) ──
 constexpr CardDefId kTCostThenPrompt = 1052;       // spell: spend 1 XP, then choose a unit
@@ -815,6 +817,51 @@ TEST_F(SweepCostsTest, Aphelios_ReadiesTheTwoRunesThePlayerChooses) {
     EXPECT_FALSE(o(r3).is_exhausted);
 }
 
+// ─── One buff-spend primitive and one attach path (9.D13, 9.D6) ─────────────
+
+TEST_F(SweepCostsTest, BuffSpentAsACost_IsCreditedToThePlayerWhoSpentIt) {
+    // Fae Dragon: "When you spend a buff, play a Gold token exhausted." Both
+    // players have one; P2 spends the buff to play Wallop for free.
+    addUnit(P1, kFaeDragon, 3);
+    addUnit(P2, kFaeDragon, 3);
+    auto unit = addUnit(P2, kInvalidId, 2);
+    o(unit).buff_count = 1;
+    o(unit).is_exhausted = true;
+    auto wallop = addToHand(P2, kWallop);
+    setPool(P2, 0, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(unit));
+    Intent i;
+    i.type = IntentType::PlayCard;
+    i.player = P2;
+    i.card = wallop;
+    i.targets = {unit};
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(i); }, nullptr, &agent, P2);
+    ASSERT_EQ(o(unit).buff_count, 0);
+    int gold_p1 = 0, gold_p2 = 0;
+    for (const auto& [id, obj] : state.objects)
+        if (obj.isGear() && obj.isToken() && obj.location.has_value())
+            (obj.controller == P1 ? gold_p1 : gold_p2)++;
+    EXPECT_EQ(gold_p2, 1) << "the spender's Fae Dragon";
+    EXPECT_EQ(gold_p1, 0) << "not the other player's";
+}
+
+TEST_F(SweepCostsTest, QuickDraw_AttachesThroughTheExecutorsAttachPath) {
+    // Long Sword: [Quick-Draw] "When you play it, attach it to a unit you
+    // control." The engine had its own attach beside EffectExecutor::attachGear.
+    auto unit = addUnit(P1, kInvalidId, 2);
+    auto sword = addToHand(P1, kLongSword);
+    int attached_events = 0;
+    auto conn = events.on_object_state_changed.connect([&](const ObjectStateChangedEvent& e) {
+        if (e.object == sword && e.what_changed == "attached") ++attached_events;
+    });
+    playThroughEngine(sword);
+    conn.disconnect();
+    EXPECT_EQ(o(sword).attached_to, std::optional<GameObjectId>{unit});
+    EXPECT_TRUE(o(sword).is_rules_text_inactive) << "CR 718.2";
+    EXPECT_EQ(o(unit).attachment_might_bonus, o(sword).might_bonus);
+    EXPECT_EQ(attached_events, 1);
+}
+
 // ─── Endless Riches: play from the trash, and the trash is replaced ─────────
 
 TEST_F(SweepCostsTest, EndlessRiches_CardsArePlayedFromTheTrashAtTheirOwnCost) {
@@ -889,6 +936,22 @@ TEST_F(SweepCostsTest, PlayGate_ATargetWhoseDeflectCannotBePaidWithTheCostIsNotO
     play(spell, &agent);
     EXPECT_TRUE(agent.wasOffered(one));
     EXPECT_FALSE(agent.wasOffered(two)) << "cost + Deflect 2 is more than there is";
+}
+
+TEST_F(SweepCostsTest, PlayGate_ADiscountFromTheChosenTargetCountsBeforePayment) {
+    // Irelia, Graceful: "Your spells that choose me cost [1] or [A] less."
+    // With [1] for a [2] spell, she is the only unit it can choose.
+    auto irelia = addUnit(P1, kIreliaGraceful, 3);
+    auto other = addUnit(P1, kInvalidId, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });   // her continuous effect
+    auto spell = addToHand(P1, kFrigidTouch);
+    setPool(P1, 1, 0);
+    EnginePathAgent agent(EnginePathAgent::choosing(irelia));
+    play(spell, &agent);
+    EXPECT_TRUE(agent.wasOffered(irelia));
+    EXPECT_FALSE(agent.wasOffered(other)) << "[2] is out of reach without the discount";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_TRUE(inTrash(P1, spell)) << "it was played and resolved";
 }
 
 // ─── A cost paid while resolving is due once per chain item (9.A4) ──────────

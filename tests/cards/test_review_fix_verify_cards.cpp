@@ -273,6 +273,43 @@ private:
     }();
 };
 
+// The same probe for a list that names one object several times (plans/09
+// item 9.HH6): "choose up to three buffs on other friendly units" — a unit is
+// listed once per buff, as Albus Ferros 230 lists them.
+constexpr CardDefId kSelectSeveralDupProbe = 1061;   // reserved range, test-only
+
+class SelectSeveralDupProbeCard : public UnitCard {
+public:
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> buffs;   // one entry per buff
+        for (auto& [id, obj] : ctx.state.objects) {
+            if (id == ctx.source || !obj.isUnit() || obj.controller != ctx.controller ||
+                !obj.location.has_value()) continue;
+            for (int k = 0; k < obj.buff_count; ++k) buffs.push_back(id);
+        }
+        const auto chosen = selectSeveral(ctx, "Probe: choose a buff", buffs, /*max_picks=*/3);
+        if (!chosen.has_value()) return;        // waiting for the agent
+        if (finalizingChoices(ctx)) return;     // choices end here
+        auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        counters["__probe_count"] = static_cast<int>(chosen->size());
+        for (size_t k = 0; k < chosen->size(); ++k)
+            counters["__probe_" + std::to_string(k)] = static_cast<int>((*chosen)[k]);
+    }
+private:
+    const CardDef def_ = [] {
+        CardDef d;
+        d.id = kSelectSeveralDupProbe;
+        d.name = "SelectSeveral Duplicate Probe";
+        d.card_type = CardType::Unit;
+        d.might = 1;
+        d.ability_text = "When I conquer, choose up to three buffs on other friendly units.";
+        return d;
+    }();
+};
+
 class VerifyCardsTest : public CardTestFixture {
 protected:
     GameObject& o(GameObjectId id) { return state.getObject(id); }
@@ -8216,6 +8253,68 @@ TEST_F(VerifyCardsTest, SelectSeveral_AStoredPickNoLongerInTheListIsDroppedAndNo
     EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(a));
     EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(c)) << "pick order kept, no gap";
     EXPECT_EQ(counters.count("__probe_2"), 0u);
+}
+
+// ═══ Tranche 15: 9.HH6 — selectSeveral with one object listed several times ══
+// X has two buffs and Y one, so the list is {X, X, Y}; all three are picked at
+// finalization. In response X loses one buff: the list at resolution is
+// {X, Y}. selectSeveral must return {X, Y}: each stored pick uses up ONE
+// instance of its object in the current list, so the first stored X counts,
+// the second finds no instance left and is dropped, and Y counts. Returning X
+// twice would let a caller spend a buff that is no longer there; returning
+// {Y} alone would throw away a pick that is still good.
+TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceWithOneInstanceGoneCountsOnce) {
+    card_registry.registerCard(kSelectSeveralDupProbe,
+                               std::make_unique<SelectSeveralDupProbeCard>());
+    card_db.buildFromClasses(card_registry);
+    auto probe = addUnit(P1, kSelectSeveralDupProbe, 1, 0);
+    auto x = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto y = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(x).buff_count = 2;
+    o(y).buff_count = 1;
+    size_t prompts_at_priority = 0;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(x), static_cast<int>(x), static_cast<int>(y)}));
+    fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+        prompts_at_priority = agent.prompts.size();
+        live.getObject(x).buff_count = 1;       // one of X's two buffs is gone
+    });
+    EXPECT_EQ(prompts_at_priority, 3u) << "X, X and Y were picked at finalization";
+    // While choosing, an object with two instances left is offered once per
+    // prompt, and still offered after one of them is taken.
+    ASSERT_GE(agent.prompts.size(), 2u);
+    EXPECT_TRUE(agent.wasOffered(x));
+    EXPECT_EQ(agent.prompts.size(), 3u) << "nothing is asked again as it resolves";
+    const auto& counters = o(probe).card_counters;
+    ASSERT_EQ(counters.count("__probe_count"), 1u) << "the ability resolved";
+    EXPECT_EQ(counters.at("__probe_count"), 2) << "X once, Y once";
+    ASSERT_EQ(counters.count("__probe_1"), 1u);
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(y));
+    EXPECT_EQ(counters.count("__probe_2"), 0u);
+}
+
+// The control: with both of X's buffs still there, all three stored picks
+// come back, X twice.
+TEST_F(VerifyCardsTest, SelectSeveral_AnObjectListedTwiceIsReturnedTwiceWhenBothInstancesRemain) {
+    card_registry.registerCard(kSelectSeveralDupProbe,
+                               std::make_unique<SelectSeveralDupProbeCard>());
+    card_db.buildFromClasses(card_registry);
+    auto probe = addUnit(P1, kSelectSeveralDupProbe, 1, 0);
+    auto x = addUnit(P1, kShipyardSkulker, 0, 0);
+    auto y = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(x).buff_count = 2;
+    o(y).buff_count = 1;
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(x), static_cast<int>(x), static_cast<int>(y)}));
+    fireAndProbe(probe, TriggerType::WhenIConquer, &agent, [](GameState&) {});
+    EXPECT_EQ(agent.prompts.size(), 3u);
+    const auto& counters = o(probe).card_counters;
+    ASSERT_EQ(counters.count("__probe_count"), 1u);
+    EXPECT_EQ(counters.at("__probe_count"), 3);
+    EXPECT_EQ(counters.at("__probe_0"), static_cast<int>(x));
+    EXPECT_EQ(counters.at("__probe_1"), static_cast<int>(x));
+    EXPECT_EQ(counters.at("__probe_2"), static_cast<int>(y));
 }
 
 }  // namespace

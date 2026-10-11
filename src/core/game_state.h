@@ -193,17 +193,21 @@ struct PlayerState {
     Domain spells_have_repeat_domain = Domain::Chaos; // ... and its domain ([P] default)
     int  repeat_cost_reduction = 0;            // Marai Spire (525): friendly [Repeat] costs cost N less
     bool has_reveal_peek = false;              // Void Hatchling (341): peek/recycle top before revealing
-    bool zilean_present = false;               // Zilean, Time Mage (648): a Zilean is at one of my battlefields (aura)
+    // "The first time you play a token unit each turn, play an additional
+    // copy of it": the permission (set from applyPassiveAura while its
+    // source's condition holds — Zilean, Time Mage) ...
+    bool plays_additional_token_copy = false;
     // Turn-scoped riders (NOT aura-derived — reset in resetTurnTracking):
     int max_spell_spent_this_turn = 0;         // most-expensive single spell paid for this turn (Jhin, Meticulous Killer: "spent [4]+ to play a spell")
     int next_spell_bonus_damage = 0;           // Ravenborn Tome: "the next spell you play this turn deals N Bonus Damage" (consumed when that spell deals damage)
-    bool grant_repeat_base_to_next_spell = false; // The Academy (772): next spell gets [Repeat] at tranche cost = its base energy
+    bool grant_repeat_base_to_next_spell = false; // The Academy (772): the next spell gets [Repeat] equal to its base cost, Energy and Power (GameEngine::executePlaySpell)
     // "You can look at their facedown cards this turn." (Scuttle Crab): the
     // turn this player may look at the other player's facedown cards, cards
     // hidden later that turn included (TriggerManager::onCardHidden shows
     // them). Turn-stamped, so it needs no reset.
     int may_look_at_opp_facedown_turn = -1;
-    int zilean_double_token_turn = -1;         // Zilean, Time Mage (648): turn on which the once/turn token-doubling was used
+    // ... and the turn on which it was last used (once each turn).
+    int additional_token_copy_used_turn = -1;
     // Staged around an effect-driven play that ignores part of a card's cost
     // ("ignoring its Energy cost" — you still pay its Power). Read by
     // canAfford / beginCostPayment; always cleared by the caller.

@@ -105,7 +105,7 @@ public:
         std::vector<GameObjectId> units;
         for (auto& [id, obj] : ctx.state.objects)
             if (movable(id)) units.push_back(id);
-        auto picked = selectAnyNumber(ctx, "Bard, Mercurial: move a unit there", units);
+        auto picked = selectSeveral(ctx, "Bard, Mercurial: move a unit there", units);
         if (!picked.has_value()) return;      // waiting for the agent
         int moved = 0;
         for (auto id : *picked) {

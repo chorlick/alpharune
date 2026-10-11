@@ -21,7 +21,7 @@ static int countP1TokenUnits(GameState& state) {
 TEST_F(ZileanTest, DoublesTokenUnitOncePerTurn) {
     auto z = addUnit(P1, kZilean, 5, /*at_bf=*/0);
     card_registry.get(kZilean)->applyPassiveAura(state, P1);
-    ASSERT_TRUE(state.player(P1).zilean_present);
+    ASSERT_TRUE(state.player(P1).plays_additional_token_copy);
 
     EffectExecutor exec(state, events, card_db);
     // First token unit -> original + 1 copy.
@@ -38,7 +38,7 @@ TEST_F(ZileanTest, NoDoublingWithoutZileanAtBattlefield) {
     // Zilean present at base (not a battlefield) -> no doubling.
     addUnit(P1, kZilean, 5, /*at_bf=*/-1);
     card_registry.get(kZilean)->applyPassiveAura(state, P1);
-    EXPECT_FALSE(state.player(P1).zilean_present);
+    EXPECT_FALSE(state.player(P1).plays_additional_token_copy);
     EffectExecutor exec(state, events, card_db);
     exec.createToken(P1, CardType::Unit, "Soldier", 1, {}, {}, BaseLocation{P1}, false);
     EXPECT_EQ(countP1TokenUnits(state), 1);

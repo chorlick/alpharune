@@ -38,11 +38,11 @@ public:
             if (!obj.location.has_value() || obj.buff_count > 0) continue;
             unbuffed.push_back(id);
         }
-        std::vector<GameObjectId> chosen;
-        if (!pickSeveral(ctx, "Fae Dragon: buff a friendly unit (up to four)", 4,
-                         unbuffed, chosen)) return;   // waiting for the agent
+        const auto chosen = selectSeveral(ctx, "Fae Dragon: buff a friendly unit (up to four)",
+                                          unbuffed, /*max_picks=*/4);
+        if (!chosen.has_value()) return;   // waiting for the agent
         int buffed = 0;
-        for (auto id : chosen)
+        for (auto id : *chosen)
             if (ctx.executor.buffUnit(id)) ++buffed;
         ctx.events.logTrace("FAE DRAGON: buffed " + std::to_string(buffed) +
                             " friendly units (up to 4)");

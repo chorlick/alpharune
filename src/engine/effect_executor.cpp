@@ -1655,7 +1655,7 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
 
     // "Once each turn, if you would play a token unit ..., you may play that
     // token and an additional copy of it instead." (Zilean, Time Mage; the
-    // card sets PlayerState::zilean_present while its condition holds.) A
+    // card sets PlayerState::plays_additional_token_copy while its condition holds.) A
     // "may": the controller is asked. The copy is played by the same
     // instruction, so it goes where that instruction allows: the named
     // location, or — when the controller chose among several — a location
@@ -1665,10 +1665,10 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
         auto& ps = state_.player(controller);
         // With no agent attached (an executor driven on its own) the "may" is
         // taken, as Card::confirmOptional does outside the chain.
-        if (ps.zilean_present && ps.zilean_double_token_turn != state_.turn.turn_number &&
+        if (ps.plays_additional_token_copy && ps.additional_token_copy_used_turn != state_.turn.turn_number &&
             (!agent_query_ ||
              confirmNow(controller, "play an additional copy of " + name + "?"))) {
-            ps.zilean_double_token_turn = state_.turn.turn_number;
+            ps.additional_token_copy_used_turn = state_.turn.turn_number;
             const std::vector<LocationId>& choices =
                 location_choices.empty() ? token_location_choices_ : location_choices;
             LocationId copy_at = location;

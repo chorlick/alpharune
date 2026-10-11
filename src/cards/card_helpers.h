@@ -848,6 +848,23 @@ inline void moveTo(CardContext& ctx, GameObjectId u, int dest) {
     if (dest <= 0) ctx.executor.moveToBase(u);
     else ctx.executor.moveToBattlefield(u, static_cast<BattlefieldId>(dest - 1));
 }
+/// "Move a unit" with no destination printed: ask ctx.controller where `u`
+/// goes — one of moveDests, or only the battlefields among them with
+/// `battlefields_only` ("move it to a battlefield"). Returns the moveDests
+/// code, -1 while the agent is deciding (the caller must return) and -2 when
+/// there is nowhere to move it. This is the callback's Card::pickMode.
+inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
+                        const GameObject& u, bool battlefields_only = false) {
+    uint32_t mask = 0;
+    for (int d : moveDests(ctx.state, u))
+        if (d < 32 && !(d == 0 && battlefields_only)) mask |= 1u << d;
+    int modes = 1;
+    for (const auto& bf : ctx.state.battlefields)
+        modes = std::max(modes, 2 + static_cast<int>(bf.id));
+    std::vector<std::string> labels;
+    for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
+    return card.pickMode(ctx, label, modes, labels, mask);
+}
 
 } // namespace riftbound
 

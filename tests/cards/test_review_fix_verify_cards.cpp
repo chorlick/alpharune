@@ -177,6 +177,8 @@ constexpr CardDefId kDameTheDespoiler = 866;
 constexpr CardDefId kJayceHammerInHand = 875;
 constexpr CardDefId kAmbessaRespectedAndFeared = 923;
 constexpr CardDefId kProtectiveSands = 949;
+constexpr CardDefId kVeiledTemple = 535;
+constexpr CardDefId kImposingChallenger = 667;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kBackAlleyBar = 272;
 constexpr CardDefId kSoraka = 550;
@@ -7846,6 +7848,239 @@ TEST_F(VerifyCardsTest, Aphelios_BuffModeWithNoUnitAtFinalization_NothingAskedOr
     });
     EXPECT_EQ(agent.prompts.size(), 1u) << "the mode only; no unit could be chosen";
     EXPECT_EQ(o(late).buff_count, 0);
+}
+
+// ═══ Tranche 12: 9.GG3 ═══════════════════════════════════════════════════════
+// Already in the file and used below: kElderDragon (680), kLongSword (345),
+// kRecruit (954), kFreshBeans (573), kMischievousMarai (562),
+// kTombRaiderBarbara (824), kDameTheDespoiler (866),
+// kAmbessaRespectedAndFeared (923).
+// No new fixture helper.
+
+// ═══ 9.GG3 ══════════════════════════════════════════════════════════════════
+
+// ─── part 1: a battlefield added while the ability is on the chain ──────────
+
+// 680 Elder Dragon: "choose up to one enemy unit at each location" — the
+// locations there are as the ability is finalized. Fails on the old code: the
+// per-location loop ran over state.battlefields as it was at resolution, so
+// the new battlefield (with an enemy unit) got a prompt then.
+TEST_F(VerifyCardsTest, ElderDragon_ABattlefieldAddedInResponse_IsNotAskedAboutAtResolution) {
+    auto dragon = addUnit(P1, kElderDragon, 0, 0);
+    auto at_base = addUnit(P2, kInvalidId, 5);
+    auto late = addUnit(P2, kInvalidId, 5);
+    sendToTrash(late);                                  // not on the board yet
+    // The opponent's base is the only location with an enemy unit: one prompt.
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(at_base)}));
+    size_t asked_at_response = 99;
+    fireAndProbe(dragon, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        BattlefieldState pit;                           // as Baron Nashor's Pit arrives
+        pit.id = static_cast<BattlefieldId>(live.battlefields.size());
+        live.battlefields.push_back(pit);
+        putOnBoard(live, late, static_cast<int>(pit.id));
+    });
+    ASSERT_EQ(state.battlefields.size(), 3u);
+    ASSERT_EQ(bfOf(late), std::optional<BattlefieldId>{2});
+    EXPECT_EQ(asked_at_response, 1u) << "one location had an enemy unit at finalization";
+    EXPECT_EQ(agent.prompts.size(), 1u) << "nothing is asked as it resolves";
+    EXPECT_FALSE(agent.wasOffered(late));
+    EXPECT_TRUE(!onBoard(at_base) || o(at_base).damage_marked >= 1) << "\"Deal 1 to them\"";
+    EXPECT_EQ(o(late).damage_marked, 0) << "no unit was chosen at the new battlefield";
+}
+
+// 667 Imposing Challenger: with one other battlefield there is no "which
+// battlefield" to ask. Fails on the old code: with a second other battlefield
+// by the time it resolved, the destination was asked for then.
+TEST_F(VerifyCardsTest, ImposingChallenger_ABattlefieldAddedInResponse_NoDestinationIsAskedAtResolution) {
+    auto imp = addUnit(P1, kImposingChallenger, 0, 0);
+    auto foe = addUnit(P2, kInvalidId, 2, 0);
+    // Yes; the enemy unit. Battlefield 1 is the only "different battlefield".
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(foe)}));
+    size_t asked_at_response = 99;
+    fireAndProbe(imp, TriggerType::WhenIMove, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        BattlefieldState pit;
+        pit.id = static_cast<BattlefieldId>(live.battlefields.size());
+        live.battlefields.push_back(pit);
+    });
+    ASSERT_EQ(state.battlefields.size(), 3u);
+    EXPECT_EQ(asked_at_response, 2u) << "the may and the unit, at finalization";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "nothing is asked as it resolves";
+    EXPECT_EQ(bfOf(foe), std::optional<BattlefieldId>{1})
+        << "moved to the battlefield that was the only other one at finalization";
+}
+
+// ─── part 2: Veiled Temple 535 — the second "you may" (CR 383.3.a.3) ────────
+
+// "When you conquer here, you may ready a friendly gear. If it's an Equipment,
+// you may detach it." The first may and the gear at finalization, the detach
+// on resolution. Fails on the old code: all three prompts came before the
+// opponent could respond.
+TEST_F(VerifyCardsTest, VeiledTemple_DetachIsDecidedOnResolutionNotAtFinalization) {
+    EXPECT_EQ(card_db.get(kVeiledTemple).ability_text,
+              "When you conquer here, you may ready a friendly gear. If it's an Equipment, "
+              "you may detach it.");
+    auto temple = battlefieldCard(0, kVeiledTemple);
+    auto unit = addUnit(P1, kInvalidId, 2);
+    auto sword = addGear(P1, kLongSword);
+    attach(sword, unit);
+    o(sword).is_exhausted = true;
+    // Yes; the sword; "Detach it" (mode 1).
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword), 1}));
+    size_t asked_at_response = 99;
+    bool exhausted_at_response = false, attached_at_response = false;
+    fireAndProbe(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        asked_at_response = agent.prompts.size();
+        exhausted_at_response = live.getObject(sword).is_exhausted;
+        attached_at_response = live.getObject(sword).attached_to.has_value();
+    });
+    EXPECT_EQ(asked_at_response, 2u)
+        << "the opening may and the gear at finalization; the later may on resolution";
+    EXPECT_TRUE(exhausted_at_response);
+    EXPECT_TRUE(attached_at_response);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "leave it attached";
+    EXPECT_TRUE(promptOffersValue(agent, 2, 1)) << "detach it";
+    EXPECT_FALSE(o(sword).is_exhausted);
+    EXPECT_FALSE(o(sword).attached_to.has_value());
+    EXPECT_TRUE(o(unit).attachments.empty());
+}
+
+// The Equipment comes off in response: as the ability resolves there is
+// nothing to detach, so nothing is asked. Fails on the old code: the detach
+// had been asked (and answered) at finalization — a third prompt.
+TEST_F(VerifyCardsTest, VeiledTemple_EquipmentDetachedInResponse_DetachIsNotAsked) {
+    auto temple = battlefieldCard(0, kVeiledTemple);
+    auto unit = addUnit(P1, kInvalidId, 2);
+    auto sword = addGear(P1, kLongSword);
+    attach(sword, unit);
+    o(sword).is_exhausted = true;
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(sword)}));
+    fireAndProbe(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+        auto& g = live.getObject(sword);
+        auto& u = live.getObject(unit);
+        u.attachments.erase(std::remove(u.attachments.begin(), u.attachments.end(), sword),
+                            u.attachments.end());
+        u.attachment_might_bonus -= g.might_bonus;
+        u.recomputeMight();
+        g.attached_to = std::nullopt;
+    });
+    EXPECT_EQ(agent.prompts.size(), 2u) << "the may and the gear; no detach question";
+    EXPECT_FALSE(o(sword).is_exhausted) << "the gear is still readied";
+}
+
+// ─── part 4: the trigger condition is asked once, when the event happens ────
+// (CR 383.2.a.1; the Sona example: "If she is removed in reaction to the
+// triggered ability, it will still resolve.")
+
+// 824 Tomb-Raider Barbara. Fails on the old code: with six runes at resolution
+// the gear list was empty, so the gear chosen at finalization was a mistarget.
+TEST_F(VerifyCardsTest, TombRaiderBarbara_ARuneLeavesInResponse_TheChosenGearIsStillKilled) {
+    auto barbara = addUnit(P1, kTombRaiderBarbara, 0, 0);
+    GameObjectId last_rune = kInvalidId;
+    for (int i = 0; i < 7; ++i) last_rune = addRune(P1, Domain::Fury);
+    auto gear = addGear(P2, kInvalidId);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(gear)}));
+    fireAndProbe(barbara, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+        removeFromBoard(live, last_rune);               // six runes as it resolves
+    });
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_FALSE(onBoard(gear)) << "the ability was on the chain: it still resolves";
+}
+
+// 923 Ambessa. Fails on the old code: disempowered at resolution the unit list
+// was empty, so the unit chosen at finalization was a mistarget.
+TEST_F(VerifyCardsTest, Ambessa_DisempoweredInResponse_TheChosenUnitIsStillKilled) {
+    auto ambessa = addUnit(P1, kAmbessaRespectedAndFeared, 0, 0);
+    o(ambessa).empowered = 1;
+    auto foe = addUnit(P2, kInvalidId, 1, 0);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(foe)}));
+    fireAndProbe(ambessa, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+        live.getObject(ambessa).empowered = 0;
+    });
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_FALSE(onBoard(foe)) << "the ability was on the chain: it still resolves";
+}
+
+// 866 Dame the Despoiler. Fails on the old code for the same reason: no Might.
+TEST_F(VerifyCardsTest, DameTheDespoiler_DisempoweredInResponse_HerMightIsStillRaised) {
+    auto dame = addUnit(P1, kDameTheDespoiler, 0, 0);
+    o(dame).empowered = 1;
+    auto giant = addUnit(P2, kInvalidId, 9, 0);
+    const int before = o(dame).current_might;
+    ASSERT_LT(before, 9);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(giant)}));
+    fireAndProbe(dame, TriggerType::WhenIAttackOrDefend, &agent, [&](GameState& live) {
+        live.getObject(dame).empowered = 0;
+    });
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(o(dame).temp_might_bonus, 9 - before + 1)
+        << "raised to the chosen unit's Might, then +1";
+}
+
+// 573 Fresh Beans. The condition held when the unit was played and no longer
+// holds when the ability is finalized. Fails on the old code: the may's
+// precondition asked "during a showdown" again, so the may was not offered.
+// (Not a state a game reaches by itself — nothing happens between a trigger
+// and its finalization — but it is the only place the second ask could be
+// seen: once the may is accepted the cost is paid, and a paid may is not
+// re-validated at resolution.)
+TEST_F(VerifyCardsTest, FreshBeans_TheShowdownIsAskedAboutOnlyWhenTheUnitIsPlayed) {
+    auto beans = addGear(P1, kFreshBeans);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    addToDeck(P1, kRecruit);
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    withEngine([&](GameEngine& e) {
+        auto& live = e.mutableState();
+        live.battlefields[0].showdown_in_progress = true;
+        e.testHook_executor().queueTriggeredAbility(beans, P1, TriggerType::WhenYouPlayAUnit, unit);
+        live.battlefields[0].showdown_in_progress = false;
+        e.testHook_runChain();
+    }, &agent);
+    ASSERT_EQ(agent.prompts.size(), 1u) << "the ability triggered: its may is asked";
+    EXPECT_TRUE(o(beans).is_exhausted);
+    EXPECT_EQ(handSize(P1), 1);
+}
+
+// 573 Fresh Beans: the showdown ends in response. A pin, not a red test: the
+// old code drew here too (the cost was paid at finalization, and a paid may is
+// not re-validated).
+TEST_F(VerifyCardsTest, Pin_FreshBeans_TheShowdownEndsInResponse_TheCardIsStillDrawn) {
+    auto beans = addGear(P1, kFreshBeans);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    addToDeck(P1, kRecruit);
+    state.battlefields[0].showdown_in_progress = true;
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    bool exhausted_at_response = false;
+    fireAndProbe(beans, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
+        exhausted_at_response = live.getObject(beans).is_exhausted;
+        live.battlefields[0].showdown_in_progress = false;
+    }, unit);
+    EXPECT_TRUE(exhausted_at_response) << "exhausted as the ability is finalized";
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(handSize(P1), 1);
+}
+
+// 562 Mischievous Marai — NOT A DEFECT: the battlefield test left in onTrigger
+// is not the trigger condition asked again but what "here" refers to, which is
+// checked as the instruction is executed (CR 359.3.f.2, the Yasuo example:
+// moved back to base in response, "the attack trigger mistargets").
+TEST_F(VerifyCardsTest, Pin_MischievousMarai_MovedToBaseInResponse_HereIsGoneAndItMistargets) {
+    auto marai = addUnit(P1, kMischievousMarai, 0, 0);
+    auto foe = addUnit(P2, kInvalidId, 9, 0);
+    // She stays: 2 to the chosen unit.
+    EnginePathAgent stays(EnginePathAgent::script({static_cast<int>(foe)}));
+    fireAndProbe(marai, TriggerType::WhenYouPlayMe, &stays, [](GameState&) {});
+    ASSERT_EQ(stays.prompts.size(), 1u);
+    EXPECT_EQ(o(foe).damage_marked, 2);
+    // She is moved to her base in response: the unit is no longer "here".
+    EnginePathAgent moved(EnginePathAgent::script({static_cast<int>(foe)}));
+    fireAndProbe(marai, TriggerType::WhenYouPlayMe, &moved, [&](GameState& live) {
+        putOnBoard(live, marai);                        // -1: her controller's base
+    });
+    EXPECT_EQ(moved.prompts.size(), 1u) << "nothing is asked as it resolves";
+    EXPECT_EQ(o(foe).damage_marked, 2) << "no further damage: a mistarget";
 }
 
 }  // namespace

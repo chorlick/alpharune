@@ -34,9 +34,15 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         PlayerId opp = opponent(ctx.controller);
-        // Not at a battlefield: no unit is "here". No return ahead of
-        // pickTarget — it stores "no target" on the chain item, so the
-        // resolution asks nothing wherever she is by then.
+        // This is not the trigger condition asked a second time ("to a
+        // battlefield" is triggerCondition, asked once as she is played): it
+        // is what "here" refers to, which is checked as the instruction is
+        // executed (CR 359.3.f.2 — Yasuo moved back to base in response:
+        // "here" is no longer that battlefield and the trigger mistargets).
+        // So a Marai who is at no battlefield as this resolves has no unit
+        // "here": the list is empty and pickTarget turns the unit chosen at
+        // finalization into a mistarget. No return ahead of pickTarget — it
+        // stores "no target" on the chain item.
         std::vector<GameObjectId> legal;
         if (my_bf) {
             for (auto& [id, obj] : ctx.state.objects) {

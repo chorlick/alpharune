@@ -1070,11 +1070,20 @@ TEST_F(VendettaCTest, Vendetta_Ambessa_AttackKillsWeakerEnemyHereOnlyWhileEmpowe
     auto weaker_friend = addUnit(P1, kInvalidId, 1, 0);
     auto weaker = addUnit(P2, kInvalidId, 4, 0);
 
-    fireTriggerAs(kAmbessa, P1, ambessa, TriggerType::WhenIAttack, exec);
+    // On the engine path: "[Empowered][>]" is the trigger condition
+    // (Card::triggerCondition, asked by TriggerManager::queueTrigger), so for
+    // an Ambessa who is not Empowered no ability goes on the chain.
+    EnginePathAgent plain(EnginePathAgent::script({}));
+    fireTriggerThroughEngine(ambessa, TriggerType::WhenIAttack, &plain);
+    EXPECT_TRUE(plain.prompts.empty()) << "not Empowered: the ability does not trigger";
     EXPECT_TRUE(state.getObject(weaker).location.has_value()) << "not Empowered: no trigger";
 
     exec.empower(ambessa);
-    fireTriggerAs(kAmbessa, P1, ambessa, TriggerType::WhenIAttack, exec);
+    EnginePathAgent empowered(EnginePathAgent::script({static_cast<int>(weaker)}));
+    fireTriggerThroughEngine(ambessa, TriggerType::WhenIAttack, &empowered);
+    ASSERT_EQ(empowered.prompts.size(), 1u);
+    EXPECT_EQ(empowered.prompts[0].size(), 1u)
+        << "only the enemy unit here with less Might than her is offered";
     EXPECT_FALSE(state.getObject(weaker).location.has_value());
     EXPECT_TRUE(state.getObject(equal).location.has_value());
     EXPECT_TRUE(state.getObject(weaker_elsewhere).location.has_value());

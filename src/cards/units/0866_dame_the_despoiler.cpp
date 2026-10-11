@@ -32,11 +32,14 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto bf = ctx.state.getObject(ctx.source).battlefieldId();
-        // Not Empowered, or not at a battlefield: nothing to choose. No
-        // return ahead of pickTarget — it stores "no target" on the chain
-        // item, so the resolution asks nothing if I have been Empowered since.
+        // Empowered is not asked again here: it was the trigger condition
+        // (triggerCondition), and an ability that is on the chain resolves
+        // even if I have been disempowered since (CR 383.2.a.1: "it will
+        // still resolve"). Not at a battlefield: no unit is "here" (CR
+        // 359.3.f.2). No return ahead of pickTarget — it stores "no target"
+        // on the chain item.
         std::vector<GameObjectId> here;
-        if (bf && ctx.state.getObject(ctx.source).isEmpowered())
+        if (bf)
             here = chooseableUnits(ctx.state, ctx.controller,
                 [&](const GameObject& o) {
                     auto obf = o.battlefieldId();

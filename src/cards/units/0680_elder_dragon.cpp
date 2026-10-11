@@ -22,12 +22,27 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto opp = opponent(ctx.controller);
         // "at each location": the opponent's base and every battlefield
-        // (CR 151 / 144.4 for location vs zone).
+        // (CR 151 / 144.4 for location vs zone) — the battlefields there are
+        // as the ability is finalized (CR 383.3). How many that is is fixed on
+        // the first entry and kept on the chain item
+        // (resume_data[kLocationsSlot] = that number + 1; 0 = not set yet), so
+        // a battlefield added before this resolves (Baron Nashor's Pit) gets
+        // no prompt then: nothing was chosen there. Battlefields are only
+        // ever appended to state.battlefields.
+        constexpr size_t kLocationsSlot = Card::kChoiceStateSlot + 1;
+        size_t battlefields = ctx.state.battlefields.size();
+        if (auto& ri = ctx.state.chain.resuming; ri.has_value()) {
+            auto& rd = ri->resume_data;
+            if (rd.size() <= kLocationsSlot) rd.resize(kLocationsSlot + 1, 0);
+            if (rd[kLocationsSlot] == 0)
+                rd[kLocationsSlot] = static_cast<int32_t>(battlefields) + 1;
+            battlefields = std::min(battlefields, static_cast<size_t>(rd[kLocationsSlot] - 1));
+        }
         std::vector<LocationId> locations;
-        locations.reserve(ctx.state.battlefields.size() + 1);
+        locations.reserve(battlefields + 1);
         locations.push_back(BaseLocation{opp});
-        for (auto& bf : ctx.state.battlefields)
-            locations.push_back(BattlefieldLocation{bf.id});
+        for (size_t i = 0; i < battlefields; ++i)
+            locations.push_back(BattlefieldLocation{ctx.state.battlefields[i].id});
 
         // "choose up to one enemy unit at each location": one prompt per
         // location that has a choice, each with a "None".
@@ -41,7 +56,7 @@ public:
         const bool taxed = !ignoresDeflect();
         const int payable = ctx.executor.payableAnyPower(ctx.controller);
         int owed = 0;
-        size_t slot = 7;
+        size_t slot = kLocationsSlot + 1;   // two per location (selectObject)
         for (const auto& loc : locations) {
             const auto here = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
                 return u.controller == opp && *u.location == loc &&

@@ -113,7 +113,13 @@ public:
         case 0: {  // "Ready 2 runes": the two named as the ability was finalized
             int readied = 0;
             for (auto id : {rune_a, rune_b}) {
-                if (!readiable(id)) continue;   // readied or off the board since it was named
+                // Not dead: selectObject hands back the stored answer as
+                // it was given, without looking at the list again. So this
+                // is what skips (a) kInvalidId — fewer than two exhausted
+                // runes when the ability was finalized — and (b) a rune
+                // named then that has been readied or has left the board
+                // since; no other rune is readied in its place.
+                if (!readiable(id)) continue;
                 ctx.executor.readyObject(id);
                 ++readied;
             }

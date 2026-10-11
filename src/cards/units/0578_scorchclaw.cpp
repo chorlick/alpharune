@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -14,14 +15,23 @@ namespace {
 class Scorchclaw : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (ctx.state.player(ctx.controller).xp < 3) return;
-        ctx.state.player(ctx.controller).xp += 2;
-        ctx.executor.readyObject(ctx.source);
-    }
+    // "[Hunt 2]" — not gated by Level.
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
-    bool requiresLevel() const override { return true; }
-    int levelThreshold() const override { return 3; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        gainXp(ctx, ctx.controller, 2);
+    }
+    // "[Level 3][>] I have +1 [M] and enter ready."
+    bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
+        return state.player(controller).xp >= 3;
+    }
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        if (state.player(controller).xp < 3) return;
+        for (auto& [id, obj] : state.objects) {
+            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
+            if (!obj.location.has_value()) continue;
+            auraMight(obj, id, 1);
+        }
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

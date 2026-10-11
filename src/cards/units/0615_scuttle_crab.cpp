@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -24,19 +25,29 @@ public:
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenIDie) {
-            // [Deathknell] — choose an opponent (only one in 1v1), reveal
-            // their hand (observation), gain 1 XP.
+            // [Deathknell] — choose an opponent (only one in 1v1): they reveal
+            // their hand, and I may look at their facedown cards this turn.
             auto opp = opponent(ctx.controller);
-            for (auto card_id : ctx.state.player(opp).hand) {
-                if (!ctx.state.objectExists(card_id)) continue;
+            auto show = [&](GameObjectId card_id, ZoneType zone, deck::Place place) {
+                if (!ctx.state.objectExists(card_id)) return;
                 auto& obj = ctx.state.getObject(card_id);
                 ctx.events.emit(CardRevealedEvent{
                     card_id, obj.card_def_id, obj.owner,
-                    /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller,
-                    ZoneType::Hand});
-            }
-            ctx.state.player(ctx.controller).xp += 1;
-            ctx.events.logTrace("SCUTTLE CRAB: [Deathknell] reveal opp hand, +1 XP");
+                    /*revealed_to_all=*/false, /*revealed_to=*/ctx.controller, zone});
+                knowledge::seen(ctx.state, card_id, place, knowledge::only(ctx.controller));
+            };
+            for (auto card_id : ctx.state.player(opp).hand)
+                show(card_id, ZoneType::Hand, deck::Place::Hand);
+            // ENGINE-GAP: "this turn" covers cards the opponent hides later in
+            // the turn too; there is no standing look-at permission, so only
+            // the cards facedown now are shown.
+            for (const auto& bf : ctx.state.battlefields)
+                for (auto card_id : bf.facedown)
+                    if (ctx.state.objectExists(card_id) &&
+                        ctx.state.getObject(card_id).controller == opp)
+                        show(card_id, ZoneType::FacedownZone, deck::Place::Facedown);
+            gainXp(ctx, ctx.controller, 1);
+            ctx.events.logTrace("SCUTTLE CRAB: [Deathknell] reveal opp hand + facedown cards, +1 XP");
         }
     }
 private:

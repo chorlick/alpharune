@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,26 +16,23 @@ class CrowdFavorite : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // [Hunt] — gain 1 XP on conquer/hold.
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        ctx.state.player(ctx.controller).xp += 1;
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        gainXp(ctx, ctx.controller, 1);
     }
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
-
     // "Spend 2 XP: [Buff] me. (Give me a +1 [M] buff if I don't have one.)"
+    // The XP is the activation cost: the engine checks and charges it as the
+    // ability is activated (ActivationCost::xp_cost).
     bool hasActivatedAbility() const override { return true; }
-    ActivationCost getActivationCost() const override { return {}; }  // XP handled in onActivate
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        return state.player(controller).xp >= 2;
+    ActivationCost getActivationCost() const override {
+        ActivationCost cost;
+        cost.xp_cost = 2;
+        return cost;
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        if (ps.xp < 2) return;
-        // "if I don't have one" — only buff when no buff present.
-        if (ctx.state.getObject(ctx.source).buff_count > 0) return;
-        ps.xp -= 2;
-        ctx.executor.buffUnit(ctx.source);
-        ctx.events.logTrace("CROWD FAVORITE: spent 2 XP -> [Buff] me");
+        // buffUnit places a Buff only on a unit on the board without one.
+        if (ctx.executor.buffUnit(ctx.source))
+            ctx.events.logTrace("CROWD FAVORITE: spent 2 XP -> [Buff] me");
     }
 private:
     const CardDef def_ = [] {

@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,13 +16,10 @@ class Gustwalker : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // [Hunt 2] — gain 2 XP on conquer/hold (unconditional).
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        ctx.state.player(ctx.controller).xp += 2;
-        ctx.events.logTrace("GUSTWALKER: Hunt 2 -> +2 XP");
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        gainXp(ctx, ctx.controller, 2);
     }
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
-    bool requiresLevel() const override { return true; }
-    int levelThreshold() const override { return 3; }
     // "[Level 3] I have +1 [M] and [Ganking]." Level hooks are not consumed by
     // the engine; implement the tier inline by checking controller XP.
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
@@ -57,7 +55,6 @@ private:
         d.power_cost = 1;
         d.might = 3;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Ganking);
         d.keywords.set(Keyword::Hunt);
         d.keywords.set(Keyword::Level);
         d.ability_text = R"RB([Hunt 2] (When I conquer or hold, gain 2 XP.)

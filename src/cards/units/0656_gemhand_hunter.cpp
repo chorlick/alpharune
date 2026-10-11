@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -18,8 +19,7 @@ public:
     // Hunt: gain 1 XP when I conquer or hold.
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 1;
-        ctx.events.logTrace("GEMHAND HUNTER: Hunt — gain 1 XP");
+        gainXp(ctx, ctx.controller, 1);
     }
 
     // Level 6: continuous +1 [M] while controller has 6+ XP.

@@ -14,28 +14,28 @@ namespace {
 class MasterYiUnstoppable : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    bool requiresLevel() const override { return true; }
-    int levelThreshold() const override { return 3; }
-
-    // Tiered cost reductions (Level hooks aren't consumed by the engine):
+    // Tiered by the controller's XP; each tier replaces the one below it:
     //   [Level 3]  I cost [2][G] less.
     //   [Level 6]  I cost [4][G][G] less instead.
     //   [Level 11] I cost [6][G][G][G] less instead.
-    // selfCostReduction only expresses an ENERGY reduction (clamped >= 0); the
-    // engine has no per-card POWER reduction hook, so the [G]/[G][G]/[G][G][G]
-    // power portion of each tier is an ENGINE GAP and is NOT applied here.
-    int selfCostReduction(const GameState& state, PlayerId player) const override {
-        int xp = state.player(player).xp;
-        if (xp >= 11) return 6;
-        if (xp >= 6)  return 4;
-        if (xp >= 3)  return 2;
-        return 0;
+    static int tier(const GameState& state, PlayerId player) {
+        const int xp = state.player(player).xp;
+        return xp >= 11 ? 3 : xp >= 6 ? 2 : xp >= 3 ? 1 : 0;
     }
-
-    // "[Level 16] I can't be chosen by enemy spells and abilities." is an
-    // ENGINE GAP: canBeChosenByEnemy() is a stateless static hook (no GameState/
-    // XP access), so the L16-gated untargetability cannot be expressed. Left
-    // unimplemented.
+    int selfCostReduction(const GameState& state, PlayerId player) const override {
+        return 2 * tier(state, player);
+    }
+    int selfPowerCostReduction(const GameState& state, PlayerId player) const override {
+        return tier(state, player);
+    }
+    // "[Level 16][>] I can't be chosen by enemy spells and abilities."
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        if (state.player(controller).xp < 16) return;
+        for (auto& [id, obj] : state.objects)
+            if (obj.card_def_id == cardDefId() && obj.controller == controller &&
+                obj.location.has_value())
+                obj.untargetable_by_enemy = true;
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

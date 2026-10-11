@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -15,20 +16,15 @@ class PoppyParagon : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "[Deflect]" engine-handled. "When you play me, if an opponent's score is
-    //  within 3 points of the Victory Score, ready me and gain 3 XP."
-    static bool oppNearVictory(const GameState& state, PlayerId controller) {
-        int vs = state.mode.victory_score;
-        return state.player(opponent(controller)).score >= vs - 3;
-    }
-    // "ready me" — enter ready when the condition holds at play time.
-    bool entersReadyOnPlay(const GameState& state, PlayerId controller) const override {
-        return oppNearVictory(state, controller);
-    }
-    // "gain 3 XP" — gated on the same condition.
+    //  within 3 points of the Victory Score, ready me and gain 3 XP." Both
+    //  halves are the play ability's effect; the Victory Score is the one in
+    //  force (a battlefield can raise it).
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!oppNearVictory(ctx.state, ctx.controller)) return;
-        ctx.state.player(ctx.controller).xp += 3;
+        const int victory = ctx.executor.effectiveVictoryScore();
+        if (ctx.state.player(opponent(ctx.controller)).score < victory - 3) return;
+        ctx.executor.readyObject(ctx.source);   // no-op if I left the board
+        gainXp(ctx, ctx.controller, 3);
         ctx.events.logTrace("POPPY PARAGON: opponent near Victory Score -> ready + gain 3 XP");
     }
 private:

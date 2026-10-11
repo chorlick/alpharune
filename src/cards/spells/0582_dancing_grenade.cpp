@@ -23,8 +23,14 @@ public:
     // they pay [A] the spell is played again under their control
     // (EffectExecutor::playIgnoringCost puts it back on the chain, where they
     // choose its target), and that play makes the same offer in turn.
-    // The card is on the chain for the new play: ChainManager does not file a
-    // spell that was played again while it resolved; the new play files it.
+    // This is NOT a reflexive trigger: the text has no "do this" (CR 388.1),
+    // so the play is an instruction of the spell's own effect — a limited
+    // play made as part of its resolution (CR 420.3) — executed while the card
+    // is still on the chain; a spell goes to the trash only after its whole
+    // effect has been executed (CR 359.3.d). (Contrast Death from Below 747,
+    // "do this: You may play this from your trash", CR 388.4.) So the card is
+    // on the chain for the new play: ChainManager does not file a spell that
+    // was played again while it resolved; the new play files it.
     //
     // "Each time this spell has dealt damage this turn" is counted on the card
     // object, stamped with the turn so an old count never carries over.

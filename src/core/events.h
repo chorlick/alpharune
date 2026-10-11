@@ -448,6 +448,12 @@ public:
     void release();
     void discardHeld();
     bool holding() const { return holding_; }
+    /// A stretch whose emissions are dropped, whatever the bus was doing
+    /// before (it may itself be inside a hold): for running game code only to
+    /// see what it would do (GameEngine's pre-play probes).
+    struct Quiet { bool was_holding; size_t held_before; };
+    Quiet beginQuiet();
+    void endQuiet(const Quiet& q);
 
     // Convenience logging. Every line is prefixed with [D:NNN.NN]
     // where NNN is a per-EventBus decision counter (bumped + reset

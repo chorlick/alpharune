@@ -268,7 +268,9 @@ public:
     // Card::canActivateAbility / canActivateAbilityAt first — an activation
     // "from" a trash, a hand, or of another player's card does nothing.
     void testHook_executeIntent(const Intent& i) { executeIntent(i); }
-    void testHook_executePlaySpell(const Intent& i) { executePlaySpell(i); }
+    /// Make a card-contract violation (GameEngine::cardContractViolation) an
+    /// error instead of a logged warning.
+    void setStrictCardContracts(bool strict) { strict_card_contracts_ = strict; }
     // Exactly ONE aura pass (cleanup repeats it until the state settles).
     void testHook_recalculateAuras() { recalculateAuras(); }
     // The top-level main-phase decision, asked of `p`'s agent.
@@ -568,6 +570,10 @@ private:
     void executeIntent(const Intent& intent);
     void executePlayCard(const Intent& intent);
     void executePlaySpell(const Intent& intent);
+    /// The rest of a spell's play once its choices are made: payment, Repeat,
+    /// the chain.
+    void finishPlaySpell(const Intent& intent, std::vector<GameObjectId> play_targets,
+                         bool target_chosen_at_play, std::vector<GameObjectId> cost_targets);
     void executeStandardMove(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);
@@ -777,7 +783,44 @@ private:
     void runFinalizePass(ChainItem& item);
     /// The finalize pass itself: runs `item`'s callback with `finalizing` set
     /// until it asks nothing more, and returns the item with its choices.
-    ChainItem collectFinalizeChoices(ChainItem item);
+    /// `answer`, when given, answers the pass's prompts instead of the agents
+    /// (prompt index, player, options); returning nothing stops the pass there
+    /// (`*completed` = false) with whatever it did so far left in the state.
+    using FinalizeAnswerer =
+        std::function<std::optional<Intent>(size_t, PlayerId, const std::vector<Intent>&)>;
+    ChainItem collectFinalizeChoices(ChainItem item, const FinalizeAnswerer* answer = nullptr,
+                                     bool* completed = nullptr);
+
+    // ── A spell's choices made before its cost is paid (CR 355 -> 356) ──
+    /// What a pre-play pass is judged by: can the spell be paid for with
+    /// these objects chosen (their Deflect already paid)?
+    using PrePlayPayable = std::function<bool(const std::vector<GameObjectId>&)>;
+    /// One run of `pre`'s finalize pass from the state `from`, answering
+    /// prompt k with option `script[k]`; past the script it either stops
+    /// (`stop_after_script`: the next prompt is returned) or takes option 0.
+    struct ScriptedPass {
+        bool completed = false;
+        ChainItem done;
+        std::vector<int> option_counts;      // options of each prompt met
+        std::vector<Intent> next_options;    // the first unscripted prompt, if stopped there
+        PlayerId next_player = PlayerId::None;
+    };
+    ScriptedPass runScriptedPass(const GameState& from, const ChainItem& pre,
+                                 const std::vector<int>& script, bool stop_after_script);
+    /// Whether some continuation of `script` completes the pass and leaves
+    /// the spell payable. Bounded (kPrePlayProbeRuns); leaves `state_` as
+    /// `from`. Nothing it does is seen: no event, no log line, no agent asked.
+    bool prePlaySequenceExists(const GameState& from, const ChainItem& pre,
+                               const std::vector<int>& script, const PrePlayPayable& payable);
+    /// The real pass for a spell that is too dear on its own: at every prompt
+    /// only the options from which a payable completion exists are offered,
+    /// so the play, once offered, cannot end unpaid.
+    ChainItem choosePrePlayViable(const ChainItem& pre, const PrePlayPayable& payable);
+    /// The generators' question: with `card_id` leaving its zone now, is
+    /// there a complete sequence of its choices that leaves it payable?
+    bool prePlayProbe(PlayerId player, GameObjectId card_id,
+                      const PlayerState::TrashReplayGrant* grant);
+    static constexpr int kPrePlayProbeRuns = 256;
     /// Whether a spell that chooses in its finalize pass could be paid for by
     /// choosing something that takes enough off its cost (the generators'
     /// half of executePlaySpell's choices-before-payment).
@@ -786,6 +829,8 @@ private:
     /// A spell's finalize-pass choices made before its cost was paid; adopted
     /// by chooseTargetsAtFinalize when the spell goes on the chain.
     std::optional<ChainItem> prefinalized_spell_;
+    void cardContractViolation(const std::string& what);
+    bool strict_card_contracts_ = false;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
     /// One agent decision among `options` for `player`, logged like any other.

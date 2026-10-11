@@ -499,6 +499,10 @@ set(RIFTBOUND_TEST_UNITY_BATCH 8 CACHE STRING
 # Compiled on their own even with RIFTBOUND_UNITY_TESTS (paths relative to the
 # repository root).
 set(RIFTBOUND_TEST_UNITY_EXCLUDE
+    # #includes src/io/play_server.cpp and play_index_html.cpp to reach their
+    # file-local functions; those sources' own file-scope names stay out of
+    # the shared units.
+    tests/test_review_fix_io_cli.cpp
 )
 if(RIFTBOUND_UNITY_TESTS)
     set_target_properties(riftbound_tests PROPERTIES

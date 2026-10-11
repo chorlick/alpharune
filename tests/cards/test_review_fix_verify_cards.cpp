@@ -126,6 +126,8 @@ constexpr CardDefId kDianaLunari = 641;
 constexpr CardDefId kCursedSarcophagus = 710;
 constexpr CardDefId kRiftHerald = 741;
 constexpr CardDefId kPakaaProtector = 820;
+constexpr CardDefId kInferna = 560;
+constexpr CardDefId kMysticVortex = 947;
 constexpr CardDefId kVayne035 = 35;
 constexpr CardDefId kBackAlleyBar = 272;
 constexpr CardDefId kSoraka = 550;
@@ -410,6 +412,73 @@ protected:
         o(card).zone = ZoneType::Banishment;
         owner.banishment.push_back(card);
         o(gear).tracked_objects.push_back(card);
+    }
+
+    /// 9.O1 scenario: Mystic Vortex 947 in battlefield slot 0, a unit of each
+    /// player there, a P1 unit at battlefield 1, P1's main phase. Returns an
+    /// Inferna ([Ambush], [2], no Power) in P1's hand: with the Vortex's tax she
+    /// costs [2] + [A].
+    GameObjectId vortexScenario() {
+        battlefieldCard(0, kMysticVortex, P2);
+        addUnit(P1, kInvalidId, 1, 0);
+        addUnit(P2, kInvalidId, 1, 0);
+        addUnit(P1, kInvalidId, 1, 1);
+        state.turn.phase = TurnPhase::MainPhase;
+        state.turn.turn_player = P1;
+        return addToHand(P1, kInferna);
+    }
+    /// A Non-Combat Showdown open at slot `bf`, P1 with Focus (what
+    /// GameEngine::runShowdown + advanceShowdown set).
+    void openShowdownAt(GameState& st, int bf) {
+        st.turn.ns_state = NeutralShowdownState::Showdown;
+        st.turn.oc_state = OpenClosedState::Open;
+        st.turn.focus_holder = P1;
+        st.turn.priority_holder = P1;
+        st.battlefields[bf].showdown_in_progress = true;
+    }
+    /// A combat at slot `bf` in step `phase`, P1 attacking (what
+    /// GameEngine::runCombat sets: it never sets showdown_in_progress).
+    void openCombatAt(GameState& st, int bf, CombatPhase phase) {
+        st.turn.ns_state = NeutralShowdownState::Showdown;
+        st.turn.oc_state = OpenClosedState::Open;
+        st.turn.focus_holder = P1;
+        st.turn.priority_holder = P1;
+        auto& b = st.battlefields[bf];
+        b.showdown_in_progress = false;
+        b.combat_in_progress = true;
+        b.combat_phase = phase;
+        b.attacker = P1;
+        b.defender = P2;
+    }
+    /// Whether P1 can afford `card` with `energy` + `any_power` floating, in the
+    /// engine's own order: the aura pass runs in the cleanup BEFORE a showdown
+    /// or combat opens (advanceMainPhase -> runShowdown / runCombat set their
+    /// flags and ask the first decision with no aura pass in between), then
+    /// `open` sets the live flags.
+    bool affordableAfter(GameObjectId card, int energy, int any_power,
+                         const std::function<void(GameState&)>& open) {
+        ps(P1).rune_pool.energy = energy;
+        ps(P1).rune_pool.universal_power = any_power;
+        bool ok = false;
+        withEngine([&](GameEngine& e) {
+            e.testHook_recalculateAuras();
+            open(e.mutableState());
+            ok = e.testHook_canAfford(P1, card);
+        });
+        return ok;
+    }
+    /// The generator's [Ambush] play of `card` to battlefield slot `bf`, if it
+    /// is offered in the fixture's current state.
+    std::optional<Intent> ambushOffer(GameObjectId card, int bf) {
+        std::optional<Intent> found;
+        withEngine([&](GameEngine& e) {
+            for (const auto& i : e.generateLegalActions())
+                if (i.card == card && i.play_location &&
+                    *i.play_location ==
+                        LocationId{BattlefieldLocation{static_cast<BattlefieldId>(bf)}})
+                    found = i;
+        });
+        return found;
     }
     int countNamed(PlayerId owner, const std::string& name) {
         int n = 0;
@@ -4845,6 +4914,130 @@ TEST_F(VerifyCardsTest, CursedSarcophagus_TheUnitIsPlayedWhereItsControllerChoos
     EXPECT_EQ(ps(P1).rune_pool.energy, 0) << "its [3] was paid";
     EXPECT_TRUE(o(coffin).tracked_objects.empty());
     EXPECT_TRUE(ps(P1).banishment.empty());
+}
+
+// ═══ Tranche 5: 9.O1 Mystic Vortex 947 ═══════════════════════════════════════
+// ── 9.O1 Mystic Vortex 947 ──────────────────────────────────────────────────
+// "During showdowns here, cards with [Reaction] cost [A] more to play. (Hidden
+// cards have [Reaction].)"
+// The card publishes the standing amount (BattlefieldState::reaction_tax_power);
+// the engine reader (GameEngine::extraAnyPowerCost) decides live whether a
+// showdown is on at that battlefield.
+
+// A [Reaction] play HERE during a showdown HERE, from the first decision of the
+// showdown: the cost gate, the generator and the payment.
+TEST_F(VerifyCardsTest, MysticVortex_TaxesAReactionPlayedHereFromTheFirstDecisionOfAShowdownHere) {
+    auto inferna = vortexScenario();
+    auto open = [&](GameState& st) { openShowdownAt(st, 0); };
+    EXPECT_FALSE(affordableAfter(inferna, 2, 0, open))
+        << "[2] alone is one [A] short while a showdown is on at the Vortex";
+    EXPECT_FALSE(ambushOffer(inferna, 0).has_value()) << "not offered unpaid";
+
+    EXPECT_TRUE(affordableAfter(inferna, 2, 1, open));
+    auto here = ambushOffer(inferna, 0);
+    ASSERT_TRUE(here.has_value()) << "[Ambush] to the showdown's battlefield is offered";
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(*here);
+        e.testHook_runChain();
+    });
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "her [2] and the Vortex's [A]";
+    ASSERT_TRUE(bfOf(inferna).has_value());
+    EXPECT_EQ(*bfOf(inferna), 0u);
+}
+
+// "here" is where the SHOWDOWN is, not where the taxed card goes: the same
+// card played to the other battlefield during that showdown costs [A] more too.
+TEST_F(VerifyCardsTest, MysticVortex_TaxesAReactionPlayedToAnotherBattlefieldDuringAShowdownHere) {
+    auto inferna = vortexScenario();
+    auto open = [&](GameState& st) { openShowdownAt(st, 0); };
+    EXPECT_FALSE(affordableAfter(inferna, 2, 0, open));
+    EXPECT_FALSE(ambushOffer(inferna, 1).has_value())
+        << "a play to battlefield 1 is a card with [Reaction] played during a showdown at "
+           "the Vortex: taxed like any other";
+
+    EXPECT_TRUE(affordableAfter(inferna, 2, 1, open));
+    auto elsewhere = ambushOffer(inferna, 1);
+    ASSERT_TRUE(elsewhere.has_value()) << "P1 has a unit at battlefield 1 (CR 822.1.b)";
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(*elsewhere);
+        e.testHook_runChain();
+    });
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0) << "the [A] was charged for a play elsewhere";
+    ASSERT_TRUE(bfOf(inferna).has_value());
+    EXPECT_EQ(*bfOf(inferna), 1u);
+}
+
+// A showdown at ANOTHER battlefield is not a showdown "here".
+TEST_F(VerifyCardsTest, Pin_MysticVortex_AShowdownAtAnotherBattlefieldIsNotTaxed) {
+    auto inferna = vortexScenario();
+    addUnit(P2, kInvalidId, 1, 1);
+    auto open = [&](GameState& st) { openShowdownAt(st, 1); };
+    EXPECT_TRUE(affordableAfter(inferna, 2, 0, open)) << "her printed [2]";
+    EXPECT_TRUE(ambushOffer(inferna, 1).has_value());
+    EXPECT_TRUE(ambushOffer(inferna, 0).has_value())
+        << "nor is a play to the Vortex taxed: no showdown is on there";
+}
+
+// A combat here opens with a Combat Showdown (CR 316.8.a, 466.2): it is a
+// showdown here. runCombat sets combat_in_progress only; combat_phase is None
+// while the attack / defend triggers resolve (CR 466.2.d, part of Step 1) and
+// ShowdownStep in the focus loop.
+TEST_F(VerifyCardsTest, MysticVortex_TaxesDuringTheCombatShowdownStepOfACombatHere) {
+    auto inferna = vortexScenario();
+    for (CombatPhase phase : {CombatPhase::None, CombatPhase::ShowdownStep}) {
+        auto open = [&](GameState& st) { openCombatAt(st, 0, phase); };
+        EXPECT_FALSE(affordableAfter(inferna, 2, 0, open))
+            << "combat_phase " << static_cast<int>(phase);
+        EXPECT_TRUE(affordableAfter(inferna, 2, 1, open))
+            << "combat_phase " << static_cast<int>(phase);
+    }
+    EXPECT_FALSE(affordableAfter(inferna, 2, 0, [&](GameState& st) {
+        openCombatAt(st, 0, CombatPhase::ShowdownStep); }));
+    EXPECT_FALSE(ambushOffer(inferna, 0).has_value());
+}
+
+// DISABLED until sweep-verify-engine changes the reader. CR 467.2: Combat
+// Damage is resolved "when the Showdown closes", and the Resolution Step
+// (CR 468) follows it — the combat is still in progress, the showdown is not.
+// A [Reaction] played in the Resolution Step's chain (CR 468.2: in response to
+// a death or recall trigger) is not played "during a showdown here".
+// Needed: GameEngine::extraAnyPowerCost must count a battlefield's
+// reaction_tax_power only while
+//     bf.showdown_in_progress ||
+//     (bf.combat_in_progress && bf.combat_phase != CombatPhase::DamageStep &&
+//                               bf.combat_phase != CombatPhase::ResolutionStep)
+// instead of `bf.showdown_in_progress || bf.combat_in_progress`.
+TEST_F(VerifyCardsTest, DISABLED_MysticVortex_NoTaxOnceTheCombatShowdownHasClosed) {
+    auto inferna = vortexScenario();
+    for (CombatPhase phase : {CombatPhase::DamageStep, CombatPhase::ResolutionStep}) {
+        auto open = [&](GameState& st) {
+            openCombatAt(st, 0, phase);
+            st.turn.oc_state = OpenClosedState::Closed;   // the step's chain (CR 468.2)
+        };
+        EXPECT_TRUE(affordableAfter(inferna, 2, 0, open))
+            << "her printed [2]: the Combat Showdown has closed (combat_phase "
+            << static_cast<int>(phase) << ")";
+    }
+}
+
+// Outside any showdown the standing amount is published and nothing is owed.
+TEST_F(VerifyCardsTest, Pin_MysticVortex_NoTaxOutsideAShowdown) {
+    auto inferna = vortexScenario();
+    EXPECT_TRUE(affordableAfter(inferna, 2, 0, [](GameState&) {})) << "Neutral Open";
+    EXPECT_EQ(state.battlefields[0].reaction_tax_power, 1)
+        << "the amount for showdowns here stands; the reader applies it only during one";
+    EXPECT_EQ(state.battlefields[1].reaction_tax_power, 0);
+
+    // A showdown here that has ended (runShowdown clears the flag with no aura
+    // pass after it): nothing is owed either, in an Open or a Closed State.
+    auto ended = [&](GameState& st) {
+        openShowdownAt(st, 0);
+        st.battlefields[0].showdown_in_progress = false;
+        st.turn.ns_state = NeutralShowdownState::Neutral;
+        st.turn.oc_state = OpenClosedState::Closed;
+    };
+    EXPECT_TRUE(affordableAfter(inferna, 2, 0, ended));
 }
 
 }  // namespace

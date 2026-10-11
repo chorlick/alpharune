@@ -103,21 +103,9 @@ public:
             eligible(ctx.state.getObject(picked), ctx.executor.cardDB());
         // Its controller's base or a battlefield they control (CR 355.2.a).
         const auto where = playLocations(ctx.state, ctx.controller);
-        // Not a battlefield units can't be played to (Rockfall Path), and no
-        // battlefield at all for a player who may only play units to base
-        // (Mageseeker Warden). The modes keep their numbers.
-        uint32_t playable = 0;
-        for (int i = 0; i < where.count() && i < 32; ++i) {
-            bool ok = true;
-            if (const auto* at = std::get_if<BattlefieldLocation>(&where.locations[i])) {
-                ok = !ctx.state.player(ctx.controller).units_play_base_only;
-                for (const auto& bf : ctx.state.battlefields)
-                    if (bf.id == at->id && bf.blocks_unit_play) ok = false;
-            }
-            if (ok) playable |= 1u << i;
-        }
+        // (playLocations leaves out a battlefield units can't be played to.)
         const int mode = pickMode(ctx, "Undying Loyalty: where to play it",
-                                  where.count(), where.labels, playable);
+                                  where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (!still_there) return;

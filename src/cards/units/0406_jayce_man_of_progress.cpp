@@ -32,10 +32,9 @@ public:
     // which. "If you do, you may play a gear with Energy cost no more than [7]
     // from hand this turn, ignoring its Energy cost. (You must still pay its
     // Power cost.)" — a permission for the rest of the turn: the next gear
-    // played this turn costs up to [7] Energy less; its Power is paid as usual.
-    // (No gear costs more than [7] Energy less than its printed cost: the
-    // modifier has no "only if it costs [7] or less" test, so a dearer gear
-    // would pay the difference instead of being excluded.)
+    // with a printed Energy cost of [7] or less played this turn pays no
+    // Energy; its Power is paid as usual. A dearer gear neither gets the
+    // discount nor uses the permission up.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         int conf = confirmOptional(ctx, "Jayce: kill a friendly gear?",
                                    [&]() { return !friendlyGear(ctx).empty(); });
@@ -52,6 +51,7 @@ public:
         mod.energy_reduction = 7;
         mod.this_turn_only = true;
         mod.gear_only = true;
+        mod.max_printed_energy_cost = 7;   // "Energy cost no more than [7]"
         mod.next_card_only = true;   // one gear: used up by the next gear played
         ctx.state.player(ctx.controller).cost_modifiers.push_back(mod);
         ctx.events.logTrace("JAYCE: the next gear played this turn ignores up to [7] of its Energy cost");

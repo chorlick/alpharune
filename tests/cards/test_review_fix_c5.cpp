@@ -27,6 +27,7 @@ constexpr CardDefId kFallingComet = 85;        // spell, [5]
 constexpr CardDefId kMegaMech = 88;            // unit, [7], Mech, 8 [M]
 constexpr CardDefId kMobilize = 134;           // spell, [2]
 constexpr CardDefId kKrakenHunter = 150;       // unit, [3][O][O]
+constexpr CardDefId kDazzlingAurora = 160;     // gear, [9]
 constexpr CardDefId kShipyardSkulker = 175;    // unit, [3], 3 [M], no text
 constexpr CardDefId kScrapheap = 182;          // gear: "When this is ... killed, draw 1."
 constexpr CardDefId kSpectralMatron = 226;
@@ -996,6 +997,13 @@ TEST_F(C5Test, JayceKillsTheChosenGearAndGrantsAPlayThisTurn) {
     ASSERT_EQ(mods.size(), 1u);
     EXPECT_TRUE(mods[0].gear_only);
     EXPECT_TRUE(mods[0].this_turn_only);
+    // "Energy cost no more than [7]": a [9] gear gets nothing.
+    auto dear = addToHand(P1, kDazzlingAurora);
+    state.player(P1).rune_pool.energy = 2;
+    state.player(P1).rune_pool.universal_power = 2;
+    withEngine([&](GameEngine& e) {
+        EXPECT_FALSE(e.testHook_canAfford(P1, dear)) << "[9][A][A] with [2][A][A] available";
+    });
 }
 
 TEST_F(C5Test, YordleExplorerDrawsForTheCardThatWasPlayed) {

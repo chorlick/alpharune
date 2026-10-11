@@ -25,19 +25,21 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         GameObjectId subject = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        if (subject == kInvalidId || !ctx.state.objectExists(subject)) return;
-        const auto& mover = ctx.state.getObject(subject);
+        // No return ahead of the "may" when there is no unit to follow:
+        // both_on_board is then false and confirmOptional stores the "no".
+        const bool has_mover = subject != kInvalidId && ctx.state.objectExists(subject);
         // Both of us must still be on the board: a Pursuer that died in
         // response does not follow, and there is nowhere to follow a unit
         // that left.
         auto both_on_board = [&]() {
-            return ctx.state.getObject(ctx.source).location.has_value() &&
-                   mover.location.has_value();
+            return has_mover && ctx.state.getObject(ctx.source).location.has_value() &&
+                   ctx.state.getObject(subject).location.has_value();
         };
         int answer = confirmOptional(ctx, "Stealthy Pursuer: move with it?", both_on_board);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (answer < 1) return;  // declined or pending
         if (!both_on_board()) return;
+        const auto& mover = ctx.state.getObject(subject);
         if (std::holds_alternative<BattlefieldLocation>(*mover.location))
             ctx.executor.moveToBattlefield(
                 ctx.source, std::get<BattlefieldLocation>(*mover.location).id);

@@ -44,12 +44,17 @@ public:
             // "If you paid the additional cost, [Stun] an enemy unit." The [G]
             // cost was offered at play time (maybePayOptionalAdditionalCost);
             // gate on the flag it set.
-            auto paid = self.card_counters.find("__nami_paid");
-            if (paid == self.card_counters.end() || paid->second != 1) return;
-            const auto legal = chooseableUnits(ctx.state, ctx.controller,
-                [&](const GameObject& u) { return u.controller != ctx.controller; });
+            // No return ahead of the marker when it was not paid: there is
+            // then no unit to choose, and pickTarget stores that on the item.
+            auto paid_it = self.card_counters.find("__nami_paid");
+            const bool paid = paid_it != self.card_counters.end() && paid_it->second == 1;
+            const auto legal = paid
+                ? chooseableUnits(ctx.state, ctx.controller,
+                    [&](const GameObject& u) { return u.controller != ctx.controller; })
+                : std::vector<GameObjectId>{};
             GameObjectId enemy = pickTarget(ctx, "Nami: stun an enemy unit", legal);
             if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+            if (!paid) return;
             // Still waiting for a pick made as this resolves: come back.
             if (enemy == kInvalidId && !legal.empty() && ctx.state.chain.resuming.has_value() &&
                 ctx.state.chain.resuming->resume_point == 7) return;

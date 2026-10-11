@@ -18,18 +18,16 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouStun; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        (void)self;
-        // The stunned unit is the trigger's subject.
+        // The stunned unit is the trigger's subject. No return ahead of the
+        // "may" when it or she is gone: still_legal is then false and
+        // confirmOptional stores the "no" on the item.
         const GameObjectId stunned = ctx.state.chain.resuming.has_value()
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        if (stunned == kInvalidId || !ctx.state.objectExists(stunned)) return;
 
         // Determine the battlefield of the stunned enemy unit ("at a
         // battlefield" / "that battlefield").
         auto target_bf_of = [&ctx, stunned]() -> std::optional<BattlefieldId> {
-            if (!ctx.state.objectExists(stunned)) return std::nullopt;
+            if (stunned == kInvalidId || !ctx.state.objectExists(stunned)) return std::nullopt;
             return ctx.state.getObject(stunned).battlefieldId();
         };
         auto still_legal = [&]() {

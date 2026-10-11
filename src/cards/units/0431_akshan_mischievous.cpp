@@ -36,14 +36,16 @@ public:
         }
         // "if you paid the additional cost" — the flag set at play time.
         auto& counters = ctx.state.getObject(ctx.source).card_counters;
-        auto paid = counters.find("__akshan_paid");
-        if (paid == counters.end() || paid->second != 1) return;
+        // No return ahead of the marker when it was not paid: there is then
+        // no gear to choose, and pickTarget stores that on the item.
+        auto paid_it = counters.find("__akshan_paid");
+        const bool paid = paid_it != counters.end() && paid_it->second == 1;
         PlayerId me = ctx.controller;
 
         // "move an enemy gear to your base" — the controller chooses which.
         std::vector<GameObjectId> enemy_gear;
         for (auto& [id, obj] : ctx.state.objects)
-            if (obj.isGear() && obj.controller != me && obj.location.has_value())
+            if (paid && obj.isGear() && obj.controller != me && obj.location.has_value())
                 enemy_gear.push_back(id);
         const GameObjectId target_gear = pickTarget(ctx, "Akshan: move an enemy gear to your base",
                                                     enemy_gear);
@@ -52,6 +54,7 @@ public:
             return;   // waiting for the agent
         // The payment covers this play only.
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (!paid) return;
         counters.erase("__akshan_paid");
         if (target_gear == kInvalidId) return;
 

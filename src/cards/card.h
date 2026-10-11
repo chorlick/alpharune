@@ -28,6 +28,7 @@ struct GameObject;
 class EventBus;
 class EffectExecutor;
 class CardRegistry;
+struct ChainItem;
 
 /// Context passed to all Card virtual methods.
 /// Provides access to game services and identifies the card instance.
@@ -301,6 +302,9 @@ public:
     /// The marker also ends the card's cost section on every path: a cost
     /// that costDueNow() said was due counts as paid once a run reaches it.
     static bool finalizingChoices(const CardContext& ctx);
+    /// For a choice helper: it has just stored "nothing to decide" as its
+    /// answer on `item` (see the rule at Card::finalizingChoices in card.cpp).
+    static void nothingToDecide(ChainItem& item);
     /// Whether the cost is still to be paid in this run. Due exactly once per
     /// chain item: false after it was paid at finalization, and false after a
     /// run reached the marker with it paid — also when no finalize pass ran

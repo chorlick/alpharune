@@ -27,13 +27,16 @@ public:
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
+        // No return ahead of the marker when the cost was not paid: there is
+        // then no unit to choose, and pickTarget stores that on the item.
+        bool paid = false;
         {
             const auto& self = ctx.state.getObject(ctx.source);
             auto it = self.card_counters.find("__masa_paid");
-            if (it == self.card_counters.end() || it->second != 1) return;
+            paid = it != self.card_counters.end() && it->second == 1;
         }
         auto legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& obj) {
-            return obj.controller != ctx.controller && obj.isAtBattlefield();
+            return paid && obj.controller != ctx.controller && obj.isAtBattlefield();
         });
         GameObjectId picked = pickTarget(ctx, "Masa, Crashing Thunder: stun", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

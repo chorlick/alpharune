@@ -1763,13 +1763,14 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
     state_.chain.resuming.reset();
     if (outer.has_value()) state_.chain.resuming = std::move(*outer);
     // The pass of a card that opted its callback into choices at finalization
-    // ends at the card's end-of-choices marker (Card::finalizingChoices). One
-    // that returned before it stored nothing the resolution can rely on: the
+    // ends at the card's end-of-choices marker, or where a choice helper
+    // stored "nothing to decide" (the rule at Card::finalizingChoices). One
+    // that returned anywhere else stored nothing the resolution can rely on: the
     // card would be entered again as it resolves and its helpers would ask
     // then, after everyone had the chance to respond. That is a card bug,
     // reported here. (A reflexive trigger's pass is the engine's doing, not
     // an opt-in, and has no marker to reach.)
-    if (!(done.finalize_checked & 64) && done.reflexive_index < 0 &&
+    if (!(done.finalize_checked & (64 | 128)) && done.reflexive_index < 0 &&
         done.card_def_id != kInvalidId) {
         const Card* owner = (done.is_ability && done.granted_ability_def != 0)
             ? card_registry_.get(done.granted_ability_def)
@@ -1779,12 +1780,12 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
                                ? Card::kFinalizeTrigger : Card::kFinalizeActivate;
         if (owner && (owner->choicesAtFinalization() & bit)) {
             const GameObjectId src = done.source;
-            cardContractViolation(
+            throw std::logic_error(
                 "GameEngine::runFinalizePass: " +
                 (state_.objectExists(src) ? state_.getObject(src).name : std::string("?")) +
-                " returned from its finalize pass before its end-of-choices marker"
-                " (every path of a callback opted into choices at finalization ends at"
-                " finalizingChoices)");
+                " returned from its finalize pass before its end-of-choices marker and not"
+                " because a choice helper had nothing to decide (the rule is at"
+                " Card::finalizingChoices)");
         }
     }
     return done;
@@ -2200,19 +2201,6 @@ bool GameEngine::canAffordChoosing(PlayerId player, GameObjectId card_id,
     return false;
 }
 
-// A card's finalize pass ended before its end-of-choices marker. Strict: an
-// error naming the card, as the cost contract and an unnameable prompt option
-// are. Otherwise a warning in the log — and on stderr under
-// RIFTBOUND_REPORT_CARD_CONTRACTS, for listing every card a test run trips.
-// Strict is off by default only until the cards that list names are fixed
-// (plans/reports/sweep-costs-followup-5.md has the list).
-void GameEngine::cardContractViolation(const std::string& what) {
-    if (strict_card_contracts_) throw std::logic_error(what);
-    events_.logWarn("CARD-CONTRACT: " + what);
-    static const bool report = std::getenv("RIFTBOUND_REPORT_CARD_CONTRACTS") != nullptr;
-    if (report) std::fprintf(stderr, "CARD-CONTRACT: %s\n", what.c_str());
-}
-
 // ── A spell's choices before its cost: probing and the viable pass ──────────
 
 GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, const ChainItem& pre,
@@ -2248,12 +2236,14 @@ GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, cons
     bool completed = false;
     try {
         out.done = collectFinalizeChoices(pre, &answer, &completed);
-    } catch (const std::exception&) {
-        // A sequence the card itself cannot go through is not one to offer.
-        completed = false;
-        dead = true;
+    } catch (...) {
+        // Every throw of a finalize pass is a card breaking a contract (a
+        // prompt after a paid cost, an early end, an endless pass). It is an
+        // error here as it is in the real pass: counting the sequence as one
+        // not to offer would withhold the play and hide the card's defect.
         state_.chain.resuming.reset();
         if (effect_executor_->hasPendingChoice()) effect_executor_->consumePendingChoice();
+        throw;
     }
     out.completed = completed && !dead;
     if (dead) out.next_options.clear();
@@ -2264,51 +2254,83 @@ bool GameEngine::prePlaySequenceExists(const GameState& from, const ChainItem& p
                                        const std::vector<int>& script,
                                        const PrePlayPayable& payable) {
     const auto quiet = events_.beginQuiet();
-    bool found = false;
-    int runs = 0;
-    std::vector<std::vector<int>> todo{script};
-    while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
-        const std::vector<int> prefix = std::move(todo.back());
-        todo.pop_back();
-        ++runs;
-        const ScriptedPass run = runScriptedPass(from, pre, prefix, /*stop_after_script=*/false);
-        if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
-        // Every other answer to each prompt this run met past its prefix.
-        for (size_t k = run.option_counts.size(); k-- > prefix.size();)
-            for (int alt = run.option_counts[k] - 1; alt >= 1; --alt) {
-                std::vector<int> next = prefix;
-                next.resize(k, 0);
-                next.push_back(alt);
-                todo.push_back(std::move(next));
-            }
-    }
-    {   // leave the state as it was handed in (the decision record kept)
+    // Leave the state as it was handed in (the decision record kept).
+    auto restore = [&] {
         auto history = std::move(state_.action_history);
         const int decisions = state_.decision_index;
         state_ = from;
         state_.action_history = std::move(history);
         state_.decision_index = decisions;
+        events_.endQuiet(quiet);
+    };
+    bool found = false;
+    int runs = 0;
+    std::vector<std::vector<int>> todo{script};
+    try {
+        while (!todo.empty() && runs < kPrePlayProbeRuns && !found) {
+            const std::vector<int> prefix = std::move(todo.back());
+            todo.pop_back();
+            ++runs;
+            const ScriptedPass run =
+                runScriptedPass(from, pre, prefix, /*stop_after_script=*/false);
+            if (run.completed && payable(run.done.chosen_objects)) { found = true; break; }
+            // Every other answer to each prompt this run met past its prefix.
+            for (size_t k = run.option_counts.size(); k-- > prefix.size();)
+                for (int alt = run.option_counts[k] - 1; alt >= 1; --alt) {
+                    std::vector<int> next = prefix;
+                    next.resize(k, 0);
+                    next.push_back(alt);
+                    todo.push_back(std::move(next));
+                }
+        }
+    } catch (...) {
+        restore();
+        throw;
     }
-    events_.endQuiet(quiet);
+    restore();
+    // The bound was reached with sequences still unwalked and none found: the
+    // answer is not known. Saying "none" would withhold a play that may be
+    // legal, so it is an error naming the card, as the engine's other bounds
+    // are; the remedy is a card whose pass asks less, or a larger bound.
+    if (!found && !todo.empty())
+        throw std::logic_error("GameEngine::prePlaySequenceExists: " +
+                               state_.getObject(pre.source).name + " has more than " +
+                               std::to_string(kPrePlayProbeRuns) +
+                               " sequences of choices before its cost and none walked so far "
+                               "makes it payable: the engine cannot tell whether to offer it");
     return found;
 }
 
+// The contract this relies on: a finalize pass is REPEATABLE — run again from
+// the same state with the same answers, it asks the same prompts with the same
+// options in the same order. The pass is run many times here (to find the next
+// prompt, to test each option, to ask, and once more for real), each from a
+// copy of the starting state; a card whose prompts depend on anything outside
+// the GameState and its chain item (a member of the card object, a static, a
+// clock) breaks that, and one of the three throws below names it.
 ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPayable& payable) {
     const GameState pass_start = state_;
     std::vector<int> script;
+    // A run that throws must not leave the bus quiet.
+    struct QuietRun {
+        EventBus& bus;
+        EventBus::Quiet q;
+        explicit QuietRun(EventBus& b) : bus(b), q(b.beginQuiet()) {}
+        ~QuietRun() { bus.endQuiet(q); }
+    };
     for (;;) {
         // Where the choices so far lead: the next prompt, or the end.
         ScriptedPass at;
         {
-            const auto quiet = events_.beginQuiet();
+            const QuietRun quiet(events_);
             at = runScriptedPass(pass_start, pre, script, /*stop_after_script=*/true);
-            events_.endQuiet(quiet);
         }
         if (at.completed) break;
         if (at.next_options.empty())
             throw std::logic_error("GameEngine::choosePrePlayViable: " +
                                    state_.getObject(pre.source).name +
-                                   " reached a prompt with no options");
+                                   " reached a prompt with no options (or its finalize pass "
+                                   "is not repeatable)");
         // Only the options a payable completion can still follow.
         std::vector<int> viable;
         const std::vector<Intent> options = at.next_options;
@@ -2321,12 +2343,13 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
         if (viable.empty())
             throw std::logic_error("GameEngine::choosePrePlayViable: " +
                                    state_.getObject(pre.source).name +
-                                   " was offered with no payable sequence of choices");
+                                   " was offered with no payable sequence of choices (or "
+                                   "its finalize pass is not repeatable: the same answers must "
+                                   "meet the same prompts)");
         // Ask with the state as the choices so far left it.
         {
-            const auto quiet = events_.beginQuiet();
+            const QuietRun quiet(events_);
             (void)runScriptedPass(pass_start, pre, script, /*stop_after_script=*/true);
-            events_.endQuiet(quiet);
         }
         std::vector<Intent> offered;
         offered.reserve(viable.size());
@@ -2349,7 +2372,8 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
     if (!final_run.completed)
         throw std::logic_error("GameEngine::choosePrePlayViable: " +
                                state_.getObject(pre.source).name +
-                               " did not complete the choices it had just made");
+                               " did not complete the choices it had just made (its "
+                               "finalize pass is not repeatable)");
     return final_run.done;
 }
 
@@ -2392,7 +2416,16 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
                               : canAffordChoosing(player, card_id, chosen, {});
     };
     const GameState pass_start = state_;
-    const bool found = prePlaySequenceExists(pass_start, pre, {}, payable);
+    bool found = false;
+    try {
+        found = prePlaySequenceExists(pass_start, pre, {}, payable);
+    } catch (...) {
+        // A card-contract error: the probe still leaves nothing behind.
+        effect_executor_->setChoiceFilter(nullptr);
+        state_ = saved;
+        events_.endQuiet(quiet);
+        throw;
+    }
     effect_executor_->setChoiceFilter(nullptr);
     state_ = saved;
     events_.endQuiet(quiet);

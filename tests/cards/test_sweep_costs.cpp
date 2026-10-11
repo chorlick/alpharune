@@ -71,6 +71,10 @@ constexpr CardDefId kTCounter = 1056;              // [Reaction] spell: counter 
 constexpr CardDefId kTFalseDeclaration = 1057;     // [2] finalize-pass spell that chooses nothing
 constexpr CardDefId kTUnnamedOption = 1058;        // spell whose prompt has an option with no value / object
 constexpr CardDefId kTNoMarker = 1059;             // finalize-pass spell that returns before its marker
+constexpr CardDefId kTDeclinedMay = 1050;          // finalize-pass spell: "you may gain 1 XP"
+constexpr CardDefId kTEndlessChoices = 1051;       // finalize-pass spell with more sequences than the probe walks
+constexpr CardDefId kTUnrepeatable = 1049;         // finalize-pass spell that asks differently each run
+constexpr CardDefId kTNoMarkerDear = 1048;         // kTNoMarker costing [2], declaring a friendly-unit choice
 constexpr CardDefId kRisenAltar = 950;
 constexpr CardDefId kSkyCrusier = 847;
 constexpr CardDefId kFlameChompers = 6;
@@ -193,18 +197,117 @@ private:
     CardDef def_;
 };
 
-/// Opted into choices at finalization, and returns without reaching the marker.
-class TNoMarker : public SpellCard {
+/// "You may gain 1 XP." Declined, it returns before its marker — the legitimate
+/// early end: confirmOptional stored the answer.
+class TDeclinedMay : public SpellCard {
 public:
-    TNoMarker() {
-        def_.id = kTNoMarker;
-        def_.name = "Test No Marker";
+    TDeclinedMay() {
+        def_.id = kTDeclinedMay;
+        def_.name = "Test Declined May";
         def_.card_type = CardType::Spell;
     }
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId, GameObjectId) const override {
         return FinalizeChoice::No;
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const int go = confirmOptional(ctx, "Test Declined May: gain 1 XP?", [] { return true; });
+        if (go < 1) return;   // waiting, or declined
+        if (finalizingChoices(ctx)) return;
+        ctx.state.player(ctx.controller).xp += 1;
+    }
+private:
+    CardDef def_;
+};
+
+/// A finalize-pass spell costing [2] that says it could choose a friendly unit
+/// and instead asks nine two-option questions: 512 sequences, none of which
+/// earns a discount — more than the probe walks (GameEngine::kPrePlayProbeRuns).
+class TEndlessChoices : public SpellCard {
+public:
+    TEndlessChoices() {
+        def_.id = kTEndlessChoices;
+        def_.name = "Test Endless Choices";
+        def_.card_type = CardType::Spell;
+        def_.energy_cost = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        constexpr int kQuestions = 9, kWaiting = 100, kAsked = 200;
+        auto& ri = *ctx.state.chain.resuming;
+        if (ri.resume_point != kAsked) {
+            int answered = 0;
+            if (ri.resume_point >= kWaiting) {
+                (void)takenValue(ctx, 0);
+                answered = ri.resume_point - kWaiting + 1;
+            }
+            if (answered < kQuestions) {
+                ctx.executor.requestChoice(ctx.controller,
+                    {valChoice(ctx.controller, 0, "This"), valChoice(ctx.controller, 1, "That")},
+                    "Test Endless Choices");
+                ri.resume_point = kWaiting + answered;
+                return;
+            }
+            ri.resume_point = kAsked;
+        }
+        if (finalizingChoices(ctx)) return;
+    }
+private:
+    CardDef def_;
+};
+
+/// A finalize-pass spell costing [2] whose pass is not repeatable: the first
+/// time it is run it offers the friendly units, every later time nothing. It
+/// keeps that in the card object, outside the game state.
+class TUnrepeatable : public SpellCard {
+public:
+    TUnrepeatable() {
+        def_.id = kTUnrepeatable;
+        def_.name = "Test Unrepeatable";
+        def_.card_type = CardType::Spell;
+        def_.energy_cost = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (ctx.state.chain.resuming->resume_point == 0) ++starts_;
+        std::vector<GameObjectId> legal;
+        if (starts_ <= 1)
+            legal = chooseableUnits(ctx.state, ctx.controller,
+                [&](const GameObject& u) { return u.controller == ctx.controller; });
+        (void)pickTarget(ctx, "Test Unrepeatable", legal);
+        if (finalizingChoices(ctx)) return;
+    }
+private:
+    CardDef def_;
+    mutable int starts_ = 0;
+};
+
+/// Opted into choices at finalization, and returns without reaching the marker.
+class TNoMarker : public SpellCard {
+public:
+    explicit TNoMarker(CardDefId id = kTNoMarker, int energy_cost = 0) {
+        def_.id = id;
+        def_.name = energy_cost > 0 ? "Test No Marker (dear)" : "Test No Marker";
+        def_.card_type = CardType::Spell;
+        def_.energy_cost = energy_cost;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return def_.energy_cost > 0 ? friendlyUnitChoice(state, controller, object)
+                                    : FinalizeChoice::No;
     }
     void onResolve(CardContext&, const std::vector<GameObjectId>&) override {}
 private:
@@ -267,6 +370,10 @@ protected:
         card_registry.registerCard(kTFalseDeclaration, std::make_unique<TFalseDeclaration>());
         card_registry.registerCard(kTUnnamedOption, std::make_unique<TUnnamedOption>());
         card_registry.registerCard(kTNoMarker, std::make_unique<TNoMarker>());
+        card_registry.registerCard(kTDeclinedMay, std::make_unique<TDeclinedMay>());
+        card_registry.registerCard(kTEndlessChoices, std::make_unique<TEndlessChoices>());
+        card_registry.registerCard(kTNoMarkerDear, std::make_unique<TNoMarker>(kTNoMarkerDear, 2));
+        card_registry.registerCard(kTUnrepeatable, std::make_unique<TUnrepeatable>());
         card_db.buildFromClasses(card_registry);
     }
 
@@ -1870,6 +1977,89 @@ TEST_F(SweepCostsTest, FinalizePassSpell_ProbingAnOfferLeavesNoTrace) {
     EXPECT_FALSE(state.chain.exists());
 }
 
+// ─── 9.HH3: the probe's bound and the repeatability it relies on ────────────
+
+TEST_F(SweepCostsTest, FinalizePassSpell_ReachingTheProbeBoundIsAnErrorNotAWithheldPlay) {
+    // Test Endless Choices has 512 sequences of choices and no discount in any
+    // of them. With [1] of its [2] and Irelia in play (so its declaration says
+    // a discount is within reach) the engine cannot walk them all: it says so,
+    // naming the card, instead of deciding the play is not legal.
+    addUnit(P1, kIreliaGraceful, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kTEndlessChoices);
+    setPool(P1, 1, 0);
+    const uint64_t before = Card::costStateFingerprint(state);
+    int logs = 0;
+    auto conn = events.on_log.connect([&](const LogEvent&) { ++logs; });
+    try {
+        (void)playOffered(spell);
+        ADD_FAILURE() << "the bound was reached and the play silently withheld";
+    } catch (const std::logic_error& ex) {
+        EXPECT_NE(std::string(ex.what()).find("Test Endless Choices"), std::string::npos)
+            << ex.what();
+        EXPECT_NE(std::string(ex.what()).find("more than 256 sequences"), std::string::npos)
+            << ex.what();
+    }
+    conn.disconnect();
+    // The failed probe left nothing behind either.
+    EXPECT_EQ(logs, 0);
+    EXPECT_EQ(Card::costStateFingerprint(state), before);
+    EXPECT_TRUE(inHand(P1, spell));
+    EXPECT_FALSE(state.chain.exists());
+    EXPECT_FALSE(events.holding());
+    // At its full cost nothing is probed: it is offered and plays.
+    setPool(P1, 2, 0);
+    EXPECT_TRUE(playOffered(spell));
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_AContractErrorInsideTheProbeIsNotAWithheldPlay) {
+    // The probe runs the card's own finalize pass. A card that breaks a
+    // contract there (here: a pass that ends before its marker) is reported,
+    // as it is in the real pass — not counted as "no payable sequence".
+    addUnit(P1, kIreliaGraceful, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kTNoMarkerDear);   // [2]
+    setPool(P1, 1, 0);
+    const uint64_t before = Card::costStateFingerprint(state);
+    try {
+        (void)playOffered(spell);
+        ADD_FAILURE() << "the card's contract error was swallowed and the play withheld";
+    } catch (const std::logic_error& ex) {
+        EXPECT_NE(std::string(ex.what()).find("Test No Marker (dear)"), std::string::npos)
+            << ex.what();
+        EXPECT_NE(std::string(ex.what()).find("end-of-choices marker"), std::string::npos);
+    }
+    EXPECT_EQ(Card::costStateFingerprint(state), before);
+    EXPECT_TRUE(inHand(P1, spell));
+    EXPECT_FALSE(state.chain.exists());
+    EXPECT_FALSE(events.holding());
+}
+
+TEST_F(SweepCostsTest, FinalizePassSpell_APassThatIsNotRepeatableMakesTheViablePassThrow) {
+    // The viable pass runs a spell's choices several times from copies of the
+    // same state and relies on meeting the same prompts each time. Test
+    // Unrepeatable offers Irelia the first time and nothing afterwards.
+    addUnit(P1, kIreliaGraceful, 3);
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    auto spell = addToHand(P1, kTUnrepeatable);   // [2]
+    setPool(P1, 1, 0);
+    Intent i;
+    i.type = IntentType::PlayCard;
+    i.player = P1;
+    i.card = spell;
+    try {
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(i); });
+        ADD_FAILURE() << "an unrepeatable pass went through the viable pass";
+    } catch (const std::logic_error& ex) {
+        EXPECT_NE(std::string(ex.what()).find("choosePrePlayViable"), std::string::npos)
+            << ex.what();
+        EXPECT_NE(std::string(ex.what()).find("Test Unrepeatable"), std::string::npos)
+            << ex.what();
+        EXPECT_NE(std::string(ex.what()).find("not repeatable"), std::string::npos) << ex.what();
+    }
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 1) << "nothing was paid";
+}
+
 // ─── 9.AA3: a grant play carries the discount of its earlier choices ────────
 
 TEST_F(SweepCostsTest, TrashReplayGrant_ALaterChoiceKeepsTheDiscountOfAnEarlierOne) {
@@ -2316,40 +2506,219 @@ TEST_F(SweepCostsTest, CardContract_AnOptionWithNeitherValueNorObjectIsAnError) 
     }
 }
 
-TEST_F(SweepCostsTest, CardContract_AFinalizePassThatEndsBeforeItsMarkerIsReported) {
+TEST_F(SweepCostsTest, CardContract_AFinalizePassThatEndsAnywhereElseIsAnError) {
+    // The rule (Card::finalizingChoices): a finalize pass ends at the marker,
+    // or where a choice helper stored "nothing to decide".
     auto spell = addToHand(P1, kTNoMarker);
-    int warnings = 0;
-    auto conn = events.on_log.connect([&](const LogEvent& e) {
-        if (e.level == LogLevel::Warning &&
-            e.message.find("before its end-of-choices marker") != std::string::npos) ++warnings;
-    });
-    play(spell);
-    EXPECT_EQ(warnings, 1);
-    conn.disconnect();
-
-    auto again = addToHand(P1, kTNoMarker);
     Intent i;
     i.type = IntentType::PlayCard;
     i.player = P1;
-    i.card = again;
+    i.card = spell;
     try {
-        withEngine([&](GameEngine& e) {
-            e.setStrictCardContracts(true);
-            e.testHook_executeIntent(i);
-        });
-        ADD_FAILURE() << "the strict engine accepted a pass that never reached its marker";
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(i); });
+        ADD_FAILURE() << "the engine accepted a pass that returned for a reason of its own";
     } catch (const std::logic_error& ex) {
         EXPECT_NE(std::string(ex.what()).find("Test No Marker"), std::string::npos) << ex.what();
+        EXPECT_NE(std::string(ex.what()).find("end-of-choices marker"), std::string::npos);
     }
-    // A card that does reach its marker is not reported, strict or not.
+}
+
+TEST_F(SweepCostsTest, CardContract_APassMayEndAtTheMarkerOrAtADeclinedMay) {
+    // At the marker.
     auto fine = addToHand(P1, kTFalseDeclaration);
     setPool(P1, 2, 0);
-    Intent ok = i;
-    ok.card = fine;
-    EXPECT_NO_THROW(withEngine([&](GameEngine& e) {
-        e.setStrictCardContracts(true);
-        e.testHook_executeIntent(ok);
-    }));
+    EXPECT_NO_THROW(play(fine));
+    // At a "may" the player declined: the helper stored the answer, and the
+    // card is not asked again as it resolves.
+    auto may = addToHand(P1, kTDeclinedMay);
+    EnginePathAgent no(EnginePathAgent::script({0}));
+    EXPECT_NO_THROW(play(may, &no));
+    EXPECT_EQ(no.prompts.size(), 1u) << "asked once, at finalization";
+    EXPECT_EQ(state.player(P1).xp, 0) << "declined: no effect";
+    auto may2 = addToHand(P1, kTDeclinedMay);
+    EnginePathAgent yes(EnginePathAgent::script({1}));
+    EXPECT_NO_THROW(play(may2, &yes));
+    EXPECT_EQ(state.player(P1).xp, 1);
+}
+
+/// Passes priority; answers a card's prompt with its first or its last option.
+class EndAgent : public AgentInterface {
+public:
+    bool last = false;
+    Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+        if (legal.empty()) return Intent{};
+        const bool is_choice = std::all_of(legal.begin(), legal.end(),
+            [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+        if (!is_choice) {
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+            return legal.front();
+        }
+        return last ? legal.back() : legal.front();
+    }
+};
+
+TEST_F(SweepCostsTest, CardContract_NoRegisteredCardEndsItsFinalizePassAnywhereElse) {
+    // Every registered card that opts a callback into choices at finalization
+    // is run through the engine: a spell is played every way it is offered,
+    // each trigger type the card fires on is queued (with no subject, a
+    // friendly unit and an enemy unit as the event's object), each activated
+    // ability it is offered is activated — alone on the board and on a full
+    // one, answering every prompt with the first option and with the last.
+    // The engine throws when a finalize pass ends anywhere but at the marker
+    // or at a helper's stored "nothing to decide" (Card::finalizingChoices).
+    const GameState blank = state;
+    std::vector<CardDefId> ids;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* card = card_registry.get(id);
+        if (card && id < 1000 && card->choicesAtFinalization() != 0) ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    ASSERT_GE(ids.size(), 200u);
+
+    std::vector<std::string> trips, other;
+    int spell_passes = 0, trigger_passes = 0, activate_passes = 0, equipped_passes = 0;
+    for (CardDefId id : ids) {
+        const Card* card = card_registry.get(id);
+        const CardDef& def = card_db.get(id);
+        const unsigned flags = card->choicesAtFinalization();
+        GameObjectId friendly = kInvalidId, enemy = kInvalidId;
+        // The card where it works from; on board 1 with company.
+        auto setUp = [&](int board) -> GameObjectId {
+            state = blank;
+            state.battlefields[0].controller = P1;
+            GameObjectId source = kInvalidId;
+            switch (def.card_type) {
+                case CardType::Spell: source = addToHand(P1, id); break;
+                case CardType::Gear: source = addGear(P1, id); break;
+                case CardType::Legend: source = addLegend(P1, id); break;
+                case CardType::Battlefield: {
+                    source = state.createObject();
+                    auto& b = state.getObject(source);
+                    b.owner = b.controller = P1;
+                    b.card_def_id = id;
+                    b.name = def.name;
+                    b.card_type = CardType::Battlefield;
+                    state.battlefields[0].card_object_id = source;
+                    break;
+                }
+                default: source = addUnit(P1, id, std::max(def.might, 1), 0); break;
+            }
+            friendly = enemy = kInvalidId;
+            if (board == 1) {
+                state.battlefields[1].controller = P1;
+                friendly = addUnit(P1, kInvalidId, 3, 0);
+                addUnit(P1, kInvalidId, 6, 1);
+                addUnit(P1, kInvalidId, 2);
+                addGear(P1, kLongSword);
+                enemy = addUnit(P2, kInvalidId, 2, 0);
+                addUnit(P2, kInvalidId, 5, 1);
+                addUnit(P2, kInvalidId, 3);
+                addGear(P2);
+                addToHand(P1, kPoutyPoro);
+                addToHand(P1, kPoutyPoro);
+                addToTrash(P1, kPoutyPoro);
+                for (int i = 0; i < 10; ++i) addToDeck(P1, kPoutyPoro);
+                for (int i = 0; i < 4; ++i) addRune(P1, Domain::Fury);
+                setXp(P1, 10);
+            }
+            setPool(P1, 30, 10);
+            return source;
+        };
+        auto guarded = [&](const std::string& what, const std::function<void()>& body) {
+            try {
+                body();
+            } catch (const std::logic_error& ex) {
+                if (std::string(ex.what()).find("end-of-choices marker") != std::string::npos)
+                    trips.push_back(def.name + " (" + std::to_string(id) + "), " + what);
+            } catch (const std::exception& ex) {
+                other.push_back(def.name + " (" + std::to_string(id) + "), " + what + ": " +
+                                ex.what());
+            }
+        };
+        for (int board = 0; board < 2; ++board)
+        for (int last = 0; last < 2; ++last) {
+            EndAgent a1, a2;
+            a1.last = a2.last = last == 1;
+            const std::string where = std::string(board ? "full board" : "alone") +
+                                      (last ? ", last option" : ", first option");
+            if ((flags & (Card::kFinalizeResolve | Card::kFinalizeActivate)) != 0) {
+                const GameObjectId source = setUp(board);
+                std::vector<Intent> mine;
+                guarded("offer, " + where, [&] {
+                    for (const auto& i : legal())
+                        if (def.card_type == CardType::Spell
+                                ? i.card == source
+                                : i.ability_source == source &&
+                                  (i.type == IntentType::ActivateAbility ||
+                                   i.type == IntentType::ActivateReactionAbility ||
+                                   i.type == IntentType::ActivateActionAbility))
+                            mine.push_back(i);
+                });
+                for (const auto& intent : mine) {
+                    ASSERT_EQ(setUp(board), source);
+                    guarded("intent, " + where, [&] {
+                        withEngine([&](GameEngine& e) {
+                            e.testHook_executeIntent(intent);
+                            settleLikeTheEngine(e);
+                        }, &a1, &a2, P1);
+                    });
+                    ++(def.card_type == CardType::Spell ? spell_passes : activate_passes);
+                }
+            }
+            if ((flags & Card::kFinalizeTrigger) != 0) {
+                for (TriggerType t : card->triggerTypes()) {
+                    if (t == TriggerType::None) continue;
+                    for (int subject = 0; subject < (board ? 3 : 1); ++subject) {
+                        const GameObjectId source = setUp(board);
+                        const GameObjectId about =
+                            subject == 0 ? kInvalidId : subject == 1 ? friendly : enemy;
+                        guarded("trigger " + std::to_string(static_cast<int>(t)) + ", " + where,
+                                [&] { fireTriggerThroughEngine(source, t, &a1, about, &a2); });
+                        ++trigger_passes;
+                    }
+                }
+                // An Equipment's ability that speaks for the unit it is on
+                // (Card::onEquippedTrigger), queued as TriggerManager::
+                // queueEquippedTrigger does.
+                const TriggerType worn = card->equippedTriggerType();
+                if (def.card_type == CardType::Gear && worn != TriggerType::None && board == 1) {
+                    const GameObjectId source = setUp(board);
+                    o(source).attached_to = friendly;
+                    o(source).location = o(friendly).location;
+                    o(source).zone = o(friendly).zone;
+                    o(friendly).attachments.push_back(source);
+                    const GameObjectId bearer = friendly;
+                    guarded("equipped trigger, " + where, [&] {
+                        withEngine([&](GameEngine& e) {
+                            e.testHook_executor().queueTriggeredAbility(source, P1, worn, bearer);
+                            ASSERT_FALSE(e.mutableState().chain.items.empty());
+                            e.mutableState().chain.items.back().equipped_unit = bearer;
+                            settleLikeTheEngine(e);
+                        }, &a1, &a2, P1);
+                    });
+                    ++equipped_passes;
+                }
+            }
+        }
+    }
+    state = blank;
+    std::sort(trips.begin(), trips.end());
+    trips.erase(std::unique(trips.begin(), trips.end()), trips.end());
+    std::string all;
+    for (const auto& s : trips) all += "\n  " + s;
+    EXPECT_TRUE(trips.empty()) << trips.size() << " finalize passes ended elsewhere:" << all;
+    EXPECT_GE(spell_passes, 60);
+    EXPECT_GE(trigger_passes, 600);
+    EXPECT_GE(activate_passes, 10);
+    EXPECT_GE(equipped_passes, 4);
+    // Nothing else went wrong either: no card threw for any other reason.
+    std::string rest;
+    for (const auto& s : other) rest += "\n  " + s;
+    EXPECT_TRUE(other.empty()) << other.size() << " runs threw something else:" << rest;
+    std::cout << "[ " << ids.size() << " cards: " << spell_passes << " spell plays, "
+              << trigger_passes << " triggers, " << equipped_passes << " equipped triggers, "
+              << activate_passes << " activations ]\n";
 }
 
 }  // namespace riftbound::test::sweep_costs

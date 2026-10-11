@@ -18,18 +18,15 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "The first time I move each turn, choose a player. They [Burn 1]."
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
+    // "The first time I move each turn": judged when the move happens. Every
+    // move bumps GameObject::moves_this_turn before its event is announced,
+    // so the first move of the turn is the one that leaves it at 1. No flag
+    // is written, so nothing has to be undone if the ability is re-chosen.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).moves_this_turn == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // Once per turn: stamp the turn (+1 so 0 = never) on the FIRST entry
-        // only; resumed entries (after the player choice) must pass through.
-        const int turn_id = ctx.state.turn.turn_number + 1;
-        const bool first_entry = !ctx.state.chain.resuming.has_value() ||
-                                 ctx.state.chain.resuming->resume_point == 0;
-        int& last_fired = self.card_counters["blade_twirler_move_turn"];
-        if (first_entry && last_fired == turn_id) return;  // not the first move
-        if (first_entry) last_fired = turn_id;
-
         // Mode 0 = the opponent, mode 1 = yourself.
         int mode = pickMode(ctx, "Blade Twirler: choose a player to [Burn 1]", 2,
                             {"Opponent burns 1", "You burn 1"});

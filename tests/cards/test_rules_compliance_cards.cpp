@@ -884,7 +884,9 @@ TEST_F(RulesCardsTest, RulesCards_Untargetable_CustomTargetListsSkipProtectedEne
     // Every card whose enumerateLegalTargets override can return enemy units.
     const std::vector<CardDefId> cards = {
         kIronBallista, kCaitlynPatrolling, kGust, kFadingMemories, kCounterStrike,
-        kHostileTakeover, kXerathFreed, kTheList, kDiviningShells, kViPeacekeeper,
+        kHostileTakeover, kXerathFreed, kTheList, kDiviningShells,
+        // Vi, Peacekeeper builds her list in her trigger (07 item 7.1); covered by
+        // C7Test.ViPeacekeeper_StunsTheEnemyUnitHereItsControllerChooses.
         kVoidAssault, kKeepersVerdict, kVoidreaver,
     };
     for (CardDefId def_id : cards) {

@@ -53,6 +53,7 @@ private:
         d.might = 2;
         d.rarity = Rarity::Uncommon;
         d.keywords.set(Keyword::Empower);
+        d.keywords.set(Keyword::Deathknell);
         d.ability_text = R"RB([Empower] [1][Y] ([1][Y]: Empower me. Use only if not Empowered.)
 [Empowered][>][>>][Deathknell][>] Play two 1 [M] Recruit unit tokens to your base. (When I die while Empowered, get the effect.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0720c25776670ef32dcc504b14378890991798be-744x1039.png)RB";

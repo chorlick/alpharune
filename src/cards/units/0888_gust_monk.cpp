@@ -32,35 +32,31 @@ public:
             auto it = self.card_counters.find("__gust_monk_paid");
             if (it == self.card_counters.end() || it->second != 1) return;
         }
-        // First pick: the card to banish (either player's trash). Second pick:
-        // the unit that gets [Assault 2]. No card to banish -> no effect.
-        std::vector<GameObjectId> trash_cards;
-        for (auto p : {ctx.controller, opponent(ctx.controller)})
-            for (auto cid : ctx.state.player(p).trash)
-                if (ctx.state.objectExists(cid)) trash_cards.push_back(cid);
-        auto units_fn = [&](GameObjectId) {
-            return chooseableUnits(ctx.state, ctx.controller,
-                                   [](const GameObject&) { return true; });
-        };
-        auto [card, unit] = pickTargetPair(ctx, "Gust Monk: banish from trash / [Assault 2]",
-                                           trash_cards, units_fn);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (card == kInvalidId || unit == kInvalidId) return;   // suspended or fizzled
-        if (!ctx.state.objectExists(card) || !ctx.state.objectExists(unit)) return;
-        auto& banished = ctx.state.getObject(card);
-        auto& owner_ps = ctx.state.player(banished.owner);
-        auto it = std::find(owner_ps.trash.begin(), owner_ps.trash.end(), card);
-        if (it == owner_ps.trash.end()) return;                 // left the trash meanwhile
-        owner_ps.trash.erase(it);
-        banished.zone = ZoneType::Banishment;
-        banished.location = std::nullopt;
-        owner_ps.banishment.push_back(card);
-        ctx.events.logTrace("GUST MONK: banished " + banished.name + " from trash");
-        if (banished.owner == ctx.controller) {
-            // "you banished a card you own" bookkeeping (mirrors the Flow path).
-            owner_ps.cards_banished_this_turn++;
-            ctx.events.emit(ObjectStateChangedEvent{card, "banished_owned"});
+        // The unit that gets [Assault 2] is the target; the card banished is
+        // the cost ("banish a card from any trash to ..."), picked and paid
+        // as the ability goes on the chain (CR 383.3) and not refunded if the
+        // unit is gone by the time it resolves.
+        const auto& ri = ctx.state.chain.resuming;
+        const GameObjectId unit = pickTarget(ctx, "Gust Monk: give a unit [Assault 2]",
+            chooseableUnits(ctx.state, ctx.controller, [](const GameObject&) { return true; }));
+        if (unit == kInvalidId && ri.has_value() && ri->resume_point == 7) return;   // waiting
+        if (!costAlreadyPaid(ctx)) {
+            if (unit == kInvalidId) return;           // no unit to give it to
+            std::vector<GameObjectId> trash_cards;
+            for (auto p : {ctx.controller, opponent(ctx.controller)})
+                for (auto cid : ctx.state.player(p).trash)
+                    if (ctx.state.objectExists(cid)) trash_cards.push_back(cid);
+            auto card = selectObject(ctx, "Gust Monk: banish a card from a trash", trash_cards);
+            if (!card.has_value() || *card == kInvalidId) return;   // waiting / no card
+            if (costDueNow(ctx)) {
+                if (ctx.state.getObject(*card).zone != ZoneType::Trash) return;   // left the trash
+                ctx.events.logTrace("GUST MONK: banished " + ctx.state.getObject(*card).name +
+                                    " from trash");
+                ctx.executor.banishObject(*card);     // counts it, announces "banished_owned"
+            }
         }
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (unit == kInvalidId) return;               // the unit is gone: mistarget
         ctx.executor.giveTemporaryKeyword(unit, Keyword::Assault, 2);
     }
 private:

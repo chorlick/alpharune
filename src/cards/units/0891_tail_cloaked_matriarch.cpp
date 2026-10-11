@@ -42,11 +42,10 @@ public:
                                          candidates(ctx));
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        auto& ps = ctx.state.player(ctx.controller);
-        auto it = std::find(ps.trash.begin(), ps.trash.end(), picked);
-        if (it == ps.trash.end()) return;
-        ps.trash.erase(it);
-        ctx.executor.playIgnoringCost(ctx.controller, picked);   // default location = base
+        if (ctx.state.getObject(picked).zone != ZoneType::Trash) return;   // left the trash
+        // "Play it to your base": playIgnoringCost takes it out of the trash.
+        ctx.executor.playIgnoringCost(ctx.controller, picked,
+                                      LocationId{BaseLocation{ctx.controller}});
         ctx.events.logTrace("TAIL-CLOAKED MATRIARCH: played " +
                             ctx.state.getObject(picked).name + " from trash to base");
     }

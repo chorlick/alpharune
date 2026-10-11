@@ -4,6 +4,7 @@
 #include "core/events.h"
 #include "engine/effect_executor.h"
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -14,26 +15,40 @@ namespace {
 class AsheFocused : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "When you play me, choose an opponent. They reveal their hand. Choose a
+    //  card revealed this way and banish it. When they hold, return it to
+    //  their hand (even if I'm no longer on the board)."
+    // The return is a delayed ability keyed to that opponent's next hold
+    // (TriggerManager::onScore); the banished card carries a marker, so it is
+    // found again whatever has happened to Ashe since.
+    static constexpr const char* kReturnMarker = "__ashe_focused_return_on_hold";
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (ctx.firing_trigger == TriggerType::WhenIHold) {
+            returnBanished(ctx);
+            return;
+        }
         PlayerId opp = opponent(ctx.controller);
         auto& opp_ps = ctx.state.player(opp);
 
-        // Reveal their hand.
-        for (auto cid : opp_ps.hand) {
-            if (!ctx.state.objectExists(cid)) continue;
-            const auto& c = ctx.state.getObject(cid);
-            ctx.events.emit(CardRevealedEvent{
-                /*card=*/cid,
-                /*card_def_id=*/c.card_def_id,
-                /*owner=*/c.owner,
-                /*revealed_to_all=*/false,
-                /*revealed_to=*/ctx.controller,
-                /*source_zone=*/ZoneType::Hand,
-            });
+        // Reveal their hand — once, not again when re-entered with the pick.
+        const auto& ri = ctx.state.chain.resuming;
+        if (!ri.has_value() || ri->resume_point == 0) {
+            for (auto cid : opp_ps.hand) {
+                if (!ctx.state.objectExists(cid)) continue;
+                const auto& c = ctx.state.getObject(cid);
+                ctx.events.emit(CardRevealedEvent{
+                    /*card=*/cid,
+                    /*card_def_id=*/c.card_def_id,
+                    /*owner=*/c.owner,
+                    /*revealed_to_all=*/false,
+                    /*revealed_to=*/ctx.controller,
+                    /*source_zone=*/ZoneType::Hand,
+                });
+            }
+            ctx.events.logTrace("ASHE FOCUSED: opponent reveals hand (" +
+                                std::to_string(opp_ps.hand.size()) + " card(s))");
         }
-        ctx.events.logTrace("ASHE FOCUSED: opponent reveals hand (" +
-                            std::to_string(opp_ps.hand.size()) + " card(s))");
 
         // Choose a revealed card and banish it.
         std::vector<GameObjectId> legal(opp_ps.hand.begin(), opp_ps.hand.end());
@@ -41,13 +56,42 @@ public:
         GameObjectId picked = pickTarget(ctx, "Ashe Focused: banish a revealed card",
                                          legal);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        // Remove from hand, then banish.
-        auto& h = ctx.state.player(opp).hand;
-        h.erase(std::remove(h.begin(), h.end(), picked), h.end());
-        ctx.executor.banishObject(picked);
+        if (ctx.state.getObject(picked).zone != ZoneType::Hand) return;   // left the hand
+        ctx.executor.banishObject(picked);   // takes it out of the hand
+        ctx.state.getObject(picked).card_counters[kReturnMarker] = 1;
+
+        // "When they hold, return it to their hand." Never expires by itself.
+        DelayedAbility da;
+        da.source = ctx.source;
+        da.card_def_id = cardDefId();
+        da.controller = opp;                  // fires on THEIR hold
+        da.trigger = TriggerType::WhenIHold;
+        da.expires_on_turn = std::numeric_limits<int>::max();
+        ctx.state.delayed_abilities.push_back(da);
         ctx.events.logTrace("ASHE FOCUSED: banished a card from opponent's hand "
-                            "(hold-return rider not implemented — no deferred "
-                            "board-independent hold hook)");
+                            "until they hold");
+    }
+    // The delayed half: ctx.controller is the player who held.
+    void returnBanished(CardContext& ctx) {
+        auto& ps = ctx.state.player(ctx.controller);
+        std::vector<GameObjectId> back;
+        for (auto cid : ps.banishment) {
+            if (!ctx.state.objectExists(cid)) continue;
+            auto& c = ctx.state.getObject(cid);
+            auto it = c.card_counters.find(kReturnMarker);
+            if (it == c.card_counters.end() || it->second == 0) continue;
+            it->second = 0;
+            back.push_back(cid);
+        }
+        for (auto cid : back) {
+            auto& c = ctx.state.getObject(cid);
+            ps.banishment.erase(std::remove(ps.banishment.begin(), ps.banishment.end(), cid),
+                                ps.banishment.end());
+            c.zone = ZoneType::Hand;
+            c.location = std::nullopt;
+            ps.hand.push_back(cid);
+            ctx.events.logTrace("ASHE FOCUSED: they held -> " + c.name + " returns to hand");
+        }
     }
 private:
     const CardDef def_ = [] {

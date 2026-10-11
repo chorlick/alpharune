@@ -76,10 +76,12 @@ The callback re-runs from the top after a choice, so anything before the helper 
   - Rest: in each opted-in file, grep after the `finalizingChoices(ctx)` line for `payOnePower|payEnergy|xp -= |buff_count -= 1|burn\(|killObject\(ctx.source\)`.
   - c5: 446 Fae Porter, 349 Rumble, 449 Overzealous Fan — FIXED (see 07 item 7.5); 230 Albus Ferros is not a cost (03 item 3.11).
   - c6: 500 Fiora, Worthy, 681 Kha'Zix, Evolving Hunter — FIXED: see 07 item 7.5
+  - c7: 796 Baccai Reaper — FIXED, see 07 item 7.5
 - [ ] **3.13 Counter writes before the marker: 4 cards** [confirmed violation, plausible harm]
   - `units/0162_miss_fortune_captain.cpp:34`, `units/0789_blade_twirler.cpp:31`, `units/0855_jayce_brilliant_inventor.cpp:42,47`, `units/0372_aphelios_exalted.cpp:33-44`. After `makeNewChoicesFor` resets `resume_point`, the "first time this turn" flag is already set.
   - c4: 162 Miss Fortune, Captain — FIXED: no counter at all; "the first time I move each turn" is `triggerCondition` (`moves_this_turn == 1`, bumped before every move event); test: C4Test.MissFortuneCaptain_FirstMoveOnly_AndLegendsCount
   - c5: 372 Aphelios, Exalted — FIXED: the mode is still claimed when chosen (a second trigger must not take it), but the claim remembers its chain item, so the same item asked again (re-entry, `makeNewChoicesFor`) is not blocked by its own answer; test: C5Test.ApheliosModeCannotBeChosenTwiceInATurn
+  - c7: 789 Blade Twirler — FIXED: no counter; `triggerCondition` (`moves_this_turn == 1`); 855 Jayce, Brilliant Inventor — FIXED: "first non-token gear" is `triggerCondition`; the stamp is written idempotently and no path returns on it, so a re-chosen ability is not lost; test: C7Test.BladeTwirler_OnlyTheFirstMoveOfTheTurnBurns, C7Test.JayceBrilliantInventor_OnlyTheFirstNonTokenGearOfTheTurn
 
 Clean: opt-in bits match overridden callbacks; every effect branch of the 10 multi-trigger cards has a marker; no pre-check is missing `costAlreadyPaid`.
 
@@ -94,6 +96,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
 - [ ] **3.15 Trigger subject used after only `objectExists`** [plausible, low impact]
   - `units/0712_vex_apathetic.cpp:30`, `gear/0143_pirate_s_haven.cpp:26`, `battlefields/0272_back_alley_bar.cpp:26`, `gear/0060_mask_of_foresight.cpp:27`.
   - c0: 143 Pirate's Haven, 272 Back-Alley Bar, 60 Mask of Foresight — FIXED: the subject must still be a unit on the board; test: C0Test.PiratesHaven_ReadyingARuneDoesNotTrigger, .BackAlleyBar_OnlyAUnitStillOnTheBoardGetsTheMight, .MaskOfForesight_IgnoresAUnitThatLeftTheBoard
+  - c7: 712 Vex, Apathetic — FIXED: the played unit must still be an enemy unit on the board; test: C7Test.VexApathetic_StunsTheUnitAnOpponentPlays
 - [ ] **3.16** `units/0416_direwing.cpp:21` — "Another Dragon" skips every Direwing by def id; a second Direwing does not enter ready. Use the three-argument `entersReadyOnPlay(..., self)`. [confirmed]
   - c5: 416 Direwing — FIXED: three-argument `entersReadyOnPlay`, skips only this instance (same in 394 Breakneck Mech); test: C5Test.DirewingEntersReadyNextToAnotherDirewing
 
@@ -104,6 +107,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - c1: 542 Seal of Strength — FIXED: adds `Domain::Body`, as reprint 163 does; test: ReviewFixC1Test.SealOfStrength_AddsBodyPower
 - [ ] **3.18** `units/0778_plundering_poro.cpp:18` — `createGoldToken` (ready); text says exhausted, reprint 392 uses `createGoldExhausted`. [confirmed]
   - c5: 392 Plundering Poro — NOT A DEFECT: 392 already calls `createGoldExhausted` (`units/0392_plundering_poro.cpp`, `onTrigger`); the defect is in reprint 778 (stream c7).
+  - c7: 778 Plundering Poro — FIXED: `createGoldExhausted`; test: C7Test.PlunderingPoro_TheGoldEntersExhausted
 - [ ] **3.19** `units/0548_karma_channeler.cpp:15-30` — only a `WhenYouPlayMe` Vision (the engine already does Vision, `trigger_manager.cpp:317`, so it runs twice) and no recycle trigger. `units/0235_karma_channeler.cpp:57` has tags `{"Vi", "Ionia"}`. [confirmed]
   - c5: 235 Karma, Channeler — FIXED: tags `{Karma, Ionia}`; test: C5Test.KarmaChanneler235IsAKarma. (The gallery data in `cards/raw/gallery_raw.json` carries "Vi" for OGN-235, which is where the error came from; the SFD reprint says Karma.) 548 is stream c6's.
   - c6: 548 Karma, Channeler — FIXED: `WhenYouRecycle` + `pickTarget` + `kFinalizeTrigger` as 235, hand-rolled Vision removed; 548's tag `Karma` matches the printed SFD-237/221 (235's tags are cards-c5's; `cards/raw/gallery_raw.json` lists OGN-235/298 as `Vi, Ionia` too); test: C6Test.Karma548_BuffsAChosenUnitWhenACardIsRecycled
@@ -113,6 +117,7 @@ Clean: opt-in bits match overridden callbacks; every effect branch of the 10 mul
   - c4: 119, 164, 205, 35 — NOT A DEFECT on these ids: they are the copies that carry the region tag (Ionia / Demacia, as `cards/json/ogn_*.json`); the reprints missing it (539, 543, 546, 537) are outside this range.
   - c5: 421 Veteran Poro — FIXED: `Keyword::Equip` removed (a Weaponmaster unit has no Equip ability; 779 was right), and from the other Weaponmaster units in range (324, 331, 407, 414, 435, 440, 448); test: C5Test.KeywordsTheTextOnlyMentionsAreNotOnTheDef. 243 Darius's region tags are unchanged (reprint 547 is c6's).
   - c6: 539 Ahri, 543 Sett, 546 Yasuo, 547 Darius, 537 Vayne — NOT A DEFECT: each def matches its own printing in `cards/raw/gallery_raw.json` (SFD-227 `Ahri`; SFD-232 `Sett`; SFD-235 `Yasuo`; SFD-236 `Trifarian, Darius`; SFD-223 `Vayne, Demacia, Sentinel`) — the Spiritforged reprints print fewer region tags than the Origins cards
+  - c7: 779 Veteran Poro — NOT A DEFECT: [Weaponmaster] is its only keyword (def text "[Weaponmaster]"); 421 no longer sets `Keyword::Equip` either, so the two match
 - [ ] **3.22** `spells/0251_noxian_guillotine.cpp:35` — without Legion writes `__kill_on_next_damage_this_turn`, which nothing reads; the spell does nothing. [confirmed]
   - c2: 251 Noxian Guillotine — FIXED: a one-shot delayed ability (`TriggerType::WhenAUnitTakesDamage`, `shared:` commit) kills the chosen unit the next time it is dealt damage this turn; test: ReviewFixC2Test.NoxianGuillotine_WithoutLegion_KillsTheUnitTheNextTimeItIsDamaged
 

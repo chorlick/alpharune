@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -23,7 +24,7 @@ public:
             if (!obj.location.has_value()) continue;
             ++friendly_units;
         }
-        ctx.state.player(ctx.controller).xp += friendly_units;
+        gainXp(ctx, ctx.controller, friendly_units);
         ctx.events.logTrace("SCRUTINIZING SERGEANT: gained " +
                              std::to_string(friendly_units) + " XP");
     }

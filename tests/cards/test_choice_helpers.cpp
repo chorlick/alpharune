@@ -767,12 +767,9 @@ TEST_P(DISABLED_TargetedTriggerTest, TheControllerIsAskedToChoose) {
         << "controller was never asked — the printed effect did not happen";
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    Plan07Item71, DISABLED_TargetedTriggerTest,
-    ::testing::Values(
-        TargetedTrigger{738, TriggerType::WhenIAttack, CardType::Unit, "Vi, Peacekeeper"}),
-    [](const ::testing::TestParamInfo<TargetedTrigger>& info) {
-        return "card_" + std::to_string(info.param.def);
-    });
+// Every card that was listed here has been fixed by its card stream (the
+// last row, Vi, Peacekeeper 738, by cards-c7); each has an engine-path test
+// in its stream's test file. The probe stays for a future offender.
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DISABLED_TargetedTriggerTest);
 
 }  // namespace

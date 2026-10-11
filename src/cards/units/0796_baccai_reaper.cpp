@@ -19,42 +19,24 @@ public:
     // "When I attack, you may pay [R] to give me [Assault 2] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
 
-    // [R] = one Fury power: floating Fury / universal power first, otherwise a
-    // ready Fury rune recycled via the shared payOnePower helper.
-    static bool hasReadyFuryRune(const GameState& state, PlayerId p) {
-        for (const auto& [id, obj] : state.objects) {
-            if (!obj.isRune() || obj.controller != p || obj.is_exhausted) continue;
-            if (!obj.location.has_value() ||
-                !std::holds_alternative<BaseLocation>(*obj.location)) continue;
-            for (auto d : obj.domains) if (d == Domain::Fury) return true;
-        }
-        return false;
-    }
-    static bool canPayFury(const GameState& state, PlayerId p) {
-        const auto& pool = state.player(p).rune_pool;
-        return pool.power[static_cast<int>(Domain::Fury)] > 0 ||
-               pool.universal_power > 0 || hasReadyFuryRune(state, p);
-    }
-    static bool payFury(CardContext& ctx) {
-        auto& pool = ctx.state.player(ctx.controller).rune_pool;
-        int& fury = pool.power[static_cast<int>(Domain::Fury)];
-        if (fury > 0) { --fury; return true; }
-        if (pool.universal_power > 0) { --pool.universal_power; return true; }
-        return payOnePower(ctx, ctx.controller, Domain::Fury);
-    }
-
+    // [R] = one Fury Power, the way CR 164.2 lets it be paid (floating Fury or
+    // universal Power, or a Fury rune recycled — ready or exhausted). It is
+    // paid as the ability goes on the chain (CR 383.3), not as it resolves.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto still_legal = [&]() {
+        auto on_board = [&]() {
             return ctx.state.objectExists(ctx.source) &&
-                   ctx.state.getObject(ctx.source).location.has_value() &&
-                   canPayFury(ctx.state, ctx.controller);
+                   ctx.state.getObject(ctx.source).location.has_value();
+        };
+        auto still_legal = [&]() {
+            return on_board() && (costAlreadyPaid(ctx) ||
+                                  payableOnePower(ctx.state, ctx.controller, Domain::Fury));
         };
         int conf = confirmOptional(ctx, "Baccai Reaper: pay [R] for [Assault 2]?", still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (conf == -1) return;  // waiting for agent
-        if (conf < 1) return;    // declined / can't pay
-        if (!payFury(ctx)) return;
+        if (conf == 1 && costDueNow(ctx) && !payOnePower(ctx, ctx.controller, Domain::Fury))
+            return;              // can't pay after all
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf < 1 || !on_board()) return;  // declined / I left the board
         ctx.executor.giveTemporaryKeyword(ctx.source, Keyword::Assault, 2);
         ctx.events.logTrace("BACCAI REAPER: paid [R] -> [Assault 2] this turn");
     }

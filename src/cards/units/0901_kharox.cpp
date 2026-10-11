@@ -20,8 +20,9 @@ public:
     EmpowerSpec empowerSpec() const override { return empowerCost(6, 2, Domain::Chaos); }
     // "When I become [Empowered], choose an opponent. They [Burn 3]. Then you
     //  may do this: Choose a unit in their trash and play it, ignoring its
-    //  cost." (1v1: the opponent is the only choice.) The unit is played to
-    //  the controller's base; the base/battlefield choice is not offered.
+    //  cost." (1v1: the opponent is the only choice.) No location is printed,
+    //  so the unit goes to its new controller's base or a battlefield they
+    //  control, their choice (CR 355.2.a).
     TriggerType triggerType() const override { return TriggerType::WhenIBecomeEmpowered; }
     static std::vector<GameObjectId> unitsInTrash(const GameState& state, PlayerId p) {
         std::vector<GameObjectId> out;
@@ -40,11 +41,12 @@ public:
         GameObjectId picked = pickTarget(ctx, "Kharox: unit in their trash",
                                          unitsInTrash(ctx.state, opp));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        auto& ops = ctx.state.player(opp);
-        auto it = std::find(ops.trash.begin(), ops.trash.end(), picked);
-        if (it == ops.trash.end()) return;
-        ops.trash.erase(it);
-        ctx.executor.playIgnoringCost(ctx.controller, picked);
+        const int where = pickEffectPlayLocation(*this, ctx, "Kharox: play it to");
+        if (where == -1) return;                      // waiting for the agent
+        if (ctx.state.getObject(picked).zone != ZoneType::Trash) return;   // left the trash
+        // playIgnoringCost takes it out of the trash.
+        ctx.executor.playIgnoringCost(ctx.controller, picked,
+                                      effectPlayLocation(ctx.state, ctx.controller, where));
         ctx.events.logTrace("KHAROX: played " + ctx.state.getObject(picked).name +
                             " from the opponent's trash");
     }

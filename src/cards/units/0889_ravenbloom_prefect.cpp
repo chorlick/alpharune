@@ -23,18 +23,25 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const GameObjectId gear = ctx.state.chain.resuming
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        auto still_legal = [&]() {
-            if (!ctx.state.objectExists(ctx.source) || !ctx.state.objectExists(gear)) return false;
-            if (!ctx.state.getObject(ctx.source).location.has_value()) return false;  // I'm the cost
+        auto gear_in_play = [&]() {
+            if (gear == kInvalidId || !ctx.state.objectExists(gear)) return false;
             const auto& g = ctx.state.getObject(gear);
             // Still being played (on the chain) or already on the board.
             return g.zone == ZoneType::Chain || g.location.has_value();
         };
+        auto still_legal = [&]() {
+            if (!gear_in_play()) return false;
+            if (costAlreadyPaid(ctx)) return true;
+            return ctx.state.objectExists(ctx.source) &&
+                   ctx.state.getObject(ctx.source).location.has_value();   // I'm the cost
+        };
         int conf = confirmOptional(ctx, "Ravenbloom Prefect: banish me to banish the gear?",
                                    still_legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf < 1) return;
-        ctx.executor.banishObject(ctx.source);
+        if (conf == -1) return;                       // waiting for the agent
+        // "banish me" is the cost: paid as the ability goes on the chain (CR 383.3).
+        if (conf == 1 && costDueNow(ctx)) ctx.executor.banishObject(ctx.source);
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf < 1 || !gear_in_play()) return;
         // If the gear has not finished being played, its pending permanent
         // chain item must go with it so it never enters the board.
         auto& items = ctx.state.chain.items;

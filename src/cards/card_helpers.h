@@ -1196,6 +1196,47 @@ inline void gainXp(CardContext& ctx, PlayerId player, int amount) {
                         std::to_string(amount) + " XP (now " + std::to_string(ps.xp) + ")");
 }
 
+// ── A pick made by a player other than the controller ───────────────────────
+/// selectObject for a choice that belongs to `chooser`, who need not be
+/// ctx.controller: "each player must kill one of their units", "the defender
+/// must kill one of their units here". The pick is mandatory. Same contract
+/// and slots as selectObject (nullopt while `chooser` is being asked,
+/// kInvalidId when there is nothing to pick); a card that asks both players
+/// uses slots two apart.
+inline std::optional<GameObjectId> selectObjectAs(CardContext& ctx, PlayerId chooser,
+                                                  const std::string& label,
+                                                  std::vector<GameObjectId> options,
+                                                  size_t slot = 7) {
+    std::sort(options.begin(), options.end());
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value())   // direct invocation: nobody to ask
+        return options.empty() ? kInvalidId : options.front();
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    auto answer = [&ri, slot](GameObjectId id) {
+        ri.resume_data[slot] = 2;
+        ri.resume_data[slot + 1] = static_cast<int32_t>(id);
+        return id;
+    };
+    if (ri.resume_data[slot] == 2) return static_cast<GameObjectId>(ri.resume_data[slot + 1]);
+    if (ri.resume_data[slot] == 1) {
+        const GameObjectId picked = takenObject(ctx);
+        if (std::find(options.begin(), options.end(), picked) != options.end())
+            return answer(picked);
+        return answer(options.empty() ? kInvalidId : options.front());
+    }
+    if (options.empty()) return answer(kInvalidId);
+    if (options.size() == 1) return answer(options.front());
+    std::vector<Intent> choices;
+    choices.reserve(options.size());
+    for (auto id : options) choices.push_back(objChoice(chooser, id));
+    ctx.events.logTrace("SELECT_PROMPT (" + std::string(toString(chooser)) + "): " + label +
+                        " [" + std::to_string(options.size()) + " options]");
+    ctx.executor.requestChoice(chooser, std::move(choices), label);
+    ri.resume_data[slot] = 1;
+    return std::nullopt;
+}
+
 } // namespace riftbound
 
 // The Equip base classes (SimpleEquipGear / UniversalEquipGear) are built on

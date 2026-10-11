@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -16,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        ctx.state.player(ctx.controller).xp += 1;  // [Hunt]
+        gainXp(ctx, ctx.controller, 1);  // [Hunt]
         ctx.events.logTrace("ENTHRALLING PROTECTOR: [Hunt] +1 XP");
     }
     bool hasActivatedAbility() const override { return true; }

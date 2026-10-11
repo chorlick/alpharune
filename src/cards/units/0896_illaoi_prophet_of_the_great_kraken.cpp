@@ -18,17 +18,19 @@ public:
     // ── behaviour (Vendetta batch C) ──
     // "When you play me or when I score, play a [1] [M] Tentacle unit token
     //  from Bilgewater." Scoring = conquering or holding.
-    // The token goes to the controller's base (CR 184: no location named, so
-    // any location it could be played to is legal; the base/battlefield choice
-    // is not offered to the agent).
+    // No location is printed: the token goes to the controller's base or a
+    // battlefield they control, their choice (CR 355.2.a).
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer, TriggerType::WhenIHold};
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const int dest = pickTokenDest(*this, ctx, "Illaoi: play the Tentacle to");
+        if (dest == -1) return;   // waiting for the agent
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Tentacle", 1,
                                  // CR 187.10: 1 Might and the Bilgewater tag only.
                                  {"Bilgewater"}, KeywordSet{},
-                                 BaseLocation{ctx.controller}, /*enter_ready=*/false);
+                                 destLocation(ctx.controller, std::max(0, dest)),
+                                 /*enter_ready=*/false);
         ctx.events.logTrace("ILLAOI, PROPHET: 1[M] Tentacle token");
     }
     // "I have +1 [M] for each token unit you control."

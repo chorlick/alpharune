@@ -37,11 +37,15 @@ public:
         auto& self = ctx.state.getObject(ctx.source);
         auto it = self.card_counters.find(kPaidFlag);
         if (it == self.card_counters.end() || it->second == 0) return;
+        // No location is printed: the controller's base or a battlefield
+        // they control, their choice (CR 355.2.a).
+        const int dest = pickTokenDest(*this, ctx, "Zed: play the Shadow Clone to");
+        if (dest == -1) return;   // waiting for the agent
         it->second = 0;  // consumed: a later replay must pay again
         {
             auto clone_id = ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone",
                                  0, std::vector<std::string>{}, KeywordSet{},
-                                 LocationId{BaseLocation{ctx.controller}}, false);
+                                 destLocation(ctx.controller, std::max(0, dest)), false);
             // Carry the Shadow Clone token card so its "When I attack" ability fires.
             if (ctx.state.objectExists(clone_id))
                 ctx.state.getObject(clone_id).card_def_id = 955;

@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -17,23 +18,26 @@ public:
     TriggerType triggerType() const override { return TriggerType::Activated; }
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
-    // "Use this ability only while I'm at a battlefield."
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
-            if (obj.isAtBattlefield()) return true;
-        }
-        return false;
+    // "Use this ability only while I'm at a battlefield." — the Poro whose
+    // ability it is, not any Ultrasoft Poro its controller has.
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!Card::canActivateAbilityAt(state, controller, source, ability_index)) return false;
+        return state.objectExists(source) && state.getObject(source).isAtBattlefield();
     }
-    // "[E]: Play two [1] [M] Bird unit tokens with [Deflect]."
+    // "[E]: Play two [1] [M] Bird unit tokens with [Deflect]." No location is
+    // printed, so each token goes to its controller's base or a battlefield
+    // they control, their choice (CR 355.2.a).
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        KeywordSet kw; kw.set(Keyword::Deflect);
-        for (int i = 0; i < 2; ++i) {
-            ctx.executor.createToken(ctx.controller, CardType::Unit, "Bird",
-                                      /*might=*/1, /*tags=*/{"Bird"}, kw,
-                                      BaseLocation{ctx.controller},
-                                      /*enter_ready=*/false);
-        }
+        auto make = [&ctx](const LocationId& loc) {
+            KeywordSet kw; kw.set(Keyword::Deflect);
+            return ctx.executor.createToken(ctx.controller, CardType::Unit, "Bird",
+                                            /*might=*/1, /*tags=*/{"Bird"}, kw, loc,
+                                            /*enter_ready=*/false);
+        };
+        std::vector<GameObjectId> made;
+        if (!playTokensChoosingLocations(ctx, "Ultrasoft Poro: play a Bird", 2, make, made))
+            return;   // waiting for a location
         ctx.events.logTrace("ULTRASOFT PORO: played 2 Bird tokens w/ [Deflect]");
     }
 private:
@@ -52,8 +56,7 @@ private:
         d.tags = {R"RB(Poro)RB", R"RB(Freljord)RB"};
         d.energy_cost = 5;
         d.might = 5;
-        d.deflect_value = 1;
-        d.keywords.set(Keyword::Deflect);
+        // [Deflect] belongs to the Bird tokens only, not to the Poro.
         d.ability_text = R"RB([E]: Play two [1] [M] Bird unit tokens with [Deflect]. Use this ability only while I'm at a battlefield. (Opponents must pay [A] to choose a [Deflect] unit with a spell or ability.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/36900508e2ce61196450a4bf7e27722ae36521d9-744x1039.png)RB";
         return d;

@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "cards/card_helpers.h"
 
 namespace riftbound {
 namespace {
@@ -27,31 +28,28 @@ public:
     // additional-cost path that both sacrifices a unit AND feeds its cost back
     // as a reduction. Left unimplemented; would require engine support.
     //
-    // "When I attack, the defender must kill one of their units here." This IS
-    // implemented below. The defender's forced choice is approximated as their
-    // rational pick (lowest-Might unit they control at my battlefield), per the
-    // King's Edict #237 convention.
+    // "When I attack, the defender must kill one of their units here." The
+    // defender chooses which (nothing is targeted, CR 355.10.e).
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;
-        PlayerId defender = opponent(ctx.controller);
-        GameObjectId victim = kInvalidId;
-        int best_might = 0;
+        const PlayerId defender = opponent(ctx.controller);
+        std::vector<GameObjectId> theirs_here;
         for (auto& [id, obj] : ctx.state.objects) {
             if (!obj.isUnit() || obj.controller != defender) continue;
             auto bf = obj.battlefieldId();
-            if (!bf || *bf != *my_bf) continue;  // "here"
-            if (victim == kInvalidId || obj.current_might < best_might) {
-                victim = id;
-                best_might = obj.current_might;
-            }
+            if (bf && *bf == *my_bf) theirs_here.push_back(id);   // "here"
         }
-        if (victim != kInvalidId) {
-            ctx.executor.killObject(victim);
-            ctx.events.logTrace("ATAKHAN: attack -> defender kills a unit here (approx.)");
-        }
+        auto victim = selectObjectAs(ctx, defender, "Atakhan: kill one of your units here",
+                                     theirs_here);
+        if (!victim.has_value()) return;     // waiting on the defender
+        if (*victim == kInvalidId || !ctx.state.objectExists(*victim)) return;
+        const auto& v = ctx.state.getObject(*victim);
+        if (!v.isUnit() || v.controller != defender || v.battlefieldId() != my_bf) return;
+        ctx.executor.killObject(*victim);
+        ctx.events.logTrace("ATAKHAN: attack -> defender killed one of their units here");
     }
 private:
     const CardDef def_ = [] {

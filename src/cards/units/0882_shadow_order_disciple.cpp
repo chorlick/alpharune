@@ -20,15 +20,21 @@ public:
     // "When I move, you may [Burn 1] to give me +1 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto legal = [&]() {
+        auto on_board = [&]() {
             return ctx.state.objectExists(ctx.source) &&
-                   ctx.state.getObject(ctx.source).location.has_value() &&
-                   !ctx.state.player(ctx.controller).main_deck.empty();
+                   ctx.state.getObject(ctx.source).location.has_value();
+        };
+        auto legal = [&]() {
+            return on_board() && (costAlreadyPaid(ctx) ||
+                                  !ctx.state.player(ctx.controller).main_deck.empty());
         };
         int conf = confirmOptional(ctx, "Shadow Order Disciple: Burn 1 for +1 [M]?", legal);
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (conf != 1) return;                        // waiting, declined or nothing to burn
-        if (ctx.executor.burn(ctx.controller, 1).empty()) return;   // cost not paid
+        if (conf == -1) return;                       // waiting for the agent
+        // [Burn 1] is the cost: paid as the ability goes on the chain (CR 383.3).
+        if (conf == 1 && costDueNow(ctx) && ctx.executor.burn(ctx.controller, 1).empty())
+            return;                                   // cost not paid
+        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
+        if (conf != 1 || !on_board()) return;         // declined / I left the board
         ctx.executor.giveTemporaryMight(ctx.source, 1);
         ctx.events.logTrace("SHADOW ORDER DISCIPLE: Burn 1 -> +1 [M] this turn");
     }

@@ -20,6 +20,21 @@ public:
     // "Your deck can have any number of cards named Spiderling." is a
     // deck-construction rule: def_ sets CardDef::unlimited_copies, which the
     // deck validator's copy-count check honours. No in-game behaviour.
+    //
+    // "I have +1 [M] for each other unit you control here with my name."
+    // Each Spiderling counts the others at its own location.
+    void applyPassiveAura(GameState& state, PlayerId controller) const override {
+        forEachSelfOnce(*this, state, controller, [&](GameObjectId sid, GameObject& self) {
+            if (!self.location.has_value()) return;
+            int others = 0;
+            for (const auto& [id, obj] : state.objects) {
+                if (id == sid || !obj.isUnit() || obj.controller != controller) continue;
+                if (!obj.location.has_value() || *obj.location != *self.location) continue;
+                if (obj.name == self.name) ++others;
+            }
+            if (others > 0) auraMight(self, sid, others);
+        });
+    }
 private:
     const CardDef def_ = [] {
         CardDef d;

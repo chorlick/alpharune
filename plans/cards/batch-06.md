@@ -59,7 +59,7 @@ Engine facts traced for this batch (used by the findings below):
   - Text: "I can be played to an occupied battlefield if an enemy unit is alone there. Friendly units can be played to an occupied battlefield if an enemy unit is alone there."
   - Code: only the Hunt 2 trigger. No `getPlayLocations` override and no engine support for the friendly-unit permission.
   - Scenario: an enemy unit stands alone at a battlefield -> neither the Horror nor other friendly units get the extra play location.
-- [ ] **670 Wily Newtfish** - `units/0670_wily_newtfish.cpp:25` [confirmed] high
+- [x] **670 Wily Newtfish** - `units/0670_wily_newtfish.cpp:25` [confirmed] high — FIXED (verified in the code by sweep-verify-cards after sweep-triggers): every XP gain goes through `gainXp` (card_helpers.h), the only `xp +=` in `src/`; `grep "xp +=\|\.xp = " src/cards/*/*.cpp` has no hit and the remaining writes are spends; test: C6Test.WilyNewtfish_SeesXpGainedThisTurn, C7Test.HuntAndScrutinizingSergeant_CountAsXpGainedThisTurn, SweepTriggersTest.GainXp_IsCountedForTheTurn
   - c6: FIXED for XP gained from units 495–709: new shared `gainXp(ctx, player, n)` (card_helpers.h) keeps `xp_gained_this_turn`, and every XP source in the range calls it (578, 596, 602, 609, 615, 637, 654, 656, 662, 664, 675, 677, 678, 679, 681, 689, 691, 705); test: C6Test.WilyNewtfish_SeesXpGainedThisTurn, .HeraldOfSpring_HuntGainsOneXpOnAHold
   - BLOCKED: XP sources outside this stream still write `xp +=` directly and must call `gainXp`: gear 658, 671, 698, 720; legends 759, 787; spells 657, 669, 751; battlefield 769; units 719, 724.
   - Text: "If you've gained XP this turn, I have +1 [M] and [Ganking]."

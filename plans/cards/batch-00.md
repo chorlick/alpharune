@@ -98,7 +98,7 @@ Files read in full: 83 of 83.
   - Code: the engine consumer (game_engine.cpp:1843-1850) builds the Repeat cost from `energy_cost` only (`repeat_cost.power = 0`), and reads/consumes the flag only when the spell has no printed Repeat.
   - Scenario: next spell costs [2][R] -> its granted Repeat costs [2], not [2][R]. If the next spell already has [Repeat], the grant is not consumed and passes to the spell after it.
 
-- [ ] **Equip cost (332, 339, 345, 353, 356, 365, 374, 379, 382, 387)** - `gear/equip_base.h:30` [confirmed] medium
+- [x] **Equip cost (332, 339, 345, 353, 356, 365, 374, 379, 382, 387)** - `gear/equip_base.h:30` [confirmed] medium — FIXED (verified in the code by sweep-verify-cards after sweep-costs): every gear declares its Equip cost as data (`Card::equipCost`) equal to the printed cost; the generator and the execution share `Card::canPayEquip` / `payEquipAndAttach`, so an unaffordable Equip is not offered and a paid one goes through the engine; test: SweepCostsTest.Equip_IsOfferedOnlyWhenItsCostCanBePaid, SweepCostsTest.Equip_FirstGearAbilityDiscountAppliesToTheEquipCost, VerifyCardsTest.Equip_EachOfTheTenGearsIsOfferedAndPaidAtItsPrintedCost
   - Text: "[Equip] [R]" / "[Equip] [1][G]" etc.
   - Code: the energy+Domain `standardEquip` only counts ready runes in base for Energy and requires a rune of the domain on board for Power; it never looks at `rune_pool` (floating Energy/Power). The equip generator (game_engine.cpp:2822-2854) offers the intent without any affordability check, and `onEquip` returning false changes nothing.
   - Scenario: Seal of Rage adds [R], controller has no Fury rune in base -> Equip [R] on Serrated Dirk is offered, chosen, and silently does nothing; it can be chosen again indefinitely.

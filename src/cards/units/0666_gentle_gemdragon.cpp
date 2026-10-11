@@ -28,14 +28,21 @@ public:
                hasTag(state.getObject(subject), "Dragon");
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        int readied = 0;
-        for (auto& [id, obj] : ctx.state.objects) {
-            if (readied >= 2) break;
+        // "ready up to 2 runes": which runes, and how many, is the
+        // controller's choice — one prompt per rune, "None" on each (CR
+        // 355.13). The rune matters: a rune that will be recycled for its
+        // Power is better left exhausted and another one readied.
+        std::vector<GameObjectId> exhausted;
+        for (const auto& [id, obj] : ctx.state.objects) {
             if (!obj.isRune() || obj.controller != ctx.controller) continue;
             if (!obj.is_exhausted || !obj.location.has_value()) continue;
-            ctx.executor.readyObject(id);
-            ++readied;
+            exhausted.push_back(id);
         }
+        const auto picks = selectSeveral(ctx, "Gentle Gemdragon: ready a rune (up to 2)",
+                                         exhausted, 2);
+        if (!picks.has_value()) return;   // waiting on the agent
+        const int readied = static_cast<int>(picks->size());
+        for (auto id : *picks) ctx.executor.readyObject(id);
         if (readied > 0) {
             ctx.events.logTrace("GENTLE GEMDRAGON: readied " +
                                 std::to_string(readied) + " rune(s)");

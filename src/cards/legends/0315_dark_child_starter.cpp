@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -16,21 +17,22 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // "ready up to 2 runes". Which two is not asked: an exhausted rune
-        // is worth the same whatever its Domain (ready it gives [1]; it can
-        // be recycled for its Power ready or exhausted, CR 164.2.b), and
-        // readying fewer is never better. Lowest ids first, so the result
-        // does not depend on map order.
+        // "ready up to 2 runes": which runes, and how many, is the
+        // controller's choice — one prompt per rune, "None" on each (CR
+        // 355.13). The rune matters: a rune can be recycled for its Power
+        // ready or exhausted (CR 164.2.b), so one that will be recycled is
+        // better left exhausted and another one readied for its [1].
         std::vector<GameObjectId> exhausted;
         for (const auto& [id, obj] : ctx.state.objects) {
             if (!obj.isRune() || obj.controller != ctx.controller) continue;
             if (!obj.is_exhausted || !obj.location.has_value()) continue;
             exhausted.push_back(id);
         }
-        std::sort(exhausted.begin(), exhausted.end());
-        if (exhausted.size() > 2) exhausted.resize(2);
-        const int readied = static_cast<int>(exhausted.size());
-        for (auto id : exhausted) ctx.executor.readyObject(id);
+        const auto picks = selectSeveral(ctx, "Dark Child: ready a rune (up to 2)",
+                                         exhausted, 2);
+        if (!picks.has_value()) return;   // waiting on the agent
+        const int readied = static_cast<int>(picks->size());
+        for (auto id : *picks) ctx.executor.readyObject(id);
         if (readied > 0) {
             ctx.events.logTrace("DARK CHILD: readied " + std::to_string(readied)
                                 + " rune(s) at end of turn");

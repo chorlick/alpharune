@@ -738,11 +738,16 @@ private:
     /// additional execution (CR 820.2).
     void chooseTargetsAtFinalize(ChainItem& item);
     void chooseFirstExecution(ChainItem& item);
-    // Items whose choices were made as an effect put them on the chain; the
-    // chain's Finalize step does not ask again. And the guard against the
-    // repeat choices choosing repeats. Call-stack bookkeeping, not game state.
-    std::vector<ChainItemId> finalized_early_;
+    // (An item whose choices are made early — a spell an effect plays — is
+    // marked ChainItemStatus::Finalized on the spot, which is what keeps the
+    // chain's Finalize step from asking again.)
+    // The guard against the repeat choices choosing repeats. Call-stack
+    // bookkeeping, not game state.
     bool choosing_repeat_ = false;
+    /// Deflect, "chosen" events and the choice count for a target the engine
+    /// asked for (chooseFirstExecution, makeNewChoicesFor).
+    void commitEngineChosenTarget(const Card& card, PlayerId chooser, GameObjectId t,
+                                  ChainItemId item_id);
     void runFinalizePass(ChainItem& item);
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);

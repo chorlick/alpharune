@@ -73,10 +73,17 @@ void GameEngine::initSubsystems() {
         // An effect that plays a spell performs the whole play: its choices
         // are made now, as it is put on the chain — before the rest of the
         // effect that played it — not at the chain's next Finalize step.
+        // That IS its finalization: the item is marked Finalized and announced
+        // here, so the chain's Finalize step has nothing left to do for it.
         for (auto& ci : state_.chain.items)
             if (ci.id == id) {
+                ci.status = ChainItemStatus::Finalized;
                 chooseTargetsAtFinalize(ci);
-                finalized_early_.push_back(id);
+                break;
+            }
+        for (const auto& ci : state_.chain.items)
+            if (ci.id == id) {
+                events_.emit(ChainItemFinalizedEvent{ci.id, ci.source, ci.controller});
                 break;
             }
     });
@@ -1369,12 +1376,6 @@ bool GameEngine::canPayEquip(PlayerId player, GameObjectId gear, GameObjectId un
 // longer legal (a mistarget: the instruction is ignored).
 void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     if (item.card_def_id == kInvalidId) return;
-    // Its choices were made as an effect put it on the chain (setQueueSpell).
-    if (auto early = std::find(finalized_early_.begin(), finalized_early_.end(), item.id);
-        early != finalized_early_.end()) {
-        finalized_early_.erase(early);
-        return;
-    }
     const ChainItemId this_id = item.id;
     chooseFirstExecution(item);
     // CR 820.2: the choices of each additional execution a Repeat paid for
@@ -1508,8 +1509,17 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     it->resume_data[5] = 1;   // "target was chosen at finalization" (read by Card::pickTarget)
     events_.logTrace("TARGET (finalize): " + source_name + " -> " + state_.getObject(t).name);
 
-    // CR 809: Deflect is a mandatory additional cost of choosing the object.
-    if (!card->ignoresDeflect()) {
+    commitEngineChosenTarget(*card, chooser, t, item_id);
+}
+
+// What choosing `t` as a target owes, for every target the ENGINE asks for
+// (at finalization, and when an item makes new choices): Deflect (CR 809) is
+// paid, a friendly unit hears it was chosen, and the choice is counted
+// (GameState::noteChosen — "if you've chosen an enemy unit this turn").
+void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, GameObjectId t,
+                                          ChainItemId item_id) {
+    if (!state_.objectExists(t)) return;
+    if (!card.ignoresDeflect()) {
         const int deflect = deflectCostFor(state_, chooser, t);
         if (deflect > 0) {
             effect_executor_->payAnyPower(chooser, deflect);
@@ -1519,11 +1529,11 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         }
     }
     const auto& tobj = state_.getObject(t);
-    if (tobj.isUnit() && tobj.location.has_value()) {
-        if (tobj.controller == chooser)
-            events_.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
-    }
-    state_.noteChosen(chooser, t, it);
+    if (tobj.isUnit() && tobj.location.has_value() && tobj.controller == chooser)
+        events_.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
+    const ChainItem* by = nullptr;
+    for (const auto& ci : state_.chain.items) if (ci.id == item_id) by = &ci;
+    state_.noteChosen(chooser, t, by);
 }
 
 Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options,
@@ -1580,10 +1590,19 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
     // Targets locked in as the spell was played: choose that many again.
     const size_t needed = item->targets.size();
     if (needed == 0 || legal.size() < needed) return;
+    // Each new target is chosen like any target: one whose Deflect cannot be
+    // paid is not offered, and choosing it pays the Deflect and counts.
+    const bool deflect_matters = !card->ignoresDeflect();
     std::vector<GameObjectId> remaining = legal, picked;
     while (picked.size() < needed) {
         std::vector<Intent> options;
-        for (auto t : remaining) {
+        const int payable = effect_executor_->payableAnyPower(chooser);
+        std::vector<GameObjectId> offered;
+        for (auto t : remaining)
+            if (!deflect_matters || deflectCostFor(state_, chooser, t) <= payable)
+                offered.push_back(t);
+        if (offered.empty()) return;   // no legal choice left to make (CR 753.2)
+        for (auto t : offered) {
             Intent i;
             i.type = IntentType::MakeChoice;
             i.player = chooser;
@@ -1591,13 +1610,14 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
             options.push_back(std::move(i));
         }
         const Intent chosen = decideNow(chooser, options, "make a new choice");
-        GameObjectId t = remaining.front();
+        GameObjectId t = offered.front();
         if (!chosen.chosen_objects.empty() &&
-            std::find(remaining.begin(), remaining.end(), chosen.chosen_objects.front()) !=
-                remaining.end())
+            std::find(offered.begin(), offered.end(), chosen.chosen_objects.front()) !=
+                offered.end())
             t = chosen.chosen_objects.front();
         picked.push_back(t);
         remaining.erase(std::remove(remaining.begin(), remaining.end(), t), remaining.end());
+        commitEngineChosenTarget(*card, chooser, t, item_id);
     }
     // decideNow may have reallocated the chain.
     for (auto& ci : state_.chain.items)

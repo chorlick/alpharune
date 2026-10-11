@@ -258,10 +258,12 @@ inline bool payAnyPowerAheadOfCost(GameState& state, EventBus& events, PlayerId 
             if (!rune.location.has_value() || !runePays(rune, cost_domains)) continue;
             if (rune.is_exhausted == (pass == 0)) recycle(rid);
         }
+    // The line payIn writes, so a payment that came out the same reads the
+    // same: "exhausted" counts the runes exhausted for their Energy first.
     RIFT_TRACE(events, "PAY_ADD: " + std::string(toString(player)) + " pays [0] + " +
-                    std::to_string(power) + " power (any), ahead of a cost: recycled " +
-                    std::to_string(recycled) + " (" + std::to_string(exhausted_first) +
-                    " exhausted for Energy first)");
+                    std::to_string(power) + " power (any): exhausted " +
+                    std::to_string(exhausted_first) + ", recycled " +
+                    std::to_string(recycled));
     return need <= 0;
 }
 

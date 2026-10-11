@@ -21,7 +21,8 @@ public:
         const auto& gear = ctx.state.getObject(targets[0]);
         if (!gear.isGear() || !gear.location.has_value()) return;
         ctx.executor.killObject(targets[0]);
-        ctx.executor.drawCards(controllerWhenItLeft(ctx.state, targets[0]), 2);
+        const PlayerId its_controller = controllerAfterKill(ctx.state, targets[0]);
+        if (its_controller != PlayerId::None) ctx.executor.drawCards(its_controller, 2);
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_gear = true};

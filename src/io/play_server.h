@@ -84,6 +84,28 @@ struct PlayServerConfig {
     std::string build_date;
     uint64_t    seed = 0;
 
+    /// Seat-bound sessions (plans/09 9.PP2). When true, every client is
+    /// either seated or a spectator:
+    ///   - a client takes a seat with `{"type":"seat","player":"P1"}` (the
+    ///     page sends it when its URL carries `?seat=P1`); the seat must be
+    ///     a human one and not held by another connected client; the reply
+    ///     is `{"type":"seat","ok":true|false,...}`. A client that takes no
+    ///     seat is a spectator.
+    ///   - a frame is built per seat: that seat's own hand, the options and
+    ///     the prompt only for the seat being asked; a spectator's frame
+    ///     has neither hand and no options. Frames carry `your_seat`.
+    ///   - a log line goes to a seat when LogEvent::visibleTo(seat); a
+    ///     spectator gets the lines both players may read.
+    ///   - a `choose` is accepted only from the client seated as the
+    ///     player it answers for.
+    /// `reveal_hidden` (god mode / --show-hand) still overrides what frames
+    /// and logs carry, as an explicit server option; it does not let an
+    /// unseated client answer.
+    /// When false (the default; `main.cpp` sets it true only when BOTH seats
+    /// are human and --hot-seat was not given) the server behaves exactly as
+    /// before: one stream for every client, an answer from any client.
+    bool seat_bound = false;
+
     /// Slots for the two seats. Null = AI seat (no human input expected).
     /// At least one MUST be non-null for the server to be useful.
     HumanAgent* p1_human = nullptr;

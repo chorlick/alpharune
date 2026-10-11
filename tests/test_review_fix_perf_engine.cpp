@@ -2724,4 +2724,309 @@ TEST_F(PerfEngineRuneDeck, TheLookIsPrivateAndNothingAboutTheRuneDeckIsRecorded)
     }
 }
 
+
+// ─── 9.PP1: a decision's trace header says what was asked ───────────────────
+// A prompt asked through the chain's query path (a card's pending choice, a
+// prompt the executor makes in mid-effect) was headed "(P — chain priority):
+// N legal actions" whatever it asked. The header is now the prompt's own
+// text; "chain priority" is kept for the decision that offers PassPriority.
+class PerfEngineDecisionHeaders : public PerfEngineDeathBatch {
+protected:
+    static constexpr CardDefId kZhonyasHourglass = 77;
+    std::vector<std::string> headers;
+    boost::signals2::scoped_connection conn;
+    void listen() {
+        headers.clear();
+        conn = events.on_log.connect([this](const LogEvent& e) {
+            if (e.message.find("DECISION #") != std::string::npos) headers.push_back(e.message);
+        });
+    }
+    int count(const std::string& text) const {
+        int n = 0;
+        for (const auto& h : headers) if (h.find(text) != std::string::npos) ++n;
+        return n;
+    }
+};
+
+TEST_F(PerfEngineDecisionHeaders, WhichDeathIsReplacedFirst) {
+    addEquipment(P1, kZhonyasHourglass);
+    const GameObjectId first = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId second = addUnit(P1, kShipyardSkulker, 0, 1);
+    EnginePathAgent p1(EnginePathAgent::script({static_cast<int>(second)}));
+    listen();
+    withEngine([&](GameEngine& e) {
+        for (auto id : {first, second}) e.mutableState().getObject(id).damage_marked = 99;
+        e.testHook_processLethalDamage();
+    }, &p1);
+    ASSERT_EQ(headers.size(), 1u);
+    EXPECT_NE(headers[0].find("(P1): which death is replaced first (CR 373) [2 options]"),
+              std::string::npos) << headers[0];
+    EXPECT_EQ(count("chain priority"), 0);
+}
+
+TEST_F(PerfEngineDecisionHeaders, WhichReplacementAppliesFirst) {
+    addEquipment(P1, kZhonyasHourglass);
+    const GameObjectId unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(unit).death_replacement_recall_pending = true;      // a second thing that could replace it
+    EnginePathAgent p1(EnginePathAgent::script({EnginePathAgent::kFirst}));
+    listen();
+    withEngine([&](GameEngine& e) {
+        e.mutableState().getObject(unit).damage_marked = 99;
+        e.testHook_processLethalDamage();
+    }, &p1);
+    ASSERT_EQ(headers.size(), 1u);
+    EXPECT_NE(headers[0].find("(P1): " + o(unit).name +
+                              " would die — which replacement applies first (CR 372) [2 options]"),
+              std::string::npos) << headers[0];
+    EXPECT_EQ(count("chain priority"), 0);
+}
+
+// An ordinary card prompt: Keeper's Verdict 760 asks the unit's OWNER "top or
+// bottom" as it resolves. And the priority decisions around it keep their name.
+TEST_F(PerfEngineDecisionHeaders, ACardsPromptCarriesItsOwnText) {
+    const GameObjectId u = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId verdict = addToHand(P2, kKeepersVerdict);
+    EnginePathAgent p1(EnginePathAgent::script({EnginePathAgent::kRest}));
+    EnginePathAgent p2(EnginePathAgent::script({EnginePathAgent::kRest}));
+    listen();
+    playThroughEngine(verdict, &p1, std::nullopt, &p2);
+    ASSERT_EQ(o(u).zone, ZoneType::MainDeck);
+    EXPECT_EQ(count("(P1): Keeper's Verdict: top or bottom of your Main Deck [2 options]"), 1)
+        << "the prompt's own label, for the player it was asked of";
+    for (const auto& h : headers)
+        if (h.find("chain priority") != std::string::npos) {
+            EXPECT_NE(h.find("legal actions"), std::string::npos) << h;
+            EXPECT_EQ(h.find("Keeper"), std::string::npos) << h;
+        }
+    EXPECT_GE(count("chain priority"), 1) << "priority was passed on the spell";
+}
+
+
+// ─── 9.PP3: Zhonya's Hourglass hidden at a battlefield lost without a death ─
+// "[Hidden] ... If a friendly unit would die, kill this instead. Heal that
+// unit, exhaust it, and recall it." P1's only unit at the battlefield is
+// returned to hand by an enemy spell: nothing dies.
+//  - Played from facedown in response (CR 811.6 [Reaction]; 811.1.d.1.a: a
+//    hidden gear is played to that battlefield): it is not used, and the
+//    cleanup that follows the spell recalls it to its controller's base
+//    (CR 149.3, 323.6, 459.1), from where it replaces a later death.
+//  - Not played: when its controller no longer controls the battlefield
+//    (CR 323.5) the facedown card goes to its owner's trash (CR 323.6.a).
+
+/// Passes priority and takes first options, except that it plays `card`
+/// from facedown the first time that play is offered (when `play_it`).
+class HiddenCardAgent : public AgentInterface {
+public:
+    HiddenCardAgent(GameObjectId card, bool play_it) : card_(card), play_it_(play_it) {}
+    Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+        const Intent* hidden_play = nullptr;
+        for (const auto& i : legal)
+            if (i.card == card_ && (i.type == IntentType::PlayReaction ||
+                                    i.type == IntentType::PlayActionCard))
+                hidden_play = &i;
+        const bool priority = std::any_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return i.type == IntentType::PassPriority; });
+        if (priority) { ++priority_windows; if (hidden_play) ++offered; }
+        if (hidden_play && play_it_ && !played) { played = true; return *hidden_play; }
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
+        return legal.front();
+    }
+    int offered = 0, priority_windows = 0;
+    bool played = false;
+private:
+    GameObjectId card_;
+    bool play_it_;
+};
+
+class PerfEngineHiddenHourglass : public PerfEngineLookBack {
+protected:
+    static constexpr CardDefId kZhonyasHourglass = 77;
+    static constexpr CardDefId kFoxFire = 253;
+    GameObjectId hide(PlayerId owner, CardDefId def, int bf) {
+        const GameObjectId card = addToHand(owner, def);
+        auto& h = state.player(owner).hand;
+        h.erase(std::remove(h.begin(), h.end(), card), h.end());
+        GameObject& c = o(card);
+        c.zone = ZoneType::BattlefieldZone;
+        c.is_hidden = true;
+        c.hidden_at = static_cast<BattlefieldId>(bf);
+        c.hidden_on_turn = 2;
+        state.battlefields[bf].facedown.push_back(card);
+        return card;
+    }
+    bool facedownAt(GameObjectId card, int bf) {
+        const auto& f = state.battlefields[bf].facedown;
+        return std::find(f.begin(), f.end(), card) != f.end();
+    }
+    bool inTrashOf(PlayerId p, GameObjectId card) {
+        const auto& t = state.player(p).trash;
+        return std::find(t.begin(), t.end(), card) != t.end();
+    }
+    /// P2 plays "return a unit to its owner's hand" on `unit`; both players
+    /// get priority on it; it resolves; the engine settles.
+    void enemySpellReturns(GameObjectId unit, AgentInterface* p1_agent) {
+        TLookBack::move = TLookBack::Move::ReturnToHand;
+        const GameObjectId spell = addToHand(P2, kTLookBack);
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P2;
+        play.card = spell;
+        play.targets = {unit};
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(play);
+            settleLikeTheEngine(e);
+        }, p1_agent, nullptr, P2);
+    }
+    void SetUp() override {
+        PerfEngineLookBack::SetUp();
+        state.turn.turn_number = 3;
+        state.battlefields[0].controller = P1;
+    }
+};
+
+// (a) and (d): the facedown play IS offered in the Closed State with the
+// enemy spell on the chain; played, the Hourglass is at that battlefield,
+// faceup; nothing dies, so it is not used; the cleanup recalls it to base;
+// and from the base it replaces a later death.
+TEST_F(PerfEngineHiddenHourglass, PlayedInResponse_NothingDies_ItIsRecalledToBaseAndStillWorks) {
+    const GameObjectId only_unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId hourglass = hide(P1, kZhonyasHourglass, 0);
+    HiddenCardAgent p1(hourglass, /*play_it=*/true);
+    enemySpellReturns(only_unit, &p1);
+
+    EXPECT_GE(p1.offered, 1) << "the facedown play is offered in response to the spell";
+    ASSERT_TRUE(p1.played);
+    EXPECT_EQ(o(only_unit).zone, ZoneType::Hand) << "returned to hand: nothing died";
+    EXPECT_FALSE(state.battlefields[0].controller.has_value()) << "control lost (CR 323.5)";
+    const GameObject& g = o(hourglass);
+    ASSERT_TRUE(g.location.has_value()) << "unused, and still on the board";
+    EXPECT_TRUE(g.isAtBase()) << "recalled to its controller's base (CR 149.3 / 323.6)";
+    EXPECT_EQ(*g.location, LocationId{BaseLocation{P1}});
+    EXPECT_FALSE(g.is_hidden) << "faceup";
+    EXPECT_FALSE(facedownAt(hourglass, 0));
+    EXPECT_FALSE(inTrashOf(P1, hourglass));
+    EXPECT_EQ(g.controller, P1);
+
+    // A later death, anywhere: it is replaced from the base.
+    const GameObjectId later = addUnit(P1, kShipyardSkulker, 0, 1);
+    withEngine([&](GameEngine& e) {
+        e.mutableState().getObject(later).damage_marked = 99;
+        e.testHook_processLethalDamage();
+        settleLikeTheEngine(e);
+    });
+    ASSERT_TRUE(onBoard(later)) << "its death was replaced";
+    EXPECT_TRUE(o(later).isAtBase());
+    EXPECT_EQ(o(hourglass).zone, ZoneType::Trash) << "killed instead";
+}
+
+// (b): not played — in the owner's trash after the cleanup that follows the
+// loss of control. It was offered, and declined.
+TEST_F(PerfEngineHiddenHourglass, NotPlayed_TheFacedownCardGoesToItsOwnersTrash) {
+    const GameObjectId only_unit = addUnit(P1, kShipyardSkulker, 0, 0);
+    const GameObjectId hourglass = hide(P1, kZhonyasHourglass, 0);
+    HiddenCardAgent p1(hourglass, /*play_it=*/false);
+    enemySpellReturns(only_unit, &p1);
+
+    EXPECT_GE(p1.offered, 1);
+    EXPECT_FALSE(p1.played);
+    EXPECT_FALSE(state.battlefields[0].controller.has_value());
+    EXPECT_FALSE(facedownAt(hourglass, 0));
+    EXPECT_TRUE(inTrashOf(P1, hourglass)) << "CR 323.6.a";
+    EXPECT_EQ(o(hourglass).zone, ZoneType::Trash);
+    EXPECT_FALSE(o(hourglass).is_hidden);
+    EXPECT_FALSE(o(hourglass).location.has_value());
+}
+
+// (c): one cleanup, a faceup Hourglass and a different facedown card at the
+// battlefield that is lost: control goes (323.5), the faceup gear is recalled
+// (323.6), the facedown card is trashed (323.6.a). Neither takes the other's
+// way out.
+TEST_F(PerfEngineHiddenHourglass, OneCleanup_ControlLost_FaceupGearRecalled_FacedownCardTrashed) {
+    const GameObjectId hourglass = addEquipment(P1, kZhonyasHourglass);
+    o(hourglass).location = LocationId{BattlefieldLocation{0}};
+    o(hourglass).zone = ZoneType::BattlefieldZone;
+    const GameObjectId facedown = hide(P1, kFoxFire, 0);
+    // No unit of P1's at battlefield 0; an enemy unit at the other one.
+    addUnit(P2, kShipyardSkulker, 0, 1);
+    std::vector<std::string> order;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("RECALL (CR 323.6)") != std::string::npos) order.push_back("recall");
+        if (e.message.find("removed from facedown") != std::string::npos) order.push_back("hidden");
+    });
+    cleanup();
+    conn.disconnect();
+    EXPECT_FALSE(state.battlefields[0].controller.has_value());
+    ASSERT_TRUE(o(hourglass).location.has_value());
+    EXPECT_TRUE(o(hourglass).isAtBase());
+    EXPECT_FALSE(inTrashOf(P1, hourglass));
+    EXPECT_TRUE(inTrashOf(P1, facedown));
+    EXPECT_FALSE(facedownAt(facedown, 0));
+    // The engine removes the hidden card before it recalls the gear; the rule
+    // lists the recall first. The two act on different objects, so the order
+    // cannot be seen in the result: pinned as it is.
+    EXPECT_EQ(order, (std::vector<std::string>{"hidden", "recall"}));
+}
+
+// (d), second half: with control already lost, the facedown play is not
+// offered. In a game the same cleanup that takes control away also trashes
+// the card, so there is no window; the state here is built by hand to ask
+// the generator directly.
+TEST_F(PerfEngineHiddenHourglass, WithControlLostTheFacedownPlayIsNotOffered) {
+    const GameObjectId hourglass = hide(P1, kZhonyasHourglass, 0);
+    addUnit(P1, kShipyardSkulker, 0, 1);
+    auto offered = [&]() {
+        int n = 0;
+        state.turn.phase = TurnPhase::MainPhase;
+        state.turn.turn_player = P2;
+        withEngine([&](GameEngine& e) {
+            e.mutableState().turn.oc_state = OpenClosedState::Closed;
+            e.mutableState().turn.priority_holder = P1;
+            for (const auto& i : e.generateLegalActions())
+                if (i.card == hourglass) ++n;
+            e.mutableState().turn.oc_state = OpenClosedState::Open;
+            e.mutableState().turn.priority_holder = std::nullopt;
+        }, nullptr, nullptr, P2);
+        return n;
+    };
+    state.battlefields[0].controller = P1;
+    EXPECT_EQ(offered(), 1) << "the control: it is offered while P1 controls the battlefield";
+    state.battlefields[0].controller = std::nullopt;
+    EXPECT_EQ(offered(), 0) << "nobody controls it";
+    state.battlefields[0].controller = P2;
+    EXPECT_EQ(offered(), 0) << "the other player controls it";
+}
+
+
+// Found while reading the patch notes for 9.PP3 — Vendetta rules FAQ, the
+// Hidden Blade examples: "If a unit at a battlefield has been affected by
+// Smite previously this turn and it is chosen by Hidden Blade, that unit's
+// controller will not draw 2 ... the unit was moved to a non-board zone by an
+// effect other than Hidden Blade and thus no longer has a controller that
+// Hidden Blade can reference." And with Zhonya's Hourglass the unit "is on
+// the board and can have its information checked": its controller draws.
+TEST_F(PerfEngineHiddenHourglass, HiddenBlade_ADeathReplacedByABanishDrawsNobodyCards) {
+    constexpr CardDefId kHiddenBladeCard = 213;
+    for (int i = 0; i < 6; ++i) { addToDeck(P1, kShipyardSkulker); addToDeck(P2, kShipyardSkulker); }
+    // Smite on it: "If it would die this turn, banish it instead."
+    const GameObjectId smitten = addUnit(P1, kShipyardSkulker, 0, 0);
+    o(smitten).banish_if_would_die_this_turn = true;
+    const GameObjectId blade = addToHand(P2, kHiddenBladeCard);
+    size_t p1_hand = state.player(P1).hand.size();
+    EnginePathAgent picker(EnginePathAgent::choosing(smitten));
+    playThroughEngine(blade, nullptr, std::nullopt, &picker);
+    ASSERT_EQ(o(smitten).zone, ZoneType::Banishment);
+    EXPECT_EQ(state.player(P1).hand.size(), p1_hand) << "no controller to reference: no draw";
+
+    // Saved by Zhonya's Hourglass (recalled, on the board): its controller draws 2.
+    const GameObjectId saved = addUnit(P1, kShipyardSkulker, 0, 0);
+    addEquipment(P1, kZhonyasHourglass);
+    const GameObjectId blade2 = addToHand(P2, kHiddenBladeCard);
+    p1_hand = state.player(P1).hand.size();
+    EnginePathAgent picker2(EnginePathAgent::choosing(saved));
+    playThroughEngine(blade2, nullptr, std::nullopt, &picker2);
+    ASSERT_TRUE(onBoard(saved));
+    EXPECT_EQ(state.player(P1).hand.size(), p1_hand + 2);
+}
+
 }  // namespace test_review_fix_perf_engine

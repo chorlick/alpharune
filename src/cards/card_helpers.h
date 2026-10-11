@@ -49,6 +49,22 @@ inline PlayerId controllerWhenItLeft(const GameState& state, GameObjectId id) {
     if (obj.location.has_value() || !obj.last_known.valid) return obj.controller;
     return obj.last_known.controller;
 }
+/// "Kill X. Its controller ...": the controller the second instruction may
+/// reference after this effect's own kill of `id`.
+///  - still on the board (the death was replaced by a recall, "I can't be
+///    killed"): its controller now;
+///  - it died: who controlled it as it died (CR 359.3.e.13);
+///  - it left the board another way — the death was replaced by a banish
+///    (Smite): PlayerId::None. "The unit was moved to a non-board zone by an
+///    effect other than [this one] and thus no longer has a controller that
+///    [it] can reference" (Vendetta rules FAQ, the Hidden Blade examples).
+inline PlayerId controllerAfterKill(const GameState& state, GameObjectId id) {
+    if (!state.objectExists(id)) return PlayerId::None;
+    const auto& obj = state.getObject(id);
+    if (obj.location.has_value()) return obj.controller;
+    if (obj.last_known.valid && obj.last_known.died) return obj.last_known.controller;
+    return PlayerId::None;
+}
 /// `id` as it left the board, for an ability that is resolving (or being
 /// finalized): the snapshot that travelled with the ability's chain item if
 /// `id` is the object whose leaving triggered it (ChainItem::

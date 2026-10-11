@@ -422,6 +422,13 @@ void ChainManager::runResumable(
             (pending.label.empty() ? "MakeChoice" : pending.label) +
             " [" + std::to_string(pending.legal.size()) + " options] (" +
             toString(pending.player) + ")");
+        // The prompt's own text heads its decision line (plans/09 9.PP1).
+        const EffectExecutor::Asking named(*executor_, pending.label.empty()
+            ? (state_.chain.resuming.has_value() &&
+               state_.objectExists(state_.chain.resuming->source)
+                   ? state_.getObject(state_.chain.resuming->source).name + ": a choice"
+                   : std::string("a choice"))
+            : pending.label);
         Intent choice = query_agent(pending.player, pending.legal);
         executor_->recordChoice(std::move(choice));
         // Loop back — resolve_spell re-invokes the Card, which reads the

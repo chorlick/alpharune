@@ -336,6 +336,13 @@ struct GameObject {
     // grant becomes a permanent keyword — Bounty Hunter's Ganking
     // would stick forever, contradicting the card text.
     KeywordSet temp_keywords;
+    // Keywords an effect GAVE this object for as long as it stays what it is
+    // ("Give a gear [Temporary]" — not a "this turn" grant, those are
+    // temp_keywords). Set beside `keywords` by the card that gives one, so a
+    // rule that treats printed text differently can tell a given keyword from
+    // a printed one even when the card prints it too (CR 718.2: only the
+    // PRINTED rules text of an attached card is Inactive).
+    KeywordSet granted_keywords;
 
     // ── Convenience ──
     bool isReady() const { return !is_exhausted; }

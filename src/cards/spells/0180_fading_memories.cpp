@@ -49,6 +49,7 @@ public:
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto& obj = ctx.state.getObject(picked);
         obj.keywords.set(Keyword::Temporary);
+        obj.granted_keywords.set(Keyword::Temporary);   // given, not printed (CR 718.2)
         ctx.events.logTrace("FADING MEMORIES: " + obj.name + " gains [Temporary]");
         // The start-of-Beginning-Phase Temporary sweep (game_engine.cpp
         // beginningStep) now kills both units AND gear, so a gear given

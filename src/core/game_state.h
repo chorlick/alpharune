@@ -667,6 +667,23 @@ struct ChainItem {
     // (CR-text "if you spent [4] or more") and Virtuoso for cost-gating.
     int repeats_paid = 0;
     int total_energy_spent = 0;
+    // The choices of each additional execution (CR 820.2: "choices must be
+    // made at the usual time during the Make Relevant Choices step"; 820.2.a:
+    // they need not be the same as the first execution's). Made by the engine
+    // as the item is finalized (GameEngine::chooseTargetsAtFinalize), one
+    // entry per Repeat paid; ChainManager::stepResolve loads entry r before
+    // extra execution r. Empty for an item nobody finalized (built by hand):
+    // such an execution asks as it runs.
+    struct ExecutionChoices {
+        std::vector<GameObjectId> targets;
+        std::vector<GameObjectId> chosen_objects;
+        int resume_point = 0;
+        std::vector<int32_t> resume_data;
+        int8_t may_answer = -1;
+        bool choices_finalized = false;
+        bool finalize_costs_paid = false;
+    };
+    std::vector<ExecutionChoices> repeat_choices;
 
     // Phase 6q+ — snapshot of the TRIGGERING spell's total_energy_spent
     // when this trigger was added to the chain. Used by WhenYouPlaySpell

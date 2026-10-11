@@ -69,7 +69,16 @@ void GameEngine::initSubsystems() {
     effect_executor_->setAuraRecalc([this]() { recalculateAuras(); });
     effect_executor_->setQueueSpell([this](PlayerId p, GameObjectId spell) {
         state_.getObject(spell).zone = ZoneType::Chain;
-        chain_manager_->addSpell(spell, p, {});
+        const ChainItemId id = chain_manager_->addSpell(spell, p, {});
+        // An effect that plays a spell performs the whole play: its choices
+        // are made now, as it is put on the chain — before the rest of the
+        // effect that played it — not at the chain's next Finalize step.
+        for (auto& ci : state_.chain.items)
+            if (ci.id == id) {
+                chooseTargetsAtFinalize(ci);
+                finalized_early_.push_back(id);
+                break;
+            }
     });
     effect_executor_->setPlayCostFns(
         [this](PlayerId p, GameObjectId card) { return canAfford(p, card); },
@@ -865,14 +874,14 @@ void GameEngine::beginningStep() {
             // Inactive, so a printed [Temporary] does not trigger ("If this
             // is unattached, kill it ..." — Spinning Axe). A [Temporary] an
             // effect GAVE the Equipment (Turn to Dust, Fading Memories) is not
-            // its printed text and still kills it. The def holds the printed
-            // set. (An Equipment that prints [Temporary] and is also given it
-            // is read as printed only: instances are redundant, CR 816.2, and
-            // the object does not record the second one.)
+            // its printed text and still kills it — also when the card prints
+            // [Temporary] as well: the given instance is recorded on its own
+            // (GameObject::granted_keywords). The def holds the printed set.
             bool printed = false;
             if (obj.card_def_id != kInvalidId)
                 printed = card_db_.get(obj.card_def_id).keywords.has(Keyword::Temporary);
-            if (!obj.attached_to.has_value() || !printed) gear_to_kill.push_back(id);
+            const bool given = !printed || obj.granted_keywords.has(Keyword::Temporary);
+            if (!obj.attached_to.has_value() || given) gear_to_kill.push_back(id);
         }
     }
     for (auto id : units_to_kill) {
@@ -931,8 +940,10 @@ void GameEngine::channelPhase() {
     int count = 2;
 
     // The second player channels an extra rune on their first turn (CR 480.7).
-    auto first_player = state_.turn.turn_number == 0 ? state_.turn.turn_player
-                        : opponent(state_.turn.turn_player);
+    // Who went first is what the coin toss recorded (CR 116), not whose turn
+    // number 0 happens to be: an extra turn or a changed turn order does not
+    // make anyone else "the second player".
+    const PlayerId first_player = state_.turn.starting_player;
     // The player who did NOT go first gets the extra channel on their first turn
     if (state_.player(player).is_first_turn && player != first_player) {
         count = 3;
@@ -1358,6 +1369,68 @@ bool GameEngine::canPayEquip(PlayerId player, GameObjectId gear, GameObjectId un
 // longer legal (a mistarget: the instruction is ignored).
 void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     if (item.card_def_id == kInvalidId) return;
+    // Its choices were made as an effect put it on the chain (setQueueSpell).
+    if (auto early = std::find(finalized_early_.begin(), finalized_early_.end(), item.id);
+        early != finalized_early_.end()) {
+        finalized_early_.erase(early);
+        return;
+    }
+    const ChainItemId this_id = item.id;
+    chooseFirstExecution(item);
+    // CR 820.2: the choices of each additional execution a Repeat paid for
+    // are made now too, and need not be the same (820.2.a). Each is a fresh
+    // set made the way "make new choices" makes one; the first execution's
+    // are put back afterwards.
+    if (choosing_repeat_) return;
+    ChainItem* it = nullptr;
+    for (auto& ci : state_.chain.items) if (ci.id == this_id) it = &ci;
+    if (!it || !it->is_spell || it->repeats_paid <= 0 || !it->repeat_choices.empty()) return;
+    const int repeats = it->repeats_paid;
+    auto snapshot = [](const ChainItem& ci) {
+        ChainItem::ExecutionChoices c;
+        c.targets = ci.targets;
+        c.chosen_objects = ci.chosen_objects;
+        c.resume_point = ci.resume_point;
+        c.resume_data = ci.resume_data;
+        c.may_answer = ci.may_answer;
+        c.choices_finalized = ci.choices_finalized;
+        c.finalize_costs_paid = ci.finalize_costs_paid;
+        return c;
+    };
+    auto load = [](ChainItem& ci, const ChainItem::ExecutionChoices& c) {
+        ci.targets = c.targets;
+        ci.chosen_objects = c.chosen_objects;
+        ci.resume_point = c.resume_point;
+        ci.resume_data = c.resume_data;
+        ci.may_answer = c.may_answer;
+        ci.choices_finalized = c.choices_finalized;
+        ci.finalize_costs_paid = c.finalize_costs_paid;
+    };
+    const ChainItem::ExecutionChoices first = snapshot(*it);
+    std::vector<ChainItem::ExecutionChoices> extra;
+    choosing_repeat_ = true;
+    try {
+        for (int r = 0; r < repeats; ++r) {
+            for (auto& ci : state_.chain.items)
+                if (ci.id == this_id) ci.finalize_costs_paid = false;   // a cost per execution
+            makeNewChoicesFor(this_id);
+            for (auto& ci : state_.chain.items)
+                if (ci.id == this_id) extra.push_back(snapshot(ci));
+        }
+    } catch (...) {
+        choosing_repeat_ = false;
+        throw;
+    }
+    choosing_repeat_ = false;
+    for (auto& ci : state_.chain.items)
+        if (ci.id == this_id) {
+            load(ci, first);
+            ci.finalize_checked = 0;
+            ci.repeat_choices = std::move(extra);
+        }
+}
+
+void GameEngine::chooseFirstExecution(ChainItem& item) {
     if (item.is_ability && !item.is_activated_ability) {
         // A triggered ability: its "you may", costs and targets (CR 383.3)
         // are chosen by the card's own callback, through the choice helpers
@@ -1486,8 +1559,12 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
         return;
     }
     if (card->needsPlayTimeTargetPair() || card->choicesAtFinalization() != 0) {
-        // Chosen through the card's own helpers: forget the answers, and the
-        // new controller is asked as the item resolves.
+        // Chosen through the card's own helpers: forget the answers. A card
+        // whose choices belong at finalization makes the new ones NOW (CR
+        // 750-755: the new choices are made as this effect resolves), in a
+        // finalize pass of its own; a cost it paid in its first pass is not
+        // paid again. A card that only ever chooses as it resolves
+        // (needsPlayTimeTargetPair with no finalize opt-in) is asked then.
         item->targets.clear();
         item->chosen_objects.clear();
         item->resume_point = 0;
@@ -1495,6 +1572,9 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
         item->may_answer = -1;
         item->choices_finalized = false;
         item->finalize_checked = 0;
+        const unsigned want = item->is_spell ? Card::kFinalizeResolve
+            : (item->is_activated_ability ? Card::kFinalizeActivate : Card::kFinalizeTrigger);
+        if (card->choicesAtFinalization() & want) runFinalizePass(*item);
         return;
     }
     // Targets locked in as the spell was played: choose that many again.
@@ -1530,10 +1610,15 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
 // Card::finalizingChoices marker, before the effect. The answers are written
 // back to the item, and the helpers return them when it resolves.
 void GameEngine::runFinalizePass(ChainItem& item) {
-    // An item is mid-resolution (this one was added by its effect): the
-    // resume slot is taken, so this item decides as it resolves instead.
-    if (state_.chain.resuming.has_value()) return;
+    // An item may be mid-resolution — the one whose effect put this item on
+    // the chain, or told it to make new choices. Its place in the resume slot
+    // is kept aside for the length of this pass and put back afterwards (it
+    // is in the middle of its callback, not waiting for an answer), so this
+    // item's choices are made now, where the rules make them, not as it
+    // resolves.
     const ChainItemId item_id = item.id;
+    std::optional<ChainItem> outer;
+    if (state_.chain.resuming.has_value()) outer = std::move(*state_.chain.resuming);
     state_.chain.resuming = item;
     state_.chain.resuming->finalizing = true;
 
@@ -1587,6 +1672,7 @@ void GameEngine::runFinalizePass(ChainItem& item) {
 
     ChainItem done = std::move(*state_.chain.resuming);
     state_.chain.resuming.reset();
+    if (outer.has_value()) state_.chain.resuming = std::move(*outer);
     for (auto& ci : state_.chain.items) {
         if (ci.id != item_id) continue;
         ci.resume_point = done.resume_point;

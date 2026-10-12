@@ -2943,4 +2943,177 @@ TEST_F(SweepCostsTest, CardContract_NoRegisteredCardEndsItsFinalizePassAnywhereE
               << activate_passes << " activations ]\n";
 }
 
+// ─── Finding D4: CR 403 removal against what the card would have done ───────
+//
+// A triggered ability that is not performed leaves the chain as it would have
+// been finalized (GameEngine::runFinalizePass): its leading "may" was declined
+// or could not be paid for (CR 403.1.a, 405.2), or a required choice had no
+// legal option (CR 403.4). The engine decides that from what the choice
+// helpers stored. This sweep runs every opted-in card's triggers twice from
+// the same board — once as the engine now plays it, once with the removal
+// switched off, so the item resolves as it used to — and lists every case in
+// which the two games end differently. Each such case is an ability that would
+// still have DONE something:
+//   - after a declined "may": the card used confirmOptional for a "may" that
+//     is not the first part of its effect (CR 383.3.a.3). It must say so
+//     (Card::mayIsNotTheWholeAbility) and is then not removed;
+//   - after a missing required choice: CR 403.4 removes the whole ability,
+//     other instructions included. Those cards are listed below by hand, each
+//     with its text; they are written up for the judges
+//     (docs/judge-questions-2026-10.md) because the rule reads strictly.
+TEST_F(SweepCostsTest, Removal_NoRegisteredTriggerLosesAnEffectExceptTheListedOnes) {
+    const GameState blank = state;
+    std::vector<CardDefId> ids;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* card = card_registry.get(id);
+        if (card && id < 1000 && (card->choicesAtFinalization() & Card::kFinalizeTrigger))
+            ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    ASSERT_GE(ids.size(), 150u);
+
+    auto digest = [&](const GameState& st) {
+        uint64_t h = Card::costStateFingerprint(st);
+        auto mix = [&](uint64_t x) { h = (h ^ x) * 0x100000001B3ULL; };
+        for (PlayerId p : {P1, P2}) {
+            mix(static_cast<uint64_t>(st.player(p).score));
+            mix(st.player(p).hand.size());
+            mix(st.player(p).main_deck.size());
+            mix(st.player(p).trash.size());
+            mix(st.player(p).banishment.size());
+            for (auto c : st.player(p).main_deck) mix(static_cast<uint64_t>(c.raw()));
+            for (auto c : st.player(p).hand) mix(static_cast<uint64_t>(c.raw()));
+            mix(static_cast<uint64_t>(st.player(p).xp));
+        }
+        std::vector<GameObjectId> all;
+        for (const auto& [oid, obj] : st.objects) all.push_back(oid);
+        std::sort(all.begin(), all.end());
+        for (auto oid : all) {
+            const auto& obj = st.getObject(oid);
+            mix(static_cast<uint64_t>(oid.raw()) * 31 + (obj.is_stunned ? 1 : 0) +
+                (obj.location.has_value() ? 2 : 0) + (obj.isAtBattlefield() ? 4 : 0) +
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 8 +
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.empowered)) * 4096 +
+                static_cast<uint64_t>(obj.controller) * 65536 +
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.temp_might_bonus)) * 1048576);
+            mix(obj.attached_to.has_value() ? static_cast<uint64_t>(obj.attached_to->raw()) + 1 : 0);
+            mix(obj.keywords.bits);
+        }
+        mix(st.delayed_abilities.size());
+        return h;
+    };
+
+    std::set<std::string> differs;
+    int runs = 0, removed_runs = 0;
+    for (CardDefId id : ids) {
+        const Card* card = card_registry.get(id);
+        const CardDef& def = card_db.get(id);
+        GameObjectId friendly = kInvalidId, enemy = kInvalidId;
+        auto setUp = [&](int board) -> GameObjectId {
+            state = blank;
+            state.battlefields[0].controller = P1;
+            GameObjectId source = kInvalidId;
+            switch (def.card_type) {
+                case CardType::Spell: source = addToTrash(P1, id); break;
+                case CardType::Gear: source = addGear(P1, id); break;
+                case CardType::Legend: source = addLegend(P1, id); break;
+                case CardType::Battlefield: {
+                    source = state.createObject();
+                    auto& b = state.getObject(source);
+                    b.owner = b.controller = P1;
+                    b.card_def_id = id;
+                    b.name = def.name;
+                    b.card_type = CardType::Battlefield;
+                    state.battlefields[0].card_object_id = source;
+                    break;
+                }
+                default: source = addUnit(P1, id, std::max(def.might, 1), 0); break;
+            }
+            friendly = enemy = kInvalidId;
+            if (board == 1) {
+                state.battlefields[1].controller = P1;
+                friendly = addUnit(P1, kInvalidId, 3, 0);
+                o(friendly).damage_marked = 1;
+                addUnit(P1, kInvalidId, 6, 1);
+                addUnit(P1, kInvalidId, 2);
+                addGear(P1, kLongSword);
+                enemy = addUnit(P2, kInvalidId, 2, 0);
+                addUnit(P2, kInvalidId, 5, 1);
+                addUnit(P2, kInvalidId, 3);
+                addGear(P2);
+                addToHand(P1, kPoutyPoro);
+                addToTrash(P1, kPoutyPoro);
+                for (int i = 0; i < 4; ++i) addRune(P1, Domain::Fury);
+                setXp(P1, 10);
+            }
+            // Both boards: a deck to draw or reveal from, a hurt unit to heal.
+            for (int i = 0; i < 10; ++i) addToDeck(P1, kPoutyPoro);
+            o(addUnit(P1, kInvalidId, 4, 0)).damage_marked = 1;
+            setPool(P1, 30, 10);
+            return source;
+        };
+        for (int board = 0; board < 2; ++board)
+        for (int last = 0; last < 2; ++last)
+        for (TriggerType t : card->triggerTypes()) {
+            if (t == TriggerType::None) continue;
+            for (int subject = 0; subject < (board ? 3 : 1); ++subject) {
+                uint64_t ended[2] = {0, 0};
+                int removed = 0;
+                bool threw = false;
+                for (int keep = 0; keep < 2 && !threw; ++keep) {
+                    const GameObjectId source = setUp(board);
+                    const GameObjectId about =
+                        subject == 0 ? kInvalidId : subject == 1 ? friendly : enemy;
+                    EndAgent a1, a2;
+                    a1.last = a2.last = last == 1;
+                    int finalized = 0, queued = 0;
+                    auto conn = events.on_chain_item_finalized.connect(
+                        [&](const ChainItemFinalizedEvent&) { ++finalized; });
+                    try {
+                        withEngine([&](GameEngine& e) {
+                            e.testHook_keepUnperformedTriggers(keep == 1);
+                            const auto before = e.mutableState().chain.next_id;
+                            e.testHook_executor().queueTriggeredAbility(source, P1, t, about);
+                            queued = e.mutableState().chain.next_id.raw() - before.raw();
+                            settleLikeTheEngine(e);
+                        }, &a1, &a2, P1);
+                    } catch (const std::exception&) {
+                        threw = true;   // the other sweep reports card errors
+                    }
+                    conn.disconnect();
+                    if (keep == 0 && queued > 0 && finalized == 0) removed = 1;
+                    ended[keep] = digest(state);
+                }
+                if (threw) continue;
+                ++runs;
+                removed_runs += removed;
+                if (ended[0] != ended[1])
+                    differs.insert(def.name + " (" + toString(id) + ")");
+            }
+        }
+    }
+    state = blank;
+    // CR 403.4, strict: these abilities have a required choice AND an
+    // instruction that does not depend on it. With no legal option the whole
+    // ability is removed, so that instruction is lost too. Reviewed by hand;
+    // each is pinned by a test of its own and written up for the judges.
+    const std::set<std::string> listed = {
+        // "When I defend, choose an enemy unit here and reveal the top 5
+        // cards of your Main Deck. Deal 1 to that unit for each card with
+        // [Hidden] revealed this way, then recycle the revealed cards."
+        // No enemy unit he can choose: no reveal, no recycle.
+        "Teemo, Strategist (121)",
+    };
+    std::string extra, gone;
+    for (const auto& d : differs) if (!listed.count(d)) extra += "\n  " + d;
+    for (const auto& l : listed) if (!differs.count(l)) gone += "\n  " + l;
+    EXPECT_TRUE(extra.empty()) << "removal changes the outcome for cards not on the list:" << extra;
+    EXPECT_TRUE(gone.empty()) << "listed, but removal no longer changes anything:" << gone;
+    EXPECT_GE(runs, 600);
+    EXPECT_GE(removed_runs, 100);
+    std::cout << "[ " << ids.size() << " cards, " << runs << " runs, " << removed_runs
+              << " with the ability removed at finalization, " << differs.size()
+              << " card(s) whose outcome it changes ]\n";
+}
+
 }  // namespace riftbound::test::sweep_costs

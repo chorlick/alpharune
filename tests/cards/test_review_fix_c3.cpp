@@ -527,7 +527,12 @@ TEST_F(C3Test, RallyTheTroops_BuffsEveryFriendlyUnitPlayedThisTurn) {
 
 TEST_F(C3Test, RallyTheTroops_DoesNotBuffAnOpponentsUnit) {
     auto spell = addToHand(P1, kRallyTheTroops);
+    // A card for Rally's "Draw 1": drawing from an empty deck burns P1 out,
+    // P2 reaches the Victory Score and the game is over — nothing is played
+    // after that (the chain's loop stops when the game ends).
+    addToDeck(P1, kSkulker);
     playThroughEngine(spell);
+    ASSERT_FALSE(state.game_over);
     auto theirs = addToHand(P2, kSkulker);
     playThroughEngine(theirs);
     // 9.B7: nothing showed the opponent's unit was played at all (a play that
@@ -820,7 +825,7 @@ TEST_F(C3Test, ExistentialDread_NeedsAnAttackerAndStunsForItsController) {
     auto idle = addUnit(P2, kInvalidId, 3, 0);
     EXPECT_TRUE(offers(spell).empty()) << "no attacking enemy unit";
     auto attacker = addUnit(P2, kInvalidId, 3, 1);
-    state.getObject(attacker).combat_designation = CombatDesignation::Attacker;
+    combatInProgress(1, P2);   // makes `attacker` an Attacker (CR 323.2)
     PlayerId stunner = PlayerId::None;
     auto conn = events.on_unit_stunned.connect(
         [&](const UnitStunnedEvent& e) { stunner = e.stunner; });
@@ -1208,7 +1213,11 @@ TEST_F(C3Test, Switcheroo_DoesNotOfferAUnitThatCannotBeChosenByEnemySpells) {
     StepAgent agent{O(mine), O(plain)};
     playThroughEngine(spell, &agent);
     EXPECT_FALSE(agent.offered(baron));
-    EXPECT_EQ(state.getObject(mine).current_might, 6);
+    // Baron Nashor: "Other friendly units have +2 [M]" — `plain` is 8 [M] as
+    // Switcheroo is finalized and as it resolves (a Cleanup applies continuous
+    // effects before the chain's first step, CR 319).
+    EXPECT_EQ(state.getObject(plain).base_might, 6);
+    EXPECT_EQ(state.getObject(mine).current_might, 8);
 }
 
 TEST_F(C3Test, DefiantDance_TheSecondUnitIsStillAffectedWhenTheFirstIsGone) {

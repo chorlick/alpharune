@@ -51,6 +51,7 @@ public:
         fireTrigger(source, controller, 0, trigger, subject);
     }
 
+
 private:
     GameState& state_;
     EventBus& events_;
@@ -134,6 +135,14 @@ private:
     void onLeftBoard(const LeftBoardEvent& e);                    // WhenIDie on a killed gear
     void onTokenCreated(const TokenCreatedEvent& e);              // a token is played (CR 350.2)
     void onStateSettled();                                        // WhenMyMightReachesThreshold
+    /// WhenIAttack / WhenIDefend / WhenIAttackOrDefend (own and equipped) for
+    /// one unit of a combat, once per combat (CR 383.4.e.2.a).
+    void fireAttackDefendTriggers(GameObjectId unit, BattlefieldId battlefield,
+                                  PlayerId attacker, PlayerId defender);
+    /// A unit was given its designation in a combat already under way.
+    void onJoinedCombat(GameObjectId unit);
+    /// One [Temporary] ability per permanent of `turn_player` (CR 816).
+    void queueTemporaryAbilities(PlayerId turn_player);
     void noteCombatParticipants();                                // WhenACombatIWasInEnds
 
     // ── Helpers ──

@@ -92,6 +92,11 @@ void GameEngine::initSubsystems() {
             return payCardCost(p, card, payAdditionalPlayCosts(p, card, 0));
         });
     chain_manager_->setEffectExecutor(effect_executor_.get());
+    // CR 334: the chain's loop handles outstanding tasks — the Cleanup —
+    // before it finalizes, after every finalization and after every
+    // resolution (CR 319.3-319.5).
+    chain_manager_->setHandleTasks([this]() { cleanup(); });
+    chain_manager_->setOrderPending([this]() { orderPendingTriggers(); });
     chain_manager_->setFinalizeChoices([this](ChainItem& item) { chooseTargetsAtFinalize(item); });
     chain_manager_->setActivateAbility(
         [this](const Intent& i) { return payAndQueueAbility(i); });
@@ -865,6 +870,9 @@ void GameEngine::awakenPhase() {
             events_.emit(ObjectStateChangedEvent{legend_id, "readied"});
         }
     }
+    // CR 335: a phase is left only with no outstanding task and nothing
+    // pending — "When I become ready" abilities resolve in this phase.
+    runChain();
 }
 
 void GameEngine::beginningStep() {
@@ -872,51 +880,20 @@ void GameEngine::beginningStep() {
     auto old_phase = state_.turn.phase;
     state_.turn.phase = TurnPhase::BeginningStep;
 
-    // Kill Temporary permanents before scoring (CR: "Kill me at the start of
-    // my controller's Beginning Phase, before scoring"). Applies to both units
-    // AND gear — Fading Memories (180) can grant [Temporary] to either.
-    std::vector<GameObjectId> units_to_kill;
-    std::vector<GameObjectId> gear_to_kill;
-    for (auto& [id, obj] : state_.objects.onBoard()) {
-        if (!obj.keywords.has(Keyword::Temporary)) continue;
-        if (obj.controller != state_.turn.turn_player) continue;
-        if (!obj.location.has_value()) continue;
-        if (obj.isUnit()) units_to_kill.push_back(id);
-        else if (obj.isGear()) {
-            // CR 718.2: while attached, the card's PRINTED rules text is
-            // Inactive, so a printed [Temporary] does not trigger ("If this
-            // is unattached, kill it ..." — Spinning Axe). A [Temporary] an
-            // effect GAVE the Equipment (Turn to Dust, Fading Memories) is not
-            // its printed text and still kills it — also when the card prints
-            // [Temporary] as well: the given instance is recorded on its own
-            // (GameObject::granted_keywords). The def holds the printed set.
-            bool printed = false;
-            if (obj.card_def_id != kInvalidId)
-                printed = card_db_.get(obj.card_def_id).keywords.has(Keyword::Temporary);
-            const bool given = !printed || obj.granted_keywords.has(Keyword::Temporary);
-            if (!obj.attached_to.has_value() || given) gear_to_kill.push_back(id);
-        }
-    }
-    // Not a death batch: [Temporary] is a triggered ability of each unit
-    // (CR 816.1), so each kill is its own game action and a unit killed later
-    // sees the earlier ones die.
-    for (auto id : units_to_kill) {
-        killUnit(id);
-    }
-    for (auto id : gear_to_kill) {
-        effect_executor_->killObject(id);  // gear-aware kill (Banishment/trash)
-    }
-
+    // [Temporary] (CR 816.1) is a triggered ability: "At the start of this
+    // permanent's controller's Beginning Phase, before scoring, kill this."
+    // TriggerManager queues one for each such permanent with the other
+    // "start of your Beginning Phase" abilities as the phase is announced;
+    // their controller orders them (CR 383.3.d), players get priority, and
+    // all of it is resolved by the runChain below — before the Scoring Step.
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::BeginningStep,
                                     state_.turn.turn_player});
 
-    // Process "At the start of your Beginning Phase" triggers
-    if (chain_manager_->chainExists()) runChain();
-
-    // CR 319: a Cleanup follows these state changes, before the Scoring Step.
-    // Without it a battlefield whose last unit just died ([Temporary], a
-    // start-of-turn kill) is still "controlled" and would wrongly score a Hold.
-    cleanup();
+    // "At the start of your Beginning Phase" abilities resolve, each followed
+    // by a Cleanup (CR 319), before the Scoring Step: a battlefield whose last
+    // unit just died ([Temporary], a start-of-turn kill) is no longer
+    // controlled and scores no Hold.
+    runChain();
 }
 
 void GameEngine::scoringStep() {
@@ -937,12 +914,12 @@ void GameEngine::scoringStep() {
             scoreHold(player, held_id);
             if (state_.game_over) return;
             // Process hold/score triggers
-            if (chain_manager_->chainExists()) runChain();
+            runChain();
             if (state_.game_over) return;
         }
     }
 
-    cleanup();
+    runChain();
 }
 
 void GameEngine::channelPhase() {
@@ -970,6 +947,7 @@ void GameEngine::channelPhase() {
         count = std::min(count, state_.turn.channel_phase_cap);
 
     channelRunes(player, count);
+    runChain();   // CR 335: nothing is pending when the phase ends
 }
 
 void GameEngine::drawPhase() {
@@ -986,6 +964,7 @@ void GameEngine::drawPhase() {
     if (state_.player(player).skip_draw_phase) {
         RIFT_TRACE(events_, "DRAW PHASE: skipped (CR 444)");
         emptyRunePools();
+        runChain();
         return;
     }
 
@@ -1003,6 +982,9 @@ void GameEngine::drawPhase() {
 
     // Empty rune pools (CR 315.4.d)
     emptyRunePools();
+    // CR 334.2 / 335: what the draw triggered was pending while the phase's
+    // tasks were done; it resolves before the Main Phase begins.
+    runChain();
 }
 
 // C-1 commit 5 — refactor mainPhase into a step-machine-shaped split.
@@ -1074,12 +1056,11 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
             }
         }
 
-        if (chain_manager_->chainExists()) {
-            runChain();
-            progressed = true;
-        }
+        if (chain_manager_->chainExists()) progressed = true;
         if (!progressed) break;
-        cleanup();
+        // The Cleanup, and whatever is on the chain with a Cleanup after
+        // every step, until a Cleanup leaves the chain empty.
+        runChain();
         if (state_.game_over) {
             adv.kind = MainPhaseAdvance::Kind::Done;
             return adv;
@@ -1103,14 +1084,10 @@ bool GameEngine::resolveMainPhaseDecision(const Intent& intent,
 
     executeIntent(intent);
 
-    // Process any triggered abilities that were queued during execution
-    // (play triggers, spell resolution triggers, etc.)
-    if (chain_manager_->chainExists()) runChain();
-
-    cleanup();
-
-    // Process death triggers / cleanup triggers
-    if (chain_manager_->chainExists()) runChain();
+    // HOT FEPR (CR 334): the Cleanup, then whatever is pending — play
+    // triggers, death triggers, "becomes Mighty" — each step followed by a
+    // Cleanup, until a Cleanup leaves the chain empty.
+    runChain();
 
     action_count++;
     return !state_.game_over;
@@ -1163,18 +1140,11 @@ void GameEngine::endingStep() {
         }
     }
 
-    // Process "At the end of your turn" triggers (e.g., Dazzling Aurora)
-    if (chain_manager_->chainExists()) runChain();
-
-    // Cleanup AFTER the chain finishes — same pattern as the main-phase
-    // action loop. The end-of-turn chain can damage units (Aurora plays
-    // Elder Dragon which damages enemies, Aurora plays a unit whose
-    // WhenYouPlayMe damages, etc.). Without this pass, damage sits on
-    // damage_marked forever — processLethalDamage doesn't run, so
-    // Elder Dragon's "any-damage-lethal" aura never kills the damaged
-    // unit, and natural-lethal units (might-1 Mousers etc.) survive
-    // into the next turn at 1/1 dmg.
-    cleanup();
+    // "At the end of your turn" abilities (e.g. Dazzling Aurora) resolve
+    // here, a Cleanup after each, and so does everything they cause (a unit
+    // Aurora plays that becomes Mighty, a death): nothing is pending when the
+    // Expiration Step begins (CR 335).
+    runChain();
 }
 
 void GameEngine::expireTemporaryKeywords(GameObject& obj, const CardDB& db) {
@@ -1209,15 +1179,20 @@ void GameEngine::expirationStep() {
     // pre-fix, expirationStep was a single pass and any triggers fired
     // by healAllUnits / clearStun / emptyRunePools would sit on the chain
     // unresolved or resolve without re-running expiration.
+    // The body is the Ending Special Cleanup's insertion (CR 317.2.a-d); the
+    // Cleanup itself follows it — a "this turn" Might penalty that expires
+    // makes a unit Mighty again here, in the turn that is ending — and what
+    // that puts on the chain goes through FEPR before the step is repeated.
     constexpr int kMaxExpirationPasses = 8;
-    for (int pass = 0; pass < kMaxExpirationPasses; ++pass) {
+    for (int pass = 0; ; ++pass) {
+        if (pass >= kMaxExpirationPasses)
+            throw std::logic_error("GameEngine::expirationStep: abilities kept going "
+                                   "through FEPR for " + std::to_string(kMaxExpirationPasses) +
+                                   " passes of the Expiration Step (CR 317.2.f)");
+        const ChainItemId before = state_.chain.next_id;
         doExpirationBody();
-        if (!chain_manager_->chainExists()) break;
         runChain();
-        // If running the chain produced new chain items (cascading
-        // triggers from expiration effects), keep looping. Otherwise
-        // we're stable.
-        if (!chain_manager_->chainExists()) break;
+        if (state_.game_over || state_.chain.next_id == before) break;
     }
 }
 
@@ -1679,6 +1654,193 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
         if (ci.id == item_id) { ci.targets = picked; ci.chosen_objects = picked; }
 }
 
+// CR 383.3.d: "If more than one Triggered Ability is Triggered simultaneously,
+// then the player that controls the Abilities selects the order to place them
+// on the Chain." 383.3.d.1: "starting with the Turn Player and proceeding in
+// Turn Order, each player orders their Triggered Abilities on the Chain."
+// What is simultaneous is ChainItem::trigger_batch. The first one placed is
+// the lowest: it is finalized first and resolves last.
+void GameEngine::orderPendingTriggers() {
+    auto isPending = [](const ChainItem& ci) { return ci.status == ChainItemStatus::Pending; };
+    const auto oldest = std::find_if(state_.chain.items.begin(), state_.chain.items.end(),
+                                     isPending);
+    if (oldest == state_.chain.items.end()) return;
+    const uint32_t batch = oldest->trigger_batch;
+    if (batch == 0 || oldest->batch_ordered) return;
+    const PlayerId first_player = oldest->batch_first != PlayerId::None
+        ? oldest->batch_first : state_.turn.turn_player;
+
+    std::vector<ChainItemId> ids;      // the batch, in the order it was queued
+    for (auto& ci : state_.chain.items) {
+        if (!isPending(ci) || ci.trigger_batch != batch) continue;
+        ci.batch_ordered = true;
+        ids.push_back(ci.id);
+    }
+    if (ids.size() < 2) return;
+    auto itemOf = [this](ChainItemId id) -> const ChainItem* {
+        for (const auto& ci : state_.chain.items) if (ci.id == id) return &ci;
+        return nullptr;
+    };
+    // The same ability twice (a doubled Deathknell, an Equipment's copy of
+    // its bearer's text): their order cannot matter.
+    auto same = [](const ChainItem& a, const ChainItem& b) {
+        return a.source == b.source && a.controller == b.controller &&
+               a.card_def_id == b.card_def_id && a.fired_trigger == b.fired_trigger &&
+               a.triggering_subject == b.triggering_subject &&
+               a.equipped_unit == b.equipped_unit && a.keyword_ability == b.keyword_ability;
+    };
+    auto label = [this](const ChainItem& ci) {
+        std::string l = state_.objectExists(ci.source) ? state_.getObject(ci.source).name.get()
+                                                       : std::string("?");
+        if (ci.keyword_ability.has_value()) l += std::string(" [") + toString(*ci.keyword_ability) + "]";
+        if (ci.equipped_unit != kInvalidId && state_.objectExists(ci.equipped_unit))
+            l += " on " + state_.getObject(ci.equipped_unit).name;
+        else if (ci.triggering_subject != kInvalidId && ci.triggering_subject != ci.source &&
+                 state_.objectExists(ci.triggering_subject))
+            l += " (" + state_.getObject(ci.triggering_subject).name + ")";
+        return l;
+    };
+
+    std::vector<ChainItemId> ordered;
+    for (int pass = 0; pass < 2; ++pass) {
+        std::vector<ChainItemId> mine;
+        PlayerId who = PlayerId::None;
+        for (auto id : ids) {
+            const ChainItem* ci = itemOf(id);
+            if (!ci || (ci->controller == first_player) != (pass == 0)) continue;
+            mine.push_back(id);
+            who = ci->controller;
+        }
+        while (mine.size() > 1) {
+            // One option per ability that differs from the others.
+            std::vector<ChainItemId> distinct;
+            for (auto id : mine) {
+                const ChainItem* ci = itemOf(id);
+                if (!ci) continue;
+                bool seen = false;
+                for (auto d : distinct)
+                    if (const ChainItem* di = itemOf(d); di && same(*di, *ci)) seen = true;
+                if (!seen) distinct.push_back(id);
+            }
+            if (distinct.size() < 2) break;   // all the same: nothing to decide
+            std::vector<Intent> options;
+            for (size_t k = 0; k < distinct.size(); ++k) {
+                Intent o;
+                o.type = IntentType::MakeChoice;
+                o.player = who;
+                o.chosen_value = static_cast<int>(k);
+                o.choice_label = "Order — " + label(*itemOf(distinct[k]));
+                options.push_back(std::move(o));
+            }
+            const Intent chosen = decideNow(who, options,
+                "order simultaneous abilities: which goes on the chain next "
+                "(it resolves after the ones chosen later)");
+            size_t k = static_cast<size_t>(std::max(0, chosen.chosen_value.value_or(0)));
+            if (k >= distinct.size()) k = 0;
+            const ChainItemId next = distinct[k];
+            if (const ChainItem* ni = itemOf(next))
+                RIFT_TRACE(events_, "ORDER: " + std::string(toString(who)) + " puts " +
+                                 label(*ni) + " on the chain next");
+            ordered.push_back(next);
+            mine.erase(std::remove(mine.begin(), mine.end(), next), mine.end());
+        }
+        for (auto id : mine) ordered.push_back(id);
+    }
+    // Rewrite the batch's own places on the chain in the chosen order.
+    std::vector<ChainItem> in_order;
+    for (auto id : ordered)
+        if (const ChainItem* ci = itemOf(id)) in_order.push_back(*ci);
+    size_t n = 0;
+    for (auto& ci : state_.chain.items) {
+        if (n >= in_order.size()) break;
+        if (std::find(ids.begin(), ids.end(), ci.id) == ids.end()) continue;
+        ci = in_order[n++];
+    }
+}
+
+void GameEngine::placeBelowWhatItsPlayTriggered(ChainItemId item_id, ChainItemId first_new) {
+    auto& items = state_.chain.items;
+    const auto self = std::find_if(items.begin(), items.end(),
+        [&](const ChainItem& ci) { return ci.id == item_id; });
+    if (self == items.end()) return;
+    const auto first = std::find_if(items.begin(), items.end(), [&](const ChainItem& ci) {
+        return ci.id != item_id && ci.id >= first_new;
+    });
+    if (first == items.end() || first > self) return;
+    std::rotate(first, self, self + 1);
+}
+
+Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId card_id,
+                                                  const Card::PlayCostAdjust& prepay,
+                                                  int extra_any_power) {
+    auto& card = state_.getObject(card_id);
+    card.card_counters.erase("__accelerate");
+    if (!card.isUnit() || prepay.ignore_cost) return prepay;
+    const bool granted = card.card_counters.count("__granted_accelerate") &&
+                         card.card_counters["__granted_accelerate"] != 0;
+    if (!card.keywords.has(Keyword::Accelerate) && !granted) return prepay;
+    // A unit with no Domain pays the Power with [A] (CR 805.1.b.2), which is
+    // not the card's own Power: that case is asked as the unit enters
+    // (resolvePermanent), from what is left after the cost.
+    if (card.domains.empty()) return prepay;
+    // [1] and one Power of the unit's own Domains (CR 805.1.b.1), added to
+    // the card's cost: one payment, judged as a whole.
+    Card::PlayCostAdjust with = prepay;
+    with.energy_reduction -= 1;
+    with.power_reduction -= 1;
+    card.card_counters["__accelerate"] = 1;   // decided: not paid
+    if (granted) card.card_counters["__granted_accelerate"] = 0;
+    if (!canAffordWith(player, card_id, extra_any_power, with)) return prepay;
+
+    Intent decline;
+    decline.type = IntentType::MakeChoice;
+    decline.player = player;
+    decline.chosen_value = 0;  // 0 = decline
+    Intent accept;
+    accept.type = IntentType::MakeChoice;
+    accept.player = player;
+    accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+    std::vector<Intent> opts = {decline, accept};
+    state_.decision_index++;
+    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                     " (" + toString(player) + "): pay [1][" +
+                     std::string(toString(card.domains.front())) +
+                     "] for Accelerate on " + card.name + "? [decline|pay] [2 options]");
+    auto chosen = askAgent(player, opts);
+    if (on_decision) on_decision(state_, opts, chosen);
+    auto& again = state_.getObject(card_id);
+    if (chosen.chosen_value.value_or(0) != 1) {
+        RIFT_TRACE(events_, "ACCELERATE: " + again.name + " declined");
+        return prepay;
+    }
+    RIFT_TRACE(events_, "ACCELERATE: " + again.name + " pays [1] + power to enter ready");
+    again.card_counters["__accelerate"] = 2;   // paid with the cost: enters ready
+    return with;
+}
+
+void GameEngine::announcePermanentPlayed(GameObjectId card_id, PlayerId player) {
+    if (!state_.objectExists(card_id)) return;
+    auto& card = state_.getObject(card_id);
+    auto it = card.card_counters.find("__announce_play");
+    if (it == card.card_counters.end()) return;   // announced by its own path
+    const int ordinal = it->second;
+    card.card_counters.erase(it);
+    int energy = 0;
+    bool not_from_hand = false;
+    if (auto e = card.card_counters.find("__announce_energy"); e != card.card_counters.end()) {
+        energy = e->second;
+        card.card_counters.erase(e);
+    }
+    if (auto n = card.card_counters.find("__announce_not_hand"); n != card.card_counters.end()) {
+        not_from_hand = n->second != 0;
+        card.card_counters.erase(n);
+    }
+    events_.emit(CardPlayedEvent{card_id, player, state_.getObject(card_id).card_type,
+                                 ordinal, energy});
+    if (not_from_hand && state_.objectExists(card_id))
+        events_.emit(ObjectStateChangedEvent{card_id, "played_not_from_hand"});
+}
+
 // Runs an opted-in card's callback once as its chain item is finalized, so the
 // choice helpers (confirmOptional / pickMode / pickTarget / pickTargetPair) ask
 // the agent now and costs are paid now; the card returns at its
@@ -1693,8 +1855,28 @@ void GameEngine::runFinalizePass(ChainItem& item) {
     // resolves.
     const ChainItemId item_id = item.id;
     ChainItem done = collectFinalizeChoices(item);
+    // A triggered ability (a reflexive one included, CR 388.4) that is not
+    // performed leaves the chain instead of being finalized:
+    //   CR 403.1.a  "If they choose not to perform the Triggered Ability now,
+    //               it is removed from the chain."
+    //   CR 405.2    "players may decline to pay for Triggered Abilities that
+    //               have incurred a cost. If they do, the ability will cease
+    //               being a Pending Item and be removed from the Chain."
+    //               (383.3.b.1: the cost must be paid to finalize it — a "may"
+    //               that is not offered because it cannot be paid is the same.)
+    //   CR 403.4    "If there are not enough options to make legal choices for
+    //               a Triggered Ability that has been put on the chain, remove
+    //               it from the Chain now. It ceases to be a Pending Item but
+    //               never becomes a Finalized Chain Item."
+    // Not a spell (it resolves whatever its targets, CR 359.3.e.1), not an
+    // activated ability (its cost is paid), and not an ability whose target
+    // becomes illegal later (a mistarget: it was finalized).
+    const bool not_performed = done.is_ability && !done.is_activated_ability &&
+                               ((done.may_answer == 0 && !done.may_is_partial) ||
+                                done.required_choice_missing);
     for (auto& ci : state_.chain.items) {
         if (ci.id != item_id) continue;
+        ci.remove_at_finalize = not_performed && !keep_unperformed_triggers_;
         ci.resume_point = done.resume_point;
         ci.resume_data = std::move(done.resume_data);
         ci.chosen_objects = std::move(done.chosen_objects);
@@ -2532,6 +2714,10 @@ void GameEngine::executePlayCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
+    // CR 354: the card goes on the chain as the play begins. Its item is made
+    // below, once the cost is paid; whatever the payment triggers meanwhile
+    // is newer than it (placeBelowWhatItsPlayTriggered).
+    const ChainItemId first_new_item = state_.chain.next_id;
     int trace_cost = (card.card_def_id != kInvalidId)
         ? card_db_.get(card.card_def_id).energy_cost : 0;
     RIFT_TRACE(events_, "PLAY: " + card.name + " (id=" + toString(intent.card) +
@@ -2586,6 +2772,11 @@ void GameEngine::executePlayCard(const Intent& intent) {
         payAdditionalCost(intent.player, alt.energy, alt.power, d, spendForObject(card));
         RIFT_TRACE(events_, "ALT_COST: " + card.name + " played for its alternative cost");
     } else if (!paid_via_grant) {
+        // Choices before costs (CR 355.1.a): whether to pay [Accelerate] and
+        // the card's own "you may pay ... as an additional cost" are decided
+        // now, each only if everything stays payable; then one payment.
+        prepay = decideAccelerate(intent.player, intent.card, prepay, location_power);
+        maybePayOptionalAdditionalCost(intent.player, intent.card, location_power, prepay);
         payCardCost(intent.player, intent.card, prepay);
     }
     ps.current_play_source = Intent::PlaySource::Hand;
@@ -2603,10 +2794,11 @@ void GameEngine::executePlayCard(const Intent& intent) {
         }
     }
 
-    // "You may pay X as an additional cost to play me" (Akshan, Nami). Paid
-    // here — after the base cost, before CardPlayedEvent fires WhenYouPlayMe —
-    // so the card's play trigger can read card_counters[paid_flag].
-    maybePayOptionalAdditionalCost(intent.player, intent.card);
+    // ("You may pay X as an additional cost to play me" — Akshan, Nami — was
+    // decided and paid above, before the card's cost: its play trigger reads
+    // card_counters[paid_flag].)
+    if (intent.use_alt_play_cost || paid_via_grant)
+        maybePayOptionalAdditionalCost(intent.player, intent.card, 0, Card::PlayCostAdjust{});
 
     // Track play count
     ps.cards_played_this_turn++;
@@ -2629,10 +2821,14 @@ void GameEngine::executePlayCard(const Intent& intent) {
     // tell where it is being played.
     card.location = intent.play_location.value_or(BaseLocation{intent.player});
 
-    events_.emit(CardPlayedEvent{intent.card, intent.player,
-        card.card_type, ps.cards_played_this_turn, energy_spent});
-    if (intent.play_source != Intent::PlaySource::Hand)
-        events_.emit(ObjectStateChangedEvent{intent.card, "played_not_from_hand"});
+    // CR 383.4.a.2: play effects "are put on the Chain as Pending Items after
+    // the Permanent these effects correspond to is finalized and enters the
+    // board." The play is announced by resolvePermanent, once the card is on
+    // the board (announcePermanentPlayed); what it needs travels on the card.
+    card.card_counters["__announce_play"] = ps.cards_played_this_turn;
+    card.card_counters["__announce_energy"] = energy_spent;
+    card.card_counters["__announce_not_hand"] =
+        intent.play_source != Intent::PlaySource::Hand ? 1 : 0;
 
     // CR 135.2.b.3 + CR 355.1 — "As you play me" / "As I am played"
     // instructions execute during the play action itself, not as a
@@ -2650,7 +2846,8 @@ void GameEngine::executePlayCard(const Intent& intent) {
     }
 
     // Route through chain — permanent resolves immediately at Finalize (CR 337.1.c)
-    chain_manager_->addPermanent(intent.card, intent.player);
+    const ChainItemId permanent_item = chain_manager_->addPermanent(intent.card, intent.player);
+    placeBelowWhatItsPlayTriggered(permanent_item, first_new_item);
     runChain();
 }
 
@@ -2658,6 +2855,7 @@ void GameEngine::executePlaySpell(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
+    spell_play_first_new_item_ = state_.chain.next_id;   // CR 354: on the chain from here on
     if (!events_.logging()) {
         events_.noteUnheardLine();   // the SPELL line below, unread
     } else {
@@ -2892,11 +3090,11 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
             }
             if (take_power) total = plus(prepay, disc_power);
         }
+        // "You may pay X as an additional cost to play me" (spell variant):
+        // chosen before anything is paid (CR 355.1.a), paid with the cost.
+        maybePayOptionalAdditionalCost(intent.player, intent.card, deflect, total);
         payCardCost(intent.player, intent.card, total);
         ps.current_play_source = Intent::PlaySource::Hand;
-
-        // "You may pay X as an additional cost to play me" (spell variant).
-        maybePayOptionalAdditionalCost(intent.player, intent.card);
     }
 
     // Repeat (CR 820) — an optional additional cost, asked yes/no per printed
@@ -3011,6 +3209,12 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
     // that triggers on them ("when you choose a friendly unit") goes on the
     // chain above it — so the spell is found by its id, not as items.back().
     const auto chain_id = chain_manager_->addSpell(intent.card, intent.player, play_targets);
+    // CR 354 -> 357: the spell went on the chain before its costs were paid,
+    // so an ability a cost triggered (the Deathknell of a unit killed as an
+    // additional cost) is the newer item and resolves first.
+    if (spell_play_first_new_item_ != kInvalidId)
+        placeBelowWhatItsPlayTriggered(chain_id, spell_play_first_new_item_);
+    spell_play_first_new_item_ = kInvalidId;
     for (auto& added : state_.chain.items) {
         if (added.id != chain_id) continue;
         added.total_energy_spent = total_energy_spent;
@@ -3225,7 +3429,18 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
         const bool granted_accelerate = card.card_counters.count("__granted_accelerate") &&
                                         card.card_counters["__granted_accelerate"] != 0;
         if (granted_accelerate) card.card_counters["__granted_accelerate"] = 0;
-        if (card.keywords.has(Keyword::Accelerate) || granted_accelerate) {
+        // Decided — and paid — with the card's cost (decideAccelerate; CR
+        // 355.1.a, 805.2.b: "as long as the cost was paid, that unit will
+        // still enter ready"). The prompt below is for the plays that do not
+        // pay a cost of their own first (from facedown, a no-Domain unit).
+        int accelerate_decided = 0;
+        if (auto ad = card.card_counters.find("__accelerate"); ad != card.card_counters.end()) {
+            accelerate_decided = ad->second;
+            card.card_counters.erase(ad);
+        }
+        if (accelerate_decided == 2) enters_ready = true;
+        if (accelerate_decided == 0 &&
+            (card.keywords.has(Keyword::Accelerate) || granted_accelerate)) {
             // CR 805.1.b.1: the Power must match one of the unit's own domains;
             // 805.1.b.2: a unit with no domain pays it with [A].
             std::optional<Domain> domain_to_pay;
@@ -3303,6 +3518,9 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
 
     events_.emit(EnteredBoardEvent{item.source, item.controller,
         card.card_type, loc, true});
+    // The permanent is on the board: now the play is announced and its play
+    // effects go on the chain (CR 383.4.a.2).
+    announcePermanentPlayed(item.source, item.controller);
 
     // [Quick-Draw] (CR 819.1.d): "When you play this, attach it to a unit you
     // control" — whenever it is played, in the main phase as much as at
@@ -3826,10 +4044,11 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
         auto& ps = state_.player(intent.player);
         ps.cards_played_this_turn++;
         // Hidden play is "ignoring its base cost" (CR 811) — energy_spent = 0.
-        events_.emit(CardPlayedEvent{intent.card, intent.player,
-            card.card_type, ps.cards_played_this_turn, /*energy_spent=*/0});
+        // Announced once it has entered (CR 383.4.a.2; resolvePermanent).
         // Played from face down = from somewhere other than hand.
-        events_.emit(ObjectStateChangedEvent{intent.card, "played_not_from_hand"});
+        card.card_counters["__announce_play"] = ps.cards_played_this_turn;
+        card.card_counters["__announce_energy"] = 0;
+        card.card_counters["__announce_not_hand"] = 1;
         chain_manager_->addPermanent(intent.card, intent.player);
         runChain();
     } else if (card.isSpell()) {
@@ -5128,6 +5347,11 @@ void GameEngine::runShowdown(BattlefieldId bf_id) {
     state_.turn.oc_state = OpenClosedState::Open;
 
     events_.emit(ShowdownStartedEvent{bf_id, bf.combat_staged});
+    // CR 335.1: the player with Focus receives priority only with no pending
+    // Chain Items — "When a showdown begins here" abilities are finalized and
+    // resolve before the first Focus decision.
+    runChain();
+    if (state_.game_over) return;
 
     // Showdown loop: players alternate focus, playing Action/Reaction spells.
     // Showdown closes when all players pass focus consecutively (CR 348.1).
@@ -5238,7 +5462,9 @@ std::optional<PlayerId> GameEngine::resolveShowdownDecision(
         case IntentType::ActivateAbility: {  // generic activate (safety)
             state_.turn.players_passed_focus.clear();  // reset passes
             executeIntent(chosen);
-            cleanup();
+            // HOT FEPR: the Cleanup and everything it puts on the chain (a
+            // death, a delayed ability) before Focus passes (CR 335.1).
+            runChain();
             // After chain resolves, focus passes to opponent
             return opponent(current_focus);
         }
@@ -5318,7 +5544,16 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
         cps.last_combat_attacker = (p == *bf.attacker);
         cps.excess_combat_damage = 0;
     }
-    events_.emit(CombatStartedEvent{bf_id, *bf.attacker, *bf.defender});
+    {
+        // CR 466.2.b: "Start of combat effects happen now. If the Combat
+        // opened with a Combat Showdown, start of showdown effects happen
+        // simultaneously." One batch; the attacker's abilities go on the
+        // chain first (CR 466.2.d.1).
+        const SimultaneousTriggers together(state_.chain, *bf.attacker);
+        const PlayerId att = *bf.attacker, def = *bf.defender;
+        events_.emit(CombatStartedEvent{bf_id, att, def});
+        events_.emit(ShowdownStartedEvent{bf_id, /*is_combat=*/true});
+    }
 
     // Drain any WhenIAttack / WhenIDefend / WhenIAttackOrDefend triggers
     // that the CombatStartedEvent dispatched to the chain (CR 459.2.d).
@@ -5337,9 +5572,8 @@ void GameEngine::runCombat(BattlefieldId bf_id) {
     // for the combat; the battlefield is fetched again by id where needed.
     const PlayerId attacker = *bf.attacker;
     const PlayerId defender = *bf.defender;
-    if (!state_.chain.items.empty()) {
-        runChain();
-    }
+    runChain();
+    if (state_.game_over) return;
 
     // Re-check combat viability AFTER triggers resolve — kills or
     // bounces in trigger resolution may have emptied one side.
@@ -6547,6 +6781,15 @@ void GameEngine::cleanup() {
             obj.mighty_seen = now;
             if (!was) became.push_back(id);
         }
+        // The units one Cleanup finds newly Mighty became so at the same
+        // time as far as the game can tell: their abilities are one batch
+        // (CR 383.3.d).
+        // "Becomes Mighty" (CR 709) is noticed HERE, at Cleanups. One follows
+        // every step of a chain (CR 319.3-319.5), so a unit that drops below
+        // 5 when a cost is paid and comes back as the effect resolves is
+        // seen both times. No Cleanup runs inside a resolution (CR 321): a
+        // dip and return within one resolution is not an event for the game.
+        const SimultaneousTriggers together(state_.chain);
         for (auto id : became) events_.emit(ObjectStateChangedEvent{id, "became_mighty"});
     }
     // Other "my Might becomes N or more" edges are the trigger manager's.
@@ -6687,6 +6930,7 @@ void GameEngine::processContestedBattlefields() {
     // (Every object, not the board lists, because of .c: "anywhere else"
     // includes a unit that left the board with its designation — its death
     // trigger may still read it until this runs. 2.3% of a random game.)
+    std::vector<GameObjectId> joined;
     for (auto& [id, obj] : state_.objects) {
         if (!obj.isUnit()) continue;
         CombatDesignation want = CombatDesignation::None;
@@ -6701,7 +6945,18 @@ void GameEngine::processContestedBattlefields() {
         if (obj.combat_designation != want) {
             obj.combat_designation = want;
             obj.recomputeMight();
+            if (want != CombatDesignation::None) joined.push_back(id);
         }
+    }
+    // CR 466.2.c.3.a: a unit that becomes present during a combat gains its
+    // designation "during the Cleanup following the action that caused it to
+    // become present" — and that is when its Attack / Defend Triggers trigger
+    // (CR 383.4.e / .f), once per combat. The units one Cleanup finds joined
+    // at the same time: one batch (CR 383.3.d).
+    if (!joined.empty()) {
+        std::sort(joined.begin(), joined.end());
+        const SimultaneousTriggers together(state_.chain);
+        for (auto id : joined) events_.emit(ObjectStateChangedEvent{id, "joined_combat"});
     }
 
     // CR 190.3 / 323.7-323.10: Contested status and what it stages.
@@ -6926,7 +7181,9 @@ bool GameEngine::payOptionalCost(PlayerId player, int energy, int power,
     return resource::payIn(state_, events_, player, net.first, net.second, domains, spend_for);
 }
 
-void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id) {
+void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id,
+                                                int extra_any_power,
+                                                const Card::PlayCostAdjust& base) {
     if (!state_.objectExists(card_id)) return;
     auto& card = state_.getObject(card_id);
     if (card.card_def_id == kInvalidId) return;
@@ -6967,6 +7224,27 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     const SpendFor spend_for = spendForObject(card);
     // can't afford -> not offered (CR: choice only when payable)
     if (!canPayOptionalCost(player, cost.energy, cost.power, domains, spend_for)) return;
+    // ... and only if the card itself can still be paid for afterwards: the
+    // choice is made before any payment (CR 355.1.a), so it is judged on the
+    // whole. Tried on a copy of the game, which is thrown away (as
+    // prePlayProbe does: the game is moved aside, not copied over).
+    {
+        struct Parked {
+            GameState& live;
+            GameState game;
+            explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
+            ~Parked() { live = std::move(game); }
+        } parked(state_);
+        struct Quiet {
+            EventBus& bus;
+            EventBus::Quiet q;
+            explicit Quiet(EventBus& b) : bus(b), q(b.beginQuiet()) {}
+            ~Quiet() { bus.endQuiet(q); }
+        } quiet(events_);
+        state_ = parked.game;
+        payOptionalCost(player, cost.energy, cost.power, domains, spend_for);
+        if (!base.ignore_cost && !canAffordWith(player, card_id, extra_any_power, base)) return;
+    }
 
     // Optional ("you may") -> yes/no agent decision. Mirrors the Accelerate flow.
     Intent decline; decline.type = IntentType::MakeChoice; decline.player = player; decline.chosen_value = 0;

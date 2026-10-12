@@ -239,6 +239,10 @@ public:
     long testHook_prePlayProbes() const { return pre_play_probes_; }
     long testHook_prePlayRunsTotal() const { return pre_play_runs_total_; }
     void testHook_cleanup() { cleanup(); }
+    /// For the registry sweep that checks CR 403 removal against what the
+    /// card would have done: with `keep`, a triggered ability that is not
+    /// performed stays on the chain and resolves, as before finding D4.
+    void testHook_keepUnperformedTriggers(bool keep) { keep_unperformed_triggers_ = keep; }
     EffectExecutor& testHook_executor() { return *effect_executor_; }
     bool testHook_canAfford(PlayerId p, GameObjectId card) const { return canAfford(p, card); }
     bool testHook_payCardCost(PlayerId p, GameObjectId card) { return payCardCost(p, card); }
@@ -785,6 +789,29 @@ private:
     void commitEngineChosenTarget(const Card& card, PlayerId chooser, GameObjectId t,
                                   ChainItemId item_id);
     void runFinalizePass(ChainItem& item);
+    bool keep_unperformed_triggers_ = false;   // testHook_keepUnperformedTriggers
+    // The chain's next id as the spell being played began its play
+    // (executePlaySpell -> finishPlaySpell; placeBelowWhatItsPlayTriggered).
+    ChainItemId spell_play_first_new_item_ = kInvalidId;
+    /// CR 383.3.d: before the oldest pending item is finalized, the batch of
+    /// simultaneous triggers it belongs to is ordered — the turn player's
+    /// abilities first (the attacker's in a combat-start batch, CR 466.2.d.1),
+    /// each player choosing the order of their own when it can differ.
+    void orderPendingTriggers();
+    /// CR 355.1.a / 805: the choice to pay [Accelerate] is made before the
+    /// unit's cost is paid, and the cost is paid with it. Returns the cost
+    /// adjustment to pay with (the Accelerate cost added when chosen) and
+    /// records the decision on the card for resolvePermanent.
+    Card::PlayCostAdjust decideAccelerate(PlayerId player, GameObjectId card_id,
+                                          const Card::PlayCostAdjust& prepay,
+                                          int extra_any_power);
+    /// The play is announced (CardPlayedEvent, "played not from hand") once
+    /// the permanent has entered the board (CR 383.4.a.2).
+    void announcePermanentPlayed(GameObjectId card_id, PlayerId player);
+    /// Puts chain item `item_id` below every item queued since `first_new`
+    /// (CR 354: the card went on the chain as its play began, so what paying
+    /// for it triggered is newer and resolves first).
+    void placeBelowWhatItsPlayTriggered(ChainItemId item_id, ChainItemId first_new);
     /// The finalize pass itself: runs `item`'s callback with `finalizing` set
     /// until it asks nothing more, and returns the item with its choices.
     /// `answer`, when given, answers the pass's prompts instead of the agents
@@ -910,7 +937,12 @@ private:
     /// executePlaySpell after the base cost is paid, before CardPlayedEvent).
     /// On accept, pays the card's Card::optionalAdditionalCost and sets
     /// card_counters[paid_flag] = 1. No-op if the card has none or can't pay.
-    void maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id);
+    /// `extra_any_power` / `base`: what is still to be paid for the card
+    /// itself afterwards — the optional cost is offered only if that stays
+    /// payable (the choice comes before any payment, CR 355.1.a).
+    void maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id,
+                                        int extra_any_power,
+                                        const Card::PlayCostAdjust& base);
 
     /// Count available Power of a specific domain (recycle potential).
     int availablePower(PlayerId player, Domain domain) const;

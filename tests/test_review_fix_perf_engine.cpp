@@ -1796,9 +1796,17 @@ TEST_F(PerfEngineLookBack, EveryWayOffTheBoardRecordsTheUnitAsItLeft) {
         o(u).last_known.might = 99;
         o(u).last_known.controller = P2;
         o(u).last_known.stunned = false;
+        // Its Might as the game sees it: after a Cleanup (one runs before
+        // the spell resolves; it drops the hand-set Attacker designation,
+        // CR 323.2.c, and with it the Assault).
+        withEngine([&](GameEngine& e) { e.testHook_cleanup(); });
         const int might_on_board = o(u).current_might;
         const auto was_at = o(u).location;
         ASSERT_GT(might_on_board, o(u).base_might);
+        // P2 casts on a unit P1 controls: "can't be chosen by enemy spells
+        // this turn" would make it no target at all once a Cleanup has
+        // applied it (one now runs before the spell resolves).
+        o(u).untargetable_by_enemy_this_turn = false;
         lookBack(move, u, P2);
         ASSERT_FALSE(o(u).location.has_value());
         const Saw& saw = TLookBack::saw;

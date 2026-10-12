@@ -105,6 +105,23 @@ public:
     using PlayCard = std::function<void(const Intent&)>;
     void setPlayCard(PlayCard fn) { play_card_ = std::move(fn); }
 
+    /// "Handle Outstanding Tasks" (CR 334): called at the top of every pass
+    /// of the loop — before the first pending item is finalized, after each
+    /// finalization and after each resolution (CR 319.3-319.5). The engine
+    /// injects its Cleanup. What it puts on the chain is pending for the pass
+    /// that follows.
+    using HandleTasks = std::function<void()>;
+    void setHandleTasks(HandleTasks fn) { handle_tasks_ = std::move(fn); }
+
+    /// Called before a pending item is finalized: the engine lets the
+    /// controllers order triggered abilities that triggered simultaneously
+    /// (CR 383.3.d) — it may reorder the pending items and ask.
+    using OrderPending = std::function<void()>;
+    void setOrderPending(OrderPending fn) { order_pending_ = std::move(fn); }
+
+    /// True while processFEPR is running (a nested call returns at once).
+    bool running() const { return running_; }
+
     /// Inject the EffectExecutor so stepResolve can detect mid-resolution
     /// pending choices published by Card::onResolve / onTrigger via
     /// `requestChoice`. Required before processFEPR runs.
@@ -125,12 +142,16 @@ private:
     // stepExecuteAndPass). Not game state: it lives for one window.
     std::vector<Intent> dropped_plays_;
     bool playing_card_ = false;   // inside play_card_: nested processFEPR is a no-op
+    bool running_ = false;        // inside processFEPR: a nested call is a no-op
+    HandleTasks handle_tasks_;
+    OrderPending order_pending_;
     FinalizeChoices finalize_choices_;
     EffectExecutor* executor_ = nullptr;
 
-    /// Step 1: Finalize all pending items in order. (processFEPR reads the
-    /// chain itself afterwards — exists / hasPending — so there is nothing
-    /// to return.)
+    /// Step 1: Finalize the OLDEST pending item (CR 337.1). One item per
+    /// call: a Cleanup follows each finalization (CR 319.4) before the next
+    /// item is finalized. A triggered ability that is not performed
+    /// (ChainItem::remove_at_finalize) leaves the chain here instead.
     void stepFinalize(
         std::function<void(const ChainItem&)> resolve_permanent
     );
@@ -149,10 +170,6 @@ private:
     /// for choices (see stepResolve).
     void runResumable(const AgentQuery& query_agent,
                       const std::function<void(const ChainItem&)>& resolve_spell);
-
-    /// Gives up on a chain that will not empty (safety bound in processFEPR):
-    /// discards what is on it, reopens the state and emits ChainEmptiedEvent.
-    void abandonChain(const std::string& why);
 
     /// Step 4: Resolve the top item on the chain. Drives a resumable loop:
     /// while the resolving Card publishes a pending choice via

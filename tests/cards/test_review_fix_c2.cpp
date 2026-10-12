@@ -336,8 +336,7 @@ TEST_F(ReviewFixC2Test, CannonBarrage_OnlyEnemyUnitsInCombat) {
     auto elsewhere = addUnit(P2, kInvalidId, 5, 1);
     auto in_base = addUnit(P2, kInvalidId, 5);
     auto mine = addUnit(P1, kInvalidId, 5, 0);
-    state.getObject(fighting).combat_designation = CombatDesignation::Defender;
-    state.getObject(mine).combat_designation = CombatDesignation::Attacker;
+    combatInProgress(0, P1);   // `mine` attacks, `fighting` defends (CR 323.2)
 
     playThroughEngine(addToHand(P1, kCannonBarrage));
     EXPECT_EQ(state.getObject(fighting).damage_marked, 2);
@@ -821,7 +820,7 @@ TEST_F(ReviewFixC2Test, Thwonk_OnlyAnAttackingUnit_AndTheCasterIsTheStunner) {
     auto spell = addToHand(P1, kThwonk);
     EXPECT_TRUE(playsOf(spell).empty()) << "no attacking unit";
 
-    state.getObject(attacker).combat_designation = CombatDesignation::Attacker;
+    combatInProgress(0, P2);   // makes `attacker` an Attacker (CR 323.2)
     PlayerId stunner = PlayerId::None;
     boost::signals2::scoped_connection c = events.on_unit_stunned.connect(
         [&](const UnitStunnedEvent& e) { stunner = e.stunner; });
@@ -837,8 +836,7 @@ TEST_F(ReviewFixC2Test, Thwonk_APaidRepeatStunsASecondAttacker) {
     // The Repeat re-ran on the already-stunned unit and did nothing.
     auto a = addUnit(P2, kInvalidId, 3, 0);
     auto b = addUnit(P2, kInvalidId, 3, 0);
-    state.getObject(a).combat_designation = CombatDesignation::Attacker;
-    state.getObject(b).combat_designation = CombatDesignation::Attacker;
+    combatInProgress(0, P2);   // makes `a` and `b` Attackers (CR 323.2)
     state.player(P1).rune_pool.energy += 2;   // the [Repeat] [2]
 
     // Pay the Repeat when asked; for a unit prompt take one not picked before.

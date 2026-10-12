@@ -167,6 +167,14 @@ void Card::nothingToDecide(ChainItem& item) {
     if (item.finalizing) item.finalize_checked |= 128;
 }
 
+void Card::mayIsNotTheWholeAbility(CardContext& ctx) {
+    if (ctx.state.chain.resuming.has_value()) ctx.state.chain.resuming->may_is_partial = true;
+}
+
+void Card::requiredChoiceMissing(ChainItem& item) {
+    if (item.finalizing) item.required_choice_missing = true;
+}
+
 // ── Choice-helper progress ──────────────────────────────────────────────────
 // Each helper keeps its own "waiting for the agent" / "answered" flags on the
 // resolving item (resume_data[Card::kChoiceStateSlot]), so the helpers compose
@@ -475,6 +483,7 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                                  " (no legal modes after filtering)");
             store(-2);
             nothingToDecide(ri);
+            requiredChoiceMissing(ri);   // CR 403.4
             return -2;
         }
         // Always publish a choice, even if only one mode is legal. The
@@ -662,6 +671,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                                  " (no legal targets at resolve time)");
             store(kInvalidId);
             nothingToDecide(ri);
+            requiredChoiceMissing(ri);   // CR 403.4
             return kInvalidId;
         }
         // Always publish a choice, even if only one target is legal —
@@ -812,6 +822,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         if (legal_a.empty()) {
             RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal first targets at resolve time)");
+            requiredChoiceMissing(ri);   // CR 403.4
             return finish(kInvalidId, kInvalidId);
         }
         // Always publish a choice, even with a single legal first

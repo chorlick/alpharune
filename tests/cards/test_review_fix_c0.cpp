@@ -982,7 +982,11 @@ TEST_F(C0Test, MushroomPouch_SeesACardHiddenAtABattlefield) {
     fireTriggerThroughEngine(pouch, TriggerType::AtStartOfBeginning);
     EXPECT_EQ(handSize(P1), 0) << "no facedown card";
 
-    // A hidden card as the engine stores it: facedown zone, no board location.
+    // A hidden card as the engine stores it: facedown zone, no board location,
+    // at a battlefield its controller controls (CR 323.6.a: the Cleanup that
+    // precedes the ability's finalization trashes it otherwise).
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);
     auto hidden = addToHand(P1, kRecruit);
     state.player(P1).hand.pop_back();
     o(hidden).zone = ZoneType::FacedownZone;
@@ -1052,13 +1056,22 @@ TEST_F(C0Test, PackOfWonders_NeverItselfAndCanTakeAFacedownCard) {
     EXPECT_TRUE(card->enumerateLegalTargets(state, P1, 0, pack).empty())
         << "the Pack alone: \"another\" leaves nothing";
 
+    // (At a battlefield P1 controls: CR 323.6.a trashes it otherwise.)
+    state.battlefields[1].controller = P1;
+    const auto holder = addUnit(P1, kInvalidId, 1, 1);
     auto hidden = addToHand(P1, kRecruit);
     state.player(P1).hand.pop_back();
     o(hidden).zone = ZoneType::FacedownZone;
     o(hidden).is_hidden = true;
     o(hidden).hidden_at = BattlefieldId::fromRaw(1);
     state.battlefields[1].facedown.push_back(hidden);
-    EXPECT_EQ(card->enumerateLegalTargets(state, P1, 0, pack), std::vector<GameObjectId>{hidden});
+    {
+        auto legal = card->enumerateLegalTargets(state, P1, 0, pack);
+        std::sort(legal.begin(), legal.end());
+        std::vector<GameObjectId> want{hidden, holder};
+        std::sort(want.begin(), want.end());
+        EXPECT_EQ(legal, want) << "the facedown card, and the unit holding its battlefield";
+    }
 
     EnginePathAgent agent(EnginePathAgent::choosing(hidden));
     activate(pack, &agent);

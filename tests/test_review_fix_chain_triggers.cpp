@@ -391,10 +391,11 @@ TEST_F(ChainManagerFixTest, SpellThatBanishesItself_IsNotAlsoTrashed) {
 
 // ─── 2.10 — safety bounds ───────────────────────────────────────────────────
 
-TEST_F(ChainManagerFixTest, SafetyCap_ChainThatNeverEmptiesIsAbandonedCleanly) {
-    // Every resolution puts another ability on the chain. The loop gives up,
-    // and leaves the game in a state it can continue from: no chain, Open
-    // state, ChainEmptiedEvent emitted.
+TEST_F(ChainManagerFixTest, SafetyCap_ChainThatNeverEmptiesIsAnError) {
+    // Every resolution puts another ability on the chain. The loop's bound is
+    // an engine error naming the newest item (CLAUDE.md "Engine bounds
+    // throw"; finding F1): it used to drop the chain with a warning and let
+    // the game go on, which hid a card that triggered on its own token.
     EffectExecutor exec(state, events, card_db, &card_registry);
     ChainManager cm(state, events, card_db);
     cm.setEffectExecutor(&exec);
@@ -403,15 +404,21 @@ TEST_F(ChainManagerFixTest, SafetyCap_ChainThatNeverEmptiesIsAbandonedCleanly) {
     cm.addSpell(spell, P1, {});
     cm.addAbility(source, P1, kInvalidId);
 
-    auto r = run(cm, [&](const ChainItem& item) {
-        if (item.is_ability) cm.addAbility(source, P1, kInvalidId);
-    });
-
-    EXPECT_GT(r.resolve_calls, 100);
-    EXPECT_FALSE(state.chain.exists());
-    EXPECT_EQ(state.turn.oc_state, OpenClosedState::Open);
-    EXPECT_EQ(r.chain_emptied, 1);
-    EXPECT_TRUE(inTrash(P1, spell)) << "the spell stranded under the loop leaves the chain zone";
+    int resolve_calls = 0;
+    try {
+        run(cm, [&](const ChainItem& item) {
+            ++resolve_calls;
+            if (item.is_ability) cm.addAbility(source, P1, kInvalidId);
+        });
+        ADD_FAILURE() << "a chain that never empties ended quietly";
+    } catch (const std::logic_error& ex) {
+        const std::string what = ex.what();
+        EXPECT_NE(what.find("did not empty"), std::string::npos) << what;
+        EXPECT_NE(what.find(state.getObject(source).name.get()), std::string::npos)
+            << "the newest item is named: " << what;
+    }
+    EXPECT_GT(resolve_calls, 100);
+    EXPECT_TRUE(state.chain.exists()) << "nothing was dropped behind the game's back";
 }
 
 TEST_F(ChainManagerFixTest, SafetyCap_ACardThatNeverStopsAskingIsAnError) {

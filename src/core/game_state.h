@@ -740,9 +740,52 @@ struct ChainItem {
     // card class, so the ability is the keyword's (engine/keyword_abilities.h)
     // rather than the source card's: `card_def_id` is not consulted.
     std::optional<Keyword> keyword_ability;
+
+    // ── Simultaneous triggers (CR 383.3.d) ──
+    // Triggered abilities that triggered at the same time share a batch
+    // number (ChainState::current_trigger_batch as TriggerManager queued
+    // them); 0 = not part of any batch (spells, activated abilities,
+    // reflexive triggers — CR 389.2 creates those in order). Their controller
+    // orders a batch as its first item is about to be finalized
+    // (GameEngine::orderPendingTriggers); `batch_ordered` says that is done.
+    // `batch_first` is the player whose abilities go on the chain first when
+    // that is not the turn player (the attacker of a combat, CR 466.2.d.1).
+    uint32_t trigger_batch = 0;
+    bool batch_ordered = false;
+    PlayerId batch_first = PlayerId::None;
+
+    // The source left the board after this ability was put on the chain
+    // (EffectExecutor::leftBoard). Wherever the card is now — back on the
+    // board included — it is a new object (CR 124.1): an ability that says
+    // "this" ([Temporary]: "kill this") no longer has anything to act on.
+    bool source_left_board = false;
+
+    // Set by the finalize pass of a triggered ability that is not performed:
+    // its leading "may" was declined or its cost not paid (CR 403.1.a, 405.2)
+    // or a required choice had no legal option (CR 403.4). The item leaves
+    // the chain as it would have been finalized: it "ceases to be a Pending
+    // Item but never becomes a Finalized Chain Item" — nobody gets priority.
+    bool remove_at_finalize = false;
+    // A choice helper found no legal option for a REQUIRED choice during the
+    // finalize pass (Card::requiredChoiceMissing): CR 403.4.
+    bool required_choice_missing = false;
+    // The card said its "may" is not the first part of its effect
+    // (Card::mayIsNotTheWholeAbility): declining it does not remove the ability.
+    bool may_is_partial = false;
 };
 
 struct ChainState {
+    // CR 383.3.d: the batch number given to triggered abilities queued now
+    // (see ChainItem::trigger_batch). TriggerManager opens a new batch for
+    // each event it handles; the engine holds one open across events the
+    // rules call simultaneous (units that die together, the units one cleanup
+    // finds newly Mighty, a combat's start with its showdown's start).
+    uint32_t trigger_batch_counter = 0;
+    uint32_t current_trigger_batch = 0;
+    int trigger_batch_depth = 0;     // nested event handlers share the batch
+    int trigger_batch_holds = 0;     // > 0: an engine scope holds the batch open
+    PlayerId batch_first_player = PlayerId::None;
+
     std::vector<ChainItem> items;
     ChainItemId next_id = ChainItemId::fromRaw(1);  // ids count up from 1
 
@@ -783,6 +826,45 @@ struct ChainState {
         for (auto& item : items)
             if (item.status == ChainItemStatus::Pending) return true;
         return false;
+    }
+};
+
+/// Holds one trigger batch open across several events that happen at the same
+/// time (CR 383.3.d): every triggered ability queued while it lives is in the
+/// same batch. `first` names the player whose abilities go on the chain first
+/// when that is not the turn player (CR 466.2.d.1: the attacker).
+struct SimultaneousTriggers {
+    ChainState& chain;
+    PlayerId saved_first;
+    explicit SimultaneousTriggers(ChainState& c, PlayerId first = PlayerId::None)
+        : chain(c), saved_first(c.batch_first_player) {
+        if (chain.trigger_batch_holds++ == 0)
+            chain.current_trigger_batch = ++chain.trigger_batch_counter;
+        if (first != PlayerId::None) chain.batch_first_player = first;
+    }
+    ~SimultaneousTriggers() {
+        chain.batch_first_player = saved_first;
+        --chain.trigger_batch_holds;
+    }
+    SimultaneousTriggers(const SimultaneousTriggers&) = delete;
+    SimultaneousTriggers& operator=(const SimultaneousTriggers&) = delete;
+};
+
+/// One event as TriggerManager handles it: the abilities it triggers are
+/// simultaneous. Nested handlers and an engine hold share the outer batch.
+struct TriggerEventScope {
+    ChainState& chain;
+    explicit TriggerEventScope(ChainState& c) : chain(c) {
+        if (chain.trigger_batch_depth++ == 0 && chain.trigger_batch_holds == 0)
+            chain.current_trigger_batch = ++chain.trigger_batch_counter;
+    }
+    ~TriggerEventScope() { --chain.trigger_batch_depth; }
+    TriggerEventScope(const TriggerEventScope&) = delete;
+    TriggerEventScope& operator=(const TriggerEventScope&) = delete;
+    /// The batch a trigger queued now belongs to (0 outside any event).
+    static uint32_t now(const ChainState& c) {
+        return (c.trigger_batch_depth > 0 || c.trigger_batch_holds > 0)
+            ? c.current_trigger_batch : 0;
     }
 };
 

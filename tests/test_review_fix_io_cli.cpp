@@ -1591,11 +1591,24 @@ TEST(PlayServerGodMode, EditRecomputesThePendingMainPhaseDecision) {
 
     // An answer from the new list is what the engine applies: the turn ends.
     c.send({{"type", "choose"}, {"player", "P1"}, {"index", end_turn_index}, {"decision_id", id1}});
-    json next = c.readUntil([&](const json& m) {
-        return (m["type"] == "decision" || m["type"] == "state") &&
-               m["turn"].value("turn_player", "") == "P2";
-    });
-    EXPECT_FALSE(next.is_null());
+    // The turn ends — after whatever P1 is still asked in its Ending Step
+    // (an "at the end of your turn" ability's choice; the game's course
+    // depends on the engine's flow, the test does not): those are answered.
+    json next;
+    uint64_t answered = id1;
+    for (int i = 0; i < 20; ++i) {
+        next = c.readUntil([&](const json& m) {
+            if (m["type"] != "decision" && m["type"] != "state") return false;
+            if (m["turn"].value("turn_player", "") == "P2") return true;
+            return m["type"] == "decision" && m.value("player", "") == "P1" &&
+                   m.value("decision_id", uint64_t{0}) != answered;
+        });
+        if (next.is_null() || next["turn"].value("turn_player", "") == "P2") break;
+        answered = next["decision_id"].get<uint64_t>();
+        c.send({{"type", "choose"}, {"player", "P1"}, {"index", 0}, {"decision_id", answered}});
+    }
+    ASSERT_FALSE(next.is_null());
+    EXPECT_EQ(next["turn"].value("turn_player", ""), "P2");
 }
 
 TEST(PlayServerGodMode, EditAtANestedDecisionSaysTheListWasKept) {

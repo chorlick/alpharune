@@ -82,6 +82,10 @@ Fixes are batched by root (user decision): one branch, one rebuild and one gate 
 
 ## Batch 4 — Cards, options offered or withheld, payments, hidden information, the validator
 
+Batch 4 is split so that its card-level part can run beside the engine-flow batches:
+- **4a (cards, validator, test tooling; started 2026-10-11 beside batch 1):** V1, D12, D18, D20, D45, D47, D52, D55, D56, D59, D62, D65, D66, D69, D70, D73, D75, D81, F3, F4, F9, A1, A2.
+- **4b (generators, payments, log audience, questions; after the engine-flow batches):** D9, D11, D25, D28, D37, D43, D46, D48, D50, D58, D63, D71, D74, D80.
+
 - [ ] **V1** `DeckValidator` does not enforce [Unique] (CR 825.3.a): Forgefire Cape 507, Rabadon's Deathcrown 508, Shurelya's Requiem 509 are accepted three times (same as D12) — CODE-ONLY (fuzz)
 - [ ] **D9** Every payment that is not a card's base cost: the engine chooses which runes are exhausted and recycled — LIKELY
 - [ ] **D11** Hidden information in log lines whose audience is both players — CERTAIN

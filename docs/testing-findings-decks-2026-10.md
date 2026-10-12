@@ -1,4 +1,4 @@
-# Testing phase 2026-10 — the constructed deck lists: findings (INTERIM: 16 of 18 lists read)
+# Testing phase 2026-10 — the constructed deck lists: findings
 
 Stream `test-decks`, branch `test/decks`, engine sources at `55df656` (master after the review fix run).
 Nothing in the engine, the cards or the tests was changed: this document records, it does not fix.
@@ -15,31 +15,49 @@ card mechanics."
   with the post-sideboard lists) used for the deck-level checks and for counts.
 - **Cards.** The 18 lists hold 261 distinct cards (18 legends, 104 units, 86 spells, 21 gear, 26 battlefields,
   6 runes). Every one of them was played, put in play or channelled in the traced games.
-- **Reading.** INTERIM. 235 of the 261 cards have been read against traces so far (the cards of 16 lists; the cards first held by yasuao, yi_rebuild and zed, the six runes and the combat procedure are still being read): **175 in full, 60 in part** (the clause not seen at work is named per card in section 4 and section 8), **0 not at all**.
-- **Findings.** INTERIM. See the index at the head of section 5: the lead's D1-D13 and the readers' findings numbered after them, with the confidence of each.
-- **What is most wrong** (each is engine-wide, each has a one-command replay below):
+- **Reading.** All 261 distinct cards were read against traced games, by nine readers (section 2.2): **198 in full, 63 in part, 0 not at all.** "In part" means that at least one printed clause was not seen at work in any of the 720 games (named per card in section 4, collected in section 8). "In full" is the reader's statement that every clause was compared with a traced instance; where a clause leaves no trace line (a passive, "recycle the rest") the comparison was with the rendered board or with a count over all games, and the card's row says so. The six runes count as read in full (channelling, exhausting and recycling by script over all games, the Domain of every one of 9,886 Power payments). The lead read no card clause by clause on its own account: its part is the engine-level sequences (D1-D13), the script checks and the checking of the readers' findings.
+- **Findings.** **81 distinct findings, D1-D81** (13 from the lead's engine-level reading, 68 from the readers; 28 more reader findings were the same defect as another and stand under it as further evidence). By confidence: 40 CERTAIN, 23 LIKELY, 4 CODE-ONLY, 2 QUESTION, 12 with parts of different confidence (index at the head of section 5). Judge questions: section 7.
+- **What is most wrong** (each is engine-wide, shows in real games of several lists, and has a one-command
+  replay in section 5):
   1. **Combat is not a Showdown State for the action generator** (D5): any spell — with neither [Action] nor
      [Reaction] — is offered and played at Focus in a combat, by the defender on the opponent's turn too.
-  2. **Triggered abilities are not processed where the rules process them**: a declined, unpayable or
-     targetless trigger stays on the chain and opens a priority window for both players (D4, 2,249 of 2,279
-     declined triggers); a trigger queued during a showdown or by a conquer is left pending while Focus is
-     passed, the showdown closes and combat damage is dealt (D7); abilities that watch a value ("becomes
-     Mighty") are noticed only at top-level cleanups; a unit that joins a combat already under way never gets
-     its "When I attack / defend"; conditions printed with a trigger are tested when it resolves.
+     Found independently by seven readers.
+  2. **Triggered abilities are not processed where the rules process them.** A declined, unpayable or
+     targetless trigger stays on the chain and opens a priority window for both players (D4: 2,249 of 2,279
+     declined triggers). A trigger queued during a showdown or by a conquer is left pending while Focus is
+     passed, the showdown closes and combat damage is dealt (D7, D29). "Becomes Mighty" is noticed only at
+     top-level cleanups (D35, D36). A unit that joins a combat already under way never gets its "When I
+     attack / defend" (D68). A condition printed with the trigger is tested when the ability resolves (D19,
+     D27, D33, D51, D77). Simultaneous triggers are never ordered by their controller (D40).
   3. **An option that does nothing** (D6): with such a late trigger on the chain, a non-Reaction spell is
      offered at chain priority; choosing it is silently dropped and the same decision is asked again — 52 times
-     in 18 games; an agent that prefers that option never leaves the decision.
-  4. **Spells go on the chain without their targets** (D8 and the readers' findings on effect-played spells):
-     Star-Crossed, Switcheroo, Facebreaker, Defiant Dance are offered and paid for with no legal pair; a spell
-     replayed by Fizz, Trickster or played by Void Burrower / Void Rush resolves with no target chosen.
-  5. **[Add] abilities are ordinary chain items** (D2): both players get priority, the opponent can respond on
-     top, the resource arrives late and cannot pay the cost it was meant for.
-  6. **Choices the rules make at finalization are made at resolution** (D3 and the readers' findings): move
-     destinations, Weaponmaster's "may" and Equipment, several "you may" + target abilities; Equip and
-     [Quick-Draw] attach without a chain item at all.
-  7. **Continuous effects lag**: Might is not recomputed before a damage step that follows a combat's start
-     directly (Forbidding Waste's -2, Trifarian War Camp's +1 on a unit moved in, a granted Shield).
-  8. **Hidden information** in five kinds of log lines whose audience is both players (D11).
+     in 18 games. An agent that prefers that option never leaves the decision.
+  4. **No cleanup between the items of a chain**: a unit with lethal damage stays on the board through
+     priority windows (D44), Equipment whose bearer died is not recalled (D10), and continuous effects lag — a
+     combat that goes straight to its damage step is fought without Forbidding Waste's -2, Wuju Bladesman's
+     +2, Trifarian War Camp's +1 on a unit just moved in, a granted Shield (D60, D76, D23, D42). D60 and D76
+     changed who died.
+  5. **Spells go on the chain without their targets** (D8, D17, D32, D57): Star-Crossed, Switcheroo,
+     Facebreaker, Defiant Dance are offered and paid for with no legal pair; a spell replayed by Fizz,
+     Trickster or played by Void Burrower / Void Rush resolves with no target chosen. Deflect is charged for a
+     unit Switcheroo then does not choose, or twice (D79 — the `payDeflectForChoices` lead of the fix run).
+  6. **[Add] abilities are ordinary chain items** (D2): both players get priority, the opponent can respond on
+     top, the resource arrives late — it cannot pay the cost it was meant for (D30, D64) and an Add activated
+     with Focus hands Focus over (D31).
+  7. **Choices the rules make at finalization are made at resolution** (D3, D16, D22, D24, D41, D54, D67,
+     D78): move destinations, Weaponmaster's "may" and Equipment, several "you may" + target abilities.
+     Equip and [Quick-Draw] attach without a chain item at all (D14, D15). Counter spells never choose their
+     spell: only the top item of the chain can be countered (D21).
+  8. **Options withheld**: a facedown card is never offered in its controller's own Main Phase (D25); Rengar's
+     Ambush to an enemy-held battlefield never at ordinary timing, never from the Champion Zone (D37, D63);
+     the engine picks the runes for every payment but a card's base cost (D9); Accelerate is not discounted by
+     Ezreal, Prodigy (D43) and is asked after the play abilities' choices (D1).
+  9. **Hidden information** in five kinds of log lines whose audience is both players (D11).
+  10. Card-level defects with a changed outcome in a traced game, among others: Falling Star against Zhonya's
+     Hourglass (D20), Astral Heron's discount kept for a later turn (D18), Star Spring triggering twice (D52),
+     Master of Shadows empowered by the opponent's banish (D75), Vex, Cheerless's tax (D26), Sprite Call and
+     Windsinger from facedown (D69, D70), Thrill of the Hunt onto Rockfall Path (D62), Bellows Breath's
+     Repeat (D45), Diana, Lunari never triggering in combat (D29).
 - **Deck-level checks** (section 2.3): winner and reason, score steps and the winning-point rule, one score per
   battlefield per turn, holds against control at the Scoring Step, prompts answered before anything else is
   asked, units exhausted on entry, pools empty at the Main Phase, card counts — all clean over the 1,116
@@ -94,8 +112,8 @@ timing, where the choices were made, the targets offered, the effect, the trigge
 opponent got — until each clause had been seen at work or no trace exercised it. Then, per list, the
 interactions the list is built around. The lead built the tools, ran the games and the deck-level scripts,
 read the engine-level sequences (sections D1-D12) and checked the readers' findings: every quoted trace line
-was looked up mechanically in the cited game (596 quoted fragments so far; the 21 not found literally are quotes the author shortened with "..." or wrote as a pattern; two wrong game names in the lead's own findings were caught this way and corrected), and 26 of the readers' findings were re-read by
-hand against the log and the rules.
+was looked up mechanically in the cited game (662 quoted fragments; the 24 not found literally are quotes the author shortened with "..." or wrote as a pattern; two wrong game names in the lead's own findings were caught this way and corrected), and 29 of the readers' 96 findings were read
+in full by the lead, four of them re-run with the dossier against the log (the instances of D5, D20, D60, D79).
 
 What the reading is not: no board was hand-built, no game was steered. A clause that random or ISMCTS play did
 not exercise in 720 games is listed in section 8 as not observed.
@@ -812,6 +830,301 @@ Seat of Power (the list's third battlefield, not on my card file): `SEAT OF POWE
 | Blood Money | 483 | Spell | E=2 (27) | - | 26: enemy -> 1 Gold (11), friendly -> 2 Gold (15); every Gold on the next board is exhausted (26 of 26) | FULL | ok |
 | Xin Zhao, Vigilant | 496 | Unit/Champion | 70 plays tallied against the board: 0 other units in base -> exhausted (19), 1 -> exhausted (9; zed_sb__viktor_sb__s20262420__random__random decision #18: the one other unit is another Xin Zhao), 2+ -> ready (22 in base; also ready when he himself is played to a battlefield: teemo__viktor__s20261330__random__random decision #112, viktor__akali__s20261352__random__random decision #46) | - | Tank: viktor games D:344.08, D:077.06 damage assigned to him first | FULL | ok |
 
+### reader 9: yasuao, yi_rebuild, zed
+
+| card | id | type | played (game, D) | ability triggered / activated (game, D) | resolved (game, D) | read | result |
+|---|---|---|---|---|---|---|---|
+| Unforgiven | 256 | Legend | - | all 245 activations classified. From base to an empty battlefield: fiora__yasuao__s20263062__random__ismcts-sims20 D:066, leblanc__yasuao__s20263063__random__ismcts-sims20 D:038; from a battlefield to base: akali__yasuao__s20261115__random__random D:076; from base to an enemy-held battlefield (combat): same game D:266; countered / responded to: irelia_sb__yasuao_sb__s20262205__random__random D:071 | D:068-071; D:040-041; D:078; D:268-271 | FULL | cost [2] + exhaust, unit chosen at activation, never battlefield-to-battlefield, never offered at a Pass Focus decision (0 of the showdown / combat decisions of all yasuao games): ok. K3 (destination picked after `RESOLVE:`). |
+| Yasuo, Windrider | 205 | Unit (champion) | kaisa__yasuao__s20261223__random__random D:117 (E=5 P=1) | 142 triggers in 111 player-turns (87 turns x1, 21 x2, 3 x3). Third move: kaisa__yasuao__s20261223 D:160/169/173; yasuao__irelia__s20261375__random__random D:095/136/145; yasuao__yasuao__s20261385__random__random D:084/095/098 | point scored at D:175, D:147, D:117 ("SCORE ... via effect") | PART: a 4th move in a turn, the point as the 8th point, and [Ganking] battlefield-to-battlefield as a separate check were not exercised | effect moves (Unforgiven, Ride the Wind) and standard moves count, recalls do not (no trigger on any `RECALL:`), exactly on the third: ok. D77 (R9-5) |
+| Lonely Poro | 359 | Unit | akali__yasuao__s20261115__random__random D:276 (E=2) | 75 Deathknell triggers; alone: khazix__yi_rebuild__s20261242__random__random D:060; not alone: ezreal_sb__yasuao_sb__s20262169__random__random D:099, diana_sb__yi_rebuild_sb__s20262152__random__random D:259 | 60 "died alone -> draw 1", 15 "did not die alone" | FULL | D80 (R9-10) (question: simultaneous deaths) |
+| Wind Wall | 64 | Spell | all 20 plays read (E=3 P=2; the recycled runes are covered by the 9,886-payment Domain scan under RUNES), e.g. azir_sb__yasuao_sb__s20262133__random__random D:023 | - | 17 counters (D:030 Gust, ...); countered itself by Hard Bargain: yasuao_sb__yi_rebuild_sb__s20262386__random__random D:141-152; did nothing: mel_sb__yasuao_sb__s20262277__random__random D:214-221 | FULL | D21 (R9-4) |
+| Yasuo, Remorseful | 76 | Unit (champion) | ezreal_sb__yasuao_sb__s20262169__random__random D:180 (E=6 P=2, two Calm runes) | attack trigger, target at finalization, only enemy units "here": same game D:217; yasuao_sb__akali_sb__s20262370__random__random D:279; yasuao_sb__irelia_sb__s20262375__random__random D:151 | D:222 (6 dmg), D:282 (6+1 bonus), D:154 (kill -> no damage step -> conquer) | FULL | ok |
+| Wuju Bladesman - Starter | 317 | Legend | - | passive, no trace lines; all 60 combats with exactly one yi-side defender read from DAMAGE_STEP | - | FULL | D76 (R9-2) |
+| Master Yi, Tempered | 675 | Unit (champion) | yi_rebuild__irelia__s20263023__random__ismcts-sims20 D:007 (E=4) | Hunt 2: 135 triggers, 83 after "via Hold", 47 after "via Conquer" (yi_rebuild__zed__s20263064__ismcts-sims20__random D:233); Level 6: Deflect charged in 5 traces (diana__yi_rebuild__s20261152__random__random D:183, XP 6 since D:150; teemo__yi_rebuild__s20261332__random__random D:197/198; yi_rebuild__ezreal__s20261391__random__random D:193/248 — XP at that moment checked by hand only in the first); battlefield-to-battlefield move offered in 59 decisions at 6+ XP and in 4 below 6 XP, all 4 at Windswept Hillock (yi_rebuild_sb__leblanc_sb__s20262396__random__random idx 94) | D:235 (+2 XP) | FULL | ok; D79 (R9-7) touches its Deflect |
+| Ruin Runner | 427 | Unit | fiora_sb__yi_rebuild_sb__s20262188__random__random D:092 (E=6) | passive: in the 76 games with yi_rebuild in one seat no opponent prompt, play-target or intent target ever lists it (40 prompts of its controller do); enemy effects that reached it are non-choosing (Thousand-Tailed Watcher, Flurry of Blades) | - | FULL (by absence) | ok |
+| Onslaught | 868 | Spell | yi_rebuild_sb__zed_sb__s20262405__random__random D:033 (E=4); Flow [4]: teemo__yi_rebuild__s20261332__random__random D:303 | - | D:306 (+6); fiora_sb__yi_rebuild_sb__s20262188 D:129 (Ruin Runner -> 11M) | FULL | target chosen as played ("TARGET (play)"), Flow banish empowers nothing on the yi side: ok. D5 (R9-3) |
+| Fiora, Peerless | 432 | Unit (champion) | yi_rebuild_sb__zed_sb__s20262405__random__random D:009 (E=3 P=1) | all 19 triggers read: 5 one on one (akali_sb__yi_rebuild_sb__s20262116__random__random D:126, D:156), 14 not | D:128 (3 -> 6M), D:158 (8M) | FULL | bonus gone after the combat (idx 151): ok. D76 (R9-2) (8M where 10M is due), D77 (R9-5) (same pattern) |
+| Alpha Strike | 751 | Spell | yi_rebuild_sb__rengar_sb__s20262399__random__random D:111 (E=3 P=1 Body) | reflexive "gain 1 XP" trigger: D:119 | D:119-121; viktor_sb__yi_rebuild_sb__s20262368__random__random D:229; zed_sb__yi_rebuild_sb__s20262422__random__random D:149 | PART: damage actually divided among two or more units not seen (every traced split put all of it on one unit) | ok |
+| Master of Shadows | 930 | Legend | - | 174 triggers, classified by the line that precedes each (Flow spell leaving the chain, Shadow Clone, `EFFECT: banish`, countered Flow spell): no category without a banish; activation 73x own main phase (kaisa__zed__s20263070__random__ismcts-sims20 D:096), offered at 146 Pass Focus decisions and chosen 59x (akali__zed__s20261117__random__random D:038, opponent's turn) | D:025 (empower -> 1); D:098-099 (discard chosen at resolution, then draw) | FULL | D75 (R9-1) |
+| Rhasa the Sunderer | 195 | Unit | all 52 plays: Energy paid = max(0, 10 - cards in trash on the board), Power stays 1; akali_sb__zed_sb__s20262117__random__random D:185 (trash 11, E=0, the [P] from Seal of Discord's floating Power), azir__zed__s20261135__random__random D:361 (trash 8, E=2) | - | - | FULL | ok |
+| Seal of Discord | 204 | Gear | azir__zed__s20261135__random__random D:075 (P=1, Chaos rune recycled), enters ready | 64 activations: akali__zed__s20261117 D:013, azir__zed__s20261135 D:077 | D:015, D:083 (+1 floating Chaos Power) | FULL | D2 (R9-9) (K2) |
+| Last Rites | 471 | Gear | zed__akali__s20263068__ismcts-sims20__random D:006 (E=3) | Equip: kaisa__zed__s20263070 D:114 ([P] + two trash cards recycled); conquer / hold trigger: azir__zed__s20261135 D:184 ("may" and unit at finalization), fiora__zed__s20261189__random__random D:161 (hold, in the Scoring Step) | D:190-195 (Kai'Sa paid E=4), D:161-166 | FULL | Equip Power is Chaos: in ~50 activations compared on the board only a Chaos rune leaves, never a Fury one. Play location picked after `RESOLVE:` (as the class intends, CR 355.2.a): noted, not reported |
+| Shadowblade Lurker | 883 | Unit | all 48 plays: E = 5 - 2 x copies in trash; akali_sb__zed_sb__s20262117 D:056 (E=5), azir__zed__s20261135 D:346 (E=3) | - | - | FULL | ok |
+| Death Mark | 931 | Spell | akali__zed__s20261117 D:016 (E=2, P from Seal); Flow [1][A][A]: D:021 ("exhausted 1, recycled 2") | - | 130 resolutions: 3 BURNED + 1 Shadow Clone each (D:020, D:023), location prompt when a battlefield is controlled (akali_sb__zed_sb__s20262117 D:104); burn out: vex__zed__s20261351__random__random D:384 | FULL | D5 (R9-3) |
+| Kennen, Storm of Shuriken | 900 | Unit | zed__akali__s20263068__ismcts-sims20__random D:016 (E=3 P=1 Chaos) | play trigger D:020; conquer trigger: vex_sb__zed_sb__s20262351__random__random D:164 (24 grants in all) | D:166-167; granted spell replayed: yasuao_sb__zed_sb__s20262387__random__random D:139 (the only use in the traces) | FULL | K1 (no outcome change), D78 (R9-6) |
+| Minefield | 526 | Battlefield | - | 49 triggers, each directly after a Conquer there by either player (azir_sb__zed_sb__s20262135__random__random D:072) | D:074 | PART: the trace does not name the two cards; a deck of fewer than 2 cards not exercised | D81 (R9-11) (code-only) |
+| Piercing Light | 346 | Spell | fiora_sb__zed_sb__s20262189__random__random D:216 (E=2 P=1 Fury, Repeat paid, Deflect paid once per time Poppy is chosen) | - | D:224 (2+2 twice); Flow via Kennen: yasuao_sb__zed_sb__s20262387 D:139-144 | FULL (the Domain of the Repeat [R] is not readable from `PAY_ADD`) | D5 (R9-3), D44 (R9-8) |
+| RUNES | 7/42/89/126/166/214 | Rune | all 720 games | see CHECKED AND CORRECT | - | FULL | ok |
+| COMBAT | - | procedure | 2087 DAMAGE_STEPs in 720 games | see CHECKED AND CORRECT | - | FULL | D76 (R9-2), D5 (R9-3) |
+
+### Counts over the 720 read games
+
+From `card_coverage.py`: how often each card was played, hidden, had an ability queued / activated / resolved, and the first sighting of each (game, D). A play from facedown prints no `PLAY` / `SPELL` line, so `played` undercounts cards with [Hidden]; `activated` counts Main Phase activations only (an activation at chain priority or at Focus prints no source: read `resolved` for those); a legend is never played; for a battlefield `played` is the number of games it was the battlefield in play, for a rune the number of times one was channelled.
+
+| card | type | lists | games | played | hidden | triggered | activated | resolved (ability / spell) | first play | first trigger | first activation |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Blade Dancer | Legend | 1 | 78 | 0 | 0 | 552 | 0 | 546 / 0 | — | akali__irelia__s20261105__random__random D:026 | — |
+| Daughter of the Void | Legend | 1 | 78 | 0 | 0 | 0 | 136 | 704 / 0 | — | — | akali__kaisa__s20261106__random__random D:056 |
+| Deceiver | Legend | 1 | 78 | 0 | 0 | 690 | 0 | 650 / 0 | — | akali__leblanc__s20261108__random__random D:140 | — |
+| Emperor of the Sands | Legend | 1 | 78 | 0 | 0 | 0 | 112 | 112 / 0 | — | — | akali__azir__s20261101__random__random D:074 |
+| Gloomist | Legend | 1 | 78 | 0 | 0 | 319 | 0 | 279 / 0 | — | akali__vex__s20261113__random__random D:033 | — |
+| Grand Duelist | Legend | 1 | 78 | 0 | 0 | 485 | 0 | 483 / 0 | — | akali__fiora__s20261104__random__random D:040 | — |
+| Herald of the Arcane | Legend | 1 | 78 | 0 | 0 | 0 | 256 | 256 / 0 | — | — | akali__viktor__s20261114__random__random D:024 |
+| Master of Shadows | Legend | 1 | 78 | 0 | 0 | 174 | 73 | 435 / 0 | — | akali__zed__s20261117__random__random D:023 | akali__zed__s20261117__random__random D:068 |
+| Pridestalker | Legend | 1 | 78 | 0 | 0 | 874 | 0 | 872 / 0 | — | akali__rengar__s20261111__random__random D:009 | — |
+| Prodigal Explorer | Legend | 1 | 78 | 0 | 0 | 0 | 9 | 71 / 0 | — | — | ezreal__fiora__s20261158__random__random D:192 |
+| Rogue Assassin | Legend | 1 | 78 | 0 | 0 | 0 | 67 | 256 / 0 | — | — | akali__akali__s20261100__random__random D:041 |
+| Scorn of the Moon | Legend | 1 | 78 | 0 | 0 | 0 | 185 | 672 / 0 | — | — | akali__diana__s20261102__random__random D:008 |
+| Soul's Reflection | Legend | 1 | 78 | 0 | 0 | 55 | 38 | 93 / 0 | — | akali__mel__s20261109__random__random D:069 | akali__mel__s20261109__random__random D:122 |
+| Swift Scout | Legend | 1 | 78 | 0 | 0 | 0 | 265 | 421 / 0 | — | — | akali__teemo__s20261112__random__random D:103 |
+| Unforgiven | Legend | 1 | 78 | 0 | 0 | 0 | 245 | 417 / 0 | — | — | akali__yasuao__s20261115__random__random D:035 |
+| Void Burrower | Legend | 1 | 78 | 0 | 0 | 242 | 0 | 363 / 0 | — | akali__reksai__s20261110__random__random D:047 | — |
+| Voidreaver | Legend | 1 | 78 | 0 | 0 | 136 | 110 | 245 / 0 | — | akali__khazix__s20261107__random__random D:103 | akali__khazix__s20261107__random__random D:109 |
+| Wuju Bladesman - Starter | Legend | 1 | 78 | 0 | 0 | 0 | 0 | 0 / 0 | — | — | — |
+| Adaptatron | Unit | 1 | 78 | 55 | 0 | 18 | 0 | 16 / 0 | akali_sb__irelia_sb__s20262105__random__random D:020 | diana_sb__irelia_sb__s20262141__random__random D:291 | — |
+| Akali, Deadly Weapon | Unit | 1 | 78 | 76 | 0 | 242 | 41 | 283 / 0 | akali__akali__s20261100__random__random D:006 | akali__akali__s20261100__random__random D:021 | akali__akali__s20261100__random__random D:111 |
+| Akali, Silent | Unit | 2 | 111 | 68 | 0 | 99 | 0 | 99 / 0 | akali__yasuao__s20261115__random__random D:260 | akali__yasuao__s20261115__random__random D:269 | — |
+| Akshan, Mischievous | Unit | 1 | 35 | 17 | 0 | 42 | 0 | 42 / 0 | diana_sb__fiora_sb__s20262140__random__random D:322 | diana_sb__fiora_sb__s20262140__random__random D:327 | — |
+| Angler Beast | Unit | 1 | 35 | 18 | 0 | 18 | 0 | 18 / 0 | azir_sb__ezreal_sb__s20262121__random__random D:158 | azir_sb__ezreal_sb__s20262121__random__random D:164 | — |
+| Applied Researchers | Unit | 1 | 78 | 80 | 0 | 0 | 30 | 30 / 0 | akali__mel__s20261109__random__random D:038 | — | akali__mel__s20261109__random__random D:067 |
+| Ashe, Focused | Unit | 2 | 68 | 48 | 0 | 49 | 0 | 135 / 0 | akali_sb__azir_sb__s20262101__random__random D:125 | akali_sb__azir_sb__s20262101__random__random D:131 | — |
+| Astral Heron | Unit | 3 | 220 | 149 | 0 | 396 | 0 | 396 / 0 | akali__akali__s20261100__random__random D:139 | akali__akali__s20261100__random__random D:146 | — |
+| Azir, Sovereign | Unit | 1 | 78 | 80 | 0 | 29 | 0 | 47 / 0 | akali__azir__s20261101__random__random D:009 | akali_sb__azir_sb__s20262101__random__random D:317 | — |
+| Baron Nashor | Unit | 1 | 78 | 10 | 0 | 0 | 0 | 0 / 0 | kaisa_sb__teemo_sb__s20262220__random__random D:148 | — | — |
+| Bewitching Spirit | Unit | 1 | 78 | 101 | 0 | 102 | 0 | 102 / 0 | azir__ezreal__s20261121__random__random D:062 | azir__ezreal__s20261121__random__random D:065 | — |
+| Black Rose Dignitary | Unit | 1 | 78 | 47 | 0 | 59 | 0 | 59 / 0 | akali_sb__leblanc_sb__s20262108__random__random D:400 | azir_sb__leblanc_sb__s20262126__random__random D:059 | — |
+| Blitzcrank, Impassive | Unit | 1 | 78 | 53 | 0 | 73 | 0 | 70 / 0 | akali__akali__s20261100__random__random D:027 | akali__akali__s20261100__random__random D:033 | — |
+| Brynhir Thundersong | Unit | 1 | 78 | 63 | 0 | 66 | 0 | 66 / 0 | akali__kaisa__s20261106__random__random D:274 | akali__kaisa__s20261106__random__random D:280 | — |
+| Carrion Dredger | Unit | 2 | 152 | 144 | 0 | 98 | 0 | 98 / 0 | akali__reksai__s20261110__random__random D:090 | akali__reksai__s20261110__random__random D:209 | — |
+| Chakram Dancer | Unit | 1 | 78 | 45 | 0 | 47 | 0 | 47 / 0 | akali_sb__leblanc_sb__s20262108__random__random D:159 | akali_sb__leblanc_sb__s20262108__random__random D:162 | — |
+| Darius, Trifarian | Unit | 2 | 150 | 47 | 0 | 73 | 0 | 73 / 0 | akali__akali__s20261100__random__random D:261 | akali__akali__s20261100__random__random D:267 | — |
+| Diana, Lunari | Unit | 1 | 78 | 97 | 0 | 48 | 0 | 48 / 0 | akali__diana__s20261102__random__random D:092 | akali__diana__s20261102__random__random D:134 | — |
+| Disarming Rake | Unit | 3 | 99 | 70 | 0 | 71 | 0 | 71 / 0 | akali_sb__akali_sb__s20262100__random__random D:011 | akali_sb__akali_sb__s20262100__random__random D:015 | — |
+| Elder Dragon | Unit | 1 | 78 | 15 | 0 | 40 | 0 | 40 / 0 | diana__fiora__s20261140__random__random D:136 | diana__fiora__s20261140__random__random D:152 | — |
+| Evelynn, Entrancing | Unit | 2 | 111 | 27 | 13 | 36 | 0 | 36 / 0 | azir_sb__khazix_sb__s20262125__random__random D:005 | azir_sb__khazix_sb__s20262125__random__random D:007 | — |
+| Ezreal, Prodigy | Unit | 1 | 78 | 131 | 0 | 131 | 0 | 262 / 0 | akali__ezreal__s20261103__random__random D:033 | akali__ezreal__s20261103__random__random D:037 | — |
+| Faithful Manufactor | Unit | 1 | 78 | 67 | 0 | 71 | 0 | 71 / 0 | akali__reksai__s20261110__random__random D:026 | akali__reksai__s20261110__random__random D:029 | — |
+| Ferrous Forerunner | Unit | 4 | 211 | 127 | 0 | 44 | 0 | 44 / 0 | akali__rengar__s20261111__random__random D:204 | akali__rengar__s20261111__random__random D:287 | — |
+| Fiora, Peerless | Unit | 1 | 35 | 22 | 0 | 19 | 0 | 19 / 0 | akali_sb__yi_rebuild_sb__s20262116__random__random D:046 | akali_sb__yi_rebuild_sb__s20262116__random__random D:126 | — |
+| Fiora, Victorious | Unit | 1 | 35 | 16 | 0 | 0 | 0 | 0 / 0 | azir_sb__fiora_sb__s20262122__random__random D:189 | — | — |
+| Fiora, Worthy | Unit | 1 | 78 | 86 | 0 | 211 | 0 | 211 / 0 | akali__fiora__s20261104__random__random D:020 | akali__fiora__s20261104__random__random D:040 | — |
+| First Mate | Unit | 2 | 151 | 114 | 0 | 118 | 0 | 118 / 0 | akali__rengar__s20261111__random__random D:071 | akali__rengar__s20261111__random__random D:074 | — |
+| Fizz, Trickster | Unit | 6 | 403 | 328 | 0 | 329 | 0 | 329 / 0 | akali__diana__s20261102__random__random D:027 | akali__diana__s20261102__random__random D:031 | — |
+| Glasc Mixologist | Unit | 1 | 78 | 74 | 0 | 60 | 0 | 80 / 0 | akali__leblanc__s20261108__random__random D:208 | akali_sb__leblanc_sb__s20262108__random__random D:131 | — |
+| Grim Apothecary | Unit | 1 | 78 | 86 | 0 | 96 | 0 | 96 / 0 | akali__rengar__s20261111__random__random D:025 | akali__rengar__s20261111__random__random D:028 | — |
+| Harnessed Dragon | Unit | 1 | 78 | 36 | 0 | 50 | 0 | 49 / 0 | azir__fiora__s20261122__random__random D:228 | azir__fiora__s20261122__random__random D:238 | — |
+| Honest Broker | Unit | 3 | 222 | 206 | 0 | 182 | 0 | 182 / 0 | akali__viktor__s20261114__random__random D:027 | akali__viktor__s20261114__random__random D:246 | — |
+| Hwei, Brooding Painter | Unit | 2 | 150 | 127 | 0 | 364 | 0 | 546 / 0 | akali__mel__s20261109__random__random D:110 | akali__mel__s20261109__random__random D:185 | — |
+| Inferna | Unit | 2 | 151 | 179 | 0 | 0 | 0 | 0 / 0 | akali__reksai__s20261110__random__random D:045 | — | — |
+| Irelia, Fervent | Unit | 3 | 222 | 160 | 0 | 385 | 0 | 385 / 0 | akali__irelia__s20261105__random__random D:048 | akali__irelia__s20261105__random__random D:089 | — |
+| Irresistible Faefolk | Unit | 2 | 152 | 109 | 0 | 71 | 0 | 71 / 0 | akali__khazix__s20261107__random__random D:174 | akali__khazix__s20261107__random__random D:257 | — |
+| Kai'Sa, Survivor | Unit | 4 | 282 | 225 | 0 | 124 | 0 | 122 / 0 | akali__akali__s20261100__random__random D:239 | akali__irelia__s20261105__random__random D:208 | — |
+| Karthus, Eternal | Unit | 1 | 78 | 76 | 0 | 0 | 0 | 0 / 0 | akali__leblanc__s20261108__random__random D:072 | — | — |
+| Kayle, Justified | Unit | 1 | 35 | 43 | 0 | 0 | 43 | 43 / 0 | azir_sb__fiora_sb__s20262122__random__random D:043 | — | azir_sb__fiora_sb__s20262122__random__random D:124 |
+| Keeper of Law | Unit | 1 | 78 | 61 | 0 | 0 | 0 | 0 / 0 | akali__viktor__s20261114__random__random D:137 | — | — |
+| Kennen, Keeper of Balance | Unit | 1 | 78 | 28 | 13 | 48 | 0 | 48 / 0 | akali_sb__leblanc_sb__s20262108__random__random D:404 | akali_sb__leblanc_sb__s20262108__random__random D:407 | — |
+| Kennen, Storm of Shuriken | Unit | 1 | 78 | 66 | 0 | 98 | 0 | 121 / 0 | akali_sb__zed_sb__s20262117__random__random D:027 | akali_sb__zed_sb__s20262117__random__random D:031 | — |
+| Kha'Zix, Mutating Horror | Unit | 3 | 142 | 135 | 0 | 121 | 0 | 121 / 0 | akali__khazix__s20261107__random__random D:070 | akali__khazix__s20261107__random__random D:120 | — |
+| Kharox | Unit | 1 | 78 | 48 | 0 | 38 | 19 | 57 / 0 | akali__vex__s20261113__random__random D:141 | akali_sb__vex_sb__s20262113__random__random D:255 | akali_sb__vex_sb__s20262113__random__random D:253 |
+| Kinkou Initiate | Unit | 2 | 152 | 105 | 0 | 109 | 0 | 109 / 0 | akali__khazix__s20261107__random__random D:013 | akali__khazix__s20261107__random__random D:016 | — |
+| LeBlanc, Everywhere at Once | Unit | 1 | 35 | 17 | 0 | 0 | 0 | 0 / 0 | diana_sb__leblanc_sb__s20262144__random__random D:245 | — | — |
+| LeBlanc, Fragmented | Unit | 1 | 78 | 85 | 0 | 122 | 0 | 122 / 0 | akali__leblanc__s20261108__random__random D:013 | akali__leblanc__s20261108__random__random D:035 | — |
+| Lecturing Yordle | Unit | 1 | 78 | 80 | 0 | 91 | 0 | 91 / 0 | akali_sb__kaisa_sb__s20262106__random__random D:094 | akali_sb__kaisa_sb__s20262106__random__random D:097 | — |
+| Lonely Poro | Unit | 2 | 151 | 152 | 0 | 75 | 0 | 75 / 0 | akali__yasuao__s20261115__random__random D:276 | akali__yasuao__s20261115__random__random D:317 | — |
+| Master Yi, Tempered | Unit | 1 | 78 | 78 | 0 | 135 | 0 | 123 / 0 | akali__yi_rebuild__s20261116__random__random D:017 | akali__yi_rebuild__s20261116__random__random D:028 | — |
+| Mel, Newly Awakened | Unit | 1 | 78 | 85 | 0 | 85 | 26 | 111 / 0 | akali_sb__mel_sb__s20262109__random__random D:162 | akali_sb__mel_sb__s20262109__random__random D:167 | diana_sb__mel_sb__s20262145__random__random D:180 |
+| Mischievous Marai | Unit | 2 | 152 | 95 | 34 | 37 | 0 | 37 / 0 | akali__akali__s20261100__random__random D:177 | akali__irelia__s20263001__ismcts-sims20__random D:088 | — |
+| Mournful Witness | Unit | 1 | 78 | 64 | 0 | 35 | 0 | 35 / 0 | akali__akali__s20261100__random__random D:124 | akali__akali__s20261100__random__random D:204 | — |
+| Mutated Mouser | Unit | 1 | 78 | 74 | 0 | 0 | 0 | 0 / 0 | akali__vex__s20261113__random__random D:016 | — | — |
+| Nidalee, Cat Form | Unit | 1 | 78 | 64 | 0 | 35 | 0 | 35 / 0 | akali__rengar__s20261111__random__random D:093 | akali__rengar__s20261111__random__random D:180 | — |
+| Nocturne, Horrifying | Unit | 1 | 78 | 73 | 0 | 20 | 0 | 20 / 0 | azir__teemo__s20263050__random__ismcts-sims20 D:060 | akali__teemo__s20261112__random__random D:174 | — |
+| Noxian Demolitionist | Unit | 1 | 35 | 9 | 0 | 4 | 0 | 4 / 0 | akali_sb__rengar_sb__s20262111__random__random D:163 | rengar_sb__azir_sb__s20262299__random__random D:020 | — |
+| Noxian Emissary | Unit | 1 | 78 | 69 | 0 | 47 | 44 | 91 / 0 | diana__reksai__s20261146__random__random D:067 | diana__reksai__s20261146__random__random D:210 | diana__reksai__s20261146__random__random D:102 |
+| Noxus Hopeful | Unit | 5 | 341 | 276 | 0 | 0 | 0 | 0 / 0 | akali__akali__s20261100__random__random D:130 | — | — |
+| Pakaa Cub | Unit | 1 | 78 | 14 | 11 | 0 | 0 | 0 / 0 | fiora_sb__rengar_sb__s20262183__random__random D:187 | — | — |
+| Pickpocket | Unit | 2 | 68 | 50 | 0 | 50 | 0 | 50 / 0 | akali_sb__ezreal_sb__s20262103__random__random D:310 | akali_sb__ezreal_sb__s20262103__random__random D:313 | — |
+| Pit Rookie | Unit | 2 | 151 | 139 | 0 | 147 | 0 | 147 / 0 | akali__rengar__s20261111__random__random D:230 | akali__rengar__s20261111__random__random D:232 | — |
+| Plundering Poro | Unit | 1 | 78 | 76 | 0 | 37 | 0 | 37 / 0 | akali__kaisa__s20261106__random__random D:059 | akali__kaisa__s20261106__random__random D:078 | — |
+| Poppy, Paragon | Unit | 1 | 78 | 49 | 0 | 62 | 0 | 62 / 0 | akali__fiora__s20261104__random__random D:244 | akali__fiora__s20261104__random__random D:249 | — |
+| Pyke, Dockside Butcher | Unit | 1 | 78 | 22 | 13 | 35 | 0 | 35 / 0 | akali__rengar__s20261111__random__random D:125 | akali__rengar__s20261111__random__random D:129 | — |
+| Pyke, Returned | Unit | 2 | 152 | 48 | 18 | 114 | 0 | 106 / 0 | azir__irelia__s20261123__random__random D:311 | azir__irelia__s20261123__random__random D:354 | — |
+| Ravenbloom Prefect | Unit | 6 | 180 | 156 | 0 | 22 | 0 | 22 / 0 | akali_sb__mel_sb__s20262109__random__random D:068 | akali_sb__mel_sb__s20262109__random__random D:173 | — |
+| Ravenbloom Student | Unit | 2 | 150 | 169 | 0 | 341 | 0 | 341 / 0 | akali__diana__s20261102__random__random D:005 | akali__diana__s20261102__random__random D:037 | — |
+| Rek'Sai, Breacher | Unit | 1 | 78 | 83 | 0 | 0 | 0 | 0 / 0 | akali__reksai__s20261110__random__random D:006 | — | — |
+| Rengar, Trophy Hunter | Unit | 4 | 285 | 284 | 0 | 0 | 0 | 0 / 0 | akali__fiora__s20261104__random__random D:061 | — | — |
+| Rhasa the Sunderer | Unit | 1 | 78 | 52 | 0 | 0 | 0 | 0 / 0 | akali_sb__zed_sb__s20262117__random__random D:185 | — | — |
+| Rift Herald | Unit | 1 | 78 | 60 | 0 | 70 | 0 | 141 / 0 | akali__fiora__s20261104__random__random D:188 | akali__fiora__s20261104__random__random D:240 | — |
+| Ruin Runner | Unit | 1 | 78 | 53 | 0 | 0 | 0 | 0 / 0 | azir__yi_rebuild__s20261134__random__random D:035 | — | — |
+| Ruined Rex | Unit | 1 | 78 | 60 | 0 | 62 | 0 | 60 / 0 | akali__leblanc__s20261108__random__random D:131 | akali_sb__leblanc_sb__s20262108__random__random D:368 | — |
+| Scuttle Crab | Unit | 3 | 220 | 220 | 0 | 330 | 0 | 330 / 0 | akali__irelia__s20261105__random__random D:016 | akali__irelia__s20261105__random__random D:018 | — |
+| Sett, Brawler | Unit | 1 | 78 | 34 | 0 | 57 | 27 | 84 / 0 | akali__fiora__s20261104__random__random D:032 | akali__fiora__s20261104__random__random D:038 | ezreal_sb__fiora_sb__s20262158__random__random D:197 |
+| Shadow Fiend | Unit | 1 | 78 | 34 | 0 | 0 | 16 | 16 / 0 | azir__reksai__s20261128__random__random D:392 | — | azir__reksai__s20261128__random__random D:395 |
+| Shadow Order Disciple | Unit | 3 | 222 | 185 | 0 | 275 | 0 | 275 / 0 | akali__khazix__s20261107__random__random D:179 | akali__khazix__s20261107__random__random D:216 | — |
+| Shadowblade Lurker | Unit | 1 | 78 | 48 | 0 | 0 | 0 | 0 / 0 | akali_sb__zed_sb__s20262117__random__random D:056 | — | — |
+| Sneaky Deckhand | Unit | 1 | 78 | 65 | 0 | 0 | 0 | 0 / 0 | azir__teemo__s20261130__random__random D:149 | — | — |
+| Soaring Scout | Unit | 1 | 78 | 86 | 0 | 113 | 0 | 113 / 0 | akali__leblanc__s20261108__random__random D:201 | akali_sb__leblanc_sb__s20262108__random__random D:094 | — |
+| Steel Paws | Unit | 1 | 78 | 83 | 0 | 0 | 24 | 24 / 0 | akali_sb__vex_sb__s20262113__random__random D:045 | — | irelia_sb__vex_sb__s20262203__random__random D:267 |
+| Stellacorn Herder | Unit | 3 | 221 | 207 | 0 | 313 | 0 | 313 / 0 | akali__akali__s20261100__random__random D:016 | akali__akali__s20261100__random__random D:079 | — |
+| Tail-Cloaked Matriarch | Unit | 2 | 111 | 54 | 0 | 23 | 22 | 45 / 0 | azir__khazix__s20261125__random__random D:246 | azir__khazix__s20261125__random__random D:294 | azir__khazix__s20261125__random__random D:292 |
+| Teemo, Scout | Unit | 1 | 78 | 85 | 22 | 106 | 0 | 106 / 0 | akali__teemo__s20261112__random__random D:140 | akali__teemo__s20261112__random__random D:142 | — |
+| Teemo, Strategist | Unit | 1 | 78 | 158 | 58 | 61 | 0 | 61 / 0 | akali__teemo__s20261112__random__random D:020 | akali__teemo__s20261112__random__random D:150 | — |
+| Thousand-Tailed Watcher | Unit | 5 | 347 | 177 | 0 | 179 | 0 | 179 / 0 | akali__kaisa__s20261106__random__random D:133 | akali__kaisa__s20261106__random__random D:141 | — |
+| Tideturner | Unit | 8 | 501 | 438 | 161 | 580 | 0 | 580 / 0 | akali__khazix__s20263031__random__ismcts-sims20 D:090 | akali__diana__s20261102__random__random D:052 | — |
+| Tomb-Raider Barbara | Unit | 1 | 35 | 47 | 0 | 41 | 0 | 40 / 0 | akali_sb__vex_sb__s20262113__random__random D:021 | azir_sb__vex_sb__s20262131__random__random D:055 | — |
+| Tornado Warrior | Unit | 2 | 152 | 65 | 47 | 102 | 0 | 152 / 0 | azir_sb__khazix_sb__s20262125__random__random D:217 | akali_sb__vex_sb__s20262113__random__random D:062 | — |
+| Traveling Merchant | Unit | 4 | 285 | 249 | 0 | 308 | 0 | 599 / 0 | akali__diana__s20261102__random__random D:069 | akali__diana__s20261102__random__random D:097 | — |
+| Treasure Hunter | Unit | 1 | 78 | 54 | 0 | 72 | 0 | 72 / 0 | akali__irelia__s20261105__random__random D:031 | akali__irelia__s20261105__random__random D:054 | — |
+| Undertitan | Unit | 1 | 78 | 31 | 0 | 46 | 0 | 46 / 0 | akali__reksai__s20261110__random__random D:170 | akali__reksai__s20261110__random__random D:177 | — |
+| Vex, Apathetic | Unit | 6 | 369 | 368 | 0 | 900 | 0 | 900 / 0 | akali__diana__s20261102__random__random D:153 | akali__khazix__s20261107__random__random D:138 | — |
+| Vex, Cheerless | Unit | 1 | 35 | 16 | 0 | 0 | 0 | 0 / 0 | akali_sb__irelia_sb__s20262105__random__random D:078 | — | — |
+| Vi, Peacekeeper | Unit | 2 | 152 | 76 | 0 | 17 | 0 | 16 / 0 | akali__viktor__s20261114__random__random D:181 | azir__leblanc__s20261126__random__random D:359 | — |
+| Viktor, Leader | Unit | 1 | 78 | 71 | 0 | 101 | 0 | 98 / 0 | akali__viktor__s20261114__random__random D:098 | akali__viktor__s20261114__random__random D:111 | — |
+| Watchful Sentry | Unit | 2 | 152 | 153 | 0 | 143 | 0 | 143 / 0 | akali__leblanc__s20261108__random__random D:040 | akali__leblanc__s20261108__random__random D:069 | — |
+| Windsinger | Unit | 1 | 78 | 60 | 8 | 72 | 0 | 72 / 0 | akali_sb__teemo_sb__s20262112__random__random D:104 | akali_sb__teemo_sb__s20262112__random__random D:106 | — |
+| Xin Zhao, Vigilant | Unit | 1 | 78 | 70 | 0 | 0 | 0 | 0 / 0 | azir_sb__viktor_sb__s20262132__random__random D:078 | — | — |
+| Yasuo, Remorseful | Unit | 1 | 35 | 13 | 0 | 6 | 0 | 6 / 0 | azir_sb__yasuao_sb__s20262133__random__random D:143 | ezreal_sb__yasuao_sb__s20262169__random__random D:217 | — |
+| Yasuo, Windrider | Unit | 1 | 78 | 70 | 0 | 142 | 0 | 142 / 0 | akali__yasuao__s20261115__random__random D:100 | akali__yasuao__s20261115__random__random D:121 | — |
+| Zed, Without a Sound | Unit | 2 | 152 | 98 | 0 | 42 | 54 | 149 / 0 | akali__zed__s20261117__random__random D:278 | diana__zed__s20261153__random__random D:186 | diana_sb__zed_sb__s20262153__random__random D:209 |
+| Abandon | Spell | 1 | 78 | 22 | 0 | 0 | 0 | 0 / 38 | fiora__vex__s20261185__random__random D:262 | — | — |
+| Acceptable Losses | Spell | 6 | 300 | 260 | 0 | 0 | 0 | 0 / 359 | akali__diana__s20261102__random__random D:161 | — | — |
+| Against the Odds | Spell | 1 | 35 | 12 | 0 | 0 | 0 | 0 / 12 | akali_sb__azir_sb__s20262101__random__random D:114 | — | — |
+| Alpha Strike | Spell | 1 | 35 | 10 | 0 | 5 | 0 | 5 / 10 | diana_sb__yi_rebuild_sb__s20262152__random__random D:152 | viktor_sb__yi_rebuild_sb__s20262368__random__random D:229 | — |
+| Arise! | Spell | 1 | 78 | 72 | 0 | 62 | 0 | 62 / 171 | akali__azir__s20263000__ismcts-sims20__random D:087 | akali__azir__s20263000__ismcts-sims20__random D:096 | — |
+| Back Off | Spell | 4 | 286 | 157 | 45 | 0 | 0 | 0 / 181 | akali__akali__s20261100__random__random D:095 | — | — |
+| Bellows Breath | Spell | 3 | 220 | 247 | 0 | 0 | 0 | 0 / 349 | akali__ezreal__s20261103__random__random D:060 | — | — |
+| Block | Spell | 2 | 151 | 53 | 8 | 0 | 0 | 0 / 48 | akali__azir__s20261101__random__random D:088 | — | — |
+| Blood Money | Spell | 1 | 78 | 27 | 0 | 0 | 0 | 0 / 26 | akali_sb__viktor_sb__s20262114__random__random D:023 | — | — |
+| Blood Rush | Spell | 1 | 78 | 87 | 0 | 0 | 0 | 0 / 120 | akali_sb__reksai_sb__s20262110__random__random D:046 | — | — |
+| Brittle Steel | Spell | 3 | 99 | 26 | 0 | 0 | 0 | 0 / 27 | akali_sb__rengar_sb__s20262111__random__random D:133 | — | — |
+| Challenge | Spell | 1 | 78 | 35 | 0 | 0 | 0 | 0 / 30 | akali__fiora__s20261104__random__random D:125 | — | — |
+| Charm | Spell | 4 | 212 | 113 | 0 | 0 | 0 | 0 / 190 | akali__yi_rebuild__s20261116__random__random D:090 | — | — |
+| Cleave | Spell | 1 | 78 | 74 | 0 | 0 | 0 | 0 / 78 | akali__reksai__s20261110__random__random D:185 | — | — |
+| Consult the Past | Spell | 1 | 78 | 59 | 13 | 0 | 0 | 0 / 61 | akali__teemo__s20261112__random__random D:064 | — | — |
+| Cull the Weak | Spell | 3 | 222 | 205 | 0 | 0 | 0 | 0 / 544 | akali__viktor__s20261114__random__random D:104 | — | — |
+| Deadly Flourish | Spell | 1 | 78 | 64 | 0 | 0 | 0 | 47 / 62 | akali__ezreal__s20261103__random__random D:153 | — | — |
+| Death Mark | Spell | 1 | 78 | 137 | 0 | 0 | 0 | 0 / 192 | akali__zed__s20261117__random__random D:016 | — | — |
+| Deathgrip | Spell | 2 | 150 | 170 | 0 | 0 | 0 | 0 / 153 | akali__azir__s20261101__random__random D:021 | — | — |
+| Decree of Focus | Spell | 4 | 128 | 17 | 0 | 0 | 0 | 0 / 15 | akali_sb__azir_sb__s20262101__random__random D:230 | — | — |
+| Decree of Insight | Spell | 6 | 180 | 28 | 0 | 0 | 0 | 0 / 28 | diana_sb__fiora_sb__s20262140__random__random D:158 | — | — |
+| Decree of Rage | Spell | 1 | 35 | 6 | 0 | 0 | 0 | 0 / 6 | akali_sb__kaisa_sb__s20262106__random__random D:123 | — | — |
+| Decree of Strength | Spell | 3 | 99 | 52 | 0 | 0 | 0 | 0 / 69 | azir_sb__khazix_sb__s20262125__random__random D:202 | — | — |
+| Decree of Unity | Spell | 2 | 68 | 27 | 0 | 0 | 0 | 0 / 26 | azir_sb__diana_sb__s20262120__random__random D:205 | — | — |
+| Defiant Dance | Spell | 1 | 78 | 86 | 0 | 0 | 0 | 0 / 79 | akali__irelia__s20261105__random__random D:171 | — | — |
+| Defy | Spell | 6 | 402 | 357 | 0 | 0 | 0 | 0 / 341 | akali__akali__s20261100__random__random D:047 | — | — |
+| Discipline | Spell | 6 | 402 | 420 | 0 | 0 | 0 | 0 / 373 | akali__akali__s20261100__random__random D:042 | — | — |
+| Downwell | Spell | 1 | 78 | 11 | 0 | 0 | 0 | 0 / 11 | diana__teemo__s20261148__random__random D:097 | — | — |
+| Dragon Form | Spell | 1 | 78 | 93 | 0 | 0 | 0 | 0 / 90 | akali__viktor__s20261114__random__random D:074 | — | — |
+| Dredge Up | Spell | 1 | 78 | 154 | 0 | 0 | 0 | 0 / 148 | akali__mel__s20261109__random__random D:126 | — | — |
+| Eclipse | Spell | 2 | 152 | 104 | 0 | 0 | 0 | 0 / 102 | akali__viktor__s20261114__random__random D:048 | — | — |
+| En Garde | Spell | 4 | 250 | 213 | 0 | 0 | 0 | 0 / 193 | akali__azir__s20263000__ismcts-sims20__random D:104 | — | — |
+| Existential Dread | Spell | 1 | 78 | 6 | 0 | 0 | 0 | 0 / 6 | azir_sb__teemo_sb__s20262130__random__random D:199 | — | — |
+| Facebreaker | Spell | 1 | 78 | 12 | 47 | 0 | 0 | 0 / 42 | akali_sb__viktor_sb__s20262114__random__random D:320 | — | — |
+| Falling Star | Spell | 3 | 222 | 210 | 0 | 0 | 0 | 0 / 209 | akali__akali__s20261100__random__random D:101 | — | — |
+| Flash | Spell | 3 | 221 | 138 | 0 | 0 | 0 | 0 / 123 | akali__irelia__s20261105__random__random D:011 | — | — |
+| Flurry of Blades | Spell | 1 | 78 | 58 | 0 | 0 | 0 | 0 / 55 | akali__fiora__s20261104__random__random D:016 | — | — |
+| Guards! | Spell | 1 | 78 | 67 | 24 | 72 | 0 | 72 / 144 | akali__azir__s20261101__random__random D:057 | akali__azir__s20261101__random__random D:063 | — |
+| Guerilla Warfare | Spell | 1 | 78 | 36 | 12 | 0 | 0 | 0 / 100 | azir__teemo__s20261130__random__random D:089 | — | — |
+| Gust | Spell | 7 | 394 | 396 | 0 | 0 | 0 | 0 / 376 | akali__diana__s20261102__random__random D:101 | — | — |
+| Hard Bargain | Spell | 5 | 238 | 121 | 0 | 0 | 0 | 0 / 226 | akali_sb__irelia_sb__s20262105__random__random D:108 | — | — |
+| Hextech Ray | Spell | 2 | 152 | 107 | 0 | 0 | 0 | 0 / 102 | akali__kaisa__s20261106__random__random D:365 | — | — |
+| Hidden Blade | Spell | 4 | 285 | 197 | 63 | 0 | 0 | 0 / 232 | akali__azir__s20261101__random__random D:050 | — | — |
+| Imperial Decree | Spell | 2 | 152 | 93 | 0 | 0 | 0 | 67 / 97 | akali__reksai__s20261110__random__random D:137 | — | — |
+| Invert Timelines | Spell | 1 | 78 | 26 | 0 | 0 | 0 | 0 / 26 | akali_sb__teemo_sb__s20262112__random__random D:088 | — | — |
+| Ki Barrier | Spell | 1 | 78 | 32 | 0 | 0 | 0 | 0 / 31 | azir_sb__leblanc_sb__s20262126__random__random D:072 | — | — |
+| Mirror Image | Spell | 1 | 78 | 103 | 0 | 102 | 0 | 102 / 102 | akali_sb__leblanc_sb__s20262108__random__random D:010 | akali_sb__leblanc_sb__s20262108__random__random D:017 | — |
+| Mobilize | Spell | 1 | 78 | 65 | 0 | 0 | 0 | 0 / 58 | akali__fiora__s20261104__random__random D:108 | — | — |
+| Moonfall | Spell | 1 | 78 | 63 | 0 | 0 | 0 | 0 / 57 | akali_sb__diana_sb__s20262102__random__random D:180 | — | — |
+| Not So Fast | Spell | 4 | 211 | 43 | 0 | 0 | 0 | 0 / 39 | akali__kaisa__s20261106__random__random D:212 | — | — |
+| Onslaught | Spell | 1 | 78 | 35 | 0 | 0 | 0 | 0 / 32 | fiora_sb__yi_rebuild_sb__s20262188__random__random D:122 | — | — |
+| Perfect Execution | Spell | 2 | 150 | 157 | 0 | 0 | 0 | 0 / 152 | akali__kaisa__s20261106__random__random D:081 | — | — |
+| Piercing Light | Spell | 1 | 35 | 21 | 0 | 0 | 0 | 0 / 24 | diana_sb__zed_sb__s20262153__random__random D:136 | — | — |
+| Progress Day | Spell | 1 | 78 | 31 | 0 | 0 | 0 | 0 / 31 | azir__kaisa__s20261124__random__random D:080 | — | — |
+| Punch First | Spell | 4 | 250 | 219 | 0 | 0 | 0 | 0 / 218 | akali__khazix__s20261107__random__random D:325 | — | — |
+| Rampage | Spell | 4 | 285 | 190 | 0 | 0 | 0 | 0 / 167 | akali__fiora__s20261104__random__random D:076 | — | — |
+| Rebuke | Spell | 4 | 285 | 177 | 0 | 0 | 0 | 0 / 161 | akali__vex__s20261113__random__random D:217 | — | — |
+| Rebuttal | Spell | 1 | 78 | 74 | 0 | 0 | 0 | 0 / 144 | diana__mel__s20263039__random__ismcts-sims20 D:201 | — | — |
+| Repulse | Spell | 1 | 78 | 24 | 0 | 0 | 0 | 0 / 39 | akali__fiora__s20261104__random__random D:147 | — | — |
+| Ride the Wind | Spell | 7 | 456 | 314 | 0 | 0 | 0 | 0 / 589 | akali__irelia__s20263001__ismcts-sims20__random D:167 | — | — |
+| Riposte | Spell | 1 | 78 | 58 | 0 | 0 | 0 | 0 / 57 | akali__fiora__s20261104__random__random D:111 | — | — |
+| Rocket Barrage | Spell | 1 | 78 | 19 | 0 | 0 | 0 | 0 / 20 | akali__kaisa__s20261106__random__random D:230 | — | — |
+| Sabotage | Spell | 3 | 221 | 177 | 0 | 0 | 0 | 0 / 317 | akali__yi_rebuild__s20261116__random__random D:124 | — | — |
+| Sacrifice | Spell | 2 | 152 | 95 | 0 | 0 | 0 | 0 / 89 | akali__fiora__s20261104__random__random D:043 | — | — |
+| Salvage | Spell | 5 | 155 | 168 | 0 | 0 | 0 | 0 / 165 | akali_sb__azir_sb__s20262101__random__random D:058 | — | — |
+| Shock Blast | Spell | 1 | 78 | 61 | 0 | 0 | 0 | 0 / 58 | azir__mel__s20261127__random__random D:132 | — | — |
+| Shuriken Flip | Spell | 1 | 78 | 131 | 0 | 0 | 0 | 0 / 393 | akali__azir__s20261101__random__random D:202 | — | — |
+| Singularity | Spell | 4 | 249 | 145 | 0 | 0 | 0 | 0 / 139 | akali__ezreal__s20261103__random__random D:239 | — | — |
+| Smite | Spell | 1 | 35 | 19 | 0 | 0 | 0 | 0 / 21 | azir_sb__reksai_sb__s20262128__random__random D:180 | — | — |
+| Smoke Screen | Spell | 3 | 220 | 140 | 0 | 0 | 0 | 0 / 137 | akali__kaisa__s20261106__random__random D:167 | — | — |
+| Sprite Burst | Spell | 2 | 68 | 31 | 0 | 0 | 0 | 0 / 53 | azir_sb__kaisa_sb__s20262124__random__random D:296 | — | — |
+| Sprite Call | Spell | 1 | 78 | 52 | 19 | 0 | 0 | 0 / 82 | akali_sb__teemo_sb__s20262112__random__random D:028 | — | — |
+| Star-Crossed | Spell | 9 | 467 | 439 | 0 | 0 | 0 | 0 / 426 | akali__diana__s20261102__random__random D:136 | — | — |
+| Stupefy | Spell | 6 | 400 | 444 | 0 | 0 | 0 | 0 / 440 | akali__diana__s20261102__random__random D:013 | — | — |
+| Switcheroo | Spell | 8 | 473 | 257 | 98 | 0 | 0 | 0 / 303 | akali__irelia__s20263001__ismcts-sims20__random D:072 | — | — |
+| Temporal Breach | Spell | 2 | 152 | 109 | 69 | 0 | 0 | 0 / 162 | akali__kaisa__s20261106__random__random D:287 | — | — |
+| Thermo Beam | Spell | 3 | 99 | 53 | 0 | 0 | 0 | 0 / 51 | akali_sb__akali_sb__s20262100__random__random D:194 | — | — |
+| Thrill of the Hunt | Spell | 1 | 78 | 63 | 0 | 0 | 0 | 0 / 117 | akali__rengar__s20263046__random__ismcts-sims20 D:024 | — | — |
+| Time Warp | Spell | 3 | 183 | 46 | 0 | 0 | 0 | 0 / 46 | azir_sb__leblanc_sb__s20262126__random__random D:192 | — | — |
+| Turn to Dust | Spell | 3 | 142 | 53 | 0 | 0 | 0 | 0 / 55 | akali__ezreal__s20261103__random__random D:078 | — | — |
+| Unchecked Power | Spell | 1 | 35 | 12 | 0 | 0 | 0 | 0 / 12 | ezreal_sb__mel_sb__s20262163__random__random D:234 | — | — |
+| Up from the Deep | Spell | 4 | 212 | 242 | 0 | 0 | 0 | 0 / 444 | akali__khazix__s20263031__random__ismcts-sims20 D:065 | — | — |
+| Void Assault | Spell | 1 | 78 | 52 | 0 | 0 | 0 | 0 / 106 | akali__khazix__s20261107__random__random D:019 | — | — |
+| Void Rush | Spell | 1 | 78 | 65 | 0 | 0 | 0 | 0 / 181 | azir__reksai__s20261128__random__random D:116 | — | — |
+| Wages of Pain | Spell | 1 | 78 | 76 | 31 | 0 | 0 | 0 / 105 | akali__ezreal__s20261103__random__random D:125 | — | — |
+| Wind Wall | Spell | 1 | 35 | 20 | 0 | 0 | 0 | 0 / 19 | azir_sb__yasuao_sb__s20262133__random__random D:023 | — | — |
+| B.F. Sword | Gear | 2 | 150 | 93 | 0 | 0 | 110 | 0 / 0 | akali__azir__s20261101__random__random D:026 | — | akali__azir__s20261101__random__random D:155 |
+| Boots of Swiftness | Gear | 2 | 152 | 102 | 0 | 0 | 140 | 0 / 0 | akali_sb__irelia_sb__s20262105__random__random D:010 | — | akali_sb__irelia_sb__s20262105__random__random D:025 |
+| Brutalizer | Gear | 1 | 78 | 68 | 0 | 0 | 82 | 0 / 0 | akali__azir__s20263000__ismcts-sims20__random D:248 | — | akali__azir__s20263000__ismcts-sims20__random D:260 |
+| Dazzling Aurora | Gear | 1 | 78 | 22 | 0 | 88 | 0 | 170 / 0 | diana__fiora__s20261140__random__random D:056 | diana__fiora__s20261140__random__random D:075 | — |
+| Divining Shells | Gear | 1 | 78 | 54 | 0 | 54 | 32 | 100 / 0 | akali__fiora__s20261104__random__random D:289 | akali__fiora__s20261104__random__random D:291 | akali__fiora__s20261104__random__random D:310 |
+| Doran's Shield | Gear | 1 | 78 | 83 | 0 | 0 | 97 | 0 / 0 | akali__azir__s20261101__random__random D:072 | — | akali__azir__s20261101__random__random D:085 |
+| Edge of Night | Gear | 1 | 78 | 31 | 21 | 51 | 48 | 51 / 0 | akali__irelia__s20261105__random__random D:102 | akali__irelia__s20261105__random__random D:105 | akali__irelia__s20261105__random__random D:108 |
+| Eye of the Herald | Gear | 1 | 78 | 76 | 0 | 0 | 92 | 124 / 0 | akali__azir__s20263000__ismcts-sims20__random D:115 | — | akali__azir__s20263000__ismcts-sims20__random D:179 |
+| Forge of the Future | Gear | 2 | 68 | 20 | 0 | 21 | 17 | 92 / 0 | azir_sb__reksai_sb__s20262128__random__random D:040 | azir_sb__reksai_sb__s20262128__random__random D:042 | azir_sb__reksai_sb__s20262128__random__random D:051 |
+| Hand Hammer | Gear | 1 | 78 | 63 | 0 | 0 | 64 | 0 / 0 | akali__azir__s20263000__ismcts-sims20__random D:320 | — | akali__azir__s20263000__ismcts-sims20__random D:393 |
+| Last Rites | Gear | 1 | 78 | 48 | 0 | 0 | 68 | 79 / 0 | azir__zed__s20261135__random__random D:033 | — | azir__zed__s20261135__random__random D:046 |
+| Long Sword | Gear | 1 | 78 | 62 | 0 | 0 | 31 | 0 / 0 | akali__azir__s20261101__random__random D:189 | — | akali__azir__s20261101__random__random D:221 |
+| Pack of Wonders | Gear | 1 | 78 | 111 | 0 | 0 | 154 | 154 / 0 | akali_sb__ezreal_sb__s20262103__random__random D:352 | — | akali_sb__ezreal_sb__s20262103__random__random D:392 |
+| Seal of Discord | Gear | 1 | 78 | 59 | 0 | 0 | 64 | 263 / 0 | akali__zed__s20261117__random__random D:005 | — | akali__zed__s20261117__random__random D:013 |
+| Shepherd's Heirloom | Gear | 1 | 78 | 51 | 0 | 51 | 49 | 51 / 0 | akali_sb__fiora_sb__s20262104__random__random D:121 | akali_sb__fiora_sb__s20262104__random__random D:123 | akali_sb__fiora_sb__s20262104__random__random D:209 |
+| Soul Sword | Gear | 1 | 78 | 84 | 0 | 0 | 103 | 0 / 0 | akali__azir__s20261101__random__random D:005 | — | akali__azir__s20261101__random__random D:071 |
+| Sprite Fountain | Gear | 4 | 285 | 219 | 0 | 419 | 0 | 419 / 0 | akali__ezreal__s20261103__random__random D:011 | akali__ezreal__s20261103__random__random D:014 | — |
+| Sterak's Gage | Gear | 1 | 78 | 30 | 0 | 0 | 12 | 0 / 0 | akali__akali__s20261100__random__random D:168 | — | akali__azir__s20261101__random__random D:117 |
+| The List | Gear | 1 | 78 | 86 | 0 | 86 | 56 | 228 / 0 | akali__ezreal__s20261103__random__random D:051 | akali__ezreal__s20261103__random__random D:052 | diana__ezreal__s20261139__random__random D:440 |
+| Treasure Trove | Gear | 1 | 78 | 71 | 0 | 68 | 59 | 127 / 0 | akali__ezreal__s20261103__random__random D:092 | akali__ezreal__s20261103__random__random D:147 | akali__ezreal__s20261103__random__random D:145 |
+| Zhonya's Hourglass | Gear | 5 | 345 | 165 | 106 | 0 | 0 | 0 / 0 | akali__akali__s20261100__random__random D:127 | — | — |
+| Abandoned Hall | Battlefield | 2 | 152 | 48 | 0 | 653 | 0 | 653 / 0 | akali__diana__s20261102__random__random D:002 | akali__diana__s20261102__random__random D:024 | — |
+| Amateur Recital | Battlefield | 1 | 78 | 28 | 0 | 92 | 0 | 81 / 0 | azir__fiora__s20261122__random__random D:002 | azir__fiora__s20261122__random__random D:050 | — |
+| Bandle Tree | Battlefield | 1 | 78 | 23 | 0 | 0 | 0 | 0 / 0 | akali__vex__s20261113__random__random D:002 | — | — |
+| Dusk Rose Lab | Battlefield | 3 | 222 | 86 | 0 | 1754 | 0 | 1754 / 0 | akali__leblanc__s20261108__random__random D:002 | akali__leblanc__s20261108__random__random D:004 | — |
+| Emperor's Dais | Battlefield | 2 | 151 | 56 | 0 | 138 | 0 | 133 / 0 | akali__rengar__s20263046__random__ismcts-sims20 D:002 | akali__rengar__s20263046__random__ismcts-sims20 D:038 | — |
+| Forbidding Waste | Battlefield | 3 | 220 | 79 | 0 | 0 | 0 | 0 / 0 | akali__yasuao__s20261115__random__random D:002 | — | — |
+| Forgotten Monument | Battlefield | 1 | 78 | 26 | 0 | 0 | 0 | 0 / 0 | akali__akali__s20261100__random__random D:001 | — | — |
+| Fortified Position | Battlefield | 1 | 78 | 33 | 0 | 72 | 0 | 72 / 0 | akali_sb__vex_sb__s20262113__random__random D:002 | akali_sb__vex_sb__s20262113__random__random D:068 | — |
+| Frozen Fortress | Battlefield | 3 | 222 | 79 | 0 | 1636 | 0 | 1636 / 0 | akali__kaisa__s20261106__random__random D:002 | akali__kaisa__s20261106__random__random D:004 | — |
+| Grove of the God-Willow | Battlefield | 1 | 78 | 25 | 0 | 76 | 0 | 69 / 0 | azir_sb__teemo_sb__s20262130__random__random D:002 | azir_sb__teemo_sb__s20262130__random__random D:144 | — |
+| Hall of Legends | Battlefield | 1 | 78 | 25 | 0 | 67 | 0 | 64 / 0 | akali__azir__s20261101__random__random D:002 | akali__azir__s20261101__random__random D:045 | — |
+| Minefield | Battlefield | 1 | 78 | 21 | 0 | 49 | 0 | 47 / 0 | azir_sb__zed_sb__s20262135__random__random D:002 | azir_sb__zed_sb__s20262135__random__random D:072 | — |
+| Risen Altar | Battlefield | 1 | 78 | 36 | 0 | 0 | 0 | 0 / 0 | akali__fiora__s20261104__random__random D:002 | — | — |
+| Rockfall Path | Battlefield | 3 | 221 | 86 | 0 | 0 | 0 | 0 / 0 | akali__mel__s20261109__random__random D:002 | — | — |
+| Sandswept Tomb | Battlefield | 2 | 152 | 48 | 0 | 0 | 0 | 0 / 0 | akali__zed__s20261117__random__random D:002 | — | — |
+| Seat of Power | Battlefield | 6 | 402 | 142 | 0 | 349 | 0 | 336 / 0 | akali__rengar__s20261111__random__random D:002 | akali__rengar__s20261111__random__random D:122 | — |
+| Sigil of the Storm | Battlefield | 2 | 152 | 56 | 0 | 151 | 0 | 284 / 0 | akali__azir__s20261101__random__random D:001 | akali__azir__s20261101__random__random D:081 | — |
+| Star Spring | Battlefield | 4 | 286 | 118 | 0 | 235 | 0 | 235 / 0 | akali__yi_rebuild__s20261116__random__random D:002 | akali__yi_rebuild__s20261116__random__random D:117 | — |
+| Startipped Peak | Battlefield | 2 | 151 | 53 | 0 | 180 | 0 | 162 / 0 | akali__teemo__s20261112__random__random D:002 | akali__teemo__s20261112__random__random D:050 | — |
+| Sunken Temple | Battlefield | 3 | 219 | 73 | 0 | 75 | 0 | 68 / 0 | akali__irelia__s20263001__ismcts-sims20__random D:002 | akali__irelia__s20263001__ismcts-sims20__random D:053 | — |
+| Targon's Peak | Battlefield | 3 | 220 | 90 | 0 | 228 | 0 | 445 / 0 | akali__irelia__s20261105__random__random D:002 | akali__irelia__s20261105__random__random D:026 | — |
+| Trifarian War Camp | Battlefield | 1 | 78 | 30 | 0 | 0 | 0 | 0 / 0 | akali__azir__s20263000__ismcts-sims20__random D:002 | — | — |
+| Vilemaw's Lair | Battlefield | 1 | 78 | 22 | 0 | 0 | 0 | 0 / 0 | ezreal__azir__s20261155__random__random D:001 | — | — |
+| Void Gate | Battlefield | 3 | 222 | 82 | 0 | 0 | 0 | 0 / 0 | akali__akali__s20261100__random__random D:002 | — | — |
+| Windswept Hillock | Battlefield | 1 | 78 | 19 | 0 | 0 | 0 | 0 / 0 | khazix__leblanc__s20261234__random__random D:002 | — | — |
+| Zaun Warrens | Battlefield | 2 | 152 | 56 | 0 | 142 | 0 | 269 / 0 | akali__khazix__s20261107__random__random D:002 | akali__khazix__s20261107__random__random D:059 | — |
+| Body Rune | Rune | 4 | 285 | 3421 | 0 | 0 | 0 | 0 / 0 | akali__fiora__s20261104__random__random D:010 | — | — |
+| Calm Rune | Rune | 6 | 402 | 3816 | 0 | 0 | 0 | 0 / 0 | akali__akali__s20261100__random__random D:004 | — | — |
+| Chaos Rune | Rune | 9 | 546 | 6971 | 0 | 0 | 0 | 0 / 0 | akali__diana__s20261102__random__random D:012 | — | — |
+| Fury Rune | Rune | 5 | 341 | 3370 | 0 | 0 | 0 | 0 / 0 | akali__akali__s20261100__random__random D:005 | — | — |
+| Mind Rune | Rune | 7 | 454 | 4718 | 0 | 0 | 0 | 0 / 0 | akali__diana__s20261102__random__random D:004 | — | — |
+| Order Rune | Rune | 5 | 347 | 3950 | 0 | 0 | 0 | 0 / 0 | akali__azir__s20261101__random__random D:008 | — | — |
+
 ## 5. Findings
 
 Numbered D1... in the order lead (engine-level sequences), then reader by reader. A reader's finding that is the
@@ -823,10 +1136,10 @@ not in a trace (the finding says which board would show it).
 | id | finding | confidence | from |
 |---|---|---|---|
 | D1 | Every permanent with a play trigger; Accelerate units: "when you play" abilities are queued and finalized before the permanent has entered, and Accelerate is asked after them | CERTAIN | lead (+1 merged) |
-| D2 | Daughter of the Void, Scorn of the Moon, Gold, Seal of Discord: an [Add] ability is an ordinary chain item — both players get priority before it resolves, the opponent can respond on top of it, and the resource arrives late | CERTAIN | lead |
+| D2 | Daughter of the Void, Scorn of the Moon, Gold, Seal of Discord: an [Add] ability is an ordinary chain item — both players get priority before it resolves, the opponent can respond on top of it, and the resource arrives late | CERTAIN | lead (+1 merged) |
 | D3 | Ride the Wind, Unforgiven, Charm, Void Assault (and the cards the readers add: Shuriken Flip, Thrill of the Hunt): the destination of a move is chosen as the spell or ability resolves | CERTAIN | lead |
-| D4 | Every "you may" trigger, and triggers with nothing to choose: a declined, unpayable or targetless triggered ability stays on the chain, both players get priority, and it "resolves" | CERTAIN | lead (+4 merged) |
-| D5 | Combat is not a Showdown State for the action generator: spells with neither [Action] nor [Reaction] are offered and played at Focus in a combat, by the defender on the opponent's turn too | CERTAIN | lead (+5 merged) |
+| D4 | Every "you may" trigger, and triggers with nothing to choose: a declined, unpayable or targetless triggered ability stays on the chain, both players get priority, and it "resolves" | CERTAIN / LIKELY | lead (+4 merged) |
+| D5 | Combat is not a Showdown State for the action generator: spells with neither [Action] nor [Reaction] are offered and played at Focus in a combat, by the defender on the opponent's turn too | CERTAIN | lead (+6 merged) |
 | D6 | Any non-Reaction spell: offered as a plain play at a chain-priority decision; choosing it does nothing and the same decision is asked again | CERTAIN | lead (+1 merged) |
 | D7 | A triggered or delayed ability queued during a showdown is left pending: Focus is passed, the showdown closes and combat damage is dealt with the item still on the chain | CERTAIN | lead (+1 merged) |
 | D8 | Star-Crossed, Switcheroo, Facebreaker, Defiant Dance: offered, paid for and put on the chain without a legal choice for each target | CERTAIN | lead (+1 merged) |
@@ -842,11 +1155,11 @@ not in a trace (the finding says which board would show it).
 | D18 | Astral Heron: the discount is kept for a later turn | CERTAIN | reader 1, R1-6 |
 | D19 | Astral Heron: the ability is put on the chain while the Heron is not at a battlefield | LIKELY | reader 1, R1-7 |
 | D20 | Falling Star: kills between its two instructions, so a death replaced after the first hit is died again on the second | CERTAIN | reader 1, R1-8 |
-| D21 | Defy, Not So Fast: only the item on top of the chain can be countered | CODE-ONLY | reader 1, R1-10 (+4 merged) |
+| D21 | Counter spells (Defy, Not So Fast, Hard Bargain, Riposte, Repulse, Rebuttal, Abandon, Wind Wall): the spell to counter is never chosen — only the top item of the chain can be countered | CODE-ONLY / LIKELY / CERTAIN | reader 1, R1-10 (+5 merged) |
 | D22 | Emperor of the Sands / Sand Soldier [Weaponmaster]: the "may" and the Equipment are chosen at resolution, not at finalization | CERTAIN | reader 2, R2-1 |
 | D23 | Trifarian War Camp / Azir, Sovereign (and other continuous effects): Might is not recomputed before the next window or the damage step — a token moved in by Azir's trigger fights without the +1 [M] | CERTAIN | reader 2, R2-3 |
 | D24 | Azir, Sovereign: "you may move any number of your token units" is asked at resolution | LIKELY | reader 2, R2-4 |
-| D25 | Hidden cards (Guards!, Hidden Blade, Edge of Night, Pyke, Returned): a facedown card is never offered in its controller's own Neutral Open State | LIKELY | reader 2, R2-6 (+1 merged) |
+| D25 | Hidden cards (Guards!, Hidden Blade, Edge of Night, Pyke, Returned, Wages of Pain, Temporal Breach): a facedown card is never offered in its controller's own Neutral Open State | LIKELY / CERTAIN | reader 2, R2-6 (+1 merged) |
 | D26 | Vex, Cheerless: an enemy spell played while she is in combat is not taxed | CERTAIN | reader 2, R2-7 |
 | D27 | Pyke, Returned / Edge of Night: the trigger's condition is tested at resolution, so the ability goes on the chain when it should not trigger | LIKELY | reader 2, R2-8 |
 | D28 | Deathgrip: playable with a single friendly unit (no "another friendly unit" to choose) | QUESTION | reader 2, R2-10 |
@@ -865,7 +1178,7 @@ not in a trace (the finding says which board would show it).
 | D41 | Repulse, Forge of the Future: choices the rules place at finalization are made after RESOLVE (K3 kind) | LIKELY | reader 4, R4-11 |
 | D42 | Fiora, Victorious: her [Shield] adds nothing to her Might while a chain of the combat showdown is running | LIKELY | reader 4, R4-12 |
 | D43 | Ezreal, Prodigy + Thousand-Tailed Watcher (any Accelerate): Accelerate is not an "optional additional cost" for Ezreal's discount | CERTAIN | reader 5, R5-1 |
-| D44 | Engine (Wages of Pain, Deadly Flourish, Singularity, ...): a unit with lethal damage stays on the board until the chain is empty | CERTAIN | reader 5, R5-3 (+1 merged) |
+| D44 | A unit with lethal damage stays on the board until the chain is empty: no cleanup between the items of a chain (Wages of Pain, Deadly Flourish, Singularity, Unchecked Power, Piercing Light) | CERTAIN / LIKELY | reader 5, R5-3 (+2 merged) |
 | D45 | Bellows Breath: the Repeat's choices ignore "at the same location", are forced to the first execution's count, and are not asked at all when the first execution chose nothing | CERTAIN | reader 5, R5-4 |
 | D46 | The List: "As you play this, name a tag" is run as a triggered ability with priority windows, and only tags already public can be named | LIKELY / QUESTION | reader 5, R5-6 |
 | D47 | Temporal Breach + Rockfall Path: the banished unit is played back onto a battlefield where "Units can't be played" | LIKELY | reader 5, R5-7 |
@@ -889,13 +1202,20 @@ not in a trace (the finding says which board would show it).
 | D65 | Mel, Newly Awakened: the extra -1 [M] is added to every -[M] her controller's resolving item gives, chosen unit or not | CODE-ONLY | reader 7, R7-11 |
 | D66 | Herald of the Arcane: the Recruit always goes to the base; no location is offered | LIKELY | reader 8, R8-1 |
 | D67 | Swift Scout, Guerilla Warfare: the objects are chosen after RESOLVE; Swift Scout can be activated with nothing to choose | LIKELY | reader 8, R8-2 |
-| D68 | Teemo, Strategist (every "When I defend / attack"): a unit that joins a combat already under way never triggers | CERTAIN | reader 8, R8-3 (+1 merged) |
+| D68 | Teemo, Strategist (every "When I defend / attack"): a unit that joins a combat already under way never triggers | CERTAIN / LIKELY | reader 8, R8-3 (+1 merged) |
 | D69 | Sprite Call played from facedown: the Sprite may be put in the base or at another battlefield | CERTAIN | reader 8, R8-4 |
 | D70 | Windsinger played from facedown: a unit at another battlefield is offered | CERTAIN | reader 8, R8-5 |
 | D71 | Nocturne, Horrifying: the "As you look at or reveal me" replacement is a triggered ability on the chain | CERTAIN / QUESTION | reader 8, R8-6 |
 | D72 | Scoring Step: battlefields are held one at a time, each hold's abilities resolved before the next hold | LIKELY | reader 8, R8-7 |
 | D73 | Fortified Position: the [Shield 2] lasts the turn, not the combat | CERTAIN / CODE-ONLY | reader 8, R8-10 |
 | D74 | Facebreaker from facedown: offered with no friendly + enemy pair at its battlefield (and as up to 20 identical intents) | CERTAIN | reader 8, R8-11 |
+| D75 | Master of Shadows: empowered when an OPPONENT banishes a card its controller owns | CERTAIN | reader 9, R9-1 |
+| D76 | Wuju Bladesman - Starter: the +2 [M] is missing whenever nothing resolves between "COMBAT:" and the damage step | CERTAIN | reader 9, R9-2 |
+| D77 | Yasuo, Windrider: an ability is put on the chain for every move, not only "the third time I move in a turn" (same pattern: Fiora, Peerless when not one on one) | LIKELY | reader 9, R9-5 |
+| D78 | Kennen, Storm of Shuriken: the spell that gets [Flow] is chosen at resolution | LIKELY | reader 9, R9-6 |
+| D79 | Switcheroo on a unit with Deflect (Master Yi, Tempered at Level 6): Deflect is charged for the play option's unit, then both units are asked again — charged without choosing it, or charged twice | CERTAIN | reader 9, R9-7 |
+| D80 | Lonely Poro: "died alone" when every other friendly unit there died in the same damage step | QUESTION | reader 9, R9-10 |
+| D81 | Minefield: no Burn Out when the Main Deck has fewer than 2 cards | CODE-ONLY | reader 9, R9-11 |
 
 ### D1  Every permanent with a play trigger; Accelerate units: "when you play" abilities are queued and finalized before the permanent has entered, and Accelerate is asked after them
 
@@ -921,6 +1241,12 @@ _Origin: lead._
 - should: the ability resolves as it is finalized; nobody receives priority; the Energy / Power is in the pool at once (and can pay the cost being paid).
 - confidence: CERTAIN.
 - also seen: 704 Daughter of the Void and 672 Scorn of the Moon resolutions, all through priority. Outcomes recorded by the readers as findings of their own (kept below): the legend's Energy cannot pay a cost due at finalization (D30 (R3-4)), an Add activated with Focus hands Focus to the opponent (D31 (R3-5)).
+
+**Further evidence — reader 9, D2 (R9-9): Seal of Discord (204): its [Add] ability is a chain item with a priority window (K2, another card)**
+
+- happened: azir__zed__s20261135__random__random, D:077-083: `CHOSE: [P2] ActivateAbility (src=Seal of Discord)` / `DECISION #83 (P1 — chain priority): 2 legal actions` / `CHOSE: [P1] PlayReaction` / `[D:081.02] RESOLVE: Back Off ...` / `[D:083.02] RESOLVE: Seal of Discord (chain_item=16, ability=1, spell=0)` / `EFFECT: P2 adds 1 floating Chaos Power (pool=1)`.
+- should: no chain item, no window. (The class comment says "Resolves immediately (CR 429.2), not via the chain".)
+- confidence: CERTAIN (the card's own reminder text). All 64 activations go through the chain; the opponent reacted on top in azir__zed__s20261135 D:077 and teemo__zed__s20263049__ismcts-sims20__random D:078. The payment prompts I read list only runes ("pick rune to exhaust / recycle"), so it is used as a separate action beforehand, not while paying (CR 445.2.c) — not scanned.
 
 ### D3  Ride the Wind, Unforgiven, Charm, Void Assault (and the cards the readers add: Shuriken Flip, Thrill of the Hunt): the destination of a move is chosen as the spell or ability resolves
 
@@ -1063,6 +1389,15 @@ _Origin: lead._
 - should: in a combat showdown only [Action] / [Reaction] cards (and hidden cards) are offered, to both players.
 - confidence: CERTAIN (310.1.a, 806.1.b).
 - also seen: Time Warp offered to the non-turn player in a combat: kaisa__akali__s20261208__random__random decision #338.
+
+**Further evidence — reader 9, D5 (R9-3): Combat showdowns: spells without [Action] / [Reaction] are offered and played by both players, from hand and from the trash (Death Mark, Onslaught, Piercing Light)**
+
+- happened: ezreal_sb__zed_sb__s20262171__random__random, idx 322 / D:305, P1's turn 19, combat in progress, P2 has Focus:
+  options `[0] Pass Focus  [1] Play Death Mark #931[S]  [2] Activate Zed, Without a Sound ...`, chosen `Play Death Mark`; `[D:305.04] INTENT: PlayCard by P2` / `SPELL: Death Mark (id=71)` / `PAY_ADD: P2 pays [1] + 2 power (any): exhausted 1, recycled 2` / `TRASH_REPLAY: P2 replayed card id=71 for [1]+power`.
+  teemo__yi_rebuild__s20261332__random__random, idx 335 / D:303: `COMBAT: BF#0 attacker=P1 defender=P2` / `INTENT: PlayCard by P2` / `SPELL: Onslaught (id=91)` / `TRASH_REPLAY: P2 replayed card id=91 for [4]+power`; options were `[0] Pass Focus [1] Play Onslaught #868[S]`.
+- should: neither card has [Action] or [Reaction]; not playable with Focus in a showdown, on either player's turn.
+- confidence: CERTAIN. In the replay text the board header of every combat Pass Focus decision carries no `SHOWDOWN` flag (373 of 373 in a 1-in-6 sample of games, units marked ATK/DEF), while non-combat showdowns carry it (497 of 497); `generateTrashReplayActions` and the spell generator allow any spell when `state_.turn.isNeutralOpen()`. In the yasuao / yi_rebuild / zed games: Death Mark offered at 79 combat Focus decisions (chosen 34), Onslaught 29 (10), Piercing Light 1 (1) — and at 0 flagged showdowns.
+- also seen (other readers' cards, same defect): by the non-turn player in a combat, from hand: Falling Star 23, Cull the Weak 13 (akali_sb__reksai_sb__s20262110__random__random D:104), Sabotage 13, Rampage 12, Charm 11, Mobilize 5 (azir_sb__fiora_sb__s20262122__random__random D:028), Progress Day, Time Warp; from the trash for Flow: Perfect Execution 10, Dredge Up 9, Up from the Deep 7, Shuriken Flip 2. Permanents and non-[Action] abilities (Unforgiven, Last Rites' Equip) are NOT offered there.
 
 ### D6  Any non-Reaction spell: offered as a plain play at a chain-priority decision; choosing it does nothing and the same decision is asked again
 
@@ -1211,7 +1546,7 @@ _Origin: lead._
 - happened: `akali__viktor__s20261114__random__random`, combat at BF#1 with Imperial Decree ("When any unit takes damage this turn, kill it.") in effect: `[D:347.06] ASSIGN_DAMAGE: P2 assigns 3 damage:` / `[D:347.07]   -> Astral Heron takes 3 (was 0/9M)` / `[D:347.08] DELAYED_ABILITY: firing for Imperial Decree` — the ability that watches damage being taken has fired — and only then is P1 asked to assign (decision #387, with `[top] Imperial Decree (P2)` on the chain): `[D:347.09] ASSIGN_DAMAGE: P1 assigns 13 damage:` / `[D:347.10]   -> Sprite takes 13 (was 0/3M)` / `[D:347.11] DELAYED_ABILITY: firing for Imperial Decree`.
 - should: both players assign, then all of it is dealt at once; abilities that trigger on that damage are put on the chain together, in turn order (CR 383.3.d.1).
 - confidence: LIKELY (the rule is in terms; the only thing seen to differ is when and in which order those abilities are queued — no changed kill).
-- also seen: 27 games of the 1,116 show the second assignment asked with an Imperial Decree item already on the chain.
+- also seen: 27 games of the 1,116 show the second assignment asked with an Imperial Decree item already on the chain; and on 2,149 damage-assignment decisions in 939 games the board the second player is shown already carries the first player's damage as marked damage (a unit with damage equal to or above its Might).
 
 ### D14  Long Sword, Sterak's Gage ([Quick-Draw]): the attach is done inline as the gear lands, not as a triggered ability on the chain
 
@@ -1331,7 +1666,7 @@ _Origin: reader 1, R1-8._
 - also seen: same inline kill with no outcome change at akali__akali__s20261100 D:109; Mischievous Marai's class
   kills inline too (single instruction: no outcome change seen).
 
-### D21  Defy, Not So Fast: only the item on top of the chain can be countered
+### D21  Counter spells (Defy, Not So Fast, Hard Bargain, Riposte, Repulse, Rebuttal, Abandon, Wind Wall): the spell to counter is never chosen — only the top item of the chain can be countered
 
 _Origin: reader 1, R1-10._
 
@@ -1382,6 +1717,14 @@ _Origin: reader 1, R1-10._
 - should / board that shows it: chain = [opponent's spell, an ability or a second spell on top]. Abandon cannot be played at all if the top item is an ability, and with two spells it cannot be aimed at the lower one; whatever is on top when Abandon resolves is what it counters, not what was chosen.
 - confidence: CODE-ONLY.
 
+**Further evidence — reader 9, D21 (R9-4): Wind Wall: resolves without countering when an ability sits above the spell on the chain**
+
+- happened: mel_sb__yasuao_sb__s20262277__random__random, idx 246 / D:214. Chain shown on the board: `[top] Ravenbloom Student (P1)` / `[bot] Shock Blast (P1)`; options `[0] Pass Priority [1] Play Wind Wall #64[S]`.
+  `[D:214.03] SPELL: Wind Wall (id=88) targets=[]` / `PAY_COST: Wind Wall E=3 P=2` / `[D:221.02] RESOLVE: Wind Wall (chain_item=46, ability=0, spell=1)` (no COUNTER line) / `[D:223.02] RESOLVE: Ravenbloom Student` / `[D:225.02] RESOLVE: Shock Blast (chain_item=43, ...)`.
+- should: Wind Wall counters Shock Blast, the only spell on the chain (and the reason it was playable: `hasLegalTargets` scans the whole chain).
+- confidence: CERTAIN. `counterChainTop` looks only at `chain.items.back()` and returns if it is not a spell; which spell is countered is never chosen (`targets=[]`), it is whatever lies directly beneath at resolution.
+- also seen: 1 of the 20 Wind Wall plays. Any "When you play a spell" trigger of the spell's controller (Ravenbloom Student, 337 firings in the traces) protects the spell this way; every card using `counterChainTop` shares it. With two spells on the chain the player cannot choose the lower one (not seen in a trace).
+
 ### D22  Emperor of the Sands / Sand Soldier [Weaponmaster]: the "may" and the Equipment are chosen at resolution, not at finalization
 
 _Origin: reader 2, R2-1._
@@ -1410,7 +1753,7 @@ _Origin: reader 2, R2-4._
 - confidence: LIKELY (same family as K3; the class comment says "as the ability resolves").
 - also seen: every Azir trigger (azir__teemo__s20261130 D:338-343, rengar__azir__s20261299 D:306-308, azir_sb__akali_sb__s20262118 D:245-247).
 
-### D25  Hidden cards (Guards!, Hidden Blade, Edge of Night, Pyke, Returned): a facedown card is never offered in its controller's own Neutral Open State
+### D25  Hidden cards (Guards!, Hidden Blade, Edge of Night, Pyke, Returned, Wages of Pain, Temporal Breach): a facedown card is never offered in its controller's own Neutral Open State
 
 _Origin: reader 2, R2-6._
 
@@ -1656,7 +1999,7 @@ _Origin: reader 5, R5-1._
 - confidence: CERTAIN (805.1 calls Accelerate an Optional Additional Cost; 356.1.b.3's example too).
 - also seen: ezreal_sb__ezreal_sb__s20262157__random__random D:303 (P1, Ezreal in base) and D:425 (P2, Ezreal at a battlefield), both `pays [1] + 1 power: exhausted 1, recycled 1`. Any unit with Accelerate.
 
-### D44  Engine (Wages of Pain, Deadly Flourish, Singularity, ...): a unit with lethal damage stays on the board until the chain is empty
+### D44  A unit with lethal damage stays on the board until the chain is empty: no cleanup between the items of a chain (Wages of Pain, Deadly Flourish, Singularity, Unchecked Power, Piercing Light)
 
 _Origin: reader 5, R5-3._
 
@@ -1677,6 +2020,13 @@ _Origin: reader 5, R5-3._
 - should: both die in the cleanup that follows Unchecked Power leaving the chain, before anyone gets priority on the Student's ability.
 - confidence: LIKELY (CR 319.5 / 323.4). The class deals the damage and leaves the kills to the cleanup; Shock Blast and Smite kill in the card and do not show this. Probably general to any damage effect that does not kill by itself when a trigger is queued during its resolution.
 - also seen: only this instance looked at (the other 11 resolutions hit no unit or were not read).
+
+**Further evidence — reader 9, D44 (R9-8): A unit with lethal damage from a spell stays on the board while a trigger from that resolution is finalized and both players get priority (Piercing Light replayed for Flow + Master of Shadows)**
+
+- happened: yasuao_sb__zed_sb__s20262387__random__random, D:142-144: `[D:142.04] EFFECT: deal 2 damage to Shadow Order Disciple (id=67, was 0/2M)` / `[D:142.05] TRIGGER: Master of Shadows (P2) fires ability` / `DECISION #164 (P2 — chain priority)` / `DECISION #165 (P1 — chain priority)` / `[D:144.02] RESOLVE: Master of Shadows` / `[D:144.04] KILL: Shadow Order Disciple (id=67, 2M, dmg=2)`.
+- should: the kill in the cleanup that follows Piercing Light leaving the chain, before the trigger is finalized and before anyone has priority.
+- confidence: LIKELY. No changed outcome found in the traces (I looked for a unit saved by a Might bonus given in that window: none), but the unit is a legal choice meanwhile: diana__ezreal__s20261139__random__random D:109-110, `EFFECT: deal 6 damage to Vex, Apathetic (id=92, was 0/4M)` then `TGT_PROMPT: Abandoned Hall: choose a unit here [Vex, Apathetic]`.
+- also seen: about 40 instances with a trigger in between (first trigger Abandoned Hall 17, Ravenbloom Student 12, Akali, Deadly Weapon 5, Stellacorn Herder 3, ...). Spells whose class kills its own victims (Falling Star, Hextech Ray) are not affected.
 
 ### D45  Bellows Breath: the Repeat's choices ignore "at the same location", are forced to the first execution's count, and are not asked at all when the first execution chose nothing
 
@@ -1990,6 +2340,73 @@ _Origin: reader 8, R8-11._
 - confidence: CERTAIN (811.1.d in terms).
 - also seen: 19 such plays (`TGT_PAIR_NOT_OFFERED: Facebreaker`), among them ezreal__viktor__s20263058__random__ismcts-sims20, vex__viktor__s20263052__ismcts-sims20__random, viktor__ezreal__s20263015__random__ismcts-sims20, viktor_sb__viktor_sb__s20262366__random__random (twice). The legal case was read and is right: viktor__kaisa__s20261358__random__random D:061-065 (only units at its battlefield offered, both stunned).
 
+### D75  Master of Shadows: empowered when an OPPONENT banishes a card its controller owns
+
+_Origin: reader 9, R9-1._
+
+- happened: kaisa__zed__s20261225__random__random, D:041. P1 (kaisa) played Temporal Breach ("Banish a unit, then its owner plays it ...") at D:021:
+  `[D:041.02] RESOLVE: Temporal Breach (chain_item=4, ability=0, spell=1)` / `[D:041.03] EFFECT: banish Noxus Hopeful (id=58)` / `[D:041.04] TRIGGER: Master of Shadows (P2) fires ability` / `[D:043.03] EFFECT: empower Master of Shadows (id=54) -> 1`.
+  viktor_sb__zed_sb__s20262369__random__random, D:124: P1's Ashe, Focused ("Choose a card revealed this way and banish it") : `TGT_PICKED: Ashe Focused: banish a revealed card = Seal of Discord (id=62)` / `EFFECT: banish Seal of Discord (id=62)` / `TRIGGER: Master of Shadows (P2) fires ability` / `[D:126.03] EFFECT: empower Master of Shadows (id=54) -> 1`.
+- should: no trigger; the opponent performed the banish. (`TriggerManager::onObjectStateChanged`, "banished_owned", fires for the card's owner whoever banished it.)
+- confidence: CERTAIN (CR 412.4 in terms).
+- also seen: kaisa__zed__s20263070__random__ismcts-sims20 D:213; teemo__zed__s20261333__random__random D:146; zed_sb__teemo_sb__s20262418__random__random D:188 (all opponent's Temporal Breach); zed_sb__viktor_sb__s20262420__random__random D:160, D:226 (opponent's Ashe, Focused). The reverse case is right: zed banishing an opponent's card does not trigger (zed__reksai / Smite on a token, zed_sb__reksai_sb__s20262416 D:256).
+
+### D76  Wuju Bladesman - Starter: the +2 [M] is missing whenever nothing resolves between "COMBAT:" and the damage step
+
+_Origin: reader 9, R9-2._
+
+- happened: akali__yi_rebuild__s20261116__random__random, D:100 (Master Yi, Tempered, printed 4 [M], the only defender):
+  `[D:100.06] COMBAT: BF#0 attacker=P1 defender=P2` / `[D:100.07] DAMAGE_STEP: BF#0 ATK=[Akali, Deadly Weapon(3M)] DEF=[Master Yi, Tempered(4M)]` / `-> Master Yi, Tempered takes 3 (was 2/4M)` / `ASSIGN_DAMAGE: P2 assigns 4 damage:` / `KILL: Master Yi, Tempered (id=55, 4M, dmg=5)`.
+  With the bonus it is 6 [M], assigns 6 and survives 5 damage; P2 would have kept the battlefield.
+  khazix__yi_rebuild__s20261242__random__random D:060: `DEF=[Lonely Poro(2M)]`, takes 2, killed (4 [M] would survive). irelia__yi_rebuild__s20263066__random__ismcts-sims20 D:031: `DEF=[Pit Rookie(2M)]`, killed by 2.
+  Where a chain item resolved inside the showdown the bonus is there: yi_rebuild__zed__s20263064__ismcts-sims20__random D:228 `DEF=[Master Yi, Tempered(6M)]` (a Death Mark and a Master of Shadows trigger resolved first); yi_rebuild__khazix__s20261395__random__random D:118 `DEF=[Lonely Poro(4M)]` (Sabotage resolved first) — and in the same line group, the next combat, `DEF=[Scuttle Crab(0M)]` without it.
+- should: +2 from the moment the unit is the only defender.
+- confidence: CERTAIN. Of the 60 lone-defender combats on the yi side, 42 go from `COMBAT:` straight to `DAMAGE_STEP:` (bonus missing in every one whose printed Might I checked) and 18 have chain activity in between (bonus present). The aura is only written when auras are recalculated, and nothing recalculates between designation and damage.
+- also seen: (a) Fiora, Peerless defending one on one shows 8 [M] (akali_sb__yi_rebuild_sb__s20262116__random__random D:158, yi_rebuild_sb__zed_sb__s20262405__random__random D:055): her trigger doubled 3 because the +2 was not yet applied, then +2 was added; with the legend applied on time the doubling at resolution is of 5 -> 10. (b) The same lag the other way: Fiora's "this combat" bonus is still shown (6M, ATK flag gone) during the three decisions of the conquer trigger after the combat (akali_sb__yi_rebuild_sb__s20262116 idx 148-150), and is gone at idx 151.
+
+### D77  Yasuo, Windrider: an ability is put on the chain for every move, not only "the third time I move in a turn" (same pattern: Fiora, Peerless when not one on one)
+
+_Origin: reader 9, R9-5._
+
+- happened: fiora__yasuao__s20263062__random__ismcts-sims20, D:069, Yasuo's first move of the turn:
+  `[D:069.03] MODE_PICKED: Unforgiven: move it to which battlefield? = mode#0` / `[D:069.04] TRIGGER: Yasuo, Windrider (P2) fires ability` / `DECISION #73 (P2 — chain priority)` / `DECISION #74 (P1 — chain priority)` / `[D:071.02] RESOLVE: Yasuo, Windrider (chain_item=14, ability=1, spell=0)` (nothing happens) / `SHOWDOWN: BF#0 (non-combat)`.
+- should: nothing on the chain for the first and second move; no priority window, no Closed state.
+- confidence: LIKELY. 139 of the 142 Yasuo triggers are for a first or second move; the move count is incremented when the item resolves (`onTrigger`), so it is also lost if that item never resolves. Reactions were played into such a window: yasuao__diana__s20261372__random__random D:172 (opponent activates a Reaction ability on top of a non-third-move trigger), azir__yasuao__s20261133__random__random D:267.
+- also seen: Fiora, Peerless ("When I attack or defend one on one"): 14 of 19 triggers were put on the chain with more than one attacker or defender and resolved as nothing (yi_rebuild_sb__fiora_sb__s20262392__random__random D:254; kaisa_sb__yi_rebuild_sb__s20262224__random__random D:155); the condition is read at resolution, so removing a unit in response would switch the doubling on.
+
+### D78  Kennen, Storm of Shuriken: the spell that gets [Flow] is chosen at resolution
+
+_Origin: reader 9, R9-6._
+
+- happened: vex_sb__zed_sb__s20262351__random__random, D:164-167: `[D:164.08] TRIGGER: Kennen, Storm of Shuriken (P2) fires ability` / both players pass / `[D:166.02] RESOLVE: Kennen, Storm of Shuriken` / `[D:166.03] TGT_PROMPT: Kennen, Storm of Shuriken: grant [Flow] [Perfect Execution/Piercing Light/Ride the Wind/...]` / `[D:167.03] TGT_PICKED: ... = Ride the Wind (id=73)`.
+- should: the spell is chosen as the ability is finalized, before the priority window.
+- confidence: LIKELY (K3 family; the class has no `kFinalizeTrigger`). All 24 grants in the traces are picked after `RESOLVE:`.
+
+### D79  Switcheroo on a unit with Deflect (Master Yi, Tempered at Level 6): Deflect is charged for the play option's unit, then both units are asked again — charged without choosing it, or charged twice
+
+_Origin: reader 9, R9-7._
+
+- happened: diana__yi_rebuild__s20261152__random__random, idx 194 / D:183. Option chosen: `Play Switcheroo #466[S] @ Master Yi, Tempered #675`.
+  `[D:183.05] PAY_ADD: P1 pays [0] + 1 power (any): exhausted 0, recycled 1` / `[D:183.06] DEFLECT: P1 pays 1 [A] to choose Master Yi, Tempered` / `[D:183.08] TGT_PAIR_PROMPT_A: Switcheroo [Diana, Lunari/Ravenbloom Student/Master Yi, Tempered/...]` / `[D:184.03] TGT_PAIR_PICKED_A: Switcheroo = Diana, Lunari (id=2)` / `[D:185.03] TGT_PAIR_PICKED_B: Switcheroo = Ravenbloom Student (id=6)`.
+  The rune was recycled; Master Yi was not chosen.
+- should: Deflect paid once per time the unit is actually chosen, none here.
+- confidence: CERTAIN for the charge without a choice (trace is unambiguous).
+- also seen: charged twice for one choice — diana__irelia__s20261141__random__random D:077.04 `DEFLECT: P2 pays 1 [A] to choose Vex, Apathetic`, then `TGT_PAIR_PICKED_B: Switcheroo = Vex, Apathetic` and D:079.05 `DEFLECT: P2 pays 1 [A] to choose Vex, Apathetic` again. Same shape (Deflect line before `TGT_PAIR_PROMPT_A`): fiora__teemo__s20261184 D:160, vex__irelia__s20261339 D:177, yasuao__diana__s20261372 D:259, yasuao__khazix__s20261377 D:190 (Switcheroo), fiora__viktor__s20261186 D:117 (Facebreaker). Deflect on triggered and activated abilities is right (teemo__yi_rebuild D:197, yi_rebuild__ezreal D:193).
+
+### D80  Lonely Poro: "died alone" when every other friendly unit there died in the same damage step
+
+_Origin: reader 9, R9-10._
+
+- confidence: QUESTION.
+
+### D81  Minefield: no Burn Out when the Main Deck has fewer than 2 cards
+
+_Origin: reader 9, R9-11._
+
+- happened: not in a trace. `Minefield::onTrigger` loops `for (i < 2 && !ps.main_deck.empty())` and stops.
+- should: with 0 or 1 card left, move what is there, Burn Out (opponent gains a point), then move the rest — as Death Mark's Burn 3 does (vex__zed__s20261351 D:384, `BURN_OUT ... P1 gains 1 point (CR 432.2.c) -> 8`).
+- confidence: CODE-ONLY. Board: a player conquers Minefield with 0 or 1 card in the Main Deck. (It also emits no "burned" event; no card in the engine listens to `WhenYouBurn`, so nothing shows.)
+
 ## 6. Checked and correct
 
 **Lead (engine-level, by script and by hand)**
@@ -2003,7 +2420,7 @@ _Origin: reader 8, R8-11._
 - A player at 7 who controls two battlefields holds one and the game ends (121 turns): the second hold is never logged — CR 323.1.
 - Recycling a ready rune for Power is offered by the card-cost prompt and loses its Energy — CR 164.2.b.
 - More than 80 cards on a rendered board in LeBlanc games: Reflection tokens are rendered under the name of the unit they copy (all 117 games with an excess have the leblanc list in one seat; the excess is 1 to 3).
-- The Deflect of a unit chosen by a spell that is offered once per target (`ChainManager::payDeflectForChoices`, a lead of the fix run) is paid in `addSpell`, which `executePlaySpell` calls after `payCardCost`: it is paid after the spell's own cost. No `DEFLECT_UNPAID` line and no engine error in the 1,116 games (485 Deflect payments).
+- The Deflect of a unit chosen by a spell that is offered once per target (`ChainManager::payDeflectForChoices`, a lead of the fix run) is paid in `addSpell`, which `executePlaySpell` calls after `payCardCost`: it is paid after the spell's own cost. No `DEFLECT_UNPAID` line and no engine error in the 1,116 games (485 Deflect payments). That path is nevertheless wrong for the pair-target spells: see R9-7 (Switcheroo and Facebreaker pay it for the unit named by the play option and then ask for both units again).
 
 **Reader 1**
 
@@ -2182,6 +2599,21 @@ _Origin: reader 8, R8-11._
 - Existential Dread's Repeat stuns and then returns the same unit — the repeat's target is chosen at finalization and the unit is "already stunned" by then (CR 820.2) — teemo_sb__rengar_sb__s20262327__random__random D:127-129.
 - Keeper of Law's discount counts units of both players at the battlefield — "exactly two units there" (61 plays against the board).
 
+**Reader 9**
+
+- Yasuo's trigger after a single Unforgiven move — it is the per-move item of D77 (R9-5), not a point; points only on the third (3 instances, counts verified move by move) — kaisa__yasuao__s20261223 D:160-175.
+- Unforgiven moves an EXHAUSTED unit into an enemy-held battlefield and it attacks — a move by effect does not need a ready unit; combat follows (CR 448, 463) — akali__yasuao__s20261115 D:266-271.
+- Master of Shadows fires after "TOKEN: created Shadow Clone" — the token is not the cause: Death Mark was replayed for Flow and is banished as it leaves the chain (CR 829.1.b) — akali__zed__s20261117 D:021-023. A COUNTERED Flow spell is banished too and empowers (Vendetta FAQ: "it will be banished when it attempts to leave the chain") — akali__zed__s20261117 D:065.
+- Rhasa played for "E=0 P=1" with no rune recycled — the Power came from Seal of Discord's floating Chaos Power added earlier in the turn (CR 166, 167) — akali_sb__zed_sb__s20262117 D:157 / D:185; azir__zed__s20261135 D:360 / D:361.
+- Piercing Light replayed for "[2] + 0 power" although it costs [2][R] — it chose a friendly unit at Sandswept Tomb ("costs [A] less") — yasuao_sb__zed_sb__s20262387 D:139. 7 spells choosing a friendly unit at the Tomb paid 1 less, 28 choosing elsewhere paid in full (one Void Assault at khazix__akali__s20263002 D:084 paid in full with a same-named unit at the Tomb and one in base: not decidable from the trace).
+- The defender "conquers" after a combat — control goes to whoever alone remains, "This does not have to be the player that applied Contested" (CR 468.5.e) — akali__khazix__s20261107 D:261. The attacker there is the player whose unit applied Contested, although the enemy unit was pulled in afterwards (CR 466.2.c.1).
+- Deflect paid twice by one Piercing Light — once for the spell, once for the Repeat's new choice ("for each time they choose", CR 809.1.c) — fiora_sb__zed_sb__s20262189 D:220-222.
+- Combat assignment with three non-lethal amounts — Elder Dragon's any-damage rule (own trace lines) — yi_rebuild_sb__fiora_sb__s20262392 D:256.
+- RUNES. Second player channels 3 in the first Channel Phase, everyone else 2, ready (CR 487.7, 315.3, 431.2.a): 720 of 720 games. Rune Deck short: 423 Channel Phases with 1 rune, 938 with 0 (CR 431.3); by hand akali__akali__s20261100 turn 15 (board 11/11+1 -> 12/12+0, one rune channeled). Energy: number of EXHAUST_RUNE lines = E in 20,252 PAY_COSTs; the 383 exceptions are 1-2 short with floating Energy / Power from an [Add] earlier (sampled). Power: 9,886 RECYCLE_RUNE-for-power lines, every rune's Domain is one of the paid card's Domains (0 exceptions); `PAY_ADD` hides the rune, so ~50 Last Rites Equips ([P] = Chaos) were compared on the board before and after: only the Chaos count drops. Recycled runes go to the bottom of the Rune Deck: for players with no untraced rune movement, 1,840 re-channels of recycled runes come back in exact first-recycled-first order and only after all 12 originals (0 violations). Pool empties: lead's script.
+- COMBAT (2,087 damage steps). Attacker = the side whose unit applied Contested (in every window read by hand, about 30; not scanned). Damage assigned by each side = sum of its units' Might, stunned units 0, in all 4,018 assignments; at most one unit per assignment gets a non-lethal amount (CR 467.2.c.3; only exception Elder Dragon); units with [Tank] get lethal first in 54 of 54 mixed assignments, Backline last (vex__vex__s20261347 D:142). Both sides surviving: attackers recalled (CR 468.1.a.2) — azir__zed__s20261135 D:087 `RECALL: Traveling Merchant (id=61) to base`; 23 instances read by script, 22 more where my scan window was cut by a replacement prompt and the recall was confirmed by hand in three. Healing at the end: same game idx 95 (Azir undamaged). Conquer by the attacker after the combat: 494 instances among the 1,548 combats whose unit names are all distinct, every one with no defender left; 19 conquers by the defender alone remaining (CR 468.5.e). Simultaneous deaths with a replacement ask the order (CR 373) — akali__irelia__s20263001 D:148.
+- Master Yi's Hunt goes on the chain in the Scoring Step and resolves before the Channel Phase — yi_rebuild__zed__s20263064 D:233-235.
+- Last Rites plays a unit in the Scoring Step of its controller's turn, paying with runes readied in the Awaken Phase — fiora__zed__s20261189 D:161-166.
+
 ## 7. Judge questions
 
 The questions below came up while reading; each is written for a judge in the format of `docs/judge-questions-2026-10.md`. Where a reader also recorded a finding on the engine's present behaviour, the finding says which answer the engine implements.
@@ -2249,6 +2681,11 @@ The questions below came up while reading; each is written for a judge in the fo
 2. Baron Nashor — "As you play me, add the Baron Pit battlefield token ... If you do, I enter there." The Pit is new and uncontrolled. Does his entering it score a point by Conquer that turn? The engine opens a non-combat showdown and scores: kaisa_sb__teemo_sb__s20262220__random__random `[D:161.04] SHOWDOWN: BF#2 (non-combat)` / `[D:165.05] CONQUER: P2 conquers BF#2 (score was 0)`. Rules seen: 471 (conquer = gaining control of a battlefield not scored this turn); nothing found that treats a battlefield created this turn differently.
 3. Nocturne, Horrifying — he is revealed by Teemo, Strategist's ability in the middle of its resolution and banished. When is "If you do, you may play me for [A]" carried out: inside the reveal (during Teemo's resolution, before the damage), or after the resolving ability has finished? Is that play a normal play that the opponent can respond to? Rules seen: the example at line 1509 (replacement, simultaneous with the reveal); 402.2 (while an effect resolves, continue resolving it).
 4. Scoring Step — a player controls two battlefields. Are both held at once (all hold abilities pending together, ordered by their controller), or one after the other with the chain emptied in between? 315.2.b.2 says "Holds all Battlefields they Control" as one task. (D72 (R8-7) assumes at once.)
+
+**Reader 9**
+
+- Lonely Poro — "[Deathknell] — If I died alone, draw 1. (... I'm alone if there are no other friendly units here.)" Situation: Lonely Poro and every other friendly unit at its battlefield are killed in the same combat cleanup (vex_sb__yi_rebuild_sb__s20262350__random__random D:181: `KILL: Lonely Poro` and `KILL: Master Yi, Tempered` of one damage step; engine: `LONELY PORO: died alone -> draw 1`). Question: did it die alone? For "no": the deaths are simultaneous (CR 323.4, 370.1.a.2), an effect "can look back at its characteristics before it changes zones" (CR 359.3.e.13), and just before the deaths another friendly unit was there (CR 740.2.a). For "yes": the ability resolves later and the engine reads the board then, when none is left. The engine's reading also means a friendly unit arriving at that location before the trigger resolves cancels the draw. 14 traced instances (ezreal__yasuao__s20261169 D:210, khazix__yi_rebuild__s20261242 D:210, mel__yasuao__s20261277 D:122, yasuao__kaisa__s20261376 D:119 — two Lonely Poros dying together each draw —, zed__yasuao__s20261421 D:265, ...).
+- Master of Shadows — "When you banish a card you own". Situation: the opponent's Smite kills zed's Ravenbloom Prefect and the Prefect's own replacement turns the death into a banish (zed_sb__reksai_sb__s20262416__random__random D:059: `REPLACEMENT (self): Ravenbloom Prefect is banished instead of dying` / `EFFECT: banish Ravenbloom Prefect (id=39)` / `TRIGGER: Master of Shadows (P1) fires ability`). Question: who is responsible for a banish that replaces a kill the opponent performed — the opponent (CR 412.1: the player performing the kill) or the controller of the replacement effect? CR 412.5 separates attribution from responsibility but does not cover replaced actions.
 
 ## 8. Not observed
 
@@ -2347,6 +2784,21 @@ The questions below came up while reading; each is written for a judge in the fo
 - Abandon against a chain whose top is not the spell to counter (D21 (R8-13)) — no trace.
 - Winning point with three battlefields (Baron Pit) — not re-read; the lead's script check covers it.
 - Kharox: Power paid in the Chaos domain — the PAY_ADD line gives the amount only.
+
+**Reader 9**
+
+- Yasuo, Windrider: a fourth move in one turn; the third-move point as the eighth point (no Conquer restriction); the trigger's item being countered or Yasuo leaving the board between moves (the count lives on the object and is only raised at resolution).
+- Unforgiven: its target leaving or changing control before resolution; a move into a battlefield where a showdown or combat is already running (never activatable there).
+- Wind Wall: two spells on the chain (which one is countered cannot be chosen, D21 (R9-4)); an uncounterable spell.
+- Wuju Bladesman - Starter: a second defender joining or leaving during the showdown (bonus switching off / on).
+- Master Yi, Tempered: XP dropping below 6 while he is at a battlefield (Deflect / Ganking switching off).
+- Alpha Strike: damage divided among two or more units; the chosen unit's Might changing between finalization and resolution; a Deflect unit among the split targets (the cost is paid before the split targets are picked: `PAY_COST` precedes `SPLIT_PROMPT`).
+- Master of Shadows: activation with an empty hand; a second empower while empowered shows no EFFECT line (resolves as nothing: seen, yi_rebuild__zed__s20263064 D:095).
+- Seal of Discord: used while a cost is being paid (never offered there, D2 (R9-9)).
+- Last Rites: the bearer conquering with no unit in the trash that can be paid for (`MAY_NOT_OFFERED` path not read); the chosen unit leaving the trash before resolution.
+- Kennen, Storm of Shuriken: a granted spell with a Power cost replayed without Sandswept Tomb's discount (one replay in all traces); the grant expiring at end of turn.
+- Minefield: fewer than 2 cards in the Main Deck (D81 (R9-11)).
+- Ruin Runner: only absence can be shown (never offered to an opponent); no trace has an opponent's spell with Ruin Runner as its only possible unit.
 
 ## 9. Deck interactions
 
@@ -2495,6 +2947,24 @@ Aside for the owner of Hard Bargain (not my card): irelia_sb__vex_sb__s20262203_
 - viktor: hidden Facebreaker — D74 (R8-11).
 - viktor: Vi, Peacekeeper (6 attack triggers with a stun prompt), Seat of Power ("conquer -> draw 0" 67, "draw 1" 12), Forbidding Waste (24 damage steps with a lone defender), Dusk Rose Lab (57 accepted, 53 "killed a unit here -> draw 1") — counted only, not read clause by clause (not among my 30 cards); Dusk Rose Lab's item with nothing to kill: D4 (R8-8).
 
+**Reader 9**
+
+- yasuao: Unforgiven moves Yasuo, Windrider from base, counted as a move for his third-move point; with Ride the Wind and a standard move the point is scored — kaisa__yasuao__s20261223 D:151-175 (Unforgiven, Ride the Wind, standard move with Akali, Silent) — ok (D77 (R9-5) for the two no-op items).
+- yasuao: Unforgiven only base <-> battlefield (of 245 activations: 71 to base, 172 from base with a destination prompt over all battlefields — 55 into an enemy-held one -> combat, 83 into an empty one -> non-combat showdown, 34 into one already held —, 1 countered, 1 unresolved in my window) — ok, K3.
+- yasuao: Akali, Silent moved by Unforgiven gets +2 [M] this turn and attacks — akali__yasuao__s20261115 D:266-271 — ok. Irelia, Fervent and the move spells (Ride the Wind, Flash, Charm) were read only where they cross my cards (Flash under Wind Wall, irelia_sb__yasuao_sb__s20262205 D:072-084: ok); they belong to other readers.
+- yasuao: Wind Wall against the list's own counters and triggers — D21 (R9-4).
+- yi_rebuild: Wuju Bladesman with a single defender — D76 (R9-2) (42 of 60 combats without the bonus); with Fiora, Peerless one on one — 8 [M] instead of 10 (D76 (R9-2)).
+- yi_rebuild: Master Yi, Tempered holds / conquers -> Hunt 2 -> 6 XP -> Deflect and Ganking — yi_rebuild__irelia__s20263023__random__ismcts-sims20 D:074/096/141 (XP 2, 4, 6), then battlefield-to-battlefield moves offered — ok.
+- yi_rebuild: Emperor's Dais on conquer: "may" + [1] + the unit returned are settled at finalization, the Sand Soldier arrives at resolution — yi_rebuild__fiora__s20261392__random__random D:205-209 (Ruin Runner returned by its own controller) — ok.
+- yi_rebuild: Onslaught from the trash for Flow by the DEFENDER in the opponent's combat — teemo__yi_rebuild__s20261332 D:303 — D5 (R9-3).
+- zed: banish sources and the legend. Own banishes empower: Flow spell leaving the chain (Death Mark akali__zed__s20261117 D:023; countered D:065), Shadow Clone's attack ability ("may" + unit at finalization, banish + [Assault 4] at resolution, D:120-125), Ravenbloom Prefect banishing itself (diana_sb__zed_sb__s20262153 D:032) — ok. Opponent's banishes empower too — D75 (R9-1).
+- zed: Master of Shadows' activation as an [Action] in showdowns on either turn, disempower + exhaust paid at activation, discard chosen at resolution, then draw — akali__zed__s20261117 D:038; kaisa__zed__s20263070 D:096-099 — ok.
+- zed: Seal of Discord's floating [P] pays Death Mark, Rhasa, Last Rites' Equip in the same turn — akali__zed__s20261117 D:015-016; akali_sb__zed_sb__s20262117 D:157-185; azir__zed__s20261135 D:083-088 — ok (D2 (R9-9) for the chain item).
+- zed: Rhasa's cost against the trash (52 of 52) and Shadowblade Lurker's against its copies in the trash (48 of 48) — ok.
+- zed: Kennen conquers -> a spell in the trash gets Flow -> replayed -> banished -> legend empowered — yasuao_sb__zed_sb__s20262387 D:138-144 — ok except D78 (R9-6) (choice at resolution) and D44 (R9-8) (lethally damaged unit kept through the window).
+- zed: Minefield (top 2 to the trash on conquer, feeding Rhasa / Last Rites / Shadow Clone), Zaun Warrens (discard chosen at resolution, then draw: azir__zed__s20261135 D:026-029), Sandswept Tomb ([A] less for a spell choosing a friendly unit there) — ok; D81 (R9-11) code-only.
+- zed: Death Mark / Perfect Execution / Up from the Deep replayed for Flow during the opponent's combat — ezreal_sb__zed_sb__s20262171 D:305 — D5 (R9-3).
+
 ## 10. Notes for the fix batch
 
 - **Replaying.** Every citation is a game name and a D number; the command is in section 2.1. A post-sideboard
@@ -2502,7 +2972,9 @@ Aside for the owner of Hard Bargain (not my card): irelia_sb__vex_sb__s20262203_
 - **One root, several findings.** The findings are written per defect as it shows on a card, but several share
   a root the readers named in the source: `runCombat` not setting the showdown state (D5); triggers queued
   outside the chain's finalize loop — by `cleanup()`, by a conquer, by the start of a showdown, during a
-  resolution — and processed late (D4, D6, D7 and the "becomes Mighty" findings); `recalculateAuras` not run
+  resolution — and processed late (D4, D6, D7 and the "becomes Mighty" findings); the cleanup's own steps not run between the items of one chain — lethally damaged units stay (157
+  priority decisions in 54 games show one), unattached Equipment stays (D10), a Might threshold goes unnoticed;
+  `recalculateAuras` not run
   between a combat's start and its damage step (the Forbidding Waste, Trifarian War Camp and Shield findings);
   the effect-play path (`setQueueSpell` / `playPayingCost`) not choosing targets for spells that take them from
   the play intent (the Fizz and Void Burrower findings); counters that read `chain.items.back()`.

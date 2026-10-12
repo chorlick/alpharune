@@ -10,6 +10,8 @@ Parts (all in <parts-dir>):
   reader_<k>.md       one per reader: ## CARDS / ## FINDINGS (### R<k>-<n>) /
                       ## CHECKED AND CORRECT / ## QUESTIONS / ## NOT OBSERVED /
                       ## DECK INTERACTIONS
+  titles.tsv          "R<k>-<n> <tab> title": a heading to use instead of the reader's
+                      (for a finding that carries merged blocks of other cards)
   merge.tsv           "R<k>-<n> <tab> D<m> | R<j>-<i>": a reader finding that is
                       the same defect as another finding; its block is put under
                       that finding as further evidence instead of getting a number
@@ -54,6 +56,11 @@ def main():
         if line.strip() and not line.startswith("#"):
             a, b = line.split("\t")[:2]
             merge[a.strip()] = b.strip()
+    titles = {}
+    for line in rd("titles.tsv").split("\n"):
+        if "\t" in line:
+            a, b = line.split("\t", 1)
+            titles[a.strip()] = b.strip()
     lead = blocks(rd("lead_findings.md"), "D")
     findings = [[i, t, b.rstrip(), [], "lead"] for i, t, b in lead]   # id, title, body, extra, origin
     byid = {f[0]: f for f in findings}
@@ -74,7 +81,7 @@ def main():
             did = f"D{nextd}"
             nextd += 1
             rmap[rid] = did
-            f = [did, title, body.rstrip(), [], f"reader {k}, {rid}"]
+            f = [did, titles.get(rid, title), body.rstrip(), [], f"reader {k}, {rid}"]
             findings.append(f)
             byid[did] = f
             byid[rid] = f
@@ -97,6 +104,9 @@ def main():
         if k in rsec:
             head = re.search(r'^# (.*)$', rd(f"reader_{k}.md"), re.M)
             out += [f"### {head.group(1) if head else 'reader ' + str(k)}", "", relabel(rsec[k].get("CARDS", "")), ""]
+    out += ["### Counts over the 720 read games", "",
+            "From `card_coverage.py`: how often each card was played, hidden, had an ability queued / activated / resolved, and the first sighting of each (game, D). A play from facedown prints no `PLAY` / `SPELL` line, so `played` undercounts cards with [Hidden]; `activated` counts Main Phase activations only (an activation at chain priority or at Focus prints no source: read `resolved` for those); a legend is never played; for a battlefield `played` is the number of games it was the battlefield in play, for a rune the number of times one was channelled.", "",
+            rd("coverage_counts.md").rstrip(), ""]
     out += ["## 5. Findings", "",
             "Numbered D1... in the order lead (engine-level sequences), then reader by reader. A reader's finding that is the",
             "same defect as an earlier one is not numbered again: its text stands under that finding as further evidence.",
@@ -105,18 +115,18 @@ def main():
             "not in a trace (the finding says which board would show it).", "",
             "| id | finding | confidence | from |", "|---|---|---|---|"]
     def conf(body):
-        m = re.search(r'^- confidence:\s*(.*)$', body, re.M)
-        if not m:
+        """Confidence words of the finding and of the blocks merged into it."""
+        lines = [l for l in body.split("\n") if l.startswith("- confidence:")]
+        if not lines:
             return "?"
-        words = re.findall(r'CERTAIN|LIKELY|QUESTION|CODE-ONLY', m.group(1))
         seen = []
-        for w in words:
+        for w in re.findall(r'CERTAIN|LIKELY|QUESTION|CODE-ONLY', " ".join(lines)):
             if w not in seen:
                 seen.append(w)
         return " / ".join(seen) or "?"
     for did, title, body, extra, origin in findings:
         more = f" (+{len(extra)} merged)" if extra else ""
-        out.append(f"| {did} | {relabel(title).replace('|', '/')} | {conf(body)} | {origin}{more} |")
+        out.append(f"| {did} | {relabel(title).replace('|', '/')} | {conf(body + chr(10) + chr(10).join(extra))} | {origin}{more} |")
     out.append("")
     for did, title, body, extra, origin in findings:
         out += [f"### {did}  {relabel(title)}", "", f"_Origin: {origin}._", "", relabel(body), ""]

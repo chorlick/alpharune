@@ -55,7 +55,7 @@ def main():
             a, b = line.split("\t")[:2]
             merge[a.strip()] = b.strip()
     lead = blocks(rd("lead_findings.md"), "D")
-    findings = [[i, t, b.rstrip(), []] for i, t, b in lead]          # id, title, body, extra
+    findings = [[i, t, b.rstrip(), [], "lead"] for i, t, b in lead]   # id, title, body, extra, origin
     byid = {f[0]: f for f in findings}
     nextd = max(int(f[0][1:]) for f in findings) + 1
     rmap = {}
@@ -74,7 +74,7 @@ def main():
             did = f"D{nextd}"
             nextd += 1
             rmap[rid] = did
-            f = [did, f"{title}  _(reader {k}: {rid})_", body.rstrip(), []]
+            f = [did, title, body.rstrip(), [], f"reader {k}, {rid}"]
             findings.append(f)
             byid[did] = f
             byid[rid] = f
@@ -97,9 +97,29 @@ def main():
         if k in rsec:
             head = re.search(r'^# (.*)$', rd(f"reader_{k}.md"), re.M)
             out += [f"### {head.group(1) if head else 'reader ' + str(k)}", "", relabel(rsec[k].get("CARDS", "")), ""]
-    out += ["## 5. Findings", ""]
-    for did, title, body, extra in findings:
-        out += [f"### {did}  {relabel(title) if did not in ('',) else title}", "", relabel(body), ""]
+    out += ["## 5. Findings", "",
+            "Numbered D1... in the order lead (engine-level sequences), then reader by reader. A reader's finding that is the",
+            "same defect as an earlier one is not numbered again: its text stands under that finding as further evidence.",
+            "Confidence: CERTAIN = the card text or a rule says so in terms; LIKELY = a reading of the rules, cited;",
+            "QUESTION = the rules do not settle it (section 7); CODE-ONLY = seen in the card's class or the engine source,",
+            "not in a trace (the finding says which board would show it).", "",
+            "| id | finding | confidence | from |", "|---|---|---|---|"]
+    def conf(body):
+        m = re.search(r'^- confidence:\s*(.*)$', body, re.M)
+        if not m:
+            return "?"
+        words = re.findall(r'CERTAIN|LIKELY|QUESTION|CODE-ONLY', m.group(1))
+        seen = []
+        for w in words:
+            if w not in seen:
+                seen.append(w)
+        return " / ".join(seen) or "?"
+    for did, title, body, extra, origin in findings:
+        more = f" (+{len(extra)} merged)" if extra else ""
+        out.append(f"| {did} | {relabel(title).replace('|', '/')} | {conf(body)} | {origin}{more} |")
+    out.append("")
+    for did, title, body, extra, origin in findings:
+        out += [f"### {did}  {relabel(title)}", "", f"_Origin: {origin}._", "", relabel(body), ""]
         for e in extra:
             out += [relabel(e), ""]
     for name, key, num in (("Checked and correct", "CHECKED AND CORRECT", 6), ("Judge questions", "QUESTIONS", 7),

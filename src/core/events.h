@@ -522,6 +522,12 @@ public:
     bool logging() const { return quiet_depth_ == 0 && on_log.listening(); }
     /// The counter bookkeeping of a line that was not built: any line, and a
     /// "DECISION #" line (which starts a new decision).
+    /// Advances with every log line, heard or not (the [D:NNN.NN] counters):
+    /// equal stamps mean the engine has logged nothing in between.
+    uint64_t lineStamp() const {
+        return (static_cast<uint64_t>(static_cast<uint32_t>(log_decision_counter_)) << 32) |
+               static_cast<uint32_t>(log_sub_counter_);
+    }
     void noteUnheardLine() { ++log_sub_counter_; }
     void noteUnheardDecision() { ++log_decision_counter_; log_sub_counter_ = 0; }
     void logTrace(const std::string& msg);

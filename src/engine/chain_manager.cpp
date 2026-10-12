@@ -211,9 +211,11 @@ void ChainManager::processFEPR(
         events_.emit(ChainEmptiedEvent{});
         emptied_announced = true;
     };
+    bool quiet_finalization = false;   // the last pass finalized an item and logged nothing
     while (true) {
         announceEmptied();
-        if (handle_tasks_) handle_tasks_();
+        if (handle_tasks_ && !quiet_finalization) handle_tasks_();
+        quiet_finalization = false;
         if (state_.game_over || !state_.chain.exists()) break;
         had_chain = true;
         emptied_announced = false;
@@ -241,7 +243,13 @@ void ChainManager::processFEPR(
         // a Cleanup follows every finalization (CR 319.4).
         if (state_.chain.hasPending()) {
             if (order_pending_) order_pending_();
+            const uint64_t before = activity_ ? activity_() : 0;
+            const size_t items_before = state_.chain.items.size();
             stepFinalize(resolve_permanent);
+            // Nothing chosen, paid, removed or entered: only the item's
+            // status changed, and no Cleanup task can have anything to do.
+            quiet_finalization = activity_ && activity_() == before &&
+                                 state_.chain.items.size() == items_before;
             continue;
         }
 

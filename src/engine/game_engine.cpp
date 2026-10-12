@@ -97,6 +97,7 @@ void GameEngine::initSubsystems() {
     // resolution (CR 319.3-319.5).
     chain_manager_->setHandleTasks([this]() { cleanup(); });
     chain_manager_->setOrderPending([this]() { orderPendingTriggers(); });
+    chain_manager_->setActivity([this]() { return events_.lineStamp(); });
     // Tournament Rules 505.3-505.6: a loop that needs no player to maintain
     // it (505.3.a) and that no player chose to break — everyone passed
     // priority each time round — "ends in a draw". That is what a chain at

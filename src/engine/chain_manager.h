@@ -113,6 +113,15 @@ public:
     using OrderPending = std::function<void()>;
     void setOrderPending(OrderPending fn) { order_pending_ = std::move(fn); }
 
+    /// A stamp that changes whenever the engine does anything it logs
+    /// (EventBus::lineStamp). The loop skips the Cleanup after a finalization
+    /// during which the stamp did not move: an item with nothing to choose
+    /// and nothing to pay changed only its own status, and the Cleanup before
+    /// it has already settled the state. (A Cleanup is half the cost of a
+    /// short chain; this one is a third of them.)
+    using Activity = std::function<uint64_t()>;
+    void setActivity(Activity fn) { activity_ = std::move(fn); }
+
     /// Called when the loop reaches its bound, with the newest item. Returns
     /// true if it ended the game (a loop of mandatory actions is a draw,
     /// Tournament Rules 505.6); false, or no callback: the bound throws.
@@ -142,6 +151,7 @@ private:
     bool running_ = false;        // inside processFEPR: a nested call is a no-op
     HandleTasks handle_tasks_;
     UnbrokenLoop unbroken_loop_;
+    Activity activity_;
     OrderPending order_pending_;
     FinalizeChoices finalize_choices_;
     EffectExecutor* executor_ = nullptr;

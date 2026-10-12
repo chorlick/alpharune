@@ -31,8 +31,34 @@ public:
         return friendlyUnitChoice(state, controller, object);
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        GameObjectId src = targets[0];
+        // "Choose a friendly unit." From hand it is locked in by the play
+        // intent. A play by an effect (Blind Fury, Promising Future) and new
+        // choices after a control change (Mystic Reversal) come with none:
+        // the unit is then chosen here, in the finalize pass, like any other
+        // choice of the spell (finding F2 — the pass used to end at an early
+        // return, which the finalize contract forbids).
+        const bool chosen_at_play = ctx.state.chain.resuming.has_value() &&
+                                    !ctx.state.chain.resuming->targets.empty();
+        GameObjectId src = kInvalidId;
+        if (chosen_at_play || !ctx.state.chain.resuming.has_value()) {
+            src = chosenTarget(ctx, targets, 0);
+            if (!ctx.state.chain.resuming.has_value() && !targets.empty()) src = targets[0];
+        } else {
+            src = pickTarget(ctx, "Alpha Strike: choose a friendly unit",
+                chooseableUnits(ctx.state, ctx.controller,
+                    [&](const GameObject& o) { return o.controller == ctx.controller; }));
+            if (src == kInvalidId) return;   // waiting, or no friendly unit to choose
+        }
+        std::vector<GameObjectId> damaged;
+        if (src == kInvalidId || !ctx.state.objectExists(src) ||
+            !ctx.state.getObject(src).location.has_value()) {
+            // The chosen unit is no longer legal (a mistarget): nothing deals
+            // damage. Said through the helper, so the finalize pass and the
+            // resolution agree that there is nothing to choose.
+            splitDamageAmong(ctx, "Alpha Strike", 0, kInvalidId, {}, damaged,
+                             /*may_choose_none=*/true);
+            return;
+        }
         // "It deals damage equal to its Might": its Might now — as the spell
         // is finalized that caps the number of targets (CR 355.14.c), as it
         // resolves it is the damage divided.
@@ -45,7 +71,6 @@ public:
             [&](const GameObject& o) {
                 return o.controller != ctx.controller && o.isAtBattlefield();
             });
-        std::vector<GameObjectId> damaged;
         if (!splitDamageAmong(ctx, "Alpha Strike", total, src, legal, damaged)) return;
 
         // Kill lethally-damaged units (after all damage is marked); gain 1 XP

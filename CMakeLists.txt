@@ -458,6 +458,7 @@ add_library(riftbound_core
     src/core/events.cpp
     src/core/keyed_slots.cpp
     src/rules/deck_validator.cpp
+    src/rules/random_deck.cpp
     src/engine/game_engine.cpp
     src/engine/chain_manager.cpp
     src/engine/effect_executor.cpp
@@ -544,6 +545,18 @@ riftbound_enable_warnings(riftbound)
 add_executable(collision_census EXCLUDE_FROM_ALL tools/collision_census.cpp)
 target_link_libraries(collision_census PRIVATE riftbound_core)
 riftbound_enable_warnings(collision_census)
+
+# tools/deck_fuzz.cpp: whole-pool fuzz. Random agents play random
+# constructed-legal decks (rules/random_deck.h) or the lists of a directory;
+# every failing game is recorded with the seeds that replay it alone, and
+# per-card coverage is counted from engine events. Not part of `all`:
+# `cmake --build build --target deck_fuzz`. The game loop it shares with the
+# suite (tools/fuzz/fuzz_game.h) is exercised by tests/test_deck_fuzz.cpp, so
+# it cannot rot uncompiled. How to run the large one: CLAUDE.md, Testing.
+add_executable(deck_fuzz EXCLUDE_FROM_ALL tools/deck_fuzz.cpp)
+target_link_libraries(deck_fuzz PRIVATE riftbound_core Threads::Threads)
+target_include_directories(deck_fuzz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+riftbound_enable_warnings(deck_fuzz)
 
 # Config parsing (src/config/) moved to riftbound-trainer along with the
 # training driver — engine has no current consumers. A future engine

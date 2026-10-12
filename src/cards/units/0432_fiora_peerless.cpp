@@ -18,17 +18,27 @@ public:
     // "When I attack or defend one on one, double my Might this combat."
     // One on one = exactly one attacker and one defender at my battlefield.
     TriggerType triggerType() const override { return TriggerType::WhenIAttackOrDefend; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
+    // "one on one" is part of the trigger condition (CR 383.4.e.2.b /
+    // 383.4.f.2.b): judged when I become an attacker or a defender. With a
+    // second unit on either side nothing is put on the chain; a unit that
+    // joins or leaves afterwards changes nothing.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto my_bf = state.getObject(source).battlefieldId();
+        if (!my_bf) return false;
         int attackers = 0, defenders = 0;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.battlefieldId() != my_bf) continue;
             if (obj.combat_designation == CombatDesignation::Attacker) ++attackers;
             else if (obj.combat_designation == CombatDesignation::Defender) ++defenders;
         }
-        if (attackers != 1 || defenders != 1) return;  // not one on one
+        return attackers == 1 && defenders == 1;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        // "my Might": nothing to double once I have left the board.
+        if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         // Double my Might THIS COMBAT: the bonus is a continuous effect that
         // lasts while I'm an attacker or a defender (applyPassiveAura), not a
         // "this turn" bonus that would outlive the combat.

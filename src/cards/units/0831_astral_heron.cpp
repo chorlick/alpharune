@@ -36,16 +36,22 @@ public:
     }
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
                           TriggerType trigger, GameObjectId subject) const override {
+        // "if I'm at a battlefield" is part of the trigger condition (CR
+        // 383.2.a.1): asked when the card is played, not again as the ability
+        // resolves. A Heron played straight to a battlefield is already there
+        // when its own play is announced.
+        if (!state.objectExists(source) || !state.getObject(source).isAtBattlefield())
+            return false;
         const GameObjectId played = trigger == TriggerType::WhenYouPlayMe ? source : subject;
         if (played == kInvalidId || !state.objectExists(played)) return false;
         if (state.getObject(played).isToken()) return false;
         return playOrdinalThisTurn(state, played) == 1;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
+        // "if I'm at a battlefield" was the trigger's condition
+        // (triggerCondition): an ability that is on the chain resolves even
+        // if the Heron has left the battlefield since (CR 383.2.a.1).
         auto& ps = ctx.state.player(ctx.controller);
-        if (!self.isAtBattlefield()) return;                          // "if I'm at a battlefield"
         PlayerState::CostModifier m;
         m.source = ctx.source;
         m.energy_reduction = 2;

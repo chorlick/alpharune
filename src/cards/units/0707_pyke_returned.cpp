@@ -18,13 +18,24 @@ public:
     // "Once each turn, when an enemy unit dies while I'm at a battlefield,
     // play a Gold gear token exhausted." [Hidden]/[Backline] engine-handled.
     TriggerType triggerType() const override { return TriggerType::WhenAnEnemyUnitDies; }
+    // "while I'm at a battlefield" and "once each turn" are the trigger's
+    // condition (CR 383.2.a.1, 383.3.e.1): asked when the enemy unit dies. A
+    // Pyke at his base, or one whose ability was already performed this turn
+    // or is still on the chain, puts nothing on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& self = state.getObject(source);
+        if (!self.isAtBattlefield()) return false;
+        const auto it = self.card_counters.find("__pyke_token_turn");
+        if (it != self.card_counters.end() && it->second == state.turn.turn_number) return false;
+        return !triggeredAbilityOnChain(state, source, trigger);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        if (!self.battlefieldId().has_value()) return;  // "while I'm at a battlefield"
-        auto it = self.card_counters.find("__pyke_token_turn");
-        if (it != self.card_counters.end() && it->second == ctx.state.turn.turn_number)
-            return;  // "once each turn"
+        // Not asked again where Pyke is: he was at a battlefield when the unit
+        // died, and the ability resolves even if he has left since.
         self.card_counters["__pyke_token_turn"] = ctx.state.turn.turn_number;
         // CR 149.2: gear is played to its controller's Base unless an effect
         // says otherwise ("while I'm at a battlefield" is the condition, not a

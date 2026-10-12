@@ -17,6 +17,21 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
+    // "if you spent [4] or more" is part of the trigger condition (CR
+    // 383.2.a.1): asked when the spell has been played; a cheaper spell puts
+    // nothing on the chain. What was spent on the spell is stamped on it as
+    // it is played (TriggerManager::onCardPlayed);
+    // PlayerState::last_spell_energy_spent is the fallback for a path that
+    // names no spell.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
+        int spent = state.player(controller).last_spell_energy_spent;
+        if (subject != kInvalidId && state.objectExists(subject)) {
+            const auto& c = state.getObject(subject).card_counters;
+            if (const auto it = c.find("__energy_spent_on_play"); it != c.end()) spent = it->second;
+        }
+        return spent >= 4;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         // "it" is the spell that was played: the trigger's subject
         // (TriggerManager::onSpellResolved) — not whichever spell is newest in
@@ -25,20 +40,9 @@ public:
             ? ctx.state.chain.resuming->triggering_subject
             : findMostRecentlyPlayedSpell(ctx.state, ctx.controller);
         // Validation closure: "you may banish it" is legal iff that spell is
-        // in a trash and its play-time energy spend was ≥4. Re-checked before
-        // AND after the agent's yes/no via confirmOptional.
+        // in a trash (what was spent on it was the trigger's condition).
+        // Re-checked before AND after the agent's yes/no via confirmOptional.
         auto still_legal = [&]() -> bool {
-            // The spend is snapshotted on this trigger's chain item
-            // (TriggerManager captures it at trigger-add time, so a later
-            // spell can't clobber it). Fall back to the PlayerState field
-            // for paths that don't snapshot.
-            int spent = ctx.state.chain.resuming.has_value()
-                ? ctx.state.chain.resuming->triggering_spell_energy_spent
-                : 0;
-            if (spent == 0) {
-                spent = ctx.state.player(ctx.controller).last_spell_energy_spent;
-            }
-            if (spent < 4) return false;
             if (spell_id == kInvalidId || !ctx.state.objectExists(spell_id)) return false;
             return ctx.state.getObject(spell_id).zone == ZoneType::Trash;
         };

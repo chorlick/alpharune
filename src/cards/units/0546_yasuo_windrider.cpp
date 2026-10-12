@@ -17,19 +17,18 @@ class YasuoWindrider_546 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
+    // "The third time I move in a turn" is the trigger condition itself (CR
+    // 383.1): judged when the move happens. Every move bumps
+    // GameObject::moves_this_turn before its event is announced, so the third
+    // move of the turn is the one that leaves it at 3; the first, second and
+    // fourth put nothing on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).moves_this_turn == 3;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        int turn_id = ctx.state.turn.turn_number + 1;
-        if (self.card_counters["yasuo_move_turn"] != turn_id) {
-            self.card_counters["yasuo_move_turn"] = turn_id;
-            self.card_counters["yasuo_moves"] = 0;
-        }
-        int moves = ++self.card_counters["yasuo_moves"];
-        if (moves == 3) {
-            ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-            RIFT_TRACE(ctx.events, "YASUO WINDRIDER: 3rd move this turn -> score 1");
-        }
+        ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
+        RIFT_TRACE(ctx.events, "YASUO WINDRIDER: 3rd move this turn -> score 1");
     }
 private:
     const CardDef def_ = [] {

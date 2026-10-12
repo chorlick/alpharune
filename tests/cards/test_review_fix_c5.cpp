@@ -745,6 +745,7 @@ TEST_F(C5Test, SpectralMatronLimitsThePrintedCostAndAsksWhere) {
     auto cheap = addToTrash(P1, kShipyardSkulker);     // [3]
     auto powered = addToTrash(P1, kKrakenHunter);      // [3][O][O]: more than [A]
     state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);   // held: control without a unit there is lost at the next Cleanup (CR 323.5)
     EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap.raw()), 1}));
     playThroughEngine(matron, &agent);
     EXPECT_FALSE(agent.wasOffered(powered)) << "no more than [3] AND no more than [A]";

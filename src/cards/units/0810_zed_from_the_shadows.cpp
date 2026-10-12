@@ -32,16 +32,23 @@ public:
     //  Clone unit token."
     // (The token carries the registered Shadow Clone card, id 955.)
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "if you paid the additional cost" is part of the trigger condition (CR
+    // 383.2.a.1): asked as I am played; unpaid, nothing is put on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find(kPaidFlag);
+        return it != c.end() && it->second != 0;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        auto it = self.card_counters.find(kPaidFlag);
-        if (it == self.card_counters.end() || it->second == 0) return;
         // No location is printed: the controller's base or a battlefield
         // they control, their choice (CR 355.2.a).
         const int dest = pickTokenDest(*this, ctx, "Zed: play the Shadow Clone to");
         if (dest == -1) return;   // waiting for the agent
-        it->second = 0;  // consumed: a later replay must pay again
+        self.card_counters[kPaidFlag] = 0;  // consumed: a later replay must pay again
         {
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone",
                                  0, std::vector<std::string>{}, KeywordSet{},

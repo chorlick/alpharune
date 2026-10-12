@@ -20,9 +20,14 @@ public:
     //  turn, draw 1." (GameObject::damage_taken_this_turn counts spell, ability
     //  and combat damage and is reset at end of turn.)
     TriggerType triggerType() const override { return TriggerType::WhenACombatIWasInEnds; }
+    // The "if" is part of the trigger condition (CR 383.2.a.1): asked when
+    // the combat ends. Damage dealt to me after that does not undo the draw.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) &&
+               state.getObject(source).damage_taken_this_turn == 0;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        if (ctx.state.getObject(ctx.source).damage_taken_this_turn > 0) return;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "AFFECTIONATE PORO: combat ended undamaged -> draw 1");
     }

@@ -161,11 +161,12 @@ TEST_F(CombatShowdownDispatchTest, ResolveShowdown_PassFocus_BothSidesClosesShow
     EXPECT_FALSE(next.has_value()) << "Both players passed — showdown closes";
 }
 
-TEST_F(CombatShowdownDispatchTest, ResolveShowdown_UnknownIntent_HoldsFocus) {
-    // Defensive: an intent type that ISN'T in the play/activate switch
-    // (e.g. ChooseBattlefield) should still hold focus to let the outer
-    // loop retry. Pre-fix this was the fallthrough default; we preserve
-    // that for unknown types after the refactor.
+TEST_F(CombatShowdownDispatchTest, ResolveShowdown_UnknownIntent_IsAnError) {
+    // An intent type that is not in the play / activate switch (e.g.
+    // ChooseBattlefield) used to "hold focus to let the outer loop retry":
+    // the same decision was asked again until the showdown's action bound
+    // closed it — a choice silently dropped. Since the testing phase (finding
+    // D6) an offered option that cannot be executed is an engine error.
     makeEngineAndSeedBattlefields();
 
     Intent unk;
@@ -173,10 +174,9 @@ TEST_F(CombatShowdownDispatchTest, ResolveShowdown_UnknownIntent_HoldsFocus) {
     unk.player = P1;
 
     int action_count = 0;
-    auto next = engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), unk, P1, action_count);
-    EXPECT_TRUE(next.has_value());
-    EXPECT_EQ(*next, P1) << "Unknown intent type — focus unchanged for outer-loop retry";
-    EXPECT_EQ(action_count, 1) << "Action count still increments (safety-cap budget)";
+    EXPECT_THROW(engine_->testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), unk, P1,
+                                                           action_count),
+                 std::logic_error);
 }
 
 }  // namespace

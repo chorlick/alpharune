@@ -25,24 +25,25 @@ public:
     // "When you play me, if you paid the additional cost, banish a card from
     //  any trash to give a unit [Assault 2] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "if you paid the additional cost" is part of the trigger condition (CR
+    // 383.2.a.1): asked as I am played; unpaid, nothing is put on the chain.
+    // The engine forgets the flag as each play begins
+    // (Card::forgetPlayPayments).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__gust_monk_paid");
+        return it != c.end() && it->second == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        // No return here when the additional cost was not paid: there is
-        // then no unit to choose, pickTarget stores that on the item and the
-        // "no unit" return below is the helper's.
-        bool paid = false;
-        {
-            const auto& self = ctx.state.getObject(ctx.source);
-            auto it = self.card_counters.find("__gust_monk_paid");
-            paid = it != self.card_counters.end() && it->second == 1;
-        }
         // The unit that gets [Assault 2] is the target; the card banished is
         // the cost ("banish a card from any trash to ..."), picked and paid
         // as the ability goes on the chain (CR 383.3) and not refunded if the
         // unit is gone by the time it resolves.
         const auto& ri = ctx.state.chain.resuming;
         const GameObjectId unit = pickTarget(ctx, "Gust Monk: give a unit [Assault 2]",
-            chooseableUnits(ctx.state, ctx.controller, [paid](const GameObject&) { return paid; }));
+            chooseableUnits(ctx.state, ctx.controller, [](const GameObject&) { return true; }));
         if (unit == kInvalidId && ri.has_value() && ri->resume_point == 7) return;   // waiting
         if (!costAlreadyPaid(ctx)) {
             if (unit == kInvalidId) return;           // no unit to give it to

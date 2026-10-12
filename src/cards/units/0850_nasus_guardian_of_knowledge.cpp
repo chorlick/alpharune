@@ -18,14 +18,22 @@ public:
 
     // "Once each turn, when an enemy unit here dies, channel 1 rune exhausted."
     TriggerType triggerType() const override { return TriggerType::WhenAnEnemyUnitDiesHere; }
+    // "Once each turn" (CR 383.3.e.1): an ability that was already performed
+    // this turn — or is still on the chain — does not trigger again. Asked
+    // when the enemy unit dies ("here" is the engine's dispatch).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__nasus_guardian_turn");
+        if (it != c.end() && it->second == state.turn.turn_number + 1) return false;
+        return !triggeredAbilityOnChain(state, source, trigger);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        if (!self.location.has_value()) return;       // left the board
-        const int turn_id = ctx.state.turn.turn_number + 1;   // +1 so 0 = never
-        int& last = self.card_counters["__nasus_guardian_turn"];
-        if (last == turn_id) return;                  // "once each turn"
-        last = turn_id;
+        // Performed now, wherever Nasus is by then (the effect is not his own).
+        ctx.state.getObject(ctx.source).card_counters["__nasus_guardian_turn"] =
+            ctx.state.turn.turn_number + 1;   // +1 so 0 = never
         ctx.executor.channelRunes(ctx.controller, 1, /*enter_exhausted=*/true);
         RIFT_TRACE(ctx.events, "NASUS, GUARDIAN OF KNOWLEDGE: enemy unit died here -> channel 1 exhausted");
     }

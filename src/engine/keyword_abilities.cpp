@@ -41,14 +41,41 @@ private:
     const CardDef def_ = keywordDef("Weaponmaster");
 };
 
+/// [Temporary] — CR 816.1.b: "At the start of this permanent's controller's
+/// Beginning Phase, before scoring, kill this." Queued by
+/// TriggerManager::queueTemporaryAbilities; "before scoring" holds because the
+/// Beginning Step's chain is resolved, with its Cleanups, before the Scoring
+/// Step's Hold task (GameEngine::beginningStep). "Kill this": the permanent it
+/// triggered on, whoever controls it by now, if it is still on the board — a
+/// permanent that left in response is a new object wherever it is (CR 124.1)
+/// and is not killed (ChainItem::source_left_board).
+class TemporaryAbility : public Card {
+public:
+    const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        const auto& self = ctx.state.getObject(ctx.source);
+        if (!self.location.has_value()) return;
+        if (ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->source_left_board)
+            return;   // it left the board since and is a new object
+        ctx.executor.killObject(ctx.source);
+    }
+private:
+    const CardDef def_ = keywordDef("Temporary");
+};
+
 }  // namespace
 
 Card* keywordAbilityCard(Keyword keyword) {
     static VisionAbility vision;
     static WeaponmasterAbility weaponmaster;
+    static TemporaryAbility temporary;
     switch (keyword) {
         case Keyword::Vision:       return &vision;
         case Keyword::Weaponmaster: return &weaponmaster;
+        case Keyword::Temporary:    return &temporary;
         default:                    return nullptr;
     }
 }

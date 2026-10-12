@@ -753,16 +753,44 @@ TEST_F(C4Test, CantBeChosenUnitsAreNotOfferedToAhriTeemoOrSnapvine) {
     EXPECT_FALSE(a3.wasOffered(shrouded));
 }
 
-TEST_F(C4Test, TeemoStrategist_StillRevealsWhenThereIsNoUnitToChoose) {
+// "When I defend, choose an enemy unit here and reveal the top 5 cards of your
+// Main Deck. ..." With no enemy unit he can choose, CR 403.4 removes the whole
+// ability as it would be finalized ("If there are not enough options to make
+// legal choices for a Triggered Ability that has been put on the chain, remove
+// it from the Chain now") — the reveal and the recycle included. This test
+// used to pin the opposite (the reveal happened all the same, by analogy with
+// a mistarget, CR 359.3.e); the strict reading is implemented since finding D4
+// and the case is with the judges (docs/judge-questions-2026-10.md, 6).
+TEST_F(C4Test, TeemoStrategist_NoUnitToChoose_TheAbilityLeavesTheChainAndNothingIsRevealed) {
     auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
+    auto top = addToDeck(P1, kTeemoScout);
+    int revealed = 0, finalized = 0;
+    auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
+        if (e.card == top) ++revealed;
+    });
+    auto fin = events.on_chain_item_finalized.connect(
+        [&](const ChainItemFinalizedEvent&) { ++finalized; });
+    fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend);
+    conn.disconnect();
+    fin.disconnect();
+    EXPECT_EQ(finalized, 0) << "removed, never finalized (CR 403.4)";
+    EXPECT_EQ(revealed, 0);
+    ASSERT_EQ(deckSize(P1), 1);
+    EXPECT_EQ(state.player(P1).main_deck.back(), top) << "the deck is untouched";
+}
+
+TEST_F(C4Test, TeemoStrategist_WithAUnitToChoose_RevealsAndRecycles) {
+    auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
+    auto enemy = addUnit(P2, kInvalidId, 3, 0);
     auto top = addToDeck(P1, kTeemoScout);
     int revealed = 0;
     auto conn = events.on_card_revealed.connect([&](const CardRevealedEvent& e) {
         if (e.card == top) ++revealed;
     });
-    fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend);
+    EnginePathAgent agent(EnginePathAgent::choosing(enemy));
+    fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend, &agent);
     conn.disconnect();
-    EXPECT_EQ(revealed, 1) << "the top of the deck is revealed all the same";
+    EXPECT_EQ(revealed, 1);
     ASSERT_EQ(deckSize(P1), 1);
     EXPECT_TRUE(inDeck(P1, top)) << "and recycled";
 }
@@ -813,6 +841,7 @@ TEST_F(C4Test, KaiSaEvolutionary_PlaysTheSpellItsControllerChooses) {
 
 TEST_F(C4Test, Soulgorger_PlaysTheChosenUnitWhereItsControllerChooses) {
     state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 1);   // held: control without a unit there is lost at the next Cleanup (CR 323.5)
     auto dead = inTrashOf(P1, kFirstMate);
     auto card = addToHand(P1, kSoulgorger);
     // yes; the unit; battlefield 1 (mode 2).

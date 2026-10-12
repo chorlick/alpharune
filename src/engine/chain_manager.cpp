@@ -175,99 +175,154 @@ void ChainManager::processFEPR(
     std::function<void(const ChainItem&)> resolve_spell,
     ClosedActionsGen gen_closed_actions) {
 
-    // Safety bound on a chain that never empties (abilities that keep
-    // triggering each other). Every pass finalizes, adds or resolves an item,
-    // so an ordinary chain is nowhere near it.
-    constexpr int kMaxIterations = 1000;
-    int iterations = 0;
-
     // The engine's play path, called from the Execute step for a card played
     // in response, ends by running the chain: this loop is already doing that.
-    if (playing_card_) return;
+    if (playing_card_ || running_) return;
+    // An item is resolving: nothing is finalized or resolved and no Cleanup
+    // happens until it has finished (CR 321, 354.3, 402.2).
+    if (state_.chain.resuming.has_value()) return;
 
-    while (state_.chain.exists()) {
+    struct Running {
+        bool& flag;
+        explicit Running(bool& f) : flag(f) { flag = true; }
+        ~Running() { flag = false; }
+    } running(running_);
+
+    // Engine bound on a chain that never empties (abilities that keep
+    // triggering each other). Every pass finalizes or resolves one item, so
+    // this is about a thousand items. Reaching it is an engine error that
+    // ends the game as a failure — it is not a quiet end of the chain
+    // (finding F1: the chain used to be dropped with a warning and the game
+    // played on with a thousand tokens on the board).
+    constexpr int kMaxIterations = 2000;
+    int iterations = 0;
+    bool had_chain = false;
+
+    // HOT FEPR (CR 334): Handle Outstanding Tasks, then Finalize, Execute,
+    // Pass, Resolve. The loop ends when the tasks leave nothing on the chain.
+    bool emptied_announced = false;
+    auto announceEmptied = [&] {
+        // CR 331.2 / 340.2: no Chain, so the turn is in an Open State — for
+        // the Cleanup that follows the last resolution too (CR 323.5: control
+        // of a battlefield without units is lost only in an Open State).
+        if (!had_chain || emptied_announced || state_.chain.exists()) return;
+        state_.chain.may_loop_counts.clear();   // a new chain is a new count (TR 505)
+        state_.turn.oc_state = OpenClosedState::Open;
+        events_.emit(ChainEmptiedEvent{});
+        emptied_announced = true;
+    };
+    bool quiet_finalization = false;   // the last pass finalized an item and logged nothing
+    while (true) {
+        announceEmptied();
+        if (handle_tasks_ && !quiet_finalization) handle_tasks_();
+        quiet_finalization = false;
+        if (state_.game_over || !state_.chain.exists()) break;
+        had_chain = true;
+        emptied_announced = false;
         if (++iterations > kMaxIterations) {
-            abandonChain("FEPR loop did not empty the chain");
-            return;
+            const ChainItem& top = state_.chain.items.back();
+            // A loop nobody keeps going by a decision and nobody broke: the
+            // engine says what the rules make of it (the game is a draw,
+            // Tournament Rules 505.6). Anything else is an engine error.
+            if (unbroken_loop_ && unbroken_loop_(top)) break;
+            throw std::logic_error(
+                "ChainManager::processFEPR: the chain did not empty after " +
+                std::to_string(kMaxIterations) + " passes; " +
+                std::to_string(state_.chain.items.size()) + " item(s) on it, the newest is " +
+                (state_.objectExists(top.source) ? state_.getObject(top.source).name.get()
+                                                 : std::string("?")) +
+                " (chain_item=" + toString(top.id) + ")");
+        }
+        // CR 331.1: the turn is in a Closed State while a Chain exists,
+        // whoever last wrote the state (a showdown that began with an ability
+        // pending, the start of a phase).
+        state_.turn.oc_state = OpenClosedState::Closed;
+
+        // Step 1: Finalize the oldest pending item (CR 337.1). Permanents
+        // resolve as they are finalized (CR 337.2). Then back to the tasks:
+        // a Cleanup follows every finalization (CR 319.4).
+        if (state_.chain.hasPending()) {
+            if (order_pending_) order_pending_();
+            const uint64_t before = activity_ ? activity_() : 0;
+            const size_t items_before = state_.chain.items.size();
+            stepFinalize(resolve_permanent);
+            // Nothing chosen, paid, removed or entered: only the item's
+            // status changed, and no Cleanup task can have anything to do.
+            quiet_finalization = activity_ && activity_() == before &&
+                                 state_.chain.items.size() == items_before;
+            continue;
         }
 
-        // Step 1: Finalize
-        // Permanents resolve immediately here (CR 337.1.c).
-        // If finalize removed all items, chain is empty → done.
-        stepFinalize(resolve_permanent);
-        if (!state_.chain.exists()) {
-            // Chain emptied during finalization
-            state_.turn.oc_state = OpenClosedState::Open;
-            events_.emit(ChainEmptiedEvent{});
-            return;
+        // Steps 2-3: Execute and Pass. The controller of the newest item gets
+        // Priority; an item added restarts from the tasks.
+        if (stepExecuteAndPass(query_agent, gen_closed_actions)) {
+            if (state_.game_over) break;   // a concession
+            continue;
         }
 
-        // If there are still pending items, loop back to finalize
-        if (state_.chain.hasPending()) continue;
-
-        // Steps 2-3: Execute and Pass
-        // Controller of newest item gets Priority.
-        // If someone adds an item → restart from Finalize.
-        bool item_added = stepExecuteAndPass(query_agent, gen_closed_actions);
-        if (item_added) continue; // restart FEPR
-
-        // Step 4: Resolve top item
+        // Step 4: Resolve the newest item; a Cleanup follows (CR 319.5).
         stepResolve(query_agent, resolve_spell);
-
-        // After resolve, check chain state:
-        if (!state_.chain.exists()) {
-            state_.turn.oc_state = OpenClosedState::Open;
-            events_.emit(ChainEmptiedEvent{});
-            return;
-        }
-        // If pending items exist (from triggers), loop back to Finalize
-        // If no pending, loop back to Execute (newest item controller gets priority)
     }
+
+    announceEmptied();
 }
 
 void ChainManager::stepFinalize(
     std::function<void(const ChainItem&)> resolve_permanent) {
 
-    // Finalize pending items in order (oldest pending first)
-    // Use index loop since vector may be modified
-    for (size_t i = 0; i < state_.chain.items.size(); ++i) {
-        auto& item = state_.chain.items[i];
-        if (item.status != ChainItemStatus::Pending) continue;
+    size_t i = 0;
+    while (i < state_.chain.items.size() &&
+           state_.chain.items[i].status != ChainItemStatus::Pending) ++i;
+    if (i == state_.chain.items.size()) return;
 
-        item.status = ChainItemStatus::Finalized;
+    state_.chain.items[i].status = ChainItemStatus::Finalized;
+    const ChainItemId fid = state_.chain.items[i].id;
 
-        // Choices made at finalization (targets; see setFinalizeChoices). The
-        // callback may put triggered abilities on the chain, so re-take the
-        // reference afterwards.
-        if (finalize_choices_ && !item.is_permanent) {
-            const ChainItemId fid = item.id;
-            finalize_choices_(item);
-            bool found = false;
-            for (size_t k = 0; k < state_.chain.items.size(); ++k)
-                if (state_.chain.items[k].id == fid) { i = k; found = true; break; }
-            if (!found) continue;
-        }
+    // Choices made at finalization (targets, "may", costs; see
+    // setFinalizeChoices). The callback may put triggered abilities on the
+    // chain, so the item is found again afterwards.
+    if (finalize_choices_ && !state_.chain.items[i].is_permanent)
+        finalize_choices_(state_.chain.items[i]);
+    bool found = false;
+    for (size_t k = 0; k < state_.chain.items.size(); ++k)
+        if (state_.chain.items[k].id == fid) { i = k; found = true; break; }
+    if (!found) return;
 
-        {
-            const auto& fin = state_.chain.items[i];
-            events_.emit(ChainItemFinalizedEvent{fin.id, fin.source, fin.controller});
-        }
-
-        // CR 337.1.c: Permanents resolve immediately on finalize.
-        // They leave the chain and become game objects on the board.
-        if (state_.chain.items[i].is_permanent) {
-            ChainItem resolved_item = state_.chain.items[i]; // copy before erasing
-            state_.chain.items.erase(state_.chain.items.begin() +
-                                      static_cast<ptrdiff_t>(i));
-            --i; // adjust index
-
-            resolve_permanent(resolved_item);
-
-            events_.emit(ChainItemResolvedEvent{resolved_item.id,
-                resolved_item.source, resolved_item.controller});
-        }
+    // CR 403.1.a / 403.4 / 405.2: a triggered ability that is not performed
+    // — declined, not paid for, or without a legal option for a required
+    // choice — "is removed from the chain": it "ceases to be a Pending Item
+    // but never becomes a Finalized Chain Item". No finalized event, no
+    // priority; if it was the only item the state is Open again.
+    if (state_.chain.items[i].remove_at_finalize) {
+        const ChainItem gone = state_.chain.items[i];
+        RIFT_TRACE(events_, "REMOVED: " +
+                         (state_.objectExists(gone.source) ? state_.getObject(gone.source).name.get()
+                                                           : std::string("?")) +
+                         " (chain_item=" + toString(gone.id) +
+                         ") leaves the chain unfinalized — not performed (CR 403)");
+        state_.chain.items.erase(state_.chain.items.begin() + static_cast<ptrdiff_t>(i));
+        return;
     }
 
+    {
+        const auto& fin = state_.chain.items[i];
+        events_.emit(ChainItemFinalizedEvent{fin.id, fin.source, fin.controller});
+    }
+    for (size_t k = 0; k < state_.chain.items.size(); ++k)
+        if (state_.chain.items[k].id == fid) { i = k; found = true; break; }
+
+    // CR 337.2: Permanents resolve immediately on finalize. They leave the
+    // chain and become game objects on the board.
+    if (i < state_.chain.items.size() && state_.chain.items[i].id == fid &&
+        state_.chain.items[i].is_permanent) {
+        ChainItem resolved_item = state_.chain.items[i]; // copy before erasing
+        state_.chain.items.erase(state_.chain.items.begin() + static_cast<ptrdiff_t>(i));
+
+        resolve_permanent(resolved_item);
+
+        events_.emit(ChainItemResolvedEvent{resolved_item.id,
+            resolved_item.source, resolved_item.controller});
+    }
 }
 
 bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
@@ -282,12 +337,6 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     PlayerId current = first_priority;
 
     constexpr int kMaxPriorityPasses = 10; // safety (2 players × some margin)
-    // Plays that were chosen in this window and did not happen. They are not
-    // offered again: choosing one changes nothing, so asking again with the
-    // same options would only repeat it.
-    // (ChainManager::dropped_plays_: a member, so an outside edit of the
-    // state can clear it — forgetDroppedPlays.)
-    dropped_plays_.clear();
     // An ability used in response that puts nothing on the chain (a rune's
     // Add, CR 164.2) is not a pass: the player keeps priority and the window
     // goes on, however many of them are used. The bound only stops an
@@ -304,12 +353,6 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         auto actions = gen_closed_actions
             ? gen_closed_actions(current)
             : generateClosedStateActions(current);
-        if (!dropped_plays_.empty())
-            actions.erase(std::remove_if(actions.begin(), actions.end(),
-                [&](const Intent& a) {
-                    return std::find(dropped_plays_.begin(), dropped_plays_.end(), a) !=
-                           dropped_plays_.end();
-                }), actions.end());
 
         // Query agent
         auto chosen = query_agent(current, actions);
@@ -346,12 +389,21 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             playing_card_ = false;
             if (state_.chain.next_id != before)
                 return true; // Item added → restart FEPR from Finalize
-            // The play did not happen (its cost could not be paid after all):
-            // the same player keeps priority and chooses again, without it.
-            // (An activated ability that adds no item is different: a
-            // cost-only ability — a rune's Add — has done its work, and is
-            // offered again only while it is still legal.)
-            dropped_plays_.push_back(chosen);
+            // The play did not happen. (An activated ability that adds no
+            // item is different: a cost-only ability — a rune's Add — has done
+            // its work, and is offered again only while it is still legal.)
+            // An option that was offered and could not be executed: the
+            // generator and the play path disagree. Not one such play in
+            // 2,268 games across every pairing of the constructed lists
+            // (batch 1 of the testing phase), so it is an engine error and no
+            // longer a play quietly taken off the list and asked again.
+            throw std::logic_error(
+                "ChainManager: " +
+                (state_.objectExists(chosen.card) ? state_.getObject(chosen.card).name.get()
+                                                  : std::string("?")) +
+                " was offered to " + toString(current) + " at chain priority (decision #" +
+                std::to_string(state_.decision_index) +
+                ") and playing it put nothing on the chain");
         } else if (chosen.type == IntentType::PlayReaction) {
             // There is one way to play a card: the engine's (setPlayCard). A
             // ChainManager with no play callback cannot play one.
@@ -371,10 +423,31 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             // player keeps priority and chooses again. This did not use up one
             // of the window's passes.
             if (++cost_only_activations <= kMaxCostOnlyActivations) --pass;
+        } else if (chosen.type == IntentType::Concede) {
+            // Always accepted (GameEngine::askAgent): the game ends here, as
+            // it does for a concession at any other decision.
+            if (!state_.game_over) {   // (the engine's askAgent has ended it already)
+                state_.game_over = true;
+                state_.winner = opponent(current);
+                state_.game_over_reason = toString(current) + std::string(" conceded");
+                events_.emit(GameOverEvent{state_.winner, state_.game_over_reason});
+            }
+            return true;   // nothing resolves: the loop sees the game is over
+        } else {
+            // An option the generator offered at chain priority that nothing
+            // here can execute (finding D6: a plain PlayCard was offered, the
+            // choice was dropped and the same decision asked again).
+            throw std::logic_error(
+                std::string("ChainManager: ") + toString(chosen.type) +
+                " was chosen at chain priority and cannot be executed there");
         }
     }
 
-    return false;
+    // Engine bound: the window never ended in both players passing (an
+    // activation that changes nothing chosen hundreds of times). It used to
+    // go on to resolve the item without the passes.
+    throw std::logic_error("ChainManager: the priority window of chain item " +
+                           toString(top->id) + " did not end in both players passing");
 }
 
 // Runs the item in `state_.chain.resuming` to completion. Resumable cards
@@ -435,35 +508,6 @@ void ChainManager::runResumable(
         // recorded choice via `executor.takeChoice()` and continues past
         // its resume_point.
     }
-}
-
-// A chain that cannot be brought to an end is given up: what is left on it
-// leaves without resolving, the state opens and the game goes on. Cards still
-// in the Chain zone go to their owner's trash.
-void ChainManager::abandonChain(const std::string& why) {
-    RIFT_WARN(events_, "ChainManager: " + why + " — abandoning " +
-                    std::to_string(state_.chain.items.size()) + " chain item(s)");
-    for (const auto& item : state_.chain.items) {
-        if (!item.is_spell && !item.is_permanent) continue;
-        if (!state_.objectExists(item.source)) continue;
-        auto& obj = state_.getObject(item.source);
-        if (obj.zone != ZoneType::Chain) continue;
-        obj.zone = ZoneType::Trash;
-        obj.location = std::nullopt;
-        const PlayerId home = obj.owner != PlayerId::None ? obj.owner : item.controller;
-        if (!obj.isToken()) {
-            state_.player(home).trash.push_back(item.source);
-            settleInTrash(state_, events_, item.source);
-        }
-    }
-    state_.chain.items.clear();
-    state_.chain.resuming.reset();
-    if (executor_) {
-        if (executor_->hasPendingChoice()) executor_->consumePendingChoice();
-        executor_->takeChoice();
-    }
-    state_.turn.oc_state = OpenClosedState::Open;
-    events_.emit(ChainEmptiedEvent{});
 }
 
 void ChainManager::stepResolve(

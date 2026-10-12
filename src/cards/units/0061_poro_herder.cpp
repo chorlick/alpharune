@@ -16,14 +16,19 @@ class PoroHerder : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you play me, if you control a Poro, buff me and draw 1."
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        bool controls_poro = false;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
+    // "if you control a Poro" is part of the trigger condition (CR
+    // 383.2.a.1): asked as I am played; without a Poro nothing is put on the
+    // chain, with one the ability resolves even if the Poro has left since.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
+            if (!obj.isUnit() || obj.controller != controller) continue;
             if (!obj.location.has_value()) continue;
-            if (hasTag(obj, "Poro")) { controls_poro = true; break; }
+            if (hasTag(obj, "Poro")) return true;
         }
-        if (!controls_poro) return;
+        return false;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "buff me": nothing happens to a Herder that already left the board
         // (EffectExecutor::buffUnit); the draw does not depend on it.
         ctx.executor.buffUnit(ctx.source);  // +1 [M] buff if it has none

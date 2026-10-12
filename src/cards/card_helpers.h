@@ -353,6 +353,25 @@ inline void moveToLocation(EffectExecutor& exec, GameObjectId obj,
 
 inline bool isMighty(const GameObject& obj) { return obj.current_might >= 5; }
 
+/// For the triggerCondition of a "Once each turn, when ..." ability
+/// (CR 383.3.e.1: "If its trigger condition would be fulfilled and it has
+/// already been performed that many times, it does not trigger"): true while
+/// an instance of `source`'s ability for `trigger` is on the chain, pending,
+/// finalized or resolving — that instance is this turn's performance, so the
+/// event does not trigger another. The card keeps its own "performed on turn
+/// N" counter, written as the ability resolves, and tests both.
+inline bool triggeredAbilityOnChain(const GameState& state, GameObjectId source,
+                                    TriggerType trigger) {
+    auto same = [&](const ChainItem& ci) {
+        return ci.source == source && ci.is_ability && !ci.is_activated_ability &&
+               ci.reflexive_index < 0 && ci.fired_trigger == trigger;
+    };
+    if (state.chain.resuming.has_value() && same(*state.chain.resuming)) return true;
+    for (const auto& ci : state.chain.items)
+        if (same(ci)) return true;
+    return false;
+}
+
 /// The move that triggered the ability being checked or resolved ("When I
 /// move", "When a unit moves from here"): where it started and ended. While
 /// TriggerManager is announcing a move (a triggerCondition is being asked) it
@@ -801,6 +820,7 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             // here (the rule is at Card::finalizingChoices).
             ri.resume_point = kSplitDamageDone;
             Card::nothingToDecide(ri);
+            if (legal.empty() && !may_choose_none) Card::requiredChoiceMissing(ri);   // CR 403.4
             return true;
         }
         ri.resume_data = {0, 0};

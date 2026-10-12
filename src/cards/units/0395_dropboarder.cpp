@@ -16,18 +16,16 @@ class Dropboarder : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "When you play me, if you control two or more gear, ready me." The "if"
+    // is part of the trigger condition (CR 383.2.a.1): counted as I am
+    // played; with fewer nothing is put on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return gearControlled(state, controller) >= 2;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        int gear = 0;
-        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (obj.isGear() && obj.controller == ctx.controller &&
-                obj.location.has_value()) {
-                ++gear;
-            }
-        }
-        if (gear >= 2) {
-            ctx.executor.readyObject(ctx.source);
-            RIFT_TRACE(ctx.events, "DROPBOARDER: 2+ gear controlled, ready me");
-        }
+        ctx.executor.readyObject(ctx.source);
+        RIFT_TRACE(ctx.events, "DROPBOARDER: 2+ gear controlled, ready me");
     }
 private:
     const CardDef def_ = [] {

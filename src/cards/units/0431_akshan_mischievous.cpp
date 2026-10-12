@@ -29,23 +29,29 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::AsYouPlayMe};
     }
+    // "if you paid the additional cost" is part of the gear ability's trigger
+    // condition (CR 383.2.a.1): asked as I am played; unpaid, that ability is
+    // not put on the chain. ([Weaponmaster]'s own play ability has none.)
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (trigger != TriggerType::AsYouPlayMe) return true;
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__akshan_paid");
+        return it != c.end() && it->second == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (ctx.firing_trigger != TriggerType::AsYouPlayMe) {
             WeaponmasterUnit::onTrigger(ctx, targets);
             return;
         }
-        // "if you paid the additional cost" — the flag set at play time.
         auto& counters = ctx.state.getObject(ctx.source).card_counters;
-        // No return ahead of the marker when it was not paid: there is then
-        // no gear to choose, and pickTarget stores that on the item.
-        auto paid_it = counters.find("__akshan_paid");
-        const bool paid = paid_it != counters.end() && paid_it->second == 1;
         PlayerId me = ctx.controller;
 
         // "move an enemy gear to your base" — the controller chooses which.
         std::vector<GameObjectId> enemy_gear;
         for (auto& [id, obj] : ctx.state.objects.onBoard())
-            if (paid && obj.isGear() && obj.controller != me && obj.location.has_value())
+            if (obj.isGear() && obj.controller != me && obj.location.has_value())
                 enemy_gear.push_back(id);
         const GameObjectId target_gear = pickTarget(ctx, "Akshan: move an enemy gear to your base",
                                                     enemy_gear);
@@ -54,7 +60,6 @@ public:
             return;   // waiting for the agent
         // The payment covers this play only.
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (!paid) return;
         counters.erase("__akshan_paid");
         if (target_gear == kInvalidId) return;
 

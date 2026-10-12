@@ -322,6 +322,22 @@ public:
     /// For a choice helper: it has just stored "nothing to decide" as its
     /// answer on `item` (see the rule at Card::finalizingChoices in card.cpp).
     static void nothingToDecide(ChainItem& item);
+    /// For a choice helper, in a finalize pass: a REQUIRED choice (a target,
+    /// a mode) has no legal option. CR 403.4: "If there are not enough options
+    /// to make legal choices for a Triggered Ability that has been put on the
+    /// chain, remove it from the Chain now." The engine removes a triggered
+    /// ability whose pass recorded this (GameEngine::runFinalizePass); for a
+    /// spell or an activated ability it means nothing. Not for a choice the
+    /// text makes optional ("up to", "any number of", a "may" pick).
+    static void requiredChoiceMissing(ChainItem& item);
+    /// For a triggered ability that asks an optional part of its effect with
+    /// confirmOptional in its finalize pass ("heal your units here, then move
+    /// UP TO ONE enemy unit"): that "may" is not the first part of the effect,
+    /// so declining it is not declining the ability (CR 383.3.a: only a "you
+    /// may" that is the first part of the effect decides "whether or not to
+    /// perform the Triggered Ability"). Call it before confirmOptional; the
+    /// engine then keeps the ability on the chain when the answer is no.
+    static void mayIsNotTheWholeAbility(CardContext& ctx);
     /// Whether the cost is still to be paid in this run. Due exactly once per
     /// chain item: false after it was paid at finalization, and false after a
     /// run reached the marker with it paid — also when no finalize pass ran

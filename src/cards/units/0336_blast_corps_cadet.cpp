@@ -25,16 +25,20 @@ public:
                 /*any_domain=*/false, /*paid_flag=*/"__blastcorps_paid"};
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "if you paid the additional cost" is part of the trigger condition (CR
+    // 383.2.a.1): asked as I am played; unpaid, nothing is put on the chain.
+    // The engine forgets the flag as each play begins
+    // (Card::forgetPlayPayments).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__blastcorps_paid");
+        return it != c.end() && it->second == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& counters = ctx.state.getObject(ctx.source).card_counters;
-        auto paid_it = counters.find("__blastcorps_paid");
-        const bool paid = paid_it != counters.end() && paid_it->second == 1;
-        // No return ahead of the marker when the cost was not paid: there is
-        // then no unit to choose, and pickTarget stores that on the item.
         std::vector<GameObjectId> legal;
         for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (!paid) break;
             if (!obj.isUnit() || !obj.battlefieldId().has_value()) continue;
             if (obj.controller != ctx.controller && obj.untargetable_by_enemy)
                 continue;
@@ -43,10 +47,10 @@ public:
         GameObjectId tgt = pickTarget(ctx,
             "Blast Corps Cadet: deal 2 to a unit at a battlefield", legal);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        if (!paid) return;
         // The payment covers this play only: a Cadet that is returned to hand
         // and played again without paying must not find the old flag.
-        ctx.state.getObject(ctx.source).card_counters.erase("__blastcorps_paid");
+        if (ctx.state.objectExists(ctx.source))
+            ctx.state.getObject(ctx.source).card_counters.erase("__blastcorps_paid");
         if (tgt == kInvalidId || !ctx.state.objectExists(tgt)) return;
         ctx.executor.dealDamage(tgt, 2, ctx.source);
         if (ctx.state.objectExists(tgt) &&

@@ -115,12 +115,15 @@ TEST_F(MissingFixTest, Dropboarder_ReadiesWhenTwoGear) {
 }
 
 TEST_F(MissingFixTest, Dropboarder_StaysExhaustedWithOneGear) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     auto dropboarder = addUnit(P1, kDropboarder, /*might=*/3, /*at_bf=*/0);
     state.getObject(dropboarder).is_exhausted = true;
     addGear(P1, kInvalidId, 0);   // only one gear
 
     EffectExecutor exec(state, events, card_db);
-    fireTrigger(kDropboarder, dropboarder, P1, exec);
+    fireTriggerThroughEngine(dropboarder, TriggerType::WhenYouPlayMe);
     EXPECT_TRUE(state.getObject(dropboarder).is_exhausted)
         << "should NOT ready with only 1 gear";
 }
@@ -204,6 +207,9 @@ TEST_F(MissingFixTest, GutterPalace_WinsWith4Hand4Units) {
 }
 
 TEST_F(MissingFixTest, GutterPalace_NoWinWhenCountsWrong) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     auto gear = addGear(P1, kGutterPalace);
     for (int i = 0; i < 3; ++i) addToHand(P1, kInvalidId);  // only 3 cards
     addUnit(P1, kInvalidId, 1, /*at_bf=*/0);
@@ -212,7 +218,7 @@ TEST_F(MissingFixTest, GutterPalace_NoWinWhenCountsWrong) {
     addUnit(P1, kInvalidId, 1, /*at_bf=*/1);
 
     EffectExecutor exec(state, events, card_db);
-    fireTrigger(kGutterPalace, gear, P1, exec);
+    fireTriggerThroughEngine(gear, TriggerType::AtStartOfBeginning);
     EXPECT_FALSE(state.game_over);
 }
 

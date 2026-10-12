@@ -36,7 +36,11 @@ public:
         // The enemy count is not asked again: it was the trigger condition,
         // and the ability resolves even if a second enemy unit has arrived.
         if (!ctx.state.objectExists(ctx.source)) return;
-        ctx.executor.giveTemporaryMight(ctx.source, 2);
+        // "give me +2 [M] this turn": only a Kha'Zix that is still on the
+        // board has a Might to raise (the ability resolves all the same when
+        // he has left since it triggered — the XP is still gained).
+        if (ctx.state.getObject(ctx.source).location.has_value())
+            ctx.executor.giveTemporaryMight(ctx.source, 2);
         gainXp(ctx, ctx.controller, 2);
         RIFT_TRACE(ctx.events, "KHA'ZIX: enemy alone, +2M and +2 XP");
     }

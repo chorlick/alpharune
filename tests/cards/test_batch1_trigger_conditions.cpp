@@ -456,6 +456,28 @@ TEST_F(Batch1TriggerConditions, KhaZix_StillResolvesWhenASecondEnemyArrives) {
     EXPECT_EQ(ps(P1).xp, 2);
 }
 
+// The ability still resolves when Kha'Zix has left the board since it
+// triggered — the XP is gained — but "give me +2 [M]" has no unit to give it
+// to: nothing is written to the card in the trash (the checked build throws
+// on board state carried by an off-board object; found by the pairing run).
+TEST_F(Batch1TriggerConditions, KhaZix_DiedBeforeItResolves_GainsTheXpAndWritesNothingToTheCard) {
+    auto kha = addUnit(P1, kKhaZixMutatingHorror, 0, 0);
+    vanilla(P2, 0);
+    bool queued = false;
+    withEngine([&](GameEngine& e) {
+        const ChainItemId before = e.mutableState().chain.next_id;
+        e.testHook_executor().queueTriggeredAbility(kha, P1, TriggerType::WhenIAttackOrDefend,
+                                                    kInvalidId);
+        queued = e.mutableState().chain.next_id != before;
+        e.testHook_executor().killObject(kha);        // in response
+        settleLikeTheEngine(e);
+    });
+    ASSERT_TRUE(queued);
+    EXPECT_FALSE(o(kha).location.has_value());
+    EXPECT_EQ(o(kha).temp_might_bonus, 0);
+    EXPECT_EQ(ps(P1).xp, 2);
+}
+
 // Fiora, Peerless: "When I attack or defend one on one, double my Might this
 // combat."
 

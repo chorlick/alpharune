@@ -56,3 +56,17 @@ From the last stream report of the fix run (`plans/reports/checkpoint-followup-2
 
 Play UI (`docs/play-ui-followups.md`), the performance recommendations (`docs/perf-followups.md`), and the
 v6 ML tooling.
+
+## The fuzz is iterated (user decision, 2026-10-11)
+
+The first 100,000-game pass found two engine defects and a validator gap, so the fuzz is run in rounds:
+
+1. a pass with fresh seeds on both builds;
+2. failures grouped, each with a one-command reproduction; nothing fixed during a pass;
+3. one fix batch on a branch, one rebuild, one gate, merged to master;
+4. the next pass, compared with the last (groups gone, groups new, coverage per card).
+
+Later rounds use coverage-guided decks (weighted toward the least-exercised cards) and a seat that plays
+cards rather than passing, because uniform random play leaves rare cards and multi-step abilities rare. The
+stopping rule is set in numbers from the fuzz stream's final report (consecutive clean passes of a stated
+size, and a minimum number of resolutions per card).

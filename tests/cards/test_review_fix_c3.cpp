@@ -277,25 +277,33 @@ TEST_F(C3Test, RocketBarrage_IsNotPlayableWithNothingEitherModeCanAffect) {
     EXPECT_EQ(offers(spell).size(), 1u);
 }
 
-TEST_F(C3Test, BellowsBreath_TargetSetsAreUnitsAtOneLocation) {
+// D45 (testing phase): the units are no longer target sets of the play intent
+// (one Play per set) but prompts of the spell's own finalize pass, so that a
+// [Repeat] execution chooses its own (CR 820.2.a). Old expectation: one offer
+// per legal set, each at one location. New: one offer; the second prompt
+// offers only units where the first chosen one is.
+TEST_F(C3Test, BellowsBreath_ChoosesUnitsAtOneLocation) {
     // "Deal 1 to up to three units at the same location."
     auto spell = addToHand(P1, kBellowsBreath);
     auto a = addUnit(P2, kInvalidId, 3, 0);
     auto b = addUnit(P2, kInvalidId, 3, 0);
     auto c = addUnit(P2, kInvalidId, 3, 1);
-    bool pair_ab = false;
-    for (const auto& play : offers(spell)) {
-        if (play.targets.empty()) continue;   // "up to three": none may be chosen (CR 355.13)
-        const auto loc = state.getObject(play.targets[0]).location;
-        for (auto t : play.targets)
-            EXPECT_EQ(state.getObject(t).location, loc) << "targets at different locations";
-        if (play.targets.size() == 2 &&
-            std::count(play.targets.begin(), play.targets.end(), a) &&
-            std::count(play.targets.begin(), play.targets.end(), b)) pair_ab = true;
-    }
-    EXPECT_TRUE(pair_ab);
+    EXPECT_EQ(offers(spell).size(), 1u);
 
-    playAt(spell, {a, b});
+    int asked = 0;
+    bool c_offered_second = false;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        ++asked;
+        if (asked == 2)
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == c) c_offered_second = true;
+        const GameObjectId want = asked == 1 ? a : (asked == 2 ? b : kInvalidId);
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        return legal.front();          // "No more units"
+    });
+    playThroughEngine(spell, &agent);
+    EXPECT_FALSE(c_offered_second) << "units at different locations";
     EXPECT_EQ(state.getObject(a).damage_marked, 1);
     EXPECT_EQ(state.getObject(b).damage_marked, 1);
     EXPECT_EQ(state.getObject(c).damage_marked, 0);

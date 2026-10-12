@@ -21,22 +21,20 @@ public:
     TriggerType triggerType() const override {
         return TriggerType::WhenAnOpponentMovesToBattlefield;
     }
+    // "to a battlefield other than mine" is part of the trigger condition:
+    // judged when the move happens (the mover is already where it went). A
+    // move to my battlefield, or any move while I'm not at a battlefield,
+    // puts nothing on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
+        if (subject == kInvalidId || !state.objectExists(subject)) return false;
+        if (!state.objectExists(source)) return false;
+        const auto mine = state.getObject(source).battlefieldId();
+        if (!mine) return false;   // I'm not at a battlefield -> "other than mine" doesn't apply
+        const auto to = state.getObject(subject).battlefieldId();
+        return to.has_value() && *to != *mine;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        GameObjectId subj = ctx.state.chain.resuming
-            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        if (subj == kInvalidId || !ctx.state.objectExists(subj)) return;
-        const auto& me = ctx.state.getObject(ctx.source);
-        const auto& mover = ctx.state.getObject(subj);
-        if (!me.location.has_value() ||
-            !std::holds_alternative<BattlefieldLocation>(*me.location)) {
-            return;  // I'm not at a battlefield -> "other than mine" doesn't apply
-        }
-        if (mover.location.has_value() &&
-            std::holds_alternative<BattlefieldLocation>(*mover.location) &&
-            std::get<BattlefieldLocation>(*mover.location).id ==
-                std::get<BattlefieldLocation>(*me.location).id) {
-            return;  // moved to MY battlefield -> no draw
-        }
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "VOLIBEAR IMPOSING: opponent moved elsewhere -> draw 1");
     }

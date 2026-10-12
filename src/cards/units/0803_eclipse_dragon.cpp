@@ -18,8 +18,13 @@ public:
     // [Accelerate] is engine-handled (keyword).
     // "When I move, if you control 4 or fewer runes, draw 1."
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
+    // "if you control 4 or fewer runes" is part of the trigger condition (CR
+    // 383.2.a.1): counted when the move happens.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return runesControlled(state, controller) <= 4;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (runesControlled(ctx.state, ctx.controller) > 4) return;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "ECLIPSE DRAGON: moved with 4 or fewer runes -> draw 1");
     }

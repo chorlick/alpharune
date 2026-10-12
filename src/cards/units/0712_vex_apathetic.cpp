@@ -22,10 +22,15 @@ public:
     // by the Standard Move generator and by the executor's effect moves, and
     // cleared in the Expiration Step.
     TriggerType triggerType() const override { return TriggerType::WhenOpponentPlaysAUnit; }
+    // "while I'm at a battlefield" is part of the trigger condition (CR
+    // 383.2.a.1): asked when the opponent plays the unit. A Vex at her base
+    // puts nothing on the chain; one that leaves her battlefield in response
+    // still stuns.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isAtBattlefield();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        if (!self.battlefieldId().has_value()) return;  // "while I'm at a battlefield"
         const GameObjectId victim = ctx.state.chain.resuming.has_value()
             ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
         if (victim == kInvalidId) return;

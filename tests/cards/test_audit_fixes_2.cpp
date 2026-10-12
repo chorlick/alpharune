@@ -341,17 +341,20 @@ TEST_F(AuditFix2Test, Lucian_WeaponmasterEquipsFreeFromAnotherUnit) {
 }
 
 TEST_F(AuditFix2Test, Lucian_FirstConquerReadiesOncePerTurn) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     auto lucian = addUnit(P1, kLucianMerciless, /*might=*/4, /*at_bf=*/0);
     state.getObject(lucian).is_exhausted = true;
     state.turn.turn_number = 3;
 
     EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kLucianMerciless, P1, lucian, TriggerType::WhenIConquer, exec);
+    fireTriggerThroughEngine(lucian, TriggerType::WhenIConquer);
     EXPECT_FALSE(state.getObject(lucian).is_exhausted) << "first conquer readies";
 
     // Exhaust again; a SECOND conquer this same turn must NOT ready.
     state.getObject(lucian).is_exhausted = true;
-    fireTriggerAs(kLucianMerciless, P1, lucian, TriggerType::WhenIConquer, exec);
+    fireTriggerThroughEngine(lucian, TriggerType::WhenIConquer);
     EXPECT_TRUE(state.getObject(lucian).is_exhausted)
         << "only the FIRST conquer each turn readies";
 }

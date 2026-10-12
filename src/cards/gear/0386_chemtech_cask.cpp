@@ -20,15 +20,20 @@ public:
     // "When you play a spell on an opponent's turn, you may exhaust me to
     // play a Gold gear token exhausted."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
+    // "on an opponent's turn" is part of the trigger condition: a spell
+    // played on your own turn puts nothing on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.turn.turn_player != controller;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        // Optional + cost = exhaust self. Legal only on the OPPONENT's turn
-        // and while I'm ready (so I can pay the exhaust cost).
+        // Optional + cost = exhaust self: offered only while I'm ready (so
+        // the exhaust can be paid).
         auto still_legal = [&]() -> bool {
             if (!ctx.state.objectExists(ctx.source)) return false;
             const auto& self = ctx.state.getObject(ctx.source);
-            if (self.is_exhausted) return false;
-            return ctx.state.turn.turn_player != ctx.controller;
+            return !self.is_exhausted;
         };
         int conf = confirmOptional(ctx, "Chemtech Cask: exhaust to make a Gold token?",
                                    still_legal);

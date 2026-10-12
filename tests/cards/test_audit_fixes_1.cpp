@@ -309,12 +309,15 @@ TEST_F(AuditFix1Test, Akshan_NoEnemyGearNoOp) {
 }
 
 TEST_F(AuditFix1Test, Akshan_NoStealWhenAdditionalCostNotPaid) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     auto akshan = addUnit(P1, kAkshan, 4, 0);
     auto enemy_gear = addGearOnBoard(P2, kGearBallista, /*at_bf=*/0,
                                      /*equipment=*/false);
     // No __akshan_paid flag -> additional cost not paid -> no steal.
     EffectExecutor exec(state, events, card_db);
-    fireTriggerAs(kAkshan, P1, akshan, TriggerType::AsYouPlayMe, exec);  // the theft; WhenYouPlayMe is [Weaponmaster]
+    fireTriggerThroughEngine(akshan, TriggerType::AsYouPlayMe);  // the theft; WhenYouPlayMe is [Weaponmaster]
     EXPECT_EQ(state.getObject(enemy_gear).controller, P2);  // NOT stolen
 }
 

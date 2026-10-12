@@ -283,6 +283,10 @@ TEST_F(AuditFix5Test, EdgeOfNight_PlayFromFacedownAutoAttaches) {
         auto& g = state.getObject(gear);
         g.zone = ZoneType::BattlefieldZone;
         g.location = BattlefieldLocation{bf};
+        // "here" is the battlefield it was played from facedown at: the
+        // stamp GameEngine::executePlayFromHidden leaves on the card.
+        g.card_counters["__facedown_play_bf"] = static_cast<int>(bf.raw()) + 1;
+        g.card_counters["__facedown_play_turn"] = state.turn.turn_number;
     }
 
     fireTriggerAs(kEdgeOfNight, P1, gear, TriggerType::WhenYouPlayThis, exec);

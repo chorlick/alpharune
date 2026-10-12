@@ -22,6 +22,19 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer};
     }
 
+    // "The first time I conquer each turn" is the trigger condition itself
+    // (CR 383.1): judged when the conquer happens. A later conquer this turn
+    // — or one while the first one's ability is still on the chain — puts
+    // nothing on the chain. ([Weaponmaster]'s play ability has no condition.)
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (trigger != TriggerType::WhenIConquer) return true;
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__lucian_conquer_ready_turn");
+        if (it != c.end() && it->second == state.turn.turn_number + 1) return false;
+        return !triggeredAbilityOnChain(state, source, trigger);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         if (ctx.firing_trigger == TriggerType::WhenIConquer) {
             if (finalizingChoices(ctx)) return;   // no choice in this branch (CR 383.3)
@@ -33,11 +46,10 @@ public:
 
     void firstConquerReady(CardContext& ctx) {
         auto& self = ctx.state.getObject(ctx.source);
+        // The first conquer of the turn has happened, whatever becomes of me.
+        self.card_counters["__lucian_conquer_ready_turn"] =
+            ctx.state.turn.turn_number + 1;  // +1 so 0 = "never"
         if (!self.location.has_value()) return;   // "ready me": only on the board
-        int turn_id = ctx.state.turn.turn_number + 1;  // +1 so 0 = "never"
-        int& last = self.card_counters["__lucian_conquer_ready_turn"];
-        if (last == turn_id) return;  // already fired this turn
-        last = turn_id;
         ctx.executor.readyObject(ctx.source);
         RIFT_TRACE(ctx.events, "LUCIAN MERCILESS: first conquer this turn -> ready me");
     }

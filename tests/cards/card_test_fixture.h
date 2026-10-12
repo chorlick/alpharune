@@ -82,6 +82,7 @@
 
 #include <limits>
 #include <gtest/gtest.h>
+#include <iostream>
 
 #include <algorithm>
 #include <cstdlib>
@@ -175,6 +176,16 @@ public:
         const bool is_choice = std::all_of(legal.begin(), legal.end(),
             [](const Intent& i) { return i.type == IntentType::MakeChoice; });
         if (is_choice) {
+            // The order of simultaneous triggered abilities (CR 383.3.d;
+            // GameEngine::orderPendingTriggers). Not one of the card's own
+            // prompts: it is counted apart and, unless the test sets
+            // `order_pick`, answered with the first option — the order the
+            // abilities were queued in — so a picker or a script written for
+            // the card's prompts is not handed an engine prompt between them.
+            if (isTriggerOrderPrompt(legal)) {
+                order_prompts.push_back(legal);
+                return order_pick ? order_pick(legal) : legal.front();
+            }
             prompts.push_back(legal);
             if (pick) return pick(legal);
             // No picker. The default is the first option, except at a Predict
@@ -188,6 +199,26 @@ public:
         for (const auto& i : legal)
             if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) return i;
         return legal.front();
+    }
+
+    /// Every "order simultaneous abilities" prompt, in order, and an optional
+    /// picker for them (see selectAction).
+    std::vector<std::vector<Intent>> order_prompts;
+    Picker order_pick;
+    static bool isTriggerOrderPrompt(const std::vector<Intent>& legal) {
+        return !legal.empty() && std::all_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return i.choice_label.rfind("Order \xE2\x80\x94 ", 0) == 0;
+        });
+    }
+    /// An order picker: put first (lowest on the chain, resolving last) the
+    /// ability whose label contains `text`.
+    static Picker orderFirst(std::string text) {
+        return [text = std::move(text)](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (i.choice_label.find(text) != std::string::npos) return i;
+            ADD_FAILURE() << "orderFirst(" << text << "): no such ability in the order prompt";
+            return legal.front();
+        };
     }
 
     /// How often the no-picker default answered a Predict prompt with "keep".
@@ -421,7 +452,15 @@ protected:
         // call addBattlefield() before exercising any card logic.
         addBattlefield();
         addBattlefield();
+        // RIFT_TEST_TRACE=1: print the engine's trace of a test to stderr
+        // (for working out why a test fails; nothing reads it).
+        if (std::getenv("RIFT_TEST_TRACE"))
+            trace_conn_ = events.on_log.connect([](const LogEvent& e) {
+                std::cerr << "    | " << e.message << "\n";
+            });
     }
+    void TearDown() override { if (trace_conn_.connected()) trace_conn_.disconnect(); }
+    boost::signals2::connection trace_conn_;
 
     // ── Battlefield / mode setup ──
 
@@ -541,6 +580,28 @@ protected:
             obj.location = BaseLocation{owner};
         }
         return id;
+    }
+
+    /// A combat under way at battlefield `bf` with `attacker` attacking: what
+    /// makes a unit there an Attacker or a Defender. A designation written on
+    /// a unit by hand does not survive the engine path — every Cleanup
+    /// re-derives designations from the combats in progress (CR 323.2), and a
+    /// Cleanup runs before anything on the chain is finalized. The units there
+    /// get their designation now (as the combat's start would give it).
+    void combatInProgress(int bf, PlayerId attacker) {
+        auto& b = state.battlefields[bf];
+        b.combat_in_progress = true;
+        b.attacker = attacker;
+        b.defender = opponent(attacker);
+        b.is_contested = true;
+        b.contested_by = attacker;
+        for (auto& [id, obj] : state.objects) {
+            if (!obj.isUnit() || obj.battlefieldId() != std::optional<BattlefieldId>{b.id}) continue;
+            obj.combat_designation = obj.controller == attacker ? CombatDesignation::Attacker
+                                                                : CombatDesignation::Defender;
+            // Its Attack / Defend Trigger has been checked for this combat.
+            obj.card_counters["__attack_defend_checked"] = static_cast<int>(b.id.raw()) + 1;
+        }
     }
 
     /// Add a ready rune of the given domain in the player's base.

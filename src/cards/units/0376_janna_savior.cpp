@@ -32,7 +32,9 @@ public:
                 return o.controller != me && *o.location == *here;
             });
         };
-        // "up to one": the controller may move none.
+        // "up to one": the controller may move none. Not a leading "may":
+        // declining it leaves the heal (Card::mayIsNotTheWholeAbility).
+        mayIsNotTheWholeAbility(ctx);
         int conf = confirmOptional(ctx, "Janna: move an enemy unit from here to its base?",
                                    [&]() { return !enemies_here().empty(); });
         GameObjectId enemy = kInvalidId;

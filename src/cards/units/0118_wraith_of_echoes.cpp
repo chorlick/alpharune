@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -16,12 +17,21 @@ public:
     const CardDef& def() const override { return def_; }
     // "The first time a friendly unit dies each turn, draw 1."
     TriggerType triggerType() const override { return TriggerType::WhenAFriendlyUnitDies; }
+    // "The first time ... each turn" is the trigger condition itself (CR
+    // 383.1): judged when the unit dies. A later death this turn — or one
+    // while the first one's ability is still on the chain — puts nothing on
+    // the chain.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__wraith_draw_turn");
+        if (it != c.end() && it->second == state.turn.turn_number) return false;
+        return !triggeredAbilityOnChain(state, source, trigger);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        auto it = self.card_counters.find("__wraith_draw_turn");
-        if (it != self.card_counters.end() && it->second == ctx.state.turn.turn_number)
-            return;  // already drew this turn
         self.card_counters["__wraith_draw_turn"] = ctx.state.turn.turn_number;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "WRAITH OF ECHOES: first friendly death this turn -> draw 1");

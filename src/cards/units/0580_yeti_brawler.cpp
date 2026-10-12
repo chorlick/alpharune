@@ -19,15 +19,17 @@ class YetiBrawler : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    // "if you assigned 3 or more excess damage" is part of the trigger
+    // condition (CR 383.2.a.1), asked when the conquer happens: in the combat
+    // for the battlefield I conquered (the one I am at).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        BattlefieldId bf = state.player(controller).last_combat_bf;
+        if (state.objectExists(source))
+            if (auto here = state.getObject(source).battlefieldId()) bf = *here;
+        return excessCombatDamageAt(state, controller, bf) >= 3;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "if you assigned 3 or more excess damage": in the combat for the
-        // battlefield I conquered (my own, or — if I am gone — the one my
-        // controller last fought at).
-        const auto& ps = ctx.state.player(ctx.controller);
-        BattlefieldId bf = ps.last_combat_bf;
-        if (ctx.state.objectExists(ctx.source))
-            if (auto here = ctx.state.getObject(ctx.source).battlefieldId()) bf = *here;
-        if (excessCombatDamageAt(ctx.state, ctx.controller, bf) < 3) return;
         createGoldExhausted(ctx);
         createGoldExhausted(ctx);
         RIFT_TRACE(ctx.events, "YETI BRAWLER: conquer with 3+ excess damage -> two Gold tokens, exhausted");

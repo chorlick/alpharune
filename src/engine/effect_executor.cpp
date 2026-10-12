@@ -232,6 +232,10 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     mark.first_item = state_.chain.next_id;
     mark.oc_state = state_.turn.oc_state;
     mark.chain_was_empty = state_.chain.items.empty();
+    // The units of a batch die at the same time: what their deaths trigger is
+    // one batch of simultaneous triggers (CR 383.3.d). Closed in endDeathBatch.
+    if (state_.chain.trigger_batch_holds++ == 0)
+        state_.chain.current_trigger_batch = ++state_.chain.trigger_batch_counter;
     auto on_board = [&](GameObjectId id) {
         return state_.objectExists(id) && state_.getObject(id).location.has_value();
     };
@@ -402,6 +406,7 @@ EffectExecutor::killLethallyDamagedTogether(std::vector<GameObjectId> damaged) {
 
 void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
                                    const DeathBatchMark& mark) {
+    if (state_.chain.trigger_batch_holds > 0) --state_.chain.trigger_batch_holds;
     for (auto id : units)
         if (state_.objectExists(id)) {
             state_.getObject(id).last_known.batch_pending = false;
@@ -860,6 +865,13 @@ std::vector<GameObjectId> EffectExecutor::burn(PlayerId player, int count) {
 // gear that itself leaves stops being attached.
 void EffectExecutor::leftBoard(GameObjectId object) {
     if (!state_.objectExists(object)) return;
+    // Abilities of this object that are on the chain now speak of an object
+    // that no longer exists (CR 124.1): ChainItem::source_left_board.
+    for (auto& ci : state_.chain.items)
+        if (ci.source == object && ci.is_ability) ci.source_left_board = true;
+    if (state_.chain.resuming.has_value() && state_.chain.resuming->source == object &&
+        state_.chain.resuming->is_ability)
+        state_.chain.resuming->source_left_board = true;
     {
         auto& obj = state_.getObject(object);
         if (obj.attached_to.has_value()) unattachGear(object);

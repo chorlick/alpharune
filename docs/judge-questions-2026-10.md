@@ -1,6 +1,6 @@
 # Rules questions for judge review (2026-10)
 
-Five questions that came up while implementing cards against the 2026-10-09 Core Rules. Each gives the card text, the situation, the question, and the rules we found on either side. Rule numbers are from the Core Rules; "FAQ" is the Vendetta Rules FAQ and Clarifications.
+Seven questions that came up while implementing cards against the 2026-10-09 Core Rules. Each gives the card text, the situation, the question, and the rules we found on either side. Rule numbers are from the Core Rules; "FAQ" is the Vendetta Rules FAQ and Clarifications.
 
 ---
 
@@ -117,3 +117,42 @@ Which rule wins when both apply?
 
 - For "may exhaust": 355.13 ("up to" includes zero); a cost may be paid for an effect that does nothing.
 - For "may not": no rule found.
+
+---
+
+## 6. A triggered ability with a required choice it cannot make, and an instruction that needs no choice
+
+**Card**
+
+- Teemo, Strategist: "When I defend, choose an enemy unit here and reveal the top 5 cards of your Main Deck. Deal 1 to that unit for each card with [Hidden] revealed this way, then recycle the revealed cards."
+
+**Situation.** Teemo defends. Every attacking unit "can't be chosen by enemy spells and abilities" (or the attackers have left by the time the ability would be finalized), so there is no enemy unit here that he can choose.
+
+**Question.** Is the whole ability removed from the chain — no reveal, no recycle — or is it finalized without a target, so that the top 5 cards are still revealed and recycled and only the damage is skipped?
+
+**Rules found**
+
+- For "removed, nothing happens": 403.4, "If there are not enough options to make legal choices for a Triggered Ability that has been put on the chain, remove it from the Chain now. It ceases to be a Pending Item but never becomes a Finalized Chain Item."; 355.8, "In order to put a spell or ability on the chain, valid choices must be made for all targets."
+- For "reveal and recycle anyway": 359.3.e.5 to 359.3.e.7 — an instruction whose target is illegal is ignored and the rest is followed — but those rules speak of a target that became illegal after the item was finalized (a mistarget), not of one that could never be chosen. The reveal reorders the deck and shows both players five cards, so the answer changes the game.
+
+**What the engine does.** The strict reading of 403.4: the ability is removed as it would be finalized and nothing of it happens (`C4Test.TeemoStrategist_NoUnitToChoose_TheAbilityLeavesTheChainAndNothingIsRevealed`). Teemo, Strategist is the only registered card for which the two readings differ (`SweepCostsTest.Removal_NoRegisteredTriggerLosesAnEffectExceptTheListedOnes` checks every opted-in trigger).
+
+---
+
+## 7. A gear played from facedown: is it recalled before its "when you play this" ability attaches it?
+
+**Cards**
+
+- Edge of Night: "[Hidden] When you play this from face down, attach it to a unit you control (here). [Equip] [C]"
+- Zhonya's Hourglass (any non-Equipment gear with [Hidden]) for the general case.
+
+**Situation.** I play Edge of Night from facedown at a battlefield where I control a unit. It enters the board at that battlefield, unattached; its play ability is put on the chain as a pending item.
+
+**Question.** A Cleanup follows the gear entering (319.6) and its task 5 recalls "Unattached non-Unit Gear located at Battlefields" (323.6), with no Open-State condition (323.5 has one, 323.6 does not). Is the gear recalled to my base before the play ability is finalized? If so, does "attach it to a unit you control (here)" still attach it to a unit at the battlefield it was hidden at ("here" being where it was played), or does the ability find no unit "here" and leave the chain (403.4)?
+
+**Rules found**
+
+- For "recalled first, then attached to a unit at the battlefield it was played at": 319.6, 323.6 as quoted; 383.4.a.2 (play effects go on the chain after the permanent has entered); the card would do nothing otherwise.
+- For "not recalled while its own ability is pending": 323.6 "unless an effect would indicate otherwise" — the pending attach could be read as such an effect.
+
+**What the engine does.** The gear is recalled by the Cleanup; the ability chooses among my units at the battlefield it was played from facedown at, and attaches it there (`ReviewFixC1Test.EdgeOfNight_TheControllerChoosesTheUnitHere`).

@@ -443,6 +443,36 @@ protected:
         }, p1_agent, &p2);
         EXPECT_TRUE(probed) << "the opponent never got priority";
     }
+    /// For a triggered ability that is NOT PERFORMED: its leading "may" is
+    /// not offered or declined, its cost cannot be paid, or a required choice
+    /// has no legal option as it would be finalized. CR 403.1.a / 403.4 /
+    /// 405.2: it is removed from the chain, never finalized — so nobody gets
+    /// priority (finding D4; these tests used to change the state "in
+    /// response" through fireAndProbe and check that nothing was asked as
+    /// the item resolved). The ability is gone for good: `after` changes the
+    /// state once the chain has ended, and nothing reacts to it.
+    void fireNotPerformed(GameObjectId source, TriggerType trigger, AgentInterface* p1_agent,
+                          const std::function<void(GameState&)>& after,
+                          GameObjectId subject = kInvalidId) {
+        int priority_decisions = 0, finalized = 0;
+        PickByPredicateAgent p2([&](int, const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (i.type == IntentType::PassPriority) { ++priority_decisions; return i; }
+            return legal.front();
+        });
+        auto conn = events.on_chain_item_finalized.connect(
+            [&](const ChainItemFinalizedEvent&) { ++finalized; });
+        withEngine([&](GameEngine& e) {
+            e.testHook_executor().queueTriggeredAbility(source, P1, trigger, subject);
+            e.testHook_runChain();
+            EXPECT_FALSE(e.mutableState().chain.exists());
+            after(e.mutableState());
+            e.testHook_runChain();
+        }, p1_agent, &p2);
+        conn.disconnect();
+        EXPECT_EQ(finalized, 0) << "the ability was finalized (CR 403: it is removed instead)";
+        EXPECT_EQ(priority_decisions, 0) << "the opponent got priority for an ability that left the chain";
+    }
     /// Execute `intent` for P1; `probe` is handed the live state the first
     /// time the opponent gets priority (the spell or ability is on the chain,
     /// finalized, not resolved).
@@ -785,6 +815,8 @@ TEST_F(VerifyCardsTest, SpectralMatron_DoesNotOfferABattlefieldUnitsCannotBePlay
     state.battlefields[0].controller = P1;
     state.battlefields[0].blocks_unit_play = true;
     state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);   // held: control without a unit there is lost at the next Cleanup (CR 323.5)
+    addUnit(P1, kInvalidId, 1, 1);
     EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(cheap.raw()), 2}));
     playThroughEngine(matron, &agent);
     ASSERT_EQ(agent.prompts.size(), 3u) << "the may, the unit, where";
@@ -2560,6 +2592,7 @@ TEST_F(VerifyCardsTest, RekSaiSwarmQueen_TheUnitCanBePlayedHere) {
 
 TEST_F(VerifyCardsTest, TeemoStrategist_TheRevealIsShownToBothPlayers) {
     auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
+    addUnit(P2, kInvalidId, 3, 0);   // the enemy unit he chooses (CR 403.4: with none, no ability)
     addToDeck(P1, kMeditation);
     addToDeck(P1, kMeditation);
     int shown = 0, to_all = 0;
@@ -7453,7 +7486,7 @@ TEST_F(VerifyCardsTest, VoidBurrower_BanishNoneIsNamedByValueAndStaysTheFirstOpt
 TEST_F(VerifyCardsTest, TreasureHoard_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
     auto hoard = battlefieldCard(0, kTreasureHoard);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(hoard, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+    fireNotPerformed(hoard, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     });
     EXPECT_TRUE(agent.prompts.empty()) << "the \"may\" is decided at finalization (CR 383.3.a)";
@@ -7467,7 +7500,7 @@ TEST_F(VerifyCardsTest, MonasteryOfHirana_NoBuffAtFinalization_NothingAskedOrSpe
     auto unit = addUnit(P1, kInvalidId, 2, 0);
     addToDeck(P1, kRecruit);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(monastery, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+    fireNotPerformed(monastery, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
         live.getObject(unit).buff_count = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7479,7 +7512,7 @@ TEST_F(VerifyCardsTest, MonasteryOfHirana_NoBuffAtFinalization_NothingAskedOrSpe
 TEST_F(VerifyCardsTest, RippersBay_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
     auto bay = battlefieldCard(0, kRippersBay);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(bay, TriggerType::WhenAUnitReturnsToHandHere, &agent, [&](GameState& live) {
+    fireNotPerformed(bay, TriggerType::WhenAUnitReturnsToHandHere, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7492,7 +7525,7 @@ TEST_F(VerifyCardsTest, DuskRoseLab_NoUnitHereAtFinalization_NothingAskedOrKille
     auto unit = addUnit(P1, kInvalidId, 2);   // in the base
     addToDeck(P1, kRecruit);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(lab, TriggerType::AtStartOfBeginning, &agent, [&](GameState& live) {
+    fireNotPerformed(lab, TriggerType::AtStartOfBeginning, &agent, [&](GameState& live) {
         live.battlefields[0].controller = P1;
         putOnBoard(live, unit, 0);
     });
@@ -7507,7 +7540,7 @@ TEST_F(VerifyCardsTest, SunkenTemple_UnpayableAtFinalization_NothingAskedOrPaidA
     addUnit(P1, kInvalidId, 5, 0);            // conquered with a [Mighty] unit
     addToDeck(P1, kRecruit);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+    fireNotPerformed(temple, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7520,7 +7553,7 @@ TEST_F(VerifyCardsTest, ProtectiveSands_UnpayableAtFinalization_NothingAskedOrPa
     auto sands = battlefieldCard(0, kProtectiveSands);
     addToDeck(P1, kRecruit);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(sands, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
+    fireNotPerformed(sands, TriggerType::WhenYouConquerHere, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7536,7 +7569,7 @@ TEST_F(VerifyCardsTest, ValleyOfIdols_UnitGoneAtFinalization_NothingAskedOrPaidA
     sendToTrash(unit);
     ps(P1).rune_pool.energy = 1;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(valley, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
+    fireNotPerformed(valley, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
         putOnBoard(live, unit, 0);
     }, unit);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7555,7 +7588,7 @@ TEST_F(VerifyCardsTest, SolariShrine_ExhaustedAtFinalization_NothingAskedOrExhau
     o(dead).last_known.stunned = true;
     o(dead).last_known.killed_by = P1;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(shrine, TriggerType::WhenAnEnemyUnitDies, &agent, [&](GameState& live) {
+    fireNotPerformed(shrine, TriggerType::WhenAnEnemyUnitDies, &agent, [&](GameState& live) {
         live.getObject(shrine).is_exhausted = false;
     }, dead);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7571,7 +7604,7 @@ TEST_F(VerifyCardsTest, Mistfall_ExhaustedAtFinalization_NothingAskedOrPaidAtRes
     o(unit).is_exhausted = true;
     power(P1, Domain::Body) = 1;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(mistfall, TriggerType::WhenYouBuffAFriendlyUnit, &agent, [&](GameState& live) {
+    fireNotPerformed(mistfall, TriggerType::WhenYouBuffAFriendlyUnit, &agent, [&](GameState& live) {
         live.getObject(mistfall).is_exhausted = false;
     }, unit);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7588,7 +7621,7 @@ TEST_F(VerifyCardsTest, SpiritWheel_ExhaustedAtFinalization_NothingAskedOrPaidAt
     addToDeck(P1, kRecruit);
     ps(P1).rune_pool.energy = 1;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(wheel, TriggerType::WhenYouChooseAFriendlyUnit, &agent, [&](GameState& live) {
+    fireNotPerformed(wheel, TriggerType::WhenYouChooseAFriendlyUnit, &agent, [&](GameState& live) {
         live.getObject(wheel).is_exhausted = false;
     }, unit);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7602,7 +7635,7 @@ TEST_F(VerifyCardsTest, BloodRose_UnpayableAtFinalization_NothingAskedOrPaidAtRe
     auto rose = addGear(P1, kBloodRose);
     auto unit = addUnit(P1, kInvalidId, 2, 0);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(rose, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
+    fireNotPerformed(rose, TriggerType::WhenYouPlayAUnit, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     }, unit);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7616,7 +7649,7 @@ TEST_F(VerifyCardsTest, BladeDancer_ReadyAtFinalization_NothingAskedOrPaidAtReso
     auto legend = addLegend(P1, kBladeDancer);
     ps(P1).rune_pool.energy = 1;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+    fireNotPerformed(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         live.getObject(legend).is_exhausted = true;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7634,7 +7667,7 @@ TEST_F(VerifyCardsTest, PiltoverEnforcer_ExhaustedAtFinalization_NothingAskedOrE
     auto unit = addUnit(P1, kInvalidId, 2, 0);
     o(unit).is_exhausted = true;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+    fireNotPerformed(legend, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         live.getObject(legend).is_exhausted = false;
     }, conquered);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7646,7 +7679,7 @@ TEST_F(VerifyCardsTest, PiltoverEnforcer_ExhaustedAtFinalization_NothingAskedOrE
 TEST_F(VerifyCardsTest, FlameChompers_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
     auto chompers = addToTrash(P1, kFlameChompers);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(chompers, TriggerType::WhenIAmDiscarded, &agent, [&](GameState& live) {
+    fireNotPerformed(chompers, TriggerType::WhenIAmDiscarded, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7659,7 +7692,7 @@ TEST_F(VerifyCardsTest, ImmortalPhoenix_UnpayableAtFinalization_NothingAskedOrPa
     auto phoenix = addToTrash(P1, kImmortalPhoenix);
     ps(P1).rune_pool.energy = 1;
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(phoenix, TriggerType::WhenYouKillAUnitWithASpell, &agent, [&](GameState& live) {
+    fireNotPerformed(phoenix, TriggerType::WhenYouKillAUnitWithASpell, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7672,7 +7705,7 @@ TEST_F(VerifyCardsTest, ImmortalPhoenix_UnpayableAtFinalization_NothingAskedOrPa
 TEST_F(VerifyCardsTest, Vayne035_UnpayableAtFinalization_NothingAskedOrPaidAtResolution) {
     auto vayne = addUnit(P1, kVayne035, 0, 0);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(vayne, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
+    fireNotPerformed(vayne, TriggerType::WhenIConquer, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7685,7 +7718,7 @@ TEST_F(VerifyCardsTest, Vayne035_UnpayableAtFinalization_NothingAskedOrPaidAtRes
 TEST_F(VerifyCardsTest, Nocturne_OffTheDeckAtFinalization_NothingAskedAtResolution) {
     auto nocturne = addToHand(P1, kNocturneHorrifying);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(nocturne, TriggerType::WhenIRevealedFromTop, &agent, [&](GameState& live) {
+    fireNotPerformed(nocturne, TriggerType::WhenIRevealedFromTop, &agent, [&](GameState& live) {
         auto& p = live.player(P1);
         p.hand.erase(std::remove(p.hand.begin(), p.hand.end(), nocturne), p.hand.end());
         live.getObject(nocturne).zone = ZoneType::MainDeck;
@@ -7701,7 +7734,7 @@ TEST_F(VerifyCardsTest, DianaLunari_UnpayableAtFinalization_NothingAskedOrPaidAt
     auto diana = addUnit(P1, kDianaLunari, 0, 0);
     addToDeck(P1, kRecruit);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(diana, TriggerType::WhenAShowdownBeginsHere, &agent, [&](GameState& live) {
+    fireNotPerformed(diana, TriggerType::WhenAShowdownBeginsHere, &agent, [&](GameState& live) {
         live.player(P1).rune_pool.energy = 1;
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7714,7 +7747,7 @@ TEST_F(VerifyCardsTest, ShadowClone_NoUnitInTrashAtFinalization_NothingAskedOrBa
     auto clone = addUnit(P1, kShadowClone, 0, 0);
     auto other = addUnit(P1, kInvalidId, 2);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(clone, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+    fireNotPerformed(clone, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
         removeFromBoard(live, other);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7728,7 +7761,7 @@ TEST_F(VerifyCardsTest, VexMocking_AlreadyThereAtFinalization_NothingAskedOrMove
     auto vex = addUnit(P1, kVexMocking, 0, 0);
     auto stunned = addUnit(P2, kInvalidId, 2, 0);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(vex, TriggerType::WhenYouStun, &agent, [&](GameState& live) {
+    fireNotPerformed(vex, TriggerType::WhenYouStun, &agent, [&](GameState& live) {
         putOnBoard(live, vex, -1);
     }, stunned);
     EXPECT_TRUE(agent.prompts.empty());
@@ -7746,7 +7779,7 @@ TEST_F(VerifyCardsTest, VanguardHelm_NoUnitAtFinalization_NothingAskedOrBuffedAt
     auto late = addUnit(P1, kInvalidId, 2);
     sendToTrash(late);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(helm, TriggerType::WhenAFriendlyUnitDies, &agent, [&](GameState& live) {
+    fireNotPerformed(helm, TriggerType::WhenAFriendlyUnitDies, &agent, [&](GameState& live) {
         putOnBoard(live, late);
     }, dead);
     EXPECT_TRUE(agent.prompts.empty()) << "targets are chosen at finalization (CR 383.3)";
@@ -7758,7 +7791,7 @@ TEST_F(VerifyCardsTest, CemeteryAttendant_EmptyTrashAtFinalization_NothingAskedO
     auto attendant = addUnit(P1, kCemeteryAttendant, 0, 0);
     auto other = addUnit(P1, kInvalidId, 2);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(attendant, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+    fireNotPerformed(attendant, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         removeFromBoard(live, other);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7771,7 +7804,7 @@ TEST_F(VerifyCardsTest, AnnieStubborn_NoSpellInTrashAtFinalization_NothingAskedO
     auto annie = addUnit(P1, kAnnieStubborn, 0, 0);
     auto spell = addToHand(P1, kFallingStar);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(annie, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+    fireNotPerformed(annie, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         auto& p = live.player(P1);            // the spell is discarded in response
         p.hand.erase(std::remove(p.hand.begin(), p.hand.end(), spell), p.hand.end());
         live.getObject(spell).zone = ZoneType::Trash;
@@ -7788,7 +7821,7 @@ TEST_F(VerifyCardsTest, SolariChief_NoEnemyAtFinalization_NothingAskedOrStunnedA
     auto enemy = addUnit(P2, kInvalidId, 2);
     sendToTrash(enemy);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(chief, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+    fireNotPerformed(chief, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         putOnBoard(live, enemy);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7802,7 +7835,7 @@ TEST_F(VerifyCardsTest, Starhound_NoneInTrashAtFinalization_NothingAskedOrReturn
     auto poro = addUnit(P1, kInvalidId, 1);
     o(poro).tags = {"Poro"};
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(hound, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
+    fireNotPerformed(hound, TriggerType::WhenYouPlayMe, &agent, [&](GameState& live) {
         removeFromBoard(live, poro);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7830,7 +7863,7 @@ TEST_F(VerifyCardsTest, LucianGunslinger_NotAtABattlefieldAtFinalization_Nothing
     ASSERT_GE(o(lucian).assault_value, 1) << "the printed [Assault]";
     auto foe = addUnit(P2, kInvalidId, 9, 0);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(lucian, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+    fireNotPerformed(lucian, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
         putOnBoard(live, lucian, 0);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7842,7 +7875,7 @@ TEST_F(VerifyCardsTest, EzrealDashing_NotAtABattlefieldAtFinalization_NothingAsk
     auto ezreal = addUnit(P1, kEzrealDashing);           // in the base
     auto foe = addUnit(P2, kInvalidId, 9, 0);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(ezreal, TriggerType::WhenIAttackOrDefend, &agent, [&](GameState& live) {
+    fireNotPerformed(ezreal, TriggerType::WhenIAttackOrDefend, &agent, [&](GameState& live) {
         putOnBoard(live, ezreal, 0);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7854,7 +7887,7 @@ TEST_F(VerifyCardsTest, Faefolk_NotAtABattlefieldAtFinalization_NothingAskedOrMo
     auto faefolk = addUnit(P1, kFaefolk);                // in the base
     auto foe = addUnit(P2, kInvalidId, 2);               // in its base
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(faefolk, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
+    fireNotPerformed(faefolk, TriggerType::WhenIMoveToFB, &agent, [&](GameState& live) {
         putOnBoard(live, faefolk, 0);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7866,7 +7899,7 @@ TEST_F(VerifyCardsTest, RivenShattered_NotAtABattlefieldAtFinalization_NothingAs
     auto riven = addUnit(P1, kRivenShattered);           // in the base
     auto foe = addUnit(P2, kInvalidId, 9, 0);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(riven, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
+    fireNotPerformed(riven, TriggerType::WhenIAttack, &agent, [&](GameState& live) {
         putOnBoard(live, riven, 0);
     });
     EXPECT_TRUE(agent.prompts.empty());
@@ -7879,7 +7912,7 @@ TEST_F(VerifyCardsTest, JayceHammerInHand_OffTheBoardAtFinalization_NothingAsked
     auto jayce = addUnit(P1, kJayceHammerInHand, 0, 0);
     sendToTrash(jayce);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireAndProbe(jayce, TriggerType::WhenIBecomeReady, &agent, [&](GameState& live) {
+    fireNotPerformed(jayce, TriggerType::WhenIBecomeReady, &agent, [&](GameState& live) {
         putOnBoard(live, jayce);
     });
     EXPECT_TRUE(agent.prompts.empty()) << "the keyword is chosen at finalization or not at all";
@@ -7992,7 +8025,7 @@ TEST_F(VerifyCardsTest, Aphelios_BuffModeWithNoUnitAtFinalization_NothingAskedOr
     auto late = addUnit(P1, kInvalidId, 2);
     sendToTrash(late);
     EnginePathAgent agent(EnginePathAgent::script({2}));   // "Buff a friendly unit"
-    fireAndProbe(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
+    fireNotPerformed(aphelios, TriggerType::WhenEquipmentAttachedToMe, &agent, [&](GameState& live) {
         putOnBoard(live, late);
     });
     EXPECT_EQ(agent.prompts.size(), 1u) << "the mode only; no unit could be chosen";

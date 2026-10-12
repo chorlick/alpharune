@@ -686,9 +686,11 @@ TEST_F(RulesComplianceTest, Counter_DoesNotUncountThePlayedCard) {
 // ─── CR 420.4.a — "when you play a spell" triggers on resolution ───────────
 
 TEST_F(RulesComplianceTest, PlayTrigger_SpellTriggersFireOnResolutionNotOnPlay) {
-    constexpr CardDefId kViktorInnovator = 117;   // "When you play a spell ..."
+    constexpr CardDefId kViktorInnovator = 117;   // "When you play a card on an opponent's turn ..."
     constexpr CardDefId kHextechRay = 9;
-    ASSERT_TRUE(card_registry.get(kViktorInnovator)->firesOn(TriggerType::WhenYouPlayASpell));
+    // (WhenYouPlayACard since finding F1: for a spell it fires as the spell
+    // resolves, like WhenYouPlayASpell — and not for a token.)
+    ASSERT_TRUE(card_registry.get(kViktorInnovator)->firesOn(TriggerType::WhenYouPlayACard));
     makeEngine();
     setLegend(P1); setLegend(P2);
     auto watcher = engineUnit(P1, 2, -1, kViktorInnovator);
@@ -707,6 +709,7 @@ TEST_F(RulesComplianceTest, PlayTrigger_SpellTriggersFireOnResolutionNotOnPlay) 
         return n;
     };
 
+    s().turn.turn_player = P2;   // "... on an opponent's turn": part of the condition (CR 383.2.a.1)
     events.emit(CardPlayedEvent{spell, P1, CardType::Spell, 1, 1});
     EXPECT_EQ(triggersFrom(watcher), 0) << "not yet: the spell has only been put on the chain";
 
@@ -1160,7 +1163,11 @@ TEST_F(BattlefieldAbilityTest, WhileYouControlThisBattlefield_OnlyTheControllers
     auto predicts = [&](PlayerId who) {
         auto spell = resolvedSpell(who);
         events.emit(SpellResolvedEvent{spell, who});
-        EXPECT_EQ(abilitiesOnChainFrom(bf, who), 1);
+        // CR 383.2.a.1: "While you control this battlefield" is part of the
+        // trigger condition, so for the other player nothing is put on the
+        // chain at all (Card::triggerCondition) — there is no item to resolve.
+        EXPECT_EQ(abilitiesOnChainFrom(bf, who), who == P1 ? 1 : 0);
+        if (abilitiesOnChainFrom(bf, who) == 0) return false;
         const auto item = s().chain.items.back();
         s().chain.items.clear();
         s().chain.resuming = item;

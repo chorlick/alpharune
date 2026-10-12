@@ -20,8 +20,13 @@ public:
     // "When you play me, if you control 3 or more other gear, draw 1."
     // (This card is a unit, so every gear you control is an "other" gear.)
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // The "if" is part of the trigger condition (CR 383.2.a.1): counted as I
+    // am played; with fewer gear nothing is put on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return gearControlled(state, controller) >= 3;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (gearControlled(ctx.state, ctx.controller) < 3) return;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "PATCHED POROBOT: 3+ gear -> draw 1");
     }

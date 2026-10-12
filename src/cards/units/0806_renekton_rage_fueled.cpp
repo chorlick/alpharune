@@ -18,9 +18,14 @@ public:
     // [Accelerate] is engine-handled (keyword).
     // "When I attack, if you control 4 or fewer runes, deal 2 to all enemy units here."
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
+    // "if you control 4 or fewer runes" is part of the trigger condition (CR
+    // 383.2.a.1, 383.4.e.2.b): counted when I become an attacker.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return runesControlled(state, controller) <= 4;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        if (runesControlled(ctx.state, ctx.controller) > 4) return;
         auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         if (!my_bf) return;
         // Collect first, then damage (no mutation while iterating objects).

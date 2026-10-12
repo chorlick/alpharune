@@ -23,6 +23,18 @@ public:
     // card_counters["__played_from_facedown"] = 1; it is consumed here so a
     // later replay from hand does not re-trigger.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "from face down" is part of the trigger condition: a play from hand
+    // puts nothing on the chain. The mark is turn-stamped by the engine, so
+    // one left by a play on an earlier turn is not this play.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto played = c.find("__played_from_facedown");
+        if (played == c.end() || played->second != 1) return false;
+        const auto turn = c.find("__facedown_play_turn");
+        return turn == c.end() || turn->second == state.turn.turn_number;
+    }
     std::vector<GameObjectId> empowerableHere(CardContext& ctx) const {
         std::vector<GameObjectId> out;
         if (!ctx.state.objectExists(ctx.source)) return out;

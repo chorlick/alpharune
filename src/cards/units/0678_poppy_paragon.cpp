@@ -20,9 +20,14 @@ public:
     //  halves are the play ability's effect; the Victory Score is the one in
     //  force (a battlefield can raise it).
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "if an opponent's score is within 3 points of the Victory Score" is
+    // part of the trigger condition (CR 383.2.a.1): asked as I am played.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        const int victory = state.effectiveVictoryScore();
+        return state.player(opponent(controller)).score >= victory - 3;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const int victory = ctx.state.effectiveVictoryScore();
-        if (ctx.state.player(opponent(ctx.controller)).score < victory - 3) return;
         ctx.executor.readyObject(ctx.source);   // no-op if I left the board
         gainXp(ctx, ctx.controller, 3);
         RIFT_TRACE(ctx.events, "POPPY PARAGON: opponent near Victory Score -> ready + gain 3 XP");

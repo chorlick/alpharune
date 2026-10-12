@@ -274,15 +274,18 @@ TEST_F(VendettaA, Vendetta_ShadowFiend_EmpowerCostAndAssault) {
 // ── 803 Eclipse Dragon ───────────────────────────────────────────────────
 
 TEST_F(VendettaA, Vendetta_EclipseDragon_DrawsOnMoveWithFourOrFewerRunes) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     EXPECT_TRUE(card_db.get(kEclipseDragon).keywords.has(Keyword::Accelerate));
     auto unit = addUnit(P1, kEclipseDragon, 0, 0);
     for (int i = 0; i < 3; ++i) addToDeck(P1, kDredgeUp);
     runes(P1, 4);
-    fireTriggerAs(kEclipseDragon, P1, unit, TriggerType::WhenIMove, exec);
+    fireTriggerThroughEngine(unit, TriggerType::WhenIMove);
     EXPECT_EQ(handSize(P1), 1);
     runes(P1, 1);
-    fireTriggerAs(kEclipseDragon, P1, unit, TriggerType::WhenIMove, exec);
+    fireTriggerThroughEngine(unit, TriggerType::WhenIMove);
     EXPECT_EQ(handSize(P1), 1) << "5 runes: no draw";
 }
 
@@ -326,6 +329,9 @@ TEST_F(VendettaA, Vendetta_Morgana_ChoosesUnitAtResolution) {
 // ── 806 Renekton, Rage Fueled ────────────────────────────────────────────
 
 TEST_F(VendettaA, Vendetta_Renekton_DamagesAllEnemiesHereWithFewRunes) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto ren = addUnit(P1, kRenekton, 0, 0);
     auto friendly = addUnit(P1, kInvalidId, 5, 0);
@@ -334,14 +340,14 @@ TEST_F(VendettaA, Vendetta_Renekton_DamagesAllEnemiesHereWithFewRunes) {
     auto elsewhere = addUnit(P2, kInvalidId, 5, 1);
 
     runes(P1, 5);
-    fireTriggerAs(kRenekton, P1, ren, TriggerType::WhenIAttack, exec);
+    fireTriggerThroughEngine(ren, TriggerType::WhenIAttack);
     EXPECT_EQ(state.getObject(e1).damage_marked, 0) << "5 runes: condition fails";
 
     // Drop to 4 runes.
     for (auto& [id, obj] : state.objects)
         if (obj.isRune() && obj.controller == P1) { obj.location = std::nullopt; break; }
     ASSERT_EQ(runesControlled(state, P1), 4);
-    fireTriggerAs(kRenekton, P1, ren, TriggerType::WhenIAttack, exec);
+    fireTriggerThroughEngine(ren, TriggerType::WhenIAttack);
     EXPECT_EQ(state.getObject(e1).damage_marked, 2);
     EXPECT_EQ(state.getObject(e2).damage_marked, 2);
     EXPECT_EQ(state.getObject(elsewhere).damage_marked, 0);
@@ -456,6 +462,9 @@ TEST_F(VendettaA, Vendetta_AkaliDeadlyWeapon_EmpoweredMight) {
 // ── 810 Zed, From the Shadows ────────────────────────────────────────────
 
 TEST_F(VendettaA, Vendetta_Zed_ShadowCloneOnlyIfAdditionalCostPaid) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     const Card* c = card_registry.get(kZedFromTheShadows);
     ASSERT_NE(c, nullptr);
@@ -478,11 +487,11 @@ TEST_F(VendettaA, Vendetta_Zed_ShadowCloneOnlyIfAdditionalCostPaid) {
     };
 
     auto zed = addUnit(P1, kZedFromTheShadows, 0, 0);
-    fireTriggerAs(kZedFromTheShadows, P1, zed, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(zed, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(count_clones(), 0) << "additional cost not paid";
 
     state.getObject(zed).card_counters[flag] = 1;
-    fireTriggerAs(kZedFromTheShadows, P1, zed, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(zed, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(count_clones(), 1);
     EXPECT_EQ(state.getObject(zed).card_counters[flag], 0) << "payment consumed";
 }
@@ -490,6 +499,9 @@ TEST_F(VendettaA, Vendetta_Zed_ShadowCloneOnlyIfAdditionalCostPaid) {
 // ── 811 Affectionate Poro ────────────────────────────────────────────────
 
 TEST_F(VendettaA, Vendetta_AffectionatePoro_DrawsOnlyIfUndamagedThisTurn) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     EXPECT_TRUE(card_registry.get(kAffectionatePoro)->firesOn(TriggerType::WhenACombatIWasInEnds));
     auto poro = addUnit(P1, kAffectionatePoro, 5, 0);
@@ -500,12 +512,12 @@ TEST_F(VendettaA, Vendetta_AffectionatePoro_DrawsOnlyIfUndamagedThisTurn) {
     exec.dealDamage(poro, 1, enemy);
     EXPECT_EQ(state.getObject(poro).damage_taken_this_turn, 1);
     state.getObject(poro).damage_marked = 0;
-    fireTriggerAs(kAffectionatePoro, P1, poro, TriggerType::WhenACombatIWasInEnds, exec);
+    fireTriggerThroughEngine(poro, TriggerType::WhenACombatIWasInEnds);
     EXPECT_EQ(handSize(P1), 0);
 
     // A later turn (tracker reset at end of turn) with no damage: draw.
     state.getObject(poro).damage_taken_this_turn = 0;
-    fireTriggerAs(kAffectionatePoro, P1, poro, TriggerType::WhenACombatIWasInEnds, exec);
+    fireTriggerThroughEngine(poro, TriggerType::WhenACombatIWasInEnds);
     EXPECT_EQ(handSize(P1), 1);
 }
 
@@ -808,21 +820,24 @@ TEST_F(VendettaA, Vendetta_Riven_WeaponmasterEquipsOnPlay) {
 // ── 829 Shen, Scourge of Shadows ─────────────────────────────────────────
 
 TEST_F(VendettaA, Vendetta_Shen_DrawsOnHoldWithExactlyOneOtherFriendlyHere) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto shen = addUnit(P1, kShen, 0, 0);
     for (int i = 0; i < 4; ++i) addToDeck(P1, kDredgeUp);
     addUnit(P2, kInvalidId, 2, 0);   // enemy here: irrelevant
     addUnit(P1, kInvalidId, 2, 1);   // friendly elsewhere: irrelevant
 
-    fireTriggerAs(kShen, P1, shen, TriggerType::WhenIHold, exec);
+    fireTriggerThroughEngine(shen, TriggerType::WhenIHold);
     EXPECT_EQ(handSize(P1), 0) << "zero others";
 
     addUnit(P1, kInvalidId, 2, 0);
-    fireTriggerAs(kShen, P1, shen, TriggerType::WhenIHold, exec);
+    fireTriggerThroughEngine(shen, TriggerType::WhenIHold);
     EXPECT_EQ(handSize(P1), 1) << "exactly one other";
 
     addUnit(P1, kInvalidId, 2, 0);
-    fireTriggerAs(kShen, P1, shen, TriggerType::WhenIHold, exec);
+    fireTriggerThroughEngine(shen, TriggerType::WhenIHold);
     EXPECT_EQ(handSize(P1), 1) << "two others";
 }
 
@@ -844,6 +859,9 @@ TEST_F(VendettaA, Vendetta_SteelPaws_EmpoweredSevenMight) {
 // ── 831 Astral Heron (ENGINE-GAP: unimplemented) ─────────────────────────
 
 TEST_F(VendettaA, Vendetta_AstralHeron_FirstCardAtBattlefieldDiscountsNextCard) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     EXPECT_TRUE(card_registry.get(kAstralHeron)->firesOn(TriggerType::WhenYouPlayACard));
     auto heron = addUnit(P1, kAstralHeron, 0, 0);
@@ -877,7 +895,8 @@ TEST_F(VendettaA, Vendetta_AstralHeron_FirstCardAtBattlefieldDiscountsNextCard) 
     // "if I'm at a battlefield": nothing from base.
     mods.clear();
     auto home = addUnit(P1, kAstralHeron);
-    fireTriggerAs(kAstralHeron, P1, home, TriggerType::WhenYouPlayACard, exec);
+    state.turn.turn_number++;   // a new turn, and again its first card
+    fireTriggerThroughEngine(home, TriggerType::WhenYouPlayACard, nullptr, played(1));
     EXPECT_TRUE(mods.empty());
 }
 

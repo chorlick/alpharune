@@ -19,15 +19,23 @@ public:
                 /*any_domain=*/false, /*paid_flag=*/"__pyke_db_paid"};
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "if you paid the additional cost" is part of the trigger condition (CR
+    // 383.2.a.1): asked as I am played; unpaid, nothing is put on the chain.
+    // The engine forgets the flag as each play begins
+    // (Card::forgetPlayPayments).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__pyke_db_paid");
+        return it != c.end() && it->second == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
-        // The engine sets the flag when the cost is paid and never clears it:
-        // consume it, or a later replay without paying would still count.
-        const auto flag = self.card_counters.find("__pyke_db_paid");
-        const bool paid = flag != self.card_counters.end() && flag->second == 1;
+        // The payment covers this play only.
         self.card_counters.erase("__pyke_db_paid");
-        if (!paid || !self.location.has_value()) return;
+        if (!self.location.has_value()) return;   // "ready me", "give me": only on the board
         ctx.executor.readyObject(ctx.source);
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         RIFT_TRACE(ctx.events, "PYKE DOCKSIDE BUTCHER: paid [R] -> ready me + +2 [M] this turn");

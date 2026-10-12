@@ -20,27 +20,42 @@ public:
         return {TriggerType::WhenIWinCombat, TriggerType::WhenIDie};
     }
 
+    // Both conditions are trigger conditions, judged when the event happens:
+    //  - "The first time I win a combat each turn" (CR 383.1): a later win
+    //    this turn, or one while the first one's ability is still on the
+    //    chain, puts nothing on the chain.
+    //  - "When I die in combat": read from the last-known information the
+    //    kill paths snapshot just before the death (CR 383.2.c.3.b) — I was
+    //    an attacker or defender, or at a battlefield with a combat in
+    //    progress. Dying at a battlefield outside combat (a spell in the Main
+    //    Phase, a non-combat showdown) does not trigger. Without a snapshot
+    //    nothing is known about the death, so it does not trigger.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& self = state.getObject(source);
+        if (trigger == TriggerType::WhenIWinCombat) {
+            const auto it = self.card_counters.find("draven_win_turn");
+            if (it != self.card_counters.end() && it->second == state.turn.turn_number + 1)
+                return false;
+            return !triggeredAbilityOnChain(state, source, trigger);
+        }
+        if (trigger == TriggerType::WhenIDie) {
+            const auto& lk = self.last_known;
+            return lk.valid &&
+                   (lk.in_combat || lk.combat_designation != CombatDesignation::None);
+        }
+        return true;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenIWinCombat) {
             if (!ctx.state.objectExists(ctx.source)) return;
-            auto& self = ctx.state.getObject(ctx.source);
-            int turn_id = ctx.state.turn.turn_number + 1;
-            int& last = self.card_counters["draven_win_turn"];
-            if (last == turn_id) return;  // already scored this turn
-            last = turn_id;
+            ctx.state.getObject(ctx.source).card_counters["draven_win_turn"] =
+                ctx.state.turn.turn_number + 1;
             ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
             RIFT_TRACE(ctx.events, "DRAVEN AUDACIOUS: first combat win -> score 1");
         } else if (ctx.firing_trigger == TriggerType::WhenIDie) {
-            // "When I die in combat": read from the last-known information the
-            // kill paths snapshot just before the death (CR 383.2.c.3.b) — I was
-            // an attacker or defender, or at a battlefield with a combat in
-            // progress. Dying at a battlefield outside combat (a spell in the
-            // Main Phase, a non-combat showdown) does not count. Without a
-            // snapshot nothing is known about the death, so nothing happens.
-            if (!ctx.state.objectExists(ctx.source)) return;
-            const auto& lk = asItLeft(ctx, ctx.source);
-            if (!lk.valid) return;
-            if (!lk.in_combat && lk.combat_designation == CombatDesignation::None) return;
+            // ("in combat" was the trigger's condition: triggerCondition.)
             // "Choose an opponent. They gain 1 point." 1v1: the one opponent.
             ctx.executor.scorePoints(opponent(ctx.controller), 1);   // CR 194.1.c
             RIFT_TRACE(ctx.events, "DRAVEN AUDACIOUS: died in combat -> opponent scores 1");

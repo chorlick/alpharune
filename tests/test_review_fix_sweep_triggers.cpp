@@ -1175,9 +1175,10 @@ TEST_F(SweepTriggersTest, Mulligan_AnnouncesTheRecycleOnce) {
 }
 
 // 9.D4 / 9.D10: a card played in response goes through the callback the engine
-// installs (ChainManager::setPlayCard), and a play that adds no chain item is
-// not offered again in that priority window.
-TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayIsNotReoffered) {
+// installs (ChainManager::setPlayCard). A play that adds no chain item was
+// "not offered again in that priority window"; since the testing phase
+// (finding D6) it is an engine error: an offered option must do what it says.
+TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayIsAnError) {
     auto source = addUnit(P1, kInvalidId, 2, -1);
     auto reaction = addToHand(P2, kDecreeOfInsight);
     ChainManager cm(state, events, card_db);
@@ -1189,7 +1190,7 @@ TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayI
     play.type = IntentType::PlayReaction;
     play.player = P2;
     play.card = reaction;
-    cm.processFEPR(
+    EXPECT_THROW(cm.processFEPR(
         [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
             if (p == P2) {
                 ++p2_asked;
@@ -1204,11 +1205,11 @@ TEST_F(SweepTriggersTest, ReactionPlay_GoesThroughThePlayCallbackAndAFailedPlayI
             std::vector<Intent> out{Intent::passPriority(p)};
             if (p == P2) out.push_back(play);
             return out;
-        });
+        }), std::logic_error);
     ASSERT_EQ(played.size(), 1u) << "the play went to the engine's play path, once";
     EXPECT_EQ(played[0].card, reaction);
-    EXPECT_EQ(p2_offered_play, 1) << "it did not happen, so it is not offered again";
-    EXPECT_EQ(p2_asked, 2) << "asked again without it, and passed";
+    EXPECT_EQ(p2_offered_play, 1);
+    EXPECT_EQ(p2_asked, 1) << "it did not happen: an error, not a second question";
     EXPECT_TRUE(inHand(P2, reaction)) << "the bare fallback path did not run";
 }
 
@@ -2187,73 +2188,38 @@ TEST_F(SweepTriggersTest, CombatParticipants_ARecalledAttackerOfARealTieWasInThe
 // 21. Sixth follow-up (plans/09 9.U3, 9.V1)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// 9.U3: a play dropped from a priority window as failed is offered again
-// once the state has been edited from outside (god mode) — the edit may have
-// removed what made it fail.
-TEST_F(SweepTriggersTest, PriorityWindow_AnOutsideEditBringsBackADroppedPlay) {
+// 9.U3, as it stands since the testing phase (finding D6): a play that was
+// offered at chain priority and puts nothing on the chain is an engine error.
+// It used to be dropped from the window's list and the decision asked again
+// (and an outside edit of the state brought it back) — an option that was
+// offered and silently did nothing. Not one such play occurred in 2,268 games
+// across every pairing of the constructed lists, so the tolerance hid nothing
+// but future defects.
+TEST_F(SweepTriggersTest, PriorityWindow_APlayThatPutsNothingOnTheChainIsAnError) {
     auto source = addUnit(P1, kInvalidId, 2, -1);
-    auto rune = addUnit(P1, kInvalidId, 0, -1);
     auto reaction = addToHand(P1, kDecreeOfInsight);
     ChainManager cm(state, events, card_db);
     int plays = 0;
     cm.setPlayCard([&](const Intent&) { ++plays; });               // the play never happens
-    cm.setActivateAbility([](const Intent&) { return false; });    // cost-only: keeps priority
     cm.addAbility(source, P1, kInvalidId);
-    Intent tap;
-    tap.type = IntentType::ActivateReactionAbility;
-    tap.player = P1;
-    tap.ability_source = rune;
     Intent play;
     play.type = IntentType::PlayReaction;
     play.player = P1;
     play.card = reaction;
-    std::vector<bool> play_offered;        // per time P1 was asked
-    cm.processFEPR(
-        [&](PlayerId p, const std::vector<Intent>& legal) -> Intent {
-            if (p != P1) return Intent::passPriority(p);
-            bool offered = false;
-            for (const auto& i : legal) if (i.type == IntentType::PlayReaction) offered = true;
-            play_offered.push_back(offered);
-            switch (play_offered.size()) {
-                case 1: return play;                       // fails: dropped
-                case 2: return tap;                        // still dropped
-                case 3: cm.forgetDroppedPlays();           // the state is edited while P1 is asked
-                        return tap;
-                default: return Intent::passPriority(p);   // asked again: it is back
-            }
-        },
-        [](const ChainItem&) {},
-        [](const ChainItem&) {},
-        [&](PlayerId p) {
-            std::vector<Intent> out{Intent::passPriority(p)};
-            if (p == P1) { out.push_back(tap); out.push_back(play); }
-            return out;
-        });
-    ASSERT_GE(play_offered.size(), 4u);
-    EXPECT_TRUE(play_offered[0]);
-    EXPECT_FALSE(play_offered[1]) << "dropped after it failed";
-    EXPECT_FALSE(play_offered[2]);
-    EXPECT_TRUE(play_offered[3]) << "offered again after the edit";
+    int asked = 0;
+    try {
+        cm.processFEPR(
+            [&](PlayerId, const std::vector<Intent>&) -> Intent { ++asked; return play; },
+            [](const ChainItem&) {},
+            [](const ChainItem&) {},
+            [&](PlayerId p) { return std::vector<Intent>{Intent::passPriority(p), play}; });
+        ADD_FAILURE() << "a play that did not happen was accepted";
+    } catch (const std::logic_error& ex) {
+        EXPECT_NE(std::string(ex.what()).find("put nothing on the chain"), std::string::npos)
+            << ex.what();
+    }
     EXPECT_EQ(plays, 1);
-}
-
-// ... and the engine tells the chain when it is told of an edit: the list a
-// parked decision is rebuilt from (recomputePendingLegalActions) and the
-// chain's own then agree.
-TEST_F(SweepTriggersTest, PriorityWindow_TheEngineForgetsDroppedPlaysOnAnEdit) {
-    auto source = addUnit(P1, kInvalidId, 2, -1);
-    (void)source;
-    // The engine's hook is the one place an edit is announced.
-    const std::string engine_src = [] {
-        std::ifstream in(std::string(std::getenv("RIFTBOUND_ROOT") ? std::getenv("RIFTBOUND_ROOT") : ".") +
-                         "/src/engine/game_engine.cpp");
-        std::stringstream ss; ss << in.rdbuf(); return ss.str();
-    }();
-    const auto at = engine_src.find("void GameEngine::noteEditWhileParked() {");
-    ASSERT_NE(at, std::string::npos);
-    const auto end = engine_src.find("\n}\n", at);
-    EXPECT_NE(engine_src.substr(at, end - at).find("forgetDroppedPlays()"), std::string::npos)
-        << "noteEditWhileParked must clear the chain's dropped plays";
+    EXPECT_EQ(asked, 1) << "not asked again";
 }
 
 // 9.V1: the combat-damage half of 9.Q3, through a real combat. A unit takes

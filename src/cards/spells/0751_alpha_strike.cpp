@@ -31,8 +31,28 @@ public:
         return friendlyUnitChoice(state, controller, object);
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        GameObjectId src = targets[0];
+        // "Choose a friendly unit." From hand it is locked in by the play
+        // intent; for a play by an effect (Blind Fury, Promising Future) or
+        // new choices after a control change (Mystic Reversal) the engine
+        // asks for it as this item is finalized (GameEngine::
+        // chooseFirstExecution). Either way it is the item's target; with
+        // none — no friendly unit to choose, or the chosen one no longer
+        // legal — nothing deals damage. (Finding F2: this used to be an early
+        // return before the end-of-choices marker, which the finalize
+        // contract forbids.)
+        GameObjectId src = kInvalidId;
+        if (ctx.state.chain.resuming.has_value()) src = chosenTarget(ctx, targets, 0);
+        else if (!targets.empty()) src = targets[0];   // direct invocation
+        std::vector<GameObjectId> damaged;
+        if (src == kInvalidId || !ctx.state.objectExists(src) ||
+            !ctx.state.getObject(src).location.has_value()) {
+            // The chosen unit is no longer legal (a mistarget): nothing deals
+            // damage. Said through the helper, so the finalize pass and the
+            // resolution agree that there is nothing to choose.
+            splitDamageAmong(ctx, "Alpha Strike", 0, kInvalidId, {}, damaged,
+                             /*may_choose_none=*/true);
+            return;
+        }
         // "It deals damage equal to its Might": its Might now — as the spell
         // is finalized that caps the number of targets (CR 355.14.c), as it
         // resolves it is the damage divided.
@@ -45,7 +65,6 @@ public:
             [&](const GameObject& o) {
                 return o.controller != ctx.controller && o.isAtBattlefield();
             });
-        std::vector<GameObjectId> damaged;
         if (!splitDamageAmong(ctx, "Alpha Strike", total, src, legal, damaged)) return;
 
         // Kill lethally-damaged units (after all damage is marked); gain 1 XP

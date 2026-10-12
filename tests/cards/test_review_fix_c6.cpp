@@ -695,7 +695,11 @@ TEST_F(C6Test, ScuttleCrab_ShowsTheOpponentsFacedownCards) {
     ps(P2).hand.pop_back();
     o(hidden).zone = ZoneType::FacedownZone;
     o(hidden).is_hidden = true;
+    o(hidden).hidden_at = state.battlefields[1].id;
     state.battlefields[1].facedown.push_back(hidden);
+    // (At a battlefield P2 controls: CR 323.6.a trashes it otherwise.)
+    state.battlefields[1].controller = P2;
+    addUnit(P2, kInvalidId, 1, 1);
     std::vector<GameObjectId> shown;
     auto conn = events.on_card_revealed.connect(
         [&](const CardRevealedEvent& e) { shown.push_back(e.card); });

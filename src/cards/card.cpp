@@ -167,6 +167,14 @@ void Card::nothingToDecide(ChainItem& item) {
     if (item.finalizing) item.finalize_checked |= 128;
 }
 
+void Card::mayIsNotTheWholeAbility(CardContext& ctx) {
+    if (ctx.state.chain.resuming.has_value()) ctx.state.chain.resuming->may_is_partial = true;
+}
+
+void Card::requiredChoiceMissing(ChainItem& item) {
+    if (item.finalizing) item.required_choice_missing = true;
+}
+
 // ── Choice-helper progress ──────────────────────────────────────────────────
 // Each helper keeps its own "waiting for the agent" / "answered" flags on the
 // resolving item (resume_data[Card::kChoiceStateSlot]), so the helpers compose
@@ -256,6 +264,33 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
     const bool awaiting = ri.may_answer == -1 && ri.resume_point == 1 &&
                           !(choiceState(ri) & kXAwait);
 
+    // Tournament Rules 505: a loop players keep going by their decisions — two
+    // "you may" abilities answering each other (Imposing Challenger and
+    // Irresistible Faefolk moving each other, finding F8) — runs for a number
+    // of iterations and then "that player ... breaks the loop" by "making a
+    // different decision" (505.4, 505.7, 505.10). The players name that
+    // number at a table; here it is ChainState::kMayLoopIterations for every
+    // triggered ability: once its "may" has been accepted that often in one
+    // unbroken chain it is not offered again, which is the decline.
+    const bool counts_for_loops = ri.is_ability && !ri.is_activated_ability;
+    auto mayCount = [&]() -> ChainState::MayCount* {
+        for (auto& mc : ctx.state.chain.may_loop_counts)
+            if (mc.source == ri.source && mc.trigger == ri.fired_trigger) return &mc;
+        return nullptr;
+    };
+    if (ri.may_answer == -1 && !awaiting && counts_for_loops) {
+        if (const auto* mc = mayCount();
+            mc && mc->accepted >= ChainState::kMayLoopIterations) {
+            RIFT_TRACE(ctx.events, "MAY_NOT_OFFERED: " + label + " (a loop: accepted " +
+                                 std::to_string(mc->accepted) +
+                                 " times in this chain — Tournament Rules 505.7)");
+            ri.resume_point = 2;
+            ri.may_answer = 0;
+            nothingToDecide(ri);
+            return 0;
+        }
+    }
+
     if (ri.may_answer == -1 && !awaiting) {
         // Validate-before-prompt. CR principle: never offer a choice that
         // can't legally be acted on. If preconditions failed (e.g. the
@@ -331,6 +366,10 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         RIFT_TRACE(ctx.events, "MAY_ACCEPTED: " + label);
         ri.resume_point = 2;  // commit; caller proceeds to do the work
         ri.may_answer = 1;
+        if (counts_for_loops) {
+            if (auto* mc = mayCount()) ++mc->accepted;
+            else ctx.state.chain.may_loop_counts.push_back({ri.source, ri.fired_trigger, 1});
+        }
         return 1;
     }
 
@@ -475,6 +514,7 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                                  " (no legal modes after filtering)");
             store(-2);
             nothingToDecide(ri);
+            requiredChoiceMissing(ri);   // CR 403.4
             return -2;
         }
         // Always publish a choice, even if only one mode is legal. The
@@ -662,6 +702,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                                  " (no legal targets at resolve time)");
             store(kInvalidId);
             nothingToDecide(ri);
+            requiredChoiceMissing(ri);   // CR 403.4
             return kInvalidId;
         }
         // Always publish a choice, even if only one target is legal —
@@ -812,6 +853,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         if (legal_a.empty()) {
             RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal first targets at resolve time)");
+            requiredChoiceMissing(ri);   // CR 403.4
             return finish(kInvalidId, kInvalidId);
         }
         // Always publish a choice, even with a single legal first

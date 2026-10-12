@@ -17,6 +17,14 @@ public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouStun; }
+    // "an enemy unit AT A BATTLEFIELD" is part of the trigger condition:
+    // judged when the unit is stunned. Stunning a unit at a base puts nothing
+    // on the chain. ("enemy" is the engine's dispatch.)
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
+        return subject != kInvalidId && state.objectExists(subject) &&
+               state.getObject(subject).isAtBattlefield();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // The stunned unit is the trigger's subject. No return ahead of the
         // "may" when it or she is gone: still_legal is then false and

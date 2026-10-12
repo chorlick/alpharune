@@ -70,3 +70,19 @@ Later rounds use coverage-guided decks (weighted toward the least-exercised card
 cards rather than passing, because uniform random play leaves rare cards and multi-step abilities rare. The
 stopping rule is set in numbers from the fuzz stream's final report (consecutive clean passes of a stated
 size, and a minimum number of resolutions per card).
+
+## Focus for the next deck round: Flow (user request, 2026-10-11)
+
+`decks/kennen.txt` (Heart of the Tempest / Kennen, Storm of Shuriken) is built around [Flow]; use it to
+check Flow end to end. First look, 20 traced random games of the list: the legend granted [Flow] 16 times,
+but a spell was actually played for Flow only twice, so random play barely exercises the replay itself.
+Run this list with the `random-player` agent (it plays rather than passes) and with ISMCTS in one seat, and
+read against the text and the rules (CR on Flow; `Card::flowCost`, `GameEngine::refreshFlowGrants`):
+
+- when the spell that gets [Flow] is chosen (finding D78 says at resolution; the rules say finalization);
+- which spells are offered, and that the grant lasts "this turn" only;
+- that a granted or printed Flow play is offered from the trash only, for the right cost (Energy and Power
+  by domain; "equal to its cost" for Kennen's grant), once, and at the spell's own timing;
+- that the spell is banished instead of trashed after a Flow play, including when it is countered;
+- that its choices, targets, Deflect and Repeat work as from hand;
+- "when you play a spell" / "not from hand" watchers on a Flow play; Death Mark 931's own Flow.

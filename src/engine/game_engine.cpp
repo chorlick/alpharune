@@ -1455,8 +1455,19 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     }
 
     std::vector<GameObjectId> legal;
+    // A spell that takes ONE required target from its play intent
+    // (getTargetRequirements) and has none: it is played by an effect, or is
+    // making new choices (CR 753.3: under the same requirements). The engine
+    // asks for that target as for a play-time-target spell, and the card's
+    // finalize pass (if it has one) runs with it — a card that reads
+    // targets[0] must never be finalized with nothing chosen (finding F2).
+    const bool one_from_intent = [&] {
+        if (!item.is_spell || card->needsPlayTimeTarget()) return false;
+        const auto req = card->getTargetRequirements();
+        return req.count == 1 && !req.optional;
+    }();
     if (item.is_spell) {
-        if (!card->needsPlayTimeTarget()) {
+        if (!card->needsPlayTimeTarget() && !one_from_intent) {
             if (!(card->choicesAtFinalization() & Card::kFinalizeResolve)) return;
             if (prefinalized_spell_.has_value() && prefinalized_spell_->source == item.source) {
                 // Its choices were made before its cost was paid
@@ -1500,7 +1511,13 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         }
         legal = card->enumerateLegalTargets(state_, item.controller, item.ability_index, item.source);
     }
-    if (legal.empty()) return;   // nothing to choose now: the card handles it as it resolves
+    if (legal.empty()) {
+        // Nothing to choose now: the card handles it as it resolves — and in
+        // its finalize pass, where its helpers store that there is nothing.
+        if (one_from_intent && (card->choicesAtFinalization() & Card::kFinalizeResolve))
+            runFinalizePass(item);
+        return;
+    }
 
     std::vector<Intent> options;
     options.reserve(legal.size());
@@ -1540,6 +1557,9 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
                      " -> " + state_.getObject(t).name);
 
     commitEngineChosenTarget(*card, chooser, t, item_id);
+    if (one_from_intent && (card->choicesAtFinalization() & Card::kFinalizeResolve))
+        for (auto& ci : state_.chain.items)
+            if (ci.id == item_id) { runFinalizePass(ci); break; }
 }
 
 // What choosing `t` as a target owes, for every target the ENGINE asks for
@@ -1589,7 +1609,10 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
     const PlayerId chooser = item->controller;
     const auto legal = card->enumerateLegalTargets(state_, chooser);
 
-    if (item->is_spell && card->needsPlayTimeTarget()) {
+    const auto requirement = card->getTargetRequirements();
+    const bool one_from_intent = item->is_spell && !card->needsPlayTimeTarget() &&
+                                 requirement.count == 1 && !requirement.optional;
+    if (item->is_spell && (card->needsPlayTimeTarget() || one_from_intent)) {
         if (legal.empty()) return;
         item->targets.clear();
         item->chosen_objects.clear();

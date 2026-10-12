@@ -2943,6 +2943,130 @@ TEST_F(SweepCostsTest, CardContract_NoRegisteredCardEndsItsFinalizePassAnywhereE
               << activate_passes << " activations ]\n";
 }
 
+// ─── Finding F2: a finalize-pass spell that is not played from a hand ───────
+//
+// Alpha Strike 751 read targets[0] and returned when there was none, before
+// its end-of-choices marker: fine from hand (the play intent carries the
+// target), an engine error when Blind Fury or Promising Future played it, or
+// when Mystic Reversal made it choose again. The sweep above plays every
+// spell the way the generator offers it, so it never saw that. This one puts
+// every finalize-pass spell on the chain the two other ways: played by an
+// effect (EffectExecutor::playIgnoringCost), and told to make new choices
+// while it is on the chain (EffectExecutor::makeNewChoices, CR 750-755).
+TEST_F(SweepCostsTest, CardContract_NoFinalizePassSpellTripsWhenPlayedByAnEffectOrChoosingAgain) {
+    const GameState blank = state;
+    std::vector<CardDefId> ids;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* card = card_registry.get(id);
+        if (card && id < 1000 && def.card_type == CardType::Spell &&
+            (card->choicesAtFinalization() & Card::kFinalizeResolve))
+            ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    ASSERT_GE(ids.size(), 30u);
+
+    std::vector<std::string> trips;
+    int effect_plays = 0, rechoices = 0;
+    for (CardDefId id : ids) {
+        const CardDef& def = card_db.get(id);
+        auto setUp = [&](int board) -> GameObjectId {
+            state = blank;
+            state.battlefields[0].controller = P1;
+            addUnit(P1, kInvalidId, 4, 0);
+            const GameObjectId source = addToHand(P1, id);
+            if (board == 1) {
+                state.battlefields[1].controller = P2;
+                addUnit(P1, kInvalidId, 6, 1);
+                addUnit(P1, kInvalidId, 2);
+                addGear(P1, kLongSword);
+                addUnit(P2, kInvalidId, 2, 0);
+                addUnit(P2, kInvalidId, 5, 1);
+                addUnit(P2, kInvalidId, 3);
+                addGear(P2);
+                addToHand(P1, kPoutyPoro);
+                addToTrash(P1, kPoutyPoro);
+                for (int i = 0; i < 4; ++i) addRune(P1, Domain::Fury);
+                setXp(P1, 10);
+            }
+            for (int i = 0; i < 10; ++i) addToDeck(P1, kPoutyPoro);
+            for (int i = 0; i < 10; ++i) addToDeck(P2, kPoutyPoro);
+            setPool(P1, 30, 10);
+            return source;
+        };
+        auto guarded = [&](const std::string& what, const std::function<void()>& body) {
+            try {
+                body();
+            } catch (const std::exception& ex) {
+                trips.push_back(def.name + " (" + toString(id) + "), " + what + ": " + ex.what());
+            }
+        };
+        for (int board = 0; board < 2; ++board)
+        for (int last = 0; last < 2; ++last) {
+            const std::string where = std::string(board ? "full board" : "small board") +
+                                      (last ? ", last option" : ", first option");
+            {   // Played by an effect.
+                const GameObjectId source = setUp(board);
+                EndAgent a1, a2;
+                a1.last = a2.last = last == 1;
+                guarded("played by an effect, " + where, [&] {
+                    withEngine([&](GameEngine& e) {
+                        e.testHook_executor().playIgnoringCost(P1, source);
+                        settleLikeTheEngine(e);
+                    }, &a1, &a2, P1);
+                });
+                ++effect_plays;
+            }
+            {   // Played from hand, then told to choose again while on the chain.
+                const GameObjectId source = setUp(board);
+                std::vector<Intent> mine;
+                guarded("offer, " + where, [&] {
+                    for (const auto& i : legal())
+                        if (i.card == source) mine.push_back(i);
+                });
+                if (mine.empty()) continue;
+                const Intent intent = last ? mine.back() : mine.front();
+                ASSERT_EQ(setUp(board), source);
+                EndAgent a1;
+                a1.last = last == 1;
+                GameEngine* live = nullptr;
+                bool again = false;
+                PickByPredicateAgent a2([&](int, const std::vector<Intent>& options) {
+                    if (!again && live)
+                        for (const auto& ci : live->mutableState().chain.items)
+                            if (ci.source == source && ci.is_spell) {
+                                again = true;
+                                const ChainItemId item = ci.id;
+                                live->testHook_executor().makeNewChoices(item);
+                                break;
+                            }
+                    for (const auto& i : options)
+                        if (i.type == IntentType::PassPriority) return i;
+                    return options.front();
+                });
+                guarded("choosing again, " + where, [&] {
+                    withEngine([&](GameEngine& e) {
+                        live = &e;
+                        e.testHook_executeIntent(intent);
+                        settleLikeTheEngine(e);
+                        live = nullptr;
+                    }, &a1, &a2, P1);
+                });
+                if (again) ++rechoices;
+            }
+        }
+    }
+    state = blank;
+    std::sort(trips.begin(), trips.end());
+    trips.erase(std::unique(trips.begin(), trips.end()), trips.end());
+    std::string all;
+    for (const auto& t : trips) all += "\n  " + t;
+    EXPECT_TRUE(trips.empty()) << trips.size() << " run(s) threw:" << all;
+    EXPECT_GE(effect_plays, 120);
+    EXPECT_GE(rechoices, 40);
+    std::cout << "[ " << ids.size() << " finalize-pass spells: " << effect_plays
+              << " effect plays, " << rechoices << " re-choices ]\n";
+}
+
 // ─── Finding D4: CR 403 removal against what the card would have done ───────
 //
 // A triggered ability that is not performed leaves the chain as it would have

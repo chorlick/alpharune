@@ -32,23 +32,17 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         // "Choose a friendly unit." From hand it is locked in by the play
-        // intent. A play by an effect (Blind Fury, Promising Future) and new
-        // choices after a control change (Mystic Reversal) come with none:
-        // the unit is then chosen here, in the finalize pass, like any other
-        // choice of the spell (finding F2 — the pass used to end at an early
-        // return, which the finalize contract forbids).
-        const bool chosen_at_play = ctx.state.chain.resuming.has_value() &&
-                                    !ctx.state.chain.resuming->targets.empty();
+        // intent; for a play by an effect (Blind Fury, Promising Future) or
+        // new choices after a control change (Mystic Reversal) the engine
+        // asks for it as this item is finalized (GameEngine::
+        // chooseFirstExecution). Either way it is the item's target; with
+        // none — no friendly unit to choose, or the chosen one no longer
+        // legal — nothing deals damage. (Finding F2: this used to be an early
+        // return before the end-of-choices marker, which the finalize
+        // contract forbids.)
         GameObjectId src = kInvalidId;
-        if (chosen_at_play || !ctx.state.chain.resuming.has_value()) {
-            src = chosenTarget(ctx, targets, 0);
-            if (!ctx.state.chain.resuming.has_value() && !targets.empty()) src = targets[0];
-        } else {
-            src = pickTarget(ctx, "Alpha Strike: choose a friendly unit",
-                chooseableUnits(ctx.state, ctx.controller,
-                    [&](const GameObject& o) { return o.controller == ctx.controller; }));
-            if (src == kInvalidId) return;   // waiting, or no friendly unit to choose
-        }
+        if (ctx.state.chain.resuming.has_value()) src = chosenTarget(ctx, targets, 0);
+        else if (!targets.empty()) src = targets[0];   // direct invocation
         std::vector<GameObjectId> damaged;
         if (src == kInvalidId || !ctx.state.objectExists(src) ||
             !ctx.state.getObject(src).location.has_value()) {

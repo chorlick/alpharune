@@ -35,6 +35,7 @@ constexpr CardDefId kSkulker = 175;           // Shipyard Skulker, a plain 3-cos
 constexpr CardDefId kLongSword = 345;
 constexpr CardDefId kSeaMonkey = 420;         // "You may pay [1] as an additional cost to play me. ..."
 constexpr CardDefId kAlphaStrike = 751;
+constexpr CardDefId kMobilize = 134;          // a spell with no timing keyword
 
 // Test-only cards (ids in the spare range, never in a set's).
 constexpr CardDefId kTLogA = 1990;
@@ -579,8 +580,11 @@ TEST_F(Batch1ChainFlow, D29_AShowdownBeginsHereTriggersWhenACombatOpens) {
 // nothing and the decision was asked again, three times.
 TEST_F(Batch1ChainFlow, D6_ChainPriorityOffersNoPlayThatIsNotAReaction) {
     auto source = addUnit(P1, kTLogA, 0);
-    auto skulker = addToHand(P1, kSkulker);          // a unit: not a Reaction
+    auto skulker = addToHand(P1, kMobilize);         // a spell with neither [Action] nor [Reaction]
+    ASSERT_FALSE(card_db.get(kMobilize).keywords.has(Keyword::Reaction));
+    ASSERT_FALSE(card_db.get(kMobilize).keywords.has(Keyword::Action));
     state.player(P1).rune_pool.energy = 10;
+    state.player(P1).rune_pool.universal_power = 10;
     std::vector<IntentType> offered;
     Spy p1;
     p1.see = [&](const std::vector<Intent>& legal) {

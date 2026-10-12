@@ -1610,8 +1610,12 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
     const auto legal = card->enumerateLegalTargets(state_, chooser);
 
     const auto requirement = card->getTargetRequirements();
+    // (A finalize-pass spell that takes its one target from the play intent:
+    // the target is asked for again and the pass re-run, as for an effect
+    // play. One with no finalize pass keeps the Deflect-aware loop below.)
     const bool one_from_intent = item->is_spell && !card->needsPlayTimeTarget() &&
-                                 requirement.count == 1 && !requirement.optional;
+                                 requirement.count == 1 && !requirement.optional &&
+                                 (card->choicesAtFinalization() & Card::kFinalizeResolve) != 0;
     if (item->is_spell && (card->needsPlayTimeTarget() || one_from_intent)) {
         if (legal.empty()) return;
         item->targets.clear();

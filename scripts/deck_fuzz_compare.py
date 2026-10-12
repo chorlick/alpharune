@@ -7,7 +7,8 @@ Says which failure signatures disappeared, which are new and which stayed
 (with their rate per 100,000 games in each pass, since passes differ in size),
 and which cards gained or lost coverage. A signature is the group's normalised
 text plus the card it names, so "Alpha Strike returned from its finalize pass"
-and "Kennen ... returned from its finalize pass" are two signatures.
+and "Kennen ... returned from its finalize pass" are two signatures; every
+group of one known cause (`--known`) is one signature.
 
 With --min-resolved K it also lists the cards under the stopping rule's
 threshold in the new pass: every card that can be in a deck, in play in fewer
@@ -26,6 +27,14 @@ def signatures(j):
     """signature -> (count, known id or None, replay command)"""
     out = {}
     for g in j["failure_groups"]:
+        if g.get("known"):
+            # A known cause is one signature however its text varies (a chain
+            # runaway names bystanders too).
+            key = "known " + g["known"]
+            ex = g["fewest_decisions_first"]
+            n, _, cmd = out.get(key, (0, None, ""))
+            out[key] = (n + g["count"], g["known"], cmd or (ex[0]["command"] if ex else ""))
+            continue
         per_card = g.get("fewest_decisions_per_card") or {}
         if per_card:
             for card, v in per_card.items():

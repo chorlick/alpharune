@@ -16,29 +16,27 @@ class ForgottenLibrary : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // "While you control this battlefield": only its controller's spells count.
+    // "While you control this battlefield" and "if you spent [4] or more" are
+    // the trigger's condition (CR 383.2.a.1): asked when the spell has been
+    // played (`controller` is the player who played it, `subject` the spell).
+    // What was spent on that spell is stamped on it as it is played
+    // (TriggerManager::onCardPlayed); PlayerState::last_spell_energy_spent is
+    // the fallback for a path that names no spell.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
         bool mine = false;
-        for (const auto& bf : ctx.state.battlefields)
-            if (bf.card_object_id == ctx.source)
-                mine = bf.controller.has_value() && *bf.controller == ctx.controller;
-        if (!mine) return;
-        // CR gate "While you control this battlefield" — fire only if the
-        // BF object's controller (set by ctx.controller via fireTrigger)
-        // matches the spell-player. Read from per-trigger snapshot
-        // (Phase 6q+) so a subsequent spell-play doesn't clobber the
-        // value we need. Falls back to PlayerState for legacy paths.
-        int spent = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->triggering_spell_energy_spent
-            : 0;
-        if (spent == 0) {
-            spent = ctx.state.player(ctx.controller).last_spell_energy_spent;
+        for (const auto& bf : state.battlefields)
+            if (bf.card_object_id == source)
+                mine = bf.controller.has_value() && *bf.controller == controller;
+        if (!mine) return false;
+        int spent = state.player(controller).last_spell_energy_spent;
+        if (subject != kInvalidId && state.objectExists(subject)) {
+            const auto& c = state.getObject(subject).card_counters;
+            if (const auto it = c.find("__energy_spent_on_play"); it != c.end()) spent = it->second;
         }
-        if (spent < 4) {
-            RIFT_TRACE(ctx.events, "FORGOTTEN LIBRARY: skip (spent=" +
-                                 std::to_string(spent) + " < 4)");
-            return;
-        }
+        return spent >= 4;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         RIFT_TRACE(ctx.events, "FORGOTTEN LIBRARY: predict 1");
         ctx.executor.predict(ctx.controller, 1);
     }

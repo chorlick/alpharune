@@ -17,18 +17,21 @@ public:
     // [Ganking] is engine-handled via the printed keyword.
     // "When you play a spell, if you spent [4] or more, ready me."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
+    // "if you spent [4] or more" is part of the trigger condition (CR
+    // 383.2.a.1): asked when the spell has been played; a cheaper spell puts
+    // nothing on the chain. What was spent on THAT spell is stamped on it as
+    // it is played (TriggerManager::onCardPlayed) —
+    // PlayerState::last_spell_energy_spent is the latest spell's, which may
+    // be a different, dearer one played in response.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
+        if (subject == kInvalidId || !state.objectExists(subject)) return false;
+        const auto& c = state.getObject(subject).card_counters;
+        const auto it = c.find("__energy_spent_on_play");
+        return it != c.end() && it->second >= 4;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        // What was spent on the spell that triggered this (the snapshot on
-        // the chain item). PlayerState::last_spell_energy_spent is the latest
-        // spell's, which may be a different, dearer one played in response.
-        const int spent = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->triggering_spell_energy_spent
-            : 0;
-        if (spent < 4) {
-            RIFT_TRACE(ctx.events, "REVNA: skip (spent=" + std::to_string(spent) + " < 4)");
-            return;
-        }
         ctx.executor.readyObject(ctx.source);
         RIFT_TRACE(ctx.events, "REVNA: spent 4+ on a spell -> ready me");
     }

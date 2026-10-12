@@ -342,6 +342,9 @@ TEST_F(RulesCards2Test, RulesCards2_CR194_Tryndamere_ConquerPointGoesThroughScor
 }
 
 TEST_F(RulesCards2Test, RulesCards2_CR194_YasuoWindrider_BothPrintings_ThirdMoveScores) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     for (CardDefId def : {kYasuoWindrider, kYasuoWindrider2}) {
         SCOPED_TRACE(def);
         state.game_over = false;
@@ -351,10 +354,25 @@ TEST_F(RulesCards2Test, RulesCards2_CR194_YasuoWindrider_BothPrintings_ThirdMove
         auto blocked = addUnit(P1, def, 0, /*at_bf=*/0);
         auto open = addUnit(P1, def, 0, /*at_bf=*/0);
         auto moveThrice = [&](GameObjectId y) {
-            for (int i = 0; i < 3; ++i)
-                fireTriggerAs(def, P1, y, TriggerType::WhenIMove, exec);
+            for (int i = 1; i <= 3; ++i) {
+                // Every move bumps moves_this_turn before it is announced;
+                // "the third time I move" is the move that leaves it at 3.
+                state.getObject(y).moves_this_turn = i;
+                fireTriggerThroughEngine(y, TriggerType::WhenIMove);
+            }
         };
-        checkScoring(P1, [&] { moveThrice(blocked); }, [&] { moveThrice(open); });
+        // "Can't gain points" is a continuous effect, rebuilt by every cleanup
+        // of the engine path: it needs the card that makes it (Tianna
+        // Crownguard, 383, "While I'm at a battlefield, opponents can't gain
+        // points") on the board while the blocked Yasuo moves, and gone after.
+        checkScoring(P1,
+            [&] {
+                auto tianna = addUnit(P2, 383, 0, /*at_bf=*/1);
+                moveThrice(blocked);
+                state.getObject(tianna).location = std::nullopt;
+                state.getObject(tianna).zone = ZoneType::Banishment;
+            },
+            [&] { moveThrice(open); });
     }
 }
 
@@ -538,12 +556,15 @@ TEST_F(RulesCards2Test, RulesCards2_CR383_Draven_DiedAsAnAttacker_CountsAsInComb
 }
 
 TEST_F(RulesCards2Test, RulesCards2_CR383_Draven_DiedAtABattlefieldOutsideCombat_NoPoint) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto draven = addUnit(P1, kDravenAudacious, 0, /*at_bf=*/0);
 
     exec.killObject(draven);          // e.g. a spell in the Main Phase: no combat here
     ASSERT_TRUE(state.getObject(draven).last_location.has_value());
-    fireTriggerAs(kDravenAudacious, P1, draven, TriggerType::WhenIDie, exec);
+    fireTriggerThroughEngine(draven, TriggerType::WhenIDie, nullptr, /*subject=*/draven);
 
     EXPECT_EQ(state.player(P2).score, 0)
         << "\"When I die IN COMBAT\": dying at a battlefield is not enough";
@@ -1151,13 +1172,16 @@ TEST_F(RulesCards2Test, RulesCards2_CR149_2_Cull_GoldTokenGoesToBase) {
 }
 
 TEST_F(RulesCards2Test, RulesCards2_CR149_2_PykeReturned_GoldTokenGoesToBase) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto pyke = addUnit(P1, kPykeReturned, 0, /*at_bf=*/0);
 
-    fireTriggerAs(kPykeReturned, P1, pyke, TriggerType::WhenAnEnemyUnitDies, exec);
+    fireTriggerThroughEngine(pyke, TriggerType::WhenAnEnemyUnitDies);
     expectGoldInBase(P1, 1);
 
-    fireTriggerAs(kPykeReturned, P1, pyke, TriggerType::WhenAnEnemyUnitDies, exec);
+    fireTriggerThroughEngine(pyke, TriggerType::WhenAnEnemyUnitDies);
     expectGoldInBase(P1, 1);          // "Once each turn"
 }
 

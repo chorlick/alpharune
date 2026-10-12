@@ -345,12 +345,20 @@ TEST_F(ReviewFixC1Test, GearDefs_DeflectBelongsToTheUnitsNotTheGear) {
 }
 
 TEST_F(ReviewFixC1Test, EdgeOfNight_TheControllerChoosesTheUnitHere) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     // batch-01 S5: attached to the first unit found.
     auto a = addUnit(P1, kInvalidId, 2, 0);
     auto b = addUnit(P1, kInvalidId, 2, 0);
     auto elsewhere = addUnit(P1, kInvalidId, 2, 1);
     auto edge = addGear(P1, kEdgeOfNight, /*at_bf=*/0);
 
+    // "When you play this FROM FACE DOWN": the mark GameEngine::executePlayFromHidden sets.
+    state.getObject(edge).card_counters["__played_from_facedown"] = 1;
+    state.getObject(edge).card_counters["__facedown_play_turn"] = state.turn.turn_number;
+    state.getObject(edge).card_counters["__facedown_play_bf"] =
+        static_cast<int>(state.battlefields[0].id.raw()) + 1;   // "here"
     EnginePathAgent agent(EnginePathAgent::choosing(b));
     fireTriggerThroughEngine(edge, TriggerType::WhenYouPlayThis, &agent);
 

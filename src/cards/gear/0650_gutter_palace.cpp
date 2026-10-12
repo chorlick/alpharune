@@ -18,22 +18,27 @@ public:
 
     // ── (1) Beginning-phase win check ──
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const auto& ps = ctx.state.player(ctx.controller);
+    // "if you have exactly 4 cards in hand and exactly 4 units at
+    // battlefields" is part of the trigger condition (CR 383.2.a.1): counted
+    // as the Beginning Phase starts. Otherwise nothing is put on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        const auto& ps = state.player(controller);
         int hand = static_cast<int>(ps.hand.size());
         int units_at_bf = 0;
-        for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (obj.isUnit() && obj.controller == ctx.controller &&
+        for (const auto& [id, obj] : state.objects.onBoard()) {
+            if (obj.isUnit() && obj.controller == controller &&
                 obj.battlefieldId().has_value()) {
                 ++units_at_bf;
             }
         }
-        if (hand == 4 && units_at_bf == 4) {
-            ctx.state.game_over = true;
-            ctx.state.winner = ctx.controller;
-            ctx.state.game_over_reason = "Gutter Palace win condition";
-            RIFT_TRACE(ctx.events, "GUTTER PALACE: win condition met (4 hand / 4 units)");
-        }
+        return hand == 4 && units_at_bf == 4;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        ctx.state.game_over = true;
+        ctx.state.winner = ctx.controller;
+        ctx.state.game_over_reason = "Gutter Palace win condition";
+        RIFT_TRACE(ctx.events, "GUTTER PALACE: win condition met (4 hand / 4 units)");
     }
 
     // ── (2) Activated: discard 1, [E] -> make a 1[M] Bird token w/ [Deflect] ──

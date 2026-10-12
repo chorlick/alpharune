@@ -204,10 +204,13 @@ TEST_F(VendettaCTest, Vendetta_GustMonk_PaidBanishesFromAnyTrashForAssault) {
 }
 
 TEST_F(VendettaCTest, Vendetta_GustMonk_UnpaidOrEmptyTrashDoesNothing) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto monk = addUnit(P1, kGustMonk, 0, 0);
     auto fodder = addToTrash(P1, kOnslaught);
-    fireTriggerAs(kGustMonk, P1, monk, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(monk, TriggerType::WhenYouPlayMe);
     EXPECT_TRUE(inTrash(P1, fodder)) << "additional cost not paid";
     EXPECT_EQ(state.getObject(monk).assault_value, 0);
 
@@ -215,7 +218,7 @@ TEST_F(VendettaCTest, Vendetta_GustMonk_UnpaidOrEmptyTrashDoesNothing) {
     auto& ps = state.player(P1);
     ps.trash.clear();
     state.getObject(monk).card_counters["__gust_monk_paid"] = 1;
-    fireTriggerAs(kGustMonk, P1, monk, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(monk, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(state.getObject(monk).assault_value, 0);
 }
 
@@ -629,6 +632,9 @@ TEST_F(VendettaCTest, Vendetta_KeeperOfLaw_CheaperWithExactlyTwoUnitsAtControlle
 // ── 907 Masa, Crashing Thunder ───────────────────────────────────────────
 
 TEST_F(VendettaCTest, Vendetta_Masa_PaidStunsEnemyAtBattlefield) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto cost = card_registry.get(kMasa)->optionalAdditionalCost();
     EXPECT_TRUE(cost.valid);
@@ -640,11 +646,11 @@ TEST_F(VendettaCTest, Vendetta_Masa_PaidStunsEnemyAtBattlefield) {
     auto in_base = addUnit(P2, kInvalidId, 2);        // not at a battlefield
     auto at_bf = addUnit(P2, kInvalidId, 2, 1);
 
-    fireTriggerAs(kMasa, P1, masa, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(masa, TriggerType::WhenYouPlayMe);
     EXPECT_FALSE(state.getObject(at_bf).is_stunned) << "additional cost not paid";
 
     state.getObject(masa).card_counters[cost.paid_flag] = 1;
-    fireTriggerAs(kMasa, P1, masa, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(masa, TriggerType::WhenYouPlayMe);
     EXPECT_TRUE(state.getObject(at_bf).is_stunned);
     EXPECT_FALSE(state.getObject(in_base).is_stunned);
     EXPECT_FALSE(state.getObject(masa).is_stunned);
@@ -1093,21 +1099,24 @@ TEST_F(VendettaCTest, Vendetta_Ambessa_AttackKillsWeakerEnemyHereOnlyWhileEmpowe
 // ── 925 Shen, Leader of the Kinkou Order ─────────────────────────────────
 
 TEST_F(VendettaCTest, Vendetta_Shen_HoldScoresWithExactlyOneOtherFriendlyHere) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     EXPECT_TRUE(card_db.get(kShen).keywords.has(Keyword::Shield));
     auto shen = addUnit(P1, kShen, 0, 0);
     addUnit(P2, kInvalidId, 2, 0);                    // enemy: doesn't count
     addUnit(P1, kInvalidId, 2, 1);                    // friendly, but elsewhere
 
-    fireTriggerAs(kShen, P1, shen, TriggerType::WhenIHold, exec);
+    fireTriggerThroughEngine(shen, TriggerType::WhenIHold);
     EXPECT_EQ(state.player(P1).score, 0) << "alone here";
 
     addUnit(P1, kInvalidId, 2, 0);
-    fireTriggerAs(kShen, P1, shen, TriggerType::WhenIHold, exec);
+    fireTriggerThroughEngine(shen, TriggerType::WhenIHold);
     EXPECT_EQ(state.player(P1).score, 1);
 
     addUnit(P1, kInvalidId, 2, 0);
-    fireTriggerAs(kShen, P1, shen, TriggerType::WhenIHold, exec);
+    fireTriggerThroughEngine(shen, TriggerType::WhenIHold);
     EXPECT_EQ(state.player(P1).score, 1) << "two others is not exactly one";
 }
 

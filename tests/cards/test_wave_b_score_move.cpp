@@ -95,18 +95,16 @@ TEST_F(ScoreMoveTest, Volibear_DrawsWhenEnemyMovesElsewhere) {
 }
 
 TEST_F(ScoreMoveTest, Volibear_NoDrawWhenEnemyMovesToMyBattlefield) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     auto voli = addUnit(P1, kVolibearImposing, 6, /*at_bf=*/0);
     auto enemy = addUnit(P2, 1, 3, /*at_bf=*/0);        // SAME bf as Volibear
     addToDeck(P1, 1);
     size_t hand_before = state.player(P1).hand.size();
     EffectExecutor exec(state, events, card_db);
-    ChainItem ri; ri.source = voli; ri.controller = P1;
-    ri.fired_trigger = TriggerType::WhenAnOpponentMovesToBattlefield;
-    ri.triggering_subject = enemy;
-    state.chain.resuming = ri;
-    fireTriggerAs(kVolibearImposing, P1, voli,
-                  TriggerType::WhenAnOpponentMovesToBattlefield, exec);
-    state.chain.resuming.reset();
+    fireTriggerThroughEngine(voli, TriggerType::WhenAnOpponentMovesToBattlefield, nullptr,
+                             /*subject=*/enemy);
     EXPECT_EQ(state.player(P1).hand.size(), hand_before)
         << "no draw when the enemy moves to Volibear's own battlefield";
 }

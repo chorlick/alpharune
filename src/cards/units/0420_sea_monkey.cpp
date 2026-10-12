@@ -23,14 +23,21 @@ public:
                 /*any_domain=*/false, /*paid_flag=*/"__sea_monkey_paid"};
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "if you paid the additional cost" is part of the trigger condition (CR
+    // 383.2.a.1): asked as I am played; unpaid, nothing is put on the chain.
+    // The engine forgets the flag as each play begins
+    // (Card::forgetPlayPayments).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto it = c.find("__sea_monkey_paid");
+        return it != c.end() && it->second == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // The payment covers this play only (erase returns how many it removed).
-        auto paid = self.card_counters.find("__sea_monkey_paid");
-        const bool was_paid = paid != self.card_counters.end() && paid->second == 1;
-        self.card_counters.erase("__sea_monkey_paid");
-        if (!was_paid) return;
+        // The payment covers this play only.
+        ctx.state.getObject(ctx.source).card_counters.erase("__sea_monkey_paid");
         ctx.executor.buffUnit(ctx.source);
         RIFT_TRACE(ctx.events, "SEA MONKEY: paid [1] -> buff me (+1 [M] buff)");
     }

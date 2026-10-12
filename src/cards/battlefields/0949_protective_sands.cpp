@@ -19,10 +19,16 @@ public:
     // "When you conquer here, if you control 4 or fewer runes, you may pay [1]
     // to draw 1."
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
+    // "if you control 4 or fewer runes" is part of the trigger condition (CR
+    // 383.2.a.1): counted when the conquer happens; with more nothing is put
+    // on the chain.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return runesControlled(state, controller) <= 4;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto still_legal = [&ctx]() {
-            return runesControlled(ctx.state, ctx.controller) <= 4 &&
-                   payableEnergy(ctx.state, ctx.controller) >= 1;
+            return payableEnergy(ctx.state, ctx.controller) >= 1;
         };
         // No return ahead of the "may": when it can't be offered
         // confirmOptional stores the "no" on the chain item, so the resolution

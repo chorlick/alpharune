@@ -20,11 +20,15 @@ public:
     // "When I hold, if there is exactly one other unit you control here, you
     //  score 1 point."
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
+    // "if there is exactly one other unit you control here" is part of the
+    // trigger condition (CR 383.2.a.1): counted when the hold happens.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& self = state.getObject(source);
+        return self.isAtBattlefield() && otherFriendlyUnitsHere(state, self) == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        if (!self.isAtBattlefield()) return;
-        if (otherFriendlyUnitsHere(ctx.state, self) != 1) return;
         ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
         RIFT_TRACE(ctx.events, "SHEN, LEADER OF THE KINKOU ORDER: hold with exactly one "
                             "other friendly unit here -> score 1 point");

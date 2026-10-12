@@ -166,12 +166,23 @@ TEST_F(WaveABatch1Test, Revna_ReadiesWhenSpent4Plus) {
 }
 
 TEST_F(WaveABatch1Test, Revna_DoesNotReadyBelow4) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db);
     auto revna = addUnit(P1, kRevna, 7, 0);
     state.getObject(revna).is_exhausted = true;
     state.player(P1).last_spell_energy_spent = 3;  // below 4
 
-    fireTriggerAs(kRevna, P1, revna, TriggerType::WhenYouPlayASpell, exec);
+    // The spell that was played, stamped with what was spent on it
+    // (TriggerManager::onCardPlayed).
+    auto spell = state.createObject();
+    state.getObject(spell).owner = P1;
+    state.getObject(spell).controller = P1;
+    state.getObject(spell).card_type = CardType::Spell;
+    state.getObject(spell).zone = ZoneType::Trash;
+    state.getObject(spell).card_counters["__energy_spent_on_play"] = 3;
+    fireTriggerThroughEngine(revna, TriggerType::WhenYouPlayASpell, nullptr, /*subject=*/spell);
     EXPECT_TRUE(state.getObject(revna).is_exhausted) << "below 4 -> stays exhausted";
 }
 

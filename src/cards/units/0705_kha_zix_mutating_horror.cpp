@@ -16,19 +16,26 @@ class KhaZixMutatingHorror : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttackOrDefend; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        auto bf_id = self.battlefieldId();
-        if (!bf_id) return;
-        // Count enemy units at this BF — "alone" means exactly 1.
-        auto opp = opponent(ctx.controller);
+    // "if an enemy unit is alone here" is part of the trigger condition (CR
+    // 383.2.a.1, 383.4.e.2.b): asked when I become an attacker or a defender.
+    // "Alone" = exactly one enemy unit at my battlefield.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto bf_id = state.getObject(source).battlefieldId();
+        if (!bf_id) return false;
+        const PlayerId opp = opponent(controller);
         int enemy_count = 0;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
+        for (const auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != opp) continue;
             if (obj.battlefieldId() == bf_id) ++enemy_count;
         }
-        if (enemy_count != 1) return;
+        return enemy_count == 1;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // The enemy count is not asked again: it was the trigger condition,
+        // and the ability resolves even if a second enemy unit has arrived.
+        if (!ctx.state.objectExists(ctx.source)) return;
         ctx.executor.giveTemporaryMight(ctx.source, 2);
         gainXp(ctx, ctx.controller, 2);
         RIFT_TRACE(ctx.events, "KHA'ZIX: enemy alone, +2M and +2 XP");

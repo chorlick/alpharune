@@ -20,10 +20,16 @@ public:
     // "When I conquer, if you've played a non-token unit, a non-token gear,
     // and a spell this turn, you score 1 point."
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    // The "if" is part of the trigger condition (CR 383.2.a.1): asked when
+    // the conquer happens; what is played afterwards does not count.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        const auto& ps = state.player(controller);
+        return ps.played_nontoken_unit_this_turn && ps.played_nontoken_gear_this_turn &&
+               ps.played_spell_this_turn;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
-        if (!ps.played_nontoken_unit_this_turn || !ps.played_nontoken_gear_this_turn ||
-            !ps.played_spell_this_turn) return;
         // CR 194.1.c: a point from an ability. scorePoints honours the Tianna
         // Crownguard lock and ends the game at once at the Victory Score.
         if (ctx.executor.scorePoints(ctx.controller, 1) == 0) return;

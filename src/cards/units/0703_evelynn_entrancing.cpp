@@ -16,6 +16,20 @@ class EvelynnEntrancing : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // "from face down on your turn" is part of the trigger condition: a play
+    // from hand, or a play from face down on an opponent's turn, puts nothing
+    // on the chain. GameEngine::executePlayFromHidden marks the card (and the
+    // turn, so a mark left by a play on an earlier turn is not this play)
+    // before the play is announced.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (state.turn.turn_player != controller || !state.objectExists(source)) return false;
+        const auto& c = state.getObject(source).card_counters;
+        const auto played = c.find("__played_from_facedown");
+        if (played == c.end() || played->second != 1) return false;
+        const auto turn = c.find("__facedown_play_turn");
+        return turn == c.end() || turn->second == state.turn.turn_number;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);

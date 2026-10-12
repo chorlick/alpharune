@@ -277,6 +277,9 @@ TEST_F(VendettaB, Vendetta_CovertInformant_DrawsOnMoveOnlyWhileEmpowered) {
 // ── 845 Patched Porobot ──────────────────────────────────────────────────
 
 TEST_F(VendettaB, Vendetta_PatchedPorobot_DrawsWithThreeGear) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     addToDeck(P1, kStargazer);
     addToDeck(P1, kStargazer);
@@ -284,11 +287,11 @@ TEST_F(VendettaB, Vendetta_PatchedPorobot_DrawsWithThreeGear) {
     addGear(P1);
     addGear(P1);
     addGear(P2);   // not mine
-    fireTriggerAs(kPatchedPorobot, P1, unit, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(unit, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(handSize(P1), 0) << "only 2 gear";
 
     addGear(P1);
-    fireTriggerAs(kPatchedPorobot, P1, unit, TriggerType::WhenYouPlayMe, exec);
+    fireTriggerThroughEngine(unit, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(handSize(P1), 1);
 }
 
@@ -358,6 +361,9 @@ TEST_F(VendettaB, Vendetta_SkyCrusier_Deals4) {
 // ── 850 Nasus, Guardian of Knowledge ─────────────────────────────────────
 
 TEST_F(VendettaB, Vendetta_NasusGuardian_ChannelsOncePerTurn) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     const Card* c = card_registry.get(kNasusGuardian);
     ASSERT_NE(c, nullptr);
@@ -366,15 +372,15 @@ TEST_F(VendettaB, Vendetta_NasusGuardian_ChannelsOncePerTurn) {
     for (int i = 0; i < 3; ++i) addRuneToRuneDeck(P1, Domain::Mind);
     state.turn.turn_number = 4;
 
-    fireTriggerAs(kNasusGuardian, P1, nasus, TriggerType::WhenAnEnemyUnitDiesHere, exec);
+    fireTriggerThroughEngine(nasus, TriggerType::WhenAnEnemyUnitDiesHere);
     EXPECT_EQ(exhaustedRuneCount(P1), 1);
     EXPECT_EQ(readyRuneCount(P1), 0) << "channeled exhausted";
 
-    fireTriggerAs(kNasusGuardian, P1, nasus, TriggerType::WhenAnEnemyUnitDiesHere, exec);
+    fireTriggerThroughEngine(nasus, TriggerType::WhenAnEnemyUnitDiesHere);
     EXPECT_EQ(exhaustedRuneCount(P1), 1) << "once each turn";
 
     state.turn.turn_number = 5;
-    fireTriggerAs(kNasusGuardian, P1, nasus, TriggerType::WhenAnEnemyUnitDiesHere, exec);
+    fireTriggerThroughEngine(nasus, TriggerType::WhenAnEnemyUnitDiesHere);
     EXPECT_EQ(exhaustedRuneCount(P1), 2) << "again on a later turn";
 }
 
@@ -396,6 +402,9 @@ TEST_F(VendettaB, Vendetta_PlazaGuardian_CostsLessPerGear) {
 // ── 852 Swain, Visionary ─────────────────────────────────────────────────
 
 TEST_F(VendettaB, Vendetta_SwainVisionary_ScoresOnlyWithUnitGearAndSpell) {
+    // CR 383.2.a.1: the printed condition is part of the trigger condition, so it is
+    // judged when the event happens (Card::triggerCondition) — the trigger goes
+    // through the engine, which is what asks it; false = nothing on the chain.
     EffectExecutor exec(state, events, card_db, &card_registry);
     const Card* c = card_registry.get(kSwainVisionary);
     ASSERT_NE(c, nullptr);
@@ -405,11 +414,11 @@ TEST_F(VendettaB, Vendetta_SwainVisionary_ScoresOnlyWithUnitGearAndSpell) {
     ps.played_nontoken_unit_this_turn = true;
     ps.played_spell_this_turn = true;
 
-    fireTriggerAs(kSwainVisionary, P1, swain, TriggerType::WhenIConquer, exec);
+    fireTriggerThroughEngine(swain, TriggerType::WhenIConquer);
     EXPECT_EQ(ps.score, 0) << "no non-token gear played";
 
     ps.played_nontoken_gear_this_turn = true;
-    fireTriggerAs(kSwainVisionary, P1, swain, TriggerType::WhenIConquer, exec);
+    fireTriggerThroughEngine(swain, TriggerType::WhenIConquer);
     EXPECT_EQ(ps.score, 1);
 }
 

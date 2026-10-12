@@ -998,10 +998,19 @@ constexpr int kMainPhaseMaxActions = 500;  // safety cap
 
 GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
     MainPhaseAdvance adv;
-    if (state_.game_over || action_count >= kMainPhaseMaxActions) {
+    if (state_.game_over) {
         adv.kind = MainPhaseAdvance::Kind::Done;
         return adv;
     }
+    // Engine bound: every main-phase action costs something (a card, a rune,
+    // an exhaustion), so no turn comes near this. Reaching it means an action
+    // that can be repeated for free — an engine or card defect, reported as
+    // one. (It used to end the Main Phase quietly.)
+    if (action_count >= kMainPhaseMaxActions)
+        throw std::logic_error("GameEngine::advanceMainPhase: " +
+                               std::to_string(kMainPhaseMaxActions) +
+                               " actions in one Main Phase (turn " +
+                               std::to_string(state_.turn.turn_number) + ")");
 
     // Everything that is pending is settled before the turn player is asked:
     // staged showdowns and combats run, and whatever they (or the action
@@ -2319,6 +2328,7 @@ void GameEngine::executeIntent(const Intent& intent) {
             executeHideCard(intent);
             break;
         case IntentType::Concede:
+            if (state_.game_over) break;   // GameEngine::askAgent ended the game already
             state_.game_over = true;
             state_.winner = opponent(intent.player);
             state_.game_over_reason = toString(intent.player) +
@@ -5428,10 +5438,17 @@ GameEngine::ShowdownAdvance GameEngine::advanceShowdown(BattlefieldId bf_id,
                                                           PlayerId focus_holder,
                                                           int& action_count) {
     ShowdownAdvance adv;
-    if (action_count >= kMaxShowdownActions || state_.game_over) {
+    if (state_.game_over) {
         adv.kind = ShowdownAdvance::Kind::Done;
         return adv;
     }
+    // Engine bound, as for the Main Phase: a showdown that takes this many
+    // actions is one in which something repeats for free. (It used to close
+    // the showdown quietly.)
+    if (action_count >= kMaxShowdownActions)
+        throw std::logic_error("GameEngine::advanceShowdown: " +
+                               std::to_string(kMaxShowdownActions) +
+                               " actions in one showdown at battlefield " + toString(bf_id));
     state_.turn.focus_holder = focus_holder;
     state_.turn.priority_holder = focus_holder;
     state_.turn.oc_state = OpenClosedState::Open;
@@ -5496,10 +5513,12 @@ std::optional<PlayerId> GameEngine::resolveShowdownDecision(
             return opponent(current_focus);
         }
         default:
-            // Any other intent type — fall through with focus unchanged
-            // so the outer loop can try again. Mirrors the legacy body's
-            // permissive handling of unexpected intents.
-            return current_focus;
+            if (state_.game_over) return std::nullopt;   // a concession
+            // An option offered at Focus that nothing here executes: an
+            // engine error, not a decision asked again until a bound.
+            throw std::logic_error(std::string("GameEngine::resolveShowdownDecision: ") +
+                                   toString(chosen.type) +
+                                   " was chosen at Focus and cannot be executed there");
     }
 }
 
@@ -5516,7 +5535,7 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
     PlayerId current_focus = state_.turn.turn_player;
 
     int action_count = 0;
-    while (action_count < kMaxShowdownActions && !state_.game_over) {
+    while (!state_.game_over) {
         auto adv = advanceShowdown(bf_id, current_focus, action_count);
         if (adv.kind == ShowdownAdvance::Kind::Done) return;
 
@@ -5921,12 +5940,9 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     // the Combat Cleanup and associated FEPR before performing this step" —
     // death and recall triggers resolve before the result is determined, and
     // may change who is here (a Deathknell that plays a unit here).
-    constexpr int kMaxCleanupChains = 16;
-    for (int i = 0; i < kMaxCleanupChains && chain_manager_->chainExists() &&
-                    !state_.game_over; ++i) {
-        runChain();
-        processLethalDamage();
-    }
+    // (One call: the chain's loop ends only when a Cleanup leaves it empty,
+    // lethal damage included.)
+    if (!state_.game_over) runChain();
 
     // Determine combat result (CR 461.3)
     att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
@@ -6766,7 +6782,16 @@ void GameEngine::cleanup() {
     // between them but the win check, which changes none of the fields the
     // checksum reads (it ends the cleanup if it changes anything at all).
     std::optional<uint64_t> carried;
-    for (int pass = 0; pass < kMaxCleanupPasses; ++pass) {
+    for (int pass = 0; ; ++pass) {
+        // Engine bound (CR 322: "repeating until a Cleanup occurs with no new
+        // change"): a state that still changes after this many Cleanups in a
+        // row is oscillating — two continuous effects undoing each other —
+        // and that is a defect, reported as one. (The loop used to stop
+        // quietly and leave the state wherever it was.)
+        if (pass >= kMaxCleanupPasses)
+            throw std::logic_error("GameEngine::cleanup: the state still changed after " +
+                                   std::to_string(kMaxCleanupPasses) +
+                                   " consecutive Cleanups (CR 322)");
         if (checkWinCondition()) return;
         uint64_t before = carried.has_value() ? *carried : checksum();
         processLethalDamage();
@@ -8172,9 +8197,6 @@ GameEngine::ParkedRef GameEngine::parkedRefOf(GameObjectId id) const {
 
 void GameEngine::noteEditWhileParked() {
     edited_while_parked_ = true;
-    // A play dropped from the current priority window as failed is judged
-    // again in the edited state (ChainManager::forgetDroppedPlays).
-    if (chain_manager_) chain_manager_->forgetDroppedPlays();
     parked_refs_.clear();
     if (!parked_legal_ || pending_query_ != PendingQuery::None) return;
     // A decision that cannot be rebuilt: remember where every object its
@@ -8242,6 +8264,16 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
 
     Intent chosen = getAgent(player).selectAction(state_, legal);
     parked_legal_ = nullptr;
+    // A concession is accepted at every decision — and it ends the game at
+    // every decision, here, not only where the caller happens to execute it
+    // (it used to be ignored at Focus, at a prompt, in a payment: the showdown
+    // loop asked again until its action bound closed the showdown).
+    if (chosen.type == IntentType::Concede && !state_.game_over) {
+        state_.game_over = true;
+        state_.winner = opponent(player);
+        state_.game_over_reason = toString(player) + std::string(" conceded");
+        events_.emit(GameOverEvent{state_.winner, state_.game_over_reason});
+    }
 
     auto refuse = [&](const std::string& why) {
         throw std::invalid_argument(

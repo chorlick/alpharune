@@ -337,7 +337,17 @@ TEST_F(StepApiTest, ResumedEngineKeepsTheMainPhaseActionCount) {
         made = kCap;   // counts the decision being asked: kCap-1 completed
         Game capped;
         capped.engine.resumeFromSnapshot(std::move(near_cap), snap_rng, snap_step);
-        EXPECT_FALSE(sameTurnContinues(capped.engine))
+        // One more action reaches the bound, which is an engine error (it
+        // used to end the Main Phase quietly): the resumed engine must reach
+        // it at this action, not 499 actions later.
+        bool at_the_bound = false;
+        try {
+            at_the_bound = !sameTurnContinues(capped.engine) && capped.engine.stepFailed();
+        } catch (const std::logic_error& ex) {
+            at_the_bound = std::string(ex.what()).find("actions in one Main Phase") !=
+                           std::string::npos;
+        }
+        EXPECT_TRUE(at_the_bound)
             << "seed " << seed << ": the resumed engine restarted the per-turn "
                "action count instead of continuing it";
         ++checked;

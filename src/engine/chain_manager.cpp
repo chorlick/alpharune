@@ -324,12 +324,6 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
     PlayerId current = first_priority;
 
     constexpr int kMaxPriorityPasses = 10; // safety (2 players × some margin)
-    // Plays that were chosen in this window and did not happen. They are not
-    // offered again: choosing one changes nothing, so asking again with the
-    // same options would only repeat it.
-    // (ChainManager::dropped_plays_: a member, so an outside edit of the
-    // state can clear it — forgetDroppedPlays.)
-    dropped_plays_.clear();
     // An ability used in response that puts nothing on the chain (a rune's
     // Add, CR 164.2) is not a pass: the player keeps priority and the window
     // goes on, however many of them are used. The bound only stops an
@@ -346,12 +340,6 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         auto actions = gen_closed_actions
             ? gen_closed_actions(current)
             : generateClosedStateActions(current);
-        if (!dropped_plays_.empty())
-            actions.erase(std::remove_if(actions.begin(), actions.end(),
-                [&](const Intent& a) {
-                    return std::find(dropped_plays_.begin(), dropped_plays_.end(), a) !=
-                           dropped_plays_.end();
-                }), actions.end());
 
         // Query agent
         auto chosen = query_agent(current, actions);
@@ -388,19 +376,21 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
             playing_card_ = false;
             if (state_.chain.next_id != before)
                 return true; // Item added → restart FEPR from Finalize
-            // The play did not happen (its cost could not be paid after all):
-            // the same player keeps priority and chooses again, without it.
-            // (An activated ability that adds no item is different: a
-            // cost-only ability — a rune's Add — has done its work, and is
-            // offered again only while it is still legal.)
-            RIFT_WARN(events_, "ChainManager: DROPPED_PLAY — " +
-                            (state_.objectExists(chosen.card) ? state_.getObject(chosen.card).name.get()
-                                                              : std::string("?")) +
-                            " was offered to " + toString(current) +
-                            " at chain priority (decision #" +
-                            std::to_string(state_.decision_index) +
-                            ") and playing it put nothing on the chain");
-            dropped_plays_.push_back(chosen);
+            // The play did not happen. (An activated ability that adds no
+            // item is different: a cost-only ability — a rune's Add — has done
+            // its work, and is offered again only while it is still legal.)
+            // An option that was offered and could not be executed: the
+            // generator and the play path disagree. Not one such play in
+            // 2,268 games across every pairing of the constructed lists
+            // (batch 1 of the testing phase), so it is an engine error and no
+            // longer a play quietly taken off the list and asked again.
+            throw std::logic_error(
+                "ChainManager: " +
+                (state_.objectExists(chosen.card) ? state_.getObject(chosen.card).name.get()
+                                                  : std::string("?")) +
+                " was offered to " + toString(current) + " at chain priority (decision #" +
+                std::to_string(state_.decision_index) +
+                ") and playing it put nothing on the chain");
         } else if (chosen.type == IntentType::PlayReaction) {
             // There is one way to play a card: the engine's (setPlayCard). A
             // ChainManager with no play callback cannot play one.
@@ -423,10 +413,12 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         } else if (chosen.type == IntentType::Concede) {
             // Always accepted (GameEngine::askAgent): the game ends here, as
             // it does for a concession at any other decision.
-            state_.game_over = true;
-            state_.winner = opponent(chosen.player);
-            state_.game_over_reason = toString(chosen.player) + std::string(" conceded");
-            events_.emit(GameOverEvent{state_.winner, state_.game_over_reason});
+            if (!state_.game_over) {   // (the engine's askAgent has ended it already)
+                state_.game_over = true;
+                state_.winner = opponent(current);
+                state_.game_over_reason = toString(current) + std::string(" conceded");
+                events_.emit(GameOverEvent{state_.winner, state_.game_over_reason});
+            }
             return true;   // nothing resolves: the loop sees the game is over
         } else {
             // An option the generator offered at chain priority that nothing
@@ -438,7 +430,11 @@ bool ChainManager::stepExecuteAndPass(AgentQuery query_agent,
         }
     }
 
-    return false;
+    // Engine bound: the window never ended in both players passing (an
+    // activation that changes nothing chosen hundreds of times). It used to
+    // go on to resolve the item without the passes.
+    throw std::logic_error("ChainManager: the priority window of chain item " +
+                           toString(top->id) + " did not end in both players passing");
 }
 
 // Runs the item in `state_.chain.resuming` to completion. Resumable cards

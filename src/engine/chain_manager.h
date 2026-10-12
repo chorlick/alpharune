@@ -96,12 +96,6 @@ public:
     /// "played from somewhere other than your hand"). That path ends by
     /// running the chain; while this callback runs, a nested processFEPR
     /// returns at once and the loop already in progress carries on.
-    /// The state was edited from outside while a player was being asked
-    /// (god mode): whatever made a play fail earlier in this priority window
-    /// may no longer hold, so the plays dropped from it are offered again —
-    /// as GameEngine::recomputePendingLegalActions, which rebuilds the list
-    /// for the edited state, already does.
-    void forgetDroppedPlays() { dropped_plays_.clear(); }
     using PlayCard = std::function<void(const Intent&)>;
     void setPlayCard(PlayCard fn) { play_card_ = std::move(fn); }
 
@@ -138,9 +132,6 @@ private:
     PayCost pay_cost_;
     ActivateAbility activate_ability_;
     PlayCard play_card_;
-    // Plays chosen in the current priority window that did not happen (see
-    // stepExecuteAndPass). Not game state: it lives for one window.
-    std::vector<Intent> dropped_plays_;
     bool playing_card_ = false;   // inside play_card_: nested processFEPR is a no-op
     bool running_ = false;        // inside processFEPR: a nested call is a no-op
     HandleTasks handle_tasks_;

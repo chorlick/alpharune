@@ -103,3 +103,15 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **A1** `random-player`: `isPassOption` treats the bare value 0 in a prompt of exactly the values 0 and 1 as a pass, so forced play never takes option 0 of a two-mode choice, an X of 0 or 1, "cost [1] less / [A] less" or a Hide cost's two payments. Tell a decline from a first mode by what the prompt is (the helper that asked: `confirmOptional` against `pickMode` / `pickXAmount`), not by its values — tooling (fuzz)
 - [ ] **A2** Daisy! 754 is resolved 2-4 times per million fuzz games (its attack trigger needs four tags among your units; the next lowest card is at 552): add a constructed list or a guided seed deck that exercises it, so the stopping rule's per-card minimum can hold for every card — tooling (fuzz)
 
+
+## Found by batch 1 (2026-10-11, `plans/reports/batch-1.md` sections 5 and 11) — each is in the batch named
+
+- [ ] **B1** (batch 2) Throughput fell 29% with the one-loop chain (783 -> 550 games/s, 1 thread, fiora vs yi_rebuild): `GameEngine::cleanup` runs 268 times a game and 98% of the passes change nothing. Skip a Cleanup when nothing was emitted or logged since the last one that found nothing (an emission counter on `EventBus`), or an equivalent that is provably the same game; fixed-seed games must be identical before and after, and the number is measured — perf
+- [ ] **B2** (batch 3) `GameEngine::executePlayFromHidden` never clears `__played_from_facedown`; a card played from facedown, returned and played from hand the same turn can read a stale mark. One helper for the three "from face down" cards and an engine-side clear — CODE-ONLY
+- [ ] **B3** (batch 4b) Immortal Phoenix 37: `WhenYouKillAUnitWithASpell` is also dispatched to a Phoenix on the board, which is not "play me from your trash" — CODE-ONLY
+- [ ] **B4** (batch 2) Yeti Brawler 580: `PlayerState::excess_combat_damage` / `last_combat_bf` are "most recent combat" values; a second combat in the turn overwrites what an earlier conquer's ability should read — CODE-ONLY
+- [ ] **B5** (batch 3) Zed, From the Shadows 810: the token's destination is chosen at resolution (no finalize pass) — CODE-ONLY
+- [ ] **B6** (batch 4b) "First time each turn" cards (Wraith of Echoes, Lucian, Merciless, Draven, Audacious) count from their own "performed" counter: one that enters after the event already happened this turn still triggers on the next — CODE-ONLY
+- [ ] **B7** (batch 4b) `kMaxDamageOptions` 64 / `kMaxSearchNodes` 20,000 cap the combat-damage assignments offered: on a crowded board legal assignments are withheld — CODE-ONLY
+- [ ] **B8** (batch 4b) `CardTestFixture::withEngine` keeps the first `turn_player` silently on a second call in one test: make it throw — tooling
+- [ ] **B9** (batch 2) Verify against their cited games whether batch 1 closed D60, D76, D23 (Cleanup with designations before the combat showdown); (batch 4a) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open

@@ -233,12 +233,17 @@ TEST_F(C0Test, FortifiedPosition_OffersEveryUnit) {
     auto pos = battlefield(0, kFortifiedPosition);
     auto mine = addUnit(P1, kInvalidId, 2, 0);
     auto theirs = addUnit(P2, kInvalidId, 2, 0);
+    // D73 (testing phase): the Shield lasts "this combat", so it is a
+    // continuous effect while that combat is in progress (hasKeyword), not a
+    // "this turn" keyword written to the unit (keywords.has). The trigger is
+    // "when you defend here": a combat is under way.
+    combatAt(0, P2);
     EnginePathAgent agent(EnginePathAgent::choosing(theirs));
     fireTriggerThroughEngine(pos, TriggerType::WhenYouDefendHere, &agent);
     EXPECT_TRUE(agent.wasOffered(mine));
     EXPECT_TRUE(agent.wasOffered(theirs));
-    EXPECT_TRUE(o(theirs).keywords.has(Keyword::Shield));
-    EXPECT_FALSE(o(mine).keywords.has(Keyword::Shield));
+    EXPECT_TRUE(o(theirs).hasKeyword(Keyword::Shield));
+    EXPECT_FALSE(o(mine).hasKeyword(Keyword::Shield));
 }
 
 TEST_F(C0Test, HallowedTomb_ReturnsTheChosenChampionAndCanBeDeclined) {

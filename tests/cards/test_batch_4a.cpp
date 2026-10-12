@@ -19,6 +19,10 @@
 namespace riftbound::test::batch_4a {
 
 constexpr CardDefId kNoxusHopeful = 12;
+constexpr CardDefId kBlastconeFae = 97;
+constexpr CardDefId kAvaAchiever = 107;
+constexpr CardDefId kDazzlingAurora = 160;
+constexpr CardDefId kKennenKeeperOfBalance = 922;
 constexpr CardDefId kFallingStar = 29;
 constexpr CardDefId kZhonyasHourglass = 77;
 constexpr CardDefId kSpriteCall = 94;
@@ -447,6 +451,42 @@ TEST_F(Batch4aTest, D62_ThrillOfTheHunt_WithNoBattlefieldToPlayToTheUnitStaysBan
     EXPECT_TRUE(inBanishment(P1, unit)) << "\"to any battlefield\": not to its base";
 }
 
+// Other callers of the effect-play operations, found by checking each one:
+TEST_F(Batch4aTest, D62_DazzlingAurora_RockfallPathIsNotOffered) {
+    auto aurora = gear(P1, kDazzlingAurora);
+    battlefieldCard(1, kRockfallPath);
+    addUnit(P1, kShipyardSkulker, 0, 1);              // P1 controls Rockfall Path
+    state.battlefields[0].controller = P1;            // and an ordinary battlefield
+    addUnit(P1, kShipyardSkulker, 0, 0);
+    auto top = addToDeck(P1, kLoyalPoro);
+    std::vector<std::string> labels;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal) labels.push_back(i.choice_label);
+        return legal.back();                          // the last location offered
+    });
+    fireTriggerThroughEngine(aurora, TriggerType::AtEndOfTurn, &agent);
+    for (const auto& l : labels) EXPECT_EQ(l.find("Rockfall"), std::string::npos) << l;
+    EXPECT_EQ(labels.size(), 2u) << "the base and the other battlefield";
+    EXPECT_EQ(bfOf(top), std::optional<BattlefieldId>{bfId(0)});
+}
+
+TEST_F(Batch4aTest, D62_AvaAchiever_AtRockfallPathAHiddenUnitIsNotOnOffer) {
+    battlefieldCard(1, kRockfallPath);
+    auto ava = addUnit(P1, kAvaAchiever, 0, 1);
+    auto hidden_unit = addToHand(P1, kWindsinger);
+    fund(P1, 0, 1);
+    EnginePathAgent agent(EnginePathAgent::accepting());
+    fireTriggerThroughEngine(ava, TriggerType::WhenIAttack, &agent);
+    EXPECT_TRUE(agent.prompts.empty()) << "\"If it's a unit, play it here\": it can't be";
+    EXPECT_TRUE(inHand(P1, hidden_unit));
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 1) << "[C] is not paid for a play that cannot happen";
+    // At an ordinary battlefield the same hand is on offer.
+    auto ava2 = addUnit(P1, kAvaAchiever, 0, 0);
+    EnginePathAgent there(EnginePathAgent::choosing(hidden_unit, EnginePathAgent::May::Yes));
+    fireTriggerThroughEngine(ava2, TriggerType::WhenIAttack, &there);
+    EXPECT_EQ(bfOf(hidden_unit), std::optional<BattlefieldId>{bfId(0)});
+}
+
 // ─── D52 / F9  Star Spring 771 ──────────────────────────────────────────────
 // "The first time a player plays a non-token unit here each turn, they may
 // move another unit they control here to its base."
@@ -508,6 +548,25 @@ TEST_F(Batch4aTest, D55_LeBlanc_ATemporaryUnitsDeathknellStillTriggersAtHerBattl
     addToDeck(P1, kLoyalPoro);
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(sentry); });
     EXPECT_EQ(handSize(P1), 1) << "its [Deathknell] is not a [Temporary] effect";
+}
+
+// The first half (fixed with batch 1, pinned here): the [Temporary] ability
+// itself does not trigger at her battlefield, so the unit is not killed in
+// its controller's Beginning Phase; a [Temporary] unit elsewhere is.
+TEST_F(Batch4aTest, D55_LeBlanc_TheTemporaryKillDoesNotHappenAtHerBattlefield) {
+    addUnit(P1, kLeBlancEverywhereAtOnce, 0, 0);
+    auto here = addUnit(P1, kWatchfulSentry, 0, 0);
+    auto elsewhere = addUnit(P1, kWatchfulSentry, 0, 1);
+    for (auto id : {here, elsewhere}) {
+        o(id).keywords.set(Keyword::Temporary);
+        o(id).granted_keywords.set(Keyword::Temporary);
+    }
+    for (int i = 0; i < 3; ++i) addToDeck(P1, kLoyalPoro);
+    state.turn.turn_player = P1;
+    withEngine([&](GameEngine& e) { e.testHook_beginningStep(); }, nullptr, nullptr, P1);
+    EXPECT_TRUE(onBoard(here)) << "\"Your [Temporary] effects at my battlefield don't trigger.\"";
+    EXPECT_FALSE(onBoard(elsewhere));
+    EXPECT_EQ(handSize(P1), 1) << "the one that died: its [Deathknell]";
 }
 
 // ─── D56  "your Beginning Phase" ────────────────────────────────────────────
@@ -739,6 +798,60 @@ TEST_F(Batch4aTest, D70_Windsinger_FromFacedownWithNothingAtItsBattlefieldTheMay
 TEST_F(Batch4aTest, D70_Windsinger_FromHandAnyBattlefieldsUnitMayBeChosen) {
     auto elsewhere = addUnit(P2, kShipyardSkulker, 2, 1);
     auto windsinger = addToHand(P1, kWindsinger);
+    EnginePathAgent agent(EnginePathAgent::choosing(elsewhere, EnginePathAgent::May::Yes));
+    playThroughEngine(windsinger, &agent);
+    EXPECT_TRUE(inHand(P2, elsewhere));
+}
+
+// The same rule for the other hidden permanents with a play effect that
+// chooses a board object (CR 811.1.d.3; Blastcone Fae is the rule's example).
+TEST_F(Batch4aTest, D70_BlastconeFae_FromFacedownOnlyUnitsAtItsBattlefieldAreOffered) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    auto here = addUnit(P1, kShipyardSkulker, 3, 0);
+    auto elsewhere = addUnit(P2, kShipyardSkulker, 3, 1);
+    auto fae = addToHand(P1, kBlastconeFae);
+    hideAt(fae, 0);
+    EnginePathAgent agent;
+    run(playIntent(fae), &agent);
+    EXPECT_FALSE(agent.wasOffered(elsewhere));
+    EXPECT_EQ(o(elsewhere).current_might, 3);
+    EXPECT_EQ(o(here).current_might + o(fae).current_might, 3 + 2 - 2)
+        << "one of the two units at her battlefield took the -2 [M]";
+}
+
+TEST_F(Batch4aTest, D70_KennenKeeperOfBalance_HisPlayEffectIsBoundHisAttackIsNot) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kShipyardSkulker, 3, 0);
+    auto elsewhere = addUnit(P2, kShipyardSkulker, 3, 1);
+    auto kennen = addToHand(P1, kKennenKeeperOfBalance);
+    hideAt(kennen, 0);
+    fund(P1, 2);
+    EnginePathAgent agent(EnginePathAgent::accepting());
+    run(playIntent(kennen), &agent);
+    EXPECT_FALSE(agent.wasOffered(elsewhere)) << "\"When you play me\": at his battlefield";
+    EXPECT_FALSE(o(elsewhere).is_stunned);
+    // "or I attack" is not a play effect.
+    fund(P1, 2);
+    EnginePathAgent attack(EnginePathAgent::choosing(elsewhere, EnginePathAgent::May::Yes));
+    fireTriggerThroughEngine(kennen, TriggerType::WhenIAttack, &attack);
+    EXPECT_TRUE(o(elsewhere).is_stunned);
+}
+
+// "Played from facedown" is of one play: the same card returned and played
+// from hand later in the turn chooses freely.
+TEST_F(Batch4aTest, D70_Windsinger_PlayedAgainFromHandTheSameTurnIsNotBound) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kShipyardSkulker, 6, 0);
+    auto elsewhere = addUnit(P2, kShipyardSkulker, 2, 1);
+    auto windsinger = addToHand(P1, kWindsinger);
+    hideAt(windsinger, 0);
+    run(playIntent(windsinger));
+    ASSERT_TRUE(onBoard(windsinger));
+    resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.bounceToHand(windsinger); });
+    ASSERT_TRUE(inHand(P1, windsinger));
     EnginePathAgent agent(EnginePathAgent::choosing(elsewhere, EnginePathAgent::May::Yes));
     playThroughEngine(windsinger, &agent);
     EXPECT_TRUE(inHand(P2, elsewhere));

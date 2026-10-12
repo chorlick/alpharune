@@ -16,27 +16,7 @@ Fixes are batched by root (user decision): one branch, one rebuild and one gate 
 
 ## Batch 1 — Triggers and the chain: where abilities are queued, finalized and resolved; cleanup between chain items; the fuzz findings
 
-- [ ] **F1** Viktor, Innovator 117 triggers on its own Recruit token and the chain never empties (686 of 100,000 fuzz games); and `ChainManager::processFEPR` gives up after 1,000 passes, drops the chain with a warning and plays on instead of failing the game — CERTAIN (fuzz)
-- [ ] **F2** Alpha Strike 751 leaves its finalize pass before the marker when it is played by an effect or its choices are made again after a control change (21 fuzz games; engine exception) — CERTAIN (fuzz)
-- [ ] **D1** Every permanent with a play trigger; Accelerate units: "when you play" abilities are queued and finalized before the permanent has entered, and Accelerate is asked after them — CERTAIN
-- [ ] **D4** Every "you may" trigger, and triggers with nothing to choose: a declined, unpayable or targetless triggered ability stays on the chain, both players get priority, and it "resolves" — CERTAIN / LIKELY
-- [ ] **D6** Any non-Reaction spell: offered as a plain play at a chain-priority decision; choosing it does nothing and the same decision is asked again — CERTAIN
-- [ ] **D7** A triggered or delayed ability queued during a showdown is left pending: Focus is passed, the showdown closes and combat damage is dealt with the item still on the chain — CERTAIN
-- [ ] **D10** Equipment whose bearer dies is not recalled by the next cleanup: it lies unattached at the battlefield through priority windows, once through a Main Phase decision — LIKELY
-- [ ] **D19** Astral Heron: the ability is put on the chain while the Heron is not at a battlefield — LIKELY
-- [ ] **D27** Pyke, Returned / Edge of Night: the trigger's condition is tested at resolution, so the ability goes on the chain when it should not trigger — LIKELY
-- [ ] **D29** Diana, Lunari: "When a showdown begins here" never triggers on a combat showdown — CERTAIN
-- [ ] **D33** Vex, Apathetic: the ability is put on the chain while Vex is in a base; "while I'm at a battlefield" is tested at resolution only — LIKELY / CODE-ONLY
-- [ ] **D35** Grand Duelist / Fiora, Worthy: "becomes [Mighty]" is only noticed at the engine's top-level cleanups, so the triggers arrive late — CERTAIN / LIKELY
-- [ ] **D36** Sett, Brawler + Grand Duelist / Fiora, Worthy: a unit that stops being Mighty and becomes Mighty again inside one chain triggers nothing — CERTAIN
-- [ ] **D39** Sacrifice + Rift Herald: an ability triggered by paying a spell's additional cost is put UNDER that spell — LIKELY
-- [ ] **D40** Grand Duelist + Fiora, Worthy (and Akshan's two play triggers): the controller is never asked in which order simultaneous triggers go on the chain — CERTAIN
-- [ ] **D44** A unit with lethal damage stays on the board until the chain is empty: no cleanup between the items of a chain (Wages of Pain, Deadly Flourish, Singularity, Unchecked Power, Piercing Light) — CERTAIN / LIKELY
-- [ ] **D51** Kha'Zix, Mutating Horror (also Evelynn, Entrancing; Tornado Warrior): the condition printed with the trigger is tested when the ability resolves, not when the trigger condition is met — CERTAIN
-- [ ] **D53** [Temporary] (Deceiver / Mirror Image Reflections; Dusk Rose Lab): the kill is done directly at the start of the Beginning Step, never as a triggered ability on the chain — LIKELY
-- [ ] **D68** Teemo, Strategist (every "When I defend / attack"): a unit that joins a combat already under way never triggers — CERTAIN / LIKELY
-- [ ] **D77** Yasuo, Windrider: an ability is put on the chain for every move, not only "the third time I move in a turn" (same pattern: Fiora, Peerless when not one on one) — LIKELY
-- [ ] **F8** Imposing Challenger and Irresistible Faefolk move each other without end (two "may"s answering each other; 9 per million forced-play games): the engine has no answer to a loop except the chain bound. Decide from `rules/core-rules.md` what a loop of optional actions and a loop of mandatory actions are (who must stop, when the game is a draw), implement that, and make an unbroken loop a stated game end rather than an engine error — LIKELY (fuzz)
+All 21 items closed: `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-1.md`).
 
 ## Batch 2 — Combat timing and continuous effects
 

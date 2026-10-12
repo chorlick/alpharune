@@ -53,16 +53,15 @@ public:
                            ctx.state.chain.resuming->resume_point == 12);
         if (suspending) return;
 
-        auto hit = [&](GameObjectId t) {
-            if (t == kInvalidId || !ctx.state.objectExists(t)) return;
-            ctx.executor.dealDamage(t, 3, ctx.source);
-            if (ctx.state.objectExists(t) &&
-                ctx.state.getObject(t).hasLethalDamage()) {
-                ctx.executor.killObject(t);
-            }
-        };
-        hit(a);
-        hit(b);
+        // Both instructions are carried out before anything dies: lethal
+        // damage is found by the cleanup that follows the spell (CR 321.1,
+        // 323.4), not between its two halves. So both halves on one unit are
+        // 6 damage and ONE death — replaced once (Zhonya's Hourglass), not
+        // replaced and then died again.
+        for (GameObjectId t : {a, b})
+            if (t != kInvalidId && ctx.state.objectExists(t))
+                ctx.executor.dealDamage(t, 3, ctx.source);
+        ctx.executor.killLethallyDamagedTogether({a, b});
     }
 private:
     const CardDef def_ = [] {

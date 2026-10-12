@@ -36,12 +36,23 @@ public:
 
         // The battlefield is fixed by the play-time target on case 0.
         auto build_choices = [&](BattlefieldId bf, std::vector<GameObjectId>& units) {
+            // Only a unit this spell can move to its base (not one that
+            // "can't move to base", not at "Units can't move from here to
+            // base": effectCanMoveToBase), and each unit once: resume_data
+            // holds the battlefield and then the units already chosen, so a
+            // move that did not happen is never offered again.
             units.clear();
             for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                 if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                 auto ubf = obj.battlefieldId();
-                if (ubf && *ubf == bf) units.push_back(id);
+                if (!ubf || *ubf != bf) continue;
+                if (!effectCanMoveToBase(ctx.state, ctx.controller, obj)) continue;
+                if (std::find(ri.resume_data.begin() + (ri.resume_data.empty() ? 0 : 1),
+                              ri.resume_data.end(),
+                              static_cast<int32_t>(id.raw())) != ri.resume_data.end()) continue;
+                units.push_back(id);
             }
+            std::sort(units.begin(), units.end());
             std::vector<Intent> out;
             for (auto uid : units) {
                 Intent c;
@@ -66,11 +77,11 @@ public:
             auto bf_opt = ctx.state.getObject(targets[0]).battlefieldId();
             if (!bf_opt) return;
             BattlefieldId bf = *bf_opt;
-            std::vector<GameObjectId> units;
-            auto choices = build_choices(bf, units);
-            if (choices.size() <= 1) return;  // no friendly units here
             // Stash the battlefield id for re-entry.
             ri.resume_data = {static_cast<int32_t>(bf.raw())};
+            std::vector<GameObjectId> units;
+            auto choices = build_choices(bf, units);
+            if (choices.size() <= 1) return;  // no friendly unit here that can move
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "Emperor's Divide: move a unit to base, or stop");
             ri.resume_point = 1;
@@ -84,9 +95,12 @@ public:
             // "done" = empty chosen_objects.
             if (!choice || choice->chosen_objects.empty()) return;
             auto uid = choice->chosen_objects[0];
+            ri.resume_data.push_back(static_cast<int32_t>(uid.raw()));   // chosen: not offered again
             if (ctx.state.objectExists(uid)) {
                 ctx.executor.moveToBase(uid);
-                RIFT_TRACE(ctx.events, "EMPEROR'S DIVIDE: moved a unit to base");
+                if (ctx.state.getObject(uid).isAtBase())
+                    RIFT_TRACE(ctx.events, "EMPEROR'S DIVIDE: moved " +
+                                        ctx.state.getObject(uid).name + " to base");
             }
             // Offer the remaining units (+ done) again.
             std::vector<GameObjectId> units;

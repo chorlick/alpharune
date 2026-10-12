@@ -56,28 +56,9 @@ public:
                                    replaced);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (conf != 1 || !replaced()) return;
-        GameObjectId original = *slot->replaced_card;
-
-        // Send the Brush token to banishment (tokens cease to exist; this is a
-        // BF token, route to banishment without tracking).
-        if (ctx.state.objectExists(ctx.source)) {
-            auto& tok = ctx.state.getObject(ctx.source);
-            tok.zone = ZoneType::Banishment;
-            tok.location = std::nullopt;
-        }
-        // Restore the original battlefield card into the slot.
-        auto& orig = ctx.state.getObject(original);
-        PlayerId owner = orig.owner;
-        if (owner != PlayerId::None) {
-            auto& bz = ctx.state.player(owner).banishment;
-            bz.erase(std::remove(bz.begin(), bz.end(), original), bz.end());
-        }
-        orig.zone = ZoneType::BattlefieldZone;
-        orig.location = LocationId{BattlefieldLocation{slot->id}};
-        slot->card_object_id = original;
-        slot->replaced_card.reset();
-        slot->was_replaced = false;
-        slot->is_token = false;
+        // The executor moves both battlefield cards (the token leaves play
+        // as a new object, CR 124.1; the slot takes the original's rules).
+        if (!ctx.executor.restoreReplacedBattlefield(slot->id)) return;
         RIFT_TRACE(ctx.events, "BRUSH: scored -> reverse-replaced back to original BF");
     }
 private:

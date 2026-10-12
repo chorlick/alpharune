@@ -1703,7 +1703,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     for (const auto& l : left_board) leftBoard(l.id);
 }
 
-void EffectExecutor::banishObject(GameObjectId target) {
+void EffectExecutor::banishObject(GameObjectId target, PlayerId by) {
     if (!state_.objectExists(target)) return;
     // From the board: as it was there, for whatever reads it after the move.
     // (Banished instead of dying, Smite: it did not die.)
@@ -1737,8 +1737,18 @@ void EffectExecutor::banishObject(GameObjectId target) {
         events_.emit(LeftBoardEvent{target, controller, obj.card_type,
             *was_at, ZoneType::Banishment, false});
     }
-    // "When you banish a card you own" (Master of Shadows).
-    if (!is_token) events_.emit(ObjectStateChangedEvent{target, "banished_owned"});
+    // "When you banish a card you own" (Master of Shadows). The event names
+    // the card; who banished it (CR 412.1) is on the card while it is
+    // announced, and only then — the other ways into Banishment (a replaced
+    // trash move, a Flow spell leaving the chain) are their owner's own.
+    if (!is_token) {
+        if (by == PlayerId::None && state_.chain.resuming.has_value())
+            by = state_.chain.resuming->controller;
+        if (by == PlayerId::None) by = obj.owner;
+        if (by != PlayerId::None) obj.card_counters[kBanishedBy] = playerIndex(by) + 1;
+        events_.emit(ObjectStateChangedEvent{target, "banished_owned"});
+        state_.getObject(target).card_counters.erase(kBanishedBy);
+    }
     // Announced as it left: what is in Banishment is a new object (CR 124.1).
     if (was_at.has_value()) leftBoard(target);
 }
@@ -1802,6 +1812,7 @@ bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
     no.chosen_value = 0;
     no.choice_label = "No — " + label;
     Intent yes = no;
+    no.declines = true;
     yes.chosen_value = 1;
     yes.choice_label = "Yes — " + label;
     return ask(player, {no, yes}, label).chosen_value.value_or(0) == 1;
@@ -2144,14 +2155,19 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     if (!slot) return;
 
     // Banish the original BF card (CR 438): move to its owner's banishment.
+    // It leaves play like anything else: what is in Banishment is a new
+    // object (CR 124.1) with none of the state it had as a battlefield
+    // (leftBoard — the path every way out of play ends in).
     if (state_.objectExists(slot->card_object_id)) {
-        auto& orig = state_.getObject(slot->card_object_id);
+        const GameObjectId orig_id = slot->card_object_id;
+        auto& orig = state_.getObject(orig_id);
         PlayerId owner = orig.owner;
         orig.zone = ZoneType::Banishment;
         orig.location = std::nullopt;
         if (owner != PlayerId::None) {
-            state_.player(owner).banishment.push_back(slot->card_object_id);
+            state_.player(owner).banishment.push_back(orig_id);
         }
+        leftBoard(orig_id);
     }
 
     // Build the replacement token BF card.
@@ -2173,10 +2189,62 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     slot->is_token = true;
     slot->card_object_id = token_id;
     slot->contributed_by = controller;
+    // "Units can't be played here." and the like are the replaced card's
+    // text, not the slot's: the slot now has what the token's card declares.
+    applyBattlefieldCardRules(*slot);
 
     RIFT_TRACE(events_, "BF_REPLACE: BF#" + toString(target_bf) +
                      " replaced by '" + token_name + "' token (card=" +
                      toString(token_id) + ")");
+}
+
+void EffectExecutor::applyBattlefieldCardRules(BattlefieldState& slot) const {
+    slot.blocks_move_to_base = false;
+    slot.blocks_unit_play = false;
+    slot.min_turn_to_score = BattlefieldState{}.min_turn_to_score;
+    if (!card_registry_ || !state_.objectExists(slot.card_object_id)) return;
+    const CardDefId def = state_.getObject(slot.card_object_id).card_def_id;
+    if (def == kInvalidId) return;
+    if (auto* bfc = dynamic_cast<const BattlefieldCard*>(card_registry_->get(def))) {
+        slot.blocks_move_to_base = bfc->blocksMoveToBase();
+        slot.blocks_unit_play = bfc->blocksUnitPlay();
+        slot.min_turn_to_score = bfc->minTurnToScore();
+    }
+}
+
+bool EffectExecutor::restoreReplacedBattlefield(BattlefieldId target_bf) {
+    BattlefieldState* slot = nullptr;
+    for (auto& b : state_.battlefields)
+        if (b.id == target_bf) { slot = &b; break; }
+    if (!slot || !slot->was_replaced || !slot->replaced_card.has_value() ||
+        !state_.objectExists(*slot->replaced_card))
+        return false;
+    const GameObjectId original = *slot->replaced_card;
+    const GameObjectId token = slot->card_object_id;
+
+    // The token battlefield leaves play: it ceases to exist (CR 183.1) and,
+    // like anything that leaves, keeps no state (leftBoard).
+    if (state_.objectExists(token)) {
+        auto& tok = state_.getObject(token);
+        tok.zone = ZoneType::Banishment;
+        tok.location = std::nullopt;
+        leftBoard(token);
+    }
+    // The original comes back from its owner's banishment into the slot.
+    auto& orig = state_.getObject(original);
+    if (orig.owner != PlayerId::None) {
+        auto& bz = state_.player(orig.owner).banishment;
+        bz.erase(std::remove(bz.begin(), bz.end(), original), bz.end());
+    }
+    orig.zone = ZoneType::BattlefieldZone;
+    slot->card_object_id = original;
+    slot->replaced_card.reset();
+    slot->was_replaced = false;
+    slot->is_token = false;
+    applyBattlefieldCardRules(*slot);
+    RIFT_TRACE(events_, "BF_REPLACE: BF#" + toString(target_bf) + " is '" + orig.name +
+                     "' again (card=" + toString(original) + ")");
+    return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2218,6 +2286,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
         Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
         keep.choice_label = "Void Hatchling: leave the top rune of your Rune Deck";
+        keep.declines = true;   // "You may recycle it": leaving it is the "no"
         recyc.choice_label = "Void Hatchling: recycle the top rune of your Rune Deck";
         const auto chosen = ask(player, {keep, recyc},
             "Void Hatchling: look at the top rune of your Rune Deck");
@@ -2241,6 +2310,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
     Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
     keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
+    keep.declines = true;   // "You may recycle it": leaving it is the "no"
     recyc.choice_label = "Void Hatchling: recycle the top card of your Main Deck";
     auto chosen = ask(player, {keep, recyc}, "Void Hatchling: look at the top card of your Main Deck");
     if (chosen.chosen_value.value_or(0) == 1) {

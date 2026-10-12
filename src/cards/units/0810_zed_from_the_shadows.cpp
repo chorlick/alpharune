@@ -47,13 +47,13 @@ public:
         // No location is printed: the controller's base or a battlefield
         // they control, their choice (CR 355.2.a).
         const int dest = pickTokenDest(*this, ctx, "Zed: play the Shadow Clone to");
-        if (dest == -1) return;   // waiting for the agent
+        if (dest < 0) return;   // waiting for the agent (or nowhere to play it)
         self.card_counters[kPaidFlag] = 0;  // consumed: a later replay must pay again
         {
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone",
                                  0, std::vector<std::string>{}, KeywordSet{},
                                  destLocation(ctx.controller, std::max(0, dest)), false,
-                                 tokenPlayLocations(ctx.state, ctx.controller),
+                                 tokenPlayLocations(ctx),
                                  // the Shadow Clone token card ("When I attack"),
                                  // set before the play is announced
                                  /*token_card=*/955);

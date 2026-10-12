@@ -331,7 +331,16 @@ public:
     /// and recycle that card" (Sabotage) is `knowledge::everyone()`.
     void recycleCards(PlayerId player, const std::vector<GameObjectId>& cards,
                       knowledge::Seers shown = knowledge::nobody());
-    void banishObject(GameObjectId target);
+    /// `by`: the player who performs the banish and is so responsible for it
+    /// (CR 412.1) — "When YOU banish a card you own" triggers for that player
+    /// only (CR 412.4). Default: the controller of the spell or ability that
+    /// is resolving (or being finalized: a cost), else the card's owner. Pass
+    /// it when the effect has another player do the banishing ("Each player
+    /// ... banishes one of them": Promising Future). While the banish is
+    /// announced the performer is on the card as card_counters[kBanishedBy]
+    /// (player index + 1) for a triggerCondition to read.
+    void banishObject(GameObjectId target, PlayerId by = PlayerId::None);
+    static constexpr const char* kBanishedBy = "__banished_by";
 
     // ── Vendetta game actions ──
     /// Empower (CR 442): give `target` an Empowered status if it has room
@@ -485,6 +494,15 @@ public:
                                       const std::string& token_name,
                                       PlayerId controller,
                                       CardDefId token_def = kInvalidId);
+    /// The reverse (Brush: "you may replace this with the battlefield it
+    /// replaced"): the token battlefield leaves play and the card it replaced
+    /// comes back from banishment into the slot. False if `target_bf` holds no
+    /// replacement. A card never moves a battlefield card by hand.
+    bool restoreReplacedBattlefield(BattlefieldId target_bf);
+    /// Set a slot's static rules ("Units can't be played here.", "Units can't
+    /// move from here to base.", the first turn it can be scored) from the
+    /// card that is in it now — as GameEngine does at setup.
+    void applyBattlefieldCardRules(BattlefieldState& slot) const;
 
     // ── Copy effects ──
     /// Make a token become a copy of another unit (base traits only, not buffs/auras).

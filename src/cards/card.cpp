@@ -92,6 +92,13 @@ void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId playe
     // hand, with no Rek'Sai on the board, was offered Accelerate. Like any
     // other per-play flag it is dropped as a play begins.
     counters.erase(kGrantedAccelerate);
+    // "Played from facedown" belongs to one play too (GameEngine::
+    // executePlayFromHidden stamps it right after this): a card returned and
+    // played again the same turn is not bound to that battlefield (CR
+    // 811.1.d) and is not "played from face down".
+    counters.erase("__played_from_facedown");
+    counters.erase("__facedown_play_bf");
+    counters.erase("__facedown_play_turn");
     if (!card) return;
     for (const auto& oac : {card->optionalAdditionalCost(),
                             card->optionalAdditionalCost(state, player)})
@@ -328,6 +335,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
         no_choice.type = IntentType::MakeChoice;
         no_choice.player = ctx.controller;
         no_choice.chosen_value = 0;
+        no_choice.declines = true;
         no_choice.choice_label = "No — " + label;
         Intent yes_choice;
         yes_choice.type = IntentType::MakeChoice;

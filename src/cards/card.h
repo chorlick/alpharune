@@ -1064,8 +1064,10 @@ public:
                                             PlayerId /*player*/) const { return {}; }
 
     /// LeBlanc, Everywhere at Once: "your [Temporary] effects at my battlefield
-    /// don't trigger." When true, TriggerManager suppresses triggers fired by a
-    /// friendly [Temporary] unit sharing this card's battlefield + controller.
+    /// don't trigger." When true, the [Temporary] ability (CR 816: "kill this
+    /// at the start of its controller's Beginning Phase") of a friendly unit
+    /// sharing this card's battlefield + controller does not trigger. Nothing
+    /// else of that unit is affected (TriggerManager::temporaryTriggerSuppressed).
     virtual bool suppressesTemporaryTriggersHere() const { return false; }
 
     /// "Your hold effects for holding here trigger an additional time." (Blue

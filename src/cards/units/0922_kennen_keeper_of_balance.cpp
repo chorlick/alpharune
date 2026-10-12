@@ -24,9 +24,15 @@ public:
     }
     // The [2] is paid with card_helpers.h payEnergy: floating pool first, then
     // ready runes (the rune order is not offered to the agent).
+    // His PLAY effect, when he was played from facedown, chooses among the
+    // units at the battlefield he was played to (CR 811.1.d.3); "or I attack"
+    // is not a play effect and chooses freely.
     std::vector<GameObjectId> stunnable(CardContext& ctx) const {
-        return chooseableUnits(ctx.state, ctx.controller,
-                               [](const GameObject&) { return true; });
+        auto units = chooseableUnits(ctx.state, ctx.controller,
+                                     [](const GameObject&) { return true; });
+        if (ctx.firing_trigger == TriggerType::WhenYouPlayMe)
+            units = atHiddenBattlefield(ctx.state, ctx.source, std::move(units));
+        return units;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto can_do = [&]() {

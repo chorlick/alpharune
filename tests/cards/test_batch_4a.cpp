@@ -312,8 +312,9 @@ TEST_F(BellowsBreathTest, D45_TheRepeatChoosesItsOwnUnitsAtOneLocation) {
     auto d = addUnit(P2, kInvalidId, 3);            // in P2's base
     auto spell = addToHand(P1, kBellowsBreath);
     fund(P1, 1 + 1, 1 + 1);                          // the spell and one Repeat
-    EnginePathAgent agent(scripted({a, b, kInvalidId,      // first execution: two at BF 0
-                                    c, kInvalidId}));       // the Repeat: one at BF 1
+    // First execution: the two at BF 0 (then nothing is left to add there, so
+    // no third prompt). The Repeat: the one at BF 1.
+    EnginePathAgent agent(scripted({a, b, c, kInvalidId}));
     run(playIntent(spell), &agent);
 
     EXPECT_EQ(o(a).damage_marked, 1);
@@ -321,7 +322,7 @@ TEST_F(BellowsBreathTest, D45_TheRepeatChoosesItsOwnUnitsAtOneLocation) {
     EXPECT_EQ(o(c).damage_marked, 1) << "the Repeat's own choice";
     EXPECT_EQ(o(d).damage_marked, 0);
 
-    ASSERT_GE(seen.size(), 4u);
+    ASSERT_GE(seen.size(), 3u);
     // First execution: any unit; after `a`, only units where `a` is.
     EXPECT_TRUE(offers(seen[0], a) && offers(seen[0], c) && offers(seen[0], d));
     EXPECT_TRUE(seen[0].may_stop) << "\"up to three\" includes none (CR 355.13)";
@@ -329,10 +330,10 @@ TEST_F(BellowsBreathTest, D45_TheRepeatChoosesItsOwnUnitsAtOneLocation) {
     EXPECT_FALSE(offers(seen[1], c)) << "\"at the same location\"";
     EXPECT_FALSE(offers(seen[1], d));
     // The Repeat starts afresh: every unit again, not "that many again".
-    const Prompt& repeat_first = seen[3];
+    const Prompt& repeat_first = seen[2];
     EXPECT_TRUE(offers(repeat_first, a) && offers(repeat_first, c) && offers(repeat_first, d));
     EXPECT_TRUE(repeat_first.may_stop);
-    for (size_t k = 4; k < seen.size(); ++k) {
+    for (size_t k = 3; k < seen.size(); ++k) {
         EXPECT_FALSE(offers(seen[k], a)) << "the Repeat chose a unit at BF 1";
         EXPECT_FALSE(offers(seen[k], d));
     }
@@ -499,11 +500,7 @@ TEST_F(Batch4aTest, D52_StarSpring_NextTurnIsAFirstTimeAgain) {
 // "Your [Temporary] effects at my battlefield don't trigger." Only the
 // [Temporary] ability is stopped: a [Temporary] unit that dies there some
 // other way still has its [Deathknell].
-// DISABLED: the suppression is TriggerManager::temporaryTriggerSuppressed,
-// called from fireTrigger for EVERY ability of such a unit. Batch 1 owns
-// trigger_manager.cpp (and D53 / the first half of D55); the engine change
-// this needs is written under D55 in plans/remaining/10-testing-phase.md.
-TEST_F(Batch4aTest, DISABLED_D55_LeBlanc_ATemporaryUnitsDeathknellStillTriggersAtHerBattlefield) {
+TEST_F(Batch4aTest, D55_LeBlanc_ATemporaryUnitsDeathknellStillTriggersAtHerBattlefield) {
     addUnit(P1, kLeBlancEverywhereAtOnce, 0, 0);
     auto sentry = addUnit(P1, kWatchfulSentry, 0, 0);       // "[Deathknell] — Draw 1."
     o(sentry).keywords.set(Keyword::Temporary);
@@ -958,6 +955,7 @@ TEST_F(Batch4aTest, F3_Executor_BoardStateIsNotWrittenToAnObjectThatIsNotInPlay)
 // that can't move to base is not one of them.
 TEST_F(Batch4aTest, F4_EmperorsDivide_AUnitThatCannotMoveToBaseIsNotOffered) {
     auto sentry = addUnit(P1, kDeterminedSentry, 0, 0);     // "I can't move to base."
+    o(sentry).cant_move_to_base = true;                     // set by the card as it is played
     auto other = addUnit(P1, kShipyardSkulker, 0, 0);
     cleanup();
     auto spell = addToHand(P1, kEmperorsDivide);

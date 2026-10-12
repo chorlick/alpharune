@@ -1069,6 +1069,7 @@ TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
         {"units/0362_royal_entourage.cpp", {1, "Legends (the Legend Zone)"}},
         {"units/0377_jax_unmatched.cpp", {1, "Equipment you own in any zone, the hand included"}},
         {"units/0432_fiora_peerless.cpp", {1, "its own instances by card id; clears a counter off the board"}},
+        {"battlefields/0274_fortified_position.cpp", {1, "units given its Shield \"this combat\"; clears the memory off the board"}},
         {"units/0716_crimson_pigeons.cpp", {2, "its own instances by card id; combat designations"}},
         {"battlefields/0764_black_flame_altar.cpp", {1, "battlefield cards, which have no location"}},
     };
@@ -2254,7 +2255,7 @@ TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
                     << " — a lethal test of its own after a DeathBatch";
         }
     }
-    EXPECT_EQ(helper, 21);
+    EXPECT_EQ(helper, 22);   // + Falling Star (D20: both instructions, then the kills)
     EXPECT_EQ(everyone, 7);
 }
 

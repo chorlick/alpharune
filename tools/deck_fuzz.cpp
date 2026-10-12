@@ -182,6 +182,10 @@ struct Options {
     int hang_seconds = 300;
     int examples = 10;
     int long_chain = 200;         // a chain of this many items is flagged
+    std::string agents[2] = {"random", "random"};   // random | random-player[:pass=P]
+    std::string guide_path;       // a previous result: build decks toward what it covered least
+    double guide_boost = 8;
+    std::string known_path;       // known failure signatures: "ID|text" per line
     bool quiet = false;
     // --replay
     std::vector<std::string> replay;
@@ -191,6 +195,57 @@ struct Options {
     // --deck-stats
     int deck_stats = 0;
 };
+
+/// Known failure signatures: one "ID|text" per line ('#' starts a comment). A
+/// failure whose "<termination>: <exception>" contains the text is that known
+/// failure; the first line that matches wins.
+std::vector<std::pair<std::string, std::string>> loadKnown(const std::string& path) {
+    std::vector<std::pair<std::string, std::string>> known;
+    if (path.empty()) return known;
+    std::ifstream in(path);
+    if (!in) { std::cerr << "cannot read " << path << "\n"; std::exit(2); }
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        const auto bar = line.find('|');
+        if (bar == std::string::npos || bar + 1 >= line.size()) continue;
+        known.emplace_back(line.substr(0, bar), line.substr(bar + 1));
+    }
+    return known;
+}
+
+/// Weights for RandomDeckBuilder from a previous result's coverage: a card is
+/// picked up to (1 + boost) times as often as a well-covered one, the less it
+/// was exercised the more. "Exercised" is the smallest of the counts that
+/// apply to the card: games in play; games it triggered in (if it has a
+/// triggered ability); games it was activated in (if it has an activated one);
+/// games something of it resolved in (a spell, or a card with an ability).
+/// A card at or over the median of those gets weight 1.
+std::vector<double> guideWeights(const std::string& path, double boost) {
+    std::ifstream in(path);
+    if (!in) { std::cerr << "cannot read " << path << "\n"; std::exit(2); }
+    const json prev = json::parse(in);
+    std::vector<std::pair<std::size_t, double>> scores;
+    for (const auto& c : prev.at("coverage").at("cards")) {
+        if (c.at("banned").get<bool>() || c.at("token_card").get<bool>()) continue;
+        double s = c.at("games_in_play").get<double>();
+        const bool trig = c.at("has_triggered_ability").get<bool>();
+        const bool act = c.at("has_activated_ability").get<bool>();
+        if (trig) s = std::min(s, c.at("games_triggered").get<double>());
+        if (act) s = std::min(s, c.at("games_activated").get<double>());
+        if (trig || act || c.at("type").get<std::string>() == "Spell")
+            s = std::min(s, c.at("games_resolved").get<double>());
+        scores.emplace_back(c.at("id").get<std::size_t>(), s);
+    }
+    std::vector<double> sorted;
+    for (const auto& [id, sc] : scores) sorted.push_back(sc);
+    std::sort(sorted.begin(), sorted.end());
+    const double median = sorted.empty() ? 1.0 : std::max(1.0, sorted[sorted.size() / 2]);
+    std::vector<double> weight(fuzz::kCardSlots, 1.0);
+    for (const auto& [id, sc] : scores)
+        if (id < weight.size()) weight[id] = 1.0 + boost * (1.0 - std::min(1.0, sc / median));
+    return weight;
+}
 
 int usage() {
     std::cerr <<
@@ -204,13 +259,21 @@ int usage() {
         "         --memory-limit-gb G for the process (4, 0 = none)\n"
         "         --coverage K (1: every game, 0: none, K: every K-th)\n"
         "         --hang-seconds N (300)  --examples N (10 per failure group)  --quiet\n"
-        "         --long-chain N (200): flag a game with N chain items in one chain\n";
+        "         --long-chain N (200): flag a game with N chain items in one chain\n"
+        "         --agent1 / --agent2 / --agents random | random-player[:pass=P]\n"
+        "         --guide prev.json [--guide-boost B (8)]: weight deck building toward the cards\n"
+        "             the previous result exercised least (a seed then means a deck only with\n"
+        "             the same guide file: the replay command names it)\n"
+        "         --known FILE: lines of ID|text; failures containing the text are reported as\n"
+        "             known, apart from the new ones. Exit status 1 only for new failures.\n";
     return 2;
 }
 
+std::string g_replay_extra;   // the flags a replay needs to be the same game
+
 std::string replayCommand(const std::string& a, const std::string& b, uint64_t seed) {
     return "RIFTBOUND_ROOT=. ./build/deck_fuzz --replay " + a + " " + b + " " +
-           std::to_string(seed) + " --trace --tail 30";
+           std::to_string(seed) + g_replay_extra + " --trace --tail 30";
 }
 
 json cardRow(const CardDef& def) {
@@ -288,6 +351,8 @@ int runReplay(const Options& o, const CardDB& db, const CardRegistry& registry,
     opt.max_decisions = o.max_decisions;
     opt.max_seconds = o.max_seconds;
             opt.max_chain = o.max_chain;
+            opt.agents[0] = o.agents[0];
+            opt.agents[1] = o.agents[1];
     // --trace --tail N: the last N lines once the game has ended. --trace
     // alone: every line as it comes, so a game that never ends shows too.
     opt.log_tail = o.trace && o.tail > 0 ? o.tail : 0;
@@ -328,6 +393,12 @@ int main(int argc, char* argv[]) {
         else if (flag == "--hang-seconds") o.hang_seconds = std::stoi(value());
         else if (flag == "--examples") o.examples = std::stoi(value());
         else if (flag == "--long-chain") o.long_chain = std::stoi(value());
+        else if (flag == "--agent1") o.agents[0] = value();
+        else if (flag == "--agent2") o.agents[1] = value();
+        else if (flag == "--agents") o.agents[0] = o.agents[1] = value();
+        else if (flag == "--guide") o.guide_path = value();
+        else if (flag == "--guide-boost") o.guide_boost = std::stod(value());
+        else if (flag == "--known") o.known_path = value();
         else if (flag == "--quiet") o.quiet = true;
         else if (flag == "--trace") o.trace = true;
         else if (flag == "--tail") o.tail = std::stoi(value());
@@ -354,8 +425,22 @@ int main(int argc, char* argv[]) {
     registry.loadAll();
     CardDB db;
     db.buildFromClasses(registry);
-    const RandomDeckBuilder builder(db);
+    RandomDeckBuilder builder(db);
     const DeckValidator validator(db);
+    if (!o.guide_path.empty()) {
+        builder.setWeights(guideWeights(o.guide_path, o.guide_boost));
+        g_replay_extra += " --guide " + o.guide_path;
+        if (o.guide_boost != 8) g_replay_extra += " --guide-boost " + std::to_string(o.guide_boost);
+    }
+    for (int seat = 0; seat < 2; ++seat) {
+        // Refuse a bad spec now, not in the first game.
+        try { fuzz::FuzzAgent probe(o.agents[seat], 1, 1); }
+        catch (const std::exception& e) { std::cerr << e.what() << "\n"; return 2; }
+        if (o.agents[seat] != "random")
+            g_replay_extra += " --agent" + std::to_string(seat + 1) + " " + o.agents[seat];
+    }
+    if (o.max_chain != 500) g_replay_extra += " --max-chain " + std::to_string(o.max_chain);
+    const auto known = loadKnown(o.known_path);
 
     if (!o.replay.empty()) return runReplay(o, db, registry, builder);
 
@@ -500,6 +585,8 @@ int main(int argc, char* argv[]) {
             opt.max_decisions = o.max_decisions;
             opt.max_seconds = o.max_seconds;
             opt.max_chain = o.max_chain;
+            opt.agents[0] = o.agents[0];
+            opt.agents[1] = o.agents[1];
             if (o.coverage_every > 0 && game % o.coverage_every == 0) opt.coverage = &coverage[w];
             const fuzz::GameOutcome r = fuzz::playGame(db, registry, a.deck, b.deck, seed, opt);
             slots[w].game.store(-1);
@@ -577,6 +664,8 @@ int main(int argc, char* argv[]) {
             opt.max_decisions = o.max_decisions;
             opt.max_seconds = o.max_seconds;
             opt.max_chain = o.max_chain;
+            opt.agents[0] = o.agents[0];
+            opt.agents[1] = o.agents[1];
             const fuzz::GameOutcome r =
                 fuzz::playGame(db, registry, decks[ia].deck, decks[ib].deck, f.game_seed, opt);
             --reasons["engine_error"];
@@ -674,13 +763,25 @@ int main(int argc, char* argv[]) {
 
     // Failures, grouped by their normalised text, most frequent first.
     struct Group { long count = 0; std::map<std::string, long> cards; std::vector<const Failure*> ex;
+                   std::string known;
                  };
     std::map<std::string, Group> groups;
+    long n_new_failures = 0, n_known_failures = 0, n_new_groups = 0;
     for (const auto& f : failures) {
         std::set<std::string> cards;
-        const std::string key =
-            f.termination + ": " + normalise(f.exception, names, &cards);
+        const std::string raw = f.termination + ": " + f.exception;
+        std::string known_id;
+        for (const auto& [id, text] : known)
+            if (raw.find(text) != std::string::npos) { known_id = id; break; }
+        // A known cause is one group whatever else the text says; the rest
+        // group by their normalised text.
+        const std::string key = known_id.empty()
+            ? f.termination + ": " + normalise(f.exception, names, &cards)
+            : "known " + known_id + ": " + f.termination + ": " +
+                  normalise(f.exception, names, &cards);
         Group& g = groups[key];
+        g.known = known_id;
+        (known_id.empty() ? n_new_failures : n_known_failures) += 1;
         ++g.count;
         for (const auto& c : cards) ++g.cards[c];
         g.ex.push_back(&f);
@@ -706,7 +807,9 @@ int main(int argc, char* argv[]) {
                           {"legends", f.legends}, {"exception", f.exception},
                           {"command", replayCommand(f.deck_a, f.deck_b, f.game_seed)}});
         }
+        if (g->known.empty()) ++n_new_groups;
         groups_json.push_back({{"key", key}, {"count", g->count},
+                               {"known", g->known.empty() ? json(nullptr) : json(g->known)},
                                {"cards_named", g->cards}, {"fewest_decisions_first", ex}});
         // One more example per card named, so each card of a group that
         // covers several has a reproduction of its own.
@@ -740,10 +843,13 @@ int main(int argc, char* argv[]) {
             row["super_type"] = toString(def.super_type);
             row["banned"] = def.banned;
             row["token_card"] = def.isTokenCard();
-            row["has_triggered_ability"] =
-                card && (!card->triggerTypes().empty() ||
-                         card->equippedTriggerType() != TriggerType::None ||
-                         card->hasReflexiveTrigger());
+            // TriggerType::Activated marks an activated ability, not a trigger.
+            bool triggers = card && (card->equippedTriggerType() != TriggerType::None ||
+                                     card->hasReflexiveTrigger());
+            if (card)
+                for (TriggerType t : card->triggerTypes())
+                    if (t != TriggerType::None && t != TriggerType::Activated) triggers = true;
+            row["has_triggered_ability"] = triggers;
             row["has_activated_ability"] = card && !card->abilities().empty();
             for (int k = 0; k < fuzz::kCoverageKinds; ++k) {
                 row[std::string("games_") + fuzz::coverageKindName(k)] = cov.games[k][i];
@@ -762,7 +868,10 @@ int main(int argc, char* argv[]) {
         {"config", {{"decks", decks.size()}, {"deck_dir", o.deck_dir}, {"pairs", pairs},
                     {"games_per_pair", o.games_per_pair}, {"seed", o.seed},
                     {"threads", o.threads}, {"max_decisions", o.max_decisions},
-                    {"max_seconds", o.max_seconds}, {"max_chain", o.max_chain}, {"memory_limit_gb", o.memory_limit_gb},
+                    {"max_seconds", o.max_seconds}, {"max_chain", o.max_chain},
+                    {"agent1", o.agents[0]}, {"agent2", o.agents[1]},
+                    {"guide", o.guide_path}, {"guide_boost", o.guide_boost},
+                    {"known", o.known_path}, {"replay_flags", g_replay_extra}, {"memory_limit_gb", o.memory_limit_gb},
                     {"coverage_every", o.coverage_every},
 #ifdef RIFTBOUND_CHECK_BOARD_INDEX
                     {"checked_build", true},
@@ -772,6 +881,8 @@ int main(int argc, char* argv[]) {
                    }},
         {"totals", {{"games", total}, {"completed", completed}, {"failures", n_failed},
                     {"failure_groups", groups.size()},
+                    {"new_failures", n_new_failures}, {"new_failure_groups", n_new_groups},
+                    {"known_failures", n_known_failures},
                     {"p1_wins", p1.load()}, {"p2_wins", p2.load()},
                     {"max_turns", n_max_turns}, {"no_winner", n_no_winner},
                     {"no_reason", n_no_reason}, {"hung", hung.size()},
@@ -803,7 +914,9 @@ int main(int argc, char* argv[]) {
               << " decks (" << decks_json["distinct_decks"] << " distinct), " << pairs
               << " pairs x " << o.games_per_pair << "\n"
               << "P1 wins " << p1.load() << ", P2 wins " << p2.load() << ", failures "
-              << n_failed << " in " << groups.size() << " groups, max turns " << n_max_turns
+              << n_failed << " in " << groups.size() << " groups (" << n_new_failures
+              << " new in " << n_new_groups << " groups, " << n_known_failures
+              << " known), max turns " << n_max_turns
               << ", no winner " << n_no_winner << ", no reason " << n_no_reason
               << ", chain of " << o.long_chain << "+ items " << n_long_chain << ", hung "
               << hung.size() << "\n"
@@ -816,6 +929,7 @@ int main(int argc, char* argv[]) {
                   << ", max " << length["decisions_max"] << "\n";
     for (const auto& g : groups_json) {
         std::cout << std::setw(7) << g["count"].get<long>() << "  "
+                  << (g["known"].is_null() ? "NEW  " : "")
                   << g["key"].get<std::string>().substr(0, 300) << "\n";
         if (!g["fewest_decisions_first"].empty())
             std::cout << "         " << g["fewest_decisions_first"][0]["command"].get<std::string>()
@@ -825,5 +939,5 @@ int main(int argc, char* argv[]) {
         std::cout << "HUNG: " << h["command"].get<std::string>() << "\n";
     std::cout.flush();
     if (is_hung) std::_Exit(3);
-    return n_failed > 0 ? 1 : 0;
+    return n_new_failures > 0 ? 1 : 0;
 }

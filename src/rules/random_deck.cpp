@@ -22,6 +22,16 @@ struct SplitMix {
     }
     /// 0 .. n-1. The modulo bias is below 2^-50 for the sizes used here.
     std::size_t below(std::size_t n) { return static_cast<std::size_t>(next() % n); }
+    /// An index of a list of `n`: uniform when `cumulative` is empty, else in
+    /// proportion to the weights it sums.
+    std::size_t pick(std::size_t n, const std::vector<double>& cumulative) {
+        if (cumulative.empty()) return below(n);
+        const double r = static_cast<double>(next() >> 11) * (1.0 / 9007199254740992.0) *
+                         cumulative.back();
+        const std::size_t i = static_cast<std::size_t>(
+            std::upper_bound(cumulative.begin(), cumulative.end(), r) - cumulative.begin());
+        return std::min(i, n - 1);
+    }
 };
 
 bool withinIdentity(const CardDef& card, const CardDef& legend) {
@@ -137,13 +147,38 @@ RandomDeckBuilder::RandomDeckBuilder(const CardDB& db) : db_(db) {
     }
 }
 
+void RandomDeckBuilder::setWeights(const std::vector<double>& weight) {
+    weighted_ = !weight.empty();
+    auto sums = [&](const std::vector<CardDefId>& ids, Weighted& w) {
+        w.cumulative.clear();
+        if (!weighted_) return;
+        double total = 0;
+        for (CardDefId id : ids) {
+            const std::size_t i = id.raw();
+            const double x = i < weight.size() && weight[i] > 0 ? weight[i] : 1.0;
+            total += x;
+            w.cumulative.push_back(total);
+        }
+    };
+    std::vector<CardDefId> legend_ids;
+    for (auto& pool : legends_) {
+        legend_ids.push_back(pool.legend);
+        sums(pool.champions, pool.w_champions);
+        sums(pool.signatures, pool.w_signatures);
+        sums(pool.main, pool.w_main);
+    }
+    sums(legend_ids, w_legends_);
+    sums(battlefields_, w_battlefields_);
+}
+
 DeckSubmission RandomDeckBuilder::build(uint64_t seed) const {
     SplitMix rng{seed};
-    const LegendPool& pool = legends_[rng.below(legends_.size())];
+    const LegendPool& pool = legends_[rng.pick(legends_.size(), w_legends_.cumulative)];
 
     DeckSubmission deck;
     deck.legend = pool.legend;
-    deck.chosen_champion = pool.champions[rng.below(pool.champions.size())];
+    deck.chosen_champion =
+        pool.champions[rng.pick(pool.champions.size(), pool.w_champions.cumulative)];
 
     std::unordered_map<std::string, int> copies;   // by name (CR 103.3.b)
     auto room = [&](const CardDef& d) {
@@ -163,7 +198,8 @@ DeckSubmission RandomDeckBuilder::build(uint64_t seed) const {
     if (!pool.signatures.empty()) {
         const int wanted = static_cast<int>(rng.below(kSignatureCards + 1));
         for (int i = 0; i < wanted; ++i) {
-            const CardDef& d = db_.get(pool.signatures[rng.below(pool.signatures.size())]);
+            const CardDef& d = db_.get(pool.signatures[
+                rng.pick(pool.signatures.size(), pool.w_signatures.cumulative)]);
             if (room(d) > 0) add(d, 1);
         }
     }
@@ -172,7 +208,7 @@ DeckSubmission RandomDeckBuilder::build(uint64_t seed) const {
     // a deck has both many different cards and duplicates that meet.
     static const int kCopyTable[6] = {1, 1, 1, 2, 2, 3};
     while (static_cast<int>(deck.main_deck.size()) < kMainDeckCards) {
-        const CardDef& d = db_.get(pool.main[rng.below(pool.main.size())]);
+        const CardDef& d = db_.get(pool.main[rng.pick(pool.main.size(), pool.w_main.cumulative)]);
         int n = kCopyTable[rng.below(6)];
         n = std::min(n, room(d));
         n = std::min(n, kMainDeckCards - static_cast<int>(deck.main_deck.size()));
@@ -188,7 +224,8 @@ DeckSubmission RandomDeckBuilder::build(uint64_t seed) const {
     // Battlefields: three different names (CR 103.5.c).
     std::set<std::string> names;
     while (static_cast<int>(deck.battlefields.size()) < kBattlefields) {
-        const CardDefId id = battlefields_[rng.below(battlefields_.size())];
+        const CardDefId id =
+            battlefields_[rng.pick(battlefields_.size(), w_battlefields_.cumulative)];
         if (names.insert(db_.get(id).name).second) deck.battlefields.push_back(id);
     }
     return deck;

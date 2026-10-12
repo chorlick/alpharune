@@ -4,10 +4,10 @@
 /// (tools/deck_fuzz.cpp) and by the small default run in the test suite
 /// (tests/test_deck_fuzz.cpp). Header-only so both can include it.
 ///
-/// A game is a function of (deck A, deck B, game seed): the two agents are
-/// RandomAgents seeded as GameRunner seeds them (`seed * 2 + seat`), so a
+/// A game is a function of (deck A, deck B, game seed, the two agent specs):
+/// the agents are seeded as GameRunner seeds them (`seed * 2 + seat`), so a
 /// game played here is the game `riftbound --seed <seed> --games 1` plays
-/// with the same two decks.
+/// with the same two decks and agents.
 ///
 /// An engine exception does not escape: it is the game's outcome
 /// (`termination == "engine_error"`, the text in `exception`).
@@ -16,6 +16,8 @@
 /// text: see CardCoverage.
 
 #include "agents/agent_interface.h"
+#include "agents/random_agent.h"
+#include "agents/random_player_agent.h"
 #include "cards/card_registry.h"
 #include "core/card_db.h"
 #include "core/events.h"
@@ -23,6 +25,7 @@
 #include "ml/feature_extractor.h"
 #include "rules/deck_validator.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -33,6 +36,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace riftbound::fuzz {
@@ -93,6 +97,10 @@ struct GameOptions {
     /// (1000 FEPR passes) drops such a chain and plays on, on a board of a
     /// thousand tokens where one decision can take minutes or all the memory.
     int max_chain = 500;
+    /// The two seats: "random" (RandomAgent) or "random-player[:pass=P]"
+    /// (RandomPlayerAgent: acts whenever it can). Seeded as GameRunner seeds
+    /// them, so the game is the one `riftbound --agent1 .. --agent2 ..` plays.
+    std::string agents[2] = {"random", "random"};
     CardCoverage* coverage = nullptr;       // nullptr = no listener attached
     /// Log lines kept (the last `log_tail`, 0 = none, <0 = all). Attaching a
     /// log reader makes the engine build every line: for one game, not a batch.
@@ -139,14 +147,20 @@ struct ChainRunaway : std::runtime_error {
     ChainRunaway() : std::runtime_error("chain runaway") {}
 };
 
-/// RandomAgent's choices exactly (same generator, same distribution, same
-/// seed), plus the decision cap.
+/// A seat: the agent the spec names, behind the two caps that are checked
+/// at a decision.
 class FuzzAgent : public AgentInterface {
 public:
-    FuzzAgent(uint64_t seed, long max_decisions,
+    FuzzAgent(const std::string& spec, uint64_t seed, long max_decisions,
               std::chrono::steady_clock::time_point deadline = {})
-        : rng_(seed == 0 ? std::random_device{}() : seed), max_decisions_(max_decisions),
-          deadline_(deadline) {}
+        : max_decisions_(max_decisions), deadline_(deadline) {
+        double pass = 0.0;
+        if (spec == "random") inner_ = std::make_unique<RandomAgent>(seed);
+        else if (isRandomPlayerSpec(spec, &pass))
+            inner_ = std::make_unique<RandomPlayerAgent>(seed, pass);
+        else throw std::invalid_argument("fuzz: unknown agent '" + spec +
+                                         "' (random, random-player[:pass=P])");
+    }
 
     Intent selectAction(const GameState& state,
                         const std::vector<Intent>& legal_actions) override {
@@ -154,13 +168,11 @@ public:
         if (deadline_ != std::chrono::steady_clock::time_point{} &&
             (state.decision_index & 63) == 0 && std::chrono::steady_clock::now() > deadline_)
             throw TimeCapReached();
-        if (legal_actions.empty()) return Intent::concede(state.turn.turn_player);
-        std::uniform_int_distribution<size_t> dist(0, legal_actions.size() - 1);
-        return legal_actions[dist(rng_)];
+        return inner_->selectAction(state, legal_actions);
     }
 
 private:
-    std::mt19937_64 rng_;
+    std::unique_ptr<AgentInterface> inner_;
     long max_decisions_;
     std::chrono::steady_clock::time_point deadline_;
 };
@@ -233,26 +245,39 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
     // The two stops that do not wait for a decision. Both throw out of an
     // event slot, which ends the game like any engine exception.
     int chain_run = 0;
+    std::vector<std::pair<std::string, int>> run_items;   // whose items, this chain
     events.on_chain_item_finalized.connect([&](const ChainItemFinalizedEvent& e) {
         if (++chain_run > out.longest_chain) out.longest_chain = chain_run;
-        if (opt.max_chain > 0 && chain_run >= opt.max_chain) {
-            // Name the card whose item is the latest: in a runaway it is the
-            // ability that keeps coming back.
-            std::string name = "?";
-            const GameState& st = engine.state();
-            for (const auto& ci : st.chain.items) {
-                if (ci.id != e.item) continue;
-                if (ci.keyword_ability.has_value())
-                    name = std::string("the keyword ") + toString(*ci.keyword_ability);
-                else if (ci.card_def_id.valid()) name = db.get(ci.card_def_id).name;
-                else if (st.objectExists(ci.source)) name = st.getObject(ci.source).name;
-            }
+        if (opt.max_chain <= 0) return;
+        // Whose item: in a runaway the card with the most items is the
+        // ability that keeps coming back (a bystander that triggers on each
+        // round has at most as many).
+        std::string name = "?";
+        const GameState& st = engine.state();
+        for (const auto& ci : st.chain.items) {
+            if (ci.id != e.item) continue;
+            if (ci.keyword_ability.has_value())
+                name = std::string("the keyword ") + toString(*ci.keyword_ability);
+            else if (ci.card_def_id.valid()) name = db.get(ci.card_def_id).name;
+            else if (st.objectExists(ci.source)) name = st.getObject(ci.source).name;
+        }
+        auto it = std::find_if(run_items.begin(), run_items.end(),
+                               [&](const auto& p) { return p.first == name; });
+        if (it == run_items.end()) run_items.emplace_back(name, 1);
+        else ++it->second;
+        if (chain_run >= opt.max_chain) {
+            std::stable_sort(run_items.begin(), run_items.end(),
+                             [](const auto& a, const auto& b) { return a.second > b.second; });
             out.exception = "a chain had " + std::to_string(chain_run) +
-                            " items finalized without emptying; the latest is of " + name;
+                            " items finalized without emptying; most are of " +
+                            run_items.front().first;
             throw ChainRunaway();
         }
     });
-    events.on_chain_emptied.connect([&](const ChainEmptiedEvent&) { chain_run = 0; });
+    events.on_chain_emptied.connect([&](const ChainEmptiedEvent&) {
+        chain_run = 0;
+        run_items.clear();
+    });
     if (opt.max_seconds > 0) {
         // Every cleanup ends in a StateSettledEvent, so a loop inside one
         // decision passes here too.
@@ -290,15 +315,13 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
             [c, cardOf](const TokenCreatedEvent& e) { c->note(kInPlay, cardOf(e.object)); });
         events.on_rune_channeled.connect(
             [c, cardOf](const RuneChanneledEvent& e) { c->note(kInPlay, cardOf(e.rune)); });
-        // The first phase change comes after setup: the legends and the two
-        // battlefields of the game are in play from then on.
+        // The first phase change comes after setup: the legends are in play
+        // from then on. (Battlefields are counted when the game stops.)
         events.on_phase_changed.connect([c, cardOf, &engine, done = false](
                                             const PhaseChangedEvent&) mutable {
             if (done) return;
             done = true;
-            const GameState& s = engine.state();
-            for (const auto& p : s.players) c->note(kInPlay, cardOf(p.legend_zone));
-            for (const auto& bf : s.battlefields) c->note(kInPlay, cardOf(bf.card_object_id));
+            for (const auto& p : engine.state().players) c->note(kInPlay, cardOf(p.legend_zone));
         });
         events.on_chain_item_finalized.connect(
             [c, &engine, &items](const ChainItemFinalizedEvent& e) {
@@ -330,8 +353,8 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
             });
     }
 
-    FuzzAgent agent1(out.game_seed * 2, opt.max_decisions, deadline);
-    FuzzAgent agent2(out.game_seed * 2 + 1, opt.max_decisions, deadline);
+    FuzzAgent agent1(opt.agents[0], out.game_seed * 2, opt.max_decisions, deadline);
+    FuzzAgent agent2(opt.agents[1], out.game_seed * 2 + 1, opt.max_decisions, deadline);
 
     auto fromState = [&] {
         const GameState& s = engine.state();
@@ -370,6 +393,14 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
         out.termination = "engine_error";
         out.exception = "(an exception that is not a std::exception)";
         fromState();
+    }
+    if (cov) {
+        // The battlefields of the game, counted when it stops: one added
+        // during the game (a token battlefield) announces no event of its own.
+        const GameState& s = engine.state();
+        for (const auto& bf : s.battlefields)
+            if (s.objectExists(bf.card_object_id))
+                cov->note(kInPlay, s.getObject(bf.card_object_id).card_def_id);
     }
     out.log.assign(log.begin(), log.end());
     return out;

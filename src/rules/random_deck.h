@@ -41,6 +41,17 @@ public:
     /// The deck of `seed`. Deterministic; any 64-bit value is a seed.
     DeckSubmission build(uint64_t seed) const;
 
+    /// Weighted building: `weight[id]` (by card id; a missing or non-positive
+    /// entry counts as 1) is how much more often a card is picked than a card
+    /// of weight 1, wherever the builder picks a card (legend, champion,
+    /// Signature cards, Main Deck, battlefields; runes stay uniform). For
+    /// steering games toward cards that are rarely exercised. **A seed means
+    /// another deck under other weights**: whoever replays a game needs the
+    /// same weights. An empty vector (the default) restores uniform picks and
+    /// the decks every unweighted seed has always meant.
+    void setWeights(const std::vector<double>& weight_by_card_id);
+    bool weighted() const { return weighted_; }
+
     /// Legends a deck can be built around (one pool each).
     std::size_t legendCount() const { return legends_.size(); }
 
@@ -60,6 +71,10 @@ public:
     std::string toDeckList(const DeckSubmission& deck) const;
 
 private:
+    /// A list of cards with running sums of their weights (empty = uniform).
+    struct Weighted {
+        std::vector<double> cumulative;
+    };
     struct LegendPool {
         CardDefId legend = kInvalidId;
         std::vector<CardDefId> champions;    // legal Chosen Champions
@@ -68,11 +83,14 @@ private:
         // Runes per Domain of the legend (same order as the legend's domains),
         // then one more list for runes with no Domain if there are any.
         std::vector<std::vector<CardDefId>> runes;
+        Weighted w_champions, w_signatures, w_main;
     };
 
     const CardDB& db_;
     std::vector<LegendPool> legends_;
     std::vector<CardDefId> battlefields_;
+    Weighted w_legends_, w_battlefields_;
+    bool weighted_ = false;
     std::vector<CardDefId> reachable_;
     std::vector<std::pair<CardDefId, std::string>> unreachable_;
 };

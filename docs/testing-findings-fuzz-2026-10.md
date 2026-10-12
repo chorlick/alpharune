@@ -27,12 +27,13 @@ All runs: `deck_fuzz`, 3 threads, coverage listener on every game, `--known docs
 | deck lists, seed 20261013 | optimised | the 18 lists, 324 ordered pairings x 200 | 3 x 64,800 | the same three | 0; 0; 1 | 0; 0; 1 |
 | deck lists, seed 20261013 | checked | the same, all 324 x 200 | 3 x 64,800 | the same three | 0; 0; 1 | 0; 0; 1 |
 
-- **4,460,000 games on random decks** (3,000,000 on the 50,000 decks of the large pass, the rest on
-  17,500 others) and **388,800 on the deck lists**; 748,800 of all of them on the checked build.
+- **3,960,000 games on random decks** (3,000,000 on the 50,000 decks of the large pass, the rest on
+  17,500 others) and **388,800 on the deck lists**: 4.3 million in all, 554,400 of them on the checked
+  build.
 - Every game ended with a winner and a stated reason, or as a recorded failure. **0 games hit the turn cap
   (200), 0 ended without a winner, 0 without a reason, 0 hung, 0 ran out of memory** (with the driver's
   chain stop on; see F1 for what happens without it).
-- `DeckValidator` accepted every one of the 57,500 seed decks and all 18 lists.
+- `DeckValidator` accepted every one of the 67,500 seed decks and all 18 lists.
 - The longest game that ended: 1,346 decisions, 52 turns (pass=0). I read the longest games of each large
   pass (`length.longest` in the result files): long because of many turns, longest chain 8 items, no loop.
 - How games ended, large random pass: 992,500 by points, 306 The Grand Plaza, 201 Gutter Palace,
@@ -48,7 +49,7 @@ games of the large pass unless a line says otherwise. Every replay command is ex
 |---|---|---|---|---|---|
 | F1 | Viktor, Innovator feeds itself: the chain never empties | 6,718 | 8,377 | 5,271 | 640 / 789 / 471 |
 | F2 | Alpha Strike: finalize pass ends early when it has no play-time target | 188 | 252 | 235 | 13 / 16 / 18 |
-| F3 | Board state written to an object that has left the board (4 cards) | not detected | not detected | not detected | 32 / 53 / 96 |
+| F3 | Board state written to an object that has left the board (4 cards) | not detected | not detected | not detected | 32 / 53 / 95 |
 | F4 | Emperor's Divide re-offers a unit that cannot move: 1,024 prompts | 0 | 0 | 382 | 0 / 0 / 44 |
 | F5 | "You may pay [N] to ..." trigger: a Deflect paid for its target leaves the [N] unpayable (3 cards) | 3 | 6 | 15 | 0 / 0 / 1 |
 | F6 | "Kill a friendly unit" additional cost, the death replaced for a price: spell left unpayable (2 cards) | 0 | 5 | 9 | 1 / 0 / 1 |
@@ -170,12 +171,12 @@ winner None, score 0-0, turn 2, 22 decisions
 
 ### F3 — Board state written to an object that is no longer on the board (checked build only)
 
-- **Count:** 181 in the 300,000 checked games on random decks (32 / 53 / 96), 40 in the 60,000 before
+- **Count:** 180 in the 300,000 checked games on random decks (32 / 53 / 95), 34 in the 60,000 before
   them. The optimised build does not check this: there the object silently keeps the state.
 - **Exception:** `GameEngine::recalculateAuras: <object> (id=N, zone N) is off the board and still carries
   board state: it left the board by a path that does not call EffectExecutor::leftBoard`. The object named
-  is the one written to (36 different names), not the card that wrote. I replayed the 141 distinct example
-  games the result files hold and took the card that resolved last:
+  is the one written to (36 different names), not the card that wrote. I replayed the 145 distinct example
+  games the result files hold and sorted them by the card that resolved last:
 
 | Writer | Examples | What is written, to what | Fewest decisions | Replay (checked build) |
 |---|---|---|---|---|
@@ -184,9 +185,13 @@ winner None, score 0-0, turn 2, 22 decisions
 | Vi, Hotheaded (592) | 17 | its own activated ability resolves after Vi died: +Might this turn on the card in the trash | 33 | `RIFTBOUND_ROOT=. ./build-check/deck_fuzz --replay 5636454921321490439 6116819903138382408 83937122 --agent1 random-player --agent2 random-player --trace --tail 30` |
 | Pendulum Blade | 14 | +2 [M] this turn to the unit it was on, after that unit left | 61 | `RIFTBOUND_ROOT=. ./build-check/deck_fuzz --replay 13526038138039490185 9015023040755099300 212409093 --agent1 random-player:pass=0 --agent2 random-player:pass=0 --trace --tail 30` |
 
-  (4 examples named another card as the last to resolve — Forgotten Library 3, Abandoned Hall 1,
-  Ravenbloom Student 1, Master of Shadows 1 — and in each the write was Fading Memories', two lines
-  earlier: the check runs at the next `recalculateAuras`. They are counted under Fading Memories.)
+  The sorting is by the last card to resolve, and I read one game of each label. In 21 examples that
+  card was a bystander (Battle Mistress 15, Forgotten Library 3, Abandoned Hall 1, Ravenbloom Student 1,
+  Master of Shadows 1): in the game I read of each, the write was Fading Memories', a few lines earlier
+  (the check runs at the next `recalculateAuras`), and I count all 21 under Fading Memories. Two examples
+  named Akali, Deadly Weapon and Traveling Merchant with Pendulum Blade recalled in the last lines: counted
+  under Pendulum Blade. The split of the 145 is therefore exact for Green Father and Vi and an attribution
+  for the other two.
 - **Trace** (Green Father):
 ```
 [TRC] CHOSE: [P1] PassPriority
@@ -667,12 +672,12 @@ winner None, score 0-0, turn 4, 74 decisions
   Two players who always say yes never stop, and the rules leave that to them (Tournament Rules 505). The
   finding is about the engine: it has no notion of a repeated position, and its only answer is the silent
   1,000-pass drop of F1. A search or a trained agent that learns to say yes can sit in it. This is the
-  only action the forced-play agent could repeat for free in 1,388,800 games; turns otherwise always
+  only action the forced-play agent could repeat for free in 1,349,600 games; turns otherwise always
   ended.
 
 ### F9 — Star Spring (771): finalize pass ends early
 
-- **Count:** 1 in the large pass=0.2 pass; not seen again in 4.8 million games.
+- **Count:** 1 in the large pass=0.2 pass; not seen again in 4.3 million games.
 - **Exception:** `GameEngine::runFinalizePass: Star Spring returned from its finalize pass before its
   end-of-choices marker ...`
 - **Reproduction** (157 decisions): `RIFTBOUND_ROOT=. ./build/deck_fuzz --replay 12286906783447588048 8510674987487661848 829759374 --agent1 random-player --agent2 random-player --trace --tail 30`
@@ -733,7 +738,7 @@ winner None, score 0-3, turn 10, 157 decisions
 ## 3. What did not fail
 
 - The two leads of `checkpoint-followup-2.md`. `ChainManager::payDeflectForChoices` (spells offered once
-  per target) produced no failure in 4.8 million games. The `canAffordWith` lead is F5, in triggered
+  per target) produced no failure in 4.3 million games. The `canAffordWith` lead is F5, in triggered
   abilities, not in spells.
 - The 18 deck lists: 388,800 games, one failure (F5).
 - No `std::bad_alloc`, no hang, no fatal signal once the chain stop was in.
@@ -772,7 +777,7 @@ What it adds, plainly:
 - **Failures do.** F4 and F8 exist only with pass=0 (an agent that never stops), F5 and F6 are three to
   five times as frequent with it, F9 was seen once with pass=0.2. Seven of the nine findings need more
   than plain random play, or far more games of it.
-- **Termination.** With pass=0 turns still end: costs run out and units exhaust. 1,388,800 forced-play
+- **Termination.** With pass=0 turns still end: costs run out and units exhaust. 1,349,600 forced-play
   games, no game at the turn cap or the decision cap (20,000); the longest 1,662 decisions (deck lists).
   The two things that do not end are F4 and F8, and they are recorded as findings.
 - **pass=0.2 loses to random** (40.7% against 58.5% as P1). Acting for its own sake is not good play; this
@@ -867,7 +872,8 @@ least (up to 9 times a well-covered card; `guideWeights` in `tools/deck_fuzz.cpp
 - The coverage listener costs nothing measurable (3,000 games: 14.8 s without, 15.0 s with).
 - The large passes are slower per game than the 100,000-game ones on the same machine at the same time of
   day; lane B was building. I did not chase it.
-- Random decks play as fast as the two decks of the gate (about 770 a second there): deck generation costs
+- Random decks play about as fast as the two decks of the gate (about 770 a second by the fix run's
+  figure): deck generation costs
   the trainer nothing. **F1 costs it a great deal**: without a stop, 1 game in 150 runs for minutes or takes
   all the memory.
 
@@ -892,7 +898,7 @@ Stop when **two consecutive passes** both have:
    Today one card fails this: Daisy! (2 to 4). Either a deck list built for it joins `decks/`, or it is
    named as the one exception.
 
-Why these numbers. The rarest finding of this run came up once in 4.8 million games (F9) and three came
+Why these numbers. The rarest finding of this run came up once in 4.3 million games (F9) and three came
 up under 10 times per million (F5's Icevale Archer, F7, F8); 100,000-game passes would have missed five
 of nine. K = 200 is under what every card but Daisy! reaches in 1,000,000 games (the next lowest: 552
 random, 576 pass=0.2, 50 for Dominus with pass=0, which the rule as written would flag: with pass=0 use

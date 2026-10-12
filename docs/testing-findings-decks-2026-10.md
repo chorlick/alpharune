@@ -21,7 +21,7 @@ card mechanics."
   replay in section 5):
   1. **Combat is not a Showdown State for the action generator** (D5): any spell — with neither [Action] nor
      [Reaction] — is offered and played at Focus in a combat, by the defender on the opponent's turn too.
-     Found independently by seven readers.
+     Found independently by six readers.
   2. **Triggered abilities are not processed where the rules process them.** A declined, unpayable or
      targetless trigger stays on the chain and opens a priority window for both players (D4: 2,249 of 2,279
      declined triggers). A trigger queued during a showdown or by a conquer is left pending while Focus is

@@ -110,3 +110,21 @@ game; a card with a tracked finding is re-read after its fix in the game that sh
 through the Kennen list is the named focus.
 
 A larger `ismcts` vs `ismcts` matrix as a training baseline is a separate, later run.
+
+## Result of fuzz round 1 and the stopping rule (2026-10-11)
+
+Round 1: 4.3 million games, nine findings F1-F9 and V1 (`docs/testing-findings-fuzz-2026-10.md`), none
+fixed during the pass. Seven of the nine needed the `random-player` agent with `pass=0` or far more than
+100,000 random games; the rarest came up once in 4.3 million. Result files of round 1 are kept outside the
+repository in `.worktrees/fuzz-results/round1/` for `scripts/deck_fuzz_compare.py`.
+
+**Stopping rule (proposed by the fuzz stream, adopted by the orchestrator; the user may change it):** two
+consecutive passes with fresh seeds, each pass = 3 x 1,000,000 games on the optimised build (random,
+`random-player`, `random-player:pass=0`), 3 x 100,000 on the checked build, and the constructed lists with
+the three agents on both builds, with: no failure group against an empty known-failures file; no flagged
+game (cap, no winner, outlier length); every non-banned, non-token card exercised at least 200 times per
+optimised million in every way that applies to it (50 in the `pass=0` run). One pass is about 55 minutes on
+three threads. Daisy! 754 needs a list or a guided deck to meet the minimum (item A2).
+
+Between fix batches a shorter pass is enough to see a batch's effect: 3 x 100,000 optimised and
+3 x 20,000 checked with `--known docs/testing-known-failures.txt`, compared with the previous result.

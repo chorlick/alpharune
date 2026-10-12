@@ -1,0 +1,38 @@
+Legend:
+1 Ornn, Fire Below the Mountain
+
+Champion:
+1 Ornn, Blacksmith
+
+MainDeck:
+3 Charm
+3 Defy
+3 Brutalizer
+3 Poro Snax
+3 Guardian Angel
+3 Eclipse
+3 Mesmerize
+3 Patched Porobot
+1 World Atlas
+1 Forgefire Cape
+1 Rabadon's Deathcrown
+1 Shurelya's Requiem
+3 Aphelios, Exalted
+3 Jax, Unmatched
+3 Riven, Shattered
+2 Akali, Silent
+
+Battlefields:
+1 Forge of the Fluft
+1 Ornn's Forge
+1 Veiled Temple
+
+Runes:
+7 Calm Rune
+5 Mind Rune
+
+Sideboard:
+3 Turn to Dust
+3 Decree of Insight
+2 Decree of Focus
+2 Temporal Breach

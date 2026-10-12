@@ -1,0 +1,48 @@
+Legend:
+1 Draven, Glorious Executioner
+
+Champion:
+1 Draven, Showboat
+
+MainDeck:
+3 Tideturner
+3 Spinning Axe
+2 Falling Star
+2 Rebuke
+2 Overzealous Fan
+2 Switcheroo
+2 Star-Crossed
+2 Up from the Deep
+1 Cleave
+1 Noxus Hopeful
+1 Ride the Wind
+1 Blood Rush
+1 Ferrous Forerunner
+1 Existential Dread
+1 Ravenbloom Prefect
+3 Jhin, Murderous Artist
+3 Evelynn, Entrancing
+3 Vex, Apathetic
+1 Darius, Trifarian
+1 Teemo, Scout
+1 Kai'Sa, Survivor
+1 Rek'Sai, Breacher
+1 Pyke, Dockside Butcher
+
+Battlefields:
+1 Grove of the God-Willow
+1 Startipped Peak
+1 Star Spring
+
+Runes:
+6 Fury Rune
+6 Chaos Rune
+
+Sideboard:
+2 Brynhir Thundersong
+2 Ferrous Forerunner
+2 Ravenbloom Prefect
+1 Gust
+1 Draven, Audacious
+1 Star-Crossed
+1 Brittle Steel

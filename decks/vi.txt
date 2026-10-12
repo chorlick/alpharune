@@ -1,0 +1,43 @@
+Legend:
+1 Vi, Piltover Enforcer
+
+Champion:
+1 Vi, Peacekeeper
+
+MainDeck:
+3 Gem Jammer
+3 Ferrous Forerunner
+3 Honest Broker
+3 Hextech Gauntlets
+2 Cleave
+2 Hidden Blade
+2 Against the Odds
+2 Long Sword
+2 Trusty Ramhound
+2 Deathgrip
+2 Sacrifice
+1 Brynhir Thundersong
+1 Salvage
+1 B.F. Sword
+1 Perfect Execution
+3 Kai'Sa, Survivor
+3 Rumble, Hotheaded
+1 Rek'Sai, Breacher
+1 Rengar, Unseen
+1 Kennen, Keeper of Balance
+
+Battlefields:
+1 Reckoner's Arena
+1 Zaun Warrens
+1 Forge of the Fluft
+
+Runes:
+7 Fury Rune
+5 Order Rune
+
+Sideboard:
+3 Ashe, Focused
+2 Noxus Saboteur
+2 Imperial Decree
+2 Salvage
+1 Falling Star

@@ -83,7 +83,7 @@ public:
             // Through the executor: it counts the banish and announces it
             // ("When you banish a card you own").
             if (banished != kInvalidId && ctx.state.objectExists(banished))
-                ctx.executor.banishObject(banished);
+                ctx.executor.banishObject(banished, /*by=*/p);   // "each player ... banishes"
             if (!rest.empty()) ctx.executor.recycleCards(p, rest);
             return banished;
         };

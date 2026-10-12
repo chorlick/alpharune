@@ -32,7 +32,7 @@ public:
         const PlayerId opp = opponent(ctx.controller);
         if (ri.resume_data[kOppSlot] == 0) {
             ctx.executor.requestChoice(opp,
-                {valChoice(opp, 0, "Card Sharp: no Gold"),
+                {declineChoice(opp, "Card Sharp: no Gold"),
                  valChoice(opp, 1, "Card Sharp: play a Gold gear token exhausted")},
                 "Card Sharp: play a Gold gear token exhausted? (your opponent then plays one too)");
             ri.resume_data[kOppSlot] = 1;

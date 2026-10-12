@@ -1858,6 +1858,7 @@ Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId 
     accept.type = IntentType::MakeChoice;
     accept.player = player;
     accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+    decline.declines = true;   // the "no" of a yes/no (Intent::declines)
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
@@ -3212,6 +3213,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         decline.chosen_value = 0;
         Intent accept = decline;
         accept.chosen_value = 1;
+        decline.declines = true;   // the "no" of a yes/no (Intent::declines)
         std::vector<Intent> opts = {decline, accept};
 
         state_.decision_index++;
@@ -3524,6 +3526,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                 accept.type = IntentType::MakeChoice;
                 accept.player = item.controller;
                 accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+                decline.declines = true;   // the "no" of a yes/no (Intent::declines)
                 std::vector<Intent> opts = {decline, accept};
 
                 state_.decision_index++;
@@ -7324,6 +7327,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     // Optional ("you may") -> yes/no agent decision. Mirrors the Accelerate flow.
     Intent decline; decline.type = IntentType::MakeChoice; decline.player = player; decline.chosen_value = 0;
     Intent accept;  accept.type  = IntentType::MakeChoice; accept.player  = player; accept.chosen_value  = 1;
+    decline.declines = true;   // the "no" of a yes/no (Intent::declines)
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +

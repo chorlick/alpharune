@@ -114,6 +114,16 @@ struct Intent {
     // or action-vocab encoding).
     std::string choice_label;
 
+    // MakeChoice — this option is the DECLINE of a yes/no: the "No" of a
+    // "you may" (Card::confirmOptional, EffectExecutor::confirmNow), of an
+    // optional cost the engine offers ([Accelerate], [Repeat], a triggered
+    // cost). Set by whoever asks, because the values cannot say it: "no /
+    // yes" and "mode 0 / mode 1" are both the values 0 and 1. An agent that
+    // must tell a pass from an action reads this (agents/random_player_agent.h
+    // isPassOption). Like the label it is not part of the answer: excluded
+    // from operator==, the action id and the history token.
+    bool declines = false;
+
     // ── Factory methods for readability ──
 
     static Intent endTurn(PlayerId p) {

@@ -1,0 +1,41 @@
+Legend:
+1 Miss Fortune, Bounty Hunter
+
+Champion:
+1 Miss Fortune, Buccaneer
+
+MainDeck:
+3 First Mate
+3 Treasure Hunter
+3 Spirit Wheel
+3 Grim Resolve
+3 Irresistible Faefolk
+3 Rampage
+2 Sabotage
+2 Rebuke
+2 Ride the Wind
+2 Punch First
+1 Spoils of War
+1 Flash
+1 Onslaught
+3 Nidalee, Cat Form
+3 Rengar, Trophy Hunter
+2 Fizz, Trickster
+2 Kha'Zix, Mutating Horror
+
+Battlefields:
+1 Targon's Peak
+1 The Candlelit Sanctum
+1 Zaun Warrens
+
+Runes:
+6 Body Rune
+6 Chaos Rune
+
+Sideboard:
+3 Lucian, Merciless
+2 Acceptable Losses
+2 Repulse
+1 Ruin Runner
+1 Downwell
+1 Decree of Strength

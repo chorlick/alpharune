@@ -1,0 +1,44 @@
+Legend:
+1 Sivir, Battle Mistress
+
+Champion:
+1 Sivir, Mercenary
+
+MainDeck:
+3 Traveling Merchant
+3 Punch First
+3 Rampage
+3 Shadow Order Disciple
+3 Tornado Warrior
+3 Tail-Cloaked Matriarch
+2 Sabotage
+2 Tideturner
+2 Edge of Night
+2 Switcheroo
+2 Star-Crossed
+1 Gust
+1 Acceptable Losses
+1 Last Rites
+1 Grim Resolve
+3 Fizz, Trickster
+3 Ezreal, Prodigy
+1 Pyke, Returned
+
+Battlefields:
+1 Sigil of the Storm
+1 Zaun Warrens
+1 Sandswept Tomb
+
+Runes:
+7 Chaos Rune
+5 Body Rune
+
+Sideboard:
+3 Ravenbloom Prefect
+1 Unyielding Spirit
+1 Sabotage
+1 Gust
+1 Acceptable Losses
+1 Akshan, Mischievous
+1 Star-Crossed
+1 Decree of Strength

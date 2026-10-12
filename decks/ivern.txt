@@ -1,0 +1,48 @@
+Legend:
+1 Ivern, Green Father
+
+Champion:
+1 Ivern, Nurturer
+
+MainDeck:
+3 Defy
+3 Stalwart Poro
+3 Hidden Blade
+3 Trusty Ramhound
+3 Frisky Hunter
+3 Mutated Mouser
+2 Back Off
+2 Friendship
+2 Affectionate Poro
+2 Fallen Feline
+1 Discipline
+1 Call to Glory
+1 Disarming Rake
+1 Emperor's Divide
+1 Daisy!
+1 Steel Paws
+1 Astral Heron
+1 Ki Barrier
+1 Ivern, Nurturer
+2 Vi, Peacekeeper
+1 Blitzcrank, Impassive
+1 Azir, Sovereign
+
+Battlefields:
+1 Vilemaw's Lair
+1 Seat of Power
+1 Forbidding Waste
+
+Runes:
+6 Order Rune
+6 Calm Rune
+
+Sideboard:
+2 Disarming Rake
+2 Decree of Unity
+1 Not So Fast
+1 Flurry of Feathers
+1 Yuumi, Magical Cat
+1 Vilemaw
+1 Stalking Wolf
+1 Fallen Feline

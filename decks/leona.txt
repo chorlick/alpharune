@@ -1,0 +1,40 @@
+Legend:
+1 Leona, Radiant Dawn
+
+Champion:
+1 Leona, Determined
+
+MainDeck:
+3 Defy
+3 Hidden Blade
+3 Apprentice Smith
+3 Eye of the Herald
+3 Forgotten Signpost
+3 Scuttle Crab
+2 Charm
+2 Call to Glory
+2 Noxian Drummer
+2 Zenith Blade
+2 Brutalizer
+2 Emperor's Divide
+2 Guardian Angel
+2 Back Off
+1 Shady Spectacles
+3 Vi, Peacekeeper
+1 Renata Glasc, Industrialist
+
+Battlefields:
+1 Monastery of Hirana
+1 Seat of Power
+1 Forbidding Waste
+
+Runes:
+7 Order Rune
+5 Calm Rune
+
+Sideboard:
+3 Salvage
+2 Cull the Weak
+2 Forge of the Future
+2 Not So Fast
+1 Wind Wall

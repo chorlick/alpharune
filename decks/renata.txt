@@ -1,0 +1,48 @@
+Legend:
+1 Renata Glasc, Chem-Baroness
+
+Champion:
+1 Renata Glasc, Mastermind
+
+MainDeck:
+3 Cull the Weak
+3 Hidden Blade
+3 Card Sharp
+3 Honest Broker
+3 Vanguard Armory
+2 Consult the Past
+2 Watchful Sentry
+2 Singularity
+2 Soaring Scout
+2 Imperial Decree
+2 Wages of Pain
+1 Sprite Mother
+1 Thousand-Tailed Watcher
+1 Salvage
+1 Machine Evangel
+1 Blood Money
+1 Corina Veraza
+1 Hostile Takeover
+2 Karthus, Eternal
+2 Jayce, Man of Progress
+1 Shen, Kinkou
+
+Battlefields:
+1 Altar to Unity
+1 Targon's Peak
+1 Forgotten Monument
+
+Runes:
+6 Mind Rune
+6 Order Rune
+
+Sideboard:
+2 Ashe, Focused
+1 Thousand-Tailed Watcher
+1 Unchecked Power
+1 Salvage
+1 Shen, Kinkou
+1 Rocket Barrage
+1 Jayce, Man of Progress
+1 Blood Money
+1 Noxian Emissary

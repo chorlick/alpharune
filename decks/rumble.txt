@@ -1,0 +1,44 @@
+Legend:
+1 Rumble, Mechanized Menace
+
+Champion:
+1 Rumble, Hotheaded
+
+MainDeck:
+3 Stupefy
+3 Thousand-Tailed Watcher
+3 Gem Jammer
+3 Bubble Bot
+3 Forecaster
+3 Production Surge
+3 Temporal Breach
+2 Cleave
+2 Brynhir Thundersong
+2 Falling Star
+2 Singularity
+2 Ferrous Forerunner
+2 Deadly Flourish
+2 Patched Porobot
+1 Cloth Armor
+1 Bellows Breath
+1 Eclipse
+1 Rumble, Hotheaded
+
+Battlefields:
+1 Void Gate
+1 Rockfall Path
+1 Frozen Fortress
+
+Runes:
+7 Mind Rune
+5 Fury Rune
+
+Sideboard:
+2 Brittle Steel
+2 Decree of Insight
+1 Thermo Beam
+1 Brynhir Thundersong
+1 Falling Star
+1 Against the Odds
+1 Ferrous Forerunner
+1 Bellows Breath

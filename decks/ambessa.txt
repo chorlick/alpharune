@@ -1,0 +1,37 @@
+Legend:
+1 Ambessa, Matriarch of War
+
+Champion:
+1 Ambessa, The Wolf
+
+MainDeck:
+3 Punch First
+3 Kinkou Initiate
+3 Irresistible Faefolk
+3 Guttural Roar
+3 Rampage
+3 Public Execution
+2 First Mate
+2 Pit Rookie
+2 Sabotage
+2 Legion Marauder
+2 Profiteer
+2 Solari Sunhawk
+1 Challenge
+1 Repulse
+1 Tactical Retreat
+1 Tools of Empire
+1 Onslaught
+1 Ki Barrier
+1 Vi, Peacekeeper
+1 Kayle, Justified
+1 Ambessa, Respected and Feared
+
+Battlefields:
+1 Sunken Temple
+1 Risen Altar
+1 Sandswept Tomb
+
+Runes:
+6 Body Rune
+6 Order Rune

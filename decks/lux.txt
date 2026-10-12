@@ -1,0 +1,41 @@
+Legend:
+1 Lux, Lady of Luminosity
+
+Champion:
+1 Lux, Crownguard
+
+MainDeck:
+3 Stupefy
+3 Progress Day
+3 Thousand-Tailed Watcher
+3 Seal of Insight
+3 Plundering Poro
+3 Honest Broker
+3 Sprite Burst
+3 Sprite Fountain
+2 Singularity
+2 Time Warp
+2 Cull the Weak
+2 Wages of Pain
+2 Drag Under
+1 Bellows Breath
+1 The Ruination
+3 Jhin, Meticulous Killer
+
+Battlefields:
+1 Vilemaw's Lair
+1 Rockfall Path
+1 Treasure Hoard
+
+Runes:
+7 Mind Rune
+5 Order Rune
+
+Sideboard:
+2 Hidden Blade
+2 Salvage
+2 Ashe, Focused
+1 Singularity
+1 Bellows Breath
+1 Drag Under
+1 The Ruination

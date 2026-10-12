@@ -1,0 +1,44 @@
+Legend:
+1 Poppy, Keeper of the Hammer
+
+Champion:
+1 Poppy, Paragon
+
+MainDeck:
+3 First Mate
+3 Punch First
+3 Demacian Diplomat
+3 Grim Resolve
+3 Shepherd's Heirloom
+3 Rampage
+2 Sabotage
+2 Kinkou Initiate
+2 Irresistible Faefolk
+2 Enthralling Protector
+2 Keeper's Verdict
+1 Challenge
+1 Repulse
+1 Onslaught
+3 Master Yi, Tempered
+2 Rengar, Trophy Hunter
+2 Vi, Peacekeeper
+1 Kennen, Keeper of Balance
+
+Battlefields:
+1 Sunken Temple
+1 Gardens of Becoming
+1 Sandswept Tomb
+
+Runes:
+7 Body Rune
+5 Order Rune
+
+Sideboard:
+2 Ruin Runner
+2 Decree of Unity
+1 Sabotage
+1 Salvage
+1 Akshan, Mischievous
+1 Repulse
+1 Vi, Peacekeeper
+1 Keeper's Verdict

@@ -1,0 +1,47 @@
+Legend:
+1 Ahri, Nine-Tailed Fox
+
+Champion:
+1 Ahri, Inquisitive
+
+MainDeck:
+3 Defy
+3 Discipline
+3 Stupefy
+3 Sprite Fountain
+2 Ravenbloom Student
+2 Cloth Armor
+2 Frigid Touch
+2 Mutated Mouser
+2 Back Off
+2 Scuttle Crab
+2 Blue Sentinel
+2 Temporal Breach
+1 Charm
+1 Singularity
+1 Thousand-Tailed Watcher
+1 Astral Heron
+2 Nami, Headstrong
+2 Mel, Newly Awakened
+1 Ahri, Alluring
+1 Sona, Harmonious
+1 Janna, Savior
+
+Battlefields:
+1 Grove of the God-Willow
+1 Abandoned Hall
+1 Amateur Recital
+
+Runes:
+6 Calm Rune
+6 Mind Rune
+
+Sideboard:
+2 Turn to Dust
+2 Decree of Insight
+1 Charm
+1 Wind Wall
+1 Fox-Fire
+1 Not So Fast
+1 Bellows Breath
+1 Decree of Focus

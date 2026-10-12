@@ -70,3 +70,61 @@ Later rounds use coverage-guided decks (weighted toward the least-exercised card
 cards rather than passing, because uniform random play leaves rare cards and multi-step abilities rare. The
 stopping rule is set in numbers from the fuzz stream's final report (consecutive clean passes of a stated
 size, and a minimum number of resolutions per card).
+
+## Focus for the next deck round: Flow (user request, 2026-10-11)
+
+`decks/kennen.txt` (Heart of the Tempest / Kennen, Storm of Shuriken) is built around [Flow]; use it to
+check Flow end to end. First look, 20 traced random games of the list: the legend granted [Flow] 16 times,
+but a spell was actually played for Flow only twice, so random play barely exercises the replay itself.
+Run this list with the `random-player` agent (it plays rather than passes) and with ISMCTS in one seat, and
+read against the text and the rules (CR on Flow; `Card::flowCost`, `GameEngine::refreshFlowGrants`):
+
+- when the spell that gets [Flow] is chosen (finding D78 says at resolution; the rules say finalization);
+- which spells are offered, and that the grant lasts "this turn" only;
+- that a granted or printed Flow play is offered from the trash only, for the right cost (Energy and Power
+  by domain; "equal to its cost" for Kennen's grant), once, and at the spell's own timing;
+- that the spell is banished instead of trashed after a Flow play, including when it is countered;
+- that its choices, targets, Deflect and Repeat work as from hand;
+- "when you play a spell" / "not from hand" watchers on a Flow play; Death Mark 931's own Flow.
+
+## The constructed-deck round robin (plan agreed with the user, 2026-10-11)
+
+Run after fix batch 1 is merged, over every list in `decks/` that validates (34 on 2026-10-11; 36 when
+`ambessa.txt` and `azir.txt` are corrected). Every ordered pairing, both seatings, mirrors included
+(1,296 pairings at 36 lists), fixed seeds, optimised build for volume and the checked build on a subset.
+Game counts of the two fast passes are doubled at the user's request; the `ismcts` pass stays at 2-4 per pairing (it is the bottleneck).
+
+| Pass | Agents | Games per pairing | Purpose |
+|---|---|---|---|
+| Volume | random vs random | 400 | crashes, loops, no-winner games; a baseline win matrix |
+| Active play | `random-player` vs `random-player`, and mixed with random | 400 | cards played and abilities fired |
+| Purposeful play | `ismcts` in one seat, then both | 2-4 | cards used with intent, for the reading |
+
+Recorded: every failure with decks and seed, grouped by cause; the win matrix by seat (under random play an
+anomaly detector, not a strength measure); per-deck game length and decisions; per-card played / triggered /
+resolved; first-player advantage. Sideboards are exercised as a separate set of pairings (each list with its
+sideboard exchanged into the main deck), not mixed into the matrix.
+
+Reading: only cards not read in the first round (261 cards from 18 lists) get a full read against a traced
+game; a card with a tracked finding is re-read after its fix in the game that showed the problem; Flow
+through the Kennen list is the named focus.
+
+A larger `ismcts` vs `ismcts` matrix as a training baseline is a separate, later run.
+
+## Result of fuzz round 1 and the stopping rule (2026-10-11)
+
+Round 1: 4.3 million games, nine findings F1-F9 and V1 (`docs/testing-findings-fuzz-2026-10.md`), none
+fixed during the pass. Seven of the nine needed the `random-player` agent with `pass=0` or far more than
+100,000 random games; the rarest came up once in 4.3 million. Result files of round 1 are kept outside the
+repository in `.worktrees/fuzz-results/round1/` for `scripts/deck_fuzz_compare.py`.
+
+**Stopping rule (proposed by the fuzz stream, adopted by the orchestrator; the user may change it):** two
+consecutive passes with fresh seeds, each pass = 3 x 1,000,000 games on the optimised build (random,
+`random-player`, `random-player:pass=0`), 3 x 100,000 on the checked build, and the constructed lists with
+the three agents on both builds, with: no failure group against an empty known-failures file; no flagged
+game (cap, no winner, outlier length); every non-banned, non-token card exercised at least 200 times per
+optimised million in every way that applies to it (50 in the `pass=0` run). One pass is about 55 minutes on
+three threads. Daisy! 754 needs a list or a guided deck to meet the minimum (item A2).
+
+Between fix batches a shorter pass is enough to see a batch's effect: 3 x 100,000 optimised and
+3 x 20,000 checked with `--known docs/testing-known-failures.txt`, compared with the previous result.

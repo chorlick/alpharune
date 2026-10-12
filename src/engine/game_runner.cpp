@@ -1,5 +1,6 @@
 #include "game_runner.h"
 #include "agents/random_agent.h"
+#include "agents/random_player_agent.h"
 #include "io/replay_writer.h"
 #include "io/state_renderer.h"
 
@@ -116,6 +117,9 @@ GameResult GameRunner::run() {
         uint64_t derived = game_seed * 2 + static_cast<uint64_t>(seat_idx);
         if (spec == "random") {
             return std::make_unique<RandomAgent>(derived);
+        }
+        if (double pass = 0.0; isRandomPlayerSpec(spec, &pass)) {
+            return std::make_unique<RandomPlayerAgent>(derived, pass);
         }
         throw std::runtime_error(
             "GameRunner: agent spec '" + spec +

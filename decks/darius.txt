@@ -1,0 +1,46 @@
+Legend:
+1 Darius, Hand of Noxus
+
+Champion:
+1 Darius, Trifarian
+
+MainDeck:
+3 Trifarian Gloryseeker
+3 Vanguard Captain
+3 Spectral Matron
+3 Baited Hook
+3 Seal of Unity
+2 Noxus Hopeful
+2 Hidden Blade
+2 Grand Strategem
+2 Ferrous Forerunner
+2 Honest Broker
+2 Trusty Ramhound
+2 Inferna
+2 Shadow's Call
+1 Falling Star
+1 Faithful Manufactor
+1 Blood Rush
+1 B.F. Sword
+1 Corina Veraza
+1 Rage Amplifier
+2 Kai'Sa, Survivor
+
+Battlefields:
+1 Trifarian War Camp
+1 Zaun Warrens
+1 Seat of Power
+
+Runes:
+7 Order Rune
+5 Fury Rune
+
+Sideboard:
+2 Salvage
+2 Decree of Unity
+1 Noxus Hopeful
+1 Falling Star
+1 Forge of the Future
+1 Imperial Decree
+1 Trusty Ramhound
+1 Decree of Rage

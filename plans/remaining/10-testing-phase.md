@@ -36,6 +36,7 @@ Fixes are batched by root (user decision): one branch, one rebuild and one gate 
 - [ ] **D53** [Temporary] (Deceiver / Mirror Image Reflections; Dusk Rose Lab): the kill is done directly at the start of the Beginning Step, never as a triggered ability on the chain — LIKELY
 - [ ] **D68** Teemo, Strategist (every "When I defend / attack"): a unit that joins a combat already under way never triggers — CERTAIN / LIKELY
 - [ ] **D77** Yasuo, Windrider: an ability is put on the chain for every move, not only "the third time I move in a turn" (same pattern: Fiora, Peerless when not one on one) — LIKELY
+- [ ] **F8** Imposing Challenger and Irresistible Faefolk move each other without end (two "may"s answering each other; 9 per million forced-play games): the engine has no answer to a loop except the chain bound. Decide from `rules/core-rules.md` what a loop of optional actions and a loop of mandatory actions are (who must stop, when the game is a draw), implement that, and make an unbroken loop a stated game end rather than an engine error — LIKELY (fuzz)
 
 ## Batch 2 — Combat timing and continuous effects
 
@@ -75,6 +76,9 @@ Fixes are batched by root (user decision): one branch, one rebuild and one gate 
 - [ ] **D67** Swift Scout, Guerilla Warfare: the objects are chosen after RESOLVE; Swift Scout can be activated with nothing to choose — LIKELY
 - [ ] **D78** Kennen, Storm of Shuriken: the spell that gets [Flow] is chosen at resolution — LIKELY
 - [ ] **D79** Switcheroo on a unit with Deflect (Master Yi, Tempered at Level 6): Deflect is charged for the play option's unit, then both units are asked again — charged without choosing it, or charged twice — CERTAIN
+- [ ] **F5** "You may pay [N] to <choose a unit>" triggers (Kennen, Keeper of Balance; Sinister Poro; Icevale Archer): the chosen unit's Deflect is paid first and the [N] is then unpayable — the `canAffordWith` lead of the fix run, in triggered abilities (3 / 6 / 15 per million; once in the 18 deck lists, leblanc vs irelia) — CERTAIN (fuzz)
+- [ ] **F6** "Kill a friendly unit" as an additional cost whose death is replaced for a price (Sacrifice with The Boss; Heedless Resurrection with Altar of Blood): the spell is left unpayable (0 / 5 / 9 per million) — CERTAIN (fuzz)
+- [ ] **F7** Strike Down 429 is offered with no enemy unit to choose: `hasLegalTargets` checks half of the pair (4 / 3 / 4 per million) — CERTAIN (fuzz)
 
 ## Batch 4 — Cards, options offered or withheld, payments, hidden information, the validator
 
@@ -109,3 +113,9 @@ Fixes are batched by root (user decision): one branch, one rebuild and one gate 
 - [ ] **D75** Master of Shadows: empowered when an OPPONENT banishes a card its controller owns — CERTAIN
 - [ ] **D80** Lonely Poro: "died alone" when every other friendly unit there died in the same damage step — QUESTION
 - [ ] **D81** Minefield: no Burn Out when the Main Deck has fewer than 2 cards — CODE-ONLY
+- [ ] **F3** Board state written to an object that has left the board (checked build only; 32 / 53 / 95 per 100,000): Green Father's battlefield replacement skips `leftBoard`; Fading Memories, Vi, Hotheaded and Pendulum Blade act on an object that has left (attribution exact for Green Father and Vi, read from one game each for the other two) — CERTAIN (fuzz)
+- [ ] **F4** Emperor's Divide 366 re-offers a unit whose move to base is blocked: 1,024 prompts in a row, and the blocked unit is logged as moved (382 per million forced-play games) — CERTAIN (fuzz)
+- [ ] **F9** Star Spring 771: its finalize pass ends early at two returns of its own before the marker (1 in 3 million; engine exception) — CERTAIN (fuzz)
+- [ ] **A1** `random-player`: `isPassOption` treats the bare value 0 in a prompt of exactly the values 0 and 1 as a pass, so forced play never takes option 0 of a two-mode choice, an X of 0 or 1, "cost [1] less / [A] less" or a Hide cost's two payments. Tell a decline from a first mode by what the prompt is (the helper that asked: `confirmOptional` against `pickMode` / `pickXAmount`), not by its values — tooling (fuzz)
+- [ ] **A2** Daisy! 754 is resolved 2-4 times per million fuzz games (its attack trigger needs four tags among your units; the next lowest card is at 552): add a constructed list or a guided seed deck that exercises it, so the stopping rule's per-card minimum can hold for every card — tooling (fuzz)
+

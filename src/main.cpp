@@ -7,6 +7,10 @@
 ///
 /// Agents are wired via `buildAgent(spec, ...)`:
 ///   random            — uniform random over legal actions
+///   random-player[:pass=P] — uniform random over the legal actions that are
+///                       not a pass; passes with probability P when it could
+///                       act (default 0.2; pass=0 never does) and whenever a
+///                       pass is all there is — agents/random_player_agent.h
 ///   human             — block on browser input through HumanAgent
 ///   mcts:sims=N       — OpenSpiel MCTSBot over a mirror of the live game,
 ///                       leaves scored by RiftboundHeuristicEvaluator (no rollout)
@@ -27,6 +31,7 @@
 #include "agents/human_agent.h"
 #include "agents/mcts_agent.h"
 #include "agents/random_agent.h"
+#include "agents/random_player_agent.h"
 #include "cards/card_registry.h"
 #include "core/card_db.h"
 #include "openspiel/riftbound_game.h"
@@ -173,8 +178,9 @@ void dumpRegistry(const CardDB& db, const std::string& path) {
 
 struct AgentSpec {
     std::string raw;       // original spec string
-    std::string kind;      // "random", "human", "mcts", "ismcts"
+    std::string kind;      // "random", "random-player", "human", "mcts", "ismcts"
     int sims = 0;          // populated for mcts/ismcts
+    double pass = kDefaultPassProbability;   // random-player: how often it passes when it could act
 };
 
 AgentSpec parseAgentSpec(const std::string& s) {
@@ -182,11 +188,17 @@ AgentSpec parseAgentSpec(const std::string& s) {
     out.raw = s;
     auto colon = s.find(':');
     out.kind = (colon == std::string::npos) ? s : s.substr(0, colon);
+    if (out.kind == "random-player") {
+        // Its options are its own (pass=P): parsed where the agent lives.
+        out.pass = parseRandomPlayerOptions(
+            colon == std::string::npos ? std::string() : s.substr(colon + 1));
+        return out;
+    }
     if (out.kind != "random" && out.kind != "human" &&
         out.kind != "mcts" && out.kind != "ismcts") {
         throw std::runtime_error(
             "Unknown agent kind '" + out.kind + "'. Expected one of: "
-            "random, human, mcts, ismcts.");
+            "random, random-player, human, mcts, ismcts.");
     }
     const bool search = (out.kind == "mcts" || out.kind == "ismcts");
     if (colon != std::string::npos) {
@@ -244,6 +256,8 @@ std::unique_ptr<AgentInterface> buildAgent(const AgentSpec& spec,
                                            PlayerId seat,
                                            HumanAgent** human_out) {
     if (spec.kind == "random") return std::make_unique<RandomAgent>(derived_seed);
+    if (spec.kind == "random-player")
+        return std::make_unique<RandomPlayerAgent>(derived_seed, spec.pass);
     if (spec.kind == "human") {
         auto a = std::make_unique<HumanAgent>(seat);
         if (human_out) *human_out = a.get();
@@ -296,6 +310,14 @@ int main(int argc, char* argv[]) {
         "Agent specs (for --agent1 / --agent2):\n"
         "  random            Uniform random over legal actions. Fast,\n"
         "                    no extra deps. Baseline for testing.\n"
+        "  random-player     Uniform random over the legal actions that are\n"
+        "                    NOT a pass (PassPriority, PassFocus, EndTurn,\n"
+        "                    the no / none / stop option of a prompt, a\n"
+        "                    mulligan that keeps). When it could act it\n"
+        "                    passes with probability P (random-player:pass=P;\n"
+        "                    default 0.2); random-player:pass=0 never passes\n"
+        "                    while anything else is legal. It always passes\n"
+        "                    when a pass is all there is. Seeded like random.\n"
         "  human             Block at every decision and wait for a\n"
         "                    browser click via the WebSocket UI. Implies\n"
         "                    --web on, --render-html on, --debug, --trace.\n"
@@ -343,10 +365,10 @@ int main(int argc, char* argv[]) {
          "(validation/export tool; does not require decks)")
         ("agent1", po::value<std::string>()->default_value("random"),
          "Player 1 agent spec (see top of --help for full descriptions). "
-         "One of: random | human | mcts:sims=N | ismcts:sims=N")
+         "One of: random | random-player[:pass=P] | human | mcts:sims=N | ismcts:sims=N")
         ("agent2", po::value<std::string>()->default_value("random"),
          "Player 2 agent spec (see top of --help for full descriptions). "
-         "One of: random | human | mcts:sims=N | ismcts:sims=N")
+         "One of: random | random-player[:pass=P] | human | mcts:sims=N | ismcts:sims=N")
         ("web", po::value<std::string>()->default_value("auto"),
          "Web UI mode: auto (default — ON if any seat is human, else OFF), "
          "on (force ON: with no human seat this is spectator mode), off. "

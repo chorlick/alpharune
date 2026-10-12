@@ -92,13 +92,13 @@ read against the text and the rules (CR on Flow; `Card::flowCost`, `GameEngine::
 Run after fix batch 1 is merged, over every list in `decks/` that validates (34 on 2026-10-11; 36 when
 `ambessa.txt` and `azir.txt` are corrected). Every ordered pairing, both seatings, mirrors included
 (1,296 pairings at 36 lists), fixed seeds, optimised build for volume and the checked build on a subset.
-Game counts are doubled at the user's request.
+Game counts of the two fast passes are doubled at the user's request; the `ismcts` pass stays at 2-4 per pairing (it is the bottleneck).
 
 | Pass | Agents | Games per pairing | Purpose |
 |---|---|---|---|
 | Volume | random vs random | 400 | crashes, loops, no-winner games; a baseline win matrix |
 | Active play | `random-player` vs `random-player`, and mixed with random | 400 | cards played and abilities fired |
-| Purposeful play | `ismcts` in one seat, then both | 4-8 | cards used with intent, for the reading |
+| Purposeful play | `ismcts` in one seat, then both | 2-4 | cards used with intent, for the reading |
 
 Recorded: every failure with decks and seed, grouped by cause; the win matrix by seat (under random play an
 anomaly detector, not a strength measure); per-deck game length and decisions; per-card played / triggered /

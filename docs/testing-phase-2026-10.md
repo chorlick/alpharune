@@ -86,3 +86,27 @@ read against the text and the rules (CR on Flow; `Card::flowCost`, `GameEngine::
 - that the spell is banished instead of trashed after a Flow play, including when it is countered;
 - that its choices, targets, Deflect and Repeat work as from hand;
 - "when you play a spell" / "not from hand" watchers on a Flow play; Death Mark 931's own Flow.
+
+## The constructed-deck round robin (plan agreed with the user, 2026-10-11)
+
+Run after fix batch 1 is merged, over every list in `decks/` that validates (34 on 2026-10-11; 36 when
+`ambessa.txt` and `azir.txt` are corrected). Every ordered pairing, both seatings, mirrors included
+(1,296 pairings at 36 lists), fixed seeds, optimised build for volume and the checked build on a subset.
+Game counts are doubled at the user's request.
+
+| Pass | Agents | Games per pairing | Purpose |
+|---|---|---|---|
+| Volume | random vs random | 400 | crashes, loops, no-winner games; a baseline win matrix |
+| Active play | `random-player` vs `random-player`, and mixed with random | 400 | cards played and abilities fired |
+| Purposeful play | `ismcts` in one seat, then both | 4-8 | cards used with intent, for the reading |
+
+Recorded: every failure with decks and seed, grouped by cause; the win matrix by seat (under random play an
+anomaly detector, not a strength measure); per-deck game length and decisions; per-card played / triggered /
+resolved; first-player advantage. Sideboards are exercised as a separate set of pairings (each list with its
+sideboard exchanged into the main deck), not mixed into the matrix.
+
+Reading: only cards not read in the first round (261 cards from 18 lists) get a full read against a traced
+game; a card with a tracked finding is re-read after its fix in the game that showed the problem; Flow
+through the Kennen list is the named focus.
+
+A larger `ismcts` vs `ismcts` matrix as a training baseline is a separate, later run.

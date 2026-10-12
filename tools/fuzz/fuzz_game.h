@@ -269,8 +269,10 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
             std::stable_sort(run_items.begin(), run_items.end(),
                              [](const auto& a, const auto& b) { return a.second > b.second; });
             out.exception = "a chain had " + std::to_string(chain_run) +
-                            " items finalized without emptying; most are of " +
-                            run_items.front().first;
+                            " items finalized without emptying; most are of";
+            for (std::size_t k = 0; k < run_items.size() && k < 3; ++k)
+                out.exception += std::string(k ? ", " : " ") + run_items[k].first + " (" +
+                                 std::to_string(run_items[k].second) + ")";
             throw ChainRunaway();
         }
     });

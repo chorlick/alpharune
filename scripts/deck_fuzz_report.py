@@ -31,7 +31,11 @@ def totals(j):
         ("Build", "checked (RIFTBOUND_CHECK_BOARD_INDEX)" if c["checked_build"] else "optimised"),
         ("Completed", t["completed"]),
         ("P1 wins / P2 wins", f'{t["p1_wins"]} / {t["p2_wins"]}'),
-        ("Failures", f'{t["failures"]} in {t["failure_groups"]} groups'),
+        ("Agents", f'{c.get("agent1", "random")} vs {c.get("agent2", "random")}'
+                   + (f', decks guided by {c["guide"]}' if c.get("guide") else "")),
+        ("Failures", f'{t["failures"]} in {t["failure_groups"]} groups'
+                     + (f' ({t["new_failures"]} new in {t["new_failure_groups"]} groups, '
+                        f'{t["known_failures"]} known)' if "new_failures" in t else "")),
         ("Turn cap / no winner / no reason", f'{t["max_turns"]} / {t["no_winner"]} / {t["no_reason"]}'),
         ("Games with a chain of 200+ items", t["long_chain"]),
         ("Hung", t["hung"]),
@@ -55,7 +59,8 @@ def endings(j):
 def failures(j):
     out = []
     for i, g in enumerate(j["failure_groups"], 1):
-        out.append(f'**Group {i}: {g["count"]} games** — `{g["key"]}`\n')
+        tag = f'known {g["known"]}' if g.get("known") else "NEW"
+        out.append(f'**Group {i} ({tag}): {g["count"]} games** — `{g["key"]}`\n')
         per_card = g.get("fewest_decisions_per_card") or {}
         if per_card:
             rows = [(card, v["count"], v["decisions"], v["legends"], "`" + v["command"] + "`")

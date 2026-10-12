@@ -198,7 +198,7 @@ struct Options {
 
 /// Known failure signatures: one "ID|text" per line ('#' starts a comment). A
 /// failure whose "<termination>: <exception>" contains the text is that known
-/// failure; the first line that matches wins.
+/// failure ("a && b": contains both); the first line that matches wins.
 std::vector<std::pair<std::string, std::string>> loadKnown(const std::string& path) {
     std::vector<std::pair<std::string, std::string>> known;
     if (path.empty()) return known;
@@ -771,8 +771,17 @@ int main(int argc, char* argv[]) {
         std::set<std::string> cards;
         const std::string raw = f.termination + ": " + f.exception;
         std::string known_id;
-        for (const auto& [id, text] : known)
-            if (raw.find(text) != std::string::npos) { known_id = id; break; }
+        for (const auto& [id, text] : known) {
+            // "a && b": every part must occur.
+            bool all = true;
+            for (std::size_t at = 0; all && at <= text.size();) {
+                std::size_t end = text.find(" && ", at);
+                if (end == std::string::npos) end = text.size();
+                if (raw.find(text.substr(at, end - at)) == std::string::npos) all = false;
+                at = end + 4;
+            }
+            if (all) { known_id = id; break; }
+        }
         // A known cause is one group whatever else the text says; the rest
         // group by their normalised text.
         const std::string key = known_id.empty()

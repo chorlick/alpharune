@@ -97,6 +97,27 @@ void GameEngine::initSubsystems() {
     // resolution (CR 319.3-319.5).
     chain_manager_->setHandleTasks([this]() { cleanup(); });
     chain_manager_->setOrderPending([this]() { orderPendingTriggers(); });
+    // Tournament Rules 505.3-505.6: a loop that needs no player to maintain
+    // it (505.3.a) and that no player chose to break — everyone passed
+    // priority each time round — "ends in a draw". That is what a chain at
+    // its bound is when no decision with more than one option was made in the
+    // whole run. With such a decision in it, it is a loop a player keeps
+    // going, which the engine ends before the bound (Card::confirmOptional,
+    // ChainState::kMayLoopIterations); reaching the bound anyway is an error.
+    chain_manager_->setUnbrokenLoop([this](const ChainItem& top) {
+        if (decisions_with_a_choice_ != chain_run_choices_at_start_) return false;
+        const std::string name = state_.objectExists(top.source)
+            ? state_.getObject(top.source).name.get() : std::string("?");
+        RIFT_WARN(events_, "LOOP: the chain did not empty and no player made a choice in it; "
+                        "its newest item is " + name + " — the game is a draw "
+                        "(Tournament Rules 505.6)");
+        state_.game_over = true;
+        state_.winner = PlayerId::None;
+        state_.game_over_reason =
+            "Draw: a loop of mandatory actions no player broke (Tournament Rules 505.6), at " + name;
+        events_.emit(GameOverEvent{PlayerId::None, state_.game_over_reason});
+        return true;
+    });
     chain_manager_->setFinalizeChoices([this](ChainItem& item) { chooseTargetsAtFinalize(item); });
     chain_manager_->setActivateAbility(
         [this](const Intent& i) { return payAndQueueAbility(i); });
@@ -3269,6 +3290,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
 }
 
 void GameEngine::runChain() {
+    if (!chain_manager_->running()) chain_run_choices_at_start_ = decisions_with_a_choice_;
     chain_manager_->processFEPR(
         // Agent query callback
         [this](PlayerId player, const std::vector<Intent>& actions) -> Intent {
@@ -8264,6 +8286,9 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
 
     Intent chosen = getAgent(player).selectAction(state_, legal);
     parked_legal_ = nullptr;
+    // (A card's prompt: priority and Focus decisions are the chance to break
+    // a loop, not what keeps one going — TR 505.3 against 505.5.)
+    if (legal.size() > 1 && chosen.type == IntentType::MakeChoice) ++decisions_with_a_choice_;
     // A concession is accepted at every decision — and it ends the game at
     // every decision, here, not only where the caller happens to execute it
     // (it used to be ignored at Focus, at a prompt, in a payment: the showdown

@@ -775,6 +775,22 @@ struct ChainItem {
 };
 
 struct ChainState {
+    // ── Loops (Tournament Rules 505) ──
+    // How often each triggered ability's leading "may" has been accepted
+    // since the chain was last empty. A loop that players maintain by their
+    // decisions runs for the number of iterations they choose, and then the
+    // player makes a different decision (TR 505.4, 505.7, 505.10): past
+    // kMayLoopIterations acceptances of one ability in one unbroken chain its
+    // "may" is not offered again (Card::confirmOptional). Cleared when the
+    // chain empties (ChainManager).
+    struct MayCount {
+        GameObjectId source = kInvalidId;
+        TriggerType trigger = TriggerType::None;
+        int accepted = 0;
+    };
+    std::vector<MayCount> may_loop_counts;
+    static constexpr int kMayLoopIterations = 100;
+
     // CR 383.3.d: the batch number given to triggered abilities queued now
     // (see ChainItem::trigger_batch). TriggerManager opens a new batch for
     // each event it handles; the engine holds one open across events the

@@ -113,6 +113,12 @@ public:
     using OrderPending = std::function<void()>;
     void setOrderPending(OrderPending fn) { order_pending_ = std::move(fn); }
 
+    /// Called when the loop reaches its bound, with the newest item. Returns
+    /// true if it ended the game (a loop of mandatory actions is a draw,
+    /// Tournament Rules 505.6); false, or no callback: the bound throws.
+    using UnbrokenLoop = std::function<bool(const ChainItem&)>;
+    void setUnbrokenLoop(UnbrokenLoop fn) { unbroken_loop_ = std::move(fn); }
+
     /// True while processFEPR is running (a nested call returns at once).
     bool running() const { return running_; }
 
@@ -135,6 +141,7 @@ private:
     bool playing_card_ = false;   // inside play_card_: nested processFEPR is a no-op
     bool running_ = false;        // inside processFEPR: a nested call is a no-op
     HandleTasks handle_tasks_;
+    UnbrokenLoop unbroken_loop_;
     OrderPending order_pending_;
     FinalizeChoices finalize_choices_;
     EffectExecutor* executor_ = nullptr;

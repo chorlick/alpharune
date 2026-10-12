@@ -790,6 +790,11 @@ private:
                                   ChainItemId item_id);
     void runFinalizePass(ChainItem& item);
     bool keep_unperformed_triggers_ = false;   // testHook_keepUnperformedTriggers
+    // Decisions with more than one option asked so far (askAgent), and the
+    // count as the chain's loop last started: a chain that reaches its bound
+    // with no such decision in between is a loop of mandatory actions.
+    uint64_t decisions_with_a_choice_ = 0;
+    uint64_t chain_run_choices_at_start_ = 0;
     // The chain's next id as the spell being played began its play
     // (executePlaySpell -> finishPlaySpell; placeBelowWhatItsPlayTriggered).
     ChainItemId spell_play_first_new_item_ = kInvalidId;

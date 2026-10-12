@@ -48,6 +48,9 @@ constexpr CardDefId kTDipRise = 1996;
 constexpr CardDefId kTDipRiseInOne = 1997;
 constexpr CardDefId kTAccel = 1998;
 constexpr CardDefId kTNeedsTarget = 1999;
+constexpr CardDefId kTPing = 2001;
+constexpr CardDefId kTPong = 2002;
+constexpr CardDefId kTSelf = 2003;
 
 // What resolved, in order.
 static std::vector<std::string>& log() {
@@ -163,6 +166,39 @@ private:
     Does does_;
 };
 
+/// "When X, you may [make the other one trigger]" (with `may`), or an
+/// ability that always triggers `other` again (without): the two halves of a
+/// loop. `other` is the object id of the unit to trigger, set by the test.
+class TLoop : public UnitCard {
+public:
+    TLoop(CardDefId id, std::string name, bool may) : may_(may) {
+        def_.id = id;
+        def_.name = std::move(name);
+        def_.card_type = CardType::Unit;
+        def_.might = 2;
+    }
+    const CardDef& def() const override { return def_; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayAGear; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        if (may_) {
+            const int go = confirmOptional(ctx, def_.name + ": trigger the other one?",
+                                           [] { return true; });
+            if (go < 1) return;
+        }
+        if (finalizingChoices(ctx)) return;
+        ++resolved;
+        const GameObjectId other = GameObjectId::fromRaw(
+            ctx.state.getObject(ctx.source).card_counters["other"]);
+        ctx.executor.queueTriggeredAbility(other, ctx.state.getObject(other).controller,
+                                           TriggerType::WhenYouPlayAGear, kInvalidId);
+    }
+    static inline int resolved = 0;
+private:
+    CardDef def_;
+    bool may_;
+};
+
 /// EnginePathAgent that shows every decision to a callback first.
 class Spy : public EnginePathAgent {
 public:
@@ -212,6 +248,10 @@ protected:
             std::make_unique<TActs>(kTDipRiseInOne, "DipRiseInOne", TActs::Does::DipAndRiseInOne));
         card_registry.registerCard(kTAccel, std::make_unique<TAccel>());
         card_registry.registerCard(kTNeedsTarget, std::make_unique<TNeedsTarget>());
+        card_registry.registerCard(kTPing, std::make_unique<TLoop>(kTPing, "Ping", true));
+        card_registry.registerCard(kTPong, std::make_unique<TLoop>(kTPong, "Pong", true));
+        card_registry.registerCard(kTSelf, std::make_unique<TLoop>(kTSelf, "Self", false));
+        TLoop::resolved = 0;
         card_db.buildFromClasses(card_registry);
         log().clear();
     }
@@ -957,6 +997,51 @@ TEST_F(Batch1Temporary, D53_TheControllerMayHaveTheOtherAbilityResolveBeforeTheK
     died.disconnect();
     EXPECT_EQ(log(), (std::vector<std::string>{"A", "died", "died"}))
         << "the [Temporary] kills were put on the chain first: A resolved before them";
+}
+
+// ═══ F8: loops (Tournament Rules 505) ═══════════════════════════════════════
+
+// deck_fuzz --replay 9991885925897128524 7817196308662062806 1159599994
+// --agents random-player:pass=0: Irresistible Faefolk and Imposing Challenger
+// moved each other without end, each "may" accepted every time. TR 505.4 /
+// 505.7 / 505.10: a loop players maintain by their decisions runs for the
+// number of iterations they choose, then that player makes a different
+// decision. The engine's number is ChainState::kMayLoopIterations.
+TEST_F(Batch1ChainFlow, F8_ALoopOfTwoMaysEndsWhenOneIsNoLongerOffered) {
+    auto ping = addUnit(P1, kTPing, 0);
+    auto pong = addUnit(P2, kTPong, 0);
+    o(ping).card_counters["other"] = static_cast<int>(pong.raw());
+    o(pong).card_counters["other"] = static_cast<int>(ping.raw());
+    Spy p1(EnginePathAgent::accepting()), p2(EnginePathAgent::accepting());
+    EXPECT_NO_THROW(withEngine([&](GameEngine& e) {
+        queue(e, ping, P1);
+        settleLikeTheEngine(e);
+        EXPECT_FALSE(e.mutableState().chain.exists());
+        EXPECT_TRUE(e.mutableState().chain.may_loop_counts.empty())
+            << "the count is per unbroken chain";
+    }, &p1, &p2));
+    EXPECT_FALSE(state.game_over) << "the loop ends; the game goes on";
+    EXPECT_EQ(static_cast<int>(p1.prompts.size()), ChainState::kMayLoopIterations);
+    EXPECT_EQ(static_cast<int>(p2.prompts.size()), ChainState::kMayLoopIterations);
+    EXPECT_EQ(TLoop::resolved, 2 * ChainState::kMayLoopIterations);
+}
+
+// A loop with no decision in it that nobody breaks (both players pass
+// priority every time round) is a draw: TR 505.6. A stated end of the game,
+// not an engine error.
+TEST_F(Batch1ChainFlow, F8_ALoopOfMandatoryActionsIsADraw) {
+    auto self = addUnit(P1, kTSelf, 0);
+    o(self).card_counters["other"] = static_cast<int>(self.raw());
+    Spy p1, p2;
+    EXPECT_NO_THROW(withEngine([&](GameEngine& e) {
+        queue(e, self, P1);
+        settleLikeTheEngine(e);
+    }, &p1, &p2));
+    EXPECT_TRUE(state.game_over);
+    EXPECT_EQ(state.winner, PlayerId::None);
+    EXPECT_NE(state.game_over_reason.find("505.6"), std::string::npos) << state.game_over_reason;
+    EXPECT_NE(state.game_over_reason.find("Self"), std::string::npos) << "the item is named";
+    EXPECT_TRUE(p1.prompts.empty());
 }
 
 // ═══ F1: Viktor, Innovator and tokens ═══════════════════════════════════════

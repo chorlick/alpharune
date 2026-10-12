@@ -206,6 +206,7 @@ void ChainManager::processFEPR(
         // the Cleanup that follows the last resolution too (CR 323.5: control
         // of a battlefield without units is lost only in an Open State).
         if (!had_chain || emptied_announced || state_.chain.exists()) return;
+        state_.chain.may_loop_counts.clear();   // a new chain is a new count (TR 505)
         state_.turn.oc_state = OpenClosedState::Open;
         events_.emit(ChainEmptiedEvent{});
         emptied_announced = true;
@@ -218,6 +219,10 @@ void ChainManager::processFEPR(
         emptied_announced = false;
         if (++iterations > kMaxIterations) {
             const ChainItem& top = state_.chain.items.back();
+            // A loop nobody keeps going by a decision and nobody broke: the
+            // engine says what the rules make of it (the game is a draw,
+            // Tournament Rules 505.6). Anything else is an engine error.
+            if (unbroken_loop_ && unbroken_loop_(top)) break;
             throw std::logic_error(
                 "ChainManager::processFEPR: the chain did not empty after " +
                 std::to_string(kMaxIterations) + " passes; " +

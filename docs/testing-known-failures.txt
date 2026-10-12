@@ -4,8 +4,6 @@
 # failures; the first line that matches wins. Remove a line when its cause is
 # fixed: the fuzz then reports it as new if it comes back. The IDs are those of
 # docs/testing-findings-fuzz-2026-10.md.
-F1|chain_runaway && Viktor, Innovator (
-F2|runFinalizePass: Alpha Strike returned from its finalize pass
 # F3 names the object that kept its board state, not the card that wrote it:
 # this line hides any new card with the same fault. Take it out first.
 F3|is off the board and still carries board state
@@ -16,5 +14,4 @@ F5|runFinalizePass: Icevale Archer returned from its finalize pass
 F6|executePlaySpell: Heedless Resurrection made choices it cannot be paid for with
 F6|executePlaySpell: Sacrifice made choices it cannot be paid for with
 F7|executePlaySpell: Strike Down made choices it cannot be paid for with
-F8|chain_runaway && Imposing Challenger ( && Irresistible Faefolk (
 F9|runFinalizePass: Star Spring returned from its finalize pass

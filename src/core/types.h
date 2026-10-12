@@ -307,6 +307,14 @@ enum class TurnPhase : uint8_t {
     GameOver,
 };
 
+/// "Your Beginning Phase" (CR 315.2): the Beginning Step and the Scoring Step.
+/// The Awaken Phase (CR 315.1) comes before it and is not part of it. One
+/// definition for everything that reads the phrase (LeBlanc, Fragmented;
+/// Shard of Undoing; "a unit died during your Beginning Phase").
+constexpr bool isBeginningPhase(TurnPhase p) {
+    return p == TurnPhase::BeginningStep || p == TurnPhase::ScoringStep;
+}
+
 enum class NeutralShowdownState : uint8_t {
     Neutral,
     Showdown,

@@ -7766,15 +7766,10 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     state_.turn.any_unit_died_this_turn = true;
     state_.player(controller).unit_died_this_turn = true;
     // Shadow Watcher: a friendly unit dying during its controller's Beginning
-    // Phase (Awaken/Beginning/Scoring steps of that player's own turn).
-    {
-        TurnPhase ph = state_.turn.phase;
-        bool in_beginning = (ph == TurnPhase::AwakenPhase ||
-                             ph == TurnPhase::BeginningStep ||
-                             ph == TurnPhase::ScoringStep);
-        if (in_beginning && state_.turn.turn_player == controller)
-            state_.player(controller).unit_died_in_beginning_this_turn = true;
-    }
+    // Phase (CR 315.2: the Beginning and Scoring Steps of that player's own
+    // turn — isBeginningPhase; not the Awaken Phase, CR 315.1).
+    if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller)
+        state_.player(controller).unit_died_in_beginning_this_turn = true;
     events_.emit(UnitDiedEvent{unit_id, controller,
         was_at.value_or(BaseLocation{controller}), might,
         state_.getObject(unit_id).last_known.killed_by});

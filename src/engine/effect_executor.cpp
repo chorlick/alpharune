@@ -33,6 +33,18 @@ namespace {
 // facedown zone has no location.
 bool onBoard(const GameObject& obj) { return obj.location.has_value(); }
 
+// In play: on the board, a legend in its Legend Zone (which is not a location)
+// or a battlefield card in its slot. Board state — Exhausted, a "this turn"
+// Might or keyword, a control change — is written to nothing else: an object
+// that has left (CR 124.1: a new object) is not the one an effect that is
+// only now resolving meant, and existing as an id (GameState::objectExists)
+// is true of every card ever made.
+bool inPlay(const GameObject& obj) {
+    return obj.location.has_value() ||
+           (obj.isLegend() && obj.zone == ZoneType::LegendZone) ||
+           (obj.isBattlefield() && obj.zone == ZoneType::BattlefieldZone);
+}
+
 // CR 719.3: a Top-Most card and everything attached to it are at the same
 // location, so attached gear goes wherever its unit goes.
 void carryAttachments(GameState& state, const GameObject& unit) {
@@ -549,11 +561,8 @@ void EffectExecutor::killObject(GameObjectId target) {
         state_.turn.any_unit_died_this_turn = true;
         state_.player(controller).unit_died_this_turn = true;
         {
-            const TurnPhase ph = state_.turn.phase;
-            const bool in_beginning = ph == TurnPhase::AwakenPhase ||
-                                      ph == TurnPhase::BeginningStep ||
-                                      ph == TurnPhase::ScoringStep;
-            if (in_beginning && state_.turn.turn_player == controller)
+            // "During your Beginning Phase" (CR 315.2; isBeginningPhase).
+            if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller)
                 state_.player(controller).unit_died_in_beginning_this_turn = true;
         }
         events_.emit(UnitDiedEvent{target, controller,
@@ -789,16 +798,21 @@ bool EffectExecutor::burnOutUntilDeckHasCards(PlayerId player) {
 // "If a spell or ability that chooses me would <stun me / give me -[M] / return
 // me to hand>, <do something else> instead." Applies only to effects of the
 // chain item now resolving, and only if that item chose `target`.
+// Whether the chain item now resolving chose `target` — as a target it was
+// played with, or through a choice helper (Card::commitChosenObject).
+static bool resolvingItemChose(const GameState& state, GameObjectId target) {
+    if (!state.chain.resuming.has_value()) return false;
+    const auto& item = *state.chain.resuming;
+    return std::find(item.chosen_objects.begin(), item.chosen_objects.end(), target)
+               != item.chosen_objects.end() ||
+           std::find(item.targets.begin(), item.targets.end(), target) != item.targets.end();
+}
+
 static bool hostileEffectReplaced(GameState& state, EventBus& events, EffectExecutor& exec,
                                   const CardRegistry* registry, GameObjectId target,
                                   Card::HostileEffect kind) {
     if (!registry || !state.chain.resuming.has_value() || !state.objectExists(target)) return false;
-    const auto& item = *state.chain.resuming;
-    const bool chose = std::find(item.chosen_objects.begin(), item.chosen_objects.end(), target)
-                           != item.chosen_objects.end() ||
-                       std::find(item.targets.begin(), item.targets.end(), target)
-                           != item.targets.end();
-    if (!chose) return false;
+    if (!resolvingItemChose(state, target)) return false;
     const auto& obj = state.getObject(target);
     if (obj.card_def_id == kInvalidId || !obj.location.has_value()) return false;
     Card* card = registry->get(obj.card_def_id);
@@ -971,13 +985,17 @@ void EffectExecutor::bounceToHand(GameObjectId target) {
 void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int minimum) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // "This turn" Might is board state: nothing is given to an object that is
+    // not in play (a unit that died or was returned before this resolved).
+    if (!inPlay(obj)) return;
 
     if (amount < 0 && hostileEffectReplaced(state_, events_, *this, card_registry_, target,
                                             Card::HostileEffect::ReduceMight)) return;
 
     // Mel, Newly Awakened: "If a spell or ability you control would give -[M]
-    // to a unit it chooses, it gives an additional -1 [M]."
-    if (amount < 0 && state_.chain.resuming.has_value()) {
+    // to a unit it chooses, it gives an additional -1 [M]." Only to a unit
+    // the resolving item CHOSE: "-3 [M] to enemy units" chooses none of them.
+    if (amount < 0 && resolvingItemChose(state_, target)) {
         amount -= state_.player(state_.chain.resuming->controller).extra_minus_might;
     }
 
@@ -1011,6 +1029,8 @@ void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
                                             Keyword kw, int value) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // A keyword "this turn" is board state (see inPlay).
+    if (!inPlay(obj)) return;
     RIFT_TRACE(events_, "EFFECT: give " + obj.name + " [" + toString(kw) + "]" +
                      (value > 0 ? " (value=" + std::to_string(value) + ")" : "") +
                      " this turn");
@@ -1728,6 +1748,8 @@ void EffectExecutor::healObject(GameObjectId target) {
 void EffectExecutor::exhaustObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // Only something in play is ready or exhausted (as readyObject).
+    if (!inPlay(obj)) return;
     obj.is_exhausted = true;
     events_.emit(ObjectStateChangedEvent{target, "exhausted"});
 }
@@ -1854,6 +1876,8 @@ void EffectExecutor::takeControl(GameObjectId target, PlayerId new_controller,
                                   bool until_end_of_turn) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // Control is of objects on the board; off it a card is its owner's.
+    if (!onBoard(obj)) return;
     if (obj.controller == new_controller) return;  // no-op
     if (until_end_of_turn && !obj.control_reverts_eot) {
         // Snapshot only ONCE — if multiple take-control effects stack
@@ -1876,6 +1900,7 @@ void EffectExecutor::takeControlUntilSourceLeaves(GameObjectId target,
                                                   GameObjectId source) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    if (!onBoard(obj)) return;   // as takeControl
     // Snapshot the restore-controller once (so re-applications keep the
     // earliest owner), then flip control.
     if (!obj.control_reverts_on_source_leave) {
@@ -2598,10 +2623,23 @@ bool EffectExecutor::canPlayPayingCost(PlayerId player, GameObjectId card,
     return can_afford_(player, card);
 }
 
+bool EffectExecutor::unitMayBePlayedTo(PlayerId player, const LocationId& where) const {
+    if (const auto* base = std::get_if<BaseLocation>(&where)) return base->player == player;
+    if (player == PlayerId::None || state_.player(player).units_play_base_only) return false;
+    const BattlefieldId id = std::get<BattlefieldLocation>(where).id;
+    for (const auto& bf : state_.battlefields)
+        if (bf.id == id) return !bf.blocks_unit_play;
+    return false;   // no such battlefield
+}
+
 bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
                                     std::optional<LocationId> location,
                                     EffectPlayCost cost) {
     if (!state_.objectExists(card)) return false;
+    // Nothing is paid for a unit that cannot be played where it is sent.
+    if (state_.getObject(card).isUnit() && location.has_value() &&
+        !unitMayBePlayedTo(player, *location))
+        return false;
     if (!can_afford_ || !pay_cost_) {
         StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
         if (!plainPay(state_, events_, player,
@@ -2612,14 +2650,21 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
         if (!can_afford_(player, card)) return false;
         if (!pay_cost_(player, card)) return false;
     }
-    playIgnoringCost(player, card, location);   // costs are settled; put it into play
-    return true;
+    return playIgnoringCost(player, card, location);   // costs are settled; put it into play
 }
 
-void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
+bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                                        std::optional<LocationId> location) {
-    if (!state_.objectExists(card)) return;
+    if (!state_.objectExists(card)) return false;
     auto& obj = state_.getObject(card);
+    // "Units can't be played here." and its kin hold for a unit an effect
+    // plays as for one played from hand (unitMayBePlayedTo): the unit is not
+    // played and stays in the zone it is in.
+    if (obj.isUnit() && location.has_value() && !unitMayBePlayedTo(player, *location)) {
+        RIFT_TRACE(events_, "PLAY_BLOCKED: " + obj.name + " (id=" + toString(card) +
+                         ") can't be played there — it is not played");
+        return false;
+    }
     // A new play, and nothing is paid for it: what an earlier play of this
     // card paid is forgotten (Card::forgetPlayPayments).
     Card::forgetPlayPayments(state_, cardFor(obj.card_def_id), player, card);
@@ -2656,7 +2701,7 @@ void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
         events_.emit(CardPlayedEvent{card, player, obj.card_type,
                                      sps.cards_played_this_turn});
         queue_spell_(player, card);
-        return;
+        return true;
     }
 
     LocationId chosen_loc = location.value_or(LocationId{BaseLocation{player}});
@@ -2715,6 +2760,7 @@ void EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
         ps.cards_played_this_turn});
     events_.emit(EnteredBoardEvent{card, player, obj.card_type,
         final_loc, true});
+    return true;
 }
 
 } // namespace riftbound

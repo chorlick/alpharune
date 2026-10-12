@@ -22,14 +22,12 @@ public:
         return TriggerType::WhenAFriendlyUnitDies;
     }
 
-    // "during your Beginning Phase": the Awaken, Beginning and Scoring steps
-    // of the controller's own turn. Checked as the unit dies.
+    // "during your Beginning Phase": the Beginning and Scoring Steps of the
+    // controller's own turn (CR 315.2; the Awaken Phase, CR 315.1, is not part
+    // of it). Checked as the unit dies.
     bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
                           TriggerType, GameObjectId /*subject*/) const override {
-        if (state.turn.turn_player != controller) return false;
-        const TurnPhase ph = state.turn.phase;
-        return ph == TurnPhase::AwakenPhase || ph == TurnPhase::BeginningStep ||
-               ph == TurnPhase::ScoringStep;
+        return state.turn.turn_player == controller && isBeginningPhase(state.turn.phase);
     }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

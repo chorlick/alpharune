@@ -43,20 +43,11 @@ public:
         // or any battlefield they control. pickMode publishes one option
         // per legal location so the agent records the decision (mandatory
         // even when only base is legal — engine-wide rule).
-        std::vector<LocationId> locations;
-        std::vector<std::string> labels;
-        locations.push_back(LocationId{BaseLocation{ctx.controller}});
-        labels.push_back("base");
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.controller.has_value() && *bf.controller == ctx.controller) {
-                locations.push_back(LocationId{BattlefieldLocation{bf.id}});
-                std::string bf_name = "BF#" + toString(bf.id);
-                if (ctx.state.objectExists(bf.card_object_id)) {
-                    bf_name = ctx.state.getObject(bf.card_object_id).name;
-                }
-                labels.push_back(bf_name);
-            }
-        }
+        // playLocations leaves out a battlefield units can't be played to
+        // (Rockfall Path; a player who may only play units to base).
+        const auto where = playLocations(ctx.state, ctx.controller);
+        const std::vector<LocationId>& locations = where.locations;
+        const std::vector<std::string>& labels = where.labels;
         uint32_t legal_mask = (locations.size() >= 32)
             ? 0xFFFFFFFFu
             : ((1u << locations.size()) - 1);

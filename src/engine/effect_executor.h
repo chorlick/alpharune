@@ -509,8 +509,24 @@ public:
     /// effects play a unit for free the controller still chooses base
     /// or any battlefield they control; callers should prompt the
     /// agent and pass the result here (see Dazzling Aurora).
-    void playIgnoringCost(PlayerId player, GameObjectId card,
+    /// A unit is not played to a location units can't be played to
+    /// (unitMayBePlayedTo): the call then does nothing — the card stays where
+    /// it is, which for "banish it, then its owner plays it" is Banishment —
+    /// and returns false. True when the card was played.
+    bool playIgnoringCost(PlayerId player, GameObjectId card,
                            std::optional<LocationId> location = std::nullopt);
+    /// Whether a unit `player` plays may be put at `where`, whatever tells
+    /// them to play it there. Never: a base that is not their own ("Units
+    /// cannot be played to a base of a player other than their own controller
+    /// under any circumstances" — Vendetta FAQ, Temporal Breach), a
+    /// battlefield where "Units can't be played here." (Rockfall Path), any
+    /// battlefield for a player who can only play units to their base
+    /// (Mageseeker Warden). A "can't" is not overcome by an instruction or a
+    /// permission (CR 054.1). Who controls the battlefield is NOT part of
+    /// this: that is the default of CR 355.2.a, which an effect that names a
+    /// location replaces ("to the same location", "to any battlefield");
+    /// card_helpers.h playLocations is the list for an effect that names none.
+    bool unitMayBePlayedTo(PlayerId player, const LocationId& where) const;
 
     using EffectPlayCost = ::riftbound::EffectPlayCost;
     /// Whether `player` could pay for `card` under `cost` right now.

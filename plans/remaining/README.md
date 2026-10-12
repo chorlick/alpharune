@@ -1,13 +1,27 @@
 # What is still open
 
-Nothing. Every item of the review and of the fix run is closed and is in `plans/completed/`.
+The review fix run is closed (760 items, `plans/completed/`). The **testing phase** that followed it has 84
+open findings in one file, grouped by fix batch:
+
+| File | Items | What |
+|---|---|---|
+| `10-testing-phase.md` | 84 | F1, F2, V1 from the random-deck fuzz; D1-D81 from reading the 18 constructed deck lists against card text and the rules |
+
+| Batch | Root | Items | State |
+|---|---|---|---|
+| 1 | Triggers and the chain; cleanup between chain items; the fuzz findings | 20 | next |
+| 2 | Combat timing and continuous effects | 11 | waiting |
+| 3 | Targets, finalization, counters, [Add], Equip and Quick-Draw | 22 | waiting |
+| 4 | Cards, options, payments, hidden information, the validator | 31 | waiting |
+
+Confidence on each item is the finding stream's own and is checked before anything changes. More findings
+arrive with each fuzz round (`docs/testing-phase-2026-10.md`).
 
 Not plan items, kept elsewhere:
 - Play-UI follow-ups deferred by the user: `docs/play-ui-followups.md`.
-- Performance recommendations not acted on (event bus per clone, header bodies, card optimisation level):
-  `docs/perf-followups.md`.
+- Performance recommendations not acted on: `docs/perf-followups.md`.
 - What a trainer or any stored data must change after stage 5: `docs/checkpoint-breaking-2026-10.md`;
   earlier API notes: `docs/trainer-notes-2026-10.md`.
 - Questions still with the user: reprint region tags (per-printing vs union) and Karma, Channeler 235's
-  tags (`plans/STATUS.md`). The engine uses the per-printing gallery data for both.
-- Rulings obtained from judges on 2026-10-11 and the questions as asked: `docs/judge-questions-2026-10.md`.
+  tags (`plans/STATUS.md`).
+- Rulings obtained from judges on 2026-10-11: `docs/judge-questions-2026-10.md`.

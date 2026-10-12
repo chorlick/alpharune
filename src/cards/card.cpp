@@ -83,6 +83,15 @@ void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId playe
     if (!state.objectExists(object)) return;
     auto& counters = state.getObject(object).card_counters;
     counters.erase(kAdditionalCostPaid);
+    // An [Accelerate] another card gave this play (Rek'Sai, Breacher:
+    // "Friendly units played from anywhere other than a player's hand have
+    // [Accelerate]") is marked on the card as its cost is paid and taken by
+    // the play that enters it. A play that does not enter through
+    // GameEngine::resolvePermanent (an effect play: EffectExecutor::
+    // playPayingCost) left the mark behind, and the card's next play from
+    // hand, with no Rek'Sai on the board, was offered Accelerate. Like any
+    // other per-play flag it is dropped as a play begins.
+    counters.erase(kGrantedAccelerate);
     if (!card) return;
     for (const auto& oac : {card->optionalAdditionalCost(),
                             card->optionalAdditionalCost(state, player)})

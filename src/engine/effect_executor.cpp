@@ -945,6 +945,10 @@ void EffectExecutor::leftBoard(GameObjectId object) {
     if (state_.chain.resuming.has_value() && state_.chain.resuming->source == object &&
         state_.chain.resuming->is_ability)
         state_.chain.resuming->source_left_board = true;
+    // "Do this to it at <time>" abilities about this object end with it (CR
+    // 391.5.a, DelayedAbility::subject): the object that comes back is new.
+    std::erase_if(state_.delayed_abilities,
+                  [object](const DelayedAbility& da) { return da.subject == object; });
     {
         auto& obj = state_.getObject(object);
         if (obj.attached_to.has_value()) unattachGear(object);
@@ -2941,6 +2945,12 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     // A played card leaves the zone it is played from. Done here so no caller
     // can leave it listed in a hand, trash, banishment or deck while it is
     // also on the board (callers that already took it out lose nothing).
+    // Whether it is played from a hand ("from anywhere other than your hand":
+    // Heart of the Tempest, finding G11). An effect may play a card from a
+    // hand (Ava Achiever), a trash, Banishment, a deck or the Champion Zone.
+    bool from_hand = false;
+    for (const auto& zps : state_.players)
+        if (std::find(zps.hand.begin(), zps.hand.end(), card) != zps.hand.end()) from_hand = true;
     for (auto& zps : state_.players) {
         auto drop = [&](std::vector<GameObjectId>& v) {
             v.erase(std::remove(v.begin(), v.end(), card), v.end());
@@ -2967,6 +2977,8 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
         obj.location = std::nullopt;
         auto& sps = state_.player(player);
         sps.cards_played_this_turn++;
+        // Announced as it resolves (CR 420.4.a; finding G12).
+        obj.card_counters[Card::kPlayedNotFromHand] = from_hand ? 0 : 1;
         events_.emit(CardPlayedEvent{card, player, obj.card_type,
                                      sps.cards_played_this_turn});
         queue_spell_(player, card);
@@ -3027,6 +3039,8 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
 
     events_.emit(CardPlayedEvent{card, player, obj.card_type,
         ps.cards_played_this_turn});
+    if (!from_hand && state_.objectExists(card))
+        events_.emit(ObjectStateChangedEvent{card, "played_not_from_hand"});
     events_.emit(EnteredBoardEvent{card, player, obj.card_type,
         final_loc, true});
     return true;

@@ -315,7 +315,12 @@ TEST_F(VendettaD, Vendetta_Sanction_EmpowerThenDisempowerAtEndOfTurn) {
 
     EXPECT_EQ(first_prompt_options, 1) << "nothing is Empowered, so only the first mode is offered";
     EXPECT_TRUE(state.getObject(unit).isEmpowered());
-    EXPECT_EQ(state.getObject(unit).empower_flip_eot, -1);
+    // "Disempower it at end of turn": a delayed ability (finding G13; it was
+    // a flag the Expiration Step flipped). ability_index 0 = disempower.
+    ASSERT_EQ(state.delayed_abilities.size(), 1u);
+    EXPECT_EQ(state.delayed_abilities[0].trigger, TriggerType::AtEndOfTurn);
+    EXPECT_EQ(state.delayed_abilities[0].subject, unit);
+    EXPECT_EQ(state.delayed_abilities[0].ability_index, 0);
 }
 
 TEST_F(VendettaD, Vendetta_Sanction_DisempowerThenEmpowerAtEndOfTurn) {
@@ -335,7 +340,10 @@ TEST_F(VendettaD, Vendetta_Sanction_DisempowerThenEmpowerAtEndOfTurn) {
     EXPECT_EQ(offered, std::vector<GameObjectId>{empowered})
         << "the second mode only chooses Empowered units";
     EXPECT_FALSE(state.getObject(empowered).isEmpowered());
-    EXPECT_EQ(state.getObject(empowered).empower_flip_eot, 1);
+    // "Empower it at end of turn": ability_index 1 (finding G13).
+    ASSERT_EQ(state.delayed_abilities.size(), 1u);
+    EXPECT_EQ(state.delayed_abilities[0].subject, empowered);
+    EXPECT_EQ(state.delayed_abilities[0].ability_index, 1);
     EXPECT_FALSE(state.getObject(plain).isEmpowered());
 }
 

@@ -43,12 +43,22 @@ public:
         GameObjectId picked = pickTarget(ctx, "Sanction", mode == 0 ? any : empowered);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        if (mode == 0) {
-            ctx.executor.empower(picked);
-            ctx.state.getObject(picked).empower_flip_eot = -1;
-        } else if (ctx.executor.disempower(picked)) {
-            ctx.state.getObject(picked).empower_flip_eot = 1;
-        }
+        // "... it at end of turn": a delayed ability of the Ending Step
+        // (finding G13): 0 "Disempower it", 1 "Empower it".
+        if (mode == 0) ctx.executor.empower(picked);
+        else ctx.executor.disempower(picked);
+        atEndOfTurnAbout(ctx, cardDefId(), picked, mode);
+    }
+    // The delayed ability (CR 317.1.a). It ended if the unit left the board
+    // (DelayedAbility::subject), so the unit is the one this spell chose.
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (ctx.firing_trigger != TriggerType::AtEndOfTurn) return;
+        const auto& ri = ctx.state.chain.resuming;
+        if (!ri.has_value()) return;
+        const GameObjectId it = ri->triggering_subject;
+        if (it == kInvalidId || !ctx.state.objectExists(it)) return;
+        if (ri->ability_index == 0) ctx.executor.disempower(it);
+        else ctx.executor.empower(it);
     }
 private:
     const CardDef def_ = [] {

@@ -20,11 +20,16 @@ public:
     // (CR 812: another card played this turn) there is nothing to choose.
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // [Legion] — the ability is Active only if another card was played this
+    // turn, and only an Active ability triggers (CR 727.1.c.1, 812.1.c):
+    // judged as I am played. Off, nothing goes on the chain (finding G9).
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return legionActive(state, controller);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        std::vector<GameObjectId> units;
-        if (ctx.state.player(ctx.controller).cards_played_this_turn >= 2)
-            units = chooseableUnits(ctx.state, ctx.controller,
-                                    [](const GameObject&) { return true; });
+        std::vector<GameObjectId> units = chooseableUnits(ctx.state, ctx.controller,
+                                                          [](const GameObject&) { return true; });
         std::sort(units.begin(), units.end());
         const GameObjectId t = pickTarget(ctx, "Dangerous Duo: give a unit +2 [M]", units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

@@ -21,18 +21,23 @@ public:
     // 718.2): an equipped trigger, fired by TriggerManager at the end of the
     // bearer's controller's turn.
     TriggerType equippedTriggerType() const override { return TriggerType::AtEndOfTurn; }
+    // "if I didn't conquer this turn" is part of the trigger condition (CR
+    // 383.2.a.1; finding G9): a bearer that conquered puts nothing on the
+    // chain. The subject is the bearer.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId unit) const override {
+        if (unit == kInvalidId || !state.objectExists(unit)) return false;
+        const auto& c = state.getObject(unit).card_counters;
+        const auto it = c.find("__conquered_turn");
+        return it == c.end() || it->second != state.turn.turn_number;
+    }
     void onEquippedTrigger(CardContext& ctx, GameObjectId unit_id,
                            const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source) || !ctx.state.objectExists(unit_id)) return;
         const auto& gear = ctx.state.getObject(ctx.source);
         // Still attached to that unit, which is still on the board.
         if (!gear.attached_to.has_value() || *gear.attached_to != unit_id) return;
-        const auto& unit = ctx.state.getObject(unit_id);
-        if (!unit.location.has_value()) return;
-        auto it = unit.card_counters.find("__conquered_turn");
-        bool conquered_this_turn = (it != unit.card_counters.end() &&
-                                    it->second == ctx.state.turn.turn_number);
-        if (conquered_this_turn) return;
+        if (!ctx.state.getObject(unit_id).location.has_value()) return;
         RIFT_TRACE(ctx.events, "BLIGHTED BATTLEAXE: no conquer this turn — "
                             "unattach + deal 4 to bearer");
         ctx.executor.unattachGear(ctx.source);

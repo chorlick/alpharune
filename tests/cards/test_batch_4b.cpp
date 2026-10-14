@@ -60,6 +60,7 @@ constexpr CardDefId kStupefy = 95;
 constexpr CardDefId kTeemoStrategist = 121;
 constexpr CardDefId kNocturneHorrifying = 194;
 constexpr CardDefId kBreakneckMech = 394;
+constexpr CardDefId kVayneHunter = 35;   // "When I conquer, you may pay [1] to return me ..."
 constexpr CardDefId kExperimentalHexplate = 396;
 constexpr CardDefId kRocketBarrage = 400;   // [4][B]: Deal 4 to a unit in a base.
 
@@ -1200,6 +1201,46 @@ TEST_F(Batch4bTest, Gate_AnEquipmentsMechTagIsSeenByMechAurasInTheSamePass) {
         EXPECT_TRUE(ganking);
         EXPECT_TRUE(deflect);
     }
+}
+
+// H1 with batch 1b's combat end (CR 468.5-468.7: control is established and
+// the conquer abilities resolve before the combat ends): the "this combat"
+// Shield is still on while a conquer ability is finalized, and gone once the
+// combat has ended.
+TEST_F(Batch4bTest, H1_TheThisCombatShieldLastsThroughTheConquerAbilitiesAndEndsWithTheCombat) {
+    battlefieldCard(0, kFortifiedPosition);
+    addUnit(P1, kShipyardSkulker, 1, 0);                   // the defender, dies
+    auto vayne = addUnit(P2, kVayneHunter, 0, 0);          // 2 [M], [Assault 3]
+    ps(P2).rune_pool.energy = 1;                            // Vayne's "may" is offered
+    auto& b = state.battlefields[0];
+    b.controller = P1;
+    b.is_contested = true;
+    b.contested_by = P2;
+    b.combat_staged = true;
+    EnginePathAgent p1(EnginePathAgent::choosing(vayne));  // Fortified Position: Vayne
+    bool asked = false, shield_then = false;
+    GameEngine* live = nullptr;
+    EnginePathAgent p2([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label.find("Vayne") != std::string::npos) {
+                asked = true;
+                shield_then = live->state().getObject(vayne).hasKeyword(Keyword::Shield);
+            }
+        for (const auto& i : legal)
+            if (i.choice_label.rfind("No", 0) == 0) return i;
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        live = &e;
+        e.testHook_runCombat(BattlefieldId::fromRaw(0));
+        e.testHook_cleanup();   // the Cleanup a game runs after the combat
+        live = nullptr;
+    }, &p1, &p2, P2);
+    ASSERT_TRUE(asked) << "Vayne conquered and her ability was finalized";
+    EXPECT_TRUE(shield_then) << "the combat had not ended yet";
+    EXPECT_EQ(state.battlefields[0].controller, std::optional<PlayerId>{P2});
+    EXPECT_FALSE(o(vayne).hasKeyword(Keyword::Shield)) << "\"this combat\": over";
+    EXPECT_TRUE(state.combat_keywords.empty());
 }
 
 }  // namespace riftbound::test::batch_4b

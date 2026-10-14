@@ -15,12 +15,22 @@ class ObeliskOfPower : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
     // "At the start of each player's first Beginning Phase, that player channels
-    //  1 rune." Fires for the turn player; gate to their FIRST turn only.
+    //  1 rune." The ability is the battlefield controller's (CR 190.6.a; the
+    //  turn player's while it is uncontrolled, 190.6.b); "that player" is the
+    //  player whose Beginning Phase it is. "first" is part of the trigger
+    //  condition (CR 383.1): a later Beginning Phase puts nothing on the
+    //  chain (findings G9, G10).
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.turn.turn_player != PlayerId::None &&
+               state.player(state.turn.turn_player).turns_taken == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (ctx.state.player(ctx.controller).turns_taken != 1) return;  // first only
-        ctx.executor.channelRunes(ctx.controller, 1);
-        RIFT_TRACE(ctx.events, "OBELISK OF POWER: first Beginning Phase -> channel 1 rune");
+        const PlayerId that_player = ctx.state.turn.turn_player;   // still their Beginning Phase
+        ctx.executor.channelRunes(that_player, 1);
+        RIFT_TRACE(ctx.events, "OBELISK OF POWER: first Beginning Phase -> " +
+                            std::string(toString(that_player)) + " channels 1 rune");
     }
 private:
     const CardDef def_ = [] {

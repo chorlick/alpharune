@@ -15,23 +15,18 @@ class LadyOfLuminosityStarter : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you play a spell that costs [5] or more, draw 1." The spell is the
-    // trigger's subject (TriggerManager::onSpellResolved); wherever it went
-    // afterwards (trash, banished for Flow, back in a deck), its cost is the
-    // Energy cost printed on its card.
+    // trigger's subject (TriggerManager::onSpellResolved); its cost is the
+    // Energy cost printed on its card. "that costs [5] or more" is the
+    // trigger condition itself (CR 383.1): a cheaper spell puts nothing on
+    // the chain (finding G9).
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
+    bool triggerConditionOn(const GameState& state, const TriggerEvent& ev) const override {
+        if (ev.subject == kInvalidId || !state.objectExists(ev.subject)) return false;
+        return state.getObject(ev.subject).isSpell() && ev.subject_card != nullptr &&
+               ev.subject_card->energy_cost >= 5;
+    }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        const GameObjectId spell_id = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        if (spell_id == kInvalidId || !ctx.state.objectExists(spell_id)) return;
-        const auto& spell = ctx.state.getObject(spell_id);
-        if (!spell.isSpell() || spell.card_def_id == kInvalidId) return;
-        const int printed = ctx.executor.cardDB().get(spell.card_def_id).energy_cost;
-        if (printed < 5) {
-            RIFT_TRACE(ctx.events, "LADY OF LUMINOSITY: spell cost " +
-                                std::to_string(printed) + " < 5 — no draw");
-            return;
-        }
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "LADY OF LUMINOSITY: played [5]+ spell -> draw 1");
     }

@@ -36,19 +36,25 @@ public:
         return out;
     }
 
+    // "At the start of YOUR Beginning Phase": "you" is this battlefield's
+    // controller (CR 190.6.d), who controls the ability (190.6.a). So it
+    // triggers only in its controller's Beginning Phase; in the other
+    // player's, or while nobody controls it ("'you' refers to no one"),
+    // nothing goes on the chain (finding G10; judge question 9 (b)).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        for (const auto& bf : state.battlefields)
+            if (bf.card_object_id == source)
+                return bf.controller.has_value() && *bf.controller == state.turn.turn_player;
+        return false;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "your Beginning Phase": "you" is this battlefield's controller
-        // (CR 190.6.d); uncontrolled, the ability does nothing.
-        bool mine = false;
-        for (const auto& bf : ctx.state.battlefields)
-            if (bf.card_object_id == ctx.source)
-                mine = bf.controller.has_value() && *bf.controller == ctx.controller;
         // "kill a unit you control here" is the cost: it is paid as the
         // ability is finalized (CR 383.3), with a unit the controller picks.
-        // Both conditions are the "may"'s, with no return ahead of it: when
-        // one fails confirmOptional stores the "no" on the chain item, so the
+        // It is the "may"'s condition, with no return ahead of it: when it
+        // fails confirmOptional stores the "no" on the chain item, so the
         // resolution asks nothing if a unit has arrived here since.
-        auto still_legal = [&]() { return mine && !unitsHere(ctx).empty(); };
+        auto still_legal = [&]() { return !unitsHere(ctx).empty(); };
         int conf = confirmOptional(ctx,
             "Dusk Rose Lab: kill a unit here to draw 1?", still_legal);
         if (conf < 1) return;    // waiting for the agent, declined, or no unit here

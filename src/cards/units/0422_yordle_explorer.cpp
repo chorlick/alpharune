@@ -17,13 +17,14 @@ public:
     // "When you play a card with Power cost [A][A] or more, draw 1." ([A][A] = 2 Power)
     // The played card is the trigger's subject (unit, gear or spell).
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayACard; }
+    // "a card with Power cost [A][A] or more" is the trigger condition (CR
+    // 383.1): the card played is the subject, its Power cost the printed one
+    // (a token without a card has none). Anything cheaper puts nothing on the
+    // chain.
+    bool triggerConditionOn(const GameState& /*state*/, const TriggerEvent& ev) const override {
+        return ev.subject_card != nullptr && ev.subject_card->power_cost >= 2;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const GameObjectId played = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        if (played == kInvalidId || !ctx.state.objectExists(played)) return;
-        const CardDefId played_def = ctx.state.getObject(played).card_def_id;
-        if (played_def == kInvalidId) return;   // a token without a card has no cost
-        if (ctx.executor.cardDB().get(played_def).power_cost < 2) return;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "YORDLE EXPLORER: played [A][A]+ card -> draw 1");
     }

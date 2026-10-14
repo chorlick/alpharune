@@ -168,7 +168,16 @@ struct CombatStartedEvent {
     PlayerId defender;
 };
 
-/// Combat ended at a battlefield.
+/// A combat's result is determined (CR 468.3): "When you win a combat"
+/// triggers now and resolves before control is established (468.4).
+struct CombatResultEvent {
+    BattlefieldId battlefield;
+    std::optional<PlayerId> winner;   // none: No Result (468.3.d)
+};
+
+/// Combat ended at a battlefield (CR 468.7): after control was established
+/// and what that queued resolved; the designations are removed, "this combat"
+/// effects end, end-of-combat abilities trigger.
 struct CombatEndedEvent {
     BattlefieldId battlefield;
     std::optional<PlayerId> winner;
@@ -425,6 +434,7 @@ public:
     boost::signals2::signal<void(const PhaseChangedEvent&)>       on_phase_changed;
     boost::signals2::signal<void(const PriorityGrantedEvent&)>    on_priority_granted;
     boost::signals2::signal<void(const CombatStartedEvent&)>      on_combat_started;
+    boost::signals2::signal<void(const CombatResultEvent&)>       on_combat_result;
     boost::signals2::signal<void(const CombatEndedEvent&)>        on_combat_ended;
     boost::signals2::signal<void(const ShowdownStartedEvent&)>    on_showdown_started;
     boost::signals2::signal<void(const ShowdownEndedEvent&)>      on_showdown_ended;
@@ -467,6 +477,7 @@ public:
     void emit(const PhaseChangedEvent& e);
     void emit(const PriorityGrantedEvent& e);
     void emit(const CombatStartedEvent& e);
+    void emit(const CombatResultEvent& e);
     void emit(const CombatEndedEvent& e);
     void emit(const ShowdownStartedEvent& e);
     void emit(const ShowdownEndedEvent& e);

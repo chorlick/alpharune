@@ -19,6 +19,15 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIHold};
     }
+    // "When you play me TO A BATTLEFIELD": where I was played is the trigger
+    // condition (CR 383.1). Played to my base, nothing goes on the chain
+    // (finding G9). I have entered when the play is announced (CR
+    // 383.4.a.2), so where I am is where I was played.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (trigger != TriggerType::WhenYouPlayMe) return true;
+        return state.objectExists(source) && state.getObject(source).battlefieldId().has_value();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
             if (finalizingChoices(ctx)) return;   // no choices

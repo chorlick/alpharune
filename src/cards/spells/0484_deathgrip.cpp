@@ -24,7 +24,7 @@ public:
     // {unit to kill, unit to pump} for every ordered pair of friendly units.
     // With a single friendly unit the spell is still playable on it alone
     // (kill it, no pump, draw 1). Whether CR 355.8 requires "another friendly
-    // unit" at finalization is judge question 9 (docs/judge-questions-2026-10.md;
+    // unit" at finalization is judge question 11 (docs/judge-questions-2026-10.md;
     // testing phase D28), pinned by C3Test.Deathgrip_IsPlayableOnASingleFriendlyUnit.
     std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
         const GameState& state, PlayerId controller) const override {

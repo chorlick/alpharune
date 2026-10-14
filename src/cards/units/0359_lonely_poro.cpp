@@ -24,7 +24,7 @@ public:
     // The same reading as the other printing, Lonely Poro 777. (It used to
     // read the board as the ability resolved: units that died with it were
     // gone by then, and a unit that arrived since cancelled the draw. Whether
-    // units that die together leave it "alone" is judge question 8,
+    // units that die together leave it "alone" is judge question 12,
     // docs/judge-questions-2026-10.md; testing phase D80.)
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;

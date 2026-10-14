@@ -23,18 +23,23 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayACard, TriggerType::WhenYouActivateAnAbility};
     }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const auto& ri = ctx.state.chain.resuming.value();
-        // Whether the event is one this ability answers. No return here when
-        // it is not: the "may" below is then not available, and
-        // confirmOptional stores the "no" on the item.
-        bool applies = ri.triggering_spell_energy_spent >= 7;
-        if (applies && ctx.firing_trigger != TriggerType::WhenYouActivateAnAbility) {
-            const GameObjectId played = ri.triggering_subject;
-            applies = played != kInvalidId && ctx.state.objectExists(played) &&
-                      (ctx.state.getObject(played).isUnit() ||
-                       ctx.state.getObject(played).isGear());
+    // "a unit, gear, or activated ability with Energy cost [7] or more" is the
+    // trigger condition itself (CR 383.1, 383.2.a.1): a spell, or anything
+    // cheaper, puts nothing on the chain (finding G9: 14 empty items in one
+    // game). A card's Energy cost is the printed one, however it was played
+    // (from hand, hidden, by an effect); an ability's is the cost of that
+    // ability, stamped on its source as it is activated.
+    bool triggerConditionOn(const GameState& state, const TriggerEvent& ev) const override {
+        if (ev.subject == kInvalidId || !state.objectExists(ev.subject)) return false;
+        const auto& subject = state.getObject(ev.subject);
+        if (ev.trigger == TriggerType::WhenYouActivateAnAbility) {
+            const auto it = subject.card_counters.find("__ability_energy_cost");
+            return it != subject.card_counters.end() && it->second >= 7;
         }
+        if (!subject.isUnit() && !subject.isGear()) return false;
+        return ev.subject_card != nullptr && ev.subject_card->energy_cost >= 7;
+    }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
 
         // "runes", with no "friendly" (Sona 73) or "your" (Ekko 110): the word
         // refers to any rune on the board (CR 133.3.a, 355.9.a.1) and only a
@@ -57,7 +62,7 @@ public:
         // 355.13), so it is offered with no exhausted rune too.
         // (judge ruling 2026-10-11: confirmed — she may exhaust to ready zero runes; plans/09 9.Z4.)
         auto still_legal = [&]() {
-            return applies && ctx.state.objectExists(ctx.source) &&
+            return ctx.state.objectExists(ctx.source) &&
                    !ctx.state.getObject(ctx.source).is_exhausted;
         };
         int conf = confirmOptional(ctx, "Curator of the Sands: exhaust to ready up to 2 runes?",

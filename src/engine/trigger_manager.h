@@ -98,6 +98,7 @@ private:
 
     /// Fires WhenIWinCombat for each surviving unit at the BF controlled
     /// by the combat winner. No-op when there's no decisive winner.
+    void onCombatResult(const CombatResultEvent& e);
     void onCombatEnded(const CombatEndedEvent& e);
 
     /// Fires WhenIDie/Deathknell for the dying unit.
@@ -161,6 +162,14 @@ private:
 
     /// "Your [Temporary] effects at my battlefield don't trigger."
     bool temporaryTriggerSuppressed(GameObjectId source) const;
+
+    /// "When you play a card from anywhere other than your hand": the play of
+    /// `card` by `controller` is completed (CR 420.4.a).
+    void announcePlayedNotFromHand(GameObjectId card, PlayerId controller);
+
+    /// What Card::triggerConditionOn is asked with.
+    Card::TriggerEvent triggerEventFor(GameObjectId source, PlayerId controller,
+                                       TriggerType trigger, GameObjectId subject) const;
 
     /// Queue one chain item per instance of `keyword`'s own triggered ability
     /// on `object` (engine/keyword_abilities.h).

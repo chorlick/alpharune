@@ -18,6 +18,14 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquerOrHold};
     }
+    // [Level 6][>] "When you play me, draw 1": Active only while I have 6+
+    // XP (CR 824.1.c), and only an Active ability triggers (727.1.c.1):
+    // judged as I am played; XP spent in response changes nothing.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (trigger == TriggerType::WhenYouPlayMe) return state.player(controller).xp >= 6;
+        return true;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenIConquerOrHold) {
             // [Hunt] — gain 1 XP on conquer or hold.
@@ -25,8 +33,6 @@ public:
             return;
         }
         if (ctx.firing_trigger == TriggerType::WhenYouPlayMe) {
-            // [Level 6] — only with 6+ XP.
-            if (ctx.state.player(ctx.controller).xp < 6) return;
             ctx.executor.drawCards(ctx.controller, 1);
             RIFT_TRACE(ctx.events, "WUJU APPRENTICE: Level 6, draw 1");
         }

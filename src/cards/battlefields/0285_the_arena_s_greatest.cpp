@@ -14,17 +14,22 @@ namespace {
 class TheArenaSGreatest : public BattlefieldCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "At the start of each player's first Beginning Phase, that player gains
+    //  1 point." The ability is the battlefield controller's (CR 190.6.a; the
+    //  turn player's while it is uncontrolled, 190.6.b); "that player" is the
+    //  player whose Beginning Phase it is. "first" is part of the trigger
+    //  condition (CR 383.1): a later Beginning Phase puts nothing on the
+    //  chain (findings G9, G10).
     TriggerType triggerType() const override { return TriggerType::AtStartOfBeginning; }
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.turn.turn_player != PlayerId::None &&
+               state.player(state.turn.turn_player).turns_taken == 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // "first Beginning Phase" per player: gate by player index key.
-        std::string key = "__arenas_greatest_fired_" +
-                          std::to_string(playerIndex(ctx.controller));
-        if (self.card_counters[key] != 0) return;  // already fired for this player
-        self.card_counters[key] = 1;
-        ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
-        const auto& ps = ctx.state.player(ctx.controller);
+        const PlayerId that_player = ctx.state.turn.turn_player;   // still their Beginning Phase
+        ctx.executor.scorePoints(that_player, 1);   // CR 194.1.c
+        const auto& ps = ctx.state.player(that_player);
         RIFT_TRACE(ctx.events, "THE ARENA'S GREATEST: first Beginning Phase -> +1 point ("
                             + std::to_string(ps.score) + ")");
     }

@@ -69,7 +69,6 @@ inline void forgetBoardState(GameObject& obj, const CardDef* def) {
     obj.is_stunned = false;
     obj.combat_designation = CombatDesignation::None;
     obj.empowered = 0;
-    obj.empower_flip_eot = 0;
     obj.empower_cost_reduction = 0;
     obj.is_rules_text_inactive = false;
     // Controlled: in a non-board zone a card is its owner's (CR 191.5.a.1).
@@ -144,7 +143,7 @@ inline void forgetBoardState(GameObject& obj, const CardDef* def) {
 inline bool carriesBoardState(const GameObject& obj) {
     return obj.is_exhausted || obj.is_stunned ||
            obj.combat_designation != CombatDesignation::None || obj.empowered != 0 ||
-           obj.empower_flip_eot != 0 || obj.damage_marked != 0 || obj.buff_count != 0 ||
+           obj.damage_marked != 0 || obj.buff_count != 0 ||
            obj.temp_buff_count != 0 || obj.temp_might_bonus != 0 ||
            obj.temp_keywords.bits != 0 || obj.granted_keywords.bits != 0 ||
            obj.temp_assault_value != 0 || obj.temp_shield_value != 0 ||

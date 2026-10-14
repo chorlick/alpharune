@@ -186,6 +186,14 @@ public:
                 order_prompts.push_back(legal);
                 return order_pick ? order_pick(legal) : legal.front();
             }
+            // Where the next staged showdown or combat begins (CR 323.11 /
+            // 323.12; GameEngine::chooseNextStaged): an engine prompt too,
+            // kept apart and answered with the first option (the lowest
+            // battlefield) unless the test sets `begin_pick`.
+            if (isBeginPrompt(legal)) {
+                begin_prompts.push_back(legal);
+                return begin_pick ? begin_pick(legal) : legal.front();
+            }
             prompts.push_back(legal);
             if (pick) return pick(legal);
             // No picker. The default is the first option, except at a Predict
@@ -205,6 +213,16 @@ public:
     /// picker for them (see selectAction).
     std::vector<std::vector<Intent>> order_prompts;
     Picker order_pick;
+    /// Every "where does the next showdown / combat begin" prompt, and an
+    /// optional picker for them (see selectAction).
+    std::vector<std::vector<Intent>> begin_prompts;
+    Picker begin_pick;
+    static bool isBeginPrompt(const std::vector<Intent>& legal) {
+        return !legal.empty() && std::all_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return i.choice_label.rfind("Combat begins at \xE2\x80\x94 ", 0) == 0 ||
+                   i.choice_label.rfind("Showdown begins at \xE2\x80\x94 ", 0) == 0;
+        });
+    }
     static bool isTriggerOrderPrompt(const std::vector<Intent>& legal) {
         return !legal.empty() && std::all_of(legal.begin(), legal.end(), [](const Intent& i) {
             return i.choice_label.rfind("Order \xE2\x80\x94 ", 0) == 0;
@@ -960,6 +978,27 @@ protected:
     /// not exist — that is how the target-less-trigger cards (plans/07 item
     /// 7.1) passed their tests. For a trigger that chooses something use
     /// fireTriggerThroughEngine / playThroughEngine.
+    /// Whether `source`'s ability for `trigger` triggers now: the question
+    /// TriggerManager asks before it puts anything on the chain
+    /// (Card::triggerConditionOn, with the subject's printed card). A
+    /// condition printed with the trigger is judged here, not by onTrigger
+    /// (CR 383.2.a.1), so a direct-call test of "the condition is false"
+    /// asks this instead of firing the ability.
+    bool triggersNow(CardDefId def_id, PlayerId controller, GameObjectId source,
+                     TriggerType trigger, GameObjectId subject = kInvalidId) {
+        const Card* card = card_registry.get(def_id);
+        if (!card) return false;
+        Card::TriggerEvent ev;
+        ev.source = source;
+        ev.controller = controller;
+        ev.trigger = trigger;
+        ev.subject = subject;
+        if (subject != kInvalidId && state.objectExists(subject) &&
+            state.getObject(subject).card_def_id != kInvalidId)
+            ev.subject_card = card_registry.classDef(state.getObject(subject).card_def_id);
+        return card->triggerConditionOn(state, ev);
+    }
+
     void fireTriggerAs(CardDefId def_id, PlayerId controller, GameObjectId source,
                        TriggerType firing, EffectExecutor& exec) {
         Card* card = card_registry.get(def_id);

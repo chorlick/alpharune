@@ -670,7 +670,14 @@ private:
     bool checkWinCondition();
     void processLethalDamage();
     void updateBattlefieldControl();
+    /// CR 323.6.a / 468.5.c: hidden cards at `bf` whose controller does not
+    /// control it go to their owner's trash.
+    void removeForeignHiddenCards(BattlefieldId bf);
     void processContestedBattlefields();
+    /// CR 323.11 / 323.12: the battlefield where the next staged showdown (or,
+    /// with none, combat) begins — the turn player's choice when there are
+    /// several. kInvalidId when nothing is staged.
+    BattlefieldId chooseNextStaged(bool& is_combat);
 
     // ── Combat ──
     void runShowdown(BattlefieldId bf);

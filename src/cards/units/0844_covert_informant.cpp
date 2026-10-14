@@ -20,9 +20,14 @@ public:
     EmpowerSpec empowerSpec() const override { return empowerCost(3); }
     // "[Empowered][>] When I move, draw 1."
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
+    // [Empowered][>] "When I move, draw 1": Active only while I'm Empowered,
+    // and only an Active ability triggers (CR 727.1.c.1): judged at the move.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isEmpowered();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        if (!ctx.state.getObject(ctx.source).isEmpowered()) return;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "COVERT INFORMANT: moved while Empowered -> draw 1");
     }

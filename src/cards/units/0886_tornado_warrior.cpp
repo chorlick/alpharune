@@ -53,6 +53,16 @@ public:
         return out;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        if (ctx.firing_trigger == TriggerType::AtEndOfTurn) {
+            // "Disempower it at end of turn": the delayed ability (finding G13).
+            const auto& ri = ctx.state.chain.resuming;
+            const GameObjectId it = ri.has_value() ? ri->triggering_subject : kInvalidId;
+            if (it == kInvalidId || !ctx.state.objectExists(it)) return;
+            ctx.executor.disempower(it);
+            RIFT_TRACE(ctx.events, "TORNADO WARRIOR: end of turn -> disempower " +
+                                ctx.state.getObject(it).name);
+            return;
+        }
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& self = ctx.state.getObject(ctx.source);
         const auto& ri = ctx.state.chain.resuming;
@@ -68,11 +78,10 @@ public:
         if (conf < 1) return;
         GameObjectId picked = pickTarget(ctx, "Tornado Warrior: empower", empowerableHere(ctx));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        if (ctx.executor.empower(picked)) {
-            ctx.state.getObject(picked).empower_flip_eot = -1;   // disempower at end of turn
-            RIFT_TRACE(ctx.events, "TORNADO WARRIOR: empowered " +
-                                ctx.state.getObject(picked).name + " until end of turn");
-        }
+        ctx.executor.empower(picked);
+        atEndOfTurnAbout(ctx, cardDefId(), picked);   // "Disempower it at end of turn."
+        RIFT_TRACE(ctx.events, "TORNADO WARRIOR: empowered " +
+                            ctx.state.getObject(picked).name + " until end of turn");
     }
 private:
     const CardDef def_ = [] {

@@ -18,16 +18,14 @@ public:
 
     // "When you play a spell that costs [5] or more, give me +3 [M] this turn."
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
+    // "a spell that costs [5] or more" is the trigger condition (CR 383.1):
+    // the spell that was played is the trigger's subject, its cost the one
+    // printed on its card. A cheaper spell puts nothing on the chain.
+    bool triggerConditionOn(const GameState& state, const TriggerEvent& ev) const override {
+        if (ev.subject == kInvalidId || !state.objectExists(ev.subject)) return false;
+        return ev.subject_card != nullptr && ev.subject_card->energy_cost >= 5;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "a spell that costs [5] or more": the spell that was played is the
-        // trigger's subject (wherever it went after resolving — trash,
-        // banishment or back into the deck), not "the newest spell in trash".
-        const GameObjectId spell = ctx.state.chain.resuming.has_value()
-            ? ctx.state.chain.resuming->triggering_subject : kInvalidId;
-        if (spell == kInvalidId || !ctx.state.objectExists(spell)) return;
-        const CardDefId spell_def = ctx.state.getObject(spell).card_def_id;
-        if (spell_def == kInvalidId) return;
-        if (ctx.executor.cardDB().get(spell_def).energy_cost < 5) return;
         // "give me": only while I'm still on the board.
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;
         ctx.executor.giveTemporaryMight(ctx.source, 3);

@@ -923,6 +923,18 @@ struct DelayedAbility {
     // subject (Deadly Flourish: "when IT dies"). kInvalidId = no filter,
     // fires on any matching trigger.
     GameObjectId target_filter = kInvalidId;
+
+    /// The object a "do this to IT at <time>" ability is about ("Disempower it
+    /// at end of turn": Tornado Warrior, Sanction). Handed to the ability as
+    /// its chain item's triggering_subject when it fires. Its window lasts as
+    /// long as that object is on the board (CR 391.5.a): EffectExecutor::
+    /// leftBoard removes the ability when the object leaves (a card played
+    /// again is a new object, CR 124.1).
+    GameObjectId subject = kInvalidId;
+    /// Which of its card's delayed abilities this is, for a card that makes
+    /// more than one kind (Sanction: 0 "disempower it", 1 "empower it");
+    /// handed to the ability as its chain item's ability_index.
+    int ability_index = 0;
 };
 
 // ─── Complete Game State ─────────────────────────────────────────────────────

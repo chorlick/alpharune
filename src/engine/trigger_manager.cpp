@@ -67,6 +67,8 @@ void TriggerManager::subscribe() {
         [this](const EnteredBoardEvent& e) { onEnteredBoard(e); }));
     connections_.push_back(events_.on_combat_started.connect(
         [this](const CombatStartedEvent& e) { onCombatStarted(e); }));
+    connections_.push_back(events_.on_combat_result.connect(
+        [this](const CombatResultEvent& e) { onCombatResult(e); }));
     connections_.push_back(events_.on_combat_ended.connect(
         [this](const CombatEndedEvent& e) { onCombatEnded(e); }));
     connections_.push_back(events_.on_unit_died.connect(
@@ -178,7 +180,8 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         for (auto& item : state_.chain.items) {
             if (item.id != item_id) continue;
             item.fired_trigger = trigger;
-            item.triggering_subject = event_object;
+            item.triggering_subject = da.subject != kInvalidId ? da.subject : event_object;
+            item.ability_index = da.ability_index;
             captureSubjectAsItLeft(state_, item);
             item.triggering_move = state_.chain.move_being_announced;
             stampBatch(state_.chain, item);
@@ -215,7 +218,8 @@ void TriggerManager::queueEquippedTrigger(GameObjectId gear_id, GameObjectId uni
     if (gear.card_def_id == kInvalidId) return;
     const Card* gear_card = card_registry_.get(gear.card_def_id);
     if (!gear_card || gear_card->equippedTriggerType() != trigger) return;
-    if (!gear_card->triggerCondition(state_, gear_id, controller, trigger, unit_id)) return;
+    if (!gear_card->triggerConditionOn(state_, triggerEventFor(gear_id, controller, trigger, unit_id)))
+        return;
 
     RIFT_TRACE(events_, "EQUIP_TRIGGER: " + gear.name + " fires on " +
                      (state_.objectExists(unit_id) ? state_.getObject(unit_id).name
@@ -332,6 +336,23 @@ bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
     return false;
 }
 
+// What a trigger condition is judged on: the event, and the printed card of
+// its object (Card::TriggerEvent).
+Card::TriggerEvent TriggerManager::triggerEventFor(GameObjectId source, PlayerId controller,
+                                                   TriggerType trigger,
+                                                   GameObjectId subject) const {
+    Card::TriggerEvent ev;
+    ev.source = source;
+    ev.controller = controller;
+    ev.trigger = trigger;
+    ev.subject = subject;
+    if (subject != kInvalidId && state_.objectExists(subject)) {
+        const CardDefId def = state_.getObject(subject).card_def_id;
+        if (def != kInvalidId) ev.subject_card = card_registry_.classDef(def);
+    }
+    return ev;
+}
+
 bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
                                   int triggering_spell_energy_spent,
                                   TriggerType which,
@@ -355,7 +376,7 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     const Card* card = card_registry_.get(obj.card_def_id);
     // The card's intervening condition ("When a BUFFED friendly unit dies"):
     // if it isn't met the ability does not trigger.
-    if (card && !card->triggerCondition(state_, source, controller, fired, subject))
+    if (card && !card->triggerConditionOn(state_, triggerEventFor(source, controller, fired, subject)))
         return false;
     // "When ONE OR MORE ...": events that happen together trigger it once. An
     // ability of this source for this trigger that has not been finalized yet
@@ -704,6 +725,27 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     if (e.card_type == CardType::Unit) announceUnitPlayed(e.object, e.player);
 }
 
+// "When you play a card from anywhere other than your hand," (Heart of the
+// Tempest): the trash (Flow, a play-from-trash permission, an effect), face
+// down, the Champion Zone, a deck or Banishment by an effect. Announced when
+// the play is completed (CR 420.4.a): a permanent once it has entered, a spell
+// as it resolves (onSpellResolved), never for a countered spell (420.4.a.1).
+void TriggerManager::announcePlayedNotFromHand(GameObjectId card, PlayerId controller) {
+    state_.player(controller).cards_played_not_from_hand_this_turn++;
+    std::vector<GameObjectId> watchers;
+    for (auto& [id, obj] : state_.objects.inPlay()) {
+        if (id == card || obj.controller != controller) continue;
+        if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+        if (obj.card_def_id == kInvalidId) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id,
+                        TriggerType::WhenYouPlayACardNotFromHand))
+            watchers.push_back(id);
+    }
+    for (auto wid : watchers)
+        fireTrigger(wid, controller, 0, TriggerType::WhenYouPlayACardNotFromHand,
+                    /*subject=*/card);
+}
+
 void TriggerManager::onSpellResolved(const SpellResolvedEvent& e) {
     const TriggerEventScope event_scope(state_.chain);
     // CR 420.4.a: "When you play a spell" / "When you play a card" trigger now,
@@ -726,6 +768,12 @@ void TriggerManager::onSpellResolved(const SpellResolvedEvent& e) {
     }
     for (auto& [id, t] : fires)
         fireTrigger(id, e.controller, energy_spent, t, /*subject=*/e.spell);
+    // The same play, completed: if it was not from a hand (finding G12).
+    if (auto it = state_.getObject(e.spell).card_counters.find(Card::kPlayedNotFromHand);
+        it != state_.getObject(e.spell).card_counters.end() && it->second != 0) {
+        it->second = 0;   // announced once, whatever the spell is played as next
+        announcePlayedNotFromHand(e.spell, e.controller);
+    }
 
     // Battlefield cards ("When a player plays a spell, they ..." — Abandoned
     // Hall; Forgotten Library). A battlefield's card object is not at a
@@ -993,7 +1041,12 @@ void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
             fireTrigger(uid, state_.getObject(uid).controller, 0,
                         TriggerType::WhenACombatIWasInEnds);
     }
+}
 
+// CR 468.3: the result is determined; "When you win a combat" abilities
+// trigger now and resolve before control is established (468.4).
+void TriggerManager::onCombatResult(const CombatResultEvent& e) {
+    const TriggerEventScope event_scope(state_.chain);
     // No fire on indecisive combat (both sides emptied, or no recall outcome).
     if (!e.winner.has_value()) return;
     PlayerId winner = *e.winner;
@@ -1518,8 +1571,9 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
             for (auto uid : bearers)
                 fireEquippedTriggers(uid, e.turn_player, TriggerType::AtEndOfTurn);
         }
-        // Battlefield cards with an AtEndOfTurn trigger.
-        fireBattlefieldTriggers(TriggerType::AtEndOfTurn, e.turn_player);
+        // Battlefield cards with an AtEndOfTurn trigger: controlled by the
+        // battlefield's controller (CR 190.6.a, 190.6.b), as above.
+        fireBattlefieldTriggers(TriggerType::AtEndOfTurn, PlayerId::None);
         // Delayed abilities scheduled for end of turn (e.g. Targon's Peak's
         // "ready up to 2 runes at the end of this turn").
         checkDelayedAbilities(TriggerType::AtEndOfTurn, e.turn_player, kInvalidId);
@@ -1548,9 +1602,13 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
                 fireTrigger(ps.legend_zone, e.turn_player, 0, TriggerType::AtStartOfBeginning);
             }
         }
-        // Battlefield cards with an AtStartOfBeginning trigger (Arena's
-        // Greatest, Dusk Rose Lab), attributed to the turn player.
-        fireBattlefieldTriggers(TriggerType::AtStartOfBeginning, e.turn_player);
+        // Battlefield cards with an AtStartOfBeginning trigger (Frozen
+        // Fortress, Dusk Rose Lab, Obelisk of Power, The Arena's Greatest).
+        // The event names no player who controls them: the battlefield's
+        // controller does, the turn player while it is uncontrolled (CR
+        // 190.6.a, 190.6.b; finding G10). Whose phase it is ("your", "each
+        // player's", "that player") is for the card to read.
+        fireBattlefieldTriggers(TriggerType::AtStartOfBeginning, PlayerId::None);
         // [Temporary] (CR 816.1): "At the start of this permanent's
         // controller's Beginning Phase, before scoring, kill this." — a
         // triggered ability, in the same batch as the abilities above, so
@@ -1579,8 +1637,9 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
                 fireTrigger(ps.legend_zone, e.turn_player, 0, TriggerType::AtStartOfMain);
             }
         }
-        // Battlefield cards with an AtStartOfMain trigger.
-        fireBattlefieldTriggers(TriggerType::AtStartOfMain, e.turn_player);
+        // Battlefield cards with an AtStartOfMain trigger: controlled by the
+        // battlefield's controller (CR 190.6.a, 190.6.b), as above.
+        fireBattlefieldTriggers(TriggerType::AtStartOfMain, PlayerId::None);
         // Delayed abilities (Iascylla schedules one of these on hold)
         checkDelayedAbilities(TriggerType::AtStartOfMain, e.turn_player,
                               kInvalidId);
@@ -1770,21 +1829,8 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     }
 
     if (e.what_changed == "played_not_from_hand") {
-        // "When you play a card from anywhere other than your hand," (trash via
-        // Flow, face down, Champion Zone).
-        state_.player(controller).cards_played_not_from_hand_this_turn++;
-        std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects.inPlay()) {
-            if (id == e.object || obj.controller != controller) continue;
-            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
-            if (obj.card_def_id == kInvalidId) continue;
-            if (cardFiresOn(card_registry_, obj.card_def_id,
-                            TriggerType::WhenYouPlayACardNotFromHand))
-                watchers.push_back(id);
-        }
-        for (auto wid : watchers)
-            fireTrigger(wid, controller, 0, TriggerType::WhenYouPlayACardNotFromHand,
-                        /*subject=*/e.object);
+        // A permanent, announced once it has entered (CR 420.4.a, 383.4.a.2).
+        announcePlayedNotFromHand(e.object, controller);
         return;
     }
 

@@ -583,3 +583,13 @@ their Rune Deck (looked at and left), and both players know the rune Twisted Fat
 recycled to the bottom. The engine exposes only the Rune Deck's size to `ObservationTensor` / `InfoSetId`
 and tracks no rune knowledge (plans/09 9.NN4). Missing feature to add in the v6 layout, per observer: the
 known top and bottom runes of each Rune Deck.
+
+## v6 first step: a supervised check before any self-play (2026-10-14)
+
+The v2 failure analysis (trainer `docs/v2-model-failure-analysis.md`) blamed the transformer (per-layer LayerNorm + mean-pool). The owner doubts it, and the evidence does not settle it: the engine then had many defects, 19 of 26 games ended at the 200-turn cap as draws (a value target that is mostly noise makes a constant the best prediction), and the probe reported broken perspective wiring in the features (rebuilt in the 2026-10 fix run). The MLP models never did much better either.
+
+Before any self-play, on the fixed engine and locally (no rented compute):
+1. Generate a fixed set of games (ISMCTS and `random-player`, the deck lists), stored as seed + actions.
+2. Train a v2-shaped transformer, the v6 candidate (pre-norm, value from a global token, no mean-pool) and the v5 MLP to predict a known target from mid-game positions: the winner, and the final score difference.
+3. Read: all fit -> the architecture was not the cause, data and engine were; the v2 shape stays constant on clean data -> the architecture problem is real, and the v6 changes are tested in the same set-up. Nothing fits -> the features do not carry "who is ahead": fix them before anything else.
+Keep `TrunkDifferentiatesDistinctInputs` as a standing test for every model.

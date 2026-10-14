@@ -20,16 +20,7 @@ All 21 items closed: `plans/completed/10-testing-phase.md` (report: `plans/repor
 
 ## Batch 2 — Combat timing and continuous effects
 
-- [ ] **D5** Combat is not a Showdown State for the action generator: spells with neither [Action] nor [Reaction] are offered and played at Focus in a combat, by the defender on the opponent's turn too — CERTAIN
-- [ ] **D13** Combat damage: the attacker's damage is dealt before the defender has assigned — LIKELY
-- [ ] **D23** Trifarian War Camp / Azir, Sovereign (and other continuous effects): Might is not recomputed before the next window or the damage step — a token moved in by Azir's trigger fights without the +1 [M] — CERTAIN
-- [ ] **D26** Vex, Cheerless: an enemy spell played while she is in combat is not taxed — CERTAIN
-- [ ] **D42** Fiora, Victorious: her [Shield] adds nothing to her Might while a chain of the combat showdown is running — LIKELY
-- [ ] **D49** Void Gate: no Bonus Damage for a unit that arrived there earlier on the same chain (Akali, Deadly Weapon's move ability) — LIKELY
-- [ ] **D60** Forbidding Waste: the -2 [M] is missing when the combat goes straight to the damage step — CERTAIN
-- [ ] **D61** Inferna ([Assault 2]) played with [Ambush] into her side's attack is listed as an attacker without the Assault — LIKELY
-- [ ] **D72** Scoring Step: battlefields are held one at a time, each hold's abilities resolved before the next hold — LIKELY
-- [ ] **D76** Wuju Bladesman - Starter: the +2 [M] is missing whenever nothing resolves between "COMBAT:" and the damage step — CERTAIN
+All items closed: `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-2.md`).
 
 ## Batch 3 — Targets, finalization and what goes on the chain: spells without targets, choices at resolution, counters, [Add], Equip and Quick-Draw
 
@@ -83,26 +74,21 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Found by batch 1 (2026-10-11, `plans/reports/batch-1.md` sections 5 and 11) — each is in the batch named
 
-- [ ] **B1** (batch 2) Throughput fell 29% with the one-loop chain (783 -> 550 games/s, 1 thread, fiora vs yi_rebuild): `GameEngine::cleanup` runs 268 times a game and 98% of the passes change nothing. Skip a Cleanup when nothing was emitted or logged since the last one that found nothing (an emission counter on `EventBus`), or an equivalent that is provably the same game; fixed-seed games must be identical before and after, and the number is measured — perf
 - [ ] **B2** (batch 3) `GameEngine::executePlayFromHidden` never clears `__played_from_facedown`; a card played from facedown, returned and played from hand the same turn can read a stale mark. One helper for the three "from face down" cards and an engine-side clear — CODE-ONLY
 - [ ] **B3** (batch 4b) Immortal Phoenix 37: `WhenYouKillAUnitWithASpell` is also dispatched to a Phoenix on the board, which is not "play me from your trash" — CODE-ONLY
-- [ ] **B4** (batch 2) Yeti Brawler 580: `PlayerState::excess_combat_damage` / `last_combat_bf` are "most recent combat" values; a second combat in the turn overwrites what an earlier conquer's ability should read — CODE-ONLY
 - [ ] **B5** (batch 3) Zed, From the Shadows 810: the token's destination is chosen at resolution (no finalize pass) — CODE-ONLY
 - [ ] **B6** (batch 4b) "First time each turn" cards (Wraith of Echoes, Lucian, Merciless, Draven, Audacious) count from their own "performed" counter: one that enters after the event already happened this turn still triggers on the next — CODE-ONLY
 - [ ] **B7** (batch 4b) `kMaxDamageOptions` 64 / `kMaxSearchNodes` 20,000 cap the combat-damage assignments offered: on a crowded board legal assignments are withheld — CODE-ONLY
 - [ ] **B8** (batch 4b) `CardTestFixture::withEngine` keeps the first `turn_player` silently on a second call in one test: make it throw — tooling
-- [ ] **B9** (batch 2) Verify against their cited games whether batch 1 closed D60, D76, D23 (Cleanup with designations before the combat showdown); (batch 4a, done: pinned by `Batch4aTest.D55_LeBlanc_TheTemporaryKillDoesNotHappenAtHerBattlefield`) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open
+- [ ] **B9** (batch 2, done: D60, D76, D23 closed by batch 1, pinned by `Batch2Combat.D60_*`, `.D76_*`, `.D23_*`) Verify against their cited games whether batch 1 closed D60, D76, D23; (batch 4a, done: pinned by `Batch4aTest.D55_LeBlanc_TheTemporaryKillDoesNotHappenAtHerBattlefield`) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open
 
 ## Found by reading 19 ISMCTS games (2026-10-11, `plans/reports/test-games19.md`, detail in `docs/testing-findings-games19-2026-10.md` section 4) — seen on the binary BEFORE batch 1; each is first re-checked on the current tree
 
 - [ ] **G1** (batch 4b) 1v1: the player going first is made to skip the first draw. CR 487.7 / 488.7 give 1v1 only the second player's extra rune; the no-draw sentence is in 489.7-491.7 (multiplayer). The engine cites "CR 482.7" (old numbering); `BurnOutScoringTest.FirstPlayerFirstTurn_DrawPhaseSkipped` pins it — CERTAIN (all 19)
 - [ ] **G2** (batch 4b) Time Warp on the opponent's turn: the Additional Turn replaces the owner's regular turn instead of being inserted before it (CR 735, 737) — the spell does nothing — CERTAIN (g11)
-- [ ] **G3** (batch 2) The turn player always gets Focus first, not the player who applied Contested / the attacker (CR 345, 466.2.c.1.a) — CERTAIN combat, LIKELY non-combat (g07 g10 g14 g19)
 - [ ] **G4** (batch 4b) Setup: the battlefield is an agent decision; a Duel (CR 487.5) picks at random, a Match (488.5) chooses — which mode is an engine game? — QUESTION (to the project) (all)
 - [ ] **G5** (batch 1b) A unit with lethal damage is still on the board at the Focus decision after the attack / defend triggers resolved (Forgefire Cape); Charm then chose and moved it — CERTAIN (g01)
 - [ ] **G6** (batch 1b) A battlefield with no units keeps its controller through a Main Phase decision when the last unit's Deathknell was queued by the cleanup that killed it (CR 323.5) — CERTAIN (g13)
-- [ ] **G7** (batch 2) Sivir, Mercenary: the turn-scoped +2 [M] / [Ganking] is still applied through the next turn's Beginning Step — CERTAIN (g12)
-- [ ] **G8** (batch 2) Mechanized Menace "Your Mechs have [Shield]" is missing when a combat goes straight to damage (known root D42 / D60 / D76); it changed a conquer and the result of game 9 — CERTAIN (g09)
 - [ ] **G9** (batch 1b) Eight more cards put an ability on the chain with their printed condition false (known root D51): Curator of the Sands (14 empty items in one game), Lady of Luminosity - Starter, Gutter Palace, Patched Porobot, Poppy, Paragon, Pyke, Dockside Butcher, Blitzcrank, Impassive, Vanguard Captain ([Legion]) — CERTAIN (Vanguard Captain LIKELY) (9 games)
 - [ ] **G10** (batch 1b) A battlefield's start-of-Beginning-Phase ability is given to the turn player while the other player controls the battlefield (Frozen Fortress, Dusk Rose Lab; CR 190.6.a, 190.6.d) — LIKELY (g05 g17)
 - [ ] **G11** (batch 1b) Heart of the Tempest: no trigger for a play from the Champion Zone or a play by an effect from the trash — CERTAIN (g06)
@@ -129,3 +115,18 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **H1** (batch 4b) Fortified Position: its "this combat" Shield is applied by the card's `applyPassiveAura`, so it ends if the battlefield card is replaced (Green Father) mid-combat; an effect a resolved ability created should outlast its source — CODE-ONLY
 - [ ] **H2** (batch 4b) `EffectExecutor::healObject` has no in-play guard: it emits `"healed"` for an object that has left the board — CODE-ONLY
 - [ ] **H3** (batch 4b) Verify against their cited games and pin: G23 and G21 (probably closed by 4a: battlefield rules re-read on replacement; Kennen's play effect bound to his battlefield); (batch 3) B2's stale-mark half (closed by `Card::forgetPlayPayments`; the one-helper half stays open)
+
+## Batch 5 — Trainer-facing engine work (owner, 2026-10-14: settled before v6 starts; trainer plan `../riftbound-trainer/plans/README.md` section 0)
+
+- [ ] **T1** What a decision asks: every prompt carries a description — who asks, which card and ability (`ChainItem` / source), the kind of question (may / mode / X / target / cost / order / rune / location ...), and what each option means — exposed on `StepResult` and the decision API; a `MakeChoice` is no longer a bare integer to an observer. Covers every helper (`confirmOptional`, `pickMode`, `pickXAmount`, `pickTarget`, `pickTargetPair`, `selectSeveral`, `splitDamageAmong`, `confirmNow`, `chooseObjectNow`, engine prompts). Test: every prompt of every decision of a few hundred random and `random-player` games has a description, and two prompts with different meaning never share one — serious (trainer item 8)
+- [ ] **T2** Hidden order must not reach a player: check how object ids are assigned (deck order? shuffle order?) and whether anything a player is shown — legal-action lists, option order, twin numbers, observation, log — depends on hidden order. Test: two positions that differ only in hidden order (deck order, hand order, id assignment of hidden cards) give identical observations, identical legal-action lists and identical option order — trainer item 11
+- [ ] **T3** Determinized search: `IsMctsAgent` samples each simulation's world as a Clone of the live game ("no hidden-info determinization yet", `src/agents/mcts_agent.h`) and `MctsAgent` replays the live game — both see the opponent's hand and deck order. Give ISMCTS real determinization (hidden cards sampled consistent with `KnowledgeView`); keep perfect-info MCTS, labelled as such. Test: two true hands the searching player cannot tell apart give the same search result. Re-measure ISMCTS vs random / `random-player` afterwards (G28) — trainer items 6, 12
+- [ ] **T4** Completeness of the observation: list every fact a player may know (trainer plan section 2) and check each reaches the observation (knowledge tracker, known top/bottom runes per observer, revealed cards still in a hand, public zones up to a whole deck); the reverse of the leak test: two states that differ in a fact the observer may know give different observations — trainer items 10, 14
+- [ ] **T5** First-player edge and deck balance on the fixed engine (after G1): random, `random-player` and ISMCTS over the deck lists and random decks, by seat and by who went first; report only — trainer item 7
+
+## Found by batch 2 (2026-10-14, `plans/reports/batch-2.md` sections 5 and 11)
+
+- [ ] **I1** (batch 1b) CR 323.11 / 323.12: with several showdowns or combats staged, the turn player chooses where the next begins; the engine takes them in battlefield order (`advanceMainPhase`) with no prompt — CODE-ONLY
+- [ ] **I2** (batch 1b) CR 468.5-468.7: the engine ends the combat (designations off, Neutral State, `CombatEndedEvent`) before establishing control; the rules establish control, resolve what it queued, then end the combat (designations removed, end-of-combat effects, "this combat" effects expire) — CODE-ONLY
+- [ ] **I3** (batch 4b) Sivir, Mercenary: `power_spent_this_turn` counts only Power from a recycled rune; Power paid from the pool (Gold's [A], floating Power) is not counted as spent — CODE-ONLY
+- [ ] **I4** (batch 5) Throughput is still about 12% below the pre-batch-1 rate (batch 2: 520 -> 650 games/s): the card aura hooks (`applyPassiveAura` for every card in play each Cleanup), `refreshFlowGrants` (rebuilt each pass), the two checksums and the StateSettled emission; recovering it needs a per-hook declaration of what an aura reads, or cheaper hooks. Game throughput matters for training (owner) — perf

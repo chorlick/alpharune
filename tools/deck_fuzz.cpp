@@ -162,6 +162,7 @@ struct GameRow {            // one per game, for the length statistics
     uint16_t turns = 0;
     uint16_t longest_chain = 0;
     uint8_t flags = 0;      // see kFlag*
+    uint8_t winner = 0;     // 0 none, 1 P1, 2 P2 (for --rows)
 };
 constexpr uint8_t kFlagFailed = 1, kFlagMaxTurns = 2, kFlagNoWinner = 4, kFlagNoReason = 8,
                   kFlagDone = 16;
@@ -173,6 +174,7 @@ struct Options {
     uint64_t seed = 1;
     int threads = 1;
     std::string json_path;
+    std::string rows_path;        // --rows: one line per game, for comparing two builds
     std::string deck_dir;
     long max_decisions = 20000;
     double max_seconds = 120;
@@ -264,6 +266,8 @@ int usage() {
         "         --guide prev.json [--guide-boost B (8)]: weight deck building toward the cards\n"
         "             the previous result exercised least (a seed then means a deck only with\n"
         "             the same guide file: the replay command names it)\n"
+        "         --rows FILE: one line per game (index, decks, game seed, winner, decisions,\n"
+        "             turns, longest chain, flags), to compare two builds game by game\n"
         "         --known FILE: lines of ID|text; failures containing the text are reported as\n"
         "             known, apart from the new ones. Exit status 1 only for new failures.\n";
     return 2;
@@ -384,6 +388,7 @@ int main(int argc, char* argv[]) {
         else if (flag == "--seed") o.seed = std::stoull(value());
         else if (flag == "--threads") o.threads = std::stoi(value());
         else if (flag == "--json") o.json_path = value();
+        else if (flag == "--rows") o.rows_path = value();
         else if (flag == "--deck-dir") o.deck_dir = value();
         else if (flag == "--max-decisions") o.max_decisions = std::stol(value());
         else if (flag == "--max-seconds") o.max_seconds = std::stod(value());
@@ -560,6 +565,7 @@ int main(int argc, char* argv[]) {
         }
         if (r.winner == PlayerId::Player1) ++p1;
         else if (r.winner == PlayerId::Player2) ++p2;
+        row.winner = r.winner == PlayerId::Player1 ? 1 : r.winner == PlayerId::Player2 ? 2 : 0;
     };
     auto reasonKey = [&](const fuzz::GameOutcome& r) {
         return r.failed ? r.termination : normalise(r.termination, {}, nullptr);
@@ -684,6 +690,20 @@ int main(int argc, char* argv[]) {
 
     // ── The result ──
     std::unique_lock<std::mutex> final_lock(mu);   // workers may still run if a game hung
+    // --rows: game index, the replay arguments, winner, decisions, turns,
+    // longest chain, flags — one line per game, so two builds can be compared
+    // game by game (a game is a function of its seeds).
+    if (!o.rows_path.empty()) {
+        std::ofstream out(o.rows_path);
+        for (long g = 0; g < total; ++g) {
+            const GameRow& r = rows[static_cast<std::size_t>(g)];
+            const auto [ia, ib] = pairDecks(g / o.games_per_pair);
+            out << g << '\t' << decks[static_cast<std::size_t>(ia)].spec << '\t'
+                << decks[static_cast<std::size_t>(ib)].spec << '\t' << gameSeed(g) << '\t'
+                << int(r.winner) << '\t' << r.decisions << '\t' << r.turns << '\t'
+                << r.longest_chain << '\t' << int(r.flags) << '\n';
+        }
+    }
     long completed = 0, n_failed = 0, n_max_turns = 0, n_no_winner = 0, n_no_reason = 0;
     uint64_t sum_decisions = 0, sum_turns = 0;
     std::vector<uint32_t> lengths;

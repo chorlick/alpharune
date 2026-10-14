@@ -11,6 +11,7 @@
 #include "rules/random_deck.h"
 #include "tools/fuzz/fuzz_game.h"
 
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <string>
@@ -215,6 +216,24 @@ TEST_F(DeckFuzz, ASmallRunPlaysEveryGameToItsEnd) {
 
 // A game the engine cannot finish is an outcome, not an exception: here the
 // decision cap, which is how a game that never ends is recorded.
+// B1 (batch 2): a Cleanup that follows a quiet one with nothing announced is
+// skipped in an optimised build; the checked build runs it and throws if it
+// would have changed anything. This game (mel vs fiora, the batch-2 checked
+// pairing run) reached the Expiration Step's second pass, whose body ended a
+// "this turn" -5 [M] without an announcement: Rengar became Mighty again and
+// Grand Duelist triggered in the Cleanup that would have been skipped. The
+// body now forgets the skip (GameEngine::doExpirationBody). On the checked
+// build this game failed before the fix; on any build it ends normally.
+TEST_F(DeckFuzz, B1_TheCleanupAfterTheExpirationBodyIsNeverSkipped) {
+    const char* root = std::getenv("RIFTBOUND_ROOT");
+    const std::string dir = std::string(root ? root : ".") + "/decks/";
+    const DeckSubmission mel = DeckValidator::loadFromDeckList(dir + "mel.txt", *db_);
+    const DeckSubmission fiora = DeckValidator::loadFromDeckList(dir + "fiora.txt", *db_);
+    const fuzz::GameOutcome r = fuzz::playGame(*db_, *registry_, mel, fiora, 173237097);
+    EXPECT_FALSE(r.failed) << r.termination << " " << r.exception;
+    EXPECT_NE(r.winner, PlayerId::None);
+}
+
 TEST_F(DeckFuzz, AGameThatIsStoppedIsRecordedNotThrown) {
     fuzz::GameOptions opt;
     opt.max_decisions = 10;

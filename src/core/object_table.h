@@ -207,6 +207,22 @@ public:
     /// have an ability or a continuous effect working.
     Range inPlay() { return range<value_type>(Which::InPlay); }
     ConstRange inPlay() const { return range<const value_type>(Which::InPlay); }
+    /// Every object that is NOT in a pile: not in a Main Deck, a Rune Deck, a
+    /// Trash or Banishment (and anything with a location, whatever its zone
+    /// says). That is the board, the Legend and Champion Zones, the hands,
+    /// the chain, facedown cards and the battlefield cards — everything a
+    /// Cleanup can have something to do with (GameEngine::cleanup: an object
+    /// in a pile carries no status, no damage and no continuous effect, CR
+    /// 124). About a quarter of a game's objects.
+    Range offPiles() { return range<value_type>(Which::OffPiles); }
+    ConstRange offPiles() const { return range<const value_type>(Which::OffPiles); }
+    /// Whether `obj` is in a pile in the sense of offPiles().
+    static bool inPile(const GameObject& obj) {
+        if (obj.location.has_value()) return false;
+        const ZoneType z = obj.zone.get();
+        return z == ZoneType::MainDeck || z == ZoneType::RuneDeck || z == ZoneType::Trash ||
+               z == ZoneType::Banishment;
+    }
     /// The objects at one location.
     Range atLocation(const LocationId& loc) { return rangeAt<value_type>(loc); }
     ConstRange atLocation(const LocationId& loc) const { return rangeAt<const value_type>(loc); }
@@ -222,6 +238,7 @@ private:
         std::atomic<int> pins{0}; // BoardRanges viewing these lists
         List board;
         List in_play;
+        List off_piles;
         // One entry per location that holds, or held, an object. A game has
         // two bases and a handful of battlefields: a linear search beats a map.
         std::vector<std::pair<LocationId, List>> by_location;
@@ -241,6 +258,7 @@ private:
         void fill(const Map& map) {
             board.clear();
             in_play.clear();
+            off_piles.clear();
             for (auto& entry : by_location) entry.second.clear();
             for (const value_type& centry : map) {
                 // The table is not const to whoever asks through a non-const
@@ -253,10 +271,11 @@ private:
                     slot(*obj.location).push_back(entry);
                 }
                 if (located || obj.zone == ZoneType::LegendZone) in_play.push_back(entry);
+                if (!inPile(obj)) off_piles.push_back(entry);
             }
         }
         bool sameAs(const Lists& o) const {
-            if (board != o.board || in_play != o.in_play) return false;
+            if (board != o.board || in_play != o.in_play || off_piles != o.off_piles) return false;
             for (const auto& [loc, list] : by_location)
                 if (o.at(loc) != list) return false;
             for (const auto& [loc, list] : o.by_location)
@@ -347,12 +366,13 @@ private:
         return ix.current.get();
     }
 
-    enum class Which { Board, InPlay };
+    enum class Which { Board, InPlay, OffPiles };
     template <class Entry>
     BoardRange<Entry> range(Which which) const {
         const Lists* l = lists();
         if (!l) return BoardRange<Entry>();
-        return range<Entry>(*l, which == Which::Board ? l->board : l->in_play);
+        return range<Entry>(*l, which == Which::Board ? l->board
+                                   : which == Which::InPlay ? l->in_play : l->off_piles);
     }
     template <class Entry>
     BoardRange<Entry> rangeAt(const LocationId& loc) const {

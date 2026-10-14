@@ -9,6 +9,9 @@
 #include "cards/card.h"
 #include "cards/card_helpers.h"
 #include "openspiel/action_vocab.h"
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+#include "ml/feature_extractor.h"   // cleanup(): the checked build compares what players observe
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -165,6 +168,7 @@ GameResult GameEngine::runGame(
     agents_[1] = &agent2;
 
     state_ = GameState{};
+    forgetCleanupFacts();
     state_.mode = ModeOfPlay{};
 
     initSubsystems();
@@ -319,6 +323,7 @@ const StepResult& GameEngine::resumeFromSnapshot(GameState snapshot_state,
     // Substitute the snapshotted state, and the RNG stream with it: the
     // engine's randomness (shuffles) is part of the position.
     state_ = std::move(snapshot_state);
+    forgetCleanupFacts();
     rng_ = rng_state;
 
     // The snapshot was taken inside queryAgent, after it had counted this
@@ -2477,6 +2482,7 @@ GameEngine::ScriptedPass GameEngine::runScriptedPass(const GameState& from, cons
     auto history = std::move(state_.action_history);
     const int decisions = state_.decision_index;
     state_ = from;
+    forgetCleanupFacts();
     ++pre_play_state_copies_;
     state_.action_history = std::move(history);
     state_.decision_index = decisions;
@@ -2626,6 +2632,7 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
         auto history = std::move(state_.action_history);
         const int decisions = state_.decision_index;
         state_ = pass_start;
+        forgetCleanupFacts();
         ++pre_play_state_copies_;
         state_.action_history = std::move(history);
         state_.decision_index = decisions;
@@ -2720,12 +2727,18 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
         explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
         ~Parked() { live = std::move(game); }
     };
+    // (Declared first, so it runs after `parked` has put the game back.)
+    struct ForgetFacts {
+        GameEngine& engine;
+        ~ForgetFacts() { engine.forgetCleanupFacts(); }
+    } forget_facts{*this};
     Parked parked(state_);
     ++pre_play_probes_;
     // As the play would begin: the card leaves its zone.
     ChainItem pre;
     const ToPassStart to_start = [&] {
         state_ = parked.game;
+        forgetCleanupFacts();
         ++pre_play_state_copies_;
         auto& ps = state_.player(player);
         ps.hand.erase(std::remove(ps.hand.begin(), ps.hand.end(), card_id), ps.hand.end());
@@ -6245,7 +6258,11 @@ void GameEngine::recalculateAuras() {
     // largest walk left in the engine with the cleanup checksum: 4.9% of a
     // random game (the fields it writes are declared together in GameObject
     // for it — plans/09 item 9.KK3).
-    for (auto& [id, obj] : state_.objects) {
+    // Which objects: every object of the game until a Cleanup has found the
+    // piles inert (cleanup(): piles_inert_), then the objects that are not
+    // in a pile, plus any object the last pass gave an effect to outside
+    // play that has gone to a pile since (a card discarded from a hand).
+    const auto clearAuraState = [&](GameObjectId id, GameObject& obj) {
         obj.aura_effects.clear();
         obj.aura_might_bonus = 0;
         obj.aura_keywords.reset();
@@ -6284,7 +6301,17 @@ void GameEngine::recalculateAuras() {
                                    "left the board by a path that does not call "
                                    "EffectExecutor::leftBoard");
 #endif
+        (void)id;
+    };
+    forEachCleanupObject(clearAuraState);
+    if (piles_inert_) {
+        for (auto id : aura_outside_play_) {
+            auto it = state_.objects.find(id);
+            if (it != state_.objects.end() && ObjectTable::inPile(it->second))
+                clearAuraState(id, it->second);
+        }
     }
+    aura_outside_play_.clear();
     state_.turn.channel_phase_cap = 0;                  // Sandstone Chimera
     state_.turn.victory_score_bonus =
         effect_executor_->effectiveVictoryScore() - state_.mode.victory_score;
@@ -6393,6 +6420,7 @@ void GameEngine::recalculateAuras() {
     // therefore called ONCE per (card, controller) per pass — calling it per
     // instance applied every copy's effect once per copy (two Garens: +4).
     std::vector<std::pair<CardDefId, PlayerId>> aura_applied;
+    bool piles_reached = false;   // a hook below gives cards in the piles an effect
     // Cards whose continuous effect is conditional on Might: they get a second
     // hook after the fold below (Card::applyMightDependentAura).
     std::vector<std::pair<const Card*, PlayerId>> might_dependent;
@@ -6426,6 +6454,13 @@ void GameEngine::recalculateAuras() {
             if (std::find(aura_applied.begin(), aura_applied.end(), key) != aura_applied.end())
                 continue;
             aura_applied.push_back(key);
+            // An effect given to cards in the piles: from here on, while such
+            // a card is in play and until a Cleanup then finds the piles
+            // inert again, every object is walked (cleanup(), (1)).
+            if (card->continuousEffectReachesPiles()) {
+                piles_reached = true;
+                piles_inert_ = false;
+            }
             card->applyPassiveAura(state_, obj.controller);
             if (card->hasMightDependentAura()) might_dependent.emplace_back(card, obj.controller);
         }
@@ -6468,6 +6503,7 @@ void GameEngine::recalculateAuras() {
         if (obj.isUnit() && obj.location.has_value() && obj.card_def_id != kInvalidId &&
             !obj.attachments.empty() && effect_executor_->textCopiesOn(id) > 0)
             text_copied.push_back(id);
+    piles_reached_ = piles_reached;
     for (auto id : text_copied) {
         const Card* card = card_registry_.get(state_.getObject(id).card_def_id);
         if (!card) continue;
@@ -6536,14 +6572,20 @@ void GameEngine::recalculateAuras() {
     bool any_conditional = false;
     auto foldAuras = [&]() {
         any_conditional = false;
-        for (auto& [id, obj] : state_.objects) {
+        aura_outside_play_.clear();
+        forEachCleanupObject([&](GameObjectId id, GameObject& obj) {
+            // Outside play with something a hook gave it (an Equipment in a
+            // hand with a granted keyword): remembered for the next pass.
+            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone &&
+                !inertInAPile(obj))
+                aura_outside_play_.push_back(id);
             // No effects and not a unit on the board: the four cached values
             // are as Step 1 left them and there is no Might to recompute.
             // (Checked on every object, not only those in play: a hook may
             // put an effect on a card in a hand or a trash. 2.0% of a random
             // game.)
             if (obj.aura_effects.empty() && !(obj.isUnit() && obj.location.has_value()))
-                continue;
+                return;
             obj.aura_might_bonus = 0;
             obj.aura_keywords.reset();
             obj.aura_no_combat_damage = false;
@@ -6572,7 +6614,7 @@ void GameEngine::recalculateAuras() {
             if (obj.isUnit() && obj.location.has_value()) {
                 obj.recomputeMight();
             }
-        }
+        });
     };
     foldAuras();
 
@@ -6607,12 +6649,12 @@ void GameEngine::recalculateAuras() {
     // this walk over every object is not made — it was 1.5% of a random game.)
     if (any_conditional) {
         bool dropped = false;
-        for (auto& [id, obj] : state_.objects) {
+        forEachCleanupObject([&](GameObjectId, GameObject& obj) {
             auto& effects = obj.aura_effects;
             const auto conditional = [](const GameObject::AuraEffect& ae) {
                 return ae.only_if_absent && ae.keyword != Keyword::Count;
             };
-            if (std::none_of(effects.begin(), effects.end(), conditional)) continue;
+            if (std::none_of(effects.begin(), effects.end(), conditional)) return;
             KeywordSet kept;   // conditional keywords already granted once
             const size_t before = effects.size();
             effects.erase(std::remove_if(effects.begin(), effects.end(),
@@ -6627,7 +6669,7 @@ void GameEngine::recalculateAuras() {
                     return has;
                 }), effects.end());
             dropped = dropped || effects.size() != before;
-        }
+        });
         if (dropped) foldAuras();
     }
 
@@ -6722,13 +6764,15 @@ void GameEngine::revertLapsedControl() {
     // (Every object, not the board lists: the card that was taken may itself
     // have left the board before the source did, and its control still
     // reverts. One flag read per object; 1.3% of a random game.)
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.control_reverts_on_source_leave) continue;
+    // (Once the piles are known inert the walk leaves them out: a card in a
+    // pile is its owner's and carries no lapsing control — forgetBoardState.)
+    forEachCleanupObject([&](GameObjectId id, GameObject& obj) {
+        if (!obj.control_reverts_on_source_leave) return;
         GameObjectId src = obj.control_source_obj;
         bool source_in_play = state_.objectExists(src) &&
             (state_.getObject(src).location.has_value() ||
              state_.getObject(src).zone == ZoneType::LegendZone);
-        if (source_in_play) continue;
+        if (source_in_play) return;
         if (obj.controller != obj.control_revert_to) {
             RIFT_TRACE(events_, "CONTROL REVERTS: " + obj.name + " (id=" +
                              toString(id) + ") returns to " +
@@ -6740,10 +6784,141 @@ void GameEngine::revertLapsedControl() {
         obj.control_reverts_on_source_leave = false;
         obj.control_source_obj = kInvalidId;
         obj.control_revert_to = PlayerId::None;
+    });
+}
+
+// ── What a Cleanup walks, and when it is not run at all ──────────────────────
+//
+// A Cleanup follows every step of a chain and every phase (CR 319): about 270
+// a game, of which 98% find nothing to do. Two things keep those cheap.
+//
+// (1) The piles are left out. An object in a Main Deck, a Rune Deck, a Trash
+// or Banishment is a new object (CR 124.1): it has no designation, no status,
+// no damage, no lapsing control and no continuous effect, so no step of a
+// Cleanup has anything to read from it or to reset on it. That is not assumed:
+// the first Cleanup after the state was set from outside walks every object,
+// as every Cleanup used to, and only if it then finds every pile object inert
+// (inertInAPile) do later Cleanups walk ObjectTable::offPiles() instead. From
+// there the property keeps itself: an object reaches a pile from the board
+// through EffectExecutor::leftBoard / forgetBoardState, which resets all of
+// it at the move, and from anywhere else (a hand, the chain) it can carry
+// only what an aura hook gave it there, which recalculateAuras remembers
+// (aura_outside_play_) and clears. A continuous effect given to a card IN a
+// pile ("Your Equipment everywhere have [Quick-Draw]") is declared by its card
+// (Card::continuousEffectReachesPiles): while one is in play every object is
+// walked, until a Cleanup finds the piles inert again. What would break it is
+// such an effect undeclared, or an object taken off the board by a path that
+// skips leftBoard; the checked build (-DRIFTBOUND_CHECK_BOARD_INDEX
+// =ON) verifies after every pass that the piles are still inert and that the
+// "did this pass change anything" verdict over the reduced walk equals the
+// verdict over every object, and throws naming the object.
+//
+// (2) A Cleanup that directly follows one that had nothing to do is not run.
+// "Directly": the bus has been told nothing in between — no event, no log
+// line, heard or not (EventBus::activity) — the chain is as it was and the
+// state was not handed out for editing. The engine announces what it does
+// (every state change of a game is traced or emitted, which is what the
+// replay and the trigger system are built on), so nothing announced means
+// the Cleanup would meet the state its predecessor left, and that one found
+// nothing. The checked build does not skip: it runs the Cleanup and throws
+// if it changed a checksummed field, announced anything or changed what
+// either player observes (the feature vectors).
+template <class F>
+void GameEngine::forEachCleanupObject(F&& fn) {
+    if (piles_inert_) {
+        for (auto& [id, obj] : state_.objects.offPiles()) fn(id, obj);
+    } else {
+        for (auto& [id, obj] : state_.objects) fn(id, obj);
     }
 }
 
+bool GameEngine::inertInAPile(const GameObject& obj) {
+    return obj.combat_designation == CombatDesignation::None &&
+           !obj.control_reverts_on_source_leave &&
+           obj.aura_effects.empty() && obj.aura_might_bonus == 0 &&
+           obj.aura_keywords.bits == 0 && obj.aura_bonus_damage_taken == 0 &&
+           !obj.immune_to_damage && obj.spells_targeting_me_cost_reduction == 0 &&
+           !obj.prevent_enemy_spell_ability_damage && !obj.cant_be_moved_by_enemy &&
+           !obj.aura_cant_move_to_base && obj.empower_cost_reduction == 0 &&
+           !obj.aura_no_combat_damage &&
+           obj.untargetable_by_enemy == obj.untargetable_by_enemy_this_turn &&
+           obj.granted_abilities.size() == obj.temp_granted_abilities.size() &&
+           (obj.granted_abilities.empty() ||
+            std::equal(obj.granted_abilities.begin(), obj.granted_abilities.end(),
+                       obj.temp_granted_abilities.begin(),
+                       [](const GameObject::GrantedAbilityRef& a,
+                          const GameObject::GrantedAbilityRef& b) {
+                           return a.source_def_id == b.source_def_id &&
+                                  a.ability_index == b.ability_index &&
+                                  a.exhaust_cost_only == b.exhaust_cost_only;
+                       }));
+}
+
+void GameEngine::verifyPilesInert(const char* where) const {
+    for (const auto& [id, obj] : state_.objects) {
+        if (!ObjectTable::inPile(obj) || inertInAPile(obj)) continue;
+        throw std::logic_error(std::string("GameEngine::cleanup (") + where + "): " + obj.name +
+                               " (id=" + toString(id) + ", zone " +
+                               std::to_string(static_cast<int>(obj.zone.get())) +
+                               ") is in a pile and carries a designation, a lapsing control "
+                               "or a continuous effect: a Cleanup no longer visits the piles "
+                               "(see the note above GameEngine::cleanup)");
+    }
+}
+
+uint64_t GameEngine::cleanupShape() const {
+    uint64_t h = 0x9E3779B97F4A7C15ULL;
+    auto mix = [&](uint64_t x) { h = (h ^ x) * 0x100000001B3ULL; h ^= h >> 29; };
+    mix(state_.chain.items.size());
+    mix(state_.chain.resuming.has_value());
+    mix(static_cast<uint64_t>(state_.turn.turn_player));
+    mix(static_cast<uint64_t>(state_.turn.phase));
+    mix(static_cast<uint64_t>(state_.turn.ns_state));
+    mix(static_cast<uint64_t>(state_.turn.oc_state));
+    mix(static_cast<uint64_t>(state_.turn.turn_number));
+    mix(state_.turn.is_additional_turn);
+    mix(state_.game_over);
+    mix(state_.objects.size());
+    for (auto pid : {PlayerId::Player1, PlayerId::Player2})
+        mix(static_cast<uint64_t>(static_cast<uint32_t>(state_.player(pid).score)));
+    mix(state_.battlefields.size());
+    for (const auto& bf : state_.battlefields) {
+        mix(bf.card_object_id.raw());
+        mix(bf.controller ? static_cast<uint64_t>(*bf.controller) + 1 : 0);
+        mix(bf.attacker ? static_cast<uint64_t>(*bf.attacker) + 1 : 0);
+        mix(bf.defender ? static_cast<uint64_t>(*bf.defender) + 1 : 0);
+        mix((bf.is_contested ? 1u : 0u) | (bf.showdown_staged ? 2u : 0u) |
+            (bf.combat_staged ? 4u : 0u) | (bf.showdown_in_progress ? 8u : 0u) |
+            (bf.combat_in_progress ? 16u : 0u));
+        mix(bf.facedown.size());
+    }
+    return h;
+}
+
 void GameEngine::cleanup() {
+    // Both shortcuts of the note above are for a game the engine plays: a
+    // position a test builds by hand (and edits through a reference it kept)
+    // gets the Cleanup of old, every object and every time.
+    if (!playing_a_game_) forgetCleanupFacts();
+#ifndef RIFTBOUND_CHECK_BOARD_INDEX
+    // (2) above.
+    if (quiet_cleanup_valid_ && events_.activity() == quiet_cleanup_activity_ &&
+        !events_.holding() && cleanupShape() == quiet_cleanup_shape_)
+        return;
+#else
+    const bool would_skip =
+        quiet_cleanup_valid_ && events_.activity() == quiet_cleanup_activity_ &&
+        !events_.holding() && cleanupShape() == quiet_cleanup_shape_;
+    std::vector<float> seen_before[2];
+    if (would_skip) {
+        seen_before[0] = ml::extractStateFeatures(state_, PlayerId::Player1, card_db_);
+        seen_before[1] = ml::extractStateFeatures(state_, PlayerId::Player2, card_db_);
+    }
+#endif
+    quiet_cleanup_valid_ = false;
+    const uint64_t activity_at_start = events_.activity();
+    const size_t chain_at_start = state_.chain.items.size();
+    const bool game_over_at_start = state_.game_over;
     // CR 322 — "Cleanup is performed repeatedly until a Cleanup occurs
     // with no new change to the game state." Phase 6q+ engine-audit
     // CRITICAL #1 fix: pre-2026-05-19 the loop set `bool changed=false`
@@ -6757,7 +6932,7 @@ void GameEngine::cleanup() {
     // GameState compare; covers all paths the cleanup sub-routines
     // mutate (object count + damage + zone + aura might/keywords +
     // BF control + score).
-    auto checksum = [&]() -> uint64_t {
+    auto checksumOver = [&](bool every_object) -> uint64_t {
         uint64_t h = 0xCBF29CE484222325ULL; // FNV-1a seed
         auto mix = [&](uint64_t x) {
             h ^= x;
@@ -6773,7 +6948,11 @@ void GameEngine::cleanup() {
         // object). Now an object's fields are combined without a chain and
         // only one multiply per object waits for the one before: 4.7% of a
         // random game (plans/09 item 9.KK3).
-        for (auto& [id, obj] : state_.objects) {
+        // (With the piles known inert, the objects outside them: a pass
+        // changes nothing in a pile that it does not also change here — a
+        // card that reaches a pile during the pass leaves this walk, and a
+        // card in a pile is touched by no step.)
+        const auto mixObject = [&](GameObjectId id, const GameObject& obj) {
             const uint64_t flags =
                 static_cast<uint64_t>(obj.zone.get()) |
                 (static_cast<uint64_t>(obj.controller) << 8) |
@@ -6784,6 +6963,11 @@ void GameEngine::cleanup() {
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
                 flags * 0xFF51AFD7ED558CCDULL);
+        };
+        if (every_object) {
+            for (auto& [id, obj] : state_.objects) mixObject(id, obj);
+        } else {
+            for (auto& [id, obj] : state_.objects.offPiles()) mixObject(id, obj);
         }
         for (auto& bf : state_.battlefields) {
             mix(static_cast<uint64_t>(bf.id.raw()));
@@ -6799,13 +6983,16 @@ void GameEngine::cleanup() {
         }
         return h;
     };
+    auto checksum = [&]() { return checksumOver(!piles_inert_); };
 
     constexpr int kMaxCleanupPasses = 20;
     // What a pass ended with is what the next one starts with: nothing runs
     // between them but the win check, which changes none of the fields the
     // checksum reads (it ends the cleanup if it changes anything at all).
     std::optional<uint64_t> carried;
+    int passes = 0;
     for (int pass = 0; ; ++pass) {
+        ++passes;
         // Engine bound (CR 322: "repeating until a Cleanup occurs with no new
         // change"): a state that still changes after this many Cleanups in a
         // row is oscillating — two continuous effects undoing each other —
@@ -6817,6 +7004,10 @@ void GameEngine::cleanup() {
                                    " consecutive Cleanups (CR 322)");
         if (checkWinCondition()) return;
         uint64_t before = carried.has_value() ? *carried : checksum();
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+        const bool reduced_walk = piles_inert_;
+        const uint64_t before_every = reduced_walk ? checksumOver(true) : 0;
+#endif
         processLethalDamage();
         revertLapsedControl();           // "until I leave the board" (Akshan)
         updateBattlefieldControl();
@@ -6824,8 +7015,28 @@ void GameEngine::cleanup() {
         processContestedBattlefields();  // CR 323.2, 323.7-323.10
         recalculateAuras();
         uint64_t after = checksum();
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+        // (Not when a card whose effect reaches the piles entered play during
+        // the pass: the walk is over every object from there on.)
+        if (reduced_walk && piles_inert_) {
+            verifyPilesInert("after a pass");
+            if ((before == after) != (before_every == checksumOver(true)))
+                throw std::logic_error("GameEngine::cleanup: the pass changed an object in a "
+                                       "pile and nothing outside the piles (or the reverse): "
+                                       "the reduced walk and the walk over every object "
+                                       "disagree on whether another Cleanup is due");
+        }
+#endif
         if (before == after) break;
         carried = after;
+    }
+    // (1) above: a Cleanup that walked every object and left every pile
+    // object inert establishes the reduced walk for the ones that follow.
+    if (!piles_inert_ && !piles_reached_ && playing_a_game_) {
+        bool inert = true;
+        for (const auto& [id, obj] : state_.objects)
+            if (ObjectTable::inPile(obj) && !inertInAPile(obj)) { inert = false; break; }
+        piles_inert_ = inert;
     }
 
     // ── "Becomes Mighty" edge detection (CR: a unit is Mighty at 5+ [M]) ──
@@ -6869,6 +7080,34 @@ void GameEngine::cleanup() {
     }
     // Other "my Might becomes N or more" edges are the trigger manager's.
     events_.emit(StateSettledEvent{});
+
+    // (2) above: one pass that changed nothing, StateSettled the only thing
+    // announced, and nothing put on the chain for it.
+    const bool quiet = passes == 1 && !events_.holding() && !state_.game_over &&
+                       !game_over_at_start &&
+                       events_.activity() == activity_at_start + 1 &&
+                       state_.chain.items.size() == chain_at_start;
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+    if (would_skip) {
+        if (!quiet)
+            throw std::logic_error("GameEngine::cleanup: a Cleanup that would not have been "
+                                   "run (nothing announced since one that had nothing to do) "
+                                   "changed the state or announced something (passes " +
+                                   std::to_string(passes) + ", announcements " +
+                                   std::to_string(events_.activity() - activity_at_start) +
+                                   ", chain " + std::to_string(chain_at_start) + " -> " +
+                                   std::to_string(state_.chain.items.size()) + ")");
+        if (seen_before[0] != ml::extractStateFeatures(state_, PlayerId::Player1, card_db_) ||
+            seen_before[1] != ml::extractStateFeatures(state_, PlayerId::Player2, card_db_))
+            throw std::logic_error("GameEngine::cleanup: a Cleanup that would not have been "
+                                   "run changed what a player observes");
+    }
+#endif
+    if (quiet) {
+        quiet_cleanup_valid_ = true;
+        quiet_cleanup_activity_ = events_.activity();
+        quiet_cleanup_shape_ = cleanupShape();
+    }
 }
 
 bool GameEngine::checkWinCondition() {
@@ -7005,9 +7244,11 @@ void GameEngine::processContestedBattlefields() {
     // (Every object, not the board lists, because of .c: "anywhere else"
     // includes a unit that left the board with its designation — its death
     // trigger may still read it until this runs. 2.3% of a random game.)
+    // (With the piles known inert — cleanup(), piles_inert_ — they are left
+    // out: forgetBoardState takes the designation off at the move.)
     std::vector<GameObjectId> joined;
-    for (auto& [id, obj] : state_.objects) {
-        if (!obj.isUnit()) continue;
+    forEachCleanupObject([&](GameObjectId id, GameObject& obj) {
+        if (!obj.isUnit()) return;
         CombatDesignation want = CombatDesignation::None;
         if (auto u_bf = obj.battlefieldId()) {
             for (const auto& bf : state_.battlefields) {
@@ -7022,7 +7263,7 @@ void GameEngine::processContestedBattlefields() {
             obj.recomputeMight();
             if (want != CombatDesignation::None) joined.push_back(id);
         }
-    }
+    });
     // CR 466.2.c.3.a: a unit that becomes present during a combat gains its
     // designation "during the Cleanup following the action that caused it to
     // become present" — and that is when its Attack / Defend Triggers trigger
@@ -7304,6 +7545,10 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     // whole. Tried on a copy of the game, which is thrown away (as
     // prePlayProbe does: the game is moved aside, not copied over).
     {
+        struct ForgetFacts {
+            GameEngine& engine;
+            ~ForgetFacts() { engine.forgetCleanupFacts(); }
+        } forget_facts{*this};
         struct Parked {
             GameState& live;
             GameState game;
@@ -7317,6 +7562,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
             ~Quiet() { bus.endQuiet(q); }
         } quiet(events_);
         state_ = parked.game;
+        forgetCleanupFacts();
         payOptionalCost(player, cost.energy, cost.power, domains, spend_for);
         if (!base.ignore_cost && !canAffordWith(player, card_id, extra_any_power, base)) return;
     }

@@ -18,6 +18,8 @@ public:
 
     // "[Deflect]" — engine-handled. "Your Equipment everywhere have
     // [Quick-Draw]." Grant QuickDraw to friendly Equipment in any zone.
+    // "everywhere": the Equipment in a deck, a trash or Banishment too.
+    bool continuousEffectReachesPiles() const override { return true; }
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         GameObjectId self_id = kInvalidId;
         for (auto& [id, obj] : state.objects.onBoard()) {

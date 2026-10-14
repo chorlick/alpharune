@@ -886,6 +886,10 @@ void EffectExecutor::leftBoard(GameObjectId object) {
     if (state_.chain.resuming.has_value() && state_.chain.resuming->source == object &&
         state_.chain.resuming->is_ability)
         state_.chain.resuming->source_left_board = true;
+    // "Do this to it at <time>" abilities about this object end with it (CR
+    // 391.5.a, DelayedAbility::subject): the object that comes back is new.
+    std::erase_if(state_.delayed_abilities,
+                  [object](const DelayedAbility& da) { return da.subject == object; });
     {
         auto& obj = state_.getObject(object);
         if (obj.attached_to.has_value()) unattachGear(object);

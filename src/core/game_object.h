@@ -79,10 +79,6 @@ struct GameObject {
     // objects allowed to be Empowered multiple times (Kayle, Justified) stack
     // up to Card::maxEmpower(). Cleared when the object leaves the board.
     // (empowered: declared in the aura block below)
-    // Deferred end-of-turn flip set by "Empower X. Disempower it at end of
-    // turn" (-1) and "Disempower X. Empower it at end of turn" (+1). Applied
-    // and cleared by the expiration step.
-    // (empower_flip_eot: declared in the aura block below)
     // Aura-computed reduction to THIS object's [Empower] energy cost (Risen
     // Altar). Reset each recalculateAuras.
     // (empower_cost_reduction: declared in the aura block below)
@@ -370,7 +366,6 @@ struct GameObject {
     // writes two cache lines of an object instead of eight (plans/09 item
     // 9.KK3); each is documented where it used to be declared, above.
     int empowered = 0;
-    int empower_flip_eot = 0;
     int empower_cost_reduction = 0;
     bool prevent_enemy_spell_ability_damage = false;
     bool cant_be_moved_by_enemy = false;

@@ -178,7 +178,8 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
         for (auto& item : state_.chain.items) {
             if (item.id != item_id) continue;
             item.fired_trigger = trigger;
-            item.triggering_subject = event_object;
+            item.triggering_subject = da.subject != kInvalidId ? da.subject : event_object;
+            item.ability_index = da.ability_index;
             captureSubjectAsItLeft(state_, item);
             item.triggering_move = state_.chain.move_being_announced;
             stampBatch(state_.chain, item);

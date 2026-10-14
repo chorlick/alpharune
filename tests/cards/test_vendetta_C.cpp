@@ -152,7 +152,11 @@ TEST_F(VendettaCTest, Vendetta_TornadoWarrior_FromFaceDownEmpowersUntilEndOfTurn
     driveResumableTrigger(kTornadoWarrior, P1, warrior, answer(1, ally), exec,
                           TriggerType::WhenYouPlayMe);
     EXPECT_TRUE(state.getObject(ally).isEmpowered());
-    EXPECT_EQ(state.getObject(ally).empower_flip_eot, -1) << "disempower it at end of turn";
+    // "Disempower it at end of turn": a delayed ability of the Ending Step
+    // about the ally (finding G13; it was a flag the Expiration Step flipped).
+    ASSERT_EQ(state.delayed_abilities.size(), 1u) << "disempower it at end of turn";
+    EXPECT_EQ(state.delayed_abilities[0].trigger, TriggerType::AtEndOfTurn);
+    EXPECT_EQ(state.delayed_abilities[0].subject, ally);
     EXPECT_FALSE(state.getObject(elsewhere).isEmpowered());
     EXPECT_FALSE(state.getObject(warrior).isEmpowered());
     EXPECT_EQ(state.getObject(warrior).card_counters["__played_from_facedown"], 0)

@@ -1279,14 +1279,9 @@ void GameEngine::doExpirationBody() {
         obj.cant_move_this_turn = false;               // Vex, Apathetic
         obj.temp_granted_abilities.clear();            // Dominus
 
-        // "Empower it. Disempower it at end of turn" and the reverse (Sanction,
-        // Tornado Warrior).
-        if (obj.empower_flip_eot != 0) {
-            const int flip = obj.empower_flip_eot;
-            obj.empower_flip_eot = 0;
-            if (flip > 0) effect_executor_->empower(id);
-            else effect_executor_->disempower(id);
-        }
+        // ("Empower it. Disempower it at end of turn" and the reverse —
+        // Sanction, Tornado Warrior — are delayed abilities of the Ending
+        // Step, CR 317.1.a: DelayedAbility::subject.)
 
         // Per-unit move counter is "this turn" (Kayn, Unleashed).
         obj.moves_this_turn = 0;

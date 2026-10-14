@@ -137,6 +137,26 @@ inline Card::FinalizeChoice friendlyUnitChoice(const GameState& state, PlayerId 
     return friendlyUnitChoice(state, controller, object, [](const GameObject&) { return true; });
 }
 
+// ── "... at end of turn" ──
+/// "Disempower it at end of turn" / "Empower it at end of turn" (Tornado
+/// Warrior, Sanction): a delayed triggered ability (CR 391.2) of the Ending
+/// Step (CR 317.1.a), about `subject`, put on the chain there with priority.
+/// It fires on the card's onTrigger with firing_trigger AtEndOfTurn and the
+/// subject as triggering_subject; it ends if the subject leaves the board
+/// first (CR 391.5.a, DelayedAbility::subject).
+inline void atEndOfTurnAbout(CardContext& ctx, CardDefId card, GameObjectId subject,
+                             int which = 0) {
+    DelayedAbility da;
+    da.source = ctx.source;
+    da.card_def_id = card;
+    da.controller = ctx.controller;
+    da.trigger = TriggerType::AtEndOfTurn;
+    da.expires_on_turn = ctx.state.turn.turn_number;
+    da.subject = subject;
+    da.ability_index = which;   // the chain item's ability_index when it fires
+    ctx.state.delayed_abilities.push_back(da);
+}
+
 // ── Dependent keywords ──
 /// [Legion] (CR 812.1.c): "a card different than the one with the Legion
 /// ability has been Finalized by you on the same turn". The count includes

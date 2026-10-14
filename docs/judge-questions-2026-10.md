@@ -1,6 +1,6 @@
 # Rules questions for judge review (2026-10)
 
-Seven questions that came up while implementing cards against the 2026-10-09 Core Rules. Each gives the card text, the situation, the question, and the rules we found on either side. Rule numbers are from the Core Rules; "FAQ" is the Vendetta Rules FAQ and Clarifications.
+Questions that came up while implementing cards against the 2026-10-09 Core Rules. Each gives the card text, the situation, the question, and the rules we found on either side. Rule numbers are from the Core Rules; "FAQ" is the Vendetta Rules FAQ and Clarifications.
 
 ---
 
@@ -176,3 +176,44 @@ Which rule wins when both apply?
 - For a combat the rules answer it: 466.2.c.1 / 466.2.c.1.a, the Attacker ("the player whose unit(s) applied the Contested status") gains Focus.
 
 **What the engine does.** Focus goes first to the controller of the unit that applied Contested — my opponent in this situation (`Batch2Combat.G3_NonCombatShowdown_TheControllerOfTheUnitThatAppliedContestedHasFocusFirst_J2`). In a combat it goes to the Attacker (`Batch2Combat.G3_InACombatTheAttackerHasFocusFirst_AlsoOnTheOtherPlayersTurn`). Before batch 2 it always went to the turn player (finding G3).
+
+---
+
+## 9. Battlefield abilities at the start of a Beginning Phase: who controls them, and "your" with no controller
+
+**Cards**
+
+- Frozen Fortress: "At the start of each player's Beginning Phase, deal 1 to each unit here."
+- Dusk Rose Lab: "At the start of your Beginning Phase, you may kill a unit you control here to draw 1."
+
+**Situation.** (a) Player B controls Frozen Fortress; player A's Beginning Phase starts. (b) Nobody controls Dusk Rose Lab when a player's Beginning Phase starts.
+
+**Question.** (a) Who controls Frozen Fortress's ability — B, the battlefield's controller, or A, because "each player's Beginning Phase" "indicates another player"? It decides who puts it on the chain and has priority first. (b) Does Dusk Rose Lab's ability trigger at all while the battlefield is uncontrolled?
+
+**Rules found**
+
+- (a) For B: 190.6.a, "While a Battlefield is Controlled, its Controller controls its Abilities unless that ability indicates another player does." The ability names a time, not a player who controls it. For A: the same sentence, if naming whose phase it is counts as indicating a player.
+- (b) For "no trigger": 190.6.d, "'You' in a battlefield's abilities refers to the battlefield's Controller ... If the battlefield has no Controller, 'you' refers to no one, and all such instructions are ignored." "Your Beginning Phase" is then nobody's. For "it triggers, controlled by the turn player": 190.6.b, an uncontrolled battlefield's abilities are the Turn Player's, who "is treated as their Controller if any game rule or effect requires one".
+
+**What the engine does.** (a) The battlefield's controller controls it, the turn player while it is uncontrolled (`Batch1b.G10_FrozenFortress_TheControllerOfTheBattlefieldControlsItsAbilityOnTheOtherPlayersTurn`, `.G10_FrozenFortress_UncontrolledTheTurnPlayerPutsItOnTheChain`). (b) Dusk Rose Lab triggers only in its controller's Beginning Phase; uncontrolled, it does not trigger (`Batch1b.G10_DuskRoseLab_UncontrolledDoesNotTrigger_J5`). Before batch 1b the turn player controlled every such ability (finding G10).
+
+---
+
+## 10. A "when you play a spell" unit that enters during that spell's resolution
+
+**Cards**
+
+- Ravenbloom Student: "When you play a spell, give me +1 [M] this turn."
+- Temporal Breach: "Banish a unit, then its owner plays it to the same location, ignoring its cost."
+
+**Situation.** I play Temporal Breach on my own Ravenbloom Student. It is banished and played back during the resolution: a new object (124.1).
+
+**Question.** Does the played-back Student trigger for that Temporal Breach?
+
+**Rules found**
+
+- For "yes": 420.4.a, "Any such triggered abilities trigger when the act of playing the card has been completed by the resolution of the card." When Temporal Breach has resolved, the new Student is on the board and is a card that says "When you play a spell".
+- For "no": the new object did not exist when Temporal Breach was played; the play it would trigger on began before it existed.
+
+**What the engine does.** The played-back Student triggers and gets +1 [M] (`Batch1b.G26_RavenbloomStudentPlayedBackByTemporalBreachTriggersOnIt_J7`).
+

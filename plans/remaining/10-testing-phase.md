@@ -87,14 +87,6 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **G1** (batch 4b) 1v1: the player going first is made to skip the first draw. CR 487.7 / 488.7 give 1v1 only the second player's extra rune; the no-draw sentence is in 489.7-491.7 (multiplayer). The engine cites "CR 482.7" (old numbering); `BurnOutScoringTest.FirstPlayerFirstTurn_DrawPhaseSkipped` pins it — CERTAIN (all 19)
 - [ ] **G2** (batch 4b) Time Warp on the opponent's turn: the Additional Turn replaces the owner's regular turn instead of being inserted before it (CR 735, 737) — the spell does nothing — CERTAIN (g11)
 - [ ] **G4** (batch 4b) Setup: the battlefield is an agent decision; a Duel (CR 487.5) picks at random, a Match (488.5) chooses — which mode is an engine game? — QUESTION (to the project) (all)
-- [ ] **G5** (batch 1b) A unit with lethal damage is still on the board at the Focus decision after the attack / defend triggers resolved (Forgefire Cape); Charm then chose and moved it — CERTAIN (g01)
-- [ ] **G6** (batch 1b) A battlefield with no units keeps its controller through a Main Phase decision when the last unit's Deathknell was queued by the cleanup that killed it (CR 323.5) — CERTAIN (g13)
-- [ ] **G9** (batch 1b) Eight more cards put an ability on the chain with their printed condition false (known root D51): Curator of the Sands (14 empty items in one game), Lady of Luminosity - Starter, Gutter Palace, Patched Porobot, Poppy, Paragon, Pyke, Dockside Butcher, Blitzcrank, Impassive, Vanguard Captain ([Legion]) — CERTAIN (Vanguard Captain LIKELY) (9 games)
-- [ ] **G10** (batch 1b) A battlefield's start-of-Beginning-Phase ability is given to the turn player while the other player controls the battlefield (Frozen Fortress, Dusk Rose Lab; CR 190.6.a, 190.6.d) — LIKELY (g05 g17)
-- [ ] **G11** (batch 1b) Heart of the Tempest: no trigger for a play from the Champion Zone or a play by an effect from the trash — CERTAIN (g06)
-- [ ] **G12** (batch 1b) Heart of the Tempest triggers as the Flow spell goes on the chain, not when it has resolved (CR 420.4.a) — CERTAIN (g06)
-- [ ] **G13** (batch 1b) Tornado Warrior "Disempower it at end of turn" is a flag flipped in the Expiration Step, no ability in the Ending Step (Sanction by code) — LIKELY (g07)
-- [ ] **G26** (batch 1b) Ravenbloom Student played back by Temporal Breach triggers on that same Temporal Breach — QUESTION (g14)
 - [ ] **G14** (batch 3) A chosen target that left the board and came back is still acted on: Amateur Recital moved a unit Temporal Breach had banished and replayed (CR 359.3.e.4 in terms) — CERTAIN (g14)
 - [ ] **G15** (batch 3) Activated abilities with a target or mode pay their whole cost before the choice (Heart of the Tempest, Defender of Tomorrow, Matriarch of War, Bounty Hunter; CR 403-405) — CERTAIN (g06 g16 g18)
 - [ ] **G16** (batch 3) A play-time-target spell played by Fizz, Trickster is paid for before its target is chosen (Punch First) — CERTAIN (g12)
@@ -126,7 +118,5 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Found by batch 2 (2026-10-14, `plans/reports/batch-2.md` sections 5 and 11)
 
-- [ ] **I1** (batch 1b) CR 323.11 / 323.12: with several showdowns or combats staged, the turn player chooses where the next begins; the engine takes them in battlefield order (`advanceMainPhase`) with no prompt — CODE-ONLY
-- [ ] **I2** (batch 1b) CR 468.5-468.7: the engine ends the combat (designations off, Neutral State, `CombatEndedEvent`) before establishing control; the rules establish control, resolve what it queued, then end the combat (designations removed, end-of-combat effects, "this combat" effects expire) — CODE-ONLY
 - [ ] **I3** (batch 4b) Sivir, Mercenary: `power_spent_this_turn` counts only Power from a recycled rune; Power paid from the pool (Gold's [A], floating Power) is not counted as spent — CODE-ONLY
 - [ ] **I4** (batch 5) Throughput is still about 12% below the pre-batch-1 rate (batch 2: 520 -> 650 games/s): the card aura hooks (`applyPassiveAura` for every card in play each Cleanup), `refreshFlowGrants` (rebuilt each pass), the two checksums and the StateSettled emission; recovering it needs a per-hook declaration of what an aura reads, or cheaper hooks. Game throughput matters for training (owner) — perf

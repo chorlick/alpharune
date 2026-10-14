@@ -345,10 +345,11 @@ TEST_F(ChoiceHelperTest, PayOnePowerRecyclesARuneWithTheEnginesBookkeeping) {
     EXPECT_EQ(state.player(P1).power_spent_this_turn, 2);
     EXPECT_EQ(left.size(), 2u);
 
-    // Floating Power pays first and is not a recycled rune.
+    // Floating Power pays first and is not a recycled rune — but it is spent
+    // (testing phase I3, by design: old expectation 2, pool Power not counted).
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
     ASSERT_TRUE(payOnePower(ctx, P1, Domain::Fury));
-    EXPECT_EQ(state.player(P1).power_spent_this_turn, 2);
+    EXPECT_EQ(state.player(P1).power_spent_this_turn, 3);
     EXPECT_EQ(left.size(), 2u);
     conn.disconnect();
 }

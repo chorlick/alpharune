@@ -513,6 +513,8 @@ public:
     struct Quiet { bool was_holding; size_t held_before; };
     Quiet beginQuiet();
     void endQuiet(const Quiet& q);
+    /// Inside a quiet stretch (a probe): nobody is asked anything there.
+    bool quiet() const { return quiet_depth_ > 0; }
 
     // Convenience logging. Every line is prefixed with [D:NNN.NN]
     // where NNN is a per-EventBus decision counter (bumped + reset

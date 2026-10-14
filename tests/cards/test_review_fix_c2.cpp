@@ -1110,7 +1110,7 @@ TEST_F(ReviewFixC2Test, TimeWarp_IsBanishedAndNotAlsoFiledInTheTrash) {
     EXPECT_EQ(count(state.player(P1).banishment, spell), 1);
     EXPECT_EQ(count(state.player(P1).trash, spell), 0);
     EXPECT_EQ(state.getObject(spell).zone, ZoneType::Banishment);
-    EXPECT_EQ(state.player(P1).additional_turns.size(), 1u);
+    EXPECT_EQ(state.additionalTurnsOf(P1), 1);
 }
 
 // ─── Plays from other zones ─────────────────────────────────────────────────

@@ -81,6 +81,20 @@ public:
     // ── Permanent enters board ──
     /// Called when this permanent (unit/gear) enters the board from play.
     virtual void onPlay(CardContext& /*ctx*/) {}
+    /// "As you play me, choose / name ..." (CR 355.1): the choice made as the
+    /// card is played, before its cost — no chain item, no priority window.
+    /// Called by every play path as the play begins (GameEngine::
+    /// executePlayCard, executePlayFromHidden; EffectExecutor::playIgnoringCost
+    /// / playPayingCost). The card asks with the executor's synchronous
+    /// prompts (chooseValueNow, chooseObjectNow, confirmNow).
+    virtual void asYouPlayChoices(CardContext& /*ctx*/) {}
+    /// "As you look at or reveal me from the top of your deck, ..." — a
+    /// replacement applied as the card is seen there (CR 370.1.c.1): no chain
+    /// item, inside the effect that looks (EffectExecutor::seenOnTopOfDeck).
+    /// `ctx.source` is the card, `ctx.controller` its owner. A card that takes
+    /// itself away records it in GameState::left_while_seen.
+    virtual bool replacesBeingSeenOnTop() const { return false; }
+    virtual void seenOnTopOfDeck(CardContext& /*ctx*/) {}
 
     // ── Activated abilities (single-ability legacy surface) ──
     /// Called when an activated ability ([E]:, [N]:, etc.) is used.
@@ -922,6 +936,12 @@ public:
 
     /// Keywords granted to the equipped unit (from effect_text).
     virtual KeywordSet equippedKeywords() const { return {}; }
+    /// Anything else the effect text gives the equipped unit ("I am a Mech."):
+    /// applied by every aura pass with the other equipment effects, BEFORE the
+    /// card hooks (`applyPassiveAura`), so an effect that reads it ("Your
+    /// Mechs have ...") sees it in the same pass whatever the hook order.
+    virtual void applyToBearer(GameState& /*state*/, GameObjectId /*gear*/,
+                               GameObjectId /*unit*/) const {}
 
     /// Skyfall of Areion: "My hold effects are also conquer effects, and vice
     /// versa." When an attached gear returns true, the engine cross-fires the
@@ -1006,6 +1026,13 @@ public:
     /// if you paid the additional cost, ..."). One key for every card, so
     /// that one place can forget it: forgetPlayPayments.
     static constexpr const char* kAdditionalCostPaid = "__additional_cost_paid";
+    /// [Accelerate] for this play: 1 decided and not paid, 2 paid with the cost
+    /// (the unit enters ready). Written by GameEngine::decideAccelerate, read
+    /// as the unit enters. A per-play flag: forgetPlayPayments drops it.
+    static constexpr const char* kAccelerateDecided = "__accelerate";
+    /// 1 if this play is from a hand, 2 if from anywhere else (what a grant
+    /// of [Accelerate] reads: Card::grantsAccelerateTo). Per play.
+    static constexpr const char* kAccelerateFromHand = "__accelerate_from_hand";
     /// On a spell: 1 if this play of it is not from a hand (the trash, face
     /// down, by an effect from a deck or Banishment), 0 if it is. Written by
     /// every spell play path as the spell is played; read when it resolves,
@@ -1013,10 +1040,6 @@ public:
     /// triggers (CR 420.4.a; TriggerManager::onSpellResolved). A countered
     /// spell triggers nothing (420.4.a.1).
     static constexpr const char* kPlayedNotFromHand = "__played_not_from_hand";
-    /// The mark GameEngine::beginCostPayment puts on a unit that another card
-    /// gives [Accelerate] for this play (Card::grantsAccelerateTo); taken by
-    /// GameEngine::resolvePermanent. A per-play flag: forgetPlayPayments drops it.
-    static constexpr const char* kGrantedAccelerate = "__granted_accelerate";
     /// Forget what was paid for an earlier play of `object`: kAdditionalCostPaid
     /// and the paid_flag of its optionalAdditionalCost(). The engine calls
     /// this as every play of a card begins — whatever the play path and
@@ -1119,6 +1142,19 @@ public:
     /// once per event — while an ability of this source for that trigger is
     /// still waiting to be finalized, a further event does not trigger it.
     virtual bool triggersOncePerBatch(TriggerType /*trigger*/) const { return false; }
+
+    /// "The first time I <event> each turn": true makes `trigger` trigger only
+    /// at the first event of the turn that meets its condition (after
+    /// triggerCondition), whether or not that ability then resolved
+    /// (TriggerManager::fireTrigger stamps the object; CR 383.1). For an event
+    /// of the object itself. A "first time" that counts a player's events
+    /// ("a friendly unit dies") reads the turn's count in triggerCondition
+    /// instead, since the card need not have been there for the first one.
+    virtual bool firstTimeEachTurn(TriggerType /*trigger*/) const { return false; }
+    /// The card_counters key of that stamp (turn + 1).
+    static std::string firstTimeKey(TriggerType trigger) {
+        return "__first_time_" + std::to_string(static_cast<int>(trigger));
+    }
 
     /// An Equipment whose effect text is a copy of its bearer's text ("As this
     /// is attached to a unit, copy that unit's text to this Equipment's effect

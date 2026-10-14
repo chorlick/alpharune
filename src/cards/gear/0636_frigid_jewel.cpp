@@ -15,27 +15,20 @@ class FrigidJewel : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     // "When you draw your second card each turn, give a friendly unit +2 [M]
-    // this turn." WhenYouDrawACard fires per draw; it triggers on the draw
-    // that takes the controller's draws_this_turn to 2 or more, once per turn
-    // (card_counters[kFiredTurn] on this gear). Which friendly unit is the
-    // controller's choice, made as the ability is finalized (CR 383.3).
+    // this turn." WhenYouDrawACard fires per draw event; it triggers on the
+    // event in which the turn's second card is drawn — counted for the player,
+    // whether or not this gear was on the board for the first (CR 383.1;
+    // testing phase B6). Which friendly unit is the controller's choice, made
+    // as the ability is finalized (CR 383.3).
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouDrawACard; }
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
                           TriggerType, GameObjectId /*subject*/) const override {
-        if (state.player(controller).draws_this_turn < 2) return false;   // not yet the 2nd draw
-        if (!state.objectExists(source)) return false;
-        const auto& counters = state.getObject(source).card_counters;
-        auto it = counters.find(kFiredTurn);
-        return it == counters.end() || it->second != state.turn.turn_number + 1;
+        const auto& ps = state.player(controller);
+        return state.objectExists(source) && ps.draws_before_last_draw < 2 &&
+               ps.draws_this_turn >= 2;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // Once per turn. Bookkeeping only (and idempotent), so it is safe ahead
-        // of the choice: a later draw this turn must not trigger again while
-        // this ability is still on the chain.
-        if (ctx.state.objectExists(ctx.source))
-            ctx.state.getObject(ctx.source).card_counters[kFiredTurn] =
-                ctx.state.turn.turn_number + 1;   // +1: avoid the 0-default
         std::vector<GameObjectId> friendly;
         for (const auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isUnit() && obj.controller == ctx.controller && obj.location.has_value())
@@ -49,7 +42,6 @@ public:
         RIFT_TRACE(ctx.events, "FRIGID JEWEL: 2nd draw -> a friendly unit +2 [M] this turn");
     }
 private:
-    static constexpr const char* kFiredTurn = "__frigid_fired_turn";
     const CardDef def_ = [] {
         CardDef d;
         d.id = 636;

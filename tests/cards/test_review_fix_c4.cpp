@@ -897,11 +897,15 @@ TEST_F(C4Test, ImmortalPhoenix_PaysFromThePoolAndOneRuneCoversBothHalves) {
     EXPECT_TRUE(inTrash(P1, third));
 }
 
+// (Testing phase D71, by design: the ability is a replacement applied as he is
+// seen — EffectExecutor::seenOnTopOfDeck — no longer a WhenIRevealedFromTop
+// triggered ability fired by hand. Same prompts, same answers.)
 TEST_F(C4Test, Nocturne_PlayingCostsOnePower_AndBanishingAloneIsAllowed) {
     auto nocturne = offBoard(P1, kNocturne, ZoneType::MainDeck);
     state.player(P1).rune_pool.universal_power = 1;
     EnginePathAgent agent(EnginePathAgent::script({1, 1}));   // banish; play to base
-    fireTriggerThroughEngine(nocturne, TriggerType::WhenIRevealedFromTop, &agent);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.seenOnTopOfDeck(P1, nocturne); },
+                         &agent);
     EXPECT_TRUE(o(nocturne).isAtBase());
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "\"play me for [A]\" is paid";
     const auto& bz = state.player(P1).banishment;
@@ -914,9 +918,10 @@ TEST_F(C4Test, Nocturne_PlayingCostsOnePower_AndBanishingAloneIsAllowed) {
         1,   // "may banish me": yes
         0,   // "play me for [A]?": mode 0 = "Don't play me", the only mode on offer
     }));
-    fireTriggerThroughEngine(second, TriggerType::WhenIRevealedFromTop, &poor);
-    ASSERT_EQ(poor.prompts.size(), 2u);
-    EXPECT_EQ(poor.prompts[1].size(), 1u) << "only \"don't play me\"";
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.seenOnTopOfDeck(P1, second); },
+                         &poor);
+    // Only "don't play me" is open: a choice of one is not asked.
+    ASSERT_EQ(poor.prompts.size(), 1u) << "the banish only";
     EXPECT_FALSE(o(second).location.has_value());
     EXPECT_EQ(o(second).zone, ZoneType::Banishment);
     EXPECT_FALSE(inDeck(P1, second));

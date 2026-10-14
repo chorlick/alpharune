@@ -78,7 +78,14 @@ void TriggerManager::subscribe() {
     connections_.push_back(events_.on_unit_moved.connect(
         [this](const UnitMovedEvent& e) { onUnitMoved(e); }));
     connections_.push_back(events_.on_phase_changed.connect(
-        [this](const PhaseChangedEvent& e) { onPhaseChanged(e); }));
+        [this](const PhaseChangedEvent& e) {
+            state_.left_while_seen.clear();
+            onPhaseChanged(e);
+        }));
+    // The effect that was looking at a card that left meanwhile has resolved
+    // (GameState::left_while_seen).
+    connections_.push_back(events_.on_chain_item_resolved.connect(
+        [this](const ChainItemResolvedEvent&) { state_.left_while_seen.clear(); }));
     connections_.push_back(events_.on_unit_stunned.connect(
         [this](const UnitStunnedEvent& e) { onUnitStunned(e); }));
     connections_.push_back(events_.on_damage_dealt.connect(
@@ -378,6 +385,16 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     // if it isn't met the ability does not trigger.
     if (card && !card->triggerConditionOn(state_, triggerEventFor(source, controller, fired, subject)))
         return false;
+    // "The first time I <event> each turn" (CR 383.1, Card::firstTimeEachTurn):
+    // the first time the condition is met this turn — the event, not the
+    // ability: one that was countered or left the chain was still the first.
+    // Kept on the object for its life on the board (Card::forgetPlayPayments
+    // drops it as it is played again: a new object, CR 124.1).
+    if (card && card->firstTimeEachTurn(fired)) {
+        auto& stamp = obj.card_counters[Card::firstTimeKey(fired)];
+        if (stamp == state_.turn.turn_number + 1) return false;
+        stamp = state_.turn.turn_number + 1;
+    }
     // "When ONE OR MORE ...": events that happen together trigger it once. An
     // ability of this source for this trigger that has not been finalized yet
     // came from the same set of events (nobody has had priority since).
@@ -646,7 +663,10 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
         auto& pps = state_.player(e.player);
         if (e.card_type == CardType::Spell) { pps.played_spell_this_turn = true; pps.spells_played_this_turn++; }
         if (e.card_type == CardType::Unit && !obj.isToken()) pps.played_nontoken_unit_this_turn = true;
-        if (e.card_type == CardType::Gear && !obj.isToken()) pps.played_nontoken_gear_this_turn = true;
+        if (e.card_type == CardType::Gear && !obj.isToken()) {
+            pps.played_nontoken_gear_this_turn = true;
+            ++pps.nontoken_gear_plays_this_turn;
+        }
     }
     // CR 420.4.a: abilities that trigger on a card being played trigger when
     // playing it is COMPLETED by its resolution. A permanent resolves as it is
@@ -2017,10 +2037,20 @@ void TriggerManager::onShowdownStarted(const ShowdownStartedEvent& e) {
 
 void TriggerManager::onCardRevealed(const CardRevealedEvent& e) {
     const TriggerEventScope event_scope(state_.chain);
-    // "As you look at or reveal me from the top of your deck" — fires on the
-    // revealed card itself when it was on top of the Main Deck (Nocturne).
+    // "As you reveal me from your deck" — on the revealed card itself when it
+    // was in a Main Deck. A replacement ("As you look at or reveal me ...":
+    // Nocturne, Horrifying) is applied now, inside the effect that reveals
+    // (CR 370.1.c.1; EffectExecutor::seenOnTopOfDeck); otherwise the card's
+    // triggered ability (Undertitan) is queued.
     if (e.source_zone != ZoneType::MainDeck) return;
     if (!state_.objectExists(e.card)) return;
+    if (effect_executor_) {
+        const Card* c = card_registry_.get(state_.getObject(e.card).card_def_id);
+        if (c && c->replacesBeingSeenOnTop()) {
+            effect_executor_->seenOnTopOfDeck(e.owner, e.card);
+            return;
+        }
+    }
     if (cardFiresOn(card_registry_, state_.getObject(e.card).card_def_id,
                     TriggerType::WhenIRevealedFromTop)) {
         fireTrigger(e.card, e.owner, 0, TriggerType::WhenIRevealedFromTop);

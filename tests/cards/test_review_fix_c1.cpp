@@ -816,8 +816,14 @@ TEST_F(ReviewFixC1Test, TheList_TheControllerNamesTheTag) {
     auto yordle = addUnit(P2, kInvalidId, 4, 0);
     state.getObject(yordle).tags = {"Yordle"};
 
-    // Offered: Poro (index 0, most common), Yordle (index 1). Name Yordle.
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    // Name Yordle. (Testing phase D46: the tag is named as the card is played
+    // from every tag of CR 763.1; this used to answer index 1 of a list of the
+    // public tags, most common first.)
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Name the tag: Yordle") return i;
+        return legal.front();
+    });
     playThroughEngine(list, &agent);
 
     ASSERT_TRUE(state.getObject(list).location.has_value());

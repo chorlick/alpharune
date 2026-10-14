@@ -565,10 +565,13 @@ void EffectExecutor::killObject(GameObjectId target) {
         // (GameEngine::killUnit): a kill is a kill.
         state_.turn.any_unit_died_this_turn = true;
         state_.player(controller).unit_died_this_turn = true;
+        ++state_.player(controller).unit_deaths_this_turn;
         {
             // "During your Beginning Phase" (CR 315.2; isBeginningPhase).
-            if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller)
+            if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller) {
                 state_.player(controller).unit_died_in_beginning_this_turn = true;
+                ++state_.player(controller).unit_deaths_in_beginning_this_turn;
+            }
         }
         events_.emit(UnitDiedEvent{target, controller,
             was_at.value_or(BaseLocation{controller}), might, obj.last_known.killed_by});
@@ -628,6 +631,7 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
         drawn++;
     }
     if (drawn > 0) {
+        state_.player(player).draws_before_last_draw = state_.player(player).draws_this_turn;
         state_.player(player).draws_this_turn += drawn;
         events_.emit(CardsDrawnEvent{player, drawn});
     }
@@ -689,9 +693,9 @@ int deflectCostFor(const GameState& state, PlayerId chooser, GameObjectId target
     return std::max(1, value);
 }
 
-int payableAnyPower(const GameState& state, PlayerId player) {
+int payableAnyPower(const GameState& state, PlayerId player, SpendFor f) {
     const auto& pool = state.player(player).rune_pool;
-    int n = pool.universal_power;
+    int n = pool.universal_power + pool.restrictedPower(f);
     for (int di = 0; di < static_cast<int>(Domain::Count); ++di) n += pool.power[di];
     LocationId base{BaseLocation{player}};
     for (const auto& [id, obj] : state.objects.atLocation(base))
@@ -705,15 +709,67 @@ Card* EffectExecutor::cardFor(CardDefId def) const {
     return card_registry_->get(def);
 }
 
+bool hiddenFrom(const GameState& state, GameObjectId id, PlayerId viewer) {
+    if (id == kInvalidId || !state.objectExists(id)) return false;
+    const auto& o = state.getObject(id);
+    switch (o.zone.get()) {
+        case ZoneType::Hand:         return o.owner != viewer;
+        case ZoneType::MainDeck:
+        case ZoneType::RuneDeck:     return true;
+        case ZoneType::FacedownZone: return o.controller != viewer;
+        default:                     return o.is_hidden && o.controller != viewer;
+    }
+}
+
+LogAudience audienceNaming(const GameState& state, PlayerId knower,
+                           const std::vector<GameObjectId>& ids) {
+    const PlayerId other = opponent(knower);
+    for (auto id : ids)
+        if (hiddenFrom(state, id, other)) return LogAudience::only(knower);
+    return LogAudience::both();
+}
+
 int EffectExecutor::deflectCostFor(PlayerId chooser, GameObjectId target) const {
     return ::riftbound::deflectCostFor(state_, chooser, target);
 }
 
-int EffectExecutor::payableAnyPower(PlayerId player) const {
-    return ::riftbound::payableAnyPower(state_, player);
+int EffectExecutor::payableAnyPower(PlayerId player, SpendFor f) const {
+    return ::riftbound::payableAnyPower(state_, player, f);
 }
 
-bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
+resource::RuneChooser EffectExecutor::runeChooser() const {
+    resource::RuneChooser c;
+    if (!agent_query_ || events_.quiet()) return c;
+    c.pick = [this](PlayerId player, const std::vector<GameObjectId>& options,
+                    bool for_power) -> GameObjectId {
+        std::vector<Intent> intents;
+        intents.reserve(options.size());
+        for (auto id : options) {
+            Intent i;
+            i.type = IntentType::MakeChoice;
+            i.player = player;
+            if (id == kInvalidId) {
+                i.chosen_value = 0;
+                i.choice_label = "floating Power";
+            } else {
+                i.chosen_objects = {id};
+            }
+            intents.push_back(std::move(i));
+        }
+        const Intent chosen = ask(player, intents, for_power ? "pick rune to recycle for power"
+                                                            : "pick rune to exhaust for energy");
+        return chosen.chosen_objects.empty() ? kInvalidId : chosen.chosen_objects.front();
+    };
+    return c;
+}
+
+bool EffectExecutor::payResources(PlayerId player, int energy, int power,
+                                  resource::DomainMask mask, SpendFor f) {
+    const auto chooser = runeChooser();
+    return resource::payIn(state_, events_, player, energy, power, mask, f, &chooser);
+}
+
+bool EffectExecutor::payAnyPower(PlayerId player, int amount, SpendFor f) {
     if (amount <= 0) return true;
     // A spell that is making its choices before its cost is paid (CR 355 ->
     // 356: ChainItem::pre_play_choices) pays a chosen unit's Deflect here,
@@ -724,13 +780,16 @@ bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
         pre.has_value() && pre->pre_play_choices && pre->controller == player &&
         state_.objectExists(pre->source)) {
         const CardDefId def = state_.getObject(pre->source).card_def_id;
-        if (def != kInvalidId)
+        if (def != kInvalidId) {
+            const auto chooser = runeChooser();
             return resource::payAnyPowerAheadOfCost(
-                state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains));
+                state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains),
+                SpendFor::Spell, &chooser, ahead_of_cost_check_ ? &ahead_of_cost_check_ : nullptr);
+        }
     }
     // The one payment rule (engine/resource_payment.h): floating Power, then
-    // runes recycled from the base, exhausted ones first.
-    return resource::pay(state_, events_, player, 0, amount, Domain::Count);
+    // runes recycled from the base, the payer naming them.
+    return payResources(player, 0, amount, resource::kAnyDomain, f);
 }
 
 bool EffectExecutor::burnOut(PlayerId player) {
@@ -1039,6 +1098,30 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
     // Not "buffed": +/-[M] this turn places no Buff counter (CR 427.1), so it
     // must not fire "When you buff" abilities.
     events_.emit(ObjectStateChangedEvent{target, "might_changed"});
+}
+
+void EffectExecutor::giveKeywordThisCombat(GameObjectId unit, Keyword kw, int value,
+                                           BattlefieldId battlefield) {
+    if (!state_.objectExists(unit) || !state_.getObject(unit).location.has_value()) return;
+    bool combat = false;
+    for (const auto& bf : state_.battlefields)
+        if (bf.id == battlefield) combat = bf.combat_in_progress;
+    if (!combat) return;
+    for (auto& ck : state_.combat_keywords)
+        if (ck.unit == unit && ck.keyword == kw && ck.battlefield == battlefield &&
+            ck.turn == state_.turn.turn_number) {
+            ck.value += value;
+            RIFT_TRACE(events_, "THIS COMBAT: " + state_.getObject(unit).name + " gains " +
+                             std::string(toString(kw)) + " " + std::to_string(value) + " more");
+            recalculateContinuousEffects();
+            return;
+        }
+    state_.combat_keywords.push_back({unit, kw, value, battlefield, state_.turn.turn_number});
+    // (Announced: a state write with no event or line could let the next
+    // Cleanup be skipped — GameEngine::quiet_cleanup_valid_.)
+    RIFT_TRACE(events_, "THIS COMBAT: " + state_.getObject(unit).name + " gains " +
+                     std::string(toString(kw)) + " " + std::to_string(value));
+    recalculateContinuousEffects();
 }
 
 void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
@@ -1427,7 +1510,7 @@ void EffectExecutor::announceRecycledToMainDeck(GameObjectId card) {
 }
 
 void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_by_all) {
-    if (!state_.objectExists(card)) return;
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return;
     auto& obj = state_.getObject(card);
     deck::putInHand(state_, card,
                     seen_by_all ? knowledge::everyone() : knowledge::only(player),
@@ -1437,6 +1520,7 @@ void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_
     else
         RIFT_TRACE_PRIVATE(events_, player, "  DREW: " + obj.name + " (id=" +
                                         toString(card) + ")");
+    state_.player(player).draws_before_last_draw = state_.player(player).draws_this_turn;
     state_.player(player).draws_this_turn += 1;
     events_.emit(CardsDrawnEvent{player, 1});
 }
@@ -1609,6 +1693,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     std::vector<std::pair<GameObjectId, deck::Place>> came_from;
     for (auto cid : cards) {
         if (!state_.objectExists(cid)) continue;
+        if (state_.leftWhileSeen(cid)) continue;   // it left as it was looked at
         if (std::find(to_recycle.begin(), to_recycle.end(), cid) != to_recycle.end()) continue;
         if (onBoard(state_.getObject(cid))) {
             snapshotLastKnown(cid, /*dying=*/false);   // as it was on the board
@@ -1708,6 +1793,9 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
 }
 
 void EffectExecutor::banishObject(GameObjectId target, PlayerId by) {
+    // A card that left as it was looked at is no longer the looked-at card
+    // the effect would act on (GameState::left_while_seen).
+    if (state_.leftWhileSeen(target)) return;
     if (!state_.objectExists(target)) return;
     // From the board: as it was there, for whatever reads it after the move.
     // (Banished instead of dying, Smite: it did not die.)
@@ -1766,6 +1854,9 @@ void EffectExecutor::forgetDamageSources(GameObject& obj) {
 void EffectExecutor::healObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // Only something in play is healed (as exhaustObject): an object that has
+    // left the board has no damage and nothing to announce (CR 124.1).
+    if (!inPlay(obj)) return;
     obj.damage_marked = 0;
     forgetDamageSources(obj);
     events_.emit(ObjectStateChangedEvent{target, "healed"});
@@ -1820,6 +1911,63 @@ bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
     yes.chosen_value = 1;
     yes.choice_label = "Yes — " + label;
     return ask(player, {no, yes}, label).chosen_value.value_or(0) == 1;
+}
+
+int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
+                                   const std::string& what) {
+    if (labels.empty() || !agent_query_) return 0;
+    std::vector<Intent> options;
+    options.reserve(labels.size());
+    for (size_t k = 0; k < labels.size(); ++k) {
+        Intent i;
+        i.type = IntentType::MakeChoice;
+        i.player = player;
+        i.chosen_value = static_cast<int>(k);
+        i.choice_label = labels[k];
+        options.push_back(std::move(i));
+    }
+    const int v = ask(player, options, what).chosen_value.value_or(0);
+    return v >= 0 && v < static_cast<int>(labels.size()) ? v : 0;
+}
+
+int EffectExecutor::chooseAmongNow(PlayerId player,
+                                   const std::vector<std::pair<int, std::string>>& options,
+                                   const std::string& what) {
+    if (options.empty()) return 0;
+    if (!agent_query_ || options.size() == 1) return options.front().first;
+    std::vector<Intent> intents;
+    for (const auto& [v, label] : options) {
+        Intent i;
+        i.type = IntentType::MakeChoice;
+        i.player = player;
+        i.chosen_value = v;
+        i.choice_label = label;
+        intents.push_back(std::move(i));
+    }
+    const int v = ask(player, intents, what).chosen_value.value_or(options.front().first);
+    for (const auto& o : options) if (o.first == v) return v;
+    return options.front().first;
+}
+
+bool EffectExecutor::seenOnTopOfDeck(PlayerId owner, GameObjectId card) {
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return false;
+    Card* c = cardFor(state_.getObject(card).card_def_id);
+    if (!c || !c->replacesBeingSeenOnTop()) return true;
+    // Once per card while it is being looked at (CR 370.2).
+    if (std::find(seeing_.begin(), seeing_.end(), card) != seeing_.end()) return true;
+    seeing_.push_back(card);
+    CardContext ctx{state_, events_, *this, owner, card};
+    c->seenOnTopOfDeck(ctx);
+    seeing_.erase(std::remove(seeing_.begin(), seeing_.end(), card), seeing_.end());
+    return !state_.leftWhileSeen(card);
+}
+
+void EffectExecutor::makeAsYouPlayChoices(PlayerId player, GameObjectId card) {
+    if (!state_.objectExists(card)) return;
+    Card* c = cardFor(state_.getObject(card).card_def_id);
+    if (!c) return;
+    CardContext ctx{state_, events_, *this, player, card};
+    c->asYouPlayChoices(ctx);
 }
 
 GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
@@ -2187,8 +2335,11 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     tok.zone = ZoneType::BattlefieldZone;
     tok.location = BattlefieldLocation{target_bf};
 
-    // Swap the slot in place — keeps any units at the BF in their slot.
-    slot->replaced_card = slot->card_object_id;
+    // Swap the slot in place — keeps any units at the BF in their slot. A
+    // token that is replaced in turn ceases to exist (CR 439.6); the card it
+    // replaced stays the one to swap back to (CR 439.7.b.1).
+    const bool token_replaced = slot->was_replaced && slot->replaced_card.has_value();
+    if (!token_replaced) slot->replaced_card = slot->card_object_id;
     slot->was_replaced = true;
     slot->is_token = true;
     slot->card_object_id = token_id;
@@ -2311,6 +2462,8 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     knowledge::shown(state_, top, knowledge::only(player));
     RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
                      toString(top) + ") on top of the Main Deck [Void Hatchling]");
+    // "As you look at me": its replacement first (D71); gone, nothing to recycle.
+    if (!seenOnTopOfDeck(player, top)) return;
     Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
     Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
     keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
@@ -2404,6 +2557,11 @@ void EffectExecutor::predict(PlayerId player, int count) {
             /*source_zone=*/ZoneType::MainDeck,
         });
     }
+    // A card whose "As you look at me" replacement took it away (D71) is no
+    // longer one of the cards looked at.
+    peeked.erase(std::remove_if(peeked.begin(), peeked.end(), [&](GameObjectId id) {
+        return state_.leftWhileSeen(id);
+    }), peeked.end());
 
     // The player decides, card by card, whether to recycle it (CR 437.1), and
     // then the order of the cards that stay.
@@ -2554,6 +2712,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     }
 
     if (!chosen_cards.empty()) {
+        state_.player(player).draws_before_last_draw = state_.player(player).draws_this_turn;
         state_.player(player).draws_this_turn += static_cast<int>(chosen_cards.size());
         events_.emit(CardsDrawnEvent{player, static_cast<int>(chosen_cards.size())});
     }
@@ -2659,6 +2818,7 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
     take(ps.rune_pool.energy, e_need);
     for (auto d : cost.domains) take(ps.rune_pool.power[static_cast<int>(d)], p_need);
     take(ps.rune_pool.universal_power, p_need);
+    resource::notePowerSpent(ps, cost.power - p_need);   // Sivir (I3)
     // Energy from runes that can't pay the Power first; then recycle matching
     // runes, exhausted ones first (CR 164.2).
     std::stable_sort(runes.begin(), runes.end(), [&](GameObjectId a, GameObjectId b) {
@@ -2721,11 +2881,14 @@ bool EffectExecutor::unitMayBePlayedTo(PlayerId player, const LocationId& where)
 bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
                                     std::optional<LocationId> location,
                                     EffectPlayCost cost) {
-    if (!state_.objectExists(card)) return false;
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return false;
     // Nothing is paid for a unit that cannot be played where it is sent.
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return false;
+    // "As you play me" choices come before the cost (CR 355.1 -> 356); only
+    // for a play that is going to be paid for.
+    if (!can_afford_ || can_afford_(player, card)) makeAsYouPlayChoices(player, card);
     if (!can_afford_ || !pay_cost_) {
         StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
         if (!plainPay(state_, events_, player,
@@ -2736,11 +2899,28 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
         if (!can_afford_(player, card)) return false;
         if (!pay_cost_(player, card)) return false;
     }
-    return playIgnoringCost(player, card, location);   // costs are settled; put it into play
+    // [Accelerate] was decided with the cost (GameEngine::decideAccelerate).
+    int accelerate = 0;
+    if (auto it = state_.getObject(card).card_counters.find(Card::kAccelerateDecided);
+        it != state_.getObject(card).card_counters.end())
+        accelerate = it->second;
+    // Costs are settled; put it into play.
+    return playIgnoringCostDecided(player, card, location, accelerate);
 }
 
 bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                                        std::optional<LocationId> location) {
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return false;
+    if (state_.getObject(card).isUnit() && location.has_value() &&
+        !unitMayBePlayedTo(player, *location))
+        return playIgnoringCostDecided(player, card, location, -1);   // not played
+    makeAsYouPlayChoices(player, card);   // CR 355.1
+    return playIgnoringCostDecided(player, card, location, -1);
+}
+
+bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
+                                             std::optional<LocationId> location,
+                                             int accelerate) {
     if (!state_.objectExists(card)) return false;
     auto& obj = state_.getObject(card);
     // "Units can't be played here." and its kin hold for a unit an effect
@@ -2751,6 +2931,13 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                          ") can't be played there — it is not played");
         return false;
     }
+    // [Accelerate] (CR 805.1.b): "As you play me, you may pay [1][C] ...". A
+    // play "ignoring its cost" may still pay it (CR 356.1.b.3, the Legion
+    // Rearguard example): offered now, on its own, if nothing decided it
+    // with a cost (testing phase D48 / D58).
+    bool accelerated = accelerate == 2;
+    if (accelerate < 0 && obj.isUnit() && offer_accelerate_)
+        accelerated = offer_accelerate_(player, card, obj.zone == ZoneType::Hand);
     // A new play, and nothing is paid for it: what an earlier play of this
     // card paid is forgotten (Card::forgetPlayPayments).
     Card::forgetPlayPayments(state_, cardFor(obj.card_def_id), player, card);
@@ -2813,7 +3000,7 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
         // play this turn enter ready.") or the unit's own text does ("I enter
         // ready", Card::entersReadyOnPlay) — as GameEngine::resolvePermanent
         // decides it for a unit played from hand.
-        bool ready = state_.player(player).otherUnitsEnterReady(card) ||
+        bool ready = accelerated || state_.player(player).otherUnitsEnterReady(card) ||
                      state_.player(player).units_enter_ready_this_turn;
         if (const Card* self_card = cardFor(obj.card_def_id))
             ready = ready || self_card->entersReadyOnPlay(state_, player, obj);

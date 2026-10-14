@@ -16,10 +16,9 @@ class TimeWarp : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // Phase 5a's additional-turns queue lives on PlayerState. Push the
-        // controller as the next turn-player.
-        auto& ps = ctx.state.player(ctx.controller);
-        ps.additional_turns.push_back(ctx.controller);
+        // "Take a turn after this one": an Additional Turn inserted after the
+        // current turn, whoever's turn it is (CR 735, 737).
+        ctx.state.queueAdditionalTurn(ctx.controller);
         RIFT_TRACE(ctx.events, "TIME WARP: queued extra turn for " +
                              std::string(toString(ctx.controller)));
         // "Banish this" — route source to banishment instead of trash.

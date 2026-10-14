@@ -67,7 +67,6 @@ GameState mirrorSeats(const GameState& in) {
     std::swap(s.players[0], s.players[1]);
     for (auto& ps : s.players) {
         flip(ps.id);
-        for (auto& p : ps.additional_turns) flip(p);
     }
     for (auto& [id, obj] : s.objects) {
         flip(obj.owner);
@@ -97,6 +96,8 @@ GameState mirrorSeats(const GameState& in) {
     }
     flip(s.turn.turn_player);
     flip(s.turn.starting_player);
+    flip(s.turn.regular_turn_player);
+    for (auto& p : s.turn.additional_turn_queue) flip(p);
     flip(s.turn.priority_holder);
     flip(s.turn.focus_holder);
     std::swap(s.turn.turn_decisions_p1, s.turn.turn_decisions_p2);
@@ -308,7 +309,7 @@ TEST(FeaturePerspective, PairedBlocksAreSelfThenOpponent) {
     b.state.player(P1).cost_modifiers.push_back(mod);
     b.state.player(P2).battlefields_scored_this_turn.insert(BattlefieldId::fromRaw(1));
     b.state.player(P2).cant_play_cards_this_turn = true;
-    b.state.player(P1).additional_turns.push_back(P1);
+    b.state.queueAdditionalTurn(P1);
     b.unitAt(P2, 20, BaseLocation{P2}, 2);
     const auto f1 = b.from(P1), f2 = b.from(P2);
 

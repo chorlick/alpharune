@@ -160,11 +160,19 @@ struct PlayerState {
     int xp_gained_this_turn = 0;     // XP gained this turn (Wily Newtfish)
     int hold_points_this_turn = 0;   // points scored via Hold this turn (Needlessly Large Yordle)
     int draws_this_turn = 0;         // cards drawn this turn (Frigid Jewel "2nd card")
+    int draws_before_last_draw = 0;  // draws_this_turn before the latest draw event (it may draw several)
     // A friendly unit died during THIS player's Beginning Phase this turn (Shadow Watcher).
     bool unit_died_in_beginning_this_turn = false;
     // Turn-scoped effects of a resolved spell (reset in resetTurnTracking):
     bool units_enter_ready_this_turn = false;   // "Units you play this turn enter ready" (Confront, Bushwhack)
     bool unit_died_this_turn = false;           // a unit this player controlled died this turn (Spoils of War)
+    // How many units this player controlled died this turn, and how many of
+    // those during their own Beginning Phase: "the first time a friendly unit
+    // dies (during your Beginning Phase) each turn" counts the turn's deaths,
+    // not the card's own triggers (CR 383.1; Wraith of Echoes, Shard of
+    // Undoing). Counted before the death is announced.
+    int unit_deaths_this_turn = 0;
+    int unit_deaths_in_beginning_this_turn = 0;
     int  buff_might_bonus_this_turn = 0;        // "Buffs give an additional +N [M] to friendly units this turn" (Stand United)
     bool hide_ignoring_costs_this_turn = false; // "You can hide cards ignoring costs this turn" (Guerilla Warfare)
     // Continuous-effect values (reset + recomputed during aura recompute; set by
@@ -305,9 +313,6 @@ struct PlayerState {
     // with a Deathknell trigger. 0 = normal (single fire).
     int deathknell_double_count = 0;
 
-    // Additional turns queue (Phase 5)
-    std::vector<PlayerId> additional_turns;
-
     // ── Observation memory ("revealed card bank") ─────────────────────
     // Counts how many times this player has observed each card identity
     // via reveals (Sabotage, Mindsplitter, Aurora, Vision, Predict-public,
@@ -349,6 +354,7 @@ struct PlayerState {
     int excess_combat_damage = 0;
     bool played_nontoken_unit_this_turn = false;  // Swain, Visionary
     bool played_nontoken_gear_this_turn = false;
+    int nontoken_gear_plays_this_turn = 0;   // counted as each play is announced (Jayce, Brilliant Inventor)
     bool played_spell_this_turn = false;
     int cards_played_not_from_hand_this_turn = 0;
     int spells_played_this_turn = 0;      // Crumbling Sands
@@ -379,6 +385,7 @@ struct PlayerState {
         excess_combat_damage = 0;
         played_nontoken_unit_this_turn = false;
         played_nontoken_gear_this_turn = false;
+        nontoken_gear_plays_this_turn = 0;
         played_spell_this_turn = false;
         cards_played_not_from_hand_this_turn = 0;
         spells_played_this_turn = 0;
@@ -401,9 +408,12 @@ struct PlayerState {
         xp_gained_this_turn = 0;
         hold_points_this_turn = 0;
         draws_this_turn = 0;
+        draws_before_last_draw = 0;
         unit_died_in_beginning_this_turn = false;
         units_enter_ready_this_turn = false;
         unit_died_this_turn = false;
+        unit_deaths_this_turn = 0;
+        unit_deaths_in_beginning_this_turn = 0;
         buff_might_bonus_this_turn = 0;
         hide_ignoring_costs_this_turn = false;
         // (cannot_gain_points / extra_points_to_win are continuous-effect flags,
@@ -530,6 +540,12 @@ struct TurnState {
 
     int turn_number = 0;
     bool is_additional_turn = false;
+    /// Additional Turns queued after this one, the next first (CR 735-738;
+    /// GameState::queueAdditionalTurn).
+    std::vector<PlayerId> additional_turn_queue;
+    /// Whose regular turn was the last one begun: the Turn Order resumes from
+    /// it after Additional Turns (CR 737). Written by the turn transition.
+    PlayerId regular_turn_player = PlayerId::Player1;
 
     // True once any unit has died during the current turn (reset each runTurn).
     // Read by cards like Towering Pairofant ("if a unit died this turn, ...").
@@ -986,6 +1002,32 @@ struct GameState {
     // Delayed abilities (Phase 5, CR 389-392)
     std::vector<DelayedAbility> delayed_abilities;
 
+    /// "It gains [Keyword N] this combat": a continuous effect a resolved
+    /// ability created (EffectExecutor::giveKeywordThisCombat). It lasts while
+    /// the combat at `battlefield` that was going on when it was made goes on
+    /// and `unit` stays on the board, whatever becomes of the card that made
+    /// it; GameEngine::recalculateAuras applies it and drops it once over.
+    struct CombatKeyword {
+        GameObjectId unit = kInvalidId;
+        Keyword keyword = Keyword::Count;
+        int value = 0;
+        BattlefieldId battlefield = kInvalidId;
+        int turn = 0;
+    };
+    std::vector<CombatKeyword> combat_keywords;
+
+    /// Cards a replacement took away as they were looked at or revealed from
+    /// the top of a deck ("As you look at or reveal me ..., you may banish
+    /// me": Nocturne, Horrifying; CR 370.1.c.1). The effect that was looking
+    /// at them goes on without them: it does not put them back, recycle,
+    /// banish, play or offer them (EffectExecutor::seenOnTopOfDeck). Emptied
+    /// when the chain item that looked has resolved.
+    std::vector<GameObjectId> left_while_seen;
+    bool leftWhileSeen(GameObjectId id) const {
+        return std::find(left_while_seen.begin(), left_while_seen.end(), id) !=
+               left_while_seen.end();
+    }
+
     // Game result
     bool game_over = false;
     PlayerId winner = PlayerId::None;
@@ -1020,6 +1062,18 @@ struct GameState {
         Phase phase = Phase::Done;
     };
     std::optional<CostPaymentCursor> cost_cursor;
+
+    /// "Take a turn after this one" (CR 735): an Additional Turn for `owner`,
+    /// inserted right after the current turn — before any queued earlier
+    /// (CR 738, second example).
+    void queueAdditionalTurn(PlayerId owner) {
+        turn.additional_turn_queue.insert(turn.additional_turn_queue.begin(), owner);
+    }
+    /// How many Additional Turns of `owner` are queued.
+    int additionalTurnsOf(PlayerId owner) const {
+        return static_cast<int>(std::count(turn.additional_turn_queue.begin(),
+                                           turn.additional_turn_queue.end(), owner));
+    }
 
     // ── Object management ──
 

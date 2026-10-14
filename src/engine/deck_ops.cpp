@@ -73,6 +73,9 @@ GameObjectId drawTop(GameState& state, PlayerId owner, Seers seers) {
 void putInHand(GameState& state, GameObjectId object, Seers seers,
                std::optional<Place> from, PlayerId no_owner_hand) {
     if (!state.objectExists(object)) return;
+    // A card that left as it was looked at is not the held card any more
+    // (GameState::left_while_seen): the looking effect does not move it.
+    if (from == Place::Held && state.leftWhileSeen(object)) return;
     const Place was = from.value_or(whereIs(state, object));
     auto& obj = state.getObject(object);
     obj.zone = ZoneType::Hand;
@@ -97,6 +100,7 @@ void putFacedown(GameState& state, GameObjectId object, BattlefieldId at) {
 
 void putOnTop(GameState& state, PlayerId owner, GameObjectId object, Place from,
               Seers seers) {
+    if (from == Place::Held && state.leftWhileSeen(object)) return;   // (see putInHand)
     enterDeck(state, object);
     state.player(owner).main_deck.push_back(object);
     knowledge::moved(state, object, from, Place::Deck, seers, {}, DeckEnd::Top);
@@ -104,6 +108,7 @@ void putOnTop(GameState& state, PlayerId owner, GameObjectId object, Place from,
 
 void putOnBottom(GameState& state, PlayerId owner, GameObjectId object, Place from,
                  Seers seers) {
+    if (from == Place::Held && state.leftWhileSeen(object)) return;   // (see putInHand)
     enterDeck(state, object);
     auto& d = state.player(owner).main_deck;
     d.insert(d.begin(), object);
@@ -115,6 +120,7 @@ void putOnBottomTogether(GameState& state, PlayerId owner,
     std::vector<knowledge::GroupCard> group;
     auto& d = state.player(owner).main_deck;
     for (const auto& c : cards) {
+        if (c.from == Place::Held && state.leftWhileSeen(c.object)) continue;   // (see putInHand)
         enterDeck(state, c.object);
         d.insert(d.begin(), c.object);
         group.push_back({c.object, c.from, c.seers});

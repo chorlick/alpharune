@@ -258,6 +258,12 @@ public:
     void testHook_scoringStep() { scoringStep(); }
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
+    void testHook_resolveMulliganDecision(const Intent& i) { resolveMulliganDecision(i); }
+    /// The transition from one turn to the next (whose turn, which number).
+    void testHook_nextTurn() { advanceTurnQueue(); }
+    void testHook_setupBattlefields(const DeckSubmission& d1, const DeckSubmission& d2) {
+        setupBattlefields(d1, d2);
+    }
     void testHook_channelPhase() { channelPhase(); }
     void testHook_endingStep() { endingStep(); }
     void testHook_expirationStep() { expirationStep(); }
@@ -302,7 +308,11 @@ public:
     // Exposed in public for unit tests; the struct + implementation
     // live in the combat-damage section below.
     struct CombatDamageAdvance {
-        enum class Kind : uint8_t { NeedDecision, Skip };
+        /// NeedDecision: `legal` is every distinct legal assignment, one
+        /// decision. StepByStep: there are more than kMaxDamageOptions of them
+        /// (or too many to count cheaply); the assignment is made one unit at a
+        /// time (GameEngine::assignCombatDamage), so none is withheld.
+        enum class Kind : uint8_t { NeedDecision, Skip, StepByStep };
         Kind kind = Kind::Skip;
         PlayerId assigner = PlayerId::None;
         std::vector<Intent> legal;
@@ -310,6 +320,11 @@ public:
     CombatDamageAdvance testHook_advanceCombatDamage(
         PlayerId assigner, int total_damage,
         const std::vector<GameObjectId>& targets);
+    /// The assigner's whole decision (one list, or step by step), not dealt.
+    std::optional<Intent> testHook_assignCombatDamage(
+        PlayerId assigner, int total_damage, const std::vector<GameObjectId>& targets) {
+        return assignCombatDamage(assigner, total_damage, targets);
+    }
 
     /// The play gate for a spell choosing `targets`: its cost after what the
     /// targets take off, plus their Deflect, payable together. With no targets
@@ -400,6 +415,8 @@ private:
     void setupGame(const DeckSubmission& deck1, const DeckSubmission& deck2);
     void setupPlayer(PlayerId player, const DeckSubmission& deck);
     void setupBattlefields(const DeckSubmission& deck1, const DeckSubmission& deck2);
+    /// Who takes the next turn (CR 734-738) and the turn number.
+    void advanceTurnQueue();
     void drawOpeningHands();
     void runMulligans();
     void determineTurnOrder();
@@ -525,6 +542,18 @@ private:
     /// Apply the chosen damage assignment. Mirrors what the in-place
     /// path does: emits per-unit DamageDealtEvent for each assignment.
     void resolveCombatDamageDecision(const Intent& intent);
+    /// Ask `assigner` for their assignment (CR 467.2.c): one decision among
+    /// every distinct legal assignment, or — when there are more than
+    /// kMaxDamageOptions — one decision per unit, "which unit takes lethal
+    /// damage next" in the tier order, the last one taking what is left.
+    /// nullopt when there is nothing to assign.
+    std::optional<Intent> assignCombatDamage(PlayerId assigner, int total_damage,
+                                             const std::vector<GameObjectId>& targets);
+    /// The units that can take `assigner`'s combat damage, in tier order
+    /// (Tank, others, Backline; CR 815, 826, 460.2.c.6), ids ascending within
+    /// a tier, with each one's tier.
+    void combatDamageTiers(PlayerId assigner, const std::vector<GameObjectId>& targets,
+                           std::vector<GameObjectId>& flat, std::vector<int>& tier_of) const;
 
     // ── Mulligan ──
     //
@@ -639,9 +668,20 @@ private:
     /// Whether `player` may play the unit `card` to `bf` by the ordinary rule
     /// (a battlefield they control, CR 355.2) or a permission the card prints
     /// or another card grants the player. Paid plays ("pay ... to play it
-    /// here") are the caller's.
+    /// here") are the caller's. `unit` (the card being played) adds what its
+    /// [Ambush] permits: a battlefield where `player` has units (CR 822.1.b),
+    /// widened by Card::ambushToEnemyBattlefields (822.1.d) — at any timing
+    /// the play is offered at; the [Reaction] half is the Ambush generators'.
     bool unitPlayableAt(const Card* card_obj, PlayerId player,
+                        const BattlefieldState& bf,
+                        const GameObject* unit = nullptr) const;
+    /// [Ambush]'s location (CR 822.1.b, 822.1.d): `bf` has units of `player`,
+    /// or — for a card that widens it — enemy units.
+    bool ambushLocation(const Card* card_obj, PlayerId player,
                         const BattlefieldState& bf) const;
+    /// The cards `player` may play a unit from as from a hand: the hand and
+    /// the Chosen Champion in its zone (CR 420.1.a).
+    std::vector<GameObjectId> handAndChampion(PlayerId player) const;
 
     // ── Queries ──
     Intent queryAgent(PlayerId player);
@@ -815,6 +855,22 @@ private:
     /// unit's cost is paid, and the cost is paid with it. Returns the cost
     /// adjustment to pay with (the Accelerate cost added when chosen) and
     /// records the decision on the card for resolvePermanent.
+    /// Whether the unit `card_id` has [Accelerate] for this play: its own
+    /// keyword, or one a card on `player`'s board gives a unit played from
+    /// where this one is (`from_hand`; Card::grantsAccelerateTo).
+    bool accelerateAvailable(PlayerId player, GameObjectId card_id, bool from_hand) const;
+    /// The [1][C] of [Accelerate] after "optional additional costs you pay
+    /// cost [1] or [A] less": the (energy, power) to pay, the payer choosing
+    /// the half; nullopt if neither is payable.
+    std::optional<std::pair<int, int>> chooseAccelerateHalf(
+        PlayerId player, const std::function<bool(int, int)>& payable);
+    bool chooseAccelerateHalfPayable(PlayerId player,
+                                     const std::function<bool(int, int)>& payable) const;
+    bool askAccelerate(PlayerId player, const GameObject& card);
+    /// [Accelerate] for a play that pays no cost of its own first (from
+    /// facedown, "ignoring its cost", a unit with no Domain): offered if
+    /// payable, paid on its own. True if paid (the unit enters ready).
+    bool offerAccelerateOnItsOwn(PlayerId player, GameObjectId card_id, bool from_hand);
     Card::PlayCostAdjust decideAccelerate(PlayerId player, GameObjectId card_id,
                                           const Card::PlayCostAdjust& prepay,
                                           int extra_any_power);

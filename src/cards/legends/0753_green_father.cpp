@@ -22,7 +22,9 @@ public:
 
         // "replace that battlefield": the one that was just conquered or
         // held — the trigger's subject is its card object. A battlefield that
-        // is already a Brush token is not replaced again.
+        // is already a Brush token can be replaced too (CR 439.6: a token can
+        // be Replaced; testing phase G24): the new Brush swaps back to the
+        // card the first one replaced (CR 439.7.b.1).
         auto find_target = [&]() -> BattlefieldId {
             if (!ctx.state.chain.resuming.has_value()) return kInvalidId;
             const GameObjectId bf_card = ctx.state.chain.resuming->triggering_subject;
@@ -31,7 +33,6 @@ public:
             // battlefield" has already been replaced.
             const auto bf = battlefieldOfCard(ctx.state, bf_card);
             if (!bf.has_value()) return kInvalidId;
-            if (ctx.state.getObject(bf_card).name == "Brush") return kInvalidId;
             return *bf;
         };
         auto still_legal = [&]() {

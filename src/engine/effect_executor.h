@@ -11,6 +11,7 @@
 #include "core/game_state.h"
 #include "core/intent.h"
 #include "engine/knowledge_tracker.h"
+#include "engine/resource_payment.h"
 
 #include <functional>
 #include <optional>
@@ -80,8 +81,18 @@ struct EffectPlayCost {
 /// [A] an opponent must pay to choose `target` (CR 808 Deflect); 0 if
 /// `chooser` controls it or Deflect is ignored at its battlefield.
 int deflectCostFor(const GameState& state, PlayerId chooser, GameObjectId target);
+
+/// Whether `viewer` may not know which card `id` is: a card in another
+/// player's hand, any card in a deck, a facedown card that is not theirs
+/// (testing phase D11). A log line that names such a card is not for `viewer`.
+bool hiddenFrom(const GameState& state, GameObjectId id, PlayerId viewer);
+/// Who may read a line naming `ids`, written for `knower` (who may know them
+/// all): both players, or only `knower` when one of them is hidden from the
+/// other player.
+LogAudience audienceNaming(const GameState& state, PlayerId knower,
+                           const std::vector<GameObjectId>& ids);
 /// Power of any Domain `player` could pay right now.
-int payableAnyPower(const GameState& state, PlayerId player);
+int payableAnyPower(const GameState& state, PlayerId player, SpendFor f = SpendFor::Other);
 
 class EffectExecutor {
 public:
@@ -143,6 +154,21 @@ public:
     /// "its controller may pay ... instead"). Returns false when there is no
     /// agent to ask.
     bool confirmNow(PlayerId player, const std::string& label);
+    /// Ask `player` to pick one of `labels` right now (a choice made as a card
+    /// is played, CR 355.1). Returns the index; 0 when there is no agent.
+    int chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
+                       const std::string& what);
+    /// The "As you play me" choices of `card` (Card::asYouPlayChoices).
+    void makeAsYouPlayChoices(PlayerId player, GameObjectId card);
+    /// `card` (owned by `owner`) is being looked at or revealed from the top
+    /// of a deck: its "As you look at or reveal me" replacement, if any, is
+    /// applied now (Card::seenOnTopOfDeck; once per card per look). Called for
+    /// every CardRevealedEvent from a Main Deck and by each look that
+    /// announces none. True if the card is still where the looker holds it.
+    bool seenOnTopOfDeck(PlayerId owner, GameObjectId card);
+    /// Ask `player` to pick one of (value, label) right now; the value.
+    int chooseAmongNow(PlayerId player, const std::vector<std::pair<int, std::string>>& options,
+                       const std::string& what);
 
     /// "You may make new choices for it" (CR 750-755): the item's controller
     /// re-chooses its targets. Costs already paid are unaffected (755.1).
@@ -168,6 +194,12 @@ public:
     void bounceToHand(GameObjectId target);
     void giveTemporaryMight(GameObjectId target, int amount, int minimum = 0);
     void giveTemporaryKeyword(GameObjectId target, Keyword kw, int value);
+    /// "<unit> gains [kw value] this combat" for the combat going on at
+    /// `battlefield` (GameState::combat_keywords). A second grant of the same
+    /// keyword to the same unit for that combat adds its value. Nothing for a
+    /// unit not on the board or a battlefield with no combat.
+    void giveKeywordThisCombat(GameObjectId unit, Keyword kw, int value,
+                               BattlefieldId battlefield);
     /// Buff (CR 427): place a Buff counter on `target` if it has none. A unit
     /// that already has one is not buffed (CR 427.1.b.1 / 702.3) unless its
     /// Card::canHaveAnyNumberOfBuffs(). Returns true if a Buff was placed —
@@ -389,12 +421,26 @@ public:
     // ── Paying inside an effect ──
     /// Power of any Domain ([A]) `player` could pay now: floating power of
     /// every kind plus runes in base (CR 164.2.b — recycle, ready or exhausted).
-    int payableAnyPower(PlayerId player) const;
-    /// Pay `amount` [A]: floating power first, then recycle runes (exhausted
-    /// ones first). Pays nothing and returns false if it can't be covered.
-    /// While a spell is making its choices before its cost is paid, the
-    /// payment leaves that cost payable (resource::payAnyPowerAheadOfCost).
-    bool payAnyPower(PlayerId player, int amount);
+    int payableAnyPower(PlayerId player, SpendFor f = SpendFor::Other) const;
+    /// Pay `amount` [A]: floating power first, then runes — the payer names
+    /// each rune (runeChooser). Pays nothing and returns false if it can't be
+    /// covered. While a spell is making its choices before its cost is paid,
+    /// the payment leaves that cost payable (resource::payAnyPowerAheadOfCost,
+    /// judged by the engine's aheadOfCostCheck). `f`: what the Power is spent
+    /// for — a spell's Deflect is a cost of playing that spell (CR 356.2.a.2),
+    /// so Power "to play spells" may pay it (testing phase D50).
+    bool payAnyPower(PlayerId player, int amount, SpendFor f = SpendFor::Other);
+    /// Pay `energy` and `power` (each Power of a Domain in `mask`) for `f`,
+    /// the payer naming the runes (testing phase D9): every payment that is
+    /// not a card's base cost comes here (resource::payIn).
+    bool payResources(PlayerId player, int energy, int power, resource::DomainMask mask,
+                      SpendFor f = SpendFor::Other);
+    /// The payer is asked which rune pays each point, among the kinds that
+    /// differ; empty (the engine's order) with no agent or inside a probe.
+    resource::RuneChooser runeChooser() const;
+    /// Set by the engine while a spell makes its choices before its cost:
+    /// whether that cost is still payable as things stand.
+    void setAheadOfCostCheck(std::function<bool()> f) { ahead_of_cost_check_ = std::move(f); }
 
     // ── Scoring by an effect (CR 471 "score N points" outside Conquer/Hold) ──
     /// Give `player` `amount` points from an effect: honours "can't gain/score
@@ -595,6 +641,11 @@ public:
                                GameObjectId subject = kInvalidId) {
         if (queue_trigger_) queue_trigger_(source, controller, trigger, subject);
     }
+    /// [Accelerate] for a unit an effect plays without paying its cost
+    /// (injected by the engine: GameEngine::offerAccelerateOnItsOwn). True if
+    /// it was paid. Without it (a bare executor) nothing is offered.
+    using OfferAccelerateFn = std::function<bool(PlayerId, GameObjectId, bool from_hand)>;
+    void setOfferAccelerate(OfferAccelerateFn fn) { offer_accelerate_ = std::move(fn); }
     void setPlayCostFns(CanAffordFn can, PayCostFn pay) {
         can_afford_ = std::move(can);
         pay_cost_ = std::move(pay);
@@ -637,7 +688,20 @@ public:
     };
     void requestChoice(PlayerId p, std::vector<Intent> legal,
                         std::string label = "") {
+        dropLeftWhileSeen(legal);
         pending_ = PendingChoice{true, p, std::move(legal), std::move(label)};
+    }
+    /// An option naming a card that left as it was looked at is not offered
+    /// (unless nothing else is: the card then does nothing with it).
+    void dropLeftWhileSeen(std::vector<Intent>& options) const {
+        if (state_.left_while_seen.empty()) return;
+        auto gone = [&](const Intent& i) {
+            for (auto id : i.chosen_objects) if (state_.leftWhileSeen(id)) return true;
+            return false;
+        };
+        const auto n = std::count_if(options.begin(), options.end(), gone);
+        if (n == 0 || n == static_cast<long>(options.size())) return;
+        options.erase(std::remove_if(options.begin(), options.end(), gone), options.end());
     }
     bool hasPendingChoice() const { return pending_.active; }
 
@@ -673,6 +737,7 @@ private:
     const CardDB& card_db_;
     std::function<void()> aura_recalc_;
     std::function<bool(GameObjectId)> choice_filter_;
+    std::function<bool()> ahead_of_cost_check_;
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;
@@ -680,6 +745,12 @@ private:
     RechooseFn rechoose_;
     PayCostFn pay_cost_;
     const CardRegistry* card_registry_ = nullptr;  // optional; needed for playIgnoringCost onPlay dispatch
+    OfferAccelerateFn offer_accelerate_;
+    std::vector<GameObjectId> seeing_;   // seenOnTopOfDeck in progress
+    /// playIgnoringCost, told what became of [Accelerate]: -1 not decided yet
+    /// (offered here), else Card::kAccelerateDecided's value (2 = paid).
+    bool playIgnoringCostDecided(PlayerId player, GameObjectId card,
+                                 std::optional<LocationId> location, int accelerate);
     std::mt19937_64* rng_ = nullptr;
     AgentChoiceQuery agent_query_;
     mutable std::string asking_;
@@ -687,7 +758,8 @@ private:
     /// The "ASK_PROMPT:" line is what the play server shows above the options
     /// (it titles a decision from the last "*_PROMPT:" trace line; a card's
     /// own prompt helpers write MAY_PROMPT / MODE_PROMPT / TGT_PROMPT).
-    Intent ask(PlayerId player, const std::vector<Intent>& options, std::string what) const {
+    Intent ask(PlayerId player, std::vector<Intent> options, std::string what) const {
+        dropLeftWhileSeen(options);
         RIFT_TRACE(events_, "ASK_PROMPT: " + what);
         const Asking named(*this, std::move(what));
         return agent_query_(player, options);

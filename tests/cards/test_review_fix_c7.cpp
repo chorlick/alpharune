@@ -389,6 +389,7 @@ TEST_F(C7Test, AsheFocused_TheBanishedCardReturnsWhenTheyHold) {
     // "(even if I'm no longer on the board)"
     resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(ashe); });
     state.battlefields[1].controller = P2;
+    state.turn.turn_player = P2;   // they hold on their turn (testing phase B8)
     withEngine([&](GameEngine& e) {
         e.testHook_scoreHold(P2, BattlefieldId::fromRaw(1));
         e.testHook_runChain();

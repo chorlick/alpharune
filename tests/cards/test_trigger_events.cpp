@@ -166,8 +166,11 @@ TEST_F(TriggerEventTest, OwnPlayDoesNotFireVex) {
     EXPECT_EQ(chainSize(), before);
 }
 
-// ── WhenIRevealedFromTop: Nocturne enqueues when revealed from MainDeck ──
-TEST_F(TriggerEventTest, RevealedFromTop_FiresNocturne) {
+// ── Nocturne revealed from the Main Deck: a replacement, not a trigger ──
+// (Testing phase D71, by design: "As you look at or reveal me ..." is applied
+// with the reveal, inside the revealing effect — EffectExecutor::
+// seenOnTopOfDeck — and puts nothing on the chain. Old: a chain item.)
+TEST_F(TriggerEventTest, RevealedFromTop_PutsNothingOnTheChainForNocturne) {
     auto noct = addToDeck(P1, 194);                  // in P1's main deck
     ChainManager cm(state, events, card_db);
     TriggerManager tm(state, events, card_db, cm, card_registry);
@@ -175,7 +178,7 @@ TEST_F(TriggerEventTest, RevealedFromTop_FiresNocturne) {
     size_t before = chainSize();
     events.emit(CardRevealedEvent{noct, state.getObject(noct).card_def_id, P1,
                                   /*all=*/false, P1, ZoneType::MainDeck});
-    EXPECT_GT(chainSize(), before);
+    EXPECT_EQ(chainSize(), before);
 }
 
 TEST_F(TriggerEventTest, RevealedFromHand_DoesNotFireNocturne) {

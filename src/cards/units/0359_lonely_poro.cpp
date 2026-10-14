@@ -18,32 +18,24 @@ public:
     // "[Deathknell] — If I died alone, draw 1." Alone = no OTHER friendly
     // units at the location where I died.
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    // "If I died alone": no other friendly unit was here as I died — judged
+    // from the last-known information (CR 383.2.c.3.b), which for units that
+    // die at the same time is taken for all of them before the first leaves.
+    // The same reading as the other printing, Lonely Poro 777. (It used to
+    // read the board as the ability resolved: units that died with it were
+    // gone by then, and a unit that arrived since cancelled the draw. Whether
+    // units that die together leave it "alone" is judge question 12,
+    // docs/judge-questions-2026-10.md; testing phase D80.)
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        // Where THIS death happened (the snapshot that came with the ability).
-        std::optional<LocationId> died_at = asItLeft(ctx, ctx.source).valid
-            ? asItLeft(ctx, ctx.source).location : self.last_location;
-        if (!died_at.has_value()) died_at = self.location;
-        if (!died_at.has_value()) {
-            ctx.executor.drawCards(ctx.controller, 1);
-            RIFT_TRACE(ctx.events, "LONELY PORO: death location unknown -> draw 1 (approx alone)");
+        const auto& lk = asItLeft(ctx, ctx.source);
+        if (!lk.valid) return;
+        if (!lk.other_friendly_units_here.empty()) {
+            RIFT_TRACE(ctx.events, "LONELY PORO: did not die alone -> no draw");
             return;
         }
-        bool other_friendly_here = false;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (id == ctx.source) continue;
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || *obj.location != *died_at) continue;
-            other_friendly_here = true;
-            break;
-        }
-        if (!other_friendly_here) {
-            ctx.executor.drawCards(ctx.controller, 1);
-            RIFT_TRACE(ctx.events, "LONELY PORO: died alone -> draw 1");
-        } else {
-            RIFT_TRACE(ctx.events, "LONELY PORO: did not die alone -> no draw");
-        }
+        ctx.executor.drawCards(ctx.controller, 1);
+        RIFT_TRACE(ctx.events, "LONELY PORO: died alone -> draw 1");
     }
 private:
     const CardDef def_ = [] {

@@ -254,8 +254,10 @@ TEST_F(RulesComplianceTest, CombatDamage_DoubledDamageNeedsHalfTheAssignment) {
 
 TEST_F(RulesComplianceTest, CombatDamage_ManyDefendersEnumeratesQuicklyAndBounded) {
     // 16 one-Might defenders and 3 damage: C(16,3) = 560 distinct outcomes.
-    // Enumeration must not permute all 16 units (16! orderings), and the
-    // option list handed to an agent is capped.
+    // Enumeration must not permute all 16 units (16! orderings). Testing
+    // phase B7 (by design): the list used to be capped at 64 of the 560, the
+    // rest withheld; past the cap the assignment is now made one unit at a
+    // time (GameEngine::assignCombatDamage), so the list is not built at all.
     makeEngine();
     setLegend(P1); setLegend(P2);
     std::vector<GameObjectId> defenders;
@@ -263,14 +265,8 @@ TEST_F(RulesComplianceTest, CombatDamage_ManyDefendersEnumeratesQuicklyAndBounde
 
     auto adv = engine_->testHook_advanceCombatDamage(P1, 3, defenders);
 
-    ASSERT_FALSE(adv.legal.empty());
-    EXPECT_LE(adv.legal.size(), 64u);
-    for (const auto& intent : adv.legal) {
-        int total = 0;
-        for (const auto& da : intent.damage_assignments) total += da.damage;
-        EXPECT_EQ(total, 3) << "every option assigns all the damage";
-        EXPECT_EQ(intent.damage_assignments.size(), 3u) << "one lethal point each";
-    }
+    EXPECT_EQ(adv.kind, GameEngine::CombatDamageAdvance::Kind::StepByStep);
+    EXPECT_TRUE(adv.legal.empty());
 }
 
 TEST_F(RulesComplianceTest, CombatDamage_OffersEachDistinctChoiceOfWhoDies) {

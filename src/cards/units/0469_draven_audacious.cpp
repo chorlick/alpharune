@@ -34,12 +34,7 @@ public:
                           TriggerType trigger, GameObjectId /*subject*/) const override {
         if (!state.objectExists(source)) return false;
         const auto& self = state.getObject(source);
-        if (trigger == TriggerType::WhenIWinCombat) {
-            const auto it = self.card_counters.find("draven_win_turn");
-            if (it != self.card_counters.end() && it->second == state.turn.turn_number + 1)
-                return false;
-            return !triggeredAbilityOnChain(state, source, trigger);
-        }
+        if (trigger == TriggerType::WhenIWinCombat) return true;   // firstTimeEachTurn
         if (trigger == TriggerType::WhenIDie) {
             const auto& lk = self.last_known;
             return lk.valid &&
@@ -47,11 +42,14 @@ public:
         }
         return true;
     }
+    // "The first time I win a combat each turn": counted at the win, not when
+    // the ability resolves (Card::firstTimeEachTurn; testing phase B6).
+    bool firstTimeEachTurn(TriggerType trigger) const override {
+        return trigger == TriggerType::WhenIWinCombat;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenIWinCombat) {
             if (!ctx.state.objectExists(ctx.source)) return;
-            ctx.state.getObject(ctx.source).card_counters["draven_win_turn"] =
-                ctx.state.turn.turn_number + 1;
             ctx.executor.scorePoints(ctx.controller, 1);   // CR 194.1.c
             RIFT_TRACE(ctx.events, "DRAVEN AUDACIOUS: first combat win -> score 1");
         } else if (ctx.firing_trigger == TriggerType::WhenIDie) {

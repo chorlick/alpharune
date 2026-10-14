@@ -25,9 +25,13 @@ public:
     // "during your Beginning Phase": the Beginning and Scoring Steps of the
     // controller's own turn (CR 315.2; the Awaken Phase, CR 315.1, is not part
     // of it). Checked as the unit dies.
+    // "The first time a friendly unit dies during your Beginning Phase each
+    // turn": the turn's first such death, counted for the player whether or
+    // not this card was on the board for it (CR 383.1; testing phase B6).
     bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
                           TriggerType, GameObjectId /*subject*/) const override {
-        return state.turn.turn_player == controller && isBeginningPhase(state.turn.phase);
+        return state.turn.turn_player == controller && isBeginningPhase(state.turn.phase) &&
+               state.player(controller).unit_deaths_in_beginning_this_turn == 1;
     }
 
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
@@ -39,16 +43,6 @@ public:
         // "The first time ... each turn": several units can die together (the
         // [Temporary] ones), each putting this ability on the chain; only the
         // first to resolve does anything. Tracked per turn on this gear.
-        if (!ri || ri->resume_point != kAsking) {
-            auto& counters = state.getObject(ctx.source).card_counters;
-            auto it = counters.find(kFiredTurn);
-            if (it != counters.end() && it->second == state.turn.turn_number) {
-                if (ri) ri->resume_point = kDone;
-                return;  // already fired this turn
-            }
-            counters[kFiredTurn] = state.turn.turn_number;
-        }
-
         // "each opponent must kill one of their units." The opponent chooses
         // which (it is their kill, of their own unit — no targeting, so no
         // Deflect and no "can't be chosen").
@@ -79,7 +73,6 @@ public:
                             "(first friendly death of their Beginning Phase)");
     }
 private:
-    static constexpr const char* kFiredTurn = "__shard_undoing_turn";
     static constexpr int kAsking = 20;   // clear of the choice helpers' resume points
     static constexpr int kDone = 21;
     const CardDef def_ = [] {

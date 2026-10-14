@@ -29,9 +29,14 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace riftbound {
 
+/// Perfect-information MCTS: searches in exact copies of the live game, so it
+/// sees the opponent's hand, both deck orders and every future shuffle. A
+/// benchmark rung only, never a teacher (it would teach acting on cards a
+/// player cannot see); the honest search is IsMctsAgent.
 class MctsAgent : public AgentInterface {
 public:
     /// `deck1_path` / `deck2_path` MUST match the decks of the engine
@@ -68,20 +73,64 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-/// Information-set MCTS variant — same wiring shape as MctsAgent. The search
-/// is the algorithm of OpenSpiel's `ISMCTSBot`, implemented in mcts_agent.cpp
-/// with ordered containers so that a game is a function of its seeds (the
-/// bot's hash-map order made it differ from run to run; see `IsMctsSearch`).
-/// Currently behaves like perfect-info MCTS because each simulation's world
-/// sample is a Clone (no hidden-info determinization yet).
+/// What the last search of an `IsMctsAgent` found at its root, per option of
+/// the live decision. For a recorder: the visit distribution is the search's
+/// policy (a teacher's target), `root_value` its estimate of the position.
+struct SearchSummary {
+    /// False when the decision was answered without a search (one option, the
+    /// setup battlefield choice, or no position to search from); the vectors
+    /// are then empty and `chosen` is still the index answered.
+    bool searched = false;
+    /// Index into the live legal list of the option played.
+    int chosen = -1;
+    /// Per live legal index: root visits, and the mean return of the deciding
+    /// player over them (0 where unvisited).
+    std::vector<int> visits;
+    std::vector<double> value;
+    /// Visit-weighted mean return of the deciding player at the root.
+    double root_value = 0.0;
+    int simulations = 0;
+};
+
+/// Information-set MCTS — same wiring shape as MctsAgent. The search is the
+/// algorithm of OpenSpiel's `ISMCTSBot` (UCT, one world per simulation, tree
+/// nodes keyed by what the player to move observes), implemented in
+/// mcts_agent.cpp with ordered containers so that a game is a function of its
+/// seeds (`IsMctsSearch`).
+///
+/// **Honest by default** (`WorldModel::Sampled`): each simulation runs in a
+/// world drawn by `WorldSampler` (determinizer.h) from what the deciding
+/// player knows — the opponent's hand, facedown cards and deck drawn from a
+/// model of a legal deck around their legend, both deck orders shuffled except
+/// the slots the player knows, the engine's RNG reseeded. The search never
+/// reads a card the player cannot see: two live games that differ only in
+/// such cards give the same search (IsMctsHonestTest). It still needs both
+/// deck lists and the engine seed, as MctsAgent does, to keep a mirror of the
+/// live game that the worlds are drawn from — only the drawing is honest.
+///
+/// `WorldModel::Perfect` searches in copies of the real game instead: it sees
+/// the opponent's hand and both deck orders. A benchmark rung only, never a
+/// teacher.
+///
+/// The move played is the most visited root option (ties broken by the
+/// agent's RNG); `lastSearch()` gives the whole root.
+///
+/// Decisions not searched: the setup battlefield choice (the opponent's pick
+/// is held by the engine's suspended call, which a world cannot redraw; CR
+/// 487.5 makes the choice random in a Duel, 488.5 chosen in a Match, and
+/// which one an engine game follows is open — item G4) is answered uniformly
+/// from the agent's RNG.
 class IsMctsAgent : public AgentInterface {
 public:
+    enum class WorldModel { Sampled, Perfect };
+
     IsMctsAgent(std::string deck1_path,
                 std::string deck2_path,
                 std::string registry_path,
                 uint64_t    engine_seed,
                 uint64_t    mcts_seed,
-                int         sims);
+                int         sims,
+                WorldModel  world = WorldModel::Sampled);
     ~IsMctsAgent() override;
 
     IsMctsAgent(const IsMctsAgent&) = delete;
@@ -91,6 +140,17 @@ public:
         const GameState& state,
         const std::vector<Intent>& legal_actions
     ) override;
+
+    /// The root of the search behind the last answer (see SearchSummary).
+    const SearchSummary& lastSearch() const;
+
+    /// Check every sampled world against the searcher's knowledge
+    /// (WorldSampler::check) and throw std::logic_error on a disagreement.
+    /// Off by default (costs a second pass per simulation); also switched on
+    /// by the environment variable RIFTBOUND_ISMCTS_CHECK_WORLDS=1.
+    void setCheckWorlds(bool on);
+    /// Worlds checked so far.
+    long worldsChecked() const;
 
 private:
     struct Impl;

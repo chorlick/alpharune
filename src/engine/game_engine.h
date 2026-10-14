@@ -191,6 +191,19 @@ public:
         return state_;
     }
 
+    /// For determinized search (agents/determinizer.h) only: while the engine
+    /// waits on a decision, let `rewrite` change what the deciding player
+    /// cannot see — which card a hidden object is — and give the engine a new
+    /// RNG stream seeded from `rng_seed` (future shuffles, coin flips and
+    /// random picks are hidden information too). `rewrite` must not move
+    /// objects between zones or slots. Counts as an edit of the pending
+    /// decision, like mutableState(). The decision's options must not change
+    /// (they are the decider's, and cannot depend on what the decider cannot
+    /// see): for the decisions recomputePendingLegalActions() can rebuild,
+    /// std::logic_error if the rebuilt options differ from the offered ones.
+    void editHiddenInformation(const std::function<void(GameState&)>& rewrite,
+                               uint64_t rng_seed);
+
     /// Generate all legal actions for the player who must currently act.
     std::vector<Intent> generateLegalActions() const;
 

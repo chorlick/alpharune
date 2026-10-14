@@ -12,11 +12,17 @@
 ///                       act (default 0.2; pass=0 never does) and whenever a
 ///                       pass is all there is — agents/random_player_agent.h
 ///   human             — block on browser input through HumanAgent
-///   mcts:sims=N       — OpenSpiel MCTSBot over a mirror of the live game,
+///   mcts:sims=N       — PERFECT-INFORMATION MCTS: OpenSpiel MCTSBot over a
+///                       mirror of the live game; sees the opponent's hand and
+///                       both deck orders (a benchmark, never a teacher);
 ///                       leaves scored by RiftboundHeuristicEvaluator (no rollout)
-///   ismcts:sims=N     — information-set MCTS: our IsMctsSearch (the ISMCTSBot
-///                       algorithm, reproducible for a seed), same mirror
-///                       and evaluator
+///   ismcts:sims=N[,world=sampled|perfect]
+///                     — information-set MCTS: our IsMctsSearch (the ISMCTSBot
+///                       algorithm, reproducible for a seed), same evaluator.
+///                       world=sampled (default) is honest: each simulation
+///                       runs in a world drawn from what the player knows
+///                       (agents/determinizer.h); world=perfect searches the
+///                       real game and sees hidden cards
 /// (agents/mcts_agent.{h,cpp}; keep this and the --help text below in step
 /// with that file.)
 ///
@@ -180,6 +186,7 @@ struct AgentSpec {
     std::string raw;       // original spec string
     std::string kind;      // "random", "random-player", "human", "mcts", "ismcts"
     int sims = 0;          // populated for mcts/ismcts
+    bool perfect_world = false;   // ismcts: world=perfect (sees hidden cards)
     double pass = kDefaultPassProbability;   // random-player: how often it passes when it could act
 };
 
@@ -203,20 +210,32 @@ AgentSpec parseAgentSpec(const std::string& s) {
     const bool search = (out.kind == "mcts" || out.kind == "ismcts");
     if (colon != std::string::npos) {
         auto rest = s.substr(colon + 1);
-        // key=value pairs separated by commas; only "sims=N" recognised.
+        // key=value pairs separated by commas: sims=N, and for ismcts
+        // world=sampled|perfect.
         size_t i = 0;
         while (i < rest.size()) {
             auto eq    = rest.find('=', i);
             auto comma = rest.find(',', i);
             if (comma == std::string::npos) comma = rest.size();
             auto key = rest.substr(i, std::min(eq, comma) - i);
-            if (!search || key != "sims" || eq == std::string::npos || eq > comma) {
+            const bool world_key = out.kind == "ismcts" && key == "world";
+            if (!search || (key != "sims" && !world_key) || eq == std::string::npos || eq > comma) {
                 throw std::runtime_error(
                     "Agent spec '" + s + "': unrecognised option '" +
                     rest.substr(i, comma - i) + "'." +
-                    (search ? " Expected sims=N." : " '" + out.kind + "' takes no options."));
+                    (search ? (out.kind == "ismcts" ? " Expected sims=N or world=sampled|perfect."
+                                                    : " Expected sims=N.")
+                            : " '" + out.kind + "' takes no options."));
             }
             auto val = rest.substr(eq + 1, comma - eq - 1);
+            if (world_key) {
+                if (val == "perfect") out.perfect_world = true;
+                else if (val == "sampled") out.perfect_world = false;
+                else throw std::runtime_error(
+                    "Agent spec '" + s + "': world must be sampled or perfect, got '" + val + "'.");
+                i = comma + 1;
+                continue;
+            }
             size_t used = 0;
             try { out.sims = std::stoi(val, &used); } catch (const std::exception&) { used = 0; }
             if (used == 0 || used != val.size()) {
@@ -268,8 +287,10 @@ std::unique_ptr<AgentInterface> buildAgent(const AgentSpec& spec,
                                             game_seed, derived_seed, spec.sims);
     }
     if (spec.kind == "ismcts") {
-        return std::make_unique<IsMctsAgent>(deck1, deck2, registry,
-                                              game_seed, derived_seed, spec.sims);
+        return std::make_unique<IsMctsAgent>(
+            deck1, deck2, registry, game_seed, derived_seed, spec.sims,
+            spec.perfect_world ? IsMctsAgent::WorldModel::Perfect
+                               : IsMctsAgent::WorldModel::Sampled);
     }
     throw std::runtime_error("Unsupported agent spec '" + spec.raw + "'");
 }
@@ -321,7 +342,9 @@ int main(int argc, char* argv[]) {
         "  human             Block at every decision and wait for a\n"
         "                    browser click via the WebSocket UI. Implies\n"
         "                    --web on, --render-html on, --debug, --trace.\n"
-        "  mcts:sims=N       OpenSpiel MCTSBot. N is the simulation budget\n"
+        "  mcts:sims=N       PERFECT-INFORMATION MCTS (OpenSpiel MCTSBot): it\n"
+        "                    sees the opponent's hand and both deck orders.\n"
+        "                    A benchmark rung, never a teacher. N is the simulation budget\n"
         "                    per decision (try sims=20 for fast tests,\n"
         "                    sims=200+ for stronger play). A leaf is scored\n"
         "                    by a heuristic evaluator of the position, not\n"
@@ -330,12 +353,17 @@ int main(int argc, char* argv[]) {
         "                    onto it only the choices made since its last\n"
         "                    one, so the cost per decision does not grow\n"
         "                    with the length of the game.\n"
-        "  ismcts:sims=N     Information-set MCTS: the engine's own search\n"
+        "  ismcts:sims=N[,world=sampled|perfect]\n"
+        "                    Information-set MCTS: the engine's own search\n"
         "                    (the algorithm of OpenSpiel's ISMCTSBot, made\n"
-        "                    reproducible for a fixed seed), same N, mirror\n"
-        "                    and evaluator. It does not yet sample the\n"
-        "                    opponent's hidden cards: each simulation runs\n"
-        "                    on a copy of the real state.\n"
+        "                    reproducible for a fixed seed), same N and\n"
+        "                    evaluator. world=sampled (default) is HONEST:\n"
+        "                    each simulation runs in a world drawn from what\n"
+        "                    the player knows (the opponent's unseen cards\n"
+        "                    from a legal deck around their legend, both deck\n"
+        "                    orders shuffled except known slots). It plays\n"
+        "                    the most visited option. world=perfect searches\n"
+        "                    copies of the real game and sees hidden cards.\n"
         "                    Caveat for both: a god-mode edit bypasses the\n"
         "                    history the mirror is built from. After one the\n"
         "                    agent searches from a copy of the live state at\n"
@@ -365,10 +393,10 @@ int main(int argc, char* argv[]) {
          "(validation/export tool; does not require decks)")
         ("agent1", po::value<std::string>()->default_value("random"),
          "Player 1 agent spec (see top of --help for full descriptions). "
-         "One of: random | random-player[:pass=P] | human | mcts:sims=N | ismcts:sims=N")
+         "One of: random | random-player[:pass=P] | human | mcts:sims=N | ismcts:sims=N[,world=sampled|perfect]")
         ("agent2", po::value<std::string>()->default_value("random"),
          "Player 2 agent spec (see top of --help for full descriptions). "
-         "One of: random | random-player[:pass=P] | human | mcts:sims=N | ismcts:sims=N")
+         "One of: random | random-player[:pass=P] | human | mcts:sims=N | ismcts:sims=N[,world=sampled|perfect]")
         ("web", po::value<std::string>()->default_value("auto"),
          "Web UI mode: auto (default — ON if any seat is human, else OFF), "
          "on (force ON: with no human seat this is spectator mode), off. "

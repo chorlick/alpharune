@@ -80,6 +80,16 @@ struct EffectPlayCost {
 /// [A] an opponent must pay to choose `target` (CR 808 Deflect); 0 if
 /// `chooser` controls it or Deflect is ignored at its battlefield.
 int deflectCostFor(const GameState& state, PlayerId chooser, GameObjectId target);
+
+/// Whether `viewer` may not know which card `id` is: a card in another
+/// player's hand, any card in a deck, a facedown card that is not theirs
+/// (testing phase D11). A log line that names such a card is not for `viewer`.
+bool hiddenFrom(const GameState& state, GameObjectId id, PlayerId viewer);
+/// Who may read a line naming `ids`, written for `knower` (who may know them
+/// all): both players, or only `knower` when one of them is hidden from the
+/// other player.
+LogAudience audienceNaming(const GameState& state, PlayerId knower,
+                           const std::vector<GameObjectId>& ids);
 /// Power of any Domain `player` could pay right now.
 int payableAnyPower(const GameState& state, PlayerId player);
 

@@ -621,6 +621,7 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
     // can be visually separated from its DECISION # context.
     if (!events_.logging()) {
         events_.noteUnheardLine();   // the CHOSE line below, unread
+        if (!chosen.cards_to_mulligan.empty()) events_.noteUnheardLine();   // two copies
     } else {
         std::string who = std::string("[") + toString(chosen.player) + "] ";
         if (chosen.cards_to_mulligan.empty()) {
@@ -631,9 +632,13 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
                 if (!mull_str.empty()) mull_str += ", ";
                 if (state_.objectExists(cid)) mull_str += state_.getObject(cid).name;
             }
-            RIFT_TRACE(events_, "CHOSE: " + who + "Mulligan " +
-                             std::to_string(chosen.cards_to_mulligan.size()) +
-                             " [" + mull_str + "]");
+            // Which cards are set aside is the player's own knowledge; the
+            // other player learns how many (testing phase D11).
+            const std::string count = std::to_string(chosen.cards_to_mulligan.size());
+            RIFT_TRACE_FOR(events_, LogAudience::only(chosen.player),
+                           "CHOSE: " + who + "Mulligan " + count + " [" + mull_str + "]");
+            RIFT_TRACE_FOR(events_, LogAudience::only(opponent(chosen.player)),
+                           "CHOSE: " + who + "Mulligan " + count);
         }
     }
     if (chosen.type == IntentType::MulliganDecision) {
@@ -1592,10 +1597,12 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     it->chosen_objects.push_back(t);
     while (it->resume_data.size() < 6) it->resume_data.push_back(0);
     it->resume_data[5] = 1;   // "target was chosen at finalization" (read by Card::pickTarget)
-    RIFT_TRACE(events_, "TARGET (finalize): " +
-                     (state_.objectExists(it->source) ? state_.getObject(it->source).name
-                                                      : std::string("?")) +
-                     " -> " + state_.getObject(t).name);
+    // A facedown card or one in a hand is named only for who may know it (D11).
+    RIFT_TRACE_FOR(events_, audienceNaming(state_, chooser, {t}),
+                   "TARGET (finalize): " +
+                       (state_.objectExists(it->source) ? state_.getObject(it->source).name
+                                                        : std::string("?")) +
+                       " -> " + state_.getObject(t).name);
 
     commitEngineChosenTarget(*card, chooser, t, item_id);
     if (one_from_intent && (card->choicesAtFinalization() & Card::kFinalizeResolve))
@@ -4125,8 +4132,10 @@ void GameEngine::executeHideCard(const Intent& intent) {
             pw.chosen_value = 0; pw.choice_label = "pay [A]";
             Intent en = pw; en.chosen_value = 1;
             en.choice_label = "pay [" + std::to_string(hide_cost.energy) + "]";
+            // (The prompt's header is a line both players read: it names no
+            // card, the one being hidden is in the player's hand — D11.)
             pay_energy = decideNow(intent.player, {pw, en},
-                "Hide cost for " + card.name).chosen_value.value_or(0) == 1;
+                "Hide cost").chosen_value.value_or(0) == 1;
         }
         if (pay_energy)
             payAdditionalCost(intent.player, hide_cost.energy, 0, Domain::Count, SpendFor::Other);
@@ -8822,60 +8831,83 @@ Intent GameEngine::queryAgent(PlayerId player) {
 
     auto chosen = askAgent(player, actions, PendingQuery::MainPhase);
 
+    // Whether the choice names a card the other player may not know.
+    const auto names_hidden = [&] {
+        std::vector<GameObjectId> named{chosen.card, chosen.ability_source};
+        named.insert(named.end(), chosen.targets.begin(), chosen.targets.end());
+        named.insert(named.end(), chosen.units_to_move.begin(), chosen.units_to_move.end());
+        named.insert(named.end(), chosen.chosen_objects.begin(), chosen.chosen_objects.end());
+        for (auto id : named)
+            if (hiddenFrom(state_, id, opponent(player))) return true;
+        return false;
+    };
     if (!events_.logging()) {
         events_.noteUnheardLine();   // the CHOSE line below, unread
+        if (names_hidden()) events_.noteUnheardLine();   // and its other player's copy
     } else {
-        std::string choice_str = toString(chosen.type);
-        if (chosen.card != kInvalidId && state_.objectExists(chosen.card)) {
-            choice_str += " " + state_.getObject(chosen.card).name;
-        }
-        if (chosen.ability_source != kInvalidId && state_.objectExists(chosen.ability_source)) {
-            choice_str += " (src=" + state_.getObject(chosen.ability_source).name + ")";
-        }
-        if (!chosen.targets.empty()) {
-            choice_str += " tgt=[";
-            for (size_t i = 0; i < chosen.targets.size(); ++i) {
-                if (i > 0) choice_str += ",";
-                if (state_.objectExists(chosen.targets[i]))
-                    choice_str += state_.getObject(chosen.targets[i]).name;
-                else
-                    choice_str += "?" + toString(chosen.targets[i]);
+        // Written twice when the choice names a card the other player may not
+        // know (a card in hand being hidden or played, a facedown card): the
+        // chooser's line names it, the other player's says "a hidden card"
+        // (testing phase D11). Otherwise one line for both.
+        const PlayerId other = opponent(player);
+        bool redacted = false;
+        auto describe = [&](bool for_other) {
+            auto nameOf = [&](GameObjectId oid) -> std::string {
+                if (!state_.objectExists(oid)) return "?" + toString(oid);
+                if (for_other && hiddenFrom(state_, oid, other)) {
+                    redacted = true;
+                    return "(a hidden card)";
+                }
+                return state_.getObject(oid).name;
+            };
+            std::string choice_str = toString(chosen.type);
+            if (chosen.card != kInvalidId && state_.objectExists(chosen.card))
+                choice_str += " " + nameOf(chosen.card);
+            if (chosen.ability_source != kInvalidId && state_.objectExists(chosen.ability_source))
+                choice_str += " (src=" + nameOf(chosen.ability_source) + ")";
+            if (!chosen.targets.empty()) {
+                choice_str += " tgt=[";
+                for (size_t i = 0; i < chosen.targets.size(); ++i) {
+                    if (i > 0) choice_str += ",";
+                    choice_str += nameOf(chosen.targets[i]);
+                }
+                choice_str += "]";
             }
-            choice_str += "]";
-        }
-        if (!chosen.units_to_move.empty()) {
-            choice_str += " units=[";
-            for (size_t i = 0; i < chosen.units_to_move.size(); ++i) {
-                if (i > 0) choice_str += ",";
-                if (state_.objectExists(chosen.units_to_move[i]))
-                    choice_str += state_.getObject(chosen.units_to_move[i]).name;
+            if (!chosen.units_to_move.empty()) {
+                choice_str += " units=[";
+                for (size_t i = 0; i < chosen.units_to_move.size(); ++i) {
+                    if (i > 0) choice_str += ",";
+                    choice_str += nameOf(chosen.units_to_move[i]);
+                }
+                choice_str += "]";
             }
-            choice_str += "]";
-        }
-        // MakeChoice carries its "answer" in chosen_objects (discard pick,
-        // predict recycle, rune exhaust target, etc.). Name them in the
-        // trace so a reader can correlate the MakeChoice line with what
-        // actually moved zones in the surrounding trace.
-        if (!chosen.chosen_objects.empty()) {
-            choice_str += " pick=[";
-            for (size_t i = 0; i < chosen.chosen_objects.size(); ++i) {
-                if (i > 0) choice_str += ",";
-                auto oid = chosen.chosen_objects[i];
-                if (state_.objectExists(oid))
-                    choice_str += state_.getObject(oid).name +
-                                  "(id=" + toString(oid) + ")";
-                else
-                    choice_str += "?" + toString(oid);
+            // MakeChoice carries its "answer" in chosen_objects (discard pick,
+            // predict recycle, rune exhaust target, etc.). Name them in the
+            // trace so a reader can correlate the MakeChoice line with what
+            // actually moved zones in the surrounding trace.
+            if (!chosen.chosen_objects.empty()) {
+                choice_str += " pick=[";
+                for (size_t i = 0; i < chosen.chosen_objects.size(); ++i) {
+                    if (i > 0) choice_str += ",";
+                    const auto oid = chosen.chosen_objects[i];
+                    choice_str += nameOf(oid) + "(id=" + toString(oid) + ")";
+                }
+                choice_str += "]";
             }
-            choice_str += "]";
+            if (chosen.chosen_battlefield != kInvalidId)
+                choice_str += " bf=" + toString(chosen.chosen_battlefield);
+            // Player tag at the front so the line scans independently of
+            // the surrounding DECISION # context.
+            return "CHOSE: [" + std::string(toString(player)) + "] " + choice_str;
+        };
+        const std::string full = describe(false);
+        const std::string public_line = describe(true);
+        if (!redacted) {
+            RIFT_TRACE(events_, full);
+        } else {
+            RIFT_TRACE_FOR(events_, LogAudience::only(player), full);
+            RIFT_TRACE_FOR(events_, LogAudience::only(other), public_line);
         }
-        if (chosen.chosen_battlefield != kInvalidId) {
-            choice_str += " bf=" + toString(chosen.chosen_battlefield);
-        }
-        // Player tag at the front so the line scans independently of
-        // the surrounding DECISION # context.
-        RIFT_TRACE(events_, "CHOSE: [" + std::string(toString(player)) +
-                         "] " + choice_str);
     }
 
     if (on_decision) {

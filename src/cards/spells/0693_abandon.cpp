@@ -80,13 +80,15 @@ public:
                 // Recycled (CR 437): recycleCards puts it on the bottom and
                 // announces it ("recycled_main").
                 ctx.executor.recycleCards(ctx.controller, {top_card});
-                RIFT_TRACE(ctx.events, "PREDICT: " + n +
-                                     " -> bottom of deck (recycled)");
+                // The looked-at card is the predicting player's to know (D11).
+                RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
+                                   "PREDICT: " + n + " -> bottom of deck (recycled)");
             } else {
                 // Put back on top. Was previously silent — surfaced after
                 // user noticed the keep-case wasn't visible in the replay.
                 deck::putOnTop(ctx.state, ctx.controller, top_card, deck::Place::Held, knowledge::only(ctx.controller));
-                RIFT_TRACE(ctx.events, "PREDICT: " + n + " -> top of deck (kept)");
+                RIFT_TRACE_PRIVATE(ctx.events, ctx.controller,
+                                   "PREDICT: " + n + " -> top of deck (kept)");
             }
             return;
         }

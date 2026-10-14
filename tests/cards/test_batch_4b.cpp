@@ -54,6 +54,8 @@ constexpr CardDefId kJayceBrilliantInventor = 855;
 constexpr CardDefId kFrigidJewel = 636;
 constexpr CardDefId kTheList = 700;
 constexpr CardDefId kIvernFriendToAll = 739;
+constexpr CardDefId kAbandon = 693;
+constexpr CardDefId kSwiftScout = 259;
 
 class Batch4bTest : public CardTestFixture {
 protected:
@@ -942,5 +944,114 @@ TEST_F(Batch4bTest, B7_FewOutcomesAreStillOneDecision) {
         EXPECT_EQ(adv.legal.size(), 6u) << "C(4,2)";
     });
 }
+
+// ─── D11  Hidden information in lines both players read ──────────────────────
+// A line that names a card in a hand, a deck or facedown is for the players
+// who may know it (CLAUDE.md "Log audience"). Each line kind of the finding.
+namespace {
+struct SeenLog {
+    std::vector<LogEvent> lines;
+    bool otherSees(PlayerId other, const std::string& text) const {
+        for (const auto& e : lines)
+            if (e.visibleTo(other) && e.message.find(text) != std::string::npos) return true;
+        return false;
+    }
+    bool ownerSees(PlayerId p, const std::string& text) const { return otherSees(p, text); }
+};
+}  // namespace
+
+TEST_F(Batch4bTest, D11_HidingACardNamesItOnlyForItsPlayer) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kShipyardSkulker, 3, 0);
+    auto guards = addToHand(P1, kGuards);
+    fund(P1, 0, 1);   // the Hide cost, [A]
+    state.turn.phase = TurnPhase::MainPhase;
+    state.turn.turn_player = P1;
+    PickByPredicateAgent agent([&](int, const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.type == IntentType::HideCard && i.card == guards) return i;
+        return legal.front();
+    });
+    SeenLog seen;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { seen.lines.push_back(e); });
+    withEngine([&](GameEngine& e) {
+        const Intent chosen = e.testHook_queryAgent(P1);
+        ASSERT_EQ(chosen.type, IntentType::HideCard);
+    }, &agent, nullptr, P1);
+    conn.disconnect();
+    EXPECT_TRUE(seen.ownerSees(P1, "Guards!")) << "the chooser's own line names it";
+    EXPECT_FALSE(seen.otherSees(P2, "Guards!"));
+    EXPECT_TRUE(seen.otherSees(P2, "HideCard")) << "the other player still sees a card was hidden";
+}
+
+TEST_F(Batch4bTest, D11_AMulliganNamesTheCardsOnlyForItsPlayer) {
+    auto set_aside = addToHand(P2, kGuards);
+    for (int i = 0; i < 3; ++i) addToDeck(P2, kShipyardSkulker);
+    Intent mull;
+    mull.type = IntentType::MulliganDecision;
+    mull.player = P2;
+    mull.cards_to_mulligan = {set_aside};
+    SeenLog seen;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { seen.lines.push_back(e); });
+    withEngine([&](GameEngine& e) { e.testHook_resolveMulliganDecision(mull); });
+    conn.disconnect();
+    EXPECT_TRUE(seen.ownerSees(P2, "Guards!"));
+    EXPECT_FALSE(seen.otherSees(P1, "Guards!"));
+    EXPECT_TRUE(seen.otherSees(P1, "Mulligan 1"));
+}
+
+TEST_F(Batch4bTest, D11_TheHideCostPromptNamesNoCard) {
+    // Swift Scout lets [1] be paid instead of [A]: with both payable the
+    // player is asked which, in a prompt whose header both players read.
+    legendCard(P1, kSwiftScout);
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kShipyardSkulker, 3, 0);
+    auto guards = addToHand(P1, kGuards);
+    fund(P1, 1, 1);
+    Intent hide;
+    hide.type = IntentType::HideCard;
+    hide.player = P1;
+    hide.card = guards;
+    hide.chosen_battlefield = bfId(0);
+    SeenLog seen;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { seen.lines.push_back(e); });
+    run(hide);
+    conn.disconnect();
+    EXPECT_FALSE(seen.otherSees(P2, "Guards!"));
+}
+
+// Abandon's [Predict]: the card looked at is the predicting player's to know.
+TEST_F(Batch4bTest, D11_AbandonsPredictNamesTheCardOnlyForItsPlayer) {
+    addToDeck(P1, kGuards);   // the top card
+    pushSpellOnChain(P2, kVoidSeeker);
+    auto abandon = addToHand(P1, kAbandon);
+    SeenLog seen;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { seen.lines.push_back(e); });
+    EnginePathAgent agent;   // keeps the card
+    playThroughEngine(abandon, &agent);
+    conn.disconnect();
+    EXPECT_TRUE(seen.ownerSees(P1, "PREDICT: Guards!"));
+    EXPECT_FALSE(seen.otherSees(P2, "Guards!"));
+}
+
+// The one rule every such line reads (hiddenFrom / audienceNaming).
+TEST_F(Batch4bTest, D11_TheRule_ACardInAHandIsHiddenFromTheOtherPlayer) {
+    SeenLog seen;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { seen.lines.push_back(e); });
+    auto card = addToHand(P1, kGuards);
+    withEngine([&](GameEngine& e) {
+        auto& ex = e.testHook_executor();
+        (void)ex;
+        // The rule every such line uses.
+        EXPECT_TRUE(hiddenFrom(e.mutableState(), card, P2));
+        EXPECT_FALSE(hiddenFrom(e.mutableState(), card, P1));
+        EXPECT_TRUE(audienceNaming(e.mutableState(), P1, {card}).includes(P1));
+        EXPECT_FALSE(audienceNaming(e.mutableState(), P1, {card}).includes(P2));
+    });
+    conn.disconnect();
+}
+
 
 }  // namespace riftbound::test::batch_4b

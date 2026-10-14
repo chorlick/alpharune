@@ -709,6 +709,26 @@ Card* EffectExecutor::cardFor(CardDefId def) const {
     return card_registry_->get(def);
 }
 
+bool hiddenFrom(const GameState& state, GameObjectId id, PlayerId viewer) {
+    if (id == kInvalidId || !state.objectExists(id)) return false;
+    const auto& o = state.getObject(id);
+    switch (o.zone.get()) {
+        case ZoneType::Hand:         return o.owner != viewer;
+        case ZoneType::MainDeck:
+        case ZoneType::RuneDeck:     return true;
+        case ZoneType::FacedownZone: return o.controller != viewer;
+        default:                     return o.is_hidden && o.controller != viewer;
+    }
+}
+
+LogAudience audienceNaming(const GameState& state, PlayerId knower,
+                           const std::vector<GameObjectId>& ids) {
+    const PlayerId other = opponent(knower);
+    for (auto id : ids)
+        if (hiddenFrom(state, id, other)) return LogAudience::only(knower);
+    return LogAudience::both();
+}
+
 int EffectExecutor::deflectCostFor(PlayerId chooser, GameObjectId target) const {
     return ::riftbound::deflectCostFor(state_, chooser, target);
 }

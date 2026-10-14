@@ -258,6 +258,7 @@ public:
     void testHook_scoringStep() { scoringStep(); }
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
+    void testHook_resolveMulliganDecision(const Intent& i) { resolveMulliganDecision(i); }
     /// The transition from one turn to the next (whose turn, which number).
     void testHook_nextTurn() { advanceTurnQueue(); }
     void testHook_setupBattlefields(const DeckSubmission& d1, const DeckSubmission& d2) {

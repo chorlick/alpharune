@@ -770,10 +770,12 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     if (picked.has_value() && !picked->chosen_objects.empty()) {
         t = picked->chosen_objects.front();
     }
-    RIFT_TRACE(ctx.events, "TGT_PICKED: " + label + " = " +
-                         (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
-                                                    : std::string("?")) +
-                         " (id=" + toString(t) + ")");
+    // Only for who may know the card when it is hidden (testing phase D11).
+    RIFT_TRACE_FOR(ctx.events, audienceNaming(ctx.state, ctx.controller, {t}),
+                   "TGT_PICKED: " + label + " = " +
+                       (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
+                                                  : std::string("?")) +
+                       " (id=" + toString(t) + ")");
     commitChoice(ctx, *this, t);
     store(t);
     return t;

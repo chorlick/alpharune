@@ -22,6 +22,11 @@ public:
         return friendlyUnitChoice(state, controller, object);
     }
     bool needsPlayTimeTargetPair() const override { return true; }
+    // "a unit ... and another unit": two units it can choose (CR 355.8; D8).
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return chooseableUnits(state, controller,
+                               [](const GameObject&) { return true; }).size() >= 2;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // chooseableUnits honours "can't be chosen by enemy spells and
         // abilities" for both picks.

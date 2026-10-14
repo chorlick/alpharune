@@ -2677,9 +2677,12 @@ TEST_F(ReflexiveCardsTest, DragonsRage) {
                      std::optional<BattlefieldId>{state.battlefields[1].id};
         damage_then = st.getObject(other).damage_marked;
     };
-    // The mover is locked in as it is played; then where it goes (battlefield
-    // 1 = destination code 2), then — the reflexive trigger — the other unit.
-    cast(spell, {mover}, answers({other}, {2}));
+    // The mover and where it goes (battlefield 1 = destination code 2) are
+    // chosen as it is played (testing phase D3: the play intent names no
+    // target, as the generator emits it); then — the reflexive trigger — the
+    // other unit.
+    cast(spell, {}, EnginePathAgent::script({static_cast<int>(mover.raw()), 2,
+                                             static_cast<int>(other.raw())}));
     EXPECT_TRUE(moved_then);
     EXPECT_EQ(damage_then, 0);
     EXPECT_EQ(obj(other).damage_marked, 2);

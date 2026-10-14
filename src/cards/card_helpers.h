@@ -820,6 +820,70 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     return std::nullopt;
 }
 
+// ── Up to one target ("deal 2 to up to one enemy unit") ─────────────────────
+/// A target that may be none (CR 355.13) — or, with `allow_none` false, a
+/// second required target of an instruction of its own, where pickTarget is
+/// already used — chosen like any target: an object
+/// whose Deflect can't be paid is not offered, and choosing one pays its
+/// Deflect and counts as choosing it (Card::commitChosenObject). Asked in a
+/// finalize pass (the item's choices), with "None" offered after the objects.
+/// Returns nullopt while the agent is being asked; kInvalidId for none (also
+/// when nothing can be chosen — stored, so nothing is asked later); else the
+/// object. As the item resolves, a chosen object no longer in `options`, or no
+/// longer the same object (CR 359.3.e.4), comes back as kInvalidId: a
+/// mistarget. Progress lives in resume_data[slot] and [slot + 1] (`slot` 7 or
+/// more, as selectObject).
+inline std::optional<GameObjectId> selectTargetOrNone(Card& card, CardContext& ctx,
+                                                      const std::string& label,
+                                                      std::vector<GameObjectId> options,
+                                                      size_t slot = 7, bool allow_none = true) {
+    std::sort(options.begin(), options.end());
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) return options.empty() ? kInvalidId : options.front();
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    auto store = [&ri, slot](GameObjectId id) {
+        ri.resume_data[slot] = 2;
+        ri.resume_data[slot + 1] = static_cast<int32_t>(id.raw());
+        if (id == kInvalidId) Card::nothingToDecide(ri);
+        return id;
+    };
+    if (ri.resume_data[slot] == 2) {
+        const auto id = GameObjectId::fromRaw(ri.resume_data[slot + 1]);
+        if (id != kInvalidId && !ri.finalizing &&
+            (std::find(options.begin(), options.end(), id) == options.end() ||
+             !ctx.state.stillTheChosenObject(ri, id))) {
+            RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
+            return GameObjectId{kInvalidId};
+        }
+        return id;
+    }
+    const auto offered = card.offerableChoices(ctx, options);
+    if (ri.resume_data[slot] == 1) {
+        auto picked = ctx.executor.takeChoice();
+        if (picked.has_value() && !picked->chosen_objects.empty() &&
+            std::find(offered.begin(), offered.end(), picked->chosen_objects.front()) !=
+                offered.end()) {
+            const GameObjectId t = picked->chosen_objects.front();
+            card.commitChosenObject(ctx, t);
+            return store(t);
+        }
+        return store(kInvalidId);
+    }
+    if (offered.empty()) {
+        if (!allow_none) Card::requiredChoiceMissing(ri);   // CR 403.4
+        return store(kInvalidId);
+    }
+    std::vector<Intent> choices;
+    for (auto id : offered) choices.push_back(objChoice(ctx.controller, id));
+    if (allow_none) choices.push_back(valChoice(ctx.controller, 0, "None — " + label));
+    RIFT_TRACE(ctx.events, "TGT_PROMPT: " + label + " [" + std::to_string(offered.size()) +
+                        " options, or none]");
+    ctx.executor.requestChoice(ctx.controller, std::move(choices), "target: " + label);
+    ri.resume_data[slot] = 1;
+    return std::nullopt;
+}
+
 // ── Split damage (CR 355.14) ────────────────────────────────────────────────
 // "Deal N damage split among <units>". Two separate decisions, at the two
 // moments the rules give them:

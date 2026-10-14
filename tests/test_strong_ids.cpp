@@ -353,7 +353,7 @@ TEST(StrongIds, HistoryTokensAndSlotsArePinned) {
 TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
     const std::map<std::string, int> audited = {
         {"src/cards/card.cpp", 7},
-        {"src/cards/card_helpers.h", 9},
+        {"src/cards/card_helpers.h", 10},
         {"src/cards/gear/0412_the_zero_drive.cpp", 1},
         {"src/cards/gear/0698_scryer_s_bloom.cpp", 1},
         {"src/cards/gear/0854_bottled_constellation.cpp", 1},
@@ -382,7 +382,6 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/spells/0757_mirror_image.cpp", 2},
         {"src/cards/spells/0876_wild_claw.cpp", 3},
         {"src/cards/spells/0894_decree_of_discord.cpp", 2},
-        {"src/cards/spells/0927_shuriken_flip.cpp", 1},
         {"src/cards/spells/0943_lightning_rush.cpp", 4},   // +1: the look's replacement filter (D71)
         {"src/cards/units/0109_dr_mundo_expert.cpp", 1},
         {"src/cards/units/0141_kinkou_monk.cpp", 2},

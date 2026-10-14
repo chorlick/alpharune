@@ -30,6 +30,13 @@ public:
     // slot. Sequential MakeChoice: first picks friendly, second
     // picks enemy. Each pick is policy-head-visible.
     bool needsPlayTimeTargetPair() const override { return true; }
+    // CR 355.8: a friendly unit AND an enemy unit it can choose (D8).
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !chooseableUnits(state, controller, [&](const GameObject& o) {
+                    return o.controller == controller; }).empty() &&
+               !chooseableUnits(state, controller, [&](const GameObject& o) {
+                    return o.controller != controller; }).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> legal_friendly;
         for (auto& [id, obj] : ctx.state.objects.onBoard()) {

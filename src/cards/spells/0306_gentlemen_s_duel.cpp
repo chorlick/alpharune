@@ -25,6 +25,17 @@ public:
     // "Give a friendly unit +3 [M] this turn. Then choose an enemy unit.
     // They deal damage equal to their Mights to each other."
     bool needsPlayTimeTargetPair() const override { return true; }
+    // Both targets are chosen as it is played and both are required (CR
+    // 355.5, 355.8; testing phase D8): a friendly unit and an enemy unit.
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        bool friendly = false, enemy = false;
+        for (auto& [id, obj] : state.objects.onBoard()) {
+            if (!obj.isUnit() || !obj.location.has_value()) continue;
+            if (obj.controller == controller) friendly = true;
+            else if (!obj.untargetable_by_enemy) enemy = true;
+        }
+        return friendly && enemy;
+    }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         // First target: friendly unit. Second: enemy unit.

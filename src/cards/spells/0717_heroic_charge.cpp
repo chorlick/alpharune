@@ -14,16 +14,28 @@ namespace {
 
 // "Give a friendly unit +1 [M] this turn and [Stun] an enemy unit at its
 // location." Two targets: A = friendly unit (buffed), B = enemy unit at A's
-// location (stunned). A is buffed even if no legal B exists.
+// location (stunned); both must be chosen to play it (CR 355.8). At
+// resolution a B that is no longer legal leaves A buffed (CR 359.3.e.5).
 
 class HeroicCharge : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
-    // It can choose any unit its controller has on the board (the play gate).
+    // Both targets are required (CR 355.8, 355.16; testing phase D8): a
+    // friendly unit with an enemy unit it can choose at its location.
+    static bool hasEnemyHere(const GameState& state, PlayerId controller, const GameObject& u) {
+        for (auto& [id, obj] : state.objects.onBoard()) {
+            if (!obj.location.has_value() || !obj.isUnit()) continue;
+            if (obj.controller == controller || obj.untargetable_by_enemy) continue;
+            if (obj.location == u.location) return true;
+        }
+        return false;
+    }
     FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
                                            GameObjectId object) const override {
-        return friendlyUnitChoice(state, controller, object);
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return hasEnemyHere(state, controller, u);
+        });
     }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2, .must_be_unit = true};
@@ -32,7 +44,7 @@ public:
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value() || !obj.isUnit()) continue;
-            if (obj.controller == controller) return true;
+            if (obj.controller == controller && hasEnemyHere(state, controller, obj)) return true;
         }
         return false;
     }

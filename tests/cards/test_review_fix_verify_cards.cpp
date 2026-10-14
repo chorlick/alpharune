@@ -5926,11 +5926,14 @@ TEST_F(VerifyCardsTest, Pin_RelentlessPursuit_NoEquipment_StillMovesAndGrants) {
     auto unit = addUnit(P1, kInvalidId, 3);
     const auto plays = playsOffered(spell);
     ASSERT_EQ(plays.size(), 1u);
-    EXPECT_TRUE(offersTargets(plays, {unit}));
+    // One play; the unit is chosen in its finalize pass as it is played
+    // (testing phase D3 — it was a target of the play intent).
+    EXPECT_TRUE(plays.front().targets.empty());
     const size_t delayed_before = state.delayed_abilities.size();
-    EnginePathAgent agent(EnginePathAgent::script({1}));   // destination 1 = battlefield #0
-    playAt(spell, {unit}, &agent);
-    EXPECT_EQ(agent.prompts.size(), 1u) << "no Equipment: the attach is not asked";
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(unit.raw()), 1}));   // the unit; destination 1 = battlefield #0
+    playAt(spell, {}, &agent);
+    EXPECT_EQ(agent.prompts.size(), 2u) << "no Equipment: the Equipment is not asked";
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(state.delayed_abilities.size(), delayed_before + 1)
         << "\"When I conquer, you may move me to my base.\"";

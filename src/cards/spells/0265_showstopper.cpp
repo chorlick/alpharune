@@ -15,19 +15,31 @@ namespace {
 class Showstopper : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Buff a friendly unit in your base, then move it to a battlefield."
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty()) return;
-        GameObjectId unit = targets[0];
-        const auto& u = ctx.state.getObject(unit);
-        if (!u.isAtBase()) return;   // no longer "in your base": not a legal target
-        // The battlefield is the controller's choice. It is asked for before
-        // the buff: the callback is re-entered with the answer, and the buff
-        // must be placed once.
-        const int dest = pickMoveDest(*this, ctx, "Showstopper: move it to", u,
-                                      /*battlefields_only=*/true);
-        if (dest == -1) return;      // waiting for the battlefield
-        ctx.executor.buffUnit(unit);  // "+1 [M] buff if it doesn't have one"
+    // "Buff a friendly unit in your base, then move it to a battlefield." The
+    // unit is chosen with the play (its target); the battlefield as the spell
+    // is played too (CR 355.4; testing phase D3), before its cost.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+                                  [](const GameObject& u) { return u.isAtBase(); });
+    }
+    bool needsPlayTimeTarget() const override { return true; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId unit = pickTarget(ctx, "Showstopper: buff a friendly unit in your base",
+                                             enumerateLegalTargets(ctx.state, ctx.controller));
+        if (unit == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;                           // waiting for the agent
+        int dest = -2;
+        if (unit != kInvalidId && ctx.state.getObject(unit).isAtBase()) {
+            dest = pickMoveDest(*this, ctx, "Showstopper: move it to", ctx.state.getObject(unit),
+                                /*battlefields_only=*/true);
+            if (dest == -1) return;           // waiting for the battlefield
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (unit == kInvalidId || !ctx.state.getObject(unit).isAtBase()) return;   // mistarget
+        ctx.executor.buffUnit(unit);          // "+1 [M] buff if it doesn't have one"
         if (dest >= 0) moveTo(ctx, unit, dest);
         RIFT_TRACE(ctx.events, "SHOWSTOPPER: buff base unit, move to a battlefield");
     }

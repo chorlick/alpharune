@@ -707,11 +707,14 @@ TEST_F(ReviewFixC2Test, Showstopper_OnlyABaseUnit_ToTheChosenBattlefield) {
 
     auto plays = playsOf(spell);
     ASSERT_EQ(plays.size(), 1u);
-    EXPECT_TRUE(hasTargets(plays, {in_base})) << "a unit at a battlefield is not a target";
-    (void)at_bf;
+    // One play: the unit and the battlefield are chosen as it is played
+    // (testing phase D3 — the unit was the play intent's target).
+    EXPECT_TRUE(plays.front().targets.empty());
 
-    EnginePathAgent agent(script({V(2)}));   // battlefield 1
-    playWithTargets(spell, {in_base}, &agent);
+    EnginePathAgent agent(script({O(in_base), V(2)}));   // the unit; battlefield 1
+    playWithTargets(spell, {}, &agent);
+    ASSERT_FALSE(agent.prompts.empty());
+    EXPECT_FALSE(agent.wasOffered(at_bf)) << "a unit at a battlefield is not a target";
     EXPECT_EQ(state.getObject(in_base).buff_count, 1) << "buffed once";
     EXPECT_TRUE(atBf(in_base, BattlefieldId::fromRaw(1)));
 }
@@ -1080,12 +1083,15 @@ TEST_F(ReviewFixC2Test, Defy_DoesNotCounterASpellThatCostsMoreThanOnePower) {
     boost::signals2::scoped_connection c = events.on_spell_resolved.connect(
         [&](const SpellResolvedEvent& e) { if (e.spell == watched) ++resolved; });
 
-    watched = pushSpellOnChain(P2, kWindWall);   // [3] and two Power
-    playThroughEngine(addToHand(P1, kDefy));
-    EXPECT_EQ(resolved, 1) << "not countered: it resolved";
+    // Against a spell that costs too much Defy is not offered at all: the
+    // spell is its target, chosen as Defy is played (CR 355.8, 355.9.a.2;
+    // testing phase D21 — it used to be played and resolve doing nothing).
+    pushSpellOnChain(P2, kWindWall);   // [3] and two Power
+    EXPECT_FALSE(card_registry.get(kDefy)->hasLegalTargets(state, P1, card_db));
 
     resolved = 0;
     watched = pushSpellOnChain(P2, kRunePrison);   // [2] and one Power
+    EXPECT_TRUE(card_registry.get(kDefy)->hasLegalTargets(state, P1, card_db));
     playThroughEngine(addToHand(P1, kDefy));
     EXPECT_EQ(resolved, 0) << "countered";
     EXPECT_TRUE(inTrash(P2, watched));

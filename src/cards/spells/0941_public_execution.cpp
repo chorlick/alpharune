@@ -37,18 +37,23 @@ class PublicExecution : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
-    // It can choose any unit its controller has on the board (the play gate).
+    // A friendly unit with an enemy unit of less Might to choose (CR 355.16).
     FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
                                            GameObjectId object) const override {
-        return friendlyUnitChoice(state, controller, object);
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return !weakerEnemies(state, controller, u.id).empty();
+        });
     }
     // [vendetta-E]
     // "Choose a friendly unit. Kill an enemy unit with less Might than it."
     bool needsPlayTimeTargetPair() const override { return true; }
+    // Both targets (CR 355.8): a friendly unit with an enemy unit of less
+    // Might than it to choose (testing phase G20: whether there is one
+    // depends on which friendly unit, so the pairs are tested).
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        // Choosing a friendly unit is always possible if you have one; the
-        // kill simply does nothing if no enemy is weaker.
-        return !executioners(state, controller).empty();
+        for (auto f : executioners(state, controller))
+            if (!weakerEnemies(state, controller, f).empty()) return true;
+        return false;
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto [mine, victim] = pickTargetPair(

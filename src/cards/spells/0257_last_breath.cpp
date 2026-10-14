@@ -25,8 +25,13 @@ public:
     //  unit at a battlefield." — two targets: the friendly unit, then the
     //  enemy unit (left out when no enemy unit is at a battlefield).
     bool needsPlayTimeTargetPair() const override { return true; }
+    // Both targets are required (CR 355.8; testing phase D8): a friendly unit
+    // and an enemy unit at a battlefield it can choose.
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        return !friendlyUnits(state, controller).empty();
+        return !friendlyUnits(state, controller).empty() &&
+               !chooseableUnits(state, controller, [&](const GameObject& u) {
+                    return u.controller != controller && u.isAtBattlefield();
+                }).empty();
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto [unit, enemy] = pickTargetPair(

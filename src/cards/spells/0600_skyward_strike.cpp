@@ -34,17 +34,34 @@ public:
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
         return !enemies(state, controller).empty();
     }
+    static constexpr size_t kLevelSlot = Card::kChoiceStateSlot + 3;
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const bool level6 = ctx.state.player(ctx.controller).xp >= 6;
         const auto foes = enemies(ctx.state, ctx.controller);
-        // Always the pair helper, so the stored answers mean the same thing
-        // whatever the XP is when this is re-entered: below Level 6 there is
-        // simply no second target to choose.
-        auto [mover, stunned] = pickTargetPair(ctx, "Skyward Strike", foes,
-            [&](GameObjectId) { return level6 ? foes : std::vector<GameObjectId>{}; });
-        if (ctx.state.chain.resuming.has_value() &&
-            (ctx.state.chain.resuming->resume_point == 10 ||
-             ctx.state.chain.resuming->resume_point == 12)) return;   // waiting for the agent
+        // Two instructions, each with its own target: the unit to move, and
+        // — at Level 6 — the unit to stun (any enemy unit, the same one too).
+        const GameObjectId mover = pickTarget(ctx, "Skyward Strike: move an enemy unit", foes);
+        if (mover == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        // Whether a unit to stun is chosen is fixed as the spell is played
+        // (the choices are made then, CR 355.5); the stun itself needs Level 6
+        // as it resolves.
+        bool choose_stun = level6;
+        if (ctx.state.chain.resuming.has_value()) {
+            auto& rd = ctx.state.chain.resuming->resume_data;
+            if (rd.size() <= kLevelSlot) rd.resize(kLevelSlot + 1, 0);
+            if (rd[kLevelSlot] == 0) rd[kLevelSlot] = level6 ? 2 : 1;
+            choose_stun = rd[kLevelSlot] == 2;
+        }
+        GameObjectId stunned = kInvalidId;
+        if (choose_stun) {
+            const auto s = selectTargetOrNone(*this, ctx, "Skyward Strike: stun an enemy unit",
+                                              foes, Card::kChoiceStateSlot + 1,
+                                              /*allow_none=*/false);
+            if (!s.has_value()) return;   // waiting for the agent
+            stunned = *s;
+        }
         int dest = -2;
         if (mover != kInvalidId && ctx.state.objectExists(mover)) {
             const auto dests = moveDests(ctx.state, ctx.state.getObject(mover));

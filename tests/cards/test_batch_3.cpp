@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <random>
 #include <optional>
 #include <set>
 #include <string>
@@ -35,6 +36,25 @@ constexpr CardDefId kCrumblingSands = 826;
 constexpr CardDefId kDredgeUp = 836;        // "Draw 1." [2]
 constexpr CardDefId kRebuttal = 939;
 constexpr CardDefId kPremonition = 409;     // "Draw 3."
+constexpr CardDefId kPoutyPoro = 13;        // [Deflect]
+constexpr CardDefId kLongSword = 345;
+constexpr CardDefId kStarCrossed = 690;
+constexpr CardDefId kSwitcheroo = 466;
+constexpr CardDefId kFacebreaker = 220;
+constexpr CardDefId kDefiantDance = 511;
+constexpr CardDefId kStrikeDown = 429;
+constexpr CardDefId kPublicExecution = 941;
+constexpr CardDefId kRideTheWind = 173;
+constexpr CardDefId kCharm = 43;
+constexpr CardDefId kVoidAssault = 758;
+constexpr CardDefId kShurikenFlip = 927;
+constexpr CardDefId kThrillOfTheHunt = 745;
+constexpr CardDefId kRelentlessPursuit = 503;
+constexpr CardDefId kShowstopper = 265;
+constexpr CardDefId kDragonsRage = 255;
+constexpr CardDefId kStormbringer = 248;
+constexpr CardDefId kDecreeOfInsight = 848;
+constexpr CardDefId kPitRookie = 136;       // a Body unit
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -82,10 +102,85 @@ protected:
         state.chain.items.push_back(item);
         return item.id;
     }
+    GameObjectId addToTrash(PlayerId owner, CardDefId def_id) {
+        auto id = addToHand(owner, def_id);
+        auto& h = ps(owner).hand;
+        h.erase(std::remove(h.begin(), h.end(), id), h.end());
+        o(id).zone = ZoneType::Trash;
+        ps(owner).trash.push_back(id);
+        return id;
+    }
+    GameObjectId gearOn(PlayerId owner, CardDefId def, GameObjectId unit) {
+        auto id = state.createObject();
+        auto& g = o(id);
+        const auto& d = card_db.get(def);
+        g.owner = g.controller = owner;
+        g.card_type = CardType::Gear;
+        g.card_def_id = def;
+        g.name = d.name;
+        g.tags = d.tags;
+        g.keywords = d.keywords;
+        g.zone = o(unit).zone.get();
+        g.location = o(unit).location.get();
+        g.attached_to = unit;
+        o(unit).attachments.push_back(id);
+        return id;
+    }
+    /// Whether P1 is offered a play of `card` now (main phase, nothing on the chain).
+    bool offered(GameObjectId card) {
+        bool out = false;
+        withEngine([&](GameEngine& e) {
+            e.testHook_cleanup();
+            for (const auto& i : e.generateLegalActions())
+                if (i.card == card) out = true;
+        });
+        return out;
+    }
     bool onChain(GameObjectId src) {
         for (const auto& ci : state.chain.items)
             if (ci.source == src) return true;
         return false;
+    }
+};
+
+/// P2's agent: passes, and counts the priority / Focus decisions it is given.
+class CountsPriority : public EnginePathAgent {
+public:
+    int priority = 0;
+    Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+        for (const auto& i : legal)
+            if (i.type == IntentType::PassPriority || i.type == IntentType::PassFocus) {
+                ++priority;
+                break;
+            }
+        return EnginePathAgent::selectAction(st, legal);
+    }
+};
+
+/// P1's agent: answers prompts with `pick` and notes, for each prompt, how many
+/// priority decisions P2 had been given before it, and whether anything was
+/// on the chain then.
+class NotesWhen : public EnginePathAgent {
+public:
+    const CountsPriority* other = nullptr;
+    std::vector<int> other_priority_at;
+    std::vector<size_t> chain_size_at;
+    using EnginePathAgent::EnginePathAgent;
+    Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+        const bool is_choice = !legal.empty() && std::all_of(legal.begin(), legal.end(),
+            [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+        if (is_choice && !isTriggerOrderPrompt(legal) && !isBeginPrompt(legal)) {
+            other_priority_at.push_back(other ? other->priority : 0);
+            chain_size_at.push_back(st.chain.items.size());
+        }
+        return EnginePathAgent::selectAction(st, legal);
+    }
+    /// The prompt (index) whose options include a value labelled with `text`.
+    int promptWith(const std::string& text) const {
+        for (size_t k = 0; k < prompts.size(); ++k)
+            for (const auto& i : prompts[k])
+                if (i.choice_label.find(text) != std::string::npos) return static_cast<int>(k);
+        return -1;
     }
 };
 
@@ -294,6 +389,349 @@ TEST_F(Batch3Test, D21_TheOtherASpellCardsAreOfferedAgainstASpellUnderAnAbility)
         withEngine([&](GameEngine& e) { e.testHook_runChain(); }, &me, nullptr, P2);
         EXPECT_TRUE(me.offered);
     }
+}
+
+// ─── D8 / D17 / F7 / G20: offered only with a legal choice for every target ──
+// (CR 355.8 "valid choices must be made for all targets"; 355.16.)
+
+TEST_F(Batch3Test, D8_StarCrossedNeedsAFriendlyAndAnEnemyUnit) {
+    auto card = addToHand(P1, kStarCrossed);
+    fund(P1, 9, 9);
+    addUnit(P1, kInvalidId, 2, 0);
+    EXPECT_FALSE(offered(card)) << "no enemy unit";
+    addUnit(P2, kInvalidId, 2, 1);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, D8_StarCrossedWithNoFriendlyUnitIsNotOffered) {
+    auto card = addToHand(P1, kStarCrossed);
+    fund(P1, 9, 9);
+    addUnit(P2, kInvalidId, 2, 1);
+    EXPECT_FALSE(offered(card));
+}
+
+TEST_F(Batch3Test, D8_SwitcherooNeedsTwoUnitsAtOneBattlefield) {
+    auto card = addToHand(P1, kSwitcheroo);
+    fund(P1, 9, 9);
+    addUnit(P1, kInvalidId, 2, 0);
+    addUnit(P2, kInvalidId, 3, 1);
+    EXPECT_FALSE(offered(card)) << "one unit at each battlefield";
+    addUnit(P2, kInvalidId, 4, 1);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, D8_SwitcherooOffersAsItsFirstUnitOnlyOneWithAPartner) {
+    auto card = addToHand(P1, kSwitcheroo);
+    fund(P1, 9, 9);
+    auto alone = addUnit(P1, kInvalidId, 2, 0);
+    auto b = addUnit(P1, kInvalidId, 3, 1);
+    auto c = addUnit(P2, kInvalidId, 5, 1);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(b.raw()),
+                                                  static_cast<int>(c.raw()), EnginePathAgent::kRest}));
+    playThroughEngine(card, &agent);
+    ASSERT_FALSE(agent.prompts.empty());
+    EXPECT_FALSE(agent.wasOffered(alone)) << "it has no other unit at its battlefield (CR 355.16)";
+    EXPECT_EQ(o(b).current_might, 5);
+    EXPECT_EQ(o(c).current_might, 3);
+}
+
+TEST_F(Batch3Test, D8_DefiantDanceNeedsTwoUnits) {
+    auto card = addToHand(P1, kDefiantDance);
+    fund(P1, 9, 9);
+    addUnit(P1, kInvalidId, 2, 0);
+    EXPECT_FALSE(offered(card)) << "\"another unit\"";
+    addUnit(P2, kInvalidId, 2, 0);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, D8_FacebreakerNeedsAFriendlyAndAnEnemyUnitAtOneBattlefield) {
+    auto card = addToHand(P1, kFacebreaker);
+    fund(P1, 9, 9);
+    addUnit(P1, kInvalidId, 2, 0);
+    addUnit(P2, kInvalidId, 2, 1);
+    EXPECT_FALSE(offered(card));
+    addUnit(P2, kInvalidId, 2, 0);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, F7_StrikeDownNeedsAnEnemyUnit) {
+    auto card = addToHand(P1, kStrikeDown);
+    fund(P1, 9, 9);
+    auto mine = addUnit(P1, kInvalidId, 3, 0);
+    gearOn(P1, kLongSword, mine);
+    EXPECT_FALSE(offered(card)) << "an equipped friendly unit and no enemy unit";
+    addUnit(P2, kInvalidId, 2, 1);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, G20_PublicExecutionNeedsAnEnemyWithLessMight) {
+    auto card = addToHand(P1, kPublicExecution);
+    fund(P1, 9, 9);
+    addUnit(P1, kInvalidId, 6, 0);
+    addUnit(P2, kInvalidId, 6, 1);
+    EXPECT_FALSE(offered(card)) << "the enemy has as much Might as the strongest friendly unit";
+    addUnit(P2, kInvalidId, 5, 1);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, G20_PublicExecutionOffersOnlyAFriendlyUnitThatHasAWeakerEnemy) {
+    auto card = addToHand(P1, kPublicExecution);
+    fund(P1, 9, 9);
+    auto weak = addUnit(P1, kInvalidId, 2, 0);
+    auto strong = addUnit(P1, kInvalidId, 6, 0);
+    auto victim = addUnit(P2, kInvalidId, 4, 1);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(strong.raw()),
+                                                  static_cast<int>(victim.raw()), EnginePathAgent::kRest}));
+    playThroughEngine(card, &agent);
+    EXPECT_FALSE(agent.wasOffered(weak)) << "no enemy has less Might than it (CR 355.16)";
+    EXPECT_FALSE(onBoard(victim));
+}
+
+TEST_F(Batch3Test, D79_SwitcherooChargesDeflectOnlyForTheDeflectUnitChosen) {
+    auto card = addToHand(P1, kSwitcheroo);
+    fund(P1, 2, 2);
+    for (int i = 0; i < 2; ++i) addRune(P1, Domain::Chaos);
+    auto mine = addUnit(P1, kInvalidId, 2, 0);
+    auto poro = addUnit(P2, kPoutyPoro, 0, 0);
+    auto other = addUnit(P2, kInvalidId, 4, 0);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine.raw()),
+                                                  static_cast<int>(other.raw()), EnginePathAgent::kRest}));
+    playThroughEngine(card, &agent, std::nullopt, nullptr, /*fund=*/false);
+    EXPECT_EQ(readyRuneCount(P1), 2) << "no Deflect paid: the Deflect unit was not chosen";
+    EXPECT_TRUE(agent.wasOffered(poro));
+}
+
+TEST_F(Batch3Test, D79_SwitcherooChoosingTheDeflectUnitPaysItOnce) {
+    auto card = addToHand(P1, kSwitcheroo);
+    fund(P1, 2, 2);
+    for (int i = 0; i < 3; ++i) addRune(P1, Domain::Chaos);
+    auto mine = addUnit(P1, kInvalidId, 2, 0);
+    auto poro = addUnit(P2, kPoutyPoro, 0, 0);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine.raw()),
+                                                  static_cast<int>(poro.raw()), EnginePathAgent::kRest}));
+    playThroughEngine(card, &agent, std::nullopt, nullptr, /*fund=*/false);
+    int on_board = 0;
+    for (auto& [id, ob] : state.objects) if (ob.isRune() && ob.location.has_value()) ++on_board;
+    EXPECT_EQ(on_board, 2) << "one rune recycled for the one Deflect";
+}
+
+// ─── D3 / D16 / D17 / D34: a spell's choices are made as it is played ───────
+// (CR 355.4: "choose a valid Location as the Move Destination for each Move";
+// 355.5 objects; both in step 2, before the cost and before anyone responds.)
+
+TEST_F(Batch3Test, D3_RideTheWindChoosesItsDestinationBeforeAnyoneResponds) {
+    auto card = addToHand(P1, kRideTheWind);
+    auto unit = addUnit(P1, kInvalidId, 2);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(unit.raw()), 2, EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    const int k = me.promptWith("Battlefield #1");
+    ASSERT_GE(k, 0) << "a destination was asked";
+    EXPECT_EQ(me.other_priority_at[k], 0) << "the destination is chosen before P2 can respond";
+    EXPECT_EQ(me.chain_size_at[k], 0u) << "...as the spell is played, before its cost";
+    EXPECT_EQ(o(unit).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+}
+
+TEST_F(Batch3Test, D3_CharmChoosesItsDestinationAsItIsPlayed) {
+    auto card = addToHand(P1, kCharm);
+    auto enemy = addUnit(P2, kInvalidId, 2, 0);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(enemy.raw()), 0, EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    const int k = me.promptWith("Base");
+    ASSERT_GE(k, 0);
+    EXPECT_EQ(me.other_priority_at[k], 0);
+    EXPECT_TRUE(o(enemy).isAtBase());
+}
+
+TEST_F(Batch3Test, D3_VoidAssaultChoosesTheDestinationsBeforeAnyoneResponds) {
+    auto card = addToHand(P1, kVoidAssault);
+    auto mine = addUnit(P1, kInvalidId, 2);
+    auto theirs = addUnit(P2, kInvalidId, 2);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({EnginePathAgent::kRest}));
+    me.other = &them;
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = card;
+    play.targets = {mine, theirs};
+    fund(P1, 5, 5);
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); },
+               &me, &them, P1);
+    const int k = me.promptWith("yours:");
+    ASSERT_GE(k, 0);
+    EXPECT_EQ(me.other_priority_at[k], 0);
+}
+
+TEST_F(Batch3Test, D3_ShowstopperDragonsRageStormbringerChooseBeforeAnyoneResponds) {
+    for (CardDefId def : {kShowstopper, kDragonsRage, kStormbringer}) {
+        SCOPED_TRACE(card_db.get(def).name);
+        state = GameState{};
+        state.players[0].id = P1;
+        state.players[1].id = P2;
+        addBattlefield();
+        addBattlefield();
+        auto card = addToHand(P1, def);
+        addUnit(P1, kInvalidId, 3);           // in base
+        addUnit(P2, kInvalidId, 2, 0);
+        addUnit(P2, kInvalidId, 2, 1);
+        CountsPriority them;
+        NotesWhen me(EnginePathAgent::script({EnginePathAgent::kRest}));
+        me.other = &them;
+        playThroughEngine(card, &me, std::nullopt, &them);
+        const int k = me.promptWith("Battlefield #");
+        ASSERT_GE(k, 0) << "a destination / battlefield was asked";
+        EXPECT_EQ(me.other_priority_at[k], 0);
+    }
+}
+
+TEST_F(Batch3Test, D3_RelentlessPursuitChoosesBeforeAnyoneResponds) {
+    auto card = addToHand(P1, kRelentlessPursuit);
+    auto unit = addUnit(P1, kInvalidId, 3);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    const int k = me.promptWith("Battlefield #");
+    ASSERT_GE(k, 0);
+    EXPECT_EQ(me.other_priority_at[k], 0);
+}
+
+TEST_F(Batch3Test, D3_Pin_ThrillOfTheHuntChoosesTheBattlefieldAsItPlaysTheUnit) {
+    // NOT A DEFECT: the battlefield is where the owner plays the unit, a
+    // permission of that play (CR 355.10.b: "Play a unit ... to a battlefield
+    // doesn't target a battlefield"), chosen as the play happens.
+    auto card = addToHand(P1, kThrillOfTheHunt);
+    auto unit = addUnit(P1, kPoutyPoro, 0);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    int k = -1;
+    for (size_t i = 0; i < me.prompts.size(); ++i)
+        if (me.prompts[i].size() == 2 && me.prompts[i][0].chosen_value.has_value()) k = static_cast<int>(i);
+    ASSERT_GE(k, 0) << "a battlefield was asked";
+    EXPECT_GT(me.other_priority_at[k], 0) << "asked as the spell resolves";
+}
+
+TEST_F(Batch3Test, D16_ShurikenFlipChoosesEverythingAsItIsPlayed) {
+    auto card = addToHand(P1, kShurikenFlip);
+    auto mine = addUnit(P1, kInvalidId, 2);
+    auto enemy = addUnit(P2, kInvalidId, 3, 0);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(enemy.raw()), static_cast<int>(mine.raw()),
+                                          2, EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    ASSERT_GE(me.other_priority_at.size(), 3u);
+    for (size_t k = 0; k < 3; ++k) EXPECT_EQ(me.other_priority_at[k], 0) << "prompt " << k;
+    EXPECT_EQ(o(enemy).damage_marked, 2);
+    EXPECT_EQ(o(mine).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
+}
+
+TEST_F(Batch3Test, D17_ShurikenFlipIsNotOfferedWithNoFriendlyUnitToMove) {
+    auto card = addToHand(P1, kShurikenFlip);
+    fund(P1, 5, 5);
+    addUnit(P2, kInvalidId, 3, 0);
+    EXPECT_FALSE(offered(card));
+    addUnit(P1, kInvalidId, 2);
+    EXPECT_TRUE(offered(card));
+}
+
+TEST_F(Batch3Test, D34_DecreeOfInsightChoosesItsTargetBeforeItsCost) {
+    auto card = addToHand(P1, kDecreeOfInsight);
+    auto rookie = addUnit(P2, kPitRookie, 0, 0);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(rookie.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    ASSERT_FALSE(me.chain_size_at.empty());
+    EXPECT_EQ(me.chain_size_at[0], 0u) << "the target is chosen before the spell is on the chain (CR 355.5)";
+}
+
+TEST_F(Batch3Test, D8_Sweep_NoOfferedSpellIsPlayedWithoutARequiredTarget) {
+    // Every spell that chooses as it is played (play-time targets, pairs, a
+    // finalize pass): on 60 random boards, whenever it is offered, playing it
+    // with the first option at every prompt never meets a required choice
+    // with nothing to choose (CR 355.8; the gates of testing phase D8 / D17 /
+    // F7 / G20 against the cards' own pick lists).
+    std::vector<CardDefId> spells;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* c = card_registry.get(id);
+        if (!c || def.card_type != CardType::Spell || id.raw() >= 1000) continue;
+        if (c->needsPlayTimeTarget() || c->needsPlayTimeTargetPair() ||
+            (c->choicesAtFinalization() & Card::kFinalizeResolve))
+            spells.push_back(id);
+    }
+    std::sort(spells.begin(), spells.end());
+    ASSERT_GE(spells.size(), 40u);
+    std::mt19937 rng(20261014);
+    std::vector<std::string> misses;
+    int plays = 0;
+    for (int board = 0; board < 60; ++board) {
+        const unsigned seed = rng();
+        for (CardDefId id : spells) {
+            state = GameState{};
+            state.players[0].id = P1;
+            state.players[1].id = P2;
+            addBattlefield();
+            addBattlefield();
+            std::mt19937 b(seed);
+            for (PlayerId p : {P1, P2}) {
+                const int n = static_cast<int>(b() % 4);
+                for (int k = 0; k < n; ++k) {
+                    const int where = static_cast<int>(b() % 3) - 1;   // base, bf0, bf1
+                    const bool poro = b() % 4 == 0;
+                    auto u = addUnit(p, poro ? kPoutyPoro : kInvalidId,
+                                     1 + static_cast<int>(b() % 6), where);
+                    if (b() % 4 == 0) gearOn(p, kLongSword, u);
+                }
+                for (int k = 0; k < 4; ++k) addToDeck(p, kDredgeUp);
+            }
+            for (int k = 0; k < 2; ++k) addToTrash(P1, kDredgeUp);
+            auto card = addToHand(P1, id);
+            fund(P1, 12, 12);
+            bool offered_now = false;
+            Intent play;
+            withEngine([&](GameEngine& e) {
+                e.testHook_cleanup();
+                for (const auto& i : e.generateLegalActions())
+                    if (i.card == card) { offered_now = true; play = i; break; }
+            });
+            if (!offered_now) continue;
+            ++plays;
+            // A required target with nothing to choose, in the spell's own
+            // choices (a "may" not offered, or a reflexive trigger's own
+            // target, is not this).
+            std::vector<std::string> lines;
+            bool in_spell_pass = false;
+            auto conn = events.on_log.connect([&](const LogEvent& e) {
+                const auto& m = e.message;
+                if (m.find("FINALIZE-CHOICES:") != std::string::npos)
+                    in_spell_pass = m.find("spell=1") != std::string::npos;
+                else if (m.find("RESOLVE:") != std::string::npos)
+                    in_spell_pass = false;
+                if (in_spell_pass && (m.find("TGT_NOT_OFFERED") != std::string::npos ||
+                                      m.find("TGT_PAIR_NOT_OFFERED") != std::string::npos))
+                    lines.push_back(m);
+            });
+            EnginePathAgent first(EnginePathAgent::first());
+            try {
+                withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); }, &first);
+            } catch (const std::exception& ex) {
+                misses.push_back(card_db.get(id).name + ": threw " + ex.what());
+            }
+            conn.disconnect();
+            for (const auto& l : lines) misses.push_back(card_db.get(id).name + ": " + l);
+        }
+    }
+    EXPECT_GT(plays, 500);
+    std::string all;
+    for (const auto& m : misses) all += "\n  " + m;
+    EXPECT_TRUE(misses.empty()) << misses.size() << " plays met a required choice with nothing to choose:" << all;
 }
 
 }  // namespace riftbound::test::batch_3

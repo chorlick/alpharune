@@ -826,6 +826,9 @@ private:
     /// additional execution (CR 820.2).
     void chooseTargetsAtFinalize(ChainItem& item);
     void chooseFirstExecution(ChainItem& item);
+    /// A spell that made its choices before its cost (executePlaySpell) takes
+    /// them over as it goes on the chain, and announces them.
+    void adoptPrefinalizedChoices(ChainItem& item);
     // (An item whose choices are made early — a spell an effect plays — is
     // marked ChainItemStatus::Finalized on the spot, which is what keeps the
     // chain's Finalize step from asking again.)
@@ -1004,7 +1007,10 @@ private:
     /// choosing something that takes enough off its cost (the generators'
     /// half of executePlaySpell's choices-before-payment).
     bool payableThroughAFinalizeChoice(PlayerId player, GameObjectId card_id,
-                                       const PlayerState::TrashReplayGrant* grant) const;
+                                       const PlayerState::TrashReplayGrant* grant,
+                                       bool whole_choice = false) const;
+    /// Whether some unit on the board would cost `player` a Deflect to choose.
+    bool anyDeflectFor(PlayerId player) const;
     /// A spell's finalize-pass choices made before its cost was paid; adopted
     /// by chooseTargetsAtFinalize when the spell goes on the chain.
     std::optional<ChainItem> prefinalized_spell_;

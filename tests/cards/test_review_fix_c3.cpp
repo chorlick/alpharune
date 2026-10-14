@@ -562,9 +562,10 @@ TEST_F(C3Test, RelentlessPursuit_MovesALoneUnitWhereItsControllerChooses) {
     auto unit = addUnit(P1, kInvalidId, 3);
     auto sword = addGear(P1, true);
     auto shield = addGear(P1, true);
-    // Battlefield #1 (destination 2), attach: yes, the second Equipment.
-    StepAgent agent{V(2), V(1), O(shield)};
-    playAt(spell, {unit}, &agent);
+    // As it is played (testing phase D3): the unit, battlefield #1
+    // (destination 2), the second Equipment; as it resolves: attach it, yes.
+    StepAgent agent{O(unit), V(2), O(shield), V(1)};
+    playAt(spell, {}, &agent);
     EXPECT_EQ(agent.missed, 0);
     ASSERT_TRUE(bfOf(unit).has_value());
     EXPECT_EQ(*bfOf(unit), BattlefieldId::fromRaw(1));
@@ -576,8 +577,8 @@ TEST_F(C3Test, RelentlessPursuit_AttachingIsOptionalAndTheConquerRiderIsArmed) {
     auto spell = addToHand(P1, kRelentlessPursuit);
     auto unit = addUnit(P1, kInvalidId, 3);
     auto sword = addGear(P1, true);
-    StepAgent agent{V(1), V(0)};   // battlefield #0, attach: no
-    playAt(spell, {unit}, &agent);
+    StepAgent agent{O(unit), V(1), V(0)};   // the unit, battlefield #0, no Equipment
+    playAt(spell, {}, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_FALSE(state.getObject(sword).attached_to.has_value());
     ASSERT_EQ(state.delayed_abilities.size(), 1u);

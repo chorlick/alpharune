@@ -30,9 +30,11 @@ public:
                 out.push_back(id);
         return out;
     }
-    // The draw happens with or without a unit to choose.
-    bool hasLegalTargets(const GameState& /*state*/, PlayerId /*controller*/) const override {
-        return true;
+    // "Choose a friendly unit without [Temporary]" is a target: with none to
+    // choose the spell can't be played (CR 355.8; testing phase D8). (It used
+    // to be playable for its "Draw 2" alone.)
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !enumerateLegalTargets(state, controller).empty();
     }
     // Phase 6q proof-of-concept (single friendly-unit target).
     bool needsPlayTimeTarget() const override { return true; }

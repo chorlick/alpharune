@@ -31,10 +31,12 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const PlayerId me = ctx.controller;
-        auto friendly = chooseableUnits(ctx.state, me,
-                                        [me](const GameObject& o) { return o.controller == me; });
-        auto enemy = chooseableUnits(ctx.state, me,
-                                     [me](const GameObject& o) { return o.controller != me; });
+        // Only a mode with a unit it can then choose (its Deflect payable with
+        // the cost: offerableChoices) is on offer (CR 355.16).
+        auto friendly = offerableChoices(ctx, chooseableUnits(ctx.state, me,
+                                        [me](const GameObject& o) { return o.controller == me; }));
+        auto enemy = offerableChoices(ctx, chooseableUnits(ctx.state, me,
+                                     [me](const GameObject& o) { return o.controller != me; }));
         uint32_t mask = (friendly.empty() ? 0u : 1u) | (enemy.empty() ? 0u : 2u);
         int mode = pickMode(ctx, "Mesmerize", 2,
                             {"Return a friendly unit to its owner's hand",

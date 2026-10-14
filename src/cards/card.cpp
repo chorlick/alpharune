@@ -917,12 +917,27 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     auto& ri_opt = ctx.state.chain.resuming;
     // Deflect (CR 809): see affordableWithDeflect / commitChoice above.
     const bool choosing = ri_opt.has_value();
-    const std::vector<GameObjectId> legal_a =
-        choosing ? affordableWithDeflect(ctx, *this, legal_a_in) : legal_a_in;
     auto legal_b_fn = [&](GameObjectId a) {
         auto v = legal_b_in_fn(a);
         return choosing ? affordableWithDeflect(ctx, *this, v) : v;
     };
+    // CR 355.16: "A player may not make choices during this step that will
+    // deterministically result in illegal choices ... later": a first target
+    // is offered only if a second can then be chosen with it (CR 355.8 —
+    // valid choices for all targets; testing phase D8). The second list is
+    // judged as it would be with `a` chosen (its Deflect and discounts).
+    std::vector<GameObjectId> legal_a;
+    {
+        const auto first = choosing ? affordableWithDeflect(ctx, *this, legal_a_in) : legal_a_in;
+        const bool asking_a = choosing && !(choiceState(*ri_opt) & (kPairAwaitB | kPairDone));
+        for (auto a : first) {
+            if (!asking_a) { legal_a.push_back(a); continue; }
+            ri_opt->chosen_objects.push_back(a);
+            const bool completes = !legal_b_fn(a).empty();
+            ri_opt->chosen_objects.pop_back();
+            if (completes) legal_a.push_back(a);
+        }
+    }
     if (!ri_opt.has_value()) {
         // Direct invocation (test / no chain). Default to first
         // legal pair or kInvalidId-pair.
@@ -1031,6 +1046,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         if (legal_b.empty()) {
             RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal second targets after A picked)");
+            requiredChoiceMissing(ri);   // CR 403.4
             return finish(a, kInvalidId);
         }
         // Always publish a choice, even with a single legal second

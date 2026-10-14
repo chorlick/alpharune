@@ -5,7 +5,9 @@
 #include "core/game_object.h"
 #include "engine/game_engine.h"  // StepResult / StepKind
 
+#include "agents/determinizer.h"
 #include "openspiel/action_vocab.h"
+#include "openspiel/riftbound_game.h"
 #include "openspiel/riftbound_state.h"
 
 #include "open_spiel/spiel.h"
@@ -14,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -442,55 +445,86 @@ namespace {
 
 /// Information-set MCTS: the algorithm of OpenSpiel's `ISMCTSBot`
 /// (open_spiel/algorithms/is_mcts.cc) in the one configuration this agent
-/// uses — UCT selection, a fresh world sample per simulation, nodes keyed by
-/// (deciding player, ObservationString), final policy = visit counts — with
-/// one difference: a node's children are kept in ACTION ORDER (std::map).
+/// uses — UCT selection, a fresh world per simulation, nodes keyed by
+/// (deciding player, ObservationString) — with four differences:
 ///
-/// `ISMCTSBot` keeps them in an absl::flat_hash_map and iterates it to build
-/// the tie-break candidates of every UCT step and the final policy it
-/// samples the move from. absl seeds every table from a thread-local counter
-/// that starts at an address, and salts its hash with another address, so
-/// the iteration order is not a function of the bot's seed: with fixed seeds
-/// the agent played a different game on each run of a batch, and a different
-/// second game inside one process (plans/09 item 9.E2: a seeded 6-game batch
-/// gave four different results in four runs and one result in four runs with
-/// address-space randomisation switched off, `setarch -R`). Here every choice
-/// is a function of the seed and the position only
-/// (IsMctsAgentTest.TheSameSeedsPlayTheSameGame).
+/// * A node's children are kept in ACTION ORDER (std::map). `ISMCTSBot` keeps
+///   them in an absl::flat_hash_map and iterates it to build the tie-break
+///   candidates of every UCT step and the final policy; absl seeds every
+///   table from an address, so the order was not a function of the bot's
+///   seed and a seeded game differed from run to run (plans/09 item 9.E2).
+///   Here every choice is a function of the seed and the position only
+///   (IsMctsAgentTest.TheSameSeedsPlayTheSameGame).
+/// * The root is one node whose children are the options of the LIVE
+///   decision (by index into its legal list), found in each world by Intent
+///   equality. A world's action id for an option can name a card the world
+///   drew (a prompt's object is keyed by its card), and its observation key
+///   carries the offered ids; keyed like any other node the root would split
+///   into one node per world.
+/// * With sampled worlds, every node is keyed by what the ROOT's player
+///   observes (single-observer ISMCTS), not by what the player to move
+///   observes: the opponent's own observation names the cards each world drew
+///   for them, so every opponent decision would be a new node in every world.
+///   (Measured: keyed that way, honest ISMCTS-50 won 6 of 20 against random
+///   where random itself wins 34%; keyed by the root player, 21 of 30.)
+/// * The move played is the most visited root option (ties by the RNG), not
+///   a draw in proportion to the visits; the visits are reported
+///   (SearchSummary) for a recorder.
 class IsMctsSearch {
 public:
+    /// Makes the world of one simulation, at the root's decision.
+    using WorldMaker = std::function<std::unique_ptr<openspiel::RiftboundState>()>;
+
+    /// `root_player_keys`: key every node by what the ROOT's player observes
+    /// (single-observer ISMCTS) instead of by what the player to move
+    /// observes. With sampled worlds the opponent's own observation names the
+    /// cards each world drew for them, so keyed by it every opponent decision
+    /// is a new node in every world and a simulation ends at the first one.
     IsMctsSearch(uint64_t seed,
                  std::shared_ptr<::open_spiel::algorithms::Evaluator> evaluator,
-                 double uct_c, int max_simulations)
+                 double uct_c, int max_simulations, bool root_player_keys)
         : rng_(seed), evaluator_(std::move(evaluator)), uct_c_(uct_c),
-          max_simulations_(max_simulations) {}
+          max_simulations_(max_simulations), root_player_keys_(root_player_keys) {}
 
-    /// Search from `root` and return the action to play: sampled in
-    /// proportion to the root's visit counts.
-    ::open_spiel::Action step(const ::open_spiel::State& root) {
+    std::mt19937_64& rng() { return rng_; }
+
+    /// Search the decision whose options are `live_legal`, one world per
+    /// simulation from `make_world`.
+    SearchSummary step(const WorldMaker& make_world, const std::vector<Intent>& live_legal) {
         nodes_.clear();
-        const std::vector<::open_spiel::Action> legal = root.LegalActions();
-        if (legal.size() == 1) return legal.front();
-
-        const Key root_key = keyOf(root);
-        nodes_[root_key];                       // the root starts unexpanded
+        root_.clear();
+        SearchSummary out;
+        out.searched = true;
         for (int sim = 0; sim < max_simulations_; ++sim) {
-            // The world sample: a clone (no determinisation of hidden cards
-            // yet — the same resampler the agent gave ISMCTSBot).
-            std::unique_ptr<::open_spiel::State> world = root.Clone();
-            simulate(*world);
+            std::unique_ptr<openspiel::RiftboundState> world = make_world();
+            simulateRoot(*world, live_legal);
+            ++out.simulations;
         }
-
-        const Node& node = nodes_[root_key];
-        if (node.total_visits <= 0 || node.children.empty()) return legal.front();
-        // Children in action order; `pick` falls in [0, total_visits).
-        std::uniform_int_distribution<int> dist(0, node.total_visits - 1);
-        int pick = dist(rng_);
-        for (const auto& [action, child] : node.children) {
-            if (pick < child.visits) return action;
-            pick -= child.visits;
+        out.visits.assign(live_legal.size(), 0);
+        out.value.assign(live_legal.size(), 0.0);
+        int total = 0;
+        double sum = 0.0;
+        for (const auto& [index, child] : root_) {
+            out.visits[index] = child.visits;
+            out.value[index] = child.visits > 0 ? child.return_sum / child.visits : 0.0;
+            total += child.visits;
+            sum += child.return_sum;
         }
-        return node.children.rbegin()->first;
+        out.root_value = total > 0 ? sum / total : 0.0;
+        // Most visited, ties broken by the RNG.
+        int best = -1;
+        std::vector<int> tied;
+        for (const auto& [index, child] : root_) {
+            if (child.visits > best) { best = child.visits; tied.assign(1, index); }
+            else if (child.visits == best) tied.push_back(index);
+        }
+        if (tied.empty()) {
+            out.chosen = 0;
+        } else {
+            std::uniform_int_distribution<size_t> dist(0, tied.size() - 1);
+            out.chosen = tied[tied.size() == 1 ? 0 : dist(rng_)];
+        }
+        return out;
     }
 
 private:
@@ -506,8 +540,65 @@ private:
     static constexpr int kUnexpanded = -1;
     static constexpr double kTieTolerance = 1e-5;
 
-    static Key keyOf(const ::open_spiel::State& state) {
-        return {state.CurrentPlayer(), state.ObservationString()};
+    Key keyOf(const ::open_spiel::State& state) const {
+        return {state.CurrentPlayer(), root_player_keys_ ? state.ObservationString(root_player_)
+                                                         : state.ObservationString()};
+    }
+
+    /// One simulation from the root: choose among the live options (by
+    /// index), play that option in this world, continue below.
+    void simulateRoot(openspiel::RiftboundState& world, const std::vector<Intent>& live_legal) {
+        if (world.IsTerminal()) return;
+        const ::open_spiel::Player player = world.CurrentPlayer();
+        root_player_ = player;
+        const std::vector<Intent> intents = world.legalIntents();   // a copy: valid past ApplyAction
+        const std::vector<int> ids = openspiel::actionIds(intents, world.engineState());
+        // The world's action id of each live option it offers.
+        std::map<int, ::open_spiel::Action> offered;
+        for (size_t i = 0; i < live_legal.size(); ++i) {
+            for (size_t j = 0; j < intents.size(); ++j) {
+                if (intents[j] == live_legal[i]) {
+                    offered[static_cast<int>(i)] = ids[j];
+                    break;
+                }
+            }
+        }
+        if (offered.empty()) return;
+
+        int chosen = -1;
+        bool untried = false;
+        for (const auto& [index, action] : offered) {
+            if (root_.find(index) == root_.end()) { untried = true; break; }
+        }
+        if (untried) {
+            std::vector<int> order;
+            for (const auto& [index, action] : offered) order.push_back(index);
+            std::shuffle(order.begin(), order.end(), rng_);
+            for (int index : order) {
+                if (root_.find(index) == root_.end()) { chosen = index; break; }
+            }
+        } else {
+            int total = 0;
+            for (const auto& [index, action] : offered) total += root_[index].visits;
+            std::vector<int> candidates;
+            double best = -std::numeric_limits<double>::infinity();
+            std::vector<std::pair<int, double>> values;
+            for (const auto& [index, action] : offered) {
+                const Child& c = root_[index];
+                const double v = c.return_sum / c.visits +
+                    uct_c_ * std::sqrt(std::log(static_cast<double>(std::max(total, 1))) / c.visits);
+                values.emplace_back(index, v);
+                best = std::max(best, v);
+            }
+            for (const auto& [index, v] : values)
+                if (v > best - kTieTolerance) candidates.push_back(index);
+            std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+            chosen = candidates[candidates.size() == 1 ? 0 : dist(rng_)];
+        }
+        root_[chosen].visits++;
+        world.ApplyAction(offered[chosen]);
+        const std::vector<double> returns = simulate(world);
+        root_[chosen].return_sum += returns[player];
     }
 
     std::vector<double> simulate(::open_spiel::State& state) {
@@ -524,16 +615,21 @@ private:
         }
 
         ::open_spiel::Action chosen = ::open_spiel::kInvalidAction;
-        if (node.children.size() != legal.size()) {
-            // An action not tried yet, in a shuffled order so the move order
-            // does not bias which is tried first.
+        // An action not tried yet, in a shuffled order so the move order does
+        // not bias which is tried first. (In different worlds one node can
+        // offer different actions; only those offered here are candidates.)
+        bool untried = false;
+        for (::open_spiel::Action a : legal) {
+            if (node.children.find(a) == node.children.end()) { untried = true; break; }
+        }
+        if (untried) {
             std::vector<::open_spiel::Action> order = legal;
             std::shuffle(order.begin(), order.end(), rng_);
             for (::open_spiel::Action a : order) {
                 if (node.children.find(a) == node.children.end()) { chosen = a; break; }
             }
         }
-        if (chosen == ::open_spiel::kInvalidAction) chosen = selectUct(node);
+        if (chosen == ::open_spiel::kInvalidAction) chosen = selectUct(node, legal);
 
         // Count the visit before descending: with imperfect recall the same
         // (node, action) can come up again inside this simulation.
@@ -546,11 +642,13 @@ private:
         return returns;
     }
 
-    ::open_spiel::Action selectUct(const Node& node) {
+    ::open_spiel::Action selectUct(const Node& node,
+                                   const std::vector<::open_spiel::Action>& legal) {
         double best = -std::numeric_limits<double>::infinity();
         std::vector<std::pair<::open_spiel::Action, double>> values;
-        values.reserve(node.children.size());
-        for (const auto& [action, child] : node.children) {
+        values.reserve(legal.size());
+        for (::open_spiel::Action action : legal) {   // ascending, like the map
+            const Child& child = node.children.at(action);
             const double value = child.return_sum / child.visits +
                 uct_c_ * std::sqrt(std::log(static_cast<double>(node.total_visits)) /
                                    child.visits);
@@ -569,7 +667,10 @@ private:
     std::shared_ptr<::open_spiel::algorithms::Evaluator> evaluator_;
     double uct_c_;
     int max_simulations_;
+    bool root_player_keys_;
+    ::open_spiel::Player root_player_ = 0;
     std::map<Key, Node> nodes_;
+    std::map<int, Child> root_;   // by index into the live legal list
 };
 
 } // namespace
@@ -580,11 +681,16 @@ struct IsMctsAgent::Impl {
     std::shared_ptr<const ::open_spiel::Game> game;
     std::unique_ptr<IsMctsSearch> search;
     int sims;
+    WorldModel world_model;
     std::unique_ptr<LiveMirror> mirror;
+    std::unique_ptr<WorldSampler> sampler;   // Sampled only
+    SearchSummary last;
+    bool check_worlds = false;
+    long worlds_checked = 0;
 
     Impl(std::string d1, std::string d2,
-         uint64_t engine_seed, uint64_t mcts_seed, int sim_count)
-        : sims(sim_count) {
+         uint64_t engine_seed, uint64_t mcts_seed, int sim_count, WorldModel model)
+        : sims(sim_count), world_model(model) {
         game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed));
         if (!game) {
             throw std::runtime_error(
@@ -593,14 +699,46 @@ struct IsMctsAgent::Impl {
         }
         mirror = std::make_unique<LiveMirror>(game, engine_seed,
                                               mcts_seed ^ 0xC3C3C3C3u);
-        // The world sample of each simulation is a Clone() of the root: hidden
-        // information is not determinised, so the search sees the real hands
-        // and decks (it "behaves like perfect-info MCTS", see mcts_agent.h).
         search = std::make_unique<IsMctsSearch>(
             /*seed=*/mcts_seed ^ 0x3C3C3C3Cu,
             std::make_shared<RiftboundHeuristicEvaluator>(),
             /*uct_c=*/2.0,
-            /*max_simulations=*/sims);
+            /*max_simulations=*/sims,
+            /*root_player_keys=*/model == WorldModel::Sampled);
+        if (world_model == WorldModel::Sampled) {
+            sampler = std::make_unique<WorldSampler>(
+                static_cast<const openspiel::RiftboundGame&>(*game).cardDb());
+        }
+        const char* env = std::getenv("RIFTBOUND_ISMCTS_CHECK_WORLDS");
+        check_worlds = env && *env && std::string(env) != "0";
+    }
+
+    /// One simulation's world at the decision `root` is in, for `observer`.
+    std::unique_ptr<openspiel::RiftboundState> makeWorld(
+        const openspiel::RiftboundState& root, PlayerId observer) {
+        std::unique_ptr<openspiel::RiftboundState> world(
+            static_cast<openspiel::RiftboundState*>(root.Clone().release()));
+        if (world_model == WorldModel::Perfect) return world;
+        std::mt19937_64& rng = search->rng();
+        const uint64_t draw_seed = rng();
+        const uint64_t engine_rng_seed = rng();
+        world->editHiddenInformation(
+            [&](GameState& g) {
+                std::mt19937_64 draw(draw_seed);
+                sampler->sample(g, observer, draw);
+            },
+            engine_rng_seed);
+        if (check_worlds) {
+            const auto problems = sampler->check(root.engineState(), world->engineState(), observer);
+            ++worlds_checked;
+            if (!problems.empty()) {
+                std::string all;
+                for (const auto& p : problems) all += "\n  " + p;
+                throw std::logic_error("IsMctsAgent: a sampled world contradicts what " +
+                                       std::string(toString(observer)) + " knows:" + all);
+            }
+        }
+        return world;
     }
 };
 
@@ -609,29 +747,44 @@ IsMctsAgent::IsMctsAgent(std::string deck1_path,
                          std::string /*registry_path*/,
                          uint64_t    engine_seed,
                          uint64_t    mcts_seed,
-                         int         sims)
+                         int         sims,
+                         WorldModel  world)
     : impl_(std::make_unique<Impl>(std::move(deck1_path),
                                    std::move(deck2_path),
-                                   engine_seed, mcts_seed, sims)) {}
+                                   engine_seed, mcts_seed, sims, world)) {}
 
 IsMctsAgent::~IsMctsAgent() = default;
 
+const SearchSummary& IsMctsAgent::lastSearch() const { return impl_->last; }
+void IsMctsAgent::setCheckWorlds(bool on) { impl_->check_worlds = on; }
+long IsMctsAgent::worldsChecked() const { return impl_->worlds_checked; }
+
 Intent IsMctsAgent::selectAction(const GameState& state,
                                  const std::vector<Intent>& legal_actions) {
+    impl_->last = SearchSummary{};
     if (legal_actions.empty()) {
         return Intent::concede(decidingPlayer(state, legal_actions));
     }
+    auto unsearched = [&]() -> Intent {
+        const Intent& pick = impl_->mirror->unsearched(legal_actions);
+        impl_->last.chosen = static_cast<int>(&pick - legal_actions.data());
+        return pick;
+    };
+    // The mirror is kept in step at every decision, searched or not.
     const openspiel::RiftboundState* os_state =
         impl_->mirror->rootFor(state, legal_actions);
-
-    if (!os_state || os_state->IsTerminal()) {
-        return impl_->mirror->unsearched(legal_actions);
+    if (legal_actions.size() == 1) {
+        impl_->last.chosen = 0;
+        return legal_actions.front();
     }
-    ::open_spiel::Action chosen_action = impl_->search->step(*os_state);
-    const Intent* intent = openspiel::decodeAction(
-        static_cast<int>(chosen_action), legal_actions, state);
-    if (!intent) return impl_->mirror->unsearched(legal_actions);
-    return *intent;
+    // The setup battlefield choice (see the class comment).
+    if (state.battlefields.empty()) return unsearched();
+    if (!os_state || os_state->IsTerminal()) return unsearched();
+
+    const PlayerId observer = decidingPlayer(state, legal_actions);
+    impl_->last = impl_->search->step(
+        [&]() { return impl_->makeWorld(*os_state, observer); }, legal_actions);
+    return legal_actions[impl_->last.chosen];
 }
 
 } // namespace riftbound

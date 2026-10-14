@@ -15,6 +15,8 @@
 
 #include "agents/mcts_agent.h"
 #include "agents/random_agent.h"
+#include "agents/random_player_agent.h"
+#include "rules/random_deck.h"
 #include "core/events.h"
 #include "engine/game_engine.h"
 #include "engine/knowledge_tracker.h"
@@ -25,6 +27,8 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <random>
@@ -1225,6 +1229,290 @@ TEST(ResumeStress, IsMctsGamesAcrossSeedsNeverFailToResume) {
         }
     }
     EXPECT_EQ(finished, games * 2);
+}
+
+
+// ─── Batch 5 item T3: honest ISMCTS ─────────────────────────────────────────
+//
+// The search of IsMctsAgent (WorldModel::Sampled) runs in worlds drawn from
+// what its player knows. The core property: two live games that differ only
+// in what the searching player cannot see — the opponent's deck contents, the
+// opponent's hand and deck order — give the same search, decision for
+// decision (same option played, same root visits, same root value), for the
+// same seeds. The perfect-information variant is the control: it does see
+// the difference.
+
+/// Plays a pass wherever one is offered, else the first option: an opponent
+/// whose public actions do not depend on its cards.
+class PasserAgent : public ::riftbound::AgentInterface {
+public:
+    Intent selectAction(const GameState&, const std::vector<Intent>& legal) override {
+        for (size_t k = 0; k < legal.size(); ++k)
+            if (::riftbound::isPassOption(legal, k)) return legal[k];
+        return legal.front();
+    }
+};
+
+/// Records, at each of its decisions, the history so far and the search.
+class RecordingSearcher : public ::riftbound::AgentInterface {
+public:
+    explicit RecordingSearcher(::riftbound::IsMctsAgent& inner) : inner_(inner) {}
+    Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
+        Intent chosen = inner_.selectAction(state, legal);
+        histories.push_back(state.action_history);
+        searches.push_back(inner_.lastSearch());
+        return chosen;
+    }
+    std::vector<std::vector<int64_t>> histories;
+    std::vector<::riftbound::SearchSummary> searches;
+private:
+    ::riftbound::IsMctsAgent& inner_;
+};
+
+/// A deck list file under the test's temporary directory.
+std::string writeDeck(const std::string& name, const ::riftbound::DeckSubmission& deck,
+                      const ::riftbound::CardDB& db) {
+    const std::string path = ::testing::TempDir() + "/" + name;
+    std::ofstream f(path);
+    f << ::riftbound::RandomDeckBuilder(db).toDeckList(deck);
+    return path;
+}
+
+struct HonestRun {
+    std::vector<std::vector<int64_t>> histories;
+    std::vector<::riftbound::SearchSummary> searches;
+};
+
+HonestRun playSearcherGame(const std::string& searcher_deck, const std::string& passer_deck,
+                           bool searcher_is_p1, uint64_t seed, int sims,
+                           ::riftbound::IsMctsAgent::WorldModel model) {
+    const std::string d1 = searcher_is_p1 ? searcher_deck : passer_deck;
+    const std::string d2 = searcher_is_p1 ? passer_deck : searcher_deck;
+    auto game = ::open_spiel::LoadGame("riftbound(deck1=" + d1 + ",deck2=" + d2 +
+                                       ",seed=" + std::to_string(seed) + ")");
+    const auto& rb_game = static_cast<const RiftboundGame&>(*game);
+    ::riftbound::IsMctsAgent agent(d1, d2, "ignored", seed, /*mcts_seed=*/seed * 31 + 7, sims,
+                                   model);
+    RecordingSearcher searcher(agent);
+    PasserAgent passer;
+    ::riftbound::EventBus bus;
+    GameEngine engine(rb_game.cardDb(), bus, rb_game.cardRegistry());
+    if (searcher_is_p1)
+        engine.runGame(rb_game.deck1(), rb_game.deck2(), searcher, passer, seed);
+    else
+        engine.runGame(rb_game.deck1(), rb_game.deck2(), passer, searcher, seed);
+    return {searcher.histories, searcher.searches};
+}
+
+/// Compares two runs decision by decision while their histories agree.
+/// Returns {decisions compared, decisions whose searches differ}.
+std::pair<int, int> compareRuns(const HonestRun& a, const HonestRun& b) {
+    int compared = 0, differ = 0;
+    for (size_t i = 0; i < a.searches.size() && i < b.searches.size(); ++i) {
+        if (a.histories[i] != b.histories[i]) break;
+        ++compared;
+        const auto& x = a.searches[i];
+        const auto& y = b.searches[i];
+        if (x.searched != y.searched || x.chosen != y.chosen || x.visits != y.visits ||
+            x.value != y.value || x.root_value != y.root_value)
+            ++differ;
+    }
+    return {compared, differ};
+}
+
+class IsMctsHonestTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        game_ = loadGame(1);
+        const auto& rb_game = static_cast<const RiftboundGame&>(*game_);
+        const auto& db = rb_game.cardDb();
+        const ::riftbound::DeckSubmission fiora = rb_game.deck2();
+        // The same cards in another order: another deck order and opening hand.
+        ::riftbound::DeckSubmission reordered = fiora;
+        std::reverse(reordered.main_deck.begin(), reordered.main_deck.end());
+        // Other cards: every card but the Chosen Champion's copies replaced
+        // by other cards of the legend's pool (same count, legal).
+        ::riftbound::DeckSubmission other = fiora;
+        ::riftbound::RandomDeckBuilder builder(db);
+        const auto* pool = builder.legendCards(fiora.legend);
+        ASSERT_NE(pool, nullptr);
+        std::vector<::riftbound::CardDefId> fresh;
+        for (auto id : pool->main) {
+            if (std::find(fiora.main_deck.begin(), fiora.main_deck.end(), id) ==
+                    fiora.main_deck.end() &&
+                !db.get(id).keywords.has(::riftbound::Keyword::Unique) &&
+                db.get(id).super_type != ::riftbound::SuperType::Champion)
+                fresh.push_back(id);
+        }
+        ASSERT_GE(fresh.size(), 10u);
+        const std::string champ = db.get(fiora.chosen_champion).name;
+        size_t next = 0;
+        for (auto& id : other.main_deck) {
+            if (db.get(id).name == champ) continue;
+            id = fresh[(next++ / 3) % fresh.size()];
+        }
+        fiora_ = deckFile("fiora.txt");
+        yi_ = deckFile("yi_rebuild.txt");
+        reordered_ = writeDeck("fiora_reordered.txt", reordered, db);
+        other_ = writeDeck("fiora_other_cards.txt", other, db);
+    }
+    std::shared_ptr<const ::open_spiel::Game> game_;
+    std::string fiora_, yi_, reordered_, other_;
+};
+
+TEST_F(IsMctsHonestTest, GamesThatDifferOnlyInCardsTheSearcherCannotSeeGetTheSameSearch) {
+    constexpr int kSims = 24;
+    int total_compared = 0;
+    for (bool p1 : {true, false}) {
+        const uint64_t seed = p1 ? 61001 : 61002;
+        const HonestRun base = playSearcherGame(yi_, fiora_, p1, seed, kSims,
+                                                ::riftbound::IsMctsAgent::WorldModel::Sampled);
+        for (const std::string& variant : {reordered_, other_}) {
+            const HonestRun run = playSearcherGame(yi_, variant, p1, seed, kSims,
+                                                   ::riftbound::IsMctsAgent::WorldModel::Sampled);
+            const auto [compared, differ] = compareRuns(base, run);
+            EXPECT_EQ(differ, 0) << variant << (p1 ? " (searcher P1)" : " (searcher P2)")
+                                 << ": " << differ << " of " << compared
+                                 << " searches differ between games the searcher cannot tell apart";
+            EXPECT_GE(compared, 20) << variant << ": the games diverged too early to compare";
+            total_compared += compared;
+        }
+    }
+    std::cout << "[ honest search: " << total_compared
+              << " searches compared between indistinguishable games ]\n";
+    RecordProperty("searches_compared", total_compared);
+}
+
+// The control: the clairvoyant search reads the opponent's cards, and the
+// comparison above can see that.
+TEST_F(IsMctsHonestTest, ThePerfectInformationSearchDoesSeeTheDifference) {
+    const HonestRun base = playSearcherGame(yi_, fiora_, true, 61001, 24,
+                                            ::riftbound::IsMctsAgent::WorldModel::Perfect);
+    const HonestRun run = playSearcherGame(yi_, other_, true, 61001, 24,
+                                           ::riftbound::IsMctsAgent::WorldModel::Perfect);
+    // A different search soon plays differently, after which the games are
+    // no longer comparable: one compared decision that differs is the point.
+    const auto [compared, differ] = compareRuns(base, run);
+    EXPECT_GE(compared, 1);
+    EXPECT_GT(differ, 0) << "world=perfect gave the same searches for different hidden cards";
+}
+
+// Every world a whole game's searches draw agrees with what the searcher
+// knows (WorldSampler::check, run on each one), both seats; and the search
+// reports its root.
+TEST_F(IsMctsHonestTest, EveryWorldOfAGameAgreesWithWhatTheSearcherKnows) {
+    const auto& rb_game = static_cast<const RiftboundGame&>(*game_);
+    long worlds = 0;
+    int searched = 0;
+    for (bool p1 : {true, false}) {
+        const uint64_t seed = p1 ? 62001 : 62002;
+        constexpr int kSims = 10;
+        ::riftbound::IsMctsAgent agent(yi_, fiora_, "ignored", seed, seed + 5, kSims);
+        agent.setCheckWorlds(true);
+        RecordingSearcher searcher(agent);
+        ::riftbound::RandomPlayerAgent other(seed ^ 0x77u);
+        ::riftbound::EventBus bus;
+        GameEngine engine(rb_game.cardDb(), bus, rb_game.cardRegistry());
+        try {
+            if (p1) engine.runGame(rb_game.deck1(), rb_game.deck2(), searcher, other, seed);
+            else    engine.runGame(rb_game.deck1(), rb_game.deck2(), other, searcher, seed);
+        } catch (const std::exception& e) {
+            FAIL() << "seed " << seed << ": " << e.what();
+        }
+        EXPECT_TRUE(engine.state().game_over);
+        worlds += agent.worldsChecked();
+        for (const auto& s : searcher.searches) {
+            if (!s.searched) continue;
+            ++searched;
+            int total = 0, best = -1;
+            for (int v : s.visits) { total += v; best = std::max(best, v); }
+            EXPECT_EQ(total, kSims);
+            EXPECT_EQ(s.simulations, kSims);
+            ASSERT_GE(s.chosen, 0);
+            EXPECT_EQ(s.visits[s.chosen], best) << "the move played is not the most visited";
+        }
+    }
+    EXPECT_GT(searched, 100);
+    EXPECT_EQ(worlds, static_cast<long>(searched) * 10);
+    RecordProperty("worlds_checked", static_cast<int>(worlds));
+}
+
+TEST(IsMctsAgentTest, ThePerfectWorldVariantIsAlsoAFunctionOfItsSeeds) {
+    auto game = loadGame(1);
+    const auto& rb_game = static_cast<const RiftboundGame&>(*game);
+    auto play = [&] {
+        ::riftbound::IsMctsAgent agent(deckFile("yi_rebuild.txt"), deckFile("fiora.txt"),
+                                       "ignored", 53001, 7, 12,
+                                       ::riftbound::IsMctsAgent::WorldModel::Perfect);
+        ::riftbound::RandomAgent random(53002);
+        ::riftbound::EventBus bus;
+        GameEngine engine(rb_game.cardDb(), bus, rb_game.cardRegistry());
+        engine.runGame(rb_game.deck1(), rb_game.deck2(), agent, random, 53001);
+        return engine.state().action_history;
+    };
+    const auto a = play();
+    const auto b = play();
+    ASSERT_GT(a.size(), 30u);
+    EXPECT_EQ(a, b);
+}
+
+// A state whose hidden information was rewritten is not the product of its
+// history: it refuses to be rebuilt by a replay rather than becoming the
+// unedited game.
+TEST(RiftboundStateTest, AnEditedStateIsNeverRebuiltByAReplay) {
+    auto game = loadGame(5);
+    RiftboundState state(game, 5);
+    // The first decision (the setup battlefield choice) cannot be resumed
+    // from a snapshot: a clone of it would be rebuilt by replaying.
+    ASSERT_FALSE(state.IsTerminal());
+    ASSERT_FALSE(GameEngine::isResumableDecision(state.engineState(), state.legalIntents()));
+    state.editHiddenInformation([](GameState&) {}, 99);
+    auto clone = state.Clone();
+    EXPECT_THROW(clone->ApplyAction(clone->LegalActions().front()), std::logic_error);
+    ::riftbound::StepResult step;
+    step.kind = ::riftbound::StepKind::NeedDecision;
+    step.legal = state.legalIntents();
+    EXPECT_FALSE(state.syncToHistory(state.engineState(), step));
+
+    // At a main-phase decision a clone resumes from the edited snapshot itself.
+    RiftboundState live(game, 5);
+    std::mt19937_64 rng(3);
+    while (!live.IsTerminal() &&
+           !GameEngine::isResumableDecision(live.engineState(), live.legalIntents())) {
+        live.ApplyAction(pickAction(rng, live.LegalActions()));
+    }
+    ASSERT_FALSE(live.IsTerminal());
+    live.editHiddenInformation([](GameState&) {}, 99);
+    auto resumed = live.Clone();
+    for (int k = 0; k < 20 && !resumed->IsTerminal(); ++k)
+        resumed->ApplyAction(pickAction(rng, resumed->LegalActions()));
+    SUCCEED();
+}
+
+// Rewriting what the decider cannot see must leave its options alone; the
+// engine checks that where it can rebuild them.
+TEST(RiftboundStateTest, AnEditThatChangesTheDecidersOptionsIsRefused) {
+    auto game = loadGame(6);
+    RiftboundState live(game, 6);
+    std::mt19937_64 rng(4);
+    while (!live.IsTerminal() &&
+           !(GameEngine::isResumableDecision(live.engineState(), live.legalIntents()) &&
+             live.engineState().player(live.legalIntents().front().player).hand.size() > 0)) {
+        live.ApplyAction(pickAction(rng, live.LegalActions()));
+    }
+    ASSERT_FALSE(live.IsTerminal());
+    const PlayerId decider = live.legalIntents().front().player;
+    // Emptying the decider's own hand changes what it may play.
+    EXPECT_THROW(live.editHiddenInformation(
+                     [&](GameState& g) {
+                         auto& hand = g.player(decider).hand;
+                         for (auto id : hand) g.getObject(id).zone = ::riftbound::ZoneType::Trash;
+                         g.player(decider).trash.insert(g.player(decider).trash.end(),
+                                                        hand.begin(), hand.end());
+                         hand.clear();
+                     },
+                     1),
+                 std::logic_error);
 }
 
 } // namespace

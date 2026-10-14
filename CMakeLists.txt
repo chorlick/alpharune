@@ -481,6 +481,7 @@ add_library(riftbound_core
     src/engine/batch_runner.cpp
     src/engine/step_driver.cpp
     src/agents/scripted_agent.cpp
+    src/agents/determinizer.cpp
     src/ml/feature_extractor.cpp
     src/ml/cfr_util.cpp
     src/openspiel/action_vocab.cpp
@@ -536,6 +537,27 @@ target_link_libraries(riftbound PRIVATE
 # open_spiel/ subdir on the include path.
 target_include_directories(riftbound PRIVATE ${open_spiel_SOURCE_DIR})
 riftbound_enable_warnings(riftbound)
+
+# tools/search_strength.cpp: a search agent against another over the deck
+# lists of a directory, win rate with a 95% interval and seconds per decision
+# (batch 5 item T3). Not part of `all`:
+#   cmake --build build --target search_strength
+add_executable(search_strength EXCLUDE_FROM_ALL
+    tools/search_strength.cpp
+    src/agents/mcts_agent.cpp
+    src/openspiel/riftbound_game.cpp
+    src/openspiel/riftbound_state.cpp
+    $<TARGET_OBJECTS:algorithms>
+    $<TARGET_OBJECTS:game_transforms>
+    $<TARGET_OBJECTS:utils>
+)
+target_link_libraries(search_strength PRIVATE
+    riftbound_core open_spiel_core Threads::Threads
+    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
+    absl::optional absl::random_random absl::str_format absl::strings absl::time
+)
+target_include_directories(search_strength PRIVATE ${open_spiel_SOURCE_DIR})
+riftbound_enable_warnings(search_strength)
 
 # tools/collision_census.cpp: plays random games and counts legal intents that
 # share an action id. The trainer repo builds it against its own decks; it is

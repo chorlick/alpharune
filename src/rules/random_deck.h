@@ -52,6 +52,22 @@ public:
     void setWeights(const std::vector<double>& weight_by_card_id);
     bool weighted() const { return weighted_; }
 
+    /// The cards a deck built around a legend may hold: what `build` draws
+    /// from. Determinized search draws an opponent's unseen cards from it
+    /// (agents/determinizer.h).
+    struct LegendCards {
+        /// Main Deck cards other than Signature cards, legal Chosen Champions
+        /// included.
+        std::vector<CardDefId> main;
+        /// Signature cards with the legend's champion tag (at most 3 a deck).
+        std::vector<CardDefId> signatures;
+        /// Runes per Domain of the legend (in the legend's order), then the
+        /// runes with no Domain if there are any; no list is empty.
+        std::vector<std::vector<CardDefId>> runes;
+    };
+    /// Those cards for `legend`, or nullptr if no deck can be built around it.
+    const LegendCards* legendCards(CardDefId legend) const;
+
     /// Legends a deck can be built around (one pool each).
     std::size_t legendCount() const { return legends_.size(); }
 
@@ -75,14 +91,13 @@ private:
     struct Weighted {
         std::vector<double> cumulative;
     };
-    struct LegendPool {
+    // main: every legal Main Deck card but the Signature cards; signatures:
+    // those with the legend's tag; runes: per Domain of the legend (same
+    // order as the legend's domains), then one more list for runes with no
+    // Domain if there are any.
+    struct LegendPool : LegendCards {
         CardDefId legend = kInvalidId;
         std::vector<CardDefId> champions;    // legal Chosen Champions
-        std::vector<CardDefId> signatures;   // Signature cards with the legend's tag
-        std::vector<CardDefId> main;         // every other legal Main Deck card
-        // Runes per Domain of the legend (same order as the legend's domains),
-        // then one more list for runes with no Domain if there are any.
-        std::vector<std::vector<CardDefId>> runes;
         Weighted w_champions, w_signatures, w_main;
     };
 

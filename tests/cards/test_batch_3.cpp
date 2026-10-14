@@ -74,6 +74,19 @@ constexpr CardDefId kKennenKeeper = 922;
 constexpr CardDefId kSinisterPoro = 699;
 constexpr CardDefId kIcevaleArcher = 627;
 constexpr CardDefId kTeemoStrategist = 121;
+constexpr CardDefId kSealOfDiscord = 204;
+constexpr CardDefId kDaughterOfTheVoid = 294;
+constexpr CardDefId kScornOfTheMoon = 786;
+constexpr CardDefId kFireBelow = 506;
+constexpr CardDefId kGold564 = 564;
+constexpr CardDefId kPlatewyrmEgg = 862;
+constexpr CardDefId kLuxCrownguard = 312;
+constexpr CardDefId kDragonsoulSage = 655;
+constexpr CardDefId kEnergyConduit = 98;
+constexpr CardDefId kHoneyfruit = 611;
+constexpr CardDefId kDianaLunari = 641;
+constexpr CardDefId kUndertitan = 495;
+constexpr CardDefId kJhinMurderousArtist = 584;
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -1096,6 +1109,126 @@ TEST_F(Batch3Test, F5_KennenAndIcevaleOfferOnlyAUnitTheyCanPayFor) {
         EXPECT_FALSE(me.wasOffered(deflector));
         EXPECT_TRUE(me.wasOffered(plain));
     }
+}
+
+// ─── D2 / D30 / D31 / D64: an ability that [Add]s resolves as it is played
+// (CR 401.2, 430.2, 430.2.a, 430.3, 445.2.c) ────────────────────────────────
+
+TEST_F(Batch3Test, D2_SealOfDiscordAddsAtOnceWithNoChainItem) {
+    auto seal = addGear(P1, kSealOfDiscord);
+    CountsPriority them;
+    bool chain_empty_after = false;
+    int power_after = -1;
+    Intent i;
+    i.type = IntentType::ActivateAbility;
+    i.player = P1;
+    i.ability_source = seal;
+    withEngine([&](GameEngine& e) {
+        e.testHook_executeIntent(i);
+        chain_empty_after = e.mutableState().chain.items.empty();
+        power_after = e.mutableState().player(P1).rune_pool.totalPower();
+    }, nullptr, &them, P1);
+    EXPECT_TRUE(chain_empty_after) << "no chain item (CR 430.2)";
+    EXPECT_EQ(power_after, 1) << "the Power is there at once";
+    EXPECT_EQ(them.priority, 0) << "nobody gets priority for it (430.2.a)";
+    EXPECT_EQ(state.turn.oc_state, OpenClosedState::Open);
+}
+
+TEST_F(Batch3Test, D2_G27_EveryAddAbilityUsesNoChainItem) {
+    for (CardDefId def : {kSealOfDiscord, kDaughterOfTheVoid, kScornOfTheMoon, kFireBelow,
+                          kGold564, kPlatewyrmEgg, kLuxCrownguard, kDragonsoulSage,
+                          kEnergyConduit, kHoneyfruit}) {
+        SCOPED_TRACE(card_db.get(def).name);
+        state = GameState{};
+        state.players[0].id = P1;
+        state.players[1].id = P2;
+        addBattlefield();
+        addBattlefield();
+        const auto& d = card_db.get(def);
+        GameObjectId src;
+        if (d.card_type == CardType::Legend) src = legendOf(P1, def);
+        else if (d.card_type == CardType::Unit) src = addUnit(P1, def, 0);
+        else src = addGear(P1, def);
+        o(src).is_exhausted = false;
+        CountsPriority them;
+        bool empty = false;
+        Intent i;
+        i.type = IntentType::ActivateAbility;
+        i.player = P1;
+        i.ability_source = src;
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(i);
+            empty = e.mutableState().chain.items.empty();
+        }, nullptr, &them, P1);
+        EXPECT_TRUE(empty);
+        EXPECT_EQ(them.priority, 0);
+        EXPECT_TRUE(o(src).is_exhausted || !o(src).location.has_value()) << "it was activated";
+    }
+}
+
+TEST_F(Batch3Test, D31_ScornOfTheMoonActivatedWithFocusKeepsFocus) {
+    auto scorn = legendOf(P1, kScornOfTheMoon);
+    addUnit(P1, kInvalidId, 2, 0);
+    addUnit(P2, kInvalidId, 2, 0);
+    state.battlefields[0].showdown_in_progress = true;
+    state.turn.ns_state = NeutralShowdownState::Showdown;
+    std::optional<PlayerId> next;
+    Intent i;
+    i.type = IntentType::ActivateReactionAbility;
+    i.player = P1;
+    i.ability_source = scorn;
+    withEngine([&](GameEngine& e) {
+        int n = 0;
+        next = e.testHook_resolveShowdownDecision(BattlefieldId::fromRaw(0), i, P1, n);
+    });
+    ASSERT_TRUE(next.has_value());
+    EXPECT_EQ(*next, P1) << "Focus does not pass from an [Add] (CR 430.2.a)";
+    EXPECT_EQ(ps(P1).rune_pool.showdown_energy, 1);
+}
+
+TEST_F(Batch3Test, D30_DianaPaysHerOneWithScornOfTheMoon) {
+    auto scorn = legendOf(P1, kScornOfTheMoon);
+    auto diana = addUnit(P1, kDianaLunari, 0, 0);
+    addUnit(P2, kInvalidId, 2, 0);
+    addToDeck(P1, kDredgeUp);
+    addToDeck(P1, kDredgeUp);
+    state.battlefields[0].showdown_in_progress = true;
+    state.turn.ns_state = NeutralShowdownState::Showdown;
+    ASSERT_EQ(readyRuneCount(P1), 0);
+    EnginePathAgent me(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    fireTriggerThroughEngine(diana, TriggerType::WhenAShowdownBeginsHere, &me);
+    ASSERT_FALSE(me.prompts.empty()) << "the [1] is payable: Scorn of the Moon adds it as it is paid";
+    EXPECT_TRUE(o(scorn).is_exhausted) << "Scorn was activated to pay (CR 430.3, 445.2.c)";
+    EXPECT_EQ(ps(P1).rune_pool.showdown_energy, 0) << "and its Energy spent";
+}
+
+TEST_F(Batch3Test, D64_UndertitansAddLandsInsideTheRevealingEffect) {
+    auto titan = addToDeck(P1, kUndertitan);
+    int energy_in_effect = -1;
+    bool chain_empty_in_effect = false;
+    resolveThroughEngine([&](EffectExecutor&, GameState& st) {
+        events.emit(CardRevealedEvent{titan, kUndertitan, P1, true, PlayerId::None,
+                                      ZoneType::MainDeck});
+        energy_in_effect = st.player(P1).rune_pool.energy;
+        chain_empty_in_effect = st.chain.items.empty();
+    }, nullptr, nullptr, P1);
+    EXPECT_EQ(energy_in_effect, 2) << "the [2] is there while the revealing effect goes on";
+    EXPECT_TRUE(chain_empty_in_effect);
+}
+
+TEST_F(Batch3Test, D2_JhinsMoveAddsAtOnce) {
+    auto jhin = addUnit(P1, kJhinMurderousArtist, 0, 0);
+    int energy = -1, power = -1;
+    bool empty = false;
+    resolveThroughEngine([&](EffectExecutor& ex, GameState& st) {
+        ex.moveToBase(jhin);
+        energy = st.player(P1).rune_pool.energy;
+        power = st.player(P1).rune_pool.totalPower();
+        empty = st.chain.items.empty();
+    }, nullptr, nullptr, P1);
+    EXPECT_EQ(energy, 1);
+    EXPECT_EQ(power, 1);
+    EXPECT_TRUE(empty);
 }
 
 // ─── B2 / H3: "from face down" is one test, of this play's stamp ─────────────

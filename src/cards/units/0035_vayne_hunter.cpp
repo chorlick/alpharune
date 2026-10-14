@@ -32,7 +32,7 @@ public:
         // CR 445.2 / 164.2.a: the [1] may come from floating Energy or from
         // exhausting a ready rune (payableEnergy / payEnergy).
         auto still_legal = [&]() {
-            return payableEnergy(ctx.state, ctx.controller) >= 1 &&
+            return canPayEnergy(ctx, ctx.controller, 1) &&
                    ctx.state.getObject(ctx.source).location.has_value();
         };
         // No return ahead of the "may" (as the reprint, 537): with [1]

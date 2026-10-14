@@ -179,6 +179,8 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
     for (const auto& da : firing) {
         RIFT_TRACE(events_, "DELAYED_ABILITY: firing for " +
                          (state_.objectExists(da.source) ? state_.getObject(da.source).name.get() : "?"));
+        const OpenClosedState oc_before = state_.turn.oc_state;
+        const bool chain_was_empty = state_.chain.items.empty();
         const ChainItemId item_id = chain_.addAbility(da.source, da.controller, da.card_def_id);
         // Stamp the originating trigger so the card's onTrigger can branch on
         // ctx.firing_trigger (e.g. Grim Resolve's WhenIWinCombat XP rider,
@@ -194,6 +196,10 @@ void TriggerManager::checkDelayedAbilities(TriggerType trigger,
             stampBatch(state_.chain, item);
             break;
         }
+        // CR 430.2 (a delayed "[Add] ..." — Blue Sentinel).
+        if (const Card* dcard = card_registry_.get(da.card_def_id);
+            dcard && dcard->triggeredAbilityAdds(trigger) && resolve_add_now_)
+            resolve_add_now_(item_id, oc_before, chain_was_empty);
     }
 }
 
@@ -407,6 +413,8 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
 
     RIFT_DEBUG(events_, "TRIGGER: " + obj.name + " (" + toString(controller) +
                      ") fires ability");
+    const OpenClosedState oc_before = state_.turn.oc_state;
+    const bool chain_was_empty = state_.chain.items.empty();
     const ChainItemId item_id = chain_.addAbility(source, controller, obj.card_def_id);
     // Snapshot the triggering spell's spent value on the just-added
     // chain item so resume-time reads aren't subject to clobber by a
@@ -435,11 +443,19 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
         for (int i = 0; found && i < copies; ++i) {
             ChainItem copy = queued;
             copy.id = state_.chain.allocateId();
+            const ChainItemId copy_id = copy.id;
             state_.chain.items.push_back(std::move(copy));
             RIFT_DEBUG(events_, "TRIGGER: " + state_.getObject(source).name +
                              " — the same ability in an Equipment's copied text");
+            if (card && card->triggeredAbilityAdds(fired) && resolve_add_now_)
+                resolve_add_now_(copy_id, oc_before, false);
         }
     }
+    // CR 430.2: an ability that [Add]s resolves as soon as it triggers — no
+    // item waits on the chain, nobody gets priority for it (testing phase
+    // D2 / D64: Undertitan's [Add] lands inside the effect that revealed it).
+    if (card && card->triggeredAbilityAdds(fired) && resolve_add_now_)
+        resolve_add_now_(item_id, oc_before, chain_was_empty);
     return true;
 }
 

@@ -837,6 +837,12 @@ private:
     /// The last payAndQueueAbility was an [Add] ability, resolved at once:
     /// Focus does not pass (CR 430.2.a).
     bool last_activation_added_ = false;
+    /// The [Add] Reactions `player` could activate now (CR 430.3).
+    std::vector<Intent> addReactionsFor(PlayerId player) const;
+    /// Whether `check` holds after `player` activates every [Add] Reaction
+    /// they can, tried on a copy of the game (EffectExecutor::canPayWithAdds).
+    bool probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check);
+    bool adds_probing_ = false;
     // (An item whose choices are made early — a spell an effect plays — is
     // marked ChainItemStatus::Finalized on the spot, which is what keeps the
     // chain's Finalize step from asking again.)

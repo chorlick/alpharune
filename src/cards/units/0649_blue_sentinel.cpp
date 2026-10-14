@@ -28,6 +28,11 @@ public:
         return hold && me.controller == scorer && here.has_value() && *here == bf ? 1 : 0;
     }
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
+    // The delayed "[Add] [A] at the start of your next Main Phase" resolves
+    // as it triggers (CR 430.2; D2); the hold itself only schedules it.
+    bool triggeredAbilityAdds(TriggerType t) const override {
+        return t == TriggerType::AtStartOfMain;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
             DelayedAbility da;

@@ -23,7 +23,7 @@ public:
         // or by recycling runes; the payment is only offered when it can be
         // made, and it is made exactly once (after the yes/no is answered).
         int conf = confirmOptional(ctx, "Power Nexus: pay [A][A][A][A] to score 1?",
-            [&]() { return ctx.executor.payableAnyPower(ctx.controller) >= 4; });
+            [&]() { return ctx.executor.canPayAnyPower(ctx.controller, 4); });
         if (conf != 1) return;
         if (costDueNow(ctx) && !ctx.executor.payAnyPower(ctx.controller, 4)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)

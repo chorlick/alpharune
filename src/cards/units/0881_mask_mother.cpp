@@ -29,7 +29,7 @@ public:
             return out;
         };
         auto can_pay = [&]() {
-            return payableEnergy(ctx.state, ctx.controller) >= 1 && !friendly().empty();
+            return canPayEnergy(ctx, ctx.controller, 1) && !friendly().empty();
         };
         int conf = confirmOptional(ctx, "Mask Mother: pay [1] to give a friendly unit +2 [M]?",
                                    can_pay);

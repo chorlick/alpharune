@@ -798,6 +798,7 @@ private:
     ActivateNowFn activate_now_;
     AddProbeFn add_probe_;
     std::optional<OwedCost> owed_;
+    bool adding_for_payment_ = false;   // an [Add] paid for inside addForPayment
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

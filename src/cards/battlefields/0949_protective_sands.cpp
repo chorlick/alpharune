@@ -28,7 +28,7 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto still_legal = [&ctx]() {
-            return payableEnergy(ctx.state, ctx.controller) >= 1;
+            return canPayEnergy(ctx, ctx.controller, 1);
         };
         // No return ahead of the "may": when it can't be offered
         // confirmOptional stores the "no" on the chain item, so the resolution

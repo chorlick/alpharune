@@ -39,7 +39,7 @@ public:
         // from floating Energy or from exhausting a ready rune. The payment
         // is part of putting the ability on the chain.
         auto still_legal = [&ctx]() {
-            return costAlreadyPaid(ctx) || payableEnergy(ctx.state, ctx.controller) >= 1;
+            return costAlreadyPaid(ctx) || canPayEnergy(ctx, ctx.controller, 1);
         };
         const int conf = ctx.state.objectExists(ctx.source)
             ? confirmOptional(ctx, "Jax, Unrelenting: pay [1] to draw 1?", still_legal) : 0;

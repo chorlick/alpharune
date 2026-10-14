@@ -808,6 +808,12 @@ bool EffectExecutor::addForPayment(PlayerId player, int energy, int power,
     // [Reaction] abilities that [Add]. Asked only when the pool and runes are
     // short; the payer names the ability (one at a time), and each finalizes
     // and resolves at once (CR 430.2).
+    if (adding_for_payment_) return payableNow(state_, player, energy, power, mask, f, 0);
+    struct Flag {
+        bool& b;
+        explicit Flag(bool& x) : b(x) { b = true; }
+        ~Flag() { b = false; }
+    } flag(adding_for_payment_);
     for (int guard = 0; guard < 64; ++guard) {
         if (payableNow(state_, player, energy, power, mask, f, 0)) return true;
         if (!add_abilities_ || !activate_now_) return false;

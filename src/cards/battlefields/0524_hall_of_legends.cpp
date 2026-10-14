@@ -27,7 +27,7 @@ public:
         auto legend_ready_state = [&]() {
             auto& ps = ctx.state.player(ctx.controller);
             // CR 445.2 / 164.2.a: floating Energy or a ready rune can pay.
-            if (payableEnergy(ctx.state, ctx.controller) < 1) return false;
+            if (!canPayEnergy(ctx, ctx.controller, 1)) return false;
             GameObjectId lz = ps.legend_zone;
             return lz != kInvalidId && ctx.state.objectExists(lz);
         };

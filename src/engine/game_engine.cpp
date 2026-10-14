@@ -136,6 +136,18 @@ void GameEngine::initSubsystems() {
     trigger_manager_ = std::make_unique<TriggerManager>(
         state_, events_, card_db_, *chain_manager_, card_registry_);
     trigger_manager_->setEffectExecutor(effect_executor_.get());
+    // [Add] Reactions while a cost is being paid (CR 430.3, 445.2.c, 357.1.a;
+    // testing phase D30).
+    effect_executor_->setAddAbilities(
+        [this](PlayerId p) { return addReactionsFor(p); },
+        [this](const Intent& i) { (void)payAndQueueAbility(i); },
+        [this](PlayerId p, const std::function<bool(const GameState&)>& check) {
+            return probeAdds(p, check);
+        });
+    trigger_manager_->setResolveAddNow(
+        [this](ChainItemId id, OpenClosedState before, bool was_empty) {
+            resolveAddAbilityNow(id, before, was_empty);
+        });
     effect_executor_->setRechoose([this](ChainItemId id) { makeNewChoicesFor(id); });
     effect_executor_->setQueueTrigger(
         [this](GameObjectId source, PlayerId controller, TriggerType t, GameObjectId subject) {
@@ -2566,6 +2578,10 @@ void GameEngine::resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state
     if (!item.has_value()) return;
     if (chain_was_empty && state_.chain.items.empty()) state_.turn.oc_state = state_before;
     item->status = ChainItemStatus::Finalized;
+    // A prompt the interrupted effect has published and not yet had answered
+    // is kept aside, and put back after.
+    std::optional<EffectExecutor::PendingChoice> outer_prompt;
+    if (effect_executor_->hasPendingChoice()) outer_prompt = effect_executor_->consumePendingChoice();
     std::optional<ChainItem> outer;
     if (state_.chain.resuming.has_value()) outer = std::move(*state_.chain.resuming);
     state_.chain.resuming = std::move(*item);
@@ -2600,7 +2616,83 @@ void GameEngine::resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state
     const ChainItem done = std::move(*state_.chain.resuming);
     state_.chain.resuming.reset();
     if (outer.has_value()) state_.chain.resuming = std::move(*outer);
+    if (outer_prompt.has_value())
+        effect_executor_->requestChoice(outer_prompt->player, std::move(outer_prompt->legal),
+                                        std::move(outer_prompt->label));
     events_.emit(ChainItemResolvedEvent{done.id, done.source, done.controller});
+}
+
+// The [Reaction] abilities that [Add] which `player` could activate now (CR
+// 430.3: "can be activated at any time that spells or abilities require
+// resources be paid").
+std::vector<Intent> GameEngine::addReactionsFor(PlayerId player) const {
+    std::vector<Intent> all, out;
+    generateActivateAbilityActions(player, all, AbilityTiming::Reaction,
+                                   IntentType::ActivateReactionAbility);
+    for (auto& i : all) {
+        if (!state_.objectExists(i.ability_source)) continue;
+        const Card* c = i.granted_ability_def != kInvalidId
+            ? card_registry_.get(i.granted_ability_def)
+            : card_registry_.get(state_.getObject(i.ability_source).card_def_id);
+        if (!c) continue;
+        const auto& abs = c->abilities();
+        if (i.ability_index < 0 || i.ability_index >= static_cast<int>(abs.size())) continue;
+        if (abs[i.ability_index].adds_resources) out.push_back(std::move(i));
+    }
+    return out;
+}
+
+// Whether `check` holds once `player` has activated every [Add] Reaction they
+// can (each re-listed after the last) — tried on a copy of the game, quietly,
+// and thrown away: the game is moved aside (its objects stay where references
+// up the call stack point) and moved back after (as prePlayProbe does).
+bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check) {
+    if (adds_probing_) return check(state_);
+    struct Parked {
+        GameState& live;
+        GameState game;
+        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
+        ~Parked() { live = std::move(game); }
+    };
+    struct ForgetFacts {
+        GameEngine& engine;
+        ~ForgetFacts() { engine.forgetCleanupFacts(); }
+    } forget_facts{*this};
+    struct Flag {
+        bool& f;
+        explicit Flag(bool& b) : f(b) { f = true; }
+        ~Flag() { f = false; }
+    } flag(adds_probing_);
+    std::optional<EffectExecutor::PendingChoice> prompt;
+    if (effect_executor_->hasPendingChoice()) prompt = effect_executor_->consumePendingChoice();
+    bool ok = false;
+    {
+        Parked parked(state_);
+        state_ = parked.game;
+        forgetCleanupFacts();
+        struct QuietRun {
+            EventBus& bus;
+            EventBus::Quiet q;
+            explicit QuietRun(EventBus& b) : bus(b), q(b.beginQuiet()) {}
+            ~QuietRun() { bus.endQuiet(q); }
+        } quiet(events_);
+        try {
+            for (int k = 0; k < 32 && !ok; ++k) {
+                if (check(state_)) { ok = true; break; }
+                const auto adds = addReactionsFor(player);
+                if (adds.empty()) break;
+                (void)payAndQueueAbility(adds.front());
+            }
+            if (!ok) ok = check(state_);
+        } catch (...) {
+            ok = false;
+        }
+        if (effect_executor_->hasPendingChoice()) effect_executor_->consumePendingChoice();
+    }
+    if (prompt.has_value())
+        effect_executor_->requestChoice(prompt->player, std::move(prompt->legal),
+                                        std::move(prompt->label));
+    return ok;
 }
 
 // CR 407: the activated ability is finalized — announced; players get

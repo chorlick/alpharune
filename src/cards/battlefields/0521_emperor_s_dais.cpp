@@ -38,7 +38,7 @@ public:
 
         // "You may" — only offered when both the [1] and a unit here exist.
         int decision = confirmOptional(ctx, "Emperor's Dais: pay [1], return a unit",
-            [&]() { return payableEnergy(ctx.state, ctx.controller) >= 1 && !unitsHere().empty(); });
+            [&]() { return canPayEnergy(ctx, ctx.controller, 1) && !unitsHere().empty(); });
         if (decision < 1) return;   // waiting on the agent, declined or not legal
 
         // The cost: [1] and returning a unit you control here (your choice).

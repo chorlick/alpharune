@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 /// @file trigger_manager.h
 /// Triggered ability manager — subscribes to events and fires matching triggers.
 ///
@@ -35,6 +36,12 @@ public:
 
     /// Set the effect executor (needed for equipped trigger CardContext).
     void setEffectExecutor(EffectExecutor* exec) { effect_executor_ = exec; }
+    /// A triggered ability that [Add]s (Card::triggeredAbilityAdds) is
+    /// finalized and resolved as soon as it triggers (CR 430.2): the engine's
+    /// GameEngine::resolveAddAbilityNow, given the state and whether the chain
+    /// was empty before the item was added.
+    using ResolveAddNowFn = std::function<void(ChainItemId, OpenClosedState, bool)>;
+    void setResolveAddNow(ResolveAddNowFn f) { resolve_add_now_ = std::move(f); }
 
     /// Connect to all event bus signals. Call once after construction.
     void subscribe();
@@ -53,6 +60,7 @@ public:
 
 
 private:
+    ResolveAddNowFn resolve_add_now_;
     GameState& state_;
     EventBus& events_;
     const CardDB& card_db_;

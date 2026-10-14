@@ -520,11 +520,14 @@ TEST_F(VendettaB, Vendetta_Mel_EmpoweredExtraMinusMightAndUncounterable) {
     exec.empower(mel);
     c->applyPassiveAura(state, P1);
 
-    // A resolving spell Mel's controller controls gives an additional -1 [M].
+    // A resolving spell Mel's controller controls gives an additional -1 [M]
+    // "to a unit it chooses" (D65, testing phase: the item must have chosen
+    // the unit; the old test gave the extra to a unit nothing had chosen).
     ChainItem mine;
     mine.id = state.chain.allocateId();
     mine.controller = P1;
     mine.is_spell = true;
+    mine.chosen_objects = {victim};
     state.chain.resuming = mine;
     exec.giveTemporaryMight(victim, -2);
     EXPECT_EQ(state.getObject(victim).temp_might_bonus, -3);

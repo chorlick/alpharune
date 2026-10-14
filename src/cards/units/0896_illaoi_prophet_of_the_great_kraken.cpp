@@ -25,13 +25,13 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const int dest = pickTokenDest(*this, ctx, "Illaoi: play the Tentacle to");
-        if (dest == -1) return;   // waiting for the agent
+        if (dest < 0) return;   // waiting for the agent (or nowhere to play it)
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Tentacle", 1,
                                  // CR 187.10: 1 Might and the Bilgewater tag only.
                                  {"Bilgewater"}, KeywordSet{},
                                  destLocation(ctx.controller, std::max(0, dest)),
                                  /*enter_ready=*/false,
-                                 tokenPlayLocations(ctx.state, ctx.controller));
+                                 tokenPlayLocations(ctx));
         RIFT_TRACE(ctx.events, "ILLAOI, PROPHET: 1[M] Tentacle token");
     }
     // "I have +1 [M] for each token unit you control."

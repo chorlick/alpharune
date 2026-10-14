@@ -47,6 +47,15 @@ public:
                                  legalTargets(ctx.state, ctx.controller));
         }
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        // Still "a unit at a battlefield or a gear" on the board? The engine
+        // drops an illegal play-time target only for a card that declares
+        // TargetRequirements; this one lists its own legal set, so it asks
+        // itself. A target that has left (returned to hand, killed for its
+        // own ability) is a new object and gains nothing (CR 359.3.e.5, 124.1).
+        {
+            const auto legal = legalTargets(ctx.state, ctx.controller);
+            if (std::find(legal.begin(), legal.end(), picked) == legal.end()) return;
+        }
         auto& obj = ctx.state.getObject(picked);
         obj.keywords.set(Keyword::Temporary);
         obj.granted_keywords.set(Keyword::Temporary);   // given, not printed (CR 718.2)

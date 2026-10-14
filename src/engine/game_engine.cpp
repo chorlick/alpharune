@@ -1863,6 +1863,7 @@ Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId 
     accept.type = IntentType::MakeChoice;
     accept.player = player;
     accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+    decline.declines = true;   // the "no" of a yes/no (Intent::declines)
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
@@ -3225,6 +3226,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         decline.chosen_value = 0;
         Intent accept = decline;
         accept.chosen_value = 1;
+        decline.declines = true;   // the "no" of a yes/no (Intent::declines)
         std::vector<Intent> opts = {decline, accept};
 
         state_.decision_index++;
@@ -3537,6 +3539,7 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
                 accept.type = IntentType::MakeChoice;
                 accept.player = item.controller;
                 accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+                decline.declines = true;   // the "no" of a yes/no (Intent::declines)
                 std::vector<Intent> opts = {decline, accept};
 
                 state_.decision_index++;
@@ -7570,6 +7573,7 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     // Optional ("you may") -> yes/no agent decision. Mirrors the Accelerate flow.
     Intent decline; decline.type = IntentType::MakeChoice; decline.player = player; decline.chosen_value = 0;
     Intent accept;  accept.type  = IntentType::MakeChoice; accept.player  = player; accept.chosen_value  = 1;
+    decline.declines = true;   // the "no" of a yes/no (Intent::declines)
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
@@ -8365,15 +8369,10 @@ void GameEngine::killUnit(GameObjectId unit_id) {
     state_.turn.any_unit_died_this_turn = true;
     state_.player(controller).unit_died_this_turn = true;
     // Shadow Watcher: a friendly unit dying during its controller's Beginning
-    // Phase (Awaken/Beginning/Scoring steps of that player's own turn).
-    {
-        TurnPhase ph = state_.turn.phase;
-        bool in_beginning = (ph == TurnPhase::AwakenPhase ||
-                             ph == TurnPhase::BeginningStep ||
-                             ph == TurnPhase::ScoringStep);
-        if (in_beginning && state_.turn.turn_player == controller)
-            state_.player(controller).unit_died_in_beginning_this_turn = true;
-    }
+    // Phase (CR 315.2: the Beginning and Scoring Steps of that player's own
+    // turn — isBeginningPhase; not the Awaken Phase, CR 315.1).
+    if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller)
+        state_.player(controller).unit_died_in_beginning_this_turn = true;
     events_.emit(UnitDiedEvent{unit_id, controller,
         was_at.value_or(BaseLocation{controller}), might,
         state_.getObject(unit_id).last_known.killed_by});

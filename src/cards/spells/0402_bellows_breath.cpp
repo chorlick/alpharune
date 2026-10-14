@@ -19,39 +19,93 @@ public:
     std::vector<RepeatCost> repeatCosts() const override {
         return {RepeatCost{.energy = 1, .power = 1, .power_domain = Domain::Mind}};
     }
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 3, .must_be_unit = true, .optional = true};
+    // "Deal 1 to up to three units at the same location." The units are
+    // chosen by this card, one prompt each, as the spell is played (CR 355):
+    // the first may be any unit, each further one a unit where the first is,
+    // and the controller may stop at every prompt, the first included ("up
+    // to": none is a choice, CR 355.13). Chosen here and not as play-time
+    // targets of the intent so that a [Repeat] execution makes its OWN
+    // choices the same way (CR 820.2.a: "may make different choices") —
+    // GameEngine::makeNewChoicesFor runs this pass again for it. With targets
+    // locked into the play intent the Repeat was asked for "that many again",
+    // one unit at a time from every unit on the board: wrong count, no "same
+    // location", and nothing at all when the first execution chose none (D45).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    // It can choose any unit its controller has on the board (the play gate).
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
     }
-    // "up to three units at the same location": no unit at all (always a
-    // choice, CR 355.13), then every set of one, two or three units that share
-    // a location.
-    std::optional<std::vector<std::vector<GameObjectId>>> enumerateLegalTargetSets(
-        const GameState& state, PlayerId controller) const override {
-        std::vector<std::pair<LocationId, std::vector<GameObjectId>>> by_location;
-        for (auto id : enumerateLegalTargets(state, controller)) {
-            const LocationId loc = *state.getObject(id).location;
-            auto it = std::find_if(by_location.begin(), by_location.end(),
-                                   [&](const auto& e) { return e.first == loc; });
-            if (it == by_location.end()) by_location.push_back({loc, {id}});
-            else it->second.push_back(id);
-        }
-        std::vector<std::vector<GameObjectId>> sets;
-        sets.push_back({});
-        for (const auto& group : by_location) {
-            const auto& u = group.second;
-            for (size_t a = 0; a < u.size(); ++a) {
-                sets.push_back({u[a]});
-                for (size_t b = a + 1; b < u.size(); ++b) {
-                    sets.push_back({u[a], u[b]});
-                    for (size_t c = b + 1; c < u.size(); ++c)
-                        sets.push_back({u[a], u[b], u[c]});
+    // Progress on the item, clear of the slots the Card::pick* helpers use
+    // (pickMode below keeps its answer in resume_data[1]):
+    //   resume_data[kPhase]   0 new / kAsking a prompt is out / kChosen / kDealt
+    //   resume_data[kCount]   units chosen so far
+    //   resume_data[kUnits..] their ids, in chosen order
+    static constexpr size_t kPhase = 7, kCount = 8, kUnits = 9;
+    static constexpr int kAsking = 1, kChosen = 2, kDealt = 3;
+    static constexpr int kMaxUnits = 3;
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& given) override {
+        std::vector<GameObjectId> targets;
+        ChainItem* ri = ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr;
+        if (!ri) {
+            targets = given;   // called directly (no chain item): the caller's units
+        } else {
+            auto& data = ri->resume_data;
+            while (data.size() < kUnits + kMaxUnits) data.push_back(0);
+            if (data[kPhase] == kDealt) return;
+            auto chosen = [&]() {
+                std::vector<GameObjectId> out;
+                for (int k = 0; k < data[kCount]; ++k)
+                    out.push_back(GameObjectId::fromRaw(data[kUnits + static_cast<size_t>(k)]));
+                return out;
+            };
+            // Units that can be added to the choice: not chosen yet, where the
+            // first chosen unit is, and with a Deflect its controller can pay.
+            auto candidates = [&]() {
+                const auto have = chosen();
+                std::optional<LocationId> where;
+                if (!have.empty() && ctx.state.objectExists(have.front()))
+                    where = ctx.state.getObject(have.front()).location.get();
+                return offerableChoices(ctx,
+                    chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                        if (std::find(have.begin(), have.end(), o.id) != have.end()) return false;
+                        return have.empty() || (where.has_value() && o.location.has_value() &&
+                                                *o.location == *where);
+                    }));
+            };
+            if (data[kPhase] != kChosen) {
+                bool stop = false;
+                if (data[kPhase] == kAsking) {
+                    const auto units = candidates();
+                    const GameObjectId unit = takenObject(ctx);
+                    if (std::find(units.begin(), units.end(), unit) == units.end()) {
+                        stop = true;   // "No more units"
+                    } else {
+                        commitChosenObject(ctx, unit);
+                        data[kUnits + static_cast<size_t>(data[kCount])] =
+                            static_cast<int32_t>(unit.raw());
+                        ++data[kCount];
+                    }
                 }
+                if (!stop && data[kCount] < kMaxUnits) {
+                    const auto units = candidates();
+                    if (!units.empty()) {
+                        std::vector<Intent> options;
+                        options.push_back(valChoice(ctx.controller, 0, "No more units"));
+                        for (auto id : units) options.push_back(objChoice(ctx.controller, id));
+                        ctx.executor.requestChoice(ctx.controller, std::move(options),
+                            "Bellows Breath: deal 1 to up to three units at the same location");
+                        data[kPhase] = kAsking;
+                        return;
+                    }
+                }
+                data[kPhase] = kChosen;
             }
+            if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+            targets = chosen();
         }
-        return sets;
-    }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty()) return;
+        auto dealt = [&]() { if (ri) ri->resume_data[kPhase] = kDealt; };
+        if (targets.empty()) { dealt(); return; }
         // "at the same location" is a requirement on the targets as a group
         // (CR 355.11). The targets still legal are grouped by where they are
         // NOW: if they no longer share a location, the controller chooses
@@ -71,7 +125,7 @@ public:
             if (std::find(it->second.begin(), it->second.end(), t) == it->second.end())
                 it->second.push_back(t);
         }
-        if (groups.empty()) return;
+        if (groups.empty()) { dealt(); return; }
         size_t use = 0;
         if (groups.size() > 1) {
             std::vector<std::string> labels;
@@ -97,6 +151,7 @@ public:
         {   // the batch is for these kills only
             ctx.executor.killLethallyDamagedTogether(hit);   // they die at the same time
         }
+        dealt();
         RIFT_TRACE(ctx.events, "BELLOWS BREATH: dealt 1 to " +
                              std::to_string(hit.size()) + " units at same location");
     }

@@ -29,7 +29,6 @@ All 21 items closed: `plans/completed/10-testing-phase.md` (report: `plans/repor
 - [ ] **D60** Forbidding Waste: the -2 [M] is missing when the combat goes straight to the damage step — CERTAIN
 - [ ] **D61** Inferna ([Assault 2]) played with [Ambush] into her side's attack is listed as an attacker without the Assault — LIKELY
 - [ ] **D72** Scoring Step: battlefields are held one at a time, each hold's abilities resolved before the next hold — LIKELY
-- [ ] **D73** Fortified Position: the [Shield 2] lasts the turn, not the combat — CERTAIN / CODE-ONLY
 - [ ] **D76** Wuju Bladesman - Starter: the +2 [M] is missing whenever nothing resolves between "COMBAT:" and the damage step — CERTAIN
 
 ## Batch 3 — Targets, finalization and what goes on the chain: spells without targets, choices at resolution, counters, [Add], Equip and Quick-Draw
@@ -63,45 +62,23 @@ All 21 items closed: `plans/completed/10-testing-phase.md` (report: `plans/repor
 ## Batch 4 — Cards, options offered or withheld, payments, hidden information, the validator
 
 Batch 4 is split so that its card-level part can run beside the engine-flow batches:
-- **4a (cards, validator, test tooling; started 2026-10-11 beside batch 1):** V1, D12, D18, D20, D45, D47, D52, D55, D56, D59, D62, D65, D66, D69, D70, D73, D75, D81, F3, F4, F9, A1, A2.
+- **4a (cards, validator, test tooling; started 2026-10-11 beside batch 1):** all 23 items closed (V1, D12, D18, D20, D45, D47, D52, D55, D56, D59, D62, D65, D66, D69, D70, D73, D75, D81, F3, F4, F9, A1, A2): `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-4a.md`). D73 was also listed under batch 2; it is closed here.
 - **4b (generators, payments, log audience, questions; after the engine-flow batches):** D9, D11, D25, D28, D37, D43, D46, D48, D50, D58, D63, D71, D74, D80.
 
-- [ ] **V1** `DeckValidator` does not enforce [Unique] (CR 825.3.a): Forgefire Cape 507, Rabadon's Deathcrown 508, Shurelya's Requiem 509 are accepted three times (same as D12) — CODE-ONLY (fuzz)
 - [ ] **D9** Every payment that is not a card's base cost: the engine chooses which runes are exhausted and recycled — LIKELY
 - [ ] **D11** Hidden information in log lines whose audience is both players — CERTAIN
-- [ ] **D12** Deck validator: no rule for [Unique] — CODE-ONLY
-- [ ] **D18** Astral Heron: the discount is kept for a later turn — CERTAIN
-- [ ] **D20** Falling Star: kills between its two instructions, so a death replaced after the first hit is died again on the second — CERTAIN
 - [ ] **D25** Hidden cards (Guards!, Hidden Blade, Edge of Night, Pyke, Returned, Wages of Pain, Temporal Breach): a facedown card is never offered in its controller's own Neutral Open State — LIKELY / CERTAIN
 - [ ] **D28** Deathgrip: playable with a single friendly unit (no "another friendly unit" to choose) — QUESTION
 - [ ] **D37** Rengar, Trophy Hunter: the enemy-occupied battlefield is never a play location in a Neutral Open state — LIKELY
 - [ ] **D43** Ezreal, Prodigy + Thousand-Tailed Watcher (any Accelerate): Accelerate is not an "optional additional cost" for Ezreal's discount — CERTAIN
-- [ ] **D45** Bellows Breath: the Repeat's choices ignore "at the same location", are forced to the first execution's count, and are not asked at all when the first execution chose nothing — CERTAIN
 - [ ] **D46** The List: "As you play this, name a tag" is run as a triggered ability with priority windows, and only tags already public can be named — LIKELY / QUESTION
-- [ ] **D47** Temporal Breach + Rockfall Path: the banished unit is played back onto a battlefield where "Units can't be played" — LIKELY
 - [ ] **D48** Temporal Breach (and every effect that plays a unit "ignoring its cost"): Accelerate is never offered — LIKELY
 - [ ] **D50** Daughter of the Void: its "[A]. Use only to play spells" cannot pay the Deflect of a spell — CODE-ONLY / LIKELY
-- [ ] **D52** Star Spring: "the first time ... each turn" triggers a second time when the same card is played there again that turn — CERTAIN
-- [ ] **D55** LeBlanc, Everywhere at Once: the [Temporary] kill still happens at her battlefield, and the dying unit's other triggered abilities are suppressed instead — CERTAIN
-- [ ] **D56** LeBlanc, Fragmented: Awaken Phase is counted as "your Beginning Phase" — CODE-ONLY
 - [ ] **D58** Rek'Sai, Breacher + Void Burrower: a unit played from banishment is not offered Accelerate — CERTAIN
-- [ ] **D59** Rek'Sai, Breacher: the grant marked in D58 (R7-2) stays on the card; a later play from hand without Rek'Sai on the board is offered Accelerate — CERTAIN
-- [ ] **D62** Thrill of the Hunt offers and plays to Rockfall Path — CERTAIN
 - [ ] **D63** Rengar, Trophy Hunter in the Champion Zone is never offered as an [Ambush] play — LIKELY
-- [ ] **D65** Mel, Newly Awakened: the extra -1 [M] is added to every -[M] her controller's resolving item gives, chosen unit or not — CODE-ONLY
-- [ ] **D66** Herald of the Arcane: the Recruit always goes to the base; no location is offered — LIKELY
-- [ ] **D69** Sprite Call played from facedown: the Sprite may be put in the base or at another battlefield — CERTAIN
-- [ ] **D70** Windsinger played from facedown: a unit at another battlefield is offered — CERTAIN
 - [ ] **D71** Nocturne, Horrifying: the "As you look at or reveal me" replacement is a triggered ability on the chain — CERTAIN / QUESTION
 - [ ] **D74** Facebreaker from facedown: offered with no friendly + enemy pair at its battlefield (and as up to 20 identical intents) — CERTAIN
-- [ ] **D75** Master of Shadows: empowered when an OPPONENT banishes a card its controller owns — CERTAIN
 - [ ] **D80** Lonely Poro: "died alone" when every other friendly unit there died in the same damage step — QUESTION
-- [ ] **D81** Minefield: no Burn Out when the Main Deck has fewer than 2 cards — CODE-ONLY
-- [ ] **F3** Board state written to an object that has left the board (checked build only; 32 / 53 / 95 per 100,000): Green Father's battlefield replacement skips `leftBoard`; Fading Memories, Vi, Hotheaded and Pendulum Blade act on an object that has left (attribution exact for Green Father and Vi, read from one game each for the other two) — CERTAIN (fuzz)
-- [ ] **F4** Emperor's Divide 366 re-offers a unit whose move to base is blocked: 1,024 prompts in a row, and the blocked unit is logged as moved (382 per million forced-play games) — CERTAIN (fuzz)
-- [ ] **F9** Star Spring 771: its finalize pass ends early at two returns of its own before the marker (1 in 3 million; engine exception) — CERTAIN (fuzz)
-- [ ] **A1** `random-player`: `isPassOption` treats the bare value 0 in a prompt of exactly the values 0 and 1 as a pass, so forced play never takes option 0 of a two-mode choice, an X of 0 or 1, "cost [1] less / [A] less" or a Hide cost's two payments. Tell a decline from a first mode by what the prompt is (the helper that asked: `confirmOptional` against `pickMode` / `pickXAmount`), not by its values — tooling (fuzz)
-- [ ] **A2** Daisy! 754 is resolved 2-4 times per million fuzz games (its attack trigger needs four tags among your units; the next lowest card is at 552): add a constructed list or a guided seed deck that exercises it, so the stopping rule's per-card minimum can hold for every card — tooling (fuzz)
 
 
 ## Found by batch 1 (2026-10-11, `plans/reports/batch-1.md` sections 5 and 11) — each is in the batch named
@@ -114,7 +91,7 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **B6** (batch 4b) "First time each turn" cards (Wraith of Echoes, Lucian, Merciless, Draven, Audacious) count from their own "performed" counter: one that enters after the event already happened this turn still triggers on the next — CODE-ONLY
 - [ ] **B7** (batch 4b) `kMaxDamageOptions` 64 / `kMaxSearchNodes` 20,000 cap the combat-damage assignments offered: on a crowded board legal assignments are withheld — CODE-ONLY
 - [ ] **B8** (batch 4b) `CardTestFixture::withEngine` keeps the first `turn_player` silently on a second call in one test: make it throw — tooling
-- [ ] **B9** (batch 2) Verify against their cited games whether batch 1 closed D60, D76, D23 (Cleanup with designations before the combat showdown); (batch 4a) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open
+- [ ] **B9** (batch 2) Verify against their cited games whether batch 1 closed D60, D76, D23 (Cleanup with designations before the combat showdown); (batch 4a, done: pinned by `Batch4aTest.D55_LeBlanc_TheTemporaryKillDoesNotHappenAtHerBattlefield`) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open
 
 ## Found by reading 19 ISMCTS games (2026-10-11, `plans/reports/test-games19.md`, detail in `docs/testing-findings-games19-2026-10.md` section 4) — seen on the binary BEFORE batch 1; each is first re-checked on the current tree
 
@@ -146,3 +123,9 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **G25** (batch 4b) Astral Heron: with the first card of the turn countered, no card of that turn triggers it — QUESTION (g08)
 - [ ] **G27** (batch 3) Sightings that widen known items (report section "Known items seen again"): Gold's "Kill this" paid at resolution (D38), [Add] as a chain item on five more cards (D30/D31), a Flow replay offered at Focus (D5, batch 2), Astral Heron's discount spent on the opponent's turn (D18), Defy takes the top item only (D21), Relentless Pursuit joins D3 / D41 — each named card gets its own test when its item is fixed
 - [ ] **G28** (after the batches) ISMCTS at 50 simulations plays near-uniformly (End Turn with ready runes, helpful effects on enemy units, option [0] of two-option prompts favoured, opponent's objects chosen at Targon's Peak): check whether the search tells own from opposing objects in a prompt and whether option order biases it — agents, observation
+
+## Found by batch 4a (2026-10-14, `plans/reports/batch-4a.md` sections 8 and 9)
+
+- [ ] **H1** (batch 4b) Fortified Position: its "this combat" Shield is applied by the card's `applyPassiveAura`, so it ends if the battlefield card is replaced (Green Father) mid-combat; an effect a resolved ability created should outlast its source — CODE-ONLY
+- [ ] **H2** (batch 4b) `EffectExecutor::healObject` has no in-play guard: it emits `"healed"` for an object that has left the board — CODE-ONLY
+- [ ] **H3** (batch 4b) Verify against their cited games and pin: G23 and G21 (probably closed by 4a: battlefield rules re-read on replacement; Kennen's play effect bound to his battlefield); (batch 3) B2's stale-mark half (closed by `Card::forgetPlayPayments`; the one-helper half stays open)

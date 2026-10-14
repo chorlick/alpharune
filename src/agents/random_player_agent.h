@@ -34,22 +34,21 @@ namespace riftbound {
 ///   - MulliganDecision that sets no card aside: "keep".
 ///
 /// A MakeChoice (a prompt) option is a pass when it names nothing — no
-/// object, no card — and carries the value 0, and the prompt is one of:
-///   - a prompt that also offers an object or a named card. There the bare
+/// object, no card — and carries the value 0, and one of:
+///   - the prompt also offers an object or a named card. There the bare
 ///     value 0 is the option that takes none of them: "None" (selectObject /
 ///     selectSeveral with may_decline), "No more targets" (splitDamageAmong),
 ///     "Move no more units" (Standard Move), "Keep it" / "Leave it" (Predict,
 ///     look-and-draw).
-///   - a prompt of exactly the two values 0 and 1: no / yes (confirmOptional,
-///     EffectExecutor::confirmNow, a [Repeat] cost, a triggered cost).
+///   - whoever asked marked it as the decline of a yes/no (Intent::declines):
+///     the "No" of Card::confirmOptional and EffectExecutor::confirmNow, of
+///     an [Accelerate], a [Repeat] or a triggered cost, and of a yes/no a
+///     card builds itself (card_helpers.h declineChoice).
 ///
-/// Known imprecision of the second rule, which the Intent's fields cannot
-/// resolve: a two-option value prompt that is not a yes/no also has the
-/// values 0 and 1 — a modal choice between two modes (Card::pickMode), an X
-/// of 0 or 1 (Card::pickXAmount), "cost [1] less" / "cost [A] less", "pay
-/// [A]" / "pay Energy" for a Hide cost, Void Hatchling's leave / recycle. At
-/// pass=0 this agent therefore never takes option 0 of those; at the default
-/// pass=0.2 it takes it one time in five.
+/// The values alone do not make a pass: a prompt of exactly the values 0 and
+/// 1 is as often two modes (Card::pickMode), an X of 0 or 1 (pickXAmount),
+/// "cost [1] less" / "cost [A] less" or "pay [A]" / "pay Energy" for a Hide
+/// cost — there option 0 is a choice like option 1 and forced play takes it.
 inline bool isPassOption(const std::vector<Intent>& legal, std::size_t index) {
     const Intent& i = legal[index];
     switch (i.type) {
@@ -70,14 +69,10 @@ inline bool isPassOption(const std::vector<Intent>& legal, std::size_t index) {
         return !o.chosen_objects.empty() || o.chosen_card_def != kInvalidId;
     };
     if (names_something(i) || !i.chosen_value.has_value() || *i.chosen_value != 0) return false;
-    bool other_names = false, all_prompt = true, has_one = false;
-    for (const Intent& o : legal) {
-        if (o.type != IntentType::MakeChoice) { all_prompt = false; continue; }
-        if (names_something(o)) other_names = true;
-        else if (o.chosen_value.has_value() && *o.chosen_value == 1) has_one = true;
-    }
-    if (other_names) return true;
-    return all_prompt && legal.size() == 2 && has_one;
+    if (i.declines) return true;
+    for (const Intent& o : legal)
+        if (o.type == IntentType::MakeChoice && names_something(o)) return true;
+    return false;
 }
 
 /// What `random-player` without options means.

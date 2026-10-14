@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -18,12 +19,21 @@ public:
     ActivationCost getActivationCost() const override {
         return ActivationCost{.exhaust = true, .energy = 1};
     }
+    // "Play a 1 [M] Recruit unit token." No location is printed (unlike
+    // Viktor, Leader's "into your base"), and a token is played (CR 350.2):
+    // its controller's base or a battlefield they control, their choice (CR
+    // 355.2.a), made as the ability is activated (CR 355).
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        auto loc = LocationId{BaseLocation{ctx.controller}};
+        const int dest = pickTokenDest(*this, ctx, "Herald of the Arcane: play the Recruit to");
+        if (dest == -1) return;               // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (dest < 0) return;                 // nowhere to play it
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
-                                 loc, /*enter_ready=*/false);
+                                 destLocation(ctx.controller, dest), /*enter_ready=*/false,
+                                 tokenPlayLocations(ctx));
         RIFT_TRACE(ctx.events, "HERALD OF THE ARCANE: [1],[E] -> 1[M] Recruit token");
     }
 private:

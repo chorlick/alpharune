@@ -20,8 +20,10 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto units = chooseableUnits(ctx.state, ctx.controller,
-                                     [](const GameObject&) { return true; });
+        // Played from facedown, a unit at the battlefield she was played to
+        // (CR 811.1.d.3, whose first example is this card).
+        auto units = atHiddenBattlefield(ctx.state, ctx.source,
+            chooseableUnits(ctx.state, ctx.controller, [](const GameObject&) { return true; }));
         std::sort(units.begin(), units.end());
         const GameObjectId t = pickTarget(ctx, "Blastcone Fae: give a unit -2 [M]", units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

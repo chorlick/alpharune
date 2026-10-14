@@ -369,6 +369,7 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/spells/0253_fox_fire.cpp", 2},
         {"src/cards/spells/0255_dragon_s_rage.cpp", 1},
         {"src/cards/spells/0309_flash.cpp", 1},
+        {"src/cards/spells/0402_bellows_breath.cpp", 1},
         {"src/cards/spells/0457_hard_bargain.cpp", 1},
         {"src/cards/spells/0475_guards.cpp", 2},
         {"src/cards/spells/0513_arise.cpp", 2},

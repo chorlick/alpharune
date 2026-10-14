@@ -28,9 +28,21 @@ public:
     std::vector<GameObjectId> hiddenInHand(CardContext& ctx) const {
         std::vector<GameObjectId> out;
         const auto& ps = ctx.state.player(ctx.controller);
+        // "If it's a unit, play it here": a unit is on offer only where a
+        // unit can be played (not at Rockfall Path, "Units can't be played
+        // here." — EffectExecutor::unitMayBePlayedTo), so [C] is never paid
+        // for a play that cannot happen.
+        const auto my_bf = ctx.state.objectExists(ctx.source)
+            ? ctx.state.getObject(ctx.source).battlefieldId() : std::nullopt;
+        const bool units_ok = !my_bf.has_value() ||
+            ctx.executor.unitMayBePlayedTo(ctx.controller,
+                                           LocationId{BattlefieldLocation{*my_bf}});
         for (auto cid : ps.hand) {
             if (!ctx.state.objectExists(cid)) continue;
-            if (ctx.state.getObject(cid).hasKeyword(Keyword::Hidden)) out.push_back(cid);
+            const auto& card = ctx.state.getObject(cid);
+            if (!card.hasKeyword(Keyword::Hidden)) continue;
+            if (card.isUnit() && !units_ok) continue;
+            out.push_back(cid);
         }
         return out;
     }

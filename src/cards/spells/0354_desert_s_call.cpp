@@ -24,13 +24,13 @@ public:
         // To the base or a battlefield its controller controls, their choice
         // (asked again for each [Repeat] execution).
         const int dest = pickTokenDest(*this, ctx, "Desert's Call: play the Sand Soldier to");
-        if (dest < 0) return;   // waiting for the choice
+        if (dest < 0) return;   // waiting for the choice, or nowhere to play it
         // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sand Soldier",
                                  /*might=*/2, /*tags=*/{"Shurima"},
                                  KeywordSet{}, destLocation(ctx.controller, dest),
                                  /*enter_ready=*/false,
-                                 tokenPlayLocations(ctx.state, ctx.controller));
+                                 tokenPlayLocations(ctx));
         RIFT_TRACE(ctx.events, "DESERT'S CALL: played 2[M] Sand Soldier token "
                             "(engine repeats per [Repeat][2] paid)");
     }

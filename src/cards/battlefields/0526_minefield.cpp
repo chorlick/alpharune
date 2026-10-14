@@ -18,16 +18,11 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ps = ctx.state.player(ctx.controller);
-        for (int i = 0; i < 2 && !ps.main_deck.empty(); ++i) {
-            auto cid = deck::takeTop(ctx.state, ctx.controller, deck::Place::Public);
-            if (ctx.state.objectExists(cid)) {
-                auto& obj = ctx.state.getObject(cid);
-                obj.zone = ZoneType::Trash;
-                obj.location = std::nullopt;
-                ps.trash.push_back(cid);
-            }
-        }
+        // Moving cards from the top of the Main Deck to the trash is burning
+        // (CR 441.1), whatever the card calls it: with fewer than 2 cards
+        // left the player moves what is there, Burns Out and moves the rest
+        // (CR 432.1.b, 441.4) — EffectExecutor::burn.
+        ctx.executor.burn(ctx.controller, 2);
         RIFT_TRACE(ctx.events, "MINEFIELD: conquer -> top 2 of Main Deck to trash");
     }
 private:

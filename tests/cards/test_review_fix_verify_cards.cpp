@@ -4610,15 +4610,16 @@ TEST_F(VerifyCardsTest, BellowsBreath_FirstTargetMoved_TheControllerPicksWhichGr
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    play.targets = {a, b, c};
-    // Group 0 is the first-chosen unit's (now alone in base); group 1 the two that stayed.
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    // The three units are chosen as the spell is played (its own prompts
+    // since D45, not targets of the intent). Then, at resolution: group 0 is
+    // the first-chosen unit's (now alone in base); group 1 the two that stayed.
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(a.raw()), static_cast<int>(b.raw()), static_cast<int>(c.raw()), 1}));
     executeAndProbe(play, &agent, [&](GameState& live) {
         live.getObject(a).location = BaseLocation{P2};
         live.getObject(a).zone = ZoneType::Base;
     });
-    ASSERT_EQ(agent.prompts.size(), 1u) << "which group of units at one location";
-    EXPECT_EQ(agent.prompts[0].size(), 2u);
+    ASSERT_EQ(agent.prompts.size(), 4u) << "three units, then which group of units at one location";
+    EXPECT_EQ(agent.prompts[3].size(), 2u);
     EXPECT_EQ(o(a).damage_marked, 0);
     EXPECT_EQ(o(b).damage_marked, 1) << "the units that stayed together are a legal subset";
     EXPECT_EQ(o(c).damage_marked, 1);
@@ -4637,16 +4638,15 @@ TEST_F(VerifyCardsTest, BellowsBreath_UnitsThatMovedTogetherAreStillAGroup) {
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    play.targets = {a, b, c};
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(a.raw()), static_cast<int>(b.raw()), static_cast<int>(c.raw()), 1}));
     executeAndProbe(play, &agent, [&](GameState& live) {
         for (auto id : {b, c}) {
             live.getObject(id).location = BaseLocation{P2};
             live.getObject(id).zone = ZoneType::Base;
         }
     });
-    ASSERT_EQ(agent.prompts.size(), 1u);
-    EXPECT_EQ(agent.prompts[0].size(), 2u) << "{a} or {b, c}: no option splits the two in base";
+    ASSERT_EQ(agent.prompts.size(), 4u);
+    EXPECT_EQ(agent.prompts[3].size(), 2u) << "{a} or {b, c}: no option splits the two in base";
     EXPECT_EQ(o(a).damage_marked, 0);
     EXPECT_EQ(o(b).damage_marked, 1);
     EXPECT_EQ(o(c).damage_marked, 1);
@@ -4663,10 +4663,9 @@ TEST_F(VerifyCardsTest, BellowsBreath_FirstTargetGone_TheOthersStillTakeOne) {
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    play.targets = {a, b, c};
-    EnginePathAgent agent;
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(a.raw()), static_cast<int>(b.raw()), static_cast<int>(c.raw())}));
     executeAndProbe(play, &agent, [&](GameState& live) { removeFromBoard(live, a); });
-    EXPECT_TRUE(agent.prompts.empty()) << "the remaining targets share a location: no choice";
+    EXPECT_EQ(agent.prompts.size(), 3u) << "the remaining targets share a location: no choice at resolution";
     EXPECT_EQ(o(a).damage_marked, 0) << "an illegal target is unaffected (CR 359.3.e.5)";
     EXPECT_EQ(o(b).damage_marked, 1);
     EXPECT_EQ(o(c).damage_marked, 1);
@@ -5652,20 +5651,21 @@ TEST_F(VerifyCardsTest, Pin_Singularity_PlayableWithNoUnitOnTheBoard) {
 }
 
 // ─── Bellows Breath 402 (fixed) ─────────────────────────────────────────────
-// "Deal 1 to up to three units at the same location." Fails on the old code:
-// the card's own target sets had no empty one.
+// "Deal 1 to up to three units at the same location."
+// (D45, testing phase: the units are prompts of the spell now, not target
+// sets of the play intent. Old expectation: four plays offered — none, a, b,
+// a+b. New: one play, whose first prompt offers "No more units", a and b.)
 TEST_F(VerifyCardsTest, BellowsBreath_MayBePlayedChoosingNoUnitWhileUnitsAreAvailable) {
     auto a = addUnit(P2, kInvalidId, 3, 0);
     auto b = addUnit(P2, kInvalidId, 3, 0);
     auto spell = addToHand(P1, kBellowsBreath);
     const auto plays = playsOffered(spell);
-    EXPECT_TRUE(offersTargets(plays, {})) << "zero of 'up to three' (CR 355.13)";
-    EXPECT_TRUE(offersTargets(plays, {a}));
-    EXPECT_TRUE(offersTargets(plays, {a, b}));
-    EXPECT_EQ(plays.size(), 4u) << "none, a, b, a+b";
+    EXPECT_EQ(plays.size(), 1u);
 
-    EnginePathAgent agent(EnginePathAgent::script({}));
-    playThroughEngine(spell, &agent);   // the play with no targets
+    EnginePathAgent agent(EnginePathAgent::script({0}));   // "No more units"
+    playThroughEngine(spell, &agent);   // zero of 'up to three' (CR 355.13)
+    ASSERT_EQ(agent.prompts.size(), 1u);
+    EXPECT_EQ(agent.prompts[0].size(), 3u) << "none, a, b";
     EXPECT_TRUE(inTrash(P1, spell));
     EXPECT_EQ(o(a).damage_marked, 0);
     EXPECT_EQ(o(b).damage_marked, 0);

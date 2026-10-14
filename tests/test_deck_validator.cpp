@@ -291,6 +291,40 @@ TEST_F(DeckValidatorTest, CopyLimitExceeded) {
     }
 }
 
+// V1 / D12: [Unique] (CR 825.3.a): "A deck can contain only one card of a
+// given name if the card has Unique" — across Main Deck and sideboard
+// (Tournament Rules 403.3).
+TEST_F(DeckValidatorTest, UniqueCardOnlyOnce) {
+    auto hasUniqueError = [](const ValidationResult& r) {
+        for (auto& e : r.errors)
+            if (e.find("[Unique]") != std::string::npos) return true;
+        return false;
+    };
+    for (const char* name : {"Forgefire Cape", "Rabadon's Deathcrown", "Shurelya's Requiem"}) {
+        auto* card = db.findByName(name);
+        ASSERT_NE(card, nullptr) << name;
+        ASSERT_TRUE(card->keywords.has(Keyword::Unique)) << name;
+        DeckValidator validator(db);
+
+        auto one = makeValidDeck();
+        one.main_deck.push_back(card->id);
+        EXPECT_FALSE(hasUniqueError(validator.validate(one))) << "one copy of " << name;
+
+        auto two = makeValidDeck();
+        two.main_deck.push_back(card->id);
+        two.main_deck.push_back(card->id);
+        auto result = validator.validate(two);
+        EXPECT_FALSE(result.is_legal);
+        EXPECT_TRUE(hasUniqueError(result)) << "two copies of " << name;
+
+        // One in the Main Deck and one in the sideboard is two in the deck.
+        auto split = makeValidDeck();
+        split.main_deck.push_back(card->id);
+        split.sideboard.push_back(card->id);
+        EXPECT_TRUE(hasUniqueError(validator.validate(split))) << "main + sideboard: " << name;
+    }
+}
+
 // Ban-list enforcement (CSV source). A card present in the deck that appears on
 // the loaded ban list must make the deck illegal.
 TEST_F(DeckValidatorTest, BannedCardRejectedViaCsv) {

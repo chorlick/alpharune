@@ -19,10 +19,12 @@ public:
     // Clause 1: "[Backline]" — engine keyword, set in def. Fully handled by
     //   the combat-damage assignment ordering.
     // Clause 2: "Your [Temporary] effects at my battlefield don't trigger."
-    //   Wired via suppressesTemporaryTriggersHere(): TriggerManager::fireTrigger
-    //   skips a trigger whose source is a friendly [Temporary] unit sharing a
-    //   battlefield + controller with a card declaring this. LeBlanc is not
-    //   [Temporary] herself: the word in her text names other cards' effects.
+    //   Wired via suppressesTemporaryTriggersHere(): the [Temporary] ability
+    //   of a friendly unit sharing a battlefield + controller with a card
+    //   declaring this is not put on the chain (TriggerManager::
+    //   queueTemporaryAbilities), so the unit is not killed. Its other
+    //   abilities trigger as usual. LeBlanc is not [Temporary] herself: the
+    //   word in her text names other cards' effects.
     bool suppressesTemporaryTriggersHere() const override { return true; }
 private:
     const CardDef def_ = [] {

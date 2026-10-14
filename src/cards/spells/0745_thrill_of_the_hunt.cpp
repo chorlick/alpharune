@@ -44,9 +44,15 @@ public:
             RIFT_TRACE(ctx.events, "THRILL: " + uname + " (a token) is banished and gone");
             return;
         }
+        // "To any battlefield": any its OWNER may play a unit to, whoever
+        // controls it — not one where "Units can't be played here." (Rockfall
+        // Path) and none for an owner who can only play units to their base
+        // (battlefieldTakesUnitsFrom, the one rule for where an effect plays
+        // a unit; CR 054.1).
         std::vector<LocationId> locations;
         std::vector<std::string> labels;
         for (const auto& bf : ctx.state.battlefields) {
+            if (!battlefieldTakesUnitsFrom(ctx.state, owner, bf)) continue;
             locations.push_back(LocationId{BattlefieldLocation{bf.id}});
             std::string bf_name = "BF#" + std::to_string(static_cast<int>(bf.id.raw()));
             if (ctx.state.objectExists(bf.card_object_id)) {
@@ -55,11 +61,13 @@ public:
             labels.push_back(bf_name);
         }
         if (locations.empty()) {
-            // No battlefields — fall back to owner's base.
+            // No battlefield it can be played to: the text names no other
+            // place, so it is not played and stays banished (Vendetta FAQ,
+            // Temporal Breach: "it isn't possible to play the unit ... The
+            // unit will remain in Banishment").
             banish();
-            ctx.executor.playIgnoringCost(owner, unit_id,
-                                           LocationId{BaseLocation{owner}});
-            RIFT_TRACE(ctx.events, "THRILL: " + uname + " (no BF) played to base");
+            RIFT_TRACE(ctx.events, "THRILL: " + uname +
+                                " can't be played to any battlefield — it stays banished");
             return;
         }
         uint32_t legal_mask = (locations.size() >= 32)

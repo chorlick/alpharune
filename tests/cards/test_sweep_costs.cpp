@@ -1451,7 +1451,9 @@ TEST_F(SweepCostsTest, PayAnyPower_SpendsFloatingPowerThenRecyclesExhaustedRunes
     EXPECT_FALSE(onBoard(exhausted)) << "then the exhausted rune is recycled";
     EXPECT_TRUE(onBoard(ready)) << "the ready rune can still give Energy";
     EXPECT_EQ(o(exhausted).zone, ZoneType::RuneDeck);
-    EXPECT_EQ(state.player(P1).power_spent_this_turn, 1);
+    // The floating Power and the rune: both spent (testing phase I3, by
+    // design — old expectation 1, the rune only).
+    EXPECT_EQ(state.player(P1).power_spent_this_turn, 2);
 }
 
 TEST_F(SweepCostsTest, TrashReplayGrant_ADiscountAppliesToTheGrantCost) {
@@ -1640,10 +1642,12 @@ TEST_F(SweepCostsTest, FinalizePassSpell_AUnitIsOfferedOnlyIfItsDeflectCanBePaid
     auto again = addToHand(P1, kRocketBarrage);
     setPool(P1, 4, 1);
     auto rune = addRune(P1, Domain::Mind);
-    // Mode 0; the guarded unit (its Deflect takes the floating Power); then
-    // the rune to recycle for the [B].
+    // Mode 0; the guarded unit; its Deflect: the floating Power (value 0) —
+    // the payer names it, the rune being the other way that keeps the spell
+    // payable (testing phase D9, by design: the engine used to take it
+    // unasked); then the rune to recycle for the [B].
     EnginePathAgent agent(EnginePathAgent::script(
-        {0, static_cast<int>(guarded.raw()), static_cast<int>(rune.raw())}));
+        {0, static_cast<int>(guarded.raw()), 0, static_cast<int>(rune.raw())}));
     play(again, &agent);
     EXPECT_TRUE(agent.wasOffered(guarded));
     EXPECT_EQ(o(guarded).damage_marked, 4);
@@ -1781,10 +1785,16 @@ TEST_F(SweepCostsTest, PayEnergy_ExhaustsTheLowestIdBaseRuneAndNoRuneOutsideTheB
 
     auto first = addRune(P1, Domain::Fury);
     auto second = addRune(P1, Domain::Mind);
-    EnginePathAgent yes(EnginePathAgent::script({1}));
+    // The payer names the rune (testing phase D9, by design: the engine used
+    // to exhaust the lowest-id one unasked). Both base runes are offered, the
+    // stray one is not.
+    EnginePathAgent yes(EnginePathAgent::script({1, static_cast<int>(first.raw())}));
     fireTriggerThroughEngine(jax, TriggerType::WhenEquipmentAttachedToMe, &yes);
     EXPECT_EQ(handSize(P1), 1);
-    EXPECT_TRUE(o(first).is_exhausted) << "the lowest-id rune in the base";
+    ASSERT_EQ(yes.prompts.size(), 2u);
+    EXPECT_EQ(yes.prompts[1].size(), 2u) << "the two runes in the base";
+    EXPECT_FALSE(yes.wasOffered(stray));
+    EXPECT_TRUE(o(first).is_exhausted) << "the rune named";
     EXPECT_FALSE(o(second).is_exhausted);
     EXPECT_FALSE(o(stray).is_exhausted) << "a rune outside the base gives no Energy";
 }

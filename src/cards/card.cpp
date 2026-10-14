@@ -600,7 +600,10 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
 namespace {
 std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& card,
                                                 const std::vector<GameObjectId>& in) {
-    const int payable = ctx.executor.payableAnyPower(ctx.controller);
+    const bool by_spell = ctx.state.chain.resuming.has_value() &&
+                          ctx.state.chain.resuming->is_spell;
+    const int payable = ctx.executor.payableAnyPower(
+        ctx.controller, by_spell ? SpendFor::Spell : SpendFor::Other);
     const bool ignores = card.ignoresDeflect();
     std::vector<GameObjectId> out;
     out.reserve(in.size());
@@ -617,17 +620,24 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
 // the resolving chain item.
 void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     if (t == kInvalidId || !ctx.state.objectExists(t)) return;
+    // Chosen, then its Deflect paid: a spell paying ahead of its cost judges
+    // what is left with this choice counted (EffectExecutor::payAnyPower).
+    if (ctx.state.chain.resuming.has_value())
+        ctx.state.chain.resuming->chosen_objects.push_back(t);
     if (!card.ignoresDeflect()) {
         const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
         if (cost > 0) {
-            ctx.executor.payAnyPower(ctx.controller, cost);
+            // A spell's Deflect is a cost of playing that spell (CR
+            // 356.2.a.2): Power "to play spells" pays it (testing phase D50).
+            const bool by_spell = ctx.state.chain.resuming.has_value() &&
+                                  ctx.state.chain.resuming->is_spell;
+            ctx.executor.payAnyPower(ctx.controller, cost,
+                                     by_spell ? SpendFor::Spell : SpendFor::Other);
             RIFT_TRACE(ctx.events, "DEFLECT: " + std::string(toString(ctx.controller)) +
                                 " pays " + std::to_string(cost) + " [A] to choose " +
                                 ctx.state.getObject(t).name);
         }
     }
-    if (ctx.state.chain.resuming.has_value())
-        ctx.state.chain.resuming->chosen_objects.push_back(t);
     // "If you've chosen an enemy unit this turn" (Hungry Wolf). A unit is a
     // unit on the board (CR 141.1.a): a unit card picked out of a hand, deck
     // or trash is a card, not an enemy unit.
@@ -979,7 +989,9 @@ std::vector<GameObjectId> Card::enumerateLegalTargets(
             const int deflect = deflectCostFor(state, controller, id);
             if (deflect > 0) {
                 if (!payable_power.has_value())
-                    payable_power = payableAnyPower(state, controller);
+                    payable_power = payableAnyPower(
+                        state, controller,
+                        def().card_type == CardType::Spell ? SpendFor::Spell : SpendFor::Other);
                 if (deflect > *payable_power) continue;
             }
         }
@@ -1124,9 +1136,10 @@ bool Card::canPayEquip(const GameState& state, PlayerId controller, GameObjectId
 bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTerms& terms) {
     if (!canPayEquip(ctx.state, ctx.controller, ctx.source, unit, terms)) return false;
     const EquipCost cost = netEquipCost(ctx.state, ctx.controller, ctx.source, unit, terms);
-    if (!resource::pay(ctx.state, ctx.events, ctx.controller, cost.energy, cost.power,
-                       cost.power_any_domain ? Domain::Count : cost.power_domain,
-                       SpendFor::Gear))
+    if (!ctx.executor.payResources(ctx.controller, cost.energy, cost.power,
+                                   resource::maskOf(cost.power_any_domain ? Domain::Count
+                                                                          : cost.power_domain),
+                                   SpendFor::Gear))
         return false;
     if (!payEquipExtraCost(ctx, unit)) return false;
     // The extra cost may have removed either end ("Kill a friendly unit").

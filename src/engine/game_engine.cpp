@@ -1620,7 +1620,13 @@ void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, Ga
     if (!card.ignoresDeflect()) {
         const int deflect = deflectCostFor(state_, chooser, t);
         if (deflect > 0) {
-            effect_executor_->payAnyPower(chooser, deflect);
+            bool by_spell = false;
+            for (const auto& ci : state_.chain.items)
+                if (ci.id == item_id) by_spell = ci.is_spell;
+            if (state_.chain.resuming.has_value() && state_.chain.resuming->id == item_id)
+                by_spell = state_.chain.resuming->is_spell;
+            effect_executor_->payAnyPower(chooser, deflect,
+                                          by_spell ? SpendFor::Spell : SpendFor::Other);
             RIFT_TRACE(events_, "DEFLECT: " + std::string(toString(chooser)) + " pays " +
                              std::to_string(deflect) + " [A] to choose " +
                              state_.getObject(t).name);
@@ -1701,7 +1707,8 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
     std::vector<GameObjectId> remaining = legal, picked;
     while (picked.size() < needed) {
         std::vector<Intent> options;
-        const int payable = effect_executor_->payableAnyPower(chooser);
+        const int payable = effect_executor_->payableAnyPower(
+            chooser, item->is_spell ? SpendFor::Spell : SpendFor::Other);
         std::vector<GameObjectId> offered;
         for (auto t : remaining)
             if (!deflect_matters || deflectCostFor(state_, chooser, t) <= payable)
@@ -1986,8 +1993,7 @@ bool GameEngine::offerAccelerateOnItsOwn(PlayerId player, GameObjectId card_id, 
     }
     const auto half = chooseAccelerateHalf(player, payable);
     if (!half.has_value()) return false;
-    if (!resource::payIn(state_, events_, player, half->first, half->second, mask,
-                         SpendFor::Unit))
+    if (!effect_executor_->payResources(player, half->first, half->second, mask, SpendFor::Unit))
         return false;
     RIFT_TRACE(events_, "ACCELERATE: " + state_.getObject(card_id).name + " pays [" +
                      std::to_string(half->first) + "] + " + std::to_string(half->second) +
@@ -3160,6 +3166,16 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                 return g ? canPayTrashGrant(who, what, *g, all, {t})
                          : (!via_grant && canAffordChoosing(who, what, all, {t}));
             });
+            // A Deflect paid ahead of the cost offers only the runes that
+            // leave the spell payable with what is chosen so far (D9).
+            effect_executor_->setAheadOfCostCheck([this, who, what, via_grant]() {
+                std::vector<GameObjectId> chosen;
+                if (state_.chain.resuming.has_value()) chosen = state_.chain.resuming->chosen_objects;
+                const auto* g = via_grant ? trashGrantFor(who, what) : nullptr;
+                if (via_grant) return g && canPayTrashGrant(who, what, *g, chosen, {});
+                return chosen.empty() ? canAfford(who, what)
+                                      : canAffordChoosing(who, what, chosen, {});
+            });
             // (Deflect for these choices is paid as each is made: none is
             // owed when the spell's own cost is judged.)
             const PrePlayPayable payable = [this, who, what, via_grant](
@@ -3182,9 +3198,11 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                                 : collectFinalizeChoices(std::move(pre));
             } catch (...) {
                 effect_executor_->setChoiceFilter(nullptr);
+                effect_executor_->setAheadOfCostCheck(nullptr);
                 throw;
             }
             effect_executor_->setChoiceFilter(nullptr);
+            effect_executor_->setAheadOfCostCheck(nullptr);
             done.pre_play_choices = false;
             cost_targets = done.chosen_objects;
             if (!payable(cost_targets))
@@ -7749,7 +7767,7 @@ bool GameEngine::payOptionalCost(PlayerId player, int energy, int power,
             "optional additional cost: [1] or [A] less").chosen_value.value_or(0) == 1;
     }
     const auto net = power_first ? p_first : e_first;
-    return resource::payIn(state_, events_, player, net.first, net.second, domains, spend_for);
+    return effect_executor_->payResources(player, net.first, net.second, domains, spend_for);
 }
 
 void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id,
@@ -8249,6 +8267,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
 
     // Spend floating Power the same way: restricted [A] this kind of card may
     // use, this card's domains, then [A].
+    const int power_before_pool = power_needed;
     if (power_needed > 0) {
         ps.rune_pool.takeRestrictedPower(spend_for, power_needed);
         for (auto d : def.domains) {
@@ -8262,6 +8281,9 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
         ps.rune_pool.universal_power -= from_uni;
         power_needed -= from_uni;
     }
+    // Power from the pool is spent like a recycled rune's (Sivir, Mercenary;
+    // testing phase I3).
+    resource::notePowerSpent(ps, power_before_pool - power_needed);
 
     // Initialize cursor for the rune-pick phase
     GameState::CostPaymentCursor cur;
@@ -8436,7 +8458,9 @@ bool GameEngine::payAdditionalCost(PlayerId player, int energy, int power,
 
 bool GameEngine::payAdditionalCost(PlayerId player, int energy, int power,
                                     Domain domain, SpendFor spend_for) {
-    return resource::pay(state_, events_, player, energy, power, domain, spend_for);
+    // The payer names the runes (testing phase D9).
+    return effect_executor_->payResources(player, energy, power, resource::maskOf(domain),
+                                          spend_for);
 }
 
 
@@ -8461,9 +8485,9 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
         auto cost = trashGrantCost(player, card_id, grant, targets, false);
         if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
             cost = trashGrantCost(player, card_id, grant, targets, true);
-        ok = resource::payIn(state_, events_, player, cost.energy, cost.power, cost.domains, f);
+        ok = effect_executor_->payResources(player, cost.energy, cost.power, cost.domains, f);
         if (ok && cost.extra_any > 0)
-            ok = resource::pay(state_, events_, player, 0, cost.extra_any, Domain::Count, f);
+            ok = effect_executor_->payResources(player, 0, cost.extra_any, resource::kAnyDomain, f);
     }
     if (ok && grant.banish_after && state_.objectExists(card_id))
         state_.getObject(card_id).banish_on_leave_chain = true;
@@ -8522,7 +8546,10 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
         if (on_decision) on_decision(state_, adv.legal, chosen);
         adv = resolveCostPaymentDecision(chosen);
     }
-    if (extra_any > 0) effect_executor_->payAnyPower(player, extra_any);
+    if (extra_any > 0)
+        effect_executor_->payAnyPower(player, extra_any,
+            state_.objectExists(card_obj) ? spendForObject(state_.getObject(card_obj))
+                                          : SpendFor::Other);
     return true;
 }
 

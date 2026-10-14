@@ -11,6 +11,7 @@
 #include "core/game_state.h"
 #include "core/intent.h"
 #include "engine/knowledge_tracker.h"
+#include "engine/resource_payment.h"
 
 #include <functional>
 #include <optional>
@@ -91,7 +92,7 @@ bool hiddenFrom(const GameState& state, GameObjectId id, PlayerId viewer);
 LogAudience audienceNaming(const GameState& state, PlayerId knower,
                            const std::vector<GameObjectId>& ids);
 /// Power of any Domain `player` could pay right now.
-int payableAnyPower(const GameState& state, PlayerId player);
+int payableAnyPower(const GameState& state, PlayerId player, SpendFor f = SpendFor::Other);
 
 class EffectExecutor {
 public:
@@ -411,12 +412,26 @@ public:
     // ── Paying inside an effect ──
     /// Power of any Domain ([A]) `player` could pay now: floating power of
     /// every kind plus runes in base (CR 164.2.b — recycle, ready or exhausted).
-    int payableAnyPower(PlayerId player) const;
-    /// Pay `amount` [A]: floating power first, then recycle runes (exhausted
-    /// ones first). Pays nothing and returns false if it can't be covered.
-    /// While a spell is making its choices before its cost is paid, the
-    /// payment leaves that cost payable (resource::payAnyPowerAheadOfCost).
-    bool payAnyPower(PlayerId player, int amount);
+    int payableAnyPower(PlayerId player, SpendFor f = SpendFor::Other) const;
+    /// Pay `amount` [A]: floating power first, then runes — the payer names
+    /// each rune (runeChooser). Pays nothing and returns false if it can't be
+    /// covered. While a spell is making its choices before its cost is paid,
+    /// the payment leaves that cost payable (resource::payAnyPowerAheadOfCost,
+    /// judged by the engine's aheadOfCostCheck). `f`: what the Power is spent
+    /// for — a spell's Deflect is a cost of playing that spell (CR 356.2.a.2),
+    /// so Power "to play spells" may pay it (testing phase D50).
+    bool payAnyPower(PlayerId player, int amount, SpendFor f = SpendFor::Other);
+    /// Pay `energy` and `power` (each Power of a Domain in `mask`) for `f`,
+    /// the payer naming the runes (testing phase D9): every payment that is
+    /// not a card's base cost comes here (resource::payIn).
+    bool payResources(PlayerId player, int energy, int power, resource::DomainMask mask,
+                      SpendFor f = SpendFor::Other);
+    /// The payer is asked which rune pays each point, among the kinds that
+    /// differ; empty (the engine's order) with no agent or inside a probe.
+    resource::RuneChooser runeChooser() const;
+    /// Set by the engine while a spell makes its choices before its cost:
+    /// whether that cost is still payable as things stand.
+    void setAheadOfCostCheck(std::function<bool()> f) { ahead_of_cost_check_ = std::move(f); }
 
     // ── Scoring by an effect (CR 471 "score N points" outside Conquer/Hold) ──
     /// Give `player` `amount` points from an effect: honours "can't gain/score
@@ -700,6 +715,7 @@ private:
     const CardDB& card_db_;
     std::function<void()> aura_recalc_;
     std::function<bool(GameObjectId)> choice_filter_;
+    std::function<bool()> ahead_of_cost_check_;
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

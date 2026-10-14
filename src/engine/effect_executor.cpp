@@ -693,9 +693,9 @@ int deflectCostFor(const GameState& state, PlayerId chooser, GameObjectId target
     return std::max(1, value);
 }
 
-int payableAnyPower(const GameState& state, PlayerId player) {
+int payableAnyPower(const GameState& state, PlayerId player, SpendFor f) {
     const auto& pool = state.player(player).rune_pool;
-    int n = pool.universal_power;
+    int n = pool.universal_power + pool.restrictedPower(f);
     for (int di = 0; di < static_cast<int>(Domain::Count); ++di) n += pool.power[di];
     LocationId base{BaseLocation{player}};
     for (const auto& [id, obj] : state.objects.atLocation(base))
@@ -733,11 +733,43 @@ int EffectExecutor::deflectCostFor(PlayerId chooser, GameObjectId target) const 
     return ::riftbound::deflectCostFor(state_, chooser, target);
 }
 
-int EffectExecutor::payableAnyPower(PlayerId player) const {
-    return ::riftbound::payableAnyPower(state_, player);
+int EffectExecutor::payableAnyPower(PlayerId player, SpendFor f) const {
+    return ::riftbound::payableAnyPower(state_, player, f);
 }
 
-bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
+resource::RuneChooser EffectExecutor::runeChooser() const {
+    resource::RuneChooser c;
+    if (!agent_query_ || events_.quiet()) return c;
+    c.pick = [this](PlayerId player, const std::vector<GameObjectId>& options,
+                    bool for_power) -> GameObjectId {
+        std::vector<Intent> intents;
+        intents.reserve(options.size());
+        for (auto id : options) {
+            Intent i;
+            i.type = IntentType::MakeChoice;
+            i.player = player;
+            if (id == kInvalidId) {
+                i.chosen_value = 0;
+                i.choice_label = "floating Power";
+            } else {
+                i.chosen_objects = {id};
+            }
+            intents.push_back(std::move(i));
+        }
+        const Intent chosen = ask(player, intents, for_power ? "pick rune to recycle for power"
+                                                            : "pick rune to exhaust for energy");
+        return chosen.chosen_objects.empty() ? kInvalidId : chosen.chosen_objects.front();
+    };
+    return c;
+}
+
+bool EffectExecutor::payResources(PlayerId player, int energy, int power,
+                                  resource::DomainMask mask, SpendFor f) {
+    const auto chooser = runeChooser();
+    return resource::payIn(state_, events_, player, energy, power, mask, f, &chooser);
+}
+
+bool EffectExecutor::payAnyPower(PlayerId player, int amount, SpendFor f) {
     if (amount <= 0) return true;
     // A spell that is making its choices before its cost is paid (CR 355 ->
     // 356: ChainItem::pre_play_choices) pays a chosen unit's Deflect here,
@@ -748,13 +780,16 @@ bool EffectExecutor::payAnyPower(PlayerId player, int amount) {
         pre.has_value() && pre->pre_play_choices && pre->controller == player &&
         state_.objectExists(pre->source)) {
         const CardDefId def = state_.getObject(pre->source).card_def_id;
-        if (def != kInvalidId)
+        if (def != kInvalidId) {
+            const auto chooser = runeChooser();
             return resource::payAnyPowerAheadOfCost(
-                state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains));
+                state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains),
+                SpendFor::Spell, &chooser, ahead_of_cost_check_ ? &ahead_of_cost_check_ : nullptr);
+        }
     }
     // The one payment rule (engine/resource_payment.h): floating Power, then
-    // runes recycled from the base, exhausted ones first.
-    return resource::pay(state_, events_, player, 0, amount, Domain::Count);
+    // runes recycled from the base, the payer naming them.
+    return payResources(player, 0, amount, resource::kAnyDomain, f);
 }
 
 bool EffectExecutor::burnOut(PlayerId player) {
@@ -2736,6 +2771,7 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
     take(ps.rune_pool.energy, e_need);
     for (auto d : cost.domains) take(ps.rune_pool.power[static_cast<int>(d)], p_need);
     take(ps.rune_pool.universal_power, p_need);
+    resource::notePowerSpent(ps, cost.power - p_need);   // Sivir (I3)
     // Energy from runes that can't pay the Power first; then recycle matching
     // runes, exhausted ones first (CR 164.2).
     std::stable_sort(runes.begin(), runes.end(), [&](GameObjectId a, GameObjectId b) {

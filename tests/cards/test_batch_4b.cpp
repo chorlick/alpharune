@@ -56,6 +56,8 @@ constexpr CardDefId kTheList = 700;
 constexpr CardDefId kIvernFriendToAll = 739;
 constexpr CardDefId kAbandon = 693;
 constexpr CardDefId kSwiftScout = 259;
+constexpr CardDefId kStupefy = 95;
+constexpr CardDefId kRocketBarrage = 400;   // [4][B]: Deal 4 to a unit in a base.
 
 class Batch4bTest : public CardTestFixture {
 protected:
@@ -1053,5 +1055,82 @@ TEST_F(Batch4bTest, D11_TheRule_ACardInAHandIsHiddenFromTheOtherPlayer) {
     conn.disconnect();
 }
 
+
+// ─── D9  The payer names the runes of every payment ─────────────────────────
+// Who pays chooses what pays (CR 164.2, 357): which rune is exhausted for
+// Energy and which recycled for Power — and with [A], which Domain leaves the
+// board. Runes of one kind (same card, same Domains, both ready or both
+// exhausted) are one option.
+TEST_F(Batch4bTest, D9_TheHideCostAsksWhichRuneToRecycle) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kShipyardSkulker, 3, 0);
+    auto guards = addToHand(P1, kGuards);
+    auto calm = addRune(P1, Domain::Calm, /*exhausted=*/true);
+    auto fury = addRune(P1, Domain::Fury, /*exhausted=*/true);
+    Intent hide;
+    hide.type = IntentType::HideCard;
+    hide.player = P1;
+    hide.card = guards;
+    hide.chosen_battlefield = bfId(0);
+    EnginePathAgent agent(EnginePathAgent::choosing(fury));
+    run(hide, &agent);
+    EXPECT_TRUE(agent.wasOffered(calm));
+    EXPECT_TRUE(agent.wasOffered(fury));
+    EXPECT_FALSE(onBoard(fury)) << "the rune the payer named";
+    EXPECT_TRUE(onBoard(calm));
+}
+
+TEST_F(Batch4bTest, D9_RunesOfOneKindAreOneOption_NothingToAsk) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kShipyardSkulker, 3, 0);
+    auto guards = addToHand(P1, kGuards);
+    addRune(P1, Domain::Calm, /*exhausted=*/true);
+    addRune(P1, Domain::Calm, /*exhausted=*/true);
+    Intent hide;
+    hide.type = IntentType::HideCard;
+    hide.player = P1;
+    hide.card = guards;
+    hide.chosen_battlefield = bfId(0);
+    EnginePathAgent agent;
+    run(hide, &agent);
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(o(guards).zone, ZoneType::FacedownZone);
+}
+
+// ─── D50  Power "to play spells" pays a spell's Deflect ─────────────────────
+// CR 356.2.a.2: Deflect's cost is a Mandatory Additional Cost of playing the
+// spell. Daughter of the Void's "[Add] [A]. Use only to play spells." is
+// RunePool::spell_power.
+TEST_F(Batch4bTest, D50_SpellPowerPaysTheDeflectOfTheSpellsChoice) {
+    // Stupefy ([1], "Give a unit -1 [M] this turn"): the only Power is the
+    // spell Power; the only unit has [Deflect]. Offered, and paid with it.
+    auto guarded = addUnit(P2, kShipyardSkulker, 3, 0);
+    o(guarded).keywords.set(Keyword::Deflect);
+    o(guarded).deflect_value = 1;
+    auto spell = addToHand(P1, kStupefy);
+    ps(P1).rune_pool.energy = 1;
+    ps(P1).rune_pool.spell_power = 1;
+    for (int i = 0; i < 2; ++i) addToDeck(P1, kShipyardSkulker);
+    std::optional<Intent> play;
+    for (const auto& i : playsOf(mainPhaseOptions(P1), spell))
+        if (i.targets == std::vector<GameObjectId>{guarded}) play = i;
+    ASSERT_TRUE(play.has_value()) << "the unit is offered: its Deflect can be paid";
+    run(*play);
+    EXPECT_EQ(o(guarded).current_might, 2);
+    EXPECT_EQ(ps(P1).rune_pool.spell_power, 0) << "paid the Deflect";
+}
+
+// ─── I3  Sivir, Mercenary: Power from the pool is spent ─────────────────────
+TEST_F(Batch4bTest, I3_PowerPaidFromThePoolCountsAsSpent) {
+    auto spell = addToHand(P1, kRocketBarrage);
+    addUnit(P2, kShipyardSkulker, 9);
+    ps(P1).rune_pool.energy = 4;
+    ps(P1).rune_pool.universal_power = 1;
+    EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kRest}));
+    playThroughEngine(spell, &agent, std::nullopt, nullptr, /*fund=*/false);
+    EXPECT_EQ(ps(P1).power_spent_this_turn, 1);
+}
 
 }  // namespace riftbound::test::batch_4b

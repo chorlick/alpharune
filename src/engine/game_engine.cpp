@@ -5789,21 +5789,32 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     // The step-machine path (C-1 commit 9) will surface advance's legal
     // options out to applyChoice() and feed the chosen Intent back into
     // resolve.
-    auto runOneSide = [&](PlayerId assigner, int total_damage,
-                          const std::vector<GameObjectId>& targets) {
+    auto assignOneSide = [&](PlayerId assigner, int total_damage,
+                             const std::vector<GameObjectId>& targets) -> std::optional<Intent> {
         auto adv = advanceCombatDamage(assigner, total_damage, targets);
-        if (adv.kind == CombatDamageAdvance::Kind::Skip) return;
+        if (adv.kind == CombatDamageAdvance::Kind::Skip) return std::nullopt;
         state_.decision_index++;
         auto chosen = askAgent(assigner, adv.legal);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
         }
-        resolveCombatDamageDecision(chosen);
+        return chosen;
     };
 
-    // Attacker assigns damage to defender's units, defender assigns to attacker's
-    runOneSide(attacker, att_might, def_units);
-    runOneSide(defender, def_might, att_units);
+    // CR 467.2.c: "Starting with the Attacker, each player assigns ...";
+    // 467.2.c.1: "Assigning Damage is not Dealing Damage"; 467.2.c.1.a: "When
+    // all Damage is assigned, it will be Dealt simultaneously." So the
+    // defender assigns with no combat damage dealt yet, and what that damage
+    // triggers is one batch, ordered by its controllers (CR 383.3.d) — not
+    // the attacker's damage dealt, and its abilities pending, before the
+    // defender is asked (finding D13).
+    const auto att_assigned = assignOneSide(attacker, att_might, def_units);
+    if (state_.game_over) return;   // a concession
+    const auto def_assigned = assignOneSide(defender, def_might, att_units);
+    if (state_.game_over) return;
+    const SimultaneousTriggers together(state_.chain);
+    if (att_assigned) resolveCombatDamageDecision(*att_assigned);
+    if (def_assigned) resolveCombatDamageDecision(*def_assigned);
 }
 
 GameEngine::CombatDamageAdvance GameEngine::testHook_advanceCombatDamage(

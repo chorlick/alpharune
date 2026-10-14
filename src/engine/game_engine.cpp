@@ -1451,7 +1451,9 @@ bool GameEngine::canPayEquip(PlayerId player, GameObjectId gear, GameObjectId un
 // pickTarget then returns this choice at resolution, or nothing if it is no
 // longer legal (a mistarget: the instruction is ignored).
 void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
-    if (item.card_def_id == kInvalidId) return;
+    // A keyword's own ability has no card id: its Card is the keyword's
+    // (engine/keyword_abilities.h), whose choices are made here too (D22).
+    if (item.card_def_id == kInvalidId && !item.keyword_ability.has_value()) return;
     const ChainItemId this_id = item.id;
     chooseFirstExecution(item);
     // CR 820.2: the choices of each additional execution a Repeat paid for
@@ -1547,7 +1549,9 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         // event's subject travels in ChainItem::triggering_subject.
         // A reflexive trigger's choices are always made as it is finalized
         // (CR 388.4): Card::onReflexiveTrigger follows that contract.
-        const Card* tcard = card_registry_.get(item.card_def_id);
+        const Card* tcard = item.keyword_ability.has_value()
+            ? keywordAbilityCard(*item.keyword_ability)
+            : card_registry_.get(item.card_def_id);
         if (tcard && (item.reflexive_index >= 0 ||
                       (tcard->choicesAtFinalization() & Card::kFinalizeTrigger)))
             runFinalizePass(item);
@@ -2220,10 +2224,12 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
     // reported here. (A reflexive trigger's pass is the engine's doing, not
     // an opt-in, and has no marker to reach.)
     if (!(done.finalize_checked & (64 | 128)) && done.reflexive_index < 0 &&
-        done.card_def_id != kInvalidId) {
-        const Card* owner = (done.is_ability && done.granted_ability_def != kInvalidId)
-            ? card_registry_.get(done.granted_ability_def)
-            : card_registry_.get(done.card_def_id);
+        (done.card_def_id != kInvalidId || done.keyword_ability.has_value())) {
+        const Card* owner = done.keyword_ability.has_value()
+            ? keywordAbilityCard(*done.keyword_ability)
+            : (done.is_ability && done.granted_ability_def != kInvalidId)
+                ? card_registry_.get(done.granted_ability_def)
+                : card_registry_.get(done.card_def_id);
         const unsigned bit = done.is_spell ? Card::kFinalizeResolve
                            : (done.is_ability && !done.is_activated_ability)
                                ? Card::kFinalizeTrigger : Card::kFinalizeActivate;
@@ -3802,44 +3808,9 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
     // effects go on the chain (CR 383.4.a.2).
     announcePermanentPlayed(item.source, item.controller);
 
-    // [Quick-Draw] (CR 819.1.d): "When you play this, attach it to a unit you
-    // control" — whenever it is played, in the main phase as much as at
-    // Reaction timing. Its controller chooses the unit as it lands.
-    if (card.isGear() && card.hasKeyword(Keyword::QuickDraw)) {
-        std::vector<GameObjectId> units;
-        for (auto& [uid, unit] : state_.objects.onBoard()) {
-            if (!unit.isUnit() || unit.controller != item.controller) continue;
-            if (!unit.location.has_value()) continue;
-            units.push_back(uid);
-        }
-        GameObjectId target_unit = kInvalidId;
-        if (!item.targets.empty() &&
-            std::find(units.begin(), units.end(), item.targets[0]) != units.end()) {
-            target_unit = item.targets[0];
-        } else if (!units.empty()) {
-            std::vector<Intent> options;
-            options.reserve(units.size());
-            for (auto uid : units) {
-                Intent i;
-                i.type = IntentType::MakeChoice;
-                i.player = item.controller;
-                i.chosen_objects = {uid};
-                options.push_back(std::move(i));
-            }
-            const Intent chosen = decideNow(item.controller, options,
-                                            "choose a unit to attach " + card.name + " to");
-            target_unit = units.front();
-            if (!chosen.chosen_objects.empty() &&
-                std::find(units.begin(), units.end(), chosen.chosen_objects.front()) !=
-                    units.end())
-                target_unit = chosen.chosen_objects.front();
-        }
-        if (target_unit != kInvalidId) {
-            RIFT_TRACE(events_, "QUICK_DRAW: auto-attaching " + card.name + " to " +
-                             state_.getObject(target_unit).name);
-            effect_executor_->attachGear(item.source, target_unit);
-        }
-    }
+    // [Quick-Draw] (CR 819.1.d) is the keyword's triggered ability, queued as
+    // the play is announced above (engine/keyword_abilities; testing phase
+    // D14): its unit is chosen as it is finalized, not as the gear lands.
 
     // Check if playing to a battlefield contests it
     if (card.isUnit() && std::holds_alternative<BattlefieldLocation>(loc)) {

@@ -5705,7 +5705,10 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FirstPromptOffersMovingNoUnit) {
     auto u1 = addUnit(P1, kInvalidId, 2, 0);
     auto u2 = addUnit(P1, kInvalidId, 2, 0);
     auto spell = addToHand(P1, kEmperorsDivide);
-    EXPECT_TRUE(offersTargets(playsOffered(spell), {u1}));
+    // One play: the units are chosen as it is played (testing phase G17; the
+    // play intent used to name a unit standing for the battlefield).
+    ASSERT_EQ(playsOffered(spell).size(), 1u);
+    EXPECT_TRUE(playsOffered(spell).front().targets.empty());
     // "done": the option with no object.
     EnginePathAgent agent([](const std::vector<Intent>& legal) {
         for (const auto& i : legal)
@@ -5713,7 +5716,7 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FirstPromptOffersMovingNoUnit) {
         ADD_FAILURE() << "no 'done' option";
         return legal.front();
     });
-    playAt(spell, {u1}, &agent);
+    playAt(spell, {}, &agent);
     EXPECT_EQ(agent.prompts.size(), 1u);
     EXPECT_EQ(bfOf(u1), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
@@ -6658,7 +6661,9 @@ TEST_F(VerifyCardsTest, EmperorsDivide_FromFacedownWithNoFriendlyUnitThereIsPlay
     auto here = addUnit(P1, kInvalidId, 2, 0);
     const auto plays = hiddenPlays();
     ASSERT_EQ(plays.size(), 1u) << "this setup does offer a hidden Emperor's Divide";
-    EXPECT_EQ(plays[0].targets, std::vector<GameObjectId>{here});
+    // One play; the units are chosen as it is played, only at its battlefield
+    // (testing phase G17: the intent used to name a unit there).
+    EXPECT_TRUE(plays[0].targets.empty());
 
     EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(here.raw())}));
     withEngine([&](GameEngine& e) {

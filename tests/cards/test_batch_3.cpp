@@ -55,6 +55,14 @@ constexpr CardDefId kDragonsRage = 255;
 constexpr CardDefId kStormbringer = 248;
 constexpr CardDefId kDecreeOfInsight = 848;
 constexpr CardDefId kPitRookie = 136;       // a Body unit
+constexpr CardDefId kAzirSovereign = 497;
+constexpr CardDefId kTornadoWarrior = 886;
+constexpr CardDefId kEvelynnEntrancing = 703;
+constexpr CardDefId kKennenStorm = 900;
+constexpr CardDefId kZedFromTheShadows = 810;
+constexpr CardDefId kEmperorsDivide = 366;
+constexpr CardDefId kGuerillaWarfare = 260;
+constexpr CardDefId kSteraksGage = 379;
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -108,6 +116,23 @@ protected:
         h.erase(std::remove(h.begin(), h.end(), id), h.end());
         o(id).zone = ZoneType::Trash;
         ps(owner).trash.push_back(id);
+        return id;
+    }
+    GameObjectId addGear(PlayerId owner, CardDefId def_id, bool at_base = true) {
+        auto id = state.createObject();
+        auto& g = o(id);
+        g.owner = g.controller = owner;
+        g.card_type = CardType::Gear;
+        g.card_def_id = def_id;
+        const auto& d = card_db.get(def_id);
+        g.name = d.name;
+        g.tags = d.tags;
+        g.keywords = d.keywords;
+        g.might_bonus = d.might_bonus;
+        if (at_base) {
+            g.zone = ZoneType::Base;
+            g.location = BaseLocation{owner};
+        }
         return id;
     }
     GameObjectId gearOn(PlayerId owner, CardDefId def, GameObjectId unit) {
@@ -650,6 +675,178 @@ TEST_F(Batch3Test, D34_DecreeOfInsightChoosesItsTargetBeforeItsCost) {
     playThroughEngine(card, &me, std::nullopt, &them);
     ASSERT_FALSE(me.chain_size_at.empty());
     EXPECT_EQ(me.chain_size_at[0], 0u) << "the target is chosen before the spell is on the chain (CR 355.5)";
+}
+
+// ─── D22 / D14 / D24 / D54 / D78 / B5 / G17 / D67: a triggered ability's and
+// a spell's choices are made as it is finalized (CR 383.3, 403.1-403.2, 355.5)
+
+TEST_F(Batch3Test, D22_AWeaponmasterTokensMayAndEquipmentAreChosenBeforeAnyoneResponds) {
+    auto sword = addGear(P1, kLongSword, true);
+    (void)sword;
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    me.other = &them;
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        KeywordSet kw;
+        kw.set(Keyword::Weaponmaster);
+        ex.createToken(P1, CardType::Unit, "Sand Soldier", 2, {"Sand Soldier"}, kw,
+                       LocationId{BaseLocation{P1}});
+    }, &me, &them, P1);
+    ASSERT_GE(me.other_priority_at.size(), 2u) << "the may and the Equipment";
+    EXPECT_EQ(me.other_priority_at[0], 0);
+    EXPECT_EQ(me.other_priority_at[1], 0);
+}
+
+TEST_F(Batch3Test, D14_QuickDrawIsATriggeredAbilityOnTheChain) {
+    // CR 819.1.a "Quick-Draw is a Triggered Ability keyword"; 819.1.d "When you
+    // play this, attach it to a Unit you control": the unit is chosen as the
+    // ability is finalized; the opponent may respond before it attaches.
+    auto unit = addUnit(P1, kInvalidId, 2);
+    auto gage = addToHand(P1, kSteraksGage);
+    bool unattached_at_priority = false;
+    class Watch : public CountsPriority {
+    public:
+        GameObjectId gear = kInvalidId;
+        bool* seen = nullptr;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            if (!st.chain.items.empty() && st.objectExists(gear) &&
+                st.getObject(gear).location.has_value() &&
+                !st.getObject(gear).attached_to.has_value())
+                *seen = true;
+            return CountsPriority::selectAction(st, legal);
+        }
+    } them;
+    them.gear = gage;
+    them.seen = &unattached_at_priority;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(gage, &me, std::nullopt, &them);
+    EXPECT_TRUE(unattached_at_priority) << "the attach waits on the chain";
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0) << "the unit is chosen before the opponent responds";
+    EXPECT_EQ(o(gage).attached_to, std::optional<GameObjectId>{unit});
+}
+
+TEST_F(Batch3Test, D24_AzirChoosesTheTokensBeforeAnyoneResponds) {
+    auto azir = addUnit(P1, kAzirSovereign, 0, 0);
+    addUnit(P2, kInvalidId, 2, 0);
+    combatInProgress(0, P1);
+    auto token = addUnit(P1, kInvalidId, 1);
+    o(token).super_type = SuperType::Token;
+    o(token).card_type = CardType::Unit;
+    o(token).name = "Sand Soldier";
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(token.raw()), 0, EnginePathAgent::kRest}));
+    me.other = &them;
+    fireTriggerThroughEngine(azir, TriggerType::WhenIAttack, &me, kInvalidId, &them);
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0);
+}
+
+TEST_F(Batch3Test, D54_TornadoWarriorChoosesBeforeAnyoneResponds) {
+    auto tw = addUnit(P1, kTornadoWarrior, 0, 0);
+    o(tw).card_counters["__played_from_facedown"] = 1;
+    o(tw).card_counters["__facedown_play_turn"] = state.turn.turn_number;
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({1, static_cast<int>(tw.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    fireTriggerThroughEngine(tw, TriggerType::WhenYouPlayMe, &me, kInvalidId, &them);
+    ASSERT_GE(me.other_priority_at.size(), 2u);
+    EXPECT_EQ(me.other_priority_at[0], 0);
+    EXPECT_EQ(me.other_priority_at[1], 0);
+    EXPECT_EQ(o(tw).empowered, 1);
+}
+
+TEST_F(Batch3Test, D54_EvelynnChoosesBeforeAnyoneResponds) {
+    auto ev = addUnit(P1, kEvelynnEntrancing, 0, 0);
+    auto enemy = addUnit(P2, kInvalidId, 2, 1);
+    o(ev).card_counters["__played_from_facedown"] = 1;
+    o(ev).card_counters["__facedown_play_turn"] = state.turn.turn_number;
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({1, static_cast<int>(enemy.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    fireTriggerThroughEngine(ev, TriggerType::WhenYouPlayMe, &me, kInvalidId, &them);
+    ASSERT_GE(me.other_priority_at.size(), 2u);
+    EXPECT_EQ(me.other_priority_at[0], 0);
+    EXPECT_EQ(me.other_priority_at[1], 0);
+    EXPECT_EQ(o(enemy).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
+}
+
+TEST_F(Batch3Test, D78_KennenChoosesTheSpellBeforeAnyoneResponds) {
+    auto kennen = addUnit(P1, kKennenStorm, 0, 0);
+    auto spell = addToTrash(P1, kDredgeUp);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(spell.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    fireTriggerThroughEngine(kennen, TriggerType::WhenIConquer, &me, kInvalidId, &them);
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0);
+}
+
+TEST_F(Batch3Test, B5_ZedChoosesWhereTheShadowCloneGoesBeforeAnyoneResponds) {
+    auto zed = addUnit(P1, kZedFromTheShadows, 0, 0);
+    state.battlefields[0].controller = P1;
+    o(zed).card_counters["zed_discard_paid"] = 1;
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({EnginePathAgent::kRest}));
+    me.other = &them;
+    fireTriggerThroughEngine(zed, TriggerType::WhenYouPlayMe, &me, kInvalidId, &them);
+    ASSERT_FALSE(me.other_priority_at.empty()) << "base or the battlefield P1 controls";
+    EXPECT_EQ(me.other_priority_at[0], 0);
+}
+
+TEST_F(Batch3Test, G17_EmperorsDivideChoosesTheUnitsAsItIsPlayed) {
+    auto card = addToHand(P1, kEmperorsDivide);
+    auto a = addUnit(P1, kInvalidId, 2, 0);
+    auto b = addUnit(P1, kInvalidId, 3, 0);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(b.raw()), 0, EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0) << "the units are chosen before anyone responds";
+    EXPECT_TRUE(o(b).isAtBase());
+    EXPECT_FALSE(o(a).isAtBase()) << "only the unit chosen moves";
+}
+
+TEST_F(Batch3Test, D67_GuerillaWarfareChoosesTheCardsAsItIsPlayed) {
+    auto card = addToHand(P1, kGuerillaWarfare);
+    auto hidden = addToTrash(P1, kEmperorsDivide);   // a card with [Hidden]
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(hidden.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    playThroughEngine(card, &me, std::nullopt, &them);
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0) << "the trash is public: the cards are targets (CR 355.10.a.1)";
+    EXPECT_TRUE(inHand(P1, hidden));
+}
+
+// ─── B2 / H3: "from face down" is one test, of this play's stamp ─────────────
+
+TEST_F(Batch3Test, B2_H3_PlayedFromFacedownThenFromHandTheSameTurnDoesNotTrigger) {
+    // A card played from face down, returned to hand and played again from
+    // hand the same turn: the stamp of the first play is dropped as the
+    // second begins (Card::forgetPlayPayments), so none of the three "from
+    // face down" cards triggers on it (testing phase B2 / H3).
+    for (CardDefId def : {kTornadoWarrior, kEvelynnEntrancing}) {
+        SCOPED_TRACE(card_db.get(def).name);
+        state = GameState{};
+        state.players[0].id = P1;
+        state.players[1].id = P2;
+        addBattlefield();
+        addBattlefield();
+        state.turn.phase = TurnPhase::MainPhase;
+        state.turn.turn_player = P1;
+        addUnit(P2, kInvalidId, 2, 1);
+        auto card = addToHand(P1, def);
+        o(card).card_counters["__played_from_facedown"] = 1;   // the earlier play
+        o(card).card_counters["__facedown_play_turn"] = state.turn.turn_number;
+        EXPECT_TRUE(playedFromFacedown(state, card));
+        EnginePathAgent me(EnginePathAgent::script({EnginePathAgent::kRest}));
+        playThroughEngine(card, &me);
+        EXPECT_TRUE(me.prompts.empty()) << "nothing triggered: this play is from hand";
+        EXPECT_FALSE(playedFromFacedown(state, card));
+    }
 }
 
 TEST_F(Batch3Test, D8_Sweep_NoOfferedSpellIsPlayedWithoutARequiredTarget) {

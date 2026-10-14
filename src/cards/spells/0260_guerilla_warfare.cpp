@@ -15,64 +15,44 @@ namespace {
 class GuerillaWarfare : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-
     // "Return up to two cards with [Hidden] from your trash to your hand. You
     //  can hide cards ignoring costs this turn."
-    // The controller picks the cards, one prompt each, and may stop early.
-    // Progress lives on the resolving item: resume_point kAwait while a prompt
-    // is out, resume_data[0] = cards returned so far.
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.chain.resuming.has_value()) return;
-        auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == kDone) return;
-        auto& ps = ctx.state.player(ctx.controller);
+    // The cards are targets (the trash is public, CR 355.10.a.1), up to two,
+    // zero allowed (CR 355.13), chosen as the spell is played (CR 355.5;
+    // testing phase D67).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // cards in a trash, not units
+    }
+    static std::vector<GameObjectId> hiddenInTrash(const CardContext& ctx) {
+        std::vector<GameObjectId> out;
         const CardDB& db = ctx.executor.cardDB();
-        auto hidden_in_trash = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto cid : ps.trash) {
-                if (!ctx.state.objectExists(cid)) continue;
-                const auto& obj = ctx.state.getObject(cid);
-                if (obj.card_def_id == kInvalidId) continue;
-                if (db.get(obj.card_def_id).keywords.has(Keyword::Hidden)) out.push_back(cid);
-            }
-            return out;
-        };
-        bool stop = false;
-        if (ri.resume_point == kAwait) {
-            const auto cards = hidden_in_trash();
-            const GameObjectId cid = takenObject(ctx);
-            if (std::find(cards.begin(), cards.end(), cid) == cards.end()) {
-                stop = true;   // "Return no more"
-            } else {
-                auto& obj = ctx.state.getObject(cid);
-                ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), cid), ps.trash.end());
-                deck::putInHand(ctx.state, cid);
-                ++ri.resume_data[0];
-                RIFT_TRACE(ctx.events, "GUERILLA WARFARE: returned " + obj.name +
-                                     " from trash to hand");
-            }
-        } else {
-            ri.resume_data.assign(1, 0);
+        for (auto cid : ctx.state.player(ctx.controller).trash) {
+            if (!ctx.state.objectExists(cid)) continue;
+            const auto& obj = ctx.state.getObject(cid);
+            if (obj.card_def_id == kInvalidId) continue;
+            if (db.get(obj.card_def_id).keywords.has(Keyword::Hidden)) out.push_back(cid);
         }
-        if (!stop && ri.resume_data[0] < 2) {
-            const auto cards = hidden_in_trash();
-            if (!cards.empty()) {
-                std::vector<Intent> options;
-                // "up to two" includes none (CR 355.13), on the first prompt
-                // too; the second sentence happens either way.
-                options.push_back(valChoice(ctx.controller, 0, "Return no more"));
-                for (auto cid : cards) options.push_back(objChoice(ctx.controller, cid));
-                ctx.executor.requestChoice(ctx.controller, std::move(options),
-                    "Guerilla Warfare: return a [Hidden] card from your trash (up to two)");
-                ri.resume_point = kAwait;
-                return;
-            }
+        return out;
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const auto picks = selectSeveralTargets(*this, ctx,
+            "Guerilla Warfare: return a [Hidden] card from your trash (up to two)",
+            hiddenInTrash(ctx), /*max_picks=*/2);
+        if (!picks.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        auto& ps = ctx.state.player(ctx.controller);
+        for (auto cid : *picks) {
+            if (!ctx.state.objectExists(cid)) continue;
+            ps.trash.erase(std::remove(ps.trash.begin(), ps.trash.end(), cid), ps.trash.end());
+            deck::putInHand(ctx.state, cid);
+            RIFT_TRACE(ctx.events, "GUERILLA WARFARE: returned " +
+                                 ctx.state.getObject(cid).name + " from trash to hand");
         }
-        ri.resume_point = kDone;
         ps.hide_ignoring_costs_this_turn = true;
     }
 private:
-    enum : int { kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

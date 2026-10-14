@@ -493,7 +493,10 @@ TEST_F(VendettaA, Vendetta_Zed_ShadowCloneOnlyIfAdditionalCostPaid) {
     state.getObject(zed).card_counters[flag] = 1;
     fireTriggerThroughEngine(zed, TriggerType::WhenYouPlayMe);
     EXPECT_EQ(count_clones(), 1);
-    EXPECT_EQ(state.getObject(zed).card_counters[flag], 0) << "payment consumed";
+    // The payment belongs to that play: the next play of the card forgets it
+    // (Card::forgetPlayPayments; the card used to clear it as it resolved).
+    Card::forgetPlayPayments(state, card_registry.get(kZedFromTheShadows), P1, zed);
+    EXPECT_EQ(state.getObject(zed).card_counters[flag], 0) << "forgotten at the next play";
 }
 
 // ── 811 Affectionate Poro ────────────────────────────────────────────────

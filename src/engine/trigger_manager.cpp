@@ -716,6 +716,10 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
         if (effect_executor_) effect_executor_->recalculateContinuousEffects();
         queueKeywordAbilities(e.object, e.player, Keyword::Vision, false);
         if (!state_.objectExists(e.object)) return;
+        // [Quick-Draw] (CR 819.1.d): "When you play this, attach it to a Unit
+        // you control" — the keyword's triggered ability (testing phase D14).
+        if (state_.getObject(e.object).isGear())
+            queueKeywordAbilities(e.object, e.player, Keyword::QuickDraw, false);
     }
 
     // "When you play me" — fire on the card that was just played

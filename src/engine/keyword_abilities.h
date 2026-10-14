@@ -2,7 +2,7 @@
 /// @file keyword_abilities.h
 /// Triggered abilities that belong to a KEYWORD rather than to a card.
 ///
-/// [Vision] (CR 817) and [Weaponmaster] (CR 821) are "When this is played /
+/// [Vision] (CR 817), [Weaponmaster] (CR 821) and [Quick-Draw] (CR 819) are "When this is played /
 /// when you play me" triggered abilities. A permanent can have the keyword
 /// from a continuous effect ("Your Mechs have [Vision]", "Your Sand Soldiers
 /// have [Weaponmaster]") and may be a token with no card class, so the

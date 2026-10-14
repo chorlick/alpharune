@@ -820,6 +820,23 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     return std::nullopt;
 }
 
+// ── "When you play me from face down" ───────────────────────────────────────
+/// Whether `source`'s current play is a play from face down, this turn: the
+/// stamps GameEngine::executePlayFromHidden writes as it plays a hidden card
+/// (`__played_from_facedown`, `__facedown_play_turn`). They belong to one play:
+/// Card::forgetPlayPayments drops them as every play begins, so a card played
+/// from face down, returned and played from hand reads false (testing phase
+/// B2). The one test for Edge of Night, Evelynn, Entrancing and Tornado
+/// Warrior's trigger conditions; nothing else needs to clear it.
+inline bool playedFromFacedown(const GameState& state, GameObjectId source) {
+    if (!state.objectExists(source)) return false;
+    const auto& c = state.getObject(source).card_counters;
+    const auto played = c.find("__played_from_facedown");
+    if (played == c.end() || played->second != 1) return false;
+    const auto turn = c.find("__facedown_play_turn");
+    return turn == c.end() || turn->second == state.turn.turn_number;
+}
+
 // ── Up to one target ("deal 2 to up to one enemy unit") ─────────────────────
 /// A target that may be none (CR 355.13) — or, with `allow_none` false, a
 /// second required target of an instruction of its own, where pickTarget is
@@ -1573,6 +1590,52 @@ inline std::optional<std::vector<GameObjectId>> selectSeveral(
         if (*one == kInvalidId) break;
         picked.push_back(*one);
         options.erase(std::find(options.begin(), options.end(), *one));   // one instance
+    }
+    return picked;
+}
+
+/// selectSeveral for objects that are CHOSEN in the rules sense — targets
+/// ("move any number of friendly units at a battlefield", "return up to two
+/// cards from your trash": CR 355.5, 355.13): each one is offered only if it
+/// can be chosen (Card::offerableChoices: its Deflect payable, and while a
+/// spell chooses before its cost only what leaves it payable) and choosing it
+/// pays its Deflect and counts as choosing it (Card::commitChosenObject:
+/// "when you choose a friendly unit", "your spells that choose me cost
+/// less"). Same slots and re-entry contract as selectSeveral.
+inline std::optional<std::vector<GameObjectId>> selectSeveralTargets(
+        Card& card, CardContext& ctx, const std::string& label,
+        std::vector<GameObjectId> options, int max_picks = -1, size_t first_slot = 7) {
+    std::sort(options.begin(), options.end());
+    std::vector<GameObjectId> picked;
+    const auto& item = ctx.state.chain.resuming;
+    for (int k = 0; max_picks < 0 || k < max_picks; ++k) {
+        const size_t slot = first_slot + 2 * static_cast<size_t>(k);
+        if (item.has_value() && item->resume_data.size() > slot + 1 &&
+            item->resume_data[slot] == 2) {
+            const auto stored = GameObjectId::fromRaw(item->resume_data[slot + 1]);
+            if (stored == kInvalidId) break;
+            auto it = std::find(options.begin(), options.end(), stored);
+            if (it == options.end() || !ctx.state.stillTheChosenObject(*item, stored))
+                continue;                                  // no longer legal: dropped
+            picked.push_back(stored);
+            options.erase(it);
+            continue;
+        }
+        std::vector<GameObjectId> offer = options;
+        offer.erase(std::unique(offer.begin(), offer.end()), offer.end());
+        const bool answering = item.has_value() && item->resume_data.size() > slot &&
+                               item->resume_data[slot] == 1;
+        if (!answering) offer = card.offerableChoices(ctx, offer);
+        if (offer.empty()) {
+            if (item.has_value()) (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true);
+            break;
+        }
+        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true);
+        if (!one.has_value()) return std::nullopt;
+        if (*one == kInvalidId) break;
+        if (answering) card.commitChosenObject(ctx, *one);   // chosen now: Deflect, "chosen"
+        picked.push_back(*one);
+        options.erase(std::find(options.begin(), options.end(), *one));
     }
     return picked;
 }

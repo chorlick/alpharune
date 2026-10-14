@@ -15,104 +15,59 @@ namespace {
 class EmperorSDivide : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-
-    // The play-time target names the battlefield; which of the units there
-    // move is then asked unit by unit, "done" on every prompt. "Any number"
-    // includes zero (CR 355.13), so the requirement is optional: from hand the
-    // spell is playable with no friendly unit at a battlefield (and then does
-    // nothing). From facedown too: with no friendly unit at its battlefield it
-    // is played choosing none (judge ruling 2026-10-11, plans/09 9.Z4: CR
-    // 355.13 wins over 811.1.d's "no valid targets"); with units there the
-    // hidden generator offers one play per target there (CR 811.1.d.2).
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                   .must_be_friendly = true,
-                                   .must_be_at_battlefield = true,
-                                   .optional = true};
+    // "Move any number of friendly units at a battlefield to their base."
+    // The units (zero allowed, CR 355.13) are chosen as the spell is played,
+    // before its cost and before anyone responds (CR 355.5, 355.15; testing
+    // phase G17): the first one names the battlefield, the rest are at that
+    // battlefield. Played from facedown, only units at its battlefield (CR
+    // 811.1.d.2): with none there it is played choosing none (judge ruling
+    // 2026-10-11, plans/09 9.Z4: CR 355.13 wins over 811.1.d).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return u.isAtBattlefield() && effectCanMoveToBase(state, controller, u);
+        });
     }
-
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        auto& ri = ctx.state.chain.resuming.value();
-
-        // The battlefield is fixed by the play-time target on case 0.
-        auto build_choices = [&](BattlefieldId bf, std::vector<GameObjectId>& units) {
-            // Only a unit this spell can move to its base (not one that
-            // "can't move to base", not at "Units can't move from here to
-            // base": effectCanMoveToBase), and each unit once: resume_data
-            // holds the battlefield and then the units already chosen, so a
-            // move that did not happen is never offered again.
-            units.clear();
-            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                auto ubf = obj.battlefieldId();
-                if (!ubf || *ubf != bf) continue;
-                if (!effectCanMoveToBase(ctx.state, ctx.controller, obj)) continue;
-                if (std::find(ri.resume_data.begin() + (ri.resume_data.empty() ? 0 : 1),
-                              ri.resume_data.end(),
-                              static_cast<int32_t>(id.raw())) != ri.resume_data.end()) continue;
-                units.push_back(id);
-            }
-            std::sort(units.begin(), units.end());
-            std::vector<Intent> out;
-            for (auto uid : units) {
-                Intent c;
-                c.type = IntentType::MakeChoice;
-                c.player = ctx.controller;
-                c.chosen_objects = {uid};
-                out.push_back(std::move(c));
-            }
-            // Trailing "done" choice (empty chosen_objects).
-            Intent done;
-            done.type = IntentType::MakeChoice;
-            done.player = ctx.controller;
-            done.chosen_value = 0;   // nameable by value, not only by position
-            done.choice_label = "Emperor's Divide: move no more units";
-            out.push_back(std::move(done));
-            return out;
-        };
-
-        switch (ri.resume_point) {
-        case 0: {
-            if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-            auto bf_opt = ctx.state.getObject(targets[0]).battlefieldId();
-            if (!bf_opt) return;
-            BattlefieldId bf = *bf_opt;
-            // Stash the battlefield id for re-entry.
-            ri.resume_data = {static_cast<int32_t>(bf.raw())};
-            std::vector<GameObjectId> units;
-            auto choices = build_choices(bf, units);
-            if (choices.size() <= 1) return;  // no friendly unit here that can move
-            ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "Emperor's Divide: move a unit to base, or stop");
-            ri.resume_point = 1;
-            return;
+    // Only a unit this spell can move to its base (not one that "can't move to
+    // base", not at "Units can't move from here to base": effectCanMoveToBase).
+    static std::vector<GameObjectId> movable(const CardContext& ctx,
+                                             std::optional<BattlefieldId> at) {
+        auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+            return o.controller == ctx.controller && o.isAtBattlefield() &&
+                   (!at.has_value() || o.battlefieldId() == at) &&
+                   effectCanMoveToBase(ctx.state, ctx.controller, o);
+        });
+        return atHiddenBattlefield(ctx.state, ctx.source, std::move(out));
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // The first unit (or none): it names the battlefield.
+        const auto first = selectSeveralTargets(*this, ctx, "Emperor's Divide: move a unit to base",
+                                         movable(ctx, std::nullopt), /*max_picks=*/1, kFirstSlot);
+        if (!first.has_value()) return;          // waiting for the agent
+        std::vector<GameObjectId> units = *first;
+        if (!units.empty()) {
+            const auto bf = ctx.state.getObject(units.front()).battlefieldId();
+            std::vector<GameObjectId> rest;
+            for (auto id : movable(ctx, bf))
+                if (id != units.front()) rest.push_back(id);
+            const auto more = selectSeveralTargets(*this, ctx,
+                                                   "Emperor's Divide: move another unit there to base",
+                                            rest, /*max_picks=*/-1, kRestSlot);
+            if (!more.has_value()) return;
+            units.insert(units.end(), more->begin(), more->end());
         }
-        case 1: {
-            auto choice = ctx.executor.takeChoice();
-            if (ri.resume_data.empty()) return;
-            BattlefieldId bf = BattlefieldId::fromRaw(ri.resume_data[0]);
-
-            // "done" = empty chosen_objects.
-            if (!choice || choice->chosen_objects.empty()) return;
-            auto uid = choice->chosen_objects[0];
-            ri.resume_data.push_back(static_cast<int32_t>(uid.raw()));   // chosen: not offered again
-            if (ctx.state.objectExists(uid)) {
-                ctx.executor.moveToBase(uid);
-                if (ctx.state.getObject(uid).isAtBase())
-                    RIFT_TRACE(ctx.events, "EMPEROR'S DIVIDE: moved " +
-                                        ctx.state.getObject(uid).name + " to base");
-            }
-            // Offer the remaining units (+ done) again.
-            std::vector<GameObjectId> units;
-            auto choices = build_choices(bf, units);
-            if (choices.size() <= 1) return;  // none left
-            ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "Emperor's Divide: move a unit to base, or stop");
-            // stay at resume_point = 1
-            return;
-        }
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        for (auto uid : units) {
+            if (!ctx.state.objectExists(uid)) continue;
+            ctx.executor.moveToBase(uid);
+            if (ctx.state.getObject(uid).isAtBase())
+                RIFT_TRACE(ctx.events, "EMPEROR'S DIVIDE: moved " +
+                                    ctx.state.getObject(uid).name + " to base");
         }
     }
+    static constexpr size_t kFirstSlot = Card::kChoiceStateSlot + 1;   // 7, 8
+    static constexpr size_t kRestSlot = Card::kChoiceStateSlot + 3;    // 9, 10, ...
 private:
     const CardDef def_ = [] {
         CardDef d;

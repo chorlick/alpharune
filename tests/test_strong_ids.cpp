@@ -353,7 +353,7 @@ TEST(StrongIds, HistoryTokensAndSlotsArePinned) {
 TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
     const std::map<std::string, int> audited = {
         {"src/cards/card.cpp", 7},
-        {"src/cards/card_helpers.h", 10},
+        {"src/cards/card_helpers.h", 11},
         {"src/cards/gear/0412_the_zero_drive.cpp", 1},
         {"src/cards/gear/0698_scryer_s_bloom.cpp", 1},
         {"src/cards/gear/0854_bottled_constellation.cpp", 1},

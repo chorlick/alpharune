@@ -307,7 +307,11 @@ public:
     // Exposed in public for unit tests; the struct + implementation
     // live in the combat-damage section below.
     struct CombatDamageAdvance {
-        enum class Kind : uint8_t { NeedDecision, Skip };
+        /// NeedDecision: `legal` is every distinct legal assignment, one
+        /// decision. StepByStep: there are more than kMaxDamageOptions of them
+        /// (or too many to count cheaply); the assignment is made one unit at a
+        /// time (GameEngine::assignCombatDamage), so none is withheld.
+        enum class Kind : uint8_t { NeedDecision, Skip, StepByStep };
         Kind kind = Kind::Skip;
         PlayerId assigner = PlayerId::None;
         std::vector<Intent> legal;
@@ -315,6 +319,11 @@ public:
     CombatDamageAdvance testHook_advanceCombatDamage(
         PlayerId assigner, int total_damage,
         const std::vector<GameObjectId>& targets);
+    /// The assigner's whole decision (one list, or step by step), not dealt.
+    std::optional<Intent> testHook_assignCombatDamage(
+        PlayerId assigner, int total_damage, const std::vector<GameObjectId>& targets) {
+        return assignCombatDamage(assigner, total_damage, targets);
+    }
 
     /// The play gate for a spell choosing `targets`: its cost after what the
     /// targets take off, plus their Deflect, payable together. With no targets
@@ -532,6 +541,18 @@ private:
     /// Apply the chosen damage assignment. Mirrors what the in-place
     /// path does: emits per-unit DamageDealtEvent for each assignment.
     void resolveCombatDamageDecision(const Intent& intent);
+    /// Ask `assigner` for their assignment (CR 467.2.c): one decision among
+    /// every distinct legal assignment, or — when there are more than
+    /// kMaxDamageOptions — one decision per unit, "which unit takes lethal
+    /// damage next" in the tier order, the last one taking what is left.
+    /// nullopt when there is nothing to assign.
+    std::optional<Intent> assignCombatDamage(PlayerId assigner, int total_damage,
+                                             const std::vector<GameObjectId>& targets);
+    /// The units that can take `assigner`'s combat damage, in tier order
+    /// (Tank, others, Backline; CR 815, 826, 460.2.c.6), ids ascending within
+    /// a tier, with each one's tier.
+    void combatDamageTiers(PlayerId assigner, const std::vector<GameObjectId>& targets,
+                           std::vector<GameObjectId>& flat, std::vector<int>& tier_of) const;
 
     // ── Mulligan ──
     //

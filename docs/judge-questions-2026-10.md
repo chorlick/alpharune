@@ -176,3 +176,41 @@ Which rule wins when both apply?
 - For a combat the rules answer it: 466.2.c.1 / 466.2.c.1.a, the Attacker ("the player whose unit(s) applied the Contested status") gains Focus.
 
 **What the engine does.** Focus goes first to the controller of the unit that applied Contested — my opponent in this situation (`Batch2Combat.G3_NonCombatShowdown_TheControllerOfTheUnitThatAppliedContestedHasFocusFirst_J2`). In a combat it goes to the Attacker (`Batch2Combat.G3_InACombatTheAttackerHasFocusFirst_AlsoOnTheOtherPlayersTurn`). Before batch 2 it always went to the turn player (finding G3).
+
+---
+
+## 9. Deathgrip with only one friendly unit
+
+**Card**
+
+- Deathgrip: "[Reaction] Kill a friendly unit. If you do, give +[M] equal to its Might to another friendly unit this turn. Draw 1."
+
+**Situation.** I control exactly one unit. I play Deathgrip.
+
+**Question.** Can Deathgrip be played (kill that unit, no unit to give the Might to, draw 1), or must a valid "another friendly unit" exist to put it on the chain?
+
+**Rules found**
+
+- For "it can be played": the second instruction is conditional ("If you do, ..."); 359.3.e.5 — an instruction that cannot be followed is skipped and the rest of the spell is followed.
+- For "it cannot": 355.8, "In order to put a spell or ability on the chain, valid choices must be made for all targets"; 355.5 / 355.10 — "another friendly unit" is chosen by its controller, so it is a target.
+
+**What the engine does.** Deathgrip is playable on a single friendly unit: it kills it and draws 1 (`C3Test.Deathgrip_IsPlayableOnASingleFriendlyUnit`; testing phase D28).
+
+---
+
+## 10. Lonely Poro: did it die alone when every other friendly unit there died with it?
+
+**Card**
+
+- Lonely Poro (two printings): "[Deathknell] — If I died alone, draw 1. (I'm alone if there are no other friendly units here.)"
+
+**Situation.** Lonely Poro and the only other friendly unit at its battlefield take lethal combat damage and die in the same Cleanup.
+
+**Question.** Did Lonely Poro die alone?
+
+**Rules found**
+
+- For "no, it was not alone": the deaths are simultaneous (323.4, 370.1.a.2); a Deathknell is processed just before its source changes zones (383.2.c.3), when the other unit was still there; an effect "can look back" at an object's characteristics before it changed zones (359.3.e.13).
+- For "yes, it was alone": the ability resolves after both have died, and nothing friendly is "here" then; the reminder text says "I'm alone if there are no other friendly units here" in the present tense.
+
+**What the engine does.** Not alone: no card is drawn. "Here" is read from the moment Lonely Poro died, from last-known information taken for all units that die together before the first leaves, so a friendly unit that arrives before the ability resolves changes nothing either (`SweepTriggersTest.LonelyPoro_UnitsThatDieTogetherDidNotDieAlone` for 777, `Batch4bTest.D80_LonelyPoro359_UnitsThatDieTogetherDidNotDieAlone` for 359; testing phase D80 — the 359 printing used to read the board as the ability resolved).

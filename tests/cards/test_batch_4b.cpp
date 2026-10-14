@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -892,6 +893,54 @@ TEST_F(Batch4bTest, D46_IvernFriendToAll_TheTagIsChosenAsHeIsPlayed) {
     const auto& tags = o(ivern).tags.get();
     EXPECT_NE(std::find(tags.begin(), tags.end(), std::string("Dog")), tags.end());
     EXPECT_FALSE(anyLineHas(lines, "TRIGGER: Ivern")) << "not a triggered ability";
+}
+
+// ─── B7  Combat damage: no legal assignment is withheld ─────────────────────
+// CR 460.2.c.6: units of one tier may take lethal damage in any order. With 8
+// one-Might defenders and 4 damage, every set of 4 of them is a legal outcome:
+// C(8,4) = 70 of them, more than the old cap of 64 options.
+TEST_F(Batch4bTest, B7_EveryLethalSetOfUnitsIsOffered) {
+    std::vector<GameObjectId> defenders;
+    for (int i = 0; i < 8; ++i) defenders.push_back(addUnit(P2, kShipyardSkulker, 1, 0));
+    // The set the old capped list withheld: the four highest ids.
+    const std::vector<GameObjectId> want(defenders.begin() + 4, defenders.end());
+    std::optional<Intent> assigned;
+    int prompts = 0;
+    PickByPredicateAgent p1([&](int, const std::vector<Intent>& legal) {
+        ++prompts;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() &&
+                std::find(want.begin(), want.end(), i.chosen_objects.front()) != want.end())
+                return i;
+        return legal.front();
+    });
+    withEngine([&](GameEngine& e) {
+        const auto adv = e.testHook_advanceCombatDamage(P1, 4, defenders);
+        EXPECT_EQ(adv.kind, GameEngine::CombatDamageAdvance::Kind::StepByStep)
+            << "70 outcomes: more than one decision offers";
+        assigned = e.testHook_assignCombatDamage(P1, 4, defenders);
+    }, &p1);
+    ASSERT_TRUE(assigned.has_value());
+    EXPECT_EQ(prompts, 4) << "one unit at a time";
+    std::vector<GameObjectId> hit;
+    for (const auto& da : assigned->damage_assignments) {
+        EXPECT_EQ(da.damage, 1);
+        hit.push_back(da.target_unit);
+    }
+    std::sort(hit.begin(), hit.end());
+    EXPECT_EQ(hit, want);
+}
+
+// Below the cap the assignment is still one decision among every outcome
+// (the action shape of the common case is unchanged).
+TEST_F(Batch4bTest, B7_FewOutcomesAreStillOneDecision) {
+    std::vector<GameObjectId> defenders;
+    for (int i = 0; i < 4; ++i) defenders.push_back(addUnit(P2, kShipyardSkulker, 1, 0));
+    withEngine([&](GameEngine& e) {
+        const auto adv = e.testHook_advanceCombatDamage(P1, 2, defenders);
+        EXPECT_EQ(adv.kind, GameEngine::CombatDamageAdvance::Kind::NeedDecision);
+        EXPECT_EQ(adv.legal.size(), 6u) << "C(4,2)";
+    });
 }
 
 }  // namespace riftbound::test::batch_4b

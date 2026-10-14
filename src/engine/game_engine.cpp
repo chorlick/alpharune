@@ -5904,14 +5904,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     // resolve.
     auto assignOneSide = [&](PlayerId assigner, int total_damage,
                              const std::vector<GameObjectId>& targets) -> std::optional<Intent> {
-        auto adv = advanceCombatDamage(assigner, total_damage, targets);
-        if (adv.kind == CombatDamageAdvance::Kind::Skip) return std::nullopt;
-        state_.decision_index++;
-        auto chosen = askAgent(assigner, adv.legal);
-        if (on_decision) {
-            on_decision(state_, adv.legal, chosen);
-        }
-        return chosen;
+        return assignCombatDamage(assigner, total_damage, targets);
     };
 
     // CR 467.2.c: "Starting with the Attacker, each player assigns ...";
@@ -5928,6 +5921,98 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     const SimultaneousTriggers together(state_.chain);
     if (att_assigned) resolveCombatDamageDecision(*att_assigned);
     if (def_assigned) resolveCombatDamageDecision(*def_assigned);
+}
+
+std::optional<Intent> GameEngine::assignCombatDamage(PlayerId assigner, int total_damage,
+                                                    const std::vector<GameObjectId>& targets) {
+    auto adv = advanceCombatDamage(assigner, total_damage, targets);
+    if (adv.kind == CombatDamageAdvance::Kind::Skip) return std::nullopt;
+    if (adv.kind == CombatDamageAdvance::Kind::NeedDecision) {
+        state_.decision_index++;
+        auto chosen = askAgent(assigner, adv.legal);
+        if (on_decision) on_decision(state_, adv.legal, chosen);
+        return chosen;
+    }
+    // Step by step (testing phase B7): more distinct assignments than one
+    // decision offers. The assigner names, in the tier order, the unit that
+    // takes lethal damage next (CR 460.2.c.3, 460.2.c.6); the last one named
+    // takes what is left (460.2.c.4). Every legal assignment is reachable.
+    const bool any_damage_lethal = anyDamageIsLethalFor(assigner);
+    std::vector<GameObjectId> flat;
+    std::vector<int> tier_of;
+    combatDamageTiers(assigner, targets, flat, tier_of);
+    std::vector<bool> taken(flat.size(), false);
+    std::vector<DamageAssignment> cur;
+    int remaining = total_damage;
+    while (remaining > 0) {
+        int tier = -1;
+        for (size_t k = 0; k < flat.size(); ++k)
+            if (!taken[k]) { tier = tier_of[k]; break; }
+        if (tier < 0) break;
+        std::vector<size_t> open;
+        for (size_t k = 0; k < flat.size(); ++k)
+            if (!taken[k] && tier_of[k] == tier) open.push_back(k);
+        size_t pick = open.front();
+        if (open.size() > 1) {
+            std::vector<Intent> options;
+            for (auto k : open) {
+                Intent o;
+                o.type = IntentType::MakeChoice;
+                o.player = assigner;
+                o.chosen_objects = {flat[k]};
+                o.choice_label = "Combat damage: lethal to " + state_.getObject(flat[k]).name +
+                                 " next";
+                options.push_back(std::move(o));
+            }
+            state_.decision_index++;
+            RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                             " (" + toString(assigner) + "): combat damage, which unit next [" +
+                             std::to_string(options.size()) + " options]");
+            const Intent chosen = askAgent(assigner, options);
+            if (on_decision) on_decision(state_, options, chosen);
+            if (state_.game_over) return std::nullopt;   // a concession
+            for (auto k : open)
+                if (!chosen.chosen_objects.empty() && chosen.chosen_objects.front() == flat[k])
+                    pick = k;
+        }
+        const int lethal =
+            combatDamageNeededForLethal(state_.getObject(flat[pick]), any_damage_lethal);
+        const int assigned = std::min(remaining, lethal);
+        cur.push_back({flat[pick], assigned});
+        taken[pick] = true;
+        remaining -= assigned;
+    }
+    if (remaining > 0 && !cur.empty()) cur.back().damage += remaining;
+    return Intent::assignCombatDamage(assigner, std::move(cur));
+}
+
+void GameEngine::combatDamageTiers(PlayerId assigner, const std::vector<GameObjectId>& targets,
+                                   std::vector<GameObjectId>& flat,
+                                   std::vector<int>& tier_of) const {
+    // Dune Surfer: "You ignore [Tank] while assigning combat damage here."
+    bool ignore_tank = false;
+    if (!targets.empty()) {
+        if (auto tbf = state_.getObject(targets.front()).battlefieldId())
+            for (const auto& b : state_.battlefields)
+                if (b.id == *tbf) ignore_tank = b.ignore_tank[playerIndex(assigner)];
+    }
+    std::vector<GameObjectId> tiers[3];
+    for (auto tid : targets) {
+        const auto& obj = state_.getObject(tid);
+        if (obj.hasKeyword(Keyword::Tank) && !ignore_tank) tiers[0].push_back(tid);
+        else if (obj.hasKeyword(Keyword::Backline)) tiers[2].push_back(tid);
+        else                                        tiers[1].push_back(tid);
+    }
+    flat.clear();
+    tier_of.clear();
+    for (int bi = 0; bi < 3; ++bi) {
+        std::sort(tiers[bi].begin(), tiers[bi].end());
+        for (auto id : tiers[bi]) {
+            if (!canTakeCombatDamage(state_.getObject(id))) continue;   // CR 467.2.c.10
+            flat.push_back(id);
+            tier_of.push_back(bi);
+        }
+    }
 }
 
 GameEngine::CombatDamageAdvance GameEngine::testHook_advanceCombatDamage(
@@ -5962,20 +6047,6 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
     // buckets, enumerate permutations within each, concatenate, and run
     // greedy-lethal on every ordering. Identical resulting allocations
     // are deduped.
-    // Dune Surfer: "You ignore [Tank] while assigning combat damage here."
-    bool ignore_tank = false;
-    if (!targets.empty()) {
-        if (auto tbf = state_.getObject(targets.front()).battlefieldId())
-            for (const auto& b : state_.battlefields)
-                if (b.id == *tbf) ignore_tank = b.ignore_tank[playerIndex(assigner)];
-    }
-    std::vector<GameObjectId> tanks, mids, backs;
-    for (auto tid : targets) {
-        auto& obj = state_.getObject(tid);
-        if (obj.hasKeyword(Keyword::Tank) && !ignore_tank) tanks.push_back(tid);
-        else if (obj.hasKeyword(Keyword::Backline)) backs.push_back(tid);
-        else                                        mids.push_back(tid);
-    }
 
     // The key is the sorted (target, damage) list itself (it used to be that
     // list printed into a string — plans/06 item 6.11).
@@ -6004,31 +6075,29 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
     // Two orders that have killed the same set of units lead to the same
     // continuations, so each set is expanded once. (Permuting whole buckets is
     // factorial: 16 token defenders never finished.)
-    std::vector<std::vector<GameObjectId>> buckets = {tanks, mids, backs};
-    for (auto& b : buckets) std::sort(b.begin(), b.end());
     std::vector<GameObjectId> flat;
     std::vector<int> bucket_of;
-    for (int bi = 0; bi < 3; ++bi)
-        for (auto id : buckets[bi]) {
-            if (!canTakeCombatDamage(state_.getObject(id))) continue;   // CR 467.2.c.10
-            flat.push_back(id);
-            bucket_of.push_back(bi);
-        }
+    combatDamageTiers(assigner, targets, flat, bucket_of);
 
-    // Bounds: the option list feeds an agent's action space, and the search
-    // must stay cheap on huge boards. Past either bound the remaining orders
-    // are not offered; the default cascade is always present.
+    // Bounds: one decision offers at most kMaxDamageOptions assignments, and
+    // the search must stay cheap on huge boards. Past either bound the
+    // assignment is made step by step instead (assignCombatDamage), so no
+    // legal assignment is withheld (testing phase B7).
     constexpr size_t kMaxDamageOptions = 64;
     constexpr int kMaxSearchNodes = 20000;
     emitIfNew(buildDefault());
+    bool too_many = flat.size() > 60;
 
-    if (flat.size() <= 60) {
+    if (!too_many) {
         std::set<uint64_t> expanded;
         int nodes = 0;
         std::vector<DamageAssignment> cur;
         // (A lambda that is handed itself: no std::function per combat.)
         auto walk = [&](auto&& self, uint64_t taken, int remaining) -> void {
-            if (options.size() >= kMaxDamageOptions || ++nodes > kMaxSearchNodes) return;
+            if (options.size() > kMaxDamageOptions || ++nodes > kMaxSearchNodes) {
+                too_many = true;
+                return;
+            }
             // Current bucket = the first one that still has an untaken unit.
             int bucket = -1;
             for (size_t k = 0; k < flat.size(); ++k)
@@ -6051,10 +6120,18 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
                 cur.push_back({flat[k], assigned});
                 self(self, next, left);
                 cur.pop_back();
-                if (options.size() >= kMaxDamageOptions || nodes > kMaxSearchNodes) return;
+                if (options.size() > kMaxDamageOptions || nodes > kMaxSearchNodes) {
+                    too_many = true;
+                    return;
+                }
             }
         };
         walk(walk, 0, total_damage);
+    }
+    if (too_many || options.size() > kMaxDamageOptions) {
+        options.clear();
+        adv.kind = CombatDamageAdvance::Kind::StepByStep;
+        return adv;
     }
 
     adv.kind = CombatDamageAdvance::Kind::NeedDecision;

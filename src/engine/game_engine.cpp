@@ -354,26 +354,8 @@ const StepResult& GameEngine::resumeFromSnapshot(GameState snapshot_state,
                 runTurnFromPhase(turn_player, resume_at);
             }
             if (!state_.game_over) {
-                // Apply the same turn-transition logic runTurnLoop uses.
-                auto& p1 = state_.players[0];
-                auto& p2 = state_.players[1];
-                if (!p1.additional_turns.empty()) {
-                    auto next = p1.additional_turns.front();
-                    p1.additional_turns.erase(p1.additional_turns.begin());
-                    state_.turn.turn_player = next;
-                    state_.turn.is_additional_turn = true;
-                    RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-                } else if (!p2.additional_turns.empty()) {
-                    auto next = p2.additional_turns.front();
-                    p2.additional_turns.erase(p2.additional_turns.begin());
-                    state_.turn.turn_player = next;
-                    state_.turn.is_additional_turn = true;
-                    RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-                } else {
-                    state_.turn.turn_player = opponent(state_.turn.turn_player);
-                    state_.turn.is_additional_turn = false;
-                }
-                state_.turn.turn_number++;
+                // The same turn transition runTurnLoop makes.
+                advanceTurnQueue();
                 runTurnLoop();
             }
 
@@ -497,11 +479,12 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
 
 void GameEngine::setupBattlefields(const DeckSubmission& deck1,
                                      const DeckSubmission& deck2) {
-    // Each player picks one of their three battlefields (CR 480.5 says
-    // random for single-game, CR 481.5 says agent choice for match
-    // play). We unconditionally route through the agent — RandomAgent
-    // picks uniformly which satisfies CR 480.5; HumanAgent / MCTS get
-    // to actually choose, which CR 481.5 requires for match play.
+    // Each player picks one of their three battlefields. CR 487.5 (1v1 Duel,
+    // best of one) selects it at random; CR 488.5 (1v1 Match) lets the player
+    // select it. An engine game asks the agent — the Match reading; a
+    // RandomAgent's uniform pick is what a Duel would do. Which mode an engine
+    // game is was left to the project (testing phase G4, pinned by
+    // Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield).
     //
     // The choice is Intent::battlefield_pool_index: the position of the
     // card in the deck's battlefield list (0..N-1). It is not a
@@ -589,6 +572,7 @@ void GameEngine::determineTurnOrder() {
     std::uniform_int_distribution<int> coin(0, 1);
     state_.turn.turn_player = coin(rng_) == 0 ? PlayerId::Player1 : PlayerId::Player2;
     state_.turn.starting_player = state_.turn.turn_player;
+    state_.turn.regular_turn_player = state_.turn.turn_player;
     state_.turn.turn_number = 0;
 
     // Mark both players as being on their first turn
@@ -691,28 +675,7 @@ void GameEngine::runTurnLoop() {
 
         if (state_.game_over) break;
 
-        // Check for additional turns (CR 734-738)
-        // Check both players' queues
-        auto& p1 = state_.players[0];
-        auto& p2 = state_.players[1];
-        if (!p1.additional_turns.empty()) {
-            auto next = p1.additional_turns.front();
-            p1.additional_turns.erase(p1.additional_turns.begin());
-            state_.turn.turn_player = next;
-            state_.turn.is_additional_turn = true;
-            RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-        } else if (!p2.additional_turns.empty()) {
-            auto next = p2.additional_turns.front();
-            p2.additional_turns.erase(p2.additional_turns.begin());
-            state_.turn.turn_player = next;
-            state_.turn.is_additional_turn = true;
-            RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-        } else {
-            // Normal turn alternation
-            state_.turn.turn_player = opponent(state_.turn.turn_player);
-            state_.turn.is_additional_turn = false;
-        }
-        state_.turn.turn_number++;
+        advanceTurnQueue();
     }
 
     if (!state_.game_over) {
@@ -722,6 +685,26 @@ void GameEngine::runTurnLoop() {
         state_.game_over_reason = "Max turns reached";
         events_.emit(GameOverEvent{PlayerId::None, "Max turns reached"});
     }
+}
+
+void GameEngine::advanceTurnQueue() {
+    // Turn order is a looping queue of the players' regular turns (CR 736).
+    // An Additional Turn is inserted right after the current turn (CR 735,
+    // 738: the newest first); it does not change the Turn Order, and after it
+    // the queue goes on with its previously queued turns (CR 737).
+    auto& t = state_.turn;
+    if (!t.is_additional_turn) t.regular_turn_player = t.turn_player;
+    if (!t.additional_turn_queue.empty()) {
+        const PlayerId next = t.additional_turn_queue.front();
+        t.additional_turn_queue.erase(t.additional_turn_queue.begin());
+        t.turn_player = next;
+        t.is_additional_turn = true;
+        RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
+    } else {
+        t.turn_player = opponent(t.regular_turn_player);
+        t.is_additional_turn = false;
+    }
+    t.turn_number++;
 }
 
 void GameEngine::runTurn(PlayerId player) {
@@ -954,7 +937,8 @@ void GameEngine::channelPhase() {
     auto player = state_.turn.turn_player;
     int count = 2;
 
-    // The second player channels an extra rune on their first turn (CR 480.7).
+    // The second player channels an extra rune on their first turn (CR 487.7 /
+    // 488.7, the First Turn Process of a 1v1 Duel / Match).
     // Who went first is what the coin toss recorded (CR 116), not whose turn
     // number 0 happens to be: an extra turn or a changed turn order does not
     // make anyone else "the second player".
@@ -990,17 +974,13 @@ void GameEngine::drawPhase() {
         return;
     }
 
-    // CR 482.7 / 483.7 / 484.7: the player going first does not draw a
-    // card during their first Draw Phase of the game. (The player going
-    // second receives a compensating extra channel in channelPhase().)
-    if (state_.player(player).is_first_turn &&
-        player == state_.turn.starting_player) {
-        RIFT_TRACE(events_, "DRAW PHASE: " + std::string(player == PlayerId::Player1 ? "P1" : "P2") +
-                          " skips draw (first turn, going first — CR 482.7)");
-    } else {
-        // Draw 1 card (CR 315.4.b)
-        drawCards(player, 1);
-    }
+    // Draw 1 card (CR 315.4.b). In 1v1 the player going first draws too: the
+    // First Turn Process of a Duel and a Match (CR 487.7 / 488.7) is only the
+    // second player's extra rune (channelPhase). "The player going first does
+    // not draw a card during their first Draw Phase" is the text of the
+    // multiplayer modes (CR 489.7 / 490.7 / 491.7), which this engine does
+    // not play.
+    drawCards(player, 1);
 
     // Empty rune pools (CR 315.4.d)
     emptyRunePools();
@@ -4242,10 +4222,32 @@ bool GameEngine::enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const {
     return units == 1 && enemies == 1;
 }
 
-bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
+std::vector<GameObjectId> GameEngine::handAndChampion(PlayerId player) const {
+    const auto& ps = state_.player(player);
+    std::vector<GameObjectId> out = ps.hand;
+    if (ps.champion_zone != kInvalidId && state_.objectExists(ps.champion_zone) &&
+        state_.getObject(ps.champion_zone).zone == ZoneType::ChampionZone)
+        out.push_back(ps.champion_zone);
+    return out;
+}
+
+bool GameEngine::ambushLocation(const Card* card_obj, PlayerId player,
                                 const BattlefieldState& bf) const {
+    if (bf.hasUnitsFrom(player, state_.objects)) return true;
+    return card_obj && card_obj->ambushToEnemyBattlefields() &&
+           bf.hasUnitsFrom(opponent(player), state_.objects);
+}
+
+bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
+                                const BattlefieldState& bf, const GameObject* unit) const {
     const auto& ps = state_.player(player);
     if (bf.blocks_unit_play) return false;  // Rockfall Path
+    // [Ambush] "I may be played to a battlefield where you control Units"
+    // (CR 822.1.b): a location permission of its own, not tied to the
+    // [Reaction] timing it also grants — so it holds in the Main Phase too
+    // (testing phase D37).
+    if (unit && unit->hasKeyword(Keyword::Ambush) && ambushLocation(card_obj, player, bf))
+        return true;
     // Play-to-location permissions the card prints (CR 355.2), and the ones
     // another card grants every unit this player plays.
     const unsigned extra = card_obj ? card_obj->extraPlayLocations() : 0u;
@@ -4323,7 +4325,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
 
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
-            const bool can_play_here = unitPlayableAt(card_obj, player, bf);
+            const bool can_play_here = unitPlayableAt(card_obj, player, bf, &card);
 
             if (can_play_here) {
                 Intent bf_play = play_intent;
@@ -4434,6 +4436,12 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         }
     }
 
+    // Facedown cards: from the turn after they were hidden they have
+    // [Reaction] (CR 811.6), which "is not restricted to Closed States or
+    // Showdowns" and includes every other timing (CR 813.2) — its controller's
+    // own Main Phase too (testing phase D25).
+    generateHiddenPlayActions(player, IntentType::PlayActionCard, actions);
+
     // Hide cards with [Hidden] keyword facedown at controlled battlefields
     // (CR 811.1.b: "While this card is in your hand or in your Champion Zone").
     std::vector<GameObjectId> hide_sources = ps.hand;
@@ -4505,8 +4513,9 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
                                     actions);
     }
 
-    // Ambush: play units with [Ambush] during showdowns
-    for (auto card_id : state_.player(player).hand) {
+    // Ambush: play units with [Ambush] during showdowns — from the hand or
+    // the Champion Zone (CR 420.1.a; testing phase D63).
+    for (auto card_id : handAndChampion(player)) {
         if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
@@ -4514,16 +4523,12 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
 
         const Card* amb = card.card_def_id != kInvalidId
             ? card_registry_.get(card.card_def_id) : nullptr;
-        const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
             if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
-            bool here = bf.hasUnitsFrom(player, state_.objects);
-            // Rengar, Trophy Hunter: may Ambush to a BF with enemy units even
-            // without units of your own there.
-            if (!here && enemy_bf_ok)
-                here = bf.hasUnitsFrom(opponent(player), state_.objects);
-            if (!here) continue;
+            // A battlefield where the player has units, or (Rengar, Trophy
+            // Hunter) one with enemy units.
+            if (!ambushLocation(amb, player, bf)) continue;
             Intent ambush;
             ambush.type = IntentType::PlayActionCard;
             ambush.player = player;
@@ -4623,7 +4628,7 @@ void GameEngine::generateReactionPermanentActions(PlayerId player, IntentType in
             actions.push_back(play);
             if (ps.units_play_base_only) continue;  // Mageseeker Warden
             for (const auto& bf : state_.battlefields) {
-                if (!unitPlayableAt(card_obj, player, bf)) continue;
+                if (!unitPlayableAt(card_obj, player, bf, &card)) continue;
                 Intent bf_play = play;
                 bf_play.play_location = BattlefieldLocation{bf.id};
                 actions.push_back(bf_play);
@@ -4654,8 +4659,9 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
     // [Quick-Draw] / [Reaction] gear (attached as it lands, CR 819.1.d).
     generateReactionPermanentActions(player, IntentType::PlayReaction, actions);
 
-    // Ambush: play units with [Ambush] as Reactions to BFs where you have units
-    for (auto card_id : state_.player(player).hand) {
+    // Ambush: play units with [Ambush] as Reactions to BFs where you have
+    // units — from the hand or the Champion Zone (CR 420.1.a; testing phase D63).
+    for (auto card_id : handAndChampion(player)) {
         if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
@@ -4663,14 +4669,10 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
 
         const Card* amb = card.card_def_id != kInvalidId
             ? card_registry_.get(card.card_def_id) : nullptr;
-        const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
             if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
-            bool here = bf.hasUnitsFrom(player, state_.objects);
-            if (!here && enemy_bf_ok)
-                here = bf.hasUnitsFrom(opponent(player), state_.objects);
-            if (!here) continue;
+            if (!ambushLocation(amb, player, bf)) continue;
             Intent ambush;
             ambush.type = IntentType::PlayReaction;
             ambush.player = player;
@@ -4787,9 +4789,29 @@ void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_ty
             // Must be hidden on a previous turn to gain Reaction
             if (card.hidden_on_turn >= state_.turn.turn_number) continue;
             if (card.isSpell() && ps.cant_play_spells_this_turn) continue;
+            // A hidden unit is played to that battlefield (CR 811.1.d.1); where
+            // units can't be played, or not by this player, it is not played at
+            // all — "can't" wins (CR 054.1; testing phase G22). The same rule as
+            // an effect play (EffectExecutor::unitMayBePlayedTo).
+            if (card.isUnit() && (bf.blocks_unit_play || ps.units_play_base_only)) continue;
 
             if (card.card_def_id != kInvalidId && card.isSpell()) {
                 Card* card_obj = card_registry_.get(card.card_def_id);
+                // A spell whose two targets are prompts (needsPlayTimeTargetPair)
+                // is one play, as from hand; the pair is chosen at that
+                // battlefield as it is finalized (CR 811.1.d.2), and with no
+                // pair there it cannot be played from facedown (811.1.d;
+                // testing phase D74).
+                if (card_obj && card_obj->needsPlayTimeTargetPair()) {
+                    if (!card_obj->hasLegalChoicesHiddenAt(state_, player, card_db_, bf.id))
+                        continue;
+                    Intent play;
+                    play.type = intent_type;
+                    play.player = player;
+                    play.card = card_id;
+                    actions.push_back(play);
+                    continue;
+                }
                 if (card_obj) {
                     auto req = card_obj->getTargetRequirements();
                     if (req.count > 0) {

@@ -257,6 +257,11 @@ public:
     void testHook_scoringStep() { scoringStep(); }
     void testHook_executeStandardMove(const Intent& i) { executeStandardMove(i); }
     void testHook_drawPhase() { drawPhase(); }
+    /// The transition from one turn to the next (whose turn, which number).
+    void testHook_nextTurn() { advanceTurnQueue(); }
+    void testHook_setupBattlefields(const DeckSubmission& d1, const DeckSubmission& d2) {
+        setupBattlefields(d1, d2);
+    }
     void testHook_channelPhase() { channelPhase(); }
     void testHook_endingStep() { endingStep(); }
     void testHook_expirationStep() { expirationStep(); }
@@ -399,6 +404,8 @@ private:
     void setupGame(const DeckSubmission& deck1, const DeckSubmission& deck2);
     void setupPlayer(PlayerId player, const DeckSubmission& deck);
     void setupBattlefields(const DeckSubmission& deck1, const DeckSubmission& deck2);
+    /// Who takes the next turn (CR 734-738) and the turn number.
+    void advanceTurnQueue();
     void drawOpeningHands();
     void runMulligans();
     void determineTurnOrder();
@@ -638,9 +645,20 @@ private:
     /// Whether `player` may play the unit `card` to `bf` by the ordinary rule
     /// (a battlefield they control, CR 355.2) or a permission the card prints
     /// or another card grants the player. Paid plays ("pay ... to play it
-    /// here") are the caller's.
+    /// here") are the caller's. `unit` (the card being played) adds what its
+    /// [Ambush] permits: a battlefield where `player` has units (CR 822.1.b),
+    /// widened by Card::ambushToEnemyBattlefields (822.1.d) — at any timing
+    /// the play is offered at; the [Reaction] half is the Ambush generators'.
     bool unitPlayableAt(const Card* card_obj, PlayerId player,
+                        const BattlefieldState& bf,
+                        const GameObject* unit = nullptr) const;
+    /// [Ambush]'s location (CR 822.1.b, 822.1.d): `bf` has units of `player`,
+    /// or — for a card that widens it — enemy units.
+    bool ambushLocation(const Card* card_obj, PlayerId player,
                         const BattlefieldState& bf) const;
+    /// The cards `player` may play a unit from as from a hand: the hand and
+    /// the Chosen Champion in its zone (CR 420.1.a).
+    std::vector<GameObjectId> handAndChampion(PlayerId player) const;
 
     // ── Queries ──
     Intent queryAgent(PlayerId player);

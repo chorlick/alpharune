@@ -305,9 +305,6 @@ struct PlayerState {
     // with a Deathknell trigger. 0 = normal (single fire).
     int deathknell_double_count = 0;
 
-    // Additional turns queue (Phase 5)
-    std::vector<PlayerId> additional_turns;
-
     // ── Observation memory ("revealed card bank") ─────────────────────
     // Counts how many times this player has observed each card identity
     // via reveals (Sabotage, Mindsplitter, Aurora, Vision, Predict-public,
@@ -530,6 +527,12 @@ struct TurnState {
 
     int turn_number = 0;
     bool is_additional_turn = false;
+    /// Additional Turns queued after this one, the next first (CR 735-738;
+    /// GameState::queueAdditionalTurn).
+    std::vector<PlayerId> additional_turn_queue;
+    /// Whose regular turn was the last one begun: the Turn Order resumes from
+    /// it after Additional Turns (CR 737). Written by the turn transition.
+    PlayerId regular_turn_player = PlayerId::Player1;
 
     // True once any unit has died during the current turn (reset each runTurn).
     // Read by cards like Towering Pairofant ("if a unit died this turn, ...").
@@ -1008,6 +1011,18 @@ struct GameState {
         Phase phase = Phase::Done;
     };
     std::optional<CostPaymentCursor> cost_cursor;
+
+    /// "Take a turn after this one" (CR 735): an Additional Turn for `owner`,
+    /// inserted right after the current turn — before any queued earlier
+    /// (CR 738, second example).
+    void queueAdditionalTurn(PlayerId owner) {
+        turn.additional_turn_queue.insert(turn.additional_turn_queue.begin(), owner);
+    }
+    /// How many Additional Turns of `owner` are queued.
+    int additionalTurnsOf(PlayerId owner) const {
+        return static_cast<int>(std::count(turn.additional_turn_queue.begin(),
+                                           turn.additional_turn_queue.end(), owner));
+    }
 
     // ── Object management ──
 

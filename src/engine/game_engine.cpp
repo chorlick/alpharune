@@ -1078,6 +1078,14 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
                     return adv;
                 }
                 getBattlefield(bf_id).showdown_staged = false;
+                // What the showdown's end queued (a conquer) resolves before
+                // anything else begins: a showdown or a combat begins only
+                // in a Neutral Open State (CR 323.11 / 323.12, 344).
+                runChain();
+                if (state_.game_over) {
+                    adv.kind = MainPhaseAdvance::Kind::Done;
+                    return adv;
+                }
             }
             if (const auto& bf = state_.battlefields[bi];
                 bf.combat_staged && !bf.combat_in_progress) {
@@ -6102,6 +6110,13 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
     } else {
         bf.controller = std::nullopt;
     }
+    // CR 468.6: "Resolve any items on the chain from establishing control and
+    // associated FEPR before performing this step" (the end of the combat).
+    // So the conquer abilities of this combat resolve before another staged
+    // combat can begin (CR 323.12: only in a Neutral Open State) — they read
+    // this combat's numbers (excess damage, the last combat's battlefield,
+    // finding B4), not the next one's.
+    if (chain_manager_->chainExists() && !state_.game_over) runChain();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

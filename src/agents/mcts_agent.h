@@ -3,6 +3,11 @@
 /// AgentInterface adapters for search: OpenSpiel's MCTSBot, and an information-set
 /// MCTS (the ISMCTSBot algorithm, see IsMctsSearch in mcts_agent.cpp).
 ///
+/// `MctsAgent` is perfect-information search (it sees hidden cards);
+/// `IsMctsAgent` is honest by default: it searches worlds drawn from what its
+/// player knows (determinizer.h). Both need the mirror described here — the
+/// honest one only as the position its worlds are drawn from.
+///
 /// MCTS works on a clone-able `open_spiel::State` that wraps the
 /// engine. The agent keeps one such state as a mirror of the game it is
 /// playing in: at each `selectAction` it replays the choices the live

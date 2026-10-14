@@ -446,7 +446,7 @@ namespace {
 /// Information-set MCTS: the algorithm of OpenSpiel's `ISMCTSBot`
 /// (open_spiel/algorithms/is_mcts.cc) in the one configuration this agent
 /// uses — UCT selection, a fresh world per simulation, nodes keyed by
-/// (deciding player, ObservationString) — with three differences:
+/// (deciding player, ObservationString) — with four differences:
 ///
 /// * A node's children are kept in ACTION ORDER (std::map). `ISMCTSBot` keeps
 ///   them in an absl::flat_hash_map and iterates it to build the tie-break
@@ -461,6 +461,12 @@ namespace {
 ///   drew (a prompt's object is keyed by its card), and its observation key
 ///   carries the offered ids; keyed like any other node the root would split
 ///   into one node per world.
+/// * With sampled worlds, every node is keyed by what the ROOT's player
+///   observes (single-observer ISMCTS), not by what the player to move
+///   observes: the opponent's own observation names the cards each world drew
+///   for them, so every opponent decision would be a new node in every world.
+///   (Measured: keyed that way, honest ISMCTS-50 won 6 of 20 against random
+///   where random itself wins 34%; keyed by the root player, 21 of 30.)
 /// * The move played is the most visited root option (ties by the RNG), not
 ///   a draw in proportion to the visits; the visits are reported
 ///   (SearchSummary) for a recorder.

@@ -558,10 +558,13 @@ TEST_F(AuditFix7Test, HextechGauntlets_ConquerRiderDraws) {
     CardContext ctx{state, events, exec, P1, gear};
     // "if you assigned 3 or more excess damage": in the combat where my unit is.
     state.player(P1).last_combat_bf = BattlefieldId::fromRaw(0);
+    // The condition is the trigger condition (finding G9): with 2 excess the
+    // ability does not trigger at all.
     state.player(P1).excess_combat_damage = 2;
-    card->onEquippedTrigger(ctx, unit, {});
-    EXPECT_EQ(handSize(P1), before) << "2 excess is not enough";
+    EXPECT_FALSE(triggersNow(748, P1, gear, TriggerType::WhenIConquer, unit))
+        << "2 excess is not enough";
     state.player(P1).excess_combat_damage = 3;
+    EXPECT_TRUE(triggersNow(748, P1, gear, TriggerType::WhenIConquer, unit));
     card->onEquippedTrigger(ctx, unit, {});
     EXPECT_EQ(handSize(P1), before + 1);
 }

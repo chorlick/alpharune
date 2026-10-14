@@ -15,6 +15,11 @@ namespace {
 class RavenbloomStudent : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // Played back by the spell it would trigger on (Temporal Breach on this
+    // Student): it is on the board when that spell's play is completed by its
+    // resolution (CR 420.4.a), so it triggers. Judge question 10 (finding
+    // G26); pinned by Batch1b.G26_RavenbloomStudentPlayedBackByTemporalBreach
+    // TriggersOnIt_J7.
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayASpell; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board

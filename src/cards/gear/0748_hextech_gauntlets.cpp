@@ -32,13 +32,17 @@ public:
     }
 
     TriggerType equippedTriggerType() const override { return TriggerType::WhenIConquer; }
-    void onEquippedTrigger(CardContext& ctx, GameObjectId unit,
+    // "if you assigned 3 or more excess damage" is part of the trigger
+    // condition (CR 383.2.a.1; finding G9): in the combat at the battlefield
+    // my unit (the subject) just conquered, judged at the conquer.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId unit) const override {
+        if (unit == kInvalidId || !state.objectExists(unit)) return false;
+        const auto bf = state.getObject(unit).battlefieldId();
+        return bf && excessCombatDamageAt(state, controller, *bf) >= 3;
+    }
+    void onEquippedTrigger(CardContext& ctx, GameObjectId /*unit*/,
                             const std::vector<GameObjectId>& /*targets*/) override {
-        // "if you assigned 3 or more excess damage": in the combat at the
-        // battlefield my unit just conquered.
-        if (!ctx.state.objectExists(unit)) return;
-        const auto bf = ctx.state.getObject(unit).battlefieldId();
-        if (!bf || excessCombatDamageAt(ctx.state, ctx.controller, *bf) < 3) return;
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "HEXTECH GAUNTLETS: conquer -> draw 1");
     }

@@ -688,7 +688,7 @@ TEST_F(Batch1b, G13_TornadoWarrior_AUnitThatLeftAndCameBackIsNotTouched) {
 // played back during the spell's resolution (a new object, CR 124.1). The
 // engine triggers the played-back Student for that Temporal Breach (CR 420.4.a:
 // such abilities trigger when the play is completed by the resolution; the new
-// Student is on the board then). Pinned; judge question 9.
+// Student is on the board then). Pinned; judge question 10.
 
 TEST_F(Batch1b, G26_RavenbloomStudentPlayedBackByTemporalBreachTriggersOnIt_J7) {
     auto student = addUnit(P1, kRavenbloomStudent, 0, 0);
@@ -1198,6 +1198,85 @@ TEST_F(Batch1bCombat, I2_YetiBrawler_ConquerWithThreeExcessPlaysTwoGold) {
     stageCombat(0, P1);
     withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); });
     EXPECT_EQ(goldTokens(P1), 2);
+}
+
+
+// G9, Equipment: the effect text's condition is the trigger condition too.
+constexpr CardDefId kHextechGauntlets = 748;   // "When I conquer, if you assigned 3 or more excess damage, draw 1."
+constexpr CardDefId kBlightedBattleaxe = 581;  // "At the end of your turn, if I didn't conquer this turn, unattach this and deal 4 to me."
+constexpr CardDefId kTrappingGrounds = 773;    // "When you conquer here, if you assigned 3 or more excess damage, play a 1 [M] Bird unit token with [Deflect]."
+constexpr CardDefId kPiltoverEnforcer = 783;   // legend: "When you conquer, if you assigned 3 or more excess damage, you may exhaust me to ready a unit."
+
+TEST_F(Batch1bCombat, G9_HextechGauntlets_AConquerWithLessThanThreeExcessPutsNothingOnTheChain) {
+    auto bearer = vanilla(P1, 0, 1);   // 1 + the Gauntlets' 3 = 4 [M]
+    auto gauntlets = gearOf(P1, kHextechGauntlets, 0);
+    resolveThroughEngine([&](EffectExecutor& x, GameState&) { x.attachGear(gauntlets, bearer); });
+    ASSERT_EQ(o(gauntlets).attached_to, std::optional<GameObjectId>{bearer});
+    vanilla(P2, 0, 2);   // 2 excess
+    stock(P1);
+    stageCombat(0, P1);
+    withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); });
+    ASSERT_EQ(state.battlefields[0].controller, std::optional<PlayerId>{P1});
+    EXPECT_FALSE(logged("EQUIP_TRIGGER: Hextech Gauntlets"));
+    EXPECT_EQ(handSize(P1), 0);
+}
+
+TEST_F(Batch1bCombat, G9_HextechGauntlets_AConquerWithThreeExcessDraws) {
+    auto bearer = vanilla(P1, 0, 1);   // 1 + the Gauntlets' 3 = 4 [M]
+    auto gauntlets = gearOf(P1, kHextechGauntlets, 0);
+    resolveThroughEngine([&](EffectExecutor& x, GameState&) { x.attachGear(gauntlets, bearer); });
+    vanilla(P2, 0, 1);   // 3 excess
+    stock(P1);
+    stageCombat(0, P1);
+    withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); });
+    EXPECT_TRUE(logged("EQUIP_TRIGGER: Hextech Gauntlets"));
+    EXPECT_EQ(handSize(P1), 1);
+}
+
+TEST_F(Batch1bCombat, G9_BlightedBattleaxe_ABearerThatConqueredPutsNothingOnTheChain) {
+    auto bearer = vanilla(P1, 0, 6);
+    auto axe = gearOf(P1, kBlightedBattleaxe, 0);
+    resolveThroughEngine([&](EffectExecutor& x, GameState&) { x.attachGear(axe, bearer); });
+    o(bearer).card_counters["__conquered_turn"] = state.turn.turn_number;
+    withEngine([&](GameEngine& e) { e.testHook_endingStep(); });
+    EXPECT_FALSE(logged("EQUIP_TRIGGER: Blighted Battleaxe"));
+    EXPECT_EQ(o(bearer).damage_marked, 0);
+    EXPECT_EQ(o(axe).attached_to, std::optional<GameObjectId>{bearer});
+}
+
+TEST_F(Batch1bCombat, G9_BlightedBattleaxe_ABearerThatDidNotConquerTakes4) {
+    auto bearer = vanilla(P1, 0, 6);
+    auto axe = gearOf(P1, kBlightedBattleaxe, 0);
+    resolveThroughEngine([&](EffectExecutor& x, GameState&) { x.attachGear(axe, bearer); });
+    withEngine([&](GameEngine& e) { e.testHook_endingStep(); });
+    EXPECT_TRUE(logged("EQUIP_TRIGGER: Blighted Battleaxe"));
+    EXPECT_EQ(o(bearer).damage_marked, 4);
+    EXPECT_FALSE(o(axe).attached_to.has_value());
+}
+
+// I2: the other cards that read the combat at a conquer.
+TEST_F(Batch1bCombat, I2_TrappingGrounds_AConquerWithThreeExcessPlaysABird) {
+    battlefieldCard(0, kTrappingGrounds);
+    vanilla(P1, 0, 4);
+    vanilla(P2, 0, 1);   // 3 excess
+    stageCombat(0, P1);
+    withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); });
+    ASSERT_EQ(state.battlefields[0].controller, std::optional<PlayerId>{P1});
+    EXPECT_EQ(unitsNamed(P1, "Bird"), 1);
+}
+
+TEST_F(Batch1bCombat, I2_PiltoverEnforcer_AConquerWithThreeExcessOffersTheReady) {
+    battlefieldCard(0, kFrozenFortress);   // the conquer's subject is the battlefield's card
+    auto enforcer = legendOf(P1, kPiltoverEnforcer);
+    auto tired = vanilla(P1, -1, 2);
+    o(tired).is_exhausted = true;
+    vanilla(P1, 0, 4);
+    vanilla(P2, 0, 1);   // 3 excess
+    stageCombat(0, P1);
+    EnginePathAgent p1(EnginePathAgent::choosing(tired, May::Yes));
+    withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); }, &p1);
+    EXPECT_TRUE(o(enforcer).is_exhausted);
+    EXPECT_FALSE(o(tired).is_exhausted);
 }
 
 }  // namespace riftbound::test::batch1b

@@ -825,6 +825,22 @@ private:
     /// unit's cost is paid, and the cost is paid with it. Returns the cost
     /// adjustment to pay with (the Accelerate cost added when chosen) and
     /// records the decision on the card for resolvePermanent.
+    /// Whether the unit `card_id` has [Accelerate] for this play: its own
+    /// keyword, or one a card on `player`'s board gives a unit played from
+    /// where this one is (`from_hand`; Card::grantsAccelerateTo).
+    bool accelerateAvailable(PlayerId player, GameObjectId card_id, bool from_hand) const;
+    /// The [1][C] of [Accelerate] after "optional additional costs you pay
+    /// cost [1] or [A] less": the (energy, power) to pay, the payer choosing
+    /// the half; nullopt if neither is payable.
+    std::optional<std::pair<int, int>> chooseAccelerateHalf(
+        PlayerId player, const std::function<bool(int, int)>& payable);
+    bool chooseAccelerateHalfPayable(PlayerId player,
+                                     const std::function<bool(int, int)>& payable) const;
+    bool askAccelerate(PlayerId player, const GameObject& card);
+    /// [Accelerate] for a play that pays no cost of its own first (from
+    /// facedown, "ignoring its cost", a unit with no Domain): offered if
+    /// payable, paid on its own. True if paid (the unit enters ready).
+    bool offerAccelerateOnItsOwn(PlayerId player, GameObjectId card_id, bool from_hand);
     Card::PlayCostAdjust decideAccelerate(PlayerId player, GameObjectId card_id,
                                           const Card::PlayCostAdjust& prepay,
                                           int extra_any_power);

@@ -979,10 +979,13 @@ public:
     /// if you paid the additional cost, ..."). One key for every card, so
     /// that one place can forget it: forgetPlayPayments.
     static constexpr const char* kAdditionalCostPaid = "__additional_cost_paid";
-    /// The mark GameEngine::beginCostPayment puts on a unit that another card
-    /// gives [Accelerate] for this play (Card::grantsAccelerateTo); taken by
-    /// GameEngine::resolvePermanent. A per-play flag: forgetPlayPayments drops it.
-    static constexpr const char* kGrantedAccelerate = "__granted_accelerate";
+    /// [Accelerate] for this play: 1 decided and not paid, 2 paid with the cost
+    /// (the unit enters ready). Written by GameEngine::decideAccelerate, read
+    /// as the unit enters. A per-play flag: forgetPlayPayments drops it.
+    static constexpr const char* kAccelerateDecided = "__accelerate";
+    /// 1 if this play is from a hand, 2 if from anywhere else (what a grant
+    /// of [Accelerate] reads: Card::grantsAccelerateTo). Per play.
+    static constexpr const char* kAccelerateFromHand = "__accelerate_from_hand";
     /// Forget what was paid for an earlier play of `object`: kAdditionalCostPaid
     /// and the paid_flag of its optionalAdditionalCost(). The engine calls
     /// this as every play of a card begins — whatever the play path and

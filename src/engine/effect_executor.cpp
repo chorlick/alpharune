@@ -2738,11 +2738,23 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
         if (!can_afford_(player, card)) return false;
         if (!pay_cost_(player, card)) return false;
     }
-    return playIgnoringCost(player, card, location);   // costs are settled; put it into play
+    // [Accelerate] was decided with the cost (GameEngine::decideAccelerate).
+    int accelerate = 0;
+    if (auto it = state_.getObject(card).card_counters.find(Card::kAccelerateDecided);
+        it != state_.getObject(card).card_counters.end())
+        accelerate = it->second;
+    // Costs are settled; put it into play.
+    return playIgnoringCostDecided(player, card, location, accelerate);
 }
 
 bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                                        std::optional<LocationId> location) {
+    return playIgnoringCostDecided(player, card, location, -1);
+}
+
+bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
+                                             std::optional<LocationId> location,
+                                             int accelerate) {
     if (!state_.objectExists(card)) return false;
     auto& obj = state_.getObject(card);
     // "Units can't be played here." and its kin hold for a unit an effect
@@ -2753,6 +2765,13 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                          ") can't be played there — it is not played");
         return false;
     }
+    // [Accelerate] (CR 805.1.b): "As you play me, you may pay [1][C] ...". A
+    // play "ignoring its cost" may still pay it (CR 356.1.b.3, the Legion
+    // Rearguard example): offered now, on its own, if nothing decided it
+    // with a cost (testing phase D48 / D58).
+    bool accelerated = accelerate == 2;
+    if (accelerate < 0 && obj.isUnit() && offer_accelerate_)
+        accelerated = offer_accelerate_(player, card, obj.zone == ZoneType::Hand);
     // A new play, and nothing is paid for it: what an earlier play of this
     // card paid is forgotten (Card::forgetPlayPayments).
     Card::forgetPlayPayments(state_, cardFor(obj.card_def_id), player, card);
@@ -2807,7 +2826,7 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
         // play this turn enter ready.") or the unit's own text does ("I enter
         // ready", Card::entersReadyOnPlay) — as GameEngine::resolvePermanent
         // decides it for a unit played from hand.
-        bool ready = state_.player(player).otherUnitsEnterReady(card) ||
+        bool ready = accelerated || state_.player(player).otherUnitsEnterReady(card) ||
                      state_.player(player).units_enter_ready_this_turn;
         if (const Card* self_card = cardFor(obj.card_def_id))
             ready = ready || self_card->entersReadyOnPlay(state_, player, obj);

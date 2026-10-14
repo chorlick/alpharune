@@ -42,6 +42,9 @@ constexpr CardDefId kKennenKeeperOfBalance = 922;
 constexpr CardDefId kDefenderOfTomorrow = 936;
 constexpr CardDefId kZhonyasHourglass = 77;
 constexpr CardDefId kSunDisc = 21;
+constexpr CardDefId kLegionRearguard = 10;   // Fury, 2 Energy, [Accelerate]
+constexpr CardDefId kRekSaiBreacher = 352;
+constexpr CardDefId kEzrealProdigy = 470;
 
 class Batch4bTest : public CardTestFixture {
 protected:
@@ -110,6 +113,15 @@ protected:
         o(card).hidden_at = bfId(bf);
         o(card).hidden_on_turn = state.turn.turn_number - 1;
         state.battlefields[bf].facedown.push_back(card);
+    }
+    /// A card of `def` in `p`'s trash.
+    GameObjectId trashCard(PlayerId p, CardDefId def) {
+        auto id = addToHand(p, def);
+        auto& hand = ps(p).hand;
+        hand.erase(std::remove(hand.begin(), hand.end(), id), hand.end());
+        o(id).zone = ZoneType::Trash;
+        ps(p).trash.push_back(id);
+        return id;
     }
     void fund(PlayerId p, int energy, int power = 0) {
         ps(p).rune_pool.energy += energy;
@@ -590,6 +602,95 @@ TEST_F(Batch4bTest, D80_LonelyPoro359_AUnitThatArrivesLaterDoesNotChangeIt) {
         e.testHook_runChain();
     });
     EXPECT_EQ(handSize(P1) - before, 1) << "it died alone";
+}
+
+// ─── D43, D48, D58  [Accelerate] on every play ──────────────────────────────
+// CR 805.1.b: "As you play me, you may pay [1][C] as an additional cost. If
+// you do, I enter ready." It is an Optional Additional Cost (805.1), so
+// Ezreal, Prodigy's "optional additional costs you pay cost [1] or [A] less"
+// applies to it (356.4.c, 356.4.f); and a play "ignoring its cost" may still
+// pay it (356.1.b.3, the Legion Rearguard example).
+
+TEST_F(Batch4bTest, D43_EzrealsDiscountMakesAccelerateAffordable) {
+    addUnit(P1, kEzrealProdigy, 0);
+    auto rearguard = addToHand(P1, kLegionRearguard);
+    fund(P1, 2, 1);   // the card's [2], and one Power: [1][R] less [1]
+    EnginePathAgent agent(EnginePathAgent::script({1}));   // pay Accelerate
+    playThroughEngine(rearguard, &agent, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_TRUE(onBoard(rearguard));
+    EXPECT_FALSE(o(rearguard).is_exhausted) << "it entered ready";
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
+}
+
+TEST_F(Batch4bTest, D48_AUnitPlayedIgnoringItsCostMayPayAccelerate) {
+    auto rearguard = trashCard(P1, kLegionRearguard);
+    fund(P1, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.playIgnoringCost(P1, rearguard, LocationId{BaseLocation{P1}});
+    }, &agent);
+    ASSERT_TRUE(onBoard(rearguard));
+    EXPECT_EQ(agent.prompts.size(), 1u) << "asked once";
+    EXPECT_FALSE(o(rearguard).is_exhausted);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
+}
+
+TEST_F(Batch4bTest, D48_DecliningAccelerateLeavesItExhausted) {
+    auto rearguard = trashCard(P1, kLegionRearguard);
+    fund(P1, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.playIgnoringCost(P1, rearguard, LocationId{BaseLocation{P1}});
+    }, &agent);
+    ASSERT_TRUE(onBoard(rearguard));
+    EXPECT_TRUE(o(rearguard).is_exhausted);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 1);
+}
+
+// Rek'Sai, Breacher: "Friendly units played from anywhere other than a
+// player's hand have [Accelerate]."
+TEST_F(Batch4bTest, D58_RekSaiGivesAccelerateToAUnitAnEffectPlaysFromTheTrash) {
+    addUnit(P1, kRekSaiBreacher, 0);
+    auto skulker = trashCard(P1, kShipyardSkulker);
+    fund(P1, 1, 1);
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.playIgnoringCost(P1, skulker, LocationId{BaseLocation{P1}});
+    }, &agent);
+    ASSERT_TRUE(onBoard(skulker));
+    EXPECT_FALSE(o(skulker).is_exhausted);
+}
+
+TEST_F(Batch4bTest, D58_RekSaiGivesNothingToAUnitPlayedFromAHand) {
+    addUnit(P1, kRekSaiBreacher, 0);
+    auto skulker = addToHand(P1, kShipyardSkulker);
+    fund(P1, 1, 1);
+    EnginePathAgent agent;
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.playIgnoringCost(P1, skulker, LocationId{BaseLocation{P1}});
+    }, &agent);
+    ASSERT_TRUE(onBoard(skulker));
+    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_TRUE(o(skulker).is_exhausted);
+}
+
+// An effect play that pays the cost (Void Burrower) decides Accelerate with
+// the cost, judged on the whole (CR 355.1.a).
+TEST_F(Batch4bTest, D58_AnEffectPlayThatPaysTheCostOffersAccelerateWithIt) {
+    addUnit(P1, kRekSaiBreacher, 0);
+    auto rearguard = trashCard(P1, kLegionRearguard);
+    fund(P1, 3, 1);   // [2] and [1][R]
+    EnginePathAgent agent(EnginePathAgent::script({1}));
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.playPayingCost(P1, rearguard, LocationId{BaseLocation{P1}});
+    }, &agent);
+    ASSERT_TRUE(onBoard(rearguard));
+    EXPECT_EQ(agent.prompts.size(), 1u) << "asked once, with the cost";
+    EXPECT_FALSE(o(rearguard).is_exhausted);
+    EXPECT_EQ(ps(P1).rune_pool.energy, 0);
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
 }
 
 }  // namespace riftbound::test::batch_4b

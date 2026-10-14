@@ -595,6 +595,11 @@ public:
                                GameObjectId subject = kInvalidId) {
         if (queue_trigger_) queue_trigger_(source, controller, trigger, subject);
     }
+    /// [Accelerate] for a unit an effect plays without paying its cost
+    /// (injected by the engine: GameEngine::offerAccelerateOnItsOwn). True if
+    /// it was paid. Without it (a bare executor) nothing is offered.
+    using OfferAccelerateFn = std::function<bool(PlayerId, GameObjectId, bool from_hand)>;
+    void setOfferAccelerate(OfferAccelerateFn fn) { offer_accelerate_ = std::move(fn); }
     void setPlayCostFns(CanAffordFn can, PayCostFn pay) {
         can_afford_ = std::move(can);
         pay_cost_ = std::move(pay);
@@ -680,6 +685,11 @@ private:
     RechooseFn rechoose_;
     PayCostFn pay_cost_;
     const CardRegistry* card_registry_ = nullptr;  // optional; needed for playIgnoringCost onPlay dispatch
+    OfferAccelerateFn offer_accelerate_;
+    /// playIgnoringCost, told what became of [Accelerate]: -1 not decided yet
+    /// (offered here), else Card::kAccelerateDecided's value (2 = paid).
+    bool playIgnoringCostDecided(PlayerId player, GameObjectId card,
+                                 std::optional<LocationId> location, int accelerate);
     std::mt19937_64* rng_ = nullptr;
     AgentChoiceQuery agent_query_;
     mutable std::string asking_;

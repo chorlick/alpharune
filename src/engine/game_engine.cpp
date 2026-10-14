@@ -89,8 +89,15 @@ void GameEngine::initSubsystems() {
     effect_executor_->setPlayCostFns(
         [this](PlayerId p, GameObjectId card) { return canAfford(p, card); },
         [this](PlayerId p, GameObjectId card) {
-            return payCardCost(p, card, payAdditionalPlayCosts(p, card, 0));
+            // [Accelerate] is decided with the play's other choices, before the
+            // cost, and paid with it (CR 355.1.a; testing phase D58).
+            auto adj = payAdditionalPlayCosts(p, card, 0);
+            adj = decideAccelerate(p, card, adj, 0);
+            return payCardCost(p, card, adj);
         });
+    effect_executor_->setOfferAccelerate([this](PlayerId p, GameObjectId card, bool from_hand) {
+        return offerAccelerateOnItsOwn(p, card, from_hand);
+    });
     chain_manager_->setEffectExecutor(effect_executor_.get());
     // CR 334: the chain's loop handles outstanding tasks — the Cleanup —
     // before it finalizes, after every finalization and after every
@@ -1808,53 +1815,154 @@ void GameEngine::placeBelowWhatItsPlayTriggered(ChainItemId item_id, ChainItemId
     std::rotate(first, self, self + 1);
 }
 
-Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId card_id,
-                                                  const Card::PlayCostAdjust& prepay,
-                                                  int extra_any_power) {
-    auto& card = state_.getObject(card_id);
-    card.card_counters.erase("__accelerate");
-    if (!card.isUnit() || prepay.ignore_cost) return prepay;
-    const bool granted = card.card_counters.count("__granted_accelerate") &&
-                         card.card_counters["__granted_accelerate"] != 0;
-    if (!card.keywords.has(Keyword::Accelerate) && !granted) return prepay;
-    // A unit with no Domain pays the Power with [A] (CR 805.1.b.2), which is
-    // not the card's own Power: that case is asked as the unit enters
-    // (resolvePermanent), from what is left after the cost.
-    if (card.domains.empty()) return prepay;
-    // [1] and one Power of the unit's own Domains (CR 805.1.b.1), added to
-    // the card's cost: one payment, judged as a whole.
-    Card::PlayCostAdjust with = prepay;
-    with.energy_reduction -= 1;
-    with.power_reduction -= 1;
-    card.card_counters["__accelerate"] = 1;   // decided: not paid
-    if (granted) card.card_counters["__granted_accelerate"] = 0;
-    if (!canAffordWith(player, card_id, extra_any_power, with)) return prepay;
+namespace {
+// `discount` units of "[1] or [A] less" taken off (energy, power), the Energy
+// half first or the Power half first; what one half cannot use goes to the other.
+std::pair<int, int> afterEitherDiscount(int energy, int power, int discount, bool power_first) {
+    int& first = power_first ? power : energy;
+    int& second = power_first ? energy : power;
+    const int a = std::min(first, discount);
+    first -= a;
+    second -= std::min(second, discount - a);
+    return {energy, power};
+}
+}  // namespace
 
+bool GameEngine::accelerateAvailable(PlayerId player, GameObjectId card_id,
+                                     bool from_hand) const {
+    if (!state_.objectExists(card_id)) return false;
+    const auto& card = state_.getObject(card_id);
+    if (!card.isUnit() || card.card_def_id == kInvalidId) return false;
+    if (card.keywords.has(Keyword::Accelerate)) return true;
+    // A card on the player's board may give the unit being played
+    // [Accelerate] for this play (Rek'Sai, Breacher: "played from anywhere
+    // other than a player's hand"; Card::grantsAccelerateTo).
+    for (const auto& [oid, obj] : state_.objects.onBoard()) {
+        if (obj.controller != player || obj.card_def_id == kInvalidId) continue;
+        const Card* granter = card_registry_.get(obj.card_def_id);
+        if (granter && granter->grantsAccelerateTo(state_, oid, card, from_hand)) return true;
+    }
+    return false;
+}
+
+std::optional<std::pair<int, int>> GameEngine::chooseAccelerateHalf(
+    PlayerId player, const std::function<bool(int energy, int power)>& payable) {
+    // [Accelerate] is an Optional Additional Cost (CR 805.1): "optional
+    // additional costs you pay cost [1] or [A] less" applies to it (CR
+    // 356.4.c, 356.4.f; Card::optionalCostDiscount), the payer choosing the
+    // half when both are payable and differ.
+    const int disc = optionalCostDiscount(player);
+    const auto e_first = afterEitherDiscount(1, 1, disc, false);
+    const auto p_first = afterEitherDiscount(1, 1, disc, true);
+    const bool e_ok = payable(e_first.first, e_first.second);
+    const bool p_ok = payable(p_first.first, p_first.second);
+    if (!e_ok && !p_ok) return std::nullopt;
+    if (e_ok && p_ok && e_first != p_first) {
+        Intent e; e.type = IntentType::MakeChoice; e.player = player;
+        e.chosen_value = 0; e.choice_label = "cost [1] less";
+        Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
+        const bool pf = decideNow(player, {e, pw},
+            "optional additional cost: [1] or [A] less").chosen_value.value_or(0) == 1;
+        return pf ? p_first : e_first;
+    }
+    return e_ok ? e_first : p_first;
+}
+
+bool GameEngine::askAccelerate(PlayerId player, const GameObject& card) {
     Intent decline;
     decline.type = IntentType::MakeChoice;
     decline.player = player;
     decline.chosen_value = 0;  // 0 = decline
-    Intent accept;
-    accept.type = IntentType::MakeChoice;
-    accept.player = player;
-    accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+    Intent accept = decline;
+    accept.chosen_value = 1;   // 1 = pay [1][C] for Accelerate
     decline.declines = true;   // the "no" of a yes/no (Intent::declines)
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                      " (" + toString(player) + "): pay [1][" +
-                     std::string(toString(card.domains.front())) +
+                     (card.domains.empty() ? std::string("A")
+                                           : std::string(toString(card.domains.front()))) +
                      "] for Accelerate on " + card.name + "? [decline|pay] [2 options]");
     auto chosen = askAgent(player, opts);
     if (on_decision) on_decision(state_, opts, chosen);
-    auto& again = state_.getObject(card_id);
-    if (chosen.chosen_value.value_or(0) != 1) {
-        RIFT_TRACE(events_, "ACCELERATE: " + again.name + " declined");
+    return chosen.chosen_value.value_or(0) == 1;
+}
+
+Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId card_id,
+                                                  const Card::PlayCostAdjust& prepay,
+                                                  int extra_any_power) {
+    auto& card = state_.getObject(card_id);
+    card.card_counters.erase(Card::kAccelerateDecided);
+    if (!card.isUnit()) return prepay;
+    const bool from_hand =
+        state_.player(player).current_play_source == Intent::PlaySource::Hand;
+    card.card_counters[Card::kAccelerateFromHand] = from_hand ? 1 : 2;
+    if (prepay.ignore_cost) return prepay;
+    if (!accelerateAvailable(player, card_id, from_hand)) return prepay;
+    // A unit with no Domain pays the Power with [A] (CR 805.1.b.2), which is
+    // not the card's own Power: that case is asked as the unit enters
+    // (resolvePermanent), from what is left after the cost.
+    if (card.domains.empty()) return prepay;
+    card.card_counters[Card::kAccelerateDecided] = 1;   // decided: not paid
+    // [1] and one Power of the unit's own Domains (CR 805.1.b.1), less any
+    // discount on optional additional costs, added to the card's cost: one
+    // payment, judged as a whole.
+    auto with_half = [&](int energy, int power) {
+        Card::PlayCostAdjust with = prepay;
+        with.energy_reduction -= energy;
+        with.power_reduction -= power;
+        return with;
+    };
+    auto payable = [&](int energy, int power) {
+        return canAffordWith(player, card_id, extra_any_power, with_half(energy, power));
+    };
+    if (!chooseAccelerateHalfPayable(player, payable)) return prepay;
+    if (!askAccelerate(player, state_.getObject(card_id))) {
+        RIFT_TRACE(events_, "ACCELERATE: " + state_.getObject(card_id).name + " declined");
         return prepay;
     }
-    RIFT_TRACE(events_, "ACCELERATE: " + again.name + " pays [1] + power to enter ready");
-    again.card_counters["__accelerate"] = 2;   // paid with the cost: enters ready
-    return with;
+    const auto half = chooseAccelerateHalf(player, payable);
+    auto& again = state_.getObject(card_id);
+    if (!half.has_value()) return prepay;   // (judged payable just above)
+    RIFT_TRACE(events_, "ACCELERATE: " + again.name + " pays [" + std::to_string(half->first) +
+                     "] + " + std::to_string(half->second) + " power to enter ready");
+    again.card_counters[Card::kAccelerateDecided] = 2;   // paid with the cost: enters ready
+    return with_half(half->first, half->second);
+}
+
+bool GameEngine::chooseAccelerateHalfPayable(
+    PlayerId player, const std::function<bool(int energy, int power)>& payable) const {
+    const int disc = optionalCostDiscount(player);
+    const auto e_first = afterEitherDiscount(1, 1, disc, false);
+    const auto p_first = afterEitherDiscount(1, 1, disc, true);
+    return payable(e_first.first, e_first.second) || payable(p_first.first, p_first.second);
+}
+
+bool GameEngine::offerAccelerateOnItsOwn(PlayerId player, GameObjectId card_id, bool from_hand) {
+    // For a play that pays no cost of its own first — from facedown, "play it,
+    // ignoring its cost" (CR 356.1.b.3: the Accelerate cost is still added),
+    // a unit with no Domain: [1] and one Power of the unit's Domains ([A] for
+    // none), on its own.
+    if (!accelerateAvailable(player, card_id, from_hand)) return false;
+    const auto& card = state_.getObject(card_id);
+    const resource::DomainMask mask = resource::maskOf(card.domains.get());
+    auto payable = [&](int energy, int power) {
+        return resource::canPayIn(state_, player, energy, power, mask, SpendFor::Unit);
+    };
+    if (!chooseAccelerateHalfPayable(player, payable)) return false;
+    if (!askAccelerate(player, card)) {
+        RIFT_TRACE(events_, "ACCELERATE: " + card.name + " declined");
+        return false;
+    }
+    const auto half = chooseAccelerateHalf(player, payable);
+    if (!half.has_value()) return false;
+    if (!resource::payIn(state_, events_, player, half->first, half->second, mask,
+                         SpendFor::Unit))
+        return false;
+    RIFT_TRACE(events_, "ACCELERATE: " + state_.getObject(card_id).name + " pays [" +
+                     std::to_string(half->first) + "] + " + std::to_string(half->second) +
+                     " power to enter ready");
+    return true;
 }
 
 void GameEngine::announcePermanentPlayed(GameObjectId card_id, PlayerId player) {
@@ -3468,68 +3576,29 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
         // decision to the agent. (Previously auto-applied whenever
         // affordable, which silently spent the player's energy + rune
         // every time the Accelerate cost happened to be payable.)
-        const bool granted_accelerate = card.card_counters.count("__granted_accelerate") &&
-                                        card.card_counters["__granted_accelerate"] != 0;
-        if (granted_accelerate) card.card_counters["__granted_accelerate"] = 0;
         // Decided — and paid — with the card's cost (decideAccelerate; CR
         // 355.1.a, 805.2.b: "as long as the cost was paid, that unit will
-        // still enter ready"). The prompt below is for the plays that do not
-        // pay a cost of their own first (from facedown, a no-Domain unit).
+        // still enter ready"). Asked here, on its own, for the plays that do
+        // not pay a cost of their own first: from facedown, a unit with no
+        // Domain (offerAccelerateOnItsOwn).
         int accelerate_decided = 0;
-        if (auto ad = card.card_counters.find("__accelerate"); ad != card.card_counters.end()) {
+        if (auto ad = card.card_counters.find(Card::kAccelerateDecided); ad != card.card_counters.end()) {
             accelerate_decided = ad->second;
             card.card_counters.erase(ad);
         }
         if (accelerate_decided == 2) enters_ready = true;
-        if (accelerate_decided == 0 &&
-            (card.keywords.has(Keyword::Accelerate) || granted_accelerate)) {
-            // CR 805.1.b.1: the Power must match one of the unit's own domains;
-            // 805.1.b.2: a unit with no domain pays it with [A].
-            std::optional<Domain> domain_to_pay;
-            if (card.domains.empty()) {
-                if (canPayAdditionalCost(item.controller, 1, 1, Domain::Count, true))
-                    domain_to_pay = Domain::Count;
-            } else {
-                for (Domain d : card.domains) {
-                    if (canPayAdditionalCost(item.controller, 1, 1, d, true)) {
-                        domain_to_pay = d;
-                        break;
-                    }
-                }
-            }
-            if (domain_to_pay.has_value()) {
-                Intent decline;
-                decline.type = IntentType::MakeChoice;
-                decline.player = item.controller;
-                decline.chosen_value = 0;  // 0 = decline
-                Intent accept;
-                accept.type = IntentType::MakeChoice;
-                accept.player = item.controller;
-                accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
-                decline.declines = true;   // the "no" of a yes/no (Intent::declines)
-                std::vector<Intent> opts = {decline, accept};
-
-                state_.decision_index++;
-                RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
-                                 " (" + toString(item.controller) + "): "
-                                 "pay [1][" + (*domain_to_pay == Domain::Count ? "A"
-                                     : toString(*domain_to_pay)) +
-                                 "] for Accelerate on " + card.name +
-                                 "? [decline|pay] [2 options]");
-
-                auto chosen = askAgent(item.controller, opts);
-                if (on_decision) on_decision(state_, opts, chosen);
-
-                bool wants_pay = chosen.chosen_value.value_or(0) == 1;
-                if (wants_pay) {
-                    RIFT_TRACE(events_, "ACCELERATE: " + card.name + " pays [1] + power to enter ready");
-                    payAdditionalCost(item.controller, 1, 1, *domain_to_pay, true);
-                    enters_ready = true;
-                } else {
-                    RIFT_TRACE(events_, "ACCELERATE: " + card.name + " declined");
-                }
-            }
+        if (accelerate_decided == 0) {
+            // Where the play came from: recorded with its choices (a play
+            // from facedown is not from a hand).
+            bool from_hand = !card.card_counters.count("__played_from_facedown") ||
+                             card.card_counters["__played_from_facedown"] == 0;
+            if (auto fh = card.card_counters.find(Card::kAccelerateFromHand);
+                fh != card.card_counters.end())
+                from_hand = fh->second == 1;
+            if (offerAccelerateOnItsOwn(item.controller, item.source, from_hand))
+                enters_ready = true;
         }
+        state_.getObject(item.source).card_counters.erase(Card::kAccelerateFromHand);
         // [Ambush] (CR 822.1.b) grants only a play location and [Reaction]
         // timing ("I have [Reaction] as long as I'm being played to a
         // battlefield where you control Units"). It does NOT make the unit
@@ -7234,18 +7303,6 @@ int GameEngine::optionalCostDiscount(PlayerId player) const {
     return std::max(0, total);
 }
 
-namespace {
-// `discount` units of "[1] or [A] less" taken off (energy, power), the Energy
-// half first or the Power half first; what one half cannot use goes to the other.
-std::pair<int, int> afterEitherDiscount(int energy, int power, int discount, bool power_first) {
-    int& first = power_first ? power : energy;
-    int& second = power_first ? energy : power;
-    const int a = std::min(first, discount);
-    first -= a;
-    second -= std::min(second, discount - a);
-    return {energy, power};
-}
-}  // namespace
 
 bool GameEngine::canPayOptionalCost(PlayerId player, int energy, int power,
                                     resource::DomainMask domains, SpendFor spend_for) const {
@@ -7733,22 +7790,9 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     int energy_needed = cost.energy;
     int power_needed = cost.power;
 
-    // A card on the player's board may give the unit being played [Accelerate]
-    // (Card::grantsAccelerateTo). Mark it so resolvePermanent offers the usual
-    // optional [1][C] (CR 805.1.b — a "may pay", never a mandatory surcharge).
-    // The cost-payment path has no Intent, so the play source comes from the
-    // transient PlayerState::current_play_source (set in executePlayCard).
-    if (card.isUnit()) {
-        const bool from_hand = ps.current_play_source == Intent::PlaySource::Hand;
-        for (auto& [oid, obj] : state_.objects.onBoard()) {
-            if (obj.controller != player || !obj.location.has_value()) continue;
-            if (obj.card_def_id == kInvalidId) continue;
-            const Card* granter = card_registry_.get(obj.card_def_id);
-            if (!granter || !granter->grantsAccelerateTo(state_, oid, card, from_hand)) continue;
-            card.card_counters["__granted_accelerate"] = 1;
-            break;
-        }
-    }
+    // ([Accelerate] a card on the board gives this play — Card::
+    // grantsAccelerateTo — is decided with the rest of the play's choices,
+    // before this payment: decideAccelerate / accelerateAvailable.)
     // Consume the one-shot modifiers that applied to this card ("your next
     // spell / unit / card costs ...") — from this player's list and, for the
     // ones that reach across, the opponent's. A one-shot that did not apply

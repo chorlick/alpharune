@@ -125,6 +125,7 @@ TEST_F(KnowledgeReveals, ARevealedHandIsKnownWhileItIsChosenFromAndAfter) {
 
     // A hand card the other player cannot follow leaves: what P1 knew of the
     // hand is no longer certain (the tracker's rule for an unseen move).
+    state.turn.turn_player = P2;   // a card is hidden on its owner's turn (testing phase B8)
     withEngine([&](GameEngine& e) {
         Intent hide;
         hide.type = IntentType::HideCard;

@@ -89,6 +89,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -757,10 +758,27 @@ protected:
 
     /// Run `body(engine)` on a real engine holding the fixture's state, in
     /// `turn_player`'s main phase with nothing on the chain yet.
+    /// `turn_player`: whose turn it is when the test has not started one
+    /// (phase Setup; P1 if none is named). Once a turn is under way the state's
+    /// turn player stands, and naming a different one throws std::logic_error:
+    /// it would otherwise be ignored without a word (testing phase B8). The
+    /// helpers that play a card for its controller pass that player only as a
+    /// default (withEngineDefaultTurn), so P2 may react on P1's turn.
     void withEngine(const std::function<void(GameEngine&)>& body,
                     AgentInterface* p1_agent = nullptr,
                     AgentInterface* p2_agent = nullptr,
-                    PlayerId turn_player = P1) {
+                    std::optional<PlayerId> turn_player = std::nullopt) {
+        if (turn_player.has_value() && state.turn.phase != TurnPhase::Setup &&
+            *turn_player != state.turn.turn_player)
+            throw std::logic_error("CardTestFixture::withEngine: the turn player is already " +
+                                   std::string(toString(state.turn.turn_player)) +
+                                   "; set state.turn.turn_player to change it");
+        withEngineDefaultTurn(body, p1_agent, p2_agent, turn_player.value_or(P1));
+    }
+    /// withEngine with `turn_player` used only if no turn is under way.
+    void withEngineDefaultTurn(const std::function<void(GameEngine&)>& body,
+                               AgentInterface* p1_agent, AgentInterface* p2_agent,
+                               PlayerId turn_player) {
         EnginePathAgent default_p1, default_p2;
         GameEngine engine(card_db, events, card_registry);
         engine.mutableState() = state;
@@ -805,7 +823,7 @@ protected:
         // CR 319), resolve the triggers the cleanup queued. Without the
         // cleanup a damage spell left its victims on the board with
         // damage_marked >= might.
-        withEngine([&](GameEngine& e) {
+        withEngineDefaultTurn([&](GameEngine& e) {
             e.testHook_executeIntent(play);
             settleLikeTheEngine(e);
         }, p1_agent, p2_agent, player);
@@ -835,7 +853,7 @@ protected:
                                   AgentInterface* p2_agent = nullptr) {
         ASSERT_TRUE(state.objectExists(source));
         const PlayerId controller = state.getObject(source).controller;
-        withEngine([&](GameEngine& e) {
+        withEngineDefaultTurn([&](GameEngine& e) {
             ASSERT_TRUE(e.testHook_executor().canQueueTriggers());
             e.testHook_executor().queueTriggeredAbility(source, controller, trigger, subject);
             settleLikeTheEngine(e);
@@ -871,8 +889,8 @@ protected:
         equip.player = state.getObject(gear).controller;
         equip.ability_source = gear;
         equip.targets = {unit};
-        withEngine([&](GameEngine& e) { e.testHook_executeIntent(equip); },
-                   p1_agent, p2_agent, equip.player);
+        withEngineDefaultTurn([&](GameEngine& e) { e.testHook_executeIntent(equip); },
+                              p1_agent, p2_agent, equip.player);
         return state.getObject(gear).attached_to == std::optional<GameObjectId>{unit};
     }
 
@@ -882,7 +900,7 @@ protected:
     void resolveThroughEngine(const std::function<void(EffectExecutor&, GameState&)>& cause,
                               AgentInterface* p1_agent = nullptr,
                               AgentInterface* p2_agent = nullptr,
-                              PlayerId turn_player = P1) {
+                              std::optional<PlayerId> turn_player = std::nullopt) {
         withEngine([&](GameEngine& e) {
             cause(e.testHook_executor(), e.mutableState());
             settleLikeTheEngine(e);

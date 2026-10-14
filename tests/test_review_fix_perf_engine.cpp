@@ -1738,7 +1738,8 @@ protected:
         play.player = caster;
         play.card = spell;
         play.targets = {unit};
-        withEngine([&](GameEngine& e) {
+        // The caster's play, on whatever turn the test is in (testing phase B8).
+        withEngineDefaultTurn([&](GameEngine& e) {
             e.testHook_executeIntent(play);
             settleLikeTheEngine(e);
         }, nullptr, nullptr, caster);

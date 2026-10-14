@@ -7,6 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace riftbound {
 
@@ -207,13 +208,17 @@ void DeckValidator::checkRuneDomains(const DeckSubmission& deck,
 
 void DeckValidator::checkCopyLimits(const DeckSubmission& deck,
                                      ValidationResult& result) const {
-    // Max 3 copies of any named card across main + sideboard (CR 103.2.b)
+    // Max 3 copies of any named card, and one of a [Unique] card (CR 825.3.a),
+    // across Main Deck (the Chosen Champion included) + sideboard: limits on
+    // copies of named cards apply to the combination (Tournament Rules 403.3).
     std::unordered_map<std::string, int> name_counts;
+    std::unordered_set<std::string> unique_names;
 
     auto countCard = [&](CardDefId id) {
         const auto& card = db_.get(id);
         if (card.unlimited_copies) return;   // "any number of cards named ..."
         name_counts[card.name]++;
+        if (card.keywords.has(Keyword::Unique)) unique_names.insert(card.name);
     };
 
     for (auto id : deck.main_deck) countCard(id);
@@ -221,6 +226,15 @@ void DeckValidator::checkCopyLimits(const DeckSubmission& deck,
     for (auto id : deck.sideboard) countCard(id);
 
     for (auto& [name, count] : name_counts) {
+        if (unique_names.count(name)) {
+            // CR 825.3.a: "A deck can contain only one card of a given name if
+            // the card has Unique". 825.3.b: still one each for a Signature.
+            if (count > 1) {
+                result.addError("Too many copies of [Unique] card '" + name + "': " +
+                                std::to_string(count) + " (max 1 across main + sideboard)");
+            }
+            continue;
+        }
         if (count > 3) {
             result.addError("Too many copies of '" + name + "': " +
                             std::to_string(count) + " (max 3 across main + sideboard)");

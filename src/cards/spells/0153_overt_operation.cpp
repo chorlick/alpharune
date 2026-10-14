@@ -73,7 +73,7 @@ public:
                 GameObjectId::fromRaw(ri.resume_data[++ri.resume_data[0]]);
             if (!has_buff(id)) continue;
             ctx.executor.requestChoice(ctx.controller,
-                {valChoice(ctx.controller, 0, "Keep its buff"),
+                {declineChoice(ctx.controller, "Keep its buff"),
                  valChoice(ctx.controller, 1, "Spend its buff to ready it")},
                 "Overt Operation: spend " + ctx.state.getObject(id).name +
                 "'s buff to ready it?");

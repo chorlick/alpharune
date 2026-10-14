@@ -17,6 +17,19 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you banish a card you own, empower me."
     TriggerType triggerType() const override { return TriggerType::WhenYouBanishACard; }
+    // "When YOU banish": an ability that triggers when "you" do something
+    // triggers on a game action you are responsible for (CR 412.4), and the
+    // player who performs the action is (412.1). The event is announced to
+    // the card's owner whoever banished it, so: not when an opponent's spell
+    // or ability did (their Temporal Breach, their Ashe, Focused).
+    // EffectExecutor::banishObject names the performer on the card.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId subject) const override {
+        if (subject == kInvalidId || !state.objectExists(subject)) return true;
+        const auto& counters = state.getObject(subject).card_counters;
+        const auto by = counters.find(EffectExecutor::kBanishedBy);
+        return by == counters.end() || by->second == static_cast<int>(playerIndex(controller)) + 1;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         ctx.executor.empower(ctx.source);
     }

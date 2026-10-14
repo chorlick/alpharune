@@ -15,8 +15,9 @@ namespace {
 class AstralHeron : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "When you play your first card each turn, if I'm at a battlefield, your
-    //  next card costs [2][A][A] less."
+    // "When you play your first card each turn, if I'm at a battlefield, the
+    //  next card you play this turn costs [2][A][A] less." (erratum,
+    //  errata/vendetta-errata.txt: a discount nobody used ends with the turn.)
     // "Your first card each turn" is the card that was played first
     // (playOrdinalThisTurn, stamped on the card as it is played) — not the
     // first play this ability hears of: a spell's play triggers only once it
@@ -56,7 +57,7 @@ public:
         m.energy_reduction = 2;
         m.power_reduction = 2;
         m.next_card_only = true;
-        m.this_turn_only = false;   // "your next card", whenever it is played
+        m.this_turn_only = true;    // "the next card you play this turn" (erratum)
         m.affects_friendly_only = true;
         ps.cost_modifiers.push_back(m);
         RIFT_TRACE(ctx.events, "ASTRAL HERON: first card this turn -> next card costs [2][A][A] less");
@@ -78,7 +79,7 @@ private:
         d.energy_cost = 7;
         d.might = 7;
         d.rarity = Rarity::Epic;
-        d.ability_text = R"RB(When you play your first card each turn, if I'm at a battlefield, your next card costs [2][A][A] less.)RB";
+        d.ability_text = R"RB(When you play your first card each turn, if I'm at a battlefield, the next card you play this turn costs [2][A][A] less.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b1ce87efc9a1a7e2438c53e034a7f92caaa67ed6-744x1039.png)RB";
         return d;
     }();

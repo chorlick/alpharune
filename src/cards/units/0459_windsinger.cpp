@@ -20,10 +20,13 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "another unit at a battlefield with 3 [M] or less" — an enemy one
         // only if it can be chosen by enemy spells and abilities.
+        // Played from facedown, only one at the battlefield she was played to
+        // (CR 811.1.d.3: atHiddenBattlefield).
         auto legal = [&]() {
-            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                return o.id != ctx.source && o.isAtBattlefield() && o.current_might <= 3;
-            });
+            return atHiddenBattlefield(ctx.state, ctx.source,
+                chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                    return o.id != ctx.source && o.isAtBattlefield() && o.current_might <= 3;
+                }));
         };
         auto still_legal = [&]() { return !legal().empty(); };
         int conf = confirmOptional(ctx, "Windsinger: return a small unit to hand?",

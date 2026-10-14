@@ -300,9 +300,12 @@ void TriggerManager::fireLegendTrigger(TriggerType t, PlayerId relevant_player,
 }
 
 // LeBlanc, Everywhere at Once: "your [Temporary] effects at my battlefield
-// don't trigger." True when `source` is a friendly [Temporary] unit at — or,
-// for its own death, last at — a battlefield where a card of its controller
-// says so (Card::suppressesTemporaryTriggersHere).
+// don't trigger." True when `source` is a friendly [Temporary] unit at a
+// battlefield where a card of its controller says so
+// (Card::suppressesTemporaryTriggersHere). Asked for the [Temporary] ability
+// ONLY (queueTemporaryAbilities): the unit's other triggered abilities — its
+// [Deathknell] when it dies some other way, its play and attack abilities —
+// are not "[Temporary] effects" and trigger as anywhere else (D55).
 bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
     const auto& obj = state_.getObject(source);
     if (!obj.isUnit()) return false;
@@ -340,8 +343,6 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     // triggered abilities do not trigger. (Abilities in its EFFECT text speak
     // for the unit and go through queueEquippedTrigger instead.)
     if (obj.is_rules_text_inactive) return false;
-
-    if (temporaryTriggerSuppressed(source)) return false;
 
     // For single-trigger cards `which` may be None; resolve it from the
     // card so multi-trigger cards still record which event fired.
@@ -413,7 +414,7 @@ void TriggerManager::queueKeywordAbilities(GameObjectId object, PlayerId control
     if (!state_.objectExists(object) || !keywordAbilityCard(keyword)) return;
     const int instances =
         keywordAbilityInstances(state_.getObject(object), keyword, own_card_fires);
-    if (instances <= 0 || temporaryTriggerSuppressed(object)) return;
+    if (instances <= 0) return;
     for (int i = 0; i < instances; ++i) {
         RIFT_DEBUG(events_, "TRIGGER: " + state_.getObject(object).name + " [" +
                          toString(keyword) + "] (" + toString(controller) + ")");

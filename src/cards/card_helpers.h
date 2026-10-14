@@ -655,6 +655,14 @@ inline Intent valChoice(PlayerId p, int v, const std::string& label) {
     c.choice_label = label;
     return c;
 }
+/// The "no" of a yes/no a card builds by hand: valChoice(p, 0, label) marked
+/// as the decline (Intent::declines), so an agent can tell it from the first
+/// of two modes. Card::confirmOptional does this itself.
+inline Intent declineChoice(PlayerId p, const std::string& label) {
+    Intent c = valChoice(p, 0, label);
+    c.declines = true;
+    return c;
+}
 /// The int the agent picked from valChoice options (`fallback` if none).
 inline int takenValue(CardContext& ctx, int fallback) {
     auto c = ctx.executor.takeChoice();
@@ -982,6 +990,19 @@ inline bool moveToBaseBlocked(const GameState& state, const GameObject& u) {
     return false;
 }
 
+/// Whether the resolving effect of `mover` can move unit `u` to its base at
+/// all — what EffectExecutor::moveToBase refuses: "can't move to base"
+/// (moveToBaseBlocked), "can't be moved by enemy spells and abilities", "they
+/// can't move it this turn". A card that offers units to move to base offers
+/// only these, so a move that is offered happens.
+inline bool effectCanMoveToBase(const GameState& state, PlayerId mover, const GameObject& u) {
+    if (!u.isUnit() || !u.location.has_value() || u.isAtBase()) return false;
+    if (moveToBaseBlocked(state, u)) return false;
+    if (u.cant_be_moved_by_enemy && mover != u.controller) return false;
+    if (u.cant_move_this_turn && mover == u.controller) return false;
+    return true;
+}
+
 // ── Where an effect plays a unit (CR 355.2.a) ───────────────────────────────
 // A unit played by an effect goes where a unit played from hand may go: its
 // controller's base or a battlefield they control. pickEffectPlayLocation
@@ -1041,6 +1062,49 @@ inline std::optional<BattlefieldId> facedownPlayBattlefield(const GameState& sta
     if (turn == counters.end() || bf == counters.end()) return std::nullopt;
     if (turn->second != state.turn.turn_number || bf->second <= 0) return std::nullopt;
     return BattlefieldId::fromRaw(bf->second - 1);
+}
+
+// ── A hidden card's choices are bound to its battlefield (CR 811.1.d) ───────
+// One rule, read by every helper below that offers a location for a unit and
+// by any card whose pick list is of board objects:
+//   - a hidden SPELL chooses among the options at the battlefield it was
+//     played from (811.1.d.2);
+//   - a play effect of a hidden PERMANENT chooses among the options at the
+//     battlefield the permanent was played to (811.1.d.3) — where it is now;
+//     once the permanent has left the board the effect can no longer tell and
+//     has no legal option (811.1.d.3.a);
+//   - a unit either of them plays is played at that battlefield (811.1.d.5).
+// "Unless it explicitly restricts targeting in a way that makes this
+// impossible" (Tideturner: "a unit you control at another location") is the
+// card's to say: such a card does not call these.
+struct HiddenBinding {
+    bool bound = false;                    // this play of the card is from facedown
+    std::optional<BattlefieldId> bf;       // the battlefield; none = no option anywhere
+};
+inline HiddenBinding hiddenBinding(const GameState& state, GameObjectId source) {
+    HiddenBinding out;
+    const auto hidden_at = facedownPlayBattlefield(state, source);
+    if (!hidden_at.has_value()) return out;
+    out.bound = true;
+    const auto& card = state.getObject(source);
+    if (card.isSpell()) out.bf = hidden_at;
+    else out.bf = card.battlefieldId();    // played to; nullopt once it has left
+    return out;
+}
+/// `options` as a card played from facedown may choose from them: only the
+/// board objects at its battlefield. Unchanged for any other play. For the
+/// pick list of a hidden spell that chooses as it resolves, and of a hidden
+/// permanent's "When you play me".
+inline std::vector<GameObjectId> atHiddenBattlefield(const GameState& state, GameObjectId source,
+                                                    std::vector<GameObjectId> options) {
+    const HiddenBinding bind = hiddenBinding(state, source);
+    if (!bind.bound) return options;
+    options.erase(std::remove_if(options.begin(), options.end(), [&](GameObjectId id) {
+        if (!bind.bf.has_value() || !state.objectExists(id)) return true;
+        const auto at = state.getObject(id).battlefieldId();
+        return !at.has_value() || *at != *bind.bf;
+    }), options.end());
+    return options;
 }
 
 // ── Where an effect-played unit goes (CR 355.2.a) ───────────────────────────
@@ -1223,6 +1287,21 @@ inline std::vector<int> tokenPlayDests(const GameState& state, PlayerId player) 
             out.push_back(1 + static_cast<int>(bf.id.raw()));
     return out;
 }
+/// The same for the token a resolving card plays: when that card was played
+/// from facedown the token must be played at its battlefield (CR 811.1.d.5,
+/// hiddenBinding) — one destination, or none when units can't be played
+/// there (the rule restricts the choice; it does not lift "Units can't be
+/// played here.": playLocations has the citation).
+inline std::vector<int> tokenPlayDests(const CardContext& ctx) {
+    const HiddenBinding bind = hiddenBinding(ctx.state, ctx.source);
+    if (!bind.bound) return tokenPlayDests(ctx.state, ctx.controller);
+    std::vector<int> out;
+    if (bind.bf.has_value())
+        for (const auto& bf : ctx.state.battlefields)
+            if (bf.id == *bind.bf && battlefieldTakesUnitsFrom(ctx.state, ctx.controller, bf))
+                out.push_back(1 + static_cast<int>(bf.id.raw()));
+    return out;
+}
 /// The location a moveDests / tokenPlayDests code stands for.
 inline LocationId destLocation(PlayerId player, int dest) {
     if (dest <= 0) return LocationId{BaseLocation{player}};
@@ -1235,13 +1314,28 @@ inline std::vector<LocationId> tokenPlayLocations(const GameState& state, Player
     for (int d : tokenPlayDests(state, player)) out.push_back(destLocation(player, d));
     return out;
 }
+/// tokenPlayDests(ctx) as locations: the `location_choices` of a card that
+/// asked with pickTokenDest.
+inline std::vector<LocationId> tokenPlayLocations(const CardContext& ctx) {
+    std::vector<LocationId> out;
+    for (int d : tokenPlayDests(ctx)) out.push_back(destLocation(ctx.controller, d));
+    return out;
+}
 /// Ask ctx.controller where a unit token they are playing goes (one of
-/// tokenPlayDests). Returns the code, or -1 while the agent is deciding (the
-/// caller must return). Not asked when the base is the only place. This is
-/// the callback's Card::pickMode.
+/// tokenPlayDests(ctx), so a card played from facedown is held to its
+/// battlefield). Returns the code; -1 while the agent is deciding and -2 when
+/// there is nowhere the token can be played (the caller must return for
+/// both: `if (dest < 0) return;`). Not asked when there is one place only.
+/// This is the callback's Card::pickMode.
 inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label) {
-    const auto dests = tokenPlayDests(ctx.state, ctx.controller);
-    if (dests.size() == 1) return 0;
+    const auto dests = tokenPlayDests(ctx);
+    if (dests.empty()) return -2;
+    if (dests.size() == 1) {
+        // Nothing to choose. Stored as the answer, so it is not asked later —
+        // as the item resolves — should another place have opened by then.
+        card.settleMode(ctx, dests.front());
+        return dests.front();
+    }
     uint32_t mask = 0;
     int modes = 1;
     for (int d : dests) {

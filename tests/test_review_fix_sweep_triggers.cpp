@@ -377,16 +377,18 @@ TEST_F(SweepTriggersTest, LonelyPoro_DrawsWhenItDiesAlone) {
     EXPECT_EQ(handSize(P1) - before, 1);
 }
 
-// A unit's own "When I die" goes through the same gate as every other
-// trigger: LeBlanc, Everywhere at Once — "your [Temporary] effects at my
-// battlefield don't trigger."
-TEST_F(SweepTriggersTest, OwnDeathTrigger_IsSuppressedForATemporaryUnitAtLeBlancsBattlefield) {
+// LeBlanc, Everywhere at Once — "your [Temporary] effects at my battlefield
+// don't trigger" — stops the [Temporary] ability and nothing else: a
+// [Temporary] unit's own "When I die" triggers there as anywhere.
+// (D55, testing phase. Old expectation: the [Deathknell] does not trigger —
+// that pinned the defect; the card's sentence names [Temporary] effects.)
+TEST_F(SweepTriggersTest, OwnDeathTrigger_OfATemporaryUnitAtLeBlancsBattlefieldStillTriggers) {
     addUnit(P1, kLeBlanc, 4, 0);
     auto crab = addUnit(P1, kScuttleCrab, 1, 0);
     obj(crab).keywords.set(Keyword::Temporary);
     const int xp = state.player(P1).xp;
     resolveThroughEngine([&](EffectExecutor& exec, GameState&) { exec.killObject(crab); });
-    EXPECT_EQ(state.player(P1).xp, xp) << "the [Deathknell] of a [Temporary] unit there does not trigger";
+    EXPECT_EQ(state.player(P1).xp, xp + 1) << "its [Deathknell] is not a [Temporary] effect";
 }
 
 

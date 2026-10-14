@@ -44,7 +44,16 @@ public:
         // It comes back as a new object, with no damage, buffs, statuses or
         // roles: banishObject made it one as it left (CR 124.1,
         // EffectExecutor::leftBoard), so nothing is reset here.
-        ctx.executor.playIgnoringCost(owner, picked, *where);
+        // "To the same location" does not lift a "can't": where its owner
+        // cannot play a unit — Rockfall Path ("Units can't be played here."),
+        // a base that is not the owner's, any battlefield under Mageseeker
+        // Warden — the play is not possible and the unit stays banished
+        // (Vendetta FAQ, Temporal Breach on a unit taken with Hostile
+        // Takeover: "The unit will remain in Banishment"; CR 054.1). The
+        // executor's play refuses such a location (unitMayBePlayedTo).
+        if (!ctx.executor.playIgnoringCost(owner, picked, *where))
+            RIFT_TRACE(ctx.events, "TEMPORAL BREACH: " + ctx.state.getObject(picked).name +
+                                " can't be played to that location — it stays banished");
     }
 private:
     const CardDef def_ = [] {

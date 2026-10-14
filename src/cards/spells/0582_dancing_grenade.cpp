@@ -95,7 +95,7 @@ public:
         slot(kPhaseSlot) = 1;
         slot(kPlayerSlot) = static_cast<int32_t>(unit_controller);
         ctx.executor.requestChoice(unit_controller,
-            {valChoice(unit_controller, 0, "No — Dancing Grenade: play it again for [A]"),
+            {declineChoice(unit_controller, "No — Dancing Grenade: play it again for [A]"),
              valChoice(unit_controller, 1, "Yes — Dancing Grenade: play it again for [A]")},
             "may: Dancing Grenade: play it again for [A]");
     }

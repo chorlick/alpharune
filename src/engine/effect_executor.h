@@ -331,7 +331,16 @@ public:
     /// and recycle that card" (Sabotage) is `knowledge::everyone()`.
     void recycleCards(PlayerId player, const std::vector<GameObjectId>& cards,
                       knowledge::Seers shown = knowledge::nobody());
-    void banishObject(GameObjectId target);
+    /// `by`: the player who performs the banish and is so responsible for it
+    /// (CR 412.1) — "When YOU banish a card you own" triggers for that player
+    /// only (CR 412.4). Default: the controller of the spell or ability that
+    /// is resolving (or being finalized: a cost), else the card's owner. Pass
+    /// it when the effect has another player do the banishing ("Each player
+    /// ... banishes one of them": Promising Future). While the banish is
+    /// announced the performer is on the card as card_counters[kBanishedBy]
+    /// (player index + 1) for a triggerCondition to read.
+    void banishObject(GameObjectId target, PlayerId by = PlayerId::None);
+    static constexpr const char* kBanishedBy = "__banished_by";
 
     // ── Vendetta game actions ──
     /// Empower (CR 442): give `target` an Empowered status if it has room
@@ -485,6 +494,15 @@ public:
                                       const std::string& token_name,
                                       PlayerId controller,
                                       CardDefId token_def = kInvalidId);
+    /// The reverse (Brush: "you may replace this with the battlefield it
+    /// replaced"): the token battlefield leaves play and the card it replaced
+    /// comes back from banishment into the slot. False if `target_bf` holds no
+    /// replacement. A card never moves a battlefield card by hand.
+    bool restoreReplacedBattlefield(BattlefieldId target_bf);
+    /// Set a slot's static rules ("Units can't be played here.", "Units can't
+    /// move from here to base.", the first turn it can be scored) from the
+    /// card that is in it now — as GameEngine does at setup.
+    void applyBattlefieldCardRules(BattlefieldState& slot) const;
 
     // ── Copy effects ──
     /// Make a token become a copy of another unit (base traits only, not buffs/auras).
@@ -509,8 +527,24 @@ public:
     /// effects play a unit for free the controller still chooses base
     /// or any battlefield they control; callers should prompt the
     /// agent and pass the result here (see Dazzling Aurora).
-    void playIgnoringCost(PlayerId player, GameObjectId card,
+    /// A unit is not played to a location units can't be played to
+    /// (unitMayBePlayedTo): the call then does nothing — the card stays where
+    /// it is, which for "banish it, then its owner plays it" is Banishment —
+    /// and returns false. True when the card was played.
+    bool playIgnoringCost(PlayerId player, GameObjectId card,
                            std::optional<LocationId> location = std::nullopt);
+    /// Whether a unit `player` plays may be put at `where`, whatever tells
+    /// them to play it there. Never: a base that is not their own ("Units
+    /// cannot be played to a base of a player other than their own controller
+    /// under any circumstances" — Vendetta FAQ, Temporal Breach), a
+    /// battlefield where "Units can't be played here." (Rockfall Path), any
+    /// battlefield for a player who can only play units to their base
+    /// (Mageseeker Warden). A "can't" is not overcome by an instruction or a
+    /// permission (CR 054.1). Who controls the battlefield is NOT part of
+    /// this: that is the default of CR 355.2.a, which an effect that names a
+    /// location replaces ("to the same location", "to any battlefield");
+    /// card_helpers.h playLocations is the list for an effect that names none.
+    bool unitMayBePlayedTo(PlayerId player, const LocationId& where) const;
 
     using EffectPlayCost = ::riftbound::EffectPlayCost;
     /// Whether `player` could pay for `card` under `cost` right now.

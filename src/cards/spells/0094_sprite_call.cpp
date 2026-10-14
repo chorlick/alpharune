@@ -16,15 +16,17 @@ class SpriteCall : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Play a ready 3 [M] Sprite unit token with [Temporary]." — to the base
-    // or a battlefield its controller controls, their choice.
+    // or a battlefield its controller controls, their choice; played from
+    // facedown, at the battlefield it was hidden at and nowhere else (CR
+    // 811.1.d.5 — pickTokenDest reads it off the card).
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const int dest = pickTokenDest(*this, ctx, "Sprite Call: play the Sprite to");
-        if (dest < 0) return;   // waiting for the choice
+        if (dest < 0) return;   // waiting for the choice, or nowhere to play it
         KeywordSet kw; kw.set(Keyword::Temporary);
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
                                   {"Fae"}, kw, destLocation(ctx.controller, dest),
                                   /*enter_ready=*/true,
-                                  tokenPlayLocations(ctx.state, ctx.controller));
+                                  tokenPlayLocations(ctx));
         RIFT_TRACE(ctx.events, "SPRITE CALL: play ready 3 [M] Sprite [Temporary]");
     }
 private:

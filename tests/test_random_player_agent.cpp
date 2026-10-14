@@ -29,6 +29,12 @@ Intent value(int v) {
     i.chosen_value = v;
     return i;
 }
+/// The "No" of a yes/no, as Card::confirmOptional builds it (Intent::declines).
+Intent no() {
+    Intent i = value(0);
+    i.declines = true;
+    return i;
+}
 Intent object(uint32_t id) {
     Intent i = ofType(IntentType::MakeChoice);
     i.chosen_objects = {GameObjectId::fromRaw(id)};
@@ -64,10 +70,18 @@ TEST(RandomPlayerAgent, WhatIsAPass) {
         EXPECT_TRUE(isPassOption(legal, 0));
         EXPECT_FALSE(isPassOption(legal, 1));
     }
-    // No / yes.
+    // No / yes: the asker marks the decline (Intent::declines).
+    {
+        const std::vector<Intent> legal = {no(), value(1)};
+        EXPECT_TRUE(isPassOption(legal, 0));
+        EXPECT_FALSE(isPassOption(legal, 1));
+    }
+    // A1: two modes, an X of 0 or 1, "cost [1] less / [A] less": the values
+    // 0 and 1 with no decline among them. Neither is a pass. (It was: a
+    // prompt of exactly the values 0 and 1 was taken for a no / yes.)
     {
         const std::vector<Intent> legal = {value(0), value(1)};
-        EXPECT_TRUE(isPassOption(legal, 0));
+        EXPECT_FALSE(isPassOption(legal, 0));
         EXPECT_FALSE(isPassOption(legal, 1));
     }
     // "None" / "No more targets" / "Move no more units" / "Keep it": the bare
@@ -119,7 +133,9 @@ TEST(RandomPlayerAgent, WithPassZeroItNeverPassesWhileAnotherOptionIsLegal) {
     EXPECT_GT(main_phase[1], 800);   // uniform over the two plays
     EXPECT_GT(main_phase[2], 800);
 
-    EXPECT_EQ(tally(agent, {value(0), value(1)}, 500)[0], 0);
+    EXPECT_EQ(tally(agent, {no(), value(1)}, 500)[0], 0);
+    // A1: the first of two modes is taken as often as the second.
+    for (int n : tally(agent, {value(0), value(1)}, 2000)) EXPECT_GT(n, 800);
     EXPECT_EQ(tally(agent, {object(4), value(0), object(5)}, 500)[1], 0);
     // Three values: no pass among them, so all three are taken.
     for (int n : tally(agent, {value(0), value(1), value(2)}, 3000)) EXPECT_GT(n, 800);
